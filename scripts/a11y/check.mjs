@@ -2892,7 +2892,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const ax311 = await axNode(p, ".ride-311-button");
   check("ride 311 button: a round button of about 60 px at the right edge, in the lower half (thumb height), named Log for 311 with its visible 311, closed",
     !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 96 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Log for 311" &&
-      JSON.stringify(rail.map((x) => x.name).filter((n) => !/^Broadcast/.test(n))) === JSON.stringify(["Where am I?", "Large text", "Detour: water, restroom, food, repair or search", "Log for 311", "More: change the route, and ride settings"]) && rail.every((x) => x.round && x.w >= 44),
+      JSON.stringify(rail.map((x) => x.name).filter((n) => !/^Broadcast/.test(n))) === JSON.stringify(["Where am I?", "Large text", "Detour: water, restroom, food, repair or search", "Log for 311", "More: change the route or the map, and ride settings"]) && rail.every((x) => x.round && x.w >= 44),
     JSON.stringify({ b311, ax311, rail }));
   // The top row (the owner, 2026-10-19: "switch end ride and road closed"): End ride, then Road closed ahead with its
   // words (2026-10-20), one line.
@@ -3037,12 +3037,13 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await sleep(200);
   // More (the gear, the owner, 2026-10-18; More 2026-10-24; bubbles 2026-10-26: "Have many of those options just expanded
   // as more bubble buttons, not in settings"): a row of round bubbles to its left, Less traffic and Fewer hills (each a
-  // symbol named in full, 48 px or more) and Settings, the last opening the settings under the top row, the focus in them.
+  // symbol named in full, 48 px or more), Topo lines (2026-10-26, a toggle, off) and Settings, the last opening the
+  // settings under the top row, the focus in them.
   const bubbles = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-button'); const row = document.getElementById(g.getAttribute('aria-controls')); const m = g.getBoundingClientRect();
-    const list = [...row.querySelectorAll('button')].filter((b) => b.getClientRects().length > 0).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label'), w: Math.round(r.width), h: Math.round(r.height), round: parseFloat(getComputedStyle(b).borderRadius) >= r.width / 2 - 1, left: r.right <= m.left + 1, onScreen: r.left >= 0 && r.top >= 0 }; });
+    const list = [...row.querySelectorAll('button')].filter((b) => b.getClientRects().length > 0).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label'), pressed: b.getAttribute('aria-pressed'), w: Math.round(r.width), h: Math.round(r.height), round: parseFloat(getComputedStyle(b).borderRadius) >= r.width / 2 - 1, left: r.right <= m.left + 1, onScreen: r.left >= 0 && r.top >= 0 }; });
     return { expanded: g.getAttribute('aria-expanded'), shown: !row.hidden, panelShown: !document.querySelector('.ride-mode-settings').hidden, list }; })()`);
-  check("ride: More (Stephen 2026-10-26) opens round bubbles to its left: Less traffic, Fewer hills and Ride settings, each 48 px or more and on screen; the settings stay closed",
-    bubbles.expanded === "true" && bubbles.shown && !bubbles.panelShown && JSON.stringify(bubbles.list.map((x) => x.name)) === JSON.stringify(["Less traffic: plan again from here", "Fewer hills: plan again from here", "Ride settings"]) && bubbles.list.every((x) => x.round && x.w >= 48 && x.h >= 48 && x.left && x.onScreen), JSON.stringify(bubbles));
+  check("ride: More (Stephen 2026-10-26) opens round bubbles to its left: Less traffic, Fewer hills, Topo lines (a toggle, off) and Ride settings, each 48 px or more and on screen; the settings stay closed",
+    bubbles.expanded === "true" && bubbles.shown && !bubbles.panelShown && JSON.stringify(bubbles.list.map((x) => x.name)) === JSON.stringify(["Less traffic: plan again from here", "Fewer hills: plan again from here", "Topo lines", "Ride settings"]) && bubbles.list.find((x) => x.name === "Topo lines")?.pressed === "false" && bubbles.list.every((x) => x.round && x.w >= 48 && x.h >= 48 && x.left && x.onScreen), JSON.stringify(bubbles));
   await p.shot(`${SHOTS}/ride_more_320.png`);
   await p.eval("document.querySelector('.ride .ride-settings-bubble').click(); true");
   await sleep(200);
@@ -4518,9 +4519,24 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   // The owner, 2026-10-12: the rider's own ride type first (My Go; Default until set), then the two transit types.
   // More, with Repair and Sights behind it, follow the four since 2b38bf1c ("Go: Repair and Sights behind More"),
   // and Metro first behind it since Stephen 2026-10-19 ("Metro stops should be on the list in more").
-// Featured routes joined them last in v0.12.1 (#456).
-  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), then More with Metro, Repair, Sights and Featured routes, and the ride types Default, Own Bike + 🚆🚌, Bikeshare + 🚶🚆🚌 and More ride types",
-    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom", "More", "Metro", "Repair", "Sights", "Featured routes"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus", "More ride types"]), JSON.stringify(go));
+// Featured routes joined them last in v0.12.1 (#456); Saved routes before it (Stephen 2026-10-26).
+  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), then More with Metro, Repair, Sights, Saved routes and Featured routes, and the ride types Default, Own Bike + 🚆🚌, Bikeshare + 🚶🚆🚌 and More ride types",
+    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom", "More", "Metro", "Repair", "Sights", "Saved routes", "Featured routes"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus", "More ride types"]), JSON.stringify(go));
+  // More > Saved routes (Stephen 2026-10-26): Load route's popup, named Saved routes; Escape gives the focus back.
+  await p.eval("document.querySelector('.go-sheet .go-more').click(); true");
+  await sleep(200);
+  await p.eval("[...document.querySelectorAll('.go-more-row .place-chip')].find((c) => c.textContent.trim() === 'Saved routes').focus(); true");
+  await p.enter();
+  await sleep(500);
+  const savedPopup = await p.eval("(() => { const d = document.querySelector('.load-route-dialog'); return { open: !!d?.open, heading: d?.querySelector('h2')?.textContent.trim(), gpx: !!d?.querySelector('.load-route-gpx') }; })()");
+  const savedNamed = await axNode(p, ".load-route-dialog");
+  await p.escape();
+  await sleep(300);
+  const savedBack = await p.eval("({ closed: !document.querySelector('.load-route-dialog').open, focus: document.activeElement?.textContent.trim() })");
+  await p.eval("document.querySelector('.go-sheet .go-more').click(); true");
+  check("go: More > Saved routes opens Load route's popup named Saved routes (with Open GPX file); Escape closes it to the chip",
+    savedPopup.open && savedPopup.heading === "Saved routes" && savedPopup.gpx && savedNamed?.role === "dialog" && savedNamed?.name === "Saved routes" && savedBack.closed && savedBack.focus === "Saved routes",
+    JSON.stringify({ savedPopup, savedNamed: [savedNamed?.role, savedNamed?.name], savedBack }));
   const own = await axNode(p, ".go-sheet .ride-chips .ride-type-chip");
   check("go: the first ride type is described as the rider's own, set in Settings", own?.name === "Default" && /^Your ride type\. Change it in Settings, under My Go\.$/.test(own?.description ?? ""), JSON.stringify(own));
   check("go: every control in the top bar and the sheet is 44 px or more each way, and nothing scrolls sideways at 390 px", go.small.length === 0 && !go.scroll, JSON.stringify(go.small));
@@ -5247,6 +5263,36 @@ const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-s
 }
 
 {
+  // Favorite places (Stephen 2026-10-26: "just have a favorites replace home", "Home and if set work would be the top 2
+  // favorites", "we'd have a popout"): signed in, Go's first place chip is Favorites; it pops out Set Home, Set Work and
+  // the account's places, each 44 px; Edit shows Remove named for its place, which saves the list without it.
+  const p = await bare({ suggester: true, init: "document.cookie = 'csrftoken=favorites-token; path=/';" });
+  await p.waitFor("[...document.querySelectorAll('.go-places .place-chip')].some((c) => c.textContent.trim() === 'Favorites')", 8000);
+  const chips = await p.eval("[...document.querySelectorAll('.go-places:not(.go-more-row) .place-chip')].map((c) => c.textContent.trim())");
+  await p.eval("[...document.querySelectorAll('.go-places .place-chip')].find((c) => c.textContent.trim() === 'Favorites').click(); true");
+  await p.waitFor("!!document.querySelector('.go-favorites')", 5000);
+  const read = () => p.eval(`(() => { const g = document.querySelector('.go-favorites'); const chip = [...document.querySelectorAll('.go-places .place-chip')].find((c) => c.textContent.trim() === 'Favorites');
+    return { rows: [...g.querySelectorAll('.go-favorite')].map((r) => r.textContent.trim()), expanded: chip.getAttribute('aria-expanded'), controls: chip.getAttribute('aria-controls') === g.id,
+      small: [...g.querySelectorAll('button, input')].filter((e) => e.getClientRects().length && e.getBoundingClientRect().height < 44).map((e) => e.textContent.trim()),
+      remove: [...g.querySelectorAll('li > .secondary')].map((r) => r.textContent.trim()) }; })()`);
+  const popped = await read();
+  const group = await axNode(p, ".go-favorites");
+  check("favorites: signed in, Favorites is Go's first place chip (Food stays); it pops out a group named Favorites: Set Home, Set Work, then the account's places, every control 44 px",
+    JSON.stringify(chips.slice(0, 4)) === JSON.stringify(["Favorites", "Food", "Water", "Restroom"]) && popped.expanded === "true" && popped.controls && group?.role === "group" && group?.name === "Favorites" &&
+      JSON.stringify(popped.rows) === JSON.stringify(["Set Home", "Set Work", "Eastern Market"]) && popped.small.length === 0, JSON.stringify({ chips, popped, group }));
+  await p.eval("[...document.querySelectorAll('.go-favorites-actions .chip')].find((c) => c.textContent.trim() === 'Edit').click(); true");
+  await sleep(200);
+  const editing = await read();
+  await p.eval("document.querySelector('.go-favorites li > .secondary').click(); true");
+  await p.waitFor("document.querySelectorAll('.go-favorites .go-favorite').length === 2", 5000);
+  const post = p.favoriteRequests.find((r) => r.method === "POST");
+  const csrf = post && Object.entries(post.headers).find(([k]) => k.toLowerCase() === "x-csrftoken")?.[1];
+  check("favorites: Edit shows Remove, named for its place; Remove saves the list without it (POST /api/me/places with the CSRF header)",
+    JSON.stringify(editing.remove) === JSON.stringify(["Remove Eastern Market"]) && JSON.stringify(post?.body) === JSON.stringify({ places: [] }) && csrf === "favorites-token", JSON.stringify({ editing, post: post?.body, csrf: !!csrf }));
+  await p.close();
+}
+
+{
   // Share as image on a route that starts at Home (v0.7.0 end review): "Hide the part near Home" is shown and
   // ticked, and the QR code is refused, with its reason as the box's description, while Home is hidden; unticked
   // (the rider chose to show Home), the QR code is no longer refused for Home.
@@ -5286,7 +5332,9 @@ const failed = results.filter((r) => !r.ok);
 // Cancel, and leaving Settings.
 // Plan's Start ride no longer asks first (2026-10-24) takes one away.
 // Ride's More bubbles (#515, 2026-10-26) turn one check into three: two more.
-const EXPECTED = 686;
+// Favorite places (2026-10-26) add two: the popout, and Edit's Remove.
+// Go's More > Saved routes (2026-10-26) adds one.
+const EXPECTED = 689;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

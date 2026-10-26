@@ -232,11 +232,18 @@ DIRECTION_AND_LANES_IGNORED = frozenset({BALTIMORE_AGENCY})
 # (fixtures/overrides/README.md). Each names a block by the layer's own key for
 # it (DC's `BLOCKKEY`, `RoadFacts.block_key`) and its street (`ROUTENAME`), and
 # the facts of it that are withheld, so OSM's value stands; only the posted
-# speed may be withheld. Not by the installed block id: that is
+# speed may be withheld. An entry may instead (or as well) correct the block's
+# direction (`direction`, DC's SUMMARYDIRECTION labels, OWNER_DIRECTIONS): a
+# street whose one-way DC has not yet recorded (owner 2026-10-26, Sheridan St
+# NW). Not by the installed block id: that is
 # `dc-<OBJECTID>-<part>`, and OBJECTID is the ArcGIS row number, which DC's
 # republishing may reassign (gate review, should-fix 1).
 OVERRIDES_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "overrides"
 WITHHOLDABLE = frozenset({"speed"})
+# The directions an owner's block correction may give, in DC's own labels against
+# the block's line: `OB` one-way in the direction the block's line is drawn (for
+# DC, FROMSTREET toward TOSTREET; check the line), `IB` the other way, `BD` both.
+OWNER_DIRECTIONS = frozenset({"OB", "IB", "BD"})
 # How the report names a value the owner withheld (dc-osm-discrepancies).
 OWNER_OVERRIDE = "owner override"
 
@@ -253,6 +260,8 @@ class WithheldBlock(NamedTuple):
     # withholds nothing (`resolve_withheld`).
     routename: str
     facts: frozenset[str]
+    # The owner's direction for the block (OWNER_DIRECTIONS), None to keep DC's.
+    direction: str | None = None
 
 
 def _street_key(name: str | None) -> str:
@@ -260,13 +269,15 @@ def _street_key(name: str | None) -> str:
 
 
 def withheld_blocks(directory: str | Path | None = None) -> dict[str, WithheldBlock]:
-    """{block key: the block's street and the facts withheld} from every override
-    file's `agency_blocks` in `directory` (OVERRIDES_DIR). A file without the
-    key has none. Each entry is `{"blockkey": <the layer's key, DC's BLOCKKEY>,
-    "routename": <its ROUTENAME>, "withhold": [...], "reason": ..., "evidence":
-    ...}`."""
+    """{block key: the block's street, the facts withheld and the owner's
+    direction} from every override file's `agency_blocks` in `directory`
+    (OVERRIDES_DIR). A file without the key has none. Each entry is
+    `{"blockkey": <the layer's key, DC's BLOCKKEY>, "routename": <its ROUTENAME>,
+    "withhold": [...], "direction": <OWNER_DIRECTIONS>, "reason": ...,
+    "evidence": ...}`, with `withhold`, `direction` or both."""
     held: dict[str, set[str]] = defaultdict(set)
     names: dict[str, str] = {}
+    directions: dict[str, str] = {}
     for path in sorted(Path(directory or OVERRIDES_DIR).glob("*.json")):
         document = json.loads(path.read_text())
         entries = document.get("agency_blocks", []) if isinstance(document, dict) else None
@@ -286,17 +297,35 @@ def withheld_blocks(directory: str | Path | None = None) -> dict[str, WithheldBl
                 raise WithheldBlockRefused(
                     f"{where}: block {key} is named {routename!r} here and {names[key]!r} before"
                 )
-            facts = entry.get("withhold")
-            if not isinstance(facts, list) or not facts or not set(facts) <= WITHHOLDABLE:
+            facts = entry.get("withhold", [] if "direction" in entry else None)
+            if not isinstance(facts, list) or not set(facts) <= WITHHOLDABLE:
                 raise WithheldBlockRefused(
                     f"{where}: withhold must list facts from {sorted(WITHHOLDABLE)}"
+                )
+            direction = entry.get("direction")
+            if not facts and direction is None:
+                raise WithheldBlockRefused(
+                    f"{where}: withhold must list facts from {sorted(WITHHOLDABLE)}"
+                )
+            if direction is not None and direction not in OWNER_DIRECTIONS:
+                raise WithheldBlockRefused(
+                    f"{where}: direction must be one of {sorted(OWNER_DIRECTIONS)}"
+                )
+            if direction is not None and directions.get(key, direction) != direction:
+                raise WithheldBlockRefused(
+                    f"{where}: block {key} is given direction {direction} here and "
+                    f"{directions[key]} before"
                 )
             for name in ("reason", "evidence"):
                 if not isinstance(entry.get(name), str) or not entry[name].strip():
                     raise WithheldBlockRefused(f"{where}: {name} is required")
             names[key] = routename
             held[key].update(facts)
-    return {key: WithheldBlock(names[key], frozenset(facts)) for key, facts in held.items()}
+            if direction is not None:
+                directions[key] = direction
+    return {
+        key: WithheldBlock(names[key], frozenset(held[key]), directions.get(key)) for key in names
+    }
 
 
 class WithheldResolution(NamedTuple):
@@ -307,6 +336,8 @@ class WithheldResolution(NamedTuple):
     # The withheld blocks no installed block carries the key of, and those whose
     # installed street is another: each a sentence for the rebuild's log.
     unmatched: tuple[str, ...]
+    # {installed block id: the owner's direction}, as `aggregate` takes them.
+    directions: dict[str, str] = {}
 
 
 def resolve_withheld(
@@ -320,6 +351,7 @@ def resolve_withheld(
     `unmatched` for the rebuild to warn about: the agency's value is then what
     the classifier reads, against the owner's decision."""
     by_block: dict[str, frozenset[str]] = {}
+    directions: dict[str, str] = {}
     found: dict[str, list[str]] = defaultdict(list)
     for block_id, facts in blocks:
         entry = withheld.get(facts.block_key) if facts.block_key else None
@@ -328,6 +360,8 @@ def resolve_withheld(
         found[facts.block_key].append(facts.name or "")
         if _street_key(facts.name) == _street_key(entry.routename):
             by_block[block_id] = entry.facts
+            if entry.direction is not None:
+                directions[block_id] = entry.direction
     unmatched = []
     for key, entry in sorted(withheld.items()):
         streets = found.get(key)
@@ -340,7 +374,7 @@ def resolve_withheld(
                 f"block {key} is {', '.join(sorted(set(streets)))!s} in the installed blocks, "
                 f"not {entry.routename}"
             )
-    return WithheldResolution(by_block, tuple(unmatched))
+    return WithheldResolution(by_block, tuple(unmatched), directions)
 
 
 # The directory the internal-comparison layers are kept in. Arlington's Bike
@@ -864,6 +898,10 @@ class WayFacts:
     # On an agency one-way, whether its traffic runs the way's digitising
     # direction (True) or against it (False); None where unknown or mixed.
     oneway_forward: bool | None = None
+    # Whether the owner gave the direction of every one of the way's blocks
+    # (`withheld_blocks`' `direction`), which then also overrides an OSM one-way
+    # running the other way (`overlay`).
+    owner_direction: bool = False
     bike: dict[str, int] = field(default_factory=dict)
     # The weakest facility rank in the way's own direction and against it, and
     # whether those are known (every block's direction along the way is).
@@ -1017,12 +1055,32 @@ def _block_bike(
     return ahead, behind
 
 
+def _owner_direction(facts: RoadFacts, direction: str | None) -> RoadFacts:
+    """The block's facts with the owner's direction (OWNER_DIRECTIONS) in place of
+    the agency's; unchanged where the owner gives none."""
+    if direction is None:
+        return facts
+    lanes = dict(facts.lanes)
+    if direction != "BD" and ("ib" in lanes or "ob" in lanes):
+        # A two-way record's lane each way is one lane the traffic now has, not
+        # two (the Mass Ride's width adds a one-way block's `ib` and `ob`).
+        own, other = ("ob", "ib") if direction == "OB" else ("ib", "ob")
+        lanes[own] = max(lanes.get(own, 0), lanes.pop(other, 0))
+    return replace(
+        facts,
+        way="both" if direction == "BD" else "one",
+        oneway_with={"OB": True, "IB": False}.get(direction),
+        lanes=lanes,
+    )
+
+
 def aggregate(
     blocks: list[tuple[str, RoadFacts]] | list[tuple[str, RoadFacts, bool | None]],
     names: bool | None = None,
     *,
     osm_forward: bool | None = None,
     withheld: Mapping[str, Collection[str]] | None = None,
+    directions: Mapping[str, str] | None = None,
 ) -> WayFacts:
     """`WayFacts` for a way from the (block id, facts[, along]) lying along it.
 
@@ -1032,11 +1090,13 @@ def aggregate(
     way's OSM one-way direction (`_block_bike`), None where OSM has it two-way.
     `withheld` is the facts the owner withholds per block (`withheld_blocks`):
     a withheld speed is left out of `speed_mph` and kept as
-    `speed_withheld_mph`, for the report.
+    `speed_withheld_mph`, for the report. `directions` is the owner's direction
+    per block (`resolve_withheld`), read in place of the block's own.
     """
     if not blocks:
         raise ValueError("a way with no blocks has no facts")
-    facts = [entry[1] for entry in blocks]
+    corrected = directions or {}
+    facts = [_owner_direction(entry[1], corrected.get(entry[0])) for entry in blocks]
     alongs = [entry[2] if len(entry) > 2 else None for entry in blocks]
     direction_known = all(along is not None for along in alongs)
 
@@ -1133,6 +1193,7 @@ def aggregate(
         one_way=one_way,
         two_way_throughout=ways == {"both"},
         oneway_forward=oneway_forward,
+        owner_direction=all(entry[0] in corrected for entry in blocks),
         bike=bike,
         bike_forward=bike_forward,
         bike_backward=bike_backward,
@@ -1580,6 +1641,21 @@ def overlay(
                 "oneway: agency two-way, OSM one-way"
                 + ("" if keep == "agency" else f", kept ({keep})")
             )
+    elif (
+        facts.owner_direction
+        and facts.one_way is True
+        and osm_oneway
+        and facts.oneway_forward is not None
+        and facts.oneway_forward != (tags.get("oneway") != "-1")
+        and not is_junction_stub(length_m)
+    ):
+        # The owner's direction against OSM's one-way the other way: a street
+        # whose direction was reversed before either source caught up (owner
+        # 2026-10-26, Sheridan St NW). Only the owner's direction does this; an
+        # agency's own record running against OSM's one-way is left to OSM.
+        out["oneway"] = "yes" if facts.oneway_forward else "-1"
+        routing["oneway"] = out["oneway"]
+        sources["oneway"] = OWNER_OVERRIDE
     else:
         sources["oneway"] = (
             SOURCE_OSM if "oneway" in tags or osm_two_way or osm_oneway else SOURCE_DEFAULT

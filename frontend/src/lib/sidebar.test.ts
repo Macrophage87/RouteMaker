@@ -796,7 +796,7 @@ test("the Layers sheet holds the switches in the mockup's order, each section wi
   // the junctions' are in the traffic stress section, before the next section.
   assert.ok(!app.includes('id="sheet-legend"') && !app.includes("legend-button") && !app.includes("openLegend"));
   const stress = sheet.slice(sheet.indexOf('switchId="show-stress"'), sheet.indexOf("<FederalLandFor"));
-  assert.match(stress, /<StressSectionKey [^\n]*\/>[\s\S]*<JunctionLegend \/>\s*\{\/\*[\s\S]*?\*\/\}\s*<RouteHazardKey \/>\s*<\/LayerSection>/);
+  assert.match(stress, /<StressSectionKey [^\n]*\/>[\s\S]*<JunctionLegend \/>\s*\{\/\*[\s\S]*?\*\/\}\s*\{steepGradesFor\(preset\) && <SteepGradeKey \/>\}\s*\{\/\*[\s\S]*?\*\/\}\s*<RouteHazardKey \/>\s*<\/LayerSection>/);
   assert.match(app, /<StressLegend facilities=\{facilitiesShown\} zoom=\{zoom\} shown=\{stressVisible\} foldedZoom \/>/);
   assert.match(sheet, /\{!federalShown\(preset, true\) && <p className="hint mass-ride-layers">\{MASS_RIDE_LAYERS_NOTE\}<\/p>\}/);
   assert.equal(MASS_RIDE_LAYERS_NOTE, "Mass Ride has its own layers, such as federal land.");

@@ -17,7 +17,7 @@ feeds; this module is the part that touches the network and the database.
   feed's copy, so a refresh routes only what is new, and at most `MAX_NEW_PLACES` of them in
   `PLACE_BUDGET_S`; what is not yet placed (or met the router down) is placed at a later
   refresh. A zone on a road no bicycle may use (an Interstate, or a road the map bars:
-  `barred_zones`) is not kept at all.
+  `without_barred`) is not kept at all, and one that runs onto such a road is cut where it does.
 - **Keeping.** One row of `core.models.BikeshareFeedCache` under the key `KEY`
   (`BikeshareFeedCache.WORKZONES`; the model says why it shares that table), replaced
   at each refresh: the zones as parsed (not the raw feed), when each feed was last
@@ -222,52 +222,67 @@ def place(zones, kept: dict | None, now: datetime, out_of_time=lambda: False, fi
     return out, places.used
 
 
-def barred_zones(zones, schema: str | None = None) -> set[int]:
-    """The positions in `zones` of those at least `rules.BARRED_SHARE` of whose samples have,
-    as their nearest road within `rules.BARRED_NEAR_M`, one the map bars to bicycles (the live
-    segment table's map_class 'barred': a motorway or its ramp, or a road tagged bicycle=no).
-    Nearest, so a street through an interchange or a frontage road beside a motorway is not
-    barred. One query for all of them; none where the table cannot be read."""
+def without_barred(zones, schema: str | None = None) -> list:
+    """`zones` less those on roads the map bars to bicycles (the live segment table's
+    map_class 'barred': a motorway or its ramp, a road tagged bicycle=no, MDOT SHA's
+    prohibited roads), each checked at its `rules.barred_samples`: a sample is on a barred
+    road when its nearest road within `rules.BARRED_NEAR_M` is barred. Nearest, so a street
+    through an interchange or a frontage road beside a motorway is not barred. A zone at least
+    `rules.BARRED_SHARE` barred is dropped; one that starts or ends on a barred road keeps
+    the rest (`rules.open_part`). One query for all of them; all kept as they are where the
+    table cannot be read."""
+    from dataclasses import replace
+
     from django.conf import settings
     from django.db import DatabaseError, connection, transaction
 
     from pipeline.schema import validate_schema_name
 
-    ids, lons, lats = [], [], []
+    ids, at, lons, lats = [], [], [], []
     for index, zone in enumerate(zones):
-        for p in rules.samples(zone.line):
+        for k, p in enumerate(rules.barred_samples(zone.line)):
             ids.append(index)
+            at.append(k)
             lons.append(p[0])
             lats.append(p[1])
     if not ids:
-        return set()
+        return list(zones)
     try:
         schema = validate_schema_name(schema or settings.SEGMENT_SCHEMA_LIVE)
         with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute(
                 f"""
                 WITH p AS (
-                    SELECT z, ST_SetSRID(ST_MakePoint(x, y), 4326) AS g
-                    FROM unnest(%s::int[], %s::float8[], %s::float8[]) AS t(z, x, y)
+                    SELECT z, k, ST_SetSRID(ST_MakePoint(x, y), 4326) AS g
+                    FROM unnest(%s::int[], %s::int[], %s::float8[], %s::float8[]) AS t(z, k, x, y)
                 )
-                SELECT p.z, count(*) AS n, count(*) FILTER (WHERE near.map_class = 'barred')
+                SELECT p.z, p.k, coalesce(near.map_class = 'barred', false)
                 FROM p LEFT JOIN LATERAL (
                     SELECT s.map_class FROM {schema}.segment AS s
                     WHERE s.geometry && ST_Expand(p.g, 0.0003)
                       AND ST_DWithin(s.geometry::geography, p.g::geography, %s)
                     ORDER BY ST_Distance(s.geometry::geography, p.g::geography) LIMIT 1
                 ) AS near ON true
-                GROUP BY p.z
+                ORDER BY p.z, p.k
                 """,
-                [ids, lons, lats, rules.BARRED_NEAR_M],
+                [ids, at, lons, lats, rules.BARRED_NEAR_M],
             )
             rows = cursor.fetchall()
     except (DatabaseError, ValueError) as error:
         logger.info(
             "work zones: the map's barred roads could not be read (%s)", type(error).__name__
         )
-        return set()
-    return {z for z, n, barred in rows if barred >= rules.BARRED_SHARE * n}
+        return list(zones)
+    barred: dict[int, list[bool]] = {}
+    for z, _k, flag in rows:
+        barred.setdefault(z, []).append(bool(flag))
+    out = []
+    for index, zone in enumerate(zones):
+        line = rules.open_part(zone.line, barred.get(index, []))
+        if line is None:
+            continue
+        out.append(zone if line is zone.line else replace(zone, line=tuple(line)))
+    return out
 
 
 def refresh(fetch: Fetch = http_get, sleep=time.sleep, now: Callable[[], datetime] = _now) -> str:
@@ -306,8 +321,7 @@ def refresh(fetch: Fetch = http_get, sleep=time.sleep, now: Callable[[], datetim
         # placed, a road the map bars once it is on the road.
         zones = [zone for zone in zones if not rules.on_interstate(zone)]
         zones, placed = place(zones, (feeds.get(source) or {}).get("placed"), now(), out_of_time)
-        barred = barred_zones(zones)
-        zones = [zone for i, zone in enumerate(zones) if i not in barred]
+        zones = without_barred(zones)
         feeds[source] = {
             "read_at": now().isoformat(),
             "failed_at": None,

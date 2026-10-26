@@ -136,7 +136,11 @@ PLACED_TOLERANCE_M = 4.0
 # Roads a bicycle may not use (the owner, 2026-10-25: "It's not worth mentioning closures on
 # roads bikes can't use", of construction on I-97): an Interstate by the feed's name, or a
 # line at least `BARRED_SHARE` of whose samples have, as their nearest road within
-# `BARRED_NEAR_M`, one the map bars (`core.workzones.barred_zones`). Such a zone is not kept.
+# `BARRED_NEAR_M`, one the map bars (`core.workzones.without_barred`). Such a zone is not kept.
+# One that only starts or ends on a barred road keeps the stretch between its first and last
+# open sample (`open_part`; the owner, 2026-10-26, of US 340's zone drawn along the freeway
+# past Frederick: "It's also showing construction now on highways not open to bikes"). The
+# samples are about `BARRED_STEP_M` apart, at least `BARRED_SAMPLES` and at most `BARRED_MOST`.
 # "I-97", "I 495", "Interstate 95", "I-97A", any dash; never "I-70 Business", a town street.
 INTERSTATE = re.compile(
     r"^\s*(i|ih|is|interstate)[\s\-\u2010-\u2015]*\d+[a-z]?\b(?!.*\bbus(iness)?\b)",
@@ -145,6 +149,8 @@ INTERSTATE = re.compile(
 BARRED_NEAR_M = 15.0
 BARRED_SHARE = 0.6
 BARRED_SAMPLES = 20
+BARRED_STEP_M = 100.0
+BARRED_MOST = 200
 
 
 @dataclass(frozen=True)
@@ -623,6 +629,54 @@ def samples(line: Sequence[Sequence[float]], most: int = BARRED_SAMPLES) -> list
             k += 1
         run += seg
     return out
+
+
+def barred_samples(line: Sequence[Sequence[float]]) -> list[tuple]:
+    """The points a line is checked for barred roads at: evenly spread, about `BARRED_STEP_M`
+    apart, its ends included (`samples`)."""
+    wanted = math.ceil(line_m(line) / BARRED_STEP_M) + 1
+    return samples(line, min(max(wanted, BARRED_SAMPLES), BARRED_MOST))
+
+
+def open_part(line: Sequence[Sequence[float]], barred: Sequence[bool]):
+    """What is left of a line whose `barred_samples` are, in order, on a barred road or not:
+    None when at least `BARRED_SHARE` of them are; otherwise the line from its first open
+    sample to its last, so a zone that runs on onto a freeway is drawn and routed only where
+    a bicycle may go. A barred stretch between open ones is kept: one line per zone."""
+    n = len(barred)
+    if n == 0 or sum(barred) >= BARRED_SHARE * n:
+        return None if n else line
+    first = next(i for i, b in enumerate(barred) if not b)
+    last = n - 1 - next(i for i, b in enumerate(reversed(barred)) if not b)
+    if first == 0 and last == n - 1:
+        return line
+    lat0 = line[0][1]
+    xy = [_xy(p[0], p[1], lat0) for p in line]
+    total = _length(xy)
+    step = total / (n - 1) if n > 1 else 0.0
+    kept = _between(xy, first * step, last * step)
+    return tuple(tuple(round(v, 6) for v in _lonlat(x, y, lat0)) for x, y in kept)
+
+
+def _between(
+    points: list[tuple[float, float]], start: float, end: float
+) -> list[tuple[float, float]]:
+    """The part of a line from `start` to `end` metres along it, its cut ends included."""
+    out: list[tuple[float, float]] = []
+    run = 0.0
+    for a, b in zip(points, points[1:], strict=False):
+        seg = math.dist(a, b)
+        if seg > 0 and not out and start <= run + seg:
+            t = (start - run) / seg
+            out.append((a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])))
+        if out:
+            if end <= run + seg:
+                t = (end - run) / seg if seg > 0 else 0.0
+                out.append((a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])))
+                return out
+            out.append(b)
+        run += seg
+    return out or points
 
 
 def simplify_m(line: Sequence[Sequence[float]], tolerance_m: float) -> list[list[float]]:
