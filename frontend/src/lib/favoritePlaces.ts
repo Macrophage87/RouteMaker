@@ -6,8 +6,9 @@
  * set, then the rest in the order they were added. One tap on a row rides there. Signed out, Home stays its own chip
  * and nothing here applies.
  *
- * Saved to the account only (GET and POST /api/me/places; core.models.MyGo.places), never on the device, in a log
- * or in a link, and deleted with the account. Home stays My Go's (lib/myGo.ts); Work is the one place marked
+ * Saved to the account only (GET and POST /api/me/places; core.models.MyGo.places), never on the device or in a
+ * log, and deleted with the account. Riding to one makes it the plan's destination, so it is in that plan's link, as
+ * any destination is. Home stays My Go's (lib/myGo.ts); Work is the one place marked
  * `work`. At most FAVORITE_PLACES_MAX places, Work among them.
  */
 import type { LonLat } from "./geo.ts";
@@ -37,6 +38,10 @@ export const EDIT_FAVORITES_TEXT = "Edit";
 export const DONE_EDITING_TEXT = "Done";
 export const FAVORITES_FULL = `Favorites hold ${FAVORITE_PLACES_MAX} places. Remove one to add another.`;
 export const FAVORITES_NOT_SAVED = "Favorites could not be saved. Try again.";
+/** The popout's line while the account's list is read. */
+export const FAVORITES_LOADING = "Loading your favorites…";
+/** Before the account's list is read (a save is the whole list, so none goes before then). */
+export const FAVORITES_NOT_LOADED = "Your favorites are still loading. Try again in a moment.";
 
 /** Two points are one place when they round to the same spot (about a metre, as the server keeps them). */
 export function samePoint(a: LonLat, b: LonLat): boolean {
@@ -158,4 +163,38 @@ export async function saveFavoritePlaces(
   } catch {
     return null;
   }
+}
+
+/**
+ * Saves of the whole list, one after another (each POST replaces the account's list, so two in flight could land out
+ * of order). Each sends the list as it is when its turn comes; once it answers, if nothing changed meanwhile, the list
+ * shown becomes the account's answer, or on a refusal the list the account last confirmed, and `refused` is called.
+ */
+export function favoritesSaver(
+  save: (places: readonly FavoritePlace[]) => Promise<FavoritePlace[] | null>,
+  current: () => FavoritePlace[] | null,
+  show: (places: FavoritePlace[]) => void,
+  refused: () => void,
+) {
+  let confirmed: FavoritePlace[] = [];
+  let queue: Promise<void> = Promise.resolve();
+  return {
+    /** The account's list, as read. */
+    loaded(places: FavoritePlace[]): void {
+      confirmed = places;
+    },
+    /** A change shown: saved in turn. Resolves once this save has answered. */
+    changed(): Promise<void> {
+      queue = queue.then(async () => {
+        const sent = current();
+        if (sent === null) return;
+        const saved = await save(sent);
+        if (saved) confirmed = saved;
+        if (current() !== sent) return;
+        show(saved ?? confirmed);
+        if (!saved) refused();
+      });
+      return queue;
+    },
+  };
 }

@@ -21,6 +21,7 @@ import {
   ADD_FAVORITE_TEXT,
   DONE_EDITING_TEXT,
   EDIT_FAVORITES_TEXT,
+  FAVORITES_LOADING,
   FAVORITES_TEXT,
   SET_HOME_TEXT,
   SET_WORK_TEXT,
@@ -179,7 +180,9 @@ export interface GoPlaces {
    * Signed in (lib/favoritePlaces.ts): the account's favorite places, Work among them. The Home chip is then a
    * Favorites chip whose popout lists Home, Work and these.
    */
-  favorites: readonly FavoritePlace[];
+  favorites: readonly FavoritePlace[] | null;
+  /** Favorites opened: the account's list is read again if it has not been (null). */
+  onFavoritesOpen: () => void;
   onFavorite: (place: FavoritePlace) => void;
   /** A place searched in the popout: saved as a favorite, or as Work. */
   onAddFavorite: (place: Place, work: boolean) => void;
@@ -203,6 +206,7 @@ export interface GoPlaces {
  */
 export function FavoritesPopout({
   id,
+  homeSheetId,
   places,
   geoGate,
   searchBias,
@@ -211,6 +215,8 @@ export function FavoritesPopout({
   onRide,
 }: {
   id: string;
+  /** The Home sheet Set Home and Change open. */
+  homeSheetId: string;
   places: GoPlaces;
   geoGate: GeoGate;
   searchBias: () => LonLat | undefined;
@@ -222,9 +228,13 @@ export function FavoritesPopout({
 }) {
   const [adding, setAdding] = useState<"" | "place" | "work">("");
   const [editing, setEditing] = useState(false);
-  const work = workOf(places.favorites);
-  const others = othersOf(places.favorites);
+  // Null until the account's list is read: Home only, and a line that says the rest are loading.
+  const loaded = places.favorites !== null;
+  const work = workOf(places.favorites ?? []);
+  const others = othersOf(places.favorites ?? []);
   const home = places.home;
+  // A Remove, or a place picked, takes its button or the search box away: the focus goes to Add a place, not the page.
+  const addChip = useRef<HTMLButtonElement>(null);
   const ride = (go: () => void) => {
     setAdding("");
     setEditing(false);
@@ -243,17 +253,19 @@ export function FavoritesPopout({
               <span className="go-favorite-name">{homeName(home)}</span>
             </button>
           ) : (
-            <button type="button" className="go-favorite go-favorite-unset" aria-expanded={homeSheetOpen} onClick={() => onHomeSheet(!homeSheetOpen)}>
+            <button type="button" className="go-favorite go-favorite-unset" aria-expanded={homeSheetOpen} aria-controls={homeSheetId} onClick={() => onHomeSheet(!homeSheetOpen)}>
               <Icon name="home" size={18} />
               {SET_HOME_TEXT}
             </button>
           )}
           {home && editing && (
-            <button type="button" className="secondary" aria-expanded={homeSheetOpen} onClick={() => onHomeSheet(!homeSheetOpen)}>
+            <button type="button" className="secondary" aria-expanded={homeSheetOpen} aria-controls={homeSheetId} onClick={() => onHomeSheet(!homeSheetOpen)}>
               Change<span className="visually-hidden"> Home</span>
             </button>
           )}
         </li>
+        {!loaded && <li className="hint">{FAVORITES_LOADING}</li>}
+        {loaded && (
         <li>
           {work ? (
             <button type="button" className="go-favorite" onClick={() => ride(() => places.onFavorite(work))}>
@@ -274,11 +286,19 @@ export function FavoritesPopout({
             </button>
           )}
           {work && editing && (
-            <button type="button" className="secondary" onClick={() => places.onRemoveFavorite(work)}>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                places.onRemoveFavorite(work);
+                addChip.current?.focus();
+              }}
+            >
               Remove<span className="visually-hidden"> Work</span>
             </button>
           )}
         </li>
+        )}
         {others.map((place) => (
           <li key={`${place.point[0]},${place.point[1]}`}>
             <button type="button" className="go-favorite" onClick={() => ride(() => places.onFavorite(place))}>
@@ -286,24 +306,34 @@ export function FavoritesPopout({
               <span className="go-favorite-name">{favoriteName(place)}</span>
             </button>
             {editing && (
-              <button type="button" className="secondary" onClick={() => places.onRemoveFavorite(place)}>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  places.onRemoveFavorite(place);
+                  addChip.current?.focus();
+                }}
+              >
                 Remove<span className="visually-hidden"> {favoriteName(place)}</span>
               </button>
             )}
           </li>
         ))}
       </ul>
+      {loaded && (
       <div className="chip-row go-favorites-actions">
-        <button type="button" className="chip" aria-expanded={adding === "place"} aria-controls={searchId} onClick={() => setAdding(adding === "place" ? "" : "place")}>
+        <button ref={addChip} type="button" className="chip" aria-expanded={adding === "place"} aria-controls={searchId} onClick={() => setAdding(adding === "place" ? "" : "place")}>
           <Icon name="plus" size={18} />
           {ADD_FAVORITE_TEXT}
         </button>
-        {(home || places.favorites.length > 0) && (
-          <button type="button" className="chip" aria-pressed={editing} onClick={() => setEditing(!editing)}>
+        {/* Its name says what a press does (Edit, then Done): no pressed state as well. */}
+        {(home || (places.favorites ?? []).length > 0) && (
+          <button type="button" className="chip" onClick={() => setEditing(!editing)}>
             {editing ? DONE_EDITING_TEXT : EDIT_FAVORITES_TEXT}
           </button>
         )}
       </div>
+      )}
       <div id={searchId} hidden={adding === ""}>
         {adding !== "" && (
           <PlaceSearch
@@ -316,6 +346,7 @@ export function FavoritesPopout({
             onPick={(place: Place) => {
               places.onAddFavorite(place, adding === "work");
               setAdding("");
+              addChip.current?.focus();
             }}
           />
         )}
@@ -563,6 +594,7 @@ export function GoSheet({
               aria-controls={favoritesId}
               onClick={() => {
                 if (favoritesOpen) setHomeOpen(false);
+                else places.onFavoritesOpen();
                 setFavoritesOpen(!favoritesOpen);
               }}
             >
@@ -629,6 +661,7 @@ export function GoSheet({
         {places.signedIn && favoritesOpen && (
           <FavoritesPopout
             id={favoritesId}
+            homeSheetId={homeSheetId}
             places={places}
             geoGate={geoGate}
             searchBias={searchBias}

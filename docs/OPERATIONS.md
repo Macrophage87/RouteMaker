@@ -2167,6 +2167,13 @@ and in a copied or shared link, and Copy link and Share then say "This link incl
 the destination." (`linkLocationNote`, `frontend/src/lib/geolocation.ts`). `my_go` is left out
 of the beta's data shipment (`scripts/beta/ship-data.sh` `EXCLUDED_TABLE_DATA`), as the other tables that point at an account are.
 
+**Favorite places** (v0.12.5) live on the same row (`my_go.places`, a JSON list; GET and POST
+`/api/me/places`): Work and the rider's other saved places, at most 20, each one point rounded to
+5 decimal places and its name. They follow the same rules as Home: never logged, deleted with the
+row, and left out of the beta's data shipment with `my_go`. The migration is
+`core/migrations/0049_my_go_places.py` (one column with a default of `[]`; it reverses cleanly
+with `migrate core 0048`).
+
 **The migration** is `core/migrations/0019_my_go.py` (one new table; nothing else changed), after
 `0018_junction_suggestions`, so the chain stays linear with one leaf. It reverses cleanly
 (`migrate core 0018` drops the table). `migrate` runs at `up`, as always.

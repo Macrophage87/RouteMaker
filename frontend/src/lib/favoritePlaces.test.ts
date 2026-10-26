@@ -20,6 +20,7 @@ import {
   withWork,
   withoutFavorite,
   workOf,
+  favoritesSaver,
   type FavoritePlace,
 } from "./favoritePlaces.ts";
 
@@ -114,11 +115,50 @@ test("Go: signed in, Favorites takes Home's place and pops out Home, Work, then 
 test("App, the road panel and the ride summary: Save to Favorites, signed in only", () => {
   const app = src("../App.tsx");
   assert.match(app, /onSaveFavorite=\{me\.signed_in \? \(point\) => void addFavoriteAt\(point\) : undefined\}/);
-  assert.match(app, /if \(!me\.signed_in \|\| !destination \|\| \(myGo\.home && samePoint\(myGo\.home\.point, destination\)\)\) return null;/);
+  // Not before the account's list is read (it would replace the list), nor outside the map, nor at Home.
+  assert.match(app, /if \(!me\.signed_in \|\| favoritePlaces === null \|\| !destination \|\| !insideCoverage\(destination\) \|\| \(myGo\.home && samePoint\(myGo\.home\.point, destination\)\)\) return null;/);
+  // No save before the list is read: the rider is told, and it is read again.
+  assert.match(app, /if \(now === null\) \{\s*announce\(FAVORITES_NOT_LOADED\);\s*loadFavorites\(\);\s*return;/);
   assert.match(app, /start && !start\.loop && start\.points\.length >= 2/);
   assert.match(src("../RoadInfoDialog.tsx"), /\{SAVE_SPOT_TEXT\}/);
   assert.match(src("../RideSummaryCard.tsx"), /\{SAVE_SPOT_TEXT\}/);
   assert.equal(SAVE_SPOT_TEXT, "Save to Favorites");
   // Never kept on the device: no storage key.
   assert.doesNotMatch(src("./favoritePlaces.ts"), /localStorage/);
+});
+
+test("saves go one at a time, each with the list as it is then; a refusal puts back what the account confirmed", async () => {
+  let shown: FavoritePlace[] | null = [market];
+  const sent: FavoritePlace[][] = [];
+  const answers: ((v: FavoritePlace[] | null) => void)[] = [];
+  let refusals = 0;
+  const saver = favoritesSaver(
+    (places) => {
+      sent.push([...places]);
+      return new Promise((resolve) => answers.push(resolve));
+    },
+    () => shown,
+    (places) => {
+      shown = places;
+    },
+    () => (refusals += 1),
+  );
+  saver.loaded([market]);
+  // Two quick changes: the second waits for the first's answer, then sends the list as it is then.
+  shown = [market, office];
+  const first = saver.changed();
+  await Promise.resolve();
+  shown = [office];
+  const second = saver.changed();
+  await Promise.resolve();
+  assert.deepEqual(sent, [[market, office]], "one in flight");
+  answers[0]([market, office]);
+  await first;
+  assert.deepEqual(shown, [office], "a change since keeps what the rider sees");
+  await Promise.resolve();
+  assert.deepEqual(sent[1], [office]);
+  answers[1](null);
+  await second;
+  assert.deepEqual(shown, [market, office], "refused: the list the account last confirmed");
+  assert.equal(refusals, 1);
 });

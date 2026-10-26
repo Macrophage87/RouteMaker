@@ -141,10 +141,12 @@ import { MAX_DETOUR_SEARCH, coordinatesText, fetchPlaces, pickIntoPlan, placeFro
 import { HOME_CLEARED, HOME_PICK_CANCELLED, HOME_PICK_LINE, homeAtSpot, homeFromPlace, homeSetSaid, nameWithoutHome } from "./lib/homeSet.ts";
 import {
   FAVORITES_FULL,
+  FAVORITES_NOT_LOADED,
   FAVORITES_NOT_SAVED,
   favoriteFromPlace,
   favoriteRemovedSaid,
   favoriteSavedSaid,
+  favoritesSaver,
   fetchFavoritePlaces,
   samePoint,
   saveFavoritePlaces,
@@ -407,9 +409,22 @@ export function App() {
   // The rider's own My Go (lib/myGo.ts): the account's when signed in, this device's when not.
   const [myGo, setMyGo] = useState<MyGo>(START_MY_GO.myGo);
   // Signed in: the account's favorite places (lib/favoritePlaces.ts), read after sign-in; never kept on the device.
-  const [favoritePlaces, setFavoritePlaces] = useState<FavoritePlace[]>([]);
+  // Null until read: nothing is saved before then, as a save is the whole list and would replace the account's.
+  const [favoritePlaces, setFavoritePlaces] = useState<FavoritePlace[] | null>(null);
   const favoritePlacesRef = useRef(favoritePlaces);
   favoritePlacesRef.current = favoritePlaces;
+  const favoritesLoading = useRef(false);
+  // Saves one at a time, each with the list as it is then (lib/favoritePlaces.ts favoritesSaver).
+  const favoritesSaving = useRef<ReturnType<typeof favoritesSaver> | null>(null);
+  favoritesSaving.current ??= favoritesSaver(
+    (places) => saveFavoritePlaces(window.location.origin, places),
+    () => favoritePlacesRef.current,
+    (places) => {
+      favoritePlacesRef.current = places;
+      setFavoritePlaces(places);
+    },
+    () => announce(FAVORITES_NOT_SAVED),
+  );
   const [myGoSaid, setMyGoSaid] = useState("");
   // Go's Home sheet, "Pick on the map": the next tap on the map is Home (lib/homeSet.ts).
   const [homePick, setHomePick] = useState(false);
@@ -1435,29 +1450,39 @@ export function App() {
       if (!saved) announce(MY_GO_NOT_SAVED);
     });
   };
-  // Favorite places (lib/favoritePlaces.ts): the whole list saved at once, shown and said at once; a save the account
-  // refused puts the list back as it was and says so.
-  const keepFavorites = (next: FavoritePlace[] | null, said: string) => {
+  // Favorite places (lib/favoritePlaces.ts): read once signed in, and again when Favorites opens if that failed.
+  const loadFavorites = () => {
+    if (favoritePlacesRef.current !== null || favoritesLoading.current) return;
+    favoritesLoading.current = true;
+    void fetchFavoritePlaces(window.location.origin).then((places) => {
+      favoritesLoading.current = false;
+      if (!places || favoritePlacesRef.current !== null) return;
+      favoritesSaving.current?.loaded(places);
+      favoritePlacesRef.current = places;
+      setFavoritePlaces(places);
+    });
+  };
+  // The whole list saved at once, shown and said at once; a save refused, with nothing changed since, puts back the
+  // list the account last confirmed and says so. Before the list is read there is nothing to save to.
+  const keepFavorites = (change: (places: FavoritePlace[]) => FavoritePlace[] | null, said: string) => {
+    const now = favoritePlacesRef.current;
+    if (now === null) {
+      announce(FAVORITES_NOT_LOADED);
+      loadFavorites();
+      return;
+    }
+    const next = change(now);
     if (next === null) {
       announce(FAVORITES_FULL);
       return;
     }
-    const before = favoritePlacesRef.current;
     favoritePlacesRef.current = next;
     setFavoritePlaces(next);
     announce(said);
-    void saveFavoritePlaces(window.location.origin, next).then((saved) => {
-      if (favoritePlacesRef.current !== next) return;
-      if (saved) setFavoritePlaces(saved);
-      else {
-        favoritePlacesRef.current = before;
-        setFavoritePlaces(before);
-        announce(FAVORITES_NOT_SAVED);
-      }
-    });
+    void favoritesSaving.current?.changed();
   };
-  const addFavorite = (place: FavoritePlace) => keepFavorites(place.work ? withWork(favoritePlacesRef.current, place) : withFavorite(favoritePlacesRef.current, place), favoriteSavedSaid(place));
-  const removeFavorite = (place: FavoritePlace) => keepFavorites(withoutFavorite(favoritePlacesRef.current, place), favoriteRemovedSaid(place));
+  const addFavorite = (place: FavoritePlace) => keepFavorites((places) => (place.work ? withWork(places, place) : withFavorite(places, place)), favoriteSavedSaid(place));
+  const removeFavorite = (place: FavoritePlace) => keepFavorites((places) => withoutFavorite(places, place), favoriteRemovedSaid(place));
   // Saved settings (v0.7.0): the account's win on sign-in; an empty account takes this device's.
   const lastSettings = useRef<SettingsDoc | null>(null);
   // The favorite ride types are saved with the rest (lib/favoriteRides.ts); a star pressed is a change.
@@ -1530,9 +1555,7 @@ export function App() {
       void syncSettingsOnSignIn(origin, () => live);
       // The 311 checklist (lib/report311Log.ts): this device's and the account's, merged by entry.
       void report311Log().signIn();
-      void fetchFavoritePlaces(origin).then((places) => {
-        if (live && places) setFavoritePlaces(places);
-      });
+      loadFavorites();
       const account = await fetchMyGo(origin);
       if (!live || !account) return;
       accountMyGoRead.current = true;
@@ -2472,7 +2495,7 @@ export function App() {
   // The ride summary's Save to Favorites (Stephen 2026-10-26: "At the end ride screen offer the opportunity to save that
   // destination as a favorite"): signed in, for a destination that is not Home and not saved yet. Once saved it says so.
   const endedFavorite = (destination: LonLat | null) => {
-    if (!me.signed_in || !destination || (myGo.home && samePoint(myGo.home.point, destination))) return null;
+    if (!me.signed_in || favoritePlaces === null || !destination || !insideCoverage(destination) || (myGo.home && samePoint(myGo.home.point, destination))) return null;
     const name = namer.name(destination)?.name ?? coordinatesText(destination);
     return {
       name,
@@ -5406,6 +5429,7 @@ export function App() {
                     signedIn: me.signed_in,
                     onHome: goHome,
                     favorites: favoritePlaces,
+                    onFavoritesOpen: loadFavorites,
                     onFavorite: goFavorite,
                     onAddFavorite: (found, work) => addFavorite(favoriteFromPlace(found, work)),
                     onRemoveFavorite: removeFavorite,
