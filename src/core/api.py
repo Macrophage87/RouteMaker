@@ -2050,7 +2050,7 @@ class WorkZoneOut(Schema):
     to_m: int
     start: str | None
     end: str | None
-    source: Literal["md", "va", "dc", "mpd", "alertdc", "reviewer"]
+    source: Literal["md", "va", "dc", "mpd", "alertdc", "reviewer", "ddot_advisory"]
     warning: bool = Field(description="True for a closure the rider may meet: shown in red.")
     text: str = Field(description="The heads-up as the description words it.")
     bypassed: bool = Field(default=False, description="Routed through: the rider's choice.")
@@ -2069,7 +2069,7 @@ class ClosureOut(Schema):
     """A closure drawn on the route's map, and its card (v0.7.0, "Closures on the map")."""
 
     id: str
-    source: Literal["md", "va", "dc", "mpd", "alertdc", "reviewer"]
+    source: Literal["md", "va", "dc", "mpd", "alertdc", "reviewer", "ddot_advisory"]
     source_name: str = Field(
         description='The source as the card names it: "MPD traffic advisory, Oct 15".'
     )
@@ -2182,6 +2182,10 @@ class RouteBody(Schema):
     # The seconds of `duration_s` the route's junctions add (stops, yields, signals;
     # `routemaker.junction_delay`), which the router's own time leaves out.
     junction_delay_s: float = 0.0
+    # Where along the line `duration_s` falls, as [fraction of the length, seconds], hills
+    # and junction waits in place (`routemaker.time_marks`), for a ride's arrival times.
+    # Null where the router gave no time; the front end then spreads the time evenly.
+    time_marks: list[list[float]] | None = None
     climb_m: float
     descent_m: float
     stress_m: StressOut
@@ -5795,6 +5799,136 @@ def my_go_save(request, body: MyGoIn, response: HttpResponse):
     )
     _private(response)
     return Status(200, _my_go_out(row))
+
+
+# GET and POST /api/me/places: a signed-in rider's favorite places (Stephen 2026-10-26: "For
+# signed in users, allow for favorite destinations"; core.models.MyGo.places). Go's Favorites chip
+# lists Home first, then Work once set, then these. Saved whole, on their own (a My Go save never
+# touches them), with My Go's guards; never logged, and deleted with the account.
+
+FAVORITE_PLACES_MAX = 20
+
+
+class FavoritePlaceIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    lon: StrictFloat
+    lat: StrictFloat
+    label: str = Field(min_length=1, max_length=120)
+    # Work (Stephen 2026-10-26: "Home and if set work would be the top 2 favorites"): at most one.
+    work: bool = False
+
+    @model_validator(mode="after")
+    def inside_coverage(self):
+        west, south, east, north = settings.COVERAGE_BBOX
+        if not (west <= self.lon <= east and south <= self.lat <= north):
+            raise ValueError("A favorite place is outside the area this map covers")
+        if not self.label.strip():
+            raise ValueError("A favorite place needs a name")
+        return self
+
+
+class FavoritePlacesIn(Schema):
+    """The whole list, in the rider's order: what is left out is removed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    places: list[FavoritePlaceIn] = Field(default_factory=list, max_length=FAVORITE_PLACES_MAX)
+
+    @model_validator(mode="after")
+    def one_work_each_place_once(self):
+        if sum(1 for p in self.places if p.work) > 1:
+            raise ValueError("Only one place can be Work")
+        spots = [(round(p.lon, 5), round(p.lat, 5)) for p in self.places]
+        if len(set(spots)) != len(spots):
+            raise ValueError("A place is in the list twice")
+        return self
+
+
+class FavoritePlaceOut(Schema):
+    lon: float
+    lat: float
+    label: str
+    work: bool
+
+
+class FavoritePlacesOut(Schema):
+    places: list[FavoritePlaceOut]
+
+
+def _places_out(row) -> dict:
+    kept = row.places if row is not None and isinstance(row.places, list) else []
+    return {
+        "places": [
+            {"lon": p["lon"], "lat": p["lat"], "label": p["label"], "work": bool(p.get("work"))}
+            for p in kept
+            if isinstance(p, dict) and {"lon", "lat", "label"} <= set(p)
+        ]
+    }
+
+
+@api.get(
+    "/me/places",
+    response={
+        200: FavoritePlacesOut,
+        401: StressEditErrorOut,
+        403: StressEditErrorOut,
+        429: ErrorOut,
+    },
+    summary="The signed-in rider's favorite places (Work among them)",
+)
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def favorite_places_read(request, response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from .models import MyGo
+
+    get_token(request)
+    _private(response)
+    return Status(200, _places_out(MyGo.objects.filter(user=request.user).first()))
+
+
+@api.post(
+    "/me/places",
+    response={
+        200: FavoritePlacesOut,
+        400: StressEditErrorOut,
+        401: StressEditErrorOut,
+        403: StressEditErrorOut,
+        429: ErrorOut,
+    },
+    summary="Save the signed-in rider's favorite places (the whole list)",
+)
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.MY_GO_WRITES),
+    csrf_protected,
+    signed_in_only,
+    json_body_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def favorite_places_save(request, body: FavoritePlacesIn, response: HttpResponse):
+    from .models import MyGo
+
+    places = [
+        {
+            # About a metre, as Home.
+            "lon": round(p.lon, 5),
+            "lat": round(p.lat, 5),
+            "label": p.label.strip(),
+            **({"work": True} if p.work else {}),
+        }
+        for p in body.places
+    ]
+    row, _ = MyGo.objects.update_or_create(user=request.user, defaults={"places": places})
+    _private(response)
+    return Status(200, _places_out(row))
 
 
 # Saved settings and saved routes (v0.7.0 plan, "Discord sign-in on, with saved settings and

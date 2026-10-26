@@ -101,6 +101,7 @@ from routemaker import (
     mdot_aadt,
     mtbmode,
     ridetime,
+    time_marks,
     trace_junctions,
     zoo,
 )
@@ -4183,6 +4184,8 @@ def _plan(
                 leg_runs.append((start, len(pieces)))
                 raw_junctions.extend(trace_junctions.junctions_of_trace(trace, shape, traced_m))
                 traced_m += sum(piece.metres for piece in pieces[start:])
+        # The router's seconds along the line, read before a long plan's legs are grouped.
+        router_at = time_marks.router_marks(legs, coordinates, leg_ends)
         dirt_trails = False
         if (touched_trails or any_dirt) and variant == Variant.OFFROAD.value:
             ways = trail_touch.off_road_ways([piece.way_id for piece in pieces])
@@ -4457,11 +4460,12 @@ def _plan(
         )
         # The time its junctions cost the rider, which the router's own time leaves out
         # (`routemaker.junction_delay`): part of the time shown.
-        delay = junction_delay.delay_s(
+        waits = junction_delay.delay_runs(
             raw_junctions,
             stop_as_yield,
             lambda lon, lat: intersections.beacon_at(lon, lat, beacons) is not None,
         )
+        delay = float(sum(wait for _m, wait in waits))
         route_m = round(float(summary.get("length", 0.0)) * 1000.0, 1)
         route_s = float(summary.get("time", 0.0))
         # Novice and Nervous (v0.11.0, `core.novice_walks`): the short stretches of real LTS 4
@@ -4516,6 +4520,9 @@ def _plan(
             "distance_m": round(float(summary.get("length", 0.0)) * 1000.0, 1),
             "duration_s": round(route_s + delay + walk_change_s, 1),
             "junction_delay_s": round(delay, 1),
+            # Where along the line that time falls, hills and junction waits in place, for a
+            # ride's arrival times (`routemaker.time_marks`).
+            "time_marks": time_marks.time_marks(router_at, waits, traced_m),
             "climb_m": round(climb, 1),
             "descent_m": round(descent, 1),
             "stress_m": {key: round(metres, 1) for key, metres in stress.items()},

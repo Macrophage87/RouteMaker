@@ -4930,7 +4930,8 @@ puts it, at most two presses away.
   stations (the route's Bikeshare plan).
 - **Few presses** (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"): from
   opening Go, a typed destination is three taps to riding: Where to?, the place picked, then
-  Start ride (the review of #95 counted them); with the Home chip it is two: Home, then Start ride. Go
+  Start ride (the review of #95 counted them); with the Home chip it is two: Home, then Start ride
+  (signed in, three: Favorites, Home, Start ride; see Favorite places below). Go
   starts the ride with Settings > Ride mode's cues and asks nothing first (Plan still asks the
   first time). **Announcements** (`lib/announceLevel.ts`, Settings > Display): Brief or Full,
   kept on this device; unset, Go is Brief and Plan is Full. The route found, guidance, the start
@@ -4981,6 +4982,16 @@ puts it, at most two presses away.
   request; Home must be in the coverage box and is rounded to 5 places; the row goes with the
   account and is deleted when the account is marked deleted; `my_go` never ships to the beta
   (`scripts/beta/ship-data.sh` `EXCLUDED_TABLE_DATA`). `tests/test_my_go.py`.
+- **Favorite places** (`lib/favoritePlaces.ts`; `MyGo.places`, migration 0049; GET/POST
+  `/api/me/places`; Stephen 2026-10-26): signed in, Go's Home chip is a Favorites chip whose
+  popout lists Home (or Set Home), Work (or Set Work), then the rest; a tap rides there. Add a
+  place and Set Work search; Edit shows Change Home and Remove. A held map spot and the ride
+  summary offer Save to Favorites. The POST is the whole list (at most 20, one Work, each spot
+  once, inside the coverage box, rounded to 5 places) with My Go's guards, saved apart from
+  `/api/me/go` so neither save clears the other. The page saves nothing until it has read the
+  list, and its saves go one at a time (`favoritesSaver`). Never on the device or in a log;
+  deleted with the account's `my_go` row. Signed out, the Home chip is unchanged.
+  `tests/test_favorite_places.py`.
 - **Plan's panel**: the Points heading's row holds Swap (Reverse), Loop, Edit and Info (the
   how-to, the access switch and Install, which were More tips); the Ride line shows its
   summary as chips. The route: the totals and Info on one line, the stress bar, the Avoid
