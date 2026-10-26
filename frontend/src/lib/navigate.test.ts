@@ -15,6 +15,7 @@ import {
   END_LEFT_MIN_M,
   END_LEFT_MIN_SHARE,
   JOG_M,
+  JOG_TURNS,
   ONTO_TRAIL_MIN_M,
   planAfterEnd,
   GPS_WEAK_MS,
@@ -1359,7 +1360,7 @@ test("bear: a bear right off Q Street onto a diagonal is a turn cue, said at Ful
   assert.equal(ride(model, "quiet", 0, 1000).events.filter((e) => e.cue?.kind === "turn").length, 0);
 });
 
-test("jog: a right then a bear left 30 m on is one cue, said early for both; the second is kept for the card but not said again", () => {
+test("jog: a right then a bear left 30 m on is one cue, said early for both; at the junction each turn is said on its own", () => {
   const model = rideModel(
     straightRoute([
       stretch(0, 900, "Q Street Northwest.", { street: "Q Street Northwest" }),
@@ -1369,21 +1370,38 @@ test("jog: a right then a bear left 30 m on is one cue, said early for both; the
   );
   const [first, second] = model.cues;
   assert.equal(first.text, "Right onto 6th Street Northwest, then immediately bear left onto Rhode Island Avenue Northwest.");
-  assert.equal(cueSpoken(first, "now", 0), "Right now, then bear left onto Rhode Island Avenue Northwest.");
+  assert.equal(cueSpoken(first, "now", 0), "Right now onto 6th Street Northwest.");
   assert.equal(
     cueSpoken(first, "advance", 152.4),
     `In ${spokenDistance(152.4)}, right onto 6th Street Northwest, then immediately bear left onto Rhode Island Avenue Northwest.`,
   );
   assert.ok(second.joined && second.movement === "bear_left");
   assert.equal(nextAction(model, 910)?.index, second.index);
+  // The owner, 2026-10-26: "do so as a prep command with all three, then go step by step at the intersection".
   for (const level of ["full", "stoker"] as const) {
     const said = ride(model, level, 0, 1200).events.filter((e) => e.cue?.kind === "turn");
-    assert.ok(said.length >= 2, level);
+    assert.ok(said.length >= 3, level);
     assert.ok(
-      said.every((e) => e.cue?.index === first.index),
+      said.slice(0, -1).every((e) => e.cue?.index === first.index),
       level,
     );
+    assert.deepEqual(said.slice(-2).map((e) => [e.cue?.index, e.phase, e.spoken]), [
+      [first.index, "now", "Right now onto 6th Street Northwest."],
+      [second.index, "now", "Bear left now onto Rhode Island Avenue Northwest."],
+    ], level);
   }
+  // The second's "now" waits until the rider is past the first turn, however close the two.
+  const close = rideModel(
+    straightRoute([
+      stretch(0, 900, "Q Street Northwest.", { street: "Q Street Northwest" }),
+      stretch(900, 906, "Right onto 6th Street Northwest.", { street: "6th Street Northwest", turn: turning("right", "6th Street Northwest") }),
+      stretch(906, 2200, "Bear left onto Rhode Island Avenue Northwest.", { street: "Rhode Island Avenue Northwest", turn: turning("bear_left", "Rhode Island Avenue Northwest") }),
+    ]),
+  );
+  const before = ride(close, "full", 0, 895, 5);
+  assert.ok(!before.events.some((e) => e.cue?.index === 1));
+  const past = ride(close, "full", 900, 904, 2, before.state);
+  assert.deepEqual(past.events.map((e) => [e.cue?.index, e.phase, e.after]), [[1, "now", true]]);
   // Turns farther apart than JOG_M are each their own.
   const apart = rideModel(
     straightRoute([
@@ -1454,22 +1472,37 @@ test('jog: the second turn says its own "now" where the first\'s was never said 
   );
 });
 
-test("jog: three turns in a row join the first two; the third is its own cue (pinned)", () => {
+test("jog: three turns in a row are one cue, said early together, then each on its own; a fourth is its own cue", () => {
   const model = rideModel(
     straightRoute([
       stretch(0, 900, "A Street.", { street: "A Street" }),
       stretch(900, 950, "Right onto B Street.", { street: "B Street", turn: turning("right", "B Street") }),
       stretch(950, 1000, "Left onto C Street.", { street: "C Street", turn: turning("left", "C Street") }),
-      stretch(1000, 2200, "Right onto D Street.", { street: "D Street", turn: turning("right", "D Street") }),
+      stretch(1000, 1050, "Right onto D Street.", { street: "D Street", turn: turning("right", "D Street") }),
+      stretch(1050, 2200, "Left onto E Street.", { street: "E Street", turn: turning("left", "E Street") }),
     ]),
   );
+  assert.equal(JOG_TURNS, 3);
   assert.deepEqual(
     model.cues.filter((c) => c.kind === "turn").map((c) => [c.text, !!c.joined]),
     [
-      ["Right onto B Street, then immediately left onto C Street.", false],
-      ["Left onto C Street.", true],
-      ["Right onto D Street.", false],
+      ["Right onto B Street, then immediately left onto C Street, then immediately right onto D Street.", false],
+      // On the card once the first is passed: the turns still to come, with their arrow.
+      ["Left onto C Street, then immediately right onto D Street.", true],
+      ["Right onto D Street.", true],
+      ["Left onto E Street.", false],
     ],
+  );
+  assert.deepEqual(model.cues[0].then?.map((t) => t.movement), ["left", "right"]);
+  const said = ride(model, "full", 0, 1100).events.filter((e) => e.cue?.kind === "turn");
+  assert.match(said[0].spoken, /^In .*, right onto B Street, then immediately left onto C Street, then immediately right onto D Street\.$/);
+  assert.deepEqual(
+    said.filter((e) => e.phase === "now").map((e) => e.spoken),
+    ["Right now onto B Street.", "Left now onto C Street.", "Right now onto D Street.", "Left now onto E Street."],
+  );
+  assert.deepEqual(
+    cueSheet(model, 0).map((r) => r.text),
+    ["Right onto B Street, then immediately left onto C Street, then immediately right onto D Street.", "Left onto E Street.", "The end of the route."],
   );
 });
 
@@ -1656,9 +1689,9 @@ test("a ring kept as its own short stretch, then the way off: the jog says the e
   assert.equal(first.text, "Bear right onto Dupont Circle Northwest, then immediately take the 2nd exit onto P Street Northwest at Dupont Circle Northwest.");
   assert.equal(second.joined, true);
   assert.equal(cueSpoken(second, "now", 5), "Exit now onto P Street Northwest.");
-  // An exit with a turn right after it: its own "now" is the exit.
-  const exitFirst = { ...second, joined: false, then: { movement: "right" as const, street: "Q Street Northwest" } };
-  assert.equal(cueSpoken(exitFirst, "now", 5), "Exit now, then right onto Q Street Northwest.");
+  // An exit with a turn right after it: its own "now" is the exit alone, the turn said at its own.
+  const exitFirst = { ...second, joined: false, then: [{ movement: "right" as const, street: "Q Street Northwest" }] };
+  assert.equal(cueSpoken(exitFirst, "now", 5), "Exit now onto P Street Northwest.");
 });
 
 test("two U-turn re-routes ridden past, then the third keeps the rider's way (the owner, 2026-10-20)", () => {
@@ -1785,11 +1818,11 @@ test("crossing: a short path across a road between two turns is said as the cros
   assert.equal(first.cross, "Redland Road");
   assert.equal(first.junction, undefined);
   assert.equal(first.text, "Cross Redland Road, then left onto Redland Road bike lane.");
-  assert.equal(cueSpoken(first, "now", 0), "Cross Redland Road now, then left onto Redland Road bike lane.");
+  assert.equal(cueSpoken(first, "now", 0), "Cross Redland Road now.");
   assert.equal(cueSpoken(first, "advance", 152.4), `In ${spokenDistance(152.4)}, cross Redland Road, then left onto Redland Road bike lane.`);
   assert.ok(second.joined && second.movement === "left");
-  // On its own, the crossing says the road at "now".
-  assert.equal(cueSpoken({ ...first, then: undefined }, "now", 0), "Cross Redland Road now.");
+  // At the crossing, step by step: the road, then the turn on its own.
+  assert.equal(cueSpoken(second, "now", 0), "Left now onto Redland Road bike lane.");
 });
 
 test("crossing: a turn just before a crossing is not joined to it; the crossing keeps its own cue with the turn after", () => {
@@ -1850,7 +1883,7 @@ test("across: a turn soon after is not joined to it", () => {
 });
 
 test("crossArrow: a crossing between two turns turns the way the turn after it does; alone, straight over the road", () => {
-  assert.equal(crossArrow({ cross: "Redland Road", then: { movement: "left", street: null }, movement: "bear_right" }), "cross_left");
+  assert.equal(crossArrow({ cross: "Redland Road", then: [{ movement: "left", street: null }], movement: "bear_right" }), "cross_left");
   assert.equal(crossArrow({ cross: "Redland Road", movement: "bear_right" }), "cross");
   assert.equal(crossArrow({ movement: "right" }), null);
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");

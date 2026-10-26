@@ -840,6 +840,12 @@ check("a motor_vehicle=private aisle stays destination-only (upstream's flag)",
 local _, plain_aisle = transform_way({ highway = "service", service = "parking_aisle" })
 check("an aisle that says nothing of bicycles stays an aisle", tonumber(plain_aisle.use) == 6,
   plain_aisle.use)
+local _, trail_aisle = transform_way({ highway = "service", service = "parking_aisle",
+  ["rm:aisle_link"] = "yes" })
+check("an aisle the rebuild names a trail's link is a service road in the graph",
+  tonumber(trail_aisle.use) == 11, trail_aisle.use)
+check("and is not destination-only", trail_aisle.private == "false", trail_aisle.private)
+check("and that mark never reaches the tile build", trail_aisle["rm:aisle_link"] == nil)
 local _, private_aisle = transform_way({ highway = "service", service = "parking_aisle",
   bicycle = "yes", access = "private" })
 check("a private lot's aisle stays an aisle", tonumber(private_aisle.use) == 6, private_aisle.use)
