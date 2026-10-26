@@ -377,6 +377,7 @@ UNLIMITED_ON_PURPOSE = {
     "api/openapi.json": "the API's schema: no data, the same answer for everyone",
     "admin": "the staff admin: behind its own sign-in, never a public page",
     "privacy": "the privacy policy: fixed text, no data, the same answer for everyone",
+    ".well-known/assetlinks.json": "Android's App Links file: fixed JSON, the same for everyone",
 }
 
 
