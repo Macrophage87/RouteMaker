@@ -150,7 +150,7 @@ class TrailClosures:
     walk_links: set[int] = field(default_factory=set)
     # the Zoo spur: open, destination-only
     destination_only: set[int] = field(default_factory=set)
-    # parking aisles and driveways where a trail ends, routed as plain service roads
+    # parking aisles where a trail ends, routed as plain service roads
     # (`routemaker.aisle_links`; the owner, 2026-10-26)
     aisle_links: set[int] = field(default_factory=set)
     # rated singletrack that nothing but the rating closes: the map draws it on the
@@ -377,7 +377,7 @@ def add_station_links(
 
 
 def add_aisle_links(result: TrailClosures, ways: Iterable[Way]) -> None:
-    """Find the parking aisles and driveways that join a trail's dead end to another
+    """Find the parking aisles that join a trail's dead end to another
     bicycle-open way (`routemaker.aisle_links`), after every closure is in `result.reasons`,
     so a link never leads onto a way something closes."""
     result.aisle_links = aisle_links.links(

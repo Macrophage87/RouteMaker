@@ -1,5 +1,4 @@
-"""Parking aisles and driveways that join a trail to the street, routed as the service
-roads they are.
+"""Parking aisles that join a trail to the street, routed as the service roads they are.
 
 The owner, riding north on Beach Drive at the Maryland line on 2026-10-26: "There seems
 to be a missed trail connection here". The Rock Creek Trail (OSM 910564126, `highway=
@@ -14,15 +13,20 @@ PR #197 (`lua/routemaker_remap.lua`, `bicycle_link_service`) already routes such
 a plain service road where its own tags open it to bicycles. Most trailhead aisles carry
 no bicycle tag, though, so here the rebuild finds them by where they lie: where a trail
 (a path, cycleway, or a footway or bridleway open to bicycles) ends at a node no other
-bicycle-open way reaches (a dead end), and aisles with no bicycle tag lead from it to
+bicycle-open way reaches (a dead end), and parking aisles with no bicycle tag lead from it to
 another bicycle-open way within `GAP_M`, those aisles become links (`rm:aisle_link`), and
 the remap drops their service value as it does for #197's. Bounds, so a link stays a link:
 - the gap is at most `GAP_M` (about 260 ft) along the aisles;
 - each aisle it opens is at most `WAY_MAX_M` (about 500 ft) long, since the remap changes
   the whole way;
 - never an aisle whose `access` or `vehicle` grants less than the public (a private or
-  customers-only lot keeps upstream's flag), an area, or one a closure rule closes.
-Nothing is widened: an aisle with no bicycle tag is already open to bicycles; only the
+  customers-only lot keeps upstream's flag), an area, or one a closure rule closes;
+- parking aisles only: most private driveways carry no `access` tag, so a path stub ending
+  at a house's driveway would otherwise open the driveway as a through road.
+A dead end is read from the ways' own tags and the closures, before the rebuild opens
+any footway (`sidewalks`) or reopens singletrack on the off-road graph, so a trail end
+those join may still count as one; that only routes a few more aisles as plain service
+roads (accepted, review of PR #536). Nothing is widened: an aisle with no bicycle tag is already open to bicycles; only the
 price of entering it changes.
 
 Pure: `pipeline.trail_closures.add_aisle_links` calls `links` with the rebuild's ways.
@@ -34,7 +38,6 @@ from collections import defaultdict
 from collections.abc import Sequence, Set
 
 from . import tags as osm_tags
-from .facility import HIDDEN_SERVICE
 from .sidewalks import (
     MANY,
     TRAIL_HIGHWAY,
@@ -53,9 +56,9 @@ WAY_MAX_M = 150.0
 
 
 def is_candidate(tags: dict[str, str]) -> bool:
-    """A parking aisle, driveway or drive-through no bicycle tag speaks for or against, open
-    to the public: upstream's transform opens it and makes it destination-only."""
-    if tags.get("highway") != "service" or tags.get("service") not in HIDDEN_SERVICE:
+    """A parking aisle no bicycle tag speaks for or against, open to the public: upstream's
+    transform opens it and makes it destination-only."""
+    if tags.get("highway") != "service" or tags.get("service") != "parking_aisle":
         return False
     if any(key == "bicycle" or key.startswith("bicycle:") for key in tags):
         return False

@@ -997,11 +997,12 @@ check("an aisle with access=yes is still a link",
     == M.REMOVE)
 -- A trail's link the rebuild names (`rm:aisle_link`, routemaker.aisle_links; Beach
 -- Drive at the Maryland line, owner report 2026-10-26) loses the use too.
-for _, service in ipairs({ "parking_aisle", "driveway", "drive-through" }) do
-  check(service .. " named a trail's link becomes a plain service road",
-    M.remap_way({ highway = "service", service = service }, { aisle_link = true, stress_tier = 1 }).service
-      == M.REMOVE)
-end
+check("a parking aisle named a trail's link becomes a plain service road",
+  M.remap_way({ highway = "service", service = "parking_aisle" }, { aisle_link = true, stress_tier = 1 })
+    .service == M.REMOVE)
+check("a driveway named a trail's link keeps its use (private driveways carry no access tag)",
+  M.remap_way({ highway = "service", service = "driveway" }, { aisle_link = true, stress_tier = 1 }).service
+    == nil)
 check("a named link with a closed access keeps its use",
   M.remap_way({ highway = "service", service = "parking_aisle", access = "private" }, { aisle_link = true })
     .service == nil)

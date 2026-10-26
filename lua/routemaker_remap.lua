@@ -493,10 +493,10 @@ function M.bicycle_link_service(tags)
   return true
 end
 
---- A parking aisle, driveway or drive-through the rebuild names a trail's link
--- (`rm:aisle_link`), whose own `access` and `vehicle` leave it open.
+--- A parking aisle the rebuild names a trail's link (`rm:aisle_link`), whose own
+-- `access` and `vehicle` leave it open.
 function M.aisle_link(tags, derived)
-  if not derived.aisle_link or tags.highway ~= "service" or not M.BICYCLE_LINK_SERVICES[tags.service] then
+  if not derived.aisle_link or tags.highway ~= "service" or tags.service ~= "parking_aisle" then
     return false
   end
   if tags.bicycle ~= nil then return false end

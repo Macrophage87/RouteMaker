@@ -36,14 +36,14 @@ AISLE = {"highway": "service", "service": "parking_aisle"}
 ROAD = {"highway": "pedestrian", "bicycle": "designated", "motor_vehicle": "no"}
 
 
-def beach_drive(aisle_tags=AISLE, gap=13.0, trail_tags=TRAIL, extra=()):
+def beach_drive(aisle_tags=AISLE, gap=13.0, trail_tags=TRAIL, extra=(), road=ROAD):
     """The trail runs west from its end at (0, 0); two aisles lead `gap` metres south
     to Beach Drive, which runs east-west."""
     return [
         placed(1, dict(trail_tags), [(0.0, 0.0), (-300.0, 20.0)]),
         placed(2, dict(aisle_tags), [(0.0, 0.0), (4.0, -gap / 2)]),
         placed(3, dict(aisle_tags), [(4.0, -gap / 2), (6.0, -gap)]),
-        placed(4, ROAD, [(-300.0, -gap), (6.0, -gap), (300.0, -gap)]),
+        placed(4, dict(road), [(-300.0, -gap), (6.0, -gap), (300.0, -gap)]),
         *extra,
     ]
 
@@ -82,16 +82,30 @@ def test_a_closed_trail_is_not_linked():
     assert al.links(beach_drive(), closed={1}) == set()
 
 
+def test_a_street_counts_as_the_way_reached():
+    assert al.links(beach_drive(road={"highway": "residential"})) == {2, 3}
+
+
 def test_a_long_aisle_is_never_opened():
+    # The gap is short, but the second aisle runs on far past the road: the remap would
+    # change the whole way.
     ways = beach_drive()
-    long_aisle = placed(2, dict(AISLE), [(0.0, 0.0), (al.WAY_MAX_M, 0.0), (4.0, -6.5)])
-    ways[1] = long_aisle
+    ways[2] = placed(3, dict(AISLE), [(4.0, -6.5), (6.0, -13.0), (6.0, -13.0 - al.WAY_MAX_M)])
     assert al.links(ways) == set()
+    ways[2] = placed(3, dict(AISLE), [(4.0, -6.5), (6.0, -13.0), (6.0, -13.0 - al.WAY_MAX_M / 2)])
+    assert al.links(ways) == {2, 3}, "the same shape within the cap is a link"
 
 
-def test_driveways_and_drive_throughs_count_too():
+def test_driveways_and_drive_throughs_are_not():
+    # Most private driveways carry no access tag.
     for service in ("driveway", "drive-through"):
-        assert al.links(beach_drive({**AISLE, "service": service})) == {2, 3}, service
+        assert al.links(beach_drive({**AISLE, "service": service})) == set(), service
+
+
+def test_a_closed_aisle_or_an_area_is_not_a_link():
+    assert al.links(beach_drive(), closed={2}) == set()
+    assert al.links(beach_drive({**AISLE, "area": "yes"})) == set()
+    assert al.links(beach_drive({**AISLE, "bicycle:conditional": "no @ (Sa-Su)"})) == set()
 
 
 def test_the_rebuild_finds_them_after_the_closures():

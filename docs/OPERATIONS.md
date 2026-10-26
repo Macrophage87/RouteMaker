@@ -6262,6 +6262,18 @@ Drive, Francis Drive and Huntley Avenue are all mapped `informal=yes`): its `inf
 closure comes off and it gets `rm:walk_link`, `bicycle=dismount`, as a station's footway
 does, so the route says to walk the bike.
 
+**Trailhead parking aisles (v0.12.5, with the next map update).** Valhalla makes every
+parking aisle destination-only (a 600 s penalty to enter), so a trail that starts in a
+parking lot was cut off from the road beside it. The owner reported the Rock Creek Trail
+at Beach Drive and the Maryland line, where two aisles of about 40 ft (13 m) are the
+trail's only join, and the route ran half a mile (0.8 km) on Beach Drive beside it.
+`routemaker.aisle_links` finds the parking aisles with no bicycle tag and public access
+that lead from a trail's dead end to another bicycle-open way within 260 ft (80 m), each
+at most 500 ft (150 m) long; they get `rm:aisle_link` and the remap routes them as plain
+service roads, as it does aisles tagged `bicycle=yes` (PR #197). Driveways are left out:
+most private ones carry no access tag. The rebuild log's facility line counts them
+("parking aisles routed as links where a trail ends").
+
 **NPS units.** Tag rules only. A per-park "paved and designated only" rule goes
 in `pipeline.trail_closures.PARK_RULES` after that park's compendium has been
 read, which needs the owner's approval as a fetch.

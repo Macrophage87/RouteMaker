@@ -892,7 +892,7 @@ class RebuildContext:
     # Footways into rail stations opened as walk-your-bike links
     # (`routemaker.station_links`), all of them in `walk_bike` too.
     walk_links: set[int] = field(default_factory=set)
-    # Parking aisles and driveways where a trail ends, routed as plain service roads
+    # Parking aisles where a trail ends, routed as plain service roads
     # (`routemaker.aisle_links`).
     aisle_links: set[int] = field(default_factory=set)
     destination_only: set[int] = field(default_factory=set)
@@ -3264,7 +3264,7 @@ def build_handlers(
             "(tier 1), %d beside a road that maps its facility separately, %d CBD sidewalks "
             "barred to bicycles, %d singletrack ways avoided; no-bicycle reasons %s, %d "
             "walk-your-bike connectors kept, %d footways ridden as a last resort (sidewalks, "
-            "crosswalks, links), %d destination-only, %d parking aisles or driveways routed "
+            "crosswalks, links), %d destination-only, %d parking aisles routed "
             "as links where a trail ends",
             dict(sorted(Counter(context.facility_by_way.values()).items())),
             len(context.car_free_by_way),
