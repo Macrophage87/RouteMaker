@@ -438,8 +438,9 @@ class InFlight:
     # Another pool's scope_id whose deployment slots this one takes, or None for its own:
     # a lower-priority pool sharing another's slots, with clients of its own.
     total_scope_id: int | None = None
-    # How many of the deployment's slots must still be free once this request holds one;
-    # fewer, and it is refused at once (503). 0: no such rule.
+    # How many of the deployment's slots must still be free once this request holds one
+    # (at most all but one of a smaller pool, `_free_beside`); fewer, and it is refused at
+    # once (503). 0: no such rule.
     leave_free: int = 0
 
     @property
@@ -480,8 +481,8 @@ ROUTING_IN_FLIGHT = InFlight(scope_id=1, per_client=2, total_setting="ROUTING_CO
 # at the lowest priority, so they never delay or refuse a plan or a ride's re-route. One per
 # client, in a client class of their own (a route from the same rider is not refused for
 # them). A slot is taken only while the pool is idle enough that ROOM_FOR_OTHERS slots stay
-# free beside it, last slot first, and the request is refused at once otherwise: the page
-# leaves the options out.
+# free beside it (on a pool of two, beta's, one: `_free_beside`), last slot first, and the
+# request is refused at once otherwise: the page leaves the options out.
 NEIGHBOURS_IN_FLIGHT = InFlight(
     scope_id=5,
     per_client=1,
@@ -695,7 +696,7 @@ def _take(limit: InFlight, client: int, held: list, slots=None) -> bool:
         if shared is None:
             return False
         if limit.leave_free and limit.total - _held_in_class(cursor, total_class) < (
-            limit.leave_free
+            _free_beside(limit)
         ):
             # Too few left beside it: refused as a full deployment, holding nothing.
             _release([shared])
@@ -714,6 +715,16 @@ def _take(limit: InFlight, client: int, held: list, slots=None) -> bool:
                 held.append(mine)
                 return True
     return False
+
+
+def _free_beside(limit: InFlight) -> int:
+    """How many deployment slots must stay free beside one this pool takes: its
+    `leave_free`, but never the whole rest of a smaller pool. Beta's 6 workers give
+    routing 2 slots, and leaving 2 free beside a third that does not exist refused
+    Go's route options every time (the owner, 2026-10-26: "I have yet to get any other
+    option for Go than the default"). One is always left, so a pool of one is never
+    taken."""
+    return max(1, min(limit.leave_free, limit.total - 1))
 
 
 def release(held) -> None:

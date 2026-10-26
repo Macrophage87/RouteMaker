@@ -277,6 +277,43 @@ class TestNeverInTheWay:
         assert fake.calls == []
         assert our_advisory_locks() == 0, "a refused request holds nothing"
 
+    @override_settings(ROUTING_CONCURRENCY=2)
+    def test_planned_on_betas_pool_of_two_while_idle(
+        self,
+        client,
+        segments,  # noqa: F811
+        router,  # noqa: F811
+    ) -> None:
+        """Beta's 6 workers give routing two slots: the options leave one free beside
+        theirs and are planned (the owner, 2026-10-26: never any option but the default)."""
+        router(standard_router())
+        response = post(client, body_for(stress=70))
+        assert response.status_code == 200
+        assert response.json()["options"]
+
+    @override_settings(ROUTING_CONCURRENCY=2)
+    def test_refused_on_betas_pool_of_two_while_a_plan_runs(
+        self,
+        client,
+        segments,  # noqa: F811
+        router,  # noqa: F811
+    ) -> None:
+        fake = router(standard_router())
+        other = hold_slots(routing_slots(2)[:1])
+        try:
+            response = post(client, body_for(stress=70))
+        finally:
+            other.close()
+        assert response.status_code == 503
+        assert fake.calls == []
+        assert our_advisory_locks() == 0, "a refused request holds nothing"
+
+    @override_settings(ROUTING_CONCURRENCY=1)
+    def test_never_takes_a_pool_of_one(self, client, segments, router) -> None:  # noqa: F811
+        fake = router(standard_router())
+        assert post(client, body_for(stress=70)).status_code == 503
+        assert fake.calls == []
+
     @override_settings(ROUTING_CONCURRENCY=3)
     def test_one_at_a_time_per_client(self, client, segments, router) -> None:  # noqa: F811
         router(standard_router())
