@@ -11,7 +11,14 @@
 # Promoting a build from internal testing to the closed test or production stays a click in Play
 # Console (mobile/README.md, "Building").
 set -euo pipefail
-# --fail-with-body: a refusal prints Google's reason, not just the status code.
+
+# curl that, when Google refuses, prints Google's reason to the log (--fail-with-body puts it on
+# stdout, which the callers below pipe on) and stops.
+call() {
+  local out
+  out="$(curl -sS --fail-with-body "$@")" || { printf '::error::%s\n' "$out" >&2; exit 1; }
+  printf '%s' "$out"
+}
 
 aab="$1"
 : "${PLAY_SERVICE_ACCOUNT_JSON:?}" "${PLAY_PACKAGE:?}" "${PLAY_NOTES:?}"
@@ -34,20 +41,20 @@ claims="$(jq -cn --arg iss "$email" --arg aud "$token_uri" --argjson iat "$now" 
   '{iss: $iss, scope: "https://www.googleapis.com/auth/androidpublisher", aud: $aud, iat: $iat, exp: ($iat + 600)}' | b64url)"
 signature="$(printf '%s.%s' "$header" "$claims" | openssl dgst -sha256 -sign "$key" -binary | b64url)"
 
-token="$(curl -sS --fail-with-body "$token_uri" \
+token="$(call "$token_uri" \
   --data-urlencode "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer" \
   --data-urlencode "assertion=$header.$claims.$signature" | jq -r .access_token)"
 [ -n "$token" ] && [ "$token" != null ] || { echo "::error::Google refused the service account's sign-in." >&2; exit 1; }
 echo "::add-mask::$token"
 auth=(-H "Authorization: Bearer $token")
 
-edit="$(curl -sS --fail-with-body -X POST "${auth[@]}" "$api/edits" | jq -r .id)"
-code="$(curl -sS --fail-with-body -X POST "${auth[@]}" -H "Content-Type: application/octet-stream" \
+edit="$(call -X POST "${auth[@]}" "$api/edits" | jq -r .id)"
+code="$(call -X POST "${auth[@]}" -H "Content-Type: application/octet-stream" \
   --data-binary "@$aab" "$upload/edits/$edit/bundles?uploadType=media" | jq -r .versionCode)"
 jq -n --arg code "$code" --arg notes "$PLAY_NOTES" \
   '{track: "internal", releases: [{versionCodes: [$code], status: "completed",
     releaseNotes: [{language: "en-US", text: $notes}]}]}' |
-  curl -sS --fail-with-body -X PUT "${auth[@]}" -H "Content-Type: application/json" --data-binary @- \
+  call -X PUT "${auth[@]}" -H "Content-Type: application/json" --data-binary @- \
     "$api/edits/$edit/tracks/internal" >/dev/null
-curl -sS --fail-with-body -X POST "${auth[@]}" "$api/edits/$edit:commit" >/dev/null
+call -X POST "${auth[@]}" "$api/edits/$edit:commit" >/dev/null
 echo "Uploaded version code $code to internal testing."

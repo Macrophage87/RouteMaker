@@ -262,7 +262,9 @@ tag before (the app loads the site, so a site-only release needs no new app). Wi
 `ROUTEMAKER_PLAY_SERVICE_ACCOUNT` secret set, `scripts/play-upload.sh` then uploads the `.aab` to
 Play's **internal testing** track, with release notes linking `docs/releases/<tag>.md`; it uses only
 curl, openssl and jq, and the key stays in the runner's temporary directory. Without the secret the
-bundle is in the run's artifact as before. Moving a build on to the closed test or production stays
+bundle is in the run's artifact as before. If Play refuses the upload (a reused version code, or a
+release Play wants done by hand first), the run goes red with Google's reason in its log, and the
+bundle is still in the artifact to upload in Play Console. Moving a build on to the closed test or production stays
 a click in Play Console. Setting up the account, once:
 
 1. Google Cloud console: create a project (or use one), turn on the **Google Play Android Developer

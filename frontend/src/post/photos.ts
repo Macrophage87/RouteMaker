@@ -12,6 +12,7 @@ export const PHOTO_SENDING = "Making the photo smaller and sending it…";
 export const PHOTO_DONE = "Photo added. Showing it in place…";
 export const PHOTO_UNREADABLE = "This browser can't open that file. Try a JPEG or PNG.";
 export const PHOTO_FAILED = "The photo could not be sent. Try again.";
+export const PHOTO_TOO_BIG = "That photo is still too big after making it smaller. Try a smaller or simpler photo.";
 
 /** The size to draw a photo at: at most `edge` on its longer side, never larger than it is. */
 export function fitWithin(width: number, height: number, edge: number = PHOTO_EDGE): { width: number; height: number } {
@@ -62,14 +63,16 @@ export function wirePhotos(doc: Document, slug: string, csrf: string | undefined
       const input = form.querySelector<HTMLInputElement>("input[type=file]");
       const file = input?.files?.[0];
       if (!file) return;
-      if (button) button.disabled = true;
+      // aria-disabled, not disabled: the button keeps a keyboard user's focus (as sends.ts).
+      if (button?.getAttribute("aria-disabled") === "true") return;
+      button?.setAttribute("aria-disabled", "true");
       say(PHOTO_SENDING);
       let picture: Blob;
       try {
         picture = await redraw(file);
-      } catch {
-        say(PHOTO_UNREADABLE);
-        if (button) button.disabled = false;
+      } catch (error) {
+        say(error instanceof Error && error.message === "too big" ? PHOTO_TOO_BIG : PHOTO_UNREADABLE);
+        button?.removeAttribute("aria-disabled");
         return;
       }
       const body = new FormData(form);
@@ -91,7 +94,7 @@ export function wirePhotos(doc: Document, slug: string, csrf: string | undefined
       } catch {
         say(PHOTO_FAILED);
       }
-      if (button) button.disabled = false;
+      button?.removeAttribute("aria-disabled");
     });
   }
 }

@@ -5994,7 +5994,7 @@ details.fold > summary .icon {
 
 /* Skip this stop: the stop's number under the skip mark. */
 .ride .ride-skip-stop {
-  font-size: 0.8rem;
+  font-size: 1.25rem; /* 20px, the ride screen's smallest text */
   font-weight: 700;
   line-height: 1.1;
 }
