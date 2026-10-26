@@ -17,6 +17,7 @@ import { HOME_NOT_SET, type Home } from "../lib/myGo.ts";
 import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
 import { CHANGE_HOME_TEXT, CLEAR_HOME_TEXT, HOME_PICK_LINE, PICK_ON_MAP_TEXT, homeClosesSheet, homeName, homeSetKey } from "../lib/homeSet.ts";
 import { FEATURED_ROUTES_LABEL, FEATURED_ROUTES_PATH } from "../lib/featuredRoutes.ts";
+import { SAVED_ROUTES } from "../lib/loadRoute.ts";
 
 export type GoSheetSize = "peek" | "half" | "full";
 
@@ -171,6 +172,8 @@ export interface GoPlaces {
   onRepair: (chip: HTMLButtonElement) => void;
   /** Behind More: the nearest places to see (Plan's Places to see, five of them, no filters). */
   onSights: (chip: HTMLButtonElement) => void;
+  /** Behind More (the owner, 2026-10-26): the rider's saved and kept routes, Load route's popup; a tap on one opens it in Go. */
+  onSavedRoutes: () => void;
 }
 
 /**
@@ -354,7 +357,7 @@ export function GoSheet({
   const startBoxId = useId();
   const moreId = useId();
   const [startOpen, setStartOpen] = useState(false);
-  // More: one chip at the row's end that shows the rest (Metro, Repair, Sights); later additions go here, not on the row.
+  // More: one chip at the row's end that shows the rest (Metro, Repair, Sights, Saved routes); later additions go here, not on the row.
   const [moreOpen, setMoreOpen] = useState(false);
   const startShown = startOpen || startMissing;
   const next = nextSheetSize(size);
@@ -440,6 +443,10 @@ export function GoSheet({
           <button type="button" className="chip place-chip" onClick={(event) => places.onSights(event.currentTarget)}>
             <Icon name="camera" size={18} />
             Sights
+          </button>
+          <button type="button" className="chip place-chip" aria-haspopup="dialog" onClick={places.onSavedRoutes}>
+            <Icon name="routes" size={18} />
+            {SAVED_ROUTES}
           </button>
           {/* Featured routes (the owner, 2026-10-19: "one item behind More"): the posts' list, a page of its own (core/route_posts.py). */}
           <a className="chip place-chip" href={FEATURED_ROUTES_PATH}>

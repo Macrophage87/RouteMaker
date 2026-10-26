@@ -4518,9 +4518,24 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   // The owner, 2026-10-12: the rider's own ride type first (My Go; Default until set), then the two transit types.
   // More, with Repair and Sights behind it, follow the four since 2b38bf1c ("Go: Repair and Sights behind More"),
   // and Metro first behind it since Stephen 2026-10-19 ("Metro stops should be on the list in more").
-// Featured routes joined them last in v0.12.1 (#456).
-  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), then More with Metro, Repair, Sights and Featured routes, and the ride types Default, Own Bike + 🚆🚌, Bikeshare + 🚶🚆🚌 and More ride types",
-    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom", "More", "Metro", "Repair", "Sights", "Featured routes"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus", "More ride types"]), JSON.stringify(go));
+// Featured routes joined them last in v0.12.1 (#456); Saved routes before it (Stephen 2026-10-26).
+  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), then More with Metro, Repair, Sights, Saved routes and Featured routes, and the ride types Default, Own Bike + 🚆🚌, Bikeshare + 🚶🚆🚌 and More ride types",
+    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom", "More", "Metro", "Repair", "Sights", "Saved routes", "Featured routes"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus", "More ride types"]), JSON.stringify(go));
+  // More > Saved routes (Stephen 2026-10-26): Load route's popup, named Saved routes; Escape gives the focus back.
+  await p.eval("document.querySelector('.go-sheet .go-more').click(); true");
+  await sleep(200);
+  await p.eval("[...document.querySelectorAll('.go-more-row .place-chip')].find((c) => c.textContent.trim() === 'Saved routes').focus(); true");
+  await p.enter();
+  await sleep(500);
+  const savedPopup = await p.eval("(() => { const d = document.querySelector('.load-route-dialog'); return { open: !!d?.open, heading: d?.querySelector('h2')?.textContent.trim(), gpx: !!d?.querySelector('.load-route-gpx') }; })()");
+  const savedNamed = await axNode(p, ".load-route-dialog");
+  await p.escape();
+  await sleep(300);
+  const savedBack = await p.eval("({ closed: !document.querySelector('.load-route-dialog').open, focus: document.activeElement?.textContent.trim() })");
+  await p.eval("document.querySelector('.go-sheet .go-more').click(); true");
+  check("go: More > Saved routes opens Load route's popup named Saved routes (with Open GPX file); Escape closes it to the chip",
+    savedPopup.open && savedPopup.heading === "Saved routes" && savedPopup.gpx && savedNamed?.role === "dialog" && savedNamed?.name === "Saved routes" && savedBack.closed && savedBack.focus === "Saved routes",
+    JSON.stringify({ savedPopup, savedNamed: [savedNamed?.role, savedNamed?.name], savedBack }));
   const own = await axNode(p, ".go-sheet .ride-chips .ride-type-chip");
   check("go: the first ride type is described as the rider's own, set in Settings", own?.name === "Default" && /^Your ride type\. Change it in Settings, under My Go\.$/.test(own?.description ?? ""), JSON.stringify(own));
   check("go: every control in the top bar and the sheet is 44 px or more each way, and nothing scrolls sideways at 390 px", go.small.length === 0 && !go.scroll, JSON.stringify(go.small));
@@ -5285,7 +5300,7 @@ const failed = results.filter((r) => !r.ok);
 // Load route's popup (#370) adds one. Settings scrolling (2026-10-22) adds one: Home's one line with Change,
 // Cancel, and leaving Settings.
 // Plan's Start ride no longer asks first (2026-10-24) takes one away.
-const EXPECTED = 684;
+const EXPECTED = 685;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
