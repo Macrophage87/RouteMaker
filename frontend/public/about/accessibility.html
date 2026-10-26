@@ -313,7 +313,7 @@ not in your account, so set them once on each phone or computer you use<sup clas
 <tr><th scope="row">Say cues with</th><td>Settings, Riding; More, then the Settings gear, during a ride</td><td>My screen reader, RouteMaker's voice, Both, or Neither (on screen only). RouteMaker's voice unless you choose.</td><td>On this device</td></tr>
 <tr><th scope="row">How much to say</th><td>Settings, Riding; More, then the Settings gear, during a ride</td><td>Full, Stoker or Quiet (below). Full unless you choose.</td><td>On this device</td></tr>
 <tr><th scope="row">Large text during a ride</th><td>Settings, Riding; the Large text button during a ride</td><td>The next turn as big as it fits on the top half of the screen, with the map below and larger street names, for bright sun or near sight. Off unless you turn it on.</td><td>On this device</td></tr>
-<tr><th scope="row">Turn the map to my heading</th><td>More, then the Settings gear, during a ride</td><td>The map turns with you during a ride. On unless you turn it off.</td><td>On this device</td></tr>
+<tr><th scope="row">Turn the map to my heading</th><td>More, then the Settings gear, during a ride</td><td>The map turns with you during a ride, from the phone's compass until GPS gives a heading. On unless you turn it off.</td><td>On this device</td></tr>
 </tbody>
 </table>
 </div>
@@ -407,7 +407,8 @@ screen, with no ride text under 16 pt, and makes the map's street names larger.<
 <li><strong>Dark mode</strong> follows your device for the panels; the map stays light, so the stress
 colors read the same. Windows' contrast themes are supported<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</li>
 <li><strong>Less motion.</strong> When your device asks for reduced motion, the turning section arrows
-and the sliding of points as you reorder them are turned off.</li>
+and the sliding of points as you reorder them are turned off. At the start of a ride, the map turns to the phone's compass in a jump, at most once
+a second, rather than smoothly.</li>
 </ul>
 
 </div></details>
@@ -618,7 +619,10 @@ reader hears whether it is pressed, and each press says "Large text on" or "off"
 <li>With <strong>Say cues with</strong> set to <strong>My screen reader</strong>, the map is hidden from
 the screen reader during a ride, so swiping goes from the next turn straight to the ride's buttons.</li>
 <li><strong>Turn the map to my heading</strong>, in More, then the Settings gear, during a ride, turns the map with you; turn it off
-to keep north up.</li>
+to keep north up. At the start of a ride or Roam, before GPS gives a heading (it needs you moving), the map turns
+to the way the phone faces, from its compass, and GPS takes over once you move. On an iPhone, pressing
+Start ride or Roam asks for motion and orientation access; without it the map stays north up until you
+move. The compass readings are never stored or sent.</li>
 <li>In a ride the map's street names are larger and shortened (R St NW), and the turn card uses fewer
 words (0.2 mi, not In 0.2 mi; 20 min, not about 20 min) so its type and arrow can be larger. A screen
 reader still hears the whole sentence, including "about".</li>
