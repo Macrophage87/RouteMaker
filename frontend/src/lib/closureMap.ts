@@ -170,12 +170,15 @@ export function mergeClosures(route: readonly ClosureItem[], area: readonly Clos
  * The closures that get a marker. A reviewer's closure is one zone per road piece ("reviewer-<closure>-<piece>"), so
  * Lake Frank's trail closure was ten barriers in a row: with no route, one marker per closure, on its middle piece,
  * and every piece still drawn red. A route's pieces keep a marker each, since each has its own "Route through anyway".
+ * A DDOT project advisory's closure (v0.12.4) is one zone per line too ("ddot_advisory-<closure>-<line>").
  */
+const PIECE = /^((?:reviewer-\d+)|(?:ddot_advisory-[a-z0-9-]+))-(\d+)$/;
+
 export function markerItems(items: readonly ClosureItem[]): ClosureItem[] {
   const groups = new Map<string, ClosureItem[]>();
   const out: ClosureItem[] = [];
   for (const item of items) {
-    const piece = /^(reviewer-\d+)-(\d+)$/.exec(item.id);
+    const piece = PIECE.exec(item.id);
     if (!piece || (item.effect !== "none" && item.effect !== "possible")) {
       out.push(item);
       continue;
@@ -188,7 +191,7 @@ export function markerItems(items: readonly ClosureItem[]): ClosureItem[] {
     }
   }
   return out.map((item) => {
-    const piece = /^(reviewer-\d+)-/.exec(item.id);
+    const piece = PIECE.exec(item.id);
     const group = piece && (item.effect === "none" || item.effect === "possible") ? groups.get(piece[1]) : undefined;
     if (!group || group.length < 2) return item;
     const order = (i: ClosureItem) => Number(i.id.slice(i.id.lastIndexOf("-") + 1));

@@ -7,7 +7,10 @@ import { startDials, type Dials } from "./dials.ts";
 import { encodePlan } from "./planHash.ts";
 import { linkToCopy } from "./sidebar.ts";
 import {
+  BROADCAST_COPIED,
   SHARE_FAILED,
+  copyShareNavigator,
+  pickShareNavigator,
   SHARE_LABEL,
   SHARE_NAME,
   SHARE_TITLE,
@@ -93,7 +96,8 @@ test("App shows Share beside Copy link only where it is supported, named Share r
   assert.equal(SHARE_LABEL, "Share route");
   assert.equal(SHARE_NAME, "Share route");
   assert.ok(SHARE_NAME.startsWith(SHARE_LABEL), "the accessible name holds the visible word");
-  assert.match(app, /const \[canShare\] = useState\(\(\) => canShareLink\(navigator, window\.location\.href\)\);/);
+  assert.match(app, /const \[shareNav\] = useState\(\(\) => pickShareNavigator\(navigator, nativeShareNavigator\(\)\)\);/);
+  assert.match(app, /const \[canShare\] = useState\(\(\) => canShareLink\(shareNav, window\.location\.href\)\);/);
   // The owner, 2026-10-17 ("the share button should be in files. Basically you save then you share"): in the Route
   // file sheet, Save route first, then Share and its keeping; Plan's More keeps Share as image, not Share.
   const controls = app.slice(app.indexOf("export function ShareControls"), app.indexOf("function RouteActions("));
@@ -121,13 +125,58 @@ test("share() is called within the press: synchronously in shareLink, and before
   void shareLink({ share: async () => void (called = true) }, shareContent("https://x.test/", 1, "Default"));
   assert.equal(called, true, "share() called synchronously");
   // App's handler: no await before shareLink(...), and a press while a sheet is open is skipped.
-  const start = app.indexOf("const shareRoute = async (ride = false): Promise<{ led: boolean; said: string }> => {");
+  const start = app.indexOf("const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav): Promise<{ led: boolean; said: string }> => {");
   assert.ok(start > 0);
   const body = app.slice(start, app.indexOf("\n  };\n", start));
-  const call = body.indexOf("shareLink(navigator, content)");
+  const call = body.indexOf("shareLink(nav, content)");
   assert.ok(call > 0, "shareRoute calls shareLink");
   assert.doesNotMatch(body.slice(0, call).replace(/\/\/[^\n]*/g, ""), /\bawait\b/, "no await before shareLink");
   assert.match(body, /if \(!shown \|\| sharing\.current\) return \{ led: false, said: "" \};/);
   assert.match(body, /return \{ led: false, said: SHARE_RIDE_WAIT \};\s*\}\s*sharing\.current = true;/);
   assert.match(body, /finally \{\s*sharing\.current = false;\s*\}/);
+});
+
+test("the share sheet: the browser's where it has one, else the phone app's (Android's WebView has none), else none", () => {
+  const browser = { share: noop };
+  const native = { share: noop };
+  assert.equal(pickShareNavigator(browser, native), browser);
+  assert.equal(pickShareNavigator({}, native), native);
+  assert.equal(pickShareNavigator(undefined, native), native);
+  const none = {};
+  assert.equal(pickShareNavigator(none, null), none);
+  assert.equal(canShareLink(pickShareNavigator({}, null), "https://x.test/"), false);
+  assert.equal(canShareLink(pickShareNavigator({}, native), "https://x.test/"), true);
+});
+
+test("Broadcast with no share sheet copies the link, inside the press; a failed copy is a failure, so nothing starts", async () => {
+  const copied: string[] = [];
+  const nav = copyShareNavigator(async (text) => (copied.push(text), true));
+  const outcome = shareLink(nav, shareContent("https://x.test/#p=1&ride=1", 1, "Default"));
+  assert.deepEqual(copied, ["https://x.test/#p=1&ride=1"], "copied synchronously, while the press's activation holds");
+  assert.equal(await outcome, "shared");
+  assert.equal(await shareLink(copyShareNavigator(async () => false), shareContent("https://x.test/", 1, "Default")), "failed");
+  assert.match(BROADCAST_COPIED, /^Broadcast link copied\. Paste it to your riders/);
+});
+
+test("App: Broadcast shows everywhere; with no share sheet it copies, and the ride screen, Ride and Roam say so", () => {
+  assert.ok(app.includes("const broadcastNav = useMemo<ShareNavigator | undefined>(() => (canShare ? shareNav : copyShareNavigator((text) => copyText(text, navigator.clipboard, selectionCopy))), [canShare, shareNav]);"));
+  assert.match(app, /if \(led\) return canShare \? ROAM_BROADCAST_ON : BROADCAST_COPIED;/);
+  assert.match(app, /return canShare \? ROAM_BROADCAST_ON : BROADCAST_COPIED;\n  \};/);
+  // Roam pressed again while leading: a copy is said (a sheet is its own answer).
+  assert.match(app, /if \(mine\) return canShare \? "" : BROADCAST_COPIED;/);
+  // A failed copy says so, not "share sheet".
+  assert.match(app, /said === SHARE_FAILED \? \(canShare \? BROADCAST_SHARE_FAILED : BROADCAST_COPY_FAILED\) : said/);
+  assert.match(app, /said === SHARE_FAILED \? \(canShare \? BROADCAST_RIDE_FAILED : BROADCAST_RIDE_COPY_FAILED\) : said/);
+  // Each Start ride press sets the note (plain Start: none), and Go back or Reroute at a closure drops it, so a later
+  // ride never says a copy it did not make.
+  assert.match(app, /const startRideChecked = \(\) => startRideNoted\(""\);/);
+  assert.match(app, /const startRideNoted = \(note: string\) => \{\s*rideNote\.current = note;/);
+  assert.match(app, /const closureCancel = \(\) => \{\s*closurePending\.current = null;\s*rideNote\.current = "";/);
+  assert.match(app, /const closureReroute = async \(\) => \{\s*const pending = closurePending\.current;\s*closurePending\.current = null;\s*rideNote\.current = "";/);
+  assert.equal((app.match(/rideNote\.current = /g) ?? []).length, 4, "set only by a press, and cleared where no ride starts or one does");
+  // The note is taken once by the next ride and handed to the ride screen.
+  assert.match(app, /const note = rideNote\.current;\s*rideNote\.current = "";\s*setRideStart\(\(before\) => \(\{[^\n]*note, n:/);
+  assert.match(app, /startNote=\{rideStart\.note\}/);
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(ride, /const startNoteRef = useRef\(startNote\);\s*useEffect\(\(\) => \{\s*const text = startNoteRef\.current;\s*if \(!text\) return;\s*const timer = window\.setTimeout\(\(\) => answer\(text\), START_NOTE_MS\);/);
 });
