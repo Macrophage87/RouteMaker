@@ -123,7 +123,7 @@ test("a home is the next layer up; the names only lifted are left out", () => {
 
 test("MapView lifts the names with the ride's labels and keeps the climbs under the route", () => {
   const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
-  assert.match(mapView, /if \(setRideLabelOrder\(map, riding, labelHomes\.current\)\) climbsUnder\(map, TRAIL_LABEL_LAYER_ID\)/);
+  assert.match(mapView, /if \(setRideLabelOrder\(map, riding, labelHomes\.current\)\) \{\n\s+climbsUnder\(map, TRAIL_LABEL_LAYER_ID\);/);
   assert.match(mapView, /\(!lifted && layerIds\.find\(.*\)\) \|\| ROUTE_BOTTOM_LAYER/);
 });
 
