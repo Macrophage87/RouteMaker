@@ -32,6 +32,7 @@ from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.http import Http404
 from django.utils import timezone
+from django.utils.html import format_html
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_protect
 
@@ -55,6 +56,7 @@ from .models import (
     PendingInstanceAdminRemoval,
     RoleMapping,
     RoutePost,
+    RoutePostPhoto,
     RoutePostSection,
     SavedRoute,
     Session,
@@ -1846,6 +1848,41 @@ class RoutePostSectionInline(admin.StackedInline):
         return self._is_instance_admin(request)
 
 
+class RoutePostPhotoInline(admin.TabularInline):
+    """The post's photos: their words, place and order, and Delete. Photos are added on the
+    post's page, whose script makes each one smaller with nothing in it but the picture
+    (core.route_posts.photo_upload), so none is added here."""
+
+    model = RoutePostPhoto
+    extra = 0
+    fields = ("picture", "alt_text", "caption", "place", "position")
+    readonly_fields = ("picture",)
+
+    @admin.display(description="Photo")
+    def picture(self, obj) -> str:
+        if obj is None or not obj.key:
+            return "Waiting for its file: add it on the post's page."
+        return format_html(
+            '<img src="{}" alt="" width="120" style="height:auto">',
+            route_posts.photo_path(obj.post, obj),
+        )
+
+    def _is_instance_admin(self, request) -> bool:
+        return bool(getattr(request.user, "is_instance_admin", False))
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        return self._is_instance_admin(request)
+
+    def has_add_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return self._is_instance_admin(request)
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return self._is_instance_admin(request)
+
+
 @admin.register(RoutePost, site=site)
 class RoutePostAdmin(InstanceAdminOnly):
     """Featured routes (core.route_posts): instance admins only, the owner's choice of
@@ -1853,7 +1890,7 @@ class RoutePostAdmin(InstanceAdminOnly):
     picture is made from its map."""
 
     form = RoutePostForm
-    inlines = (RoutePostSectionInline,)
+    inlines = (RoutePostSectionInline, RoutePostPhotoInline)
     list_display = ("title", "status", "season_label", "published_at", "updated_at")
     list_filter = ("status",)
     search_fields = ("title", "slug")
