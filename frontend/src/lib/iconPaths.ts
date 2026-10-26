@@ -1,6 +1,6 @@
 // The panel's icons: the approved UI mockup's own line icons (reports/v0.5.0/ui-mockup.html, 2026-10-11),
 // plus a cargo bike, a bikeshare dock, a downed tree, a text-size "Aa" (the owner's choice 11; the ride's Large text button since 2026-10-20; before that unused once Big text
-// moved to Settings, 2026-10-17), and Plan's map bar's undo, redo and clear, and the points list's grip (drag to reorder, 2026-10-18), and a struck-through elevator for a transit trip through a Metro station whose elevators are out (2026-10-21), and a mountain and a car each with a down arrow for the ride's Flatter and Calmer buttons (the owner, 2026-10-23: "More intuitive"). Each is drawn with currentColor and hidden from assistive technology: every control that
+// moved to Settings, 2026-10-17), and Plan's map bar's undo, redo and clear, and the points list's grip (drag to reorder, 2026-10-18), and a struck-through elevator for a transit trip through a Metro station whose elevators are out (2026-10-21), and a mountain and a car each with a down arrow for the ride's Flatter and Calmer buttons (the owner, 2026-10-23: "More intuitive"), and a skip mark for the ride's Skip this stop bubble (2026-10-26). Each is drawn with currentColor and hidden from assistive technology: every control that
 // shows one also shows its words.
 
 export const ICON_PATHS = {
@@ -61,6 +61,7 @@ export const ICON_PATHS = {
   "pin": "<circle cx=\"12\" cy=\"10\" r=\"3\"/><path d=\"M12 21s7-6 7-11a7 7 0 0 0-14 0c0 5 7 11 7 11z\"/>",
   "check": "<path d=\"M5 12l5 5 9-10\"/>",
   "wc": "<circle cx=\"7\" cy=\"4.5\" r=\"1.8\"/><circle cx=\"17\" cy=\"4.5\" r=\"1.8\"/><path d=\"M7 8v13M4.5 9h5l-.5 6H5z\"/><path d=\"M17 8l-3 8h6l-3-8zM15.5 16v5M18.5 16v5\"/>",
+  "skip": "<path d=\"M5 5l10 7-10 7z\"/><path d=\"M19 5v14\"/>",
   "gear": "<circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1\"/>",
   "cargo": "<circle cx=\"5\" cy=\"17\" r=\"3\"/><circle cx=\"19\" cy=\"17\" r=\"3\"/><path d=\"M5 17h7l3-7h-3M15 10l4 7M8 9h5v5H8z\"/>",
   "textsize": "<path d=\"M2.5 19 8 5h1.2l5.5 14M4.6 14h8.1\"/><path d=\"M14.5 19l3.6-8.5h.9L22.5 19M15.8 16h5.5\"/>",

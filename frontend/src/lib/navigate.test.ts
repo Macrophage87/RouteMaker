@@ -526,6 +526,13 @@ test("toGo and whereAmI: to the next stop and the end; US units spoken, metric o
   assert.match(shown, /0\.4 mi \(0\.6 km\) to stop 1/);
 });
 
+test("whereAmI with an arrival clock: each to-go sentence ends with the clock time of the plan's seconds", () => {
+  const model = rideModel(twoLegs());
+  const { state } = ride(model, "quiet", 0, 400);
+  const spoken = whereAmI(model, state, false, null, (s) => `${Math.round(s)} s`);
+  assert.match(spoken, / 0\.4 miles to stop 1, arriving about 120 s\. 1 mile to the end, arriving about 320 s\.$/);
+});
+
 test("whereAmI off route: the way back, its distance and direction", () => {
   const model = rideModel(lRoute());
   let s = ride(model, "full", 0, 300).state;

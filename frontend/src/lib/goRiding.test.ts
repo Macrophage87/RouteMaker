@@ -98,10 +98,11 @@ test("3. 311: one tap logs the pick (and sends it where the server has DC's key)
 });
 
 test("F1. Start unlocks the voice synchronously in the press, before the closure check's await", () => {
-  const start = app.slice(app.indexOf("const startRideChecked = () => {"), app.indexOf("// An opened file is checked at once"));
+  const start = app.slice(app.indexOf("const startRideNoted = (note: string) => {"), app.indexOf("// An opened file is checked at once"));
   assert.ok(start.length > 100);
   // The handler itself is not async: nothing it does before the unlock can yield the gesture.
-  assert.doesNotMatch(start, /const startRideChecked = async/);
+  assert.doesNotMatch(start, /const startRideNoted = async/);
+  assert.match(app, /const startRideChecked = \(\) => startRideNoted\(""\);/);
   const prime = start.indexOf("primeRideVoice(ridePrefs)");
   assert.ok(prime > 0, "Start unlocks the voice itself");
   assert.ok(prime < start.indexOf("checkThen("), "the unlock comes before the check");
@@ -129,14 +130,15 @@ test("Ride settings in reach: More at the end of the side buttons opens them jus
   assert.doesNotMatch(css, /\.ride-top-label \{\s*position: absolute;/);
   assert.deepEqual([...css.matchAll(/@container[^{]*\{([^@]*)/g)].map((m) => /ride-/.test(m[1])), [false]);
   assert.match(top, /ref=\{settingsPanel\}\s+id=\{`\$\{settingsId\}-settings`\}\s+className="ride-mode-settings"\s+role="group"\s+aria-label=\{RIDE_SETTINGS_TITLE\}\s+hidden=\{!settingsOpen\}\s+tabIndex=\{-1\}/);
-  // More comes after the panel: opened, the focus goes into it; Escape there closes it, back to the gear.
+  // The Settings bubble comes after the panel: opened, the focus goes into it; Escape there closes it, back to the bubble.
   assert.match(ride, /settingsPanel\.current\?\.focus\(\{ preventScroll: true \}\);/);
-  assert.match(top, /if \(event\.key === "Escape"\) \{\s*event\.preventDefault\(\);\s*setSettingsOpen\(false\);\s*settingsButton\.current\?\.focus\(\);/);
+  assert.match(top, /if \(event\.key === "Escape"\) \{\s*event\.preventDefault\(\);\s*setSettingsOpen\(false\);\s*settingsBubble\.current\?\.focus\(\);/);
   assert.match(top, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\}/);
-  // More: the last side button, a disclosure of that panel, named for what it holds.
+  // More: the last side button, a disclosure of its bubbles; the last bubble, Settings, a disclosure of that panel.
   const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
-  assert.match(rail, /ref=\{settingsButton\}\s+className="ride-round ride-settings-button"\s+aria-label=\{RIDE_MORE_NAME\}\s+title=\{RIDE_SETTINGS_TEXT\}\s+aria-expanded=\{settingsOpen\}\s+aria-controls=\{`\$\{settingsId\}-settings`\}/);
-  assert.match(rail, /<Icon name="more" size=\{24\} \/>\s*<\/button>\s*<\/div>\s*<\/div>\s*$/);
+  assert.match(rail, /ref=\{settingsButton\}\s+className="ride-round ride-settings-button"\s+aria-label=\{RIDE_MORE_NAME\}\s+title=\{RIDE_SETTINGS_TEXT\}\s+aria-expanded=\{moreOpen\}\s+aria-controls=\{`\$\{settingsId\}-more`\}/);
+  assert.match(rail, /ref=\{settingsBubble\}\s+className="ride-round ride-settings-bubble"\s+aria-label=\{RIDE_SETTINGS_TITLE\}\s+title=\{RIDE_SETTINGS_TITLE\}\s+aria-expanded=\{settingsOpen\}\s+aria-controls=\{`\$\{settingsId\}-settings`\}/);
+  assert.match(rail, /<Icon name="gear" size=\{24\} \/>\s*<\/button>(\s*<\/div>){4}\s*$/);
   assert.match(ride, /export const RIDE_SETTINGS_TEXT = "More";/);
   assert.doesNotMatch(rail, /ride-round ride-road-closed/);
   // Opened, it is scrolled into view.
@@ -204,7 +206,9 @@ test("End ride is slid until the rider has arrived (the owner, 2026-10-19: \"Add
 test("ride card: fewer words on screen, the whole of them for screen readers (the owner, 2026-10-20)", () => {
   const ride = source("../RideMode.tsx");
   assert.match(ride, /<span className="visually-hidden">In <\/span>/, "\"In\" before the distance stays for screen readers");
-  assert.equal((ride.match(/<span className="visually-hidden">about <\/span>/g) ?? []).length, 2, "\"about\" before both to-go times stays for screen readers");
+  // One TimeToGo for both to-go times (the next stop and the end, lib/arrival.ts), its "about" and "arriving about" read.
+  assert.equal((ride.match(/<span className="visually-hidden">about <\/span>/g) ?? []).length, 1, "\"about\" before the to-go time stays for screen readers");
+  assert.equal((ride.match(/<TimeToGo seconds=/g) ?? []).length, 2, "both to-go times");
   assert.match(ride, /<span aria-hidden="true">\{cueShown\.head\.replace\(\/\\\.\$\/, ""\)\}<\/span>\s*<span className="visually-hidden">\{cue\.rideText \?\? cue\.text\}<\/span>/, "the full stop goes from the shown head only; the whole sentence is read");
 });
 
@@ -217,25 +221,35 @@ test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a r
   assert.match(ride, /broadcastBusy\.current = true;\s*try \{\s*const said = await onBroadcast\(\);/);
   // App: Share ride's link (shareRoute(true)), the rider its leader; no new ride started.
   const fromRide = app.slice(app.indexOf("const broadcastFromRide = async"), app.indexOf("// Ride the rest (lib/rideTrip.ts)"));
-  assert.match(fromRide, /await shareRoute\(true\)/);
+  assert.match(fromRide, /await shareRoute\(true, broadcastNav\)/);
   assert.doesNotMatch(fromRide, /startRide/);
   // Only the plan's own route, never Ride the rest's, a detour from Roam, or a ride opened from another's link.
-  assert.match(app, /onBroadcast=\{canShare && !rideStart\.roam && rideStart\.route === shown && !\(onShared && !onShared\.own\) \? broadcastFromRide : null\}/);
+  assert.match(app, /onBroadcast=\{!rideStart\.roam && rideStart\.route === shown && !\(onShared && !onShared\.own\) \? broadcastFromRide : null\}/);
   assert.match(app, /broadcasting=\{rideBroadcast\?\.leading === true\}/);
 });
 
-test("More on the ride screen (Stephen 2026-10-24): the route's changes above the settings; the side buttons lose Calmer and Flatter", () => {
+test("More on the ride screen (Stephen 2026-10-26): the route's changes and Settings as bubbles beside it, none in the settings", () => {
   const panel = ride.slice(ride.indexOf('className="ride-mode-settings"'), ride.indexOf("<RideSettingsFields prefs={prefs}"));
   const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
-  // Skip this stop moved from Detour into More; Instead of stop N stays with the nearest places.
-  assert.match(panel, /fromMore\(\(\) => changeStop\(nextStop, undefined, true\)\)/);
+  const bubbles = rail.slice(rail.indexOf('className="ride-more-bubbles"'));
+  // The settings panel holds the settings alone.
+  assert.doesNotMatch(panel, /ride-change|ease\(which\)|SKIP_STOP/);
+  assert.match(bubbles, /role="group" aria-label=\{RIDE_MORE_NAME\} hidden=\{!moreOpen\}/);
+  // Skip this stop is a bubble, named with the stop, its number shown; Instead of stop N stays with the nearest places.
+  assert.match(bubbles, /\{!fixed && nextStop && \(\s*<button[^>]*className="ride-round ride-skip-stop"\s+onClick=\{\(\) => fromMore\(\(\) => changeStop\(nextStop, undefined, true\)\)\}\s+aria-label=\{skipStopName\(nextStop\)\}/);
   assert.match(ride, /if \(!keepFocus\) whereRef\.current\?\.focus\(\);/);
-  assert.doesNotMatch(rail, /\{SKIP_STOP\}/);
   assert.match(rail, /onClick=\{\(\) => changeStop\(nextStop, item\.place\)\}/);
-  // Each press closes the panel (the map back in view) and the focus goes to More.
-  assert.match(ride, /const fromMore = \(press: \(\) => void\) => \{\s*setSettingsOpen\(false\);\s*settingsButton\.current\?\.focus\(\);\s*press\(\);/);
-  // More is a disclosure (aria-expanded), so an open panel holds the 30 s idle recentre (lib/idleRecentre.ts).
-  assert.match(rail, /aria-expanded=\{settingsOpen\}/);
-  // Side buttons: Where am I?, Large text, Broadcast, Detour, dock, 311, More; no Calmer or Flatter there.
-  assert.doesNotMatch(rail, /ride-ease/);
+  // Each press closes the bubbles and the settings (the map back in view) and the focus goes to More.
+  assert.match(ride, /const fromMore = \(press: \(\) => void\) => \{\s*setMoreOpen\(false\);\s*setSettingsOpen\(false\);\s*settingsButton\.current\?\.focus\(\);\s*press\(\);/);
+  // More closed closes the settings too.
+  assert.match(ride, /setMoreOpen\(false\);\s*setSettingsOpen\(false\);\s*if \(held\) settingsButton\.current\?\.focus\(\);/);
+  // More is a disclosure (aria-expanded), so open bubbles hold the 30 s idle recentre (lib/idleRecentre.ts); it alone
+  // is closed by the idle close, so the Settings bubble is not pressed again after More shut it.
+  assert.match(rail, /aria-expanded=\{moreOpen\}/);
+  assert.equal(bubbles.match(/data-idle-close/g), null);
+  // One side menu at a time: Detour, dock or 311 opened closes More's bubbles, and More opened closes them.
+  assert.match(ride, /setMenu311\(which === "311"\);\s*if \(which\) \{\s*setMoreOpen\(false\);\s*setSettingsOpen\(false\);/);
+  assert.match(ride, /if \(!moreOpen\) \{\s*openMenu\(null\);\s*setMoreOpen\(true\);/);
+  // Bubbles hidden by the attribute even with their own display.
+  assert.match(css, /\.ride-more-bubbles\[hidden\] \{\s*display: none;/);
 });

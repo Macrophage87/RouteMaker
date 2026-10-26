@@ -360,7 +360,8 @@ ending that ride brings you back to roaming.</li>
 <li><strong>Weather</strong> where you are is checked every 5 minutes, for alerts and for rain in the next hour
 ("Rain expected in about 45 min, where you are."), said and shown as in a ride.</li>
 <li><strong>Broadcast</strong>, a round button, shares a link others can follow your dot and the way you
-ride with, while your app is open (see <a href="#suggest">ride links</a>).</li>
+ride with, while your app is open (see <a href="#suggest">ride links</a>). With no share sheet it
+copies the link instead, and says so, or says it could not.</li>
 <li>The next sunrise and sunset show in the corner, with the minutes left once it is within the
 hour.</li>
 <li><strong>End roam</strong> is slid, like End ride, so a bump does not end it.</li>
@@ -623,10 +624,20 @@ arrow.</li>
 "Cross Redland Road, then left onto Redland Road bike lane". A trail fork whose branches both lean off
 (a Y) gets its own cue, such as "Bear left to stay on Rock Creek Trail", and a hairpin, such as a ramp
 curling up onto a bridge, is said on the side you actually turn.</li>
-<li><strong>Where am I?</strong> says where you are and centers the map on you again.
+<li><strong>To go</strong>: under the turn, a line gives the distance and time to the next stop, if
+there is one, and to the end, and the clock time you should get there, in the usual clock for your phone's
+language and region (6:42 AM or 18:42): "To stop 2: 1.2 mi (1.9 km), 8 min · 6:42 AM". A screen reader
+hears "To stop 2, 1.2 mi (1.9 km), about 8 min, arriving about 6:42 AM". With Large text, To the end may
+give way on a crowded screen; a screen reader still reads it. The times start from the route's own time
+(<a href="/about/routing.html#route-time">How a route's time is worked out</a>). From half a mile
+[800 m] they shift toward your own pace against the plan, fully by 3.1 mi [5 km], and never more than
+twice as fast or as slow. A stop counts as at most 90 seconds, so a long stop doesn't slow your estimate,
+and time off the route, paused or walking is left out.</li>
+<li><strong>Where am I?</strong> says where you are and centers the map on you again. It also says how far the next stop and the end are and when you should
+reach them: "1.2 miles to stop 2, arriving about 6:42 AM."
 <strong>Large text</strong> makes the next turn as big as it fits.</li>
-<li><strong>Broadcast</strong>, where your device has a share sheet, sends a <strong>Share ride</strong> link, as
-Broadcast beside Start does, and once it has gone makes you the ride's leader; your ride carries on. It is not on
+<li><strong>Broadcast</strong> sends a <strong>Share ride</strong> link, as Broadcast beside Start does
+(with no share sheet it copies the link and says so, or says it could not), and once it has gone makes you the ride's leader; your ride carries on. It is not on
 Ride the rest, a Roam detour, a ride you opened from someone else's link, or once you have arrived.</li>
 <li><strong>Detour</strong> has four buttons, <strong>Water</strong>, <strong>Restroom</strong>, <strong>Food</strong> and
 <strong>Repair</strong> (repair stands and bike shops), each listing the three nearest by bike, and a
@@ -641,18 +652,20 @@ hears the button as Detour with "or change stop 2" at the end; <strong>Skip this
 round."</li>
 <li><strong>311</strong> logs a problem where you are, for reporting later; see
 <a href="#suggest">below</a>.</li>
-<li><strong>More</strong> opens, under the top row, <strong>Change the route</strong>: <strong>Less traffic</strong>
-(a car with a down arrow) and <strong>Fewer hills</strong> (a mountain with a down arrow) plan again from where you
-are, with the way ahead first. Less traffic moves the ride's traffic slider one step toward Calmest, Fewer hills its
-hills slider one step toward avoiding hills. If the new route keeps to your line, you hear "Same route: no calmer way
-from here." (or "no less steep way"). Press again for the next step; at the last one you hear "Already the calmest
+<li><strong>More</strong> opens a row of round buttons to its left. <strong>Less traffic</strong> (a car with a
+down arrow) and <strong>Fewer hills</strong> (a mountain with a down arrow) plan again from where you are, with the
+way ahead first. Less traffic moves the ride's traffic slider one step toward Calmest, Fewer hills its hills slider
+one step toward avoiding hills. If the new route keeps to your line, you hear "Same route: no calmer way from
+here." (or "no less steep way"). Press again for the next step; at the last one you hear "Already the calmest
 route." or "Already the flattest route." (On a Mass Ride, whose traffic level is set, Less traffic always says so.)
 The steps last for this ride only, Plan's sliders stay as they were, and a step that finds no route, or only one
-leading back to the old line, is undone. With a stop ahead, a line names it (such as "Next stop: Stop 2, Union
-Market") above <strong>Skip this stop</strong>. These are hidden on a shared or fixed route and once you have
-arrived, and pressing one closes the panel. Below them are the ride's settings: who says the cues and how much, and
-<strong>Turn the map to my heading</strong>. Escape also closes the panel. A screen reader hears each in full, such as "Less traffic: plan again from here", and the button as "More: change the route, and ride
-settings".</li>
+leading back to the old line, is undone. With a stop ahead, <strong>Skip this stop</strong> shows a skip mark with the
+stop's number under it. These three are hidden on a shared or fixed route and once you have arrived, and pressing one closes
+the row. The <strong>Settings</strong> gear opens the ride's settings under the top row: who says the cues and how
+much, and <strong>Turn the map to my heading</strong>. Pressing More again closes the row and the settings. Escape
+in the settings closes just them; Escape on the row closes both. Opening Detour, a dock list or 311 closes them too.
+A screen reader hears each in full, such as "Less traffic: plan again from here" and "Skip stop 2, Union Market",
+the gear as "Ride settings", and the button as "More: change the route, and ride settings".</li>
 <li>The stops still ahead are drawn on the ride's map with their numbers and names; via
 points are not.</li>
 <li><strong>Already done?</strong> If the ride finds you already past one of its stops, as when you
@@ -941,7 +954,8 @@ without signal, in the installed app or a browser tab. The last ride is kept too
 <li><strong>Copy link</strong> and <strong>Share</strong> give a link to the route. <strong>Share
 route</strong>: others can look it over, change it, or ride it their own way. <strong>Share
 ride</strong>: everyone rides this exact route, never re-routed, and each can choose to show where
-they are (see <a href="#suggest">ride links</a>).</li>
+they are (see <a href="#suggest">ride links</a>). Share route and Share ride show where your device has a
+share sheet, as on phones, and in the Android app from its next update; Copy link is always there.</li>
 <li><strong>Keep shared link</strong>: 1 year after last opened, Permanently, or Until a date. Shared
 links are listed in Save and load, where you can turn one off.</li>
 <li><strong>Share as image</strong> draws the route as a picture: Square 1080 × 1080, Portrait 1080 ×
@@ -1049,9 +1063,10 @@ in Go's Menu and Plan's bottom bar, with an <strong>Open Reports</strong> button
 </ul>
 <h3>Group Ride and Mass Ride links</h3>
 <ul>
-<li><strong>Broadcast</strong>, a small button beside Start ride in Plan and Go where your browser can
-share, opens your phone's share sheet with a link to the route. Once you send it, your ride starts and
-you are its leader. If the route isn't ready or the share fails, it says so beside the button and nothing
+<li><strong>Broadcast</strong>, a small button beside Start ride in Plan and Go, opens your phone's
+share sheet with a link to the route. Once you send it, your ride starts and you are its leader. Where
+there is no share sheet (some computer browsers, such as Firefox, and the Android app until its next update), it copies the link and starts the
+ride, and the ride screen says &quot;Broadcast link copied. Paste it to your riders: they follow you once they open it.&quot; If the route isn't ready or the share or copy fails, it says so beside the button and nothing
 starts. <strong>Share ride</strong> makes you the leader too; sharing the same route again, without
 leaving the page, keeps you the leader of both links.</li>
 <li>Everyone who opens the same link is on the same ride, and sees the others as dots, with no names.</li>
@@ -1092,7 +1107,9 @@ phone's random ride code and its alert counts are forgotten 2 minutes after it l
 
 <ul>
 <li>On first launch it asks for the site's address.</li>
-<li>RouteMaker links shared to the app open in it.</li>
+<li>RouteMaker links shared to the app open in it. From the app's next update, Broadcast, Share route and
+Share ride open Android's own share sheet. Android doesn't tell the app when you back out of that sheet, so
+backing out still counts as sent: Broadcast starts the broadcast, and Share ride makes you its leader.</li>
 <li><strong>Send to Garmin</strong> hands the course to the Garmin Connect app, or adds it to
 Garmin Connect directly once Garmin is connected. Connecting works in the app from its next update; until
 then, connect on the website and the connection works in the app too.</li>
