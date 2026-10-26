@@ -291,8 +291,9 @@ test("App judges a followed broadcast once, when ready, and starts its ride afte
   assert.match(app, /const sharedFollow = sharedOpen\?\.ride === true && !!sharedOpen\.lead && !sharedOpen\.own && shown === sharedOpen\.answer && !stale && rideableRoute\(shown\);/);
   assert.match(app, /if \(!ready \|\| autoRode\.current\) return;\n\s+autoRode\.current = true;\n\s+if \(!opensIntoRide\(\{ phone: looksLikePhone\(\), onBike, resumeAsked: leftAsk !== null \}\)\) return;/);
   assert.match(app, /openCheck\.current = checkThen\("open", saved\.line, false, \(\) => \{\}\);/);
-  assert.match(app, /if \(!closurePending\.current && !ridingNow\.current\) startRideNoted\(""\);/);
+  assert.match(app, /if \(!closurePending\.current && !ridingNow\.current && !roamingNow\.current && sharedFollowNow\.current\) startRideChecked\(\);/);
+  assert.match(app, /if \(plan\.verbatim\) openCheck\.current = checkThen\("open", plan\.verbatim\.track, true/);
   assert.match(app, /if \(!sharedFollow\) return startRoam\(\);/);
-  assert.match(app, /addEventListener\("click", unlock, \{ once: true, capture: true \}\)/);
-  assert.match(app, /!window\.speechSynthesis\?\.speaking\) primeRideVoice\(ridePrefsNow\.current\)/);
+  assert.match(app, /if \(!ridingNow\.current && !roamingNow\.current\) return;\n\s+document\.removeEventListener\("click", unlock, true\);\n\s+if \(!window\.speechSynthesis\?\.speaking\) primeRideVoice\(ridePrefsNow\.current\);/);
+  assert.match(app, /document\.addEventListener\("click", unlock, true\);/);
 });

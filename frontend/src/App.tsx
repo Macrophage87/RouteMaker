@@ -3583,7 +3583,7 @@ export function App() {
     // Another file is not the saved route on screen (a saved file reopened sets it again, openSaved).
     openSavedRoute.current = null;
     openImported(plan);
-    if (plan.verbatim) void checkThen("open", plan.verbatim.track, true, () => {});
+    if (plan.verbatim) openCheck.current = checkThen("open", plan.verbatim.track, true, () => {});
   };
   // A plan link (or a plan left open) is checked once its first route is on screen.
   const checkFirstAnswer = useRef(PLAN_LINK);
@@ -3962,18 +3962,24 @@ export function App() {
   const autoRode = useRef(false);
   const sharedFollow = sharedOpen?.ride === true && !!sharedOpen.lead && !sharedOpen.own && shown === sharedOpen.answer && !stale && rideableRoute(shown);
   const roamFollow = roamBroadcast !== null && !roamBroadcast.leading;
+  const sharedFollowNow = useRef(sharedFollow);
+  sharedFollowNow.current = sharedFollow;
   useEffect(() => {
     const ready = sharedFollow || roamFollow;
     if (!ready || autoRode.current) return;
     autoRode.current = true;
     if (!opensIntoRide({ phone: looksLikePhone(), onBike, resumeAsked: leftAsk !== null })) return;
+    // Kept until a click while riding unlocks it (a tap during the closure check is before the ride).
     const unlock = () => {
-      if ((ridingNow.current || roamingNow.current) && !window.speechSynthesis?.speaking) primeRideVoice(ridePrefsNow.current);
+      if (!ridingNow.current && !roamingNow.current) return;
+      document.removeEventListener("click", unlock, true);
+      if (!window.speechSynthesis?.speaking) primeRideVoice(ridePrefsNow.current);
     };
-    document.addEventListener("click", unlock, { once: true, capture: true });
+    document.addEventListener("click", unlock, true);
     if (!sharedFollow) return startRoam();
     void (openCheck.current ?? Promise.resolve()).then(() => {
-      if (!closurePending.current && !ridingNow.current) startRideNoted("");
+      // Still the link's route on screen, and nothing started meanwhile (the rider's own Start, or Roam).
+      if (!closurePending.current && !ridingNow.current && !roamingNow.current && sharedFollowNow.current) startRideChecked();
     });
   }, [sharedFollow, roamFollow]);
   // Light times on the route (lib/lightTimes.ts): near dawn or dusk, where the rider will be at each, leaving now.
