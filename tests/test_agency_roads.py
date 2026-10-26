@@ -2136,10 +2136,10 @@ def test_the_owner_s_direction_is_read_and_found_by_the_layer_s_key(tmp_path) ->
 
 
 def test_the_owner_s_direction_overrides_osm_s_one_way_the_other_way() -> None:
-    """Owner 2026-10-26: Sheridan St NW's 400 block is one-way westbound; DC still
-    records it two-way and OSM one-way eastbound. The owner's direction (OB, the
-    block's line, which runs against the OSM way here) wins on both maps, and
-    stands unchanged once OSM agrees."""
+    """A street reversed before either source caught up (the mechanism added for
+    Sheridan St NW, owner 2026-10-26): DC records it two-way and OSM one-way the
+    old way. The owner's direction (OB, the block's line, which runs against the
+    OSM way here) wins on every graph, and stands unchanged once OSM agrees."""
     two_way = facts(lanes={"ib": 1, "ob": 1}, way="both", speed_mph={"ib": 20, "ob": 15})
     tags = {"highway": "tertiary", "name": "Sheridan Street Northwest", "oneway": "yes"}
     # Without the owner's direction, DC's two-way record undoes OSM's one-way (C4).
@@ -2179,14 +2179,14 @@ def test_the_owner_s_direction_overrides_osm_s_one_way_the_other_way() -> None:
 
 
 def test_the_owner_s_sheridan_street_file() -> None:
-    """Both blocks of Sheridan St NW, 3rd to 5th, one-way from FROMSTREET to
-    TOSTREET (westbound); nothing withheld, nothing for the loader to load."""
+    """Both blocks of Sheridan St NW, 3rd to 5th, one-way from TOSTREET to
+    FROMSTREET (eastbound); nothing withheld, nothing for the loader to load."""
     path = A.OVERRIDES_DIR / "2026-10-26-owner-sheridan-st-nw.json"
     document = json.loads(path.read_text())
     assert document["version"] == 1 and document["rows"] == []
     held = A.withheld_blocks()
     for entry in document["agency_blocks"]:
-        assert held[entry["blockkey"]] == A.WithheldBlock("SHERIDAN ST NW", frozenset(), "OB")
+        assert held[entry["blockkey"]] == A.WithheldBlock("SHERIDAN ST NW", frozenset(), "IB")
     assert len(document["agency_blocks"]) == 2
 
 

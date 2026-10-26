@@ -431,11 +431,13 @@ against traffic again.
 
 - `2026-10-26-owner-sheridan-st-nw.json` (the owner, 2026-10-26: "Sheridan street
   between 3rd and 5th streets are 1 way in the opposite direction. That change
-  isn't even on Google maps yet"): the 300 and 400 blocks of Sheridan St NW, 3rd
-  St to 5th St, one-way westbound (`OB` on both). DC still records both two-way;
-  OSM has the 400 block one-way eastbound (way 1044281798) and the 300 block
-  two-way (way 1044479731). No sign excepting bicycles was reported and DC records
-  no contraflow lane.
+  isn't even on Google maps yet"; asked which way: "Eastbound now, both
+  blocks"): the 300 and 400 blocks of Sheridan St NW, 3rd St to 5th St, one-way
+  eastbound (`IB` on both; DC draws both lines westward). DC still records both
+  two-way, which made the 400 block two-way on our map (row C4); OSM has it
+  one-way eastbound already (way 1044281798) and the 300 block two-way (way
+  1044479731). No sign excepting bicycles was reported and DC records no
+  contraflow lane.
 - `2026-10-02-owner-canal-whitehurst.json` (OWNER-DECISIONS 197, verbatim: "DC
   records of 20 mph on Canal Rd NW (block dc-4633425-0) and the Whitehurst Fwy
   (dc-4636053-0), owner 2026-10-02: "Override: keep LTS 4 (Recommended)". A
