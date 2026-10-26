@@ -189,6 +189,18 @@ function isTurnMovement(movement: string | null | undefined): movement is TurnMo
  * Island Avenue.", early enough for both.
  */
 export const JOG_M = 100;
+/**
+ * The most turns one jog joins (the owner, 2026-10-26: "a series of manuvers in short succession, make an arrow that
+ * includes all of them"; voice "a prep command with all three, then go step by step at the intersection").
+ */
+export const JOG_TURNS = 3;
+
+/** One of a jog's later turns, as the turn before it says it. */
+export interface JogTurn {
+  movement: TurnMovement;
+  street: string | null;
+  exit?: CircleExit;
+}
 
 export interface Cue {
   /** Its place in the list, also its key. */
@@ -213,12 +225,14 @@ export interface Cue {
   stop: number | null;
   /** A stop's own name (2026-10-24: the rider's, or a file's), said and shown with its number; absent with none. */
   stopName?: string;
-  /** A jog's first turn: the turn just after it (within JOG_M), said with it. */
-  then?: { movement: TurnMovement; street: string | null; exit?: CircleExit };
   /**
-   * A jog's second turn: said with the turn before (its `then`); on its own only at "now", and only where the
-   * turn before's "now" was never said (a gap in the fixes, a ride started or rejoined between the two). Still on
-   * the card and in the courses; not a row of the cue sheets.
+   * A jog's turns after this one (each within JOG_M of the one before, at most JOG_TURNS in all), in order: said
+   * with it early, drawn with it as one arrow; at "now" each turn is said on its own.
+   */
+  then?: JogTurn[];
+  /**
+   * A jog's later turn: said early with the jog's first (its `then`); on its own at "now", once the rider is past
+   * the turn before. Still on the card (with the turns after it) and in the courses; not a row of the cue sheets.
    */
   joined?: boolean;
   /** A turn at an unusual junction (v0.10.0): its ways, which the card draws in place of the plain arrow; never said. */
@@ -623,7 +637,7 @@ export function crossWords(road: string): string {
  * over the road; null for any other cue.
  */
 export function crossArrow(cue: Pick<Cue, "cross" | "across" | "then" | "movement">): "cross" | "cross_left" | "cross_right" | null {
-  const after = cue.cross ? cue.then?.movement : cue.across ? cue.movement : undefined;
+  const after = cue.cross ? cue.then?.[0]?.movement : cue.across ? cue.movement : undefined;
   if (after === "left" || after === "bear_left") return "cross_left";
   if (after === "right" || after === "bear_right") return "cross_right";
   return cue.cross ? "cross" : null;
@@ -638,27 +652,38 @@ export function acrossWords(road: string, movement: TurnMovement, street: string
  * ", then immediately bear left onto Rhode Island Avenue.": a jog's second turn, after the first; after a crossing
  * only ", then left onto ..." (the owner, 2026-10-20: "cross the street and turn left").
  */
-function thenWords(then: NonNullable<Cue["then"]>, crossing = false): string {
+function thenWords(then: JogTurn, crossing = false): string {
   return `, then ${crossing ? "" : "immediately "}${lowerFirst(turnWords(then.movement, then.street, false, then.exit ?? null))}`;
 }
 
 /**
- * A jog: each turn within JOG_M after a turn (not itself a jog's second) is said with it, the first
- * cue's text "Right onto 6th Street, then immediately bear left onto ...", the second kept (`joined`)
- * for the card and the courses (`phasesFor`, `step`).
+ * A jog: each turn within JOG_M after the one before (up to JOG_TURNS in all) is said with the first, its text
+ * "Right onto 6th Street, then immediately bear left onto ...". The later turns are kept (`joined`) for the card and
+ * the courses, each with the turns still after it (`phasesFor`, `step`).
  */
 function joinJogs(cues: Cue[]): void {
   for (let i = 0; i + 1 < cues.length; i++) {
     const first = cues[i];
-    const second = cues[i + 1];
-    if (first.kind !== "turn" || second.kind !== "turn" || first.joined || !first.movement || !second.movement) continue;
-    // A crossing is never said as a turn after another: it leads its own cue, with the turn after it. A turn across a
-    // road already says two things: the turn after it keeps its own cue.
-    if (second.cross || second.across || first.across) continue;
-    if (second.atM - first.atM > JOG_M) continue;
-    first.then = { movement: second.movement, street: second.street, ...(second.exit ? { exit: second.exit } : {}) };
-    first.text = first.text.replace(/\.$/, "") + thenWords(first.then, first.cross !== undefined);
-    second.joined = true;
+    if (first.kind !== "turn" || first.joined || !first.movement || first.across) continue;
+    const jog = [first];
+    for (let k = i + 1; k < cues.length && jog.length < JOG_TURNS; k++) {
+      const next = cues[k];
+      // A crossing is never said as a turn after another: it leads its own cue, with the turn after it. A turn across a
+      // road already says two things: the turn after it keeps its own cue.
+      if (next.kind !== "turn" || !next.movement || next.cross || next.across) break;
+      if (next.atM - cues[k - 1].atM > JOG_M) break;
+      jog.push(next);
+    }
+    if (jog.length < 2) continue;
+    const plain = jog.map((cue) => cue.text.replace(/\.$/, ""));
+    jog.forEach((cue, j) => {
+      if (j > 0) cue.joined = true;
+      const after = jog.slice(j + 1);
+      if (!after.length) return;
+      cue.then = after.map((t) => ({ movement: t.movement!, street: t.street, ...(t.exit ? { exit: t.exit } : {}) }));
+      cue.text = plain[j] + cue.then.map((t, n) => thenWords(t, n === 0 && cue.cross !== undefined).replace(/\.$/, "")).join("") + ".";
+    });
+    i += jog.length - 1;
   }
 }
 
@@ -847,9 +872,7 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
   }
   if (cue.kind === "stop") return cue.stopName ? `You have reached stop ${cue.stop}, ${cue.stopName}.` : `You have reached stop ${cue.stop}.`;
   if (phase === "now" && cue.movement) {
-    // A jog's "now" is short, the second turn being only seconds on: "Right now, then bear left onto ...".
-    const lead = cue.cross ? `Cross ${wayWords(cue.cross)}` : cue.exit ? "Exit" : MOVEMENT_WORDS[cue.movement];
-    if (cue.then) return `${lead} now, then ${lowerFirst(turnWords(cue.then.movement, cue.then.street, false, cue.then.exit ?? null))}`;
+    // A jog's turns are said one at a time at "now" (the owner, 2026-10-26: "go step by step at the intersection").
     if (cue.cross) return `Cross ${wayWords(cue.cross)} now.`;
     if (cue.across && cue.movement !== "uturn") return `Cross ${wayWords(cue.across)} now, then ${lowerFirst(turnWords(cue.movement, cue.street))}`;
     if (cue.movement === "uturn") return "Make a U-turn now.";
@@ -862,8 +885,8 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
 }
 
 /**
- * The phases a cue is said at, at a level, farthest first, with their thresholds at a speed. A jog's second turn
- * has "now" only, which `step` marks said when the turn before says its own "now".
+ * The phases a cue is said at, at a level, farthest first, with their thresholds at a speed. A jog's later turn
+ * has "now" only, which `step` says once the rider is past the turn before.
  */
 export function phasesFor(level: Verbosity, cue: Cue, speedMs: number): { phase: Phase; withinM: number }[] {
   if (!says(level, cue)) return [];
@@ -1003,6 +1026,8 @@ export function step(
       said[cue.index] = phases.map((p) => p.phase);
       continue;
     }
+    // A jog's later turn waits until the rider is past the turn before: step by step at the junction.
+    if (cue.joined && progress < model.cues[cue.index - 1].atM) break;
     // The nearest phase whose threshold is reached; any farther one is then skipped, not said late.
     const reached = phases.filter((p) => distance <= p.withinM);
     if (!reached.length) break;
@@ -1015,8 +1040,6 @@ export function step(
         cue,
         phase: phase.phase,
       });
-      // A jog's "now" says its second turn too, which then says nothing of its own.
-      if (phase.phase === "now" && cue.then) said[cue.index + 1] = ["now"];
     }
     said[cue.index] = phases.slice(0, phases.indexOf(phase) + 1).map((p) => p.phase);
     // A stop is passed once reached; the next cue waits for the next fix.

@@ -77,6 +77,7 @@ import type { PresetId } from "./lib/presets.ts";
 import { formatDistance, formatDuration, spokenDistance } from "./lib/format.ts";
 import { arrivalClock, atPace, paceFactor, paceStart, paceStep, type PaceTrack } from "./lib/arrival.ts";
 import { cueParts } from "./lib/cueShown.ts";
+import { jogArrowPath } from "./lib/jogArrow.ts";
 import { rideLightCorner } from "./lib/lightTimes.ts";
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
 import {
@@ -386,7 +387,7 @@ function arrowFor(
  * turn at an unusual junction (v0.10.0; lib/junctionShape.ts) is drawn as the junction: the way taken solid with
  * its arrowhead, the other ways dashed.
  */
-function CueShape({ shape, junction, exit }: { shape: ReturnType<typeof arrowFor>; junction?: JunctionShape; exit?: number }) {
+function CueShape({ shape, junction, exit, jog }: { shape: ReturnType<typeof arrowFor>; junction?: JunctionShape; exit?: number; jog?: string | null }) {
   if (junction?.ring && exit && shape !== "uturn" && shape !== "stop" && shape !== "end" && shape !== "warn") {
     // A circle: the ring with the exit's number in it, the way round solid, the exits passed dashed.
     const drawn = ringPaths(junction);
@@ -400,6 +401,14 @@ function CueShape({ shape, junction, exit }: { shape: ReturnType<typeof arrowFor
         <text x={RING.x} y={RING.y} textAnchor="middle" dominantBaseline="central" fontSize="12" fontWeight="700" fill="currentColor">
           {exit}
         </text>
+      </svg>
+    );
+  }
+  // Turns in quick succession (lib/jogArrow.ts): one arrow through them all, in place of the first turn's junction.
+  if (jog) {
+    return (
+      <svg className="cue-shape cue-jog" viewBox="0 0 48 56" aria-hidden="true" focusable="false">
+        <path d={jog} fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
@@ -2287,7 +2296,7 @@ export function RideMode({
           </div>
         ) : cue && progress !== null ? (
           <div className="cue-next">
-            <CueShape shape={shape} junction={cue.junction} exit={cue.exit?.number} />
+            <CueShape shape={shape} junction={cue.junction} exit={cue.exit?.number} jog={cue.cross ? null : jogArrowPath(cue)} />
             <div>
               {/* Greyed while GPS is weak or lost (any GPS note): the distance is from an old fix, not where the rider is. */}
               <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>
