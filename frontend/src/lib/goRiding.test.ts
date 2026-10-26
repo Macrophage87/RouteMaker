@@ -204,7 +204,9 @@ test("End ride is slid until the rider has arrived (the owner, 2026-10-19: \"Add
 test("ride card: fewer words on screen, the whole of them for screen readers (the owner, 2026-10-20)", () => {
   const ride = source("../RideMode.tsx");
   assert.match(ride, /<span className="visually-hidden">In <\/span>/, "\"In\" before the distance stays for screen readers");
-  assert.equal((ride.match(/<span className="visually-hidden">about <\/span>/g) ?? []).length, 2, "\"about\" before both to-go times stays for screen readers");
+  // One TimeToGo for both to-go times (the next stop and the end, lib/arrival.ts), its "about" and "arriving about" read.
+  assert.equal((ride.match(/<span className="visually-hidden">about <\/span>/g) ?? []).length, 1, "\"about\" before the to-go time stays for screen readers");
+  assert.equal((ride.match(/<TimeToGo seconds=/g) ?? []).length, 2, "both to-go times");
   assert.match(ride, /<span aria-hidden="true">\{cueShown\.head\.replace\(\/\\\.\$\/, ""\)\}<\/span>\s*<span className="visually-hidden">\{cue\.rideText \?\? cue\.text\}<\/span>/, "the full stop goes from the shown head only; the whole sentence is read");
 });
 

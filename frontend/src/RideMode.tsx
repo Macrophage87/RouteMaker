@@ -6,7 +6,7 @@
  *
  * - The cue card: the next turn, flagged junction or stop, its distance (US units first, metric in
  *   brackets) and the API's sentence for it. Not a live region: it changes with every fix.
- * - To go: distance and time to the next stop and to the end, at the route's own pace.
+ * - To go: distance, time and arrival clock time to the next stop and to the end, at the rider's pace against the route's (lib/arrival.ts).
  * - Two live regions of its own, polite for advance cues and assertive for "now", leaving the route
  *   and arrival; each repeats the count trick so the same sentence twice is said twice. A cue never
  *   moves the focus.
@@ -74,6 +74,7 @@ import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
 import type { PresetId } from "./lib/presets.ts";
 import { formatDistance, formatDuration, spokenDistance } from "./lib/format.ts";
+import { arrivalClock, atPace, paceFactor, paceStart, paceStep, type PaceTrack } from "./lib/arrival.ts";
 import { cueParts } from "./lib/cueShown.ts";
 import { rideLightCorner } from "./lib/lightTimes.ts";
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
@@ -231,6 +232,23 @@ export const rideVoice = new Voice(rideSpeech());
 export const RIDE_STARTED = "Ride started.";
 /** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
 export const END_RIDE_NAME = "End ride";
+/**
+ * ", 8 min · 6:42 AM" after a distance to go: the minutes and the clock time of arrival (the owner, 2026-10-26: "Add
+ * estimated clock time of arrival to the ride." and "Stops too"). "about" and "arriving about" are for screen readers
+ * only: fewer words on screen (the owner, 2026-10-20), every word for speech, and still an estimate.
+ */
+function TimeToGo({ seconds, nowMs }: { seconds: number; nowMs: number }) {
+  return (
+    <>
+      , <span className="visually-hidden">about </span>
+      {formatDuration(seconds)}
+      <span aria-hidden="true"> · </span>
+      <span className="visually-hidden">, arriving about </span>
+      <span className="ride-arrive">{arrivalClock(nowMs, seconds)}</span>
+    </>
+  );
+}
+
 /** End ride is a slide to end until the rider has arrived (the owner, 2026-10-19: "Add a swipe confirmation on ending the ride unless at the destination"). */
 export const SLIDE_TO_END = "Move it to the end to end the ride";
 /** The keys that move a range: only these count as a step of End ride's slide. */
@@ -781,6 +799,9 @@ export function RideMode({
   const ended = useRef(false);
   // The ride's own figures for the summary at End ride (lib/rideStats.ts), from the Start press.
   // Undo after End ride carries on from the figures so far, not from nought (the step across the pause not counted).
+  const paceRef = useRef<PaceTrack>(paceStart());
+  // The arrival clock for "Where am I?": the plan's seconds at the rider's own pace, from now.
+  const arrivingAt = useCallback((seconds: number) => arrivalClock(Date.now(), seconds / paceFactor(paceRef.current)), []);
   const statsRef = useRef<RideStats>(resumeStats ? statsPause(resumeStats) : statsStart(Date.now()));
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
@@ -1250,6 +1271,15 @@ export function RideMode({
       statsRef.current = stepped.state.walking
         ? statsPause(statsRef.current)
         : statsStep(statsRef.current, fix, out.state, modelRef.current, routeRef.current.profile);
+      // The rider's pace against the plan, for the arrival times (lib/arrival.ts).
+      const line = modelRef.current;
+      paceRef.current = paceStep(paceRef.current, {
+        atMs: fix.at,
+        progressM: out.state.progressM,
+        line: `${line.lengthM}:${line.coordinates.length}`,
+        paceMs: line.paceMs,
+        riding: !stepped.state.walking && !pausedRef.current && !out.state.off && !out.state.arrived && fix.accuracyM <= POOR_FIX_M,
+      });
       if (stepped.state.walking) return;
       // Restarted part way (Stephen 2026-10-24): the first place on the line past a stop asks, once, which are done.
       if (!restartAsked.current && out.state.progressM !== null) {
@@ -1291,10 +1321,10 @@ export function RideMode({
       }
       if (sayWhereNext.current && out.state.progressM !== null) {
         sayWhereNext.current = false;
-        announcer.current?.answer(whereAmI(modelRef.current, out.state, false, milesRef.current));
+        announcer.current?.answer(whereAmI(modelRef.current, out.state, false, milesRef.current, arrivingAt));
       }
     },
-    [gate, replan, say, notify, checkCueSheet, approach, trip, takeOther, stopName],
+    [gate, replan, say, notify, checkCueSheet, approach, trip, takeOther, stopName, arrivingAt],
   );
   const onFixRef = useRef(onFix);
   onFixRef.current = onFix;
@@ -1461,13 +1491,13 @@ export function RideMode({
   const askWhere = useCallback(() => {
     // Walking to the dock: the walk, from here.
     const walk = tripRef.current.walking && approach ? approachWords(approach, rideRef.current.fix?.point ?? null) : null;
-    const spoken = walk ? walk.spoken : whereAmI(modelRef.current, rideRef.current, false, milesRef.current);
-    showToast(walk ? walk.shown : whereAmI(modelRef.current, rideRef.current, true, milesRef.current));
+    const spoken = walk ? walk.spoken : whereAmI(modelRef.current, rideRef.current, false, milesRef.current, arrivingAt);
+    showToast(walk ? walk.shown : whereAmI(modelRef.current, rideRef.current, true, milesRef.current, arrivingAt));
     // On demand: through the chosen outputs; with neither chosen, through the polite region too, since
     // the rider asked (the answer is also on screen).
     announcer.current?.answer(spoken);
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text: spoken, count: s.count + 1 }));
-  }, [approach, showToast]);
+  }, [approach, showToast, arrivingAt]);
   // Where am I? and Re-centre are one button (the owner, 2026-10-20: "We can merge the where am I and the center on map
   // button functionality"): the map follows the rider again, and the answer is said and shown.
   const findMe = useCallback(() => {
@@ -1835,7 +1865,19 @@ export function RideMode({
 
   const progress = ride.progressM;
   const cue = progress === null ? null : nextAction(model, progress);
-  const togo = progress === null ? null : toGo(model, progress);
+  // The time to go at the rider's own pace against the plan's (lib/arrival.ts), and the clock it ends at.
+  const togo = progress === null ? null : atPace(toGo(model, progress), paceFactor(paceRef.current));
+  // A tick every 30 s keeps the clock times current while no fix comes (paused, in a tunnel); a fix renders sooner.
+  const [, setClockTick] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockTick((n) => n + 1), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const clockMs = Date.now();
+  // The to-go words as shown, for the large text's fit: a minute's change can lengthen them ("9:59" to "10:00").
+  const togoWords = [togo?.stop, togo?.end]
+    .map((t) => (t && t.seconds !== null ? `${formatDuration(t.seconds)}${arrivalClock(clockMs, t.seconds)}`.length : 0))
+    .join(",");
   const cueShown = cueParts(cue ? (cue.rideText ?? cue.text) : "");
   // The distance's metric in brackets a size smaller, so the line stays one line with large text.
   // A U-turn is now: no distance (it is at the line's start, behind the rider).
@@ -1846,7 +1888,7 @@ export function RideMode({
   // screen as possible"), set as --cue-fit on the card. Worked out when the turn, the size or the screen changes, not each
   // fix, with a little room left for the distance's words to grow; the small print stays 16 pt or more (styles.css).
   const cardRef = useRef<HTMLDivElement>(null);
-  const fitKey = `${textSize}|${cueShown.head}|${cueShown.rest}|${distanceWords.length}|${ride.off}|${ride.arrived}|${cueSheetOn}|${settingsOpen}`;
+  const fitKey = `${textSize}|${cueShown.head}|${cueShown.rest}|${distanceWords.length}|${ride.off}|${ride.arrived}|${cueSheetOn}|${settingsOpen}|${togoWords}`;
   useLayoutEffect(() => {
     const card = cardRef.current;
     if (!card) return;
@@ -2266,13 +2308,7 @@ export function RideMode({
                 <dt>To stop {togo.stop.number}</dt>
                 <dd>
                   {formatDistance(togo.stop.metres)}
-                  {togo.stop.seconds !== null && (
-                  <>
-                    {/* "about" only for screen readers: fewer words on screen (the owner, 2026-10-20), still an estimate. */}
-                    , <span className="visually-hidden">about </span>
-                    {formatDuration(togo.stop.seconds)}
-                  </>
-                )}
+                  {togo.stop.seconds !== null && <TimeToGo seconds={togo.stop.seconds} nowMs={clockMs} />}
                 </dd>
               </div>
             )}
@@ -2280,13 +2316,7 @@ export function RideMode({
               <dt>To the end</dt>
               <dd>
                 {formatDistance(togo.end.metres)}
-                {togo.end.seconds !== null && (
-                  <>
-                    {/* "about" only for screen readers: fewer words on screen (the owner, 2026-10-20), still an estimate. */}
-                    , <span className="visually-hidden">about </span>
-                    {formatDuration(togo.end.seconds)}
-                  </>
-                )}
+                {togo.end.seconds !== null && <TimeToGo seconds={togo.end.seconds} nowMs={clockMs} />}
               </dd>
             </div>
           </dl>
