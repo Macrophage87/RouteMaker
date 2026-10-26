@@ -86,6 +86,7 @@ CONTRACT_KEYS = {
     "road_hazards",
     # Additive, v0.12.3: the rustic roads, byways and named bike routes it rides.
     "scenic_roads",
+    "steep_grades",
     "calm_search",
     "detour",
     # Additive, ROUTE-DESCRIPTION (OWNER-DECISIONS item 220): the route in words.

@@ -1,7 +1,8 @@
 /**
  * Load route's popup (lib/loadRoute.ts): the platform's modal <dialog>, as Start ride's computer question is. Signed
  * out, Sign in with Discord comes first (the owner, 2026-10-22: "If not signed in to discord prompt that too"); then
- * Open GPX file and the rider's routes, one tap each. Escape or Close goes back to Load route.
+ * Open GPX file and the rider's routes, one tap each. Escape or Close goes back to the control that opened it (Plan's
+ * Load route, or Go's More > Saved routes).
  */
 import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
 import { DiscordLogo } from "./DiscordLogo.tsx";
@@ -37,6 +38,8 @@ import { listRoutes, readRoute, type SavedRoute, type SavedSummary } from "./lib
 
 export interface LoadRouteDialogProps {
   open: boolean;
+  /** The popup's name: Load route from Plan's bar, Saved routes from Go's More. */
+  title?: string;
   onClose: () => void;
   signedIn: boolean;
   /** Signed out, where the server signs riders in: keeps the plan across the round trip. Null where it does not. */
@@ -49,7 +52,7 @@ export interface LoadRouteDialogProps {
   onOpenKept: (route: KeptRoute) => void;
 }
 
-export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx, onOpenSaved, onOpenKept }: LoadRouteDialogProps) {
+export function LoadRouteDialog({ open, title = LOAD_ROUTE, onClose, signedIn, signIn, preset, onGpx, onOpenSaved, onOpenKept }: LoadRouteDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const opener = useRef<Element | null>(null);
   const headingId = useId();
@@ -194,7 +197,7 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
       )}
       {open && !gpx && (
         <>
-          <h2 id={headingId}>{LOAD_ROUTE}</h2>
+          <h2 id={headingId}>{title}</h2>
           <div className="load-route-top">
             {!signedIn && signIn && (
               <a
