@@ -177,6 +177,7 @@ import {
 } from "./lib/closureMap.ts";
 import { ViaHold } from "./lib/viaHold.ts";
 import { planLegLines, routeDrawnLines } from "./lib/planLegs.ts";
+import { browserCompassEnv, watchCompass } from "./lib/compassHeading.ts";
 
 
 export type StressAvailability = "checking" | "available" | "unavailable";
@@ -2524,11 +2525,36 @@ export function MapView(props: Props) {
   const riderMarker = useRef<Marker | null>(null);
   const following = useRef(false);
   const resetSeen = useRef(props.followReset);
+  // The phone's compass until the ride's first GPS heading (lib/compassHeading.ts, the owner, 2026-10-26): track-up
+  // turns to the way the phone faces before the rider moves, then GPS takes over for the rest of the ride.
+  const compassDeg = useRef<number | null>(null);
+  const gpsHeadingSeen = useRef(false);
+  const stopCompass = useRef<(() => void) | null>(null);
+  const riding = !!props.rider;
+  useEffect(() => {
+    if (!riding || !props.headingUp || gpsHeadingSeen.current) return;
+    stopCompass.current = watchCompass(browserCompassEnv(), (deg) => {
+      compassDeg.current = deg;
+      const map = mapRef.current;
+      const now = callbacks.current;
+      const rider = now.rider ?? null;
+      // Only while the camera follows track-up; a map moved by hand stays where the rider put it.
+      if (!map || !rider || !now.follow || !now.headingUp || !following.current || gpsHeadingSeen.current) return;
+      const ahead = riderOffset(map.getContainer(), RIDER_AT);
+      map.easeTo({ center: rider.point, bearing: deg, offset: [0, ahead], padding: NO_PADDING, duration: reducedMotion() ? 0 : 200 });
+    });
+    return () => {
+      stopCompass.current?.();
+      stopCompass.current = null;
+      compassDeg.current = null;
+    };
+  }, [riding, props.headingUp]);
   useEffect(() => {
     const map = mapRef.current;
     const rider = props.rider ?? null;
     if (!map) return;
     if (rider === null) {
+      gpsHeadingSeen.current = false;
       riderMarker.current?.remove();
       riderMarker.current = null;
       // The ride over: a map turned to the rider's heading (track-up, the default) is north-up again.
@@ -2549,6 +2575,13 @@ export function MapView(props: Props) {
     } else {
       riderMarker.current.setLngLat(rider.point);
     }
+    if (rider.headingDeg !== null && !gpsHeadingSeen.current) {
+      // Moving: GPS has the heading from now on, and the compass stops.
+      gpsHeadingSeen.current = true;
+      stopCompass.current?.();
+      stopCompass.current = null;
+      compassDeg.current = null;
+    }
     riderMarker.current.setRotation(rider.headingDeg ?? 0);
     riderMarker.current.getElement().classList.toggle("rider-marker-still", rider.headingDeg === null);
     if (!props.follow) {
@@ -2557,9 +2590,16 @@ export function MapView(props: Props) {
       if (!props.headingUp && map.getBearing() !== 0) map.easeTo({ bearing: 0, padding: NO_PADDING, duration: reducedMotion() ? 0 : 300 });
       return;
     }
-    // Track-up: the rider's heading; with none yet, north-up, and with none for now (stopped at a light),
-    // the bearing the map has, so it does not swing north and back.
-    const bearing = props.headingUp && rider.headingDeg !== null ? rider.headingDeg : props.headingUp && following.current ? map.getBearing() : 0;
+    // Track-up: the rider's heading; with none yet, the way the phone faces (the compass, above) or else north-up,
+    // and with none for now (stopped at a light), the bearing the map has, so it does not swing north and back.
+    const bearing =
+      props.headingUp && rider.headingDeg !== null
+        ? rider.headingDeg
+        : props.headingUp && compassDeg.current !== null
+          ? compassDeg.current
+          : props.headingUp && following.current
+            ? map.getBearing()
+            : 0;
     // Close in once as following starts; a pinch out after that is kept (it does not stop following). Back on the
     // rider after the screen was left alone (followReset), the ride's own zoom.
     const reset = props.followReset !== resetSeen.current;
