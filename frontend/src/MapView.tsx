@@ -90,6 +90,7 @@ import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
 import { attachWaterInteraction } from "./waterInteraction.ts";
+import { MASS_LAYER_IDS, massLayerIds } from "./massStyle.js";
 import { addClimbs, climbsUnder, CLIMBS_FROM_DEFAULT, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, setTrailClimbs, subscribeHideBusy, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
 import { attachClimbInteraction } from "./climbInteraction.ts";
 import { climbCardAfterClose } from "./lib/climbCard.ts";
@@ -162,6 +163,7 @@ import {
   closureFeatures,
   closureMarkerName,
   closuresOf,
+  closuresUnderNames,
   AREA_POLL_MS,
   areaClosuresAsk,
   closuresKey,
@@ -462,6 +464,12 @@ function riderOffset(container: HTMLElement, at: number): number {
 }
 /** The closures in force at the ride (v0.7.0, lib/closureMap.ts). */
 const CLOSURE_SOURCE = "closures";
+/** The names the closed stretches' lines go under: the major trails' and the streets'. */
+const CLOSURE_NAME_LAYERS: readonly string[] = [TRAIL_LABEL_LAYER_ID, ...ROAD_LABEL_LAYER_IDS];
+/** The lines they stay over though added over the trail names: the Mass Ride map's (massStyle.js), not its label. */
+const CLOSURE_OVER_LINES: readonly string[] = massLayerIds().filter((id: string) => id !== MASS_LAYER_IDS.avoidLabel);
+/** The closed stretches' lines under the street names (lib/closureMap.ts); left where they are while a ride lifts the names. */
+const closuresUnder = (map: maplibregl.Map, lifted: boolean) => !lifted && closuresUnderNames(map, CLOSURE_NAME_LAYERS, CLOSURE_OVER_LINES);
 // Bikeshare's walk legs (lib/bikeshare.ts): dotted, with the operator's source citation as the
 // source's attribution, so the attribution control shows it exactly while a bikeshare plan's
 // layer is visible and never otherwise (OWNER-DECISIONS 301).
@@ -1244,6 +1252,8 @@ export function MapView(props: Props) {
       if (added) setOverlayFade(map, routeOverlayFade(callbacks.current.route));
       // Climbs that came first are under the trail names it brings, as syncClimbs puts them when the names are there.
       if (added) climbsUnder(map, TRAIL_LABEL_LAYER_ID);
+      // Closures drawn first go under the trail names it brings, as they went under the street names.
+      if (added) closuresUnder(map, labelHomes.current.size > 0);
       return added;
     };
 
@@ -1457,9 +1467,10 @@ export function MapView(props: Props) {
         },
         paint: { "text-color": ["get", "color"], "text-halo-color": "#ffffff", "text-halo-width": 3.5 },
       });
-      // Closures in force at the ride (v0.7.0, lib/closureMap.ts): over the route, so a closed stretch on it shows.
-      // A white casing, then red (closed) or amber (bike lane blocked); dashed where it "may still apply". Their
-      // markers (buttons) carry the names and open the cards.
+      // Closures in force at the ride (v0.7.0, lib/closureMap.ts). A white casing, then red (closed) or amber (bike
+      // lane blocked); dashed where it "may still apply". Their markers (buttons) carry the names and open the cards.
+      // The lines go under the street names (closuresUnderNames, 2026-10-26), so a name is read over the amber; that is
+      // under the route too, whose own line shows where it goes through, with the closure's marker over it.
       map.addSource(CLOSURE_SOURCE, {
         type: "geojson",
         data: closureFeatures(
@@ -1493,6 +1504,7 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "butt" },
         paint: { "line-color": ["match", ["get", "severity"], "amber", LANE_AMBER, CLOSED_RED], "line-width": 5, "line-dasharray": [2, 1.2] },
       });
+      closuresUnder(map, labelHomes.current.size > 0);
       // Under the route (before its casing), so the circle's tint never covers the line.
       map.addSource(ACCURACY_SOURCE, { type: "geojson", data: accuracyData(callbacks.current.accuracy) });
       map.addLayer({
@@ -2692,8 +2704,12 @@ export function MapView(props: Props) {
     if (!map) return;
     const riding = Boolean(props.rideLabels);
     const apply = () => {
-      // Climbs added during the ride went under the route: home, they go back under the names, as syncClimbs puts them.
-      if (setRideLabelOrder(map, riding, labelHomes.current)) climbsUnder(map, TRAIL_LABEL_LAYER_ID);
+      // Climbs added during the ride went under the route: home, they go back under the names, as syncClimbs puts them;
+      // closures added (or trail names come) during it go under the names too.
+      if (setRideLabelOrder(map, riding, labelHomes.current)) {
+        climbsUnder(map, TRAIL_LABEL_LAYER_ID);
+        closuresUnder(map, false);
+      }
     };
     apply();
     if (!riding) return;

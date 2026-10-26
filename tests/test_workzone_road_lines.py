@@ -123,6 +123,26 @@ class TestRules:
         assert not wz.on_interstate(zone(roads=("MD 32", "I-95")))
         assert not wz.on_interstate(zone(roads=()))
 
+    def test_the_open_part_of_a_line(self) -> None:
+        line = ((-77.0, 38.9), (-76.99, 38.9), (-76.98, 38.9))
+        n = 21
+        assert wz.open_part(line, [False] * n) is line
+        assert wz.open_part(line, [True] * 13 + [False] * 8) is None, "mostly barred: dropped"
+        assert wz.open_part(line, [False] + [True] * 19 + [False]) is None
+        start = wz.open_part(line, [True] * 5 + [False] * 16)
+        assert start == ((-76.995, 38.9), (-76.99, 38.9), (-76.98, 38.9))
+        end = wz.open_part(line, [False] * 16 + [True] * 5)
+        assert end == ((-77.0, 38.9), (-76.99, 38.9), (-76.985, 38.9))
+        middle = wz.open_part(line, [False] * 8 + [True] * 5 + [False] * 8)
+        assert middle is line, "a barred stretch between open ones is kept"
+
+    def test_samples_about_every_hundred_metres(self) -> None:
+        short = ((-77.0, 38.9), (-76.999, 38.9))
+        assert len(wz.barred_samples(short)) == wz.BARRED_SAMPLES
+        eight_miles = ((-77.0, 38.9), (-76.85, 38.9))  # about 13 km
+        assert 125 <= len(wz.barred_samples(eight_miles)) <= 135
+        assert len(wz.barred_samples(((-77.0, 38.9), (-76.0, 38.9)))) == wz.BARRED_MOST
+
     def test_samples_spread_along_the_line(self) -> None:
         points = wz.samples(ROAD, 5)
         assert len(points) == 5
@@ -301,11 +321,32 @@ class TestBarred:
                 f"INSERT INTO {table}.segment VALUES ('road', ST_GeomFromText(%s, 4326))",
                 ["LINESTRING(" + ", ".join(f"{x} {y}" for x, y in frontage) + ")"],
             )
-        assert workzones.barred_zones(zones, table) == {0}
+        kept = workzones.without_barred(zones, table)
+        assert [z.zone_id for z in kept] == ["z1", "z2", "z3"]
+        assert [z.line for z in kept[1:]] == [z.line for z in zones[2:]]
+        # The straight line's ends, on the motorway, are cut off.
+        assert wz.line_m([kept[0].line[0], A]) < wz.BARRED_STEP_M * 1.5 and kept[0].line[0] != A
+
+    def test_a_zone_that_runs_onto_a_barred_road_is_cut_where_it_does(self, table) -> None:
+        # The owner, 2026-10-26: US 340's zone ran from Jefferson Pike, open, onto the freeway.
+        street = [(-77.110, 38.990), A]  # about 5.2 km, open, then the 4.6 km motorway
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {table}.segment VALUES ('road', ST_GeomFromText(%s, 4326))",
+                ["LINESTRING(" + ", ".join(f"{x} {y}" for x, y in street) + ")"],
+            )
+        [kept] = workzones.without_barred([zone(line=[*street, *ROAD[1:]])], table)
+        assert kept.line[0] == street[0]
+        assert all(lat >= 38.989 for _lon, lat in kept.line), "none of it along the motorway"
+        assert wz.line_m([kept.line[-1], A]) < wz.BARRED_STEP_M * 1.5
+        # Backwards the same: the open part is kept, from the motorway's end.
+        [back] = workzones.without_barred([zone(line=[*ROAD[::-1], street[0]])], table)
+        assert back.line[-1] == street[0] and wz.line_m([back.line[0], A]) < wz.BARRED_STEP_M * 1.5
 
     def test_no_table_no_verdict(self) -> None:
-        assert workzones.barred_zones([zone(line=ROAD)], "no_such_schema_here") == set()
-        assert workzones.barred_zones([], "no_such_schema_here") == set()
+        zones = [zone(line=ROAD)]
+        assert workzones.without_barred(zones, "no_such_schema_here") == zones
+        assert workzones.without_barred([], "no_such_schema_here") == []
 
 
 @db
@@ -348,7 +389,7 @@ def test_a_refresh_stores_the_road_and_the_place(monkeypatch) -> None:
     # A zone along a road the map bars is dropped once it is on the road.
     feed["features"][0]["properties"]["core_details"]["road_names"] = ["MD 97"]
     body = json.dumps(feed).encode()
-    monkeypatch.setattr(workzones, "barred_zones", lambda zones: set(range(len(zones))))
+    monkeypatch.setattr(workzones, "without_barred", lambda zones: [])
     line = workzones.refresh(lambda url, timeout: body, lambda s: None, lambda: NOW)
     assert line == "work zones: md 0 zones"
     workzones.forget()
