@@ -89,7 +89,7 @@ test("the Layers sheet: every section is a LayerSection, each with its own key i
   for (const [file, part] of [["./federalLegend.ts", "h(FederalKey"], ["./waterLegend.ts", "h(WaterLegendNotes"], ["../RailStations.tsx", "<RailStationsLegend />"], ["./climbsLegend.ts", "CLIMBS_HELP)"], ["./scenicLayer.ts", "h(ScenicLegend"]]) {
     assert.ok(readFileSync(new URL(file, import.meta.url), "utf8").includes(part), `${file}: ${part}`);
   }
-  assert.match(layers, /<StressSectionKey [^>]*\/>\s*\{\/\*[^}]*\*\/\}\s*<JunctionLegend \/>\s*\{\/\*[\s\S]*?\*\/\}\s*<RouteHazardKey \/>\s*<\/LayerSection>/);
+  assert.match(layers, /<StressSectionKey [^>]*\/>\s*\{\/\*[^}]*\*\/\}\s*<JunctionLegend \/>\s*\{\/\*[\s\S]*?\*\/\}\s*\{steepGradesFor\(preset\) && <SteepGradeKey \/>\}\s*\{\/\*[\s\S]*?\*\/\}\s*<RouteHazardKey \/>\s*<\/LayerSection>/);
   assert.equal((layers.match(/<LayerSection\b/g) ?? []).length, 3, "Traffic stress, Places to see (v0.7.0) and Trails and terrain here; federal, water and rail in their own files");
   for (const file of ["./federalLegend.ts", "./waterLegend.ts", "../RailStations.tsx"]) {
     assert.match(readFileSync(new URL(file, import.meta.url), "utf8"), /LayerSection/, file);

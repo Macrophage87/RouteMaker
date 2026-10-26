@@ -18,6 +18,8 @@ import {
   closureFeatures,
   closureMarkerName,
   closuresOf,
+  closuresUnderNames,
+  CLOSURE_LINE_LAYERS,
   noticeCard,
   noticeMarkerName,
   parkNoticesOf,
@@ -287,4 +289,59 @@ test("the same answer again leaves the map alone; a changed end or wording redra
   assert.equal(closuresKey(a), closuresKey([{ ...a[0] }]));
   assert.notEqual(closuresKey(a), closuresKey([{ ...a[0], end: "2027-03-02T05:00:00Z" }]));
   assert.notEqual(closuresKey(a), closuresKey([]));
+});
+
+test("the closed stretches' lines go under the street names, so a name reads over the amber", () => {
+  const order = ["roads", "stress-lts4", "roads_labels_minor", "roads_labels_major", "route-casing", "route-line", "closure-casing", "closure-line", "closure-line-maybe", "station-names"];
+  const map = {
+    getLayersOrder: () => [...order],
+    moveLayer(id: string, before?: string) {
+      order.splice(order.indexOf(id), 1);
+      order.splice(before ? order.indexOf(before) : order.length, 0, id);
+    },
+  };
+  const names = ["trail-name", "roads_labels_major", "roads_labels_minor"];
+  assert.equal(closuresUnderNames(map, names), true);
+  assert.deepEqual(order, ["roads", "stress-lts4", ...CLOSURE_LINE_LAYERS, "roads_labels_minor", "roads_labels_major", "route-casing", "route-line", "station-names"]);
+  assert.equal(closuresUnderNames(map, names), false, "already there");
+  // The overlay's trail names, come later and lower: the lines go under them too.
+  order.splice(2, 0, "trail-name");
+  assert.equal(closuresUnderNames(map, names), true);
+  assert.deepEqual(order.slice(0, 6), ["roads", "stress-lts4", ...CLOSURE_LINE_LAYERS, "trail-name"]);
+  assert.equal(closuresUnderNames({ getLayersOrder: () => ["closure-casing"], moveLayer: () => assert.fail() }, names), false, "no names yet");
+  const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  for (const id of CLOSURE_LINE_LAYERS) assert.match(view, new RegExp(`id: "${id}"`));
+  assert.match(view, /if \(added\) closuresUnder\(map, labelHomes\.current\.size > 0\);/, "when the trail names come");
+  assert.match(view, /closuresUnder\(map, labelHomes\.current\.size > 0\);\n\s+\/\/ Under the route \(before its casing\)/, "when the lines are added");
+  assert.match(view, /climbsUnder\(map, TRAIL_LABEL_LAYER_ID\);\n\s+closuresUnder\(map, false\);/, "after a ride, with the names home");
+});
+
+test("the Mass Ride map's lines stay under the closures, though they come over the trail names", () => {
+  const order = ["stress-lts4", "trail-name", "mtb-name", "mass-line-good", "mass-avoid", "mass-avoid-label", "roads_labels_minor", "route-casing", ...CLOSURE_LINE_LAYERS];
+  const map = {
+    getLayersOrder: () => [...order],
+    moveLayer(id: string, before?: string) {
+      order.splice(order.indexOf(id), 1);
+      order.splice(before ? order.indexOf(before) : order.length, 0, id);
+    },
+  };
+  const names = ["trail-name", "roads_labels_minor"];
+  const over = ["mass-line-good", "mass-avoid", "mass-hazard-not-here"];
+  assert.equal(closuresUnderNames(map, names, over), true);
+  assert.deepEqual(order, ["stress-lts4", "mass-line-good", "mass-avoid", ...CLOSURE_LINE_LAYERS, "trail-name", "mtb-name", "mass-avoid-label", "roads_labels_minor", "route-casing"]);
+  assert.equal(closuresUnderNames(map, names, over), false, "already there");
+});
+
+test("after a ride, closures added during it go under the names that came home", () => {
+  // A resumed ride: the names were lifted over the route when the closures were added, at the top.
+  const order = ["stress-lts4", "roads_labels_minor", "route-casing", "roads_labels_major", "station-names", ...CLOSURE_LINE_LAYERS];
+  const map = {
+    getLayersOrder: () => [...order],
+    moveLayer(id: string, before?: string) {
+      order.splice(order.indexOf(id), 1);
+      order.splice(before ? order.indexOf(before) : order.length, 0, id);
+    },
+  };
+  assert.equal(closuresUnderNames(map, ["roads_labels_major", "roads_labels_minor"]), true);
+  assert.deepEqual(order.slice(0, 5), ["stress-lts4", ...CLOSURE_LINE_LAYERS, "roads_labels_minor"]);
 });

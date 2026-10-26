@@ -2167,6 +2167,15 @@ and in a copied or shared link, and Copy link and Share then say "This link incl
 the destination." (`linkLocationNote`, `frontend/src/lib/geolocation.ts`). `my_go` is left out
 of the beta's data shipment (`scripts/beta/ship-data.sh` `EXCLUDED_TABLE_DATA`), as the other tables that point at an account are.
 
+**Favorite places** (v0.12.5) live on the same row (`my_go.places`, a JSON list; GET and POST
+`/api/me/places`): Work and the rider's other saved places, at most 20, each one point rounded to
+5 decimal places and its name. They follow the same rules as Home: never logged, deleted with the
+row, and left out of the beta's data shipment with `my_go`. The migration is
+`core/migrations/0049_my_go_places.py` (one column with a default of `[]`), and
+`0050_my_go_places_db_default.py` keeps that default in the database, so the v0.12.4 api still
+saves a rider's first My Go between migrate and its recreation, and after an image rollback. Both
+reverse cleanly with `migrate core 0048`.
+
 **The migration** is `core/migrations/0019_my_go.py` (one new table; nothing else changed), after
 `0018_junction_suggestions`, so the chain stays linear with one leaf. It reverses cleanly
 (`migrate core 0018` drops the table). `migrate` runs at `up`, as always.
@@ -6255,6 +6264,18 @@ Drive, Francis Drive and Huntley Avenue are all mapped `informal=yes`): its `inf
 closure comes off and it gets `rm:walk_link`, `bicycle=dismount`, as a station's footway
 does, so the route says to walk the bike.
 
+**Trailhead parking aisles (v0.12.5, with the next map update).** Valhalla makes every
+parking aisle destination-only (a 600 s penalty to enter), so a trail that starts in a
+parking lot was cut off from the road beside it. The owner reported the Rock Creek Trail
+at Beach Drive and the Maryland line, where two aisles of about 40 ft (13 m) are the
+trail's only join, and the route ran half a mile (0.8 km) on Beach Drive beside it.
+`routemaker.aisle_links` finds the parking aisles with no bicycle tag and public access
+that lead from a trail's dead end to another bicycle-open way within 260 ft (80 m), each
+at most 500 ft (150 m) long; they get `rm:aisle_link` and the remap routes them as plain
+service roads, as it does aisles tagged `bicycle=yes` (PR #197). Driveways are left out:
+most private ones carry no access tag. The rebuild log's facility line counts them
+("parking aisles routed as links where a trail ends").
+
 **NPS units.** Tag rules only. A per-park "paved and designated only" rule goes
 in `pipeline.trail_closures.PARK_RULES` after that park's compendium has been
 read, which needs the owner's approval as a fetch.
@@ -7747,7 +7768,10 @@ Python 3.11 or later, standard library only.
 - **Draft:** a JSON file outside the repo (the scratchpad, or the PC's private ride
   folder; the script refuses a draft inside the repo) naming one node or way, `expect` (the tags as the owner was shown them, null =
   absent), `set` (null = remove), `comment` and `source` (`survey`). Only the keys in
-  `ALLOWED_KEYS` may change, at most four; `highway` only on a node, to a junction control.
+  `ALLOWED_KEYS` may change, at most four; `highway` only on a node, to a junction control;
+  `oneway` only on a way, to `yes`, `-1` or `no` (a street whose direction changed on the
+  ground; in the District also add the owner's block direction, fixtures/overrides/README.md,
+  "Block corrections", or DC's two-way record keeps the street two-way on our map).
   No GPS track, rider or ride date in the comment, source or file.
 - **Check:** `python3 scripts/osm_edit.py show edit.json` prints the diff against OSM now
   and exits 2 if a tag changed since the draft.
