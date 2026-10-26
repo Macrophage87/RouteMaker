@@ -4593,6 +4593,8 @@ export function App() {
   const planBar = planFirst && (barRoute || barSave || barLoad || can.undo || can.redo || points.length > 0);
   // Load route's popup, and where it was opened from: Plan's bar (an empty plan) or Go's More (Saved routes).
   const [loadOpen, setLoadOpen] = useState<"plan" | "go" | null>(null);
+  // A popup closed by a mode change or a ride (not by its own Close) does not open again on the way back.
+  useEffect(() => setLoadOpen(null), [mode, riding]);
   const gpxInput = useRef<HTMLInputElement | null>(null);
   const gpxChoice = useRef<GpxChoice | null>(null);
   const barFocused = useRef(false);
