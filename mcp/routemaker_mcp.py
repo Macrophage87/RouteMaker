@@ -2617,6 +2617,26 @@ TOOLS = [
                         " page draws a small map of that stretch."
                     ),
                 },
+                "photos": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "alt_text": {"type": "string", "minLength": 1, "maxLength": 300},
+                            "caption": {"type": "string", "maxLength": 200},
+                            "section": {"type": "integer", "minimum": 0, "default": 0},
+                        },
+                        "required": ["alt_text"],
+                    },
+                    "description": (
+                        "Photos the rider showed you, described: alt_text says what each shows"
+                        " for people who cannot see it; section 0 puts it under About this ride,"
+                        " 1 and on under that highlighted section. No file is sent: each waits"
+                        " on the draft's page for the admin to add its photo. On replace, those"
+                        " still waiting are described again; photos already added stay."
+                    ),
+                },
                 "replace": {
                     "type": "boolean",
                     "default": False,
@@ -2655,6 +2675,7 @@ POST_FIELDS = (
     "season_start",
     "season_end",
     "sections",
+    "photos",
     "replace",
 )
 
@@ -3296,6 +3317,11 @@ class Server:
         out["notes"] = [
             "a draft: only admins can see the page until it is published in the admin",
         ]
+        if out.get("photos_waiting"):
+            out["notes"].append(
+                "each photo described waits for its file: the admin adds it on the draft's page"
+                " (For admins, Photos)"
+            )
         return out
 
     # open_link
