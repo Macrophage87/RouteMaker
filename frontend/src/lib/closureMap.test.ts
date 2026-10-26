@@ -275,6 +275,9 @@ test("a reviewer's closure gets one marker on its middle piece with no route, an
   const pieces = [0, 1, 2, 3, 4].map((i) => item({ id: `reviewer-4-${i}`, source: "reviewer", effect: "none", can_bypass: false }));
   const other = item({ id: "reviewer-3-0", source: "reviewer", effect: "none", can_bypass: false });
   assert.deepEqual(markerItems([...pieces, other, item()]).map((i) => i.id), ["reviewer-4-2", "reviewer-3-0", "mpd-1845231-0"]);
+  // A DDOT project advisory's lines (v0.12.4) are one closure too.
+  const lanes = [0, 1].map((i) => item({ id: `ddot_advisory-connave-deckover-${i}`, source: "ddot_advisory", effect: "none", can_bypass: false }));
+  assert.equal(markerItems(lanes).length, 1);
   const onRoute = pieces.map((p) => ({ ...p, effect: "routed_round" as const, can_bypass: true }));
   assert.equal(markerItems(onRoute).length, 5);
 });

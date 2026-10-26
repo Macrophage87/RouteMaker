@@ -88,6 +88,10 @@ jobs:
       # which fails under CI when it is missing rather than skipping.
       - name: Caddy image for the edge tests
         run: docker pull --quiet "$(python -c 'import yaml; print(yaml.safe_load(open("compose.yaml"))["services"]["caddy"]["image"])')"
+      # The pinned nginx for tests/test_beta_nginx_conf.py (`nginx -t` on the beta's rendered
+      # site file), which fails under CI when it is missing rather than skipping.
+      - name: nginx image for the beta site-file tests
+        run: docker pull --quiet "$(python -c 'import sys; sys.path.insert(0, "tests"); import test_beta_nginx_conf as t; print(t.IMAGE)')"
       # The reference-route assertions are the quality bar's ground truth, not a
       # smoke test: they are what stops a tuning change from silently redefining
       # what a mass ride is.

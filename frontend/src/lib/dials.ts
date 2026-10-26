@@ -237,13 +237,16 @@ export const WHENS: readonly { id: When; label: string }[] = [
   { id: "night", label: "Night, 9 PM to 7 AM" },
 ];
 
-export const CARRYINGS: readonly { id: Carrying; label: string; hint: string }[] = [
-  { id: "cargo", label: "Carrying cargo", hint: "Quiet roads and bike lanes, gentle grades." },
+// summary is the few words shown on the ride type dialog's choice; hint is the full sentence ("What each does",
+// and what a screen reader hears either way), as with the ride types' summary and description.
+export const CARRYINGS: readonly { id: Carrying; label: string; summary: string; hint: string }[] = [
+  { id: "cargo", label: "Carrying cargo", summary: "Gentle grades.", hint: "Quiet roads and bike lanes, gentle grades." },
   {
     id: "people",
     // OWNER-DECISIONS 241: "Let's also call it passengers, as people bring dogs too."
     // The id stays "people", which links, saved plans and the API carry.
     label: "Cargo with passengers",
+    summary: "People or pets aboard.",
     hint: "People or pets aboard: paths and protected lanes; busy streets only where avoiding them takes much longer.",
   },
 ];

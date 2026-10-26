@@ -354,7 +354,7 @@ def forget() -> None:
 
 
 def _load(now: datetime) -> Snapshot:
-    from routemaker import deer_closures
+    from routemaker import ddot_advisories, deer_closures
 
     from . import closure_sources, reviewed_closures
     from .models import BikeshareFeedCache
@@ -408,6 +408,13 @@ def _load(now: datetime) -> Snapshot:
         zones.extend(reviewed)
         status[reviewed_closures.SOURCE] = CURRENT
         read_at[reviewed_closures.SOURCE] = (changed or now).isoformat()
+    # DDOT's project traffic advisories (v0.12.4; routemaker.ddot_advisories): read by hand
+    # into a file, so current; "read at" is the day the file last changed.
+    advised = ddot_advisories.zones(now)
+    if advised:
+        zones.extend(advised)
+        status[ddot_advisories.SOURCE] = CURRENT
+        read_at[ddot_advisories.SOURCE] = ddot_advisories.updated()
     # The parks' deer-management closures (v0.12.3; routemaker.deer_closures): published
     # schedules, so notices made from the clock, with no feed to read.
     notices = [*notices, *deer_closures.notices(now)]
@@ -853,6 +860,7 @@ NAMES = {
     "alertdc": "AlertDC",
     "nps": "the NPS alerts",
     "reviewer": "the closures RouteMaker's reviewers confirmed",
+    "ddot_advisory": "DDOT's project advisories",
 }
 
 # How near the route a closure in force is drawn on its map, metres (a closure further
