@@ -77,6 +77,7 @@ import type { PresetId } from "./lib/presets.ts";
 import { formatDistance, formatDuration, spokenDistance } from "./lib/format.ts";
 import { arrivalClock, atPace, paceFactor, paceStart, paceStep, type PaceTrack } from "./lib/arrival.ts";
 import { cueParts } from "./lib/cueShown.ts";
+import { jogArrowPath } from "./lib/jogArrow.ts";
 import { rideLightCorner } from "./lib/lightTimes.ts";
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
 import {
@@ -392,7 +393,7 @@ function arrowFor(
  * turn at an unusual junction (v0.10.0; lib/junctionShape.ts) is drawn as the junction: the way taken solid with
  * its arrowhead, the other ways dashed.
  */
-function CueShape({ shape, junction, exit }: { shape: ReturnType<typeof arrowFor>; junction?: JunctionShape; exit?: number }) {
+function CueShape({ shape, junction, exit, jog }: { shape: ReturnType<typeof arrowFor>; junction?: JunctionShape; exit?: number; jog?: string | null }) {
   if (junction?.ring && exit && shape !== "uturn" && shape !== "stop" && shape !== "end" && shape !== "warn") {
     // A circle: the ring with the exit's number in it, the way round solid, the exits passed dashed.
     const drawn = ringPaths(junction);
@@ -406,6 +407,14 @@ function CueShape({ shape, junction, exit }: { shape: ReturnType<typeof arrowFor
         <text x={RING.x} y={RING.y} textAnchor="middle" dominantBaseline="central" fontSize="12" fontWeight="700" fill="currentColor">
           {exit}
         </text>
+      </svg>
+    );
+  }
+  // Turns in quick succession (lib/jogArrow.ts): one arrow through them all, in place of the first turn's junction.
+  if (jog) {
+    return (
+      <svg className="cue-shape cue-jog" viewBox="0 0 48 56" aria-hidden="true" focusable="false">
+        <path d={jog} fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
@@ -1002,9 +1011,10 @@ export function RideMode({
   // The outputs: the screen reader's regions and the voice, as the rider chose; through the throttle.
   const deliver = useCallback((said: Said) => {
     const output = prefsRef.current.output;
-    if (toScreenReader(output)) (said.urgent ? setAssertive : setPolite)((s) => ({ text: said.text, count: s.count + 1 }));
+    // A jog's next turn (`after`) in the polite region, so it is read after the turn before rather than in place of it.
+    if (toScreenReader(output)) (said.urgent && !said.after ? setAssertive : setPolite)((s) => ({ text: said.text, count: s.count + 1 }));
     // The voice as chosen; in the phone app also "my screen reader" while the page is hidden (nativeShell.ts).
-    if (speaksAloud(output, document.visibilityState === "hidden")) rideVoice.speak(said.text, said.urgent);
+    if (speaksAloud(output, document.visibilityState === "hidden")) rideVoice.speak(said.text, said.urgent, said.after);
     // The phone app's cue notification on Android (nothing in a browser).
     showCue(said.text);
   }, []);
@@ -1014,7 +1024,7 @@ export function RideMode({
   // After the page comes back from the background: say where the rider is once, on the next fix.
   const sayWhereNext = useRef(false);
   const say = useCallback((events: RideEvent[]) => {
-    for (const event of events) announcer.current?.say(event.spoken, event.urgent);
+    for (const event of events) announcer.current?.say(event.spoken, event.urgent, event.after);
   }, []);
   // A note about the ride itself (no GPS, the screen may sleep, paused): said once, politely, through the
   // rider's outputs, and through the polite region with "neither" chosen, since it changes what the rider
@@ -2319,7 +2329,7 @@ export function RideMode({
           </div>
         ) : cue && progress !== null ? (
           <div className="cue-next">
-            <CueShape shape={shape} junction={cue.junction} exit={cue.exit?.number} />
+            <CueShape shape={shape} junction={cue.junction} exit={cue.exit?.number} jog={cue.cross ? null : jogArrowPath(cue)} />
             <div>
               {/* Greyed while GPS is weak or lost (any GPS note): the distance is from an old fix, not where the rider is. */}
               <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>
