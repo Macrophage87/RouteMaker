@@ -17,6 +17,19 @@ import { HOME_NOT_SET, type Home } from "../lib/myGo.ts";
 import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
 import { CHANGE_HOME_TEXT, CLEAR_HOME_TEXT, HOME_PICK_LINE, PICK_ON_MAP_TEXT, homeClosesSheet, homeName, homeSetKey } from "../lib/homeSet.ts";
 import { FEATURED_ROUTES_LABEL, FEATURED_ROUTES_PATH } from "../lib/featuredRoutes.ts";
+import {
+  ADD_FAVORITE_TEXT,
+  DONE_EDITING_TEXT,
+  EDIT_FAVORITES_TEXT,
+  FAVORITES_TEXT,
+  SET_HOME_TEXT,
+  SET_WORK_TEXT,
+  WORK_TEXT,
+  favoriteName,
+  othersOf,
+  workOf,
+  type FavoritePlace,
+} from "../lib/favoritePlaces.ts";
 
 export type GoSheetSize = "peek" | "half" | "full";
 
@@ -162,6 +175,15 @@ export interface GoPlaces {
   onPickHome: () => void;
   signedIn: boolean;
   onHome: (chip: HTMLButtonElement) => void;
+  /**
+   * Signed in (lib/favoritePlaces.ts): the account's favorite places, Work among them. The Home chip is then a
+   * Favorites chip whose popout lists Home, Work and these.
+   */
+  favorites: readonly FavoritePlace[];
+  onFavorite: (place: FavoritePlace) => void;
+  /** A place searched in the popout: saved as a favorite, or as Work. */
+  onAddFavorite: (place: Place, work: boolean) => void;
+  onRemoveFavorite: (place: FavoritePlace) => void;
   onFood: (chip: HTMLButtonElement) => void;
   onWater: (chip: HTMLButtonElement) => void;
   onRestroom: (chip: HTMLButtonElement) => void;
@@ -171,6 +193,135 @@ export interface GoPlaces {
   onRepair: (chip: HTMLButtonElement) => void;
   /** Behind More: the nearest places to see (Plan's Places to see, five of them, no filters). */
   onSights: (chip: HTMLButtonElement) => void;
+}
+
+/**
+ * The Favorites popout (lib/favoritePlaces.ts; Stephen 2026-10-26: "just have a favorites replace home", "Home and if
+ * set work would be the top 2 favorites", "we'd have a popout"): signed in, Go's Favorites chip opens it. One row per
+ * place, Home first, then Work, then the rest; a tap rides there. Set Home opens the Home sheet as the Home chip did;
+ * Set Work and Add a place open one search box here. Edit shows Change Home, Remove beside each place, and Done.
+ */
+export function FavoritesPopout({
+  id,
+  places,
+  geoGate,
+  searchBias,
+  homeSheetOpen,
+  onHomeSheet,
+  onRide,
+}: {
+  id: string;
+  places: GoPlaces;
+  geoGate: GeoGate;
+  searchBias: () => LonLat | undefined;
+  homeSheetOpen: boolean;
+  /** Set Home, or (editing) Change Home: the Home sheet, opened or shut. */
+  onHomeSheet: (open: boolean) => void;
+  /** A row was ridden: the popout closes. */
+  onRide: () => void;
+}) {
+  const [adding, setAdding] = useState<"" | "place" | "work">("");
+  const [editing, setEditing] = useState(false);
+  const work = workOf(places.favorites);
+  const others = othersOf(places.favorites);
+  const home = places.home;
+  const ride = (go: () => void) => {
+    setAdding("");
+    setEditing(false);
+    go();
+    onRide();
+  };
+  const searchId = useId();
+  return (
+    <div id={id} className="go-favorites" role="group" aria-label={FAVORITES_TEXT}>
+      <ul className="go-favorites-list">
+        <li>
+          {home ? (
+            <button type="button" className="go-favorite" onClick={(event) => ride(() => places.onHome(event.currentTarget))}>
+              <Icon name="home" size={18} />
+              <span className="go-favorite-kind">Home</span>
+              <span className="go-favorite-name">{homeName(home)}</span>
+            </button>
+          ) : (
+            <button type="button" className="go-favorite go-favorite-unset" aria-expanded={homeSheetOpen} onClick={() => onHomeSheet(!homeSheetOpen)}>
+              <Icon name="home" size={18} />
+              {SET_HOME_TEXT}
+            </button>
+          )}
+          {home && editing && (
+            <button type="button" className="secondary" aria-expanded={homeSheetOpen} onClick={() => onHomeSheet(!homeSheetOpen)}>
+              Change<span className="visually-hidden"> Home</span>
+            </button>
+          )}
+        </li>
+        <li>
+          {work ? (
+            <button type="button" className="go-favorite" onClick={() => ride(() => places.onFavorite(work))}>
+              <Icon name="work" size={18} />
+              <span className="go-favorite-kind">{WORK_TEXT}</span>
+              <span className="go-favorite-name">{favoriteName(work)}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="go-favorite go-favorite-unset"
+              aria-expanded={adding === "work"}
+              aria-controls={searchId}
+              onClick={() => setAdding(adding === "work" ? "" : "work")}
+            >
+              <Icon name="work" size={18} />
+              {SET_WORK_TEXT}
+            </button>
+          )}
+          {work && editing && (
+            <button type="button" className="secondary" onClick={() => places.onRemoveFavorite(work)}>
+              Remove<span className="visually-hidden"> Work</span>
+            </button>
+          )}
+        </li>
+        {others.map((place) => (
+          <li key={`${place.point[0]},${place.point[1]}`}>
+            <button type="button" className="go-favorite" onClick={() => ride(() => places.onFavorite(place))}>
+              <Icon name="star" size={18} />
+              <span className="go-favorite-name">{favoriteName(place)}</span>
+            </button>
+            {editing && (
+              <button type="button" className="secondary" onClick={() => places.onRemoveFavorite(place)}>
+                Remove<span className="visually-hidden"> {favoriteName(place)}</span>
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <div className="chip-row go-favorites-actions">
+        <button type="button" className="chip" aria-expanded={adding === "place"} aria-controls={searchId} onClick={() => setAdding(adding === "place" ? "" : "place")}>
+          <Icon name="plus" size={18} />
+          {ADD_FAVORITE_TEXT}
+        </button>
+        {(home || places.favorites.length > 0) && (
+          <button type="button" className="chip" aria-pressed={editing} onClick={() => setEditing(!editing)}>
+            {editing ? DONE_EDITING_TEXT : EDIT_FAVORITES_TEXT}
+          </button>
+        )}
+      </div>
+      <div id={searchId} hidden={adding === ""}>
+        {adding !== "" && (
+          <PlaceSearch
+            key={adding}
+            variant={adding === "work" ? "work" : "favorite"}
+            pointCount={0}
+            full={false}
+            gate={geoGate}
+            bias={searchBias}
+            onPick={(place: Place) => {
+              places.onAddFavorite(place, adding === "work");
+              setAdding("");
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -353,6 +504,9 @@ export function GoSheet({
   }, [homeKey]);
   const startBoxId = useId();
   const moreId = useId();
+  // Signed in: the Favorites popout, in the Home chip's place.
+  const favoritesId = useId();
+  const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
   // More: one chip at the row's end that shows the rest (Metro, Repair, Sights); later additions go here, not on the row.
   const [moreOpen, setMoreOpen] = useState(false);
@@ -399,18 +553,36 @@ export function GoSheet({
         )}
         <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place, _choice: PlaceChoice) => onPick(place)} onTopPlace={onTopPlace} />
         <div className="chip-row go-places" role="group" aria-label="Places">
-          <button
-            ref={homeChip}
-            type="button"
-            className="chip place-chip"
-            onClick={(event) => (places.homeReady ? places.onHome(event.currentTarget) : setHomeOpen(!homeOpen))}
-            aria-expanded={places.homeReady ? undefined : homeShown}
-            aria-controls={places.homeReady ? undefined : homeSheetId}
-            aria-describedby={places.homeReady || homeShown ? undefined : homeHint}
-          >
-            <Icon name="home" size={18} />
-            Home
-          </button>
+          {places.signedIn ? (
+            // Signed in, Home is the first of the rider's favorites (Stephen 2026-10-26: "just have a favorites replace home").
+            <button
+              ref={homeChip}
+              type="button"
+              className="chip place-chip"
+              aria-expanded={favoritesOpen}
+              aria-controls={favoritesId}
+              onClick={() => {
+                if (favoritesOpen) setHomeOpen(false);
+                setFavoritesOpen(!favoritesOpen);
+              }}
+            >
+              <Icon name="star" size={18} />
+              {FAVORITES_TEXT}
+            </button>
+          ) : (
+            <button
+              ref={homeChip}
+              type="button"
+              className="chip place-chip"
+              onClick={(event) => (places.homeReady ? places.onHome(event.currentTarget) : setHomeOpen(!homeOpen))}
+              aria-expanded={places.homeReady ? undefined : homeShown}
+              aria-controls={places.homeReady ? undefined : homeSheetId}
+              aria-describedby={places.homeReady || homeShown ? undefined : homeHint}
+            >
+              <Icon name="home" size={18} />
+              Home
+            </button>
+          )}
           <button type="button" className="chip place-chip" onClick={(event) => places.onFood(event.currentTarget)}>
             <Icon name="food" size={18} />
             Food
@@ -446,13 +618,25 @@ export function GoSheet({
             <Icon name="star" size={18} />
             {FEATURED_ROUTES_LABEL}
           </a>
-          {places.homeReady && (
+          {/* Signed in, Favorites' Edit changes Home. */}
+          {places.homeReady && !places.signedIn && (
             <button type="button" className="chip place-chip" aria-expanded={homeShown} aria-controls={homeSheetId} onClick={() => setHomeOpen(!homeOpen)}>
               <Icon name="home" size={18} />
               {CHANGE_HOME_TEXT}
             </button>
           )}
         </div>
+        {places.signedIn && favoritesOpen && (
+          <FavoritesPopout
+            id={favoritesId}
+            places={places}
+            geoGate={geoGate}
+            searchBias={searchBias}
+            homeSheetOpen={homeShown}
+            onHomeSheet={setHomeOpen}
+            onRide={() => setFavoritesOpen(false)}
+          />
+        )}
         <div id={homeSheetId} className="go-home-sheet" role="group" aria-label="Home" hidden={!homeShown}>
           {homeShown && (
             <HomeSetter
@@ -468,7 +652,7 @@ export function GoSheet({
         </div>
         {/* One short line, and only while there is no Home and its sheet is shut: the Home chip's description, said
             with it and kept out of sight, so the sheet fits one phone screen (the owner, 2026-10-17). */}
-        {!places.homeReady && !homeShown && (
+        {!places.signedIn && !places.homeReady && !homeShown && (
           <p id={homeHint} className="visually-hidden go-home-hint">
             {HOME_NOT_SET}
           </p>

@@ -137,8 +137,22 @@ import {
   type LocateResult,
 } from "./lib/geolocation.ts";
 import { usePlaceNames } from "./usePlaceNames.ts";
-import { MAX_DETOUR_SEARCH, fetchPlaces, pickIntoPlan, placeFromSearch, reverseUrl, searchBiasPoint, searchUrl, type Place, type ViewBounds, type PlaceChoice } from "./lib/geocode.ts";
+import { MAX_DETOUR_SEARCH, coordinatesText, fetchPlaces, pickIntoPlan, placeFromSearch, reverseUrl, searchBiasPoint, searchUrl, type Place, type ViewBounds, type PlaceChoice } from "./lib/geocode.ts";
 import { HOME_CLEARED, HOME_PICK_CANCELLED, HOME_PICK_LINE, homeAtSpot, homeFromPlace, homeSetSaid, nameWithoutHome } from "./lib/homeSet.ts";
+import {
+  FAVORITES_FULL,
+  FAVORITES_NOT_SAVED,
+  favoriteFromPlace,
+  favoriteRemovedSaid,
+  favoriteSavedSaid,
+  fetchFavoritePlaces,
+  samePoint,
+  saveFavoritePlaces,
+  withFavorite,
+  withoutFavorite,
+  withWork,
+  type FavoritePlace,
+} from "./lib/favoritePlaces.ts";
 import { BottomBar } from "./Sidebar.tsx";
 import {
   copyText,
@@ -392,6 +406,10 @@ export function App() {
   modeRef.current = mode;
   // The rider's own My Go (lib/myGo.ts): the account's when signed in, this device's when not.
   const [myGo, setMyGo] = useState<MyGo>(START_MY_GO.myGo);
+  // Signed in: the account's favorite places (lib/favoritePlaces.ts), read after sign-in; never kept on the device.
+  const [favoritePlaces, setFavoritePlaces] = useState<FavoritePlace[]>([]);
+  const favoritePlacesRef = useRef(favoritePlaces);
+  favoritePlacesRef.current = favoritePlaces;
   const [myGoSaid, setMyGoSaid] = useState("");
   // Go's Home sheet, "Pick on the map": the next tap on the map is Home (lib/homeSet.ts).
   const [homePick, setHomePick] = useState(false);
@@ -1417,6 +1435,29 @@ export function App() {
       if (!saved) announce(MY_GO_NOT_SAVED);
     });
   };
+  // Favorite places (lib/favoritePlaces.ts): the whole list saved at once, shown and said at once; a save the account
+  // refused puts the list back as it was and says so.
+  const keepFavorites = (next: FavoritePlace[] | null, said: string) => {
+    if (next === null) {
+      announce(FAVORITES_FULL);
+      return;
+    }
+    const before = favoritePlacesRef.current;
+    favoritePlacesRef.current = next;
+    setFavoritePlaces(next);
+    announce(said);
+    void saveFavoritePlaces(window.location.origin, next).then((saved) => {
+      if (favoritePlacesRef.current !== next) return;
+      if (saved) setFavoritePlaces(saved);
+      else {
+        favoritePlacesRef.current = before;
+        setFavoritePlaces(before);
+        announce(FAVORITES_NOT_SAVED);
+      }
+    });
+  };
+  const addFavorite = (place: FavoritePlace) => keepFavorites(place.work ? withWork(favoritePlacesRef.current, place) : withFavorite(favoritePlacesRef.current, place), favoriteSavedSaid(place));
+  const removeFavorite = (place: FavoritePlace) => keepFavorites(withoutFavorite(favoritePlacesRef.current, place), favoriteRemovedSaid(place));
   // Saved settings (v0.7.0): the account's win on sign-in; an empty account takes this device's.
   const lastSettings = useRef<SettingsDoc | null>(null);
   // The favorite ride types are saved with the rest (lib/favoriteRides.ts); a star pressed is a change.
@@ -1489,6 +1530,9 @@ export function App() {
       void syncSettingsOnSignIn(origin, () => live);
       // The 311 checklist (lib/report311Log.ts): this device's and the account's, merged by entry.
       void report311Log().signIn();
+      void fetchFavoritePlaces(origin).then((places) => {
+        if (live && places) setFavoritePlaces(places);
+      });
       const account = await fetchMyGo(origin);
       if (!live || !account) return;
       accountMyGoRead.current = true;
@@ -2425,6 +2469,33 @@ export function App() {
   };
   const setHomeAtRef = useRef(setHomeAt);
   setHomeAtRef.current = setHomeAt;
+  // The ride summary's Save to Favorites (Stephen 2026-10-26: "At the end ride screen offer the opportunity to save that
+  // destination as a favorite"): signed in, for a destination that is not Home and not saved yet. Once saved it says so.
+  const endedFavorite = (destination: LonLat | null) => {
+    if (!me.signed_in || !destination || (myGo.home && samePoint(myGo.home.point, destination))) return null;
+    const name = namer.name(destination)?.name ?? coordinatesText(destination);
+    return {
+      name,
+      saved: favoritePlaces.some((p) => samePoint(p.point, destination)),
+      onSave: () => addFavorite({ point: destination, label: name }),
+    };
+  };
+  // A favorite place from the Favorites popout: ridden to as Home is.
+  const goFavorite = (place: FavoritePlace) => {
+    namer.remember(place.point, place.label, place.label);
+    void goTo(place.point, place.label);
+  };
+  // The road panel's Save to Favorites: named as Home at a spot is.
+  const addFavoriteAt = async (point: LonLat) => {
+    if (!insideCoverage(point)) {
+      setNotice(OUTSIDE_NOTICE);
+      return;
+    }
+    const known = namer.name(point)?.name;
+    const reverse = known ? null : await geoGate.run(() => fetchPlaces(reverseUrl(point))).catch(() => null);
+    const named = homeAtSpot(point, known, reverse);
+    addFavorite({ point: named.point, label: named.label });
+  };
   const pickHome = () => {
     const on = !homePickRef.current;
     setHomePick(on);
@@ -3619,7 +3690,8 @@ export function App() {
   const endedRide = useRef<{ start: NonNullable<typeof rideStart>; from: LonLat[] | null; stats: RideStats } | null>(null);
   // Undo's ride carries on from the ended ride's figures (RideMode's resumeStats); a new Start begins from nought.
   const [resumeStats, setResumeStats] = useState<RideStats | null>(null);
-  const [rideEnded, setRideEnded] = useState<{ n: number; stats: RideStats; at: number; note: string | null } | null>(null);
+  // `destination`: the ride's end, not a loop's (its start), for the summary's Save to Favorites (Stephen 2026-10-26).
+  const [rideEnded, setRideEnded] = useState<{ n: number; stats: RideStats; at: number; note: string | null; destination: LonLat | null } | null>(null);
   const rideNow = useRef({ start: rideStart, mode });
   rideNow.current = { start: rideStart, mode };
   const endRide = useCallback((after: EndedPlan, stats: RideStats) => {
@@ -3653,7 +3725,8 @@ export function App() {
     setRiding(false);
     setRideStart(null);
     setRideView(null);
-    setRideEnded((was) => ({ n: (was?.n ?? 0) + 1, stats, at: Date.now(), note }));
+    const destination = start && !start.loop && start.points.length >= 2 ? start.points[start.points.length - 1] : null;
+    setRideEnded((was) => ({ n: (was?.n ?? 0) + 1, stats, at: Date.now(), note, destination }));
     // Said by the page's region, always mounted; the focus goes to Done (RideSummaryCard), not back to Start (review F6).
     // Problems still to report to 311 are said too: the focus goes to Done, past the summary's line about them.
     const owed = openCount(report311Log().list());
@@ -5049,6 +5122,7 @@ export function App() {
         onPlace={(choice, point, asVia) => (choice === "via" && !asVia ? askStopAt(point) : placeSpot(choice, point, asVia))}
         trailRider={trailRider}
         onSetHome={(point) => void setHomeAt(point)}
+        onSaveFavorite={me.signed_in ? (point) => void addFavoriteAt(point) : undefined}
       />
       {crosshairShown && (
         <div className="crosshair" aria-hidden="true" style={crosshairAt ? { left: crosshairAt.x, top: crosshairAt.y } : undefined} />
@@ -5183,6 +5257,7 @@ export function App() {
           stats={rideEnded.stats}
           endedAt={rideEnded.at}
           note={rideEnded.note}
+          favorite={endedFavorite(rideEnded.destination)}
           onUndo={undoEndRide}
           onDone={finishRide}
           onReports={rideEndReports}
@@ -5330,6 +5405,10 @@ export function App() {
                     onPickHome: pickHome,
                     signedIn: me.signed_in,
                     onHome: goHome,
+                    favorites: favoritePlaces,
+                    onFavorite: goFavorite,
+                    onAddFavorite: (found, work) => addFavorite(favoriteFromPlace(found, work)),
+                    onRemoveFavorite: removeFavorite,
                     onFood: (chip) => openView("food", chip),
                     onWater: (chip) => {
                       openView("nearest", chip);

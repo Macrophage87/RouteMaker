@@ -5247,6 +5247,36 @@ const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-s
 }
 
 {
+  // Favorite places (Stephen 2026-10-26: "just have a favorites replace home", "Home and if set work would be the top 2
+  // favorites", "we'd have a popout"): signed in, Go's first place chip is Favorites; it pops out Set Home, Set Work and
+  // the account's places, each 44 px; Edit shows Remove named for its place, which saves the list without it.
+  const p = await bare({ suggester: true, init: "document.cookie = 'csrftoken=favorites-token; path=/';" });
+  await p.waitFor("[...document.querySelectorAll('.go-places .place-chip')].some((c) => c.textContent.trim() === 'Favorites')", 8000);
+  const chips = await p.eval("[...document.querySelectorAll('.go-places:not(.go-more-row) .place-chip')].map((c) => c.textContent.trim())");
+  await p.eval("[...document.querySelectorAll('.go-places .place-chip')].find((c) => c.textContent.trim() === 'Favorites').click(); true");
+  await p.waitFor("!!document.querySelector('.go-favorites')", 5000);
+  const read = () => p.eval(`(() => { const g = document.querySelector('.go-favorites'); const chip = [...document.querySelectorAll('.go-places .place-chip')].find((c) => c.textContent.trim() === 'Favorites');
+    return { rows: [...g.querySelectorAll('.go-favorite')].map((r) => r.textContent.trim()), expanded: chip.getAttribute('aria-expanded'), controls: chip.getAttribute('aria-controls') === g.id,
+      small: [...g.querySelectorAll('button, input')].filter((e) => e.getClientRects().length && e.getBoundingClientRect().height < 44).map((e) => e.textContent.trim()),
+      remove: [...g.querySelectorAll('li > .secondary')].map((r) => r.textContent.trim()) }; })()`);
+  const popped = await read();
+  const group = await axNode(p, ".go-favorites");
+  check("favorites: signed in, Favorites is Go's first place chip (Food stays); it pops out a group named Favorites: Set Home, Set Work, then the account's places, every control 44 px",
+    JSON.stringify(chips.slice(0, 4)) === JSON.stringify(["Favorites", "Food", "Water", "Restroom"]) && popped.expanded === "true" && popped.controls && group?.role === "group" && group?.name === "Favorites" &&
+      JSON.stringify(popped.rows) === JSON.stringify(["Set Home", "Set Work", "Eastern Market"]) && popped.small.length === 0, JSON.stringify({ chips, popped, group }));
+  await p.eval("[...document.querySelectorAll('.go-favorites-actions .chip')].find((c) => c.textContent.trim() === 'Edit').click(); true");
+  await sleep(200);
+  const editing = await read();
+  await p.eval("document.querySelector('.go-favorites li > .secondary').click(); true");
+  await p.waitFor("document.querySelectorAll('.go-favorites .go-favorite').length === 2", 5000);
+  const post = p.favoriteRequests.find((r) => r.method === "POST");
+  const csrf = post && Object.entries(post.headers).find(([k]) => k.toLowerCase() === "x-csrftoken")?.[1];
+  check("favorites: Edit shows Remove, named for its place; Remove saves the list without it (POST /api/me/places with the CSRF header)",
+    JSON.stringify(editing.remove) === JSON.stringify(["Remove Eastern Market"]) && JSON.stringify(post?.body) === JSON.stringify({ places: [] }) && csrf === "favorites-token", JSON.stringify({ editing, post: post?.body, csrf: !!csrf }));
+  await p.close();
+}
+
+{
   // Share as image on a route that starts at Home (v0.7.0 end review): "Hide the part near Home" is shown and
   // ticked, and the QR code is refused, with its reason as the box's description, while Home is hidden; unticked
   // (the rider chose to show Home), the QR code is no longer refused for Home.
@@ -5285,7 +5315,8 @@ const failed = results.filter((r) => !r.ok);
 // Load route's popup (#370) adds one. Settings scrolling (2026-10-22) adds one: Home's one line with Change,
 // Cancel, and leaving Settings.
 // Plan's Start ride no longer asks first (2026-10-24) takes one away.
-const EXPECTED = 684;
+// Favorite places (2026-10-26) add two: the popout, and Edit's Remove.
+const EXPECTED = 686;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
