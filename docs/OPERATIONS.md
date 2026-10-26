@@ -3559,6 +3559,12 @@ at `/routes/` and from Go's More > Featured routes. Instance admins write them:
    Press **Use this map as the link picture** under the post; the browser draws the map at
    1200 x 630 with its credits and sends it, and chat apps then show the map. Until then they show
    the shared route's preview picture: the line over the server's plainer drawing of the base map.
+   Photos (v0.12.4): on the same page, **For admins > Photos** adds up to 20, each with alt text
+   (required), a caption (optional) and **Where** (About this ride or one highlight). The browser
+   shrinks each and saves it again as a JPEG, so its Exif (location, date, camera) does not go with
+   it, and the server strips anything left. A photo the browser can't open (some phone formats,
+   such as HEIC) must be saved as a JPEG or PNG first. Change alt text, caption, section or order,
+   or delete a photo, in the admin; a photo whose highlight is removed moves under About this ride.
 4. Set **Published** (listed) or **Unlisted** (link only). **Withdrawn** makes the link say so
    (410). Saving is refused when the route starts, ends or stops at your Home, since posts are
    public.

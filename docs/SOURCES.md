@@ -77,6 +77,14 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   `src/core/geodata/dc-boundary.geojson` (the tiles), are the same bytes
   (`tests/test_mass_tiles.py`). Credit: the line above, on the map, and "District of Columbia
   boundary: © OpenStreetMap contributors (ODbL)." under the Mass Ride legend.
+- Also: **the Washington Monument grounds and Constitution Gardens** (v0.12.4,
+  `src/routemaker/mallgrounds.py`): the grounds' two outlines and the six walk-only places
+  (the Monument's plaza, the Vietnam Veterans Memorial, the Three Soldiers, the Vietnam Women's
+  Memorial, Signers Island and a band along the Tidal Basin), drawn from OSM ways and a relation read
+  from the API 0.6 on 2026-10-25. Why the walk-only places close: National Mall and Memorial Parks'
+  superintendent's compendium, 36 CFR 4.30
+  (<https://home.nps.gov/nama/learn/management/superintendent-s-compendium.htm>, read 2026-10-25).
+  Records, ids and sha256: `fixtures/mall_grounds/README.md`. Credit: the OpenStreetMap credit above.
 
 ## Protomaps base map
 
