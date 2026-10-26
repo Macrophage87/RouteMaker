@@ -101,6 +101,7 @@ from routemaker import (
     mdot_aadt,
     mtbmode,
     ridetime,
+    steep_grades,
     time_marks,
     trace_junctions,
     zoo,
@@ -1637,6 +1638,9 @@ class HillPrice:
     use_hills: float
     descent_weight: float = 0.0
     brake_grade: float | None = None
+    # A Mass Ride's or a Novice and Nervous ride's price for steep grades either way
+    # (`routemaker.steep_grades`, the owner, 2026-10-26).
+    steep: bool = False
 
 
 def rider_hill_s(trip: dict, price: HillPrice, quiet_cost: float) -> float:
@@ -1644,9 +1648,12 @@ def rider_hill_s(trip: dict, price: HillPrice, quiet_cost: float) -> float:
     seconds: the climbs' extra time plus their steepness penalty past the LT1 grade the
     slider sets (`hill_cost.hill_cost_m`, the owner, 2026-10-23: "always assume time
     equivalent, but the slider should determine a further penalty for steepness"), plus the
-    avoid half's descent cost."""
+    avoid half's descent cost, and on a Mass Ride or a Novice and Nervous ride the steep
+    grades' price (`routemaker.steep_grades`)."""
     profile = grade_profile(trip)
     rider_m = hill_cost.hill_cost_m(profile, price.mass_kg, price.flat_ms, price.hills)
+    if price.steep:
+        rider_m += steep_grades.penalty_s(profile) * price.flat_ms
     descents = sum(
         climbs.descent_cost_s(run, price.brake_grade)
         for run in climbs.runs(profile)
@@ -1676,6 +1683,20 @@ def choose_by_hills(trips: list[dict], price: HillPrice, quiet_cost: float) -> i
     best, best_score = 0, None
     for index, trip in enumerate(trips):
         score = _router_cost(trip) + hill_s(trip, price, quiet_cost)
+        if best_score is None or score < best_score - HILLS_EPS_S:
+            best, best_score = index, score
+    return best
+
+
+def choose_by_steep(trips: list[dict], price: HillPrice, quiet_cost: float) -> int:
+    """The index of the trip whose router cost plus its steep grades' price
+    (`routemaker.steep_grades`) is least: a Mass Ride or Novice ride where the hills slider
+    does not price climbing itself. The router's own route is kept unless another saves more
+    than HILLS_EPS_S."""
+    best, best_score = 0, None
+    for index, trip in enumerate(trips):
+        steep_m = steep_grades.penalty_s(grade_profile(trip)) * price.flat_ms
+        score = _router_cost(trip) + quiet_cost * steep_m
         if best_score is None or score < best_score - HILLS_EPS_S:
             best, best_score = index, score
     return best
@@ -3836,6 +3857,9 @@ def _plan(
         (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
     ]
     avoid_weight = -hills_dial / 100 if avoiding else 0.0
+    # Steep grades warned of and priced either way (`routemaker.steep_grades`): a Mass Ride
+    # and a Novice and Nervous ride, wherever the hills slider sits.
+    steep_ride = preset_name in steep_grades.RIDE_TYPES
     # How the route choice prices climbing (`HillPrice`): the rider's weight and speed, the
     # slider's steepness scale, the router's own charge to take off, the avoid half's descents.
     hill_price = HillPrice(
@@ -3845,6 +3869,7 @@ def _plan(
         use_hills=float((costing.get("bicycle") or {}).get("use_hills", 1.0)),
         descent_weight=avoid_weight,
         brake_grade=preset.brake_grade,
+        steep=steep_ride,
     )
     # This plan's traces, so a route the guards traced is not traced again.
     traces: dict = {}
@@ -3878,6 +3903,19 @@ def _plan(
         chosen = calmer_or_own(
             trips,
             choose_by_hills(trips, hill_price, _quiet_cost(costing)),
+            variant,
+            costing,
+            when,
+            deadline,
+            traces,
+            exposure,
+        )
+    elif steep_ride and not calm_tolerate:
+        # Elsewhere on the slider a Mass Ride or Novice ride still weighs its steep grades
+        # alone (`choose_by_steep`), never a busier route for it.
+        chosen = calmer_or_own(
+            trips,
+            choose_by_steep(trips, hill_price, _quiet_cost(costing)),
             variant,
             costing,
             when,
@@ -3972,6 +4010,7 @@ def _plan(
         avoid=avoid_list,
         junction_ratings=junction_ratings,
         beacons=beacons,
+        steep_grades=steep_ride,
     )
     if past:
         # The router's own route is past the target: the calmer route past it where
@@ -4574,6 +4613,13 @@ def _plan(
             "road_hazards": hazards_ridden,
             # The scenic designations it rides (v0.12.3): rustic roads, byways; [] where none.
             "scenic_roads": scenic_ridden,
+            # Steep grades either way past 5% and 8% (v0.12.5, `routemaker.steep_grades`), in
+            # riding order, metres along the router's profile; null off a Mass Ride or Novice.
+            "steep_grades": (
+                steep_grades.public(steep_grades.stretches(grade_profile(trip)))
+                if steep_ride
+                else None
+            ),
             # A Mass Ride's approved hazards in riding order (325); null on other ride types.
             "mass_hazards": (
                 mass_hazards.along(leg_runs, pieces, classes, hazard_list)

@@ -1909,6 +1909,12 @@ class MyGo(models.Model):
     home_lat = models.FloatField(null=True, blank=True)
     home_lon = models.FloatField(null=True, blank=True)
     home_label = models.CharField(max_length=120, blank=True, default="")
+    # Favorite places (Stephen 2026-10-26: "For signed in users, allow for favorite
+    # destinations"): Go's Favorites chip, a list of {"lon", "lat", "label"} (with "work": true on
+    # the one that is Work) in the rider's order, at most core.api.FAVORITE_PLACES_MAX. Like Home,
+    # never logged or suggested, and deleted with the row. Saved on its own (POST
+    # /api/me/places), so a My Go save never touches it.
+    places = models.JSONField(default=list, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

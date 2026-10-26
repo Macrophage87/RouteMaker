@@ -360,9 +360,10 @@ def _shortest_gap(
     from_way: int,
     open_at: dict[int, int],
     adjacent: dict[int, list[tuple[int, float, int]]],
+    gap_m: float = GAP_M,
 ) -> tuple[float, int, list[int]] | None:
     """The shortest way along candidate footways from `start` to a node another
-    bicycle-open way reaches, within GAP_M: (metres, that node, the footways used)."""
+    bicycle-open way reaches, within `gap_m`: (metres, that node, the footways used)."""
     best = {start: 0.0}
     previous: dict[int, tuple[int, int]] = {}
     queue = [(0.0, start)]
@@ -380,7 +381,7 @@ def _shortest_gap(
             return metres, node, used
         for neighbour, step, way in adjacent.get(node, ()):
             total = metres + step
-            if total <= GAP_M and total < best.get(neighbour, math.inf):
+            if total <= gap_m and total < best.get(neighbour, math.inf):
                 best[neighbour] = total
                 previous[neighbour] = (node, way)
                 heapq.heappush(queue, (total, neighbour))

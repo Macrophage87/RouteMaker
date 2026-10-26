@@ -26,6 +26,7 @@ import {
   storedTopoLines,
   subscribeTopoLines,
   syncTopoLines,
+  topoArchive,
   topoAvailable,
   topoBeforeId,
   topoLabel,
@@ -251,4 +252,16 @@ test("the layers sheet puts the switch under Trails and terrain; MapView keeps t
   assert.match(mapView, /subscribeTopoLines\(sync\)/);
   assert.match(mapView, /syncTopoLines\(map as unknown as TopoMap, topoLinesOn\(\)\)/);
   assert.match(mapView, /map\.on\("load", sync\)/);
+});
+
+test("topoArchive tells a missing archive from no signal (the ride's Topo lines bubble says which)", async () => {
+  const ok = (async () => new Response(null, { status: 200 })) as unknown as typeof fetch;
+  const missing = (async () => new Response(null, { status: 404 })) as unknown as typeof fetch;
+  const offline = (async () => {
+    throw new TypeError("Failed to fetch");
+  }) as unknown as typeof fetch;
+  assert.equal(await topoArchive(ok), "yes");
+  assert.equal(await topoArchive(missing), "no");
+  assert.equal(await topoArchive(offline), "offline");
+  assert.equal(await topoAvailable(offline), false);
 });
