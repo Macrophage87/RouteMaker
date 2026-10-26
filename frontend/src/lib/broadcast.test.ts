@@ -274,3 +274,24 @@ test("a ride's riders and Alert sit just under the cue card, never over the turn
   assert.match(ride, /app\.style\.setProperty\("--ride-card-bottom", `\$\{Math\.round\(card\.getBoundingClientRect\(\)\.bottom - app\.getBoundingClientRect\(\)\.top\)\}px`\)/);
   assert.match(ride, /watch\.observe\(card\);\s*place\(\);\s*return \(\) => \{\s*watch\.disconnect\(\);\s*app\.style\.removeProperty\("--ride-card-bottom"\);/);
 });
+
+// Opening a broadcast goes into Ride mode (Stephen 2026-10-26: "Opening the broadcast mode should enter ride mode with
+// the leader's dot shown").
+test("opensIntoRide: a follower's phone, once the route shows, once per page, not over a ride or Resume", async () => {
+  const { opensIntoRide } = await import("./rideGroup.ts");
+  const at = { phone: true, following: true, ready: true, onBike: false, resumeAsked: false, done: false };
+  assert.equal(opensIntoRide(at), true);
+  assert.equal(opensIntoRide({ ...at, phone: false }), false, "a computer watches the leader instead");
+  assert.equal(opensIntoRide({ ...at, following: false }), false, "the sharer, or a link that is no broadcast");
+  assert.equal(opensIntoRide({ ...at, ready: false }), false, "not before the shared route is the one shown");
+  assert.equal(opensIntoRide({ ...at, onBike: true }), false);
+  assert.equal(opensIntoRide({ ...at, resumeAsked: true }), false);
+  assert.equal(opensIntoRide({ ...at, done: true }), false, "once: End ride is not undone by the link");
+});
+
+test("App starts the ride (or Roam) for a broadcast's follower and unlocks the voice on the first tap", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /opensIntoRide\(\{ phone: looksLikePhone\(\), following: followingLink, ready: linkReady, onBike, resumeAsked: leftAsk !== null, done: autoRode\.current \}\)/);
+  assert.match(app, /if \(sharedOpen\?\.ride && sharedOpen\.lead\) startRideNoted\(""\);\n\s+else startRoam\(\);/);
+  assert.match(app, /addEventListener\("pointerdown", unlock, \{ once: true, capture: true \}\)/);
+});

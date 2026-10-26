@@ -292,7 +292,7 @@ import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
 import { SaveRoute } from "./SaveRoute.tsx";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { broadcastRideId, isRideLink, leadConsent, leaderKey, newToken, roamRideId, type RideLinkType } from "./lib/rideGroup.ts";
+import { broadcastRideId, isRideLink, leadConsent, leaderKey, newToken, opensIntoRide, roamRideId, type RideLinkType } from "./lib/rideGroup.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
 // With Ride mode's kept tiles behind the network, for dead spots (lib/corridorStore.ts).
@@ -3952,6 +3952,20 @@ export function App() {
 
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
+  // A broadcast link opened on a phone goes straight into Ride mode, the leader's dot on its map (lib/rideGroup.ts
+  // opensIntoRide): a route's broadcast starts its ride, as Start's press does (its closure check too); a Roam
+  // broadcast starts Roam. Started without a press, so the voice is unlocked by the first tap after (iOS).
+  const autoRode = useRef(false);
+  const followingLink = (sharedOpen?.ride === true && !!sharedOpen.lead && !sharedOpen.own) || (roamBroadcast !== null && !roamBroadcast.leading);
+  const linkReady = sharedOpen?.ride && sharedOpen.lead ? shown === sharedOpen.answer : roamBroadcast !== null;
+  useEffect(() => {
+    if (!opensIntoRide({ phone: looksLikePhone(), following: followingLink, ready: linkReady, onBike, resumeAsked: leftAsk !== null, done: autoRode.current })) return;
+    autoRode.current = true;
+    if (sharedOpen?.ride && sharedOpen.lead) startRideNoted("");
+    else startRoam();
+    const unlock = () => primeRideVoice(ridePrefs);
+    document.addEventListener("pointerdown", unlock, { once: true, capture: true });
+  }, [followingLink, linkReady, onBike, leftAsk]);
   // Light times on the route (lib/lightTimes.ts): near dawn or dusk, where the rider will be at each, leaving now.
   // The clock runs only with a route shown, outside a ride; the same marks are kept while nothing they say changed.
   const minute = useMinute(shown !== null && !riding && (mode === "plan" || mode === "go"));
