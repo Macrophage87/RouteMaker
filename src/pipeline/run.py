@@ -2272,7 +2272,11 @@ def build_handlers(
                 unmatched,
             )
         by_way, result = conflation.road_facts_by_way(
-            context.ways, entries, reference.road_blocks, withheld=withheld.by_block
+            context.ways,
+            entries,
+            reference.road_blocks,
+            withheld=withheld.by_block,
+            directions=withheld.directions,
         )
         tags_of = {way.osm_id: way.tags for way in context.ways if way.osm_id in by_way}
         counted = set(context.aadt_by_way)

@@ -7754,7 +7754,10 @@ Python 3.11 or later, standard library only.
 - **Draft:** a JSON file outside the repo (the scratchpad, or the PC's private ride
   folder; the script refuses a draft inside the repo) naming one node or way, `expect` (the tags as the owner was shown them, null =
   absent), `set` (null = remove), `comment` and `source` (`survey`). Only the keys in
-  `ALLOWED_KEYS` may change, at most four; `highway` only on a node, to a junction control.
+  `ALLOWED_KEYS` may change, at most four; `highway` only on a node, to a junction control;
+  `oneway` only on a way, to `yes`, `-1` or `no` (a street whose direction changed on the
+  ground; in the District also add the owner's block direction, fixtures/overrides/README.md,
+  "Block corrections", or DC's two-way record keeps the street two-way on our map).
   No GPS track, rider or ride date in the comment, source or file.
 - **Check:** `python3 scripts/osm_edit.py show edit.json` prints the diff against OSM now
   and exits 2 if a tag changed since the draft.

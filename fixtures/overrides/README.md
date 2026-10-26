@@ -409,6 +409,26 @@ so step 7 of "First rebuild on a fresh host" can still be given every file. It
 takes effect at the next rebuild after the image carrying it is deployed. The
 discrepancy report lists the ways as not applied, "owner override".
 
+An entry may instead (or as well) give the block's direction, `"direction":
+"OB"`, `"IB"` or `"BD"` in DC's own labels: `OB` one-way from the block's
+FROMSTREET toward its TOSTREET, `IB` the other way, `BD` two-way. `withhold` may
+then be left out. The owner's direction is read in place of DC's on every way
+matched to the block, through the same rows as DC's own record (OWNER-DECISIONS
+190, rows B and C4, with their exceptions), and one thing more: where OSM has the
+way one-way the other way, the owner's direction wins
+(`routemaker.agency_roads.overlay`; DC's own record never overrides an opposite
+OSM one-way). So a street reversed before either source caught up is right on our
+map before the OSM edit, and still right after it. Two entries giving one block
+two directions refuse the rebuild's matching. Remove the entry once DC's layer
+records the change.
+
+- `2026-10-26-owner-sheridan-st-nw.json` (the owner, 2026-10-26: "Sheridan street
+  between 3rd and 5th streets are 1 way in the opposite direction. That change
+  isn't even on Google maps yet"): the 300 and 400 blocks of Sheridan St NW, 3rd
+  St to 5th St, one-way westbound (`OB` on both). DC still records both two-way;
+  OSM has the 400 block one-way eastbound (way 1044281798) and the 300 block
+  two-way (way 1044479731). No sign excepting bicycles was reported and DC records
+  no contraflow lane.
 - `2026-10-02-owner-canal-whitehurst.json` (OWNER-DECISIONS 197, verbatim: "DC
   records of 20 mph on Canal Rd NW (block dc-4633425-0) and the Whitehurst Fwy
   (dc-4636053-0), owner 2026-10-02: "Override: keep LTS 4 (Recommended)". A
