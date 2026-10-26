@@ -7,8 +7,10 @@
  * The correction is the ratio of the plan's seconds for the metres ridden to the seconds it took to ride them. A
  * halt counts up to HALT_CAP_S (a long light or a stop sign the plan allows for), not beyond it: a coffee stop or a
  * chat at a corner says nothing about the pace still to come. Time off route, paused or walking is not counted, and
- * a gap in fixes (a tunnel, the phone asleep) longer than GAP_S is left out.
+ * a gap in fixes (a tunnel, the phone asleep) longer than GAP_S is left out. A halt lasts until the rider is LEAVE_M
+ * past where it began, so GPS drift at a stop does not start a new allowance.
  */
+import type { ToGo } from "./navigate.ts";
 
 /** A halt counted up to this, in seconds. */
 export const HALT_CAP_S = 90;
@@ -16,6 +18,10 @@ export const HALT_CAP_S = 90;
 export const GAP_S = 120;
 /** Under this many metres a fix to the next is a halt. */
 const STILL_M = 2;
+/** A halt lasts until the rider is this far past where it began: GPS drift at a stop is not riding off. */
+export const LEAVE_M = 15;
+/** Further back than this from the last place (or a halt's start) is a new start, not drift. */
+const BACK_M = 50;
 /** The correction begins after this many metres ridden and is whole by FULL_M. */
 export const START_M = 800;
 export const FULL_M = 5000;
@@ -29,9 +35,9 @@ export interface PaceTrack {
   riddenS: number;
   /** Metres ridden. */
   metres: number;
-  /** Seconds of the halt now going on. */
+  /** Seconds of the halt now going on, 0 when riding. */
   haltS: number;
-  /** The last sample counted from, or null. */
+  /** The last sample counted from, or null; in a halt, its place is where the halt began. */
   last: { atMs: number; progressM: number; line: string } | null;
 }
 
@@ -56,16 +62,19 @@ export function paceStep(track: PaceTrack, sample: PaceSample): PaceTrack {
   const here = { atMs: sample.atMs, progressM: sample.progressM, line: sample.line };
   const last = track.last;
   const dt = last ? (sample.atMs - last.atMs) / 1000 : 0;
-  if (!last || last.line !== sample.line || dt <= 0 || dt > GAP_S || sample.progressM < last.progressM - STILL_M) return { ...track, haltS: 0, last: here };
+  if (!last || last.line !== sample.line || dt <= 0 || dt > GAP_S || sample.progressM < last.progressM - BACK_M) return { ...track, haltS: 0, last: here };
   const moved = sample.progressM - last.progressM;
-  if (moved < STILL_M) {
-    // Still: the halt's seconds up to the cap; the place stays the last one, so creeping adds up.
+  const halted = track.haltS > 0;
+  if (moved < (halted ? LEAVE_M : STILL_M)) {
+    // Still, or drifting about the halt's place: its seconds up to the cap, the place kept where it began.
     const counted = Math.max(0, Math.min(dt, HALT_CAP_S - track.haltS));
     return { ...track, riddenS: track.riddenS + counted, haltS: track.haltS + dt, last: { ...here, progressM: last.progressM } };
   }
+  // Riding off a halt, the seconds since its last counted fix are not all the metres took: those metres count at
+  // the plan's pace where that is longer, so the rider is not taken as faster than they are.
   return {
     plannedS: track.plannedS + moved / sample.paceMs,
-    riddenS: track.riddenS + dt,
+    riddenS: track.riddenS + (halted ? Math.max(dt, moved / sample.paceMs) : dt),
     metres: track.metres + moved,
     haltS: 0,
     last: here,
@@ -84,4 +93,11 @@ export function paceFactor(track: PaceTrack): number {
 export function arrivalClock(nowMs: number, seconds: number, locale?: string): string {
   const at = new Date(Math.round((nowMs + seconds * 1000) / 60_000) * 60_000);
   return new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(at);
+}
+
+/** The time to go, eased to the rider's own pace: each estimate divided by how much faster than the plan they ride. */
+export function atPace(togo: ToGo, factor: number): ToGo {
+  if (factor === 1) return togo;
+  const at = (seconds: number | null) => (seconds === null ? null : seconds / factor);
+  return { stop: togo.stop && { ...togo.stop, seconds: at(togo.stop.seconds) }, end: { ...togo.end, seconds: at(togo.end.seconds) } };
 }

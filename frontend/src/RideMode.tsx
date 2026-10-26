@@ -74,7 +74,7 @@ import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
 import type { PresetId } from "./lib/presets.ts";
 import { formatDistance, formatDuration, spokenDistance } from "./lib/format.ts";
-import { arrivalClock, paceFactor, paceStart, paceStep, type PaceTrack } from "./lib/arrival.ts";
+import { arrivalClock, atPace, paceFactor, paceStart, paceStep, type PaceTrack } from "./lib/arrival.ts";
 import { cueParts } from "./lib/cueShown.ts";
 import { rideLightCorner } from "./lib/lightTimes.ts";
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
@@ -120,7 +120,6 @@ import {
   type RideFix,
   type RideModel,
   type RideState,
-  type ToGo,
   type Verbosity,
 } from "./lib/navigate.ts";
 import { statsPause, statsStart, statsStep, type RideStats } from "./lib/rideStats.ts";
@@ -233,13 +232,6 @@ export const rideVoice = new Voice(rideSpeech());
 export const RIDE_STARTED = "Ride started.";
 /** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
 export const END_RIDE_NAME = "End ride";
-/** The time to go, eased to the rider's own pace: each estimate divided by how much faster than the plan they ride. */
-export function atPace(togo: ToGo, factor: number): ToGo {
-  if (factor === 1) return togo;
-  const at = (seconds: number | null) => (seconds === null ? null : seconds / factor);
-  return { stop: togo.stop && { ...togo.stop, seconds: at(togo.stop.seconds) }, end: { ...togo.end, seconds: at(togo.end.seconds) } };
-}
-
 /**
  * ", 8 min · 6:42 AM" after a distance to go: the minutes and the clock time of arrival (the owner, 2026-10-26: "Add
  * estimated clock time of arrival to the ride." and "Stops too"). "about" and "arriving about" are for screen readers
@@ -1875,7 +1867,17 @@ export function RideMode({
   const cue = progress === null ? null : nextAction(model, progress);
   // The time to go at the rider's own pace against the plan's (lib/arrival.ts), and the clock it ends at.
   const togo = progress === null ? null : atPace(toGo(model, progress), paceFactor(paceRef.current));
+  // A tick every 30 s keeps the clock times current while no fix comes (paused, in a tunnel); a fix renders sooner.
+  const [, setClockTick] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockTick((n) => n + 1), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const clockMs = Date.now();
+  // The to-go words as shown, for the large text's fit: a minute's change can lengthen them ("9:59" to "10:00").
+  const togoWords = [togo?.stop, togo?.end]
+    .map((t) => (t && t.seconds !== null ? `${formatDuration(t.seconds)}${arrivalClock(clockMs, t.seconds)}`.length : 0))
+    .join(",");
   const cueShown = cueParts(cue ? (cue.rideText ?? cue.text) : "");
   // The distance's metric in brackets a size smaller, so the line stays one line with large text.
   // A U-turn is now: no distance (it is at the line's start, behind the rider).
@@ -1886,7 +1888,7 @@ export function RideMode({
   // screen as possible"), set as --cue-fit on the card. Worked out when the turn, the size or the screen changes, not each
   // fix, with a little room left for the distance's words to grow; the small print stays 16 pt or more (styles.css).
   const cardRef = useRef<HTMLDivElement>(null);
-  const fitKey = `${textSize}|${cueShown.head}|${cueShown.rest}|${distanceWords.length}|${ride.off}|${ride.arrived}|${cueSheetOn}|${settingsOpen}`;
+  const fitKey = `${textSize}|${cueShown.head}|${cueShown.rest}|${distanceWords.length}|${ride.off}|${ride.arrived}|${cueSheetOn}|${settingsOpen}|${togoWords}`;
   useLayoutEffect(() => {
     const card = cardRef.current;
     if (!card) return;

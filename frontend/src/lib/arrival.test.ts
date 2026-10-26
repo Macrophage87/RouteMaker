@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { FULL_M, GAP_S, HALT_CAP_S, START_M, arrivalClock, paceFactor, paceStart, paceStep, type PaceTrack } from "./arrival.ts";
+import { FULL_M, GAP_S, HALT_CAP_S, LEAVE_M, START_M, arrivalClock, atPace, paceFactor, paceStart, paceStep, type PaceTrack } from "./arrival.ts";
 
 const PACE = 5; // metres a second, the plan's
 
@@ -46,8 +46,35 @@ test("a halt counts up to HALT_CAP_S, a coffee stop no more", () => {
   const coffee = ride(before, 0, 30 * 60);
   assert.equal(coffee.riddenS - before.riddenS, HALT_CAP_S);
   // Riding on starts a new halt next time.
-  const after = ride(ride(coffee, PACE, 60), 0, 30);
-  assert.equal(after.riddenS - coffee.riddenS, 60 + 30);
+  const going = ride(coffee, PACE, 60);
+  assert.ok(Math.abs(going.riddenS - coffee.riddenS - 60) <= 1, String(going.riddenS - coffee.riddenS));
+  const after = ride(going, 0, 30);
+  assert.equal(after.riddenS - going.riddenS, 30);
+});
+
+test("GPS drift at a halt is still the halt: no new allowance for each wobble", () => {
+  const before = ride(paceStart(), PACE, 1200);
+  let t = before;
+  let at = t.last!.atMs;
+  const from = t.last!.progressM;
+  // Thirty minutes stood still, the snapped place wandering up to 10 m either way.
+  for (let s = 1; s <= 30 * 60; s++) {
+    at += 1000;
+    t = paceStep(t, { atMs: at, progressM: from + 10 * Math.sin(s / 7), line: "a", paceMs: PACE, riding: true });
+  }
+  assert.equal(t.riddenS - before.riddenS, HALT_CAP_S);
+  assert.equal(t.metres, before.metres);
+  // Riding off: the halt ends LEAVE_M past where it began, its distance credited.
+  t = paceStep(t, { atMs: at + 5000, progressM: from + LEAVE_M + 10, line: "a", paceMs: PACE, riding: true });
+  assert.equal(t.haltS, 0);
+  assert.equal(t.metres - before.metres, LEAVE_M + 10);
+});
+
+test("atPace divides each time to go by the factor, and leaves the distances", () => {
+  const togo = { stop: { number: 2, metres: 1000, seconds: 200 }, end: { metres: 3000, seconds: 600 } };
+  assert.equal(atPace(togo, 1), togo);
+  assert.deepEqual(atPace(togo, 2), { stop: { number: 2, metres: 1000, seconds: 100 }, end: { metres: 3000, seconds: 300 } });
+  assert.deepEqual(atPace({ stop: null, end: { metres: 5, seconds: null } }, 0.5), { stop: null, end: { metres: 5, seconds: null } });
 });
 
 test("a gap in fixes, a new line, off route and going back are not counted", () => {
@@ -79,5 +106,7 @@ test("RideMode shows the arrival clock after each time to go and says it in Wher
   assert.match(source, /visually-hidden">, arriving about </);
   assert.match(source, /atPace\(toGo\(model, progress\), paceFactor\(paceRef\.current\)\)/);
   assert.equal((source.match(/milesRef\.current, arrivingAt\)/g) ?? []).length, 3);
+  assert.match(source, /setClockTick\(\(n\) => n \+ 1\), 30_000\)/, "the clock moves on with no fix");
+  assert.match(source, /\|\$\{togoWords\}`;/, "large text fits again when the times lengthen");
   assert.match(source, /riding: !stepped\.state\.walking && !pausedRef\.current && !out\.state\.off && !out\.state\.arrived/);
 });
