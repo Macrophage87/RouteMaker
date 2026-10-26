@@ -22,6 +22,10 @@
     "html": "Road closures: DDOT (TOPS permits), <a href=\"https://creativecommons.org/licenses/by/4.0/\">CC BY 4.0</a>"
   },
   { "text": "MPD traffic advisories", "html": "MPD traffic advisories" },
+  {
+    "text": "DDOT project traffic advisory",
+    "html": "DDOT project traffic advisory"
+  },
   { "text": "NPS alerts", "html": "NPS alerts" },
   { "text": "AlertDC (HSEMA)", "html": "AlertDC (HSEMA)" }
 ]

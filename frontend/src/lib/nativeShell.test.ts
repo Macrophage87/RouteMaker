@@ -10,9 +10,11 @@ import {
   CUE_CHANNEL,
   CUE_NOTICE_ID,
   NATIVE_WATCH_OPTIONS,
+  SHARE_PLUGIN,
   findShell,
   markShell,
   nativeBridge,
+  nativeShareNavigator,
   nativeWake,
   rideGeoEnv,
   rideSpeech,
@@ -412,4 +414,25 @@ test("the shell's wake lock: the browser's when it has one; never 'keep it on yo
   assert.equal(released, true, "the browser's own lock is the one let go at End ride");
   const env = rideWake(findShell({ Capacitor: fakeBridge().bridge }));
   assert.equal(typeof env.request, "function");
+});
+
+test("the app's share sheet (Stephen 2026-10-26): only in an app with the plugin; the title, text and link go to it", async () => {
+  assert.equal(nativeShareNavigator(undefined), null);
+  assert.equal(nativeShareNavigator({ Capacitor: fakeBridge().bridge }), null, "an app built before the plugin");
+  const { bridge: noProbe } = fakeBridge("android", [SHARE_PLUGIN]);
+  assert.equal(nativeShareNavigator({ Capacitor: { ...noProbe, isPluginAvailable: undefined } }), null, "a bridge that cannot say is not assumed");
+  const fake = fakeBridge("android", [SHARE_PLUGIN]);
+  const nav = nativeShareNavigator({ Capacitor: fake.bridge });
+  assert.ok(nav);
+  const done = nav.share({ title: "RouteMaker route", text: "2.9 mi (4.7 km) bike route.", url: "https://x.test/#p=1" });
+  assert.deepEqual(fake.calls, [{ plugin: "RouteMakerShare", method: "share", options: { title: "RouteMaker route", text: "2.9 mi (4.7 km) bike route.", url: "https://x.test/#p=1" } }]);
+  assert.equal(await done, undefined);
+  fake.refuse(() => true);
+  await assert.rejects(nav.share({ title: "", text: "", url: "https://x.test/" }));
+  // Its Java side, and the app registering it.
+  const java = readFileSync(fileURLToPath(new URL("../../../mobile/android/app/src/main/java/org/routemaker/phone/SharePlugin.java", import.meta.url)), "utf8");
+  assert.match(java, /@CapacitorPlugin\(name = "RouteMakerShare"\)/);
+  assert.match(java, /public void share\(PluginCall call\)/);
+  const main = readFileSync(fileURLToPath(new URL("../../../mobile/android/app/src/main/java/org/routemaker/phone/MainActivity.java", import.meta.url)), "utf8");
+  assert.match(main, /registerPlugin\(SharePlugin\.class\);/);
 });

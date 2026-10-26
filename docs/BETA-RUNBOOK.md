@@ -992,6 +992,8 @@ anything can run `migrate` (rollback C restores that snapshot), and the app star
    2026-10-22, so the render takes `--no-password` (plus `--no-401-page` if the installed file used it) and the
    check expects 200; a render without `--no-password` puts the password back. Without this the beta keeps
    the old log settings, and any other template change, until it is next installed.
+   A template change must pass `nginx -t` in CI before it is tagged: `tests/test_beta_nginx_conf.py` renders
+   the runbook's variants and has a pinned nginx test them (v0.12.3's robots.txt line failed on the beta).
 10. The front end comes in the bundle (`frontend/`), so `files` installs it; the new `index.html` goes in last.
 
 **Front end only:** ship with `ship-data.sh --live-dir "$RM_LIVE_DIR" --build-frontend [--report-url <the same as before>]

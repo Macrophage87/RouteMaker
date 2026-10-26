@@ -74,6 +74,9 @@ import {
   startState,
   PASSED_M,
   step,
+  secondsAt,
+  secondsBetween,
+  timelineOf,
   toGo,
   turnWords,
   wayBack,
@@ -524,6 +527,48 @@ test("toGo and whereAmI: to the next stop and the end; US units spoken, metric o
   assert.match(spoken, /^On A Street\. Next, in 0\.4 miles: left onto B Street\. 0\.4 miles to stop 1\. 1 mile to the end\.$/);
   const shown = whereAmI(model, state, true);
   assert.match(shown, /0\.4 mi \(0\.6 km\) to stop 1/);
+});
+
+test("toGo from the route's time marks: a slow climb ahead and a junction wait where they are (Stephen 2026-10-26)", () => {
+  // 2,000 m in 400 s: the first 900 m quick (90 s), a 15 s wait at a signal there, then 10 m/s to the stop at
+  // 1,000 m (100 m, 10 s) and a climb to the end (1,000 m, 285 s).
+  const route = { ...twoLegs(), time_marks: [[0, 0], [0.45, 90], [0.45, 105], [0.5, 115], [1, 400]] };
+  const model = rideModel(route);
+  const { state } = ride(model, "quiet", 0, 400);
+  const togo = toGo(model, state.progressM ?? 0);
+  const at = state.progressM ?? 0;
+  // At 400 m: 40 s along. To the stop at 1,000 m, 60 s riding and its wait; to the end, the climb as well.
+  assert.ok(Math.abs((togo.stop?.seconds ?? 0) - (115 - at / 10)) < 1, String(togo.stop?.seconds));
+  assert.ok(Math.abs((togo.end.seconds ?? 0) - (400 - at / 10)) < 1, String(togo.end.seconds));
+  // Evenly spread it would have been 120 s and 320 s.
+  const even = toGo(rideModel(twoLegs()), at);
+  assert.ok(Math.abs((even.end.seconds ?? 0) - (2000 - at) / 5) < 1);
+});
+
+test("timelineOf: scaled to the route's duration; out of order, empty or timeless marks are none", () => {
+  const line = timelineOf([[0, 0], [0.5, 50], [1, 100]], 2000, 300);
+  assert.deepEqual(line && [...line.m], [0, 1000, 2000]);
+  assert.deepEqual(line && [...line.s], [0, 150, 300]);
+  assert.equal(timelineOf([[0, 0], [0.6, 50], [0.5, 60]], 2000, 300), null);
+  assert.equal(timelineOf([[0, 0], [1, 0]], 2000, 300), null);
+  assert.equal(timelineOf(null, 2000, 300), null);
+  assert.equal(timelineOf([[0, 0], [1, 10]], 2000, 0), null);
+});
+
+test("secondsAt: a wait counts once its place is reached; before the start and past the end, the ends", () => {
+  const model = rideModel({ ...twoLegs(), time_marks: [[0, 0], [0.5, 100], [0.5, 115], [1, 400]] });
+  assert.equal(secondsAt(model, -5), 0);
+  assert.ok(Math.abs((secondsAt(model, model.lengthM / 2 - 1) ?? 0) - 99.9) < 0.2);
+  assert.ok(Math.abs((secondsAt(model, model.lengthM / 2) ?? 0) - 115) < 1e-6);
+  assert.equal(secondsAt(model, 5000), 400);
+  assert.equal(secondsBetween(model, 1500, 500), 0);
+});
+
+test("whereAmI with an arrival clock: each to-go sentence ends with the clock time of the plan's seconds", () => {
+  const model = rideModel(twoLegs());
+  const { state } = ride(model, "quiet", 0, 400);
+  const spoken = whereAmI(model, state, false, null, (s) => `${Math.round(s)} s`);
+  assert.match(spoken, / 0\.4 miles to stop 1, arriving about 120 s\. 1 mile to the end, arriving about 320 s\.$/);
 });
 
 test("whereAmI off route: the way back, its distance and direction", () => {
