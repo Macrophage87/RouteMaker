@@ -275,6 +275,7 @@ import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, BROADCAST_RIDE_FAILED, BROADCAST_RIDE_NO_LEAD, BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
+import { BroadcastQrDialog } from "./BroadcastQrDialog.tsx";
 import { ResumeRideDialog } from "./ResumeRideDialog.tsx";
 import { forgetLeftRide, keepLeftRide, leftRide } from "./lib/rideResume.ts";
 import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
@@ -357,6 +358,9 @@ const SHARED_ID = sharedIdFrom(window.location.hash, window.location.search, win
 const SHARED_RIDE = SHARED_ID !== null && rideLinkFrom(window.location.hash, window.location.search);
 // A ride link's leader (Share ride or Broadcast, 2026-10-22): the key that names the sharer's dot, followed on the map.
 const SHARED_LEAD = SHARED_RIDE ? leadKeyFrom(window.location.hash, window.location.search) : null;
+// That link itself, as opened (before the address becomes the page's own): those following pass it on, by Broadcast or
+// its QR code, so all who open it follow the same leader (Stephen 2026-10-26: "allow participants to share that same code").
+const SHARED_LINK = SHARED_RIDE && SHARED_LEAD ? window.location.href : null;
 if (SHARED_ID && (window.location.pathname.startsWith(SHARED_PATH) || new URLSearchParams(window.location.search).has("route"))) {
   const query = new URLSearchParams(window.location.search);
   query.delete("route");
@@ -3076,6 +3080,10 @@ export function App() {
   // The lead each shared line went out with: the same line shared again (to another chat) goes with the same key, so
   // the first link's followers keep their leader.
   const leads = useRef(new Map<string, { token: string; key: string }>());
+  // The ride link last sent, and the route it was sent for: shared again for that route (the ride started on it, a
+  // re-route or a plan made again since), it is that same link (Stephen 2026-10-26: "if you press and share multiple
+  // times in the same ride, it's the same link").
+  const rideLinkSent = useRef<{ route: RouteResponse; link: string; lead: { token: string; key: string } | null; id: string | null } | null>(null);
   // Share ride: the same link marked as a ride (lib/sharedRoutes.ts RIDE_PARAM), opened fixed with location sharing,
   // and led by the sharer (LEAD_PARAM). Answers whether it was shared as a ride the sharer leads (Broadcast starts it),
   // and what was said.
@@ -3095,11 +3103,15 @@ export function App() {
     let unled = false;
     setShareSaid((before) => ({ text: "", count: before.count }));
     const distanceM = !stale && routedPoints === points ? shown.distance_m : null;
-    const now = sharedLinkNow();
-    const { kept, exact } = now;
-    const sharedId = sharedLine.current?.id ?? null;
-    const lead = ride && kept ? ((sharedId ? leads.current.get(sharedId) : undefined) ?? leadPrep.current) : null;
-    const link = ride && kept ? asRideLink(now.link, lead?.key ?? null) : now.link;
+    // The ride's own route while riding (the plan's may have been made again since), else the one shown.
+    const rideRoute = riding && rideStart ? rideStart.route : shown;
+    const again = ride && rideLinkSent.current?.route === rideRoute ? rideLinkSent.current : null;
+    const now = again ? null : sharedLinkNow();
+    const kept = again ? Promise.resolve(true) : now!.kept;
+    const exact = again ? null : now!.exact;
+    const sharedId = again ? again.id : (sharedLine.current?.id ?? null);
+    const lead = again ? again.lead : ride && kept ? ((sharedId ? leads.current.get(sharedId) : undefined) ?? leadPrep.current) : null;
+    const link = again ? again.link : ride && kept ? asRideLink(now!.link, lead?.key ?? null) : now!.link;
     const file = exact?.file ? gpxShareFile(exact.file.text, exact.file.fileName) : null;
     const content = withGpxFile(nav, shareContent(link, distanceM, presetSaid(preset)), file);
     const outcome = shareLink(nav, content);
@@ -3124,7 +3136,8 @@ export function App() {
           }
           led = true;
         } else unled = true;
-        const open = { answer: shown, ride: true, own: true, id: sharedId ?? undefined, lead: lead && sharedId ? lead.key : null };
+        if (led) rideLinkSent.current = { route: rideRoute, link, lead, id: sharedId };
+        const open = { answer: rideRoute, ride: true, own: true, id: sharedId ?? undefined, lead: lead && sharedId ? lead.key : null };
         sharedOpenNow.current = open;
         setSharedOpen(open);
       }
@@ -3487,6 +3500,22 @@ export function App() {
       window.clearTimeout(slow);
     });
   };
+  // Broadcast's QR code (lib/broadcastQr.ts, BroadcastQrDialog.tsx): the link, and Start ride where it was held beside
+  // Start before the ride. The link is made as the share sheet's would be, handed to a sheet that only keeps it.
+  const [qrAsk, setQrAsk] = useState<{ link: string; start: (() => void) | null } | null>(null);
+  const keepsLink = (got: { url: string }): ShareNavigator => ({
+    share: async (content) => {
+      got.url = content.url;
+    },
+  });
+  // A broadcast this page follows: the link it opened, passed on as it is (its leader stays the leader).
+  const followedLink = () => (SHARED_LINK && sharedOpenNow.current?.lead && !sharedOpenNow.current.own && sharedOpenNow.current.id === SHARED_ID ? SHARED_LINK : null);
+  // Answers whether it went, and what to say.
+  const passOn = async (link: string, nav: ShareNavigator | undefined): Promise<{ sent: boolean; said: string }> => {
+    const done = await shareLink(nav, shareContent(link, null, presetSaid(preset)));
+    if (done !== "shared") return { sent: false, said: done === "failed" && !canShare ? BROADCAST_RIDE_COPY_FAILED : shareSaidFor(done) };
+    return { sent: true, said: canShare ? "" : BROADCAST_COPIED };
+  };
   // Broadcast (Stephen 2026-10-22: "a small button next to start ... You then get a share screen and send it"): Share
   // ride's link, led by the sharer, then the ride starts as Start's does. The voice is unlocked inside the press, as
   // the share sheet's own wait would spend it; nothing starts where the link was not sent or its line not kept.
@@ -3500,6 +3529,15 @@ export function App() {
     }
     primeRideVoice(ridePrefs);
     setBroadcastNote((n) => ({ text: "", count: n.count }));
+    // Following someone's broadcast: their link, passed on, then the ride.
+    const followed = followedLink();
+    if (followed) {
+      void passOn(followed, broadcastNav).then(({ sent, said }) => {
+        if (sent) startRideNoted(said);
+        else if (said) setBroadcastNote((n) => ({ text: said, count: n.count + 1 }));
+      });
+      return;
+    }
     void shareRoute(true, broadcastNav).then(({ led, said }) => {
       if (led) {
         // With no share sheet the link was copied: the ride screen says so, for the rider to paste it.
@@ -3510,10 +3548,38 @@ export function App() {
   // Broadcast from a ride (Stephen 2026-10-24: "Let people broadcast from a ride"): Share ride's link as Plan's and Go's
   // Broadcast sends it, the ride already going; the rider leads once it went with its key. Answers what to say.
   const broadcastFromRide = async (): Promise<string> => {
+    const followed = followedLink();
+    if (followed) return (await passOn(followed, broadcastNav)).said;
     const { led, said } = await shareRoute(true, broadcastNav);
     if (led) return canShare ? ROAM_BROADCAST_ON : BROADCAST_COPIED;
     if (said === BROADCAST_NO_LEAD) return BROADCAST_RIDE_NO_LEAD;
     return said === SHARE_FAILED ? (canShare ? BROADCAST_RIDE_FAILED : BROADCAST_RIDE_COPY_FAILED) : said;
+  };
+  // Broadcast held beside Start: its link as a QR code, with Start ride; the sharer leads, as Broadcast's sheet does.
+  const broadcastQr = () => {
+    const start = riding ? null : () => startRideNoted("");
+    const followed = followedLink();
+    if (followed) return setQrAsk({ link: followed, start });
+    const got = { url: "" };
+    void shareRoute(true, keepsLink(got)).then(({ led, said }) => {
+      if (led && got.url) setQrAsk({ link: got.url, start });
+      else if (said) setBroadcastNote((n) => ({ text: said, count: n.count + 1 }));
+    });
+  };
+  // Held on the ride screen: the same, without Start (the ride is going). Answers what to say.
+  const broadcastQrFromRide = async (): Promise<string> => {
+    const followed = followedLink();
+    if (followed) {
+      setQrAsk({ link: followed, start: null });
+      return "";
+    }
+    const got = { url: "" };
+    const { led, said } = await shareRoute(true, keepsLink(got));
+    if (led && got.url) {
+      setQrAsk({ link: got.url, start: null });
+      return "";
+    }
+    return said === BROADCAST_NO_LEAD ? BROADCAST_RIDE_NO_LEAD : said;
   };
   // Ride the rest (lib/rideTrip.ts): after a transit plan's transit, a ride for its last riding leg, planned
   // as a normal route request from where the rider is (the ride's fix) to the destination, on the leg's
@@ -3844,12 +3910,18 @@ export function App() {
   const [roamBroadcast, setRoamBroadcast] = useState<{ id: string; lead: string; leading: boolean } | null>(() =>
     ROAM_FOLLOW ? { ...ROAM_FOLLOW, leading: false } : null,
   );
-  const broadcastRoam = async (): Promise<string> => {
+  // `nav`: the sheet (or Broadcast's QR code, broadcastRoamQr). Following someone's Roam broadcast, their link is passed on.
+  const broadcastRoam = async (nav: ShareNavigator | undefined = broadcastNav): Promise<string> => {
+    if (roamBroadcast && !roamBroadcast.leading) {
+      const done = await shareLink(nav, { title: ROAM_BROADCAST_TITLE, text: ROAM_BROADCAST_TEXT, url: roamLink(window.location.origin, roamBroadcast.id, roamBroadcast.lead) });
+      if (done !== "shared") return done === "failed" && !canShare ? BROADCAST_RIDE_COPY_FAILED : shareSaidFor(done);
+      return canShare ? "" : BROADCAST_COPIED;
+    }
     const mine = roamBroadcast?.leading ? roamBroadcast : null;
     const lead = mine ? leads.current.get(`roam|${mine.id}`) : leadPrep.current;
     if (!lead) return ROAM_BROADCAST_NOT_READY;
     const id = mine?.id ?? newSharedId();
-    const done = await shareLink(broadcastNav, { title: ROAM_BROADCAST_TITLE, text: ROAM_BROADCAST_TEXT, url: roamLink(window.location.origin, id, lead.key) });
+    const done = await shareLink(nav, { title: ROAM_BROADCAST_TITLE, text: ROAM_BROADCAST_TEXT, url: roamLink(window.location.origin, id, lead.key) });
     if (done !== "shared") return done === "failed" && !canShare ? BROADCAST_RIDE_COPY_FAILED : shareSaidFor(done);
     // Again while leading: the sheet was the answer; a copy is said.
     if (mine) return canShare ? "" : BROADCAST_COPIED;
@@ -3859,6 +3931,14 @@ export function App() {
     prepareLead();
     setRoamBroadcast({ id, lead: lead.key, leading: true });
     return canShare ? ROAM_BROADCAST_ON : BROADCAST_COPIED;
+  };
+  // Held in Roam: its link as a QR code (no Start: Roam is going).
+  const broadcastRoamQr = async (): Promise<string> => {
+    const got = { url: "" };
+    const said = await broadcastRoam(keepsLink(got));
+    if (!got.url) return said;
+    setQrAsk({ link: got.url, start: null });
+    return said === BROADCAST_COPIED ? "" : said;
   };
   const endRoam = () => {
     // The broadcast ends with the roam: its followers see the leader's dot go within two minutes.
@@ -4894,7 +4974,7 @@ export function App() {
         mode, actions, stations, go, transitControls,
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
-        narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: { onPress: broadcastRide, note: broadcastNote }, startRideRef, rideSize, setDials,
+        narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: { onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote }, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, weather,
       }}
     />
@@ -5147,6 +5227,7 @@ export function App() {
           else startRideChecked();
         }}
       />
+      <BroadcastQrDialog ask={qrAsk} onClose={() => setQrAsk(null)} />
       <ClosureDialog ask={closureAsk} onReroute={() => void closureReroute()} onAnyway={closureAnyway} onCancel={closureCancel} />
       <ShareCardDialog
         open={shareCardOpen && shareCardSource !== null && mode !== "go" && !riding}
@@ -5353,7 +5434,9 @@ export function App() {
           fixed={rideStart.fixed}
           // The plan's own route only (its link is the plan's), not Ride the rest's or a detour from Roam, and never a
           // ride opened from someone else's link (they lead it).
-          onBroadcast={!rideStart.roam && rideStart.route === shown && !(onShared && !onShared.own) ? broadcastFromRide : null}
+          onBroadcast={!rideStart.roam && rideStart.route === shown ? broadcastFromRide : null}
+          onBroadcastHold={!rideStart.roam && rideStart.route === shown ? broadcastQrFromRide : null}
+          passingOn={onShared !== null && !onShared.own && !!onShared.lead}
           broadcasting={rideBroadcast?.leading === true}
           keepLeft={rideStart.kept === true}
           startNote={rideStart.note}
@@ -5376,7 +5459,9 @@ export function App() {
           onView={setRoamRider}
           onDetour={roamDetour}
           onEnd={endRoam}
-          onBroadcast={broadcastRoam}
+          onBroadcast={() => broadcastRoam()}
+          onBroadcastHold={broadcastRoamQr}
+          passingOn={roamBroadcast !== null && !roamBroadcast.leading}
           broadcasting={roamBroadcast?.leading === true}
         />
       )}

@@ -37,6 +37,8 @@
  * ones sent are a re-plan's start point and, when the rider asks for the nearest water or restroom, the
  * search's own (POST /api/nearest), each in a POST body, as planning with "Use my location" sends it.
  */
+import { BROADCAST_HOLD_HINT } from "./lib/broadcastQr.ts";
+import { useHold } from "./lib/useHold.ts";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type PointerEvent } from "react";
 import { HoldTimer } from "./lib/holdTimer.ts";
 import { startsWayBack, wayBackRoute } from "./lib/rejoin.ts";
@@ -660,6 +662,8 @@ export function RideMode({
   onRideRest,
   fixed = false,
   onBroadcast = null,
+  onBroadcastHold = null,
+  passingOn = false,
   broadcasting = false,
   keepLeft = false,
   startNote = "",
@@ -726,6 +730,10 @@ export function RideMode({
    * a ride opened from someone else's link, Ride the rest).
    */
   onBroadcast?: (() => Promise<string>) | null;
+  /** Broadcast held (or right-clicked): its link as a QR code (lib/broadcastQr.ts); answers what to say. */
+  onBroadcastHold?: (() => Promise<string>) | null;
+  /** Following someone's broadcast: Broadcast passes their link on (they stay its leader). */
+  passingOn?: boolean;
   /** This ride is broadcast, led by this rider: Broadcast shows on, and a press shares the same link again. */
   broadcasting?: boolean;
   /** The ride is kept on this device to resume (lib/rideResume.ts): each new route is kept in its place. */
@@ -1706,6 +1714,15 @@ export function RideMode({
       broadcastBusy.current = false;
     }
   };
+  const broadcastHoldId = useId();
+  const broadcastHold = useHold(
+    onBroadcastHold
+      ? () =>
+          void onBroadcastHold().then((said) => {
+            if (said && !ended.current) answer(said);
+          })
+      : null,
+  );
   // More's own presses (Less traffic, Fewer hills, Skip this stop): the bubbles close, the map back in view, and the
   // focus goes to More.
   const fromMore = (press: () => void) => {
@@ -2426,13 +2443,20 @@ export function RideMode({
           {onBroadcast && !ride.arrived && (
             <button
               type="button"
-              className={`ride-round${broadcasting ? " ride-round-on" : ""}`}
+              className={`ride-round broadcast-hold${broadcasting ? " ride-round-on" : ""}`}
               onClick={() => void broadcast()}
-              aria-label={broadcasting ? `${RIDE_BROADCAST_NAME}: on. Share the link again` : `${RIDE_BROADCAST_NAME}: share a link others follow you with`}
+              {...broadcastHold}
+              aria-describedby={onBroadcastHold ? broadcastHoldId : undefined}
+              aria-label={broadcasting ? `${RIDE_BROADCAST_NAME}: on. Share the link again` : passingOn ? `${RIDE_BROADCAST_NAME}: pass on the link to this ride` : `${RIDE_BROADCAST_NAME}: share a link others follow you with`}
               title={RIDE_BROADCAST_NAME}
             >
               <Icon name="broadcast" size={24} />
             </button>
+          )}
+          {onBroadcast && onBroadcastHold && (
+            <span id={broadcastHoldId} className="visually-hidden">
+              {BROADCAST_HOLD_HINT}
+            </span>
           )}
           {water && (
             <div

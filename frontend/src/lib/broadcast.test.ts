@@ -148,14 +148,14 @@ test("Broadcast is one small button beside Start, in Plan and Go: the share shee
   const app = read("../App.tsx");
   // Everywhere (Stephen 2026-10-26, in the phone app: "I don't seem to be able to broadcast rides"): with no share
   // sheet, the link is copied (broadcastNav).
-  assert.match(app, /broadcastRide: \{ onPress: broadcastRide, note: broadcastNote \},/);
+  assert.match(app, /broadcastRide: \{ onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote \},/);
   // The voice unlocked within the press; the ride starts only once the link was sent and its line kept.
   const fn = app.slice(app.indexOf("const broadcastRide = () => {"), app.indexOf("\n  };\n", app.indexOf("const broadcastRide = () => {")));
   assert.match(fn, /\}\s*primeRideVoice\(ridePrefs\);[\s\S]*void shareRoute\(true, broadcastNav\)\.then\(\(\{ led, said \}\) => \{\s*if \(led\) \{[^}]*startRideNoted\(canShare \? "" : BROADCAST_COPIED\);\s*\} else if \(said\) setBroadcastNote/);
   // What went wrong is shown and said beside the button.
   assert.match(panel, /<p className="hint broadcast-note" role="status">/);
   // The same line shared again goes with the same leader key; the ride starts with the sharer free to re-route.
-  assert.match(app, /const lead = ride && kept \? \(\(sharedId \? leads\.current\.get\(sharedId\) : undefined\) \?\? leadPrep\.current\) : null;/);
+  assert.match(app, /const lead = again \? again\.lead : ride && kept \? \(\(sharedId \? leads\.current\.get\(sharedId\) : undefined\) \?\? leadPrep\.current\) : null;/);
   assert.match(app, /const opened = sharedOpenNow\.current\?\.answer === route \? sharedOpenNow\.current : null;/);
   // The sharer's key is made before the press, so no await comes before the share sheet.
   assert.match(app, /useEffect\(prepareLead, \[prepareLead\]\);/);
