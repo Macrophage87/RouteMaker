@@ -292,7 +292,7 @@ import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
 import { SaveRoute } from "./SaveRoute.tsx";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { broadcastRideId, isRideLink, leadConsent, leaderKey, newToken, roamRideId, type RideLinkType } from "./lib/rideGroup.ts";
+import { broadcastRideId, isRideLink, leadConsent, leaderKey, newToken, opensIntoRide, roamRideId, type RideLinkType } from "./lib/rideGroup.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
 // With Ride mode's kept tiles behind the network, for dead spots (lib/corridorStore.ts).
@@ -3305,6 +3305,8 @@ export function App() {
   // A press's check under way (Start ride, a download, a save): another press waits for it, ignored (v0.7.0 end
   // review). The check gives up after CHECK_TIMEOUT_MS and the press goes ahead unchecked.
   const closureChecking = useRef(false);
+  // The closure check a shared or saved route's open runs: a broadcast's Ride mode starts after it (opensIntoRide).
+  const openCheck = useRef<Promise<void> | null>(null);
   const checkThen = async (why: CheckFor, line: readonly (readonly number[])[], gpx: boolean, proceed: () => void, afterGpx?: (track: number[][]) => void, onAsk?: () => void) => {
     if (line.length < 2 || closureLetGo.current === lineKey(line)) {
       proceed();
@@ -3581,7 +3583,7 @@ export function App() {
     // Another file is not the saved route on screen (a saved file reopened sets it again, openSaved).
     openSavedRoute.current = null;
     openImported(plan);
-    if (plan.verbatim) void checkThen("open", plan.verbatim.track, true, () => {});
+    if (plan.verbatim) openCheck.current = checkThen("open", plan.verbatim.track, true, () => {});
   };
   // A plan link (or a plan left open) is checked once its first route is on screen.
   const checkFirstAnswer = useRef(PLAN_LINK);
@@ -3632,7 +3634,7 @@ export function App() {
     if (window.location.hash !== saved.inputs.hash) window.location.hash = saved.inputs.hash;
     else retry();
     announce(said);
-    void checkThen("open", saved.line, false, () => {});
+    openCheck.current = checkThen("open", saved.line, false, () => {});
     // Today's map, asked quietly: more than 5% apart in distance offers Update route; nothing changes without it.
     void requestRoute(plan.points, plan.preset, { dials: plan.dials, straight: plan.drawn }).then((today) => {
       if (today.ok && savedShown.current?.key === key && differsTooMuch(saved.distance_m, today.route.distance_m))
@@ -3952,6 +3954,34 @@ export function App() {
 
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
+  // A broadcast link opened on a phone goes straight into Ride mode, the leader's dot on its map (lib/rideGroup.ts
+  // opensIntoRide): a route's broadcast starts its ride as Start's press does, once the open's own closure check has
+  // found nothing (closures found: its question stays, and Start is the rider's); a Roam broadcast starts Roam. Judged
+  // once, when the link is first ready: a ride already going or the Resume question then, and it never starts later.
+  // Started without a press, so the voice is unlocked by the first tap after (iOS), unless it is already speaking.
+  const autoRode = useRef(false);
+  const sharedFollow = sharedOpen?.ride === true && !!sharedOpen.lead && !sharedOpen.own && shown === sharedOpen.answer && !stale && rideableRoute(shown);
+  const roamFollow = roamBroadcast !== null && !roamBroadcast.leading;
+  const sharedFollowNow = useRef(sharedFollow);
+  sharedFollowNow.current = sharedFollow;
+  useEffect(() => {
+    const ready = sharedFollow || roamFollow;
+    if (!ready || autoRode.current) return;
+    autoRode.current = true;
+    if (!opensIntoRide({ phone: looksLikePhone(), onBike, resumeAsked: leftAsk !== null })) return;
+    // Kept until a click while riding unlocks it (a tap during the closure check is before the ride).
+    const unlock = () => {
+      if (!ridingNow.current && !roamingNow.current) return;
+      document.removeEventListener("click", unlock, true);
+      if (!window.speechSynthesis?.speaking) primeRideVoice(ridePrefsNow.current);
+    };
+    document.addEventListener("click", unlock, true);
+    if (!sharedFollow) return startRoam();
+    void (openCheck.current ?? Promise.resolve()).then(() => {
+      // Still the link's route on screen, and nothing started meanwhile (the rider's own Start, or Roam).
+      if (!closurePending.current && !ridingNow.current && !roamingNow.current && sharedFollowNow.current) startRideChecked();
+    });
+  }, [sharedFollow, roamFollow]);
   // Light times on the route (lib/lightTimes.ts): near dawn or dusk, where the rider will be at each, leaving now.
   // The clock runs only with a route shown, outside a ride; the same marks are kept while nothing they say changed.
   const minute = useMinute(shown !== null && !riding && (mode === "plan" || mode === "go"));
