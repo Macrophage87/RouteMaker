@@ -2892,7 +2892,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const ax311 = await axNode(p, ".ride-311-button");
   check("ride 311 button: a round button of about 60 px at the right edge, in the lower half (thumb height), named Log for 311 with its visible 311, closed",
     !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 96 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Log for 311" &&
-      JSON.stringify(rail.map((x) => x.name).filter((n) => !/^Broadcast/.test(n))) === JSON.stringify(["Where am I?", "Large text", "Detour: water, restroom, food, repair or search", "Log for 311", "More: change the route, and ride settings"]) && rail.every((x) => x.round && x.w >= 44),
+      JSON.stringify(rail.map((x) => x.name).filter((n) => !/^Broadcast/.test(n))) === JSON.stringify(["Where am I?", "Large text", "Detour: water, restroom, food, repair or search", "Log for 311", "More: change the route or the map, and ride settings"]) && rail.every((x) => x.round && x.w >= 44),
     JSON.stringify({ b311, ax311, rail }));
   // The top row (the owner, 2026-10-19: "switch end ride and road closed"): End ride, then Road closed ahead with its
   // words (2026-10-20), one line.
@@ -3037,12 +3037,13 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await sleep(200);
   // More (the gear, the owner, 2026-10-18; More 2026-10-24; bubbles 2026-10-26: "Have many of those options just expanded
   // as more bubble buttons, not in settings"): a row of round bubbles to its left, Less traffic and Fewer hills (each a
-  // symbol named in full, 48 px or more) and Settings, the last opening the settings under the top row, the focus in them.
+  // symbol named in full, 48 px or more), Topo lines (2026-10-26, a toggle, off) and Settings, the last opening the
+  // settings under the top row, the focus in them.
   const bubbles = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-button'); const row = document.getElementById(g.getAttribute('aria-controls')); const m = g.getBoundingClientRect();
-    const list = [...row.querySelectorAll('button')].filter((b) => b.getClientRects().length > 0).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label'), w: Math.round(r.width), h: Math.round(r.height), round: parseFloat(getComputedStyle(b).borderRadius) >= r.width / 2 - 1, left: r.right <= m.left + 1, onScreen: r.left >= 0 && r.top >= 0 }; });
+    const list = [...row.querySelectorAll('button')].filter((b) => b.getClientRects().length > 0).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label'), pressed: b.getAttribute('aria-pressed'), w: Math.round(r.width), h: Math.round(r.height), round: parseFloat(getComputedStyle(b).borderRadius) >= r.width / 2 - 1, left: r.right <= m.left + 1, onScreen: r.left >= 0 && r.top >= 0 }; });
     return { expanded: g.getAttribute('aria-expanded'), shown: !row.hidden, panelShown: !document.querySelector('.ride-mode-settings').hidden, list }; })()`);
-  check("ride: More (Stephen 2026-10-26) opens round bubbles to its left: Less traffic, Fewer hills and Ride settings, each 48 px or more and on screen; the settings stay closed",
-    bubbles.expanded === "true" && bubbles.shown && !bubbles.panelShown && JSON.stringify(bubbles.list.map((x) => x.name)) === JSON.stringify(["Less traffic: plan again from here", "Fewer hills: plan again from here", "Ride settings"]) && bubbles.list.every((x) => x.round && x.w >= 48 && x.h >= 48 && x.left && x.onScreen), JSON.stringify(bubbles));
+  check("ride: More (Stephen 2026-10-26) opens round bubbles to its left: Less traffic, Fewer hills, Topo lines (a toggle, off) and Ride settings, each 48 px or more and on screen; the settings stay closed",
+    bubbles.expanded === "true" && bubbles.shown && !bubbles.panelShown && JSON.stringify(bubbles.list.map((x) => x.name)) === JSON.stringify(["Less traffic: plan again from here", "Fewer hills: plan again from here", "Topo lines", "Ride settings"]) && bubbles.list.find((x) => x.name === "Topo lines")?.pressed === "false" && bubbles.list.every((x) => x.round && x.w >= 48 && x.h >= 48 && x.left && x.onScreen), JSON.stringify(bubbles));
   await p.shot(`${SHOTS}/ride_more_320.png`);
   await p.eval("document.querySelector('.ride .ride-settings-bubble').click(); true");
   await sleep(200);
