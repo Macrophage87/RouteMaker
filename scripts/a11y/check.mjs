@@ -1439,7 +1439,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     }
     await p.eval("document.getElementById('__copy').click(); true");
     await sleep(900);
-    const copied = await p.eval("document.querySelector('.route-actions [role=status]')?.textContent ?? ''");
+    const copied = await p.eval("document.querySelector('.route-actions .link-spoken')?.textContent ?? ''");
     check("locate: pressing Copy link says the note with the confirmation", copied === `Link copied. ${START_NOTE}`, copied);
     const stored = await p.eval("JSON.stringify([localStorage, sessionStorage]).includes('38.88') || JSON.stringify(Object.entries(localStorage)).includes('location')");
     check("locate: nothing about the position is in localStorage or sessionStorage", stored === false, String(stored));
@@ -5315,8 +5315,9 @@ const failed = results.filter((r) => !r.ok);
 // Load route's popup (#370) adds one. Settings scrolling (2026-10-22) adds one: Home's one line with Change,
 // Cancel, and leaving Settings.
 // Plan's Start ride no longer asks first (2026-10-24) takes one away.
+// Ride's More bubbles (#515, 2026-10-26) turn one check into three: two more.
 // Favorite places (2026-10-26) add two: the popout, and Edit's Remove.
-const EXPECTED = 686;
+const EXPECTED = 688;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
