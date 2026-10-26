@@ -57,6 +57,7 @@ import {
 } from "./lib/roadInfo.ts";
 import type { PlaceChoice } from "./lib/geocode.ts";
 import { SET_AS_HOME_TEXT } from "./lib/homeSet.ts";
+import { SAVE_SPOT_TEXT } from "./lib/favoritePlaces.ts";
 import { stationLinks } from "./lib/stationLinks.ts";
 import { TIMES_LABEL, requestStationTimes, stationCardRows } from "./lib/stationTimes.ts";
 import type { StationTimes } from "./lib/api.ts";
@@ -151,6 +152,8 @@ interface Props {
   trailRider?: TrailRider;
   /** "Set as Home" (lib/homeSet.ts): the spot is the rider's Home; the panel then closes. Absent: no button. */
   onSetHome?: (point: [number, number]) => void;
+  /** Signed in only (lib/favoritePlaces.ts): the spot saved to Favorites, beside Set as Home. */
+  onSaveFavorite?: (point: [number, number]) => void;
 }
 
 const FOCUSABLE =
@@ -209,7 +212,7 @@ function StationTimesList({ station, rail, closed }: { station: Station; rail: R
   );
 }
 
-export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, trailMiles = null, onClose, fallbackFocus, onStressChanged, plan, onPlace, onSetHome, trailRider = NO_TRAIL_RIDER }: Props) {
+export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, trailMiles = null, onClose, fallbackFocus, onStressChanged, plan, onPlace, onSetHome, onSaveFavorite, trailRider = NO_TRAIL_RIDER }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -647,6 +650,20 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
                   }}
                 >
                   {SET_AS_HOME_TEXT}
+                </button>
+              </li>
+            )}
+            {onSaveFavorite && (
+              <li>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    onSaveFavorite(request.point);
+                    close();
+                  }}
+                >
+                  {SAVE_SPOT_TEXT}
                 </button>
               </li>
             )}

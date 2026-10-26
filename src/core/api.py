@@ -1029,7 +1029,12 @@ class IntersectionOut(Schema):
         description='What a click shows, US units first: "Left turn across a 4-lane 35 mph '
         '(56 km/h) road, no signal".'
     )
-    crossed_tier: int | None = Field(description="The busy road's LTS, 3-5; null if unknown.")
+    crossed_tier: int | None = Field(
+        description=(
+            "The crossed road's LTS on the map, 1-5; null if unknown. Below 3 only where"
+            " the junction read a multi-lane road by its traffic, not its bike lane."
+        )
+    )
     movement: Literal["left", "straight", "right"]
     control: Literal["signal", "stop", "cross_stop", "all_stop", "none"]
     kind: str
@@ -1955,6 +1960,19 @@ class RoadHazardSpanOut(Schema):
     text: str = Field(description="One plain sentence, US units first with the metric once.")
 
 
+class SteepGradeOut(Schema):
+    """A steep stretch on a Mass Ride or a Novice and Nervous ride (v0.12.5;
+    `routemaker.steep_grades`): past 5% either way ("steep", an orange marker) or 8% ("very_steep",
+    red), read in the riding direction, in whole metres along the router's elevation profile."""
+
+    from_m: int
+    to_m: int
+    direction: Literal["up", "down"]
+    level: Literal["steep", "very_steep"]
+    grade_pct: int = Field(description="The steepest grade along it, a whole percent, unsigned.")
+    text: str = Field(description="One plain sentence, US units first with the metric once.")
+
+
 class ScenicSpanOut(Schema):
     """A stretch of the route with a scenic designation (v0.12.3; `core.route_scenic`), in
     whole metres along the traced route as `stress_spans` are measured."""
@@ -2255,6 +2273,9 @@ class RouteBody(Schema):
     # The scenic designations it rides (v0.12.3; rustic roads, byways, the East Coast
     # Greenway, US Bicycle Routes), in riding order. Additive: empty where it rides none.
     scenic_roads: list[ScenicSpanOut] | None = None
+    # Steep grades either way (v0.12.5), in riding order, on a Mass Ride or a Novice and
+    # Nervous ride. Additive: null on every other ride type, empty where there are none.
+    steep_grades: list[SteepGradeOut] | None = None
     # The Mountain Bike ride type's reading of the route (slice 6). Additive: null on every
     # other ride type.
     mtb: MtbOut | None = None
@@ -5799,6 +5820,136 @@ def my_go_save(request, body: MyGoIn, response: HttpResponse):
     )
     _private(response)
     return Status(200, _my_go_out(row))
+
+
+# GET and POST /api/me/places: a signed-in rider's favorite places (Stephen 2026-10-26: "For
+# signed in users, allow for favorite destinations"; core.models.MyGo.places). Go's Favorites chip
+# lists Home first, then Work once set, then these. Saved whole, on their own (a My Go save never
+# touches them), with My Go's guards; never logged, and deleted with the account.
+
+FAVORITE_PLACES_MAX = 20
+
+
+class FavoritePlaceIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    lon: StrictFloat
+    lat: StrictFloat
+    label: str = Field(min_length=1, max_length=120)
+    # Work (Stephen 2026-10-26: "Home and if set work would be the top 2 favorites"): at most one.
+    work: bool = False
+
+    @model_validator(mode="after")
+    def inside_coverage(self):
+        west, south, east, north = settings.COVERAGE_BBOX
+        if not (west <= self.lon <= east and south <= self.lat <= north):
+            raise ValueError("A favorite place is outside the area this map covers")
+        if not self.label.strip():
+            raise ValueError("A favorite place needs a name")
+        return self
+
+
+class FavoritePlacesIn(Schema):
+    """The whole list, in the rider's order: what is left out is removed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    places: list[FavoritePlaceIn] = Field(default_factory=list, max_length=FAVORITE_PLACES_MAX)
+
+    @model_validator(mode="after")
+    def one_work_each_place_once(self):
+        if sum(1 for p in self.places if p.work) > 1:
+            raise ValueError("Only one place can be Work")
+        spots = [(round(p.lon, 5), round(p.lat, 5)) for p in self.places]
+        if len(set(spots)) != len(spots):
+            raise ValueError("A place is in the list twice")
+        return self
+
+
+class FavoritePlaceOut(Schema):
+    lon: float
+    lat: float
+    label: str
+    work: bool
+
+
+class FavoritePlacesOut(Schema):
+    places: list[FavoritePlaceOut]
+
+
+def _places_out(row) -> dict:
+    kept = row.places if row is not None and isinstance(row.places, list) else []
+    return {
+        "places": [
+            {"lon": p["lon"], "lat": p["lat"], "label": p["label"], "work": bool(p.get("work"))}
+            for p in kept
+            if isinstance(p, dict) and {"lon", "lat", "label"} <= set(p)
+        ]
+    }
+
+
+@api.get(
+    "/me/places",
+    response={
+        200: FavoritePlacesOut,
+        401: StressEditErrorOut,
+        403: StressEditErrorOut,
+        429: ErrorOut,
+    },
+    summary="The signed-in rider's favorite places (Work among them)",
+)
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def favorite_places_read(request, response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from .models import MyGo
+
+    get_token(request)
+    _private(response)
+    return Status(200, _places_out(MyGo.objects.filter(user=request.user).first()))
+
+
+@api.post(
+    "/me/places",
+    response={
+        200: FavoritePlacesOut,
+        400: StressEditErrorOut,
+        401: StressEditErrorOut,
+        403: StressEditErrorOut,
+        429: ErrorOut,
+    },
+    summary="Save the signed-in rider's favorite places (the whole list)",
+)
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.MY_GO_WRITES),
+    csrf_protected,
+    signed_in_only,
+    json_body_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def favorite_places_save(request, body: FavoritePlacesIn, response: HttpResponse):
+    from .models import MyGo
+
+    places = [
+        {
+            # About a metre, as Home.
+            "lon": round(p.lon, 5),
+            "lat": round(p.lat, 5),
+            "label": p.label.strip(),
+            **({"work": True} if p.work else {}),
+        }
+        for p in body.places
+    ]
+    row, _ = MyGo.objects.update_or_create(user=request.user, defaults={"places": places})
+    _private(response)
+    return Status(200, _places_out(row))
 
 
 # Saved settings and saved routes (v0.7.0 plan, "Discord sign-in on, with saved settings and

@@ -305,8 +305,17 @@ Tapping the empty box lists the places you picked recently, once there are some.
 <li><strong>Place buttons:</strong> <strong>Home</strong>, <strong>Food</strong>,
 <strong>Water</strong> and <strong>Restroom</strong>; <strong>More</strong> adds
 <strong>Metro</strong> (the three nearest stations, closed ones marked), <strong>Repair</strong>,
-<strong>Sights</strong>, <strong>Featured routes</strong> and Change home. The first press of Home asks where home is: search for it or
-tap the map.</li>
+<strong>Sights</strong>, <strong>Saved routes</strong>, <strong>Featured routes</strong> and Change home. The first press of Home asks where home is: search for it or
+tap the map. Signed in, Home is <strong>Favorites</strong> instead. It pops out Home (or Set Home),
+Work (or Set Work), then your other saved places in the order you added them, and one tap rides to one.
+Favorites hold 20 places besides Home, Work among them; a spot outside the area the map covers can't be
+saved. <strong>Add a place</strong> searches for one, and <strong>Edit</strong> has Change Home and
+Remove, so More leaves out Change home. Favorites are kept with your account only, never on the device or in a log, and are deleted with it;
+riding to one puts it in that plan's link, as any destination is. <strong>Saved routes</strong> opens the same list as Plan's <strong>Load route</strong>
+(<strong>Sign in with Discord</strong> first when you are signed out, <strong>Open GPX file</strong>, then your
+saved routes and the routes kept on this device); one tap opens a route in Go, ready for <strong>Start ride</strong>.
+In Go a file always keeps to streets and paths bikes may ride: <strong>Exactly as drawn</strong> applies in Plan
+only.</li>
 <li><strong>The route card</strong> shows the start, the number of stops and the destination; Edit
 opens the points. <strong>Add a stop</strong> under it puts a place where it adds the least distance,
 and <strong>Best order</strong> appears with two or more stops. Undo takes a stop back out.</li>
@@ -625,6 +634,10 @@ arrow.</li>
 "Cross Redland Road, then left onto Redland Road bike lane". A trail fork whose branches both lean off
 (a Y) gets its own cue, such as "Bear left to stay on Rock Creek Trail", and a hairpin, such as a ramp
 curling up onto a bridge, is said on the side you actually turn.</li>
+<li>Turns in quick succession, each within 330 ft [100 m] of the one before, are said together early, up to
+three of them: "Right onto 6th Street, then immediately bear left onto Rhode Island Avenue". The turn card
+draws them as one arrow, except through a U-turn or a traffic circle (which keeps its ring) or where the turns
+wind back on themselves. Each turn still gets its own "now", said once you are past the turn before.</li>
 <li><strong>To go</strong>: under the turn, a line gives the distance and time to the next stop, if
 there is one, and to the end, and the clock time you should get there, in the usual clock for your phone's
 language and region (6:42 AM or 18:42): "To stop 2: 1.2 mi (1.9 km), 8 min · 6:42 AM". A screen reader
@@ -665,11 +678,16 @@ route." or "Already the flattest route." (On a Mass Ride, whose traffic level is
 The steps last for this ride only, Plan's sliders stay as they were, and a step that finds no route, or only one
 leading back to the old line, is undone. With a stop ahead, <strong>Skip this stop</strong> shows a skip mark with the
 stop's number under it. These three are hidden on a shared or fixed route and once you have arrived, and pressing one closes
-the row. The <strong>Settings</strong> gear opens the ride's settings under the top row: who says the cues and how
-much, and <strong>Turn the map to my heading</strong>. Pressing More again closes the row and the settings. Escape
+the row. <strong>Topo lines</strong> (the contour icon), just before the gear, is always there. It
+turns the map's contour lines on or off, the same switch as Topo lines in Map layers, and says "Topo lines on."
+or "Topo lines off.", and like those it closes the row; a screen reader hears its name and whether it is on. Where the server has no contours it
+says they are not available, and with no signal it says it needs a connection. The <strong>Settings</strong> gear opens the ride's settings under the top row: who says the cues and how
+much, and <strong>Turn the map to my heading</strong>. Until GPS knows which way you are going, which needs you moving, the map turns to
+the way the phone faces, from its compass; on an iPhone, Start ride or Roam asks for motion and orientation
+access first. Pressing More again closes the row and the settings. Escape
 in the settings closes just them; Escape on the row closes both. Opening Detour, a dock list or 311 closes them too.
 A screen reader hears each in full, such as "Less traffic: plan again from here" and "Skip stop 2, Union Market",
-the gear as "Ride settings", and the button as "More: change the route, and ride settings".</li>
+the gear as "Ride settings", and the button as "More: change the route or the map, and ride settings".</li>
 <li>The stops still ahead are drawn on the ride's map with their numbers and names; via
 points are not.</li>
 <li><strong>Already done?</strong> If the ride finds you already past one of its stops, as when you
@@ -716,7 +734,7 @@ count again.</li>
 due. Times say whether they are live or scheduled, and a countdown shows when there are under
 five minutes to spare.</li>
 <li><strong>End ride</strong> shows the ride summary; <strong>Undo</strong> picks the ride back up,
-keeping the figures recorded so far. See <a href="/about/routing.html#riding">While you
+keeping the figures recorded so far. Signed in, the summary offers <strong>Save to Favorites</strong> for the ride's destination, unless it is Home or already saved. See <a href="/about/routing.html#riding">While you
 ride</a>.</li>
 </ul>
 
@@ -817,7 +835,10 @@ lanes or paths, a calm street joining a short bit of lane or path to the rest, a
 about 820 ft [250 m]) in a street drawn at zoom 12 or 13 show from zoom 12, while a short bit that joins
 nothing and a dead end such as a cul-de-sac wait for zoom 14. On- and off-ramps wait for zoom 14 everywhere
 unless they have a bike lane or path or are a popular corridor.
-Where lines cross, the calmer way is drawn on top.</li>
+Where lines cross, the calmer way is drawn on top. On Mass Ride, where this section is titled "Riders per minute at 6 to 8 mph (10 to 13 km/h)", and on Novice and Nervous, this section's key also has the route's <strong>steep grade</strong>
+marks: a rounded orange square where the grade is over 5% and a red one over 8%, uphill or downhill, with a
+ramp that rises left to right for uphill and falls for downhill in the direction you ride. From zoom 13 the
+grade shows beside it, such as "+9%" or "-6%" (<a href="/about/routing.html#steep">Steep grades</a>).</li>
 <li><strong>Water and restrooms</strong>: drinking fountains and taps (with untreated water marked),
 flush and portable restrooms, and bike repair stands, from street zoom. Where they would crowd each other, as downtown, some wait until you zoom in. The route's
 list names all the water and restrooms near your route, and Repair, in Go's More, lists the nearest
@@ -850,7 +871,7 @@ panel and in Where am I?.</li>
 <h3>The road panel</h3>
 <ul>
 <li>The road's name, its stress level and why, in words.</li>
-<li><strong>Use this spot:</strong> <strong>Set as start</strong>, <strong>Add as stop</strong> (it asks for a name) or <strong>Set as end</strong>, or <strong>Set as Home</strong>.</li>
+<li><strong>Use this spot:</strong> <strong>Set as start</strong>, <strong>Add as stop</strong> (it asks for a name) or <strong>Set as end</strong>, or <strong>Set as Home</strong> and, signed in, <strong>Save to Favorites</strong>.</li>
 <li><strong>Street View</strong>, the newest Mapillary photo facing along the road where there is one, and <strong>Edit in
 OSM</strong> to fix the map itself.</li>
 <li><strong>Suggest a change…</strong>: a road's level, a junction, or a hazard on a Mass Ride.</li>
@@ -1136,7 +1157,7 @@ from the app's next update.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.12.4. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.12.5. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

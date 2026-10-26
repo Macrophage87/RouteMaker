@@ -147,6 +147,9 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
   // unless a check sets `closures`; `closureRequests` counts the asks.
   page.closures = { service_day: "2026-10-12", stations: [] };
   page.closureRequests = 0;
+  // Favorite places (lib/favoritePlaces.ts; core/api.py favorite_places_read and _save): one place, no Work.
+  page.favoritePlaces = { places: [{ lon: -76.9963, lat: 38.8843, label: "Eastern Market", work: false }] };
+  page.favoriteRequests = [];
   // A station's lines now (GET /api/transit/station-times; core.transit.station_times): none
   // unless a check sets `stationTimes`.
   page.stationTimes = { service_day: "2026-10-12", source: "scheduled", lines: [] };
@@ -265,6 +268,18 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       status = 201;
       body = JSON.stringify({ id: JSON.parse(request.postData ?? "{}").id ?? "" });
       type = "application/json";
+    } else if (url.pathname === "/api/me/places") {
+      // Favorite places (core/api.py favorite_places_read, favorite_places_save): signed in only; a save is the list.
+      page.favoriteRequests.push({ method: request.method, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null });
+      type = "application/json";
+      if (!(admin || suggester)) {
+        status = 401;
+        body = JSON.stringify({ error: "Sign in to keep My Go with your account.", code: "signed_out" });
+      } else {
+        if (request.method === "POST") page.favoritePlaces = JSON.parse(request.postData ?? "{}");
+        status = 200;
+        body = JSON.stringify(page.favoritePlaces);
+      }
     } else if (url.pathname === "/api/me/go") {
       // My Go (UI-CLEANUP; core/api.py my_go_read, my_go_save): the account's, signed in only.
       (page.myGoRequests ??= []).push({ method: request.method, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null });
