@@ -78,3 +78,45 @@ test("uploads the bundle and releases it to internal testing with the notes", as
     releases: [{ versionCodes: ["98"], status: "completed", releaseNotes: [{ language: "en-US", text: "RouteMaker v1.2.3" }] }],
   });
 });
+
+test("a refusal stops the upload and puts Google's reason in the log", async () => {
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const seen = [];
+  const server = createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      seen.push(`${req.method} ${req.url}`);
+      res.setHeader("Content-Type", "application/json");
+      if (req.url === "/token") return res.end(JSON.stringify({ access_token: "tok" }));
+      if (req.url.endsWith("/edits")) return res.end(JSON.stringify({ id: "e1" }));
+      res.statusCode = 403;
+      res.end(JSON.stringify({ error: { message: "APK specifies a version code that has already been used." } }));
+    });
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const root = `http://127.0.0.1:${server.address().port}`;
+  const dir = mkdtempSync(join(tmpdir(), "play-upload-"));
+  const aab = join(dir, "app.aab");
+  writeFileSync(aab, "bundle bytes");
+  const account = JSON.stringify({
+    client_email: "uploader@example.iam.gserviceaccount.com",
+    private_key: privateKey.export({ type: "pkcs8", format: "pem" }),
+    token_uri: `${root}/token`,
+  });
+  let result;
+  try {
+    result = await new Promise((resolve) =>
+      execFile("bash", [script, aab], {
+        env: { ...process.env, PLAY_SERVICE_ACCOUNT_JSON: account, PLAY_PACKAGE: "com.example.app",
+               PLAY_NOTES: "RouteMaker v1.2.3", PLAY_API_ROOT: root, RUNNER_TEMP: dir },
+      }, (err, stdout, stderr) => resolve({ err, stdout, stderr })));
+  } finally {
+    server.close();
+  }
+  assert.ok(result.err, "the script fails");
+  assert.match(result.stderr, /version code that has already been used/);
+  assert.doesNotMatch(result.stdout, /Uploaded version code/);
+  // Nothing after the refused upload: no track release, no commit.
+  assert.equal(seen.length, 3);
+  assert.match(seen[2], /\/bundles\?uploadType=media$/);
+});

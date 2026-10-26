@@ -2657,7 +2657,7 @@ export function RideMode({
                     <Icon name={which === "calmer" ? "traffic-down" : "hills-down"} size={26} />
                   </button>
                 ))}
-              {!fixed && nextStop && (
+              {!fixed && !ride.arrived && nextStop && (
                 <button
                   type="button"
                   className="ride-round ride-skip-stop"
