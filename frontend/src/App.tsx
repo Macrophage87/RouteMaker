@@ -279,7 +279,7 @@ import { ResumeRideDialog } from "./ResumeRideDialog.tsx";
 import { forgetLeftRide, keepLeftRide, leftRide } from "./lib/rideResume.ts";
 import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
-import { withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
+import { SAVED_ROUTES, withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
 import { askBeforeStart, looksLikePhone, rememberStartAnyway } from "./lib/startOnComputer.ts";
 import { ShareCardDialog, type ShareCardSource } from "./ShareCardDialog.tsx";
 import { usableProfile } from "./lib/profileChart.ts";
@@ -4687,7 +4687,10 @@ export function App() {
   // 2026-10-22: "Load route should have a popup ... Basically let people load a gpx or select their saved routes").
   const barLoad = planFirst && points.length === 0 && !routingNow;
   const planBar = planFirst && (barRoute || barSave || barLoad || can.undo || can.redo || points.length > 0);
-  const [loadOpen, setLoadOpen] = useState(false);
+  // Load route's popup, and where it was opened from: Plan's bar (an empty plan) or Go's More (Saved routes).
+  const [loadOpen, setLoadOpen] = useState<"plan" | "go" | null>(null);
+  // A popup closed by a mode change or a ride (not by its own Close) does not open again on the way back.
+  useEffect(() => setLoadOpen(null), [mode, riding]);
   const gpxInput = useRef<HTMLInputElement | null>(null);
   const gpxChoice = useRef<GpxChoice | null>(null);
   const barFocused = useRef(false);
@@ -5072,8 +5075,9 @@ export function App() {
         />
       )}
       <LoadRouteDialog
-        open={loadOpen && barLoad}
-        onClose={() => setLoadOpen(false)}
+        open={loadOpen === "plan" ? barLoad : loadOpen === "go" && mode === "go" && !riding}
+        title={loadOpen === "go" ? SAVED_ROUTES : undefined}
+        onClose={() => setLoadOpen(null)}
         signedIn={me.signed_in}
         signIn={signInFromSave}
         preset={preset}
@@ -5085,14 +5089,14 @@ export function App() {
           gpxChoice.current = choice;
           input.addEventListener("cancel", () => (gpxChoice.current = null), { once: true });
           input.click();
-          setLoadOpen(false);
+          setLoadOpen(null);
         }}
         onOpenSaved={(route) => {
-          setLoadOpen(false);
+          setLoadOpen(null);
           openSaved(route);
         }}
         onOpenKept={(route) => {
-          setLoadOpen(false);
+          setLoadOpen(null);
           openKept(route);
         }}
       />
@@ -5196,7 +5200,7 @@ export function App() {
             />
           )}
           {barLoad && (
-            <button type="button" className="secondary plan-bar-route plan-bar-load" aria-haspopup="dialog" onClick={() => setLoadOpen(true)}>
+            <button type="button" className="secondary plan-bar-route plan-bar-load" aria-haspopup="dialog" onClick={() => setLoadOpen("plan")}>
               <Icon name="file" size={20} />
               Load route
             </button>
@@ -5448,6 +5452,7 @@ export function App() {
                     },
                     onRepair: openRepair,
                     onSights: openPlaces,
+                    onSavedRoutes: () => setLoadOpen("go"),
                   }}
                   rides={goRides}
                   notice={notice}

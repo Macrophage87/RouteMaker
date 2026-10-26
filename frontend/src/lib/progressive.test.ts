@@ -344,6 +344,7 @@ test("App: Go's controls are unchanged: no new button or field for any of it", (
   // Favorite places (Stephen 2026-10-26, lib/favoritePlaces.ts): signed in, the Favorites chip in the Home chip's place
   // (one more tag, never both shown) and its popout's ten buttons (Home, Work and a place, each with its Edit button;
   // the two Set rows; Add a place and Edit) and one search field, none on Go until the chip is tapped.
-  assert.equal((go.match(/<button/g) ?? []).length, 38, "the same buttons as before, the Home sheet's, the route card's, Go's bar, More's Metro, Plan's Find and Favorites'");
+  // Saved routes behind More (Stephen 2026-10-26: "Add saved routes in the more part of the go tab"): one more, still behind More.
+  assert.equal((go.match(/<button/g) ?? []).length, 39, "the same buttons as before, the Home sheet's, the route card's, Go's bar, More's Metro and Saved routes, Plan's Find and Favorites'");
   assert.equal((go.match(/<PlaceSearch/g) ?? []).length, 5, "the same search fields as before, the Home sheet's and Favorites'");
 });
