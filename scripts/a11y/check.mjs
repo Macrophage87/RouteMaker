@@ -2844,7 +2844,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.eval("document.querySelector('.ride-rail button[aria-label=\"Where am I?\"]').click(); true");
   await sleep(300);
   const where = await p.eval(regions);
-  check("ride: Where am I? says the street, the next cue and the miles to the end", /On R Street Northwest\..* to the end\./.test(where.polite), JSON.stringify(where));
+  check("ride: Where am I? says the street, the next cue, the miles to the end and the arrival time (#513)", /On R Street Northwest\..* to the end, arriving about \d{1,2}:\d{2}(?:\s?[AP]M)?\./.test(where.polite), JSON.stringify(where));
 
   // N5: the map along the route, kept for dead spots (lib/corridor.ts): the stress tiles at z12-14 in
   // the ride's own Cache Storage bucket (the mocked base map is not served, so its part stops), said on
