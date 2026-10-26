@@ -4480,6 +4480,11 @@ details.zoom-notes {
   font-weight: 700;
 }
 
+/* The arrival clock ("6:42 AM") stays whole on one line. */
+.ride-togo .ride-arrive {
+  white-space: nowrap;
+}
+
 .ride-actions button,
 .ride-off-actions button,
 .ride-notes button,

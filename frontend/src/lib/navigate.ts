@@ -1168,7 +1168,13 @@ export function otherStreet(junction: RouteJunction, trail: string): string {
  * ("On the Capital Crescent Trail, at mile marker 3." or "at about mile 3.2."), else the distance from a
  * junction of it. An unnamed way is said plainly ("On an unnamed path."), with no distance from anywhere.
  */
-export function whereAmI(model: RideModel, state: RideState, metric = false, miles: TrailMiles | null = null): string {
+export function whereAmI(
+  model: RideModel,
+  state: RideState,
+  metric = false,
+  miles: TrailMiles | null = null,
+  arriving: ((seconds: number) => string) | null = null,
+): string {
   const dist = (m: number) => (metric ? formatDistance(m) : spokenDistance(m));
   if (state.arrived) return "You have arrived at the end of the route.";
   if (state.progressM === null) return "Finding your place on the route.";
@@ -1201,8 +1207,10 @@ export function whereAmI(model: RideModel, state: RideState, metric = false, mil
     sentences.push(`Next, in ${dist(cue.atM - state.progressM)}: ${lowerFirst(text)}`);
   }
   const togo = toGo(model, state.progressM);
-  if (togo.stop) sentences.push(`${capital(dist(togo.stop.metres))} to stop ${togo.stop.number}.`);
-  sentences.push(`${capital(dist(togo.end.metres))} to the end.`);
+  // ", arriving about 6:42 AM" where the caller gives the clock (lib/arrival.ts).
+  const at = (seconds: number | null) => (arriving && seconds !== null ? `, arriving about ${arriving(seconds)}` : "");
+  if (togo.stop) sentences.push(`${capital(dist(togo.stop.metres))} to stop ${togo.stop.number}${at(togo.stop.seconds)}.`);
+  sentences.push(`${capital(dist(togo.end.metres))} to the end${at(togo.end.seconds)}.`);
   return sentences.join(" ");
 }
 
