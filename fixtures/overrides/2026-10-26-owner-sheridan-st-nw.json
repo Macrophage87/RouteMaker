@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "decided": "2026-10-26",
+  "decided_by": "the deployment owner",
+  "status": "Reported by the owner on 2026-10-26; read by the rebuild from the image (routemaker.agency_roads.withheld_blocks), nothing to load.",
+  "annotations": "The owner, 2026-10-26: \"Sheridan street between 3rd and 5th streets are 1 way in the opposite direction. That change isn't even on Google maps yet\", and, asked which way it runs now: \"Eastbound now, both blocks\". A recent change that DC's Roadway Block layer does not record: DC still lists both blocks as two-way (SUMMARYDIRECTION BD). OSM has the 400 block one-way eastbound already (way 1044281798, oneway=yes, drawn from 5th St toward 4th St) and the 300 block two-way (way 1044479731). With DC's two-way record the rebuild made the 400 block two-way (OWNER-DECISIONS 190, row C4). The owner's direction replaces DC's on both blocks: one-way eastbound, from 5th St toward 3rd St. Each block's line is drawn westward (FROMSTREET to TOSTREET), so eastbound is DC's IB on each. The 300 block becomes one-way through row B; on the 400 block the owner's direction agrees with OSM's, so OSM's tag stands. The owner reports no sign excepting bicycles (\"There does not seem to be a bike exception, though there might be\") and DC records no contraflow lane, so bicycles follow the one-way. Remove these entries only once DC's layer records the one-way and OSM's edit is in the extract: DC's own one-way never overrides an opposite OSM one-way.",
+  "agency_blocks": [
+    {
+      "blockkey": "3670f30012236eda9cfab7b343592e15",
+      "routename": "SHERIDAN ST NW",
+      "direction": "IB",
+      "street": "Sheridan Street NW, 300 block (3rd St NW / North Dakota Ave NW to 4th St NW)",
+      "ways": [
+        1044479731
+      ],
+      "reason": "The owner, 2026-10-26: Sheridan St NW between 3rd and 5th Streets is now one-way, eastbound on both blocks. IB is DC's TOSTREET (4th St NW) toward FROMSTREET (3rd St NW); the block's line is drawn westward.",
+      "evidence": "The owner's report from the street. District of Columbia Roadway Block, BLOCKKEY 3670f30012236eda9cfab7b343592e15, 300 - 399 BLOCK OF SHERIDAN STREET NW, read 2026-10-26: SUMMARYDIRECTION BD, one lane each way, no bike lane. OSM, read 2026-10-26: way 1044479731 (version 5), highway=tertiary, no oneway tag."
+    },
+    {
+      "blockkey": "c3b8bc76057c2064aa77a0964a07a947",
+      "routename": "SHERIDAN ST NW",
+      "direction": "IB",
+      "street": "Sheridan Street NW, 400 block (4th St NW to 5th St NW)",
+      "ways": [
+        1044281798
+      ],
+      "reason": "The owner, 2026-10-26: Sheridan St NW between 3rd and 5th Streets is now one-way, eastbound on both blocks. IB is DC's TOSTREET (5th St NW) toward FROMSTREET (4th St NW); the block's line is drawn westward. OSM already has this block one-way eastbound.",
+      "evidence": "The owner's report from the street. District of Columbia Roadway Block, BLOCKKEY c3b8bc76057c2064aa77a0964a07a947, 400 - 499 BLOCK OF SHERIDAN STREET NW, read 2026-10-26: SUMMARYDIRECTION BD, one lane each way, no bike lane. OSM, read 2026-10-26: way 1044281798 (version 6), highway=tertiary, oneway=yes, drawn from 5th St NW toward 4th St NW (eastbound)."
+    }
+  ],
+  "rows": []
+}

@@ -18,8 +18,8 @@ test("1. track-up by default, the ride settings' switch remembered on this devic
   // The one control: the switch in Ride settings, unchanged.
   assert.equal(ride.match(/Turn the map to my heading/g)?.length, 1);
   assert.match(ride, /checked=\{headingUp\} onChange=\{\(event\) => onHeadingUp\(event\.target\.checked\)\}/);
-  // North-up until a heading comes; north-up again once the ride is over.
-  assert.match(map, /props\.headingUp && following\.current \? map\.getBearing\(\) : 0/);
+  // Until a heading comes, the phone's compass (lib/compassHeading.ts) or else north-up; north-up again once the ride is over.
+  assert.match(map, /props\.headingUp && compassDeg\.current !== null\s*\? compassDeg\.current\s*: props\.headingUp && following\.current\s*\? map\.getBearing\(\)\s*: 0/);
   assert.match(map, /if \(following\.current && map\.getBearing\(\) !== 0\) map\.easeTo\(\{ bearing: 0, padding: NO_PADDING, duration: 0 \}\)/);
   // Turning the map never moves the keyboard focus: the follow camera calls no focus().
   const follow = map.slice(map.indexOf("// Ride mode's \"you\" marker and the follow camera."), map.indexOf("// A pan or a turn of the map by hand"));
@@ -252,4 +252,18 @@ test("More on the ride screen (Stephen 2026-10-26): the route's changes and Sett
   assert.match(ride, /if \(!moreOpen\) \{\s*openMenu\(null\);\s*setMoreOpen\(true\);/);
   // Bubbles hidden by the attribute even with their own display.
   assert.match(css, /\.ride-more-bubbles\[hidden\] \{\s*display: none;/);
+});
+
+test("Topo lines from More (Stephen 2026-10-26: \"allow topo lines to be toggled on and off during a ride\"): a bubble, icon only, Map layers' own switch", () => {
+  const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
+  const bubbles = rail.slice(rail.indexOf('className="ride-more-bubbles"'));
+  // Always a bubble (it changes the map, not the route): not behind fixed or arrived, before Settings; a toggle with its full name.
+  assert.match(bubbles, /className="ride-round ride-topo"\s+onClick=\{\(\) => fromMore\(\(\) => void toggleTopo\(\)\)\}\s+aria-label=\{TOPO_LINES_LABEL\}\s+aria-pressed=\{topoOn\}[\s\S]*?<Icon name="topo"[\s\S]*?ref=\{settingsBubble\}/);
+  // The same state as Map layers' switch (lib/topoLines.ts); on only once the server has the contours, the reason said otherwise.
+  assert.match(ride, /const topoOn = useTopoLines\(\);/);
+  const toggle = ride.slice(ride.indexOf("const toggleTopo = async"), ride.indexOf("const ease = async"));
+  assert.match(toggle, /if \(topoOn\) \{\s*setTopoLines\(false\);\s*answer\(RIDE_TOPO_OFF\);/);
+  assert.match(toggle, /if \(ended\.current\) return;/, "nothing said after the ride ended");
+  assert.match(toggle, /answer\(found === "offline" \? RIDE_TOPO_OFFLINE : TOPO_LINES_ROW_UNAVAILABLE\)/);
+  assert.ok(toggle.indexOf("setTopoLines(true)") > toggle.indexOf('found !== "yes"'), "turned on only once found");
 });

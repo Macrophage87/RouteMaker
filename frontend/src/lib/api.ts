@@ -810,6 +810,18 @@ export interface MassHazardSpan {
   road: string;
 }
 
+/** A steep stretch on a Mass Ride or a Novice and Nervous ride (v0.12.5; core.api.SteepGradeOut), past 5% or 8% either way, in the riding direction; metres along the router's elevation profile. */
+export interface SteepGradeSpan {
+  from_m: number;
+  to_m: number;
+  direction: "up" | "down";
+  level: "steep" | "very_steep";
+  /** The steepest grade along it, a whole percent, unsigned. */
+  grade_pct: number;
+  /** One plain sentence, US units first with the metric once. */
+  text: string;
+}
+
 /** core.api RoadHazardSpanOut: a known hazard the route rides (v0.10.0; core/route_hazards.py). */
 export interface RoadHazardSpan {
   from_m: number;
@@ -884,6 +896,8 @@ export interface RouteResponse {
   mass_hazards?: MassHazardSpan[] | null;
   /** The known hazards it rides (v0.10.0: cobblestones, rails in the road), in riding order; empty or absent where none. */
   road_hazards?: RoadHazardSpan[] | null;
+  /** Steep grades either way (v0.12.5), Mass Ride and Novice and Nervous only; null on other ride types or an older API. */
+  steep_grades?: SteepGradeSpan[] | null;
   /** The Avoid-rated junctions it passes, in route order (307); empty or absent where none. */
   avoid_junctions?: AvoidJunctionPass[];
   /** "This route goes through an Avoid-rated junction: <name>, <reason>." (335); null where none. */
