@@ -201,7 +201,7 @@ import {
   type Still,
 } from "./lib/rideDock.ts";
 import { Icon } from "./Icon.tsx";
-import { TOPO_LINES_LABEL, setTopoLines, topoAvailable, useTopoLines } from "./lib/topoLines.ts";
+import { TOPO_LINES_LABEL, setTopoLines, topoArchive, useTopoLines } from "./lib/topoLines.ts";
 import { TOPO_LINES_ROW_UNAVAILABLE } from "./lib/terrainSection.ts";
 import { DepartureTimer } from "./DepartureTimer.tsx";
 import { NextVehicleLine } from "./NextVehicleLine.tsx";
@@ -273,6 +273,7 @@ export const RIDE_MORE_NAME = "More: change the route or the map, and ride setti
 /** Topo lines from More (Stephen 2026-10-26: "In the ... section allow topo lines to be toggled on and off during a ride"): Map layers' own switch (lib/topoLines.ts). */
 export const RIDE_TOPO_ON = `${TOPO_LINES_LABEL} on.`;
 export const RIDE_TOPO_OFF = `${TOPO_LINES_LABEL} off.`;
+export const RIDE_TOPO_OFFLINE = `${TOPO_LINES_LABEL} need a connection. Try again once you have signal.`;
 export const RIDE_SETTINGS_TITLE = "Ride settings";
 export const RIDE_CHANGE_TITLE = "Change the route";
 /** Broadcast on the ride screen (Stephen 2026-10-24: "Let people broadcast from a ride"): Plan's and Go's Broadcast, the ride already going. */
@@ -1700,20 +1701,27 @@ export function RideMode({
     press();
   };
   // Topo lines (Stephen 2026-10-26): the same switch as Map layers' Topo lines, kept per browser. Turned on only once
-  // the server is found to have the contours (lib/topoLines.ts topoAvailable, asked once a ride); otherwise said so.
+  // the server is found to have the contours (lib/topoLines.ts topoArchive, asked once a ride); otherwise said why.
   const topoOn = useTopoLines();
-  const topoReady = useRef<Promise<boolean> | null>(null);
+  const topoFound = useRef(false);
+  const topoBusy = useRef(false);
   const toggleTopo = async () => {
     if (topoOn) {
       setTopoLines(false);
       answer(RIDE_TOPO_OFF);
       return;
     }
-    topoReady.current ??= topoAvailable();
-    if (!(await topoReady.current)) {
-      topoReady.current = null;
-      answer(TOPO_LINES_ROW_UNAVAILABLE);
-      return;
+    if (topoBusy.current) return;
+    if (!topoFound.current) {
+      topoBusy.current = true;
+      const found = await topoArchive();
+      topoBusy.current = false;
+      if (ended.current) return;
+      if (found !== "yes") {
+        answer(found === "offline" ? RIDE_TOPO_OFFLINE : TOPO_LINES_ROW_UNAVAILABLE);
+        return;
+      }
+      topoFound.current = true;
     }
     setTopoLines(true);
     answer(RIDE_TOPO_ON);
@@ -2698,7 +2706,7 @@ export function RideMode({
               )}
               <button
                 type="button"
-                className={`ride-round ride-topo${topoOn ? " ride-round-on" : ""}`}
+                className="ride-round ride-topo"
                 onClick={() => fromMore(() => void toggleTopo())}
                 aria-label={TOPO_LINES_LABEL}
                 aria-pressed={topoOn}
