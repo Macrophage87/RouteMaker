@@ -927,6 +927,7 @@ def road_facts_by_way(
     entries: Sequence[WayEntry],
     blocks: Sequence[RoadFeature],
     withheld: Mapping[str, Collection[str]] | None = None,
+    directions: Mapping[str, str] | None = None,
 ) -> tuple[dict[int, WayFacts], BlockConflation]:
     """What the agency street blocks say about each way they lie along.
 
@@ -940,12 +941,16 @@ def road_facts_by_way(
     `withheld` is the block facts the owner withholds (OWNER-DECISIONS 197) by
     installed block id (`agency_roads.resolve_withheld`); by default the
     checked-in ones (`agency_roads.withheld_blocks`) found among `blocks`. The
-    rebuild resolves them itself, to warn of one that is not found.
+    rebuild resolves them itself, to warn of one that is not found. `directions`
+    is the owner's direction per installed block id, from the same resolution.
     """
     if withheld is None:
-        withheld = agency_roads.resolve_withheld(
+        resolved = agency_roads.resolve_withheld(
             agency_roads.withheld_blocks(), ((block.feature_id, block.facts) for block in blocks)
-        ).by_block
+        )
+        withheld = resolved.by_block
+        if directions is None:
+            directions = resolved.directions
     unbuilt = {
         way.osm_id for way in ways if way.tags.get("highway") in agency_roads.UNBUILT_HIGHWAYS
     }
@@ -978,6 +983,7 @@ def road_facts_by_way(
             names,
             osm_forward=agency_roads.osm_forward(tags_of.get(way_id, {})),
             withheld=withheld,
+            directions=directions,
         )
     return facts, result
 

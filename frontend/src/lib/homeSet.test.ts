@@ -40,14 +40,17 @@ test("a spot on the map is Home at that spot, named by a known name, else the re
 
 test("Go stays clean: the always-shown place row is still five chips, and the one line is short", () => {
   const row = go.slice(go.indexOf('aria-label="Places"'), go.indexOf("go-more-row"));
-  assert.equal((row.match(/<button/g) ?? []).length, 5, "Home, Food, Water, Restroom and More");
+  // Six tags, five shown: signed in, Favorites in Home's place (lib/favoritePlaces.ts), else Home.
+  assert.equal((row.match(/<button/g) ?? []).length, 6, "Home or Favorites, Food, Water, Restroom and More");
+  assert.match(row, /\{places\.signedIn \? \(/);
   // Change Home is in More's row; the Home sheet is hidden until asked for.
   const more = go.slice(go.indexOf("go-more-row"), go.indexOf("go-home-sheet"));
-  assert.match(more, /\{places\.homeReady && \([\s\S]*?\{CHANGE_HOME_TEXT\}/);
+  // Signed out only: signed in, Favorites' Edit has Change Home.
+  assert.match(more, /\{places\.homeReady && !places\.signedIn && \([\s\S]*?\{CHANGE_HOME_TEXT\}/);
   assert.match(go, /className="go-home-sheet" role="group" aria-label="Home" hidden=\{!homeShown\}/);
   // One short line at most: the no-Home hint while the sheet is shut, or the pick line while picking.
   assert.ok(HOME_NOT_SET.length <= 40 && HOME_PICK_LINE.length <= 40);
-  assert.match(go, /\{!places\.homeReady && !homeShown && \(/);
+  assert.match(go, /\{!places\.signedIn && !places\.homeReady && !homeShown && \(/);
 });
 
 test("the Home chip with no Home opens the sheet in place: a disclosure, its hint only while shut", () => {
@@ -129,11 +132,11 @@ test("the map: Set as Home in the road panel (hold or right-click a spot), and P
   assert.equal(CHANGE_HOME_TEXT, "Change Home");
 });
 
-test("privacy-1: the Home search does not keep its pick in recent places; every other search does", () => {
+test("privacy-1: the Home, Work and favorite searches do not keep their pick in recent places; every other search does", () => {
   const search = src("../PlaceSearch.tsx");
   const at = search.indexOf("const pick = (place: Place");
   const pick = search.slice(at, search.indexOf('setQuery("");', at));
-  assert.match(pick, /if \(variant !== "home"\) setRecent\(rememberRecentPlace\(place\)\);/);
+  assert.match(pick, /if \(variant !== "home" && variant !== "work" && variant !== "favorite"\) setRecent\(rememberRecentPlace\(place\)\);/);
   assert.equal((search.match(/rememberRecentPlace\(/g) ?? []).length, 1, "no other way in");
 });
 
