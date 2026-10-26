@@ -221,6 +221,27 @@ test("Voice: polite waits for the current one, replaced by a newer; urgent cance
   assert.equal(calls.at(-1), "cancel");
 });
 
+test("Voice: a jog's next turn (urgent, after) waits for the turn being said instead of cutting it off", () => {
+  const { env, calls, end } = speech();
+  const voice = new Voice(env);
+  voice.speak("Right now onto 6th Street Northwest.", true);
+  voice.speak("Bear left now onto Rhode Island Avenue Northwest.", true, true);
+  assert.deepEqual(calls, ["cancel", "speak:Right now onto 6th Street Northwest."]);
+  end();
+  assert.deepEqual(calls.at(-1), "speak:Bear left now onto Rhode Island Avenue Northwest.");
+  // With nothing being said, at once.
+  end();
+  voice.speak("Left now.", true, true);
+  assert.equal(calls.at(-1), "speak:Left now.");
+});
+
+test("Announcer: a jog's next turn goes at once, marked to wait for the voice", () => {
+  const out: Said[] = [];
+  const announcer = new Announcer((said) => out.push(said), () => 0);
+  announcer.say("Bear left now.", true, true);
+  assert.deepEqual(out, [{ text: "Bear left now.", urgent: true, after: true }]);
+});
+
 test("Voice: nothing where the browser has no speech", () => {
   const voice = new Voice({ synth: undefined, utterance: (text) => ({ text, lang: "", onend: null }) });
   assert.equal(voice.available, false);

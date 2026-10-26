@@ -28,8 +28,8 @@
  *   (lib/rideDock.ts), 311 anywhere on the route, and More; each a round icon with its name for screen readers, its menu
  *   opening beside it. More opens a row of bubbles beside it (2026-10-26: "just expanded as more bubble buttons, not in
  *   settings"): the route's changes (Less traffic and Fewer hills, one step down the traffic or hills slider and a new
- *   route from here, lib/rideEase.ts; Skip this stop, lib/rideStops.ts) and Settings, the ride's settings opening under
- *   the top row. The bottom panel shows only when it
+ *   route from here, lib/rideEase.ts; Skip this stop, lib/rideStops.ts), Topo lines on or off (lib/topoLines.ts) and
+ *   Settings, the ride's settings opening under the top row. The bottom panel shows only when it
  *   has something to say or ask: GPS and screen notes, off route, Ride the rest.
  *   Answers asked for (Where am I?, a detour's progress) show for a few seconds by the buttons.
  *
@@ -77,6 +77,7 @@ import type { PresetId } from "./lib/presets.ts";
 import { formatDistance, formatDuration, spokenDistance } from "./lib/format.ts";
 import { arrivalClock, atPace, paceFactor, paceStart, paceStep, type PaceTrack } from "./lib/arrival.ts";
 import { cueParts } from "./lib/cueShown.ts";
+import { jogArrowPath } from "./lib/jogArrow.ts";
 import { rideLightCorner } from "./lib/lightTimes.ts";
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
 import {
@@ -139,6 +140,7 @@ import {
   type Said,
 } from "./lib/rideOutput.ts";
 import { WAITING_FOR_GPS, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
+import { askCompass } from "./lib/compassHeading.ts";
 import { rideGeoEnv, rideSpeech, rideWake, ridesHidden, showCue, speaksAloud } from "./lib/nativeShell.ts";
 import {
   DETOUR_BUSY,
@@ -201,6 +203,8 @@ import {
   type Still,
 } from "./lib/rideDock.ts";
 import { Icon } from "./Icon.tsx";
+import { TOPO_LINES_LABEL, setTopoLines, topoArchive, useTopoLines } from "./lib/topoLines.ts";
+import { TOPO_LINES_ROW_UNAVAILABLE } from "./lib/terrainSection.ts";
 import { DepartureTimer } from "./DepartureTimer.tsx";
 import { NextVehicleLine } from "./NextVehicleLine.tsx";
 import type { VehicleMark } from "./lib/nextVehicle.ts";
@@ -267,7 +271,11 @@ export const SLIDE_TO_END_HINT = "Slide End ride to the right to end the ride.";
  * "put options like skip a stop, lower traffic and hills in an expansion with settings").
  */
 export const RIDE_SETTINGS_TEXT = "More";
-export const RIDE_MORE_NAME = "More: change the route, and ride settings";
+export const RIDE_MORE_NAME = "More: change the route or the map, and ride settings";
+/** Topo lines from More (Stephen 2026-10-26: "In the ... section allow topo lines to be toggled on and off during a ride"): Map layers' own switch (lib/topoLines.ts). */
+export const RIDE_TOPO_ON = `${TOPO_LINES_LABEL} on.`;
+export const RIDE_TOPO_OFF = `${TOPO_LINES_LABEL} off.`;
+export const RIDE_TOPO_OFFLINE = `${TOPO_LINES_LABEL} need a connection. Try again once you have signal.`;
 export const RIDE_SETTINGS_TITLE = "Ride settings";
 export const RIDE_CHANGE_TITLE = "Change the route";
 /** Broadcast on the ride screen (Stephen 2026-10-24: "Let people broadcast from a ride"): Plan's and Go's Broadcast, the ride already going. */
@@ -336,12 +344,15 @@ export const RIDE_SAFETY = ridesHidden() ? RIDE_SAFETY_APP : RIDE_SAFETY_BROWSER
 /** Called inside the Start ride press: unlock the voice with the first sentence, where the rider chose it. */
 export function startRideGesture(prefs: RidePrefs): void {
   if (toVoice(prefs.output)) rideVoice.unlock(RIDE_STARTED);
+  // iPhones give the compass for the map's first heading only once allowed, asked inside this press (lib/compassHeading.ts).
+  askCompass();
 }
 
 /** Start's press, before its closure check: unlocks the voice silently (iOS speaks only after a
  * gesture has spoken once), so "Ride started." is said only when the ride does start. */
 export function primeRideVoice(prefs: RidePrefs): void {
   if (toVoice(prefs.output)) rideVoice.unlock(" ");
+  askCompass();
 }
 
 export const VOICE_ON = "Voice on.";
@@ -386,7 +397,7 @@ function arrowFor(
  * turn at an unusual junction (v0.10.0; lib/junctionShape.ts) is drawn as the junction: the way taken solid with
  * its arrowhead, the other ways dashed.
  */
-function CueShape({ shape, junction, exit }: { shape: ReturnType<typeof arrowFor>; junction?: JunctionShape; exit?: number }) {
+function CueShape({ shape, junction, exit, jog }: { shape: ReturnType<typeof arrowFor>; junction?: JunctionShape; exit?: number; jog?: string | null }) {
   if (junction?.ring && exit && shape !== "uturn" && shape !== "stop" && shape !== "end" && shape !== "warn") {
     // A circle: the ring with the exit's number in it, the way round solid, the exits passed dashed.
     const drawn = ringPaths(junction);
@@ -400,6 +411,14 @@ function CueShape({ shape, junction, exit }: { shape: ReturnType<typeof arrowFor
         <text x={RING.x} y={RING.y} textAnchor="middle" dominantBaseline="central" fontSize="12" fontWeight="700" fill="currentColor">
           {exit}
         </text>
+      </svg>
+    );
+  }
+  // Turns in quick succession (lib/jogArrow.ts): one arrow through them all, in place of the first turn's junction.
+  if (jog) {
+    return (
+      <svg className="cue-shape cue-jog" viewBox="0 0 48 56" aria-hidden="true" focusable="false">
+        <path d={jog} fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
@@ -996,9 +1015,10 @@ export function RideMode({
   // The outputs: the screen reader's regions and the voice, as the rider chose; through the throttle.
   const deliver = useCallback((said: Said) => {
     const output = prefsRef.current.output;
-    if (toScreenReader(output)) (said.urgent ? setAssertive : setPolite)((s) => ({ text: said.text, count: s.count + 1 }));
+    // A jog's next turn (`after`) in the polite region, so it is read after the turn before rather than in place of it.
+    if (toScreenReader(output)) (said.urgent && !said.after ? setAssertive : setPolite)((s) => ({ text: said.text, count: s.count + 1 }));
     // The voice as chosen; in the phone app also "my screen reader" while the page is hidden (nativeShell.ts).
-    if (speaksAloud(output, document.visibilityState === "hidden")) rideVoice.speak(said.text, said.urgent);
+    if (speaksAloud(output, document.visibilityState === "hidden")) rideVoice.speak(said.text, said.urgent, said.after);
     // The phone app's cue notification on Android (nothing in a browser).
     showCue(said.text);
   }, []);
@@ -1008,7 +1028,7 @@ export function RideMode({
   // After the page comes back from the background: say where the rider is once, on the next fix.
   const sayWhereNext = useRef(false);
   const say = useCallback((events: RideEvent[]) => {
-    for (const event of events) announcer.current?.say(event.spoken, event.urgent);
+    for (const event of events) announcer.current?.say(event.spoken, event.urgent, event.after);
   }, []);
   // A note about the ride itself (no GPS, the screen may sleep, paused): said once, politely, through the
   // rider's outputs, and through the polite region with "neither" chosen, since it changes what the rider
@@ -1694,6 +1714,32 @@ export function RideMode({
     settingsButton.current?.focus();
     press();
   };
+  // Topo lines (Stephen 2026-10-26): the same switch as Map layers' Topo lines, kept per browser. Turned on only once
+  // the server is found to have the contours (lib/topoLines.ts topoArchive, asked once a ride); otherwise said why.
+  const topoOn = useTopoLines();
+  const topoFound = useRef(false);
+  const topoBusy = useRef(false);
+  const toggleTopo = async () => {
+    if (topoOn) {
+      setTopoLines(false);
+      answer(RIDE_TOPO_OFF);
+      return;
+    }
+    if (topoBusy.current) return;
+    if (!topoFound.current) {
+      topoBusy.current = true;
+      const found = await topoArchive();
+      topoBusy.current = false;
+      if (ended.current) return;
+      if (found !== "yes") {
+        answer(found === "offline" ? RIDE_TOPO_OFFLINE : TOPO_LINES_ROW_UNAVAILABLE);
+        return;
+      }
+      topoFound.current = true;
+    }
+    setTopoLines(true);
+    answer(RIDE_TOPO_ON);
+  };
   const ease = async (which: Ease) => {
     const was = dialsRef.current;
     const next = eased(preset, was, which);
@@ -2287,7 +2333,7 @@ export function RideMode({
           </div>
         ) : cue && progress !== null ? (
           <div className="cue-next">
-            <CueShape shape={shape} junction={cue.junction} exit={cue.exit?.number} />
+            <CueShape shape={shape} junction={cue.junction} exit={cue.exit?.number} jog={cue.cross ? null : jogArrowPath(cue)} />
             <div>
               {/* Greyed while GPS is weak or lost (any GPS note): the distance is from an old fix, not where the rider is. */}
               <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>
@@ -2618,7 +2664,8 @@ export function RideMode({
               settings to a gear icon in the rack"; More since 2026-10-24). It opens a row of bubbles to its left
               (Stephen 2026-10-26): the route's changes, each one press, a new route from here (not on a route everyone
               shares, `fixed`, nor once arrived), the symbols alone on screen (2026-10-23: "Symbol should be clear"),
-              and Settings, opening the ride's settings under the top row. */}
+              Topo lines on or off (2026-10-26, always there: it changes the map, not the route), and Settings, opening
+              the ride's settings under the top row. */}
           <div
             className="ride-pop ride-more"
             onKeyDown={(event) => {
@@ -2671,6 +2718,16 @@ export function RideMode({
                   <span aria-hidden="true">{nextStop.number}</span>
                 </button>
               )}
+              <button
+                type="button"
+                className="ride-round ride-topo"
+                onClick={() => fromMore(() => void toggleTopo())}
+                aria-label={TOPO_LINES_LABEL}
+                aria-pressed={topoOn}
+                title={TOPO_LINES_LABEL}
+              >
+                <Icon name="topo" size={24} />
+              </button>
               <button
                 type="button"
                 ref={settingsBubble}

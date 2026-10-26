@@ -79,6 +79,7 @@ import { ROUTE_NAME_LAYER_ID, ROUTE_NAME_SOURCE_ID, routeNameField, routeNameFea
 import { addRailStations, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
 import { setRideLabelOrder, type LabelHomes } from "./lib/rideLabelOrder.ts";
 import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
+import { STEEP_GRADE_SOURCE, STEEP_ICONS, steepGradeFeatures, steepGradeIcon, steepGradeLayer, steepGradeRepeatLayer, steepIconName } from "./lib/steepGrades.ts";
 import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
@@ -89,6 +90,7 @@ import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
 import { attachWaterInteraction } from "./waterInteraction.ts";
+import { MASS_LAYER_IDS, massLayerIds } from "./massStyle.js";
 import { addClimbs, climbsUnder, CLIMBS_FROM_DEFAULT, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, setTrailClimbs, subscribeHideBusy, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
 import { attachClimbInteraction } from "./climbInteraction.ts";
 import { climbCardAfterClose } from "./lib/climbCard.ts";
@@ -161,6 +163,7 @@ import {
   closureFeatures,
   closureMarkerName,
   closuresOf,
+  closuresUnderNames,
   AREA_POLL_MS,
   areaClosuresAsk,
   closuresKey,
@@ -176,6 +179,7 @@ import {
 } from "./lib/closureMap.ts";
 import { ViaHold } from "./lib/viaHold.ts";
 import { planLegLines, routeDrawnLines } from "./lib/planLegs.ts";
+import { browserCompassEnv, watchCompass } from "./lib/compassHeading.ts";
 
 
 export type StressAvailability = "checking" | "available" | "unavailable";
@@ -460,6 +464,12 @@ function riderOffset(container: HTMLElement, at: number): number {
 }
 /** The closures in force at the ride (v0.7.0, lib/closureMap.ts). */
 const CLOSURE_SOURCE = "closures";
+/** The names the closed stretches' lines go under: the major trails' and the streets'. */
+const CLOSURE_NAME_LAYERS: readonly string[] = [TRAIL_LABEL_LAYER_ID, ...ROAD_LABEL_LAYER_IDS];
+/** The lines they stay over though added over the trail names: the Mass Ride map's (massStyle.js), not its label. */
+const CLOSURE_OVER_LINES: readonly string[] = massLayerIds().filter((id: string) => id !== MASS_LAYER_IDS.avoidLabel);
+/** The closed stretches' lines under the street names (lib/closureMap.ts); left where they are while a ride lifts the names. */
+const closuresUnder = (map: maplibregl.Map, lifted: boolean) => !lifted && closuresUnderNames(map, CLOSURE_NAME_LAYERS, CLOSURE_OVER_LINES);
 // Bikeshare's walk legs (lib/bikeshare.ts): dotted, with the operator's source citation as the
 // source's attribution, so the attribution control shows it exactly while a bikeshare plan's
 // layer is visible and never otherwise (OWNER-DECISIONS 301).
@@ -1242,6 +1252,8 @@ export function MapView(props: Props) {
       if (added) setOverlayFade(map, routeOverlayFade(callbacks.current.route));
       // Climbs that came first are under the trail names it brings, as syncClimbs puts them when the names are there.
       if (added) climbsUnder(map, TRAIL_LABEL_LAYER_ID);
+      // Closures drawn first go under the trail names it brings, as they went under the street names.
+      if (added) closuresUnder(map, labelHomes.current.size > 0);
       return added;
     };
 
@@ -1426,6 +1438,17 @@ export function MapView(props: Props) {
       map.addSource(ROUTE_HAZARD_SOURCE, { type: "geojson", data: routeHazardFeatures(callbacks.current.route ?? null) });
       map.addLayer(routeHazardLayer() as never);
       map.addLayer(routeHazardRepeatLayer() as never);
+      // Steep grades on a Mass Ride or a Novice ride (v0.12.5, lib/steepGrades.ts): orange and red squares, the ramp
+      // rising or falling as the rider meets it, over the route only.
+      for (const { level, direction } of STEEP_ICONS) {
+        const name = steepIconName(level, direction);
+        if (map.hasImage(name)) continue;
+        const { pixelRatio: ratio, ...icon } = steepGradeIcon(level, direction, iconPixelRatio());
+        map.addImage(name, icon, { pixelRatio: ratio });
+      }
+      map.addSource(STEEP_GRADE_SOURCE, { type: "geojson", data: steepGradeFeatures(callbacks.current.stale ? null : (callbacks.current.route ?? null)) as never });
+      map.addLayer(steepGradeLayer() as never);
+      map.addLayer(steepGradeRepeatLayer() as never);
       // The other routes' names, over the route so a name where they part is not hidden under it.
       map.addLayer({
         id: "route-choice-name",
@@ -1444,9 +1467,10 @@ export function MapView(props: Props) {
         },
         paint: { "text-color": ["get", "color"], "text-halo-color": "#ffffff", "text-halo-width": 3.5 },
       });
-      // Closures in force at the ride (v0.7.0, lib/closureMap.ts): over the route, so a closed stretch on it shows.
-      // A white casing, then red (closed) or amber (bike lane blocked); dashed where it "may still apply". Their
-      // markers (buttons) carry the names and open the cards.
+      // Closures in force at the ride (v0.7.0, lib/closureMap.ts). A white casing, then red (closed) or amber (bike
+      // lane blocked); dashed where it "may still apply". Their markers (buttons) carry the names and open the cards.
+      // The lines go under the street names (closuresUnderNames, 2026-10-26), so a name is read over the amber; that is
+      // under the route too, whose own line shows where it goes through, with the closure's marker over it.
       map.addSource(CLOSURE_SOURCE, {
         type: "geojson",
         data: closureFeatures(
@@ -1480,6 +1504,7 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "butt" },
         paint: { "line-color": ["match", ["get", "severity"], "amber", LANE_AMBER, CLOSED_RED], "line-width": 5, "line-dasharray": [2, 1.2] },
       });
+      closuresUnder(map, labelHomes.current.size > 0);
       // Under the route (before its casing), so the circle's tint never covers the line.
       map.addSource(ACCURACY_SOURCE, { type: "geojson", data: accuracyData(callbacks.current.accuracy) });
       map.addLayer({
@@ -2512,11 +2537,44 @@ export function MapView(props: Props) {
   const riderMarker = useRef<Marker | null>(null);
   const following = useRef(false);
   const resetSeen = useRef(props.followReset);
+  // The phone's compass until the ride's first GPS heading (lib/compassHeading.ts, the owner, 2026-10-26): track-up
+  // turns to the way the phone faces before the rider moves, then GPS takes over for the rest of the ride.
+  const compassDeg = useRef<number | null>(null);
+  const gpsHeadingSeen = useRef(false);
+  const stopCompass = useRef<(() => void) | null>(null);
+  const compassMovedAt = useRef(0);
+  const riding = !!props.rider;
+  useEffect(() => {
+    if (!riding || !props.headingUp || gpsHeadingSeen.current) return;
+    stopCompass.current = watchCompass(browserCompassEnv(), (deg) => {
+      compassDeg.current = deg;
+      const map = mapRef.current;
+      const now = callbacks.current;
+      const rider = now.rider ?? null;
+      // Only while the camera follows track-up; a map moved by hand stays where the rider put it.
+      if (!map || !rider || !now.follow || !now.headingUp || !following.current || gpsHeadingSeen.current) return;
+      // Not over the follow camera's own move (its close-in zoom would stop part way) nor under a pinch; the next fix
+      // takes the compass's heading then. With reduced motion asked for, a jump at most once a second.
+      if (map.isMoving()) return;
+      const still = reducedMotion();
+      const at = Date.now();
+      if (still && at - compassMovedAt.current < 1_000) return;
+      compassMovedAt.current = at;
+      const ahead = riderOffset(map.getContainer(), RIDER_AT);
+      map.easeTo({ center: rider.point, bearing: deg, offset: [0, ahead], padding: NO_PADDING, duration: still ? 0 : 200 });
+    });
+    return () => {
+      stopCompass.current?.();
+      stopCompass.current = null;
+      compassDeg.current = null;
+    };
+  }, [riding, props.headingUp]);
   useEffect(() => {
     const map = mapRef.current;
     const rider = props.rider ?? null;
     if (!map) return;
     if (rider === null) {
+      gpsHeadingSeen.current = false;
       riderMarker.current?.remove();
       riderMarker.current = null;
       // The ride over: a map turned to the rider's heading (track-up, the default) is north-up again.
@@ -2537,6 +2595,13 @@ export function MapView(props: Props) {
     } else {
       riderMarker.current.setLngLat(rider.point);
     }
+    if (rider.headingDeg !== null && !gpsHeadingSeen.current) {
+      // Moving: GPS has the heading from now on, and the compass stops.
+      gpsHeadingSeen.current = true;
+      stopCompass.current?.();
+      stopCompass.current = null;
+      compassDeg.current = null;
+    }
     riderMarker.current.setRotation(rider.headingDeg ?? 0);
     riderMarker.current.getElement().classList.toggle("rider-marker-still", rider.headingDeg === null);
     if (!props.follow) {
@@ -2545,9 +2610,16 @@ export function MapView(props: Props) {
       if (!props.headingUp && map.getBearing() !== 0) map.easeTo({ bearing: 0, padding: NO_PADDING, duration: reducedMotion() ? 0 : 300 });
       return;
     }
-    // Track-up: the rider's heading; with none yet, north-up, and with none for now (stopped at a light),
-    // the bearing the map has, so it does not swing north and back.
-    const bearing = props.headingUp && rider.headingDeg !== null ? rider.headingDeg : props.headingUp && following.current ? map.getBearing() : 0;
+    // Track-up: the rider's heading; with none yet, the way the phone faces (the compass, above) or else north-up,
+    // and with none for now (stopped at a light), the bearing the map has, so it does not swing north and back.
+    const bearing =
+      props.headingUp && rider.headingDeg !== null
+        ? rider.headingDeg
+        : props.headingUp && compassDeg.current !== null
+          ? compassDeg.current
+          : props.headingUp && following.current
+            ? map.getBearing()
+            : 0;
     // Close in once as following starts; a pinch out after that is kept (it does not stop following). Back on the
     // rider after the screen was left alone (followReset), the ride's own zoom.
     const reset = props.followReset !== resetSeen.current;
@@ -2632,8 +2704,12 @@ export function MapView(props: Props) {
     if (!map) return;
     const riding = Boolean(props.rideLabels);
     const apply = () => {
-      // Climbs added during the ride went under the route: home, they go back under the names, as syncClimbs puts them.
-      if (setRideLabelOrder(map, riding, labelHomes.current)) climbsUnder(map, TRAIL_LABEL_LAYER_ID);
+      // Climbs added during the ride went under the route: home, they go back under the names, as syncClimbs puts them;
+      // closures added (or trail names come) during it go under the names too.
+      if (setRideLabelOrder(map, riding, labelHomes.current)) {
+        climbsUnder(map, TRAIL_LABEL_LAYER_ID);
+        closuresUnder(map, false);
+      }
     };
     apply();
     if (!riding) return;
@@ -2964,6 +3040,7 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   setRouteSections(map, route, stale, props.routeColour ?? undefined);
   (map.getSource(ROUTE_DRAWN_SOURCE) as GeoJSONSource | undefined)?.setData(routeDrawnLines(stale ? null : route, props.points.length) as never);
   (map.getSource(ROUTE_HAZARD_SOURCE) as GeoJSONSource | undefined)?.setData(routeHazardFeatures(stale ? null : route) as never);
+  (map.getSource(STEEP_GRADE_SOURCE) as GeoJSONSource | undefined)?.setData(steepGradeFeatures(stale ? null : route) as never);
   (map.getSource(ROUTE_NAME_SOURCE_ID) as GeoJSONSource | undefined)?.setData(routeNameFeatures(stale ? null : route) as never);
   // A ride's camera follows the rider; a re-planned route is not framed over it.
   if (!route || stale || route.geometry.coordinates.length < 2 || props.rider) return;
