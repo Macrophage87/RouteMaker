@@ -1,8 +1,10 @@
 /**
  * Arrival clock times on the ride screen (the owner, 2026-10-26: "Add estimated clock time of arrival to the ride."
  * and "Stops too"). The time to go is the route's own (its ride type's flat-road speed scaled by grade, plus the
- * junction delays: the API's duration over its distance, RideModel.paceMs), corrected by how the rider is actually
- * riding against that plan once they have ridden far enough for it to mean something.
+ * junction delays), read along the line where the API says where it falls: a climb ahead and the junction waits
+ * ahead counted where they are (the owner, 2026-10-26: "make sure intersection waits are considered too";
+ * navigate.ts secondsAt). That is corrected by how the rider is actually riding against the plan for the same
+ * stretch once they have ridden far enough for it to mean something.
  *
  * The correction is the ratio of the plan's seconds for the metres ridden to the seconds it took to ride them. A
  * halt counts up to HALT_CAP_S (a long light or a stop sign the plan allows for), not beyond it: a coffee stop or a
@@ -50,8 +52,13 @@ export interface PaceSample {
   progressM: number | null;
   /** The route line the progress is along: a new one (a re-route) starts the next stretch afresh. */
   line: string;
-  /** The plan's pace on that line, metres a second. */
+  /** The plan's even pace on that line, metres a second. */
   paceMs: number | null;
+  /**
+   * The plan's seconds between two places on that line, hills and junction waits where they are (navigate.ts
+   * secondsBetween); absent, at the even pace.
+   */
+  plan?: (fromM: number, toM: number) => number | null;
   /** On the route and riding: not off route, paused, walking or arrived. */
   riding: boolean;
 }
@@ -72,8 +79,11 @@ export function paceStep(track: PaceTrack, sample: PaceSample): PaceTrack {
   }
   // Riding off a halt, the seconds since its last counted fix are not all the metres took: those metres count at
   // the plan's pace where that is longer, so the rider is not taken as faster than they are.
+  // The plan's seconds for those metres: a climb's more, a junction's wait passed included (a green light quicker
+  // than the plan, a red one up to the halt's cap).
+  const planned = sample.plan?.(last.progressM, sample.progressM) ?? moved / sample.paceMs;
   return {
-    plannedS: track.plannedS + moved / sample.paceMs,
+    plannedS: track.plannedS + planned,
     riddenS: track.riddenS + (halted ? Math.max(dt, moved / sample.paceMs) : dt),
     metres: track.metres + moved,
     haltS: 0,

@@ -2182,6 +2182,10 @@ class RouteBody(Schema):
     # The seconds of `duration_s` the route's junctions add (stops, yields, signals;
     # `routemaker.junction_delay`), which the router's own time leaves out.
     junction_delay_s: float = 0.0
+    # Where along the line `duration_s` falls, as [fraction of the length, seconds], hills
+    # and junction waits in place (`routemaker.time_marks`), for a ride's arrival times.
+    # Null where the router gave no time; the front end then spreads the time evenly.
+    time_marks: list[list[float]] | None = None
     climb_m: float
     descent_m: float
     stress_m: StressOut
