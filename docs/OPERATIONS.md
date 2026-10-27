@@ -4868,6 +4868,38 @@ open to bicycles away from their trimmed ends, so the strip the router excludes 
 else (the Mount Vernon Trail runs beside the bridge trail's Virginia ramps, which is why only
 the river span is in the entry).
 
+## Purple Line construction closures (v0.13.0)
+
+The Maryland Purple Line closes county and city streets (Bonifant Street, Wayne Avenue, Ellin
+Road) that no WZDx feed covers: Maryland's feed is the state's roads only, and the project posts
+its closures only as words on <https://purplelinemd.com/updates>, sometimes with a PDF notice.
+The owner, 2026-10-27, of Bonifant Street: "Bonifant street is closed for major construction.
+see why it's missed". So these are read by hand into
+`src/core/geodata/purple-line-closures.json` (`routemaker.purple_line`), in the same shape as
+the DDOT advisories file above: source `purple_line` ("Purple Line construction update"),
+routed round, red on the map, whole days, gone after the last day.
+
+What goes in: a street closed to traffic (or "closed, pedestrian access maintained") for days or
+longer. What stays out: lane closures that leave a lane open, flagging, a street cut to one way,
+and overnight-only closures (10 pm to 4 am), since a whole-day window would close the road all
+day. A block closed through a cross street is two lines overlapping past it, since each line's
+ends are left open for the cross streets (`workzones.TRIM_M`, 20 m).
+
+**Each month (or when the owner reports a missed closure):** read the page's Silver Spring,
+Long Branch, Takoma/Langley, Riverdale/College Park and New Carrollton items, add or change
+entries as for a DDOT advisory (`python scripts/ddot_advisories.py lines WAY ...` prints the
+lines), set `updated` to today, and ship it in the next release.
+
+The first entry (2026-10-27): Bonifant Street from Ramsey Avenue to Georgia Avenue, Dixon
+Avenue's junction included ("The intersection of Dixon Avenue and Bonifant Street remains
+closed through October 2026", notice of 2026-07-24; "The long-term lane closure of Bonifant
+Street (West) between Ramsey Avenue and Georgia Avenue remains in effect through the
+completion of construction", and in the same item "the road closure"; the owner saw it closed).
+The notices give no end for the block, so its last day is 2027-03-31, the Purple Line's spring
+2027 opening: check it in March, and sooner if the Dixon junction's notice (through October
+2026) is not renewed. The strip the router excludes also takes the block's own sidewalks and crossings (3 to 5
+m off the centre line) inside the work zone.
+
 ## Deer-management closures (v0.12.3)
 
 Rock Creek Park (NPS) and Montgomery Parks close parts of their parks at night, or for whole

@@ -368,7 +368,7 @@ def forget() -> None:
 
 
 def _load(now: datetime) -> Snapshot:
-    from routemaker import ddot_advisories, deer_closures
+    from routemaker import ddot_advisories, deer_closures, purple_line
 
     from . import closure_sources, reviewed_closures
     from .models import BikeshareFeedCache
@@ -429,6 +429,12 @@ def _load(now: datetime) -> Snapshot:
         zones.extend(advised)
         status[ddot_advisories.SOURCE] = CURRENT
         read_at[ddot_advisories.SOURCE] = ddot_advisories.updated()
+    # The Purple Line's construction updates (v0.13.0; routemaker.purple_line), read the same way.
+    building = purple_line.zones(now)
+    if building:
+        zones.extend(building)
+        status[purple_line.SOURCE] = CURRENT
+        read_at[purple_line.SOURCE] = purple_line.updated()
     # The parks' deer-management closures (v0.12.3; routemaker.deer_closures): published
     # schedules, so notices made from the clock, with no feed to read.
     notices = [*notices, *deer_closures.notices(now)]
@@ -875,6 +881,7 @@ NAMES = {
     "nps": "the NPS alerts",
     "reviewer": "the closures RouteMaker's reviewers confirmed",
     "ddot_advisory": "DDOT's project advisories",
+    "purple_line": "the Purple Line's construction updates",
 }
 
 # How near the route a closure in force is drawn on its map, metres (a closure further
