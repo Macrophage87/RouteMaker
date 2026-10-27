@@ -251,6 +251,22 @@ server {
         proxy_read_timeout 75s;
     }
 
+    # --- public: Android App Links (core.app_links) -----------------------------------
+    # Android fetches it, with no password, to check that a tapped link may open the phone app.
+    # Only this one exact path, and fixed JSON: the app's id and its signing key's fingerprint.
+    location = /.well-known/assetlinks.json {
+        auth_basic off;
+        proxy_pass http://rmbeta_api;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 75s;
+        proxy_read_timeout 75s;
+    }
+
     # --- public: Garmin's deregistration notice (core.garmin_views.deregistrations) ---
     # Garmin's servers post it when a rider disconnects RouteMaker in Garmin Connect; they have no
     # password. Only this one exact path; the notice can only end connections it names.
