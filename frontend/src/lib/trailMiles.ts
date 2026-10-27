@@ -20,6 +20,7 @@
  */
 import { formatDistance, METRES_PER_MILE } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
+import { t } from "./i18n.ts";
 
 export interface TrailMarker {
   /** The OSM node, "n123". */
@@ -179,8 +180,8 @@ export function mileFigure(mile: number): string {
  * the message itself.
  */
 export function mileWords(at: TrailMile): string {
-  if (at.kind === "computed") return `about mile ${at.mile.toFixed(1)}`;
-  return at.metres <= MARKER_NEAR_M ? `mile marker ${mileFigure(at.mile)}` : `near mile marker ${mileFigure(at.mile)}`;
+  if (at.kind === "computed") return t("about mile {mile}", { mile: at.mile.toFixed(1) });
+  return at.metres <= MARKER_NEAR_M ? t("mile marker {mile}", { mile: mileFigure(at.mile) }) : t("near mile marker {mile}", { mile: mileFigure(at.mile) });
 }
 
 /**

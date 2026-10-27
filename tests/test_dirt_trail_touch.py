@@ -42,6 +42,15 @@ ALONG_TRAIL = [
 ]
 # The route the first time: on to 505, then a road, then to the end on 404.
 STRAY_EDGES = [(101, 0, 1, 0.9), (STRAY, 1, 2, 0.4), (202, 2, 3, 0.4), (TOUCHED, 3, 4, 0.5)]
+# The route with a stray left out: another shape, as a router's is once it leaves a way out.
+# The rounds share their traces (audit S12), so the same shape is not traced again.
+AROUND = [*VERTICES[:2], (VERTICES[2][0], VERTICES[2][1] + 0.00001), *VERTICES[3:]]
+
+
+def stray_route(payload: dict) -> dict:
+    """The fake router's route: by AROUND where strays are left out, else VERTICES."""
+    line = AROUND if payload.get("exclude_polygons") else VERTICES
+    return route_answer([(line, 2.2, [10.0, 20.0, 15.0, 30.0])])
 
 
 def add_trail(live: str, way: int, line, reason: str = "mtb") -> None:
@@ -113,7 +122,7 @@ class TestThroughTheApi:
 
         def route(payload):
             asked.append(payload)
-            return route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])
+            return stray_route(payload)
 
         def trace(_payload):
             left_out = bool(asked[-1].get("exclude_polygons"))
@@ -164,7 +173,7 @@ class TestThroughTheApi:
 
         def route(payload):
             asked.append(payload)
-            return route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])
+            return stray_route(payload)
 
         def trace(_payload):
             edges = STANDARD_EDGES if asked[-1].get("exclude_polygons") else STRAY_EDGES
@@ -351,7 +360,7 @@ class TestThroughTheApi:
 
         def route(payload):
             asked.append(payload)
-            return route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])
+            return stray_route(payload)
 
         def trace(_payload):
             left_out = bool(asked[-1].get("exclude_polygons"))
@@ -361,6 +370,55 @@ class TestThroughTheApi:
         response = post(client, {**good_body(), "ride_replan": True})
         assert response.status_code == 200, response.content
         assert asked[-1].get("exclude_polygons")
+
+
+class TestRounds:
+    """The rounds of `plan` share their traces and `/locate` answers, and drop them before the
+    plan on the ride type's own graph (audit S12, part 2)."""
+
+    RING = ((-77.0, 38.9), (-77.0, 38.901), (-77.001, 38.901), (-77.0, 38.9))
+    POINTS = [[-77.05, 38.9], [-77.02, 38.9]]
+
+    def fake(self, monkeypatch, strays: int) -> list[dict]:
+        """`routing._plan` that traces and locates one thing a round, and finds a stray in
+        its first `strays` rounds."""
+        seen: list[dict] = []
+
+        def fake_plan(*args, traces=None, located=None, **_):
+            seen.append({"traces": traces, "located": located, "started": args[3]})
+            if traces is not None:
+                seen[-1]["held"] = (len(traces), len(located))
+                traces[("offroad", f"shape{len(seen)}", "{}")] = {"edges": []}
+                located[("offroad", -77.0, 38.9 + len(seen), 10)] = [{"edges": []}]
+            if len(seen) <= strays:
+                raise routing.StrayTrails((self.RING,), (frozenset({TOUCHED}),))
+            return {"round": len(seen)}
+
+        monkeypatch.setattr(routing, "_plan", fake_plan)
+        return seen
+
+    def test_a_later_round_has_what_the_rounds_before_traced_and_located(self, monkeypatch) -> None:
+        seen = self.fake(monkeypatch, strays=routing.STRAY_ROUNDS - 1)
+        answer = routing.plan(self.POINTS, "default", started=5.0)
+        assert answer == {"round": routing.STRAY_ROUNDS}
+        assert all(r["traces"] is seen[0]["traces"] for r in seen)
+        assert all(r["located"] is seen[0]["located"] for r in seen)
+        assert [r["held"] for r in seen] == [(n, n) for n in range(routing.STRAY_ROUNDS)]
+        assert {r["started"] for r in seen} == {5.0}
+
+    def test_the_plan_on_the_ride_types_own_graph_starts_afresh(self, monkeypatch) -> None:
+        seen = self.fake(monkeypatch, strays=routing.STRAY_ROUNDS)
+        answer = routing.plan(self.POINTS, "default", started=5.0)
+        assert answer == {"round": routing.STRAY_ROUNDS + 1}
+        assert seen[-1]["traces"] is None and seen[-1]["located"] is None
+        # Cleared, so the worker does not hold them through the last plan.
+        assert seen[0]["traces"] == {} and seen[0]["located"] == {}
+        assert {r["started"] for r in seen} == {5.0}
+
+    def test_a_plan_without_strays_is_one_round(self, monkeypatch) -> None:
+        seen = self.fake(monkeypatch, strays=0)
+        assert routing.plan(self.POINTS, "default") == {"round": 1}
+        assert len(seen) == 1
 
 
 class TestRuns:

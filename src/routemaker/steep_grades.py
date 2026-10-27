@@ -25,6 +25,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from routemaker import profile as profile_rules
+from routemaker.lang import t
 
 # The ride types that warn of and price steep grades.
 RIDE_TYPES = frozenset({"mass-ride", "novice"})
@@ -173,14 +174,23 @@ def _feet(metres: float) -> str:
     return f"{round(metres * 3.28084 / 10) * 10:,} ft ({round(metres):,} m)"
 
 
+# A stretch's sentence, each whole, so a language words each its own way (`routemaker.lang`).
+_STEEP_WORDS = {
+    (True, True): "Very steep uphill, up to {pct}%, for {length}.",
+    (True, False): "Very steep downhill, up to {pct}%, for {length}.",
+    (False, True): "Steep uphill, up to {pct}%, for {length}.",
+    (False, False): "Steep downhill, up to {pct}%, for {length}.",
+}
+
+
 def public(found: Sequence[Stretch]) -> list[dict]:
     """The stretches as the answer gives them: whole metres, the steepest grade as a whole
     percent, and one plain sentence."""
     out = []
     for s in found:
         pct = round(s.grade * 100)
-        steep = "Very steep" if s.level == LEVEL_VERY_STEEP else "Steep"
-        way = "uphill" if s.direction == UP else "downhill"
+        very = s.level == LEVEL_VERY_STEEP
+        up = s.direction == UP
         out.append(
             {
                 "from_m": round(s.from_m),
@@ -188,7 +198,7 @@ def public(found: Sequence[Stretch]) -> list[dict]:
                 "direction": s.direction,
                 "level": s.level,
                 "grade_pct": pct,
-                "text": f"{steep} {way}, up to {pct}%, for {_feet(s.length_m)}.",
+                "text": t(_STEEP_WORDS[(very, up)], pct=pct, length=_feet(s.length_m)),
             }
         )
     return out

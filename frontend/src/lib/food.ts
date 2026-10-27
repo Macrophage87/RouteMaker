@@ -39,6 +39,7 @@
  */
 import { formatDistance, formatDuration, formatExtra, milesFigure } from "./format.ts";
 import type { LonLat } from "./geo.ts";
+import { t } from "./i18n.ts";
 
 export type FoodKind = "r" | "f" | "c" | "i" | "p" | "b" | "fc" | "fs" | "m";
 
@@ -61,7 +62,7 @@ const KINDS: readonly FoodKind[] = ["r", "f", "c", "i", "p", "b", "fc", "fs", "m
 export const isFarmFood = (kind: FoodKind): boolean => kind === "fs" || kind === "m";
 
 /** Said for a farm stand or market with no hours mapped: most sell in season only. */
-export const SEASONAL_HOURS = "Hours vary by season.";
+export const SEASONAL_HOURS = t("Hours vary by season.");
 
 export const KIND_LABEL: Record<FoodKind, string> = {
   r: "Restaurant",
@@ -421,8 +422,8 @@ export function foodHoursText(place: FoodPlace): string {
 }
 
 export const FOOD_PAGE = 10;
-export const NO_FOOD_DATA = "No food data yet: the places to eat arrive with the next map data update.";
-export const FOOD_NOT_LOADED = "The places to eat are unavailable for now; try again shortly.";
+export const NO_FOOD_DATA = t("No food data yet: the places to eat arrive with the next map data update.");
+export const FOOD_NOT_LOADED = t("The places to eat are unavailable for now; try again shortly.");
 export const FOOD_DETOUR_NOTE =
   `Detours are estimates: the straight-line distance off your route, there and back, times ${CIRCUITY} for the streets, at your route's average speed. ` +
   "From OpenStreetMap: check the hours before you count on them. No ratings.";

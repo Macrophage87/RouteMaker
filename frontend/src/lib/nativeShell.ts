@@ -29,6 +29,7 @@
  */
 import { browserRideEnv, type RideGeoEnv, type WatchApi, type WatchPosition } from "./rideWatch.ts";
 import { browserSpeech, browserWake, toVoice, type CueOutput, type SpeechApi, type SpeechEnv, type UtteranceLike, type WakeEnv, type WakeLockSentinelLike } from "./rideOutput.ts";
+import { t } from "./i18n.ts";
 
 /** The parts of the injected `window.Capacitor` used here (Capacitor 8's native-bridge.js). */
 export interface CapacitorBridge {
@@ -97,7 +98,7 @@ export function nativeShareNavigator(scope: unknown = globalThis): { share: (dat
 
 export const CUE_NOTICE_ID = 8_080;
 export const CUE_CHANNEL = "routemaker-ride-cues";
-export const CUE_TITLE = "Latest cue";
+export const CUE_TITLE = t("Latest cue");
 /**
  * Low importance (2): shown in the shade and on the lock screen, but no sound, no vibration and no
  * heads-up, so an update never talks over the voice. Android sends a screen reader no announcement for
@@ -195,8 +196,8 @@ export class CueNotice {
 // ---- The position -----------------------------------------------------------------------------------
 
 /** What the Android notification of the location service says (the plugin's foreground service). */
-export const BACKGROUND_TITLE = "Riding with RouteMaker";
-export const BACKGROUND_MESSAGE = "Your location is used for Ride mode's cues and stays on this phone. End the ride to stop.";
+export const BACKGROUND_TITLE = t("Riding with RouteMaker");
+export const BACKGROUND_MESSAGE = t("Your location is used for Ride mode's cues and stays on this phone. End the ride to stop.");
 
 /**
  * The plugin's options: the service only while a ride's watch runs; fresh fixes only; every fix. Never

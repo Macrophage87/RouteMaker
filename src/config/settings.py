@@ -326,6 +326,52 @@ ROUTING_CONCURRENCY = routing_concurrency(os.environ.get("WEB_CONCURRENCY"))
 # ROUTER_PARALLEL_CALLS + 1 calls per slot: the pool's threads and the request's own.
 ROUTER_PARALLEL_CALLS = max(1, int(os.environ.get("ROUTER_PARALLEL_CALLS", "3")))
 ROUTE_CACHE_TTL_S = max(0, int(os.environ.get("ROUTE_CACHE_TTL_S", "600")))
+# The answer cache shared by the api's workers (audit S14; the owner signed off a ~16 MB
+# memcached on beta on 2026-10-27): memcached's host:port, which compose.beta.yaml sets to
+# its `memcached` service. Unset or empty, each worker keeps its own answers in its memory,
+# as before (the tests; a stack with no memcached). A memcached that is down, full or slow
+# never fails a plan: the client ignores its errors and gives up within a quarter second,
+# and `core.route_cache` passes over any it raises all the same.
+ROUTE_CACHE_LOCATION = os.environ.get("ROUTE_CACHE_LOCATION", "").strip()
+
+
+class BytesOnlySerde:
+    """pymemcache's serde for the shared route cache: bytes in, bytes out, nothing else.
+    Django's own default unpickles whatever the server hands back, and any container on
+    the compose network can write to memcached; a stored item with a flag we did not set
+    is read as a miss, never unpickled."""
+
+    def serialize(self, key, value):
+        if not isinstance(value, bytes):
+            raise TypeError("the shared route cache keeps bytes only")
+        return value, 0
+
+    def deserialize(self, key, value, flags):
+        return value if flags == 0 else None
+
+
+def caches_for(route_cache_location: str) -> dict:
+    """Django's caches: its own default (in each process's memory, as when unset), and
+    `routes` (`core.route_cache.SHARED`) where a memcached is given."""
+    caches = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+    if route_cache_location:
+        caches["routes"] = {
+            "BACKEND": "django.core.cache.backends.memcached.PyMemcacheCache",
+            "LOCATION": route_cache_location,
+            "KEY_PREFIX": "route",
+            "OPTIONS": {
+                # A cache that is down or refuses an item is a miss, never an error.
+                "ignore_exc": True,
+                "no_delay": True,
+                "connect_timeout": 0.1,
+                "timeout": 0.25,
+                "serde": BytesOnlySerde(),
+            },
+        }
+    return caches
+
+
+CACHES = caches_for(ROUTE_CACHE_LOCATION)
 
 
 # How many stress tiles the api may draw from the segment table at once; a

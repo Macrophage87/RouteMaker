@@ -931,9 +931,54 @@ function clearOtherLabel(layer) {
   }
 }
 
-/** The base map's layers with the street names (ROAD_LABEL), place names (PLACE_LABEL) and other labels (OTHER_LABEL) restyled; every other layer as given. */
+/**
+ * THE STATE AND COUNTY LINES. The owner, 2026-10-27: "Add state and county lines to the map." The base map already
+ * carries them: Protomaps' `boundaries` tile layer holds OpenStreetMap's administrative boundaries with the OSM
+ * admin_level as `kind_detail` (4 a state, and the District of Columbia, which OSM maps at the state level; 6 a
+ * county, and an independent city such as Baltimore or Alexandria, which OSM maps at the county level; 8 a town or
+ * city), so no tile is rebuilt. The base map drew all of them alike in one layer, 0.4 px of light grey (#adadad)
+ * finely dashed, too faint to find. Here that layer is split in three: a state line is a darker, wider dash, a county line
+ * a lighter, narrower one, and a town line keeps the base map's own look. All are grey, under the stress overlay
+ * among the base map's roads and narrower than an LTS 1 street at every zoom (thinned zoomed out too, ZOOMED_OUT_SCALE),
+ * so none competes with a stress line. Dashes are in line widths, as MapLibre draws them.
+ */
+export const BOUNDARY_LAYER_ID = "boundaries";
+export const BOUNDARY_LINE = {
+  state: {
+    id: "boundaries_state",
+    level: 4,
+    color: "#6e7080",
+    width: ["interpolate", ["linear"], ["zoom"], 7, 1, 10, 1.2, 11, 1.35, 14, 2.1, 17, 2.4],
+    dash: [4, 2],
+  },
+  county: {
+    id: "boundaries_county",
+    level: 6,
+    color: "#868894",
+    width: ["interpolate", ["linear"], ["zoom"], 7, 0.7, 10, 0.9, 14, 1.4, 17, 1.6],
+    dash: [3, 2],
+  },
+};
+
+/** The base map's `boundaries` layer as three: its other lines as given, then the county lines and state lines over them (BOUNDARY_LINE). */
+export function boundaryLayers(layer) {
+  const level = (line) => ({
+    ...layer,
+    id: line.id,
+    filter: ["==", ["get", "kind_detail"], line.level],
+    paint: { ...layer.paint, "line-color": line.color, "line-width": line.width, "line-dasharray": ["literal", line.dash] },
+  });
+  const { state, county } = BOUNDARY_LINE;
+  // The base map's own filter (above a country's level), less the two drawn above it.
+  const kind = ["get", "kind_detail"];
+  const others = ["all", [">", kind, 2], ["!=", kind, state.level], ["!=", kind, county.level]];
+  return [{ ...layer, filter: others }, level(county), level(state)];
+}
+
+/** The base map's layers with the street names (ROAD_LABEL), place names (PLACE_LABEL), other labels (OTHER_LABEL) and state and county lines (BOUNDARY_LINE) restyled; every other layer as given. */
 export function withClearRoadLabels(layers, strong = accessibilityOn()) {
-  return layers.map((layer) => {
+  return layers.flatMap((layer) => {
+    if (layer.id === BOUNDARY_LAYER_ID) return boundaryLayers(layer);
     if (ROAD_LABEL_LAYER_IDS.includes(layer.id)) {
       return {
         ...layer,

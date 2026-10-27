@@ -2847,12 +2847,21 @@ const levelSlider = `${EDITOR} input[type=range]`;
   check("ride: Where am I? says the street, the next cue, the miles to the end and the arrival time (#513)", /On R Street Northwest\..* to the end, arriving about \d{1,2}:\d{2}(?:\s?[AP]M)?\./.test(where.polite), JSON.stringify(where));
 
   // N5: the map along the route, kept for dead spots (lib/corridor.ts): the stress tiles at z12-14 in
-  // the ride's own Cache Storage bucket (the mocked base map is not served, so its part stops), said on
-  // screen under the controls and not in a live region.
-  await p.waitFor("/saved for dead spots/.test(document.querySelector('.ride-corridor')?.textContent ?? '')", 30000);
+  // the ride's own Cache Storage bucket (the mocked base map is not served, so its part stops).
+  // A part kept (the stress lines, not the base map) says nothing (the owner, 2026-10-27: "This prompt made no
+  // sense"): wait for the kept tiles themselves, every zoom (z14 is fetched first), then for the count to settle.
+  const corridorKeys = "(async () => (await (await caches.open('routemaker-corridor-v1')).keys()).map((r) => new URL(r.url).pathname))()";
+  let keptBefore = -1;
+  for (let i = 0; i < 60; i += 1) {
+    const kept = await p.eval(corridorKeys);
+    const allZooms = [12, 13, 14].every((z) => kept.some((u) => u.startsWith(`/tiles/stress/${z}/`)));
+    if (allZooms && kept.length === keptBefore) break;
+    keptBefore = kept.length;
+    await sleep(1000);
+  }
   const corridor = await p.eval("(async () => { const note = document.querySelector('.ride-corridor'); const keys = await (await caches.open('routemaker-corridor-v1')).keys(); return { note: note?.textContent, live: !!note?.closest('[aria-live], [role=status], [role=alert]'), kept: keys.map((r) => new URL(r.url).pathname), rev: keys.some((r) => new URL(r.url).searchParams.has('rev')) }; })()");
-  check("ride: the stress tiles along the route are kept for dead spots (z12-14, keyed without ?rev), and the note says only they were, on screen, not in a live region",
-    corridor.note === "Only the stress lines along the route are saved for dead spots, not the base map." && !corridor.live && !corridor.rev && corridor.kept.length >= 3 && corridor.kept.every((u) => /^\/tiles\/stress\/1[234]\/\d+\/\d+\.pbf$/.test(u)) && [12, 13, 14].every((z) => corridor.kept.some((u) => u.startsWith(`/tiles/stress/${z}/`))),
+  check("ride: the stress tiles along the route are kept for dead spots (z12-14, keyed without ?rev), and a part kept puts no note on screen",
+    !corridor.note && !corridor.live && !corridor.rev && corridor.kept.length >= 3 && corridor.kept.every((u) => /^\/tiles\/stress\/1[234]\/\d+\/\d+\.pbf$/.test(u)) && [12, 13, 14].every((z) => corridor.kept.some((u) => u.startsWith(`/tiles/stress/${z}/`))),
     JSON.stringify({ ...corridor, kept: corridor.kept.length }));
   // In a dead spot (the network emulated offline) a kept stress tile still answers the map's own
   // protocol loader, at once. The base map's ranges cannot be shown here: the mock serves no archive.

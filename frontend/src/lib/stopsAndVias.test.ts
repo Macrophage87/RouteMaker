@@ -6,7 +6,21 @@ import { readFileSync } from "node:fs";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import { planPointNames, writeGpx } from "./gpx.ts";
-import { VIA_GUIDE_SKIP_M, cueSpoken, replanKept, rideModel, stopsAhead } from "./navigate.ts";
+import {
+  REPLAN_FAILED,
+  REPLAN_FOUND,
+  REPLAN_UTURN,
+  VIA_GUIDE_SKIP_M,
+  VIA_SKIP_EXTRA_S,
+  cueSpoken,
+  replanKept,
+  replanTold,
+  rideModel,
+  skippableVia,
+  stopsAhead,
+  viaSkipWorth,
+  viaSkippedNote,
+} from "./navigate.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
 import { asKept } from "./gpxEdit.ts";
 import type { ImportedPlan } from "./gpxPlan.ts";
@@ -164,6 +178,66 @@ test("a re-route keeps the stops and the far via points, and drops a via point c
   const rideSrc = src("../RideMode.tsx");
   assert.match(rideSrc, /: replanKept\(modelRef\.current, current\.progressM \?\? 0, plan\.current\.points, plan\.current\.loop, true\)\.filter\(\(i\) => i !== skip\);/);
   assert.match(rideSrc, /const kept = keptPoints;/);
+});
+
+// ---- A re-route may leave out the next via point (Stephen 2026-10-27: "Vias can be skipped a little more ... Those
+// are guides. Stops are where you want to end up."; "it shouldn't skip all of the vias") -------------------------
+
+/** A new route from the rider to the via point (point 1) and on to the end, due east, at 5 m/s. */
+function fresh(viaM: number, endM: number): RouteResponse {
+  return {
+    ...ride().route,
+    geometry: { type: "LineString", coordinates: [at(0), at(viaM), at(endM)] },
+    distance_m: endM,
+    duration_s: endM / 5,
+    leg_ends: [1, 2],
+    description: [stretch(0, endM, "A Street"), point(viaM, 1)],
+  } as RouteResponse;
+}
+
+test("only the next via point may be left out: never a stop, never a via point behind a stop or the end", () => {
+  const { route, points, vias } = ride();
+  const model = rideModel(route, vias);
+  // 1,100 m along: the stop at 1,000 m is passed and the via at 2,000 m is the next point.
+  const kept = replanKept(model, 1100, points, false, true);
+  assert.deepEqual(kept, [3, 4]);
+  const next = skippableVia(model, kept);
+  assert.equal(next?.point, 3);
+  assert.ok(Math.abs((next?.atM ?? 0) - 2000) < 2);
+  // A stop next: nothing is left out, not the via point after it either.
+  assert.equal(skippableVia(model, [2, 3, 4]), null);
+  assert.equal(skippableVia(model, [4]), null, "only the end left");
+});
+
+test("the via point is left out only where the new route takes more than 5 minutes longer to reach it", () => {
+  const { route, vias } = ride();
+  const planned = rideModel(route, vias);
+  // The planned route: 600 s over 3,000 m, so 180 s from 1,100 m to the via at 2,000 m.
+  assert.equal(VIA_SKIP_EXTRA_S, 300);
+  // 3,000 m to the via at 5 m/s is 600 s: 420 s longer.
+  assert.equal(viaSkipWorth(planned, 1100, 2000, rideModel(fresh(3000, 4000), [1]), 1), true);
+  // 2,000 m to it is 400 s: 220 s longer, kept.
+  assert.equal(viaSkipWorth(planned, 1100, 2000, rideModel(fresh(2000, 3000), [1]), 1), false);
+  // Without the new route's time to it (no via entry), never left out.
+  assert.equal(viaSkipWorth(planned, 1100, 2000, rideModel({ ...fresh(3000, 4000), description: [stretch(0, 4000, "A Street")] }, [1]), 1), false);
+});
+
+test("a re-route that left out its via point says so first, and the stoker still hears a new route", () => {
+  assert.equal(viaSkippedNote(REPLAN_FOUND), "Skipping via point. New route found.");
+  assert.equal(viaSkippedNote(REPLAN_UTURN), "Skipping via point. New route found. Make a U-turn.");
+  assert.equal(viaSkippedNote(REPLAN_FAILED), REPLAN_FAILED, "no route, nothing skipped to say");
+  assert.equal(replanTold(false, "stoker", viaSkippedNote(REPLAN_FOUND)), "say");
+  assert.equal(replanTold(false, "quiet", viaSkippedNote(REPLAN_FOUND)), "quiet");
+});
+
+test("Ride mode asks again without the via point only when that trips, and not for a detour, a check, a restart or Calmer", () => {
+  const replan = src("../RideMode.tsx").slice(src("../RideMode.tsx").indexOf("const replan = useCallback("));
+  assert.match(replan, /const next = result\.ok && !via && !check && !done && !eased \? skippableVia\(modelRef\.current, keptPoints\) : null;/);
+  assert.match(
+    replan,
+    /if \(result\.ok && next && viaSkipWorth\(modelRef\.current, current\.progressM \?\? 0, next\.atM, modelOf\(result\.route, points\), 1\) && !voided\(\)\) \{\s*const without = points\.filter\(\(_, i\) => i !== 1\);\s*const again = await ask\(without\);/,
+  );
+  assert.match(replan, /if \(skippedVia\) note = viaSkippedNote\(note\);/);
 });
 
 test("a named stop is cued, said and drawn by its name; the stops ahead are drawn while riding, via points never", () => {
