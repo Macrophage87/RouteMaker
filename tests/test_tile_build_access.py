@@ -515,6 +515,16 @@ CASES: list[tuple[str, dict[str, str], bool | tuple[bool, bool]]] = [
         OPEN,
     ),
     (
+        "a bicycle=yes walkway at a rail platform, walked (station_links.platform_walks)",
+        {
+            "highway": "footway",
+            "bicycle": "yes",
+            "rm:trail_class": "yes",
+            "rm:platform_walk": "yes",
+        },
+        OPEN,
+    ),
+    (
         "a sidewalk ridden as a last resort (routemaker.sidewalks)",
         {
             "highway": "footway",

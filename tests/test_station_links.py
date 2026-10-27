@@ -239,7 +239,27 @@ def test_a_long_walkway_or_a_closed_one_is_left_alone():
 
 def test_no_platform_nothing_walked():
     assert sl.platform_walks(kensington(), set()) == set()
+
+
+def test_only_a_rail_platform_in_service_counts():
+    assert sl.is_platform(PLATFORM)
+    assert sl.is_platform({"railway": "platform", "light_rail": "yes"})
     assert not sl.is_platform({"public_transport": "platform", "bus": "yes"}), "a bus stop"
+    assert not sl.is_platform({"railway": "platform"}), "a park's miniature railway"
+    assert not sl.is_platform({**PLATFORM, "disused": "yes"}), "a disused line's"
+
+
+def test_permissive_paths_are_walked_but_not_cycleways():
+    ways = kensington(
+        {
+            3: placed(
+                3, {"highway": "path", "bicycle": "permissive"}, [(0.0, -10.0), (0.0, -14.0)]
+            ),
+            1: placed(1, {"highway": "cycleway"}, [(0.0, 0.0), (-40.0, 30.0), (-60.0, 40.0)]),
+        }
+    )
+    found = sl.platform_walks(ways, platform_nodes(ways))
+    assert 3 in found and 1 not in found
 
 
 def test_the_rebuild_walks_the_platform_walkways():

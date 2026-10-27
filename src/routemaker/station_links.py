@@ -253,9 +253,23 @@ def _walks(
     return walks
 
 
+# A platform's own tags that say a passenger service stops at it: a park's miniature
+# railway's or a disused line's platform says none of them.
+PLATFORM_SERVICE_KEYS = ("train", "light_rail", "subway", "tram")
+PLATFORM_LIFECYCLE_KEYS = ("disused", "abandoned", "historic")
+
+
 def is_platform(tags: dict[str, str]) -> bool:
-    """A rail platform's way (a bus stop's `public_transport=platform` is not one)."""
-    return tags.get("railway") == "platform"
+    """A rail platform in service: `railway=platform` with `public_transport=platform` or
+    a rail mode tagged on it (a bus stop's `public_transport=platform` alone is not one,
+    nor is a miniature railway's or a disused line's)."""
+    if tags.get("railway") != "platform":
+        return False
+    if any(tags.get(key) not in (None, "no") for key in PLATFORM_LIFECYCLE_KEYS):
+        return False
+    return tags.get("public_transport") == "platform" or any(
+        tags.get(key) == "yes" for key in PLATFORM_SERVICE_KEYS
+    )
 
 
 def is_platform_walk_candidate(tags: dict[str, str]) -> bool:

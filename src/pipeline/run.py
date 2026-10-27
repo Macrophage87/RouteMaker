@@ -3283,7 +3283,7 @@ def build_handlers(
             "barred to bicycles, %d singletrack ways avoided; no-bicycle reasons %s, %d "
             "walk-your-bike connectors kept, %d footways ridden as a last resort (sidewalks, "
             "crosswalks, links), %d destination-only, %d parking aisles routed "
-            "as links where a trail ends",
+            "as links where a trail ends, %d walkways at rail platforms walked",
             dict(sorted(Counter(context.facility_by_way.values()).items())),
             len(context.car_free_by_way),
             car_free_for_good,
@@ -3295,6 +3295,7 @@ def build_handlers(
             len(nobike.sidewalk_rides),
             len(nobike.destination_only),
             len(nobike.aisle_links),
+            len(nobike.platform_walks),
         )
 
     def write_bike_bans(placed, parks) -> None:

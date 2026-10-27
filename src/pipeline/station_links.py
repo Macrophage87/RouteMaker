@@ -38,11 +38,13 @@ def read_ways_in(pbf: str | Path) -> list[tuple[float, float]]:
 
 
 def read_platform_nodes(pbf: str | Path) -> set[int]:
-    """The node ids of every rail platform's way (`station_links.platform_walks`)."""
+    """The node ids of every rail platform in service (`station_links.is_platform`), for
+    `station_links.platform_walks`."""
     nodes: set[int] = set()
     processor = osmium.FileProcessor(str(pbf), osmium.osm.WAY).with_filter(
         osmium.filter.TagFilter(("railway", "platform"))
     )
     for way in processor:
-        nodes.update(node.ref for node in way.nodes)
+        if station_links.is_platform({tag.k: tag.v for tag in way.tags}):
+            nodes.update(node.ref for node in way.nodes)
     return nodes
