@@ -329,7 +329,7 @@ export function PlaceSearch({
   return (
     <div className={variant === "go" ? "place-search go-search" : "place-search"}>
       <label htmlFor={`${id}-input`} className={variant === "go" ? "place-search-label visually-hidden" : "place-search-label"}>
-        {variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "work" ? "Find your Work" : variant === "favorite" ? "Find a place to save" : variant === "start" ? "Start from" : variant === "stop" || variant === "add" ? "Add a stop" : variant === "from" ? "From" : variant === "to" ? "To" : "Find a place"}
+        {t(variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "work" ? "Find your Work" : variant === "favorite" ? "Find a place to save" : variant === "start" ? "Start from" : variant === "stop" || variant === "add" ? "Add a stop" : variant === "from" ? "From" : variant === "to" ? "To" : "Find a place")}
         {current && <span className="place-search-current">{` (now ${current})`}</span>}
       </label>
       <div className={(locate && !locate.listOnly) || variant === "go" ? "place-search-row" : undefined}>

@@ -469,7 +469,7 @@ export function GoRouteCard({ start, destination, between, onEdit }: { start: st
         {between && <span className="go-route-stops">{between}</span>}
         <span className="go-route-end go-route-to">
           <Icon name="pin" size={16} />
-          <span className="visually-hidden">to </span>
+          <span className="visually-hidden">{t("to")} </span>
           {destination}
         </span>
       </span>
