@@ -1550,6 +1550,41 @@ test("a fork along one trail is a turn cue to stay on it (the owner, 2026-10-18,
   );
 });
 
+test("a fork along one trail stays 'to stay on' at the turn and inside a jog, never 'now onto' its own trail (routing audit D6)", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "Paint Branch Trail.", { street: "Paint Branch Trail", facility: "path" }),
+      stretch(900, 2200, "Bear right to stay on Paint Branch Trail.", {
+        street: "Paint Branch Trail",
+        facility: "path",
+        turn: { ...turning("bear_right", "Paint Branch Trail"), stay: true },
+      }),
+    ]),
+  );
+  const fork = model.cues[0];
+  assert.equal(fork.text, "Bear right to stay on Paint Branch Trail.");
+  assert.equal(cueSpoken(fork, "advance", 152.4), `In ${spokenDistance(152.4)}, bear right to stay on Paint Branch Trail.`);
+  assert.equal(cueSpoken(fork, "now", 0), "Bear right now.");
+  // A stay fork as a jog's later turn: said "to stay on" in the first turn's text, and "now" alone at its own turn.
+  const jog = rideModel(
+    straightRoute([
+      stretch(0, 900, "Q Street Northwest.", { street: "Q Street Northwest" }),
+      stretch(900, 930, "Right onto Paint Branch Trail.", { street: "Paint Branch Trail", facility: "path", turn: turning("right", "Paint Branch Trail") }),
+      stretch(930, 2200, "Bear right to stay on Paint Branch Trail.", {
+        street: "Paint Branch Trail",
+        facility: "path",
+        turn: { ...turning("bear_right", "Paint Branch Trail"), stay: true },
+      }),
+    ]),
+  );
+  const [first, second] = jog.cues;
+  assert.equal(first.text, "Right onto Paint Branch Trail, then immediately bear right to stay on Paint Branch Trail.");
+  assert.ok(second.joined);
+  assert.equal(cueSpoken(second, "now", 0), "Bear right now.");
+  // A plain turn keeps its street at "now".
+  assert.equal(cueSpoken(first, "now", 0), "Right now onto Paint Branch Trail.");
+});
+
 test("an unusual junction's ways ride on its turn cue for the card to draw; a plain turn has none (the owner, 2026-10-20)", () => {
   const route = lRoute();
   route.description = [

@@ -201,6 +201,8 @@ export interface JogTurn {
   movement: TurnMovement;
   street: string | null;
   exit?: CircleExit;
+  /** A fork that keeps to the same street or trail: said "bear right to stay on ..." (Cue.stay). */
+  stay?: boolean;
 }
 
 export interface Cue {
@@ -240,6 +242,8 @@ export interface Cue {
   junction?: JunctionShape;
   /** The way off a circle (v0.10.0): its exit, said ("take the 3rd exit") and drawn as a ring. */
   exit?: CircleExit;
+  /** A fork that keeps to the same street or trail (the API's turn.stay): "Bear right to stay on ...", and at "now" "Bear right now." */
+  stay?: boolean;
   /** A short path across a road between two turns: the road, said in place of the turn ("Cross Redland Road."), drawn straight on. */
   cross?: string;
   /** A turn onto a path just across a road (describe._far_side_turns): the road, said first ("Cross Saint Paul Street, then right onto ..."), drawn across it. */
@@ -598,6 +602,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
         ...(kind === "turn" && entry.turn?.cross ? { cross: entry.turn.cross } : {}),
         ...(kind === "turn" && entry.turn?.across && !entry.turn.cross ? { across: entry.turn.across } : {}),
         ...(kind === "turn" && entry.turn?.exit ? { exit: entry.turn.exit } : {}),
+        ...(kind === "turn" && entry.turn?.stay === true && !entry.turn.cross && !entry.turn.across ? { stay: true } : {}),
         movement: kind === "turn" ? (entry.turn?.movement as TurnMovement) : null,
         street: entry.turn?.onto ?? entry.street ?? null,
         severity: entry.severity ?? entry.turn?.severity ?? null,
@@ -703,7 +708,7 @@ export function acrossWords(road: string, movement: TurnMovement, street: string
  * only ", then left onto ..." (the owner, 2026-10-20: "cross the street and turn left").
  */
 function thenWords(then: JogTurn, crossing = false): string {
-  const turn = lowerFirst(turnWords(then.movement, then.street, false, then.exit ?? null));
+  const turn = lowerFirst(turnWords(then.movement, then.street, then.stay === true, then.exit ?? null));
   return crossing ? t(", then {turn}", { turn }) : t(", then immediately {turn}", { turn });
 }
 
@@ -731,7 +736,7 @@ function joinJogs(cues: Cue[]): void {
       if (j > 0) cue.joined = true;
       const after = jog.slice(j + 1);
       if (!after.length) return;
-      cue.then = after.map((t) => ({ movement: t.movement!, street: t.street, ...(t.exit ? { exit: t.exit } : {}) }));
+      cue.then = after.map((t) => ({ movement: t.movement!, street: t.street, ...(t.exit ? { exit: t.exit } : {}), ...(t.stay ? { stay: true } : {}) }));
       cue.text = plain[j] + cue.then.map((t, n) => thenWords(t, n === 0 && cue.cross !== undefined).replace(/\.$/, "")).join("") + ".";
     });
     i += jog.length - 1;
@@ -931,7 +936,8 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
     if (cue.movement === "uturn") return t("Make a U-turn now.");
     if (cue.exit) return cue.street && !isUnnamed(cue.street) ? t("Exit now onto {street}.", { street: wayWords(cue.street) }) : t("Exit now.");
     const sentences = TURN_SENTENCES[cue.movement];
-    return cue.street ? t(sentences.now, { street: wayWords(cue.street) }) : t(sentences.nowAlone);
+    // A fork on the same trail: "Bear right now.", not "now onto" the trail the rider is already on (its name was said before).
+    return cue.street && !cue.stay ? t(sentences.now, { street: wayWords(cue.street) }) : t(sentences.nowAlone);
   }
   // A turn at a flagged junction says so in its first warning only; "now" is the turn alone.
   const busy = cue.kind === "turn" && (cue.severity === "orange" || cue.severity === "red") && first;
