@@ -191,3 +191,29 @@ test("the first-launch screen: labelled for screen readers, https only, checked 
   assert.match(manifest, /android:name="\.SetupActivity"[\s\S]*?android\.intent\.category\.LAUNCHER/);
   assert.match(manifest, /android:name="\.MainActivity"[\s\S]*?android:exported="false"/);
 });
+
+test("Android: tapped links open the store app only, for the site it was built with", () => {
+  const main = readFileSync(here("../android/app/src/main/AndroidManifest.xml"), "utf8");
+  // No test build takes a tapped link: the main manifest names no host and no VIEW filter.
+  assert.doesNotMatch(main, /android\.intent\.action\.VIEW|android:host=/);
+  const links = readFileSync(here("../android/app/src/links/AndroidManifest.xml"), "utf8");
+  assert.match(links, /<intent-filter android:autoVerify="true">/);
+  assert.match(links, /android:scheme="https" android:host="\$\{linkHost\}"/);
+  assert.doesNotMatch(links, /android:scheme="http"[ /]/);
+  for (const path of ['android:path="/"', 'android:pathPrefix="/s/"', 'android:pathPrefix="/mass-ride"', 'android:pathPrefix="/group-ride"']) {
+    assert.ok(links.includes(path), path);
+  }
+  // Not every page: the privacy policy, the guides and the route posts stay in the browser.
+  assert.doesNotMatch(links, /pathPrefix="\/(privacy|about|routes|api|auth)/);
+  const gradle = readFileSync(here("../android/app/build.gradle"), "utf8");
+  assert.match(gradle, /manifestPlaceholders = \[linkHost: linkHost\]/);
+  assert.match(gradle, /if \(linkHost\) \{\s*sourceSets\.release\.manifest\.srcFile "src\/links\/AndroidManifest\.xml"/);
+  // Only the store build step has the site: the sync step's test builds never do.
+  const workflow = readFileSync(here("../../.github/workflows/android.yml"), "utf8");
+  const release = workflow.slice(workflow.indexOf("- name: Release APK and bundle"));
+  assert.match(release.slice(0, release.indexOf("run:")), /ROUTEMAKER_LINK_SITE: \$\{\{ secrets\.ROUTEMAKER_SITE_URL \}\}/);
+  // Elsewhere only a stand-in, to check the merge on a pull request.
+  assert.equal(workflow.split("ROUTEMAKER_LINK_SITE: ${{").length - 1, 1);
+  assert.equal(workflow.split("ROUTEMAKER_LINK_SITE").length - 1, 2);
+  assert.match(workflow, /ROUTEMAKER_LINK_SITE: https:\/\/routes\.example\.org\n/);
+});
