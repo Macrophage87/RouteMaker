@@ -4829,12 +4829,19 @@ def plan_onward(
 ) -> dict:
     """`plan`, with a re-route's U-turn penalised: where `dials.heading` is given and the route
     sets off back the other way, the best route that sets off ahead is planned too, and the
-    U-turn kept only where it saves UTURN_SAVING_M (never with `dials.ahead_only`). Anything
-    that stops the second plan (no route ahead, no time left) keeps the first: the rider is
-    never left without one."""
+    U-turn kept only where it saves UTURN_SAVING_M (never with `dials.ahead_only`, where the
+    route ahead is planned first: `_plan_ahead_first`). Anything that stops the second plan (no
+    route ahead, no time left) keeps the first: the rider is never left without one."""
     dials = dials or Dials()
     heading = dials.heading
     asked = dict(long_ride=long_ride, started=started, quick=quick, candidates=candidates)
+    if (
+        heading is not None
+        and dials.ahead_only
+        and dials.follow is None
+        and not loop_wanted(points, dials.loop, preset_name)
+    ):
+        return _plan_ahead_first(points, preset_name, dials, heading, asked)
     answered = plan(points, preset_name, dials=dataclasses.replace(dials, heading=None), **asked)
     # `plan` sets no heading on a followed line or a loop: a second plan would be the same.
     if (
@@ -4858,6 +4865,32 @@ def plan_onward(
         logger.info("a re-route turns round: it saves %.0f m", saving)
         return answered
     return ahead
+
+
+def _plan_ahead_first(
+    points: list[list[float]], preset_name: str, dials: Dials, heading: float, asked: dict
+) -> dict:
+    """`plan_onward` after the rider has ridden on past two U-turns (`dials.ahead_only`): the
+    route that sets off ahead is planned first, as it is the answer whatever turning round would
+    save, and the plan that ignores the heading is made only where that fails or still turns
+    round (audit S5; the owner approved planning ahead first on 2026-10-27). The second plan
+    runs on the same `started`, so it has what time the first left; the rider is never left
+    without a route."""
+    timings = timing.current()
+    if timings is not None:
+        timings.note("uturn", "ahead first")
+    try:
+        ahead = plan(points, preset_name, dials=dials, **asked)
+    except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded) as error:
+        logger.info("a re-route ahead only: no route ahead (%s)", type(error).__name__)
+    else:
+        # The router takes the way back where it has no way ahead within its tolerance.
+        if not sets_off_back(ahead, heading):
+            return ahead
+        logger.info("a re-route ahead only: the route ahead turns round")
+    if timings is not None:
+        timings.note("uturn", "ahead first, replanned")
+    return plan(points, preset_name, dials=dataclasses.replace(dials, heading=None), **asked)
 
 
 def quick_applies(preset_name: str, loop: bool, long_ride: bool, long_calm: bool) -> bool:

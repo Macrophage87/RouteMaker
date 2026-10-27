@@ -122,6 +122,63 @@ class TestPlanOnward:
         onward = routing.plan_onward([[-77.05, 38.9], [-77.06, 38.9]], "default", dials=dials)
         assert onward["geometry"]["coordinates"][1] == list(WEST[1])
 
+    def ahead_only(self, **kw):
+        dials = routing.Dials(heading=90.0, ahead_only=True, **kw)
+        return routing.plan_onward(
+            [[-77.05, 38.9], [-77.06, 38.9]], "default", dials=dials, started=123.0
+        )
+
+    def test_ahead_only_plans_the_way_ahead_first_and_once(self, planned) -> None:
+        # Audit S5 (the owner approved planning ahead first, 2026-10-27): the plan that ignores
+        # the heading would almost certainly turn round, and be thrown away.
+        asked = planned(answer(EAST, 2000.0 + 10 * routing.UTURN_SAVING_M))
+        assert self.ahead_only()["geometry"]["coordinates"][1] == list(EAST[1])
+        assert [d.heading for d in asked] == [90.0]
+
+    def test_ahead_only_whose_way_ahead_turns_round_plans_without_the_heading(
+        self, planned
+    ) -> None:
+        asked = planned(answer(WEST, 2100.0))
+        assert self.ahead_only()["distance_m"] == 2000.0
+        assert [d.heading for d in asked] == [90.0, None]
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            routing.NoRoute("no route"),
+            routing.DeadlineExceeded(),
+            routing.RouterUnavailable("down"),
+            routing.TooLong("far"),
+        ],
+    )
+    def test_ahead_only_falls_back_on_any_error(self, planned, error) -> None:
+        asked = planned(error)
+        assert self.ahead_only()["geometry"]["coordinates"][1] == list(WEST[1])
+        assert [d.heading for d in asked] == [90.0, None]
+
+    def test_ahead_only_keeps_the_plans_clock(self, monkeypatch) -> None:
+        clocks: list = []
+
+        def fake_plan(points, preset_name, dials=None, started=None, **_):
+            clocks.append(started)
+            if dials.heading is not None:
+                raise routing.DeadlineExceeded()
+            return answer(WEST, 2000.0)
+
+        monkeypatch.setattr(routing, "plan", fake_plan)
+        self.ahead_only()
+        assert clocks == [123.0, 123.0]
+
+    def test_ahead_only_on_a_loop_is_one_plan_without_the_heading(self, planned) -> None:
+        asked = planned(answer(EAST, 1.0))
+        self.ahead_only(loop=True)
+        assert [d.heading for d in asked] == [None]
+
+    def test_ahead_only_on_a_followed_line_is_one_plan_without_the_heading(self, planned) -> None:
+        asked = planned(answer(EAST, 1.0))
+        self.ahead_only(follow=((-77.05, 38.9), (-77.06, 38.9)))
+        assert [d.heading for d in asked] == [None]
+
     def test_no_way_ahead_keeps_the_u_turn(self, planned) -> None:
         planned(routing.NoRoute("no route"))
         assert self.onward()["geometry"]["coordinates"][1] == list(WEST[1])
