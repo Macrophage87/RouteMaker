@@ -7588,7 +7588,21 @@ stops it. When a box the launcher started stops with no result, the launcher cal
 user's stop, which AWS does not restart (a box it was given with `--use-running` is left
 to you). **That this prevents the restart is not verified**: after the first
 reclaim, look in the console (EC2, Instances) an hour or so later and stop the box if it
-is running; the budget alarm is the backstop.
+is running; the budget alarm is the backstop. On 2026-10-26 it did not prevent it: the
+launcher stopped a reclaimed box at 7:51 PM ET and AWS started it again at 11:10 PM.
+
+**Carrying on after a reclaim by itself: `--keep-resuming N`** (spot box only). When the
+box stops with no result and `RUN_URL/failed/` has no failure log (a reclaim), or AWS has
+no spot room to start it, the launcher waits 10 minutes and runs itself again with
+`--no-send` and the same options, up to N more times. It never adds `--refire`: the
+rebuild job the reclaim interrupted is still `doing` in the box's database, and
+`box-rebuild.sh` puts it back (`unwedge_job`) so it resumes from its checkpoints.
+`--refire` would forget that job (it clears `fire.done` and `job` in the run's state on
+the box) and fire a new one, which `run_rebuild_now` refuses while the old one is
+`doing`. A failure log in `RUN_URL/failed/` means the rebuild itself failed, so the
+launcher stops there for a person to read it. Every spot run should be launched with it,
+e.g. `--keep-resuming 15`, from a wrapper that keeps sudo fresh (`sudo -v` every few
+minutes) so the import at the end does not stop for a password hours later.
 
 **Two boxes: spot and on-demand.** Spot is cheap but can be short: on 2026-10-22 the
 m7i.2xlarge spot box in us-east-1 was reclaimed five times in a morning, the last ones

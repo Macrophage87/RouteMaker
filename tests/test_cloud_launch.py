@@ -404,6 +404,62 @@ def test_a_box_that_stops_with_no_result_ends_the_wait_and_is_stopped_once_more(
     assert not fake.called("import-result.sh")
 
 
+def test_keep_resuming_carries_a_reclaimed_run_on_by_itself(fake) -> None:
+    """A spot reclaim (box stopped, no result, no failure log) is carried on, never refired."""
+    # Run 1: checks, start, up, then the box stops (a reclaim). Run 2: stopped, start, up.
+    (fake.dir / "states").write_text(
+        "stopped\nstopped\nrunning\nrunning\nstopped\nstopped\nstopped\nstopped\nrunning\nrunning\n"
+    )
+    (fake.dir / "result_after").write_text("5")
+
+    done = fake.run(URL, "--keep-resuming", "3", "--beta", CLOUD_LAUNCH_RESUME_WAIT_S="0")
+
+    assert done.returncode == 0, done.stderr
+    assert "--keep-resuming: carrying the run on" in done.stdout
+    assert "2 more tries after that" in done.stdout
+    assert len(fake.called("send-inputs.sh")) == 1, "the inputs are sent once"
+    assert len(fake.called("start-instances")) == 2
+    root, ubuntu = fake.box_scripts()
+    assert "--beta-bundle" in ubuntu, "--beta is kept"
+    assert "--refire" not in ubuntu, "the interrupted job resumes; a refire would be refused"
+    assert len(fake.called("import-result.sh")) == 1
+
+
+def test_keep_resuming_leaves_a_failed_rebuild_for_a_person(fake) -> None:
+    (fake.dir / "states").write_text("stopped\nstopped\nrunning\nrunning\nstopped\n")
+    (fake.dir / "result_after").write_text("99")
+    (fake.dir / "failed_log").write_text("Traceback: valhalla_build_tiles died\n")
+
+    done = fake.run(URL, "--keep-resuming", "3", CLOUD_LAUNCH_RESUME_WAIT_S="0")
+
+    assert done.returncode == 1
+    assert "a failed rebuild, not a reclaim; not carrying on" in done.stdout
+    assert len(fake.called("start-instances")) == 1
+
+
+def test_keep_resuming_gives_up_after_its_tries(fake) -> None:
+    (fake.dir / "states").write_text("stopped\n")
+    (fake.dir / "start_fails").touch()
+
+    done = fake.run(URL, "--keep-resuming", "2", CLOUD_LAUNCH_RESUME_WAIT_S="0")
+
+    assert done.returncode == 1
+    assert "AWS did not start" in done.stderr
+    assert len(fake.called("start-instances")) == 3, "the first try and two more"
+    assert len(fake.called("send-inputs.sh")) == 1
+
+
+def test_keep_resuming_is_refused_on_the_on_demand_box(fake) -> None:
+    done = fake.run(
+        URL, "--box", "on-demand", "--on-demand-instance-id", "i-0fedcba9876543210",
+        "--keep-resuming", "2",
+    )
+
+    assert done.returncode == 2
+    assert "is for the spot box" in done.stderr
+    assert not fake.calls()
+
+
 def test_a_sign_in_that_runs_out_while_waiting_is_reported_and_waited_through(fake) -> None:
     (fake.dir / "invocation").write_text("FAIL\nFAIL\nFAIL\nInProgress\n")
     (fake.dir / "result_after").write_text("6")
