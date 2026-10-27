@@ -734,15 +734,17 @@ road info and the side menus (Detour, More, the dock, 311, Riders, Send alert), 
 open: a menu you are typing or speaking in (a Detour search, Send alert's Other, its microphone) and anything asking you
 something (Send alert's Send to everyone?, Already done?, a stop's name, the group's question, Resume your ride?). In
 accessibility mode nothing closes on its own. A map card's close button (X) is 44 px across.</li>
-<li><strong>Off the route</strong>, RouteMaker plans again from where you are. On a route you chose over the first
-(one lower in the list, or Go's More direct or Trailmaxxed), it first looks for a way back to that route ahead and
-says "New route found. It rejoins your route ahead."; only with no way back does it plan again to the end. Whenever the ride plans again (off the route,
+<li><strong>Off the route</strong>, RouteMaker plans again from where you are. On a route you picked over the top-ranked
+one (another line from the routes to choose from, or Go's More direct or Trailmaxxed), it first looks for a way back to that route ahead and
+shows (and, by your voice setting, says) "New route found. It rejoins your
+route ahead."; only with no way back does it plan again to the end. Whenever the ride plans again (off the route,
 Re-plan from here, Road closed, Less traffic, Fewer hills or a Detour), it keeps every stop still ahead but treats via
 points as guides: one less than half a mile [800 m] ahead is dropped, so you are never sent back to touch
-it. If reaching the next via point would take more than about 5 minutes longer than the planned route would have
-from where you are (past a closed road, say), that via point is left out too and the ride says "Skipping via point.
-New route found." Only the next via point is ever left out this way, never a later one or a stop, and not on a
-Detour, Less traffic or Fewer hills. <strong>Keep the planned
+it. If the next point ahead is a via point and reaching it would take more than about 5 minutes longer than the
+planned route would have from where you are (past a closed road, say), it is left out too and the ride shows (and,
+by your voice setting, says) "Skipping via point. New route found." Only that one via point is ever left out this
+way, never a later one or a stop, and not on a Detour, Less traffic, Fewer hills or when you start again part
+way. <strong>Keep the planned
 route</strong> stops that until you are back on it, and shows the way back instead.</li>
 <li><strong>No signal:</strong> at Start ride, the map within about 1,000 ft [300 m] either side of the
 route is kept on your device, so dead spots still show the stress lines. It is cleared when the ride
@@ -1069,10 +1071,11 @@ included; a tab keeps the view it was last in, and pressing Go or Plan counts fo
 contrast and the rest, on <a href="/about/accessibility.html">Accessibility</a>.</li>
 <li><strong>Language</strong> (Display): <strong>Phone's language</strong>, the default, <strong>English</strong>
 or <strong>Español</strong>, kept on this device. It changes the app's words and the voice (Spanish cues are said
-in US Spanish). The route's own sentences come in Spanish too, in Go and Plan: the directions list, hazard and
-work-zone lines, steep grades, climbs and walking notes. Street, trail and place names and agency notices stay as
+in US Spanish). The route's own sentences come in Spanish too, in Go and Plan: the <strong>Directions</strong>, hazard
+and work-zone lines, steep grades, climbs, Novice and Nervous walk-your-bike lines and Avoid-rated junction
+notices. Street, trail and place names and agency notices stay as
 written, and miles stay first. Go, Ride, Roam, Settings, the place search and saved routes are in Spanish; Plan's
-buttons and these guides are still in English. Choosing a different language reloads the page.</li>
+own labels and these guides are still in English. Choosing a different language reloads the page.</li>
 <li><strong>Install RouteMaker</strong> adds it to your home screen when the browser offers it. When a
 new version is ready, a line says so with Reload; it never interrupts a ride.</li>
 <li><strong>Account:</strong> <strong>Sign in with Discord</strong> keeps My Go, starred ride types and
