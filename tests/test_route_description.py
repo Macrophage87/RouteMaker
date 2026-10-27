@@ -571,11 +571,12 @@ def test_the_street_side_names_are_read_for_unnamed_ways_only(segment_schemas):
 
 
 @db
-def test_an_unnamed_way_takes_its_trail_relation_name_after_the_street_side_name(segment_schemas):
+def test_an_unnamed_way_takes_its_trail_relation_name_before_the_street_side_name(segment_schemas):
     """The owner, 2026-10-16 (the Custis Trail to the Mount Vernon Trail, said on the move): a
-    way with no name of its own and no street-side name is named by its long trail's route
-    relation (`segment.trail_name`), as a RelationName; a street-side name still comes
-    first. Never a national route's name, nor one for a named run of a quarter mile or less."""
+    way with no name of its own is named by its long trail's route relation
+    (`segment.trail_name`), as a RelationName, before its street-side name (2026-10-27: the
+    Metropolitan Branch Trail beside Blair Road, "why continue"). Never a national route's
+    name, nor one for a named run of a quarter mile or less: those keep the street-side name."""
     from django.db import connection
 
     from core import segment_info
@@ -591,6 +592,8 @@ def test_an_unnamed_way_takes_its_trail_relation_name_after_the_street_side_name
             (10, None, "East Coast Greenway", long_run),
             (11, None, "US Bike Route 50", long_run),
             (12, None, "Short Trail", routing.RELATION_NAME_MIN_RUN_M),
+            (13, "Blair Road Northwest bike lane", "East Coast Greenway", long_run),
+            (14, "Blair Road Northwest bike lane", "Short Trail", routing.RELATION_NAME_MIN_RUN_M),
         ):
             cursor.execute(
                 f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
@@ -600,14 +603,17 @@ def test_an_unnamed_way_takes_its_trail_relation_name_after_the_street_side_name
                 "%s, %s, %s, true)",
                 [way, side, trail, run],
             )
-    pieces = [routing.Piece(w, -77.0, 38.9, 10.0, (), "cycleway") for w in range(7, 13)]
+    pieces = [routing.Piece(w, -77.0, 38.9, 10.0, (), "cycleway") for w in range(7, 15)]
     names = routing.sidepath_names_of(pieces)
     assert names == {
-        7: "9th Street Northwest protected bike lane",
+        7: "Some Trail",
         8: "Mount Vernon Trail",
+        13: "Blair Road Northwest bike lane",
+        14: "Blair Road Northwest bike lane",
     }
-    assert not isinstance(names[7], describe.RelationName)
+    assert isinstance(names[7], describe.RelationName)
     assert isinstance(names[8], describe.RelationName)
+    assert not isinstance(names[13], describe.RelationName)
     segment_info.forget_columns()
 
 

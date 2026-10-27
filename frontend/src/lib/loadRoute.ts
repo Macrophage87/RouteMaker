@@ -8,16 +8,17 @@ import { formatDistance } from "./format.ts";
 import { rowDetails, type SavedSummary } from "./savedRoutes.ts";
 import type { KeptRoute } from "./offlineRoutes.ts";
 import { PRESETS, isTransit, presetSaid, type PresetId } from "./presets.ts";
+import { t } from "./i18n.ts";
 
-export const LOAD_ROUTE = "Load route";
+export const LOAD_ROUTE = t("Load route");
 /** Go's More entry for the same popup (the owner, 2026-10-26: "Add saved routes in the more part of the go tab"). */
-export const SAVED_ROUTES = "Saved routes";
-export const LOAD_GPX = "Open GPX file";
+export const SAVED_ROUTES = t("Saved routes");
+export const LOAD_GPX = t("Open GPX file");
 export const LOAD_CLOSE = "Close";
-export const LOAD_NONE = "No saved routes yet. Plan a route and press Save route.";
-export const LOAD_SIGN_IN = "Sign in to see your saved routes";
-export const LOAD_FAILED = "Your saved routes could not be read; try again shortly.";
-export const LOAD_SEARCH = "Search your routes";
+export const LOAD_NONE = t("No saved routes yet. Plan a route and press Save route.");
+export const LOAD_SIGN_IN = t("Sign in to see your saved routes");
+export const LOAD_FAILED = t("Your saved routes could not be read; try again shortly.");
+export const LOAD_SEARCH = t("Search your routes");
 /** The search box shows only once the list is longer than this: a short list is read at a glance. */
 export const SEARCH_FROM = 6;
 
@@ -41,13 +42,13 @@ export function loadRows(saved: readonly SavedSummary[], kept: readonly KeptRout
 // ---- Open GPX file (the owner, 2026-10-22: "When opening gpx files, ask for ride type as well and if it should be
 // identical or snap to road") ----------------------------------------------------------------------------------------
 
-export const GPX_RIDE = "Ride type";
-export const GPX_HOW = "Follow the file";
-export const GPX_SNAP = "Snap to roads";
-export const GPX_SNAP_HINT = "On streets and paths bikes may ride.";
-export const GPX_EXACT = "Exactly as drawn";
-export const GPX_EXACT_HINT = "Even where bikes may not ride, such as a closed parade route.";
-export const GPX_CHOOSE = "Choose file";
+export const GPX_RIDE = t("Ride type");
+export const GPX_HOW = t("Follow the file");
+export const GPX_SNAP = t("Snap to roads");
+export const GPX_SNAP_HINT = t("On streets and paths bikes may ride.");
+export const GPX_EXACT = t("Exactly as drawn");
+export const GPX_EXACT_HINT = t("Even where bikes may not ride, such as a closed parade route.");
+export const GPX_CHOOSE = t("Choose file");
 export const GPX_BACK = "Back";
 
 /** What the rider chose before the file: its ride type, and whether it is followed exactly (core/follow.py EXACT). */

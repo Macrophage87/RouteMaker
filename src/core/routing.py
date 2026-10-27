@@ -68,7 +68,8 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterator
-from concurrent.futures import Future
+from concurrent.futures import FIRST_EXCEPTION, Future
+from concurrent.futures import wait as wait_futures
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -258,6 +259,13 @@ class DeadlineExceeded(Exception):
     """The request's time budget ran out before the router had answered."""
 
 
+class PlanCancelled(DeadlineExceeded):
+    """The rider replaced this plan with a newer one (POST /api/route/cancel,
+    `core.plan_cancel`): its budget is spent at once. A DeadlineExceeded, so every step
+    that already gives way for time gives way for it too, and the plan ends without
+    another router call (each later `_call` raises it again)."""
+
+
 # Valhalla's catch-all error codes, one per service stage (src/exceptions.cc).
 UNKNOWN_ERROR_CODES = frozenset({199, 299, 499})
 
@@ -327,6 +335,8 @@ def plan_cursor() -> Iterator:
     """A cursor for one of the plan's own reads of the segment table, under a statement
     timeout of the time the plan has left; a read it cancels raises DeadlineExceeded. A
     plain cursor outside a plan."""
+    # A plan cancelled meanwhile reads no more (as found by a router call's ask: no poll here).
+    check_cancel(poll=False)
     ends = _plan_ends.get()
     if ends is None:
         with connection.cursor() as cursor:
@@ -372,6 +382,72 @@ def _canceled(error: BaseException) -> bool:
     return False
 
 
+# The cancel watch of the plan running in this context (`core.plan_cancel.Watch`), or None:
+# the API sets it for a request that names its plan (X-Plan-Id). Server-side cancel of a
+# superseded Go plan, the owner, 2026-10-27 (routing audit S7, option B): "approved". Each
+# router call asks it first, so a cancelled plan stops at its next call: the flag is seen
+# between calls, never inside one. The pool's tasks carry it with the request's context.
+_cancel_watch: contextvars.ContextVar = contextvars.ContextVar("cancel_watch", default=None)
+
+
+def watch_cancel(watch) -> contextvars.Token:
+    """Run what follows in this context under `watch` (`core.plan_cancel.Watch`, or None)."""
+    return _cancel_watch.set(watch)
+
+
+def unwatch_cancel(token: contextvars.Token) -> None:
+    _cancel_watch.reset(token)
+
+
+def check_cancel(poll: bool = True) -> None:
+    """Raise PlanCancelled where the plan running here has been cancelled. `poll`: ask
+    the store (at most every `plan_cancel.POLL_S`, from the request's own thread only);
+    otherwise only what an earlier ask found."""
+    watch = _cancel_watch.get()
+    if watch is not None:
+        watch.check(poll)
+
+
+def cancel_seen() -> bool:
+    """Whether the plan running here has been found cancelled (no ask of the store)."""
+    watch = _cancel_watch.get()
+    return watch is not None and watch.cancelled
+
+
+# How often the request's thread, blocked on calls it gave the pool, asks whether its plan
+# has been cancelled (`await_future`): the pool's threads never read the store, so without this a
+# cancel waited for every call already submitted (each up to ALTERNATES_TIMEOUT_S).
+CANCEL_WAIT_STEP_S = 0.1
+
+
+def await_future(future: Future, timeout: float | None = None):
+    """`future.result(timeout)`, read on the request's thread so that a cancel of its plan
+    (`check_cancel`) is seen while it waits: it raises PlanCancelled within about a
+    CANCEL_WAIT_STEP_S of the flag being seen, and the calls not yet started never go (the
+    pool's threads see the watch's `cancelled` at their next call). Where no plan is
+    watched, or on a pool thread, exactly `future.result(timeout)`. `timeout` (seconds, or
+    None for no limit): TimeoutError past it, as `future.result` raises, the future left
+    running (the early alternatives' ask, `refine._router_alternates`, review of S7)."""
+    watch = _cancel_watch.get()
+    if watch is None or parallel.inside():
+        return future.result(timeout=timeout)
+    ends = None if timeout is None else clock() + max(timeout, 0.0)
+    while not future.done():
+        try:
+            watch.check()
+        except PlanCancelled:
+            future.cancel()
+            raise
+        step = CANCEL_WAIT_STEP_S
+        if ends is not None:
+            left = ends - clock()
+            if left <= 0:
+                raise TimeoutError
+            step = min(step, left)
+        wait_futures([future], timeout=step, return_when=FIRST_EXCEPTION)
+    return future.result()
+
+
 def _own_context(fn):
     """`fn` run in a copy of the caller's context, so what it sets there (`_plan_ends`)
     ends with it."""
@@ -392,6 +468,9 @@ def _call(variant: str, endpoint: str, payload: dict, deadline: Deadline) -> dic
     began = timing.now()
     failed = True
     try:
+        # Inside the try: a cancelled plan's call counts as failed, so its answer is
+        # never kept in the answer cache (`core.route_cache.keepable`).
+        check_cancel()
         answer = _transport(url, payload, min(deadline.per_call_s, remaining))
         failed = False
         return answer
@@ -1307,8 +1386,9 @@ class Dials:
     # (`VIA_LOCATION_TYPE`); every other point is a stop ("break"), as before.
     vias: tuple[int, ...] = ()
     # The pace the plan's costing rides at instead of the ride type's own (km/h); None: its
-    # own. Set only by a transit trip's lines priced as Novice on a share bike (`api._transit_body`,
-    # `novice_legs` on Bikeshare + Transit), so the lines are timed as its candidates were.
+    # own. Set by the rider's Riding speed (`presets.rider_speed`), and by a transit trip's lines
+    # priced as Novice on a share bike (`api._transit_body`, `novice_legs` on Bikeshare + Transit),
+    # so the lines are timed as its candidates were.
     cycling_speed_kmh: float | None = None
     # Novice and Nervous's walks past a short busy stretch (`core.novice_walks`); off for a
     # transit trip's lines priced as Novice (`novice_legs`), which say no walks.
@@ -1742,7 +1822,7 @@ def _settled(traces: dict, key):
     value = traces[key]
     if isinstance(value, Future):
         try:
-            value = value.result()
+            value = await_future(value)
         except BaseException:
             if traces.get(key) is value:
                 del traces[key]
@@ -2750,15 +2830,20 @@ RELATION_NAME_MIN_RUN_M = 1609.344 / 4
 
 
 def sidepath_names_of(pieces: list[Piece]) -> dict[int, str]:
-    """The street-side names of the route's ways that have no name of their own
-    (`segment.sidepath_name`, `routemaker.facility.side_street_names`), by way id;
-    else the name of the trail's route relation the way is in (`segment.trail_name`,
+    """The names of the route's ways that have no name of their own, by way id: the
+    name of the trail's route relation the way is in (`segment.trail_name`,
     `pipeline.trail_routes.way_name`), as a `describe.RelationName`, so a change of
     trail on a way named only by its relation is in the description (the owner,
-    2026-10-16). A relation name is taken only for a named run (`trail_run_m`) longer
-    than RELATION_NAME_MIN_RUN_M and never a national or international route's
-    (`describe.NATIONAL_ROUTE_NAME`): the table keeps no network per way, and an East
-    Coast Greenway connector is not "onto East Coast Greenway". Empty where the live
+    2026-10-16); else its street-side name (`segment.sidepath_name`,
+    `routemaker.facility.side_street_names`). The trail's name comes first, as the map
+    labels the way: an unnamed stretch of the Metropolitan Branch Trail beside Blair
+    Road was "Blair Road Northwest bike lane", and the ride said "Continue onto
+    Metropolitan Branch Trail" where it went on as the trail it already was (the
+    owner, 2026-10-27: "why continue"). A relation name is taken only for a named run
+    (`trail_run_m`) longer than RELATION_NAME_MIN_RUN_M and never a national or
+    international route's (`describe.NATIONAL_ROUTE_NAME`): the table keeps no network
+    per way, and an East Coast Greenway connector is not "onto East Coast Greenway";
+    such a way keeps its street-side name. Empty where the live
     table has neither column yet (a table built before it) or the query fails: those
     ways are then just "path"."""
     ids = sorted({p.way_id for p in pieces if not p.names and p.way_id})
@@ -2784,10 +2869,10 @@ def sidepath_names_of(pieces: list[Piece]) -> dict[int, str]:
             )
             names: dict[int, str] = {}
             for way, side_name, trail_name in cursor.fetchall():
-                if side_name:
-                    names[int(way)] = str(side_name)
-                elif trail_name and not describe.NATIONAL_ROUTE_NAME.search(str(trail_name)):
+                if trail_name and not describe.NATIONAL_ROUTE_NAME.search(str(trail_name)):
                     names[int(way)] = describe.RelationName(str(trail_name))
+                elif side_name:
+                    names[int(way)] = str(side_name)
             return names
     except Exception:  # noqa: BLE001 - the description says "path" without them
         logger.warning("the street-side names of unnamed ways could not be read", exc_info=True)
@@ -3478,13 +3563,26 @@ def plan(
     (`StrayTrails`) is made again without them, STRAY_ROUNDS times at most, then on the
     ride type's own graph, the dirt trails closed as before. So it is too where leaving them
     out leaves no route.
+
+    The rounds share their traces and `/locate` answers (audit S12, part 2): a round
+    re-plans the whole search with the strays left out, and most of what it traces and
+    locates the round before already had. Both are keyed by what was asked (the shape and
+    costing; the graph, place and radius), never by the round, so a later round reads
+    nothing a different question answered. They are dropped before the final plan on the
+    ride type's own graph, which asks other questions and so would only hold them longer
+    on the 512M worker.
     """
     if started is None:
         started = clock()
     dials = dials or Dials()
+    traces: dict = {}
+    located: dict = {}
     for _round in range(STRAY_ROUNDS):
         try:
-            return _plan(points, preset_name, long_ride, started, dials, quick, candidates)
+            return _plan_round(
+                points, preset_name, long_ride, started, dials, quick, candidates,
+                traces=traces, located=located,
+            )  # fmt: skip
         except StrayTrails as found:
             logger.info("planning again without %s", found)
             dials = dataclasses.replace(
@@ -3500,7 +3598,24 @@ def plan(
             logger.info("no route without the dirt trails found; planning without dirt trails")
             break
     dials = dataclasses.replace(dials, trail_touch=False, trail_strays=())
-    return _plan(points, preset_name, long_ride, started, dials, quick, candidates)
+    traces.clear()
+    located.clear()
+    return _plan_round(points, preset_name, long_ride, started, dials, quick, candidates)
+
+
+def _plan_round(*args, **kwargs) -> dict:
+    """`_plan`, with the calm search's early ask for the router's alternatives
+    (`refine.ask_alternates_early`) cancelled however the plan ends. The search cancels it
+    once it is done with it; where anything between the ask and the search raises (a router
+    or database error, the clock), one still queued on the pool is never sent, so beta's
+    two router slots never run an ask nobody waits for (review of audit batch 1, S2b). One
+    already running ends at its own deadline, as before."""
+    early: list[Future] = []
+    try:
+        return _plan(*args, early=early, **kwargs)
+    finally:
+        for future in early:
+            future.cancel()
 
 
 def _over_budget(rings) -> bool:
@@ -3520,6 +3635,9 @@ def _plan(
     dials: Dials | None = None,
     quick: bool = False,
     candidates: bool = True,
+    traces: dict | None = None,
+    located: dict | None = None,
+    early: list[Future] | None = None,
 ) -> dict:
     """Route through `points` on `preset_name`, returning the contract's body.
 
@@ -3530,7 +3648,9 @@ def _plan(
     routing" step 2): the answer then says `provisional`. `candidates` False looks for
     no routes to choose from beside the answer (Ride mode's re-plans, review speed-5).
     Raises NoRoute, TooLong, RouterUnavailable, DeadlineExceeded, or KeyError
-    for an unknown preset.
+    for an unknown preset. `traces` and `located` are `plan`'s, shared by its rounds; a
+    plan of its own where they are not given. `early` is given the pending early ask for
+    alternatives, for `_plan_round` to cancel.
     """
     if started is None:
         started = clock()
@@ -3856,6 +3976,25 @@ def _plan(
     trips = [answer.get("trip") or {}] + [
         (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
     ]
+    # The calm search's ask for the router's alternatives (`refine._router_alternates`)
+    # depends on the request alone: where the search will make it, it starts now on the
+    # pool, beside the reading of this route, instead of after it (v0.13.0 routing audit,
+    # S2). Not where the plan asked for them itself, nor where the target fitting will
+    # ask again with another request (this route is past the target).
+    early_alternates = None
+    if (
+        presets.calm_rate_for(stress_dial) > 0
+        and "alternates" not in request
+        and len(points) == 2
+        and not (quick or fixed or loop or long_calm)
+        and not (maxcalm and target_m is not None and _trip_length_m(trips[0]) > target_m)
+        and _refine_limit(preset_name, points, long_ride, climb_seek, deadline, long_calm) is None
+    ):
+        from . import refine
+
+        early_alternates = refine.ask_alternates_early(variant, request, deadline)
+        if early_alternates is not None and early is not None:
+            early.append(early_alternates.future)
     avoid_weight = -hills_dial / 100 if avoiding else 0.0
     # Steep grades warned of and priced either way (`routemaker.steep_grades`): a Mass Ride
     # and a Novice and Nervous ride, wherever the hills slider sits.
@@ -3871,8 +4010,9 @@ def _plan(
         brake_grade=preset.brake_grade,
         steep=steep_ride,
     )
-    # This plan's traces, so a route the guards traced is not traced again.
-    traces: dict = {}
+    # This plan's traces, so a route the guards traced is not traced again; `plan`'s, where
+    # it re-plans without stray dirt trails, so a later round does not trace them again.
+    traces = {} if traces is None else traces
     # The hill seek (FOLLOWUP-HILL-SEEK, 205): routes through the climbs near the line
     # join the router's own, where the climb search runs at all; without the climbs
     # file it asks nothing and the search is the router's alternatives alone, as before.
@@ -3976,6 +4116,7 @@ def _plan(
         when=when,
         deadline=deadline,
         traces=traces,
+        located={} if located is None else located,
         points=points,
         roadway_only=variant == Variant.NO_TRAIL.value,
         lanes_as_roadway=lanes_as_roadway,
@@ -4004,8 +4145,11 @@ def _plan(
         # The router's own alternatives ranked with the calm search's (OWNER-DECISIONS 435):
         # the plan's own, where it asked for them with the request the search starts
         # from (none again where that ask timed out), else asked for by the search.
+        # Refitted only where the target fitting asked again (`past`): a route already
+        # within the target is the plan's own request, its alternatives already in `trips`.
         rank_alternates=presets.calm_rate_for(stress_dial) > 0,
-        router_trips=plan_alternates(request, trips, timed_out, fit is not None or bool(past)),
+        router_trips=plan_alternates(request, trips, timed_out, bool(past)),
+        early_alternates=early_alternates,
         options=[] if offering and not long_calm else None,
         avoid=avoid_list,
         junction_ratings=junction_ratings,
@@ -4033,6 +4177,8 @@ def _plan(
         trip, repeat_info = refine.fewer_repeats(trip, refine_context)
         logger.info("fewer repeats: %s", repeat_info)
     refined = None
+    # A plan the rider has replaced (`core.plan_cancel`) starts no search.
+    check_cancel()
     if refine_limited is None:
         if past and fit is None:
             # No route fits the target (OWNER-DECISIONS 267): the least stressful one
@@ -4057,6 +4203,9 @@ def _plan(
             "excluded": 0,
             "limited": refine_limited,
         }
+    if early_alternates is not None:
+        # Not started yet where the search ended before it was wanted: not asked at all.
+        early_alternates.future.cancel()
     # Mountain Bike (docs/MTB-TOPO-PLAN.md, slice 6): the rider's hardest trail level held, the
     # trail-seeking ranking and the connecting-road rule, on the route as it now is and the
     # router's own alternatives (`core.mtb.settle`). Before the dodge and Avoid passes, so what
@@ -4800,12 +4949,19 @@ def plan_onward(
 ) -> dict:
     """`plan`, with a re-route's U-turn penalised: where `dials.heading` is given and the route
     sets off back the other way, the best route that sets off ahead is planned too, and the
-    U-turn kept only where it saves UTURN_SAVING_M (never with `dials.ahead_only`). Anything
-    that stops the second plan (no route ahead, no time left) keeps the first: the rider is
-    never left without one."""
+    U-turn kept only where it saves UTURN_SAVING_M (never with `dials.ahead_only`, where the
+    route ahead is planned first: `_plan_ahead_first`). Anything that stops the second plan (no
+    route ahead, no time left) keeps the first: the rider is never left without one."""
     dials = dials or Dials()
     heading = dials.heading
     asked = dict(long_ride=long_ride, started=started, quick=quick, candidates=candidates)
+    if (
+        heading is not None
+        and dials.ahead_only
+        and dials.follow is None
+        and not loop_wanted(points, dials.loop, preset_name)
+    ):
+        return _plan_ahead_first(points, preset_name, dials, heading, asked)
     answered = plan(points, preset_name, dials=dataclasses.replace(dials, heading=None), **asked)
     # `plan` sets no heading on a followed line or a loop: a second plan would be the same.
     if (
@@ -4820,6 +4976,9 @@ def plan_onward(
         timings.note("uturn", "replanned")
     try:
         ahead = plan(points, preset_name, dials=dials, **asked)
+    except PlanCancelled:
+        # A DeadlineExceeded too, but the rider has moved on: no answer is kept (review of S7).
+        raise
     except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded) as error:
         logger.info("a re-route turns round: no route ahead (%s)", type(error).__name__)
         return answered
@@ -4829,6 +4988,36 @@ def plan_onward(
         logger.info("a re-route turns round: it saves %.0f m", saving)
         return answered
     return ahead
+
+
+def _plan_ahead_first(
+    points: list[list[float]], preset_name: str, dials: Dials, heading: float, asked: dict
+) -> dict:
+    """`plan_onward` after the rider has ridden on past two U-turns (`dials.ahead_only`): the
+    route that sets off ahead is planned first, as it is the answer whatever turning round would
+    save, and the plan that ignores the heading is made only where that fails or still turns
+    round (audit S5; the owner approved planning ahead first on 2026-10-27). The second plan
+    runs on the same `started`, so it has what time the first left; the rider is never left
+    without a route."""
+    timings = timing.current()
+    if timings is not None:
+        timings.note("uturn", "ahead first")
+    try:
+        ahead = plan(points, preset_name, dials=dials, **asked)
+    except PlanCancelled:
+        # A DeadlineExceeded too, but no second plan is started for a rider who has moved on
+        # (review of S7).
+        raise
+    except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded) as error:
+        logger.info("a re-route ahead only: no route ahead (%s)", type(error).__name__)
+    else:
+        # The router takes the way back where it has no way ahead within its tolerance.
+        if not sets_off_back(ahead, heading):
+            return ahead
+        logger.info("a re-route ahead only: the route ahead turns round")
+    if timings is not None:
+        timings.note("uturn", "ahead first, replanned")
+    return plan(points, preset_name, dials=dataclasses.replace(dials, heading=None), **asked)
 
 
 def quick_applies(preset_name: str, loop: bool, long_ride: bool, long_calm: bool) -> bool:
