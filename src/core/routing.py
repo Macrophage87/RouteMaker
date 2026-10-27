@@ -4004,8 +4004,10 @@ def _plan(
         # The router's own alternatives ranked with the calm search's (OWNER-DECISIONS 435):
         # the plan's own, where it asked for them with the request the search starts
         # from (none again where that ask timed out), else asked for by the search.
+        # Refitted only where the target fitting asked again (`past`): a route already
+        # within the target is the plan's own request, its alternatives already in `trips`.
         rank_alternates=presets.calm_rate_for(stress_dial) > 0,
-        router_trips=plan_alternates(request, trips, timed_out, fit is not None or bool(past)),
+        router_trips=plan_alternates(request, trips, timed_out, bool(past)),
         options=[] if offering and not long_calm else None,
         avoid=avoid_list,
         junction_ratings=junction_ratings,
