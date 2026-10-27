@@ -30,6 +30,7 @@ import { inDc } from "./dcBoundary.ts";
 import type { LonLat } from "./geo.ts";
 import { REPORT_KINDS, gpsWords, isUnnamed, type ReportKind, type ReportPlace } from "./report311.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
+import { t } from "./i18n.ts";
 
 /** This device's log, signed out. */
 export const LOG_KEY = "routemaker.report311-log";
@@ -113,8 +114,8 @@ export const JURISDICTIONS: Record<Exclude<WhereId, "none">, Jurisdiction> = {
 };
 
 /** The heading for entries with no website yet (logged with no signal) or none the log names. */
-export const WHERE_PENDING = "Website not looked up yet";
-export const WHERE_NONE = "No 311 website known here";
+export const WHERE_PENDING = t("Website not looked up yet");
+export const WHERE_NONE = t("No 311 website known here");
 
 export interface LogEntry {
   /** Made on the device: unique, and the key a merge matches by. */
@@ -320,8 +321,8 @@ export function outstandingSaid(n: number): string {
   return `${n} ${n === 1 ? "problem" : "problems"} still to report to 311.`;
 }
 /** Where Reports is, said under that line. */
-export const REPORTS_WHERE = "Reports is in Go's Menu and Plan's bottom bar.";
-export const OPEN_REPORTS = "Open Reports";
+export const REPORTS_WHERE = t("Reports is in Go's Menu and Plan's bottom bar.");
+export const OPEN_REPORTS = t("Open Reports");
 
 export function archived(entries: LogEntry[], now = new Date()): LogEntry[] {
   return entries.filter((e) => e.reported !== null || isStale(e, now)).sort((a, b) => archivedAt(b) - archivedAt(a));
@@ -632,7 +633,7 @@ export function useReport311Log(log: Report311LogStore = report311Log()): LogEnt
 
 // ---- The road panel's Log for 311 (Stephen, 2026-10-20: "It should be on the right click panel") ------------
 
-export const LOG_311_TEXT = "Log for 311";
+export const LOG_311_TEXT = t("Log for 311");
 
 /** The panel's spot as an entry's place: "on <the road's name>" (none for an unnamed way), at the nearest point on it. */
 export function panelPlace(title: string | null, point: LonLat): ReportPlace {

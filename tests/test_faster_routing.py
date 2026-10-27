@@ -449,6 +449,25 @@ class TestCache:
         finally:
             workzones.forget()
 
+    def test_a_cancelled_plans_answer_is_not_kept(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        """Review of S7: a plan found cancelled after its last router call still makes an
+        answer, which is answered 409 and must not be given to the next request."""
+        router(standard_router())
+        real = routing.plan_onward
+
+        def cancelled_at_the_end(*args, **kwargs):
+            answered = real(*args, **kwargs)
+            routing._cancel_watch.get().cancelled = True
+            return answered
+
+        monkeypatch.setattr(routing, "plan_onward", cancelled_at_the_end)
+        plan = "0123456789abcdef0123456789abcdef"
+        assert post(client, good_body(), HTTP_X_PLAN_ID=plan).status_code == 409
+        monkeypatch.setattr(routing, "plan_onward", real)
+        assert cache_said(post(client, good_body())).startswith('cache;desc="miss"')
+
     def test_the_ride_time_of_the_moment_is_part_of_the_key(
         self, client, segments, router, monkeypatch
     ) -> None:
@@ -600,3 +619,145 @@ class TestCacheParts:
     def test_off_at_zero(self, settings) -> None:
         settings.ROUTE_CACHE_TTL_S = 0
         assert route_cache.key_for({"points": [], "preset": "default"}, "night", "t", "") is None
+
+
+LOCMEM = "django.core.cache.backends.locmem.LocMemCache"
+
+
+class TestSharedCache:
+    """The answer cache the api's workers share (audit S14; the owner signed off a ~16 MB
+    memcached on beta, 2026-10-27). Django's own in-memory cache stands in for memcached."""
+
+    @pytest.fixture
+    def shared(self, settings):
+        settings.ROUTE_CACHE_TTL_S = route_cache.TTL_S
+        settings.CACHES = {
+            "default": {"BACKEND": LOCMEM},
+            route_cache.SHARED: {"BACKEND": LOCMEM, "LOCATION": "shared-routes"},
+        }
+        from django.core.cache import caches
+
+        route_cache.clear()
+        yield caches[route_cache.SHARED]
+        route_cache.clear()
+
+    def test_an_answer_kept_by_one_worker_is_given_by_another(self, shared) -> None:
+        body = {"provisional": False, "route": [[-77.0, 38.9]], "rank": 1}
+        route_cache.put("k", body)
+        # Kept in the shared cache, not this process's memory, so every worker reads it.
+        assert route_cache.size() == 0
+        assert shared.get(route_cache._shared_name("k", route_cache.FULL)) is not None
+        given = route_cache.get("k")
+        assert given == body and given is not body
+
+    def test_a_first_route_is_replaced_by_its_full_plan(self, shared) -> None:
+        route_cache.put("k", {"provisional": True, "n": 1})
+        assert route_cache.get("k") is None
+        assert route_cache.get("k", quick=True) == {"provisional": True, "n": 1}
+        route_cache.put("k", {"provisional": False, "n": 2})
+        assert route_cache.get("k", quick=True) == {"provisional": False, "n": 2}
+        assert shared.get(route_cache._shared_name("k", route_cache.QUICK)) is None
+
+    def test_kept_in_whole_seconds_and_never_past_the_answers_life(
+        self, shared, monkeypatch
+    ) -> None:
+        kept: list = []
+        monkeypatch.setattr(shared, "set", lambda name, value, timeout: kept.append(timeout))
+        route_cache.put("a", {"provisional": False}, 179.9)
+        route_cache.put("b", {"provisional": False}, 0.5)
+        route_cache.put("c", {"provisional": False}, 10_000)
+        assert kept == [179, route_cache.TTL_S]
+
+    def test_an_answer_too_large_for_memcached_is_not_sent(self, shared, monkeypatch) -> None:
+        monkeypatch.setattr(route_cache, "MAX_SHARED_BYTES", 64)
+        sent: list = []
+        monkeypatch.setattr(shared, "set", lambda *args: sent.append(args))
+        route_cache.put("big", {"provisional": False, "route": list(range(1000))})
+        assert sent == []
+        assert route_cache.get("big") is None
+
+    def test_a_cache_that_fails_is_passed_over(self, shared, monkeypatch) -> None:
+        class Broken:
+            def __getattr__(self, name):
+                def fail(*_args, **_kw):
+                    raise ConnectionError("memcached is down")
+
+                return fail
+
+        monkeypatch.setattr(route_cache, "_shared", lambda: Broken())
+        route_cache.put("k", {"provisional": False})
+        assert route_cache.get("k") is None
+        assert route_cache.get("k", quick=True) is None
+        route_cache.clear()
+
+    def test_a_cache_that_cannot_be_made_leaves_each_worker_its_own(
+        self, settings, monkeypatch
+    ) -> None:
+        # An api image without pymemcache, say: planning goes on, as before the shared cache.
+        settings.ROUTE_CACHE_TTL_S = route_cache.TTL_S
+        settings.CACHES = {
+            "default": {"BACKEND": LOCMEM},
+            route_cache.SHARED: {"BACKEND": "no.such.module.MemcacheCache"},
+        }
+        monkeypatch.setattr(route_cache, "_unusable", [])
+        route_cache.put("k", {"provisional": False})
+        assert route_cache.get("k") == {"provisional": False}
+        assert route_cache.size() == 1
+        route_cache.clear()
+
+    def test_an_answer_from_other_code_is_not_given(self, shared, monkeypatch) -> None:
+        monkeypatch.setattr(route_cache, "_code_memo", ["release-a"])
+        route_cache.put("k", {"provisional": False})
+        assert route_cache.get("k") is not None
+        monkeypatch.setattr(route_cache, "_code_memo", ["release-b"])
+        assert route_cache.get("k") is None
+
+    def test_the_code_fingerprint_is_made_once_from_the_source(self, monkeypatch) -> None:
+        monkeypatch.setattr(route_cache, "_code_memo", [])
+        first = route_cache._code()
+        assert len(first) == 16 and route_cache._code() == first
+
+    def test_a_memcached_that_is_down_costs_a_miss(self, settings) -> None:
+        pytest.importorskip("pymemcache")
+        from config.settings import caches_for
+
+        settings.ROUTE_CACHE_TTL_S = route_cache.TTL_S
+        # Nothing listens on port 1.
+        settings.CACHES = caches_for("127.0.0.1:1")
+        began = time.monotonic()
+        route_cache.put("k", {"provisional": False, "n": 1})
+        assert route_cache.get("k") is None
+        assert route_cache.get("k", quick=True) is None
+        route_cache.clear()
+        assert time.monotonic() - began < 2.0
+
+
+class TestCachesSetting:
+    def test_without_a_location_each_worker_keeps_its_own(self) -> None:
+        from config.settings import caches_for
+
+        assert caches_for("") == {"default": {"BACKEND": LOCMEM}}
+
+    def test_with_one_the_routes_cache_is_a_memcached_that_never_raises(self) -> None:
+        from config.settings import caches_for
+
+        made = caches_for("memcached:11211")
+        assert made["default"] == {"BACKEND": LOCMEM}
+        routes = made[route_cache.SHARED]
+        assert routes["BACKEND"] == "django.core.cache.backends.memcached.PyMemcacheCache"
+        assert routes["LOCATION"] == "memcached:11211"
+        assert routes["OPTIONS"]["ignore_exc"] is True and routes["OPTIONS"]["no_delay"] is True
+        assert routes["OPTIONS"]["timeout"] <= 0.25
+
+    def test_it_never_unpickles_what_the_server_hands_back(self) -> None:
+        import pickle
+
+        from config.settings import caches_for
+
+        serde = caches_for("memcached:11211")[route_cache.SHARED]["OPTIONS"]["serde"]
+        assert serde.serialize("k", b"answer") == (b"answer", 0)
+        with pytest.raises(TypeError):
+            serde.serialize("k", {"a": 1})
+        # An item stored with pymemcache's pickle flag (1) by anything else is a miss.
+        assert serde.deserialize("k", pickle.dumps({"a": 1}), 1) is None
+        assert serde.deserialize("k", b"answer", 0) == b"answer"

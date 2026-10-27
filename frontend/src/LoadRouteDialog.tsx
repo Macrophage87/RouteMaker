@@ -35,6 +35,7 @@ import { sortKept, type KeptRoute } from "./lib/offlineRoutes.ts";
 import { matchSaid, matching } from "./lib/routeSearch.ts";
 import type { PresetId } from "./lib/presets.ts";
 import { listRoutes, readRoute, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
+import { t } from "./lib/i18n.ts";
 
 export interface LoadRouteDialogProps {
   open: boolean;
@@ -206,7 +207,7 @@ export function LoadRouteDialog({ open, title = LOAD_ROUTE, onClose, signedIn, s
                 onClick={signIn}
               >
                 <DiscordLogo />
-                Sign in with Discord
+                {t("Sign in with Discord")}
               </a>
             )}
             <button
@@ -225,7 +226,7 @@ export function LoadRouteDialog({ open, title = LOAD_ROUTE, onClose, signedIn, s
           )}
           <div role="status" aria-live="polite">
             {failed && <p className="notice">{LOAD_FAILED}</p>}
-            {signedIn && saved === null && <p className="loading">Reading your routes…</p>}
+            {signedIn && saved === null && <p className="loading">{t("Reading your routes…")}</p>}
             {signedIn && saved !== null && !failed && rows.length === 0 && <p className="hint">{LOAD_NONE}</p>}
             {filter && <p className="hint">{matchSaid(shown.length, rows.length, filter)}</p>}
             {said && <p className="hint">{said}</p>}

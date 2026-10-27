@@ -22,6 +22,7 @@
 import type { LonLat } from "./geo.ts";
 import { isUnnamed, pointAt, routeJunctions, stretchAt, wayRidden, type RideModel } from "./navigate.ts";
 import { mileWords, trailMileAt, type TrailMiles } from "./trailMiles.ts";
+import { t } from "./i18n.ts";
 
 export type ReportKind = "pothole" | "tree" | "bikeLane" | "obstruction" | "streetlight" | "other";
 
@@ -98,7 +99,7 @@ export function reportPlace(model: RideModel, progressM: number, miles: TrailMil
 // Where the server has DC's Open311 key (GET /api/report311, core/dc311.py; off unless the deployment sets
 // DC311_API_KEY), a DC pick in a ride is also sent there, and its log entry is checked off as reported.
 
-export const REPORT_SENT = "Sent to DC 311.";
+export const REPORT_SENT = t("Sent to DC 311.");
 
 type Fetch = typeof fetch;
 

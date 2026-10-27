@@ -620,6 +620,12 @@ elevation with GDAL<sup class="cite"><a href="#ref-14" aria-label="source 14">[1
 <p>Each request has a time budget, a rate limit and a cap on plans in flight, so one busy rider cannot
 slow everyone else. Trips over about 19 mi [30 km] are refined leg by leg. A route can have 2 to 25
 points; very long plans over 93 mi [150 km] ask for confirmation when signed out.</p>
+<p>A plan's answer is kept for up to 10 minutes (not for Bikeshare or transit, whose answers are live), so asking
+for the same route again (Undo, or opening it again) is answered at once. On the beta server the app server's workers share these answers through a small
+memcached kept only in memory (16 MB of answers); if it is down or slow, the route is simply planned again. When
+you change a plan in Go after its first route is shown but while its full plan is still being worked out, the app
+cancels that full plan (<code>/api/route/cancel</code>): the server stops it at its next call to the router, and
+the new plan goes without waiting for it to finish.</p>
 
 </div></details>
 <h2 id="map">Drawing the map</h2>
@@ -693,6 +699,7 @@ points; very long plans over 93 mi [150 km] ask for confirmation when signed out
 <tr><th scope="row">Maryland and Virginia work zones (WZDx)</th><td>Every 5 minutes</td><td>Closures and lane closures</td></tr>
 <tr><th scope="row">MPD and AlertDC</th><td>Every 15 minutes</td><td>Closures in the District</td></tr>
 <tr><th scope="row">DDOT project advisories</th><td>By hand: each week a script lists new advisories, a reviewer reads each one, and its closures ship in the next release</td><td>Closures on DDOT's big projects</td></tr>
+<tr><th scope="row">Purple Line construction updates</th><td>By hand: a reviewer reads each update and notice, and its closures ship in the next release</td><td>Closures for Purple Line construction</td></tr>
 <tr><th scope="row">DDOT TOPS permits</th><td>Every hour</td><td>Plan's DC permits layer only</td></tr>
 <tr><th scope="row">National Park Service alerts</th><td>Every 30 minutes</td><td>Park notes</td></tr>
 <tr><th scope="row">Transit timetables (GTFS)</th><td>Refreshed about every 45 days</td><td>Scheduled transit times</td></tr>
@@ -785,7 +792,7 @@ release has short rider-facing notes.</li>
 <p class="next">Next: <a href="/about/acknowledgements.html">Acknowledgements</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.12.6. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.13.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

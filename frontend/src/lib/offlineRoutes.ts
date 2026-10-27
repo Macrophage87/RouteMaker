@@ -23,6 +23,7 @@ import { formatDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import { encodePlan } from "./planHash.ts";
 import type { PresetId } from "./presets.ts";
+import { t } from "./i18n.ts";
 
 /** At most this many routes kept by the rider; the last ride is one more, replaced by the next. */
 export const MAX_KEPT = 10;
@@ -199,12 +200,12 @@ export function keptDetail(route: KeptRoute, now: number = Date.now()): string {
 
 // ---- Words -----------------------------------------------------------------------------------------
 
-export const KEEP_LABEL = "Keep for offline";
-export const KEPT_HEADING = "Routes kept for offline";
-export const KEPT_NONE_SHORT = "No routes are kept.";
-export const KEPT_HOW = "Under a route, press “Keep for offline” to keep it and the map along it on this device for places with no signal.";
+export const KEEP_LABEL = t("Keep for offline");
+export const KEPT_HEADING = t("Routes kept for offline");
+export const KEPT_NONE_SHORT = t("No routes are kept.");
+export const KEPT_HOW = t("Under a route, press “Keep for offline” to keep it and the map along it on this device for places with no signal.");
 export const KEPT_NONE = `${KEPT_NONE_SHORT} ${KEPT_HOW}`;
-export const KEPT_PRIVATE = "Kept on this device only, until you remove them; never sent anywhere.";
+export const KEPT_PRIVATE = t("Kept on this device only, until you remove them; never sent anywhere.");
 
 /** Below the list: what `navigator.storage.persisted()` said, and the iOS seven-day rule for a tab. */
 export function storageNote(persisted: boolean | null, installed: boolean): string {
@@ -231,7 +232,7 @@ export function keepSaid(outcome: KeepOutcome, title: string): string {
   }
 }
 
-export const KEEPING_SAID = "Keeping the route and the map along it…";
+export const KEEPING_SAID = t("Keeping the route and the map along it…");
 
 /** The planner's notice when the network is gone and a kept route answers. */
 export function offlineRouteNotice(route: KeptRoute, now: number = Date.now()): string {

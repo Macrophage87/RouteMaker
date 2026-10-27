@@ -24,6 +24,7 @@ import { POOR_FIX_M, RIDE_MAX_M, START_M, WINDOW_AHEAD_M, offThreshold, snap, st
 import type { PresetId } from "./presets.ts";
 import { ridesHidden } from "./nativeShell.ts";
 import { drawOf, transitOf } from "./transit.ts";
+import { t } from "./i18n.ts";
 
 /** A sentence for the screen (US units, metric in brackets) and the same for speech (US units only). */
 export interface TripWords {
@@ -75,11 +76,11 @@ export interface RideTrip {
   asPlanned?: boolean;
 }
 
-export const RIDE_REST = "Ride the rest";
+export const RIDE_REST = t("Ride the rest");
 // A phone pocketed for longer than RideMode's HIDDEN_STOP_MS (on the train, say) stops the ride's watch: the
 // ride screen then offers Resume, and Ride the rest shows again with the next fix (the trip panel's works too).
-export const RIDE_REST_HINT = "Turn-by-turn from where you are to your destination, for the ride after transit.";
-export const RIDE_REST_FINDING = "Finding the ride to your destination…";
+export const RIDE_REST_HINT = t("Turn-by-turn from where you are to your destination, for the ride after transit.");
+export const RIDE_REST_FINDING = t("Finding the ride to your destination…");
 /** Said once on the ride screen when the button shows (near or past the stop where the transit ends). */
 export function restReadySaid(rest: Pick<RideRest, "alightName">): string {
   return `${rest.alightName ? `Near ${rest.alightName}. ` : ""}${RIDE_REST} plans the ride to your destination.`;
