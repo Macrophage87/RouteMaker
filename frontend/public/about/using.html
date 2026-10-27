@@ -371,7 +371,8 @@ ending that ride brings you back to roaming.</li>
 ("Rain expected in about 45 min, where you are."), said and shown as in a ride.</li>
 <li><strong>Broadcast</strong>, a round button, shares a link others can follow your dot and the way you
 ride with, while your app is open (see <a href="#suggest">ride links</a>). With no share sheet it
-copies the link instead, and says so, or says it could not.</li>
+copies the link instead, and says so, or says it could not. To show the link as a QR code,
+hold it, right-click it or press Shift+F10. Following someone's Roam broadcast, it passes on their link.</li>
 <li>The next sunrise and sunset show in the corner, with the minutes left once it is within the
 hour.</li>
 <li><strong>End roam</strong> is slid, like End ride, so a bump does not end it.</li>
@@ -654,8 +655,11 @@ and time off the route, paused or walking is left out.</li>
 reach them: "1.2 miles to stop 2, arriving about 6:42 AM."
 <strong>Large text</strong> makes the next turn as big as it fits.</li>
 <li><strong>Broadcast</strong> sends a <strong>Share ride</strong> link, as Broadcast beside Start does
-(with no share sheet it copies the link and says so, or says it could not), and once it has gone makes you the ride's leader; your ride carries on. It is not on
-Ride the rest, a Roam detour, a ride you opened from someone else's link, or once you have arrived.</li>
+(with no share sheet it copies the link and says so, or says it could not), and once it has gone makes you the ride's leader; your ride carries on. Pressing it
+again in the same ride sends the same link, and hold it, right-click it or press Shift+F10 to show that link as a QR code instead (see
+<a href="#suggest">ride links</a>). Following a leader's Share ride or Broadcast link, it passes on the link you
+opened, so whoever joins follows the same leader. It is not on Ride the rest, a Roam detour, a ride opened from
+someone else's link that names no leader (a Share route link, say), or once you have arrived.</li>
 <li><strong>Detour</strong> has four buttons, <strong>Water</strong>, <strong>Restroom</strong>, <strong>Food</strong> and
 <strong>Repair</strong> (repair stands and bike shops), each listing the three nearest by bike, and a
 <strong>Search</strong> box for anything else. What you type there, at least 3 letters, is matched against Find
@@ -1095,10 +1099,22 @@ there is no share sheet (some computer browsers, such as Firefox, and the Androi
 ride, and the ride screen says &quot;Broadcast link copied. Paste it to your riders: they follow you once they open it.&quot; If the route isn't ready or the share or copy fails, it says so beside the button and nothing
 starts. <strong>Share ride</strong> makes you the leader too; sharing the same route again, without
 leaving the page, keeps you the leader of both links.</li>
+<li><strong>By QR code</strong>: hold it, right-click it or press Shift+F10 (beside Start, on the ride screen or in Roam), and its link shows
+as a big QR code, "Scan to follow", for riders nearby to scan with their phone's camera. Held beside Start, it
+also has <strong>Start ride</strong>. It is the same link the share sheet sends: each press or hold during a
+ride gives the same link.</li>
+<li>Riders following a leader's Share ride or Broadcast link can pass it on: their Broadcast, or its QR code, sends the
+link they opened, so everyone who joins follows the same leader.</li>
 <li>Everyone who opens the same link is on the same ride, and sees the others as dots, with no names.</li>
 <li>Opening a Share ride or Broadcast link <strong>follows the leader</strong>: the map moves with the
 leader's dot, which has a wide ring round it. You see it at once, before you answer whether to show
-yourself. A link opened in Plan follows the leader too, so someone at home can watch the ride.</li>
+yourself. On a phone, a link with its leader goes straight into Ride mode, or Roam for a Roam broadcast, with the
+leader's dot on the map from the start, and says "Following the leader's broadcast. If you hear no
+directions, tap the screen once." (a phone may keep the voice quiet until the first tap). It doesn't start over
+a ride already going or the question about resuming one. On a computer the link opens so you can watch the
+leader, and a link opened in Plan follows the leader too, so someone at home can watch the ride.</li>
+<li>Only the leader is asked about closures on the route. Riders following a leader's Share ride or Broadcast link are
+not asked, on opening it or on Start ride.</li>
 <li>While the leader rides with the app open, their phone sends the route it is riding (dashed, so a
 re-route shows) and the path it has taken so far (solid), about every 2 minutes and whenever the route
 changes, so someone who opens the link late sees where the ride has been. The start of the path is left
@@ -1133,6 +1149,10 @@ phone's random ride code and its alert counts are forgotten 2 minutes after it l
 
 <ul>
 <li>On first launch it asks for the site's address.</li>
+<li>A tapped link to RouteMaker's map, a ride type or a shared route, broadcast links included, opens the app
+from the Play Store instead of the browser. The privacy policy, these guides and Featured routes posts still open in
+the browser. Android checks this when the app is installed, so it needs the app's store build from after this
+update.</li>
 <li>RouteMaker links shared to the app open in it. From the app's next update, Broadcast, Share route and
 Share ride open Android's own share sheet. Android doesn't tell the app when you back out of that sheet, so
 backing out still counts as sent: Broadcast starts the broadcast, and Share ride makes you its leader.</li>
@@ -1157,7 +1177,7 @@ from the app's next update.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.12.5. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.12.6. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
