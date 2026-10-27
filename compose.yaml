@@ -248,6 +248,10 @@ services:
       # worker's memory (0: not kept).
       ROUTER_PARALLEL_CALLS: ${ROUTER_PARALLEL_CALLS:-3}
       ROUTE_CACHE_TTL_S: ${ROUTE_CACHE_TTL_S:-600}
+      # A memcached the workers share their answers through (host:port; audit S14). Empty
+      # here: this stack runs none (its limits already reach the 32 GB host's at the swap
+      # peak), so each worker keeps its own. compose.beta.yaml sets it to its own memcached.
+      ROUTE_CACHE_LOCATION: ${ROUTE_CACHE_LOCATION:-}
       # Live data keys (v0.7.0), read by this service alone and never sent to a browser:
       # WMATA's developer key (live Metro trains, incidents, elevator outages) and
       # Mapillary's client token (the road panel's street photo). Empty: off.

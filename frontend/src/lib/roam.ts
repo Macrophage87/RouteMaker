@@ -16,22 +16,23 @@ import { BASEMAP_SOURCE_ID, STRESS_SOURCE_ID } from "./mapStyle.ts";
 import type { NearestPlace } from "./nearest.ts";
 import { STRESS_TILE_LAYER } from "../stressStyle.js";
 import { tierWords } from "./profileChart.ts";
+import { t } from "./i18n.ts";
 
 /** The big button's name in Go with no destination, the card's heading, and its end. */
 export const ROAM_NAME = "Roam";
-export const END_ROAM_NAME = "End roam";
-export const ROAM_STARTED = "Roaming. The map follows you and shows the roads ahead.";
-export const ROAM_ENDED = "Roam ended.";
+export const END_ROAM_NAME = t("End roam");
+export const ROAM_STARTED = t("Roaming. The map follows you and shows the roads ahead.");
+export const ROAM_ENDED = t("Roam ended.");
 /** Said and shown when a detour ends (End ride, or arrived and ended): the ride goes back to roaming. */
-export const BACK_TO_ROAM = "Back to roaming.";
+export const BACK_TO_ROAM = t("Back to roaming.");
 /** Said when a back gesture is held during Roam (lib/rideBack.ts holds it, as during a ride). */
-export const STILL_ROAMING_SAID = "Still roaming. Use End roam to stop.";
+export const STILL_ROAMING_SAID = t("Still roaming. Use End roam to stop.");
 /** Shown on the card before the map has a road near the rider. */
-export const NO_ROAD_YET = "Looking for the road you're on…";
+export const NO_ROAD_YET = t("Looking for the road you're on…");
 /** No named road near: on an unnamed path, or off the map's roads. */
-export const NO_NAMED_ROAD = "No named road here";
+export const NO_NAMED_ROAD = t("No named road here");
 /** What Roam's Detour menu offers (the owner: "bathroom food water"). */
-export const ROAM_DETOUR_HELP = "Detour plans a ride from where you are to that place. End the ride there to go back to roaming.";
+export const ROAM_DETOUR_HELP = t("Detour plans a ride from where you are to that place. End the ride there to go back to roaming.");
 
 /** One line of the map: a named road (the base map's) or a stress line (the stress tiles'), each as lon/lat lines. */
 export interface RoadLine {
@@ -359,11 +360,11 @@ export function mapLines(map: RoamMap, rider: LonLat, reach = AHEAD_M + 200): { 
 
 /** Roam's Broadcast: one tap on the Roam screen opens the share sheet; those who open the link follow the rider. */
 export const ROAM_BROADCAST_NAME = "Broadcast";
-export const ROAM_BROADCAST_TITLE = "Follow my ride";
-export const ROAM_BROADCAST_TEXT = "Follow my ride on RouteMaker: my dot and the way I've ridden, while my app is open.";
-export const ROAM_BROADCAST_ON = "Broadcasting. Those who open your link see your dot and the way you ride.";
+export const ROAM_BROADCAST_TITLE = t("Follow my ride");
+export const ROAM_BROADCAST_TEXT = t("Follow my ride on RouteMaker: my dot and the way I've ridden, while my app is open.");
+export const ROAM_BROADCAST_ON = t("Broadcasting. Those who open your link see your dot and the way you ride.");
 /** The link went without the leader key (not ready yet, or no SHA-256 here): nothing is broadcast. */
-export const ROAM_BROADCAST_NOT_READY = "Broadcast is not ready yet; try again in a moment.";
+export const ROAM_BROADCAST_NOT_READY = t("Broadcast is not ready yet; try again in a moment.");
 
 /** The fragment keys of a Roam broadcast link: the ride's random id and the leader key. */
 export const ROAM_PARAM = "roam";

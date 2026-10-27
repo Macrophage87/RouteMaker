@@ -84,12 +84,15 @@ export const EARLY_PER_MINUTE = 6;
 /**
  * Go's early start (step 4): one request at a time, made before the tap, kept by its request body for the tap
  * that would make the same request. Never aborted (an abort frees no slot in the API); a request not tapped is
- * left to finish, and its answer waits in the API's cache.
+ * left to finish, and its answer waits in the API's cache. One asked for while another is in flight waits as
+ * `next`, the latest only, and goes when that one settles if it still may (routing audit S4: the rider typed on
+ * past the first result, "Union Market" on the way to "Union Station").
  */
 export class EarlyStart {
   private readonly options: EarlyStartOptions;
   private kept: { body: string; at: number; answer: Promise<RouteResult> } | null = null;
   private inFlight = false;
+  private next: { body: string; send: () => Promise<RouteResult> } | null = null;
   private sent: number[] = [];
 
   constructor(options: EarlyStartOptions) {
@@ -98,23 +101,31 @@ export class EarlyStart {
 
   /**
    * Start the request whose body is `body` early (`send` makes it: the API's first route, `quick`), if it may go:
-   * none in flight, under the per-minute cap, not kept already.
+   * none in flight, under the per-minute cap, not kept already. With one in flight it waits as `next` (false).
    */
   start(body: string, send: () => Promise<RouteResult>): boolean {
     const now = (this.options.now ?? Date.now)();
-    if (this.inFlight || !this.options.allowed()) return false;
-    if (this.kept && this.kept.body === body && now - this.kept.at < (this.options.keepMs ?? EARLY_KEEP_MS)) return false;
+    if (!this.options.allowed()) return false;
+    if (this.kept && this.kept.body === body && now - this.kept.at < (this.options.keepMs ?? EARLY_KEEP_MS)) {
+      // Back to the place already asked for: nothing newer waits.
+      this.next = null;
+      return false;
+    }
+    if (this.inFlight) {
+      this.next = { body, send };
+      return false;
+    }
     this.sent = this.sent.filter((t) => now - t < 60_000);
     if (this.sent.length >= (this.options.perMinute ?? EARLY_PER_MINUTE)) return false;
     this.sent.push(now);
     this.inFlight = true;
     const answer = send().then(
       (result) => {
-        this.inFlight = false;
+        this.settled();
         return result;
       },
       (error: unknown) => {
-        this.inFlight = false;
+        this.settled();
         throw error;
       },
     );
@@ -124,8 +135,29 @@ export class EarlyStart {
     return true;
   }
 
+  /** The one in flight is done: the place wanted since goes now, if it still may (`start` asks again). */
+  private settled(): void {
+    this.inFlight = false;
+    const next = this.next;
+    this.next = null;
+    if (!next) return;
+    try {
+      this.start(next.body, next.send);
+    } catch {
+      // A request that cannot be made early is made by the tap; the answer settling here is not touched.
+    }
+  }
+
+  /** Nothing waits to go next: the place it was for is no longer offered (the box cleared, no results). */
+  forget(): void {
+    this.next = null;
+  }
+
   /** The early request for `body`, taken (once), while it is fresh; null where there is none. */
   take(body: string): Promise<RouteResult> | null {
+    // The tap makes its own request: one waiting for the same place would ask twice, and one waiting for another place
+    // is for a place not chosen (batch-1 review of S4), so either way the wait goes.
+    this.next = null;
     const kept = this.kept;
     const now = (this.options.now ?? Date.now)();
     if (!kept || kept.body !== body || now - kept.at >= (this.options.keepMs ?? EARLY_KEEP_MS)) return null;

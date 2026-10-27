@@ -150,6 +150,7 @@ def test_the_acknowledgements_credit_every_source_the_map_credits() -> None:
         "DDOT project traffic advisories",
         "AlertDC",
         "National Park Service",
+        "Purple Line construction updates",
     )
     # One name per map credit, in the same order: a new credit fails here until it is named.
     assert len(names) == len(map_credits)
