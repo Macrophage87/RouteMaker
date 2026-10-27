@@ -12,6 +12,8 @@
  *   for signed in users"): kept with the account so it follows the rider, never in the plan setting, a
  *   link, a log or an AI assistant's answer, and erased with the rest by Delete account. Cleared, it is
  *   `weight: null`, so every signed-in device clears its copy rather than putting its own back.
+ * - The rider's riding speed ("speed", lib/ridingSpeed.ts), whole mph; null once set back to the ride type's own,
+ *   so every signed-in device goes back too.
  * - On sign-in (every signed-in load): an empty account takes this device's settings; an account that has
  *   settings wins, and its settings replace the device's. Nothing is merged silently.
  * - Signed out, everything stays on the device as before.
@@ -25,6 +27,7 @@ import type { PresetId } from "./presets.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
 import { TOPO_STORAGE_KEY } from "./topoLines.ts";
 import { WEIGHT_CLEARED, WEIGHT_STORAGE_KEY, migrate as weightOf, storedSetting, type StoredWeight } from "./weight.ts";
+import { SPEED_OWN, SPEED_STORAGE_KEY, speedOf, speedSetting } from "./ridingSpeed.ts";
 import { WATER_PREFS_KEY, type WaterPrefs } from "./waterRestrooms.ts";
 
 export const SETTINGS_VERSION = 1;
@@ -42,6 +45,8 @@ export interface SettingsDoc {
   favorites?: PresetId[];
   /** The rider and bike weight (lib/weight.ts StoredWeight), or null once cleared. */
   weight?: StoredWeight | null;
+  /** The rider's riding speed in whole mph (lib/ridingSpeed.ts), or null for the ride type's own. */
+  speed?: number | null;
 }
 
 export interface Store {
@@ -76,7 +81,7 @@ function json(raw: string | null): unknown {
 }
 
 /** The trip-specific dials that are not settings: a station picked, a transit option, the target of one ride. */
-const TRIP_DIALS: readonly (keyof Dials)[] = ["pickupStation", "dropoffStation", "transitOption", "targetDistanceM", "systemWeightKg", "loop"];
+const TRIP_DIALS: readonly (keyof Dials)[] = ["pickupStation", "dropoffStation", "transitOption", "targetDistanceM", "systemWeightKg", "ridingSpeedKmh", "loop"];
 
 /** The ride type and dials as a settings value: no points, nothing that belongs to one trip, never the weight. */
 export function planSetting(preset: PresetId, dials: Dials): string {
@@ -136,6 +141,8 @@ export function parseSettings(raw: unknown): SettingsDoc | null {
     const weight = weightOf(body.weight);
     if (weight) doc.weight = weight;
   }
+  if (body.speed === null) doc.speed = null;
+  else if (speedOf(body.speed) !== null) doc.speed = speedOf(body.speed);
   return doc;
 }
 
@@ -169,6 +176,8 @@ export function deviceSettings(
   const favorites = json(read(store, FAVORITES_KEY));
   if (Array.isArray(favorites)) doc.favorites = parseFavorites(favorites);
   if (weight !== undefined) doc.weight = weight;
+  const speed = speedSetting(read(store, SPEED_STORAGE_KEY));
+  if (speed !== undefined) doc.speed = speed;
   return doc;
 }
 
@@ -188,6 +197,7 @@ export function applyToDevice(doc: SettingsDoc, store: Store | null = local()): 
   if (doc.sections) write(LAYER_SECTIONS_KEY, JSON.stringify(doc.sections));
   if (doc.favorites) write(FAVORITES_KEY, JSON.stringify(doc.favorites));
   if (doc.weight !== undefined) write(WEIGHT_STORAGE_KEY, doc.weight === null ? WEIGHT_CLEARED : JSON.stringify(doc.weight));
+  if (doc.speed !== undefined) write(SPEED_STORAGE_KEY, doc.speed === null ? SPEED_OWN : String(doc.speed));
 }
 
 export type SignInStep = { kind: "push-device"; doc: SettingsDoc } | { kind: "use-account"; doc: SettingsDoc };

@@ -1,6 +1,6 @@
 [project]
 name = "routemaker"
-version = "0.12.6"
+version = "0.13.0"
 description = "Collaborative bicycle route planning for the Washington, DC metro area"
 requires-python = ">=3.11"
 license = { text = "MIT" }

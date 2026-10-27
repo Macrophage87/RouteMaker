@@ -70,6 +70,29 @@ import { InfoButton, SettingRow, SettingSelect } from "../SettingRow.tsx";
 import { shortLabel } from "../lib/shortLabel.ts";
 import { ANNOUNCE_HINT, ANNOUNCE_LABEL, type AnnounceLevel } from "../lib/announceLevel.ts";
 import type { Status } from "./RoutePanel.tsx";
+import { LANGUAGES, LANGUAGE_NAME, chooseLanguage, readLanguageChoice, t, type LanguageChoice } from "../lib/i18n.ts";
+
+/** The Language setting's (i) words. Street names and notices from agencies stay as they are written. */
+const LANGUAGE_HINT = "The app's words and the voice. Street names and agency notices stay as written. Changing it reloads the page.";
+
+/** Settings > Display > Language: the choice is held here too, so a pick that needs no reload still shows. */
+function LanguageSetting() {
+  const [choice, setChoice] = useState<LanguageChoice>(() => readLanguageChoice());
+  return (
+    <SettingRow infoId="settings-language-info" about={t("Language")} info={t(LANGUAGE_HINT)}>
+      <SettingSelect<LanguageChoice>
+        label={t("Language")}
+        value={choice}
+        options={[["", t("Phone's language")] as const, ...LANGUAGES.map((lang) => [lang, LANGUAGE_NAME[lang]] as const)]}
+        onChange={(next) => {
+          setChoice(next);
+          chooseLanguage(next);
+        }}
+        describedBy="settings-language-info"
+      />
+    </SettingRow>
+  );
+}
 
 /** How the sheets go back: to the planner, or to the sheet that opened them (Suggest for Review). */
 export interface SheetNav {
@@ -201,7 +224,7 @@ export function LayersSheet(props: LayersSheetProps) {
           control (the Climbs layer's "Show climbs from") sits under its own switch, inside the section. */}
       <LayerSection
         id="terrain"
-        title="Trails and terrain"
+        title={t("Trails and terrain")}
         headingId="terrain-heading"
         layers={terrainLayers(terrain)}
         onLayers={(next) => {
@@ -374,7 +397,7 @@ function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean
   return (
     <section aria-labelledby="settings-my-go-heading" className="settings-group my-go">
       <div className="setting-line">
-        <h3 id="settings-my-go-heading">My Go</h3>
+        <h3 id="settings-my-go-heading">{t("My Go")}</h3>
         <InfoButton open={infoOpen} onToggle={() => setInfoOpen((was) => !was)} controls="settings-my-go-info" about="My Go" />
       </div>
       <p className="hint setting-info" id="settings-my-go-info" hidden={!infoOpen}>
@@ -385,11 +408,11 @@ function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean
         {myGo.home && !changing ? (
           <div className="setting-line home-line">
             <p className="home-now" id="settings-home-now">
-              <strong>Home: </strong>
+              <strong>{t("Home:")} </strong>
               {homeName(myGo.home)}
             </p>
-            <button type="button" ref={changeRef} className="secondary" aria-label="Change Home" aria-describedby="settings-home-now" onClick={openChange}>
-              Change
+            <button type="button" ref={changeRef} className="secondary" aria-label={t("Change Home")} aria-describedby="settings-home-now" onClick={openChange}>
+              {t("Change")}
             </button>
             <span className="info-spacer" aria-hidden="true" />
           </div>
@@ -397,14 +420,14 @@ function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean
           <>
             {!myGo.home && (
               <p>
-                <strong>Home: </strong>not set
+                <strong>{t("Home:")} </strong>{t("not set")}
               </p>
             )}
             <HomeSetter home={myGo.home} geoGate={geoGate} searchBias={searchBias} onPlace={(place: Place) => setHome(homeFromPlace(place))} onClear={() => setHome(null)} />
             {/* Change pressed by mistake: Cancel keeps the Home and goes back to its line. */}
             {myGo.home && (
               <button type="button" className="secondary home-cancel" onClick={keepHome}>
-                Cancel
+                {t("Cancel")}
               </button>
             )}
           </>
@@ -412,7 +435,7 @@ function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean
       </div>
       <SettingRow infoId="settings-go-ride-info" about="Go's ride type">
         <SettingSelect
-          label="Go's ride type"
+          label={t("Go's ride type")}
           value={myGo.ride ?? "default"}
           options={PRESETS.filter((p) => p.id !== "mass-ride").map((p) => [p.id, presetSaid(p.id)] as const)}
           onChange={(ride) => save({ ...myGo, ride: ride === "default" ? null : ride })}
@@ -484,14 +507,14 @@ export function SettingsSheet(props: SettingsSheetProps) {
       headingRef={settingsHeadingRef}
     >
       {go && (
-        <nav className="menu-pages" aria-label="Pages">
+        <nav className="menu-pages" aria-label={t("Pages")}>
           <button type="button" className="secondary menu-page" onClick={menu.onPlan}>
             <Icon name="list" />
-            Plan
+            {t("Plan")}
           </button>
           <button type="button" className="secondary menu-page" onClick={(event) => menu.onSuggest(event.currentTarget)}>
             <Icon name="flag" />
-            Reports
+            {t("Reports")}
           </button>
           <button type="button" className="secondary menu-page" onClick={(event) => menu.onGpx(event.currentTarget)}>
             <Icon name="file" />
@@ -500,7 +523,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
           {menu.onReview && (
             <button type="button" className="secondary menu-page" onClick={(event) => menu.onReview?.(event.currentTarget)}>
               <Icon name="shield" />
-              Review
+              {t("Review")}
             </button>
           )}
         </nav>
@@ -509,7 +532,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
       <MyGoSection controls={myGo} open={nav.view === "settings"} />
       {/* Ride mode's choices (WEB-NAV-plan.md section 3): kept on this device. */}
       <section aria-labelledby="settings-ride-heading" className="settings-group">
-        <h3 id="settings-ride-heading">Riding</h3>
+        <h3 id="settings-ride-heading">{t("Riding")}</h3>
         <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
         {/* Large text in a ride (it replaced Big text): here, and on the ride's own button, the same choice. */}
         <SettingRow infoId="settings-big-text-info" about="large text" info={RIDE_TEXT_HELP} className="big-text-row">
@@ -539,7 +562,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
         </div>
       </section>
       <section aria-labelledby="settings-display-heading" className="settings-group">
-        <h3 id="settings-display-heading">Display</h3>
+        <h3 id="settings-display-heading">{t("Display")}</h3>
         <ContrastRow />
         {/* Accessibility mode (OWNER-DECISIONS 455) as a switch here too (the mockup), the same state as the page's first button. */}
         <SettingRow infoId="settings-access-hint" about="accessibility mode" info={ACCESS_HELP} className="a11y-setting">
@@ -578,13 +601,15 @@ export function SettingsSheet(props: SettingsSheetProps) {
           }
         >
           <SettingSelect
-            label="Announcements"
+            label={t("Announcements")}
             value={announcements.level}
             options={(["brief", "full"] as const).map((level) => [level, shortLabel(ANNOUNCE_LABEL[level])] as const)}
             onChange={(level) => announcements.choose(level)}
             describedBy="settings-announce-info"
           />
         </SettingRow>
+        {/* The app's language (the owner, 2026-10-27: "compatible with multiple languages"): unset, the phone's own. */}
+        <LanguageSetting />
       </section>
       {/* The installable app (WEB-NAV-plan.md section 8, P4), under its own heading when the browser offers it. The
           routes saved and kept for offline are in Save and load (YourRoutes.tsx; the owner, 2026-10-18). */}
@@ -592,7 +617,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
       {/* Account: never an empty heading (signed out on a server that cannot sign anyone in, it has nothing to hold). */}
       {(myGo.signedIn || signInAvailable) && (
         <section aria-labelledby="settings-signin-heading" className="settings-group">
-          <h3 id="settings-signin-heading">Account</h3>
+          <h3 id="settings-signin-heading">{t("Account")}</h3>
           {myGo.signedIn ? (
             <div className="account-line">
               <p className="hint signed-in">
@@ -620,21 +645,21 @@ export function SettingsSheet(props: SettingsSheetProps) {
               and what is kept, and asks once. Last: nobody needs it often. */}
           {myGo.signedIn && (
             <p className="delete-account">
-              <a href={DELETE_ACCOUNT_PAGE}>Delete account</a>
+              <a href={DELETE_ACCOUNT_PAGE}>{t("Delete account")}</a>
             </p>
           )}
         </section>
       )}
       {/* The documentation (the owner, 2026-10-19): one link, last, under its own heading. */}
       <section aria-labelledby="settings-about-heading" className="settings-group">
-        <h3 id="settings-about-heading">About</h3>
+        <h3 id="settings-about-heading">{t("About")}</h3>
         {/* Side by side when they fit: two short links, one line. */}
         <div className="about-links">
           <DocsPageLink />
           {/* The privacy policy (core.privacy_policy): here, where it shows signed in or out and on any server. */}
           <p className="privacy-link">
             <a href={PRIVACY_PAGE} onClick={(e) => isPlainClick(e) && rememberPlanForPage(tabSession(), window.location.hash)}>
-              Privacy policy
+              {t("Privacy policy")}
             </a>
           </p>
         </div>
@@ -663,23 +688,23 @@ export function SuggestSheet({ nav, roadInfoAtCentre, onReview }: SuggestSheetPr
       {/* The 311 checklist first: the sheet is Reports (Stephen, 2026-10-21), and the ride summary's Open Reports lands here. */}
       <Report311Log />
       <section aria-labelledby="suggest-map-heading" className="settings-group">
-        <h3 id="suggest-map-heading">A road or a junction</h3>
+        <h3 id="suggest-map-heading">{t("A road or a junction")}</h3>
         <p className="hint">
           Right-click a road, or press and hold it, then choose Suggest a change: a road's traffic stress, a junction, or a hazard on a Mass Ride.
           Suggestions go to the map's admins; nothing changes until one of them reviews it.
         </p>
         <button type="button" className="secondary suggest-at-centre" onClick={roadInfoAtCentre}>
           <Icon name="road" />
-          The road at the map's center
+          {t("The road at the map's center")}
         </button>
       </section>
       {onReview && (
         <section aria-labelledby="suggest-review-heading" className="settings-group">
-          <h3 id="suggest-review-heading">Review</h3>
-          <p className="hint">Riders' suggestions, Mass Ride hazard reports and closure reports are in Review, beside Go and Plan.</p>
+          <h3 id="suggest-review-heading">{t("Review")}</h3>
+          <p className="hint">{t("Riders' suggestions, Mass Ride hazard reports and closure reports are in Review, beside Go and Plan.")}</p>
           <button type="button" className="secondary open-review" onClick={(event) => onReview(event.currentTarget)}>
             <Icon name="shield" />
-            Review suggestions
+            {t("Review suggestions")}
           </button>
         </section>
       )}
@@ -704,7 +729,7 @@ export const FOOD_CHIPS = ["Crab", "Coffee", "Pizza", "Tacos", "Ice cream", "Far
 export function FoodSheet({ nav, onChip, children }: { nav: SheetNav; onChip: (food: string) => void; children: ReactNode }) {
   return (
     <SheetFrame id="sheet-food" title={SHEET_TITLES.food} open={nav.view === "food"} onBack={nav.back} backLabel={nav.backLabel("food")}>
-      <div className="chip-row food-chips" role="group" aria-label="Quick searches">
+      <div className="chip-row food-chips" role="group" aria-label={t("Quick searches")}>
         {FOOD_CHIPS.map((food) => (
           <button key={food} type="button" className="chip" onClick={() => onChip(food.toLowerCase())}>
             <Icon name={food === "Farm stands" ? "apple" : "food"} size={16} />
@@ -780,18 +805,18 @@ export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onP
   return (
     <section ref={scopeRef} className="ride-groups" aria-labelledby="ride-sheet-types">
       <h3 id="ride-sheet-types" className="visually-hidden">
-        Every ride type
+        {t("Every ride type")}
       </h3>
       <RideTypeSearch id="ride-sheet-search" query={query} onQuery={setQuery} count={rideTypeCount(filterRideGroups(query))} />
       {favs.length > 0 && (
         <section className="ride-sheet-group" aria-labelledby="ride-sheet-favorites">
-          <h4 id="ride-sheet-favorites">Favorites</h4>
+          <h4 id="ride-sheet-favorites">{t("Favorites")}</h4>
           <RideTypeCards ids={favs} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} {...star} />
         </section>
       )}
       {common.length > 0 && (
         <section className="ride-sheet-group" aria-labelledby="ride-sheet-common">
-          <h4 id="ride-sheet-common">Common</h4>
+          <h4 id="ride-sheet-common">{t("Common")}</h4>
           <RideTypeCards ids={common} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} {...star} />
         </section>
       )}
@@ -850,12 +875,12 @@ export function RideChips({
       {more && (
         <button type="button" className="chip ride-more" onClick={(event) => more(event.currentTarget)} aria-describedby="ride-more-hint">
           <Icon name="more" size={18} />
-          More ride types
+          {t("More ride types")}
         </button>
       )}
       {more && (
         <span id="ride-more-hint" hidden>
-          Every ride type and setting.
+          {t("Every ride type and setting.")}
         </span>
       )}
       {ownHint && (

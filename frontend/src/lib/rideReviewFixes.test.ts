@@ -69,7 +69,7 @@ test("RIDE-8: a wake lock the browser lets go mid-ride is asked again, and the s
 });
 
 test("RIDE-9: voice chosen after Start is unlocked inside that change's press, saying Voice on. (during a ride only)", () => {
-  assert.match(ride, /export const VOICE_ON = "Voice on\.";/);
+  assert.match(ride, /export const VOICE_ON = t\("Voice on\."\);/);
   assert.match(ride, /if \(!toVoice\(before\.output\) && toVoice\(next\.output\)\) voice\.unlock\(VOICE_ON\);/);
   const app = source("../App.tsx");
   const change = app.slice(app.indexOf("const changeRidePrefs = useCallback("), app.indexOf("const changeRidePrefs = useCallback(") + 400);

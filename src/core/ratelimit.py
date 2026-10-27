@@ -51,6 +51,7 @@ one routing slot and one tile slot, and keeps fewer free.
 
 from __future__ import annotations
 
+import dataclasses
 import ipaddress
 import logging
 import time
@@ -107,6 +108,11 @@ class Decision:
 # unauthenticated paths are 60 per minute per client address. A signed-out
 # planner is both, so it is the one figure.
 ROUTING = Limit(scope="route", requests=60, window_s=60)
+
+# A superseded plan cancelled (POST /api/route/cancel, core.plan_cancel; routing audit S7,
+# the owner 2026-10-27): one per Go edit made while a full plan runs, never more than the
+# plans sent, so ROUTING's figure, counted apart so an edit does not spend it twice.
+PLAN_CANCEL = Limit(scope="plan-cancel-req", requests=60, window_s=60)
 
 # The nearest bikeshare stations (POST /api/bikeshare/stations, OWNER-DECISIONS 466a): the list is
 # asked for when a start or an end is placed or moved, so a minute of dragging a point can ask
@@ -561,6 +567,21 @@ GEOCODE_IN_FLIGHT = InFlight(
 # How often a waiting request tries for a slot again.
 WAIT_STEP_S = 0.05
 
+# A plan that replaces one of the same client's still running (core.plan_cancel; routing
+# audit S7, approved by the owner 2026-10-27): the plan it replaces has been told to stop and
+# gives its slots back within about one router call, so instead of being refused at once the
+# new plan may wait a moment for them, as geocoding does. On beta's pool of two the old plan
+# holds the client's slot, and the new plan would otherwise be refused (429, or 503 with
+# another rider on the other slot) and held back for its Retry-After. One such waiter in the
+# deployment, so the workers the slots leave free stay free within about a second.
+REPLACE_WAITERS = 1
+
+
+def replacing(limit: InFlight, wait_s: float) -> InFlight:
+    """`limit` for a request that replaces one of its client's still running: the same
+    slots, with a wait of `wait_s` and a waiting room of REPLACE_WAITERS."""
+    return dataclasses.replace(limit, wait_s=wait_s, max_waiters=REPLACE_WAITERS)
+
 
 def _client_lock_id(client: str) -> int:
     """The client's key as a signed 32-bit integer, the advisory lock's second key."""
@@ -733,19 +754,22 @@ def release(held) -> None:
     _release(held)
 
 
-def in_flight_limited(limit: InFlight, slots=None):
+def in_flight_limited(limit: InFlight, slots=None, wait_for=None):
     """A view decorator: hold `limit`'s slots for the request, or refuse it -
     429 when this client already has its routes running, 503 when the
     deployment has `total` running. `slots`, a callable, names the deployment
-    slots the request may take (see `acquire`)."""
+    slots the request may take (see `acquire`). `wait_for`, a callable given the
+    request: seconds it may wait for a slot (`replacing`), 0 for `limit`'s own."""
 
     def decorator(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
+            wait_s = wait_for(request) if wait_for is not None else 0
+            taking = replacing(limit, wait_s) if wait_s > 0 else limit
             if slots is None:
-                held, refusal = acquire(request, limit)
+                held, refusal = acquire(request, taking)
             else:
-                held, refusal = acquire(request, limit, slots=slots())
+                held, refusal = acquire(request, taking, slots=slots())
             if refusal is not None:
                 return refusal
             try:

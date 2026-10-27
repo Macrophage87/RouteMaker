@@ -129,6 +129,12 @@ def _no_ddot_advisories(monkeypatch):
     real = ddot_advisories.zones
     monkeypatch.setattr(ddot_advisories, "zones", lambda now, closures=None: [])
     monkeypatch.setattr(ddot_advisories, "real_zones", real, raising=False)
+    # The Purple Line's closures (`routemaker.purple_line`, v0.13.0) likewise.
+    from routemaker import purple_line
+
+    real_pl = purple_line.zones
+    monkeypatch.setattr(purple_line, "zones", lambda now, closures=None: [])
+    monkeypatch.setattr(purple_line, "real_zones", real_pl, raising=False)
 
 
 @pytest.fixture(autouse=True)
