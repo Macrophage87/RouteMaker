@@ -32,10 +32,25 @@ and its Broadcast copies the link instead, for the rider to paste.
 
 **Opening a RouteMaker link in the app** (v0.9.0 app): in any app, Share the link and pick RouteMaker.
 `SharedLink.java` takes the first https link in the shared text and opens it only when it is on the site kept
-on this phone; any other link is refused with a short message. A tapped link still opens the browser:
-Android opens a tapped web link in an app only for an address built into the APK (verified App Links, plus
-a file on the server naming the app's signing key), and none is set up. That can come with a
-production address. Opening a shared link replaces the page shown, a ride in progress included.
+on this phone; any other link is refused with a short message. Opening a shared link replaces the page
+shown, a ride in progress included.
+
+**Links open in the app** (store build, v0.12.6): a tapped link to the site's map, a ride type's address
+(`/mass-ride`, `/group-ride`, ...) or a shared route's `/s/` link opens the store app instead of the browser,
+broadcast links included; the privacy policy, the guides and the route posts still open in the browser.
+Android allows it only for an address built into the APK and named back by the site:
+
+- The APK: the release build step passes the `ROUTEMAKER_SITE_URL` secret as `ROUTEMAKER_LINK_SITE`, and
+  `app/build.gradle` then merges `src/links/AndroidManifest.xml` (the site's host and those paths). Test
+  builds name no site, so they take no tapped links.
+- The site: `GET /.well-known/assetlinks.json` (`core.app_links`) names the app from two settings in the
+  deployment's environment file, `ANDROID_APP_ID` (the `ROUTEMAKER_APP_ID` secret's value) and
+  `ANDROID_CERT_SHA256` (Play Console, Test and release > App integrity > App signing key certificate,
+  "SHA-256 certificate fingerprint"; add the upload key's after a comma for a sideloaded store APK).
+  Unset, the file is a 404 and links open in the browser.
+
+Android checks the file when the app is installed or updated, so install the new build after the site
+serves it. To check a phone: Settings > Apps > RouteMaker > Open by default should list the site as verified.
 
 There are no new buttons: Start ride, Go and End work as on the website. Distances are the site's
 own (feet and miles).
