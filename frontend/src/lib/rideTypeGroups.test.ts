@@ -57,7 +57,7 @@ test("F9. Go's More ride types: the common types first, the other groups folded;
   const sheets = src("../app/Sheets.tsx");
   const go = sheets.slice(sheets.indexOf("export function RideGroupChips("), sheets.indexOf("export function RideChips("));
   assert.match(go, /<details key=\{group\.id\} className="fold ride-sheet-fold" open=\{group\.ids\.includes\(preset\) \|\| undefined\}>/);
-  assert.ok(go.indexOf('<h4 id="ride-sheet-common">Common</h4>') < go.indexOf("groups.map"), "the common types first");
+  assert.ok(go.indexOf('<h4 id="ride-sheet-common">{t("Common")}</h4>') < go.indexOf("groups.map"), "the common types first");
   assert.doesNotMatch(go, /className="ride-group"/);
 });
 
@@ -132,7 +132,7 @@ test("Go's More ride types and Plan's dialog: the search first, then each group 
   assert.match(go, /<RideTypeSearch id="ride-sheet-search"/);
   // Go: the list under its own h3, the groups as h4 under it, so the Ride line's "Ride type" h3 after
   // it in the sheet is not read as a fourth group; each group named once, by its heading.
-  assert.match(go, /<section ref=\{scopeRef\} className="ride-groups" aria-labelledby="ride-sheet-types">\s*<h3 id="ride-sheet-types" className="visually-hidden">\s*Every ride type\s*<\/h3>/);
+  assert.match(go, /<section ref=\{scopeRef\} className="ride-groups" aria-labelledby="ride-sheet-types">\s*<h3 id="ride-sheet-types" className="visually-hidden">\s*\{t\("Every ride type"\)\}\s*<\/h3>/);
   // Review F9: a search's groups are ride-sheet-group (.ride-group is the group ride overlay's, absolutely placed).
   assert.match(go, /<section key=\{group\.id\} className="ride-sheet-group" aria-labelledby=\{`ride-sheet-\$\{group\.id\}`\}>\s*<h4 id=\{`ride-sheet-\$\{group\.id\}`\}>\{group\.label\}<\/h4>\s*<RideTypeCards ids=\{group\.ids\} preset=\{preset\} onPick=\{onPick\} idPrefix="ride-sheet" icon=\{rideIcon\} \{\.\.\.star\} \/>/);
   assert.match(sheets, /role=\{label \? "group" : undefined\} aria-label=\{label\}/);

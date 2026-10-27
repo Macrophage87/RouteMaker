@@ -180,8 +180,8 @@ test("Go's ride types: the rider's own (My Go, Default until set), then Own Bike
 
 test("Go's places are Home, Food, Water and Restroom (Work only in Favorites); Home works signed out", () => {
   // Signed in, Favorites takes Home's place (lib/favoritePlaces.test.ts), and Work is its second row, not a chip.
-  const row = go.slice(go.indexOf('aria-label="Places"'), go.indexOf('aria-label="More places"'));
-  const chips = [...row.matchAll(/<Icon name="(\w+)" size=\{18\} \/>\s*(\w+)\s*<\/button>/g)].map((m) => m[2]);
+  const row = go.slice(go.indexOf('aria-label={t("Places")}'), go.indexOf('aria-label={t("More places")}'));
+  const chips = [...row.matchAll(/<Icon name="(\w+)" size=\{18\} \/>\s*\{t\("(\w+)"\)\}\s*<\/button>/g)].map((m) => m[2]);
   assert.deepEqual(chips.slice(0, 4), ["Home", "Food", "Water", "Restroom"]);
   assert.match(row, /\{FAVORITES_TEXT\}/);
   assert.doesNotMatch(row, /Work/);

@@ -17,8 +17,9 @@ import { reverseKeepsStart } from "./loop.ts";
 import type { PresetId } from "./presets.ts";
 import { pointName } from "./summary.ts";
 import { withVias } from "./pointKinds.ts";
+import { t } from "./i18n.ts";
 
-export const BEST_ORDER_LABEL = "Best order";
+export const BEST_ORDER_LABEL = t("Best order");
 
 /** What the API answers (core.api.StopOrderOut). */
 export interface StopOrder {
@@ -82,8 +83,8 @@ export async function requestStopOrder(
         points,
         preset,
         // The order does not use the weight, so it is not sent (OWNER-DECISIONS 264's privacy:
-        // the weight leaves the device only for the plan that uses it).
-        ...dialFields({ ...dials, systemWeightKg: undefined }),
+        // the weight leaves the device only for the plan that uses it). Nor the riding speed, which it does not use.
+        ...dialFields({ ...dials, systemWeightKg: undefined, ridingSpeedKmh: undefined }),
       }),
     });
   } catch {
@@ -205,5 +206,5 @@ export function applyAnswer(
   return { commit: asked.stops ? withVias(result.answer.order, asked.stops) : reorderedPoints(asked.points, result.answer.order), say };
 }
 
-export const FINDING_ORDER_SAID = "Finding the best order for the stops.";
-export const STILL_FINDING_ORDER_SAID = "Still finding the best order.";
+export const FINDING_ORDER_SAID = t("Finding the best order for the stops.");
+export const STILL_FINDING_ORDER_SAID = t("Still finding the best order.");

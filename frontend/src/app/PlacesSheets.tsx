@@ -44,6 +44,7 @@ import { FOOD_LAYER, FOOD_SOURCE_ID, foodGeoJson, foodLayer, type FoodResult } f
 import { ROUTE_BOTTOM_LAYER } from "../lib/railLayer.ts";
 import { SHEET_TITLES, type PanelView } from "../lib/sidebar.ts";
 import type { SheetNav } from "./Sheets.tsx";
+import { t } from "../lib/i18n.ts";
 
 /** Go's Repair: the nearest repair stands and bike shops, lettered; a row opens its card. */
 export function RepairSheet({ nav, status, items, at, onPick }: { nav: SheetNav; status: string; items: readonly RepairNearby[] | null; at: Date; onPick: (item: RepairNearby) => void }) {
@@ -55,7 +56,7 @@ export function RepairSheet({ nav, status, items, at, onPick }: { nav: SheetNav;
       </p>
       {items && items.length > 0 && (
         <>
-          <ol role="list" className="nearest-list repair-list" aria-label="Repair stands and bike shops">
+          <ol role="list" className="nearest-list repair-list" aria-label={t("Repair stands and bike shops")}>
             {items.map((item, i) => (
               <li key={item.place.id}>
                 {/* Named by the place and how far; its details are its description (review F13), not repeated in the name. */}
@@ -103,7 +104,7 @@ function SightRow({ result, index, children }: { result: SightResult; index: num
 /** Go's Sights: the nearest five, no filters; a row opens its card. */
 export function SightsList({ items, onPick }: { items: readonly SightResult[]; onPick: (result: SightResult) => void }) {
   return (
-    <ol role="list" className="nearest-list sights-list" aria-label="Places to see">
+    <ol role="list" className="nearest-list sights-list" aria-label={t("Places to see")}>
       {items.map((r, i) => (
         <li key={r.place.id}>
           <button type="button" className="secondary place-row" onClick={() => onPick(r)} aria-label={`${placeLetter(i)}: ${sightText(r)}`}>
@@ -141,7 +142,7 @@ export function PlacesSheet(props: PlacesSheetProps) {
         <label className="places-filter">
           Show{" "}
           <select value={filter} onChange={(event) => onFilter(event.target.value as PlaceFilter)}>
-            <option value="all">All places to see</option>
+            <option value="all">{t("All places to see")}</option>
             {CATEGORIES.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.label}
@@ -155,7 +156,7 @@ export function PlacesSheet(props: PlacesSheetProps) {
       </p>
       {items && items.length > 0 && go && <SightsList items={items} onPick={onGoPick} />}
       {items && items.length > 0 && !go && (
-        <ol role="list" className="nearest-list places-list" aria-label="Places to see">
+        <ol role="list" className="nearest-list places-list" aria-label={t("Places to see")}>
           {items.map((r, i) => (
             <li key={r.place.id}>
               <SightRow result={r} index={i}>
@@ -163,16 +164,16 @@ export function PlacesSheet(props: PlacesSheetProps) {
               </SightRow>
               <span className="actions">
                 <button type="button" className="secondary" aria-label={`Show on map: ${r.place.name}, marker ${placeLetter(i)}`} onClick={() => onShow(r)}>
-                  Show on map
+                  {t("Show on map")}
                 </button>
                 {canAddStop && (
                   <button type="button" className="secondary" aria-label={`Add as stop: ${r.place.name}`} onClick={() => onAddStop(r)}>
-                    Add as stop
+                    {t("Add as stop")}
                   </button>
                 )}
                 {r.place.website && (
                   <a className="food-web" href={r.place.website} target="_blank" rel="noopener noreferrer" aria-label={`Website: ${r.place.name} (opens in a new tab)`}>
-                    Website
+                    {t("Website")}
                   </a>
                 )}
               </span>

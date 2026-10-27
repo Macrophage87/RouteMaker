@@ -112,6 +112,12 @@ test("the key says what the mark means, in words, with the row's whole width", (
 test("Ride says a hazard ahead, shortly, at every level but Quiet", () => {
   assert.equal(roadHazardWords(RAILS.text), "Rails in the road on H Street Northeast. Cross them square on, a wheel can drop into the groove.");
   assert.equal(roadHazardWords("Cobblestones on O Street Northwest, at 0.4 mi (0.6 km): bumpy, and slippery when wet."), "Cobblestones on O Street Northwest. Bumpy, and slippery when wet.");
+  // The server's Spanish (routemaker.lang_es).
+  assert.equal(
+    roadHazardWords("Rieles en la calle en H Street Northeast, 0.4 a 1.2 mi (0.6 a 1.9 km): crúcelos en ángulo recto."),
+    "Rieles en la calle en H Street Northeast. Crúcelos en ángulo recto.",
+  );
+  assert.equal(roadHazardWords("Adoquines en O Street Northwest, en 0.4 mi (0.6 km): irregular."), "Adoquines en O Street Northwest. Irregular.");
   assert.equal(roadHazardWords("Something else."), "Something else.");
   const entry: DescriptionEntry = { kind: "hazard", from_m: 400, to_m: 900, from_mi: 0.25, to_mi: 0.56, street: "H Street Northeast", tier: null, facility: null, turn: null, text: RAILS.text };
   const model = rideModel(route({ description: [entry], duration_s: 300, leg_ends: [2] }));

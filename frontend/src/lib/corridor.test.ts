@@ -12,9 +12,10 @@ import {
   MAX_JOBS,
   START_JITTER_MS,
   STOP_AFTER_FAILURES,
+  FAILURE_WAIT_MS,
   STRESS_GAP_MS,
   corridorJobs,
-  corridorNote,
+  corridorWorry,
   corridorTiles,
   fontStacks,
   glyphUrls,
@@ -98,10 +99,10 @@ test("prefetchCorridor: a short random start, then one at a time, paced; done ke
   assert.equal(result.stress.total + result.base.total, result.total);
   assert.deepEqual(waits, [START_JITTER_MS / 2, ...order.map((k) => (k === "stress" ? STRESS_GAP_MS : BASE_GAP_MS))]);
   assert.ok(STRESS_GAP_MS >= 400 && STRESS_GAP_MS <= 500, "stress tiles 400 to 500 ms apart");
-  assert.equal(corridorNote(result), "The map along the route is saved for dead spots.");
+  assert.equal(corridorWorry(result), "");
 });
 
-test("corridorNote: says which kind was saved, and only what was", () => {
+test("corridorWorry: says only that nothing was saved; a part, or one kind of tile, says nothing", () => {
   const result = (stress: number, base: number, capped = false) => ({
     kept: stress + base,
     failed: 0,
@@ -111,10 +112,10 @@ test("corridorNote: says which kind was saved, and only what was", () => {
     capped,
     stopped: false,
   });
-  assert.equal(corridorNote(result(10, 0)), "Only the stress lines along the route are saved for dead spots, not the base map.");
-  assert.equal(corridorNote(result(0, 10)), "Only the base map along the route is saved for dead spots, not the stress lines.");
-  assert.equal(corridorNote(result(3, 3, true)), "The map along the first part of the route is saved for dead spots.");
-  assert.match(corridorNote(result(0, 0)), /could not be saved/);
+  assert.equal(corridorWorry(result(10, 0)), "");
+  assert.equal(corridorWorry(result(0, 10)), "");
+  assert.equal(corridorWorry(result(3, 3, true)), "");
+  assert.equal(corridorWorry(result(0, 0)), "Map not saved offline: it needs a signal.");
 });
 
 test("prefetchCorridor: a kind failing in a row is stopped (no signal, or no base map served); End ride stops it all", async () => {
@@ -134,6 +135,37 @@ test("prefetchCorridor: a kind failing in a row is stopped (no signal, or no bas
   assert.ok(asked.stress > STOP_AFTER_FAILURES);
   assert.equal(result.failed, STOP_AFTER_FAILURES);
 
+  // From the second failure in a row the next tile waits longer (1, 2, 4 s), none after the failure that
+  // drops the kind; a lone failure waits only the gap, so a patchy signal does not hold the stress tiles back.
+  const waitsOf = async (fails: (baseCall: number) => boolean) => {
+    const waits: { kind: string; ms: number }[] = [];
+    let call = 0;
+    let last = "";
+    const result = await prefetchCorridor(line, {
+      fetch: async (job) => {
+        last = job.kind;
+        return job.kind === "stress" || !fails((call += 1));
+      },
+      wait: async (ms) => void waits.push({ kind: last, ms }),
+      random: () => 0,
+      signal: new AbortController().signal,
+      done: new Set(),
+    });
+    return { result, base: waits.filter((w) => w.kind === "base").map((w) => w.ms), stress: waits.filter((w) => w.kind === "stress").map((w) => w.ms) };
+  };
+  const dead = await waitsOf(() => true);
+  assert.deepEqual(dead.base, [BASE_GAP_MS, 1, 2, 4].map((k, i) => (i ? k * FAILURE_WAIT_MS : k)).concat([BASE_GAP_MS]));
+  assert.equal(dead.result.base.kept, 0);
+  assert.ok(dead.result.stress.kept === dead.result.stress.total, "the stress tiles all come all the same");
+  // A blip: four failures in a row (the old limit, a fifth of a second), then the signal is back.
+  const blip = await waitsOf((n) => n >= 2 && n <= 5);
+  assert.equal(blip.result.base.kept, blip.result.base.total - 4);
+  assert.deepEqual(blip.base.filter((ms) => ms !== BASE_GAP_MS), [1, 2, 4].map((k) => k * FAILURE_WAIT_MS));
+  // Patchy: every other base tile fails; never two in a row, so no wait past the gap.
+  const patchy = await waitsOf((n) => n % 2 === 0);
+  assert.ok(patchy.base.every((ms) => ms === BASE_GAP_MS));
+  assert.equal(patchy.result.base.kept, Math.ceil(patchy.result.base.total / 2));
+
   const controller = new AbortController();
   let count = 0;
   const stopped = await prefetchCorridor(line, {
@@ -148,12 +180,12 @@ test("prefetchCorridor: a kind failing in a row is stopped (no signal, or no bas
   });
   assert.equal(stopped.stopped, true);
   assert.equal(count, 3);
-  assert.equal(corridorNote(stopped), "");
+  assert.equal(corridorWorry(stopped), "");
 
   const none = await prefetchCorridor(line, { fetch: async () => false, wait: async () => undefined, signal: new AbortController().signal, done: new Set() });
   assert.equal(none.kept, 0);
-  assert.match(corridorNote(none), /could not be saved/);
-  assert.equal(corridorNote("saving"), "Saving the map along the route for dead spots…");
+  assert.equal(corridorWorry(none), "Map not saved offline: it needs a signal.");
+  assert.equal(corridorWorry("saving"), "");
 });
 
 test("prefetchCorridor: stops when the kept bytes reach the cap", async () => {
@@ -170,7 +202,7 @@ test("prefetchCorridor: stops when the kept bytes reach the cap", async () => {
   });
   assert.equal(count, 4);
   assert.equal(result.capped, true);
-  assert.match(corridorNote(result), /first part of the route/);
+  assert.equal(corridorWorry(result), "", "a part kept says nothing");
 });
 
 test("prefetchCorridor with a real ByteBudget: the first refused tile stops it (tiles never fill it exactly)", async () => {

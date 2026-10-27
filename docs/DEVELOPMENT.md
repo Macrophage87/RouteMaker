@@ -7884,7 +7884,10 @@ per-client draw cap, `TILES_IN_FLIGHT`) and its 429/503 backoff. At most `MAX_JO
 to the byte, and freed again when bytes are given back); a tile counts as kept only when its write
 succeeded (the Cache Storage put resolved, every IndexedDB range's transaction completed; a failed
 write gives its bytes back), and the counts are per kind; a kind failing `STOP_AFTER_FAILURES` times in a row is
-dropped (no signal at the start, or a base map that is not served). Where they are kept:
+dropped (no signal at the start, or a base map that is not served); from a kind's second failure in a row the next
+tile waits `FAILURE_WAIT_MS` (1 s), then 2 s, then 4 s, so a kind is dropped only after about 7 s without a
+signal and a brief loss (a cell hand-off) no longer drops it for the whole ride; a lone failure waits only
+the kind's gap, so a patchy signal does not hold the other kind back. Where they are kept:
 
 * Stress tiles: the Cache Storage bucket `routemaker-corridor-v1`, keyed by the tile's URL without its
   `?rev=` (`stressKey`), the edit generation kept beside it in a header, so an admin's edit mid-ride
@@ -7915,9 +7918,10 @@ before it fetches, and a time stamp in localStorage (`routemaker.corridor`, a ti
 lets the next page load clear whatever an earlier page kept (`sweepCorridor`; a page that never rode
 opens nothing). The clears run in order on one promise chain and End ride bumps a generation, so a
 quick Start ride after End ride waits for the clear and a `keepCorridor` still waiting when End ride
-comes starts nothing. RideMode shows `corridorNote` under its controls, which says what was saved
-("Only the stress lines along the route are saved for dead spots, not the base map." when the base
-map was not); it is not said, since it changes nothing the rider must do. A re-plan still needs a
+comes starts nothing. RideMode shows `corridorWorry` under its controls only when nothing along the route could be kept
+("Map not saved offline: it needs a signal."); a part kept, or one kind of tile only, shows nothing
+(the owner, 2026-10-27, of the older per-kind note: "This prompt made no sense"). It is not said,
+since it changes nothing the rider must do. A re-plan still needs a
 signal.
 
 **The 311 report (N6).** "Report a problem to DC 311" (`Report311` in `RideMode.tsx`,
