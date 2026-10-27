@@ -10,7 +10,7 @@ import { stationNearSpot } from "./lib/stationLinks.ts";
 import { reorder } from "./lib/pointMover.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
-import { requestNeighbours, requestRoute, routeRequestBody, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
+import { cancelRoute, requestNeighbours, requestRoute, routeRequestBody, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
 import { choiceColour, choiceFeatures } from "./lib/routeChoice.ts";
 import { displacedBy, keptNeighbours, neighbourDials, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
 import { betterRouteSaid, EarlyStart, takesRefined } from "./lib/progressive.ts";
@@ -1051,7 +1051,7 @@ export function App() {
   const fileNamed = nameWithoutHome((point) => namer.name(point)?.name, myGo.home?.point ?? null);
 
   // One scheduler for the page: one request in flight, the latest plan only,
-  // Retry-After waited out (routeScheduler.ts).
+  // Retry-After waited out (routeScheduler.ts); Go's full plan, replaced, is cancelled (routing audit S7).
   const scheduler = useRef<RouteScheduler<Plan, NeighboursResult> | null>(null);
   // A route kept for offline (WEB-NAV-plan.md section 8, P3) answers when the planner cannot be reached
   // and the plan is one the rider kept; the planner's notice says so, and the next real answer clears it.
@@ -1085,7 +1085,7 @@ export function App() {
   }
   if (scheduler.current === null) {
     scheduler.current = new RouteScheduler<Plan, NeighboursResult>({
-      send: async (plan) => {
+      send: async (plan, replaces) => {
         // A shared route's link: its line first (openSaved sets savedShown), then this plan.
         if (SHARED_WAIT) await SHARED_WAIT;
         if (sharedRevoked && (revokedPlan ??= sentPlanKey(plan.points, plan.preset, plan.dials)) === sentPlanKey(plan.points, plan.preset, plan.dials))
@@ -1118,9 +1118,10 @@ export function App() {
         };
         // Asked for already, before the tap (Go's early start): that request's answer, not a second request.
         const early = earlyStart.current?.take(routeRequestBody(plan.points, plan.preset, asked)) ?? null;
+        // A plan replacing Go's full plan names it, so the API lets it wait for that plan's slot (routing audit S7).
         const result = early
-          ? await early.catch(() => requestRoute(plan.points, plan.preset, asked))
-          : await requestRoute(plan.points, plan.preset, asked);
+          ? await early.catch(() => requestRoute(plan.points, plan.preset, { ...asked, replaces }))
+          : await requestRoute(plan.points, plan.preset, { ...asked, replaces });
         // The API could not follow this file (core/follow.py): its fitting rounds are planned, not traced again.
         if (follow && result.ok && !result.route.follows_file && importBase.current) importBase.current.unfollowed = true;
         keptShown.current = null;
@@ -1178,7 +1179,9 @@ export function App() {
         }
       },
       // Go's first route (v0.7.0, "Faster routing"): its full plan is asked for once it is shown.
-      refine: (plan: Plan, shown: RouteResult) =>
+      // Sent with an id, so a plan asked for meanwhile cancels it rather than waiting for it (routing audit S7, option
+      // B; the owner, 2026-10-27).
+      refine: (plan: Plan, shown: RouteResult, planId: string) =>
         shown.ok && shown.route.provisional
           ? () =>
               requestRoute(plan.points, plan.preset, {
@@ -1186,8 +1189,10 @@ export function App() {
                 dials: plan.dials,
                 vias: viaIndices(plan.points, VIA_MARKS.isVia),
                 straight: drawnLegs(plan.points),
+                planId,
               })
           : null,
+      cancel: (planId: string) => cancelRoute(planId),
       // The full plan replaces the first route before Start only, and is said once where it is another route; the
       // focus stays where it is, and the route's own sentence is not said again.
       onRefined: (plan: Plan, result: RouteResult) => {

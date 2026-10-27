@@ -30,6 +30,15 @@
  *   meanwhile. A plan asked for meanwhile waits for it, as for any request in flight,
  *   and is said to be pending; a refusal of the full plan leaves the first route shown
  *   (a Retry-After still holds for what is sent next).
+ * - except where the API can stop it (`cancel`; routing audit S7, option B, which the owner
+ *   approved on 2026-10-27, reversing "one request at a time" for this case alone): then a
+ *   plan asked for while a full plan runs replaces it. The full plan, sent with an id
+ *   (X-Plan-Id), is cancelled by that id (POST /api/route/cancel), and the next plan goes
+ *   as soon as it would with nothing in flight, naming the plan it replaces (X-Plan-Replaces):
+ *   the API stops the old plan at its next router call, and lets the new one wait a moment
+ *   for the slot it gives back. Nothing the cancelled plan answers is read, its refusal or
+ *   Retry-After included. Only a full plan is replaced: a first route still waits, as do
+ *   Plan mode's requests, which have no full plan.
  * - once the route shown is final (its full plan, or an answer that was full already), one
  *   more request may follow for the same plan (`after`: Go's More direct and Calmer,
  *   lib/neighbours.ts). It stands outside these rules, at the lowest priority: it is not
@@ -55,7 +64,8 @@ export type SchedulerState =
   | { kind: "waiting"; seconds: number };
 
 export interface SchedulerOptions<P, A extends AfterResult = AfterResult> {
-  send: (plan: P) => Promise<RouteResult>;
+  /** `replaces`: the id of a full plan this request replaces, cancelled already (`cancel`). */
+  send: (plan: P, replaces?: string) => Promise<RouteResult>;
   onResult: (plan: P, result: RouteResult) => void;
   onState?: (state: SchedulerState) => void;
   timers?: Timers;
@@ -66,7 +76,14 @@ export interface SchedulerOptions<P, A extends AfterResult = AfterResult> {
    * After an answer is shown: the request for its full plan where it was only a first route (v0.7.0, "Faster
    * routing"), else null. Called once per answer shown.
    */
-  refine?: (plan: P, shown: RouteResult) => (() => Promise<RouteResult>) | null;
+  refine?: (plan: P, shown: RouteResult, planId: string) => (() => Promise<RouteResult>) | null;
+  /**
+   * Stop the full plan sent with `planId` (refine's), which a newer plan replaces (routing audit S7). Fire and
+   * forget. Without it, a plan asked for while a full plan runs waits for it.
+   */
+  cancel?: (planId: string) => void;
+  /** A new plan id (default: 32 random hex digits). */
+  planId?: () => string;
   /** The full plan, for the plan still asked for: swap it in (before Start only; the caller decides). */
   onRefined?: (plan: P, result: RouteResult) => void;
   /**
@@ -81,6 +98,13 @@ export interface SchedulerOptions<P, A extends AfterResult = AfterResult> {
 export const DEBOUNCE_MS = 300;
 export const MAX_WAITS = 3;
 
+/** 32 random hex digits: a plan's id, unguessable, so no other page names it (the API scopes it per client too). */
+export function newPlanId(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 const realTimers: Timers = {
   set: (fn, ms) => setTimeout(fn, ms),
   clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
@@ -92,6 +116,11 @@ export class RouteScheduler<P, A extends AfterResult = AfterResult> {
   private inFlight = false;
   /** The request in flight is a full plan following a first route shown (`refine`). */
   private refining = false;
+  /** The full plan in flight: its id, and a count that tells a replaced one's answer from the current one's. */
+  private refineId: string | null = null;
+  private refineToken = 0;
+  /** A full plan replaced and cancelled: named by the next request sent (X-Plan-Replaces). */
+  private replaced: string | null = null;
   private debounce: unknown = null;
   /** While set, the API's last Retry-After has not passed: nothing is sent. */
   private hold: unknown = null;
@@ -128,15 +157,19 @@ export class RouteScheduler<P, A extends AfterResult = AfterResult> {
         this.pump();
       }, this.debounceMs);
     }
+    this.replaceRefine();
     if (this.inFlight && !this.refining) return;
     if (this.hold === null) this.state({ kind: "pending" });
     else if (!this.holdAnnounced) this.state({ kind: "waiting", seconds: this.holdLeft });
     if (options.now) this.pump();
   }
 
-  /** Whether a request of the scheduler's is in flight (a first route's full plan included). */
+  /**
+   * Whether a request of the scheduler's is in flight (a first route's full plan included), or a full plan just
+   * replaced may still hold its slot until the plan replacing it is sent (Go's early start waits that out).
+   */
   busy(): boolean {
-    return this.inFlight;
+    return this.inFlight || this.replaced !== null;
   }
 
   /**
@@ -148,7 +181,24 @@ export class RouteScheduler<P, A extends AfterResult = AfterResult> {
     this.generation += 1;
     if (this.debounce !== null) this.timers.clear(this.debounce);
     this.debounce = null;
+    // Its answer would not be shown: the API stops computing it. Nothing replaces it yet.
+    this.replaceRefine(false);
     if (!this.inFlight) this.state({ kind: "idle" });
+  }
+
+  /**
+   * The full plan in flight, where the API can stop it (`cancel`): cancelled, and its slot counted free at once
+   * (routing audit S7, option B; the owner, 2026-10-27). Its answer is then never read.
+   */
+  private replaceRefine(replaced = true): void {
+    const id = this.refineId;
+    if (!this.refining || id === null || !this.options.cancel) return;
+    this.refineToken += 1;
+    this.refineId = null;
+    this.inFlight = false;
+    this.refining = false;
+    if (replaced) this.replaced = id;
+    this.options.cancel(id);
   }
 
   private state(state: SchedulerState): void {
@@ -190,9 +240,11 @@ export class RouteScheduler<P, A extends AfterResult = AfterResult> {
     }
     const plan = this.latest;
     const generation = this.generation;
+    const replaces = this.replaced;
+    this.replaced = null;
     this.inFlight = true;
     this.state({ kind: "in-flight" });
-    this.options.send(plan).then(
+    (replaces === null ? this.options.send(plan) : this.options.send(plan, replaces)).then(
       (result) => this.settle(plan, generation, result),
       () => this.settle(plan, generation, null),
     );
@@ -230,21 +282,28 @@ export class RouteScheduler<P, A extends AfterResult = AfterResult> {
     this.options.onResult(plan, result);
     // A new plan asked for inside onResult is sent as usual; the full plan of this one is not wanted.
     if (generation !== this.generation || this.latest !== null) return;
-    const follow = this.options.refine?.(plan, result) ?? null;
+    const id = this.options.cancel ? (this.options.planId ?? newPlanId)() : "";
+    const follow = this.options.refine?.(plan, result, id) ?? null;
     if (follow === null) {
       this.startAfter(plan, generation, result);
       return;
     }
     this.inFlight = true;
     this.refining = true;
+    this.refineId = this.options.cancel ? id : null;
+    this.refineToken += 1;
+    const token = this.refineToken;
     follow().then(
-      (refined) => this.settleRefined(plan, generation, refined),
-      () => this.settleRefined(plan, generation, null),
+      (refined) => this.settleRefined(plan, generation, token, refined),
+      () => this.settleRefined(plan, generation, token, null),
     );
   }
 
   /** The full plan after a first route: shown only for the plan still asked for, then the next plan goes. */
-  private settleRefined(plan: P, generation: number, result: RouteResult | null): void {
+  private settleRefined(plan: P, generation: number, token: number, result: RouteResult | null): void {
+    // Replaced and cancelled (`replaceRefine`): its slot was counted free then, and nothing it says is read.
+    if (token !== this.refineToken) return;
+    this.refineId = null;
     this.settleFollow(result);
     if (generation === this.generation && result !== null && result.ok) {
       this.options.onRefined?.(plan, result);
