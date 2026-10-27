@@ -7915,9 +7915,10 @@ before it fetches, and a time stamp in localStorage (`routemaker.corridor`, a ti
 lets the next page load clear whatever an earlier page kept (`sweepCorridor`; a page that never rode
 opens nothing). The clears run in order on one promise chain and End ride bumps a generation, so a
 quick Start ride after End ride waits for the clear and a `keepCorridor` still waiting when End ride
-comes starts nothing. RideMode shows `corridorNote` under its controls, which says what was saved
-("Only the stress lines along the route are saved for dead spots, not the base map." when the base
-map was not); it is not said, since it changes nothing the rider must do. A re-plan still needs a
+comes starts nothing. RideMode shows `corridorWorry` under its controls only when nothing along the route could be kept
+("Map not saved offline: it needs a signal."); a part kept, or one kind of tile only, shows nothing
+(the owner, 2026-10-27, of the older per-kind note: "This prompt made no sense"). It is not said,
+since it changes nothing the rider must do. A re-plan still needs a
 signal.
 
 **The 311 report (N6).** "Report a problem to DC 311" (`Report311` in `RideMode.tsx`,

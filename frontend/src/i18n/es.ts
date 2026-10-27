@@ -327,6 +327,7 @@ export const ES: Readonly<Record<string, string>> = {
   "NWS notice": "Aviso del NWS",
   "Forecast: Open-Meteo": "Pronóstico: Open-Meteo",
   "Forecast: Open-Meteo (opens in a new tab)": "Pronóstico: Open-Meteo (se abre en una pestaña nueva)",
+  "Map not saved offline: it needs a signal.": "El mapa no se guardó sin conexión: necesita señal.",
 
   // ---- Settings and menu ----
   "My Go": "Mi Go",
