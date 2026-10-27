@@ -454,8 +454,8 @@ export function GoAddStop({
 
 /**
  * Go's route card (edit-route redesign, Stephen 2026-10-18): the start and the destination, and the stops and via
- * points between them counted apart (lib/pointKinds.ts middleCountSaid), on one button that opens Edit route (Plan's points in a sheet: change the start or the destination,
- * add or remove a stop, Swap, Loop). It replaced "Add a stop" under Start, and with a route the start was not shown.
+ * points between them counted apart (lib/pointKinds.ts middleCountSaid), on one button that opens Edit route
+ * (Plan's points in a sheet: change the start or the destination, add or remove a stop, Swap, Loop). It replaced "Add a stop" under Start, and with a route the start was not shown.
  */
 export function GoRouteCard({ start, destination, between, onEdit }: { start: string; destination: string; between: string; onEdit: (opener: HTMLButtonElement) => void }) {
   return (

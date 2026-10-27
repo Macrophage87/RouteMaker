@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
+import { setLanguageForTest } from "./i18n.ts";
 import {
   ViaMarks,
   addStopWhereShortest,
@@ -121,4 +122,14 @@ test("Go's route card counts stops and via points apart (a commute of via points
   assert.equal(middleCountSaid([p(-77.0), p(-77.01), p(-77.02), p(-77.03)], marks.isVia), "2 stops");
   assert.equal(middleCountSaid([p(-77.0), marks.via(p(-77.01)), p(-77.02)], marks.isVia), "1 via point");
   assert.equal(middleCountSaid([p(-77.0), p(-77.02)], marks.isVia), "");
+  // A loop's last point is a stop (Plan's list names it so): the old card's count, now by kind.
+  const loop = [p(-77.0), marks.via(p(-77.01)), marks.via(p(-77.02)), p(-77.03)];
+  assert.equal(middleCountSaid(loop, marks.isVia, true), "1 stop · 2 via points");
+  setLanguageForTest("es");
+  try {
+    assert.equal(middleCountSaid(mixed, marks.isVia), "1 parada · 3 puntos de paso");
+    assert.equal(middleCountSaid(allVias, marks.isVia), "4 puntos de paso");
+  } finally {
+    setLanguageForTest("en");
+  }
 });
