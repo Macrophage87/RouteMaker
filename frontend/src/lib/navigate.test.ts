@@ -487,6 +487,9 @@ test("spokenDistance and withoutMetric: US units only when spoken", () => {
   assert.equal(withoutMetric("Walk your bike here, for 300 ft (90 m)."), "Walk your bike here, for 300 ft.");
   assert.equal(withoutMetric("1.0 to 1.6 mi (1.6 to 2.6 km): 6 crossings"), "1.0 to 1.6 mi: 6 crossings");
   assert.equal(withoutMetric("low stress (LTS 1)."), "low stress (LTS 1).");
+  // The server's Spanish (routemaker.lang_es).
+  assert.equal(withoutMetric("1.0 a 1.6 mi (1.6 a 2.6 km): 6 cruces"), "1.0 a 1.6 mi: 6 cruces");
+  assert.equal(withoutMetric("Camine con su bicicleta aquí, por 300 ft (90 m)."), "Camine con su bicicleta aquí, por 300 ft.");
 });
 
 test("cueSpoken: stops and the end", () => {

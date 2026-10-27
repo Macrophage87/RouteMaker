@@ -83,7 +83,7 @@ from pydantic import (
     model_validator,
 )
 
-from routemaker import effort, ridetime
+from routemaker import effort, lang, ridetime
 from routemaker.geo import Point, haversine
 
 from . import (
@@ -349,6 +349,13 @@ class RouteIn(Schema):
             'v0.8.2, Ride\'s "Road closed" button: stretches of road the rider found closed on'
             " this ride, each a line of [lon, lat] pairs, left out of the plan as a closure is."
             " Sent with the ride's re-plans only; never remembered by the server."
+        ),
+    )
+    lang: Literal["en", "es"] = Field(
+        default="en",
+        description=(
+            "The language of the answer's sentences (the description, hazards, work zones,"
+            ' climbs): "en" or "es". Street and place names are never translated.'
         ),
     )
     heading: float | None = Field(
@@ -2994,7 +3001,8 @@ def route(request, body: RouteIn, response: HttpResponse):
     timings.mark("wait")
     token = timing.start(timings)
     try:
-        answered = _route_answer(request, body, response)
+        with lang.speaking(body.lang):
+            answered = _route_answer(request, body, response)
     finally:
         timing.stop(token)
     header = timings.header()
@@ -3166,7 +3174,8 @@ def route_neighbours(request, body: RouteIn):
         kind: body.model_copy(update={"stress": notch, "quick": False, "candidates": False})
         for kind, notch in wanted
     }
-    answered = {kind: _neighbour(bodies[kind], started) for kind, _ in wanted}
+    with lang.speaking(body.lang):
+        answered = {kind: _neighbour(bodies[kind], started) for kind, _ in wanted}
     options = [
         {"kind": kind, "stress": notch, "route": answered[kind]}
         for kind, notch in wanted

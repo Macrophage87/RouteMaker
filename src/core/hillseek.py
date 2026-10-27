@@ -55,6 +55,7 @@ from pathlib import Path
 from routemaker import climb_categories, climb_exclusions
 from routemaker.describe import point_words
 from routemaker.geo import Point, haversine
+from routemaker.lang import t
 
 from .trailseek import Plane, RouteLine
 
@@ -470,15 +471,20 @@ def climb_words(climb: Climb) -> str:
     grade are the file's: its whole metres would not always score the same category
     again."""
     name = (
-        "Hors catégorie (HC) climb"
+        t("Hors catégorie (HC) climb")
         if climb.category == "HC"
-        else f"Category {climb.category} climb"
+        else t("Category {category} climb", category=climb.category)
     )
     miles = climb.length_m / METRES_PER_MILE
-    mi = f"{miles:.1f} {'mile' if math.isclose(round(miles, 1), 1.0) else 'miles'}"
-    return (
-        f"{name}, {mi} ({climb.length_m / 1000:.1f} km) at {climb.grade_pct:.1f}%, "
-        f"{_feet(climb.gain_m)} gained"
+    one = math.isclose(round(miles, 1), 1.0)
+    mi = t("{n} mile", n=f"{miles:.1f}") if one else t("{n} miles", n=f"{miles:.1f}")
+    return t(
+        "{name}, {mi} ({km} km) at {grade}%, {gain} gained",
+        name=name,
+        mi=mi,
+        km=f"{climb.length_m / 1000:.1f}",
+        grade=f"{climb.grade_pct:.1f}",
+        gain=_feet(climb.gain_m),
     )
 
 
@@ -489,12 +495,14 @@ def sentence(item: Ridden, scale: float = 1.0) -> str:
     says so, that it is mostly unpaved."""
     climb = item.climb
     named = f"{climb.name}, " if climb.name else ""
-    text = (
-        f"At {point_words(item.start_m * scale)}: {named}{climb_words(climb)}, "
-        f"to the summit at {point_words(item.summit_m * scale)}."
+    text = t(
+        "At {where}: {climb}, to the summit at {summit}.",
+        where=point_words(item.start_m * scale),
+        climb=f"{named}{climb_words(climb)}",
+        summit=point_words(item.summit_m * scale),
     )
     if climb.unpaved:
-        text += " Mostly unpaved."
+        text += t(" Mostly unpaved.")
     return text
 
 
