@@ -343,6 +343,8 @@ const START_MY_GO = readStartMyGo();
 const GO_CLOSE_LABEL = "Close";
 /** Go's early start (v0.7.0, "Faster routing" step 4) asks only for trips up to this straight-line length (25 mi). */
 const GO_EARLY_MAX_KM = 40;
+/** The top search result is asked for early once it has stayed the top this long, not while the rider types on past it. */
+const GO_EARLY_SETTLE_MS = 400;
 /** A fresh location this far (about 80 ft) from the last one lists the places near you again from it. */
 const MOVED_M = 25;
 const PLAN_LINK = hasPlanLink(window.location.hash) || initialPlan.points.length > 0;
@@ -2438,7 +2440,11 @@ export function App() {
   // A map press and a station's End here (place, placeStation: callbacks kept across renders) go through the current goTo.
   const goToRef = useRef(goTo);
   goToRef.current = goTo;
+  // The top search result's early start waits until it has stayed the top for GO_EARLY_SETTLE_MS (goEarlyToPlace).
+  const goEarlyTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(goEarlyTimer.current), []);
   const goToPlace = (found: Place) => {
+    window.clearTimeout(goEarlyTimer.current);
     const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label), entranceForPlace);
     if (point === null) {
       setNotice(OUTSIDE_NOTICE);
@@ -2461,9 +2467,14 @@ export function App() {
     const asked = { dials: { ...kept, loop: false }, quick: true };
     earlyStart.current?.start(routeRequestBody(ends, ridePreset, asked), () => requestRoute(ends, ridePreset, asked));
   };
+  // A result shown only between keystrokes costs no router call: the top result must stay the top a moment (Home,
+  // asked for when Go opens, goes at once).
   const goEarlyToPlace = (found: Place) => {
-    const point = placeFromSearch(found, () => undefined, entranceForPlace);
-    if (point) goEarly(point);
+    window.clearTimeout(goEarlyTimer.current);
+    goEarlyTimer.current = window.setTimeout(() => {
+      const point = placeFromSearch(found, () => undefined, entranceForPlace);
+      if (point) goEarly(point);
+    }, GO_EARLY_SETTLE_MS);
   };
   // Go's "Add a stop" (v0.7.0, "Keep adding stops by search"; also the nearest and Sights sheets): with a route, a place is a stop where it adds the
   // least distance, routed at once as any Go edit is; one edit, so Undo removes it. Without a route it is the

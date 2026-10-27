@@ -11,10 +11,11 @@ from __future__ import annotations
 import dataclasses
 import gc
 import tempfile
+from concurrent.futures import Future
 
 import pytest
 
-from core import presets, refine, routing, trailseek
+from core import parallel, presets, refine, routing, trailseek
 from routemaker import calm
 from routemaker import intersections as model
 from routemaker.intersections import Control, Event, Movement
@@ -1407,6 +1408,121 @@ class TestRouterAlternates:
         _kept, info = refine.refine(trip_of("o", 4.0), ctx)
         assert self.asks(world) == []
         assert info["alternates"] == {"given": 0, "ranked": 0, "taken": False, "limited": "time"}
+
+    def early(self, ctx, trips) -> refine.EarlyAlternates:
+        """The plan's early ask for this very request, already answered with `trips`."""
+        first, *others = trips
+        answer = {"trip": first, "alternates": [{"trip": t} for t in others]}
+        request = refine._alternates_request(ctx.request)
+        return refine.EarlyAlternates(ctx.variant, request, parallel.done(answer))
+
+    def test_the_plans_early_ask_is_ranked_not_asked_again(self, monkeypatch) -> None:
+        """The ask the plan started on the pool beside the first route's reading (routing
+        audit S2) is the search's own: its answer is ranked as the search's would be."""
+        orig = analysis("o", self.BUSY, cost_s=4000.0)
+        alt = analysis("a", "1" * 40, cost_s=4100.0, shift=200)
+        world = AlternatesWorld(
+            monkeypatch, {"o": orig, "a": alt}, [routing.RouterRefused(400, 442, "")] * 2, []
+        )
+        ctx = self.ctx()
+        ctx.early_alternates = self.early(ctx, [trip_of("o", 4.0), trip_of("a", 4.0)])
+        kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert self.asks(world) == []
+        assert kept["legs"][0]["shape"] == "a"
+        assert info["alternates"] == {"given": 1, "ranked": 1, "taken": True, "limited": None}
+
+    def test_an_early_ask_for_another_request_is_dropped_and_asked_again(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY, cost_s=4000.0)
+        alt = analysis("a", "1" * 40, cost_s=4100.0, shift=200)
+        world = AlternatesWorld(
+            monkeypatch,
+            {"o": orig, "a": alt},
+            [routing.RouterRefused(400, 442, "")] * 2,
+            [trip_of("o", 4.0), trip_of("a", 4.0)],
+        )
+        ctx = self.ctx()
+        stale = refine.EarlyAlternates(
+            ctx.variant, refine._alternates_request(ctx.request), Future()
+        )
+        # The request changed after the plan asked (the target fitting's costing).
+        ctx.request = {**ctx.request, "costing_options": {"bicycle": {"use_roads": 0.1}}}
+        ctx.early_alternates = stale
+        kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert stale.future.cancelled()
+        assert [r["costing_options"] for r in self.asks(world)] == [{"bicycle": {"use_roads": 0.1}}]
+        assert kept["legs"][0]["shape"] == "a"
+        assert info["alternates"]["taken"] is True
+
+    def test_an_early_ask_unanswered_at_the_reserve_is_limited_by_time(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY)
+        world = AlternatesWorld(
+            monkeypatch, {"o": orig}, [routing.RouterRefused(400, 442, "")] * 2, []
+        )
+        ctx = self.ctx()
+        ctx.search_budget_s = refine.ALTERNATES_ROUND_RESERVE_S + refine.ALTERNATES_MIN_S + 0.05
+        ctx.early_alternates = self.early(ctx, [trip_of("o", 4.0)])
+        ctx.early_alternates.future = Future()  # never answered
+        _kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert self.asks(world) == []
+        assert info["alternates"] == {"given": 0, "ranked": 0, "taken": False, "limited": "time"}
+
+    def test_the_early_ask_goes_to_the_pool_only_where_it_is_on(
+        self, monkeypatch, settings
+    ) -> None:
+        request = {
+            "locations": [
+                {"lon": BASE[0], "lat": BASE[1]},
+                {"lon": BASE[0] + 0.04, "lat": BASE[1]},
+            ],
+            "costing": "bicycle",
+            "exclude_locations": [{"lon": BASE[0] + 0.02, "lat": BASE[1]}],
+            "exclude_polygons": [[[0.0, 0.0], [1.0, 1.0]]],
+        }
+        deadline = routing.Deadline(routing.clock() + 40, 35)
+        settings.ROUTER_PARALLEL_CALLS = 1
+        assert refine.ask_alternates_early("standard", request, deadline) is None
+        settings.ROUTER_PARALLEL_CALLS = 3
+        seen = []
+
+        def call(variant, endpoint, payload, deadline):
+            seen.append((variant, endpoint, payload, deadline))
+            return {"trip": trip_of("o", 4.0)}
+
+        monkeypatch.setattr(routing, "_call", call)
+        before = routing.clock()
+        early = refine.ask_alternates_early("standard", request, deadline)
+        after = routing.clock()
+        assert early.future.result(timeout=5) == {"trip": trip_of("o", 4.0)}
+        # The plan changing its request in place afterwards (the work zones) reaches
+        # neither the ask nor what it is compared with.
+        request["exclude_polygons"][0].append([2.0, 2.0])
+        asked = {
+            "locations": request["locations"],
+            "costing": "bicycle",
+            "exclude_polygons": [[[0.0, 0.0], [1.0, 1.0]]],
+            "alternates": refine.ROUTER_ALTERNATES,
+        }
+        assert early.request == asked
+        ((variant, endpoint, payload, ask),) = seen
+        assert (variant, endpoint, payload) == ("standard", "route", asked)
+        # On a long plan the ask runs no longer than the search, after the reading,
+        # could wait for it, not up to the plan's own reserve.
+        window = (
+            refine.REFINE_BUDGET_S
+            + refine.EARLY_ALTERNATES_READ_S
+            - refine.ALTERNATES_ROUND_RESERVE_S
+        )
+        assert before + window <= ask.at <= after + window
+        assert ask.per_call_s == min(35, routing.ALTERNATES_TIMEOUT_S)
+        # On a short plan its own reserve ends the ask first.
+        seen.clear()
+        reserve = refine.REFINE_TRACE_RESERVE_S + refine.ALTERNATES_ROUND_RESERVE_S
+        tight = routing.Deadline(routing.clock() + reserve + 3, 35)
+        refine.ask_alternates_early("standard", request, tight).future.result(timeout=5)
+        assert seen[0][3].at == pytest.approx(tight.at - reserve)
+        # No time for the ask: none.
+        short = routing.Deadline(routing.clock() + reserve + 0.5, 35)
+        assert refine.ask_alternates_early("standard", request, short) is None
 
 
 class SeekWorld(World):

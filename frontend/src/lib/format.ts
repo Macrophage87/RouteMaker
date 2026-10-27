@@ -266,12 +266,15 @@ export function formatSeconds(seconds: number): string {
   return seconds === 1 ? "1 second" : `${seconds} seconds`;
 }
 
-/** The distance as said, US units only (Ride mode, WEB-NAV-plan.md Q4): "50 feet", "300 feet", "0.4 miles", "1 mile". */
+/** The distance as said, US units only (Ride mode, WEB-NAV-plan.md Q4): "50 feet", "300 feet", "700 feet", "0.4 miles", "1 mile".
+ *  Feet up to just under 1,000 ft, so a first warning at riding speed (about 160-300 m) is not
+ *  rounded to tenths of a mile, up to a third off (routing audit D7). */
 export function spokenDistance(metres: number): string {
   const m = Math.max(0, metres);
-  if (m < METRES_PER_MILE / 10) {
-    const feet = m * FEET_PER_METRE;
-    const rounded = feet >= 200 ? Math.round(feet / 50) * 50 : Math.max(10, Math.round(feet / 10) * 10);
+  const feet = m * FEET_PER_METRE;
+  if (feet < 950) {
+    const rounded = feet >= 500 ? Math.round(feet / 100) * 100
+      : feet >= 200 ? Math.round(feet / 50) * 50 : Math.max(10, Math.round(feet / 10) * 10);
     return t("{n} feet", { n: rounded });
   }
   const miles = Math.round((m / METRES_PER_MILE) * 10) / 10;

@@ -30,7 +30,9 @@ The rules:
   own STRAIGHT_MAX_DEG, `intersections.movement_of`, is not this.)
 - Nor is the street a leg ends on, under TINY_M, where it is turned onto
   (`_last_turn`): the turn onto the destination's street is said before the
-  arrival.
+  arrival. Nor is the street a leg begins on, at least FIRST_TURN_MIN_M long,
+  where it is turned off (`_first_turn`), unless it is an unnamed driveway or
+  parking aisle: the first corner after a start or a stop is said.
 - A fork (`fork_movement`) is a turn even on one street or straight on: where
   another rideable way at the node is as near straight ahead as the route's, or
   nearer, the rider is told which to take ("Bear right to stay on Paint Branch
@@ -112,6 +114,12 @@ BEAR_MAX_DEG = 60.0
 # A jog's middle is at least this long: a shorter piece of another street between
 # two turns is a median or a carriageway crossed, not a street ridden.
 JOG_MIN_M = 15.0
+# A leg's first stretch, turned off, is kept from this long (`_first_turn`): a start
+# snapped a few metres onto the cross street is no turn the rider makes.
+FIRST_TURN_MIN_M = 25.0
+# The unnamed ways a leg may begin on whose turn off is not said: a driveway or a
+# parking aisle out of a lot.
+FIRST_TURN_IGNORED_USES = frozenset({"driveway", "drive_through", "parking_aisle"})
 # A roundabout or circle by its name ("Dupont Circle Northwest"): never a jog's
 # middle; the turn is read across it, as the net movement.
 CIRCLE_NAME = re.compile(r"\b(?:circle|roundabout)\b", re.IGNORECASE)
@@ -217,6 +225,9 @@ SHAPE_PARALLEL_DEG = 30.0
 MAIN_CLASSES = frozenset({"motorway", "trunk", "primary", "secondary", "tertiary"})
 # How far from a change of street an event still is that junction.
 MATCH_M = 30.0
+# The events that are another road crossed or ridden along, not the turn: one of these
+# about neither street is never a turn's junction (`describe_both`).
+RELEASED_KINDS = frozenset({"crossing", "slip_lane", "along"})
 # Tiers that are never folded into a neighbour.
 NEVER_HIDDEN = frozenset({"3", "4", "5"})
 
@@ -305,8 +316,13 @@ CONTROL_PHRASES = {
     Control.CROSS_STOP: " where cross traffic stops",
 }
 
-# "MD 355", "US-29", "I 495", "VA 7": a route number rather than a street name.
-_ROUTE_NUMBER = re.compile(r"^(?:[A-Z]{1,3})[ -]?\d+[A-Z]?$")
+# "MD 355", "US-29", "I 495", "VA 7", "US 1 Bus", "Route 7": a route number rather than
+# a street name; in any case, for the lower-case names a stretch keeps. Everything
+# `core.geocode._ROUTE_REF` takes for one is one here too (that module is not imported
+# into this pure one).
+_ROUTE_NUMBER = re.compile(
+    r"^(?:[A-Z]{1,3}|Route|Rte)[ -]?\d+[A-Z]?(?: (?:Alt|Bus|Business|Truck))?$", re.IGNORECASE
+)
 # What stays in capitals when a lower-case street name is made readable.
 _CAPITALS = frozenset(
     {"nw", "ne", "sw", "se", "md", "va", "dc", "us", "mlk", "jr", "sr", "ii", "iii"}
@@ -427,11 +443,24 @@ def _run_of(atom: Atom, leg: int) -> _Run:
     )
 
 
+def _one_street(a: frozenset[str], b: frozenset[str]) -> bool:
+    """Whether two sets of lower-case names are one street's: a name in common that is
+    not a route number, or a route number in common where either has nothing but route
+    numbers ("MD 355" alone is Rockville Pike). Two named streets that share only a
+    route number are two streets: US 29 turns off Georgia Avenue onto Colesville Road."""
+    common = a & b
+    if not common:
+        return False
+    real_a = {n for n in a if not _ROUTE_NUMBER.match(n)}
+    real_b = {n for n in b if not _ROUTE_NUMBER.match(n)}
+    return not real_a or not real_b or bool(real_a & real_b)
+
+
 def _same_way(a: Atom, b: Atom) -> bool:
     """Whether two pieces are one street, as `_same_street` reads two stretches."""
     if not a.names and not b.names:
         return SERVICE_WORDS.get(a.use) == SERVICE_WORDS.get(b.use)
-    return bool({n.lower() for n in a.names} & {n.lower() for n in b.names})
+    return _one_street(frozenset(n.lower() for n in a.names), frozenset(n.lower() for n in b.names))
 
 
 def _said_turns(atoms: list[Atom]) -> list[Atom]:
@@ -485,7 +514,7 @@ def _runs_of(atoms: list[Atom], leg: int) -> list[_Run]:
 def _same_street(a: _Run, b: _Run) -> bool:
     if not a.names and not b.names:
         return a.service == b.service
-    return bool(a.names & b.names)
+    return _one_street(a.names, b.names)
 
 
 def _forks(run: _Run) -> bool:
@@ -549,6 +578,22 @@ def _last_turn(before: _Run | None, run: _Run, after: _Run | None) -> bool:
     return _movement_between(before, run) in TURN_WORDS
 
 
+def _first_turn(before: _Run | None, run: _Run, after: _Run | None) -> bool:
+    """Whether `run` is the street a leg begins on, turned off: another street than
+    the one after, at least FIRST_TURN_MIN_M long, left by a turn or a bear. Folded
+    forward, the turn would go unsaid (a leg's first stretch has no turn) and the
+    ride would say nothing at the first corner: `_last_turn`'s mirror, for a start or
+    a stop less than TINY_M short of a corner. Not off an unnamed driveway or parking
+    aisle (FIRST_TURN_IGNORED_USES)."""
+    if before is not None or after is None or run.metres < FIRST_TURN_MIN_M:
+        return False
+    if not run.names and run.first is not None and run.first.use in FIRST_TURN_IGNORED_USES:
+        return False
+    if _same_street(run, after):
+        return False
+    return _movement_between(run, after) in TURN_WORDS
+
+
 def _jog(before: _Run | None, run: _Run, after: _Run | None) -> bool:
     """Whether `run` is a jog's middle: a named street, not a roundabout or circle,
     at least JOG_MIN_M long, other than both neighbours, entered and left by a turn
@@ -592,6 +637,7 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
                 or _forks(run)
                 or _jog(before, run, after)
                 or _last_turn(before, run, after)
+                or _first_turn(before, run, after)
             ):
                 i += 1
                 continue
@@ -1141,9 +1187,14 @@ def circle_exit(entry: Atom, ring: list[Atom], way_off: Atom) -> dict | None:
     }
 
 
-def _circle_exits(atoms: list[Atom]) -> dict[int, dict]:
+def _circle_exits(atoms: list[Atom]) -> tuple[list[Atom], dict[int, dict]]:
     """`circle_exit` for each time a leg's atoms go onto a circle and off it again, by
-    the id of the atom the way off begins with."""
+    the id of the atom the way off begins with; and `atoms` with each way off onto the
+    street the circle was entered from marked as a fork (`Atom.fork`), the net movement
+    across the circle (a bear right where that is straight on). A small ring is folded
+    into the street before it, which the way off would then join as one street, and its
+    exit would go unsaid ("Take the 3rd exit onto Grosvenor Lane")."""
+    atoms = list(atoms)
     found: dict[int, dict] = {}
     i = 0
     while i < len(atoms):
@@ -1156,9 +1207,20 @@ def _circle_exits(atoms: list[Atom]) -> dict[int, dict]:
         if i > 0 and j < len(atoms):
             way = circle_exit(atoms[i - 1], atoms[i:j], atoms[j])
             if way is not None:
-                found[id(atoms[j])] = way
+                off = atoms[j]
+                turn = turn_between(atoms[i - 1], off)
+                if off.fork is None and turn is not None and _same_way(atoms[i - 1], off):
+                    side = "right" if turn > 0 else "left"
+                    if abs(turn) < SLIGHT_MIN_DEG:
+                        fork = "bear_right"
+                    elif abs(turn) <= BEAR_MAX_DEG:
+                        fork = f"bear_{side}"
+                    else:
+                        fork = side
+                    off = atoms[j] = replace(off, fork=fork)
+                found[id(off)] = way
         i = j
-    return found
+    return atoms, found
 
 
 def _street_words(run: _Run) -> str:
@@ -1365,9 +1427,16 @@ def _group_run(
     own = _street_words(first)
     streets: list[tuple[str, str | None]] = []
     for k, m in zip(range(group[0] + 1, group[1] + 1), members[1:], strict=True):
+        turn = (turns or {}).get(k)
         if m.label and m.label != own and m.label not in (s for s, _m in streets):
-            turn = (turns or {}).get(k)
             streets.append((m.label, turn.movement if turn else None))
+        elif not m.label and turn is not None and turn.movement in TURN_WORDS:
+            # An unnamed road, path or service road turned onto is a turn too: left out,
+            # the next entry's turn would read as made from the street before it. One
+            # entered straight on is not named.
+            words = _street_words(m)
+            if (words, turn.movement) not in streets:
+                streets.append((words, turn.movement))
     return merged, _then_words(streets)
 
 
@@ -1514,15 +1583,29 @@ def _road_crossed(events: list, at_m: float, run: _Run) -> str:
     return CROSS_UNNAMED
 
 
-def _nearest_event(events: list, at_m: float, used: set[int]):
-    best, best_gap = None, MATCH_M + 1e-9
-    for index, event in enumerate(events):
-        if index in used:
-            continue
-        gap = abs(event.m - at_m)
-        if gap < best_gap:
-            best, best_gap = index, gap
-    return best
+def _nearest_events(
+    events: list, runs: list[_Run], starts: list[float], at: list[int]
+) -> dict[int, int]:
+    """The junction event each change of street in `at` (run indices) is, by the event's
+    index: each event within MATCH_M goes to its nearest change of street, an event about
+    either street (its `road_names`) first, then the nearest pairs. Matched turn by turn
+    in route order, a quiet corner took the busy junction a few metres on from the next
+    turn (the owner's Q Street jog: 6th Street "at a signal", Rhode Island Avenue
+    plain)."""
+    pairs = []
+    for i in at:
+        ways = runs[i - 1].names | runs[i].names
+        for index, event in enumerate(events):
+            gap = abs(event.m - starts[i])
+            if gap <= MATCH_M:
+                pairs.append((not (event.road_names & ways), gap, i, index))
+    found: dict[int, int] = {}
+    taken: set[int] = set()
+    for _other, _gap, i, index in sorted(pairs):
+        if i not in found and index not in taken:
+            found[i] = index
+            taken.add(index)
+    return found
 
 
 def describe(
@@ -1604,7 +1687,8 @@ def describe_both(
             continue
         # The ways off circles are read from the marked atoms: the runs begin with them.
         content = _said_turns(content)
-        exits.update(_circle_exits(content))
+        content, found = _circle_exits(content)
+        exits.update(found)
         far_side.extend(
             (leg_at + from_at, leg_at + cross_at, leg_at + turn_at, side, leg)
             for from_at, cross_at, turn_at, side in _far_side_turns(content)
@@ -1624,16 +1708,23 @@ def describe_both(
         starts.append(at)
         at += run.metres
 
+    # The changes of street: each is a turn into its stretch.
+    changes = [
+        i
+        for i, run in enumerate(runs)
+        if i > 0
+        and runs[i - 1].leg == run.leg
+        and not (runs[i - 1].untraced or run.untraced)
+        and not (_same_street(runs[i - 1], run) and not _forks(run))
+    ]
+    matched = _nearest_events(events, runs, starts, changes)
     used: set[int] = set()
     turns: dict[int, _Turn] = {}
-    for i, run in enumerate(runs):
-        if i == 0 or runs[i - 1].leg != run.leg:
-            continue
+    for i in changes:
+        run = runs[i]
         before = runs[i - 1]
         same = _same_street(before, run)
-        if before.untraced or run.untraced or (same and not _forks(run)):
-            continue
-        found = _nearest_event(events, starts[i], used)
+        found = matched.get(i)
         if found is not None:
             used.add(found)
         movement = _movement_between(before, run)
@@ -1669,10 +1760,12 @@ def describe_both(
                     shape = None
         circle = exits.get(id(run.first)) if run.first is not None else None
         exit = None
-        if circle is not None and movement is not None and not same:
+        # Off a circle back onto the street it was entered from too: the exit is said, not
+        # "to stay on" the street.
+        if circle is not None and movement is not None:
             exit = {"number": circle["number"], "circle": circle["circle"]}
             shape = circle["shape"]
-        turns[i] = _Turn(movement, event, same, shape, exit)
+        turns[i] = _Turn(movement, event, same and exit is None, shape, exit)
     for i, turn in turns.items():
         crossed = _crossing(runs, turns, starts, events, i)
         if crossed is not None:
@@ -1719,6 +1812,23 @@ def describe_both(
             turn.across_event = events[found]
             if turn.event is None:
                 turn.event = events[found]
+    # A busy road crossed straight over a few metres from a turn (or a name change) is
+    # not that turn's junction: a crossing, slip lane or along event about neither street,
+    # and not the road the turn crosses (`cross`, `across_event`), is given back, so it is
+    # its own "Cross Georgia Avenue (LTS 4)" entry and the turn is not worded with its
+    # signal and severity. Its movement, if the turn took it, stays.
+    for i, index in matched.items():
+        turn, event = turns[i], events[index]
+        if (
+            turn.event is event
+            and event.kind in RELEASED_KINDS
+            and turn.cross is None
+            and turn.across_event is not event
+            and _event_name(event)
+            and not event.road_names & (runs[i - 1].names | runs[i].names)
+        ):
+            used.discard(index)
+            turn.event = None
 
     entries: list[tuple[tuple[float, int, int], dict]] = []
     shared: list[tuple[tuple[float, int, int], dict]] = []

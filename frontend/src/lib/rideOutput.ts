@@ -17,10 +17,10 @@ import { speechLang, t } from "./i18n.ts";
 export type CueOutput = "screen-reader" | "voice" | "both" | "neither";
 
 export const OUTPUT_LABELS: Record<CueOutput, string> = {
-  "screen-reader": "My screen reader",
-  voice: "RouteMaker's voice",
-  both: "Both",
-  neither: "Neither (on screen only)",
+  "screen-reader": t("My screen reader"),
+  voice: t("RouteMaker's voice"),
+  both: t("Both"),
+  neither: t("Neither (on screen only)"),
 };
 
 export interface RidePrefs {

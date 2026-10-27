@@ -40,9 +40,9 @@ import type { JunctionShape } from "./junctionShape.ts";
 export type Verbosity = "full" | "stoker" | "quiet";
 
 export const VERBOSITY_LABELS: Record<Verbosity, string> = {
-  full: "Full: every turn, early and again close to it",
-  stoker: "Stoker: each turn once ahead and as it happens, busy crossings, stops",
-  quiet: "Quiet: only arrival; ask Where am I? any time",
+  full: t("Full: every turn, early and again close to it"),
+  stoker: t("Stoker: each turn once ahead and as it happens, busy crossings, stops"),
+  quiet: t("Quiet: only arrival; ask Where am I? any time"),
 };
 
 /**
@@ -64,7 +64,7 @@ export const POOR_FIX_M = 50;
  * as GPS alive, so the GPS-lost note never comes), so the rider is told once (review RIDE-3).
  */
 export const GPS_WEAK_MS = 12_000;
-export const GPS_WEAK_SAID = "GPS is weak: turn cues paused.";
+export const GPS_WEAK_SAID = t("GPS is weak: turn cues paused.");
 
 /** The last good fix's time, and whether the weak-GPS note is up. */
 export interface GpsWeakness {
@@ -85,7 +85,7 @@ export function weighFix(before: GpsWeakness, accuracyM: number, now: number): G
  * review RIDE-3), since the turn-by-turn card cannot know where the rider is.
  */
 export const CUE_SHEET_MIN_MS = 60_000;
-export const CUE_SHEET_SAID = "GPS is still weak: the turns ahead are shown as a list, next turn first.";
+export const CUE_SHEET_SAID = t("GPS is still weak: the turns ahead are shown as a list, next turn first.");
 /** The list's length: the turns of a dead spot, not the whole ride. */
 export const CUE_SHEET_ROWS = 10;
 
@@ -125,7 +125,8 @@ export function cueSheet(model: RideModel, progressM: number): CueSheetRow[] {
     .filter((c) => c.atM > progressM + 1 && !c.joined && (c.kind === "turn" || c.kind === "onto" || c.kind === "stop" || c.kind === "end"))
     .slice(0, CUE_SHEET_ROWS)
     .map((c, i) => {
-      const row = { index: c.index, distance: `${i === 0 ? "In" : "Then in"} ${formatDistance(c.atM - from)}`, text: c.text };
+      const distance = formatDistance(c.atM - from);
+      const row = { index: c.index, distance: i === 0 ? t("In {distance}", { distance }) : t("Then in {distance}", { distance }), text: c.text };
       from = c.atM;
       return row;
     });
@@ -201,6 +202,8 @@ export interface JogTurn {
   movement: TurnMovement;
   street: string | null;
   exit?: CircleExit;
+  /** A fork that keeps to the same street or trail: said "bear right to stay on ..." (Cue.stay). */
+  stay?: boolean;
 }
 
 export interface Cue {
@@ -240,6 +243,8 @@ export interface Cue {
   junction?: JunctionShape;
   /** The way off a circle (v0.10.0): its exit, said ("take the 3rd exit") and drawn as a ring. */
   exit?: CircleExit;
+  /** A fork that keeps to the same street or trail (the API's turn.stay): "Bear right to stay on ...", and at "now" "Bear right now." */
+  stay?: boolean;
   /** A short path across a road between two turns: the road, said in place of the turn ("Cross Redland Road."), drawn straight on. */
   cross?: string;
   /** A turn onto a path just across a road (describe._far_side_turns): the road, said first ("Cross Saint Paul Street, then right onto ..."), drawn across it. */
@@ -598,6 +603,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
         ...(kind === "turn" && entry.turn?.cross ? { cross: entry.turn.cross } : {}),
         ...(kind === "turn" && entry.turn?.across && !entry.turn.cross ? { across: entry.turn.across } : {}),
         ...(kind === "turn" && entry.turn?.exit ? { exit: entry.turn.exit } : {}),
+        ...(kind === "turn" && entry.turn?.stay === true && !entry.turn.cross && !entry.turn.across ? { stay: true } : {}),
         movement: kind === "turn" ? (entry.turn?.movement as TurnMovement) : null,
         street: entry.turn?.onto ?? entry.street ?? null,
         severity: entry.severity ?? entry.turn?.severity ?? null,
@@ -703,8 +709,15 @@ export function acrossWords(road: string, movement: TurnMovement, street: string
  * only ", then left onto ..." (the owner, 2026-10-20: "cross the street and turn left").
  */
 function thenWords(then: JogTurn, crossing = false): string {
-  const turn = lowerFirst(turnWords(then.movement, then.street, false, then.exit ?? null));
+  const turn = lowerFirst(turnWords(then.movement, then.street, then.stay === true, then.exit ?? null));
   return crossing ? t(", then {turn}", { turn }) : t(", then immediately {turn}", { turn });
+}
+
+/** A jog's turns without their streets: "Right, then immediately bear left, then immediately left."; "Cross Redland Road, then left." after a crossing. */
+function jogShortWords(cue: Cue): string {
+  const lead = cue.cross ? crossWords(cue.cross) : turnWords(cue.movement!, null, false, cue.exit ?? null);
+  const then = (cue.then ?? []).map((turn, n) => thenWords({ ...turn, street: null, stay: false }, n === 0 && cue.cross !== undefined).replace(/\.$/, ""));
+  return lead.replace(/\.$/, "") + then.join("") + ".";
 }
 
 /**
@@ -731,7 +744,7 @@ function joinJogs(cues: Cue[]): void {
       if (j > 0) cue.joined = true;
       const after = jog.slice(j + 1);
       if (!after.length) return;
-      cue.then = after.map((t) => ({ movement: t.movement!, street: t.street, ...(t.exit ? { exit: t.exit } : {}) }));
+      cue.then = after.map((t) => ({ movement: t.movement!, street: t.street, ...(t.exit ? { exit: t.exit } : {}), ...(t.stay ? { stay: true } : {}) }));
       cue.text = plain[j] + cue.then.map((t, n) => thenWords(t, n === 0 && cue.cross !== undefined).replace(/\.$/, "")).join("") + ".";
     });
     i += jog.length - 1;
@@ -931,11 +944,15 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
     if (cue.movement === "uturn") return t("Make a U-turn now.");
     if (cue.exit) return cue.street && !isUnnamed(cue.street) ? t("Exit now onto {street}.", { street: wayWords(cue.street) }) : t("Exit now.");
     const sentences = TURN_SENTENCES[cue.movement];
-    return cue.street ? t(sentences.now, { street: wayWords(cue.street) }) : t(sentences.nowAlone);
+    // A fork on the same trail: "Bear right now.", not "now onto" the trail the rider is already on (its name was said before).
+    return cue.street && !cue.stay ? t(sentences.now, { street: wayWords(cue.street) }) : t(sentences.nowAlone);
   }
   // A turn at a flagged junction says so in its first warning only; "now" is the turn alone.
   const busy = cue.kind === "turn" && (cue.severity === "orange" || cue.severity === "red") && first;
-  const said = t("In {distance}, {cue}", { distance: spokenDistance(distanceM), cue: lowerFirst(withoutMetric(cue.rideText ?? cue.text)) });
+  // A jog's reminder about 10 s out is its turns without the streets, said at the advance cue and on the card, so the
+  // urgent "now" does not cut off its last turns; in full when it is the first thing said for the cue.
+  const text = phase === "prepare" && !first && cue.then?.length && cue.movement ? jogShortWords(cue) : withoutMetric(cue.rideText ?? cue.text);
+  const said = t("In {distance}, {cue}", { distance: spokenDistance(distanceM), cue: lowerFirst(text) });
   return busy ? `${said} ${t("Busy junction.")}` : said;
 }
 
@@ -968,9 +985,9 @@ export function phasesFor(level: Verbosity, cue: Cue, speedMs: number): { phase:
 }
 
 /** The sentences for leaving and rejoining the route (plan section 3: said once, gently). */
-export const OFF_ROUTE_SAID = "Off the planned route; finding a new way.";
-export const OFF_ROUTE_KEPT_SAID = "Off the planned route.";
-export const BACK_ON_ROUTE_SAID = "Back on the planned route.";
+export const OFF_ROUTE_SAID = t("Off the planned route; finding a new way.");
+export const OFF_ROUTE_KEPT_SAID = t("Off the planned route.");
+export const BACK_ON_ROUTE_SAID = t("Back on the planned route.");
 
 /** Near fixes in a row along the line far ahead, counting this one (each at least 2 m farther on). */
 function rejoinCount(state: RideState, found: Snap): number {
@@ -1496,7 +1513,7 @@ export const UTURNS_BEFORE_AHEAD = 2;
  * route is left up and not re-planned again until the rider turns round or asks (the owner, 2026-10-20: "There is no
  * route found ahead, make a U Turn. It could also be a mapping error, so just leave it up and don't keep annoying the user").
  */
-export const REPLAN_NO_AHEAD = "No route found ahead. Make a U-turn.";
+export const REPLAN_NO_AHEAD = t("No route found ahead. Make a U-turn.");
 /** How often a held U-turn route is checked, silently, for a way ahead (the owner: "check periodically... silently"). */
 export const UTURN_RECHECK_MS = 60_000;
 /** How far along a U-turn route the rider is once they have turned round as asked: the count of U-turns starts again. */
@@ -1608,12 +1625,12 @@ export function withUTurn(model: RideModel): RideModel {
   const uturn: Cue = { index: 0, kind: "turn", atM: 0, text: t(UTURN_SAID), movement: "uturn", street: null, severity: null, tier: null, stop: null };
   return { ...model, cues: [uturn, ...model.cues.map((cue) => ({ ...cue, index: cue.index + 1 }))] };
 }
-export const REPLAN_NO_SIGNAL = "No signal: the planned route is still shown.";
-export const REPLAN_FAILED = "No new route was found; the planned route is still shown.";
+export const REPLAN_NO_SIGNAL = t("No signal: the planned route is still shown.");
+export const REPLAN_FAILED = t("No new route was found; the planned route is still shown.");
 /** No new route to the end, but one back to the planned route (lib/rejoin.ts), which goes on from there. */
-export const REPLAN_REJOIN = "No new route was found; follow the way back to the planned route.";
-export const REPLAN_FINDING = "Finding a new way from here.";
-export const REPLAN_STILL_WAITING = "Still waiting for the last re-plan.";
+export const REPLAN_REJOIN = t("No new route was found; follow the way back to the planned route.");
+export const REPLAN_FINDING = t("Finding a new way from here.");
+export const REPLAN_STILL_WAITING = t("Still waiting for the last re-plan.");
 
 /**
  * How a re-plan's outcome reaches the rider: one the rider asked for (Re-plan from here) is answered
