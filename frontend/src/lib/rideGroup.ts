@@ -21,6 +21,7 @@
  */
 import { QUARTER_MILE, formatDistance } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
+import { t } from "./i18n.ts";
 import type { PresetId } from "./presets.ts";
 
 export const RIDE_LINK_TYPES: readonly PresetId[] = ["mass-ride", "group-ride"];
@@ -428,12 +429,20 @@ export function roleKey(dots: readonly ShownDot[]): { role: RideRole; label: str
   return RIDE_ROLES.map((r) => ({ role: r.id, label: r.label, count: others.filter((d) => d.role === r.id).length })).filter((r) => r.count > 0);
 }
 
-/** "23 riders on the route", "1 rider on the route", "No other riders on the route yet". */
+/**
+ * "23 riders on the route", "1 rider on the route", "No riders on the route yet": everyone on the ride, the leader
+ * and this rider included where shown (Stephen 2026-10-27: "the number of riders ... include the leader").
+ */
 export function countText(n: number, onRoute = true): string {
-  // A broadcast from Roam has no route: "No other riders yet", "2 riders".
-  const where = onRoute ? " on the route" : "";
-  if (n === 0) return `No other riders${where} yet`;
-  return `${n} ${n === 1 ? "rider" : "riders"}${where}`;
+  // A broadcast from Roam has no route: "No riders yet", "2 riders".
+  if (n === 0) return onRoute ? t("No riders on the route yet") : t("No riders yet");
+  if (onRoute) return n === 1 ? t("{n} rider on the route", { n }) : t("{n} riders on the route", { n });
+  return n === 1 ? t("{n} rider", { n }) : t("{n} riders", { n });
+}
+
+/** Everyone on the ride: the dots shown, and this rider where the others see them too (the leader always). */
+export function riderTotal(dots: readonly ShownDot[], meShown: boolean): number {
+  return dots.length + (meShown ? 1 : 0);
 }
 
 /**
@@ -442,8 +451,8 @@ export function countText(n: number, onRoute = true): string {
  * The ride leader is said once, first, and left out of the nearest rider and the roles (review S4: a screen reader
  * said the one leader dot three times).
  */
-export function ridersSaid(dots: readonly ShownDot[], myAlongM: number | null, around: { here: LonLat | null } | null = null): string {
-  const count = `${countText(dots.length, around === null)}.`;
+export function ridersSaid(dots: readonly ShownDot[], myAlongM: number | null, around: { here: LonLat | null } | null = null, meShown = false): string {
+  const count = `${countText(riderTotal(dots, meShown), around === null)}.`;
   if (!dots.length) return count;
   // No route (a broadcast from Roam): the leader and the nearest rider, each from you in a straight line.
   if (around) {
@@ -567,7 +576,8 @@ export const ROAM_ALERT_KINDS: readonly AlertKind[] = ["lost", "wait", "mechanic
   (id) => ALERT_KINDS["group-ride"].find((k) => k.id === id) as AlertKind,
 );
 
-export const ALERT_LABEL = "Alert";
+/** Stephen 2026-10-27: "make the alert (call it send alert) a larger button". */
+export const ALERT_LABEL = t("Send alert");
 export const ALERT_NOTE = "Sends your location with the alert";
 export const CONFIRM_QUESTION = "Send to everyone on this ride?";
 export const OTHER_MAX = 80;

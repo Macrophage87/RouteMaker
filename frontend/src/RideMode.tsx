@@ -230,6 +230,7 @@ import {
   type RideTrip,
 } from "./lib/rideTrip.ts";
 import { t } from "./lib/i18n.ts";
+import { countText } from "./lib/rideGroup.ts";
 
 /**
  * One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). Web
@@ -283,6 +284,8 @@ export const RIDE_SETTINGS_TITLE = t("Ride settings");
 export const RIDE_CHANGE_TITLE = t("Change the route");
 /** Broadcast on the ride screen (Stephen 2026-10-24: "Let people broadcast from a ride"): Plan's and Go's Broadcast, the ride already going. */
 export const RIDE_BROADCAST_NAME = "Broadcast";
+/** More > Riders: the riders panel, its count now on Broadcast. */
+export const RIDERS_NAME = t("Riders");
 /** What End ride leaves behind (lib/navigate.ts planAfterEnd): the plan from here, or as it was. */
 export type EndedPlan = ReturnType<typeof planAfterEnd>;
 /** How long the 311 line ("Logged for 311: Pothole.") stays (review F4); held the same way. */
@@ -666,6 +669,8 @@ export function RideMode({
   onBroadcastHold = null,
   passingOn = false,
   broadcasting = false,
+  riders = null,
+  onRiders = null,
   keepLeft = false,
   startNote = "",
 }: {
@@ -737,6 +742,14 @@ export function RideMode({
   passingOn?: boolean;
   /** This ride is broadcast, led by this rider: Broadcast shows on, and a press shares the same link again. */
   broadcasting?: boolean;
+  /**
+   * How many are on this broadcast, the leader included (RideGroup's count), shown in Broadcast itself (Stephen
+   * 2026-10-27: "the number of riders under the broadcast button and include the leader", "Make it part of the
+   * broadcast button"). Null: no broadcast to count.
+   */
+  riders?: number | null;
+  /** More > Riders: the riders panel (who is where, Show me as a dot, your role). */
+  onRiders?: (() => void) | null;
   /** The ride is kept on this device to resume (lib/rideResume.ts): each new route is kept in its place. */
   keepLeft?: boolean;
   /** Said once, as an answer, just after the ride starts: Broadcast's link copied where there was no share sheet. */
@@ -2448,10 +2461,16 @@ export function RideMode({
               onClick={() => void broadcast()}
               {...broadcastHold}
               aria-describedby={onBroadcastHold ? broadcastHoldId : undefined}
-              aria-label={broadcasting ? `${RIDE_BROADCAST_NAME}: on. Share the link again` : passingOn ? `${RIDE_BROADCAST_NAME}: pass on the link to this ride` : `${RIDE_BROADCAST_NAME}: share a link others follow you with`}
+              aria-label={`${broadcasting ? `${RIDE_BROADCAST_NAME}: on. Share the link again` : passingOn ? `${RIDE_BROADCAST_NAME}: pass on the link to this ride` : `${RIDE_BROADCAST_NAME}: share a link others follow you with`}${riders === null ? "" : `. ${countText(riders)}`}`}
               title={RIDE_BROADCAST_NAME}
             >
-              <Icon name="broadcast" size={24} />
+              <Icon name="broadcast" size={riders === null ? 24 : 20} />
+              {riders !== null && (
+                <span className="ride-round-count" aria-hidden="true">
+                  <Icon name="user" size={12} />
+                  {riders}
+                </span>
+              )}
             </button>
           )}
           {onBroadcast && onBroadcastHold && (
@@ -2741,6 +2760,12 @@ export function RideMode({
                 >
                   <Icon name="skip" size={22} />
                   <span aria-hidden="true">{nextStop.number}</span>
+                </button>
+              )}
+              {onRiders && riders !== null && (
+                <button type="button" className="ride-round ride-riders-bubble" onClick={() => fromMore(onRiders)} aria-label={`${RIDERS_NAME}: ${countText(riders)}`} title={RIDERS_NAME}>
+                  <Icon name="user" size={22} />
+                  <span aria-hidden="true">{riders}</span>
                 </button>
               )}
               <button

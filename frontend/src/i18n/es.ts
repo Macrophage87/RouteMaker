@@ -400,6 +400,15 @@ export const ES: Readonly<Record<string, string>> = {
   "Broadcasting. Those who open your link see your dot and the way you ride.":
     "Transmitiendo. Quienes abran su enlace ven su punto y el camino que recorre.",
   "Broadcast is not ready yet; try again in a moment.": "La transmisión aún no está lista; inténtelo de nuevo en un momento.",
+  // ---- A broadcast's riders and alerts (lib/rideGroup.ts, RideMode.tsx) ----
+  "Send alert": "Enviar alerta",
+  "Riders": "Ciclistas",
+  "No riders on the route yet": "Aún no hay ciclistas en la ruta",
+  "No riders yet": "Aún no hay ciclistas",
+  "{n} rider on the route": "{n} ciclista en la ruta",
+  "{n} riders on the route": "{n} ciclistas en la ruta",
+  "{n} rider": "{n} ciclista",
+  "{n} riders": "{n} ciclistas",
   "Save & load": "Guardar y cargar",
   "Back to planner": "Volver al planificador",
   "Panel pages": "Páginas del panel",

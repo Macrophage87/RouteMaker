@@ -6004,6 +6004,23 @@ details.fold > summary .icon {
 }
 
 /* Skip this stop: the stop's number under the skip mark. */
+/* Broadcast's rider count, the leader included (Stephen 2026-10-27: "Make it part of the broadcast button"). */
+.ride .ride-round-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ride .ride-riders-bubble {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
 .ride .ride-skip-stop {
   font-size: 20px; /* the ride screen's smallest text */
   font-weight: 700;
@@ -6778,6 +6795,14 @@ details.fold > summary .icon {
   justify-content: flex-end;
 }
 .ride-consent,
+/* Send alert (Stephen 2026-10-27: "make the alert (call it send alert) a larger button"): a ride-sized press. */
+.ride-group-bar .ride-alert-button {
+  min-height: 56px;
+  padding: 0 20px;
+  font-size: 20px;
+  font-weight: 700;
+  border-width: 2px;
+}
 .ride-riders-panel,
 .ride-alert-panel,
 .ride-alert-banner {
