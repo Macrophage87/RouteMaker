@@ -75,6 +75,25 @@ import { LANGUAGES, LANGUAGE_NAME, chooseLanguage, readLanguageChoice, t, type L
 /** The Language setting's (i) words. Street names and notices from agencies stay as they are written. */
 const LANGUAGE_HINT = "The app's words and the voice. Street names and agency notices stay as written. Changing it reloads the page.";
 
+/** Settings > Display > Language: the choice is held here too, so a pick that needs no reload still shows. */
+function LanguageSetting() {
+  const [choice, setChoice] = useState<LanguageChoice>(() => readLanguageChoice());
+  return (
+    <SettingRow infoId="settings-language-info" about={t("Language")} info={t(LANGUAGE_HINT)}>
+      <SettingSelect<LanguageChoice>
+        label={t("Language")}
+        value={choice}
+        options={[["", t("Phone's language")] as const, ...LANGUAGES.map((lang) => [lang, LANGUAGE_NAME[lang]] as const)]}
+        onChange={(next) => {
+          setChoice(next);
+          chooseLanguage(next);
+        }}
+        describedBy="settings-language-info"
+      />
+    </SettingRow>
+  );
+}
+
 /** How the sheets go back: to the planner, or to the sheet that opened them (Suggest for Review). */
 export interface SheetNav {
   view: PanelView;
@@ -401,7 +420,7 @@ function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean
           <>
             {!myGo.home && (
               <p>
-                <strong>{t("Home:")} </strong>not set
+                <strong>{t("Home:")} </strong>{t("not set")}
               </p>
             )}
             <HomeSetter home={myGo.home} geoGate={geoGate} searchBias={searchBias} onPlace={(place: Place) => setHome(homeFromPlace(place))} onClear={() => setHome(null)} />
@@ -590,15 +609,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
           />
         </SettingRow>
         {/* The app's language (the owner, 2026-10-27: "compatible with multiple languages"): unset, the phone's own. */}
-        <SettingRow infoId="settings-language-info" about="language" info={t(LANGUAGE_HINT)}>
-          <SettingSelect<LanguageChoice>
-            label={t("Language")}
-            value={readLanguageChoice()}
-            options={[["", t("Phone's language")] as const, ...LANGUAGES.map((lang) => [lang, LANGUAGE_NAME[lang]] as const)]}
-            onChange={chooseLanguage}
-            describedBy="settings-language-info"
-          />
-        </SettingRow>
+        <LanguageSetting />
       </section>
       {/* The installable app (WEB-NAV-plan.md section 8, P4), under its own heading when the browser offers it. The
           routes saved and kept for offline are in Save and load (YourRoutes.tsx; the owner, 2026-10-18). */}

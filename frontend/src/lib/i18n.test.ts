@@ -69,12 +69,16 @@ test("Spanish turn directions are whole Spanish sentences, the street names as t
     assert.equal(turnWords("right", "unnamed path"), "Gire a la derecha hacia el sendero.");
     assert.equal(turnWords("right", "service road beside East-West Highway"), "Gire a la derecha hacia la vía de servicio junto a East-West Highway.");
     assert.equal(turnWords("left", null), "Gire a la izquierda.");
+    // A bear is a turn, not "keep" (manténgase is only for staying on a way at a fork).
+    assert.equal(turnWords("bear_left", "Rhode Island Avenue"), "Gire ligeramente a la izquierda hacia Rhode Island Avenue.");
+    // The API's way names are said in Spanish in a crossing too.
+    assert.equal(crossingWords("sidewalk beside Georgia Avenue", "none"), "Intersección con mucho tráfico en la acera junto a Georgia Avenue, sin semáforo.");
     assert.equal(turnWords("uturn", "R Street"), "Dé la vuelta en U.");
     assert.equal(exitWords({ number: 3, circle: "Dupont Circle" }, "P Street Northwest"), "Tome la 3.ª salida hacia P Street Northwest en Dupont Circle");
     assert.equal(exitWords({ number: 1, circle: null }, null), "Tome la 1.ª salida en la rotonda");
     assert.equal(ontoWords("Mount Vernon Trail"), "Continúe por Mount Vernon Trail.");
-    assert.equal(crossingWords("C Street", "signal"), "Cruce con mucho tráfico en C Street, con semáforo.");
-    assert.equal(crossingWords(null, "none"), "Cruce con mucho tráfico, sin semáforo.");
+    assert.equal(crossingWords("C Street", "signal"), "Intersección con mucho tráfico en C Street, con semáforo.");
+    assert.equal(crossingWords(null, "none"), "Intersección con mucho tráfico, sin semáforo.");
     assert.equal(endWords("right"), "El final de la ruta. El destino está a su derecha.");
     assert.equal(stopText(2, "Union Market"), "Parada 2, Union Market.");
     assert.equal(spokenDistance(150), "500 pies");
@@ -96,4 +100,5 @@ test("English is unchanged by the lookup", () => {
   assert.equal(crossingWords(null, undefined), "Busy crossing.");
   assert.equal(exitWords({ number: 3, circle: "Dupont Circle" }, "P Street Northwest"), "Take the 3rd exit onto P Street Northwest at Dupont Circle");
   assert.equal(spokenDistance(150), "500 feet");
+  assert.equal(crossingWords("sidewalk beside Georgia Avenue", "none"), "Busy crossing at sidewalk beside Georgia Avenue, no signal.");
 });

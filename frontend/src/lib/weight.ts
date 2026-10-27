@@ -39,7 +39,8 @@ export interface StoredWeight {
 }
 
 /** The one weight a signed-out rider has (315). */
-export const DEFAULT_NAME = t("My weight");
+// Not translated: it is the stored name, which weightLine compares with.
+export const DEFAULT_NAME = "My weight";
 
 /** Where the weight is kept in this browser. */
 export const WEIGHT_STORAGE_KEY = "routemaker.weight";

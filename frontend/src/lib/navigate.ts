@@ -387,7 +387,8 @@ const CROSSING_CONTROL_ALONE: Partial<Record<NonNullable<NonNullable<Description
  * where unknown.
  */
 export function crossingWords(street: string | null, control: NonNullable<DescriptionEntry["turn"]>["control"] | undefined): string {
-  const named = street && !isUnnamed(street) ? street : null;
+  // In Spanish the API's way names ("service road beside ...") are said in Spanish too; English as it was.
+  const named = street && !isUnnamed(street) ? (language() === "es" ? wayWords(street) : street) : null;
   const sentence = control ? (named ? CROSSING_CONTROL_WORDS : CROSSING_CONTROL_ALONE)[control] : undefined;
   if (sentence) return t(sentence, named ? { street: named } : undefined);
   return named ? t("Busy crossing at {street}.", { street: named }) : t("Busy crossing.");
