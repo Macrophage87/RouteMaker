@@ -98,9 +98,11 @@ planned leg by leg (`refine_long`).
 from __future__ import annotations
 
 import bisect
+import copy
 import dataclasses
 import logging
 import math
+from concurrent.futures import Future
 from dataclasses import dataclass, field
 
 from routemaker import avoid_junctions as avoid_model
@@ -378,6 +380,10 @@ class Context:
     # search ranks instead of asking again; an empty list where that ask timed out (so
     # none is asked again); None: none asked yet.
     router_trips: list | None = None
+    # The search's own ask for them, where the plan started it on the pool beside the
+    # reading of its first route (`ask_alternates_early`); used only while the request
+    # is still the one it asked.
+    early_alternates: EarlyAlternates | None = None
     # Where the search keeps every candidate it read that the hold and the guards
     # allow, as (trip, reading), for a long plan to choose among across its legs
     # (`refine_long`); None: not kept.
@@ -1321,6 +1327,58 @@ ALTERNATES_ROUND_RESERVE_S = REFINE_ROUND_MIN_S + 1.0
 ALTERNATES_MIN_S = 1.0
 
 
+@dataclass
+class EarlyAlternates:
+    """The search's ask for the router's alternatives, started by the plan on the pool
+    while its first route is read (`ask_alternates_early`): the variant and request
+    asked (a copy, so later changes to the plan's own do not reach it) and the pending
+    answer."""
+
+    variant: str
+    request: dict
+    future: Future
+
+
+def _alternates_request(request: dict) -> dict:
+    """The search's ask for alternatives: the request without its work-zone points
+    (`exclude_locations`), with ROUTER_ALTERNATES."""
+    asked = {k: v for k, v in request.items() if k != "exclude_locations"}
+    asked["alternates"] = ROUTER_ALTERNATES
+    return asked
+
+
+def _alternates_limit(variant: str, deadline: routing.Deadline) -> float:
+    limit = min(deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
+    if variant in routing.TWIN_VARIANTS:
+        limit = min(limit, routing.WEEKEND_TIMEOUT_S)
+    return limit
+
+
+def ask_alternates_early(
+    variant: str, request: dict, deadline: routing.Deadline
+) -> EarlyAlternates | None:
+    """Start the search's ask for alternatives (`_router_alternates`) on the pool now,
+    beside the reading of the first route, which it does not depend on (S2 of the
+    v0.13.0 routing audit). Only where the pool is on: inline it would make the first
+    route wait. None where it is off or there is no time for the ask. The search
+    waits for it no longer than it would have for its own ask, and asks again as
+    before where the request has changed since."""
+    if not parallel.enabled():
+        return None
+    alt_stop = deadline.at - REFINE_TRACE_RESERVE_S - ALTERNATES_ROUND_RESERVE_S
+    if alt_stop - routing.clock() < ALTERNATES_MIN_S:
+        return None
+    asked = copy.deepcopy(_alternates_request(request))
+    future = parallel.submit(
+        routing._call,
+        variant,
+        "route",
+        copy.deepcopy(asked),
+        routing.Deadline(alt_stop, _alternates_limit(variant, deadline)),
+    )
+    return EarlyAlternates(variant, asked, future)
+
+
 def _router_alternates(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
     """The best of the router's first route and its alternatives, read and ranked as
     every other candidate (see ROUTER_ALTERNATES), and its trip. The plan's own
@@ -1344,17 +1402,27 @@ def _router_alternates(trip, best, first_exposure, stop_at, ctx: Context, info: 
         # The plan's own ask for them timed out (`routing._route`): not asked again.
         found["limited"] = "time"
     if given is None:
-        request = {k: v for k, v in ctx.request.items() if k != "exclude_locations"}
-        request["alternates"] = ROUTER_ALTERNATES
-        limit = min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
-        if ctx.variant in routing.TWIN_VARIANTS:
-            limit = min(limit, routing.WEEKEND_TIMEOUT_S)
+        request = _alternates_request(ctx.request)
+        early = ctx.early_alternates
+        if early is not None and (early.variant != ctx.variant or early.request != request):
+            # The request changed after the plan asked (the target fitting): asked again.
+            early.future.cancel()
+            early = None
         started = routing.clock()
         try:
-            answer = routing._call(ctx.variant, "route", request, routing.Deadline(alt_stop, limit))
+            if early is not None:
+                # Waited for no longer than the search's own ask would have run.
+                answer = early.future.result(timeout=max(alt_stop - started, 0.0))
+            else:
+                answer = routing._call(
+                    ctx.variant,
+                    "route",
+                    request,
+                    routing.Deadline(alt_stop, _alternates_limit(ctx.variant, ctx.deadline)),
+                )
         except routing.RouterRefused:
             return best, trip
-        except (routing.DeadlineExceeded, routing.RouterUnavailable) as error:
+        except (routing.DeadlineExceeded, routing.RouterUnavailable, TimeoutError) as error:
             logger.warning(
                 "the %s router did not answer the calm search's ask for alternatives in"
                 " %.1f s (%s); searching without them",
@@ -3053,17 +3121,37 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
     # are read for the legs that are searched).
     firsts: list[dict] = []
     reads: list[Analysis] = []
-    for leg in legs:
-        request = {**base_request, "locations": [leg["a"], leg["b"]]}
+    leg_requests = [{**base_request, "locations": [leg["a"], leg["b"]]} for leg in legs]
+    route_deadline = routing.Deadline(
+        hard_stop, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
+    )
+    # The legs' routes do not depend on each other: asked together on the pool, and
+    # their traces after them up to the first leg that failed (v0.7.0, "Faster routing"
+    # step 3); each is then read in leg order below, as before, its failure too.
+    asking = None
+    if parallel.enabled() and len(legs) > 1:
+        asking = [
+            parallel.submit(routing._call, ctx.variant, "route", request, route_deadline)
+            for request in leg_requests
+        ]
+        answered = []
+        for future in asking:
+            if future.exception() is not None:
+                break
+            answered.append(future.result().get("trip") or {})
+        routing.prefetch_traces(
+            ctx.variant,
+            ctx.costing,
+            answered,
+            routing.Deadline(hard_stop, ctx.deadline.per_call_s),
+            ctx.traces,
+        )
+    for number, request in enumerate(leg_requests):
         try:
-            answer = routing._call(
-                ctx.variant,
-                "route",
-                request,
-                routing.Deadline(
-                    hard_stop, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
-                ),
-            )
+            if asking is not None:
+                answer = asking[number].result()
+            else:
+                answer = routing._call(ctx.variant, "route", request, route_deadline)
             leg_trip = answer.get("trip") or {}
             read = None
             if leg_trip.get("legs"):

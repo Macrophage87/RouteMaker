@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Links open in the app (mobile/README.md): merged into the store build only, when the build names
+     its site (ROUTEMAKER_LINK_SITE; app/build.gradle), so no test build and no file in the repository
+     names a server. A tapped link to the site's app pages opens here (SetupActivity) once Android has
+     checked the site's /.well-known/assetlinks.json (core.app_links); other pages (the privacy policy,
+     the guides, the route posts) still open in the browser. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name=".SetupActivity" android:exported="true">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="${linkHost}" />
+                <!-- The map, with a route or a ride in the link's #fragment. -->
+                <data android:path="/" />
+                <!-- A shared route's short link (core.share_preview). -->
+                <data android:pathPrefix="/s/" />
+                <!-- The ride types' own addresses (the beta's nginx, "the ride types"). -->
+                <data android:pathPrefix="/default" />
+                <data android:pathPrefix="/trailmaxxing" />
+                <data android:pathPrefix="/group-ride" />
+                <data android:pathPrefix="/mass-ride" />
+                <data android:pathPrefix="/mountain-goat" />
+                <data android:pathPrefix="/mountain-bike" />
+                <data android:pathPrefix="/gravel" />
+                <data android:pathPrefix="/fast" />
+                <data android:pathPrefix="/cargo" />
+                <data android:pathPrefix="/ebike" />
+                <data android:pathPrefix="/bikeshare" />
+                <data android:pathPrefix="/novice" />
+                <data android:pathPrefix="/bike-transit" />
+                <data android:pathPrefix="/bikeshare-transit" />
+                <data android:pathPrefix="/rebalance" />
+                <data android:pathPrefix="/kids" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

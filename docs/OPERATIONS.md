@@ -4868,6 +4868,38 @@ open to bicycles away from their trimmed ends, so the strip the router excludes 
 else (the Mount Vernon Trail runs beside the bridge trail's Virginia ramps, which is why only
 the river span is in the entry).
 
+## Purple Line construction closures (v0.13.0)
+
+The Maryland Purple Line closes county and city streets (Bonifant Street, Wayne Avenue, Ellin
+Road) that no WZDx feed covers: Maryland's feed is the state's roads only, and the project posts
+its closures only as words on <https://purplelinemd.com/updates>, sometimes with a PDF notice.
+The owner, 2026-10-27, of Bonifant Street: "Bonifant street is closed for major construction.
+see why it's missed". So these are read by hand into
+`src/core/geodata/purple-line-closures.json` (`routemaker.purple_line`), in the same shape as
+the DDOT advisories file above: source `purple_line` ("Purple Line construction update"),
+routed round, red on the map, whole days, gone after the last day.
+
+What goes in: a street closed to traffic (or "closed, pedestrian access maintained") for days or
+longer. What stays out: lane closures that leave a lane open, flagging, a street cut to one way,
+and overnight-only closures (10 pm to 4 am), since a whole-day window would close the road all
+day. A block closed through a cross street is two lines overlapping past it, since each line's
+ends are left open for the cross streets (`workzones.TRIM_M`, 20 m).
+
+**Each month (or when the owner reports a missed closure):** read the page's Silver Spring,
+Long Branch, Takoma/Langley, Riverdale/College Park and New Carrollton items, add or change
+entries as for a DDOT advisory (`python scripts/ddot_advisories.py lines WAY ...` prints the
+lines), set `updated` to today, and ship it in the next release.
+
+The first entry (2026-10-27): Bonifant Street from Ramsey Avenue to Georgia Avenue, Dixon
+Avenue's junction included ("The intersection of Dixon Avenue and Bonifant Street remains
+closed through October 2026", notice of 2026-07-24; "The long-term lane closure of Bonifant
+Street (West) between Ramsey Avenue and Georgia Avenue remains in effect through the
+completion of construction", and in the same item "the road closure"; the owner saw it closed).
+The notices give no end for the block, so its last day is 2027-03-31, the Purple Line's spring
+2027 opening: check it in March, and sooner if the Dixon junction's notice (through October
+2026) is not renewed. The strip the router excludes also takes the block's own sidewalks and crossings (3 to 5
+m off the centre line) inside the work zone.
+
 ## Deer-management closures (v0.12.3)
 
 Rock Creek Park (NPS) and Montgomery Parks close parts of their parks at night, or for whole
@@ -7588,7 +7620,24 @@ stops it. When a box the launcher started stops with no result, the launcher cal
 user's stop, which AWS does not restart (a box it was given with `--use-running` is left
 to you). **That this prevents the restart is not verified**: after the first
 reclaim, look in the console (EC2, Instances) an hour or so later and stop the box if it
-is running; the budget alarm is the backstop.
+is running; the budget alarm is the backstop. On 2026-10-26 it did not prevent it: the
+launcher stopped a reclaimed box at 7:51 PM ET and AWS started it again at 11:10 PM.
+
+**Carrying on after a reclaim by itself: `--keep-resuming N`** (spot box only). When the
+box stops with no result (the command often shows as failed with exit 143 first) and
+`RUN_URL/failed/` has no failure log written since the first launch, or AWS does not
+start the box, the launcher waits 10 minutes and runs itself again with `--no-send` and
+the same options, up to N more times. If the spot request has started the box again by
+itself meanwhile, the re-run takes it as it is and still stops it at the end; if S3
+cannot be read, it does not carry on. It never adds `--refire`: the
+rebuild job the reclaim interrupted is still `doing` in the box's database, and
+`box-rebuild.sh` puts it back (`unwedge_job`) so it resumes from its checkpoints.
+`--refire` would forget that job (it clears `fire.done` and `job` in the run's state on
+the box) and fire a new one, which `run_rebuild_now` refuses while the old one is
+`doing`. A failure log in `RUN_URL/failed/` means the rebuild itself failed, so the
+launcher stops there for a person to read it. Every spot run should be launched with it,
+e.g. `--keep-resuming 15`, from a wrapper that keeps sudo fresh (`sudo -v` every few
+minutes) so the import at the end does not stop for a password hours later.
 
 **Two boxes: spot and on-demand.** Spot is cheap but can be short: on 2026-10-22 the
 m7i.2xlarge spot box in us-east-1 was reclaimed five times in a morning, the last ones
@@ -7740,7 +7789,9 @@ no repository variables. The release key is four repository secrets the owner ad
 `ROUTEMAKER_KEYSTORE_BASE64`, `ROUTEMAKER_KEYSTORE_PASSWORD`, `ROUTEMAKER_KEY_ALIAS`,
 `ROUTEMAKER_KEY_PASSWORD`; never a file in the repository. The Play id comes from the
 `ROUTEMAKER_APP_ID` secret (`ROUTEMAKER_SITE_URL` is the store build's site); a debug build adds
-`.debug`, so a test build sits beside the store app. Changes under `mobile/` never trigger a beta deploy
+`.debug`, so a test build sits beside the store app. Tapped links to the site open the store app once the
+deployment sets `ANDROID_APP_ID` and `ANDROID_CERT_SHA256` (`/.well-known/assetlinks.json`, `core.app_links`;
+`mobile/README.md`, "Links open in the app"). Changes under `mobile/` never trigger a beta deploy
 (`scripts/beta/cd_logic.py`).
 
 The server needs nothing for it: the WebView loads the site at its own origin, so cookies, CSRF and

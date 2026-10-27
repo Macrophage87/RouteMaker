@@ -2750,15 +2750,20 @@ RELATION_NAME_MIN_RUN_M = 1609.344 / 4
 
 
 def sidepath_names_of(pieces: list[Piece]) -> dict[int, str]:
-    """The street-side names of the route's ways that have no name of their own
-    (`segment.sidepath_name`, `routemaker.facility.side_street_names`), by way id;
-    else the name of the trail's route relation the way is in (`segment.trail_name`,
+    """The names of the route's ways that have no name of their own, by way id: the
+    name of the trail's route relation the way is in (`segment.trail_name`,
     `pipeline.trail_routes.way_name`), as a `describe.RelationName`, so a change of
     trail on a way named only by its relation is in the description (the owner,
-    2026-10-16). A relation name is taken only for a named run (`trail_run_m`) longer
-    than RELATION_NAME_MIN_RUN_M and never a national or international route's
-    (`describe.NATIONAL_ROUTE_NAME`): the table keeps no network per way, and an East
-    Coast Greenway connector is not "onto East Coast Greenway". Empty where the live
+    2026-10-16); else its street-side name (`segment.sidepath_name`,
+    `routemaker.facility.side_street_names`). The trail's name comes first, as the map
+    labels the way: an unnamed stretch of the Metropolitan Branch Trail beside Blair
+    Road was "Blair Road Northwest bike lane", and the ride said "Continue onto
+    Metropolitan Branch Trail" where it went on as the trail it already was (the
+    owner, 2026-10-27: "why continue"). A relation name is taken only for a named run
+    (`trail_run_m`) longer than RELATION_NAME_MIN_RUN_M and never a national or
+    international route's (`describe.NATIONAL_ROUTE_NAME`): the table keeps no network
+    per way, and an East Coast Greenway connector is not "onto East Coast Greenway";
+    such a way keeps its street-side name. Empty where the live
     table has neither column yet (a table built before it) or the query fails: those
     ways are then just "path"."""
     ids = sorted({p.way_id for p in pieces if not p.names and p.way_id})
@@ -2784,10 +2789,10 @@ def sidepath_names_of(pieces: list[Piece]) -> dict[int, str]:
             )
             names: dict[int, str] = {}
             for way, side_name, trail_name in cursor.fetchall():
-                if side_name:
-                    names[int(way)] = str(side_name)
-                elif trail_name and not describe.NATIONAL_ROUTE_NAME.search(str(trail_name)):
+                if trail_name and not describe.NATIONAL_ROUTE_NAME.search(str(trail_name)):
                     names[int(way)] = describe.RelationName(str(trail_name))
+                elif side_name:
+                    names[int(way)] = str(side_name)
             return names
     except Exception:  # noqa: BLE001 - the description says "path" without them
         logger.warning("the street-side names of unnamed ways could not be read", exc_info=True)
@@ -3856,6 +3861,23 @@ def _plan(
     trips = [answer.get("trip") or {}] + [
         (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
     ]
+    # The calm search's ask for the router's alternatives (`refine._router_alternates`)
+    # depends on the request alone: where the search will make it, it starts now on the
+    # pool, beside the reading of this route, instead of after it (v0.13.0 routing audit,
+    # S2). Not where the plan asked for them itself, nor where the target fitting will
+    # ask again with another request (this route is past the target).
+    early_alternates = None
+    if (
+        presets.calm_rate_for(stress_dial) > 0
+        and "alternates" not in request
+        and len(points) == 2
+        and not (quick or fixed or loop or long_calm)
+        and not (maxcalm and target_m is not None and _trip_length_m(trips[0]) > target_m)
+        and _refine_limit(preset_name, points, long_ride, climb_seek, deadline, long_calm) is None
+    ):
+        from . import refine
+
+        early_alternates = refine.ask_alternates_early(variant, request, deadline)
     avoid_weight = -hills_dial / 100 if avoiding else 0.0
     # Steep grades warned of and priced either way (`routemaker.steep_grades`): a Mass Ride
     # and a Novice and Nervous ride, wherever the hills slider sits.
@@ -4004,8 +4026,11 @@ def _plan(
         # The router's own alternatives ranked with the calm search's (OWNER-DECISIONS 435):
         # the plan's own, where it asked for them with the request the search starts
         # from (none again where that ask timed out), else asked for by the search.
+        # Refitted only where the target fitting asked again (`past`): a route already
+        # within the target is the plan's own request, its alternatives already in `trips`.
         rank_alternates=presets.calm_rate_for(stress_dial) > 0,
-        router_trips=plan_alternates(request, trips, timed_out, fit is not None or bool(past)),
+        router_trips=plan_alternates(request, trips, timed_out, bool(past)),
+        early_alternates=early_alternates,
         options=[] if offering and not long_calm else None,
         avoid=avoid_list,
         junction_ratings=junction_ratings,
@@ -4057,6 +4082,9 @@ def _plan(
             "excluded": 0,
             "limited": refine_limited,
         }
+    if early_alternates is not None:
+        # Not started yet where the search ended before it was wanted: not asked at all.
+        early_alternates.future.cancel()
     # Mountain Bike (docs/MTB-TOPO-PLAN.md, slice 6): the rider's hardest trail level held, the
     # trail-seeking ranking and the connecting-road rule, on the route as it now is and the
     # router's own alternatives (`core.mtb.settle`). Before the dodge and Avoid passes, so what

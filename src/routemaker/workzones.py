@@ -75,6 +75,8 @@ SOURCES = {
     "reviewer": "Confirmed by a RouteMaker reviewer",
     # DDOT's project traffic advisories, read by hand (v0.12.4; `routemaker.ddot_advisories`).
     "ddot_advisory": "DDOT project traffic advisory",
+    # The Purple Line's construction updates, read by hand (v0.13.0; `routemaker.purple_line`).
+    "purple_line": "Purple Line construction update",
 }
 
 # Where a rider reads more, for a zone that carries no link of its own.
@@ -86,6 +88,7 @@ SOURCE_LINKS = {
     "alertdc": "https://alertdc.dc.gov/",
     "nps": "https://www.nps.gov/",
     "ddot_advisory": "https://projects.ddot.dc.gov/",
+    "purple_line": "https://purplelinemd.com/updates",
 }
 
 DISCLAIMER = (
@@ -988,9 +991,9 @@ def split_words(zone: Zone | None) -> str:
 
 # The sources whose zones are DC's closures and blocked lanes, not work zones (v0.7.0).
 DC_SOURCES = frozenset({"dc", "mpd", "alertdc", "ddot_advisory"})
-# The sources whose closed zones are said as a road closed, not a work zone: DC's, and the
-# closures a reviewer confirmed.
-CLOSURE_SOURCES = DC_SOURCES | {"reviewer"}
+# The sources whose closed zones are said as a road closed, not a work zone: DC's, the
+# closures a reviewer confirmed, and the Purple Line's (v0.13.0).
+CLOSURE_SOURCES = DC_SOURCES | {"reviewer", "purple_line"}
 
 
 # --- The card's words (v0.7.0, "Closures on the map") ------------------------------
@@ -1023,9 +1026,9 @@ def date_text(moment: datetime) -> str:
     return f"{_MONTHS[local.month - 1]} {local.day}"
 
 
-# The sources whose windows are whole days: a reviewer's, and a DDOT project advisory's
-# (`routemaker.ddot_advisories`).
-WHOLE_DAY_SOURCES = frozenset({"reviewer", "ddot_advisory"})
+# The sources whose windows are whole days: a reviewer's, a DDOT project advisory's
+# (`routemaker.ddot_advisories`) and a Purple Line update's (`routemaker.purple_line`).
+WHOLE_DAY_SOURCES = frozenset({"reviewer", "ddot_advisory", "purple_line"})
 
 
 def last_day(source: str, end: datetime) -> datetime | None:
@@ -1093,12 +1096,16 @@ def when_text(zone: Zone, now: datetime | None, future: bool, possible: bool = F
     return f"{verb} until {date_text(end)}"
 
 
+# The sources the card dates by when they published it.
+DATED_SOURCES = frozenset({"mpd", "alertdc", "ddot_advisory", "purple_line"})
+
+
 def source_text(zone: Zone) -> str:
     """The source, named as the card names it: "MPD traffic advisory, Oct 15"."""
     name = SOURCES.get(zone.source, zone.source)
     if zone.source == "dc":
         name = "DDOT occupancy permit (TOPS)"
-    if zone.published is not None and zone.source in ("mpd", "alertdc", "ddot_advisory"):
+    if zone.published is not None and zone.source in DATED_SOURCES:
         return f"{name}, {date_text(zone.published)}"
     return name
 

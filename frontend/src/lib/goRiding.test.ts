@@ -32,7 +32,7 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   assert.match(top, /<h2 id="ride-heading"/);
   // The owner, 2026-10-16 ("add a method of ending navigation"): the visible words are End ride, so its name is too.
   assert.match(top, /<button type="button" className="danger ride-end" onClick=\{end\}>\s*<Icon name="stop" size=\{22\} \/>\s*\{END_RIDE_NAME\}\s*<\/button>/);
-  assert.match(ride, /export const END_RIDE_NAME = "End ride";/);
+  assert.match(ride, /export const END_RIDE_NAME = t\("End ride"\);/);
   // End ride stops the ride at once: the watch, the queued words and the voice, then App's endRide.
   const end = ride.slice(ride.indexOf("  const end = () => {"), ride.indexOf("  const keep = () => {"));
   assert.match(end, /ended\.current = true;\s*stopWatch\.current\?\.\(\);\s*stopWatch\.current = null;\s*announcer\.current\?\.drop\(\);\s*rideVoice\.stop\(\);/);
@@ -115,7 +115,7 @@ test("F1. Start unlocks the voice synchronously in the press, before the closure
   assert.match(app, /if \(!unlocked\) startRideGesture\(prefs\);/);
   // A slow check is said politely.
   assert.match(start, /window\.setTimeout\(\(\) => announce\(CHECKING_CLOSURES\), CLOSURE_SLOW_MS\)/);
-  assert.match(ride, /export const CHECKING_CLOSURES = "Checking closures…";/);
+  assert.match(ride, /export const CHECKING_CLOSURES = t\("Checking closures…"\);/);
 });
 
 test("Ride settings in reach: More at the end of the side buttons opens them just under the top row (the owner, 2026-10-18; More 2026-10-24)", () => {
@@ -199,13 +199,13 @@ test("End ride is slid until the rider has arrived (the owner, 2026-10-19: \"Add
   assert.match(slide, /onPointerUp=\{\(\) => \{\s*if \(last\.current < 100\) back\(\);/);
   assert.match(ride, /const slideHint = \(\) => \{\s*showToast\(SLIDE_TO_END_HINT\);\s*announcer\.current\?\.answer\(SLIDE_TO_END_HINT\);/);
   // The light times take the corner inside the heading, which stays Ride mode for screen readers; the times said in words after it.
-  assert.match(top, /className=\{light \? "ride-heading ride-light" : "ride-heading"\}>\s*\{light \? \(\s*<>\s*<span className="visually-hidden">Ride mode<\/span>\s*<span className="ride-light-lines" aria-hidden="true">/);
+  assert.match(top, /className=\{light \? "ride-heading ride-light" : "ride-heading"\}>\s*\{light \? \(\s*<>\s*<span className="visually-hidden">\{t\("Ride mode"\)\}<\/span>\s*<span className="ride-light-lines" aria-hidden="true">/);
   assert.match(top, /\{light && <p className="visually-hidden">\{light\.said\}<\/p>\}/);
 });
 
 test("ride card: fewer words on screen, the whole of them for screen readers (the owner, 2026-10-20)", () => {
   const ride = source("../RideMode.tsx");
-  assert.match(ride, /<span className="visually-hidden">In <\/span>/, "\"In\" before the distance stays for screen readers");
+  assert.match(ride, /<span className="visually-hidden">\{t\("In"\)\} <\/span>/, "\"In\" before the distance stays for screen readers");
   // One TimeToGo for both to-go times (the next stop and the end, lib/arrival.ts), its "about" and "arriving about" read.
   assert.equal((ride.match(/<span className="visually-hidden">about <\/span>/g) ?? []).length, 1, "\"about\" before the to-go time stays for screen readers");
   assert.equal((ride.match(/<TimeToGo seconds=/g) ?? []).length, 2, "both to-go times");
@@ -215,16 +215,28 @@ test("ride card: fewer words on screen, the whole of them for screen readers (th
 test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a ride\"): a side button, Share ride's link, the ride going on", () => {
   const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
   // A round side button as Roam's, on while this rider leads; not once arrived.
-  assert.match(rail, /\{onBroadcast && !ride\.arrived && \(\s*<button\s+type="button"\s+className=\{`ride-round\$\{broadcasting \? " ride-round-on" : ""\}`\}\s+onClick=\{\(\) => void broadcast\(\)\}/);
-  assert.match(rail, /<Icon name="broadcast" size=\{24\} \/>/);
+  assert.match(rail, /\{onBroadcast && !ride\.arrived && \(\s*<button\s+type="button"\s+className=\{`ride-round broadcast-hold\$\{broadcasting \? " ride-round-on" : ""\}`\}\s+onClick=\{\(\) => void broadcast\(\)\}/);
+  assert.match(rail, /<Icon name="broadcast" size=\{riders === null \? 24 : 20\} \/>/);
+  // The count of riders, the leader included, is part of Broadcast (Stephen 2026-10-27), said in its name too.
+  assert.match(rail, /\{riders !== null && \(\s*<span className="ride-round-count" aria-hidden="true">/);
+  assert.match(rail, /\$\{riders === null \? "" : `\. \$\{countText\(riders\)\}`\}/);
   // The share sheet opens inside the press: nothing awaited before onBroadcast.
   assert.match(ride, /broadcastBusy\.current = true;\s*try \{\s*const said = await onBroadcast\(\);/);
   // App: Share ride's link (shareRoute(true)), the rider its leader; no new ride started.
-  const fromRide = app.slice(app.indexOf("const broadcastFromRide = async"), app.indexOf("// Ride the rest (lib/rideTrip.ts)"));
+  const fromRide = app.slice(app.indexOf("const broadcastFromRide = async"), app.indexOf("// Broadcast held beside Start"));
   assert.match(fromRide, /await shareRoute\(true, broadcastNav\)/);
   assert.doesNotMatch(fromRide, /startRide/);
-  // Only the plan's own route, never Ride the rest's, a detour from Roam, or a ride opened from another's link.
-  assert.match(app, /onBroadcast=\{!rideStart\.roam && rideStart\.route === shown && !\(onShared && !onShared\.own\) \? broadcastFromRide : null\}/);
+  // Only the plan's own route, never Ride the rest's or a detour from Roam; one following another's link passes theirs
+  // on (Stephen 2026-10-26: "allow participants to share that same code as well").
+  assert.match(app, /onBroadcast=\{rideCanBroadcast \? broadcastFromRide : null\}/);
+  // RideGroup's count goes to Broadcast, its own riders chip left out while riding; More > Riders opens its panel.
+  assert.match(app, /riders=\{rideCanBroadcast && rideBroadcast && rideGroupLine \? rideRiders : null\}/);
+  // The panel opened from More closes by its own Close, which the idle timer presses too.
+  assert.match(source("../RideGroup.tsx"), /\{ridersElsewhere && \(\s*<button type="button" className="secondary ride-riders-close" data-idle-close aria-expanded=\{ridersOpen\}/);
+  // Where the count is not on Broadcast (Roam, Plan) the riders chip is the person icon and a number, its words in its name only.
+  assert.match(source("../RideGroup.tsx"), /className="chip ride-riders" aria-label=\{countText\(riders, !noLine\)\}.*\n\s*<Icon name="user" size=\{20\} \/>\s*<span aria-hidden="true">\{riders\}<\/span>/);
+  assert.match(app, /onRiders=\{setRideRiders\}\s*ridersElsewhere=\{riding && rideCanBroadcast\}\s*ridersAsk=\{ridersAsk\}/);
+  assert.match(fromRide, /const followed = followedLink\(\);\s*if \(followed\) return \(await passOn\(followed, broadcastNav\)\)\.said;/);
   assert.match(app, /broadcasting=\{rideBroadcast\?\.leading === true\}/);
 });
 

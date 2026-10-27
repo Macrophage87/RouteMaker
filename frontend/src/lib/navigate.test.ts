@@ -475,6 +475,12 @@ test("spokenDistance and withoutMetric: US units only when spoken", () => {
   assert.equal(spokenDistance(15), "50 feet");
   assert.equal(spokenDistance(91.44), "300 feet");
   assert.equal(spokenDistance(150), "500 feet");
+  // Feet up to just under 1,000 ft, not tenths of a mile (routing audit D7).
+  assert.equal(spokenDistance(229.5), "800 feet");
+  assert.equal(spokenDistance(240), "800 feet");
+  assert.equal(spokenDistance(170), "600 feet");
+  assert.equal(spokenDistance(285), "900 feet");
+  assert.equal(spokenDistance(290), "0.2 miles");
   assert.equal(spokenDistance(643.7), "0.4 miles");
   assert.equal(spokenDistance(1609.344), "1 mile");
   assert.equal(spokenDistance(3218.7), "2 miles");
@@ -1506,6 +1512,47 @@ test("jog: three turns in a row are one cue, said early together, then each on i
   );
 });
 
+test("jog: the reminder about 10 s out is the turns alone, so 'now' does not cut it off; in full when said first (routing audit D8)", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "A Street.", { street: "A Street" }),
+      stretch(900, 950, "Right onto B Street.", { street: "B Street", turn: turning("right", "B Street") }),
+      stretch(950, 1000, "Left onto C Street.", { street: "C Street", turn: turning("left", "C Street") }),
+      stretch(1000, 1050, "Bear right to stay on D Street.", { street: "D Street", turn: { ...turning("bear_right", "D Street"), stay: true } }),
+      stretch(1050, 2200, "Left onto E Street.", { street: "E Street", turn: turning("left", "E Street") }),
+    ]),
+  );
+  const first = model.cues[0];
+  const said = ride(model, "full", 0, 1100).events.filter((e) => e.cue?.index === first.index);
+  assert.deepEqual(said.map((e) => e.phase), ["advance", "prepare", "now"]);
+  assert.match(said[0].spoken, /^In .*, right onto B Street, then immediately left onto C Street, then immediately bear right to stay on D Street\.$/);
+  assert.match(said[1].spoken, /^In .*, right, then immediately left, then immediately bear right\.$/);
+  // Prepare as the first thing said (a ride that starts close, a gap): the streets in full.
+  assert.equal(cueSpoken(first, "prepare", 45, true), "In 150 feet, right onto B Street, then immediately left onto C Street, then immediately bear right to stay on D Street.");
+  // A plain turn's prepare is unchanged.
+  assert.equal(cueSpoken(model.cues[3], "prepare", 45), "In 150 feet, left onto E Street.");
+  // A crossing keeps "Cross X, then ..."; a circle keeps its exit.
+  const crossing = rideModel(
+    straightRoute([
+      stretch(0, 900, "Needwood Road bike lane.", { street: "Needwood Road bike lane" }),
+      stretch(900, 925, "Cross Redland Road.", { street: "Needwood Road bike lane", turn: { ...turning("bear_right", "Needwood Road bike lane"), cross: "Redland Road" } }),
+      stretch(925, 2200, "Left onto Redland Road bike lane.", { street: "Redland Road bike lane", turn: turning("left", "Redland Road bike lane") }),
+    ]),
+  ).cues[0];
+  assert.equal(cueSpoken(crossing, "prepare", 45), "In 150 feet, cross Redland Road, then left.");
+  const circle = rideModel(
+    straightRoute([
+      stretch(0, 900, "Massachusetts Avenue Northwest.", { street: "Massachusetts Avenue Northwest" }),
+      stretch(900, 920, "Bear right onto Dupont Circle Northwest.", { street: "Dupont Circle Northwest", turn: turning("bear_right", "Dupont Circle Northwest") }),
+      stretch(920, 2200, "Take the 2nd exit onto P Street Northwest at Dupont Circle Northwest.", {
+        street: "P Street Northwest",
+        turn: { ...turning("left", "P Street Northwest"), exit: { number: 2, circle: "Dupont Circle Northwest" } },
+      }),
+    ]),
+  ).cues[0];
+  assert.equal(cueSpoken(circle, "prepare", 45), "In 150 feet, bear right, then immediately take the 2nd exit at Dupont Circle Northwest.");
+});
+
 test("jog: a flagged junction between two close turns keeps them apart (pinned)", () => {
   const model = rideModel(
     straightRoute([
@@ -1542,6 +1589,41 @@ test("a fork along one trail is a turn cue to stay on it (the owner, 2026-10-18,
     turns.map((c) => [c.movement, c.text]),
     [["left", "Left to stay on Paint Branch Trail."]],
   );
+});
+
+test("a fork along one trail stays 'to stay on' at the turn and inside a jog, never 'now onto' its own trail (routing audit D6)", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "Paint Branch Trail.", { street: "Paint Branch Trail", facility: "path" }),
+      stretch(900, 2200, "Bear right to stay on Paint Branch Trail.", {
+        street: "Paint Branch Trail",
+        facility: "path",
+        turn: { ...turning("bear_right", "Paint Branch Trail"), stay: true },
+      }),
+    ]),
+  );
+  const fork = model.cues[0];
+  assert.equal(fork.text, "Bear right to stay on Paint Branch Trail.");
+  assert.equal(cueSpoken(fork, "advance", 152.4), `In ${spokenDistance(152.4)}, bear right to stay on Paint Branch Trail.`);
+  assert.equal(cueSpoken(fork, "now", 0), "Bear right now.");
+  // A stay fork as a jog's later turn: said "to stay on" in the first turn's text, and "now" alone at its own turn.
+  const jog = rideModel(
+    straightRoute([
+      stretch(0, 900, "Q Street Northwest.", { street: "Q Street Northwest" }),
+      stretch(900, 930, "Right onto Paint Branch Trail.", { street: "Paint Branch Trail", facility: "path", turn: turning("right", "Paint Branch Trail") }),
+      stretch(930, 2200, "Bear right to stay on Paint Branch Trail.", {
+        street: "Paint Branch Trail",
+        facility: "path",
+        turn: { ...turning("bear_right", "Paint Branch Trail"), stay: true },
+      }),
+    ]),
+  );
+  const [first, second] = jog.cues;
+  assert.equal(first.text, "Right onto Paint Branch Trail, then immediately bear right to stay on Paint Branch Trail.");
+  assert.ok(second.joined);
+  assert.equal(cueSpoken(second, "now", 0), "Bear right now.");
+  // A plain turn keeps its street at "now".
+  assert.equal(cueSpoken(first, "now", 0), "Right now onto Paint Branch Trail.");
 });
 
 test("an unusual junction's ways ride on its turn cue for the card to draw; a plain turn has none (the owner, 2026-10-20)", () => {

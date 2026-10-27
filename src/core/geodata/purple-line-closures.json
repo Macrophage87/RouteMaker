@@ -1,0 +1,21 @@
+{
+ "updated": "2026-10-27",
+ "closures": [
+{
+ "id": "bonifant-west",
+ "project": "Purple Line, Silver Spring",
+ "page": "https://purplelinemd.com/updates",
+ "advisory": "https://purplelinemd.com/media/z3somshb/notice-dixon-closure-072426.pdf",
+ "posted": "2026-07-24",
+ "road": "Bonifant St, Ramsey Ave to Georgia Ave",
+ "reason": "Closed to traffic for Purple Line track work, Dixon Ave junction included. Pedestrian access is kept round the work zone.",
+ "first_day": "2026-07-24",
+ "last_day": "2027-03-31",
+ "ways": [697586209, 697586210, 244626217, 100023934, 519073841],
+ "lines": [
+  [[-77.02916, 38.99337], [-77.02907, 38.99337], [-77.02888, 38.99337], [-77.02811, 38.99337], [-77.02807, 38.99338], [-77.02796, 38.99338], [-77.02783, 38.99338], [-77.02765, 38.99338]],
+  [[-77.0283, 38.99337], [-77.02811, 38.99337], [-77.02807, 38.99338], [-77.02796, 38.99338], [-77.02783, 38.99338], [-77.02748, 38.99339], [-77.02738, 38.99339], [-77.0269, 38.99339], [-77.02688, 38.99339], [-77.02676, 38.9934], [-77.0266, 38.99339]]
+ ]
+}
+ ]
+}

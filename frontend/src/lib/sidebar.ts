@@ -10,6 +10,7 @@ import { encodePlan } from "./planHash.ts";
 import type { Dials } from "./dials.ts";
 import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
+import { t } from "./i18n.ts";
 
 /**
  * The views the panel body shows: the planner (Plan's sections, or Go's sheet), or one of the sheets
@@ -42,7 +43,7 @@ export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
 };
 
 /** The Files sheet's name on its buttons (the owner, 2026-10-18), short enough for the bar. */
-export const SAVE_LOAD = "Save & load";
+export const SAVE_LOAD = t("Save & load");
 
 /** Go's Menu (the mockup's Menu sheet): Settings, with Plan, Suggest, GPX and Review above them. */
 export const MENU_TITLE = "Menu";
@@ -86,10 +87,10 @@ export function barCurrent(item: Pick<BarItem, "id">, view: PanelView): boolean 
 }
 
 /** The sheets' Back button, in words, not only an arrow (OWNER-DECISIONS 393). */
-export const BACK_LABEL = "Back to planner";
+export const BACK_LABEL = t("Back to planner");
 
 /** The bottom bar's landmark name: the pages of the panel it switches between. */
-export const BAR_NAME = "Panel pages";
+export const BAR_NAME = t("Panel pages");
 
 /**
  * Parts built and ready to place, both decided OFF (OWNER-DECISIONS 384, items 3 and 4);
@@ -102,14 +103,14 @@ export const BAR_NAME = "Panel pages";
 export const PLANNER_EXTRAS = { zoomNotice: false, highContrastShortcut: false } as const;
 
 /** The line in the Map layers sheet for every ride type but Mass Ride (mockup v3, Layers). */
-export const MASS_RIDE_LAYERS_NOTE = "Mass Ride has its own layers, such as federal land.";
+export const MASS_RIDE_LAYERS_NOTE = t("Mass Ride has its own layers, such as federal land.");
 
 /** The Traffic stress section's status line while the stress tiles are checked, or down. */
-export const STRESS_CHECKING = "Checking the stress map…";
-export const STRESS_UNAVAILABLE = "Stress map unavailable for now. Routes still give their stress.";
+export const STRESS_CHECKING = t("Checking the stress map…");
+export const STRESS_UNAVAILABLE = t("Stress map unavailable for now. Routes still give their stress.");
 
-export const MORE_TIPS = "More tips";
-export const FEWER_TIPS = "Fewer tips";
+export const MORE_TIPS = t("More tips");
+export const FEWER_TIPS = t("Fewer tips");
 
 /**
  * The one line over the points, until there is a start; the full how-to is behind "More tips" (emptyPlanHint).
@@ -134,11 +135,11 @@ export function rideActionLabel(open: boolean): string {
 export const RIDE_ACTION_SPOKEN = "Adjust";
 
 /** The Ride settings line's label, over its summary. */
-export const RIDE_SETTINGS_LABEL = "Ride settings";
+export const RIDE_SETTINGS_LABEL = t("Ride settings");
 
-export const COPY_LINK = "Copy link";
-export const COPY_LINK_DONE = "Link copied.";
-export const COPY_LINK_FAILED = "Could not copy. Copy the address from the browser's address bar.";
+export const COPY_LINK = t("Copy link");
+export const COPY_LINK_DONE = t("Link copied.");
+export const COPY_LINK_FAILED = t("Could not copy. Copy the address from the browser's address bar.");
 
 /** What "Copy link" said after a press: done or not. */
 export function linkSaidFor(done: boolean): string {

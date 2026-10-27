@@ -6,6 +6,7 @@
 import type { DescriptionEntry, ErrorKind, RouteResult, RouteResponse, StressSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { ARRIVE_M, lineAlong, measureMap, pointAt, snap, wayWords, type RideModel } from "./navigate.ts";
+import { t } from "./i18n.ts";
 
 /**
  * The way back aims this far along the line past its nearest point ahead (about 300 ft), so it ends on the
@@ -184,7 +185,7 @@ export function joinRoutes(leg: RouteResponse, planned: RouteResponse, atM: numb
 
 /** A joined stretch's words where the planned route turned onto it: what Ride mode says of it, with no turn. */
 function continueWords(street: string | null): string {
-  return street ? `Continue on ${wayWords(street)}.` : "Continue.";
+  return street ? t("Continue on {street}.", { street: wayWords(street) }) : t("Continue.");
 }
 
 function atMetres(entry: DescriptionEntry, from: number, to: number): DescriptionEntry {

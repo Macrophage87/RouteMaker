@@ -260,6 +260,8 @@ test("the early start makes one request at a time, and the tap takes it once", a
     });
   assert.equal(early.start("a", send("a")), true);
   assert.equal(early.start("b", send("b")), false, "one in flight");
+  // "b" waits for "a" (the next test); its tap takes it out of the wait.
+  assert.equal(early.take("b"), null);
   assert.equal(early.busy(), true);
   answers[0]({ ok: true, route: FIRST });
   await flush();
@@ -275,6 +277,73 @@ test("the early start makes one request at a time, and the tap takes it once", a
   allowed = true;
   now += 61_000;
   assert.equal(sent.length, 1);
+});
+
+test("the early start goes to the latest place asked for while one is in flight, once that settles (routing audit S4)", async () => {
+  let allowed = true;
+  const sent: string[] = [];
+  const answers: Array<{ resolve: (r: RouteResult) => void; reject: (e: unknown) => void }> = [];
+  const early = new EarlyStart({ allowed: () => allowed, now: () => 0, perMinute: 100 });
+  const send = (body: string) => () =>
+    new Promise<RouteResult>((resolve, reject) => {
+      sent.push(body);
+      answers.push({ resolve, reject });
+    });
+  // Typed on past "Union Market" to "Union Station": the last one wins, the one between is never asked for.
+  assert.equal(early.start("market", send("market")), true);
+  assert.equal(early.start("between", send("between")), false);
+  assert.equal(early.start("station", send("station")), false);
+  answers[0].resolve({ ok: true, route: FIRST });
+  await flush();
+  assert.deepEqual(sent, ["market", "station"]);
+  assert.equal(early.busy(), true);
+  answers[1].resolve({ ok: true, route: FIRST });
+  const taken = early.take("station");
+  assert.ok(taken);
+  assert.deepEqual(await taken, { ok: true, route: FIRST });
+  await flush();
+
+  // A failed request still lets the waiting one go.
+  assert.equal(early.start("x", send("x")), true);
+  assert.equal(early.start("y", send("y")), false);
+  answers[2].reject(new Error("network"));
+  await flush();
+  assert.deepEqual(sent.slice(2), ["x", "y"]);
+  answers[3].resolve({ ok: true, route: FIRST });
+  await flush();
+
+  // The tap for the waiting place makes its own request: the wait is dropped, not sent as well.
+  assert.equal(early.start("p", send("p")), true);
+  assert.equal(early.start("q", send("q")), false);
+  assert.equal(early.take("q"), null);
+  answers[4].resolve({ ok: true, route: FIRST });
+  await flush();
+  assert.deepEqual(sent.slice(4), ["p"]);
+
+  // Back to the place in flight: nothing newer waits.
+  assert.equal(early.start("r", send("r")), true);
+  assert.equal(early.start("s", send("s")), false);
+  assert.equal(early.start("r", send("r")), false);
+  answers[5].resolve({ ok: true, route: FIRST });
+  await flush();
+  assert.deepEqual(sent.slice(5), ["r"]);
+
+  // No longer allowed when the one in flight settles (a tap's route asked for, Go left): the wait is dropped.
+  assert.equal(early.start("u", send("u")), true);
+  assert.equal(early.start("v", send("v")), false);
+  allowed = false;
+  answers[6].resolve({ ok: true, route: FIRST });
+  await flush();
+  allowed = true;
+  assert.deepEqual(sent.slice(6), ["u"]);
+  assert.equal(early.busy(), false);
+});
+
+test("App: a search result is asked for early once it stays the top result; Home at once (routing audit S4)", () => {
+  assert.match(app, /goEarlyTimer\.current = window\.setTimeout\(\(\) => \{\s*const point = placeFromSearch\(found, \(\) => undefined, entranceForPlace\);\s*if \(point\) goEarly\(point\);\s*\}, GO_EARLY_SETTLE_MS\);/);
+  assert.match(app, /const GO_EARLY_SETTLE_MS = 400;/);
+  // The tap clears it.
+  assert.match(app, /const goToPlace = \(found: Place\) => \{\s*window\.clearTimeout\(goEarlyTimer\.current\);/);
 });
 
 test("the early start keeps inside its share of the API's per-minute count, and forgets what is stale", async () => {

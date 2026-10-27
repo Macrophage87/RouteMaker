@@ -6003,6 +6003,23 @@ details.fold > summary .icon {
   display: none;
 }
 
+/* Broadcast's rider count, the leader included (Stephen 2026-10-27: "Make it part of the broadcast button"). */
+.ride .ride-round-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ride .ride-riders-bubble {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
 /* Skip this stop: the stop's number under the skip mark. */
 .ride .ride-skip-stop {
   font-size: 20px; /* the ride screen's smallest text */
@@ -6348,6 +6365,13 @@ details.fold > summary .icon {
 
 .alert-line .alert-text {
   font-weight: 700;
+}
+
+/* " · arrive 8:27 AM" beside the route's time, smaller, so the time stays the first thing read and the line one line. */
+.stats.totals .total-time .route-arrive {
+  font-size: 0.6em;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .go-head .stats.totals .stat-distance dd {
@@ -6776,6 +6800,22 @@ details.fold > summary .icon {
   gap: 6px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+/* Send alert (Stephen 2026-10-27: "make the alert (call it send alert) a larger button"): a ride-sized press. */
+.ride-group-bar .ride-alert-button {
+  min-height: 56px;
+  padding: 0 20px;
+  font-size: 20px;
+  font-weight: 700;
+  border-width: 2px;
+}
+.ride-group-bar .ride-riders {
+  min-height: 56px;
+  min-width: 56px;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 .ride-consent,
 .ride-riders-panel,
@@ -8403,6 +8443,23 @@ details.fold > summary .icon {
 
 .go-start .broadcast-button {
   min-height: 52px;
+}
+
+/* Held for its QR code (lib/broadcastQr.ts): no text selection or the phone's own long-press menu on it. */
+.broadcast-button,
+.ride-round.broadcast-hold {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Big and on white, whatever the theme, for a camera to read. */
+.broadcast-qr {
+  display: block;
+  width: min(100%, 320px);
+  height: auto;
+  margin: 0 auto 12px;
+  background: #ffffff;
 }
 
 .start-ride .broadcast-note,

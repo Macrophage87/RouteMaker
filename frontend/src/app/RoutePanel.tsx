@@ -10,6 +10,7 @@ import type { BikeshareOption, RouteError, RouteResponse } from "../lib/api.ts";
 import { placeLetter } from "../lib/letteredPlaces.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
+import { leaveNowArrival } from "../lib/arrival.ts";
 import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
 import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, noviceTripShort, type NoviceTrip } from "../lib/noviceOffer.ts";
 import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
@@ -48,6 +49,8 @@ import { SAVE_ROUTE, SAVE_SHORT } from "../lib/savedRoutes.ts";
 import { Fold, QuickFigures } from "../Sidebar.tsx";
 import { COPY_LINK, ROUTE_FOLDS, ROUTE_FOLD_GROUP, chartFoldOpen } from "../lib/sidebar.ts";
 import { BROADCAST_ABOUT, BROADCAST_LABEL, SHARE_LABEL, SHARE_RIDE_LABEL } from "../lib/share.ts";
+import { BROADCAST_HOLD_HINT } from "../lib/broadcastQr.ts";
+import { useHold } from "../lib/useHold.ts";
 import { SHARE_IMAGE_LABEL } from "../lib/shareCard.ts";
 import {
   SHARE_DELETE_AFTER_LABEL,
@@ -232,7 +235,8 @@ export interface RouteSectionProps {
   choose: (index: number) => void;
   startRide: () => void;
   /** Broadcast, beside Start: Share ride's link (the sharer leads), then the ride. Null without a share sheet. */
-  broadcastRide: { onPress: () => void; note: { text: string; count: number } } | null;
+  // `onHold`: held (or right-clicked), its link as a QR code (lib/broadcastQr.ts).
+  broadcastRide: { onPress: () => void; onHold: () => void; note: { text: string; count: number } } | null;
   startRideRef: RefObject<HTMLButtonElement | null>;
   rideSize: number | undefined;
   setDials: Dispatch<SetStateAction<Dials>>;
@@ -254,6 +258,8 @@ export interface RouteSectionProps {
   transitControls: TransitControls;
   /** The light times on the route near dawn or dusk (lib/lightTimes.ts), leaving now; empty otherwise. */
   light: readonly LightMark[];
+  /** When the route shown ends leaving now (lib/arrival.ts leaveNowArriveMs), kept current each minute; else null. */
+  arriveMs: number | null;
   /** Weather along the route, leaving now (lib/weather.ts), once checked; else null. */
   weather: WeatherReport | null;
 }
@@ -269,7 +275,7 @@ export interface TransitControls {
 
 /** The planner's Route section: planning, the long-ride question, errors, the route summary and Start ride. */
 export function RouteSection(props: RouteSectionProps) {
-  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, broadcastRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light, weather } = props;
+  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, broadcastRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light, arriveMs, weather } = props;
   const goMode = mode === "go";
   return (
     <section key="route" aria-labelledby="route-heading" aria-busy={stale} className={goMode ? "route-section go-route" : "route-section"}>
@@ -344,7 +350,7 @@ export function RouteSection(props: RouteSectionProps) {
             )
           }
           pickerCount={candidateRows(answer)?.length ?? 0}
-          ride={{ onStart: startRide, onBroadcast: broadcastRide?.onPress ?? null, broadcastNote: broadcastRide?.note, startRef: startRideRef }}
+          ride={{ onStart: startRide, onBroadcast: broadcastRide?.onPress ?? null, onBroadcastHold: broadcastRide?.onHold ?? null, broadcastNote: broadcastRide?.note, startRef: startRideRef }}
           rideSize={rideSizeOf({ rideSize })}
           onEnding={(ending) => setDials((d) => ({ ...d, ending }))}
           water={waterStatus === "ready" ? { items: waterAlong, onAddStop: addWaterStop } : null}
@@ -355,6 +361,7 @@ export function RouteSection(props: RouteSectionProps) {
           go={go}
           transitControls={{ ...transitControls, busy: stale }}
           light={light}
+          arriveMs={arriveMs}
           weather={weather}
         />
       )}
@@ -632,6 +639,17 @@ function StressFigure({ segments }: { segments: StressSegment[] }) {
 
 const climbCount = (n: number) => (n === 1 ? "1 climb" : `${n} climbs`);
 
+/** " · arrive 8:27 AM" after the route's time: when the ride ends if it starts now, as the ride shows it. */
+function ArriveAt({ arriveMs }: { arriveMs: number }) {
+  const { shown, said } = leaveNowArrival(arriveMs);
+  return (
+    <span className="route-arrive">
+      <span aria-hidden="true"> · {shown}</span>
+      <span className="visually-hidden">, {said}</span>
+    </span>
+  );
+}
+
 export function RouteSummary({
   route,
   answer,
@@ -656,6 +674,7 @@ export function RouteSummary({
   go,
   transitControls,
   light = [],
+  arriveMs = null,
   weather = null,
 }: {
   route: RouteResponse;
@@ -668,7 +687,7 @@ export function RouteSummary({
   federal: readonly string[];
   narrow: boolean;
   /** Ride mode's Start ride (WEB-NAV-plan.md Q1): offered beside the totals and with the directions. */
-  ride: { onStart: () => void; onBroadcast?: (() => void) | null; broadcastNote?: { text: string; count: number }; startRef: RefObject<HTMLButtonElement | null> };
+  ride: { onStart: () => void; onBroadcast?: (() => void) | null; onBroadcastHold?: (() => void) | null; broadcastNote?: { text: string; count: number }; startRef: RefObject<HTMLButtonElement | null> };
   onSelectJunction: (index: number) => void;
   /** The chart's scrub: the map point it reads, or null. */
   onScrub: (point: LonLat | null) => void;
@@ -689,6 +708,8 @@ export function RouteSummary({
   go: GoRouteControls;
   /** The light times on the route near dawn or dusk (lib/lightTimes.ts): one line, the map marks' accessible form. */
   light?: readonly LightMark[];
+  /** When the ride ends leaving now (lib/arrival.ts leaveNowArriveMs), shown after the route's time; null for none. */
+  arriveMs?: number | null;
   /** Weather along the route (lib/weather.ts): the NWS alerts and rain coming, with the warnings. */
   weather?: WeatherReport | null;
 }) {
@@ -699,6 +720,8 @@ export function RouteSummary({
   const [routesOpen, setRoutesOpen] = useState(mode === "go");
   const infoId = useId();
   const routesId = useId();
+  // Broadcast held (or right-clicked): its link as a QR code (lib/broadcastQr.ts).
+  const broadcastHold = useHold(ride.onBroadcastHold);
   // A Mass Ride's panel is about riders per minute, in place of the LTS breakdown (OWNER-DECISIONS 325).
   const capacity = capacitySummary(route.stress_spans);
   const segments = capacity ? [] : stressSegments(route.stress_m);
@@ -715,6 +738,12 @@ export function RouteSummary({
   const transit = transitOf(route);
   const timeName = transit ? transitTimeName(transit) : "Moving time";
   const timeText = transit ? transitTime(transit) : formatDuration(route.duration_s);
+  const timeShown = (
+    <>
+      {timeText}
+      {arriveMs != null && <ArriveAt arriveMs={arriveMs} />}
+    </>
+  );
   const calm = calmPercent(route.stress_m);
   // Start ride is offered with the directions too (plan Q1). On a Bikeshare or transit plan it follows the
   // riding leg, the line (lib/rideTrip.ts: the walk to the dock and the boarding are said around it);
@@ -738,14 +767,14 @@ export function RouteSummary({
       {/* Broadcast (Stephen 2026-10-22: "a small button next to start"): Go's one control for it; the share sheet
           opens, and the ride starts once the link is sent, with the sharer as its leader. */}
       {ride.onBroadcast && (
-        <button type="button" className="secondary broadcast-button" onClick={ride.onBroadcast} title={BROADCAST_ABOUT} aria-describedby="broadcast-about">
+        <button type="button" className="secondary broadcast-button" onClick={ride.onBroadcast} {...broadcastHold} title={BROADCAST_ABOUT} aria-describedby="broadcast-about">
           <Icon name="broadcast" size={18} />
           {BROADCAST_LABEL}
         </button>
       )}
       {ride.onBroadcast && (
         <span id="broadcast-about" className="visually-hidden">
-          {BROADCAST_ABOUT}
+          {BROADCAST_ABOUT} {BROADCAST_HOLD_HINT}
         </span>
       )}
       {/* What went wrong (the route not ready, the sheet failed, the link without its leader), shown and said. */}
@@ -853,7 +882,7 @@ export function RouteSummary({
           <dl className="stats totals go-totals">
             <div className="total-time">
               <dt className="visually-hidden">{timeName}</dt>
-              <dd>{timeText}</dd>
+              <dd>{timeShown}</dd>
             </div>
             <div className="stat-distance">
               <dt className="visually-hidden">{transit ? "Distance ridden" : "Distance"}</dt>
@@ -948,7 +977,7 @@ export function RouteSummary({
         <dl className="stats totals">
           <div className="total-time">
             <dt className="visually-hidden">{timeName}</dt>
-            <dd>{timeText}</dd>
+            <dd>{timeShown}</dd>
           </div>
           <div className="stat-distance">
             <dt className="visually-hidden">{transit ? "Distance ridden" : "Distance"}</dt>
