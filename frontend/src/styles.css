@@ -6809,7 +6809,6 @@ details.fold > summary .icon {
   font-weight: 700;
   border-width: 2px;
 }
-.ride-consent,
 .ride-group-bar .ride-riders {
   min-height: 56px;
   min-width: 56px;
@@ -6818,6 +6817,7 @@ details.fold > summary .icon {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+.ride-consent,
 .ride-riders-panel,
 .ride-alert-panel,
 .ride-alert-banner {
