@@ -842,6 +842,40 @@ class TestOverview:
     def test_describe_is_the_full_list(self):
         assert d.describe([bethesda()]) == both(bethesda())[0]
 
+    def test_a_turn_onto_an_unnamed_way_is_kept_in_the_overview(self):
+        for kind, words in (
+            ({}, "right on unnamed road"),
+            ({"use": "service_road"}, "right on the service road"),
+            ({"facility": "path", "use": "cycleway"}, "right on the path"),
+        ):
+            legs = [
+                flat(
+                    road("A St", 2, 1000, 0, 0),
+                    road(None, 2, 350, 90, 90, **kind),
+                    road("B St", 2, 1000, 0, 0),
+                )
+            ]
+            _full, short = both(*legs)
+            assert short[0]["text"].split(": ")[1].startswith(f"A St, then {words}, ")
+            assert short[1]["text"].split(": ")[1].startswith("Left onto B St,")
+
+    def test_two_unnamed_turns_are_two_and_straight_on_is_not_named(self):
+        legs = [
+            flat(
+                road("A St", 2, 1000, 0, 0),
+                road(None, 2, 150, 90, 90),
+                road(None, 2, 150, 0, 0, use="service_road"),
+                road(None, 2, 150, 270, 270, use="service_road", facility="lane"),
+                road("B St", 2, 1000, 270, 270),
+            )
+        ]
+        _full, short = both(*legs)
+        assert (
+            short[0]["text"]
+            .split(": ")[1]
+            .startswith("A St, then right on unnamed road and left on the service road, ")
+        )
+
     def test_a_short_quiet_stretch_is_merged_into_its_neighbour(self):
         a, b, c = (
             road("A St", 1, 1000, 0, 0),

@@ -1427,9 +1427,16 @@ def _group_run(
     own = _street_words(first)
     streets: list[tuple[str, str | None]] = []
     for k, m in zip(range(group[0] + 1, group[1] + 1), members[1:], strict=True):
+        turn = (turns or {}).get(k)
         if m.label and m.label != own and m.label not in (s for s, _m in streets):
-            turn = (turns or {}).get(k)
             streets.append((m.label, turn.movement if turn else None))
+        elif not m.label and turn is not None and turn.movement in TURN_WORDS:
+            # An unnamed road, path or service road turned onto is a turn too: left out,
+            # the next entry's turn would read as made from the street before it. One
+            # entered straight on is not named.
+            words = _street_words(m)
+            if (words, turn.movement) not in streets:
+                streets.append((words, turn.movement))
     return merged, _then_words(streets)
 
 
