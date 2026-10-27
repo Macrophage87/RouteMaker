@@ -17,6 +17,7 @@ import { formatRadius } from "./format.ts";
 import { pointName } from "./summary.ts";
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./geo.ts";
 import { applyPlace, placeEffect, type PlaceChoice, type PlaceEffect } from "./geocode.ts";
+import { t } from "./i18n.ts";
 
 /** A high-accuracy look-up, given 10 seconds, that may reuse a fix up to 30 seconds old. */
 export const LOCATE_OPTIONS = { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 } as const;
@@ -97,7 +98,7 @@ export const LOCATE_MESSAGES: Record<LocateFailure, string> = {
 };
 
 /** The notice when the fix is outside the map (the correctness review's N1: said as the rider's location). */
-export const LOCATION_OUTSIDE = "Your location is outside the area this map covers (the DC region to Baltimore).";
+export const LOCATION_OUTSIDE = t("Your location is outside the area this map covers (the DC region to Baltimore).");
 /** The notice when the plan has no room for another point (the same words as a map click's). */
 export const maxPointsNotice = (): string => `A route can have at most ${MAX_POINTS} points.`;
 
@@ -226,7 +227,7 @@ export function accuracyText(accuracyM: number): string {
 
 /** Coarser than this (about 330 ft), the announcement warns that the point is rough (a laptop's Wi-Fi fix). */
 export const ROUGH_ACCURACY_M = 100;
-export const ROUGH_SAID = "That is rough; search for the exact place if you can.";
+export const ROUGH_SAID = t("That is rough; search for the exact place if you can.");
 
 /** Whether the search box's text asks for the rider's location: empty, or the start of a phrase for it (two letters or more). */
 export function locationMatches(query: string): boolean {
@@ -235,7 +236,7 @@ export function locationMatches(query: string): boolean {
   return q.length >= 2 && ["your location", "my location", "current location"].some((phrase) => phrase.startsWith(q));
 }
 
-export const FINDING_LOCATION = "Finding your location…";
+export const FINDING_LOCATION = t("Finding your location…");
 
 /**
  * What is said when the position became point `index` of a plan of `count`:
@@ -348,13 +349,13 @@ export function movedFromHere(fromHere: readonly LonLat[], before: LonLat | unde
 }
 
 /** Copy link's one-line note (OWNER-DECISIONS 395); a location that is not the start is said as a point (a dev extension of 395). */
-export const LINK_HAS_LOCATION_START = "This link includes your location as the start.";
-export const LINK_HAS_LOCATION_POINT = "This link includes your location as a point on the route.";
+export const LINK_HAS_LOCATION_START = t("This link includes your location as the start.");
+export const LINK_HAS_LOCATION_POINT = t("This link includes your location as a point on the route.");
 
 /** The same note for the rider's Home (review privacy-2): Go's Home chip makes it a plan point, so it is in the link. */
-export const LINK_HAS_HOME_END = "This link includes your Home as the destination.";
-export const LINK_HAS_HOME_START = "This link includes your Home as the start.";
-export const LINK_HAS_HOME_POINT = "This link includes your Home as a point on the route.";
+export const LINK_HAS_HOME_END = t("This link includes your Home as the destination.");
+export const LINK_HAS_HOME_START = t("This link includes your Home as the start.");
+export const LINK_HAS_HOME_POINT = t("This link includes your Home as a point on the route.");
 
 /**
  * The note for a link of `points`, given the position point objects (kept in

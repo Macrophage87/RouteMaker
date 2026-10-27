@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { DescriptionEntry, RouteResponse, RouteResult, StressSpan } from "./api.ts";
 import type { LonLat } from "./geo.ts";
-import { REPLAN_REJOIN, replanKept, replanPoints, replanTold, rideModel } from "./navigate.ts";
-import { REJOIN_AHEAD_M, joinRoutes, rejoinTargets, startsWayBack, triesWayBack, wayBackRoute } from "./rejoin.ts";
+import { REPLAN_REJOIN, REPLAN_REJOIN_AHEAD, UTURN_START, replanKept, replanPoints, replanTold, rideModel, uturnStep } from "./navigate.ts";
+import { REJOIN_AHEAD_M, joinRoutes, rejoinTargets, rejoinsFirst, ridesChosenRoute, startsWayBack, triesWayBack, wayBackRoute } from "./rejoin.ts";
 import { usableSpans } from "./routeColours.ts";
 
 const M_PER_DEG = 111_195;
@@ -208,13 +208,56 @@ test("Ride mode: a re-plan that finds no route asks for the way back, not for a 
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   const replan = ride.slice(ride.indexOf("const replan = useCallback("), ride.indexOf("// No good fix for a minute"));
   assert.match(replan, /confirmLong: true/);
-  assert.match(replan, /if \(!result\.ok && !via && !check && startsWayBack\(result\.error\.kind\) && !voided\(\)\)/);
+  assert.match(replan, /if \(!result\.ok && !backFirst && !via && !check && startsWayBack\(result\.error\.kind\) && !voided\(\)\)/);
   assert.match(replan, /await wayBackRoute\(routeRef\.current, modelRef\.current, current\.progressM \?\? 0, here, kept, ask, voided, closed\);/);
   // The ride's closed roads go with every re-plan (v0.8.2).
   assert.match(replan, /blocked: blockedRef\.current/);
   // The no-signal timer runs until the way back settles.
-  assert.ok(replan.indexOf("window.clearTimeout(timer);") > replan.indexOf("await wayBackRoute("));
+  assert.ok(replan.lastIndexOf("window.clearTimeout(timer);") > replan.lastIndexOf("await wayBackRoute("));
   assert.match(replan, /setReplanNote\(note\);\s*tell\(note\);/);
+});
+
+// ---- D15: on a route the rider chose over the first, the way back first (the owner, 2026-10-27) -----------------
+
+test("D15: a route ranked 2 or lower, or Go's More direct or Trailmaxxed, is one the rider chose; the first is not", () => {
+  assert.equal(ridesChosenRoute({ rank: 2 }), true);
+  assert.equal(ridesChosenRoute({ rank: 3 }), true);
+  assert.equal(ridesChosenRoute({ rank: 1 }), false);
+  assert.equal(ridesChosenRoute({ rank: null }), false);
+  assert.equal(ridesChosenRoute({}), false);
+  assert.equal(ridesChosenRoute({ rank: 1, neighbour: { kind: "direct", stress: 60, line: "" } }), true);
+  // A way back keeps the chosen route's rank, so the next re-route rejoins it too.
+  const chosen = { ...planned(), rank: 2 };
+  const joined = joinRoutes(leg(700), chosen, 700, new Map([[1, 1]]));
+  assert.equal(ridesChosenRoute(joined), true);
+});
+
+test("D15: only an automatic re-route on a chosen route tries the way back first", () => {
+  const none = { asked: false, detour: false, check: false, restart: false, skip: false };
+  assert.equal(rejoinsFirst({ rank: 2 }, none), true);
+  assert.equal(rejoinsFirst({ rank: 1 }, none), false, "the first route: a new plan first, as before (2026-10-17)");
+  for (const key of ["asked", "detour", "check", "restart", "skip"] as const) assert.equal(rejoinsFirst({ rank: 2 }, { ...none, [key]: true }), false, key);
+});
+
+test("D15: its note says a route was found, the stoker hears it, and a way back that turns round is never held", () => {
+  assert.equal(REPLAN_REJOIN_AHEAD, "New route found. It rejoins your route ahead.");
+  assert.equal(replanTold(false, "stoker", REPLAN_REJOIN_AHEAD), "say");
+  assert.equal(replanTold(false, "quiet", REPLAN_REJOIN_AHEAD), "quiet");
+  const turned = uturnStep({ ...UTURN_START, inARow: 2 }, { kind: "rerouted", turned: true, aheadOnly: true, stopped: false, note: REPLAN_REJOIN_AHEAD, now: 0 });
+  assert.equal(turned.state.held, false);
+  assert.equal(turned.note, REPLAN_REJOIN_AHEAD);
+});
+
+test("D15: Ride mode asks for the way back before the new plan on a chosen route, and not twice", () => {
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  const replan = ride.slice(ride.indexOf("const replan = useCallback("), ride.indexOf("// No good fix for a minute"));
+  const first = replan.indexOf("if (backFirst) {");
+  assert.ok(first > 0);
+  assert.ok(first < replan.indexOf("await ask(points)"), "the way back is asked before the plan to the end");
+  assert.match(replan, /rejoinsFirst\(routeRef\.current, \{ asked, detour: !!via, check, restart: !!done, skip: skip !== undefined \}\)/);
+  assert.match(replan, /note = REPLAN_REJOIN_AHEAD;/);
+  // No plan to the end after a way back refused for want of signal.
+  assert.match(replan, /if \(!found && failed !== "network" && !voided\(\)\)/);
 });
 
 test("the way back joins past a road the rider marked closed, never on it (v0.8.2)", () => {

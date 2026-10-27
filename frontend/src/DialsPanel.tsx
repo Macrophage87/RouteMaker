@@ -14,6 +14,8 @@
  * same words again (a11y review of integrate-2). The note under it is its
  * description.
  */
+import { SettingRow, SettingSelect } from "./SettingRow.tsx";
+import { SPEED_HINT, SPEED_LABEL, speedOptions, takesRiderSpeed, type RidingSpeedControl } from "./lib/ridingSpeed.ts";
 import { useEffect, useId, useRef, useState } from "react";
 import type { PresetId } from "./lib/presets.ts";
 import { BIKESHARE_HILLS, RIDE_SIZE_DEFAULT, WHENS, fitRideSize, offersBike, rideSizeOf, type Bike, type Dials, type When } from "./lib/dials.ts";
@@ -38,6 +40,8 @@ interface Props {
   onCommit: (dials: Dials) => void;
   /** What "Now" came to on the last route: one of the three settings. */
   resolvedWhen?: When | null;
+  /** The rider's own riding speed (lib/ridingSpeed.ts): kept apart from the dials, never in the link. */
+  ridingSpeed?: RidingSpeedControl;
 }
 
 function Slider(props: {
@@ -217,7 +221,7 @@ function withBike(dials: Dials, bike: Bike): Dials {
   return next;
 }
 
-export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
+export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed }: Props) {
   const [draft, setDraft] = useState(dials);
   useEffect(() => setDraft(dials), [dials]);
   // The latest of each, for a release that runs after the keys rest.
@@ -372,6 +376,20 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
         onDraft={(hills) => setDraft({ ...draft, hills })}
         onRelease={release}
       />
+      {/* The rider's own speed, under Hills (the owner, 2026-10-27: "Some people who ride much faster than the
+          defaults would like to be able to override the speed as an advanced feature", "next to hill speed or max
+          grade"). Not on a ride type that keeps its own pace (Mass Ride, a share bike). */}
+      {ridingSpeed && takesRiderSpeed(preset) && (
+        <SettingRow infoId="dials-speed-info" about="riding speed" info={SPEED_HINT} className="riding-speed">
+          <SettingSelect
+            label={SPEED_LABEL}
+            value={ridingSpeed.mph === null ? "" : String(ridingSpeed.mph)}
+            options={speedOptions()}
+            onChange={(value) => ridingSpeed.onChange(value === "" ? null : Number(value))}
+            describedBy="dials-speed-info"
+          />
+        </SettingRow>
+      )}
       {/* Mass Ride's "Anticipated ride size" (PLAN items 128, 129, 139): the corker load's group length. */}
       {view.rideSize && (
         <Slider
