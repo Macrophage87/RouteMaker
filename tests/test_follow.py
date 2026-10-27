@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from approx_points import approx_points
 from test_route_api import (  # noqa: F401 (fixtures)
     LAT,
     VERTICES,
@@ -48,7 +49,7 @@ def shape_of(leg_body: dict) -> list:
 class TestTheLine:
     def test_a_line_is_checked_and_decoded(self) -> None:
         encoded = encode_polyline6(VERTICES)
-        assert follow.checked_line(encoded, BBOX) == pytest.approx(VERTICES)
+        assert follow.checked_line(encoded, BBOX) == approx_points(VERTICES)
         with pytest.raises(follow.LineProblem, match="fewer than two"):
             follow.checked_line(encode_polyline6(VERTICES[:1]), BBOX)
         with pytest.raises(follow.LineProblem, match="outside"):
@@ -133,13 +134,13 @@ class TestJoining:
         assert len(route) == 1 and route[0]["costing_options"] == {"bicycle": {}}
         assert "shape" not in route[0] and len(route[0]["locations"]) == 2
         assert answer["against_traffic"] == []
-        assert routing._trip_line(answer["trip"]) == pytest.approx(VERTICES)
+        assert routing._trip_line(answer["trip"]) == approx_points(VERTICES)
 
     def test_legs_merge_with_their_shared_vertex_once(self) -> None:
         a = leg(VERTICES[0:2], 0.9, [10.0, 11.0], [{"type": 1}, {"type": 4}])
         b = leg(VERTICES[1:3], 0.4, [11.0, 12.0], [{"type": 1, "begin_shape_index": 0}])
         merged = follow.merge_legs(a, b, 30)
-        assert shape_of(merged) == pytest.approx(VERTICES[0:3])
+        assert shape_of(merged) == approx_points(VERTICES[0:3])
         assert merged["summary"]["length"] == pytest.approx(1.3)
         assert merged["elevation"] == [10.0, 11.0, 12.0]
         # The first leg's arrival goes; the second's manoeuvres move along the joined shape.
@@ -172,7 +173,7 @@ class TestJoining:
         trip = follow.joined(answer, VERTICES, route_between, 30)["trip"]
         assert asked == [(pytest.approx(VERTICES[1]), pytest.approx(VERTICES[2]))]
         assert len(trip["legs"]) == 1
-        assert shape_of(trip["legs"][0]) == pytest.approx(VERTICES)
+        assert shape_of(trip["legs"][0]) == approx_points(VERTICES)
         assert trip["summary"]["length"] == pytest.approx(2.6)
 
     def test_a_break_with_no_route_across_is_a_refusal(self) -> None:
@@ -195,10 +196,10 @@ class TestJoining:
     def test_a_match_short_of_the_files_ends_is_joined_to_them(self) -> None:
         answer = {"trip": {"legs": [leg(VERTICES[1:4], 0.8)]}}
         trip = follow.joined(answer, VERTICES, lambda a, b: leg([a, b], 0.9), 30)["trip"]
-        assert shape_of(trip["legs"][0]) == pytest.approx(VERTICES)
+        assert shape_of(trip["legs"][0]) == approx_points(VERTICES)
         # Where no route reaches an end, the match is kept as it is.
         trip = follow.joined(answer, VERTICES, lambda a, b: None, 30)["trip"]
-        assert shape_of(trip["legs"][0]) == pytest.approx(VERTICES[1:4])
+        assert shape_of(trip["legs"][0]) == approx_points(VERTICES[1:4])
 
 
 class TestAgainstTraffic:
