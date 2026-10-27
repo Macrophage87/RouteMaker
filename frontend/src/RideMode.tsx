@@ -2436,7 +2436,7 @@ export function RideMode({
           <dl className="ride-togo">
             {togo.stop && (
               <div>
-                <dt>To stop {togo.stop.number}</dt>
+                <dt>{t("To stop {number}", { number: togo.stop.number })}</dt>
                 <dd>
                   {formatDistance(togo.stop.metres)}
                   {togo.stop.seconds !== null && <TimeToGo seconds={togo.stop.seconds} nowMs={clockMs} />}

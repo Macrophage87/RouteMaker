@@ -622,7 +622,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
           {myGo.signedIn ? (
             <div className="account-line">
               <p className="hint signed-in">
-                <Icon name="user" size={16} /> Signed in with Discord.
+                <Icon name="user" size={16} /> {t("Signed in with Discord.")}
               </p>
               <SignOutForm />
               <span className="info-spacer" aria-hidden="true" />

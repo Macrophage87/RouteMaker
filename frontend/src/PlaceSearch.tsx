@@ -60,15 +60,15 @@ export interface LocateControl {
 
 /** What a Go or Home search does with the place picked (UI-CLEANUP). */
 const SINGLE_HINT = {
-  go: "The place you pick is where the route goes, from the start above.",
-  home: "The place you pick is kept as your Home.",
-  work: "The place you pick is kept as your Work, in Favorites.",
-  favorite: "The place you pick is saved to Favorites.",
-  start: "The place you pick is where the route starts, in place of your location.",
-  stop: "The place you pick is a stop, where it adds the least distance.",
-  from: "The place you pick becomes the start.",
-  to: "The place you pick becomes the destination.",
-  add: "The place you pick is added as a stop, where it adds the least distance.",
+  go: t("The place you pick is where the route goes, from the start above."),
+  home: t("The place you pick is kept as your Home."),
+  work: t("The place you pick is kept as your Work, in Favorites."),
+  favorite: t("The place you pick is saved to Favorites."),
+  start: t("The place you pick is where the route starts, in place of your location."),
+  stop: t("The place you pick is a stop, where it adds the least distance."),
+  from: t("The place you pick becomes the start."),
+  to: t("The place you pick becomes the destination."),
+  add: t("The place you pick is added as a stop, where it adds the least distance."),
 } as const;
 
 /**
@@ -90,14 +90,14 @@ interface AsDestination {
 /** What the result row's second option says. */
 export const MAKE_DESTINATION = t("Make this the destination");
 
-const CHOICE_LABEL: Record<PlaceChoice, string> = { start: "Start", end: "Destination", via: "Stop" };
+const CHOICE_LABEL: Record<PlaceChoice, string> = { start: t("Start"), end: t("Destination"), via: t("Stop") };
 
 export function searchStatus(result: GeoResult | null, query: string): string {
   if (result === null) return "";
   if (!result.ok) {
     return result.status === 429 || result.status === 503
-      ? "Search is busy; keep typing or try again in a moment."
-      : "Place search is not available right now.";
+      ? t("Search is busy; keep typing or try again in a moment.")
+      : t("Place search is not available right now.");
   }
   if (result.places.length === 0) return `No places found for “${query}” in this map's area.`;
   return result.places.length === 1 ? "1 place found." : `${result.places.length} places found.`;
@@ -350,7 +350,7 @@ export function PlaceSearch({
         maxLength={MAX_QUERY_CHARS}
         ref={inputRef}
         placeholder={
-          variant === "go" ? "Where to?" : variant === "start" ? "Type a start" : variant === "stop" || variant === "add" ? "Add a stop" : variant === "from" ? "Search for a start" : variant === "to" ? "Search for a destination" : "A place, an address or a street"
+          t(variant === "go" ? "Where to?" : variant === "start" ? "Type a start" : variant === "stop" || variant === "add" ? "Add a stop" : variant === "from" ? "Search for a start" : variant === "to" ? "Search for a destination" : "A place, an address or a street")
         }
         value={query}
         onChange={(event) => change(event.target.value)}
@@ -410,7 +410,7 @@ export function PlaceSearch({
       {/* The located point's note shows under whichever box is open, Add a stop too: a loop has no To box (Plan starts
           as a loop, Stephen 2026-10-20), and the note is what says the point is approximate. */}
       {locate && !locate.busy && locate.note && <p className="hint">{locate.note}</p>}
-      <ul id={listId} role="listbox" aria-label={empty ? "Your location and recent places" : "Places found"} className="place-results" hidden={!expanded}>
+      <ul id={listId} role="listbox" aria-label={empty ? t("Your location and recent places") : t("Places found")} className="place-results" hidden={!expanded}>
         {items.map((item, i) =>
           item === HERE ? (
             <li
