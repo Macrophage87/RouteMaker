@@ -113,6 +113,9 @@ import {
   nextAction,
   planAfterEnd,
   replanKept,
+  skippableVia,
+  viaSkipWorth,
+  viaSkippedNote,
   replanTold,
   rideModel,
   secondsBetween,
@@ -1109,7 +1112,8 @@ export function RideMode({
         ? restartKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, done)
         : replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, true).filter((i) => i !== skip);
       const left = withoutStop(plan.current.points, keptPoints, here, skip ?? -1);
-      const points = via ? detourPoints(left, via) : left;
+      // `let`: a re-route that leaves out the next via point (VIA_SKIP_EXTRA_S, below) rides the points without it.
+      let points = via ? detourPoints(left, via) : left;
       if (!points) {
         sayDetour(DETOUR_FULL);
         return false;
@@ -1158,6 +1162,7 @@ export function RideMode({
       let found: RouteResponse | null = null;
       let failed: ErrorKind | null = null;
       let note = REPLAN_FOUND;
+      let skippedVia = false;
       const voided = () => ended.current || ticket !== replanTicket.current;
       // Never back onto a road the rider marked closed: a way back joins the route past it.
       const closed = blockedUntil.current?.model === modelRef.current ? blockedUntil.current.untilM : -Infinity;
@@ -1178,6 +1183,24 @@ export function RideMode({
         const result = await ask(points);
         found = result.ok ? result.route : null;
         failed = result.ok ? null : result.error.kind;
+        // A re-route may leave out the next via point, never a later one and never a stop (Stephen, 2026-10-27: "Vias can
+        // be skipped a little more, for instance if a road is closed, you shouldn't expect a 20 minute detour just to get
+        // to the other side. Those are guides. Stops are where you want to end up." and "Sometimes people plan very
+        // indirect routes for fun, so it shouldn't skip all of the vias"): where the new route takes more than
+        // VIA_SKIP_EXTRA_S longer to reach it than the planned one would have from the rider's place, it is planned once
+        // more without it. Not for a detour, a held U-turn's check, a restart, or a Calmer or Flatter press (its route is
+        // slower by choice). The second ask is made only when that trips.
+        const eased = easing.current?.ticket === ticket;
+        const next = result.ok && !via && !check && !done && !eased ? skippableVia(modelRef.current, keptPoints) : null;
+        if (result.ok && next && viaSkipWorth(modelRef.current, current.progressM ?? 0, next.atM, modelOf(result.route, points), 1) && !voided()) {
+          const without = points.filter((_, i) => i !== 1);
+          const again = await ask(without);
+          if (again.ok) {
+            found = again.route;
+            points = without;
+            skippedVia = true;
+          }
+        }
         // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
         // the owner, 2026-10-17), unless it was tried first. Not for a detour, whose place the planned route does not
         // pass. The no-signal timer runs on through it.
@@ -1223,6 +1246,8 @@ export function RideMode({
       const counted = uturnStep(uturns.current, { kind: "rerouted", turned, aheadOnly, stopped: (heading === null && !turnRound) || press !== null, note, now: Date.now() });
       uturns.current = counted.state;
       note = counted.note ?? note;
+      // "Skipping via point. New route found." (or its U-turn or keep-ahead form), briefly.
+      if (skippedVia) note = viaSkippedNote(note);
       if (press) {
         press.outcome = note === REPLAN_REJOIN ? "rejoin" : "found";
         if (press.outcome === "found" && !turned && sameLine(found.geometry.coordinates, press.before.geometry.coordinates)) note = EASE_SAME[press.which];

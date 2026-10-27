@@ -1493,6 +1493,38 @@ export function replanKept(model: RideModel, progressM: number, points: readonly
 }
 
 /**
+ * A re-route leaves out the next via point when its new route takes more than this (5 min) longer to reach it than the
+ * planned route would have from the rider's place (Stephen, 2026-10-27: "Vias can be skipped a little more, for instance
+ * if a road is closed, you shouldn't expect a 20 minute detour just to get to the other side. Those are guides. Stops
+ * are where you want to end up."). Only the next one ("Sometimes people plan very indirect routes for fun, so it
+ * shouldn't skip all of the vias"), never a stop.
+ */
+export const VIA_SKIP_EXTRA_S = 300;
+
+/**
+ * The via point a re-route may leave out (VIA_SKIP_EXTRA_S): the first of `kept` (replanKept's answer) where it is a
+ * via point, the next point the rider heads for, with its place on the planned line; null where that is a stop or the
+ * end. A via point behind a stop is not this one: the stop comes first.
+ */
+export function skippableVia(model: Pick<RideModel, "passes">, kept: readonly number[]): { point: number; atM: number } | null {
+  if (kept.length < 2) return null;
+  return model.passes?.find((p) => p.point === kept[0]) ?? null;
+}
+
+/**
+ * Whether the new route's way to the via point is long enough to leave it out: from its start to the via point
+ * (`freshPoint`, its place in the new plan's points) it takes more than VIA_SKIP_EXTRA_S longer than the planned route
+ * from `progressM` to the same point at `viaAtM`, each by its own time along its line (secondsAt: the API's time marks,
+ * hills and junction waits in place, else the route's own pace). False where either time is unknown.
+ */
+export function viaSkipWorth(planned: RideModel, progressM: number, viaAtM: number, fresh: RideModel, freshPoint: number): boolean {
+  const before = secondsBetween(planned, progressM, viaAtM);
+  const pass = fresh.passes?.find((p) => p.point === freshPoint);
+  const after = pass ? secondsAt(fresh, pass.atM) : null;
+  return before !== null && after !== null && after - before > VIA_SKIP_EXTRA_S;
+}
+
+/**
  * The stops still ahead, for the ride's map (2026-10-24: "Stops should appear on the map when riding"): each stop
  * cue not yet reached, with its place in `points` and its number. Via points are no cues, so none is drawn.
  */
@@ -1713,6 +1745,18 @@ export const REPLAN_REJOIN = t("No new route was found; follow the way back to t
  * lib/rejoin.ts rejoinsFirst). Not REPLAN_REJOIN: here no new route was looked for, and none failed.
  */
 export const REPLAN_REJOIN_AHEAD = t("New route found. It rejoins your route ahead.");
+/** Said before a re-route's own note where it left out the next via point (VIA_SKIP_EXTRA_S): "Skipping via point. New route found." */
+export const VIA_SKIPPED_SAID = t("Skipping via point.");
+
+/** A re-route's note with VIA_SKIPPED_SAID before it, where it found a route; any other note as it is. */
+export function viaSkippedNote(note: string): string {
+  return note === REPLAN_FOUND || note === REPLAN_UTURN || note === REPLAN_AHEAD ? `${VIA_SKIPPED_SAID} ${note}` : note;
+}
+
+/** A note without VIA_SKIPPED_SAID before it: what it says of the new route, for replanTold. */
+function replanBase(note: string): string {
+  return note.startsWith(`${VIA_SKIPPED_SAID} `) ? note.slice(VIA_SKIPPED_SAID.length + 1) : note;
+}
 export const REPLAN_FINDING = t("Finding a new way from here.");
 export const REPLAN_STILL_WAITING = t("Still waiting for the last re-plan.");
 
@@ -1724,7 +1768,8 @@ export const REPLAN_STILL_WAITING = t("Still waiting for the last re-plan.");
  */
 export function replanTold(asked: boolean, level: Verbosity, note: string): "answer" | "say" | "quiet" {
   if (asked) return "answer";
-  const found = note === REPLAN_FOUND || note === REPLAN_AHEAD || note === REPLAN_NO_AHEAD || note === REPLAN_REJOIN || note === REPLAN_REJOIN_AHEAD;
+  const base = replanBase(note);
+  const found = base === REPLAN_FOUND || base === REPLAN_AHEAD || base === REPLAN_NO_AHEAD || base === REPLAN_REJOIN || base === REPLAN_REJOIN_AHEAD;
   if (level === "full" || (level === "stoker" && found)) return "say";
   return "quiet";
 }

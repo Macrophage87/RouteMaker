@@ -94,6 +94,7 @@ export const ES: Readonly<Record<string, string>> = {
   "No new route was found; the planned route is still shown.": "No se encontró una ruta nueva; se sigue mostrando la ruta planeada.",
   "No new route was found; follow the way back to the planned route.": "No se encontró una ruta nueva; siga el camino de regreso a la ruta planeada.",
   "New route found. It rejoins your route ahead.": "Se encontró una ruta nueva. Vuelve a su ruta más adelante.",
+  "Skipping via point.": "Se omite el punto de paso.",
   "Finding a new way from here.": "Buscando un camino nuevo desde aquí.",
   "Still waiting for the last re-plan.": "Todavía se espera la última nueva planificación.",
   "GPS is weak: turn cues paused.": "La señal de GPS es débil: las indicaciones de giro están en pausa.",
