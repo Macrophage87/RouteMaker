@@ -68,7 +68,18 @@ def kinds_of(pieces: list) -> list[tuple[str, ...]]:
     except Exception:  # noqa: BLE001 - a table that fails, or a plan out of time, says none
         logger.warning("the route's hazards could not be read", exc_info=True)
         return none
-    return [tuple(kind for kind, _ in hazards.decode(row[0])) for row in rows]
+    return decoded([row[0] for row in rows])
+
+
+def decoded(values: list) -> list[tuple[str, ...]]:
+    """Each of the hazard column's `values` (one a piece) as its kinds; all empty where one
+    cannot be read: a bad value loses the route its hazards, never its reading
+    (`routing.classify` reads the column in the stress query, audit S16)."""
+    try:
+        return [tuple(kind for kind, _ in hazards.decode(value)) for value in values]
+    except Exception:  # noqa: BLE001 - as a table that fails: no hazards
+        logger.warning("the route's hazards could not be read", exc_info=True)
+        return [()] * len(values)
 
 
 def road_of(piece) -> str:

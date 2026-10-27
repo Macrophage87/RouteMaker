@@ -29,7 +29,7 @@ from django.utils import timezone
 from test_ratelimit import in_one_window
 
 from core import junctions as core_junctions
-from core import presets, refine, routing, segment_info
+from core import presets, refine, route_hazards, routing, segment_info
 from routemaker import calm, flow
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
@@ -2961,6 +2961,71 @@ class TestSurfaceOfPieces:
         assert stretches and all(
             e["surface"] == "unpaved" and e["text"].endswith(", unpaved.") for e in stretches
         ), [(e["surface"], e["text"]) for e in stretches]
+
+
+@db
+class TestHazardsInTheStressQuery:
+    """Audit S16: the stress query reads each piece's hazard kinds beside its class, so
+    neither the calm search's reading nor the answer asks the same nearest-segment search
+    again only for them."""
+
+    PIECES = [
+        routing.Piece(101, -77.045, LAT, 100.0),
+        routing.Piece(202, -77.0375, LAT, 100.0),
+        routing.Piece(202, -77.025, LAT, 100.0),
+    ]
+
+    @staticmethod
+    def rails_on_the_last(segments) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {segments}.segment SET hazard = 'rails' "
+                "WHERE osm_way_id = 202 AND ordinal = 1"
+            )
+        segment_info.forget_columns()
+
+    def test_classify_reads_the_kinds_as_their_own_query_does(self, segments) -> None:
+        self.rails_on_the_last(segments)
+        classes = routing.classify(self.PIECES, "weekday_offpeak")
+        assert classes.hazards == [(), (), ("rails",)]
+        assert classes.hazards == route_hazards.kinds_of(self.PIECES)
+        assert [c[0] for c in classes] == ["3", "1", "4"]
+        assert routing.hazards_read(classes, self.PIECES) == classes.hazards
+        assert routing.hazards_read(list(classes), self.PIECES) is None
+
+    def test_a_table_without_the_column_reads_none_and_still_classifies(self, segments) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {segments}.segment DROP COLUMN hazard")
+        segment_info.forget_columns()
+        classes = routing.classify(self.PIECES, "weekday_offpeak")
+        assert classes.hazards is None and [c[0] for c in classes] == ["3", "1", "4"]
+
+    def test_a_bad_value_loses_the_hazards_never_the_reading(self, segments, monkeypatch) -> None:
+        self.rails_on_the_last(segments)
+
+        def broken(value):
+            raise ValueError("bad hazard")
+
+        monkeypatch.setattr(route_hazards.hazards, "decode", broken)
+        classes = routing.classify(self.PIECES, "weekday_offpeak")
+        assert classes.hazards == [(), (), ()] and [c[0] for c in classes] == ["3", "1", "4"]
+
+    def test_the_answer_says_the_hazard_without_a_query_of_its_own(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        self.rails_on_the_last(segments)
+        asked = []
+        real = route_hazards.kinds_of
+
+        def kinds_of(pieces):
+            asked.append(len(pieces))
+            return real(pieces)
+
+        monkeypatch.setattr(route_hazards, "kinds_of", kinds_of)
+        router(standard_router())
+        found = post(client, good_body()).json()["road_hazards"]
+        assert [h["kinds"] for h in found] == [["rails"]]
+        assert asked == []
 
 
 @db

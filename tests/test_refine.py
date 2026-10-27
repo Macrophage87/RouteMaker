@@ -3196,6 +3196,32 @@ class TestStressAverseWeights:
         averse = averse_context()
         assert refine.analyse(trip, averse, averse.deadline).exposure_m == 2500.0
 
+    def test_the_reading_prices_the_hazards_the_stress_query_read(self, monkeypatch) -> None:
+        # Audit S16: the kinds come with the classes; no second query for them.
+        classes = routing.Classes([("1", "none"), ("2", "none")])
+        classes.hazards = [(), ("rails",)]
+        pieces = [routing.Piece(1, BASE[0] + i * 1e-4, BASE[1], 100.0) for i in range(2)]
+        monkeypatch.setattr(routing, "_trace", lambda *a, **k: {"shape": "x"})
+        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace: pieces)
+        monkeypatch.setattr(
+            routing, "decode_polyline6", lambda s: [BASE, (BASE[0] + 0.01, BASE[1])]
+        )
+        monkeypatch.setattr(routing, "classify", lambda p, when, roadway_only=False: classes)
+
+        def no_query(pieces):
+            raise AssertionError("the hazards were read again")
+
+        monkeypatch.setattr(refine.route_hazards, "kinds_of", no_query)
+        monkeypatch.setattr(refine.trace_junctions, "junctions_of_trace", lambda *a: [])
+        monkeypatch.setattr(refine.trace_junctions, "edge_midpoints", lambda *a: [])
+        monkeypatch.setattr(refine, "events_of_raws", lambda raws, ctx, deadline: [])
+        trip = {"legs": [{"shape": "x"}], "summary": {"length": 0.2, "time": 50.0, "cost": 1.0}}
+        ctx = context()
+        read = refine.analyse(trip, ctx, ctx.deadline)
+        assert read.hazard_kinds == [(), ("rails",)]
+        assert [c[0] for c in read.classes] == ["1", "4"]
+        assert [c[0] for c in read.rated_classes] == ["1", "2"]
+
     def test_the_seek_weighs_the_busy_road_it_replaces_by_them(self) -> None:
         a = analysis("a", "1345")
         busy, _traced = refine.route_spans(a, weights=AVERSE.weights)

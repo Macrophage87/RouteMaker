@@ -534,6 +534,9 @@ class Analysis:
     # (`routemaker.junction_delay`, the owner, 2026-10-20: "Both", the time shown and the
     # route chosen): priced in `score` as that much quiet riding.
     junction_delay_s: float = 0.0
+    # Each piece's known hazard kinds, in the order of `pieces` (`route_hazards.kinds_of`), as
+    # the reading priced them; the answer says them from here (audit S16). None: not read.
+    hazard_kinds: list | None = None
 
     @property
     def rated_classes(self) -> list:
@@ -982,7 +985,11 @@ def analyse(
     classes = shift_classes(real_classes, shift)
     # A known hazard ridden is searched as the graph prices it, LTS 4 (v0.10.0); the rider
     # is still shown its own rating (`rated_classes`).
-    priced = hazard_priced(classes, route_hazards.kinds_of(pieces))
+    # The kinds as the stress query read them (audit S16), else in a query of their own.
+    kinds = routing.hazards_read(real_classes, pieces)
+    if kinds is None:
+        kinds = route_hazards.kinds_of(pieces)
+    priced = hazard_priced(classes, kinds)
     hazard_read = priced is not classes
     classes = priced
     avoid_passages = avoid_model.passages(line, ctx.avoid) if ctx.avoid else []
@@ -1033,6 +1040,7 @@ def analyse(
         rated_lts2_m=stress_totals(*rated_metres(pieces, classes))["lts2_m"],
         real_classes=real_classes if shift or hazard_read else None,
         shift=shift,
+        hazard_kinds=kinds,
         junction_delay_s=junction_delay.delay_s(
             raws,
             routing.stop_as_yield,

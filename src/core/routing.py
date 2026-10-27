@@ -79,6 +79,7 @@ from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
 
 from pipeline.schema import (
+    HAZARD_COLUMN,
     MASS_WIDTH_COLUMN,
     ROUGH_COLUMN,
     SIDEPATH_NAME_COLUMN,
@@ -864,7 +865,7 @@ def _behind_of(kept: list[tuple[dict, float]]) -> tuple | None:
 # coloured sections (`stress_spans`) keep their order.
 _STRESS_JOIN = """
 SELECT {tier}, {facility}, seg.is_unpaved, seg.road_lanes,
-       seg.road_oneway{capacity_out}{half_out}{rough_out}
+       seg.road_oneway{capacity_out}{half_out}{rough_out}{hazard_out}
 FROM unnest(%s::bigint[], %s::float8[], %s::float8[])
      WITH ORDINALITY AS p(way_id, lon, lat, ordinality)
 LEFT JOIN LATERAL (
@@ -992,15 +993,33 @@ class PieceClass(tuple):
         )
 
 
+class Classes(list):
+    """`classify`'s answer: a list of `PieceClass`, with each piece's hazard kinds beside
+    it (`hazards`, as `route_hazards.kinds_of` reads them), read in the same query rather than
+    a second one over the same pieces (audit S16); None where the live table has no hazard
+    column. Beside the classes, not on them: `refine.shift_classes` and `hazard_priced`
+    make new ones."""
+
+    hazards: list[tuple[str, ...]] | None = None
+
+
+def hazards_read(classes, pieces: list) -> list[tuple[str, ...]] | None:
+    """The hazard kinds `classify` read beside `classes` for `pieces`, or None where it read
+    none (a table without the column, or classes not from `classify`)."""
+    kinds = getattr(classes, "hazards", None)
+    return kinds if kinds is not None and len(kinds) == len(pieces) else None
+
+
 def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list[tuple[str, str]]:
     """Each piece's stress key ("1".."5" or "unknown") and facility key
     ("path", "protected", "lane", "none" or "unknown"), in the pieces' order,
     for a ride at `when`, each a `PieceClass` that also carries the segment's
     surface. With `roadway_only` (a ride that takes the roadway: Mass Ride,
     not every ride on the no-trail variant), bicycle lanes of either class are
-    "none"; a road closed to cars is still a path."""
+    "none"; a road closed to cars is still a path. A `Classes`, with the
+    pieces' hazard kinds beside."""
     if not pieces:
-        return []
+        return Classes()
     # The schema name comes from settings and is validated the way every DDL
     # that names it is; an identifier cannot be a query parameter.
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
@@ -1008,6 +1027,7 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
     with_capacity = _has_capacity_column(schema)
     with_half = _has_half_column(schema)
     with_rough = segment_info.has_columns(schema, ROUGH_COLUMN)
+    with_hazard = segment_info.has_columns(schema, HAZARD_COLUMN)
     query = _STRESS_JOIN.format(
         schema=schema,
         tier=_TIER_AT if with_facility else "seg.stress_tier",
@@ -1015,7 +1035,8 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
         columns=("s.facility, s.car_free_when" if with_facility else "NULL AS facility")
         + (f", s.{MASS_WIDTH_COLUMN}" if with_capacity else "")
         + (f", s.{STRESS_HALF_COLUMN}" if with_half else "")
-        + (f", s.{ROUGH_COLUMN}" if with_rough else ""),
+        + (f", s.{ROUGH_COLUMN}" if with_rough else "")
+        + (f", s.{HAZARD_COLUMN}" if with_hazard else ""),
         traits=(
             "s.road_lanes, s.road_oneway"
             if _has_trait_columns(schema)
@@ -1032,10 +1053,12 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
             else f", seg.{STRESS_HALF_COLUMN}"
         ),
         rough_out=f", seg.{ROUGH_COLUMN}" if with_rough else "",
+        hazard_out=f", seg.{HAZARD_COLUMN}" if with_hazard else "",
     )
     arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
     whens = ([when, when] + ([when] if with_half else [])) if with_facility else []
-    classes = []
+    classes = Classes()
+    hazard_values = []
     with plan_cursor() as cursor:
         cursor.execute(query, whens + arrays)
         for row in cursor.fetchall():
@@ -1043,13 +1066,15 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
             unpaved = row[2] if len(row) > 2 and isinstance(row[2], bool) else None
             lanes = row[3] if len(row) > 3 and isinstance(row[3], int) else None
             oneway = row[4] if len(row) > 4 and isinstance(row[4], bool) else None
-            # After the five fixed columns: the capacity, the half step and the surface's
-            # roughness, each where the table has it, in that order.
+            # After the five fixed columns: the capacity, the half step, the surface's
+            # roughness and the hazards, each where the table has it, in that order.
             extra = list(row[5:])
             width = extra.pop(0) if with_capacity else None
             half = extra.pop(0) is True if with_half else False
             rough = extra.pop(0) if with_rough else None
             rough = rough if isinstance(rough, bool) else None
+            if with_hazard:
+                hazard_values.append(extra.pop(0))
             if roadway_only and kind in ROADWAY_ONLY_AS_NONE:
                 kind = "none"
             classes.append(
@@ -1064,6 +1089,8 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
                     rough,
                 )
             )
+    if with_hazard:
+        classes.hazards = route_hazards.decoded(hazard_values)
     return classes
 
 
@@ -4406,6 +4433,7 @@ def _plan(
         # past it (correctness review, 2026-09-28: one request took 49 s).
         over_budget = traced_at >= started + budget_s
         effort_m = None
+        hazard_kinds = None
         if over_budget:
             untraced = sum(piece.metres for piece in pieces)
             stress["unknown"] += untraced
@@ -4416,11 +4444,12 @@ def _plan(
         else:
             analysed = refine_context.analyses.get(tuple(leg.get("shape", "") for leg in legs))
             effort_m = round(analysed.effort_m, 1) if analysed is not None else None
-            classes = (
-                analysed.rated_classes
-                if analysed is not None and len(analysed.pieces) == len(pieces)
-                else classify(pieces, when, roadway_only=lanes_as_roadway)
-            )
+            if analysed is not None and len(analysed.pieces) == len(pieces):
+                classes = analysed.rated_classes
+                hazard_kinds = analysed.hazard_kinds
+            else:
+                classes = classify(pieces, when, roadway_only=lanes_as_roadway)
+                hazard_kinds = hazards_read(classes, pieces)
             traced_stress, traced_facility = totals(zip(pieces, classes, strict=True))
             for key, metres in traced_stress.items():
                 stress[key] += metres
@@ -4507,7 +4536,8 @@ def _plan(
         described_overview = avoid_rules.with_entries(described_overview, avoid_found, avoid_scale)
         # The known hazards it rides (v0.10.0, `core.route_hazards`): said in place in the
         # directions and drawn as symbols on the route only.
-        hazards_ridden = route_hazards.along(leg_runs, pieces)
+        # Their kinds as the stress query read them (audit S16), else read here.
+        hazards_ridden = route_hazards.along(leg_runs, pieces, hazard_kinds)
         described_full = route_hazards.with_entries(described_full, hazards_ridden)
         described_overview = route_hazards.with_entries(described_overview, hazards_ridden)
         # Its rustic roads, byways and named bike routes (v0.12.3): for the connector's road list.
