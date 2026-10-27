@@ -16,6 +16,7 @@
 import { coordinatesText } from "./geocode.ts";
 import { LOCATE_MESSAGES, type LocateFailure } from "./geolocation.ts";
 import { haversineM, insideCoverage, type LonLat } from "./geo.ts";
+import { t } from "./i18n.ts";
 
 /**
  * Review (the owner, 2026-10-16: "Basically we'd have 3 modes for people who have admin access go/plan/review") is
@@ -33,7 +34,7 @@ export const TAB_MODE_KEY = "routemaker.tab-mode";
 export const MODE_LABEL: Record<AppMode, string> = { go: "Go", plan: "Plan", review: "Review" };
 
 /** What each view is for, said as the switch's description. */
-export const MODE_SWITCH_HINT = "Go: type a place and ride. Plan: every tool. Both keep the same route.";
+export const MODE_SWITCH_HINT = t("Go: type a place and ride. Plan: every tool. Both keep the same route.");
 /** The same with Review, for an admin. */
 export const MODE_SWITCH_HINT_REVIEW = `${MODE_SWITCH_HINT} Review: roads waiting for your ruling.`;
 
@@ -199,9 +200,9 @@ export function goStartStale(start: GoStart, now: number = Date.now()): boolean 
 }
 
 /** Said politely when the location becomes the start, and shown on Go's start line. */
-export const GO_START_SAID = "Start: your current location.";
+export const GO_START_SAID = t("Start: your current location.");
 /** Said politely (and shown) when the location could not be had: denied, unavailable or timed out. */
-export const GO_START_UNAVAILABLE = "Current location not available; type a start.";
+export const GO_START_UNAVAILABLE = t("Current location not available; type a start.");
 
 /**
  * Whether Go asks for the location now: only in Go (never in Plan), once per page, and only while the plan
@@ -281,7 +282,7 @@ export function goTapSetsEnd(mode: AppMode): boolean {
 }
 
 /** A point that is the rider's location, as Go's route card and the points list name it (edit-route redesign). */
-export const YOUR_LOCATION = "Your location";
+export const YOUR_LOCATION = t("Your location");
 
 /**
  * Go's name for a destination, the same in what is said and on the sheet's "To …": its place name once known (a

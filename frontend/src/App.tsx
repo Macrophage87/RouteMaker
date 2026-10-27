@@ -3,6 +3,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
+import { t } from "./lib/i18n.ts";
 import { APP_VERSION, versionShort } from "./lib/appVersion.ts";
 import { ACCESS_LABEL, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
 import { placeAtSpot, requestAfterClose, type InfoRequest, type TrailRider } from "./lib/roadInfo.ts";
@@ -10,7 +11,7 @@ import { stationNearSpot } from "./lib/stationLinks.ts";
 import { reorder } from "./lib/pointMover.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
-import { requestNeighbours, requestRoute, routeRequestBody, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
+import { cancelRoute, requestNeighbours, requestRoute, routeRequestBody, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
 import { choiceColour, choiceFeatures } from "./lib/routeChoice.ts";
 import { displacedBy, keptNeighbours, neighbourDials, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
 import { betterRouteSaid, EarlyStart, takesRefined } from "./lib/progressive.ts";
@@ -85,6 +86,7 @@ import {
   cleanStopName,
   stopNamedSaid,
   namePoints,
+  middleCountSaid,
   stopAddedSaid,
   stopsOnly,
   withVias,
@@ -104,6 +106,7 @@ import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, ty
 import { bikeshareOf } from "./lib/bikeshare.ts";
 import { carries, hillsWords, seeksClimbs, startDials, stressMax, stressWords, trailsAreOff, type Dials } from "./lib/dials.ts";
 import { WeightStore, defaultSplit, withWeight, type StoredWeight } from "./lib/weight.ts";
+import { readSpeed, withSpeed, writeSpeed } from "./lib/ridingSpeed.ts";
 import { stationEdit, stationMoves, stationPlaceLabel, stationPlaceName, type RailVisibility, type Station, type StationRole } from "./lib/railStations.ts";
 import { legFrom, lonLatKey, quickerWayIn, wayInChecks, wayInKey, wayInPlaces, wayInSaid, type WayInMove } from "./lib/stationWayIn.ts";
 import { RAIL_STATIONS, WMATA_SLUGS, stationEntranceForPlace } from "./lib/railData.ts";
@@ -238,6 +241,7 @@ import { followLine } from "./lib/gpxMatch.ts";
 import { fetchHazards, type HazardCollection } from "./lib/massHazards.ts";
 import { visibleCentreOffset } from "./lib/visibleCentre.ts";
 import { NARROW, useLongerThan, useMinute, useNarrow, useSettled } from "./app/hooks.ts";
+import { leaveNowArriveMs } from "./lib/arrival.ts";
 import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTimes.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, ShareControls, type Status } from "./app/RoutePanel.tsx";
@@ -341,6 +345,8 @@ const START_MY_GO = readStartMyGo();
 const GO_CLOSE_LABEL = "Close";
 /** Go's early start (v0.7.0, "Faster routing" step 4) asks only for trips up to this straight-line length (25 mi). */
 const GO_EARLY_MAX_KM = 40;
+/** The top search result is asked for early once it has stayed the top this long, not while the rider types on past it. */
+const GO_EARLY_SETTLE_MS = 400;
 /** A fresh location this far (about 80 ft) from the last one lists the places near you again from it. */
 const MOVED_M = 25;
 const PLAN_LINK = hasPlanLink(window.location.hash) || initialPlan.points.length > 0;
@@ -460,6 +466,8 @@ export function App() {
   const weightStore = useRef<WeightStore | null>(null);
   if (weightStore.current === null) weightStore.current = new WeightStore();
   const [weight, setWeight] = useState<StoredWeight | null>(() => weightStore.current?.load() ?? null);
+  // The rider's riding speed (lib/ridingSpeed.ts), in Settings: like the weight, added only to the request.
+  const [ridingSpeed, setRidingSpeed] = useState<number | null>(() => readSpeed());
   // The stations the rider chose from the nearest-stations lists (OWNER-DECISIONS 466a), each
   // forgotten when its point moves; added to the request only, never to the link.
   const [stationPins, setStationPins] = useState<Pins>({});
@@ -485,12 +493,12 @@ export function App() {
   // lib/dials.ts closuresNow); Plan keeps them, for planning a later ride. Start ride and a ride's re-plans set it too.
   const goNow = mode === "go";
   const planDials = useMemo(() => {
-    const base = withTransitOption(withStations(withWeight(routeDials, weight), stationChoice), preset, transitPick, trip);
+    const base = withTransitOption(withStations(withSpeed(withWeight(routeDials, weight), ridingSpeed), stationChoice), preset, transitPick, trip);
     const made = noviceHopPick?.trip === trip && base.noviceLegs ? { ...base, noviceHop: noviceHopPick.hop } : base;
     const now = goNow ? { ...made, closuresNow: true } : made;
     return bypassIds.length ? { ...now, closureBypass: bypassIds } : now;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the ids' text, not the array
-  }, [routeKey, weight, stationChoice, preset, transitPick, trip, bypassKey, goNow, noviceHopPick]);
+  }, [routeKey, weight, ridingSpeed, stationChoice, preset, transitPick, trip, bypassKey, goNow, noviceHopPick]);
   // Everything the request is made from, as a key (v0.7.0): in Plan a station or a transit option chosen, a
   // weight or a slider moved, all mark the plan changed until Route or Update route.
   // The key leaves closuresNow out: switching between Go and Plan keeps the route (changeMode), not marked changed.
@@ -937,6 +945,9 @@ export function App() {
   const [roaming, setRoaming] = useState(false);
   const [roamRider, setRoamRider] = useState<{ point: LonLat; headingDeg: number | null; accuracyM: number } | null>(null);
   const onBike = riding || roaming;
+  // How many are on the ride's broadcast (RideGroup's count), shown in Ride mode's Broadcast; More > Riders opens its panel.
+  const [rideRiders, setRideRiders] = useState<number | null>(null);
+  const [ridersAsk, setRidersAsk] = useState(0);
   // What the ride started from, captured at Start ride: the ride never follows the planner's own route,
   // which a failed or changed plan could take away mid-ride.
   // On a Bikeshare or transit plan, the points, loop and ride type are the riding leg's (lib/rideTrip.ts
@@ -1042,7 +1053,7 @@ export function App() {
   const fileNamed = nameWithoutHome((point) => namer.name(point)?.name, myGo.home?.point ?? null);
 
   // One scheduler for the page: one request in flight, the latest plan only,
-  // Retry-After waited out (routeScheduler.ts).
+  // Retry-After waited out (routeScheduler.ts); Go's full plan, replaced, is cancelled (routing audit S7).
   const scheduler = useRef<RouteScheduler<Plan, NeighboursResult> | null>(null);
   // A route kept for offline (WEB-NAV-plan.md section 8, P3) answers when the planner cannot be reached
   // and the plan is one the rider kept; the planner's notice says so, and the next real answer clears it.
@@ -1076,7 +1087,7 @@ export function App() {
   }
   if (scheduler.current === null) {
     scheduler.current = new RouteScheduler<Plan, NeighboursResult>({
-      send: async (plan) => {
+      send: async (plan, replaces) => {
         // A shared route's link: its line first (openSaved sets savedShown), then this plan.
         if (SHARED_WAIT) await SHARED_WAIT;
         if (sharedRevoked && (revokedPlan ??= sentPlanKey(plan.points, plan.preset, plan.dials)) === sentPlanKey(plan.points, plan.preset, plan.dials))
@@ -1109,9 +1120,10 @@ export function App() {
         };
         // Asked for already, before the tap (Go's early start): that request's answer, not a second request.
         const early = earlyStart.current?.take(routeRequestBody(plan.points, plan.preset, asked)) ?? null;
+        // A plan replacing Go's full plan names it, so the API lets it wait for that plan's slot (routing audit S7).
         const result = early
-          ? await early.catch(() => requestRoute(plan.points, plan.preset, asked))
-          : await requestRoute(plan.points, plan.preset, asked);
+          ? await early.catch(() => requestRoute(plan.points, plan.preset, { ...asked, replaces }))
+          : await requestRoute(plan.points, plan.preset, { ...asked, replaces });
         // The API could not follow this file (core/follow.py): its fitting rounds are planned, not traced again.
         if (follow && result.ok && !result.route.follows_file && importBase.current) importBase.current.unfollowed = true;
         keptShown.current = null;
@@ -1169,7 +1181,9 @@ export function App() {
         }
       },
       // Go's first route (v0.7.0, "Faster routing"): its full plan is asked for once it is shown.
-      refine: (plan: Plan, shown: RouteResult) =>
+      // Sent with an id, so a plan asked for meanwhile cancels it rather than waiting for it (routing audit S7, option
+      // B; the owner, 2026-10-27).
+      refine: (plan: Plan, shown: RouteResult, planId: string) =>
         shown.ok && shown.route.provisional
           ? () =>
               requestRoute(plan.points, plan.preset, {
@@ -1177,8 +1191,10 @@ export function App() {
                 dials: plan.dials,
                 vias: viaIndices(plan.points, VIA_MARKS.isVia),
                 straight: drawnLegs(plan.points),
+                planId,
               })
           : null,
+      cancel: (planId: string) => cancelRoute(planId),
       // The full plan replaces the first route before Start only, and is said once where it is another route; the
       // focus stays where it is, and the route's own sentence is not said again.
       onRefined: (plan: Plan, result: RouteResult) => {
@@ -1524,6 +1540,7 @@ export function App() {
         weightStore.current?.save(step.doc.weight);
         setWeight(step.doc.weight);
       }
+      if (step.doc.speed !== undefined) setRidingSpeed(step.doc.speed);
       lastSettings.current = step.doc;
       setWaterPrefsState(readWaterPrefs());
       setClimbsOnState(readClimbsOn());
@@ -2430,7 +2447,11 @@ export function App() {
   // A map press and a station's End here (place, placeStation: callbacks kept across renders) go through the current goTo.
   const goToRef = useRef(goTo);
   goToRef.current = goTo;
+  // The top search result's early start waits until it has stayed the top for GO_EARLY_SETTLE_MS (goEarlyToPlace).
+  const goEarlyTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(goEarlyTimer.current), []);
   const goToPlace = (found: Place) => {
+    window.clearTimeout(goEarlyTimer.current);
     const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label), entranceForPlace);
     if (point === null) {
       setNotice(OUTSIDE_NOTICE);
@@ -2453,9 +2474,19 @@ export function App() {
     const asked = { dials: { ...kept, loop: false }, quick: true };
     earlyStart.current?.start(routeRequestBody(ends, ridePreset, asked), () => requestRoute(ends, ridePreset, asked));
   };
-  const goEarlyToPlace = (found: Place) => {
-    const point = placeFromSearch(found, () => undefined, entranceForPlace);
-    if (point) goEarly(point);
+  // A result shown only between keystrokes costs no router call: the top result must stay the top a moment (Home,
+  // asked for when Go opens, goes at once). The box cleared or no results (`found` null): the wait goes, and a place
+  // queued behind the request in flight with it (batch-1 review of S4).
+  const goEarlyToPlace = (found: Place | null) => {
+    window.clearTimeout(goEarlyTimer.current);
+    if (!found) {
+      earlyStart.current?.forget();
+      return;
+    }
+    goEarlyTimer.current = window.setTimeout(() => {
+      const point = placeFromSearch(found, () => undefined, entranceForPlace);
+      if (point) goEarly(point);
+    }, GO_EARLY_SETTLE_MS);
   };
   // Go's "Add a stop" (v0.7.0, "Keep adding stops by search"; also the nearest and Sights sheets): with a route, a place is a stop where it adds the
   // least distance, routed at once as any Go edit is; one edit, so Undo removes it. Without a route it is the
@@ -3262,7 +3293,7 @@ export function App() {
       void saveSettings(window.location.origin, doc);
     }, SAVE_SETTLE_MS);
     return () => window.clearTimeout(timer);
-  }, [me.signed_in, settingsSynced, preset, dials, waterPrefs, climbsOn, climbsFrom, showTopoLines, favoriteRides, weight]);
+  }, [me.signed_in, settingsSynced, preset, dials, waterPrefs, climbsOn, climbsFrom, showTopoLines, favoriteRides, weight, ridingSpeed]);
   const answerHome = (move: boolean) => {
     const offer = homeAsk;
     if (!offer) return;
@@ -4100,6 +4131,8 @@ export function App() {
     if (!sameLightMarks(lightKept.current, next)) lightKept.current = next;
     return lightKept.current;
   }, [shown, minute, dials.when]);
+  // The route's arrival leaving now, after its time in Go and Plan (lib/arrival.ts), on the same minute's clock.
+  const arriveMs = leaveNowArriveMs(shown, minute, dials.when ?? null);
   // Weather along the route (lib/weather.ts, Stephen 2026-10-24): the NWS alerts and rain coming, leaving now, shown
   // with the route's warnings in Go and Plan; checked when the route changes and every 10 minutes while it shows. Not
   // for a plan set to another time (its When): the forecast is for leaving now.
@@ -4850,7 +4883,7 @@ export function App() {
   const goBig = routingNow
     ? { label: ROUTING_LABEL, start: false, busy: true, onPress: () => {} }
     : goReady
-      ? { label: "Start ride", start: true, busy: false, onPress: startRideChecked }
+      ? { label: t("Start ride"), start: true, busy: false, onPress: startRideChecked }
       : points.length >= 2 && routeNow.unavailable === null
         ? { label: routeNow.label, start: false, busy: false, onPress: pressRoute }
         : // No destination yet: Roam, a ride with no destination (the owner, 2026-10-22; one control for the feature).
@@ -4962,7 +4995,7 @@ export function App() {
         <GoRouteCard
           start={fromHere.includes(points[0]) ? YOUR_LOCATION : goPlaceName(namer.name(points[0])?.name, points[0])}
           destination={loopVias ? "Back to the start" : goPlaceName(namer.name(points[points.length - 1])?.name, points[points.length - 1])}
-          stops={loopVias ? points.length - 1 : points.length - 2}
+          between={middleCountSaid(points, VIA_MARKS.isVia, loopVias)}
           onEdit={(opener) => openView("points", opener)}
         />
       ) : null,
@@ -5002,7 +5035,7 @@ export function App() {
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
         narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: { onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote }, startRideRef, rideSize, setDials,
-        waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, weather,
+        waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, arriveMs, weather,
       }}
     />
   );
@@ -5012,6 +5045,14 @@ export function App() {
       <RideSection key="presets"
         {...{
           preset, dials, choosePreset, commitDials, route, typeCard: mode !== "go",
+          // The rider's own speed, under Hills (the owner, 2026-10-27: "next to hill speed or max grade").
+          ridingSpeed: {
+            mph: ridingSpeed,
+            onChange: (mph: number | null) => {
+              writeSpeed(mph);
+              setRidingSpeed(mph);
+            },
+          },
         }}
       />
     ),
@@ -5033,6 +5074,9 @@ export function App() {
   // Following a broadcast whose link this page opened: Broadcast passes that link on (followedLink).
   const passesOn = onShared !== null && !onShared.own && !!onShared.lead && SHARED_LINK !== null && onShared.id === SHARED_ID;
   const rideBroadcast = onShared?.ride && onShared.id && onShared.lead ? { id: onShared.id, lead: onShared.lead, leading: onShared.own === true } : null;
+  // Ride mode's Broadcast: the plan's own route only (its link is the plan's), not Ride the rest's or a detour from Roam; a
+  // ride opened from someone else's link only where it is their broadcast, passed on as it is (Stephen 2026-10-26).
+  const rideCanBroadcast = !!rideStart && !rideStart.roam && rideStart.route === shown && (!(onShared && !onShared.own) || passesOn);
   // While leading a broadcast from Roam, its own riders' group is the only one (a Group Ride detour starts none).
   const rideGroupLine =
     !roamBroadcast?.leading && (goMode || riding || (rideBroadcast && !rideBroadcast.leading)) && rideGroupType && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
@@ -5212,6 +5256,9 @@ export function App() {
           here={rideView?.rider?.point ?? (here ? here.point : null)}
           broadcast={rideBroadcast}
           riding={riding}
+          onRiders={setRideRiders}
+          ridersElsewhere={riding && rideCanBroadcast && rideBroadcast !== null}
+          ridersAsk={ridersAsk}
           leaderRoute={rideBroadcast?.leading ? ((riding && rideView ? rideView.route : shown)?.geometry.coordinates as LonLat[] | undefined) : null}
         />
       )}
@@ -5462,12 +5509,12 @@ export function App() {
           trailMiles={trailMiles}
           keepLastRide={isStandalone()}
           fixed={rideStart.fixed}
-          // The plan's own route only (its link is the plan's), not Ride the rest's or a detour from Roam; a ride opened
-          // from someone else's link only where it is their broadcast, passed on as it is (Stephen 2026-10-26).
-          onBroadcast={!rideStart.roam && rideStart.route === shown && (!(onShared && !onShared.own) || passesOn) ? broadcastFromRide : null}
-          onBroadcastHold={!rideStart.roam && rideStart.route === shown && (!(onShared && !onShared.own) || passesOn) ? broadcastQrFromRide : null}
+          onBroadcast={rideCanBroadcast ? broadcastFromRide : null}
+          onBroadcastHold={rideCanBroadcast ? broadcastQrFromRide : null}
           passingOn={passesOn}
           broadcasting={rideBroadcast?.leading === true}
+          riders={rideCanBroadcast && rideBroadcast && rideGroupLine ? rideRiders : null}
+          onRiders={rideCanBroadcast && rideGroupLine ? () => setRidersAsk((n) => n + 1) : null}
           keepLeft={rideStart.kept === true}
           startNote={rideStart.note}
         />

@@ -6,6 +6,7 @@
 import type { DescriptionEntry, ErrorKind, RouteResult, RouteResponse, StressSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { ARRIVE_M, lineAlong, measureMap, pointAt, snap, wayWords, type RideModel } from "./navigate.ts";
+import { t } from "./i18n.ts";
 
 /**
  * The way back aims this far along the line past its nearest point ahead (about 300 ft), so it ends on the
@@ -33,6 +34,31 @@ export function triesWayBack(kind: ErrorKind): boolean {
  */
 export function startsWayBack(kind: ErrorKind): boolean {
   return kind !== "network";
+}
+
+/**
+ * Whether the ride's route is one the rider chose over the first (routing audit D15): a route to choose from ranked 2
+ * or lower, or Go's More direct or Trailmaxxed (lib/neighbours.ts), which join the choice after the rider's own. A way
+ * back keeps its route's rank (joinRoutes), so the next re-route rejoins it too; a new plan's answer is ranked 1 or not
+ * at all, the rider's new route.
+ */
+export function ridesChosenRoute(route: Pick<RouteResponse, "rank" | "neighbour">): boolean {
+  return (route.rank ?? 0) >= 2 || !!route.neighbour;
+}
+
+/**
+ * Whether a re-route tries the way back to the route ahead before a new plan to the end (routing audit D15; the owner,
+ * 2026-10-27: "stops need to be made and via points should be followed as the default unless there's an overriding
+ * reason to change"): only an automatic one (the rider left the route; never one they asked for, a detour, a held
+ * U-turn's check, a restart or a skipped stop), on a route they chose over the first, so a new plan does not pull them
+ * back toward the route they turned down. On any other route a new plan comes first, as the owner set on 2026-10-17
+ * ("when off route if no route can be found try to find the nearest route back to the route").
+ */
+export function rejoinsFirst(
+  route: Pick<RouteResponse, "rank" | "neighbour">,
+  how: { asked: boolean; detour: boolean; check: boolean; restart: boolean; skip: boolean },
+): boolean {
+  return !how.asked && !how.detour && !how.check && !how.restart && !how.skip && ridesChosenRoute(route);
 }
 
 /**
@@ -184,7 +210,7 @@ export function joinRoutes(leg: RouteResponse, planned: RouteResponse, atM: numb
 
 /** A joined stretch's words where the planned route turned onto it: what Ride mode says of it, with no turn. */
 function continueWords(street: string | null): string {
-  return street ? `Continue on ${wayWords(street)}.` : "Continue.";
+  return street ? t("Continue on {street}.", { street: wayWords(street) }) : t("Continue.");
 }
 
 function atMetres(entry: DescriptionEntry, from: number, to: number): DescriptionEntry {

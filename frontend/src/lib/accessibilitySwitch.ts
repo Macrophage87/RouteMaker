@@ -10,15 +10,16 @@
  */
 import { createElement as h, type ReactElement } from "react";
 import { accessibilityOn, subscribePalette } from "../stressStyle.js";
+import { t } from "./i18n.ts";
 
-export const ACCESSIBILITY_LABEL = "High contrast";
+export const ACCESSIBILITY_LABEL = t("High contrast");
 
 export const ACCESSIBILITY_HINT =
-  "Bolder lines, stronger borders and text, and colors that don't rely on red and green. Kept in this browser.";
+  t("Bolder lines, stronger borders and text, and colors that don't rely on red and green. Kept in this browser.");
 
-export const ACCESSIBILITY_ADDRESS_NOTE = "The address (palette= in the link) chooses the stress colors; the rest still applies.";
+export const ACCESSIBILITY_ADDRESS_NOTE = t("The address (palette= in the link) chooses the stress colors; the rest still applies.");
 
-export const ACCESSIBILITY_CONTRAST_NOTE = "On because your device asks for more contrast; turn it off here if you prefer.";
+export const ACCESSIBILITY_CONTRAST_NOTE = t("On because your device asks for more contrast; turn it off here if you prefer.");
 
 /** The class on the page's root that stylesheet rules for the switch hang from. */
 export const ACCESSIBILITY_CLASS = "a11y";

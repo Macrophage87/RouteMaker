@@ -9,6 +9,7 @@ import type { ClimbsStatus } from "./climbs.ts";
 import type { SectionLayer } from "./layerSection.ts";
 import { MTB_TRAILS_LABEL } from "./mtbTrailsSwitch.ts";
 import { TOPO_LINES_LABEL } from "./topoLines.ts";
+import { t } from "./i18n.ts";
 
 /** Only a stress map known to be down leaves the trails out; "checking" is not "unavailable". */
 export function stressShowable(stress: "checking" | "available" | "unavailable"): boolean {
@@ -30,8 +31,8 @@ export interface TerrainState {
 }
 
 /** The row's words, while it is closed, for a layer the rider has on that cannot show. */
-export const MTB_TRAILS_ROW_UNAVAILABLE = "Mountain-bike trails need the stress map, unavailable for now.";
-export const TOPO_LINES_ROW_UNAVAILABLE = "Topo lines are not available on this server yet.";
+export const MTB_TRAILS_ROW_UNAVAILABLE = t("Mountain-bike trails need the stress map, unavailable for now.");
+export const TOPO_LINES_ROW_UNAVAILABLE = t("Topo lines are not available on this server yet.");
 
 /** The layers the section switch turns on and off: the ones that can show. */
 export function terrainLayers(state: TerrainState): SectionLayer[] {

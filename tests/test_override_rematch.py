@@ -433,10 +433,11 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
     # (4 Benning ways, 2 ramps), plus the 31 Nannie Helen Burroughs floor rows (445c, all its
     # main carriageway ways at least LTS 3), less the 2 Kenilworth Avenue NE rows 445f retired.
     # Plus the Redland Road sidewalk link's 1 access row (the owner, 2026-10-21), and
-    # Aspen Street NW's 5 stress rows (the owner, 2026-10-25).
+    # Aspen Street NW's 5 stress rows (the owner, 2026-10-25), and the 3rd Avenue dirt
+    # path's 1 access row (the owner, 2026-10-27).
     assert (
         sum(len(d["rows"]) for d in documents.values())
-        == 1785 + 20 - 5 - 23 + 57 + 40 - 2 + 4 - 431 + 6 + 31 - 2 + 1 + 5
+        == 1785 + 20 - 5 - 23 + 57 + 40 - 2 + 4 - 431 + 6 + 31 - 2 + 1 + 5 + 1
     )
     for name, document in documents.items():
         if name == "2026-10-06-owner-crosswalk-links.json":
@@ -452,8 +453,9 @@ def test_the_override_counts_the_owner_asked_about() -> None:
     kinds = [row["kind"] for d in fixture_documents().values() for row in d["rows"]]
     # 232 access rows, the Dupont underpass's 10 (decision 416), and the 55 military
     # reopenings (437.6, 437a-c) and Pentagon Connector Road's 25 (438.2), and the
-    # crosswalk links' 4 (442), and the Redland Road sidewalk link's 1 (the owner, 2026-10-21).
-    assert kinds.count("access") == 232 + 10 + 55 + 25 + 4 + 1
+    # crosswalk links' 4 (442), and the Redland Road sidewalk link's 1 (the owner, 2026-10-21),
+    # and the 3rd Avenue dirt path's 1 (the owner, 2026-10-27).
+    assert kinds.count("access") == 232 + 10 + 55 + 25 + 4 + 1 + 1
     # 1,551 stress rows, decision 282a turned one into three, and Dupont's 10 (416).
     # Less the 5 South Capitol (432) and 23 Veirs Mill (433) rows retired; 433's two
     # access rows were replaced, not removed. Saint Elizabeths Rd SE's 2 Avoid rows
@@ -509,8 +511,9 @@ def test_the_harford_ways_lie_along_open_baltimore_record_634() -> None:
 def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
     found = rematch.load_fingerprints()
     # A retired row carries no fingerprint: it is deleted on load, never re-matched.
-    # Plus Aspen Street NW's 5 stress rows (the owner, 2026-10-25).
-    assert len(found) == 1785 + 20 + 1 - 5 - 23 + 57 + 40 - 2 - 431 + 6 + 31 - 2 + 1 + 5
+    # Plus Aspen Street NW's 5 stress rows (the owner, 2026-10-25), and the 3rd Avenue dirt
+    # path's 1 access row (the owner, 2026-10-27).
+    assert len(found) == 1785 + 20 + 1 - 5 - 23 + 57 + 40 - 2 - 431 + 6 + 31 - 2 + 1 + 5 + 1
     assert ("access", 50426889) in found and ("stress", 1562097556) in found
 
 
