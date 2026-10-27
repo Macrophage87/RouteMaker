@@ -145,7 +145,7 @@ test("a route everyone shares stays fixed on the ride: off route, the way back, 
   assert.match(ride, /\{\(keepPlanned \|\| fixedRef\.current\) && back && \(/);
   assert.match(ride, /\{!fixedRef\.current && \(\s*<button type="button" className="secondary" onClick=\{keep\}/);
   // Re-plan from here stays, the rider's own choice.
-  assert.match(ride, /<button type="button" onClick=\{replanNow\} aria-disabled=\{replanning\}>\s*Re-plan from here/);
+  assert.match(ride, /<button type="button" onClick=\{replanNow\} aria-disabled=\{replanning\}>\s*\{t\("Re-plan from here"\)\}/);
 });
 
 test("Share route or Share ride: a ride's link opens fixed, with location sharing offered, on any ride type", async () => {

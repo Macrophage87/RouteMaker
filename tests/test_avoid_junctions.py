@@ -744,8 +744,14 @@ def test_a_long_rides_leg_through_an_avoid_junction_is_searched_first(monkeypatc
             {"a": {"lon": 1, "lat": 0}, "b": {"lon": 2, "lat": 0}, "user": 0}]  # fmt: skip
     leg_trips = [{"legs": [{"shape": "a"}], "summary": {"length": 30.0}},
                  {"legs": [{"shape": "b"}], "summary": {"length": 30.0}}]  # fmt: skip
-    asked = iter(leg_trips)
-    monkeypatch.setattr(routing, "_call", lambda *a, **k: {"trip": next(asked)})
+    # Each leg's route by its start (the legs are asked together on the pool).
+    monkeypatch.setattr(
+        routing,
+        "_call",
+        lambda variant, endpoint, payload, deadline: {
+            "trip": leg_trips[payload["locations"][0]["lon"]]
+        },
+    )
 
     def read(trip, ctx, deadline, with_events=True):
         shape = (trip.get("legs") or [{}])[0].get("shape")
@@ -858,8 +864,14 @@ def test_a_long_ride_through_a_junction_at_a_via_point_keeps_its_calmer_legs(mon
     leg_trips = [{"legs": [{"shape": "a"}], "summary": {"length": 30.0}},
                  {"legs": [{"shape": "b"}], "summary": {"length": 30.0}}]  # fmt: skip
     around_a = {"legs": [{"shape": "a2"}], "summary": {"length": 30.0}}
-    asked = iter(leg_trips)
-    monkeypatch.setattr(routing, "_call", lambda *a, **k: {"trip": next(asked)})
+    # Each leg's route by its start (the legs are asked together on the pool).
+    monkeypatch.setattr(
+        routing,
+        "_call",
+        lambda variant, endpoint, payload, deadline: {
+            "trip": leg_trips[payload["locations"][0]["lon"]]
+        },
+    )
 
     def read(trip, ctx, deadline, with_events=True):
         shape = (trip.get("legs") or [{}])[0].get("shape")

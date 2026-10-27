@@ -40,9 +40,9 @@ test("a file opens on the ride type chosen (its own sliders kept for the same on
 
 test("Go: Saved routes sits behind More and opens Load route's popup, named Saved routes", () => {
   const go = readFileSync(new URL("../app/Go.tsx", import.meta.url), "utf8");
-  const row = go.slice(go.indexOf('aria-label="Places"'), go.indexOf('aria-label="More places"'));
+  const row = go.slice(go.indexOf('aria-label={t("Places")}'), go.indexOf('aria-label={t("More places")}'));
   assert.ok(!row.includes("SAVED_ROUTES"), "the main row stays as it is: one more control goes behind More");
-  const more = go.slice(go.indexOf('aria-label="More places"'), go.indexOf("go-home-sheet"));
+  const more = go.slice(go.indexOf('aria-label={t("More places")}'), go.indexOf("go-home-sheet"));
   assert.match(more, /aria-haspopup="dialog" onClick=\{places\.onSavedRoutes\}>\s*<Icon name="routes" size=\{18\} \/>\s*\{SAVED_ROUTES\}/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /onSavedRoutes: \(\) => setLoadOpen\("go"\)/);

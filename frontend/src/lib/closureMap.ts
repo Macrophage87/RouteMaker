@@ -170,9 +170,10 @@ export function mergeClosures(route: readonly ClosureItem[], area: readonly Clos
  * The closures that get a marker. A reviewer's closure is one zone per road piece ("reviewer-<closure>-<piece>"), so
  * Lake Frank's trail closure was ten barriers in a row: with no route, one marker per closure, on its middle piece,
  * and every piece still drawn red. A route's pieces keep a marker each, since each has its own "Route through anyway".
- * A DDOT project advisory's closure (v0.12.4) is one zone per line too ("ddot_advisory-<closure>-<line>").
+ * A DDOT project advisory's closure (v0.12.4) is one zone per line too ("ddot_advisory-<closure>-<line>"), and so
+ * is a Purple Line update's (v0.13.0, "purple_line-<closure>-<line>").
  */
-const PIECE = /^((?:reviewer-\d+)|(?:ddot_advisory-[a-z0-9-]+))-(\d+)$/;
+const PIECE = /^((?:reviewer-\d+)|(?:(?:ddot_advisory|purple_line)-[a-z0-9-]+))-(\d+)$/;
 
 export function markerItems(items: readonly ClosureItem[]): ClosureItem[] {
   const groups = new Map<string, ClosureItem[]>();
