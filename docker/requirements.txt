@@ -37,3 +37,6 @@ osmium==4.3.2
 # core.garmin and core.wahoo encrypt riders' Garmin and Wahoo tokens with AES-GCM (the kept
 # third-party credentials). Ships as a binary wheel, so the image build compiles nothing.
 cryptography==46.0.3
+# core.route_cache's shared answer cache (audit S14): Django's PyMemcacheCache, used only where
+# ROUTE_CACHE_LOCATION names a memcached (compose.beta.yaml's). Pure Python.
+pymemcache==4.0.0

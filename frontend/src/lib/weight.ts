@@ -25,6 +25,7 @@
  */
 import type { Carrying, Dials } from "./dials.ts";
 import { PASSENGERS_WEIGHT_KG, SYSTEM_WEIGHT_KG, SYSTEM_WEIGHT_MAX_KG, SYSTEM_WEIGHT_MIN_KG } from "./dials.ts";
+import { t } from "./i18n.ts";
 
 export const LB_PER_KG = 2.20462;
 
@@ -38,6 +39,7 @@ export interface StoredWeight {
 }
 
 /** The one weight a signed-out rider has (315). */
+// Not translated: it is the stored name, which weightLine compares with.
 export const DEFAULT_NAME = "My weight";
 
 /** Where the weight is kept in this browser. */
@@ -76,11 +78,11 @@ export function weightLine(weight: StoredWeight | null, now: number = Date.now()
 
 // ---- the dialog's words (317, 318) -------------------------------------------
 
-export const WEIGHT_DIALOG_TITLE = "Rider and bike weight";
+export const WEIGHT_DIALOG_TITLE = t("Rider and bike weight");
 // Short, so the dialog fits a phone without scrolling (the owner, 2026-10-19: "reduce the text. too much
 // scrolling"); the meaning of 318 stays: used only for the route, never shown, a rough figure is fine.
-export const WEIGHT_PURPOSE = "Optional. Used only for how hard hills feel; never shown or shared.";
-export const WEIGHT_ROUGH = "A rough guess is fine.";
+export const WEIGHT_PURPOSE = t("Optional. Used only for how hard hills feel; never shown or shared.");
+export const WEIGHT_ROUGH = t("A rough guess is fine.");
 
 /** What the dialog says when a weight is saved: the date, never the numbers (317(b)), and never a limit (352). */
 export function savedNotice(weight: StoredWeight, now: number = Date.now()): string {
@@ -161,8 +163,8 @@ export function worksheetKg(sheet: Worksheet, split: Split): number | undefined 
   return Math.round((parts.riderKg + parts.bikeKg + parts.cargoKg) * 10) / 10;
 }
 
-export const WEIGHT_NOTHING = "Enter your weight in at least one field, or Cancel.";
-export const WEIGHT_NOT_A_NUMBER = "Enter numbers only, in pounds, or Cancel.";
+export const WEIGHT_NOTHING = t("Enter your weight in at least one field, or Cancel.");
+export const WEIGHT_NOT_A_NUMBER = t("Enter numbers only, in pounds, or Cancel.");
 
 /**
  * What Save keeps, or the words for why it cannot (nothing entered, or not a number).

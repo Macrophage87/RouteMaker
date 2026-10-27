@@ -15,6 +15,7 @@ import { isOpenIn, type OpenIn } from "./appMode.ts";
 import type { LonLat } from "./geo.ts";
 import { resolvePreset, type PresetId } from "./presets.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
+import { t } from "./i18n.ts";
 
 export interface Home {
   point: LonLat;
@@ -55,7 +56,7 @@ export function goRideChips(myRide: PresetId | null): PresetId[] {
 }
 
 /** The first chip's description: it is the rider's own, set in Settings. */
-export const OWN_RIDE_HINT = "Your ride type. Change it in Settings, under My Go.";
+export const OWN_RIDE_HINT = t("Your ride type. Change it in Settings, under My Go.");
 
 /** The parts of a stored or answered My Go that make sense; anything else is left at its default. */
 export function parseMyGo(raw: unknown): MyGo {
@@ -139,9 +140,9 @@ export async function fetchMyGo(origin: string, get: Fetch = fetch): Promise<MyG
   }
 }
 
-export const MY_GO_SAVED = "My Go saved to your account.";
-export const MY_GO_SAVED_DEVICE = "My Go saved on this device.";
-export const MY_GO_NOT_SAVED = "My Go was not saved to your account; try again shortly. It still applies here.";
+export const MY_GO_SAVED = t("My Go saved to your account.");
+export const MY_GO_SAVED_DEVICE = t("My Go saved on this device.");
+export const MY_GO_NOT_SAVED = t("My Go was not saved to your account; try again shortly. It still applies here.");
 
 /** POST /api/me/go: the whole of My Go. Answers the saved My Go, or null if it was not saved. */
 export async function saveMyGo(origin: string, myGo: MyGo, post: Fetch = fetch, cookie = typeof document === "undefined" ? "" : document.cookie): Promise<MyGo | null> {
@@ -161,4 +162,4 @@ export async function saveMyGo(origin: string, myGo: MyGo, post: Fetch = fetch, 
 }
 
 /** The Home chip's words when there is no Home yet. */
-export const HOME_NOT_SET = "No Home yet: tap Home to set it.";
+export const HOME_NOT_SET = t("No Home yet: tap Home to set it.");

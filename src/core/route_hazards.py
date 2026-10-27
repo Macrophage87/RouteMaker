@@ -18,6 +18,7 @@ from django.conf import settings
 
 from pipeline.schema import HAZARD_COLUMN, validate_schema_name
 from routemaker import hazards
+from routemaker.lang import spanish, t
 
 from . import segment_info
 
@@ -127,19 +128,30 @@ SHORT_WORDS = {hazards.COBBLES: "Cobblestones", hazards.RAILS: "Rails in the roa
 def line(entry: dict) -> str:
     """The directions' line: "Cobblestones on O Street Northwest, 1.2 to 1.4 mi (1.9 to
     2.3 km): bumpy, and slippery when wet." US units first, metric in brackets."""
-    what = " and ".join(SHORT_WORDS[k] for k in entry["kinds"]).capitalize()
+    if spanish():
+        # "Adoquines y rieles en la calle": the first capital, the rest as in a sentence.
+        said = [t(SHORT_WORDS[k]) for k in entry["kinds"]]
+        what = t(" and ").join([said[0], *(w[:1].lower() + w[1:] for w in said[1:])])
+    else:
+        what = " and ".join(SHORT_WORDS[k] for k in entry["kinds"]).capitalize()
     if (_miles(entry["from_m"]), _km(entry["from_m"])) == (
         _miles(entry["to_m"]),
         _km(entry["to_m"]),
     ):
-        where = f"at {_miles(entry['from_m'])} mi ({_km(entry['from_m'])} km)"
+        where = t("at {mi} mi ({km} km)", mi=_miles(entry["from_m"]), km=_km(entry["from_m"]))
     else:
-        where = (
-            f"{_miles(entry['from_m'])} to {_miles(entry['to_m'])} mi "
-            f"({_km(entry['from_m'])} to {_km(entry['to_m'])} km)"
+        where = t(
+            "{mi} to {mi_end} mi ({km} to {km_end} km)",
+            mi=_miles(entry["from_m"]),
+            mi_end=_miles(entry["to_m"]),
+            km=_km(entry["from_m"]),
+            km_end=_km(entry["to_m"]),
         )
-    why = "; ".join(hazards.WORDS[k].split(": ", 1)[1] for k in entry["kinds"])
-    return f"{what} on {entry['road']}, {where}: {why}."
+    why = "; ".join(t(hazards.WORDS[k].split(": ", 1)[1]) for k in entry["kinds"])
+    road = entry["road"]
+    if road == "an unnamed road":
+        road = t(road)
+    return t("{what} on {road}, {where}: {why}.", what=what, road=road, where=where, why=why)
 
 
 def entries(found: list[dict]) -> list[dict]:

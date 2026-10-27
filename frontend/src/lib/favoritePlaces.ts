@@ -14,6 +14,7 @@
 import type { LonLat } from "./geo.ts";
 import { coordinatesText, type Place } from "./geocode.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
+import { t } from "./i18n.ts";
 
 export interface FavoritePlace {
   point: LonLat;
@@ -27,21 +28,21 @@ export const FAVORITE_PLACES_MAX = 20;
 
 export const FAVORITES_TEXT = "Favorites";
 export const WORK_TEXT = "Work";
-export const SET_HOME_TEXT = "Set Home";
-export const SET_WORK_TEXT = "Set Work";
-export const ADD_FAVORITE_TEXT = "Add a place";
+export const SET_HOME_TEXT = t("Set Home");
+export const SET_WORK_TEXT = t("Set Work");
+export const ADD_FAVORITE_TEXT = t("Add a place");
 /** The road panel's "Use this spot" row, beside Set as Home, and the ride summary's for the ride's destination. */
-export const SAVE_SPOT_TEXT = "Save to Favorites";
+export const SAVE_SPOT_TEXT = t("Save to Favorites");
 /** The ride summary's line once its destination is a favorite. */
 export const SAVED_TO_FAVORITES = (name: string) => `${name} is in your Favorites.`;
 export const EDIT_FAVORITES_TEXT = "Edit";
 export const DONE_EDITING_TEXT = "Done";
 export const FAVORITES_FULL = `Favorites hold ${FAVORITE_PLACES_MAX} places. Remove one to add another.`;
-export const FAVORITES_NOT_SAVED = "Favorites could not be saved. Try again.";
+export const FAVORITES_NOT_SAVED = t("Favorites could not be saved. Try again.");
 /** The popout's line while the account's list is read. */
-export const FAVORITES_LOADING = "Loading your favorites…";
+export const FAVORITES_LOADING = t("Loading your favorites…");
 /** Before the account's list is read (a save is the whole list, so none goes before then). */
-export const FAVORITES_NOT_LOADED = "Your favorites are still loading. Try again in a moment.";
+export const FAVORITES_NOT_LOADED = t("Your favorites are still loading. Try again in a moment.");
 
 /** Two points are one place when they round to the same spot (about a metre, as the server keeps them). */
 export function samePoint(a: LonLat, b: LonLat): boolean {
