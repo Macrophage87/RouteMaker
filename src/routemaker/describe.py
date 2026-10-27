@@ -30,7 +30,9 @@ The rules:
   own STRAIGHT_MAX_DEG, `intersections.movement_of`, is not this.)
 - Nor is the street a leg ends on, under TINY_M, where it is turned onto
   (`_last_turn`): the turn onto the destination's street is said before the
-  arrival.
+  arrival. Nor is the street a leg begins on, at least FIRST_TURN_MIN_M long,
+  where it is turned off (`_first_turn`), unless it is an unnamed driveway or
+  parking aisle: the first corner after a start or a stop is said.
 - A fork (`fork_movement`) is a turn even on one street or straight on: where
   another rideable way at the node is as near straight ahead as the route's, or
   nearer, the rider is told which to take ("Bear right to stay on Paint Branch
@@ -112,6 +114,12 @@ BEAR_MAX_DEG = 60.0
 # A jog's middle is at least this long: a shorter piece of another street between
 # two turns is a median or a carriageway crossed, not a street ridden.
 JOG_MIN_M = 15.0
+# A leg's first stretch, turned off, is kept from this long (`_first_turn`): a start
+# snapped a few metres onto the cross street is no turn the rider makes.
+FIRST_TURN_MIN_M = 25.0
+# The unnamed ways a leg may begin on whose turn off is not said: a driveway or a
+# parking aisle out of a lot.
+FIRST_TURN_IGNORED_USES = frozenset({"driveway", "drive_through", "parking_aisle"})
 # A roundabout or circle by its name ("Dupont Circle Northwest"): never a jog's
 # middle; the turn is read across it, as the net movement.
 CIRCLE_NAME = re.compile(r"\b(?:circle|roundabout)\b", re.IGNORECASE)
@@ -549,6 +557,22 @@ def _last_turn(before: _Run | None, run: _Run, after: _Run | None) -> bool:
     return _movement_between(before, run) in TURN_WORDS
 
 
+def _first_turn(before: _Run | None, run: _Run, after: _Run | None) -> bool:
+    """Whether `run` is the street a leg begins on, turned off: another street than
+    the one after, at least FIRST_TURN_MIN_M long, left by a turn or a bear. Folded
+    forward, the turn would go unsaid (a leg's first stretch has no turn) and the
+    ride would say nothing at the first corner: `_last_turn`'s mirror, for a start or
+    a stop less than TINY_M short of a corner. Not off an unnamed driveway or parking
+    aisle (FIRST_TURN_IGNORED_USES)."""
+    if before is not None or after is None or run.metres < FIRST_TURN_MIN_M:
+        return False
+    if not run.names and run.first is not None and run.first.use in FIRST_TURN_IGNORED_USES:
+        return False
+    if _same_street(run, after):
+        return False
+    return _movement_between(run, after) in TURN_WORDS
+
+
 def _jog(before: _Run | None, run: _Run, after: _Run | None) -> bool:
     """Whether `run` is a jog's middle: a named street, not a roundabout or circle,
     at least JOG_MIN_M long, other than both neighbours, entered and left by a turn
@@ -592,6 +616,7 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
                 or _forks(run)
                 or _jog(before, run, after)
                 or _last_turn(before, run, after)
+                or _first_turn(before, run, after)
             ):
                 i += 1
                 continue

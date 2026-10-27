@@ -1545,6 +1545,51 @@ class TestTheLastTurn:
         assert len(d.describe(stub)) == 1
 
 
+class TestTheFirstTurn:
+    """`_last_turn`'s mirror: a start, or a stop, that snaps less than 300 ft short of a
+    corner the route turns at. Folded forward, the turn went unsaid and the ride was
+    silent at the first decision."""
+
+    def test_a_turn_just_after_the_start_is_said(self):
+        entries = d.describe(
+            [flat(road("A Street", 1, 50, 0, 0), road("B Street", 1, 800, 270, 270))]
+        )
+        assert [e["street"] for e in entries] == ["A Street", "B Street"]
+        assert entries[0]["turn"] is None
+        assert (
+            entries[0]["text"]
+            == "0.0 mi (0.0 km), for 160 ft (50 m): A Street, low stress (LTS 1)."
+        )
+        assert entries[1]["turn"]["movement"] == "left"
+        assert entries[1]["text"].split(": ")[1].startswith("Left onto B Street,")
+
+    def test_a_turn_just_after_a_stop_is_said(self):
+        legs = [
+            road("Path A", 1, 900, 0, 0),
+            flat(road("Path A", 1, 50, 0, 0), road("B Street", 1, 800, 90, 90)),
+        ]
+        entries = d.describe(legs)
+        assert [e["kind"] for e in entries] == ["stretch", "via", "stretch", "stretch"]
+        assert entries[3]["turn"]["movement"] == "right"
+        assert entries[3]["text"].split(": ")[1].startswith("Right onto B Street,")
+
+    def test_straight_on_a_few_metres_or_out_of_a_lot_is_still_folded(self):
+        straight = [flat(road("A Street", 1, 50, 0, 0), road("B Street", 1, 800, 5, 5))]
+        assert [e["street"] for e in d.describe(straight)] == ["B Street"]
+        stub = [flat(road("A Street", 1, 20, 0, 0), road("B Street", 1, 800, 90, 90))]
+        assert [e["street"] for e in d.describe(stub)] == ["B Street"]
+        lot = [flat(road(None, 1, 50, 0, 0, use="parking_aisle"), road("B Street", 1, 800, 90, 90))]
+        assert [e["street"] for e in d.describe(lot)] == ["B Street"]
+
+    def test_a_turn_at_the_via_point_itself_is_still_not_claimed(self):
+        legs = [
+            road("A", 1, 500, 0, 0),
+            flat(road("B", 1, 50, 270, 270), road("B", 1, 500, 270, 270)),
+        ]
+        entries = d.describe(legs)
+        assert entries[2]["turn"] is None and entries[2]["text"].split(": ")[1].startswith("B,")
+
+
 class TestForksAreKeptEverywhere:
     def test_a_tiny_start_before_a_fork_is_folded_into_it_with_the_fork_kept(self):
         legs = [
