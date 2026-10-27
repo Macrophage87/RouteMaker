@@ -31,6 +31,7 @@ SETTINGS_KEYS = frozenset(
         "bikeshare",  # the bikeshare and micromobility service switches
         "favorites",  # the favorite ride types, listed first in the ride type pickers
         "weight",  # the rider and bike weight (frontend lib/weight.ts); personal, never logged
+        "speed",  # the rider's riding speed, whole mph, or null for the ride type's own
     }
 )
 SETTINGS_MAX_BYTES = 16 * 1024
@@ -43,6 +44,10 @@ WEIGHT_MIN_KG = 25
 WEIGHT_MAX_KG = 700
 WEIGHT_PARTS = ("riderKg", "bikeKg", "cargoKg")
 WEIGHT_KEYS = frozenset({"name", "totalKg", "parts", "setAt"})
+# The riding speed picker's range, whole mph (frontend lib/ridingSpeed.ts SPEED_MIN_MPH and
+# SPEED_MAX_MPH).
+SPEED_MIN_MPH = 8
+SPEED_MAX_MPH = 30
 
 # A saved route.
 NAME_MAX = 120
@@ -91,6 +96,13 @@ def settings_problem(data) -> str | None:
     if weight is not None and not _weight_ok(weight):
         # Never echo the value: the weight is personal.
         return "The saved weight is not in the expected form."
+    speed = data.get("speed")
+    if speed is not None and (
+        not isinstance(speed, int)
+        or isinstance(speed, bool)
+        or not SPEED_MIN_MPH <= speed <= SPEED_MAX_MPH
+    ):
+        return "The saved riding speed is not in the expected form."
     return None
 
 

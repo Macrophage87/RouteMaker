@@ -37,7 +37,8 @@ test("a hold (a press held, a right-click, the menu key) shows the code, and the
     assert.match(page, /\{BROADCAST_HOLD_HINT\}/);
   }
   assert.match(app, /broadcastRide: \{ onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote \}/);
-  assert.match(app, /onBroadcastHold=\{!rideStart\.roam && rideStart\.route === shown && \(!\(onShared && !onShared\.own\) \|\| passesOn\) \? broadcastQrFromRide : null\}/);
+  assert.match(app, /const rideCanBroadcast = !!rideStart && !rideStart\.roam && rideStart\.route === shown && \(!\(onShared && !onShared\.own\) \|\| passesOn\);/);
+  assert.match(app, /onBroadcastHold=\{rideCanBroadcast \? broadcastQrFromRide : null\}/);
   assert.match(app, /onBroadcastHold=\{broadcastRoamQr\}/);
   assert.match(app, /<BroadcastQrDialog ask=\{qrAsk\} onClose=\{\(\) => setQrAsk\(null\)\} \/>/);
 });

@@ -108,6 +108,9 @@ test("a flagged junction says its severity in words, not only in a colour", () =
   assert.equal(saysItsSeverity(route.description[1]), true);
   assert.equal(saysItsSeverity(entry("Left onto B.", { severity: "red" })), false);
   assert.equal(saysItsSeverity(entry("Left onto B.")), true);
+  // The server's Spanish (routemaker.lang_es).
+  assert.equal(saysItsSeverity(entry("En 1.2 mi: Cruce B (intersección de estrés muy alto).", { severity: "red" })), true);
+  assert.equal(saysItsSeverity(entry("Gire a la izquierda hacia B.", { severity: "red" })), false);
 });
 
 test("the open state is remembered, closed by default and where storage fails", () => {

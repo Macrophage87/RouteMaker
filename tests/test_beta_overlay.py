@@ -114,10 +114,11 @@ def test_the_only_published_port_is_the_apis_on_loopback(rendered: dict) -> None
 @needs_docker
 def test_the_resident_total_is_about_7_3_gib_and_the_peak_counts_the_one_shot() -> None:
     # With the two trail routers (the owner, 2026-10-20: "Both, raise limit to 7.1 GB") and the
-    # worker at 512M for the pre-draw (2026-10-25, ceiling 7.35 GiB).
+    # worker at 512M for the pre-draw (2026-10-25, ceiling 7.35 GiB), and the api workers'
+    # shared answer cache at 24M (audit S14; the owner, 2026-10-27, "about 16 MB").
     services = beta.render(offroad=True)["services"]
-    assert beta.resident_bytes(services) == 7486 * 1024**2  # compose.beta.yaml's header
-    assert beta.peak_bytes(services) == (7486 + 256) * 1024**2  # plus migrate, the largest one-shot
+    assert beta.resident_bytes(services) == 7510 * 1024**2  # compose.beta.yaml's header
+    assert beta.peak_bytes(services) == (7510 + 256) * 1024**2  # plus migrate, the largest one-shot
     assert beta.resident_bytes(services) / 1024**3 <= beta.MAX_RESIDENT_GB
     assert not any(
         "resident total" in p or "startup peak" in p for p in beta.check({"services": services})
@@ -229,7 +230,10 @@ def test_photons_heap_direct_buffers_and_native_rest_fit_its_cap() -> None:
 
 def test_every_overridden_service_exists_in_the_base() -> None:
     placeholder = {"valhalla-offroad", "valhalla-mtb"}
-    assert set(OVERLAY["services"]) - placeholder <= set(BASE["services"])
+    # The api workers' shared answer cache is the beta's own (audit S14; the owner, 2026-10-27):
+    # compose.yaml's limits already reach its 32 GB host's at the swap peak.
+    beta_only = {"memcached"}
+    assert set(OVERLAY["services"]) - placeholder - beta_only <= set(BASE["services"])
 
 
 # --- the checker catches what it exists to catch ---
@@ -271,6 +275,7 @@ def good() -> dict:
                 "1",
                 command=["sh", "-c", f"exec java -Xms512m -Xmx896m {PHOTON_XX} -jar photon.jar"],
             ),
+            "memcached": svc(24, "0.25", command=["memcached", "-m", "16"]),
             **routers,
         }
     }
@@ -451,16 +456,16 @@ def _cap(service: dict, mb: int) -> None:
     service["memswap_limit"] = f"{mb}M"
 
 
-@pytest.mark.parametrize(("api_mb", "ok"), [(1874, True), (1875, False)])
+@pytest.mark.parametrize(("api_mb", "ok"), [(1850, True), (1851, False)])
 def test_the_resident_ceiling_is_exactly_seven_point_three_five_gib(api_mb: int, ok: bool) -> None:
-    # good() is 7102 MiB resident with a 1450M api; 7526.4 MiB is 7.35 GiB exactly
+    # good() is 7126 MiB resident with a 1450M api; 7526.4 MiB is 7.35 GiB exactly
     found = problems_for(lambda s: _cap(s["api"], api_mb))
     assert (not any("resident total" in p for p in found)) is ok, found
 
 
-@pytest.mark.parametrize(("migrate_mb", "ok"), [(680, True), (681, False)])
+@pytest.mark.parametrize(("migrate_mb", "ok"), [(656, True), (657, False)])
 def test_the_startup_peak_leaves_exactly_one_gib(migrate_mb: int, ok: bool) -> None:
-    # 7102 MiB resident + the one-shot must stay within 8.6 - 1.0 GiB = 7782.4 MiB
+    # 7126 MiB resident + the one-shot must stay within 8.6 - 1.0 GiB = 7782.4 MiB
     found = problems_for(lambda s: _cap(s["migrate"], migrate_mb))
     assert (not any("startup peak" in p for p in found)) is ok, found
 
@@ -2784,7 +2789,7 @@ def test_the_runbook_records_the_servers_facts_and_checks_them_read_only() -> No
     a variable and its address is checked live, never written down."""
     step1 = RUNBOOK[RUNBOOK.index("## 1. Prerequisites") : RUNBOOK.index("## 2. Get the code")]
     assert "export RM_SSH_HOST=<" in RUNBOOK[: RUNBOOK.index("## 1. Prerequisites")]
-    for fact in ('ssh "$RM_SSH_HOST"', "`nofail`", "root disk", "8766 MiB", "x86_64"):
+    for fact in ('ssh "$RM_SSH_HOST"', "`nofail`", "root disk", "8790 MiB", "x86_64"):
         assert fact in step1, fact
     assert "https://api.ipify.org" in step1 and "getent ahostsv4 beta.example.org" in step1
     assert '[ -n "$dns" ] && [ -n "$me" ] && [ "$dns" = "$me" ]' in step1  # re-check ops SF-A
@@ -3061,9 +3066,9 @@ def test_the_certificate_paths_and_the_checkout_come_from_the_vars_file() -> Non
 
 
 def test_the_runbook_states_the_budget_in_both_units() -> None:
-    """Re-check 2 ops NIT-5: 7486 MiB is 7.31 GiB, and the two are written together."""
-    assert round(7486 / 1024, 2) == 7.31 and round(7742 / 1024, 2) == 7.56
-    assert "7486 MiB = 7.31 GiB" in RUNBOOK and "7742 MiB = 7.56 GiB" in RUNBOOK
+    """Re-check 2 ops NIT-5: 7510 MiB is 7.33 GiB, and the two are written together."""
+    assert round(7510 / 1024, 2) == 7.33 and round(7766 / 1024, 2) == 7.58
+    assert "7510 MiB = 7.33 GiB" in RUNBOOK and "7766 MiB = 7.58 GiB" in RUNBOOK
 
 
 @needs_sh

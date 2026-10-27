@@ -46,6 +46,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from routemaker import workzones as rules
+from routemaker.lang import t
 
 logger = logging.getLogger(__name__)
 
@@ -368,7 +369,7 @@ def forget() -> None:
 
 
 def _load(now: datetime) -> Snapshot:
-    from routemaker import ddot_advisories, deer_closures
+    from routemaker import ddot_advisories, deer_closures, purple_line
 
     from . import closure_sources, reviewed_closures
     from .models import BikeshareFeedCache
@@ -429,6 +430,12 @@ def _load(now: datetime) -> Snapshot:
         zones.extend(advised)
         status[ddot_advisories.SOURCE] = CURRENT
         read_at[ddot_advisories.SOURCE] = ddot_advisories.updated()
+    # The Purple Line's construction updates (v0.13.0; routemaker.purple_line), read the same way.
+    building = purple_line.zones(now)
+    if building:
+        zones.extend(building)
+        status[purple_line.SOURCE] = CURRENT
+        read_at[purple_line.SOURCE] = purple_line.updated()
     # The parks' deer-management closures (v0.12.3; routemaker.deer_closures): published
     # schedules, so notices made from the clock, with no feed to read.
     notices = [*notices, *deer_closures.notices(now)]
@@ -797,7 +804,8 @@ def _entry(
     if zone is not None:
         if passage is not None:
             said = rules.heads_up(zone)
-        cited = rules.citation(zone) + note + (stale_note(zone.source) if stale else "")
+        cited = rules.citation(zone) + (t(note) if note else "")
+        cited += stale_note(zone.source) if stale else ""
     return {
         "kind": "workzone",
         "from_m": round(at),
@@ -829,10 +837,13 @@ def stale_note(source: str) -> str:
 
     limit = closure_sources.STALE_AFTER_S.get(source)
     if limit is None:
-        return STALE_NOTE
+        return t(STALE_NOTE)
     minutes = round(limit / 60)
-    span = f"{minutes // 60} hours" if minutes >= 120 else f"{minutes} minutes"
-    return f" This source was last read more than {span} ago."
+    if minutes >= 120:
+        span = t("{n} hours", n=minutes // 60)
+    else:
+        span = t("{n} minutes", n=minutes)
+    return t(" This source was last read more than {span} ago.", span=span)
 
 
 def _merge(description: list[dict] | None, added: list[dict]) -> list[dict] | None:
@@ -863,7 +874,10 @@ def unchecked_text(status: dict[str, str]) -> str | None:
     ]
     if not names:
         return None
-    return f"Work zones could not be checked for this route: {' and '.join(names)} not available."
+    return t(
+        "Work zones could not be checked for this route: {names} not available.",
+        names=t(" and ").join(names),
+    )
 
 
 NAMES = {
@@ -875,6 +889,7 @@ NAMES = {
     "nps": "the NPS alerts",
     "reviewer": "the closures RouteMaker's reviewers confirmed",
     "ddot_advisory": "DDOT's project advisories",
+    "purple_line": "the Purple Line's construction updates",
 }
 
 # How near the route a closure in force is drawn on its map, metres (a closure further
@@ -1216,7 +1231,11 @@ def with_work_zones(body: dict, plan: rules.PlanZones | None, now: datetime | No
     if plan.notices and plan.at is not None:
         notices = dc.notices_along(plan.notices, coordinates, plan.at)
     for notice in reversed(notices):
-        said = f"Check before you go: {notice.title} ({rules.SOURCES.get(notice.source)})."
+        said = t(
+            "Check before you go: {title} ({source}).",
+            title=notice.title,
+            source=rules.SOURCES.get(notice.source),
+        )
         if notice.url:
             said += f" {notice.url}"
         added.insert(0, _entry(None, scale, said))
@@ -1224,7 +1243,7 @@ def with_work_zones(body: dict, plan: rules.PlanZones | None, now: datetime | No
     if unchecked:
         added.insert(0, _entry(None, scale, unchecked))
     if passages:
-        added.insert(0, _entry(None, scale, rules.DISCLAIMER))
+        added.insert(0, _entry(None, scale, t(rules.DISCLAIMER)))
     for key in ("description", "description_overview"):
         body[key] = _merge(body.get(key), added)
     stale = sorted(s for s, v in plan.status.items() if v == STALE)
@@ -1254,7 +1273,7 @@ def with_work_zones(body: dict, plan: rules.PlanZones | None, now: datetime | No
         "stale": [NAMES.get(s, s) for s in stale],
         "unchecked": unchecked,
         "sources": [rules.SOURCES[s] for s in sorted(plan.status) if s in rules.SOURCES],
-        "disclaimer": rules.DISCLAIMER,
+        "disclaimer": t(rules.DISCLAIMER),
         "ride_at": None if plan.at is None else plan.at.isoformat(),
         "closures": map_rows(coordinates, plan, passages, scale, now),
         "notices": [notice_row(n, now, plan.future) for n in notices],
