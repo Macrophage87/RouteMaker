@@ -3144,7 +3144,8 @@ class CancelIn(Schema):
 
 @api.post(
     "/route/cancel",
-    response={204: None, 400: ErrorOut, 422: ErrorOut, 429: ErrorOut, 500: ErrorOut},
+    # A plan_id that is not one is the contract's 400 (`invalid_input`), never a 422.
+    response={204: None, 400: ErrorOut, 429: ErrorOut, 500: ErrorOut},
     summary="Stop a plan of this client's that a newer one has replaced",
     description=(
         "The plan sent with this `X-Plan-Id` from the same address stops at its next router"

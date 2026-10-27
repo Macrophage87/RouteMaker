@@ -252,6 +252,12 @@ not such a plan is running. The cancel itself is a row of `rate_limit_window` un
 `plan-cancel` (a keyed digest of the address and the plan id), good for 60 s and purged with
 the rest; the deployment has no shared cache, so this table is where gunicorn's workers meet.
 A cancel only takes router calls away: one already running finishes, nothing else is asked.
+A plan waiting on calls it gave the router pool (refine's wide routes, the traces) asks for
+its cancel while it waits, so the calls not yet started never go. The page names the
+replaced plan on every resend of the plan replacing it until an answer other than a 429 or
+503 comes, and waits those out for up to 50 s of `Retry-After` (the longest a plan runs)
+before showing the refusal, so a rider never sees "already has a route being planned" for
+their own cancelled plan where before the cancel they would have waited for it.
 
 Place search and place names (`GET /api/geocode`, `GET /api/reverse`,
 signed out; the contract is in docs/DEVELOPMENT.md) have their own limits, in

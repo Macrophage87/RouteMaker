@@ -36,7 +36,11 @@
  *   (X-Plan-Id), is cancelled by that id (POST /api/route/cancel), and the next plan goes
  *   as soon as it would with nothing in flight, naming the plan it replaces (X-Plan-Replaces):
  *   the API stops the old plan at its next router call, and lets the new one wait a moment
- *   for the slot it gives back. Nothing the cancelled plan answers is read, its refusal or
+ *   for the slot it gives back. Every resend of it names that plan too, until an answer
+ *   other than a 429 or 503 comes: the old plan gives its slot back only at its next router
+ *   call, which can be tens of seconds away, so those refusals are waited out as the full
+ *   plan used to be, for up to REPLACE_PATIENCE_S of Retry-After, without counting against
+ *   MAX_WAITS. Nothing the cancelled plan answers is read, its refusal or
  *   Retry-After included. Only a full plan is replaced: a first route still waits, as do
  *   Plan mode's requests, which have no full plan.
  * - once the route shown is final (its full plan, or an answer that was full already), one
@@ -97,6 +101,12 @@ export interface SchedulerOptions<P, A extends AfterResult = AfterResult> {
 
 export const DEBOUNCE_MS = 300;
 export const MAX_WAITS = 3;
+/**
+ * How long, in Retry-After seconds, a plan replacing a cancelled full plan waits out 429s and 503s before the
+ * refusal is shown: the longest a plan runs (a long ride's 50 s budget), which is the longest the scheduler used to
+ * wait for a full plan before it could cancel one. The cancelled plan usually frees its slot far sooner.
+ */
+export const REPLACE_PATIENCE_S = 50;
 
 /** 32 random hex digits: a plan's id, unguessable, so no other page names it (the API scopes it per client too). */
 export function newPlanId(): string {
@@ -121,6 +131,8 @@ export class RouteScheduler<P, A extends AfterResult = AfterResult> {
   private refineToken = 0;
   /** A full plan replaced and cancelled: named by the next request sent (X-Plan-Replaces). */
   private replaced: string | null = null;
+  /** Retry-After seconds waited out so far for the plan replacing `replaced`. */
+  private replaceWaitedS = 0;
   private debounce: unknown = null;
   /** While set, the API's last Retry-After has not passed: nothing is sent. */
   private hold: unknown = null;
@@ -166,7 +178,8 @@ export class RouteScheduler<P, A extends AfterResult = AfterResult> {
 
   /**
    * Whether a request of the scheduler's is in flight (a first route's full plan included), or a full plan just
-   * replaced may still hold its slot until the plan replacing it is sent (Go's early start waits that out).
+   * replaced may still hold its slot, until the plan replacing it has an answer other than a 429 or 503 (Go's early
+   * start waits that out).
    */
   busy(): boolean {
     return this.inFlight || this.replaced !== null;
@@ -197,7 +210,10 @@ export class RouteScheduler<P, A extends AfterResult = AfterResult> {
     this.refineId = null;
     this.inFlight = false;
     this.refining = false;
-    if (replaced) this.replaced = id;
+    if (replaced) {
+      this.replaced = id;
+      this.replaceWaitedS = 0;
+    }
     this.options.cancel(id);
   }
 
@@ -240,8 +256,8 @@ export class RouteScheduler<P, A extends AfterResult = AfterResult> {
     }
     const plan = this.latest;
     const generation = this.generation;
+    // Kept for every resend until the slot is given back (`settle`).
     const replaces = this.replaced;
-    this.replaced = null;
     this.inFlight = true;
     this.state({ kind: "in-flight" });
     (replaces === null ? this.options.send(plan) : this.options.send(plan, replaces)).then(
@@ -257,6 +273,17 @@ export class RouteScheduler<P, A extends AfterResult = AfterResult> {
     const retryAfterS = error && (error.status === 429 || error.status === 503) ? error.retryAfterS : undefined;
     // At most the cap; at least a second, since the first tick is a second away.
     if (retryAfterS !== undefined) this.holdFor(Math.min(RETRY_AFTER_CAP_S, retryAfterS));
+    // A plan replacing a cancelled full plan: until an answer other than a 429 or 503, the old plan may still
+    // hold the slot, so what is sent next still names it (and the API still lets it wait a moment).
+    let replacing = false;
+    if (this.replaced !== null) {
+      if (retryAfterS !== undefined && !error?.noAutoResend && this.replaceWaitedS < REPLACE_PATIENCE_S) {
+        this.replaceWaitedS += Math.min(RETRY_AFTER_CAP_S, retryAfterS);
+        replacing = true;
+      } else if (retryAfterS === undefined || error?.noAutoResend) {
+        this.replaced = null;
+      }
+    }
     const current = generation === this.generation;
     if (!current) {
       // The plan changed while this was computing: its answer is not shown,
@@ -270,6 +297,11 @@ export class RouteScheduler<P, A extends AfterResult = AfterResult> {
       this.state({ kind: "idle" });
       return;
     }
+    if (replacing) {
+      // The cancelled plan's slot, waited out as the full plan itself used to be: not one of MAX_WAITS.
+      this.pump();
+      return;
+    }
     if (retryAfterS !== undefined && !error?.noAutoResend && this.waitsForLatest < this.maxWaits) {
       // Waited out: pump() says so, and the hold sends the plan when it ends.
       this.waitsForLatest += 1;
@@ -278,6 +310,7 @@ export class RouteScheduler<P, A extends AfterResult = AfterResult> {
     }
     // Shown: nothing is left to send, so a hold that ends later sends nothing.
     this.latest = null;
+    this.replaced = null;
     this.state({ kind: "idle" });
     this.options.onResult(plan, result);
     // A new plan asked for inside onResult is sent as usual; the full plan of this one is not wanted.

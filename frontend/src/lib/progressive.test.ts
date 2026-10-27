@@ -357,6 +357,75 @@ test("the early start waits until the plan replacing a full plan is sent", async
   assert.equal(t.scheduler.busy(), false);
 });
 
+test("the plan replacing a full plan names it on every resend and outwaits MAX_WAITS while the slot is held", async () => {
+  const t = setupCancel();
+  t.scheduler.request(1);
+  await t.timers.advance(300);
+  t.waiting[0].answer({ ok: true, route: FIRST });
+  await flush();
+  t.scheduler.request(2, { now: true });
+  await flush();
+  // The old plan holds the client's slot through more refusals than MAX_WAITS (3) allows.
+  for (let i = 0; i < 6; i += 1) {
+    const last = t.waiting.at(-1)!;
+    assert.deepEqual([last.kind, last.plan, last.id], ["send", 2, "plan-1"], `resend ${i} still names the plan it replaces`);
+    last.answer({ ok: false, error: describeError(429, null, "2") });
+    await flush();
+    assert.equal(t.scheduler.busy(), true);
+    await t.timers.advance(2000);
+  }
+  assert.deepEqual(t.shown.map((s) => s.plan), [1], "no refusal shown while the old plan unwinds");
+  t.waiting.at(-1)!.answer({ ok: true, route: FIRST });
+  await flush();
+  assert.deepEqual(t.shown.map((s) => s.plan), [1, 2]);
+  // The slot is back: plan 2's own full plan names nothing, and Go's early start may go once it settles.
+  const refine = t.waiting.at(-1)!;
+  assert.deepEqual([refine.kind, refine.plan, refine.id], ["refine", 2, "plan-2"]);
+  refine.answer({ ok: true, route: FULL });
+  await flush();
+  assert.equal(t.scheduler.busy(), false);
+});
+
+test("the replacing plan's patience ends: past REPLACE_PATIENCE_S, the usual MAX_WAITS, then the refusal", async () => {
+  const t = setupCancel();
+  t.scheduler.request(1);
+  await t.timers.advance(300);
+  t.waiting[0].answer({ ok: true, route: FIRST });
+  await flush();
+  t.scheduler.request(2, { now: true });
+  await flush();
+  let sends = 0;
+  while (t.shown.length < 2 && sends < 100) {
+    t.waiting.at(-1)!.answer({ ok: false, error: describeError(429, null, "10") });
+    await flush();
+    sends += 1;
+    await t.timers.advance(10_000);
+  }
+  // 50 s of Retry-After (5 sends), then MAX_WAITS more resends, then shown.
+  assert.equal(sends, 5 + 3 + 1);
+  assert.deepEqual(t.shown.map((s) => [s.plan, s.route]), [
+    [1, FIRST],
+    [2, null],
+  ]);
+  assert.equal(t.scheduler.busy(), false, "a refusal shown names no replaced plan any more");
+});
+
+test("a plan changed again while the replacing plan is refused still names the cancelled plan", async () => {
+  const t = setupCancel();
+  t.scheduler.request(1);
+  await t.timers.advance(300);
+  t.waiting[0].answer({ ok: true, route: FIRST });
+  await flush();
+  t.scheduler.request(2, { now: true });
+  await flush();
+  t.scheduler.request(3, { now: true });
+  t.waiting.at(-1)!.answer({ ok: false, error: describeError(503, null, "2") });
+  await flush();
+  await t.timers.advance(2000);
+  const last = t.waiting.at(-1)!;
+  assert.deepEqual([last.kind, last.plan, last.id], ["send", 3, "plan-1"]);
+});
+
 test("Go's full plan carries its id and the plan replacing it names it, as headers only", async () => {
   const seen: RequestInit[] = [];
   const fetchImpl = async (_url: string, init: RequestInit) => {

@@ -68,7 +68,8 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterator
-from concurrent.futures import Future
+from concurrent.futures import FIRST_EXCEPTION, Future
+from concurrent.futures import wait as wait_futures
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -405,6 +406,33 @@ def check_cancel(poll: bool = True) -> None:
     watch = _cancel_watch.get()
     if watch is not None:
         watch.check(poll)
+
+
+# How often the request's thread, blocked on calls it gave the pool, asks whether its plan
+# has been cancelled (`await_future`): the pool's threads never read the store, so without this a
+# cancel waited for every call already submitted (each up to ALTERNATES_TIMEOUT_S).
+CANCEL_WAIT_STEP_S = 0.1
+
+
+def await_future(future: Future):
+    """`future.result()`, read on the request's thread so that a cancel of its plan
+    (`check_cancel`) is seen while it waits: it raises PlanCancelled within about a
+    CANCEL_WAIT_STEP_S of the flag being seen, and the calls not yet started never go (the
+    pool's threads see the watch's `cancelled` at their next call). Where no plan is
+    watched, or on a pool thread, exactly `future.result()`."""
+    watch = _cancel_watch.get()
+    if watch is None:
+        return future.result()
+    if parallel.inside():
+        return future.result()
+    while not future.done():
+        try:
+            watch.check()
+        except PlanCancelled:
+            future.cancel()
+            raise
+        wait_futures([future], timeout=CANCEL_WAIT_STEP_S, return_when=FIRST_EXCEPTION)
+    return future.result()
 
 
 def _own_context(fn):
@@ -1781,7 +1809,7 @@ def _settled(traces: dict, key):
     value = traces[key]
     if isinstance(value, Future):
         try:
-            value = value.result()
+            value = await_future(value)
         except BaseException:
             if traces.get(key) is value:
                 del traces[key]

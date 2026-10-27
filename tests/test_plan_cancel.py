@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import threading
+from concurrent.futures import Future
 
 import pytest
 from django.test import override_settings
@@ -130,6 +131,58 @@ class TestThePlanStops:
         assert not watch.cancelled
 
 
+class TestWaitingOnThePool:
+    """The request's thread, blocked on calls it gave the pool (refine's wide routes, the
+    traces), sees a cancel while it waits instead of after every call submitted has run."""
+
+    def test_a_cancel_seen_while_waiting_raises_and_drops_the_call(self, store) -> None:
+        flagged, _reads = store
+        pending: Future = Future()
+        watch = plan_cancel.Watch("k")
+        watching = routing.watch_cancel(watch)
+        timer = threading.Timer(0.15, lambda: flagged.add("k"))
+        timer.start()
+        began = routing.clock()
+        try:
+            with pytest.raises(routing.PlanCancelled):
+                routing.await_future(pending)
+        finally:
+            routing.unwatch_cancel(watching)
+            timer.cancel()
+        # Never answered: it was the cancel that ended the wait, within a poll or two.
+        assert routing.clock() - began < 2.0
+        assert pending.cancelled()
+        assert watch.cancelled
+
+    def test_an_answer_is_given_as_it_would_be(self, store) -> None:
+        _flagged, reads = store
+        pending: Future = Future()
+        watching = routing.watch_cancel(plan_cancel.Watch("k"))
+        timer = threading.Timer(0.15, lambda: pending.set_result({"trip": {}}))
+        timer.start()
+        try:
+            assert routing.await_future(pending) == {"trip": {}}
+        finally:
+            routing.unwatch_cancel(watching)
+            timer.cancel()
+        assert reads, "the store was asked while waiting"
+
+    def test_a_failed_call_raises_its_own_error(self, store) -> None:
+        pending: Future = Future()
+        pending.set_exception(routing.RouterRefused(400, 442, "no route"))
+        watching = routing.watch_cancel(plan_cancel.Watch("k"))
+        try:
+            with pytest.raises(routing.RouterRefused):
+                routing.await_future(pending)
+        finally:
+            routing.unwatch_cancel(watching)
+
+    def test_no_watch_no_read(self, store) -> None:
+        _flagged, reads = store
+        assert routing.await_future(parallel.done({"ok": True})) == {"ok": True}
+        assert reads == []
+
+
 class TestIds:
     @pytest.mark.parametrize("value", [PLAN, "abcd-EF_12", " " + PLAN + " "])
     def test_good_ids(self, value) -> None:
@@ -191,7 +244,10 @@ class TestSlots:
 
 def test_both_are_in_the_openapi_schema() -> None:
     schema = api.api.get_openapi_schema()
-    assert "204" in {str(k) for k in schema["paths"]["/api/route/cancel"]["post"]["responses"]}
+    answers = {str(k) for k in schema["paths"]["/api/route/cancel"]["post"]["responses"]}
+    assert "204" in answers
+    # A bad id is a 400, never a 422 (`api.invalid_input`): the schema says only what is answered.
+    assert "400" in answers and "422" not in answers
     conflict = schema["paths"]["/api/route"]["post"]["responses"][409]
     assert "CancelledOut" in json.dumps(conflict)
 
@@ -227,7 +283,10 @@ class TestOverHttp:
         assert response.status_code == 200
 
     def test_a_bad_id_is_refused(self, client) -> None:
-        assert cancel(client, "no").status_code == 422
+        # Ninja's validation error is the contract's 400 (`api.invalid_input`), as declared.
+        response = cancel(client, "no")
+        assert response.status_code == 400
+        assert "error" in response.json()
 
     def test_a_replacing_plan_cancels_the_plan_it_replaces(self, client, segments, router) -> None:  # noqa: F811
         router(standard_router())
