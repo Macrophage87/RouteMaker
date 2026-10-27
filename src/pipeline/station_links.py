@@ -1,4 +1,4 @@
-"""The extract's ways into rail stations (`routemaker.station_links`)."""
+"""The extract's ways into rail stations and its platforms (`routemaker.station_links`)."""
 
 from __future__ import annotations
 
@@ -35,3 +35,14 @@ def read_ways_in(pbf: str | Path) -> list[tuple[float, float]]:
         elif tags.get("highway") == "elevator":
             elevators.append(point)
     return station_links.ways_in(entrances, stations, elevators)
+
+
+def read_platform_nodes(pbf: str | Path) -> set[int]:
+    """The node ids of every rail platform's way (`station_links.platform_walks`)."""
+    nodes: set[int] = set()
+    processor = osmium.FileProcessor(str(pbf), osmium.osm.WAY).with_filter(
+        osmium.filter.TagFilter(("railway", "platform"))
+    )
+    for way in processor:
+        nodes.update(node.ref for node in way.nodes)
+    return nodes

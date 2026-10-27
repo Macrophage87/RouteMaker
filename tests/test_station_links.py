@@ -182,3 +182,71 @@ def test_a_way_in_on_a_footway_walks_from_itself():
         shady_grove({1: placed(1, FOOTWAY, [(0.0, 0.0), (0.0, -20.0), (0.0, -30.0)])}), [ELEVATOR]
     )
     assert 1 in found
+
+
+# Kensington's MARC station (the owner, 2026-10-27: "the handicap ramp at the Kensington
+# rail station was marked as a bike path"), in metres from the north platform's end: the
+# ramp from the street down to the north platform, the crossing over the tracks between
+# the platforms, a 4 m walkway off the south platform to the station building's walkways,
+# a walkway along the building and on into the parking lot, and a shared-use path nearby.
+PLATFORM = {"railway": "platform", "public_transport": "platform", "train": "yes"}
+RAMP = {"highway": "footway", "bicycle": "yes", "surface": "concrete"}
+TRACK_CROSSING = {"highway": "footway", "footway": "crossing", "bicycle": "yes"}
+
+
+def kensington(changes=None):
+    ways = {
+        20: placed(20, PLATFORM, [(0.0, 0.0), (-60.0, 0.0)]),
+        21: placed(21, PLATFORM, [(0.0, -10.0), (-60.0, -10.0)]),
+        1: placed(1, RAMP, [(0.0, 0.0), (-40.0, 30.0), (-60.0, 40.0)]),
+        2: placed(2, TRACK_CROSSING, [(0.0, -10.0), (0.0, 0.0)]),
+        3: placed(3, RAMP, [(0.0, -10.0), (0.0, -14.0)]),
+        4: placed(4, RAMP, [(0.0, -14.0), (20.0, -14.0)]),
+        # Begins 20 m from the platform, past PLATFORM_REACH_M: the parking lot's.
+        5: placed(5, RAMP, [(20.0, -14.0), (30.0, -14.0)]),
+        6: placed(6, {"highway": "residential"}, [(-60.0, 40.0), (-200.0, 40.0)]),
+        7: placed(7, {"highway": "footway", "bicycle": "designated"}, [(0.0, 0.0), (0.0, 80.0)]),
+        8: placed(8, {**RAMP, "name": "Station Trail"}, [(-60.0, 0.0), (-60.0, -80.0)]),
+    }
+    ways.update(changes or {})
+    return list(ways.values())
+
+
+def platform_nodes(ways):
+    return {node for _id, tags, nodes, _coords in ways if sl.is_platform(tags) for node in nodes}
+
+
+def test_the_ramp_and_walkways_at_a_platform_are_walked():
+    ways = kensington()
+    assert sl.platform_walks(ways, platform_nodes(ways)) == {1, 2, 3, 4}
+
+
+def test_a_signed_or_named_trail_at_a_platform_stays_a_path():
+    ways = kensington()
+    found = sl.platform_walks(ways, platform_nodes(ways))
+    assert 7 not in found, "bicycle=designated"
+    assert 8 not in found, "a named trail"
+    assert 5 not in found, "begins past the platform's reach"
+
+
+def test_a_long_walkway_or_a_closed_one_is_left_alone():
+    long_ramp = placed(1, RAMP, [(0.0, 0.0), (-sl.WAY_MAX_M, 0.0), (0.0, 40.0)])
+    ways = kensington({1: long_ramp})
+    assert 1 not in sl.platform_walks(ways, platform_nodes(ways))
+    ways = kensington()
+    assert 3 not in sl.platform_walks(ways, platform_nodes(ways), closed={3})
+
+
+def test_no_platform_nothing_walked():
+    assert sl.platform_walks(kensington(), set()) == set()
+    assert not sl.is_platform({"public_transport": "platform", "bus": "yes"}), "a bus stop"
+
+
+def test_the_rebuild_walks_the_platform_walkways():
+    ways = [way(*w) for w in kensington()]
+    result = tc.closures(ways, {}, [])
+    tc.add_sidewalk_rides(result, ways)
+    tc.add_platform_walks(result, ways, platform_nodes(kensington()))
+    assert result.platform_walks == {1, 2, 3, 4}
+    assert {1, 2, 3, 4} <= result.walk_bike, "the directions say walk your bike here"
+    assert not ({1, 2, 3, 4} & result.sidewalk_rides), "walked, not ridden"

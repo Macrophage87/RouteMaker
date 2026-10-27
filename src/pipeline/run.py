@@ -861,6 +861,9 @@ class RebuildContext:
     # The ways into Metro and MARC stations (`pipeline.station_links.read_ways_in`): the
     # footways from them become walk-your-bike links (`routemaker.station_links`).
     station_ways_in: list = field(default_factory=list)
+    # The node ids of the extract's rail platforms (`pipeline.station_links.read_platform_nodes`):
+    # the `bicycle=yes` walkways at them are walked (`routemaker.station_links.platform_walks`).
+    platform_nodes: set[int] = field(default_factory=set)
     # (the roads they lie along, the reviewed list by way), worked out once
     # (`hazard_inputs`); None until then.
     hazard_inputs: tuple | None = None
@@ -892,6 +895,9 @@ class RebuildContext:
     # Footways into rail stations opened as walk-your-bike links
     # (`routemaker.station_links`), all of them in `walk_bike` too.
     walk_links: set[int] = field(default_factory=set)
+    # Walkways at rail platforms that `bicycle=yes` opens, walked and no facility
+    # (`routemaker.station_links.platform_walks`), all of them in `walk_bike` too.
+    platform_walks: set[int] = field(default_factory=set)
     # Parking aisles where a trail ends, routed as plain service roads
     # (`routemaker.aisle_links`).
     aisle_links: set[int] = field(default_factory=set)
@@ -2233,6 +2239,8 @@ def build_handlers(
         context.street_rails = hazard_layer.read_rails(context.source_pbf)
         # The stations' ways in (the owner, 2026-10-20), for the walk-your-bike links into them.
         context.station_ways_in = station_ways.read_ways_in(context.source_pbf)
+        # And their platforms (the owner, 2026-10-27), for the walkways at them.
+        context.platform_nodes = station_ways.read_platform_nodes(context.source_pbf)
         # Indexed once. The first version scanned the whole way list inside a
         # loop over every border node inside a loop over every variant.
         context.ways_by_id = {way.osm_id: way for way in context.ways}
@@ -3216,6 +3224,7 @@ def build_handlers(
         # After the agency prohibitions, so a link never leads onto a road they close.
         trail_closures.add_sidewalk_rides(nobike, context.ways)
         trail_closures.add_station_links(nobike, context.ways, context.station_ways_in)
+        trail_closures.add_platform_walks(nobike, context.ways, context.platform_nodes)
         trail_closures.add_aisle_links(nobike, context.ways)
         context.aisle_links = nobike.aisle_links
         context.walk_bike = nobike.walk_bike
@@ -3224,6 +3233,7 @@ def build_handlers(
             context.ways, context.stress_by_way, nobike.sidewalk_rides, nobike.sidewalk_links
         )
         context.walk_links = nobike.walk_links
+        context.platform_walks = nobike.platform_walks
         raise_ridden_sidewalks(
             context.stress_by_way, nobike.sidewalk_rides, context.sidewalk_last_resort
         )
@@ -3256,6 +3266,10 @@ def build_handlers(
                 # No path rail on a trail only a mountain bike rides (the mountain-bike
                 # class, and the rated singletrack the layer now draws, 456).
                 context.facility_by_way[way.osm_id] = facility.Facility.NONE.value
+            if way.osm_id in context.platform_walks:
+                # A station's walkway, walked: no path rail (`station_links.platform_walks`).
+                context.facility_by_way[way.osm_id] = facility.Facility.NONE.value
+                context.facility_shown_by_way.pop(way.osm_id, None)
             if car_free_tier_1(way, context.stress_by_way):
                 car_free_for_good += 1
         logger.info(
@@ -3561,6 +3575,10 @@ def build_handlers(
                 # lua/routemaker_remap.lua opens it as `bicycle=dismount`, walk your bike.
                 if way.osm_id in context.walk_links:
                     derived["walk_link"] = True
+                # A walkway at a rail platform that `bicycle=yes` opens
+                # (`routemaker.station_links.platform_walks`): walked too.
+                if way.osm_id in context.platform_walks:
+                    derived["platform_walk"] = True
                 # A parking aisle or driveway where a trail ends (`routemaker.aisle_links`):
                 # lua/routemaker_remap.lua routes it as a plain service road.
                 if way.osm_id in context.aisle_links:
@@ -3809,6 +3827,10 @@ def build_handlers(
             return facility.MapClass.BARRED
         if osm_id in context.short_paths_hidden:
             return facility.MapClass.HIDDEN
+        if osm_id in context.platform_walks:
+            # A station's walkway, walked: not drawn as a bike path
+            # (`routemaker.station_links.platform_walks`), as a station link is not.
+            return facility.MapClass.BARRED
         if osm_id in context.singletracks and osm_id not in context.drawn_singletracks:
             return facility.MapClass.HIDDEN
         base = facility.map_class(tags)

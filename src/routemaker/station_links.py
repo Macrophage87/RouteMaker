@@ -21,6 +21,19 @@ crossing and no more. Never steps, never a footway a closure rule closes (the CB
 sidewalks, a military or secured area), an indoor or informal one, an area, or one
 longer than `WAY_MAX_M` (a tag opens the whole way, so a long sidewalk stays closed).
 
+The same goes for the walkways at a platform that OSM tags `bicycle=yes` (`platform_walks`).
+The owner, 2026-10-27: "For some strange reason the handicap ramp at the Kensington rail
+station was marked as a bike path." The wheelchair ramp from Howard Avenue down to the
+MARC platform there (way 772035684), the walkways along the station building and the
+crossing over the tracks between the platforms all carry `bicycle=yes` from one mapper's
+edit of the station, so a route counted them as a traffic-free path and rode them. A
+bicycle may use them, so they stay open, but they are a station's walkways, not a bike
+path: each unnamed footway or path that `bicycle=yes` (or `permissive`) opens and that
+joins a `railway=platform`, or joins one within `PLATFORM_REACH_M` of it along such
+walkways, is walked too (`rm:platform_walk`), and is no facility. A named way or one
+`bicycle=designated` is a trail someone signed and is left alone, as is one longer than
+`WAY_MAX_M`.
+
 And an escalator (`highway=steps` with `conveying`) is closed to bicycles whatever its
 tags say (`ESCALATOR`): WMATA: "Use the elevators (never escalators)". Upstream opens
 steps to bicycles by class.
@@ -53,6 +66,14 @@ ON_WAY_IN_M = 1.0
 # The longest footway a walk may open (about 500 ft): shorter than a walk link's, since a
 # station's walks run along downtown sidewalks, and a tag opens the whole way.
 WAY_MAX_M = 150.0
+# How far along a station's walkways from its platform a walkway may begin and still be
+# walked (about 33 ft): far enough for the short ways at a platform's end (Kensington's
+# ramp meets the station building's walkways 4 m from the platform), not out into the
+# parking lot beyond.
+PLATFORM_REACH_M = 10.0
+# The bicycle values that open a platform walkway; `designated` is a signed trail.
+PLATFORM_WALK_BICYCLE = frozenset({"yes", "permissive"})
+PLATFORM_WALK_HIGHWAY = frozenset({"footway", "path"})
 # A street elevator counts as a way in within this of a station node (about 1,000 ft).
 ELEVATOR_STATION_M = 300.0
 
@@ -230,3 +251,60 @@ def _walks(
                 used.append(way)
         walks.append((metres, used))
     return walks
+
+
+def is_platform(tags: dict[str, str]) -> bool:
+    """A rail platform's way (a bus stop's `public_transport=platform` is not one)."""
+    return tags.get("railway") == "platform"
+
+
+def is_platform_walk_candidate(tags: dict[str, str]) -> bool:
+    """An unnamed footway or path that `bicycle=yes` or `permissive` opens: a station's
+    walkway when it meets a platform (`platform_walks`)."""
+    return (
+        tags.get("highway") in PLATFORM_WALK_HIGHWAY
+        and tags.get("bicycle") in PLATFORM_WALK_BICYCLE
+        and not tags.get("name")
+        and tags.get("area") != "yes"
+    )
+
+
+def platform_walks(
+    ways: Sequence[Placed],
+    platform_nodes: Set[int],
+    closed: Set[int] = frozenset(),
+) -> set[int]:
+    """The walkways at rail platforms to walk rather than ride: every candidate
+    (`is_platform_walk_candidate`, no longer than WAY_MAX_M, not closed) with a node
+    within PLATFORM_REACH_M of a platform's node, walking along the candidates. `ways` as
+    `links` takes them (only a candidate's coordinates are read); `platform_nodes` the node
+    ids of every `railway=platform` way."""
+    adjacent: dict[int, list[tuple[int, float]]] = defaultdict(list)
+    nodes_of: dict[int, Sequence[int]] = {}
+    for osm_id, tags, node_ids, coords in ways:
+        if osm_id in closed or len(node_ids) < 2 or not is_platform_walk_candidate(tags):
+            continue
+        steps = [
+            (i, _metres(a, b))
+            for i, (a, b) in enumerate(zip(coords, coords[1:], strict=False))
+            if a is not None and b is not None
+        ]
+        if sum(m for _i, m in steps) > WAY_MAX_M:
+            continue
+        nodes_of[osm_id] = node_ids
+        for i, step in steps:
+            adjacent[node_ids[i]].append((node_ids[i + 1], step))
+            adjacent[node_ids[i + 1]].append((node_ids[i], step))
+    best = {node: 0.0 for node in adjacent if node in platform_nodes}
+    queue = [(0.0, node) for node in best]
+    heapq.heapify(queue)
+    while queue:
+        metres, node = heapq.heappop(queue)
+        if metres > best[node]:
+            continue
+        for neighbour, step in adjacent[node]:
+            total = metres + step
+            if total <= PLATFORM_REACH_M and total < best.get(neighbour, math.inf):
+                best[neighbour] = total
+                heapq.heappush(queue, (total, neighbour))
+    return {osm_id for osm_id, node_ids in nodes_of.items() if any(n in best for n in node_ids)}
