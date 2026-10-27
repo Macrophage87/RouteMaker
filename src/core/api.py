@@ -351,11 +351,14 @@ class RouteIn(Schema):
             " Sent with the ride's re-plans only; never remembered by the server."
         ),
     )
-    lang: Literal["en", "es"] = Field(
+    lang: str = Field(
         default="en",
+        max_length=16,
         description=(
-            "The language of the answer's sentences (the description, hazards, work zones,"
-            ' climbs): "en" or "es". Street and place names are never translated.'
+            "The language of the route's sentences (the description list, hazards, work-zone"
+            ' lines, climbs): "en" or "es"; any other is answered in English, so an app that'
+            " knows a language this server does not still gets its route. Street and place"
+            " names, agencies' own notices and the closure cards' words are not translated."
         ),
     )
     heading: float | None = Field(
@@ -602,6 +605,12 @@ class RouteIn(Schema):
         """An old ride type's name (a link or a saved plan from before it was renamed) plans
         as the ride type it became: "kids" is Novice and Nervous (v0.7.0)."""
         return presets.resolve_preset(value) if isinstance(value, str) else value
+
+    @field_validator("lang")
+    @classmethod
+    def _known_language(cls, value: str) -> str:
+        """A language this server does not word is English, so the cache keeps one answer."""
+        return value if value in lang.LANGUAGES else "en"
 
     @model_validator(mode="after")
     def dials_fit_the_preset(self):

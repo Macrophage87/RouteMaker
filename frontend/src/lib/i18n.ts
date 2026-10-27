@@ -3,7 +3,9 @@
  * first, the most spoken language after English in the DC area). English is the source: every phrase is
  * written in English in the code and passed through `t`, which looks it up in the language's catalog
  * (src/i18n/es.ts) and falls back to the English where a phrase has no translation yet. Street, trail
- * and place names, agency notices and the server's own text stay as they come; miles stay first.
+ * and place names and agency notices stay as they come; miles stay first. The route's own sentences
+ * (description list, hazards, work-zone lines) come from the server already in the language: the
+ * request carries `lang` (lib/api.ts routeRequestBody, the server's routemaker.lang).
  *
  * The language is read once, when the page loads: the rider's choice (Settings > Display > Language,
  * kept on this device like accessibility mode), else the device's own language. Choosing another reloads

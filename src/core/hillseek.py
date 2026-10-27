@@ -55,7 +55,7 @@ from pathlib import Path
 from routemaker import climb_categories, climb_exclusions
 from routemaker.describe import point_words
 from routemaker.geo import Point, haversine
-from routemaker.lang import t
+from routemaker.lang import spanish, t
 
 from .trailseek import Plane, RouteLine
 
@@ -494,11 +494,16 @@ def sentence(item: Ridden, scale: float = 1.0) -> str:
     with the climb's name where the file has one (`pipeline.climb_names`) and, where it
     says so, that it is mostly unpaved."""
     climb = item.climb
+    said = climb_words(climb)
+    if climb.name and spanish():
+        # "Snider Lane, subida de categoría 4": a common noun after the name (English keeps
+        # "Category", the classification's own name).
+        said = said[:1].lower() + said[1:]
     named = f"{climb.name}, " if climb.name else ""
     text = t(
         "At {where}: {climb}, to the summit at {summit}.",
         where=point_words(item.start_m * scale),
-        climb=f"{named}{climb_words(climb)}",
+        climb=f"{named}{said}",
         summit=point_words(item.summit_m * scale),
     )
     if climb.unpaved:

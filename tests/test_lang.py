@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from core import route_hazards
+from core import route_hazards, workzones
 from routemaker import avoid_junctions, hazards, lang, steep_grades
 from routemaker import describe as d
 from routemaker.intersections import Control, Event, Movement
@@ -25,6 +25,7 @@ WORDED = [
     "core/route_hazards.py",
     "core/hillseek.py",
     "core/novice_walks.py",
+    "core/workzones.py",
 ]
 _PLACE = re.compile(r"\{(\w+)\}")
 
@@ -66,6 +67,8 @@ def built_keys() -> set[str]:
         f"no street details for this part of the route, {d.UNRATED_WORDS}.",
     }
     keys.add(route_hazards.road_of(None))
+    keys |= {workzones.STALE_NOTE, workzones.BYPASS_NOTE, workzones.MAY_APPLY_NOTE}
+    keys.add(workzones.rules.DISCLAIMER)
     keys |= set(route_hazards.SHORT_WORDS.values())
     keys |= {w.split(": ", 1)[1] for w in hazards.WORDS.values()}
     keys |= set(steep_grades._STEEP_WORDS.values())
@@ -194,3 +197,64 @@ class TestHazards:
         assert route_hazards.line(self.entry).startswith(
             "Cobblestones and rails in the road on O Street, 1.2 to 1.4 mi"
         )
+
+
+class TestWorkZones:
+    def zone(self):
+        import json
+
+        from routemaker import workzones as wz
+
+        sample = Path(__file__).resolve().parent / "data" / "workzones" / "wzdx-v4-sample.geojson"
+        found = wz.parse_feed(json.loads(sample.read_text()), "md")
+        return wz, next(z for z in found if z.zone_id == "md-wz-closed-unknown")
+
+    def test_the_citation_and_its_date_in_spanish(self):
+        wz, zone = self.zone()
+        with lang.speaking("es"):
+            assert wz.citation(zone).startswith("Fuente: Maryland DOT SHA work zones")
+            assert wz.citation(zone).endswith(", hasta el 30 de nov.")
+
+    def test_the_cards_dates_stay_english(self):
+        # Only the citation is worded in Spanish; the closure cards' when-words are not.
+        wz, zone = self.zone()
+        with lang.speaking("es"):
+            assert wz.date_text(zone.end) == "Nov 30"
+
+    def test_the_unread_feeds(self):
+        from core import workzones
+
+        with lang.speaking("es"):
+            said = workzones.unchecked_text({"md": workzones.UNAVAILABLE})
+        assert said == (
+            "No se pudieron revisar las zonas de obras de esta ruta: Maryland's feed no disponible."
+        )
+
+
+def test_a_named_climb_reads_as_a_sentence_in_spanish():
+    from core import hillseek
+
+    climb = hillseek.Climb("x", "4", 1287.0, 80.0, 5.0, ((0, 0), (0, 0.01)), name="Snider Lane")
+    with lang.speaking("es"):
+        said = hillseek.sentence(hillseek.Ridden(climb, 5150.0, 6437.0))
+    assert ": Snider Lane, subida de categoría 4, " in said
+    assert said.startswith("En 3.2 mi (5.2 km)")
+    assert ": Snider Lane, Category 4 climb, " in hillseek.sentence(
+        hillseek.Ridden(climb, 5150.0, 6437.0)
+    )
+
+
+def test_a_pool_thread_speaks_the_requests_language(settings):
+    from core import parallel
+
+    settings.ROUTER_PARALLEL_CALLS = 2
+    with lang.speaking("es"):
+        assert parallel.submit(lang.language).result(timeout=10) == "es"
+    assert parallel.submit(lang.language).result(timeout=10) == "en"
+
+
+def test_a_language_the_server_does_not_word_is_english():
+    from core.api import RouteIn
+
+    assert RouteIn._known_language("fr") == "en"
+    assert RouteIn._known_language("es") == "es"

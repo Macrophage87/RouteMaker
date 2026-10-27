@@ -100,7 +100,7 @@ ES: dict[str, str] = {
     # ---- Road hazards (core.route_hazards) ----
     "Cobblestones": "Adoquines",
     "Rails in the road": "Rieles en la calle",
-    "bumpy, and slippery when wet": "irregular, y resbaladizo cuando está mojado",
+    "bumpy, and slippery when wet": "irregulares y resbaladizos cuando están mojados",
     "cross them square on, a wheel can drop into the groove": (
         "crúcelos en ángulo recto, una rueda puede caer en la ranura"
     ),
@@ -139,7 +139,7 @@ ES: dict[str, str] = {
     # ---- Work zones and closures (routemaker.workzones) ----
     "The road": "La calle",
     " on {road}": " en {road}",
-    "{road} marked closed ahead.": "{road} marcada como cerrada más adelante.",
+    "{road} marked closed ahead.": "Cierre más adelante en {road}.",
     "{road} has every lane closed ahead; bike access unclear.": (
         "{road} tiene todos los carriles cerrados más adelante; no está claro si pueden pasar"
         " bicicletas."
@@ -151,5 +151,27 @@ ES: dict[str, str] = {
     "Source: {source}, through {date}.": "Fuente: {source}, hasta el {date} inclusive.",
     "Source: {source}, until {date}.": "Fuente: {source}, hasta el {date}.",
     "The road ahead": "La calle más adelante",
-    "{road} marked closed. Detour posted.": "{road} marcada como cerrada. Desvío señalizado.",
+    "{road} marked closed. Detour posted.": "Cierre en {road}. Desvío señalizado.",
+    " This feed was last read more than 20 minutes ago.": (
+        " Esta fuente se leyó por última vez hace más de 20 minutos."
+    ),
+    " This source was last read more than {span} ago.": (
+        " Esta fuente se leyó por última vez hace más de {span}."
+    ),
+    "{n} hours": "{n} horas",
+    "{n} minutes": "{n} minutos",
+    " You chose to route through it.": " Usted eligió pasar por ella.",
+    " No end time is given, so it may still apply on your ride day.": (
+        " No tiene hora de fin, así que podría seguir vigente el día de su recorrido."
+    ),
+    "Work zones could not be checked for this route: {names} not available.": (
+        "No se pudieron revisar las zonas de obras de esta ruta: {names} no disponible."
+    ),
+    "Check before you go: {title} ({source}).": "Revise antes de salir: {title} ({source}).",
+    "Work zones are the transportation agencies' own data, read every few minutes. They may be"
+    " out of date or wrong, and are not a guarantee the way is open or closed.": (
+        "Las zonas de obras son datos de las propias agencias de transporte, leídos cada pocos"
+        " minutos. Pueden estar desactualizados o ser incorrectos, y no garantizan que el camino"
+        " esté abierto o cerrado."
+    ),
 }

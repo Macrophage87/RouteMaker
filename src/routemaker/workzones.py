@@ -980,8 +980,8 @@ def citation(zone: Zone) -> str:
         return t("Source: {source}.", source=source)
     last = last_day(zone.source, zone.end)
     if last is not None:
-        return t("Source: {source}, through {date}.", source=source, date=date_text(last))
-    return t("Source: {source}, until {date}.", source=source, date=date_text(zone.end))
+        return t("Source: {source}, through {date}.", source=source, date=cited_date(last))
+    return t("Source: {source}, until {date}.", source=source, date=cited_date(zone.end))
 
 
 def split_words(zone: Zone | None) -> str:
@@ -1026,9 +1026,16 @@ def clock_text(moment: datetime) -> str:
 def date_text(moment: datetime) -> str:
     """'Oct 20', in the region's time."""
     local = _local(moment)
-    if spanish():
-        return f"{local.day} {_MONTHS_ES[local.month - 1]}"
     return f"{_MONTHS[local.month - 1]} {local.day}"
+
+
+def cited_date(moment: datetime) -> str:
+    """A citation's date in the route's language: 'Oct 20', or '20 de oct' in Spanish.
+    Only the citation is worded in Spanish; the cards' when-words stay English."""
+    if not spanish():
+        return date_text(moment)
+    local = _local(moment)
+    return f"{local.day} de {_MONTHS_ES[local.month - 1]}"
 
 
 # The sources whose windows are whole days: a reviewer's, a DDOT project advisory's
