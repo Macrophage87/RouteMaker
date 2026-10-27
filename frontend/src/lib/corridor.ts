@@ -47,7 +47,15 @@ export const START_JITTER_MS = 2000;
 /** Between two base map tiles: a file on the edge's disk, no draw, so less. */
 export const BASE_GAP_MS = 50;
 /** Failures in a row that stop one kind of tile (no signal, or the base map not served). */
-export const STOP_AFTER_FAILURES = 4;
+export const STOP_AFTER_FAILURES = 5;
+/**
+ * From a kind's second failure in a row, the wait before the next tile: this, then doubled (1, 2, 4 s), so a
+ * kind is dropped only after about 7 s without a signal, not a cell hand-off's blip (the owner, 2026-10-27:
+ * on the Metropolitan Branch Trail the base map was not kept and the stress lines were; at BASE_GAP_MS
+ * four failures in a row took a fifth of a second). A lone failure waits only the kind's gap, so a patchy
+ * signal does not hold the other kind's tiles back.
+ */
+export const FAILURE_WAIT_MS = 1000;
 
 const EARTH_M = 40_075_016.686;
 
@@ -227,7 +235,11 @@ export async function prefetchCorridor(line: readonly LonLat[], deps: PrefetchDe
       failures[job.kind] += 1;
       result.failed += 1;
     }
-    await wait(job.kind === "stress" ? STRESS_GAP_MS : BASE_GAP_MS, deps.signal);
+    const gap = job.kind === "stress" ? STRESS_GAP_MS : BASE_GAP_MS;
+    // A kind just dropped waits no longer: the other kind goes on at its own pace.
+    const inRow = failures[job.kind];
+    const backoff = inRow >= 2 && inRow < STOP_AFTER_FAILURES;
+    await wait(backoff ? Math.max(gap, FAILURE_WAIT_MS * 2 ** (inRow - 2)) : gap, deps.signal);
   }
   return result;
 }
