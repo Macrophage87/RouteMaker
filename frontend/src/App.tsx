@@ -251,7 +251,7 @@ import { useSharedLaunch } from "./app/sharedLaunch.ts";
 import { NearestFinder } from "./lib/nearestFinder.ts";
 import { NearbyStations } from "./NearbyStations.tsx";
 import { Fold } from "./Sidebar.tsx";
-import { BACK_LABEL, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib/sidebar.ts";
+import { BACK_LABEL, MENU_TITLE, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib/sidebar.ts";
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
@@ -1631,7 +1631,7 @@ export function App() {
       focusToolsNext.current = step.focusTools;
       focusAtPress.current = document.activeElement;
       setAccessMode(step.next);
-      announce(step.said);
+      announce(t(step.said));
     },
     [accessMode, announce],
   );
@@ -2992,7 +2992,7 @@ export function App() {
     const step = opened.current[opened.current.length - 1];
     // Go's Menu, Layers and chips' sheets close back to the map and its sheet (the mockup's "Menu Close").
     if (!step || viewNow.current !== of || step.from === "planner") return mode === "go" ? GO_CLOSE_LABEL : BACK_LABEL;
-    return `Back to ${step.from === "settings" && mode === "go" ? "Menu" : SHEET_TITLES[step.from as Exclude<PanelView, "planner">]}`;
+    return t("Back to {title}", { title: step.from === "settings" && mode === "go" ? MENU_TITLE : SHEET_TITLES[step.from as Exclude<PanelView, "planner">] });
   };
   const sheetNav: SheetNav = { view, back: backToPlanner, backLabel };
 
@@ -5422,7 +5422,7 @@ export function App() {
             </button>
           )}
           {points.length > 0 && (
-            <button type="button" className="secondary plan-bar-small" onClick={clearPlan} aria-label={`${CLEAR_LABEL} the plan`} title={CLEAR_LABEL}>
+            <button type="button" className="secondary plan-bar-small" onClick={clearPlan} aria-label={t("Clear the plan")} title={CLEAR_LABEL}>
               <Icon name="trash" size={20} />
             </button>
           )}

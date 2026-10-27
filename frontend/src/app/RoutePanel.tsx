@@ -281,7 +281,7 @@ export function RouteSection(props: RouteSectionProps) {
   return (
     <section key="route" aria-labelledby="route-heading" aria-busy={stale} className={goMode ? "route-section go-route" : "route-section"}>
       <h2 id="route-heading" ref={routeHeadingRef} tabIndex={-1} className={goMode ? "visually-hidden" : undefined}>
-        Route
+        {t("Route")}
       </h2>
       {status.kind === "loading" && <p className="loading">{announcement}</p>}
       {status.kind === "loading" && <progress className="planning" aria-label={t("Planning the route")} />}
@@ -894,7 +894,7 @@ export function RouteSummary({
                 <dt className="visually-hidden">{t("Warnings")}</dt>
                 <dd>
                   <Icon name="warn" size={14} />
-                  {alertCount === 1 ? "1 alert" : `${alertCount} alerts`}
+                  {alertCount === 1 ? t("1 alert") : t("{count} alerts", { count: alertCount })}
                 </dd>
               </div>
             ) : (
@@ -949,7 +949,7 @@ export function RouteSummary({
           <div className="go-chips" role="group" aria-label={t("Route options")}>
             {picker && (
               <button type="button" className="chip go-routes-chip" aria-expanded={routesOpen} aria-controls={routesId} onClick={() => setRoutesOpen(!routesOpen)}>
-                {`${pickerCount} routes`}
+                {t("{count} routes", { count: pickerCount })}
               </button>
             )}
             {/* Shown "Save", named "Save route" (review F15: one row at 390 px with the ride type, the routes and Plan). */}

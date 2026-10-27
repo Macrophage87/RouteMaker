@@ -40,7 +40,7 @@ export const SECTION_STATE_WORDS: Record<SectionState, string> = { on: t("On"), 
 
 /** The switch's description while some are on: "Some on: Metro." */
 export function someOnText(layers: readonly SectionLayer[]): string {
-  return `Some on: ${layers.filter((layer) => layer.on).map((layer) => layer.label).join(", ")}.`;
+  return t("Some on: {layers}.", { layers: layers.filter((layer) => layer.on).map((layer) => layer.label).join(", ") });
 }
 
 type Memory = Record<string, string[]>;

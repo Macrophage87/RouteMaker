@@ -678,7 +678,7 @@ test("a sheet: Back is a labelled button, its heading takes the focus, Escape go
   // A sheet opened from another sheet goes back to it, and says so (Back to Layers, Back to Menu).
   assert.match(sidebar, /<button type="button" className="sheet-back" onClick=\{onBack\}>[\s\S]*?<\/svg>\s*\{backLabel\}\s*<\/button>/, "Back goes back (NIT A)");
   assert.match(sidebar, /backLabel = BACK_LABEL,/);
-  assert.match(app, /return `Back to \$\{step\.from === "settings" && mode === "go" \? "Menu" : SHEET_TITLES\[step\.from as Exclude<PanelView, "planner">\]\}`;/);
+  assert.match(app, /return t\("Back to \{title\}", \{ title: step\.from === "settings" && mode === "go" \? MENU_TITLE : SHEET_TITLES\[step\.from as Exclude<PanelView, "planner">\] \}\);/);
   assert.match(sidebar, /<h2 id=\{`\$\{id\}-title`\} ref=\{headingRef\} tabIndex=\{-1\}>/);
   assert.match(
     sidebar,

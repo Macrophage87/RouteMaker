@@ -265,7 +265,7 @@ test("App: a press goes through accessModeToggle (tested in accessMode.test.ts):
   assert.match(fn, /const step = accessModeToggle\(accessMode, focusTools\)/);
   assert.match(fn, /writeAccessMode\(step\.next\)/);
   assert.match(fn, /setAccessMode\(step\.next\)/);
-  assert.match(fn, /announce\(step\.said\)/);
+  assert.match(fn, /announce\(t\(step\.said\)\)/);
   assert.match(fn, /focusToolsNext\.current = step\.focusTools/);
   // The move waits for Map tools to be on the page (its onShown), which may be after the map loads (the a11y review's N5).
   assert.match(app, /onShown=\{toolsShown\}/);

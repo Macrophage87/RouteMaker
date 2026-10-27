@@ -46,7 +46,7 @@ export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
 export const SAVE_LOAD = t("Save & load");
 
 /** Go's Menu (the mockup's Menu sheet): Settings, with Plan, Suggest, GPX and Review above them. */
-export const MENU_TITLE = "Menu";
+export const MENU_TITLE = t("Menu");
 
 export interface BarItem {
   /** The button's own id, for the focus on the way back. */

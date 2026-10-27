@@ -457,7 +457,7 @@ export function RoamMode({
             ref={whereRef}
             className={`ride-round${follow ? "" : " ride-round-alert"}`}
             onClick={whereAmI}
-            aria-label={follow ? "Where am I?" : "Where am I? The map stopped following you"}
+            aria-label={follow ? t("Where am I?") : t("Where am I? The map stopped following you")}
             title={t("Where am I?")}
           >
             <Icon name="locate" size={24} />
@@ -494,7 +494,7 @@ export function RoamMode({
               type="button"
               ref={detourButton}
               className="ride-round"
-              aria-label={`Detour: ${DETOUR_SUMMARY.toLowerCase()}`}
+              aria-label={t("Detour: {summary}", { summary: DETOUR_SUMMARY.toLowerCase() })}
               title={t("Detour")}
               aria-expanded={detourOpen}
               aria-controls={detourId}
@@ -516,7 +516,7 @@ export function RoamMode({
                     detourButton.current?.focus();
                   }}
                 >
-                  Close
+                  {t("Close")}
                 </button>
               </div>
               <div className="actions nearest-kinds">
@@ -567,7 +567,7 @@ export function RoamMode({
                           <button
                             type="button"
                             className="secondary"
-                            aria-label={`Ride here: ${item.place.title}`}
+                            aria-label={t("Ride here: {place}", { place: item.place.title })}
                             aria-describedby={`${detourId}-place-${i}`}
                             onClick={() => void rideThere(item)}
                           >

@@ -142,7 +142,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
           <header>
             <h2 id="ride-types-title">{t("Choose a ride type")}</h2>
             <button type="button" className="secondary" onClick={close}>
-              Close
+              {t("Close")}
             </button>
           </header>
           <p className="hint">

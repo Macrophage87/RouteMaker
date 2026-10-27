@@ -107,7 +107,7 @@ export function PointsSection(props: PointsSectionProps) {
     <section key="points" aria-labelledby="points-heading" className="points-section">
       <div className="section-head">
         <h2 id="points-heading" ref={pointsHeadingRef} tabIndex={-1}>
-          Points
+          {t("Points")}
         </h2>
         <div className="section-tools">
           {/* Swap (Reverse), beside Points (the mockup). aria-disabled, not disabled, in a loop of a start and
@@ -141,7 +141,7 @@ export function PointsSection(props: PointsSectionProps) {
                   commitDials(withLoop(dials, event.target.checked));
                 }}
               />
-              <span className="visually-hidden">{loop.label}</span>
+              <span className="visually-hidden">{t(loop.label)}</span>
               <span aria-hidden="true">{t("Loop")}</span>
             </label>
           )}
