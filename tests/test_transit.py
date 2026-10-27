@@ -1755,6 +1755,27 @@ class TestApi:
             novice = presets.costing(presets.NOVICE)["bicycle"].get("cycling_speed")
             assert line_speeds == {novice}
 
+    def test_own_bike_and_transit_rides_at_the_riders_speed(
+        self, client, segments, router, installed, monkeypatch
+    ) -> None:
+        """Settings' Riding speed (the owner, 2026-10-27): the candidates and the trip's lines
+        are timed at the rider's own pace."""
+        seen = []
+
+        def services(until, leg_preset, costing=None, **_options):
+            seen.append(costing)
+            return Straight()
+
+        monkeypatch.setattr(transit, "RoutingServices", services)
+        fake = router(standard_router())
+        response = post_transit(
+            client, [CAPITOL_HILL, DOWNTOWN], presets.BIKE_TRANSIT, cycling_speed_kmh=30.6
+        )
+        assert response.status_code == 200, response.content
+        assert seen[0]["bicycle"]["cycling_speed"] == 30.6
+        bike = [p["costing_options"].get("bicycle") for _u, p in fake.calls]
+        assert {b.get("cycling_speed") for b in bike if b} == {30.6}
+
     def test_a_router_too_slow_for_the_answers_line_draws_it_straight_and_says_so(
         self, client, segments, router, installed, monkeypatch, caplog
     ) -> None:

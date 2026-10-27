@@ -168,13 +168,14 @@ export async function requestNearest(
                 pickupStation: undefined,
                 dropoffStation: undefined,
                 systemWeightKg: undefined,
+                ridingSpeedKmh: undefined,
                 targetDistanceM: undefined,
                 loop: false,
               }),
             }
           : {
               preset,
-              ...dialFields({ ...dials, systemWeightKg: undefined, targetDistanceM: undefined, loop: false }),
+              ...dialFields({ ...dials, systemWeightKg: undefined, ridingSpeedKmh: undefined, targetDistanceM: undefined, loop: false }),
             }),
       }),
     });

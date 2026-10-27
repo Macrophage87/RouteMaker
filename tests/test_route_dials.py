@@ -2554,3 +2554,66 @@ class TestMountainBike:
         body = post(client, {**good_body("mountain-bike"), "trails_off": True}).json()
         assert body["variant"] == "no-trail"
         assert body.get("mtb") is None
+
+
+@db
+class TestRiderSpeed:
+    """Settings' Riding speed (the owner, 2026-10-27: "Some people who ride much faster than the
+    defaults would like to be able to override the speed as an advanced feature")."""
+
+    def test_the_riders_speed_times_the_route(self, client, facility_segments, router):
+        fake = router(standard_router())
+        assert post(client, {**good_body("default"), "cycling_speed_kmh": 32.2}).status_code == 200
+        assert sent_options(fake)["cycling_speed"] == 32.2
+
+    def test_absent_the_ride_types_own_pace(self, client, facility_segments, router):
+        fake = router(standard_router())
+        assert post(client, good_body("cargo")).status_code == 200
+        assert sent_options(fake)["cycling_speed"] == presets.CARGO_PLANNING_SPEED_KMH
+
+    def test_mass_ride_keeps_its_speed_band(self, client, facility_segments, router):
+        fake = router(standard_router())
+        body = {**good_body("mass-ride"), "cycling_speed_kmh": 32.2}
+        assert post(client, body).status_code == 200
+        assert sent_options(fake)["cycling_speed"] == presets.MASS_RIDE_PLANNING_SPEED_KMH
+
+    @pytest.mark.parametrize("value", [7.9, 50.1, "fast", True])
+    def test_a_speed_outside_the_picker_is_refused(self, value, client, facility_segments, router):
+        fake = router(standard_router())
+        response = post(client, {**good_body("default"), "cycling_speed_kmh": value})
+        assert response.status_code == 400
+        assert fake.calls == []
+
+
+class TestRiderSpeedRule:
+    def test_own_bikes_take_the_riders_speed(self):
+        assert presets.rider_speed("default", 30.0) == 30.0
+        assert presets.rider_speed(presets.BIKE_TRANSIT, 30.0) == 30.0
+
+    def test_not_mass_ride_nor_a_share_bike(self):
+        for name in ("mass-ride", presets.BIKESHARE, presets.REBALANCE, presets.BIKESHARE_TRANSIT):
+            assert presets.rider_speed(name, 30.0) is None
+
+    def test_none_is_the_ride_types_own(self):
+        assert presets.rider_speed("default", None) is None
+
+
+@db
+class TestRiderSpeedOnAShareBike:
+    def test_a_share_bike_keeps_its_own_pace(self, client, facility_segments, router, monkeypatch):
+        """The rider's speed is not a share bike's: Bikeshare's ride keeps the bike's pace."""
+        assert presets.rider_speed(presets.BIKESHARE, 32.2) is None
+        from core import api
+
+        seen = []
+        real = routing.Dials
+
+        def spy(*args, **kwargs):
+            made = real(*args, **kwargs)
+            seen.append(made)
+            return made
+
+        monkeypatch.setattr(api.routing, "Dials", spy)
+        router(standard_router())
+        post(client, {**good_body(presets.BIKESHARE), "cycling_speed_kmh": 32.2})
+        assert seen and all(d.cycling_speed_kmh is None for d in seen)
