@@ -636,3 +636,11 @@ def test_the_env_examples_commented_worker_count_is_composes_own_default() -> No
         f"default is {default}; the file an operator edits and the file it documents "
         "disagree"
     )
+
+
+def test_the_android_app_link_settings_reach_the_api() -> None:
+    # core.app_links reads them; the api's environment is an explicit map, so a .env line alone
+    # would never reach Django and /.well-known/assetlinks.json would stay a 404.
+    env = COMPOSE["services"]["api"]["environment"]
+    assert env["ANDROID_APP_ID"] == "${ANDROID_APP_ID:-}"
+    assert env["ANDROID_CERT_SHA256"] == "${ANDROID_CERT_SHA256:-}"
