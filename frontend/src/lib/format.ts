@@ -113,8 +113,8 @@ export function formatDistanceChange(metres: number): string {
 
 /** How far along a route, miles first: "mile 12.4 (20.0 km)"; under a tenth of a mile, "the start". */
 export function formatMilePost(metres: number): string {
-  if (!usable(metres) || metres < FEET_BELOW_M) return "the start";
-  return `mile ${milesFigure(metres)} (${(metres / 1000).toFixed(1)} km)`;
+  if (!usable(metres) || metres < FEET_BELOW_M) return t("the start");
+  return t("mile {mile} ({km} km)", { mile: milesFigure(metres), km: (metres / 1000).toFixed(1) });
 }
 
 /** "4.7 mi (7.6 km)"; below a tenth of a mile "500 ft (150 m)". */

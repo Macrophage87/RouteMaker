@@ -168,7 +168,7 @@ test("Go's ride types: the rider's own (My Go, Default until set), then Own Bike
   assert.deepEqual(goRideChips("bike-transit"), ["bike-transit", "bikeshare-transit", "default"]);
   assert.deepEqual(goRideChips("bikeshare-transit"), ["bikeshare-transit", "bike-transit", "default"]);
   // App: the chips from My Go's ride, the first described as the rider's own; More opens the Ride sheet with every type.
-  assert.match(appFile, /<RideChips ids=\{goRideChips\(myGo\.ride\)\} preset=\{preset\} onPick=\{pickRide\} more=\{\(opener\) => openView\("ride", opener\)\} label="Ride type" ownHint=\{OWN_RIDE_HINT\} \/>/);
+  assert.match(appFile, /<RideChips ids=\{goRideChips\(myGo\.ride\)\} preset=\{preset\} onPick=\{pickRide\} more=\{\(opener\) => openView\("ride", opener\)\} label=\{t\("Ride type"\)\} ownHint=\{OWN_RIDE_HINT\} \/>/);
   assert.match(src("../app/Sheets.tsx"), /aria-describedby=\{ownHint && index === 0 \? "ride-own-hint" : undefined\}/);
   // More ride types: every type, searchable, in its group (RIDE-TYPE-ORGANISE; lib/rideTypeGroups.test.ts).
   assert.match(appFile, /<RideGroupChips preset=\{preset\} onPick=\{pickRide\} open=\{view === "ride"\} \/>/);

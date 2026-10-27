@@ -33,6 +33,7 @@ import {
 } from "./lib/mtbMode.ts";
 import { RIDE_SIZE_LABEL, panelView, parseTarget, type SliderView } from "./lib/dialsPanel.ts";
 import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
+import { t } from "./lib/i18n.ts";
 
 interface Props {
   preset: PresetId;
@@ -106,7 +107,7 @@ function HowThisWorks({ text, about }: { text: string; about?: string }) {
   return (
     <details className="how">
       <summary>
-        How this works{about && <span className="visually-hidden">: {about}</span>}
+        {t("How this works")}{about && <span className="visually-hidden">: {about}</span>}
       </summary>
       <p className="hint">{text}</p>
     </details>
@@ -162,7 +163,7 @@ function NumberDial(props: {
         type="text"
         inputMode="decimal"
         value={text}
-        placeholder="Default"
+        placeholder={t("Default")}
         aria-describedby={bad ? `${hintId} ${ruleId}` : hintId}
         aria-invalid={bad > 0 || undefined}
         onChange={(event) => setText(event.target.value)}
@@ -187,11 +188,7 @@ function NumberDial(props: {
 
 /** What When changes, in full, behind its How this works. */
 const WHEN_HOW =
-  "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as " +
-  "traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night " +
-  "runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more " +
-  "at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the " +
-  "time changed it.";
+  t("On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.");
 
 function whenLabel(when: When): string {
   return WHENS.find((option) => option.id === when)?.label ?? when;
@@ -256,11 +253,11 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
           roads (OWNER-DECISIONS 463, 463b), avoid gravel; "Make it a loop" moved to the Points section (OWNER-DECISIONS 388). Every control and its behaviour is as before. */}
       {/* Shown on the Ride settings line that opens it (edit-route redesign); kept for a screen reader's heading list. */}
       <h3 id="dials-heading" className="visually-hidden">
-        Ride settings
+        {t("Ride settings")}
       </h3>
       {offersBike(preset) && (
         <fieldset className="bikeshare-bike">
-          <legend>Bike</legend>
+          <legend>{t("Bike")}</legend>
           {BIKES.map((option) => (
             <label key={option.id} className="toggle">
               <input
@@ -276,7 +273,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
               </span>
             </label>
           ))}
-          <p className="hint">Choosing a bike moves the hills slider to where it starts for that bike.</p>
+          <p className="hint">{t("Choosing a bike moves the hills slider to where it starts for that bike.")}</p>
         </fieldset>
       )}
       {isMtb(preset) && (
@@ -304,7 +301,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
               </span>
             </label>
           ))}
-          <p className="hint">The route uses no trail harder than this where any other way exists, and says so where it must.</p>
+          <p className="hint">{t("The route uses no trail harder than this where any other way exists, and says so where it must.")}</p>
         </fieldset>
       )}
       {isMtb(preset) && (
@@ -328,13 +325,12 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
               />
               <span>
                 {option.label}
-                {option.level > mtbLevelOf(dials) && <span className="visually-hidden"> (above your hardest level)</span>}
+                {option.level > mtbLevelOf(dials) && <span className="visually-hidden">{t(" (above your hardest level)")}</span>}
               </span>
             </label>
           ))}
           <p className="hint" id={mtbPreferredHintId}>
-            Routes with trails at this level come first, then a level easier or harder; trails further from it count as
-            any other trail. It can&apos;t be harder than your hardest level: raise that to prefer a harder one.
+            {t("Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.")}
           </p>
           <p className="hint mtb-preferred-said" role="status">
             {mtbClampSaid}
@@ -348,17 +344,16 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
             checked={dials.assist}
             onChange={(event) => onCommit({ ...dials, assist: event.target.checked })}
           />
-          Electric assist
+          {t("Electric assist")}
         </label>
       )}
       {view.assistNote && (
         <p className="hint">
-          Follows e-bike rules and plans at a little more speed. Hills still count: a loaded cargo bike&apos;s motor
-          rarely makes a climb easy. With a strong motor, move the hills slider toward Fastest yourself.
+          {t("Follows e-bike rules and plans at a little more speed. Hills still count: a loaded cargo bike's motor rarely makes a climb easy. With a strong motor, move the hills slider toward Fastest yourself.")}
         </p>
       )}
       <Slider
-        label="Traffic"
+        label={t("Traffic")}
         view={view.traffic}
         value={draft.stress}
         onDraft={(stress) => setDraft({ ...draft, stress })}
@@ -370,7 +365,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
         </p>
       )}
       <Slider
-        label="Hills"
+        label={t("Hills")}
         view={view.hills}
         value={draft.hills}
         onDraft={(hills) => setDraft({ ...draft, hills })}
@@ -401,7 +396,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
         />
       )}
       <fieldset className="when">
-        <legend>When</legend>
+        <legend>{t("When")}</legend>
         <label className="toggle">
           <input
             type="radio"
@@ -410,7 +405,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
             checked={dials.when === null}
             onChange={() => onCommit({ ...dials, when: null })}
           />
-          Now
+          {t("Now")}
           {dials.when === null && resolvedWhen ? ` (${whenLabel(resolvedWhen)})` : ""}
         </label>
         {WHENS.map((option) => (
@@ -426,8 +421,8 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
           </label>
         ))}
         {/* One line, the rest behind How this works (Plan streamline, Stephen 2026-10-17). */}
-        <p className="hint">Weekend car-free roads, such as Beach Drive and Sligo Creek Parkway, count as paths.</p>
-        <HowThisWorks text={WHEN_HOW} about="when" />
+        <p className="hint">{t("Weekend car-free roads, such as Beach Drive and Sligo Creek Parkway, count as paths.")}</p>
+        <HowThisWorks text={WHEN_HOW} about={t("when")} />
       </fieldset>
       {view.target && (
         <NumberDial
@@ -468,11 +463,11 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
           checked={dials.avoidGravel === true}
           onChange={(event) => onCommit({ ...dials, avoidGravel: event.target.checked })}
         />
-        Avoid gravel
+        {t("Avoid gravel")}
       </label>
       {view.reset && (
         <button type="button" className="link" onClick={() => view.reset && onCommit(view.reset)}>
-          Back to this ride type's settings
+          {t("Back to this ride type's settings")}
         </button>
       )}
     </section>

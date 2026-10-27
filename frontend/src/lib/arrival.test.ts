@@ -113,7 +113,7 @@ test("the clock is the device's own: 12 hour in en-US, 24 hour in en-GB, rounded
 test("RideMode shows the arrival clock after each time to go and says it in Where am I?", () => {
   const source = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.equal((source.match(/<TimeToGo seconds=/g) ?? []).length, 2, "the next stop and the end");
-  assert.match(source, /visually-hidden">, arriving about </);
+  assert.match(source, /visually-hidden">\{t\(", arriving about"\)\} </);
   assert.match(source, /atPace\(toGo\(model, progress\), paceFactor\(paceRef\.current\)\)/);
   assert.equal((source.match(/milesRef\.current, arrivingAt\)/g) ?? []).length, 3);
   assert.match(source, /setClockTick\(\(n\) => n \+ 1\), 30_000\)/, "the clock moves on with no fix");
@@ -130,7 +130,7 @@ test("before a ride, the route's time ends with when it arrives leaving now, in 
   try {
     const es = leaveNowArrival(arrive, "es-US");
     assert.match(es.shown, /^llegada 8:27\s?a/u);
-    assert.match(es.said, /^llegada hacia las 8:27\s?a.* si sale ahora$/u);
+    assert.match(es.said, /^llegada estimada 8:27\s?a.* si sale ahora$/u);
   } finally {
     setLanguageForTest("en");
   }

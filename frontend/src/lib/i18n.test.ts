@@ -4,7 +4,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ES } from "../i18n/es.ts";
-import { deviceLanguage, readLanguageChoice, setLanguageForTest, speechLang, t, writeLanguageChoice } from "./i18n.ts";
+import { firstWordAndRest, deviceLanguage, readLanguageChoice, setLanguageForTest, speechLang, t, writeLanguageChoice } from "./i18n.ts";
 import { arrivalSideWords, crossingWords, cueSpoken, endWords, exitWords, ontoWords, stopText, turnWords, type Cue } from "./navigate.ts";
 import { spokenDistance } from "./format.ts";
 import * as navigate from "./navigate.ts";
@@ -117,4 +117,10 @@ test("every off-route, re-plan, weak-GPS and back-on-route sentence Ride says ha
   for (const english of Object.values(navigate.VERBOSITY_LABELS)) assert.match(ES[english], /^[^:]+: /, english);
   assert.equal(t("In {distance}", { distance: "0.4 mi (0.6 km)" }, "es"), "En 0.4 mi (0.6 km)");
   assert.equal(t("Then in {distance}", { distance: "0.4 mi (0.6 km)" }, "es"), "Luego en 0.4 mi (0.6 km)");
+});
+
+test("a narrow button's first word and the rest, in either language", () => {
+  assert.deepEqual(firstWordAndRest("Save route"), ["Save", " route"]);
+  assert.deepEqual(firstWordAndRest(t("Start ride", undefined, "es")), ["Iniciar", " recorrido"]);
+  assert.deepEqual(firstWordAndRest("Loop"), ["Loop", ""]);
 });
