@@ -391,8 +391,8 @@ export const ES: Readonly<Record<string, string>> = {
   "Phone's language": "Idioma del teléfono",
   "Riding speed": "Velocidad al pedalear",
   "Ride type's speed": "La del tipo de recorrido",
-  "Your usual pace on the flat, for ride times and arrival. Hills and stops still count. Saved to your account when signed in.":
-    "Su ritmo habitual en terreno plano, para los tiempos y la hora de llegada. Las subidas y las paradas siguen contando. Se guarda en su cuenta si ha iniciado sesión.",
+  "Your usual pace on the flat, for ride times and arrival. Hills and junction waits still count. Saved to your account when signed in.":
+    "Su ritmo habitual en terreno plano, para los tiempos y la hora de llegada. Las subidas y las esperas en los cruces siguen contando. Se guarda en su cuenta si ha iniciado sesión.",
   "The app's words and the voice. Street names and agency notices stay as written. Changing it reloads the page.":
     "Las palabras de la aplicación y la voz. Los nombres de calles y los avisos de las agencias quedan como están escritos. Al cambiarlo se vuelve a cargar la página.",
   Account: "Cuenta",
@@ -449,6 +449,8 @@ export const ES: Readonly<Record<string, string>> = {
   "Broadcast is not ready yet; try again in a moment.": "La transmisión aún no está lista; inténtelo de nuevo en un momento.",
   // ---- A broadcast's riders and alerts (lib/rideGroup.ts, RideMode.tsx) ----
   "Send alert": "Enviar alerta",
+  "Sends your location with the alert": "Envía su ubicación con la alerta",
+  "Send to everyone on this ride?": "¿Enviar a todos en este recorrido?",
   "Riders": "Ciclistas",
   "No riders on the route yet": "Aún no hay ciclistas en la ruta",
   "No riders yet": "Aún no hay ciclistas",

@@ -88,4 +88,4 @@ export function takesRiderSpeed(preset: PresetId): boolean {
 }
 
 export const SPEED_LABEL = t("Riding speed");
-export const SPEED_HINT = t("Your usual pace on the flat, for ride times and arrival. Hills and stops still count. Saved to your account when signed in.");
+export const SPEED_HINT = t("Your usual pace on the flat, for ride times and arrival. Hills and junction waits still count. Saved to your account when signed in.");

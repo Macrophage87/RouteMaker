@@ -5256,7 +5256,7 @@ export function App() {
           broadcast={rideBroadcast}
           riding={riding}
           onRiders={setRideRiders}
-          ridersElsewhere={riding && rideCanBroadcast}
+          ridersElsewhere={riding && rideCanBroadcast && rideBroadcast !== null}
           ridersAsk={ridersAsk}
           leaderRoute={rideBroadcast?.leading ? ((riding && rideView ? rideView.route : shown)?.geometry.coordinates as LonLat[] | undefined) : null}
         />
