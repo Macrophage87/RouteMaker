@@ -475,6 +475,12 @@ test("spokenDistance and withoutMetric: US units only when spoken", () => {
   assert.equal(spokenDistance(15), "50 feet");
   assert.equal(spokenDistance(91.44), "300 feet");
   assert.equal(spokenDistance(150), "500 feet");
+  // Feet up to just under 1,000 ft, not tenths of a mile (routing audit D7).
+  assert.equal(spokenDistance(229.5), "800 feet");
+  assert.equal(spokenDistance(240), "800 feet");
+  assert.equal(spokenDistance(170), "600 feet");
+  assert.equal(spokenDistance(285), "900 feet");
+  assert.equal(spokenDistance(290), "0.2 miles");
   assert.equal(spokenDistance(643.7), "0.4 miles");
   assert.equal(spokenDistance(1609.344), "1 mile");
   assert.equal(spokenDistance(3218.7), "2 miles");
