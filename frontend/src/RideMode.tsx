@@ -2385,7 +2385,7 @@ export function RideMode({
               {replanning && <p className="cue-then">{t("Finding a new way from here…")}</p>}
               {(keepPlanned || fixedRef.current) && back && (
                 <p className="cue-then">
-                  The planned route is {formatDistance(back.metres)} to the {back.direction}.
+                  {t("The planned route is {distance} to the {direction}.", { distance: formatDistance(back.metres), direction: back.direction })}
                 </p>
               )}
             </div>

@@ -384,6 +384,9 @@ class TestOverHttp:
         response = cancel(client, "no")
         assert response.status_code == 400
         assert "error" in response.json()
+        # The whole id must be one: a valid run inside other characters, or too long, is not.
+        for bad in ("!!abcdefgh!!", "abc def ghijklmn", "a" * 65):
+            assert cancel(client, bad).status_code == 400, bad
 
     def test_a_replacing_plan_cancels_the_plan_it_replaces(self, client, segments, router) -> None:  # noqa: F811
         router(standard_router())

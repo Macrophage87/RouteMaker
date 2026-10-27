@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Icon } from "./Icon.tsx";
+import { t } from "./lib/i18n.ts";
 
 /**
  * One setting on one line (Settings tidy, Stephen 2026-10-17: "picker inputs and the like and put info
@@ -29,7 +30,7 @@ export function InfoButton({ open, onToggle, controls, about }: { open: boolean;
   return (
     <button type="button" className="info-tip" aria-expanded={open} aria-controls={controls} onClick={onToggle}>
       <Icon name="info" size={18} />
-      <span className="visually-hidden">About {about}</span>
+      <span className="visually-hidden">{t("About {about}", { about })}</span>
     </button>
   );
 }

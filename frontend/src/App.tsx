@@ -3,6 +3,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
+import { t } from "./lib/i18n.ts";
 import { APP_VERSION, versionShort } from "./lib/appVersion.ts";
 import { ACCESS_LABEL, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
 import { placeAtSpot, requestAfterClose, type InfoRequest, type TrailRider } from "./lib/roadInfo.ts";
@@ -295,7 +296,7 @@ import { BACK_TO_ROAM, ROAM_BROADCAST_NOT_READY, ROAM_BROADCAST_ON, ROAM_BROADCA
 import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
 import { SaveRoute } from "./SaveRoute.tsx";
-import { firstWordAndRest, t } from "./lib/i18n.ts";
+import { firstWordAndRest } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
 import { BROADCAST_FOLLOWING, broadcastRideId, isRideLink, leadConsent, leaderKey, newToken, opensIntoRide, roamRideId, type RideLinkType } from "./lib/rideGroup.ts";
 
@@ -4883,7 +4884,7 @@ export function App() {
   const goBig = routingNow
     ? { label: ROUTING_LABEL, start: false, busy: true, onPress: () => {} }
     : goReady
-      ? { label: "Start ride", start: true, busy: false, onPress: startRideChecked }
+      ? { label: t("Start ride"), start: true, busy: false, onPress: startRideChecked }
       : points.length >= 2 && routeNow.unavailable === null
         ? { label: routeNow.label, start: false, busy: false, onPress: pressRoute }
         : // No destination yet: Roam, a ride with no destination (the owner, 2026-10-22; one control for the feature).
@@ -5257,7 +5258,7 @@ export function App() {
           broadcast={rideBroadcast}
           riding={riding}
           onRiders={setRideRiders}
-          ridersElsewhere={riding && rideCanBroadcast}
+          ridersElsewhere={riding && rideCanBroadcast && rideBroadcast !== null}
           ridersAsk={ridersAsk}
           leaderRoute={rideBroadcast?.leading ? ((riding && rideView ? rideView.route : shown)?.geometry.coordinates as LonLat[] | undefined) : null}
         />
