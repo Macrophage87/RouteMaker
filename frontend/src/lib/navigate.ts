@@ -375,6 +375,10 @@ const WAY_ES: readonly [RegExp, string][] = [
   [/^service road\b/, "la vía de servicio"],
   [/^alley\b/, "el callejón"],
   [/^parking aisle\b/, "el pasillo del estacionamiento"],
+  // An unnamed lane named after its street ("9th Street Northwest protected bike lane"), the protected one first
+  // (round-2 audit D16); the same rules as the API's (src/routemaker/lang.py _WAY_ES; a test holds them equal).
+  [/^(.+) protected bike lane$/, "el carril bici protegido de $1"],
+  [/^(.+) bike lane$/, "el carril bici de $1"],
 ];
 
 function wayWordsEs(street: string): string {
@@ -1438,7 +1442,12 @@ export function whereAmI(
   const place = placeOnRoute(model, state.progressM);
   const stretch = stretchAt(model, state.progressM);
   // A named trail is "the" trail, with the marker or without: "On the Capital Crescent Trail."
-  const way = isTrail(stretch) ? t("the {trail}", { trail: stretch.street }) : (wayRidden(stretch) ?? t("the route"));
+  // In Spanish a lane named after its street brings its own article ("el carril bici de ..."), so not "el el" (D16).
+  const way = isTrail(stretch)
+    ? language() === "es" && / bike lane$/.test(stretch.street)
+      ? wayWords(stretch.street)
+      : t("the {trail}", { trail: stretch.street })
+    : (wayRidden(stretch) ?? t("the route"));
   // Away from a junction on a trail the file knows, its mile marker, posted or computed, in place of the
   // distance from a junction (465: "Navigation cues on those trails can use the same markers").
   const mile =

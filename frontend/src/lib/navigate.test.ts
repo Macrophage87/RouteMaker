@@ -2093,3 +2093,25 @@ test('R2: the Avoid-rated junction cue says the warning, the name with its capit
     setLanguageForTest("en");
   }
 });
+
+test("D16: in Spanish a lane named after its street says its facility in Spanish, the street as it is; English as it was", () => {
+  const lane = "9th Street Northwest protected bike lane";
+  const route = straightRoute([
+    stretch(0, 1000, "0.0 to 0.6 mi: A Street, low stress (LTS 1).", { street: "A Street" }),
+    stretch(1000, 3000, "x", { street: lane, facility: "path", turn: straightOnto(lane) }),
+  ]);
+  assert.equal(turnWords("right", lane), `Right onto ${lane}.`);
+  assert.match(whereAmI(rideModel(route), { ...startState(), progressM: 1500 }), /^On the 9th Street Northwest protected bike lane[,.]/);
+  setLanguageForTest("es");
+  try {
+    assert.equal(turnWords("right", lane), "Gire a la derecha hacia el carril bici protegido de 9th Street Northwest.");
+    assert.equal(wayWords("Saint Paul Street bike lane"), "el carril bici de Saint Paul Street");
+    assert.equal(wayWords("path beside Saint Paul Street"), "el sendero junto a Saint Paul Street");
+    // Where am I? on it: its own article, not "el el".
+    const said = whereAmI(rideModel(route), { ...startState(), progressM: 1500 });
+    assert.match(said, /^En el carril bici protegido de 9th Street Northwest[,.]/);
+    assert.doesNotMatch(said, /el el/);
+  } finally {
+    setLanguageForTest("en");
+  }
+});
