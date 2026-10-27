@@ -238,6 +238,7 @@ import { followLine } from "./lib/gpxMatch.ts";
 import { fetchHazards, type HazardCollection } from "./lib/massHazards.ts";
 import { visibleCentreOffset } from "./lib/visibleCentre.ts";
 import { NARROW, useLongerThan, useMinute, useNarrow, useSettled } from "./app/hooks.ts";
+import { leaveNowArriveMs } from "./lib/arrival.ts";
 import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTimes.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, ShareControls, type Status } from "./app/RoutePanel.tsx";
@@ -4100,6 +4101,8 @@ export function App() {
     if (!sameLightMarks(lightKept.current, next)) lightKept.current = next;
     return lightKept.current;
   }, [shown, minute, dials.when]);
+  // The route's arrival leaving now, after its time in Go and Plan (lib/arrival.ts), on the same minute's clock.
+  const arriveMs = leaveNowArriveMs(shown, minute, dials.when ?? null);
   // Weather along the route (lib/weather.ts, Stephen 2026-10-24): the NWS alerts and rain coming, leaving now, shown
   // with the route's warnings in Go and Plan; checked when the route changes and every 10 minutes while it shows. Not
   // for a plan set to another time (its When): the forecast is for leaving now.
@@ -5002,7 +5005,7 @@ export function App() {
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
         narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: { onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote }, startRideRef, rideSize, setDials,
-        waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, weather,
+        waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, arriveMs, weather,
       }}
     />
   );

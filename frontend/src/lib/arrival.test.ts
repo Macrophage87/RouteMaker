@@ -3,8 +3,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { FULL_M, GAP_S, HALT_CAP_S, LEAVE_M, START_M, arrivalClock, atPace, leaveNowArrival, paceFactor, paceStart, paceStep, type PaceTrack } from "./arrival.ts";
+import { FULL_M, GAP_S, HALT_CAP_S, LEAVE_M, START_M, arrivalClock, atPace, leaveNowArrival, leaveNowArriveMs, paceFactor, paceStart, paceStep, type PaceTrack } from "./arrival.ts";
 import { setLanguageForTest } from "./i18n.ts";
+import { whenAt } from "./rideTime.ts";
 
 const PACE = 5; // metres a second, the plan's
 
@@ -121,21 +122,38 @@ test("RideMode shows the arrival clock after each time to go and says it in Wher
 });
 
 test("before a ride, the route's time ends with when it arrives leaving now, in English and Spanish", () => {
-  const now = new Date(2026, 9, 27, 6, 39, 0).getTime();
-  const words = leaveNowArrival(now, 108 * 60, "en-US");
+  const arrive = new Date(2026, 9, 27, 8, 27, 0).getTime();
+  const words = leaveNowArrival(arrive, "en-US");
   assert.equal(words.shown.replace(/\s/gu, " "), "arrive 8:27 AM");
   assert.equal(words.said.replace(/\s/gu, " "), "arriving about 8:27 AM if you leave now");
   setLanguageForTest("es");
   try {
-    assert.match(leaveNowArrival(now, 108 * 60, "es-US").shown, /^llegada 8:27\s?a/u);
+    const es = leaveNowArrival(arrive, "es-US");
+    assert.match(es.shown, /^llegada 8:27\s?a/u);
+    assert.match(es.said, /^llegada hacia las 8:27\s?a.* si sale ahora$/u);
   } finally {
     setLanguageForTest("en");
   }
 });
 
-test("Go's and Plan's route time carry the arrival, kept current, for a ride but not a transit or bikeshare trip", () => {
-  const source = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
-  assert.equal((source.match(/<dd>\{timeShown\}<\/dd>/g) ?? []).length, 2, "Go's sheet and Plan's totals");
-  assert.match(source, /const arriveSeconds = transit \|\| bikeshare \? null : route\.duration_s;/);
-  assert.match(source, /const nowMs = useMinute\(arriveSeconds !== null\);/);
+test("the arrival leaving now: a ride, at the time now; not a transit, bikeshare or Mass Ride plan, nor another ride time", () => {
+  // Tuesday 2026-10-27, noon in DC (16:00 UTC): a weekday off-peak.
+  const now = Date.UTC(2026, 9, 27, 16, 0, 0);
+  assert.equal(whenAt(new Date(now)), "weekday_offpeak");
+  const ride = { duration_s: 108 * 60, preset: "commuter" };
+  assert.equal(leaveNowArriveMs(ride, now, null), now + 108 * 60_000, "When I'm planning is now");
+  assert.equal(leaveNowArriveMs(ride, now, "weekday_offpeak"), now + 108 * 60_000, "the time chosen is the time now");
+  assert.equal(leaveNowArriveMs(ride, now, "weekend"), null);
+  assert.equal(leaveNowArriveMs(ride, now, "night"), null, "Night chosen at noon");
+  assert.equal(leaveNowArriveMs({ ...ride, transit: {} }, now, null), null);
+  assert.equal(leaveNowArriveMs({ ...ride, bikeshare: {} }, now, null), null);
+  assert.equal(leaveNowArriveMs({ ...ride, preset: "mass-ride" }, now, null), null);
+  assert.equal(leaveNowArriveMs(null, now, null), null);
+});
+
+test("Go's and Plan's route time carry the arrival, on App's minute clock", () => {
+  const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
+  assert.equal((panel.match(/<dd>\{timeShown\}<\/dd>/g) ?? []).length, 2, "Go's sheet and Plan's totals");
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /const arriveMs = leaveNowArriveMs\(shown, minute, dials\.when \?\? null\);/);
 });

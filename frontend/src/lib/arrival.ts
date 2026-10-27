@@ -14,6 +14,8 @@
  */
 import type { ToGo } from "./navigate.ts";
 import { t } from "./i18n.ts";
+import type { When } from "./dials.ts";
+import { whenAt } from "./rideTime.ts";
 
 /** A halt counted up to this, in seconds. */
 export const HALT_CAP_S = 90;
@@ -107,11 +109,25 @@ export function arrivalClock(nowMs: number, seconds: number, locale?: string): s
 }
 
 /**
- * The route summary's arrival leaving now, after its time (Stephen 2026-10-27: "Add the anticipated end time to the
- * starting screen"): "arrive 8:27 AM" on screen; the screen reader's words say it is an estimate, for leaving now.
+ * When a planned route ends if the ride starts at `nowMs`, epoch ms, for the route summary's time (Stephen 2026-10-27:
+ * "Add the anticipated end time to the starting screen"); null where leaving now is not what was planned or the
+ * route's time is not the trip's. Not a transit plan (it waits on its timetable), a bikeshare one (the time leaves out
+ * the walks to and from the docks) or a Mass Ride (a group ride set for its own day); nor where the ride time chosen
+ * (When) is not the time now: "weekend" chosen on a Tuesday, or Night in the morning. "When I'm planning" (null) is now.
  */
-export function leaveNowArrival(nowMs: number, seconds: number, locale?: string): { shown: string; said: string } {
-  const time = arrivalClock(nowMs, seconds, locale);
+export function leaveNowArriveMs(
+  route: { duration_s: number; preset?: string; transit?: unknown; bikeshare?: unknown } | null,
+  nowMs: number,
+  chosen: When | null,
+): number | null {
+  if (!route || route.transit || route.bikeshare || route.preset === "mass-ride") return null;
+  if (chosen !== null && chosen !== whenAt(new Date(nowMs))) return null;
+  return nowMs + route.duration_s * 1000;
+}
+
+/** That arrival in words: "arrive 8:27 AM" on screen; a screen reader hears it is an estimate, for leaving now. */
+export function leaveNowArrival(arriveMs: number, locale?: string): { shown: string; said: string } {
+  const time = arrivalClock(arriveMs, 0, locale);
   return { shown: t("arrive {time}", { time }), said: t("arriving about {time} if you leave now", { time }) };
 }
 

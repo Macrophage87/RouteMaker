@@ -424,5 +424,5 @@ export const ES: Readonly<Record<string, string>> = {
   "Could not copy. Copy the address from the browser's address bar.": "No se pudo copiar. Copie la dirección desde la barra de direcciones del navegador.",
   // ---- The route's arrival time, leaving now (app/RoutePanel.tsx) ----
   "arrive {time}": "llegada {time}",
-  "arriving about {time} if you leave now": "llegada aproximada: {time}, si sale ahora",
+  "arriving about {time} if you leave now": "llegada hacia las {time} si sale ahora",
 };
