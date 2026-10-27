@@ -269,6 +269,8 @@ export interface Cue {
    * numbered); the re-plan matches on it.
    */
   point?: number;
+  /** A stop's side of the street, where the router gives it (round-2 audit D17): said after its arrival. */
+  side?: "left" | "right";
 }
 
 export interface RideModel {
@@ -616,6 +618,23 @@ export function stopText(number: number, name: string | undefined): string {
   return name ? t("Stop {number}, {name}.", { number, name }) : t("Stop {number}.", { number });
 }
 
+/**
+ * The side of the street the leg ending at the plan's point `point` ends on (round-2 audit D17; the API's
+ * `leg_arrival_sides`, one per leg): null where unknown, absent, or not one per leg as `leg_ends` says.
+ */
+export function stopSide(route: Pick<RouteResponse, "leg_arrival_sides" | "leg_ends">, point: number | null | undefined): "left" | "right" | null {
+  const sides = route.leg_arrival_sides;
+  if (!Array.isArray(sides) || point == null || point < 1) return null;
+  if (route.leg_ends && route.leg_ends.length !== sides.length) return null;
+  const side = sides[point - 1];
+  return side === "left" || side === "right" ? side : null;
+}
+
+/** A stop's words on the card: "Stop 2, Union Market.", then its side where known ("Destination on your left."). */
+function stopCueText(number: number, name: string | undefined, side: "left" | "right" | null): string {
+  return side ? `${stopText(number, name)} ${arrivalSideWords(side)}` : stopText(number, name);
+}
+
 export function rideModel(route: RouteResponse, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): RideModel {
   const coordinates = route.geometry.coordinates;
   const along = lineAlong(coordinates);
@@ -645,7 +664,8 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
       const point = entry.via;
       const number = point - vias.filter((v) => v < point).length;
       const stopName = names.get(point);
-      cues.push({ index: cues.length, kind, atM: fromM, text: stopText(number, stopName), movement: null, street: entry.turn?.onto ?? entry.street ?? null, severity: entry.severity ?? entry.turn?.severity ?? null, tier: entry.tier, stop: number, point, source: entry.kind, ...(stopName ? { stopName } : {}) });
+      const side = stopSide(route, point);
+      cues.push({ index: cues.length, kind, atM: fromM, text: stopCueText(number, stopName, side), ...(side ? { side } : {}), movement: null, street: entry.turn?.onto ?? entry.street ?? null, severity: entry.severity ?? entry.turn?.severity ?? null, tier: entry.tier, stop: number, point, source: entry.kind, ...(stopName ? { stopName } : {}) });
     } else if (kind !== null) {
       cues.push({
         index: cues.length,
@@ -653,7 +673,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
         atM: fromM,
         text:
           kind === "stop"
-            ? stopText(entry.via ?? cues.filter((c) => c.kind === "stop").length + 1, entry.via != null ? names.get(entry.via) : undefined)
+            ? stopCueText(entry.via ?? cues.filter((c) => c.kind === "stop").length + 1, entry.via != null ? names.get(entry.via) : undefined, stopSide(route, entry.via))
             : kind === "turn" && entry.turn?.cross
               ? crossWords(entry.turn.cross)
               : kind === "turn" && entry.turn?.across
@@ -681,6 +701,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
         tier: entry.tier,
         stop: kind === "stop" ? (entry.via ?? cues.filter((c) => c.kind === "stop").length + 1) : null,
         ...(kind === "stop" && entry.via != null && names.get(entry.via) ? { stopName: names.get(entry.via) } : {}),
+        ...(kind === "stop" && stopSide(route, entry.via) ? { side: stopSide(route, entry.via) as "left" | "right" } : {}),
         source: entry.kind,
       });
     }
@@ -1037,8 +1058,11 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
     const side = (["left", "right"] as const).map(arrivalSideWords).find((words) => cue.text.endsWith(words));
     return side ? `${t(ARRIVED_SAID)} ${side}` : t(ARRIVED_SAID);
   }
-  if (cue.kind === "stop")
-    return cue.stopName ? t("You have reached stop {stop}, {name}.", { stop: cue.stop ?? "", name: cue.stopName }) : t("You have reached stop {stop}.", { stop: cue.stop ?? "" });
+  if (cue.kind === "stop") {
+    const reached = cue.stopName ? t("You have reached stop {stop}, {name}.", { stop: cue.stop ?? "", name: cue.stopName }) : t("You have reached stop {stop}.", { stop: cue.stop ?? "" });
+    // Its side, where the router gives it (round-2 audit D17), in the end cue's words.
+    return cue.side ? `${reached} ${arrivalSideWords(cue.side)}` : reached;
+  }
   if (phase === "now" && cue.movement) {
     // A jog's turns are said one at a time at "now" (the owner, 2026-10-26: "go step by step at the intersection").
     if (cue.cross) return t("Cross {road} now.", { road: wayWords(cue.cross) });

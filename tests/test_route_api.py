@@ -70,6 +70,8 @@ CONTRACT_KEYS = {
     "leg_ends",
     # Additive, v0.7.0 "Go riding fixes" item 5: the destination's side of the street.
     "arrival_side",
+    # Additive, round-2 audit D17: each leg's end's side of the street, for a stop's cue.
+    "leg_arrival_sides",
     # Additive, FOLLOWUP-ROUTE-COLOURS (OWNER-DECISIONS item 81).
     "stress_spans",
     # Additive, FOLLOWUP-ELEVATION-CHART (OWNER-DECISIONS 322, 323, 328, 333): the elevation
@@ -689,6 +691,31 @@ class TestAnswer:
         assert ends[-1] == len(coordinates) - 1
         for end, leg in zip(ends, legs, strict=True):
             assert coordinates[end] == list(leg[-1])
+
+    def test_each_leg_says_its_ends_side_of_the_street(self, client, segments, router) -> None:
+        """Round-2 audit D17: every rider point is a break, so every leg ends with its own
+        destination maneuver; its side goes out one per leg as `leg_ends`, null where the
+        router says none (type 4)."""
+        legs = [VERTICES[:2], VERTICES[1:4], VERTICES[3:]]
+        answer = route_answer([(leg, 1.0, [1.0]) for leg in legs])
+        for leg, last in zip(answer["trip"]["legs"], (6, 4, 5), strict=True):
+            leg["maneuvers"] = [{"type": 1}, {"type": last}]
+        router(
+            FakeRouter(
+                {
+                    "route": answer,
+                    "trace_attributes": [trace_answer(leg, [(101, 0, 1, 1.0)]) for leg in legs],
+                }
+            )
+        )
+        body = {"points": [list(VERTICES[i]) for i in (0, 1, 3, 4)], "preset": "default"}
+        answer = post(client, body).json()
+        assert answer["leg_arrival_sides"] == ["left", None, "right"]
+        assert len(answer["leg_arrival_sides"]) == len(answer["leg_ends"])
+        assert answer["arrival_side"] == "right"
+        assert routing.leg_arrival_side({"maneuvers": [{"type": 4}]}) is None
+        assert routing.leg_arrival_side({}) is None
+        assert routing.leg_arrival_side({"maneuvers": "nonsense"}) is None
 
     def test_a_one_leg_route_ends_its_leg_at_the_last_vertex(
         self, client, segments, router

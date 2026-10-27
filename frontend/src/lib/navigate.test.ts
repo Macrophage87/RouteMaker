@@ -2115,3 +2115,33 @@ test("D16: in Spanish a lane named after its street says its facility in Spanish
     setLanguageForTest("en");
   }
 });
+
+test("D17: a stop says which side of the street it is on, where the router gives it, in the end cue's words", () => {
+  const sided = { ...twoLegs(), leg_arrival_sides: ["left", "right"] } as RouteResponse;
+  const model = rideModel(sided);
+  const stop = model.cues.find((c) => c.kind === "stop") as Cue;
+  assert.equal(stop.side, "left");
+  assert.equal(stop.text, "Stop 1. Destination on your left.");
+  const { events } = ride(model, "quiet", 0, 2000);
+  assert.deepEqual(
+    events.map((e) => e.spoken),
+    ["You have reached stop 1. Destination on your left.", "You have arrived at the end of the route."],
+  );
+  // Named, numbered among stops past a via point (the plan's point 2 is stop 1).
+  const withVia = { ...twoLegs(), leg_ends: [1, 2, 4], leg_arrival_sides: [null, "right", null] } as RouteResponse;
+  withVia.description = (withVia.description ?? []).map((e) => (e.kind === "via" ? { ...e, via: 2 } : e));
+  const named = rideModel(withVia, [1], new Map([[2, "Union Market"]])).cues.find((c) => c.kind === "stop") as Cue;
+  assert.equal(cueSpoken(named, "arrive", 0), "You have reached stop 1, Union Market. Destination on your right.");
+  // Unknown, absent, or not one per leg: the cue as it was.
+  for (const sides of [[null, "left"], undefined, ["left"]]) {
+    const plain = rideModel({ ...twoLegs(), leg_arrival_sides: sides } as RouteResponse).cues.find((c) => c.kind === "stop") as Cue;
+    assert.equal(plain.text, "Stop 1.");
+    assert.equal(cueSpoken(plain, "arrive", 0), "You have reached stop 1.");
+  }
+  setLanguageForTest("es");
+  try {
+    assert.equal(cueSpoken(stop, "arrive", 0), "Ha llegado a la parada 1. El destino está a su izquierda.");
+  } finally {
+    setLanguageForTest("en");
+  }
+});

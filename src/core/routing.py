@@ -2824,6 +2824,18 @@ def arrival_side_of(trip: dict) -> str | None:
         return None
 
 
+def leg_arrival_side(leg: dict) -> str | None:
+    """Which side of the street a leg's end is on, from its own destination maneuver
+    (round-2 audit D17: every rider point is a break, so every leg ends with one); None
+    where the router says no side (a stop on the line itself, a drawn leg, a leg without
+    maneuvers)."""
+    try:
+        maneuvers = leg.get("maneuvers") or []
+        return _DESTINATION_SIDES.get(maneuvers[-1].get("type")) if maneuvers else None
+    except (AttributeError, IndexError, TypeError):
+        return None
+
+
 # A trail relation names an unnamed way only where its named run is longer than this
 # (a quarter mile).
 RELATION_NAME_MIN_RUN_M = 1609.344 / 4
@@ -4335,6 +4347,9 @@ def _plan(
         # shared, so leg k runs from leg_ends[k - 1] (or 0) to leg_ends[k]. The
         # front end reads which leg a point on the line belongs to from these.
         leg_ends: list[int] = []
+        # The side of the street each leg ends on (`leg_arrival_side`), one per leg as
+        # `leg_ends`: a stop's side for its cue (round-2 audit D17).
+        leg_sides: list[str | None] = []
         # Where each leg begins along the traced length: the stops (and the start,
         # which no crossing lies before), which a Mass Ride's crossing group never
         # spans (OWNER-DECISIONS 247).
@@ -4346,6 +4361,7 @@ def _plan(
             shape = decode_polyline6(leg.get("shape", ""))
             coordinates.extend(shape[1:] if coordinates else shape)
             leg_ends.append(len(coordinates) - 1)
+            leg_sides.append(leg_arrival_side(leg))
             elevations.extend(leg.get("elevation") or [])
             try:
                 # A leg the rider drew follows no road: it is not traced, and its stress is
@@ -4395,6 +4411,7 @@ def _plan(
                 ends = list(itertools.accumulate(groups))
                 first = [e - g for e, g in zip(ends, groups, strict=True)]
                 leg_ends = [leg_ends[e - 1] for e in ends]
+                leg_sides = [leg_sides[e - 1] for e in ends]
                 stops_m = [stops_m[f] for f in first]
                 leg_runs = [
                     _joined_runs(leg_runs[f:e], pieces) for f, e in zip(first, ends, strict=True)
@@ -4737,6 +4754,7 @@ def _plan(
             "attribution": list(ATTRIBUTION),
             "leg_ends": leg_ends,
             "arrival_side": arrival_side_of(trip),
+            "leg_arrival_sides": leg_sides,
             "intersections": None if events is None else _intersection_rows(events),
             "intersection_groups": None if events is None else _intersection_groups(events),
             "junctions_debug": (

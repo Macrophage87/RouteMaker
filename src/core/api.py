@@ -2264,6 +2264,14 @@ class RouteBody(Schema):
             " maneuver (Ride mode's last cue: 'Destination on your right'); null where unknown."
         ),
     )
+    leg_arrival_sides: list[Literal["left", "right"] | None] | None = Field(
+        default=None,
+        description=(
+            "Which side of the street each leg ends on, one per leg as `leg_ends`, from its"
+            " destination maneuver (Ride mode's stop cue: 'Destination on your left'); an entry"
+            " is null where unknown, and the list is null from an answer that does not give it."
+        ),
+    )
     # The route's stressful junctions, in route order; null where they could not
     # be read in time (the route is answered all the same).
     intersections: list[IntersectionOut] | None

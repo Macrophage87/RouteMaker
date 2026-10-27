@@ -1063,6 +1063,11 @@ export interface RouteResponse {
    */
   arrival_side?: "left" | "right" | null;
   /**
+   * Which side of the street each leg ends on, one per leg as `leg_ends` (round-2 audit D17): a stop's cue says
+   * "Destination on your left". An entry is null where the router does not say; absent from an older API.
+   */
+  leg_arrival_sides?: ("left" | "right" | null)[] | null;
+  /**
    * The route's sections by traffic stress, in route order, meeting end to
    * end from 0; one unknown section for a plan whose joins ran past the
    * budget. Absent from an older API, when the route is drawn in one colour.
