@@ -331,8 +331,8 @@ data has been installed yet or the owner agreed.
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
 scripts/beta/beta-compose.sh build api                 # the worker and migrate services use the same image
-scripts/beta/beta-compose.sh pull postgis photon valhalla-standard
-docker image ls | grep -E 'routemaker-api|postgis|photon-docker|valhalla'
+scripts/beta/beta-compose.sh pull postgis photon valhalla-standard memcached
+docker image ls | grep -E 'routemaker-api|postgis|photon-docker|valhalla|memcached'
 ```
 
 The postgis image is pinned by digest in `compose.beta.yaml` (the build home runs, PostgreSQL 16.4, PostGIS 3.4.3):
@@ -830,6 +830,7 @@ same step (the hashed assets it names are never deleted, so `index.html` alone b
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
 scripts/beta/beta-compose.sh stop api worker
+scripts/beta/beta-compose.sh rm -f -s memcached   # only when going back before v0.13.0, whose compose files first have it
 git checkout --detach <previous sha>
 sed -i 's/^TAG=.*/TAG=<previous 12-character sha>/' .env          # the one edit to .env a release change needs
 "${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env    # the gate, after every .env edit: "beta compose: ok"

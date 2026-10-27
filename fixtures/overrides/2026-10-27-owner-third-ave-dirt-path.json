@@ -2,7 +2,7 @@
   "version": 1,
   "decided": "2026-10-27",
   "decided_by": "the deployment owner",
-  "status": "Reported by the owner on 2026-10-27 (12:56 UTC). Load with load_access_overrides (dry run first); takes effect on the next rebuild.",
+  "status": "Reported by the owner on 2026-10-27. Load with load_access_overrides (dry run first); takes effect on the next rebuild.",
   "annotations": "One unpaved path in Silver Spring, way 187699941 (360 ft, 110 m), between Elkhart Street and the Grace Church Road crossing at 3rd Avenue. OSM tags it only highway=path, so it was routed and drawn as a calm trail. The owner saw it on the ground: dirt between houses, not a bike path now (perhaps one later). Closed with a bicycle=no access row, so routing leaves it and the map no longer draws it: a barred way is left to the base map (routemaker.facility, BARRED). If it is built as a bike path, delete the row in the admin and remove it from this file.",
   "rows": [
     {
@@ -11,7 +11,7 @@
       "value": {
         "bicycle": "no"
       },
-      "reason": "The owner, 2026-10-27 12:56 UTC: \"This path is basically a bunch of dirt between houses. It might eventually be a bike path but isn't now\".",
+      "reason": "The owner, 2026-10-27: \"This path is basically a bunch of dirt between houses. It might eventually be a bike path but isn't now\".",
       "evidence": "The owner's sighting on the ground, 2026-10-27. OSM, read 2026-10-27: way 187699941 (version 3), highway=path and no other tag; it joins the Elkhart Street end of path 1389061524 (informal=yes) to crossing 1389061529 on Grace Church Road at 3rd Avenue.",
       "fingerprint": {
         "name": null,

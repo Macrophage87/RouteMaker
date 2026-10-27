@@ -235,7 +235,9 @@ test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a r
   assert.match(source("../RideGroup.tsx"), /\{ridersElsewhere && \(\s*<button type="button" className="secondary ride-riders-close" data-idle-close aria-expanded=\{ridersOpen\}/);
   // Where the count is not on Broadcast (Roam, Plan) the riders chip is the person icon and a number, its words in its name only.
   assert.match(source("../RideGroup.tsx"), /className="chip ride-riders" aria-label=\{countText\(riders, !noLine\)\}.*\n\s*<Icon name="user" size=\{20\} \/>\s*<span aria-hidden="true">\{riders\}<\/span>/);
-  assert.match(app, /onRiders=\{setRideRiders\}\s*ridersElsewhere=\{riding && rideCanBroadcast\}\s*ridersAsk=\{ridersAsk\}/);
+  // The chip is left out only while the count is on Broadcast: a Group Ride not broadcasting keeps its chip, so its
+  // riders panel (who is where, Show me as a dot) can still be opened.
+  assert.match(app, /onRiders=\{setRideRiders\}\s*ridersElsewhere=\{riding && rideCanBroadcast && rideBroadcast !== null\}\s*ridersAsk=\{ridersAsk\}/);
   assert.match(fromRide, /const followed = followedLink\(\);\s*if \(followed\) return \(await passOn\(followed, broadcastNav\)\)\.said;/);
   assert.match(app, /broadcasting=\{rideBroadcast\?\.leading === true\}/);
 });

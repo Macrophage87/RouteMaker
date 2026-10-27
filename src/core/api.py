@@ -3177,7 +3177,8 @@ def _long_slots(request) -> ratelimit.InFlight:
 
 class CancelIn(Schema):
     plan_id: str = Field(
-        pattern=plan_cancel.PLAN_ID.pattern,
+        # Anchored: a pattern alone matches anywhere in the value.
+        pattern=f"^{plan_cancel.PLAN_ID.pattern}$",
         description="The `X-Plan-Id` the plan was sent with.",
     )
 

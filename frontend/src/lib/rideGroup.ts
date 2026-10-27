@@ -578,8 +578,8 @@ export const ROAM_ALERT_KINDS: readonly AlertKind[] = ["lost", "wait", "mechanic
 
 /** Stephen 2026-10-27: "make the alert (call it send alert) a larger button". */
 export const ALERT_LABEL = t("Send alert");
-export const ALERT_NOTE = "Sends your location with the alert";
-export const CONFIRM_QUESTION = "Send to everyone on this ride?";
+export const ALERT_NOTE = t("Sends your location with the alert");
+export const CONFIRM_QUESTION = t("Send to everyone on this ride?");
 export const OTHER_MAX = 80;
 export const ALERT_EVERY_MS = 60_000;
 export const ALERTS_PER_RIDE = 10;
