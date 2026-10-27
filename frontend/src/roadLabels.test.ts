@@ -9,9 +9,10 @@ import { setStressPalette } from "./lib/mapGlue.ts";
 type Layer = { id: string; type: string; layout?: Record<string, unknown>; paint?: Record<string, unknown> };
 const shipped = (strong: boolean) => withClearRoadLabels(protomapsLayers("protomaps", namedFlavor("light"), { lang: "en" }), strong) as Layer[];
 
-test("road names: both base map name layers are restyled, and only they, the place names and the other labels", () => {
-  const before = protomapsLayers("protomaps", namedFlavor("light"), { lang: "en" }) as Layer[];
-  const after = shipped(false);
+test("road names: both base map name layers are restyled, and only they, the place names, the other labels and the boundaries", () => {
+  // The state and county lines split the base map's boundaries layer in three (boundaryLines.test.ts).
+  const before = (protomapsLayers("protomaps", namedFlavor("light"), { lang: "en" }) as Layer[]).filter((l) => l.id !== "boundaries");
+  const after = shipped(false).filter((l) => !l.id.startsWith("boundaries") || l.id === "boundaries_country");
   assert.equal(after.length, before.length);
   for (const id of ROAD_LABEL_LAYER_IDS) assert.ok(before.some((l) => l.id === id), `${id} is in the base map`);
   after.forEach((layer, i) => {
