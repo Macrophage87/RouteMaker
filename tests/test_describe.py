@@ -132,10 +132,45 @@ class TestMerge:
         assert len(entries) == 1
         assert entries[0]["street"] == "Rockville Pike"
 
+    def test_a_ref_only_piece_between_two_named_ones_still_joins(self):
+        entries = d.describe(
+            [
+                flat(
+                    road(None, 3, 500, names=("Rockville Pike", "MD 355")),
+                    road(None, 3, 200, names=("MD 355",)),
+                    road(None, 3, 500, names=("MD 355", "Rockville Pike")),
+                )
+            ]
+        )
+        assert len(entries) == 1
+        assert entries[0]["street"] == "Rockville Pike"
+
+    def test_two_streets_sharing_only_a_route_number_are_two_streets(self):
+        # US 29 turns off Georgia Avenue onto Colesville Road in Silver Spring: a turn
+        # onto another street, not "Right to stay on Colesville Road".
+        def us29(turn, choice):
+            colesville = road(None, 3, 800, turn, turn, names=("US 29", "Colesville Road"))
+            colesville[0] = replace(colesville[0], turn=float(turn), choice=choice)
+            georgia = road(None, 3, 800, 0, 0, names=("US 29", "Georgia Avenue"))
+            return d.describe([flat(georgia, colesville)])
+
+        for choice in (False, True):
+            entries = us29(90, choice)
+            assert [e["street"] for e in entries] == ["Georgia Avenue", "Colesville Road"]
+            assert "stay" not in entries[1]["turn"]
+            assert entries[1]["text"].split(": ")[1].startswith("Right onto Colesville Road,")
+        # A shallow bend keeps the name change.
+        entries = us29(30, False)
+        assert [e["street"] for e in entries] == ["Georgia Avenue", "Colesville Road"]
+        assert entries[1]["text"].split(": ")[1].startswith("Bear right onto Colesville Road,")
+
     def test_a_route_number_is_not_preferred_to_a_name(self):
         assert d.street_label(("MD 355", "Rockville Pike")) == "Rockville Pike"
         assert d.street_label(("MD 355",)) == "MD 355"
         assert d.street_label(()) is None
+        assert d.street_label(("US 1 Bus", "Washington Street")) == "Washington Street"
+        assert d.street_label(("Route 7", "Leesburg Pike")) == "Leesburg Pike"
+        assert d.street_label(("md 355", "rockville pike")) == "rockville pike"
 
     def test_a_mid_route_name_change_at_the_same_tier_is_a_turn_entry(self):
         entries = d.describe([flat(road("A St", 1, 500), road("B St", 1, 500, 0, 0))])

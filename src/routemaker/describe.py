@@ -316,8 +316,13 @@ CONTROL_PHRASES = {
     Control.CROSS_STOP: " where cross traffic stops",
 }
 
-# "MD 355", "US-29", "I 495", "VA 7": a route number rather than a street name.
-_ROUTE_NUMBER = re.compile(r"^(?:[A-Z]{1,3})[ -]?\d+[A-Z]?$")
+# "MD 355", "US-29", "I 495", "VA 7", "US 1 Bus", "Route 7": a route number rather than
+# a street name; in any case, for the lower-case names a stretch keeps. Everything
+# `core.geocode._ROUTE_REF` takes for one is one here too (that module is not imported
+# into this pure one).
+_ROUTE_NUMBER = re.compile(
+    r"^(?:[A-Z]{1,3}|Route|Rte)[ -]?\d+[A-Z]?(?: (?:Alt|Bus|Business|Truck))?$", re.IGNORECASE
+)
 # What stays in capitals when a lower-case street name is made readable.
 _CAPITALS = frozenset(
     {"nw", "ne", "sw", "se", "md", "va", "dc", "us", "mlk", "jr", "sr", "ii", "iii"}
@@ -438,11 +443,24 @@ def _run_of(atom: Atom, leg: int) -> _Run:
     )
 
 
+def _one_street(a: frozenset[str], b: frozenset[str]) -> bool:
+    """Whether two sets of lower-case names are one street's: a name in common that is
+    not a route number, or a route number in common where either has nothing but route
+    numbers ("MD 355" alone is Rockville Pike). Two named streets that share only a
+    route number are two streets: US 29 turns off Georgia Avenue onto Colesville Road."""
+    common = a & b
+    if not common:
+        return False
+    real_a = {n for n in a if not _ROUTE_NUMBER.match(n)}
+    real_b = {n for n in b if not _ROUTE_NUMBER.match(n)}
+    return not real_a or not real_b or bool(real_a & real_b)
+
+
 def _same_way(a: Atom, b: Atom) -> bool:
     """Whether two pieces are one street, as `_same_street` reads two stretches."""
     if not a.names and not b.names:
         return SERVICE_WORDS.get(a.use) == SERVICE_WORDS.get(b.use)
-    return bool({n.lower() for n in a.names} & {n.lower() for n in b.names})
+    return _one_street(frozenset(n.lower() for n in a.names), frozenset(n.lower() for n in b.names))
 
 
 def _said_turns(atoms: list[Atom]) -> list[Atom]:
@@ -496,7 +514,7 @@ def _runs_of(atoms: list[Atom], leg: int) -> list[_Run]:
 def _same_street(a: _Run, b: _Run) -> bool:
     if not a.names and not b.names:
         return a.service == b.service
-    return bool(a.names & b.names)
+    return _one_street(a.names, b.names)
 
 
 def _forks(run: _Run) -> bool:
