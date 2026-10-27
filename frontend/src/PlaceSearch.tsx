@@ -134,8 +134,11 @@ export function PlaceSearch({
   /** Where results should lean towards: the rider's known location (rounded) while it is in view, else the map's centre; none outside the area (lib/geocode.ts searchBiasPoint). */
   bias: () => LonLat | undefined;
   onPick: (place: Place, choice: PlaceChoice) => void;
-  /** The first place listed, each time another leads the list (Go's early start; v0.7.0, "Faster routing"). */
-  onTopPlace?: (place: Place) => void;
+  /**
+   * The first place listed, each time another leads the list (Go's early start; v0.7.0, "Faster routing"); null when
+   * none does any more (the box cleared, or no results), so a wait for the last one is dropped.
+   */
+  onTopPlace?: (place: Place | null) => void;
   /** Plan's From and To: the place the box changes, named under its label ("Now: Union Station"), or absent. */
   current?: string;
   /** A ref to the input, so a "Change" can put the focus in the box. */
@@ -212,8 +215,11 @@ export function PlaceSearch({
   const top = enterPlaces[0] ?? null;
   const onTopPlaceNow = useRef(onTopPlace);
   onTopPlaceNow.current = onTopPlace;
+  // Null once when a listed place goes (the box cleared, no results), not on opening with nothing typed.
+  const toldTop = useRef(false);
   useEffect(() => {
-    if (top) onTopPlaceNow.current?.(top);
+    if (top || toldTop.current) onTopPlaceNow.current?.(top);
+    toldTop.current = top !== null;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per place listed first, not per render
   }, [top?.lon, top?.lat, top?.name]);
   const listed: (Place | AsDestination)[] = offersDestination ? offered.flatMap((place) => [place, { destination: place }]) : offered;

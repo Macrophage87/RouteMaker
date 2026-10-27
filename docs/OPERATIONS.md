@@ -243,6 +243,26 @@ the order a request meets it:
 | Long rides in flight | 1 per client and 1 for the whole api, signed in or not, on top of the slots above | 503 (the deployment's slot is taken first, so the per-client 429 does not arise on a long pool of 1), `Retry-After: 5` |
 | Length ceiling | 200 km of straight line, however asked | 400 "too long" |
 | Time | 40 s for the whole request from its arrival, a long ride 50 s; the router calls get all but the last 3 s, at most 35 s per call (45 s on a long ride) | 502 if the router does not answer, 503 with `Retry-After: 30` if the budget runs out before `/route` answers (on a long ride with `"code": "long_ride_timed_out"`, which the planner shows at once instead of resending); a trace cut short leaves its legs' stress `unknown` |
+| A plan replaced (Go, v0.13.0) | A request with `X-Plan-Id` stops at its next router call once `POST /api/route/cancel {"plan_id"}` names it from the same address; one with `X-Plan-Replaces` cancels that plan itself and waits up to 1 s for its slots (at most 1 waiting across the api) | 409 `{"error", "code": "plan_cancelled"}`, no `Retry-After`; past the wait, the 429 or 503 above |
+
+`POST /api/route/cancel` (routing audit S7; the owner approved it on 2026-10-27) takes no
+routing slot, so the plan it stops never delays it. It is counted apart from routing: 60 per
+60 s per client (scope `plan-cancel-req`), 429 with `Retry-After`, and answers 204 whether or
+not such a plan is running. The cancel itself is a row of `rate_limit_window` under the scope
+`plan-cancel` (a keyed digest of the address and the plan id), good for 60 s and purged with
+the rest. gunicorn's workers meet in this table, not in the routes memcached
+(`ROUTE_CACHE_LOCATION`), which is optional, per deployment, and passed over in silence when
+down: a cancel kept there could be lost. A cancel only takes router calls away: one already
+running finishes, nothing else is asked. A plan waiting on calls it gave the router pool
+(refine's wide routes, the traces, the early ask for alternatives) asks for its cancel while
+it waits, so the calls not yet started never go; the cancelled plan then waits for the ones
+still running before it gives back its slot (at most until its 50 s budget from arrival
+ends), so the router never sees more than the pool's calls plus one per slot. A cancelled
+plan's answer is never kept in the routes cache. The page names the
+replaced plan on every resend of the plan replacing it until an answer other than a 429 or
+503 comes, and waits those out for up to 50 s of `Retry-After` (the longest a plan runs)
+before showing the refusal, so a rider never sees "already has a route being planned" for
+their own cancelled plan where before the cancel they would have waited for it.
 
 Place search and place names (`GET /api/geocode`, `GET /api/reverse`,
 signed out; the contract is in docs/DEVELOPMENT.md) have their own limits, in
@@ -432,8 +452,19 @@ band, grep `route timing` from the api's log.
   the worst case, half the limit. Raising `ROUTER_PARALLEL_CALLS` or
   `BETA_WEB_CONCURRENCY` adds to it: keep the sum under 40.
 - `ROUTE_CACHE_TTL_S` (default 600; 0 turns it off; read from the environment, passed to the api by compose) keeps a finished answer
-  for 10 minutes in each api worker's memory, up to 128 answers per worker, so
-  a hit happens only when the same worker serves the repeat. The key holds
+  for 10 minutes. Where `ROUTE_CACHE_LOCATION` names a memcached (host:port), the
+  api's workers share it, so a repeat is a hit whichever worker serves it (audit
+  S14; the owner signed off a ~16 MB memcached on beta on 2026-10-27).
+  compose.beta.yaml runs one (`memcached`, `-m 16`, capped at 24M) and sets the
+  variable itself; compose.yaml leaves it empty. There an answer is stored
+  pickled and compressed (zlib level 1), one past
+  memcached's 1 MB item limit is not sent, and a memcached that is down, full
+  or slow is a miss, never an error: the plan is made (the client gives up
+  within 0.25 s, and after a failure leaves the server alone for a minute).
+  The stored keys also carry a fingerprint of the running code, so answers
+  from before a deploy are never given after it. Without it, each api worker
+  keeps up to 128 answers in its own memory, so a hit happens only when the
+  same worker serves the repeat. The key holds
   the whole request, rounded to about 10 m, with every dial. It also holds the
   stress edits' generation, a digest of the closures snapshot, the approved
   junction ratings and hazards, and the ride time's rush and weekend state.

@@ -116,7 +116,7 @@ test("the first answer is replayed only when the free e-bike asked for it and th
 
 test("App replays the first answer for a free e-bike's option and keeps a pinned option re-planned", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  const send = app.slice(app.indexOf("send: async (plan) => {"), app.indexOf("const result = await requestRoute("));
+  const send = app.slice(app.indexOf("send: async (plan, replaces) => {"), app.indexOf("const result = await requestRoute("));
   assert.match(send, /const replay = replayFor\(firstAnswer\.current, replayAsked\.current, sentPlanKey\(plan\.points, plan\.preset, plan\.dials\)\);\s*replayAsked\.current = null;\s*if \(replay\) \{\s*keptShown\.current = null;\s*return \{ ok: true, route: replay \};/);
   assert.match(app, /if \(usesBikeshare\(plan\.preset\) && keepsFirst\(bikeshareOf\(result\.route\)\)\)\s*firstAnswer\.current = \{ key: sentPlanKey\(plan\.points, plan\.preset, plan\.dials\)/);
   const pick = app.slice(app.indexOf("const pickOption = "), app.indexOf("// A new answer: the Keep button"));

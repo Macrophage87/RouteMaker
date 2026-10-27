@@ -148,10 +148,16 @@ export class EarlyStart {
     }
   }
 
+  /** Nothing waits to go next: the place it was for is no longer offered (the box cleared, no results). */
+  forget(): void {
+    this.next = null;
+  }
+
   /** The early request for `body`, taken (once), while it is fresh; null where there is none. */
   take(body: string): Promise<RouteResult> | null {
-    // The tap makes its own request: one waiting for the same place would ask twice.
-    if (this.next?.body === body) this.next = null;
+    // The tap makes its own request: one waiting for the same place would ask twice, and one waiting for another place
+    // is for a place not chosen (batch-1 review of S4), so either way the wait goes.
+    this.next = null;
     const kept = this.kept;
     const now = (this.options.now ?? Date.now)();
     if (!kept || kept.body !== body || now - kept.at >= (this.options.keepMs ?? EARLY_KEEP_MS)) return null;

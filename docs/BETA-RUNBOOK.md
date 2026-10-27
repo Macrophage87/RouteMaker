@@ -33,8 +33,8 @@ already exists (`/data` included: it holds other people's data).
 It does not touch the other sites, `nginx.conf`, the firewall, the system packages' configuration,
 or Docker's daemon settings. If a step seems to need any of those, **stop and ask the owner**.
 
-The memory budget is hard: every container has a cap (`compose.beta.yaml`, 7486 MiB = 7.31 GiB
-resident in all with the two trail routers, 7742 MiB = 7.56 GiB at the startup peak, against the host's 8.6 GiB available), so a spike restarts a
+The memory budget is hard: every container has a cap (`compose.beta.yaml`, 7510 MiB = 7.33 GiB
+resident in all with the two trail routers and the 24M memcached, 7766 MiB = 7.58 GiB at the startup peak, against the host's 8.6 GiB available), so a spike restarts a
 RouteMaker container rather than starving another site. Every RouteMaker container also has
 `cpu_shares: 512` and `oom_score_adj: 500`: under CPU contention the other sites win, and a
 host-wide out-of-memory kill picks a RouteMaker process first.
@@ -101,7 +101,7 @@ What to expect on this server (the owner's check, 2026-10-04); a check below tha
 - `/data` is a separate filesystem mounted `nofail`, with far more than the 25 GB this needs;
 - Docker's root may be on the root disk rather than on `/data` (that is why binds never create
   their source: "Reboot and a late `/data`"), so its free space is checked on its own;
-- available memory is at least the 8766 MiB threshold below (the 7742 MiB startup peak plus the
+- available memory is at least the 8790 MiB threshold below (the 7766 MiB startup peak plus the
   checker's 1 GiB margin);
 - an x86_64 machine (the api image is built at home, on x86_64);
 - `beta.example.org` resolves to this server's own public address (checked live below; the
@@ -109,7 +109,7 @@ What to expect on this server (the owner's check, 2026-10-04); a check below tha
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
-free -m                                  # "available" must be at least 8766 MiB: the 7742 MiB startup peak plus the checker's 1 GiB margin (the caps total 7486 MiB = 7.31 GiB resident)
+free -m                                  # "available" must be at least 8790 MiB: the 7766 MiB startup peak plus the checker's 1 GiB margin (the caps total 7510 MiB = 7.33 GiB resident)
 uname -m; docker info -f '{{.Architecture}}'   # both x86_64: the api image is built at home on x86_64; anything else is a stop
 df -h /data /                            # /data: at least 25 GB free (bundle 4 GB, installed copy 4 GB, backups)
 findmnt -no SOURCE,FSTYPE,OPTIONS /data  # a filesystem of its own; nofail in the options is expected (see "Reboot and a late /data")
@@ -450,7 +450,9 @@ owner names.
 
 ## 8. Start the stack (adds containers)
 
-Named services, in this order. `up -d api` also runs `migrate` first (compose waits for it to finish).
+Named services, in this order. `up -d api` also runs `migrate` first (compose waits for it to finish),
+and starts `memcached`, the api workers' shared answer cache (audit S14, 24M; the api starts without
+it if it cannot, and plans every request in full until it is back).
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
@@ -1297,7 +1299,7 @@ and `$RM_DATA/tiles/mtb/current` exist):
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
 scripts/beta/auto-release.sh install                                  # the agent that knows the trail routers
-"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env      # "beta compose: ok", 7.31 GiB resident
+"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env      # "beta compose: ok", 7.33 GiB resident
 scripts/beta/beta-compose.sh up -d valhalla-offroad valhalla-mtb
 ```
 

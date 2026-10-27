@@ -37,6 +37,31 @@ export function startsWayBack(kind: ErrorKind): boolean {
 }
 
 /**
+ * Whether the ride's route is one the rider chose over the first (routing audit D15): a route to choose from ranked 2
+ * or lower, or Go's More direct or Trailmaxxed (lib/neighbours.ts), which join the choice after the rider's own. A way
+ * back keeps its route's rank (joinRoutes), so the next re-route rejoins it too; a new plan's answer is ranked 1 or not
+ * at all, the rider's new route.
+ */
+export function ridesChosenRoute(route: Pick<RouteResponse, "rank" | "neighbour">): boolean {
+  return (route.rank ?? 0) >= 2 || !!route.neighbour;
+}
+
+/**
+ * Whether a re-route tries the way back to the route ahead before a new plan to the end (routing audit D15; the owner,
+ * 2026-10-27: "stops need to be made and via points should be followed as the default unless there's an overriding
+ * reason to change"): only an automatic one (the rider left the route; never one they asked for, a detour, a held
+ * U-turn's check, a restart or a skipped stop), on a route they chose over the first, so a new plan does not pull them
+ * back toward the route they turned down. On any other route a new plan comes first, as the owner set on 2026-10-17
+ * ("when off route if no route can be found try to find the nearest route back to the route").
+ */
+export function rejoinsFirst(
+  route: Pick<RouteResponse, "rank" | "neighbour">,
+  how: { asked: boolean; detour: boolean; check: boolean; restart: boolean; skip: boolean },
+): boolean {
+  return !how.asked && !how.detour && !how.check && !how.restart && !how.skip && ridesChosenRoute(route);
+}
+
+/**
  * The way back as the ride's new route, or the last failure's kind (null where none was asked): each target in
  * turn (`rejoinTargets`) asked for with `request` (here to that point), the first answered joined to `planned`
  * there (`joinRoutes`). `kept` is navigate.ts replanKept's answer for the plan's points. A failure that a

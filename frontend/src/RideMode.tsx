@@ -41,7 +41,7 @@ import { BROADCAST_HOLD_HINT } from "./lib/broadcastQr.ts";
 import { useHold } from "./lib/useHold.ts";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type PointerEvent } from "react";
 import { HoldTimer } from "./lib/holdTimer.ts";
-import { startsWayBack, wayBackRoute } from "./lib/rejoin.ts";
+import { rejoinsFirst, startsWayBack, wayBackRoute } from "./lib/rejoin.ts";
 import {
   ON_DETOUR_SAID,
   ON_STANDARD_SAID,
@@ -53,7 +53,7 @@ import {
   onOtherLine,
   withClosed,
 } from "./lib/roadClosed.ts";
-import { requestRoute, type RouteResponse } from "./lib/api.ts";
+import { requestRoute, type ErrorKind, type RouteResponse } from "./lib/api.ts";
 import { VIA_MARKS, drawnLegs, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
 import {
   SKIP_STOP,
@@ -103,6 +103,7 @@ import {
   withUTurn,
   REPLAN_NO_SIGNAL,
   REPLAN_REJOIN,
+  REPLAN_REJOIN_AHEAD,
   REPLAN_FINDING,
   REPLAN_STILL_WAITING,
   ReplanGate,
@@ -112,6 +113,9 @@ import {
   nextAction,
   planAfterEnd,
   replanKept,
+  skippableVia,
+  viaSkipWorth,
+  viaSkippedNote,
   replanTold,
   rideModel,
   secondsBetween,
@@ -1108,7 +1112,8 @@ export function RideMode({
         ? restartKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, done)
         : replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, true).filter((i) => i !== skip);
       const left = withoutStop(plan.current.points, keptPoints, here, skip ?? -1);
-      const points = via ? detourPoints(left, via) : left;
+      // `let`: a re-route that leaves out the next via point (VIA_SKIP_EXTRA_S, below) rides the points without it.
+      let points = via ? detourPoints(left, via) : left;
       if (!points) {
         sayDetour(DETOUR_FULL);
         return false;
@@ -1154,22 +1159,58 @@ export function RideMode({
       // rider's re-plan of a long ride was refused for want of it).
       const ask = (to: LonLat[]) =>
         requestRoute(to, preset, { dials: { ...dialsRef.current, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading, aheadOnly, rideReplan: true, dirtRidden: dirtRidden.current, dirtClosed: dirtClosed.current });
-      const result = await ask(points);
-      // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
-      // the owner, 2026-10-17). Not for a detour, whose place the planned route does not pass. The no-signal
-      // timer runs on through it.
-      let found = result.ok ? result.route : null;
-      let failed = result.ok ? null : result.error.kind;
+      let found: RouteResponse | null = null;
+      let failed: ErrorKind | null = null;
       let note = REPLAN_FOUND;
+      let skippedVia = false;
       const voided = () => ended.current || ticket !== replanTicket.current;
-      if (!result.ok && !via && !check && startsWayBack(result.error.kind) && !voided()) {
-        const kept = keptPoints;
-        // Never back onto a road the rider marked closed: the way back joins the route past it.
-        const closed = blockedUntil.current?.model === modelRef.current ? blockedUntil.current.untilM : -Infinity;
-        const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, kept, ask, voided, closed);
-        if ("route" in back) found = back.route;
-        else if (back.failed) failed = back.failed;
-        note = REPLAN_REJOIN;
+      // Never back onto a road the rider marked closed: a way back joins the route past it.
+      const closed = blockedUntil.current?.model === modelRef.current ? blockedUntil.current.untilM : -Infinity;
+      // Off a route the rider chose over the first, the way back to it ahead first (routing audit D15; the owner,
+      // 2026-10-27: "stops need to be made and via points should be followed as the default unless there's an
+      // overriding reason to change"), so a new plan does not pull them back toward the route they turned down; a new
+      // plan only where there is no way back. A way back is a short ask or three, not a plan to the end.
+      const backFirst = rejoinsFirst(routeRef.current, { asked, detour: !!via, check, restart: !!done, skip: skip !== undefined });
+      if (backFirst) {
+        const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, keptPoints, ask, voided, closed);
+        if ("route" in back) {
+          found = back.route;
+          note = REPLAN_REJOIN_AHEAD;
+        } else failed = back.failed;
+      }
+      // No signal for the way back: a plan to the end would not get through either.
+      if (!found && failed !== "network" && !voided()) {
+        const result = await ask(points);
+        found = result.ok ? result.route : null;
+        failed = result.ok ? null : result.error.kind;
+        // A re-route may leave out the next via point, never a later one and never a stop (Stephen, 2026-10-27: "Vias can
+        // be skipped a little more, for instance if a road is closed, you shouldn't expect a 20 minute detour just to get
+        // to the other side. Those are guides. Stops are where you want to end up." and "Sometimes people plan very
+        // indirect routes for fun, so it shouldn't skip all of the vias"): where the new route takes more than
+        // VIA_SKIP_EXTRA_S longer to reach it than the planned one would have from the rider's place, it is planned once
+        // more without it. Not for a detour, a held U-turn's check, a restart, or a Calmer or Flatter press (its route is
+        // slower by choice). The second ask is made only when that trips.
+        const eased = easing.current?.ticket === ticket;
+        const next = result.ok && !via && !check && !done && !eased ? skippableVia(modelRef.current, keptPoints) : null;
+        if (result.ok && next && viaSkipWorth(modelRef.current, current.progressM ?? 0, next.atM, modelOf(result.route, points), 1) && !voided()) {
+          const without = points.filter((_, i) => i !== 1);
+          const again = await ask(without);
+          if (again.ok) {
+            found = again.route;
+            points = without;
+            skippedVia = true;
+          }
+        }
+        // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
+        // the owner, 2026-10-17), unless it was tried first. Not for a detour, whose place the planned route does not
+        // pass. The no-signal timer runs on through it.
+        if (!result.ok && !backFirst && !via && !check && startsWayBack(result.error.kind) && !voided()) {
+          const kept = keptPoints;
+          const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, kept, ask, voided, closed);
+          if ("route" in back) found = back.route;
+          else if (back.failed) failed = back.failed;
+          note = REPLAN_REJOIN;
+        }
       }
       window.clearTimeout(timer);
       if (check) checking.current = false;
@@ -1205,6 +1246,8 @@ export function RideMode({
       const counted = uturnStep(uturns.current, { kind: "rerouted", turned, aheadOnly, stopped: (heading === null && !turnRound) || press !== null, note, now: Date.now() });
       uturns.current = counted.state;
       note = counted.note ?? note;
+      // "Skipping via point. New route found." (or its U-turn or keep-ahead form), briefly.
+      if (skippedVia) note = viaSkippedNote(note);
       if (press) {
         press.outcome = note === REPLAN_REJOIN ? "rejoin" : "found";
         if (press.outcome === "found" && !turned && sameLine(found.geometry.coordinates, press.before.geometry.coordinates)) note = EASE_SAME[press.which];

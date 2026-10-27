@@ -98,6 +98,7 @@ from . import (
     micromobility,
     nearest,
     parallel,
+    plan_cancel,
     presets,
     ratelimit,
     route_cache,
@@ -2964,12 +2965,50 @@ def _json_body_only(view, limit: int | None):
     return wrapped
 
 
+class CancelledOut(Schema):
+    error: str
+    code: Literal["plan_cancelled"]
+
+
+# --- A superseded plan cancelled (routing audit S7, option B; core.plan_cancel) -------------
+#
+# The owner, 2026-10-27, approved reversing the scheduler's "one request at a time" rule for
+# this: Go names each plan it sends (X-Plan-Id), and when the rider changes the plan while its
+# full plan is still running, the page cancels that plan (POST /api/route/cancel) and sends
+# the new one at once, naming the plan it replaces (X-Plan-Replaces). The cancelled plan stops
+# at its next router call and answers 409 `plan_cancelled`; the new one may wait a moment for
+# the slot it gives back (`ratelimit.replacing`). No router call is added anywhere: a cancel
+# only takes calls away.
+
+
+def _records_replaced_plan(view):
+    """Before the slots: a plan that names the plan it replaces cancels that plan itself
+    (a cancel the page sent may have been lost or be behind this request), and may then
+    wait for the slot it gives back (`_replacing_wait_s`)."""
+
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        replaced = plan_cancel.replaces(request)
+        if replaced is not None and replaced != plan_cancel.plan_id(
+            request.META.get(plan_cancel.PLAN_ID_HEADER)
+        ):
+            plan_cancel.record(request, replaced)
+            request.replaces_plan = True
+        return view(request, *args, **kwargs)
+
+    return wrapped
+
+
+def _replacing_wait_s(request) -> float:
+    return plan_cancel.REPLACE_WAIT_S if getattr(request, "replaces_plan", False) else 0.0
+
+
 @api.post(
     "/route",
     response={
         200: RouteOut,
         400: ErrorOut,
-        409: ConfirmLongOut,
+        409: ConfirmLongOut | CancelledOut,
         422: ErrorOut,
         429: ErrorOut,
         500: ErrorOut,
@@ -2977,12 +3016,21 @@ def _json_body_only(view, limit: int | None):
         503: BusyOut,
     },
     summary="Plan a route through two to twenty-five points on a preset",
+    description=(
+        "Optional headers (Go's full plans, frontend lib/routeScheduler.ts): `X-Plan-Id` names"
+        " the plan, so POST /api/route/cancel can stop it, which answers 409 with `code`"
+        " `plan_cancelled`; `X-Plan-Replaces` names a plan of the same client this one"
+        " replaces: that plan is cancelled, and this one may wait up to a second for the slot"
+        " it gives back instead of being refused at once. Ids are 8 to 64 of `A-Z a-z 0-9 _ -`."
+    ),
     by_alias=True,
 )
 # Ninja wraps these innermost first, so the order written is the reverse of the
-# order they run in: the error guard, the content-type check, the count, the slots.
+# order they run in: the error guard, the content-type check, the count, a replaced plan's
+# cancel, the slots.
 @decorate_view(
-    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT),
+    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT, wait_for=_replacing_wait_s),
+    _records_replaced_plan,
     ratelimit.rate_limited(ratelimit.ROUTING),
     json_body_up_to(ROUTE_MAX_BODY_BYTES),
     errors_as_json,
@@ -2993,10 +3041,23 @@ def route(request, body: RouteIn, response: HttpResponse):
     timings = timing.Timings(started=timing.now() - _waited_s(request))
     timings.mark("wait")
     token = timing.start(timings)
+    # A plan that names itself can be cancelled (core.plan_cancel): its router calls ask.
+    watch = plan_cancel.watch_for(request)
+    watching = routing.watch_cancel(watch)
+    # Its calls on the pool are kept, so a cancelled plan can wait for them (below).
+    tracking = parallel.track() if watch is not None else None
     try:
         answered = _route_answer(request, body, response)
     finally:
+        if tracking is not None:
+            if watch.cancelled:
+                _settle_cancelled(request)
+            parallel.untrack(tracking)
+        routing.unwatch_cancel(watching)
         timing.stop(token)
+    if watch is not None and watch.cancelled:
+        # Whatever the plan made of its last moments, the page has moved on.
+        answered = plan_cancel.cancelled_answer()
     header = timings.header()
     if isinstance(answered, HttpResponse):
         answered["Server-Timing"] = header
@@ -3007,6 +3068,23 @@ def route(request, body: RouteIn, response: HttpResponse):
     loop = routing.loop_wanted(body.points, body.loop, body.preset)
     timings.log(body.preset, span_m(routing.loop_points(body.points, loop)), status)
     return answered
+
+
+def _settle_cancelled(request) -> None:
+    """A cancelled plan's calls still on the pool, before its routing slot is given back
+    (the in-flight decorator releases it after this view returns): the queued ones never go,
+    and the running ones are waited for. Review of S7: a 409 answered at once left up to
+    ROUTER_PARALLEL_CALLS calls running under a slot already given back, so beta's two slots
+    could have the router see more than ROUTER_PARALLEL_CALLS + 1 calls each. The wait ends
+    at the latest when the request's own budget does (LONG_PLAN_BUDGET_S from its arrival,
+    the longest any plan has), as every router call is cut to what is left of that budget;
+    never past LONG_ROUTER_TIMEOUT_S, the longest one call may take, so a request with no
+    arrival time waits no longer than one call. Well inside gunicorn's 60 s."""
+    limit_s = min(
+        routing.LONG_ROUTER_TIMEOUT_S, max(0.0, routing.LONG_PLAN_BUDGET_S - _waited_s(request))
+    )
+    if not parallel.settle(limit_s):
+        logger.warning("a cancelled plan's router calls ran past its budget (%.0f s)", limit_s)
 
 
 def _waited_s(request) -> float:
@@ -3041,7 +3119,7 @@ def _route_answer(request, body: RouteIn, response: HttpResponse):
             # limit, so it takes the long ride's in-flight slot as well: one at a
             # time in the deployment. It needs no confirmation: it is not a long
             # ride in straight lines.
-            held, refusal = ratelimit.acquire(request, ratelimit.LONG_ROUTING_IN_FLIGHT)
+            held, refusal = ratelimit.acquire(request, _long_slots(request))
             if refusal is not None:
                 return refusal
             try:
@@ -3063,13 +3141,48 @@ def _route_answer(request, body: RouteIn, response: HttpResponse):
                 "span_km": round(span / 1000),
             },
         )
-    held, refusal = ratelimit.acquire(request, ratelimit.LONG_ROUTING_IN_FLIGHT)
+    held, refusal = ratelimit.acquire(request, _long_slots(request))
     if refusal is not None:
         return refusal
     try:
         return _plan(request, body, response, long_ride=True)
     finally:
         ratelimit.release(held)
+
+
+def _long_slots(request) -> ratelimit.InFlight:
+    """The long ride's slots, with the wait of a plan that replaces one still running
+    (`_records_replaced_plan`): that plan may hold the client's long slot as well."""
+    wait_s = _replacing_wait_s(request)
+    limit = ratelimit.LONG_ROUTING_IN_FLIGHT
+    return ratelimit.replacing(limit, wait_s) if wait_s > 0 else limit
+
+
+class CancelIn(Schema):
+    plan_id: str = Field(
+        pattern=plan_cancel.PLAN_ID.pattern,
+        description="The `X-Plan-Id` the plan was sent with.",
+    )
+
+
+@api.post(
+    "/route/cancel",
+    # A plan_id that is not one is the contract's 400 (`invalid_input`), never a 422.
+    response={204: None, 400: ErrorOut, 429: ErrorOut, 500: ErrorOut},
+    summary="Stop a plan of this client's that a newer one has replaced",
+    description=(
+        "The plan sent with this `X-Plan-Id` from the same address stops at its next router"
+        " call and answers 409 `plan_cancelled`; one not yet started stops at its first. A"
+        " cancel stands for a minute, and answers 204 whether or not such a plan is running."
+        " It takes no routing slot, so a plan holding them never delays it."
+    ),
+)
+# No in-flight slot: the plan it stops holds the client's. Counted apart from routing, so a
+# rider's edits never spend the routing budget twice.
+@decorate_view(ratelimit.rate_limited(ratelimit.PLAN_CANCEL), json_body_only, errors_as_json)
+def route_cancel(request, body: CancelIn):
+    plan_cancel.record(request, body.plan_id)
+    return Status(204, None)
 
 
 # --- Go's "More direct" and "Calmer" (the owner, 2026-10-16) --------------------------------
@@ -4518,7 +4631,13 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
         late = started is not None and routing.clock() - started >= (
             budget_s - routing.ANSWER_RESERVE_S
         )
-        if not late and route_cache.keepable(answered, own_variant, failures):
+        # A plan cancelled meanwhile (core.plan_cancel) is answered 409 whatever it made, and
+        # what it made may be cut short by the cancel: not kept (review of S7).
+        if (
+            not late
+            and not routing.cancel_seen()
+            and route_cache.keepable(answered, own_variant, failures)
+        ):
             route_cache.put(key.key, answered, key.valid_s)
     return answered
 

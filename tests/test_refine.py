@@ -1466,6 +1466,32 @@ class TestRouterAlternates:
         assert self.asks(world) == []
         assert info["alternates"] == {"given": 0, "ranked": 0, "taken": False, "limited": "time"}
 
+    def test_a_cancel_while_waiting_on_the_early_ask_ends_the_plan(self, monkeypatch) -> None:
+        """Review of S7: the wait on the early ask sees a cancel of the plan (as
+        `routing.await_future` does), and the PlanCancelled is not taken for a slow router."""
+
+        class Cancelled:
+            cancelled = True
+
+            def check(self, poll=True):
+                raise routing.PlanCancelled("the rider replaced this plan")
+
+        orig = analysis("o", self.BUSY)
+        AlternatesWorld(monkeypatch, {"o": orig}, [routing.RouterRefused(400, 442, "")] * 2, [])
+        ctx = self.ctx()
+        ctx.search_budget_s = refine.ALTERNATES_ROUND_RESERVE_S + refine.ALTERNATES_MIN_S + 5.0
+        ctx.early_alternates = self.early(ctx, [trip_of("o", 4.0)])
+        ctx.early_alternates.future = Future()  # never answered
+        watching = routing.watch_cancel(Cancelled())
+        began = routing.clock()
+        try:
+            with pytest.raises(routing.PlanCancelled):
+                refine.refine(trip_of("o", 4.0), ctx)
+        finally:
+            routing.unwatch_cancel(watching)
+        assert routing.clock() - began < 2.0
+        assert ctx.early_alternates.future.cancelled()
+
     def test_the_early_ask_goes_to_the_pool_only_where_it_is_on(
         self, monkeypatch, settings
     ) -> None:
@@ -1523,6 +1549,42 @@ class TestRouterAlternates:
         # No time for the ask: none.
         short = routing.Deadline(routing.clock() + reserve + 0.5, 35)
         assert refine.ask_alternates_early("standard", request, short) is None
+
+    @pytest.mark.parametrize(
+        "error", [routing.RouterUnavailable("down"), routing.DeadlineExceeded(), RuntimeError()]
+    )
+    def test_an_early_ask_still_queued_when_the_plan_fails_is_never_sent(
+        self, monkeypatch, error
+    ) -> None:
+        """Review of batch 1 (S2b): anything that raises between the ask and the search
+        cancels one still queued on the pool, so no router slot answers an orphan."""
+        queued: list[Future] = []
+
+        def failing_plan(*_args, early=None, **_kw):
+            queued.append(Future())
+            early.append(queued[-1])
+            raise error
+
+        monkeypatch.setattr(routing, "_plan", failing_plan)
+        with pytest.raises(type(error)):
+            routing.plan([[-77.05, 38.9], [-77.02, 38.9]], "default")
+        assert queued and queued[0].cancelled()
+
+    def test_an_early_ask_is_cancelled_once_the_plan_is_answered_too(self, monkeypatch) -> None:
+        queued: list[Future] = []
+        answered: Future = Future()
+        answered.set_result({"trip": {}})
+
+        def plan(*_args, early=None, **_kw):
+            queued.extend([Future(), answered])
+            early.extend(queued)
+            return {"answered": True}
+
+        monkeypatch.setattr(routing, "_plan", plan)
+        assert routing.plan([[-77.05, 38.9], [-77.02, 38.9]], "default") == {"answered": True}
+        assert queued[0].cancelled()
+        # One the search already had is left as it is.
+        assert not answered.cancelled() and answered.result() == {"trip": {}}
 
 
 class SeekWorld(World):
