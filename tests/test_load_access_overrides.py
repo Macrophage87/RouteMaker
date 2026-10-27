@@ -1216,6 +1216,31 @@ class TestTheRedlandSidewalkFile:
         assert (row.kind, row.osm_way_id, row.value) == ("access", 448386707, {"bicycle": "yes"})
 
 
+THIRD_AVE_DIRT_PATH = REPO / "fixtures" / "overrides" / "2026-10-27-owner-third-ave-dirt-path.json"
+
+
+class TestTheThirdAveDirtPathFile:
+    """The owner, 2026-10-27, of the path from Elkhart Street to 3rd Avenue: "basically a
+    bunch of dirt between houses. It might eventually be a bike path but isn't now":
+    closed with bicycle=no, so routing leaves it and the map does not draw it as a trail."""
+
+    def test_it_closes_the_one_path(self, admin):
+        from core.models import Override
+
+        actor = str(admin.discord_user_id)
+        dry = load(str(THIRD_AVE_DIRT_PATH), "--actor", actor)
+        assert dry.count("create: way ") == 1 and "disagrees" not in dry
+        load(str(THIRD_AVE_DIRT_PATH), "--actor", actor, "--confirm")
+        (row,) = Override.objects.filter(approved=True)
+        assert (row.kind, row.osm_way_id, row.value) == ("access", 187699941, {"bicycle": "no"})
+
+    def test_the_closed_path_is_not_drawn_as_a_trail(self):
+        from routemaker.facility import MapClass, map_class
+
+        assert map_class({"highway": "path"}) is not MapClass.BARRED
+        assert map_class({"highway": "path", "bicycle": "no"}) is MapClass.BARRED
+
+
 ASPEN_STREET = REPO / "fixtures" / "overrides" / "2026-10-25-owner-aspen-street-nw.json"
 
 

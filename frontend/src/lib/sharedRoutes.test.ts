@@ -202,7 +202,7 @@ test("App: Share keeps the exact line and attaches the file Download GPX saves; 
 
 test("App: a shared link's line opens as a saved route does, before the link's first plan is answered", () => {
   assert.match(app, /const SHARED_ID = sharedIdFrom\(window\.location\.hash, window\.location\.search, window\.location\.pathname\);/);
-  const send = app.slice(app.indexOf("send: async (plan) => {"), app.indexOf("const saved = savedShown.current;"));
+  const send = app.slice(app.indexOf("send: async (plan, replaces) => {"), app.indexOf("const saved = savedShown.current;"));
   assert.match(send, /if \(SHARED_WAIT\) await SHARED_WAIT;/);
   const open = app.slice(app.indexOf("void readShared(origin, SHARED_ID)"), app.indexOf("sharedArrived();"));
   assert.match(open, /openSaved\(shared, SHARED_OPENED\(shared\.name\), !\(SHARED_RIDE && SHARED_LEAD && shared\.answer\)\);/);
@@ -249,7 +249,7 @@ test("a link its owner turned off: read as revoked, said plainly, and its plan i
   assert.equal(SHARED_REVOKED, "This link was turned off by its owner.");
   const open = app.slice(app.indexOf("void readShared(origin, SHARED_ID)"), app.indexOf("sharedArrived();"));
   assert.match(open, /if \(shared === "revoked"\) \{\s*sharedRevoked = true;/);
-  const send = app.slice(app.indexOf("send: async (plan) => {"), app.indexOf("const saved = savedShown.current;"));
+  const send = app.slice(app.indexOf("send: async (plan, replaces) => {"), app.indexOf("const saved = savedShown.current;"));
   assert.match(send, /if \(sharedRevoked && \(revokedPlan \?\?= sentPlanKey\(plan\.points, plan\.preset, plan\.dials\)\) === sentPlanKey\(plan\.points, plan\.preset, plan\.dials\)\)/);
   assert.match(send, /return \{ ok: false, error: SHARED_REVOKED_ERROR \};/);
   // A link with no plan: shown as a plan's error is, and said.

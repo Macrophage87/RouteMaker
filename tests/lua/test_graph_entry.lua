@@ -331,6 +331,15 @@ check("a station link reaches the graph open to bicycles, dismounted",
   tostring(walk_out.bicycle) .. " " .. tostring(walk_out.bike_forward) .. "/" .. tostring(walk_out.bike_backward))
 check("and that mark never reaches the tile build", walk_out["rm:walk_link"] == nil)
 
+-- A bicycle=yes walkway at a rail platform (routemaker.station_links.platform_walks).
+local _, platform_out = transform_way({
+  highway = "footway", bicycle = "yes", ["rm:platform_walk"] = "yes", ["rm:trail_class"] = "yes",
+})
+check("a platform walkway reaches the graph open to bicycles, dismounted",
+  platform_out.bicycle == "dismount" and platform_out.bike_forward == "true",
+  tostring(platform_out.bicycle) .. " " .. tostring(platform_out.bike_forward))
+check("and that mark never reaches the tile build", platform_out["rm:platform_walk"] == nil)
+
 -- OWNER-DECISIONS 111: singletrack reaches the graph with upstream's alley use.
 local _, single_out = transform_way({
   highway = "path", surface = "dirt", ["mtb:scale"] = "2", ["rm:no_bicycle"] = "singletrack",

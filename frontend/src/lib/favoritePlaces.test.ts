@@ -102,12 +102,12 @@ test("GET and POST /api/me/places: signed out or failed is null; a save sends th
 
 test("Go: signed in, Favorites takes Home's place and pops out Home, Work, then the rest; signed out, Home stays", () => {
   const go = src("../app/Go.tsx");
-  assert.match(go, /\{places\.signedIn \? \([\s\S]*?\{FAVORITES_TEXT\}[\s\S]*?\) : \([\s\S]*?Home\s*<\/button>\s*\)\}/);
+  assert.match(go, /\{places\.signedIn \? \([\s\S]*?\{FAVORITES_TEXT\}[\s\S]*?\) : \([\s\S]*?\{t\("Home"\)\}\s*<\/button>\s*\)\}/);
   const popout = go.slice(go.indexOf("export function FavoritesPopout"), go.indexOf("export function HomeSetter"));
   const order = ["SET_HOME_TEXT", "SET_WORK_TEXT", "others.map", "ADD_FAVORITE_TEXT", "EDIT_FAVORITES_TEXT"].map((key) => popout.indexOf(key));
   assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), "Home, Work, the rest, then Add a place and Edit");
   // Remove and Change say what they act on, for screen readers.
-  assert.match(popout, /Remove<span className="visually-hidden"> \{favoriteName\(place\)\}<\/span>/);
+  assert.match(popout, /\{t\("Remove"\)\}<span className="visually-hidden"> \{favoriteName\(place\)\}<\/span>/);
   // Food stays on the main row; Change Home leaves More signed in (Edit has it).
   assert.match(go, /places\.homeReady && !places\.signedIn &&/);
 });

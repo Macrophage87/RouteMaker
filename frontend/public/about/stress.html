@@ -592,8 +592,8 @@ change it.</li>
 <thead><tr><th scope="col">Place</th><th scope="col">Stress rating</th><th scope="col">Street facts</th><th scope="col">Traffic counts</th><th scope="col">Closures</th><th scope="col">Also</th></tr></thead>
 <tbody>
 <tr><th scope="row">District of Columbia</th><td>DDOT's LTS<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup></td><td>DC's street records: speed, lanes, one-way, bike lanes, parking</td><td>DDOT<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup></td><td>DDOT permits (Plan layer only), police and AlertDC closures, DDOT project advisories' closures, park notes<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a><a href="#ref-9" aria-label="source 9">[9]</a></sup></td><td>Pavement condition<sup class="cite"><a href="#ref-10" aria-label="source 10">[10]</a></sup>; 20 mph [32 km/h] default<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a></sup></td></tr>
-<tr><th scope="row">Montgomery County</th><td>The county's LTS<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>; Maryland's on state roads, shown in the road panel</td><td>OpenStreetMap<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup></td><td>Maryland, state roads<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup></td><td>Maryland work zones<sup class="cite"><a href="#ref-12" aria-label="source 12">[12]</a></sup></td><td>Rustic Roads on the Scenic layer</td></tr>
-<tr><th scope="row">Other Maryland counties, such as Prince George's, Howard and Anne Arundel</th><td>Maryland's LTS on state roads<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup>; the formula elsewhere</td><td>OpenStreetMap</td><td>Maryland, state roads</td><td>Maryland work zones</td><td>Scenic Byways on the Scenic layer</td></tr>
+<tr><th scope="row">Montgomery County</th><td>The county's LTS<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>; Maryland's on state roads, shown in the road panel</td><td>OpenStreetMap<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup></td><td>Maryland, state roads<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup></td><td>Maryland work zones<sup class="cite"><a href="#ref-12" aria-label="source 12">[12]</a></sup>; Purple Line construction closures</td><td>Rustic Roads on the Scenic layer</td></tr>
+<tr><th scope="row">Other Maryland counties, such as Prince George's, Howard and Anne Arundel</th><td>Maryland's LTS on state roads<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup>; the formula elsewhere</td><td>OpenStreetMap</td><td>Maryland, state roads</td><td>Maryland work zones; Purple Line construction closures (Prince George's)</td><td>Scenic Byways on the Scenic layer</td></tr>
 <tr><th scope="row">Baltimore City</th><td>Maryland's LTS on state roads; the formula elsewhere</td><td>OpenStreetMap, with the city's speeds, one-way streets, bike lanes and trails<sup class="cite"><a href="#ref-13" aria-label="source 13">[13]</a></sup></td><td>Maryland, state roads</td><td>Maryland work zones</td><td></td></tr>
 <tr><th scope="row">Virginia: Arlington, Fairfax and others</th><td>The formula</td><td>OpenStreetMap</td><td>VDOT</td><td>VDOT work zones</td><td>Arlington's and Fairfax's maps for comparison only</td></tr>
 <tr><th scope="row">City of Alexandria</th><td>The formula</td><td>OpenStreetMap, with the city's recorded speed limits<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup></td><td>VDOT</td><td>VDOT work zones</td><td></td></tr>
@@ -873,7 +873,11 @@ change it.</li>
     there at all, and routes do not use it. Examples are roads and paths inside
     military bases and secured government sites, and ways signed no bicycles. When
     it is unclear whether bikes are allowed, RouteMaker treats the way as closed. A
-    closed way can be reopened by hand when there is evidence that bikes may use it.
+    closed way can be reopened by hand when there is evidence that bikes may use it, and an open one closed
+    by hand when the owner sees on the ground that it is not a way to ride. Such a closure is loaded by hand
+    and takes effect at the map update after that. The first is a 360 ft [110 m] dirt path between houses in
+    Silver Spring, from Elkhart Street to the Grace Church Road crossing at 3rd Avenue, which OpenStreetMap maps
+    only as a path: it is closed, and no longer drawn as a trail.
     Three more kinds are closed. A farm or forest track (OpenStreetMap's
     <code>highway=track</code>) is closed when nothing shows it is public: no route number, no tag
     opening it, no name, not on a bike or hiking route and not mostly inside a park. That is about
@@ -1244,7 +1248,7 @@ change it.</li>
 <p class="next">Next: <a href="/about/routing.html">Routing</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.12.6.</p>
+  <p>Part of RouteMaker's documentation. It describes version 0.13.0.</p>
   <p><a href="/">Back to the map</a></p>
 </footer>
 </body>

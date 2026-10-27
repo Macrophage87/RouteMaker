@@ -3,15 +3,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
-import { HIGHWAY_LABEL_MIN_ZOOM, OTHER_LABEL, OTHER_LABEL_LAYER_IDS, PLACE_LABEL, PLACE_LABEL_LAYER_IDS, ROAD_LABEL, ROAD_LABEL_LAYER_IDS, placeLabelPaint, TRAIL_LABEL, TRAIL_LABEL_LAYER_ID, TRAIL_LABEL_MIN_ZOOM, contrastRatio, rideRoadLabelField, rideTrailLabelField, roadLabelPaint, stressFilters, trailLabelLayers, trailLabelPaint, withClearRoadLabels } from "./stressStyle.js";
+import { BOUNDARY_LAYER_ID, BOUNDARY_LINE, HIGHWAY_LABEL_MIN_ZOOM, OTHER_LABEL, OTHER_LABEL_LAYER_IDS, PLACE_LABEL, PLACE_LABEL_LAYER_IDS, ROAD_LABEL, ROAD_LABEL_LAYER_IDS, placeLabelPaint, TRAIL_LABEL, TRAIL_LABEL_LAYER_ID, TRAIL_LABEL_MIN_ZOOM, contrastRatio, rideRoadLabelField, rideTrailLabelField, roadLabelPaint, stressFilters, trailLabelLayers, trailLabelPaint, withClearRoadLabels } from "./stressStyle.js";
 import { setStressPalette } from "./lib/mapGlue.ts";
 
 type Layer = { id: string; type: string; layout?: Record<string, unknown>; paint?: Record<string, unknown> };
 const shipped = (strong: boolean) => withClearRoadLabels(protomapsLayers("protomaps", namedFlavor("light"), { lang: "en" }), strong) as Layer[];
 
-test("road names: both base map name layers are restyled, and only they, the place names and the other labels", () => {
-  const before = protomapsLayers("protomaps", namedFlavor("light"), { lang: "en" }) as Layer[];
-  const after = shipped(false);
+test("road names: both base map name layers are restyled, and only they, the place names, the other labels and the boundaries", () => {
+  // The state and county lines split the base map's boundaries layer in three (boundaryLines.test.ts).
+  const split = new Set([BOUNDARY_LAYER_ID, BOUNDARY_LINE.state.id, BOUNDARY_LINE.county.id]);
+  const before = (protomapsLayers("protomaps", namedFlavor("light"), { lang: "en" }) as Layer[]).filter((l) => !split.has(l.id));
+  const after = shipped(false).filter((l) => !split.has(l.id));
   assert.equal(after.length, before.length);
   for (const id of ROAD_LABEL_LAYER_IDS) assert.ok(before.some((l) => l.id === id), `${id} is in the base map`);
   after.forEach((layer, i) => {

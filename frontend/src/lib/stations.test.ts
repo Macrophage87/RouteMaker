@@ -209,7 +209,7 @@ test("the lists are in the Bikeshare panel only and a choice is forgotten with i
   );
   assert.equal((app.match(/<NearbyStations /g) ?? []).length, 1, "in one place");
   assert.match(app, /activePins\(preset, points, stationPins\)/);
-  assert.match(app, /withStations\(withWeight\(routeDials, weight\), stationChoice\)/);
+  assert.match(app, /withStations\(withSpeed\(withWeight\(routeDials, weight\), ridingSpeed\), stationChoice\)/);
   assert.doesNotMatch(app, /encodePlan\([^)]*stationPins/, "never in the link");
 });
 

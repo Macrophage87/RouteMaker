@@ -25,6 +25,7 @@
 import { formatDistance, formatFeet } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import { hexToRgb, rasterise, type Raster, type Rgb } from "./stationIcons.ts";
+import { t } from "./i18n.ts";
 
 /** "p" drinking water; "n" untreated, to filter or treat first. */
 export type WaterSource = "p" | "n";
@@ -204,21 +205,21 @@ export function waterCard(p: WaterPoint): { kind: string; name: string | null; d
 }
 
 /** The standing caution: OSM is volunteers' mapping, and taps get shut off. */
-export const WATER_CAUTION = "From OpenStreetMap: check it is working before you count on it.";
+export const WATER_CAUTION = t("From OpenStreetMap: check it is working before you count on it.");
 
 /**
  * How a Throne smart restroom opens, from Throne's own page (https://thronelabs.co/how-it-works,
  * read 2026-10-11): free, unlocked by the app, a text or a free entry card, 10 minutes a visit.
  */
 export const THRONE_DETAIL =
-  "Throne smart restroom, free: open the door with the Throne app, by texting THRONE to 202-751-3694 and then the unit number shown by the door, or with a free Throne entry card. 10-minute limit.";
+  t("Throne smart restroom, free: open the door with the Throne app, by texting THRONE to 202-751-3694 and then the unit number shown by the door, or with a free Throne entry card. 10-minute limit.");
 
 /** For a point placed from the site's street address (the Throne list's units): the pin is the site, not the door. */
 export const APPROXIMATE_DETAIL =
-  "Approximate location: placed from the site's street address, so the unit may be a block or so from the pin.";
+  t("Approximate location: placed from the site's street address, so the unit may be a block or so from the pin.");
 
 /** The caution for a unit from the Throne hand list, which is not in OpenStreetMap. */
-export const THRONE_CAUTION = "From Throne Labs and city sources, not OpenStreetMap: check the Throne app before you count on it.";
+export const THRONE_CAUTION = t("From Throne Labs and city sources, not OpenStreetMap: check the Throne app before you count on it.");
 
 /** The caution a point's card ends with. */
 export function waterCaution(p: WaterPoint): string {

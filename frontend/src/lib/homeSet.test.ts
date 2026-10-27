@@ -39,7 +39,7 @@ test("a spot on the map is Home at that spot, named by a known name, else the re
 });
 
 test("Go stays clean: the always-shown place row is still five chips, and the one line is short", () => {
-  const row = go.slice(go.indexOf('aria-label="Places"'), go.indexOf("go-more-row"));
+  const row = go.slice(go.indexOf('aria-label={t("Places")}'), go.indexOf("go-more-row"));
   // Six tags, five shown: signed in, Favorites in Home's place (lib/favoritePlaces.ts), else Home.
   assert.equal((row.match(/<button/g) ?? []).length, 6, "Home or Favorites, Food, Water, Restroom and More");
   assert.match(row, /\{places\.signedIn \? \(/);
@@ -47,7 +47,7 @@ test("Go stays clean: the always-shown place row is still five chips, and the on
   const more = go.slice(go.indexOf("go-more-row"), go.indexOf("go-home-sheet"));
   // Signed out only: signed in, Favorites' Edit has Change Home.
   assert.match(more, /\{places\.homeReady && !places\.signedIn && \([\s\S]*?\{CHANGE_HOME_TEXT\}/);
-  assert.match(go, /className="go-home-sheet" role="group" aria-label="Home" hidden=\{!homeShown\}/);
+  assert.match(go, /className="go-home-sheet" role="group" aria-label=\{t\("Home"\)\} hidden=\{!homeShown\}/);
   // One short line at most: the no-Home hint while the sheet is shut, or the pick line while picking.
   assert.ok(HOME_NOT_SET.length <= 40 && HOME_PICK_LINE.length <= 40);
   assert.match(go, /\{!places\.signedIn && !places\.homeReady && !homeShown && \(/);
@@ -80,7 +80,7 @@ test("the Home sheet offers exactly the two ways: the search and Pick on the map
   assert.equal((setter.match(/<PlaceSearch variant="home"/g) ?? []).length, 1, "the app's search box, as Settings had it");
   assert.equal((setter.match(/<button/g) ?? []).length, 2, "Pick on the map and Clear Home, nothing else");
   assert.match(setter, /\{onPickOnMap && \(\s*<button type="button" className="secondary" aria-pressed=\{picking\} onClick=\{onPickOnMap\}>[\s\S]*?\{PICK_ON_MAP_TEXT\}/);
-  assert.match(setter, /\{home && \(\s*<p className="home-now">\s*<strong>Home: <\/strong>\s*\{homeName\(home\)\}/);
+  assert.match(setter, /\{home && \(\s*<p className="home-now">\s*<strong>\{t\("Home:"\)\} <\/strong>\s*\{homeName\(home\)\}/);
   assert.match(setter, /\{home && \(\s*<button[\s\S]*?\{CLEAR_HOME_TEXT\}/);
   assert.match(setter, /\{picking && <p className="hint home-pick-line">\{HOME_PICK_LINE\}<\/p>\}/);
   assert.equal(PICK_ON_MAP_TEXT, "Pick on the map");
