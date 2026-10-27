@@ -216,7 +216,10 @@ test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a r
   const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
   // A round side button as Roam's, on while this rider leads; not once arrived.
   assert.match(rail, /\{onBroadcast && !ride\.arrived && \(\s*<button\s+type="button"\s+className=\{`ride-round broadcast-hold\$\{broadcasting \? " ride-round-on" : ""\}`\}\s+onClick=\{\(\) => void broadcast\(\)\}/);
-  assert.match(rail, /<Icon name="broadcast" size=\{24\} \/>/);
+  assert.match(rail, /<Icon name="broadcast" size=\{riders === null \? 24 : 20\} \/>/);
+  // The count of riders, the leader included, is part of Broadcast (Stephen 2026-10-27), said in its name too.
+  assert.match(rail, /\{riders !== null && \(\s*<span className="ride-round-count" aria-hidden="true">/);
+  assert.match(rail, /\$\{riders === null \? "" : `\. \$\{countText\(riders\)\}`\}/);
   // The share sheet opens inside the press: nothing awaited before onBroadcast.
   assert.match(ride, /broadcastBusy\.current = true;\s*try \{\s*const said = await onBroadcast\(\);/);
   // App: Share ride's link (shareRoute(true)), the rider its leader; no new ride started.
@@ -225,7 +228,12 @@ test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a r
   assert.doesNotMatch(fromRide, /startRide/);
   // Only the plan's own route, never Ride the rest's or a detour from Roam; one following another's link passes theirs
   // on (Stephen 2026-10-26: "allow participants to share that same code as well").
-  assert.match(app, /onBroadcast=\{!rideStart\.roam && rideStart\.route === shown && \(!\(onShared && !onShared\.own\) \|\| passesOn\) \? broadcastFromRide : null\}/);
+  assert.match(app, /onBroadcast=\{rideCanBroadcast \? broadcastFromRide : null\}/);
+  // RideGroup's count goes to Broadcast, its own riders chip left out while riding; More > Riders opens its panel.
+  assert.match(app, /riders=\{rideCanBroadcast && rideBroadcast && rideGroupLine \? rideRiders : null\}/);
+  // The panel opened from More closes by its own Close, which the idle timer presses too.
+  assert.match(source("../RideGroup.tsx"), /\{ridersElsewhere && \(\s*<button type="button" className="secondary ride-riders-close" data-idle-close aria-expanded=\{ridersOpen\}/);
+  assert.match(app, /onRiders=\{setRideRiders\}\s*ridersElsewhere=\{riding && rideCanBroadcast\}\s*ridersAsk=\{ridersAsk\}/);
   assert.match(fromRide, /const followed = followedLink\(\);\s*if \(followed\) return \(await passOn\(followed, broadcastNav\)\)\.said;/);
   assert.match(app, /broadcasting=\{rideBroadcast\?\.leading === true\}/);
 });

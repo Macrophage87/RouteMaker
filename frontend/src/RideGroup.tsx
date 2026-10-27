@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Map as MapLibreMap, MapLayerMouseEvent } from "maplibre-gl";
 import { Icon } from "./Icon.tsx";
+import { t } from "./lib/i18n.ts";
 import type { LonLat } from "./lib/geo.ts";
 import { LEADER_RING, RIDER_LAYERS, ROLE_COLOURS, roleSwatchPoints, showRideDots } from "./lib/rideDotsLayer.ts";
 import {
@@ -73,6 +74,7 @@ import {
   readRide,
   rideId,
   ridersSaid,
+  riderTotal,
   roleKey,
   roleLabel,
   roleOf,
@@ -110,6 +112,12 @@ export interface RideGroupProps {
   riding?: boolean;
   /** The route this page is riding now, re-routes included (the leader sends it to those following). */
   leaderRoute?: readonly LonLat[] | null;
+  /** Told how many are on the ride (lib/rideGroup.ts riderTotal), null once it is not shown: Ride mode's Broadcast shows it. */
+  onRiders?: ((count: number | null) => void) | null;
+  /** The count is on Ride mode's Broadcast button (Stephen 2026-10-27: "Make it part of the broadcast button"): no chip here. */
+  ridersElsewhere?: boolean;
+  /** Raised to open the riders panel from elsewhere (Ride mode's More > Riders). */
+  ridersAsk?: number;
 }
 
 const TICK_MS = 5000;
@@ -118,7 +126,7 @@ function visible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
 }
 
-export function RideGroup({ type, points, line, getMap, here, broadcast = null, riding = false, leaderRoute = null }: RideGroupProps) {
+export function RideGroup({ type, points, line, getMap, here, broadcast = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0 }: RideGroupProps) {
   const leading = broadcast?.leading === true;
   const isBroadcast = broadcast !== null;
   // The leader key a follower reads with (the leader needs none: it does not see its own dot).
@@ -347,6 +355,9 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   const alerts = read.alerts.filter((a) => a.age_s + sinceS <= 120);
   // The key: the ride leader under "Ride leader" only, the others by role (lib/rideGroup.ts roleKey).
   const roleRows = roleKey(dots);
+  // Everyone on the ride, the leader and this rider (where the others see them) included.
+  const meShown = leading || shareOn;
+  const riders = riderTotal(dots, meShown);
   const leaderInKey = dots.some((d) => d.leader);
 
   // Following the leader: the leader's dot, the path it has taken since this page opened, and the map kept on it.
@@ -444,6 +455,24 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     else void send(kind);
   };
 
+  const ridersReport = useRef(onRiders);
+  ridersReport.current = onRiders;
+  const ridersShown = ride ? riders : null;
+  useEffect(() => {
+    ridersReport.current?.(ridersShown);
+  }, [ridersShown]);
+  useEffect(() => () => ridersReport.current?.(null), []);
+  const openRiders = () => {
+    setRidersOpen(true);
+    setRidersSaidText(ridersSaid(dots, myAlong, noLine ? { here: me } : null, meShown));
+  };
+  const ridersAsked = useRef(ridersAsk);
+  useEffect(() => {
+    if (ridersAsk === ridersAsked.current) return;
+    ridersAsked.current = ridersAsk;
+    openRiders();
+  });
+
   if (!ride) return null;
   return (
     <div className="ride-group">
@@ -477,19 +506,24 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
         </div>
       )}
       <div className="ride-group-bar">
-        <button type="button" className="chip ride-riders" aria-expanded={ridersOpen} data-idle-close aria-controls={ridersPanel} onClick={() => {
-          setRidersOpen(!ridersOpen);
-          if (!ridersOpen) setRidersSaidText(ridersSaid(dots, myAlong, noLine ? { here: me } : null));
-        }}>
-          <Icon name="user" size={18} />
-          {countText(dots.length, !noLine)}
-        </button>
+        {!ridersElsewhere && (
+          <button type="button" className="chip ride-riders" aria-expanded={ridersOpen} data-idle-close aria-controls={ridersPanel} onClick={() => (ridersOpen ? setRidersOpen(false) : openRiders())}>
+            <Icon name="user" size={18} />
+            {countText(riders, !noLine)}
+          </button>
+        )}
         <button type="button" className="chip ride-alert-button" aria-expanded={alertOpen} data-idle-close aria-controls={alertPanel} aria-describedby={`${alertPanel}-note`} onClick={() => setAlertOpen(!alertOpen)}>
           <Icon name="warn" size={18} />
           {ALERT_LABEL}
         </button>
       </div>
       <div id={ridersPanel} className="ride-riders-panel" hidden={!ridersOpen}>
+        {/* Opened from More > Riders, with no chip to close it: its own Close (the idle timer presses it too). */}
+        {ridersElsewhere && (
+          <button type="button" className="secondary ride-riders-close" data-idle-close aria-expanded={ridersOpen} aria-controls={ridersPanel} onClick={() => setRidersOpen(false)}>
+            {t("Close")}
+          </button>
+        )}
         <p role="status">{ridersSaidText}</p>
         {dotInfo && <p className="hint">{dotInfo}</p>}
         {followKey && (

@@ -938,6 +938,9 @@ export function App() {
   const [roaming, setRoaming] = useState(false);
   const [roamRider, setRoamRider] = useState<{ point: LonLat; headingDeg: number | null; accuracyM: number } | null>(null);
   const onBike = riding || roaming;
+  // How many are on the ride's broadcast (RideGroup's count), shown in Ride mode's Broadcast; More > Riders opens its panel.
+  const [rideRiders, setRideRiders] = useState<number | null>(null);
+  const [ridersAsk, setRidersAsk] = useState(0);
   // What the ride started from, captured at Start ride: the ride never follows the planner's own route,
   // which a failed or changed plan could take away mid-ride.
   // On a Bikeshare or transit plan, the points, loop and ride type are the riding leg's (lib/rideTrip.ts
@@ -5036,6 +5039,9 @@ export function App() {
   // Following a broadcast whose link this page opened: Broadcast passes that link on (followedLink).
   const passesOn = onShared !== null && !onShared.own && !!onShared.lead && SHARED_LINK !== null && onShared.id === SHARED_ID;
   const rideBroadcast = onShared?.ride && onShared.id && onShared.lead ? { id: onShared.id, lead: onShared.lead, leading: onShared.own === true } : null;
+  // Ride mode's Broadcast: the plan's own route only (its link is the plan's), not Ride the rest's or a detour from Roam; a
+  // ride opened from someone else's link only where it is their broadcast, passed on as it is (Stephen 2026-10-26).
+  const rideCanBroadcast = !!rideStart && !rideStart.roam && rideStart.route === shown && (!(onShared && !onShared.own) || passesOn);
   // While leading a broadcast from Roam, its own riders' group is the only one (a Group Ride detour starts none).
   const rideGroupLine =
     !roamBroadcast?.leading && (goMode || riding || (rideBroadcast && !rideBroadcast.leading)) && rideGroupType && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
@@ -5215,6 +5221,9 @@ export function App() {
           here={rideView?.rider?.point ?? (here ? here.point : null)}
           broadcast={rideBroadcast}
           riding={riding}
+          onRiders={setRideRiders}
+          ridersElsewhere={riding && rideCanBroadcast}
+          ridersAsk={ridersAsk}
           leaderRoute={rideBroadcast?.leading ? ((riding && rideView ? rideView.route : shown)?.geometry.coordinates as LonLat[] | undefined) : null}
         />
       )}
@@ -5465,12 +5474,12 @@ export function App() {
           trailMiles={trailMiles}
           keepLastRide={isStandalone()}
           fixed={rideStart.fixed}
-          // The plan's own route only (its link is the plan's), not Ride the rest's or a detour from Roam; a ride opened
-          // from someone else's link only where it is their broadcast, passed on as it is (Stephen 2026-10-26).
-          onBroadcast={!rideStart.roam && rideStart.route === shown && (!(onShared && !onShared.own) || passesOn) ? broadcastFromRide : null}
-          onBroadcastHold={!rideStart.roam && rideStart.route === shown && (!(onShared && !onShared.own) || passesOn) ? broadcastQrFromRide : null}
+          onBroadcast={rideCanBroadcast ? broadcastFromRide : null}
+          onBroadcastHold={rideCanBroadcast ? broadcastQrFromRide : null}
           passingOn={passesOn}
           broadcasting={rideBroadcast?.leading === true}
+          riders={rideCanBroadcast && rideBroadcast && rideGroupLine ? rideRiders : null}
+          onRiders={rideCanBroadcast && rideGroupLine ? () => setRidersAsk((n) => n + 1) : null}
           keepLeft={rideStart.kept === true}
           startNote={rideStart.note}
         />
