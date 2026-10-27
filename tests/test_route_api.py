@@ -816,9 +816,7 @@ class TestTheRoutersOwnAlternatives:
         assert len(asks) == 1
         assert body["calm_search"]["alternates"]["limited"] is None
 
-    def test_nor_at_the_top_of_the_slider_within_the_target(
-        self, client, segments, router
-    ) -> None:
+    def test_nor_at_the_top_of_the_slider_within_the_target(self, client, segments, router) -> None:
         """A max-calm plan whose route is within its target (none is set here) searches
         from the plan's own request, so its alternatives are not asked for again."""
         fake = router(standard_router())
