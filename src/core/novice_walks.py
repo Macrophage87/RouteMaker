@@ -20,6 +20,7 @@ from collections.abc import Callable
 
 from routemaker.describe import point_words
 from routemaker.geo import Point, haversine
+from routemaker.lang import t
 
 # Real LTS 4, 4.5 and Avoid (the stress keys "4" and "5"): what a Novice walks past. LTS 3
 # is ridden, read one level up as it already is (`presets.EXPOSURE_NOVICE`).
@@ -167,12 +168,15 @@ def _distance_words(metres: float) -> str:
 def line(found: dict) -> str:
     """The directions' line: "At 1.2 mi (1.9 km): walk your bike on the sidewalk along
     Redland Road for 0.3 mi (480 m), about 6 min. The road is too busy to ride." """
-    road = found["road"] or "the busy road"
+    road = found["road"] or t("the busy road")
     minutes = max(1, round(found["duration_s"] / 60))
-    return (
-        f"At {point_words(found['from_m'])}: walk your bike on the sidewalk along {road} "
-        f"for {_distance_words(found['distance_m'])}, about {minutes} min. "
-        "The road is too busy to ride."
+    return t(
+        "At {where}: walk your bike on the sidewalk along {road} for {distance}, about"
+        " {minutes} min. The road is too busy to ride.",
+        where=point_words(found["from_m"]),
+        road=road,
+        distance=_distance_words(found["distance_m"]),
+        minutes=minutes,
     )
 
 

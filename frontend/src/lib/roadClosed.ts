@@ -17,18 +17,19 @@
  */
 import type { LonLat } from "./geo.ts";
 import { offThreshold, pointAt, snap, type RideModel } from "./navigate.ts";
+import { t } from "./i18n.ts";
 
 /** The ride top row's button's name, for screen readers and as its tooltip. */
-export const ROAD_CLOSED_NAME = "Road closed ahead";
+export const ROAD_CLOSED_NAME = t("Road closed ahead");
 /** Its shown words in the ride's top row (the name keeps "ahead"; WCAG 2.5.3, the words start the name). */
-export const ROAD_CLOSED_TEXT = "Road closed";
+export const ROAD_CLOSED_TEXT = t("Road closed");
 /** Said on the press, while the way round is looked for. */
-export const ROAD_CLOSED_FINDING = "Road closed. Finding a way round.";
+export const ROAD_CLOSED_FINDING = t("Road closed. Finding a way round.");
 /** Said where there is no place on the route or heading to tell which road is meant. */
-export const ROAD_CLOSED_NO_PLACE = "Not sure which road is closed yet. Try again once moving.";
+export const ROAD_CLOSED_NO_PLACE = t("Not sure which road is closed yet. Try again once moving.");
 /** Said on taking the other line: the standard way through a marked closure, or back to its detour. */
-export const ON_STANDARD_SAID = "On the standard route through the marked closure.";
-export const ON_DETOUR_SAID = "On the detour.";
+export const ON_STANDARD_SAID = t("On the standard route through the marked closure.");
+export const ON_DETOUR_SAID = t("On the detour.");
 
 /**
  * The closed stretch starts this far ahead of the rider: the router leaves out every road the strip touches, so a

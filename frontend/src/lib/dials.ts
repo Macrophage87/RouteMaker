@@ -12,6 +12,7 @@
 import type { LonLat } from "./geo.ts";
 import { isTransit, usesBikeshare, type PresetId } from "./presets.ts";
 import { DEFAULT_MTB_LEVEL, defaultMtbPreferred, fitMtbLevel, mtbLevelOf, mtbPreferredOf } from "./mtbMode.ts";
+import { t } from "./i18n.ts";
 
 export type When = "weekend" | "weekday_rush" | "weekday_offpeak" | "night";
 export type Carrying = "cargo" | "people";
@@ -58,6 +59,11 @@ export interface Dials {
    * `PASSENGERS_WEIGHT_KG` for Cargo with passengers).
    */
   systemWeightKg?: number;
+  /**
+   * The rider's own riding speed (lib/ridingSpeed.ts), in km/h: the pace the route is timed at instead of the
+   * ride type's. Added to the request only (App's planDials), never the link; absent is the ride type's own.
+   */
+  ridingSpeedKmh?: number;
   /** "Make it a loop" (OWNER-DECISIONS 266); a ride ending where it starts is one without it. */
   loop?: boolean;
   /**
@@ -433,6 +439,7 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   const weight = fitWeight(dials.systemWeightKg);
   // The API takes whole kilograms (core.api, StrictInt).
   if (weight !== undefined) fields.system_weight_kg = Math.round(weight);
+  if (typeof dials.ridingSpeedKmh === "number" && Number.isFinite(dials.ridingSpeedKmh)) fields.cycling_speed_kmh = dials.ridingSpeedKmh;
   if (dials.loop) fields.loop = true;
   // Mountain Bike's level (fitDials keeps it on that ride type alone); absent is level 2.
   const level = fitMtbLevel(dials.mtbLevel);
@@ -460,7 +467,7 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
  * say so.
  */
 export const TRAFFIC_TOLERANT_MAX = 10;
-export const TRAFFIC_TOLERANT_WARNING = "Traffic tolerant: this route may use busy, fast roads.";
+export const TRAFFIC_TOLERANT_WARNING = t("Traffic tolerant: this route may use busy, fast roads.");
 
 /** Whether a position warns: the bottom of the slider, on a ride type whose slider moves. */
 export function warnsTrafficTolerant(preset: PresetId, stress: number): boolean {

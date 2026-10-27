@@ -280,6 +280,9 @@ test("a reviewer's closure gets one marker on its middle piece with no route, an
   // A DDOT project advisory's lines (v0.12.4) are one closure too.
   const lanes = [0, 1].map((i) => item({ id: `ddot_advisory-connave-deckover-${i}`, source: "ddot_advisory", effect: "none", can_bypass: false }));
   assert.equal(markerItems(lanes).length, 1);
+  // So are a Purple Line update's (v0.13.0).
+  const blocks = [0, 1].map((i) => item({ id: `purple_line-bonifant-west-${i}`, source: "purple_line", effect: "none", can_bypass: false }));
+  assert.equal(markerItems(blocks).length, 1);
   const onRoute = pieces.map((p) => ({ ...p, effect: "routed_round" as const, can_bypass: true }));
   assert.equal(markerItems(onRoute).length, 5);
 });

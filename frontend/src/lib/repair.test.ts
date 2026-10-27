@@ -107,10 +107,10 @@ test("the map shows stands only (shops are in the list), and carries no names", 
 
 test("Go: Metro, Repair and Sights sit behind More, with its expanded state said", () => {
   const go = readFileSync(new URL("../app/Go.tsx", import.meta.url), "utf8");
-  const row = go.slice(go.indexOf('aria-label="Places"'), go.indexOf('aria-label="More places"'));
+  const row = go.slice(go.indexOf('aria-label={t("Places")}'), go.indexOf('aria-label={t("More places")}'));
   assert.ok(!/Metro|Repair|Sights/.test(row), "the main row stays Home, Food, Water, Restroom, More");
   assert.match(go, /aria-expanded=\{moreOpen\} aria-controls=\{moreId\}/);
-  assert.match(go, /id=\{moreId\}[^>]*aria-label="More places" hidden=\{!moreOpen\}/);
+  assert.match(go, /id=\{moreId\}[^>]*aria-label=\{t\("More places"\)\} hidden=\{!moreOpen\}/);
   assert.match(go, /places\.onMetro[\s\S]*Metro[\s\S]*places\.onRepair[\s\S]*Repair[\s\S]*places\.onSights[\s\S]*Sights/);
   // Metro opens Nearest on its Metro list (the same search, count and WMATA badges as Nearest's own Metro button).
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");

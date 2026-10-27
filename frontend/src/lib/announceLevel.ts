@@ -10,6 +10,7 @@
  */
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
 import type { AppMode } from "./appMode.ts";
+import { t } from "./i18n.ts";
 
 export type AnnounceLevel = "brief" | "full";
 /** The stored choice: "" is unset (by view). */
@@ -22,7 +23,7 @@ export const ANNOUNCE_LABEL: Record<AnnounceLevel, string> = {
   full: "Full: also what the app is doing",
 };
 
-export const ANNOUNCE_HINT = "What screen readers are told. Unset, Go is brief and Plan is full. Routes, guidance and errors are always said.";
+export const ANNOUNCE_HINT = t("What screen readers are told. Unset, Go is brief and Plan is full. Routes, guidance and errors are always said.");
 
 export function readAnnounceChoice(store: KeyValueStore | null = browserStore()): AnnounceChoice {
   try {
