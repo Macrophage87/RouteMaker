@@ -1063,6 +1063,24 @@ AVOID_GRAVEL_SURFACES = 0.9
 VALHALLA_DEFAULT_SPEED_KMH = {"Road": 25.0, "Cross": 20.0, "Hybrid": 18.0, "Mountain": 16.0}
 
 
+# The rider's own riding speed (the owner, 2026-10-27: "Some people who ride much faster than
+# the defaults would like to be able to override the speed as an advanced feature"), set once in
+# Settings: Valhalla's `cycling_speed`, the flat-ground pace its grade model, and so every time
+# and arrival estimate, starts from. The range is Settings' picker, 5 to 31 mph, inside
+# Valhalla's own bounds for the bicycle costing.
+RIDER_SPEED_MIN_KMH = 8.0
+RIDER_SPEED_MAX_KMH = 50.0
+
+
+def rider_speed(name: str, kmh: float | None) -> float | None:
+    """The pace a ride of preset `name` is planned at for a rider who set `kmh`, or None for the
+    ride type's own. Mass Ride keeps its speed band (the field rides at the group's pace), and a
+    share bike its own pace (`BIKESHARE_BIKES`): neither is the rider's own bike."""
+    if kmh is None or name == "mass-ride" or name in BIKESHARE_PRESETS or name == BIKESHARE_TRANSIT:
+        return None
+    return min(RIDER_SPEED_MAX_KMH, max(RIDER_SPEED_MIN_KMH, float(kmh)))
+
+
 def costing(
     name: str,
     stress: int | None = None,

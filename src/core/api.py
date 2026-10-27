@@ -305,6 +305,17 @@ class RouteIn(Schema):
             " system pays more for a climb. Absent: 90, or 120 for Cargo with passengers."
         ),
     )
+    cycling_speed_kmh: float | None = Field(
+        default=None,
+        ge=presets.RIDER_SPEED_MIN_KMH,
+        le=presets.RIDER_SPEED_MAX_KMH,
+        description=(
+            "The rider's own riding speed on the flat, in km/h (Settings' Riding speed): the"
+            " pace the route is timed at instead of the ride type's, hills and junction waits"
+            " still counted. Ignored on Mass Ride (its speed band) and on a share bike."
+            " Absent: the ride type's own."
+        ),
+    )
     debug_junctions: StrictBool = Field(
         default=False,
         description=(
@@ -3657,6 +3668,10 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         if stress is None:
             stress = presets.stress_start(leg_preset, body.carrying)
         candidate_costing = presets.costing(leg_preset, stress, body.hills)
+    # The rider's own pace (Settings' Riding speed), so the trips are ranked as they are timed.
+    own_speed = presets.rider_speed(body.preset, body.cycling_speed_kmh)
+    if own_speed is not None:
+        candidate_costing["bicycle"]["cycling_speed"] = own_speed
     services = transit.RoutingServices(
         candidates_until,
         leg_preset,
@@ -3675,7 +3690,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             found.notes.insert(0, share_note)
     else:
         options = presets.costing(body.preset)["bicycle"]
-        speed = options.get(
+        speed = presets.rider_speed(body.preset, body.cycling_speed_kmh) or options.get(
             "cycling_speed",
             presets.VALHALLA_DEFAULT_SPEED_KMH[options.get("bicycle_type", "Hybrid")],
         )
@@ -3703,7 +3718,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         # The lines are priced as the candidates were (`leg_costing`): a share bike priced as
         # Novice keeps the share bike's pace, so the trip is timed again (retime) at it.
         cycling_speed_kmh=(
-            leg_costing["bicycle"]["cycling_speed"] if leg_costing is not None else None
+            leg_costing["bicycle"]["cycling_speed"] if leg_costing is not None else own_speed
         ),
         # A trip's lines say no walks past busy stretches (`core.novice_walks`): the trip is
         # how Novice and Nervous gets past them here.
@@ -4405,6 +4420,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         trails_off=body.trails_off,
         target_distance_m=body.target_distance_m,
         system_weight_kg=body.system_weight_kg,
+        cycling_speed_kmh=presets.rider_speed(body.preset, body.cycling_speed_kmh),
         loop=body.loop,
         debug_junctions=body.debug_junctions,
         mtb_level=body.mtb_level,

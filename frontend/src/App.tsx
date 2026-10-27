@@ -104,6 +104,7 @@ import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, ty
 import { bikeshareOf } from "./lib/bikeshare.ts";
 import { carries, hillsWords, seeksClimbs, startDials, stressMax, stressWords, trailsAreOff, type Dials } from "./lib/dials.ts";
 import { WeightStore, defaultSplit, withWeight, type StoredWeight } from "./lib/weight.ts";
+import { readSpeed, withSpeed, writeSpeed } from "./lib/ridingSpeed.ts";
 import { stationEdit, stationMoves, stationPlaceLabel, stationPlaceName, type RailVisibility, type Station, type StationRole } from "./lib/railStations.ts";
 import { legFrom, lonLatKey, quickerWayIn, wayInChecks, wayInKey, wayInPlaces, wayInSaid, type WayInMove } from "./lib/stationWayIn.ts";
 import { RAIL_STATIONS, WMATA_SLUGS, stationEntranceForPlace } from "./lib/railData.ts";
@@ -461,6 +462,8 @@ export function App() {
   const weightStore = useRef<WeightStore | null>(null);
   if (weightStore.current === null) weightStore.current = new WeightStore();
   const [weight, setWeight] = useState<StoredWeight | null>(() => weightStore.current?.load() ?? null);
+  // The rider's riding speed (lib/ridingSpeed.ts), in Settings: like the weight, added only to the request.
+  const [ridingSpeed, setRidingSpeed] = useState<number | null>(() => readSpeed());
   // The stations the rider chose from the nearest-stations lists (OWNER-DECISIONS 466a), each
   // forgotten when its point moves; added to the request only, never to the link.
   const [stationPins, setStationPins] = useState<Pins>({});
@@ -486,12 +489,12 @@ export function App() {
   // lib/dials.ts closuresNow); Plan keeps them, for planning a later ride. Start ride and a ride's re-plans set it too.
   const goNow = mode === "go";
   const planDials = useMemo(() => {
-    const base = withTransitOption(withStations(withWeight(routeDials, weight), stationChoice), preset, transitPick, trip);
+    const base = withTransitOption(withStations(withSpeed(withWeight(routeDials, weight), ridingSpeed), stationChoice), preset, transitPick, trip);
     const made = noviceHopPick?.trip === trip && base.noviceLegs ? { ...base, noviceHop: noviceHopPick.hop } : base;
     const now = goNow ? { ...made, closuresNow: true } : made;
     return bypassIds.length ? { ...now, closureBypass: bypassIds } : now;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the ids' text, not the array
-  }, [routeKey, weight, stationChoice, preset, transitPick, trip, bypassKey, goNow, noviceHopPick]);
+  }, [routeKey, weight, ridingSpeed, stationChoice, preset, transitPick, trip, bypassKey, goNow, noviceHopPick]);
   // Everything the request is made from, as a key (v0.7.0): in Plan a station or a transit option chosen, a
   // weight or a slider moved, all mark the plan changed until Route or Update route.
   // The key leaves closuresNow out: switching between Go and Plan keeps the route (changeMode), not marked changed.
@@ -1528,6 +1531,7 @@ export function App() {
         weightStore.current?.save(step.doc.weight);
         setWeight(step.doc.weight);
       }
+      if (step.doc.speed !== undefined) setRidingSpeed(step.doc.speed);
       lastSettings.current = step.doc;
       setWaterPrefsState(readWaterPrefs());
       setClimbsOnState(readClimbsOn());
@@ -3266,7 +3270,7 @@ export function App() {
       void saveSettings(window.location.origin, doc);
     }, SAVE_SETTLE_MS);
     return () => window.clearTimeout(timer);
-  }, [me.signed_in, settingsSynced, preset, dials, waterPrefs, climbsOn, climbsFrom, showTopoLines, favoriteRides, weight]);
+  }, [me.signed_in, settingsSynced, preset, dials, waterPrefs, climbsOn, climbsFrom, showTopoLines, favoriteRides, weight, ridingSpeed]);
   const answerHome = (move: boolean) => {
     const offer = homeAsk;
     if (!offer) return;
@@ -5018,6 +5022,14 @@ export function App() {
       <RideSection key="presets"
         {...{
           preset, dials, choosePreset, commitDials, route, typeCard: mode !== "go",
+          // The rider's own speed, under Hills (the owner, 2026-10-27: "next to hill speed or max grade").
+          ridingSpeed: {
+            mph: ridingSpeed,
+            onChange: (mph: number | null) => {
+              writeSpeed(mph);
+              setRidingSpeed(mph);
+            },
+          },
         }}
       />
     ),
