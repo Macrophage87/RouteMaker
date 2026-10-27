@@ -712,6 +712,13 @@ function thenWords(then: JogTurn, crossing = false): string {
   return crossing ? t(", then {turn}", { turn }) : t(", then immediately {turn}", { turn });
 }
 
+/** A jog's turns without their streets: "Right, then immediately bear left, then immediately left."; "Cross Redland Road, then left." after a crossing. */
+function jogShortWords(cue: Cue): string {
+  const lead = cue.cross ? crossWords(cue.cross) : turnWords(cue.movement!, null, false, cue.exit ?? null);
+  const then = (cue.then ?? []).map((turn, n) => thenWords({ ...turn, street: null, stay: false }, n === 0 && cue.cross !== undefined).replace(/\.$/, ""));
+  return lead.replace(/\.$/, "") + then.join("") + ".";
+}
+
 /**
  * A jog: each turn within JOG_M after the one before (up to JOG_TURNS in all) is said with the first, its text
  * "Right onto 6th Street, then immediately bear left onto ...". The later turns are kept (`joined`) for the card and
@@ -941,7 +948,10 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
   }
   // A turn at a flagged junction says so in its first warning only; "now" is the turn alone.
   const busy = cue.kind === "turn" && (cue.severity === "orange" || cue.severity === "red") && first;
-  const said = t("In {distance}, {cue}", { distance: spokenDistance(distanceM), cue: lowerFirst(withoutMetric(cue.rideText ?? cue.text)) });
+  // A jog's reminder about 10 s out is its turns without the streets, said at the advance cue and on the card, so the
+  // urgent "now" does not cut off its last turns; in full when it is the first thing said for the cue.
+  const text = phase === "prepare" && !first && cue.then?.length && cue.movement ? jogShortWords(cue) : withoutMetric(cue.rideText ?? cue.text);
+  const said = t("In {distance}, {cue}", { distance: spokenDistance(distanceM), cue: lowerFirst(text) });
   return busy ? `${said} ${t("Busy junction.")}` : said;
 }
 
