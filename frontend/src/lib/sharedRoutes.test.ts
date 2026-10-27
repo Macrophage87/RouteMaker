@@ -187,7 +187,7 @@ test("App: Share keeps the exact line and attaches the file Download GPX saves; 
   const share = app.slice(app.indexOf("const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav): Promise<{ led: boolean; said: string }> => {"), app.indexOf("\n  };\n", app.indexOf("const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav): Promise<{ led: boolean; said: string }> => {")));
   assert.match(share, /const content = withGpxFile\(nav, shareContent\(link, distanceM, presetSaid\(preset\)\), file\);/);
   // The link is made in sharedLinkNow, which Share as image's QR code uses too (lib/shareCard.ts).
-  assert.match(share, /const now = sharedLinkNow\(\);\s*const \{ kept, exact \} = now;/);
+  assert.match(share, /const now = again \? null : sharedLinkNow\(\);\s*const kept = again \? Promise\.resolve\(true\) : now!\.kept;\s*const exact = again \? null : now!\.exact;/);
   const linkNow = app.slice(app.indexOf("const sharedLinkNow = () => {"), app.indexOf("\n  };\n", app.indexOf("const sharedLinkNow = () => {")));
   assert.match(linkNow, /kept = before\?\.kept \?\? storeShared\(origin, body!\.json\);/);
   assert.match(linkNow, /const body = before \? null : sharedBody\(id, exact\.save, shareKeep, previewImageOk\(exact\.save\.line, exact\.save\.inputs\.points, myGo\.home, me\.signed_in\)\);/);
@@ -205,11 +205,11 @@ test("App: a shared link's line opens as a saved route does, before the link's f
   const send = app.slice(app.indexOf("send: async (plan) => {"), app.indexOf("const saved = savedShown.current;"));
   assert.match(send, /if \(SHARED_WAIT\) await SHARED_WAIT;/);
   const open = app.slice(app.indexOf("void readShared(origin, SHARED_ID)"), app.indexOf("sharedArrived();"));
-  assert.match(open, /openSaved\(shared, SHARED_OPENED\(shared\.name\)\);/);
+  assert.match(open, /openSaved\(shared, SHARED_OPENED\(shared\.name\), !\(SHARED_RIDE && SHARED_LEAD && shared\.answer\)\);/);
   assert.match(open, /setSharedNote\(SHARED_GONE\);/);
   // openSaved runs the closure check on the line as kept, and keeps the inputs for Update route.
   const opened = app.slice(app.indexOf("const openSaved = ("), app.indexOf("const exportSaved = "));
-  assert.match(opened, /void checkThen\("open", saved\.line, false, \(\) => \{\}\);/);
+  assert.match(opened, /if \(check\) void checkThen\("open", saved\.line, false, \(\) => \{\}\);/);
   assert.match(opened, /differsTooMuch\(saved\.distance_m, today\.route\.distance_m\)/);
   // Start ride checks the line about to be ridden.
   // Review F1: through a callback that carries on the voice the press unlocked.
@@ -298,7 +298,7 @@ test("the owner's links: listed, turned off and replaced with the CSRF token, in
   const appFile = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(appFile, /sharedLinks: mode === "plan", onSharedChange: forgetSharedLine/);
   // After Turn off or New link, Share forgets the id it gave, so it never hands out a dead link.
-  assert.match(appFile, /const forgetSharedLine = \(\) => \{\s*sharedLine\.current = null;\s*\};/);
+  assert.match(appFile, /const forgetSharedLine = \(\) => \{\s*sharedLine\.current = null;\s*rideLinkSent\.current = null;\s*\};/);
   const mine = readFileSync(new URL("../MyRoutes.tsx", import.meta.url), "utf8");
   assert.match(mine, /\{sharedLinks && <SharedLinks version=\{version\} announce=\{announce\} onChange=\{onSharedChange\} \/>\}/);
   assert.match(mine, /if \(turningOff !== l\.id\) \{\s*setTurningOff\(l\.id\);\s*return;/);
