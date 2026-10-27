@@ -104,7 +104,8 @@ test("nothing in the app writes a unit but this module", async () => {
     for (const name of readdirSync(dir)) {
       const path = join(dir, name);
       if (statSync(path).isDirectory()) {
-        if (name !== "rail-data" && name !== "licences") walk(path);
+        // The language lists (src/i18n) hold this module's own unit words, translated (lib/i18n.ts).
+        if (name !== "rail-data" && name !== "licences" && name !== "i18n") walk(path);
         continue;
       }
       if (!/\.(ts|tsx)$/.test(name) || /\.test\./.test(name) || name === "format.ts") continue;

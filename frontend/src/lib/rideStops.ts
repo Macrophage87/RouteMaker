@@ -7,6 +7,7 @@
 import type { LonLat } from "./geo.ts";
 import { ARRIVE_M, type RideModel } from "./navigate.ts";
 import type { RideStopMark } from "./pointKinds.ts";
+import { t } from "./i18n.ts";
 
 /** The Skip bubble's name beside More: "Skip stop 2, Union Market"; on screen its symbol and the stop's number. */
 export function skipStopName(stop: Pick<RideStopMark, "number" | "name">): string {
@@ -18,7 +19,7 @@ export function stopWords(stop: Pick<RideStopMark, "number" | "name">): string {
   return stop.name ? `Stop ${stop.number}, ${stop.name}` : `Stop ${stop.number}`;
 }
 
-export const SKIP_STOP = "Skip this stop";
+export const SKIP_STOP = t("Skip this stop");
 
 /** Said as Skip this stop is pressed. */
 export function skippingSaid(stop: RideStopMark): string {
@@ -62,8 +63,8 @@ export interface RestartStop {
   passed: boolean;
 }
 
-export const RESTART_HEADING = "Already done?";
-export const RESTART_LEAD = "Ticked stops are skipped. Untick one to go back to it.";
+export const RESTART_HEADING = t("Already done?");
+export const RESTART_LEAD = t("Ticked stops are skipped. Untick one to go back to it.");
 export const RESTART_CONTINUE = "Continue";
 
 /** Said as the question shows. */

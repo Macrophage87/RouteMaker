@@ -10,6 +10,7 @@
  */
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
 import type { Verbosity } from "./navigate.ts";
+import { speechLang, t } from "./i18n.ts";
 
 // ---- The rider's choices, kept on this device -----------------------------------------------------
 
@@ -98,10 +99,10 @@ export type RideTextSize = "normal" | "large";
 /** Kept under Big text's old key, so a rider who had Big text on ("1") gets Large. */
 export const BIG_TEXT_KEY = "routemaker.ride.bigText";
 /** The Settings page's switch and the ride button's name, and what its (i) says. */
-export const RIDE_TEXT_LABEL = "Large text during a ride";
-export const RIDE_TEXT_BUTTON = "Large text";
+export const RIDE_TEXT_LABEL = t("Large text during a ride");
+export const RIDE_TEXT_BUTTON = t("Large text");
 export const RIDE_TEXT_HELP =
-  "The next turn as big as it fits on the top half of the screen, the map below, for bright sun or near sight. The Large text button in a ride turns it on and off too. Kept on this device.";
+  t("The next turn as big as it fits on the top half of the screen, the map below, for bright sun or near sight. The Large text button in a ride turns it on and off too. Kept on this device.");
 
 export function readRideText(store: KeyValueStore | null = browserStore()): RideTextSize {
   try {
@@ -299,7 +300,7 @@ export class Voice {
 
   private start(text: string): void {
     const utterance = this.env.utterance(text);
-    utterance.lang = "en-US";
+    utterance.lang = speechLang();
     utterance.onend = () => {
       const next = this.waiting;
       this.waiting = null;
@@ -331,11 +332,11 @@ export function browserWake(): WakeEnv {
 
 /** What the rider is told when the screen may turn off. */
 export const WAKE_UNAVAILABLE =
-  "This browser cannot keep the screen on. Keep your screen on yourself for this ride (on an iPhone: Settings, Display and Brightness, Auto-Lock, Never).";
+  t("This browser cannot keep the screen on. Keep your screen on yourself for this ride (on an iPhone: Settings, Display and Brightness, Auto-Lock, Never).");
 
 /** Said instead when the screen was kept on earlier in the ride and the browser stopped (review RIDE-8). */
 export const WAKE_LOST =
-  "The screen may now turn off: the browser stopped keeping it on. Keep your screen on yourself for this ride (on an iPhone: Settings, Display and Brightness, Auto-Lock, Never).";
+  t("The screen may now turn off: the browser stopped keeping it on. Keep your screen on yourself for this ride (on an iPhone: Settings, Display and Brightness, Auto-Lock, Never).");
 
 /** How many times a ride asks again for a lock the browser let go in front, before it stops asking. */
 export const WAKE_REASKS = 3;

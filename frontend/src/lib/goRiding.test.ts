@@ -32,7 +32,7 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   assert.match(top, /<h2 id="ride-heading"/);
   // The owner, 2026-10-16 ("add a method of ending navigation"): the visible words are End ride, so its name is too.
   assert.match(top, /<button type="button" className="danger ride-end" onClick=\{end\}>\s*<Icon name="stop" size=\{22\} \/>\s*\{END_RIDE_NAME\}\s*<\/button>/);
-  assert.match(ride, /export const END_RIDE_NAME = "End ride";/);
+  assert.match(ride, /export const END_RIDE_NAME = t\("End ride"\);/);
   // End ride stops the ride at once: the watch, the queued words and the voice, then App's endRide.
   const end = ride.slice(ride.indexOf("  const end = () => {"), ride.indexOf("  const keep = () => {"));
   assert.match(end, /ended\.current = true;\s*stopWatch\.current\?\.\(\);\s*stopWatch\.current = null;\s*announcer\.current\?\.drop\(\);\s*rideVoice\.stop\(\);/);
@@ -115,7 +115,7 @@ test("F1. Start unlocks the voice synchronously in the press, before the closure
   assert.match(app, /if \(!unlocked\) startRideGesture\(prefs\);/);
   // A slow check is said politely.
   assert.match(start, /window\.setTimeout\(\(\) => announce\(CHECKING_CLOSURES\), CLOSURE_SLOW_MS\)/);
-  assert.match(ride, /export const CHECKING_CLOSURES = "Checking closures…";/);
+  assert.match(ride, /export const CHECKING_CLOSURES = t\("Checking closures…"\);/);
 });
 
 test("Ride settings in reach: More at the end of the side buttons opens them just under the top row (the owner, 2026-10-18; More 2026-10-24)", () => {
@@ -199,13 +199,13 @@ test("End ride is slid until the rider has arrived (the owner, 2026-10-19: \"Add
   assert.match(slide, /onPointerUp=\{\(\) => \{\s*if \(last\.current < 100\) back\(\);/);
   assert.match(ride, /const slideHint = \(\) => \{\s*showToast\(SLIDE_TO_END_HINT\);\s*announcer\.current\?\.answer\(SLIDE_TO_END_HINT\);/);
   // The light times take the corner inside the heading, which stays Ride mode for screen readers; the times said in words after it.
-  assert.match(top, /className=\{light \? "ride-heading ride-light" : "ride-heading"\}>\s*\{light \? \(\s*<>\s*<span className="visually-hidden">Ride mode<\/span>\s*<span className="ride-light-lines" aria-hidden="true">/);
+  assert.match(top, /className=\{light \? "ride-heading ride-light" : "ride-heading"\}>\s*\{light \? \(\s*<>\s*<span className="visually-hidden">\{t\("Ride mode"\)\}<\/span>\s*<span className="ride-light-lines" aria-hidden="true">/);
   assert.match(top, /\{light && <p className="visually-hidden">\{light\.said\}<\/p>\}/);
 });
 
 test("ride card: fewer words on screen, the whole of them for screen readers (the owner, 2026-10-20)", () => {
   const ride = source("../RideMode.tsx");
-  assert.match(ride, /<span className="visually-hidden">In <\/span>/, "\"In\" before the distance stays for screen readers");
+  assert.match(ride, /<span className="visually-hidden">\{t\("In"\)\} <\/span>/, "\"In\" before the distance stays for screen readers");
   // One TimeToGo for both to-go times (the next stop and the end, lib/arrival.ts), its "about" and "arriving about" read.
   assert.equal((ride.match(/<span className="visually-hidden">about <\/span>/g) ?? []).length, 1, "\"about\" before the to-go time stays for screen readers");
   assert.equal((ride.match(/<TimeToGo seconds=/g) ?? []).length, 2, "both to-go times");

@@ -36,6 +36,7 @@ import { readRecentPlaces, rememberRecentPlace } from "./lib/recentPlaces.ts";
 import { FINDING_LOCATION, hereEffectLine, locationMatches, searchStatusWithHere } from "./lib/geolocation.ts";
 import { parseShared, readShared, sharedPlace, SHARED_OPENING } from "./lib/sharedLocation.ts";
 import { watchKeyboard } from "./lib/keyboardLift.ts";
+import { t } from "./lib/i18n.ts";
 
 // App.tsx's phone layout, where the panel is a bottom sheet.
 const PHONE = "(max-width: 720px)";
@@ -87,7 +88,7 @@ interface AsDestination {
 }
 
 /** What the result row's second option says. */
-export const MAKE_DESTINATION = "Make this the destination";
+export const MAKE_DESTINATION = t("Make this the destination");
 
 const CHOICE_LABEL: Record<PlaceChoice, string> = { start: "Start", end: "Destination", via: "Stop" };
 
@@ -386,7 +387,7 @@ export function PlaceSearch({
             if (locate.support.available) locate.onLocate(boxChoice);
           }}
         >
-          Use my location
+          {t("Use my location")}
         </button>
       )}
       </div>
@@ -415,7 +416,7 @@ export function PlaceSearch({
               onMouseDown={(event) => event.preventDefault()}
               onClick={pickHere}
             >
-              <span className="place-name">Your location</span>
+              <span className="place-name">{t("Your location")}</span>
               <span className="place-label">{hereEffectLine(effect, loop)}</span>
             </li>
           ) : "destination" in item ? (
@@ -456,13 +457,13 @@ export function PlaceSearch({
       </p>
       {expanded && places.length > 0 && (
         <p className="place-credit">
-          Only places in this map's area.
+          {t("Only places in this map's area.")}
           {result?.ok && result.attribution.length > 0 && <> Search: {result.attribution.join("; ")}</>}
         </p>
       )}
       {!single && choices.length > 1 && (
         <fieldset className="place-choice">
-          <legend>Use the place as</legend>
+          <legend>{t("Use the place as")}</legend>
           {choices.map((option) => (
             <label key={option}>
               <input
@@ -487,7 +488,7 @@ export function PlaceSearch({
       <p className="visually-hidden" role="status" aria-live="polite">
         {answeredNow ? searchStatusWithHere(searchStatus(result, answered), expanded && showHere) : ""}
       </p>
-      {searching && <p className="hint">Searching…</p>}
+      {searching && <p className="hint">{t("Searching…")}</p>}
       {answeredNow && result && (!result.ok || result.places.length === 0) && (
         <p className="hint">{searchStatus(result, answered)}</p>
       )}

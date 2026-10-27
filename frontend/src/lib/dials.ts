@@ -12,6 +12,7 @@
 import type { LonLat } from "./geo.ts";
 import { isTransit, usesBikeshare, type PresetId } from "./presets.ts";
 import { DEFAULT_MTB_LEVEL, defaultMtbPreferred, fitMtbLevel, mtbLevelOf, mtbPreferredOf } from "./mtbMode.ts";
+import { t } from "./i18n.ts";
 
 export type When = "weekend" | "weekday_rush" | "weekday_offpeak" | "night";
 export type Carrying = "cargo" | "people";
@@ -460,7 +461,7 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
  * say so.
  */
 export const TRAFFIC_TOLERANT_MAX = 10;
-export const TRAFFIC_TOLERANT_WARNING = "Traffic tolerant: this route may use busy, fast roads.";
+export const TRAFFIC_TOLERANT_WARNING = t("Traffic tolerant: this route may use busy, fast roads.");
 
 /** Whether a position warns: the bottom of the slider, on a ride type whose slider moves. */
 export function warnsTrafficTolerant(preset: PresetId, stress: number): boolean {

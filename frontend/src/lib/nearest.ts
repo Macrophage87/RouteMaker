@@ -30,6 +30,7 @@ import { LOCATE_MESSAGES, LOCATION_OUTSIDE, type Fix, type LocateResult } from "
 import { twoPointsOnly, type PresetId } from "./presets.ts";
 import { entranceNote, stationEntrance, linesLabel, type Station } from "./railStations.ts";
 import { waterDetails, waterTitle, type WaterPoint } from "./waterRestrooms.ts";
+import { t } from "./i18n.ts";
 
 export type NearestKind = "water" | "restroom" | "metro";
 
@@ -258,7 +259,7 @@ export function nearbyShort(item: Nearby): string {
   return `${item.place.title}: ${howFar(item)}.`;
 }
 
-export const STRAIGHT_LINE_NOTE = "The router's riding distances were not available, so these are by straight-line distance.";
+export const STRAIGHT_LINE_NOTE = t("The router's riding distances were not available, so these are by straight-line distance.");
 
 /** Where the search was from, in words, for the status line. */
 export type NearestFrom = "location" | "centre" | "start";
@@ -290,17 +291,17 @@ export function foundSaid(kind: NearestKind, from: NearestFrom, items: readonly 
 
 export const findingSaid = (kind: NearestKind): string => `Finding the nearest ${nounOf(kind)}.`;
 export const noneKnownSaid = (kind: NearestKind): string => `No ${nounOf(kind)} on the map to search.`;
-export const WATER_NOT_LOADED = "Water and restrooms are unavailable for now; try again shortly.";
-export const LOCATION_BUSY = "Your location is already being found; try again in a moment.";
-export const STILL_SEARCHING = "Still searching.";
-export const NEAREST_STALE = "The ride or where to search from changed during the search; search again.";
+export const WATER_NOT_LOADED = t("Water and restrooms are unavailable for now; try again shortly.");
+export const LOCATION_BUSY = t("Your location is already being found; try again in a moment.");
+export const STILL_SEARCHING = t("Still searching.");
+export const NEAREST_STALE = t("The ride or where to search from changed during the search; search again.");
 
 // --- While riding (Ride mode, RideMode.tsx) ---
 
 // What a ride's Detour menu offers (water, restrooms, food, repair and a search box) is lib/detourSearch.ts.
 export const DETOUR_HELP =
-  "Detour here re-plans the ride from where you are through that place and on along the rest of the ride.";
-export const NO_FIX_YET = "Your position is not known yet; wait for GPS and try again.";
+  t("Detour here re-plans the ride from where you are through that place and on along the rest of the ride.");
+export const NO_FIX_YET = t("Your position is not known yet; wait for GPS and try again.");
 
 /**
  * The ride's position as a look-up's answer, for searchNearest: the last good fix, else the last fix;
@@ -323,7 +324,7 @@ export function detourPoints(replanned: readonly LonLat[], place: LonLat): LonLa
 /** Said when a detour has no room: the route already has as many stops as one can take. */
 export const DETOUR_FULL = `This route already has ${MAX_POINTS} points, so no detour can be added.`;
 /** Said when Detour here is pressed while a new route is already being found. */
-export const DETOUR_BUSY = "A new route is already being found; try again in a moment.";
+export const DETOUR_BUSY = t("A new route is already being found; try again in a moment.");
 
 /** What a search needs from the page; each is a function so a test runs the search with stand-ins. */
 export interface SearchDeps {

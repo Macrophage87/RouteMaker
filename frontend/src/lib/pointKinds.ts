@@ -22,6 +22,7 @@
  */
 import { addPoint, type LonLat } from "./geo.ts";
 import { LOOP_START_NAME } from "./summary.ts";
+import { t } from "./i18n.ts";
 
 export type PointKind = "stop" | "via";
 
@@ -166,12 +167,12 @@ export function drawnLegs(points: readonly LonLat[], isDrawn: (p: LonLat) => boo
 }
 
 /** Plan's map bar switch for manual mode, and what is said as it turns on and off. */
-export const MANUAL_LABEL = "Manual mode";
-export const MANUAL_TITLE = "Manual mode: each point you tap is joined by a straight line";
-export const MANUAL_ON_SAID = "Manual mode on. Each point you tap is the new end, joined by a straight line.";
-export const MANUAL_OFF_SAID = "Manual mode off. New points are routed.";
+export const MANUAL_LABEL = t("Manual mode");
+export const MANUAL_TITLE = t("Manual mode: each point you tap is joined by a straight line");
+export const MANUAL_ON_SAID = t("Manual mode on. Each point you tap is the new end, joined by a straight line.");
+export const MANUAL_OFF_SAID = t("Manual mode off. New points are routed.");
 /** Said after a point's "added" when the line to it is drawn. */
-export const DRAWN_SAID = "Joined by a straight line.";
+export const DRAWN_SAID = t("Joined by a straight line.");
 
 /** The link's `line` field read back: the drawn legs between `count` points, in order, each once. */
 export function decodeDrawn(value: string | null, count: number): number[] {
@@ -280,6 +281,7 @@ export function stopAddedSaid(points: readonly LonLat[], index: number, isVia: (
 }
 
 /** A via point's name: its markers, list rows and its route point in a GPX file (lib/gpx.ts planPointNames). */
+// Not translated: GPX files carry it, and an import knows a via point by it (viaFromName).
 export const VIA_POINT_NAME = "Via point";
 
 /** The link's field for the via points: "1,3", or null with none. Old links have none: every point is a stop. */
@@ -375,10 +377,10 @@ export function stopNamedSaid(name: string | undefined): string {
 }
 
 /** The name dialog's words (StopNameDialog.tsx). */
-export const STOP_NAME_HEADING = "Name this stop";
-export const STOP_NAME_LABEL = "Name (optional)";
-export const STOP_NAME_ADD = "Add stop";
-export const STOP_NAME_SAVE = "Save name";
+export const STOP_NAME_HEADING = t("Name this stop");
+export const STOP_NAME_LABEL = t("Name (optional)");
+export const STOP_NAME_ADD = t("Add stop");
+export const STOP_NAME_SAVE = t("Save name");
 export const STOP_NAME_CANCEL = "Cancel";
 
 /** A point menu's way to name or rename a stop. */
@@ -423,4 +425,4 @@ const ROLE_NAME = new RegExp(`^(?:Start|End|${LOOP_START_NAME}|(?:Stop|Point) \\
 const VIA_ROLE_NAME = /^Via \d+$/;
 
 /** The tips' sentence on what a click makes (lib/pointText.ts editingTips). */
-export const CLICK_KINDS_TIP = "A click adds a via point; Ctrl+click (Cmd+click on a Mac) adds a named stop.";
+export const CLICK_KINDS_TIP = t("A click adds a via point; Ctrl+click (Cmd+click on a Mac) adds a named stop.");

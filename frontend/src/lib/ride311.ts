@@ -12,10 +12,11 @@
 import { createElement as h, type ReactElement, type Ref } from "react";
 import { REPORT_KINDS, gpsWords, type ReportKind, type ReportPlace } from "./report311.ts";
 import { ICON_PATHS, type IconName } from "./iconPaths.ts";
+import { t } from "./i18n.ts";
 
 /** The button's visible words and the name it is heard by (the visible "311" is in it). */
 export const RIDE_311_TEXT = "311";
-export const RIDE_311_NAME = "Log for 311";
+export const RIDE_311_NAME = t("Log for 311");
 
 /** Shown while the rider is on the route (off it, there is no place to log), anywhere the map covers. */
 export function ride311Shown(state: { off: boolean; progressM: number | null }): boolean {

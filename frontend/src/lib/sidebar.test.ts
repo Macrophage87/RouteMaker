@@ -980,17 +980,17 @@ test("the Settings sheet (384): My Go, Riding, Display and Account, most used fi
   assert.doesNotMatch(sheet, /settings-device-heading/);
   const order = ['<MyGoSection controls={myGo} open={nav.view === "settings"} />', ...["settings-ride-heading", "settings-display-heading", "settings-signin-heading"].map((id) => `<h3 id="${id}">`)].map((at) => sheet.indexOf(at));
   assert.ok(order.every((i) => i > 0), JSON.stringify(order));
-  assert.match(app, /<section aria-labelledby="settings-my-go-heading" className="settings-group my-go">\s*<div className="setting-line">\s*<h3 id="settings-my-go-heading">My Go<\/h3>/);
+  assert.match(app, /<section aria-labelledby="settings-my-go-heading" className="settings-group my-go">\s*<div className="setting-line">\s*<h3 id="settings-my-go-heading">\{t\("My Go"\)\}<\/h3>/);
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
-  assert.match(sheet, /<section aria-labelledby="settings-display-heading" className="settings-group">\s*<h3 id="settings-display-heading">Display<\/h3>/);
+  assert.match(sheet, /<section aria-labelledby="settings-display-heading" className="settings-group">\s*<h3 id="settings-display-heading">\{t\("Display"\)\}<\/h3>/);
   // The sign-in note has its own heading, so heading navigation does not file it under Display.
-  assert.match(sheet, /<h3 id="settings-signin-heading">Account<\/h3>/);
+  assert.match(sheet, /<h3 id="settings-signin-heading">\{t\("Account"\)\}<\/h3>/);
   assert.match(sheet, /<AccessibilitySwitch\s+idBase="settings-contrast"\s+on=\{accessibilityOn\(\)\}\s+source=\{accessibilitySource\(\)\}\s+paletteFromAddress=\{paletteSetByAddress\(\)\}\s+onChange=\{\(on\) => setAccessibility\(on\)\}/);
   assert.ok(sheet.indexOf("Display") < sheet.indexOf("Sign in with Discord"), "the sign-in note is still there, after the display group");
   assert.match(sheet, /onClick=\{\(e\) => isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)\}/);
   assert.doesNotMatch(app, /sheet-about|aboutHeadingRef|"about"/);
   // Go's Menu: Plan, Suggest, GPX and an admin's Review above the settings, each a button.
-  assert.match(sheet, /\{go && \(\s*<nav className="menu-pages" aria-label="Pages">/);
+  assert.match(sheet, /\{go && \(\s*<nav className="menu-pages" aria-label=\{t\("Pages"\)\}>/);
   // High contrast is only in Settings now (the mockup's Layers has toggles for the map only).
   const layers = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-gpx"'));
   assert.doesNotMatch(layers, /<AccessibilitySwitch/);

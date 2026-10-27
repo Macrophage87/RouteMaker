@@ -10,15 +10,16 @@ import type { Dials } from "./dials.ts";
 import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 import type { ViaMarks } from "./pointKinds.ts";
+import { t } from "./i18n.ts";
 
 export const RIDE_RESUME_KEY = "routemaker.ride-left";
 /** A ride left longer than this is not offered: a day's ride, not yesterday's. */
 export const RESUME_MAX_MS = 12 * 60 * 60_000;
 
-export const RESUME_HEADING = "Resume your ride?";
-export const RESUME_LEAD = "The app closed during a ride. Resume picks it up from where you are.";
-export const RESUME_RIDE = "Resume ride";
-export const RESUME_NOT_NOW = "Not now";
+export const RESUME_HEADING = t("Resume your ride?");
+export const RESUME_LEAD = t("The app closed during a ride. Resume picks it up from where you are.");
+export const RESUME_RIDE = t("Resume ride");
+export const RESUME_NOT_NOW = t("Not now");
 
 export interface LeftRide {
   route: RouteResponse;
