@@ -2176,7 +2176,10 @@ def _wide(best, best_trip, first_exposure, stop_at, ctx: Context, info: dict):
         answered = []
         for future in asking:
             try:
-                answered.append(future.result().get("trip") or {})
+                answered.append(routing.await_future(future).get("trip") or {})
+            except routing.PlanCancelled:
+                # Cancelled while waiting (`core.plan_cancel`): the loop below gives way.
+                break
             except Exception:  # noqa: BLE001 - read again, and handled, in the loop below
                 continue
         routing.prefetch_traces(
@@ -2193,7 +2196,7 @@ def _wide(best, best_trip, first_exposure, stop_at, ctx: Context, info: dict):
         asked += 1
         try:
             if asking is not None:
-                answer = asking[number].result()
+                answer = routing.await_future(asking[number])
             else:
                 answer = routing._call(ctx.variant, "route", wide_request(lon, lat), round_deadline)
             candidate = answer.get("trip") or {}
@@ -2237,6 +2240,9 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
     sent: set[frozenset] = set()
     stale = 0
     for number in range(rounds):
+        # A plan the rider has replaced (`core.plan_cancel`) ends here, between rounds,
+        # rather than reading each round's routes only to find every call refused.
+        routing.check_cancel(poll=False)
         # A crossing-only search past its first round is an answer as good as it was
         # with that round alone (before CROSSING_ONLY_ROUNDS was more than one): a later
         # round that cannot run or fails leaves `limited` unset, so the answer is cached
@@ -3146,9 +3152,10 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
         ]
         answered = []
         for future in asking:
-            if future.exception() is not None:
+            try:
+                answered.append(routing.await_future(future).get("trip") or {})
+            except Exception:  # noqa: BLE001 - read again, and handled, in the loop below
                 break
-            answered.append(future.result().get("trip") or {})
         routing.prefetch_traces(
             ctx.variant,
             ctx.costing,
@@ -3159,7 +3166,7 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
     for number, request in enumerate(leg_requests):
         try:
             if asking is not None:
-                answer = asking[number].result()
+                answer = routing.await_future(asking[number])
             else:
                 answer = routing._call(ctx.variant, "route", request, route_deadline)
             leg_trip = answer.get("trip") or {}

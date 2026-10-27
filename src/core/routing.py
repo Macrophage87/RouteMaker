@@ -68,7 +68,8 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterator
-from concurrent.futures import Future
+from concurrent.futures import FIRST_EXCEPTION, Future
+from concurrent.futures import wait as wait_futures
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -258,6 +259,13 @@ class DeadlineExceeded(Exception):
     """The request's time budget ran out before the router had answered."""
 
 
+class PlanCancelled(DeadlineExceeded):
+    """The rider replaced this plan with a newer one (POST /api/route/cancel,
+    `core.plan_cancel`): its budget is spent at once. A DeadlineExceeded, so every step
+    that already gives way for time gives way for it too, and the plan ends without
+    another router call (each later `_call` raises it again)."""
+
+
 # Valhalla's catch-all error codes, one per service stage (src/exceptions.cc).
 UNKNOWN_ERROR_CODES = frozenset({199, 299, 499})
 
@@ -327,6 +335,8 @@ def plan_cursor() -> Iterator:
     """A cursor for one of the plan's own reads of the segment table, under a statement
     timeout of the time the plan has left; a read it cancels raises DeadlineExceeded. A
     plain cursor outside a plan."""
+    # A plan cancelled meanwhile reads no more (as found by a router call's ask: no poll here).
+    check_cancel(poll=False)
     ends = _plan_ends.get()
     if ends is None:
         with connection.cursor() as cursor:
@@ -372,6 +382,59 @@ def _canceled(error: BaseException) -> bool:
     return False
 
 
+# The cancel watch of the plan running in this context (`core.plan_cancel.Watch`), or None:
+# the API sets it for a request that names its plan (X-Plan-Id). Server-side cancel of a
+# superseded Go plan, the owner, 2026-10-27 (routing audit S7, option B): "approved". Each
+# router call asks it first, so a cancelled plan stops at its next call: the flag is seen
+# between calls, never inside one. The pool's tasks carry it with the request's context.
+_cancel_watch: contextvars.ContextVar = contextvars.ContextVar("cancel_watch", default=None)
+
+
+def watch_cancel(watch) -> contextvars.Token:
+    """Run what follows in this context under `watch` (`core.plan_cancel.Watch`, or None)."""
+    return _cancel_watch.set(watch)
+
+
+def unwatch_cancel(token: contextvars.Token) -> None:
+    _cancel_watch.reset(token)
+
+
+def check_cancel(poll: bool = True) -> None:
+    """Raise PlanCancelled where the plan running here has been cancelled. `poll`: ask
+    the store (at most every `plan_cancel.POLL_S`, from the request's own thread only);
+    otherwise only what an earlier ask found."""
+    watch = _cancel_watch.get()
+    if watch is not None:
+        watch.check(poll)
+
+
+# How often the request's thread, blocked on calls it gave the pool, asks whether its plan
+# has been cancelled (`await_future`): the pool's threads never read the store, so without this a
+# cancel waited for every call already submitted (each up to ALTERNATES_TIMEOUT_S).
+CANCEL_WAIT_STEP_S = 0.1
+
+
+def await_future(future: Future):
+    """`future.result()`, read on the request's thread so that a cancel of its plan
+    (`check_cancel`) is seen while it waits: it raises PlanCancelled within about a
+    CANCEL_WAIT_STEP_S of the flag being seen, and the calls not yet started never go (the
+    pool's threads see the watch's `cancelled` at their next call). Where no plan is
+    watched, or on a pool thread, exactly `future.result()`."""
+    watch = _cancel_watch.get()
+    if watch is None:
+        return future.result()
+    if parallel.inside():
+        return future.result()
+    while not future.done():
+        try:
+            watch.check()
+        except PlanCancelled:
+            future.cancel()
+            raise
+        wait_futures([future], timeout=CANCEL_WAIT_STEP_S, return_when=FIRST_EXCEPTION)
+    return future.result()
+
+
 def _own_context(fn):
     """`fn` run in a copy of the caller's context, so what it sets there (`_plan_ends`)
     ends with it."""
@@ -392,6 +455,9 @@ def _call(variant: str, endpoint: str, payload: dict, deadline: Deadline) -> dic
     began = timing.now()
     failed = True
     try:
+        # Inside the try: a cancelled plan's call counts as failed, so its answer is
+        # never kept in the answer cache (`core.route_cache.keepable`).
+        check_cancel()
         answer = _transport(url, payload, min(deadline.per_call_s, remaining))
         failed = False
         return answer
@@ -1743,7 +1809,7 @@ def _settled(traces: dict, key):
     value = traces[key]
     if isinstance(value, Future):
         try:
-            value = value.result()
+            value = await_future(value)
         except BaseException:
             if traces.get(key) is value:
                 del traces[key]
@@ -4098,6 +4164,8 @@ def _plan(
         trip, repeat_info = refine.fewer_repeats(trip, refine_context)
         logger.info("fewer repeats: %s", repeat_info)
     refined = None
+    # A plan the rider has replaced (`core.plan_cancel`) starts no search.
+    check_cancel()
     if refine_limited is None:
         if past and fit is None:
             # No route fits the target (OWNER-DECISIONS 267): the least stressful one

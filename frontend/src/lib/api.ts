@@ -1400,19 +1400,32 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
   });
 }
 
+/** Headers, not the body: a plan's id never keys Go's early start nor the API's answer cache. */
+export interface PlanIds {
+  /** The plan's id (X-Plan-Id), so `cancelRoute` can stop it (routing audit S7). */
+  planId?: string;
+  /** The id of the plan this one replaces, cancelled already (X-Plan-Replaces): the API lets it wait for its slot. */
+  replaces?: string;
+}
+
 export async function requestRoute(
   points: readonly LonLat[],
   preset: PresetId,
-  // No abort signal: the scheduler never abandons a request, because an abort
-  // in the browser does not free the API's in-flight slot (routeScheduler.ts).
-  options: RouteRequestOptions & { fetchImpl?: FetchLike } = {},
+  // No abort signal: an abort in the browser does not free the API's in-flight
+  // slot (routeScheduler.ts); a full plan replaced is cancelled by its id instead.
+  options: RouteRequestOptions & PlanIds & { fetchImpl?: FetchLike } = {},
 ): Promise<RouteResult> {
   const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
   let response: Response;
   try {
     response = await fetchImpl("/api/route", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...(options.planId ? { "X-Plan-Id": options.planId } : {}),
+        ...(options.replaces ? { "X-Plan-Replaces": options.replaces } : {}),
+      },
       body: routeRequestBody(points, preset, options),
     });
   } catch {
@@ -1448,6 +1461,25 @@ export async function requestRoute(
     return { ok: false, error: { ...error, title: "Planner busy", message: said } };
   }
   return { ok: false, error };
+}
+
+/**
+ * Stop a full plan of this page's that a newer plan replaces (POST /api/route/cancel; routing audit S7, option B,
+ * approved by the owner 2026-10-27). Fire and forget: nothing waits for it, and a cancel that fails only leaves the
+ * old plan to run out, as before. `keepalive`, so it still goes when the page is closing.
+ */
+export function cancelRoute(planId: string, options: { fetchImpl?: FetchLike } = {}): void {
+  const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
+  try {
+    fetchImpl("/api/route/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ plan_id: planId }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    // Nothing to do: the old plan runs out.
+  }
 }
 
 /**
