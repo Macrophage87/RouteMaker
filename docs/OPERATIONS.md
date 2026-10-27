@@ -243,6 +243,15 @@ the order a request meets it:
 | Long rides in flight | 1 per client and 1 for the whole api, signed in or not, on top of the slots above | 503 (the deployment's slot is taken first, so the per-client 429 does not arise on a long pool of 1), `Retry-After: 5` |
 | Length ceiling | 200 km of straight line, however asked | 400 "too long" |
 | Time | 40 s for the whole request from its arrival, a long ride 50 s; the router calls get all but the last 3 s, at most 35 s per call (45 s on a long ride) | 502 if the router does not answer, 503 with `Retry-After: 30` if the budget runs out before `/route` answers (on a long ride with `"code": "long_ride_timed_out"`, which the planner shows at once instead of resending); a trace cut short leaves its legs' stress `unknown` |
+| A plan replaced (Go, v0.13.0) | A request with `X-Plan-Id` stops at its next router call once `POST /api/route/cancel {"plan_id"}` names it from the same address; one with `X-Plan-Replaces` cancels that plan itself and waits up to 1 s for its slots (at most 1 waiting across the api) | 409 `{"error", "code": "plan_cancelled"}`, no `Retry-After`; past the wait, the 429 or 503 above |
+
+`POST /api/route/cancel` (routing audit S7; the owner approved it on 2026-10-27) takes no
+routing slot, so the plan it stops never delays it. It is counted apart from routing: 60 per
+60 s per client (scope `plan-cancel-req`), 429 with `Retry-After`, and answers 204 whether or
+not such a plan is running. The cancel itself is a row of `rate_limit_window` under the scope
+`plan-cancel` (a keyed digest of the address and the plan id), good for 60 s and purged with
+the rest; the deployment has no shared cache, so this table is where gunicorn's workers meet.
+A cancel only takes router calls away: one already running finishes, nothing else is asked.
 
 Place search and place names (`GET /api/geocode`, `GET /api/reverse`,
 signed out; the contract is in docs/DEVELOPMENT.md) have their own limits, in

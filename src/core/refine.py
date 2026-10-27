@@ -2237,6 +2237,9 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
     sent: set[frozenset] = set()
     stale = 0
     for number in range(rounds):
+        # A plan the rider has replaced (`core.plan_cancel`) ends here, between rounds,
+        # rather than reading each round's routes only to find every call refused.
+        routing.check_cancel(poll=False)
         # A crossing-only search past its first round is an answer as good as it was
         # with that round alone (before CROSSING_ONLY_ROUNDS was more than one): a later
         # round that cannot run or fails leaves `limited` unset, so the answer is cached
