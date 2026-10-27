@@ -209,6 +209,21 @@ export function namePoints(points: readonly LonLat[], isVia: (p: LonLat) => bool
   });
 }
 
+/**
+ * The points between the ends counted by kind, for Go's route card (Stephen 2026-10-27: a saved commute read
+ * "4 stops" when its middle points were via points, which are handled differently): "1 stop · 3 via points",
+ * "4 via points", "2 stops"; empty with neither.
+ */
+export function middleCountSaid(points: readonly LonLat[], isVia: (p: LonLat) => boolean, loop = false): string {
+  const roles = namePoints(points, isVia, loop).map((naming) => naming.role);
+  const stops = roles.filter((role) => role === "stop").length;
+  const vias = roles.filter((role) => role === "via").length;
+  const parts: string[] = [];
+  if (stops > 0) parts.push(stops === 1 ? t("1 stop") : t("{n} stops", { n: stops }));
+  if (vias > 0) parts.push(vias === 1 ? t("1 via point") : t("{n} via points", { n: vias }));
+  return parts.join(" · ");
+}
+
 /** What a marker or a list row is called by a screen reader: "Via point", "Stop 2, Union Market". */
 export function pointSaid(naming: PointNaming, place: string | undefined): string {
   if (naming.role === "via") return place ? `Via point, ${place}` : "Via point";

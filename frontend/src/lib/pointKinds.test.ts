@@ -7,6 +7,7 @@ import {
   decodeVias,
   encodeVias,
   kindSwitchLabel,
+  middleCountSaid,
   movableStops,
   namePoints,
   pointSaid,
@@ -109,4 +110,15 @@ test("the link keeps each point's kind; an old link has none, so every point is 
   assert.deepEqual(decodeVias(null, 5), []);
   // Never an end, a duplicate or a stray value.
   assert.deepEqual(decodeVias("0,4,3,3,x,-1,2.5", 5), [3]);
+});
+
+test("Go's route card counts stops and via points apart (a commute of via points is not '4 stops')", () => {
+  const marks = new ViaMarks();
+  const allVias = [p(-77.0), marks.via(p(-77.01)), marks.via(p(-77.02)), marks.via(p(-77.03)), marks.via(p(-77.04)), p(-77.05)];
+  assert.equal(middleCountSaid(allVias, marks.isVia), "4 via points");
+  const mixed = [p(-77.0), p(-77.01), marks.via(p(-77.02)), marks.via(p(-77.03)), marks.via(p(-77.04)), p(-77.05)];
+  assert.equal(middleCountSaid(mixed, marks.isVia), "1 stop · 3 via points");
+  assert.equal(middleCountSaid([p(-77.0), p(-77.01), p(-77.02), p(-77.03)], marks.isVia), "2 stops");
+  assert.equal(middleCountSaid([p(-77.0), marks.via(p(-77.01)), p(-77.02)], marks.isVia), "1 via point");
+  assert.equal(middleCountSaid([p(-77.0), p(-77.02)], marks.isVia), "");
 });
