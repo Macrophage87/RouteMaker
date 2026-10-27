@@ -5475,7 +5475,7 @@ export function App() {
           onBroadcastHold={rideCanBroadcast ? broadcastQrFromRide : null}
           passingOn={passesOn}
           broadcasting={rideBroadcast?.leading === true}
-          riders={rideCanBroadcast && rideGroupLine ? rideRiders : null}
+          riders={rideCanBroadcast && rideBroadcast && rideGroupLine ? rideRiders : null}
           onRiders={rideCanBroadcast && rideGroupLine ? () => setRidersAsk((n) => n + 1) : null}
           keepLeft={rideStart.kept === true}
           startNote={rideStart.note}

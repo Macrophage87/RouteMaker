@@ -230,7 +230,9 @@ test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a r
   // on (Stephen 2026-10-26: "allow participants to share that same code as well").
   assert.match(app, /onBroadcast=\{rideCanBroadcast \? broadcastFromRide : null\}/);
   // RideGroup's count goes to Broadcast, its own riders chip left out while riding; More > Riders opens its panel.
-  assert.match(app, /riders=\{rideCanBroadcast && rideGroupLine \? rideRiders : null\}/);
+  assert.match(app, /riders=\{rideCanBroadcast && rideBroadcast && rideGroupLine \? rideRiders : null\}/);
+  // The panel opened from More closes by its own Close, which the idle timer presses too.
+  assert.match(source("../RideGroup.tsx"), /\{ridersElsewhere && \(\s*<button type="button" className="secondary ride-riders-close" data-idle-close aria-expanded=\{ridersOpen\}/);
   assert.match(app, /onRiders=\{setRideRiders\}\s*ridersElsewhere=\{riding && rideCanBroadcast\}\s*ridersAsk=\{ridersAsk\}/);
   assert.match(fromRide, /const followed = followedLink\(\);\s*if \(followed\) return \(await passOn\(followed, broadcastNav\)\)\.said;/);
   assert.match(app, /broadcasting=\{rideBroadcast\?\.leading === true\}/);

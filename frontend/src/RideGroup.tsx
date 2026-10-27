@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Map as MapLibreMap, MapLayerMouseEvent } from "maplibre-gl";
 import { Icon } from "./Icon.tsx";
+import { t } from "./lib/i18n.ts";
 import type { LonLat } from "./lib/geo.ts";
 import { LEADER_RING, RIDER_LAYERS, ROLE_COLOURS, roleSwatchPoints, showRideDots } from "./lib/rideDotsLayer.ts";
 import {
@@ -517,6 +518,12 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
         </button>
       </div>
       <div id={ridersPanel} className="ride-riders-panel" hidden={!ridersOpen}>
+        {/* Opened from More > Riders, with no chip to close it: its own Close (the idle timer presses it too). */}
+        {ridersElsewhere && (
+          <button type="button" className="secondary ride-riders-close" data-idle-close aria-expanded={ridersOpen} aria-controls={ridersPanel} onClick={() => setRidersOpen(false)}>
+            {t("Close")}
+          </button>
+        )}
         <p role="status">{ridersSaidText}</p>
         {dotInfo && <p className="hint">{dotInfo}</p>}
         {followKey && (
