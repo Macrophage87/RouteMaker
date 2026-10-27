@@ -73,6 +73,8 @@ EXPECTED_SERVICES = {
     "valhalla-no-trail",
     "valhalla-ebike",
     "valhalla-weekend",
+    # The api workers' shared answer cache (audit S14; the owner, 2026-10-27).
+    "memcached",
 }
 OPTIONAL_SERVICES = {"valhalla-offroad", "valhalla-mtb"}
 FORBIDDEN_SERVICES = {"caddy", "rebuild", "renderer", "bot"}
@@ -92,7 +94,8 @@ ONE_SHOT = {"migrate"}
 # raise limit to 7.1 GB"), and then to 7.35 GiB for the worker's 512M (the owner,
 # 2026-10-25: "Raise ceiling to 7.35 GB"; the map update's stress-tile pre-draw runs in
 # the worker and was OOM-killed at 256M); it still leaves the host 1.25 GiB of the 8.6
-# for its own growth.
+# for its own growth. The memcached the api's workers share (24M; the owner, 2026-10-27, at
+# "about 16 MB") fits under that ceiling, in the 40 MiB it left.
 HOST_AVAILABLE_GB = 8.6
 MAX_RESIDENT_GB = 7.35
 # The startup peak (resident plus the largest one-shot) must leave the host at least this much.

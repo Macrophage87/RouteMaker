@@ -432,8 +432,19 @@ band, grep `route timing` from the api's log.
   the worst case, half the limit. Raising `ROUTER_PARALLEL_CALLS` or
   `BETA_WEB_CONCURRENCY` adds to it: keep the sum under 40.
 - `ROUTE_CACHE_TTL_S` (default 600; 0 turns it off; read from the environment, passed to the api by compose) keeps a finished answer
-  for 10 minutes in each api worker's memory, up to 128 answers per worker, so
-  a hit happens only when the same worker serves the repeat. The key holds
+  for 10 minutes. Where `ROUTE_CACHE_LOCATION` names a memcached (host:port), the
+  api's workers share it, so a repeat is a hit whichever worker serves it (audit
+  S14; the owner signed off a ~16 MB memcached on beta on 2026-10-27).
+  compose.beta.yaml runs one (`memcached`, `-m 16`, capped at 24M) and sets the
+  variable itself; compose.yaml leaves it empty. There an answer is stored
+  pickled and compressed (zlib level 1), one past
+  memcached's 1 MB item limit is not sent, and a memcached that is down, full
+  or slow is a miss, never an error: the plan is made (the client gives up
+  within 0.25 s, and after a failure leaves the server alone for a minute).
+  The stored keys also carry a fingerprint of the running code, so answers
+  from before a deploy are never given after it. Without it, each api worker
+  keeps up to 128 answers in its own memory, so a hit happens only when the
+  same worker serves the repeat. The key holds
   the whole request, rounded to about 10 m, with every dial. It also holds the
   stress edits' generation, a digest of the closures snapshot, the approved
   junction ratings and hazards, and the ride time's rush and weekend state.

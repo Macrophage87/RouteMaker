@@ -31,9 +31,20 @@ down: it is answered again once that router is back); and an answer the budget c
 (a router call that failed for want of time or an answer, `timing.Timings.failures`, or
 a search that stopped for time), so a retry can do better.
 
-One cache per process (gunicorn's workers do not share it), at most `MAX_ENTRIES`
-answers, least recently used first out. Nothing in it is a location in a log or on
-disk; it lives only in the worker's memory, like the request it answers.
+**Where it is kept.** Where `settings.CACHES` has a `routes` cache (`ROUTE_CACHE_LOCATION`,
+a memcached the api's workers share; audit S14, the owner's sign-off of 2026-10-27 for
+a ~16 MB memcached on beta), every worker reads and keeps answers there, so a repeat finds
+the answer whichever worker takes it. The answer is pickled and compressed; one whose
+stored form is past memcached's 1 MB item limit is not kept there (it is planned again
+when asked), and a cache that is down, full or slow is passed over in silence: the plan
+is made as if nothing were kept. Its keys also carry the running code's fingerprint, so an
+answer made by the release before a deploy is never given by the one after it. memcached
+runs with no disk and logs nothing, so nothing in it is a location in a log or on disk.
+
+Without one (the tests, a stack with no memcached), one cache per process as before
+(gunicorn's workers do not share it), at most `MAX_ENTRIES` answers, least recently
+used first out. Nothing in it is a location in a log or on disk; it lives only in the
+worker's memory, like the request it answers.
 """
 
 from __future__ import annotations
@@ -41,11 +52,14 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import pickle
 import threading
 import time
+import zlib
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +71,12 @@ POINT_PLACES = 4
 
 FULL = "full"
 QUICK = "quick"
+
+# The shared cache's alias in `settings.CACHES` (config.settings.caches_for).
+SHARED = "routes"
+# memcached's largest item is 1 MB (its `-I` default); a stored answer past this, which
+# leaves room for the key and the item's header, is not sent at all.
+MAX_SHARED_BYTES = 1024 * 1024 - 4096
 
 
 @dataclass
@@ -82,14 +102,102 @@ def ttl_s() -> float:
 
 
 def clear() -> None:
-    """Forget every answer (the tests; an operator's shell)."""
+    """Forget every answer (the tests; an operator's shell): the shared cache's too."""
     with _lock:
         _entries.clear()
+    shared = _shared()
+    if shared is not None:
+        try:
+            shared.clear()
+        except Exception:  # noqa: BLE001 - a cache that is down holds nothing to clear
+            logger.info("the shared route cache could not be cleared", exc_info=True)
 
 
 def size() -> int:
+    """The answers this process keeps itself (none where the cache is shared)."""
     with _lock:
         return len(_entries)
+
+
+def _shared():
+    """The shared cache (`SHARED` in `settings.CACHES`), or None where there is none."""
+    from django.conf import settings
+    from django.core.exceptions import ImproperlyConfigured
+
+    try:
+        if SHARED not in settings.CACHES:
+            return None
+    except ImproperlyConfigured:  # a module that never loads Django (the tests' teardown)
+        return None
+    from django.core.cache import caches
+
+    try:
+        return caches[SHARED]
+    except Exception:  # noqa: BLE001 - an image without pymemcache: each worker keeps its own
+        if not _unusable:
+            _unusable.append(True)
+            logger.warning(
+                "the shared route cache cannot be used; each worker keeps its own", exc_info=True
+            )
+        return None
+
+
+# Set once the shared cache could not be made, so that is logged once a process.
+_unusable: list[bool] = []
+
+
+_code_memo: list[str] = []
+
+
+def _code() -> str:
+    """A fingerprint of the running code (`core` and `routemaker`), made once a process:
+    the shared cache outlives a deploy, and an answer is the code's as much as the
+    request's."""
+    if not _code_memo:
+        digest = hashlib.sha256()
+        root = Path(__file__).resolve().parent.parent
+        for package in ("core", "routemaker"):
+            for path in sorted((root / package).rglob("*.py")):
+                digest.update(str(path.relative_to(root)).encode())
+                digest.update(path.read_bytes())
+        _code_memo.append(digest.hexdigest()[:16])
+    return _code_memo[0]
+
+
+def _shared_name(key: str, kind: str) -> str:
+    return f"{_code()}:{key}:{kind}"
+
+
+def _shared_get(shared, key: str, kinds: tuple[str, ...]) -> dict | None:
+    try:
+        found = shared.get_many([_shared_name(key, kind) for kind in kinds])
+        for kind in kinds:
+            stored = found.get(_shared_name(key, kind))
+            if isinstance(stored, bytes):
+                return pickle.loads(zlib.decompress(stored))
+    except Exception:  # noqa: BLE001 - a cache that fails is passed over: the plan is made
+        logger.info("the shared route cache could not be read", exc_info=True)
+    return None
+
+
+def _shared_put(shared, key: str, kind: str, body: dict, ttl: float) -> None:
+    # memcached keeps whole seconds; never past the answer's life.
+    timeout = int(ttl)
+    try:
+        if kind == FULL:
+            # The full plan supersedes its first route.
+            shared.delete(_shared_name(key, QUICK))
+        if timeout < 1:
+            return
+        stored = zlib.compress(pickle.dumps(body, pickle.HIGHEST_PROTOCOL), 1)
+        if len(stored) > MAX_SHARED_BYTES:
+            logger.info(
+                "an answer of %d bytes is too large for the shared route cache", len(stored)
+            )
+            return
+        shared.set(_shared_name(key, kind), stored, timeout)
+    except Exception:  # noqa: BLE001 - an answer not kept is planned again when asked
+        logger.info("the shared route cache could not keep an answer", exc_info=True)
 
 
 def _clock() -> float:
@@ -100,6 +208,9 @@ def get(key: str, quick: bool = False) -> dict | None:
     """The answer kept for `key`: the full plan's, or for a quick request the first
     route's where no full plan is kept. None where neither is, or it has expired."""
     kinds = (FULL, QUICK) if quick else (FULL,)
+    shared = _shared()
+    if shared is not None:
+        return _shared_get(shared, key, kinds)
     now = _clock()
     with _lock:
         for kind in kinds:
@@ -119,6 +230,10 @@ def put(key: str, body: dict, valid_s: float = TTL_S) -> None:
     kind = QUICK if body.get("provisional") else FULL
     ttl = max(0.0, min(float(valid_s), ttl_s()))
     if ttl <= 0:
+        return
+    shared = _shared()
+    if shared is not None:
+        _shared_put(shared, key, kind, body, ttl)
         return
     with _lock:
         _entries[(key, kind)] = _Entry(body, _clock() + ttl)
