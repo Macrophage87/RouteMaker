@@ -440,7 +440,7 @@ def test_keep_resuming_leaves_a_failed_rebuild_for_a_person(fake) -> None:
 
 
 def test_keep_resuming_carries_on_where_the_command_fails_as_the_box_stops(fake) -> None:
-    """A reclaim often shows first as the command failing (exit 143); an old log is not this run's."""
+    """A reclaim often shows first as the command failing (exit 143); an old log is not ours."""
     (fake.dir / "states").write_text(
         "stopped\nstopped\nrunning\nrunning\nstopping\nstopped\nstopped\nrunning\nrunning\n"
     )
@@ -486,8 +486,13 @@ def test_keep_resuming_gives_up_after_its_tries(fake) -> None:
 
 def test_keep_resuming_is_refused_on_the_on_demand_box(fake) -> None:
     done = fake.run(
-        URL, "--box", "on-demand", "--on-demand-instance-id", "i-0fedcba9876543210",
-        "--keep-resuming", "2",
+        URL,
+        "--box",
+        "on-demand",
+        "--on-demand-instance-id",
+        "i-0fedcba9876543210",
+        "--keep-resuming",
+        "2",
     )
 
     assert done.returncode == 2
