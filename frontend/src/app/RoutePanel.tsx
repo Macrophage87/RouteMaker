@@ -10,6 +10,8 @@ import type { BikeshareOption, RouteError, RouteResponse } from "../lib/api.ts";
 import { placeLetter } from "../lib/letteredPlaces.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
+import { leaveNowArrival } from "../lib/arrival.ts";
+import { useMinute } from "./hooks.ts";
 import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
 import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, noviceTripShort, type NoviceTrip } from "../lib/noviceOffer.ts";
 import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
@@ -635,6 +637,17 @@ function StressFigure({ segments }: { segments: StressSegment[] }) {
 
 const climbCount = (n: number) => (n === 1 ? "1 climb" : `${n} climbs`);
 
+/** " · arrive 8:27 AM" after the route's time: when the ride ends if it starts now, as the ride shows it. */
+function ArriveAt({ nowMs, seconds }: { nowMs: number; seconds: number }) {
+  const { shown, said } = leaveNowArrival(nowMs, seconds);
+  return (
+    <span className="route-arrive">
+      <span aria-hidden="true"> · {shown}</span>
+      <span className="visually-hidden">, {said}</span>
+    </span>
+  );
+}
+
 export function RouteSummary({
   route,
   answer,
@@ -720,6 +733,17 @@ export function RouteSummary({
   const transit = transitOf(route);
   const timeName = transit ? transitTimeName(transit) : "Moving time";
   const timeText = transit ? transitTime(transit) : formatDuration(route.duration_s);
+  // The clock time of arrival leaving now (Stephen 2026-10-27: "Add the anticipated end time to the starting
+  // screen"), kept current each minute. A ride only: a transit trip waits on its timetable, and a bikeshare
+  // ride's time leaves out the walks to and from the docks.
+  const arriveSeconds = transit || bikeshare ? null : route.duration_s;
+  const nowMs = useMinute(arriveSeconds !== null);
+  const timeShown = (
+    <>
+      {timeText}
+      {arriveSeconds !== null && <ArriveAt nowMs={nowMs} seconds={arriveSeconds} />}
+    </>
+  );
   const calm = calmPercent(route.stress_m);
   // Start ride is offered with the directions too (plan Q1). On a Bikeshare or transit plan it follows the
   // riding leg, the line (lib/rideTrip.ts: the walk to the dock and the boarding are said around it);
@@ -858,7 +882,7 @@ export function RouteSummary({
           <dl className="stats totals go-totals">
             <div className="total-time">
               <dt className="visually-hidden">{timeName}</dt>
-              <dd>{timeText}</dd>
+              <dd>{timeShown}</dd>
             </div>
             <div className="stat-distance">
               <dt className="visually-hidden">{transit ? "Distance ridden" : "Distance"}</dt>
@@ -953,7 +977,7 @@ export function RouteSummary({
         <dl className="stats totals">
           <div className="total-time">
             <dt className="visually-hidden">{timeName}</dt>
-            <dd>{timeText}</dd>
+            <dd>{timeShown}</dd>
           </div>
           <div className="stat-distance">
             <dt className="visually-hidden">{transit ? "Distance ridden" : "Distance"}</dt>

@@ -13,6 +13,7 @@
  * past where it began, so GPS drift at a stop does not start a new allowance.
  */
 import type { ToGo } from "./navigate.ts";
+import { t } from "./i18n.ts";
 
 /** A halt counted up to this, in seconds. */
 export const HALT_CAP_S = 90;
@@ -103,6 +104,15 @@ export function paceFactor(track: PaceTrack): number {
 export function arrivalClock(nowMs: number, seconds: number, locale?: string): string {
   const at = new Date(Math.round((nowMs + seconds * 1000) / 60_000) * 60_000);
   return new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(at);
+}
+
+/**
+ * The route summary's arrival leaving now, after its time (Stephen 2026-10-27: "Add the anticipated end time to the
+ * starting screen"): "arrive 8:27 AM" on screen; the screen reader's words say it is an estimate, for leaving now.
+ */
+export function leaveNowArrival(nowMs: number, seconds: number, locale?: string): { shown: string; said: string } {
+  const time = arrivalClock(nowMs, seconds, locale);
+  return { shown: t("arrive {time}", { time }), said: t("arriving about {time} if you leave now", { time }) };
 }
 
 /** The time to go, eased to the rider's own pace: each estimate divided by how much faster than the plan they ride. */

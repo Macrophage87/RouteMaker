@@ -3,7 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { FULL_M, GAP_S, HALT_CAP_S, LEAVE_M, START_M, arrivalClock, atPace, paceFactor, paceStart, paceStep, type PaceTrack } from "./arrival.ts";
+import { FULL_M, GAP_S, HALT_CAP_S, LEAVE_M, START_M, arrivalClock, atPace, leaveNowArrival, paceFactor, paceStart, paceStep, type PaceTrack } from "./arrival.ts";
+import { setLanguageForTest } from "./i18n.ts";
 
 const PACE = 5; // metres a second, the plan's
 
@@ -117,4 +118,24 @@ test("RideMode shows the arrival clock after each time to go and says it in Wher
   assert.match(source, /setClockTick\(\(n\) => n \+ 1\), 30_000\)/, "the clock moves on with no fix");
   assert.match(source, /\|\$\{togoWords\}`;/, "large text fits again when the times lengthen");
   assert.match(source, /riding: !stepped\.state\.walking && !pausedRef\.current && !out\.state\.off && !out\.state\.arrived/);
+});
+
+test("before a ride, the route's time ends with when it arrives leaving now, in English and Spanish", () => {
+  const now = new Date(2026, 9, 27, 6, 39, 0).getTime();
+  const words = leaveNowArrival(now, 108 * 60, "en-US");
+  assert.equal(words.shown.replace(/\s/gu, " "), "arrive 8:27 AM");
+  assert.equal(words.said.replace(/\s/gu, " "), "arriving about 8:27 AM if you leave now");
+  setLanguageForTest("es");
+  try {
+    assert.match(leaveNowArrival(now, 108 * 60, "es-US").shown, /^llegada 8:27\s?a/u);
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+test("Go's and Plan's route time carry the arrival, kept current, for a ride but not a transit or bikeshare trip", () => {
+  const source = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
+  assert.equal((source.match(/<dd>\{timeShown\}<\/dd>/g) ?? []).length, 2, "Go's sheet and Plan's totals");
+  assert.match(source, /const arriveSeconds = transit \|\| bikeshare \? null : route\.duration_s;/);
+  assert.match(source, /const nowMs = useMinute\(arriveSeconds !== null\);/);
 });

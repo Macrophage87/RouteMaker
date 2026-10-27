@@ -422,4 +422,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Follow my ride on RouteMaker: my dot and the way I've ridden, while my app is open.":
     "Siga mi recorrido en RouteMaker: mi punto y el camino que he recorrido, mientras mi aplicación esté abierta.",
   "Could not copy. Copy the address from the browser's address bar.": "No se pudo copiar. Copie la dirección desde la barra de direcciones del navegador.",
+  // ---- The route's arrival time, leaving now (app/RoutePanel.tsx) ----
+  "arrive {time}": "llegada {time}",
+  "arriving about {time} if you leave now": "llegada aproximada: {time}, si sale ahora",
 };

@@ -6350,6 +6350,13 @@ details.fold > summary .icon {
   font-weight: 700;
 }
 
+/* " · arrive 8:27 AM" beside the route's time, smaller, so the time stays the first thing read and the line one line. */
+.stats.totals .total-time .route-arrive {
+  font-size: 0.6em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .go-head .stats.totals .stat-distance dd {
   font-size: 1.05rem;
 }
