@@ -1169,9 +1169,14 @@ def circle_exit(entry: Atom, ring: list[Atom], way_off: Atom) -> dict | None:
     }
 
 
-def _circle_exits(atoms: list[Atom]) -> dict[int, dict]:
+def _circle_exits(atoms: list[Atom]) -> tuple[list[Atom], dict[int, dict]]:
     """`circle_exit` for each time a leg's atoms go onto a circle and off it again, by
-    the id of the atom the way off begins with."""
+    the id of the atom the way off begins with; and `atoms` with each way off onto the
+    street the circle was entered from marked as a fork (`Atom.fork`), the net movement
+    across the circle (a bear right where that is straight on). A small ring is folded
+    into the street before it, which the way off would then join as one street, and its
+    exit would go unsaid ("Take the 3rd exit onto Grosvenor Lane")."""
+    atoms = list(atoms)
     found: dict[int, dict] = {}
     i = 0
     while i < len(atoms):
@@ -1184,9 +1189,20 @@ def _circle_exits(atoms: list[Atom]) -> dict[int, dict]:
         if i > 0 and j < len(atoms):
             way = circle_exit(atoms[i - 1], atoms[i:j], atoms[j])
             if way is not None:
-                found[id(atoms[j])] = way
+                off = atoms[j]
+                turn = turn_between(atoms[i - 1], off)
+                if off.fork is None and turn is not None and _same_way(atoms[i - 1], off):
+                    side = "right" if turn > 0 else "left"
+                    if abs(turn) < SLIGHT_MIN_DEG:
+                        fork = "bear_right"
+                    elif abs(turn) <= BEAR_MAX_DEG:
+                        fork = f"bear_{side}"
+                    else:
+                        fork = side
+                    off = atoms[j] = replace(off, fork=fork)
+                found[id(off)] = way
         i = j
-    return found
+    return atoms, found
 
 
 def _street_words(run: _Run) -> str:
@@ -1646,7 +1662,8 @@ def describe_both(
             continue
         # The ways off circles are read from the marked atoms: the runs begin with them.
         content = _said_turns(content)
-        exits.update(_circle_exits(content))
+        content, found = _circle_exits(content)
+        exits.update(found)
         far_side.extend(
             (leg_at + from_at, leg_at + cross_at, leg_at + turn_at, side, leg)
             for from_at, cross_at, turn_at, side in _far_side_turns(content)
@@ -1718,10 +1735,12 @@ def describe_both(
                     shape = None
         circle = exits.get(id(run.first)) if run.first is not None else None
         exit = None
-        if circle is not None and movement is not None and not same:
+        # Off a circle back onto the street it was entered from too: the exit is said, not
+        # "to stay on" the street.
+        if circle is not None and movement is not None:
             exit = {"number": circle["number"], "circle": circle["circle"]}
             shape = circle["shape"]
-        turns[i] = _Turn(movement, event, same, shape, exit)
+        turns[i] = _Turn(movement, event, same and exit is None, shape, exit)
     for i, turn in turns.items():
         crossed = _crossing(runs, turns, starts, events, i)
         if crossed is not None:

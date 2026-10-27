@@ -1915,6 +1915,38 @@ class TestCircleExits:
         assert ": Take the 1st exit onto B Street at the roundabout," in entries[-1]["text"]
         assert entries[-1]["turn"]["shape"]["ring"] == "left"
 
+    @staticmethod
+    def small_ring(out, passed):
+        # An unnamed ring of 80 m (under TINY_M, so folded into the street before it),
+        # the same street in and out.
+        ring = ringed(
+            [
+                d.Atom(40.0, "2", "none", (), "road", 45, 0),
+                d.Atom(40.0, "2", "none", (), "road", 0, 300),
+            ],
+            [(heading, "road", None, "both") for heading in passed],
+        )
+        legs = [
+            flat(
+                road("Grosvenor Lane", 2, 600, 0, 0), ring, road("Grosvenor Lane", 2, 600, out, out)
+            )
+        ]
+        return d.describe_both(legs)
+
+    def test_a_small_ring_on_one_street_still_says_its_exit(self):
+        full, overview = self.small_ring(270, (90.0, 0.0))
+        for entries in (full, overview):
+            off = entries[-1]
+            assert off["turn"]["exit"] == {"number": 3, "circle": None}
+            assert off["turn"]["movement"] == "left"
+            assert "stay" not in off["turn"]
+            assert ": Take the 3rd exit onto Grosvenor Lane at the roundabout," in off["text"]
+
+    def test_straight_across_a_small_ring_on_one_street_is_a_turn_the_ride_cues(self):
+        full, _overview = self.small_ring(0, (90.0,))
+        assert full[-1]["turn"]["exit"]["number"] == 2
+        assert full[-1]["turn"]["movement"] in d.TURN_WORDS
+
     def test_ordinals(self):
         assert [d.ordinal(n) for n in (1, 2, 3, 4, 11, 12, 13, 21, 22)] == [
             "1st",
