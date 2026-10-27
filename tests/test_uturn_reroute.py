@@ -156,6 +156,18 @@ class TestPlanOnward:
         assert self.ahead_only()["geometry"]["coordinates"][1] == list(WEST[1])
         assert [d.heading for d in asked] == [90.0, None]
 
+    def test_a_cancel_on_the_way_ahead_starts_no_second_plan(self, planned) -> None:
+        # A PlanCancelled is a DeadlineExceeded, but the rider has moved on (review of S7).
+        asked = planned(routing.PlanCancelled("replaced"))
+        with pytest.raises(routing.PlanCancelled):
+            self.ahead_only()
+        assert [d.heading for d in asked] == [90.0]
+
+    def test_a_cancel_on_the_second_plan_keeps_no_u_turn(self, planned) -> None:
+        planned(routing.PlanCancelled("replaced"))
+        with pytest.raises(routing.PlanCancelled):
+            self.onward()
+
     def test_ahead_only_keeps_the_plans_clock(self, monkeypatch) -> None:
         clocks: list = []
 

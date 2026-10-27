@@ -449,6 +449,25 @@ class TestCache:
         finally:
             workzones.forget()
 
+    def test_a_cancelled_plans_answer_is_not_kept(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        """Review of S7: a plan found cancelled after its last router call still makes an
+        answer, which is answered 409 and must not be given to the next request."""
+        router(standard_router())
+        real = routing.plan_onward
+
+        def cancelled_at_the_end(*args, **kwargs):
+            answered = real(*args, **kwargs)
+            routing._cancel_watch.get().cancelled = True
+            return answered
+
+        monkeypatch.setattr(routing, "plan_onward", cancelled_at_the_end)
+        plan = "0123456789abcdef0123456789abcdef"
+        assert post(client, good_body(), HTTP_X_PLAN_ID=plan).status_code == 409
+        monkeypatch.setattr(routing, "plan_onward", real)
+        assert cache_said(post(client, good_body())).startswith('cache;desc="miss"')
+
     def test_the_ride_time_of_the_moment_is_part_of_the_key(
         self, client, segments, router, monkeypatch
     ) -> None:

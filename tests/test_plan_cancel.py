@@ -1,3 +1,4 @@
+# ruff: noqa: F811 (the route tests' fixtures, imported by name)
 """A superseded Go plan cancelled server-side (routing audit S7, option B; core.plan_cancel).
 
 The owner, 2026-10-27, approved reversing the scheduler's "one request at a time" rule for
@@ -182,6 +183,76 @@ class TestWaitingOnThePool:
         assert routing.await_future(parallel.done({"ok": True})) == {"ok": True}
         assert reads == []
 
+    def test_a_timed_wait_ends_at_its_time(self, store) -> None:
+        # The early alternatives' ask (refine._router_alternates), review of S7.
+        pending: Future = Future()
+        watching = routing.watch_cancel(plan_cancel.Watch("k"))
+        began = routing.clock()
+        try:
+            with pytest.raises(TimeoutError):
+                routing.await_future(pending, timeout=0.25)
+        finally:
+            routing.unwatch_cancel(watching)
+        assert 0.2 <= routing.clock() - began < 2.0
+        assert not pending.cancelled(), "left as it is, as future.result leaves it"
+
+    def test_a_cancel_ends_a_timed_wait_before_its_time(self, store) -> None:
+        flagged, _reads = store
+        pending: Future = Future()
+        watching = routing.watch_cancel(plan_cancel.Watch("k"))
+        timer = threading.Timer(0.15, lambda: flagged.add("k"))
+        timer.start()
+        began = routing.clock()
+        try:
+            with pytest.raises(routing.PlanCancelled):
+                routing.await_future(pending, timeout=30)
+        finally:
+            routing.unwatch_cancel(watching)
+            timer.cancel()
+        assert routing.clock() - began < 2.0
+
+    def test_a_timed_wait_without_a_watch_is_future_result(self) -> None:
+        with pytest.raises(TimeoutError):
+            routing.await_future(Future(), timeout=0.01)
+
+
+class TestSettling:
+    """Review of S7: a cancelled plan's calls still on the pool are settled before its slot
+    is given back, so the slot never carries calls with it."""
+
+    def test_queued_calls_never_go_and_running_ones_are_waited_for(
+        self, settings, monkeypatch
+    ) -> None:
+        settings.ROUTER_PARALLEL_CALLS = 2
+        # A pool of its own: one an earlier test left busy would queue every call here.
+        monkeypatch.setattr(parallel, "_pool", None)
+        release = threading.Event()
+        ran: list[int] = []
+
+        def call(n):
+            release.wait(5)
+            ran.append(n)
+            return n
+
+        token = parallel.track()
+        try:
+            futures = [parallel.submit(call, n) for n in range(4)]
+            # Two run on the pool of two; two are queued behind them.
+            assert not parallel.settle(0.1), "the running calls outlast a short wait"
+            assert [f.cancelled() for f in futures[2:]] == [True, True]
+            release.set()
+            assert parallel.settle(5)
+        finally:
+            release.set()
+            parallel.untrack(token)
+        assert sorted(ran) == [0, 1]
+        assert [f.result() for f in futures[:2]] == [0, 1]
+
+    def test_untracked_submits_are_not_kept(self, settings) -> None:
+        settings.ROUTER_PARALLEL_CALLS = 2
+        parallel.submit(lambda: None).result(timeout=5)
+        assert parallel.settle(0)
+
 
 class TestIds:
     @pytest.mark.parametrize("value", [PLAN, "abcd-EF_12", " " + PLAN + " "])
@@ -269,6 +340,32 @@ class TestOverHttp:
         assert "Retry-After" not in response
         assert fake.calls == []
         assert our_advisory_locks() == 0
+
+    def test_a_cancelled_plan_settles_its_pool_calls_while_it_holds_its_slot(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        router(standard_router())
+        settled: list[tuple[float, int]] = []
+        monkeypatch.setattr(
+            parallel, "settle", lambda limit_s: settled.append((limit_s, our_advisory_locks()))
+        )
+        assert cancel(client, PLAN, REMOTE_ADDR="198.51.100.46").status_code == 204
+        response = post(client, good_body(), REMOTE_ADDR="198.51.100.46", HTTP_X_PLAN_ID=PLAN)
+        assert response.status_code == 409
+        [(limit_s, locks)] = settled
+        assert locks > 0, "settled before the routing slot was given back"
+        assert 0 < limit_s <= routing.LONG_ROUTER_TIMEOUT_S
+        assert our_advisory_locks() == 0
+
+    def test_a_plan_not_cancelled_settles_nothing(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        router(standard_router())
+        settled: list[float] = []
+        monkeypatch.setattr(parallel, "settle", settled.append)
+        response = post(client, good_body(), REMOTE_ADDR="198.51.100.47", HTTP_X_PLAN_ID=PLAN)
+        assert response.status_code == 200
+        assert settled == []
 
     def test_another_clients_cancel_does_not_stop_the_plan(self, client, segments, router) -> None:  # noqa: F811
         router(standard_router())

@@ -250,10 +250,15 @@ routing slot, so the plan it stops never delays it. It is counted apart from rou
 60 s per client (scope `plan-cancel-req`), 429 with `Retry-After`, and answers 204 whether or
 not such a plan is running. The cancel itself is a row of `rate_limit_window` under the scope
 `plan-cancel` (a keyed digest of the address and the plan id), good for 60 s and purged with
-the rest; the deployment has no shared cache, so this table is where gunicorn's workers meet.
-A cancel only takes router calls away: one already running finishes, nothing else is asked.
-A plan waiting on calls it gave the router pool (refine's wide routes, the traces) asks for
-its cancel while it waits, so the calls not yet started never go. The page names the
+the rest. gunicorn's workers meet in this table, not in the routes memcached
+(`ROUTE_CACHE_LOCATION`), which is optional, per deployment, and passed over in silence when
+down: a cancel kept there could be lost. A cancel only takes router calls away: one already
+running finishes, nothing else is asked. A plan waiting on calls it gave the router pool
+(refine's wide routes, the traces, the early ask for alternatives) asks for its cancel while
+it waits, so the calls not yet started never go; the cancelled plan then waits for the ones
+still running before it gives back its slot (at most until its 50 s budget from arrival
+ends), so the router never sees more than the pool's calls plus one per slot. A cancelled
+plan's answer is never kept in the routes cache. The page names the
 replaced plan on every resend of the plan replacing it until an answer other than a 429 or
 503 comes, and waits those out for up to 50 s of `Retry-After` (the longest a plan runs)
 before showing the refusal, so a rider never sees "already has a route being planned" for

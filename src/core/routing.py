@@ -408,30 +408,43 @@ def check_cancel(poll: bool = True) -> None:
         watch.check(poll)
 
 
+def cancel_seen() -> bool:
+    """Whether the plan running here has been found cancelled (no ask of the store)."""
+    watch = _cancel_watch.get()
+    return watch is not None and watch.cancelled
+
+
 # How often the request's thread, blocked on calls it gave the pool, asks whether its plan
 # has been cancelled (`await_future`): the pool's threads never read the store, so without this a
 # cancel waited for every call already submitted (each up to ALTERNATES_TIMEOUT_S).
 CANCEL_WAIT_STEP_S = 0.1
 
 
-def await_future(future: Future):
-    """`future.result()`, read on the request's thread so that a cancel of its plan
+def await_future(future: Future, timeout: float | None = None):
+    """`future.result(timeout)`, read on the request's thread so that a cancel of its plan
     (`check_cancel`) is seen while it waits: it raises PlanCancelled within about a
     CANCEL_WAIT_STEP_S of the flag being seen, and the calls not yet started never go (the
     pool's threads see the watch's `cancelled` at their next call). Where no plan is
-    watched, or on a pool thread, exactly `future.result()`."""
+    watched, or on a pool thread, exactly `future.result(timeout)`. `timeout` (seconds, or
+    None for no limit): TimeoutError past it, as `future.result` raises, the future left
+    running (the early alternatives' ask, `refine._router_alternates`, review of S7)."""
     watch = _cancel_watch.get()
-    if watch is None:
-        return future.result()
-    if parallel.inside():
-        return future.result()
+    if watch is None or parallel.inside():
+        return future.result(timeout=timeout)
+    ends = None if timeout is None else clock() + max(timeout, 0.0)
     while not future.done():
         try:
             watch.check()
         except PlanCancelled:
             future.cancel()
             raise
-        wait_futures([future], timeout=CANCEL_WAIT_STEP_S, return_when=FIRST_EXCEPTION)
+        step = CANCEL_WAIT_STEP_S
+        if ends is not None:
+            left = ends - clock()
+            if left <= 0:
+                raise TimeoutError
+            step = min(step, left)
+        wait_futures([future], timeout=step, return_when=FIRST_EXCEPTION)
     return future.result()
 
 
@@ -4963,6 +4976,9 @@ def plan_onward(
         timings.note("uturn", "replanned")
     try:
         ahead = plan(points, preset_name, dials=dials, **asked)
+    except PlanCancelled:
+        # A DeadlineExceeded too, but the rider has moved on: no answer is kept (review of S7).
+        raise
     except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded) as error:
         logger.info("a re-route turns round: no route ahead (%s)", type(error).__name__)
         return answered
@@ -4988,6 +5004,10 @@ def _plan_ahead_first(
         timings.note("uturn", "ahead first")
     try:
         ahead = plan(points, preset_name, dials=dials, **asked)
+    except PlanCancelled:
+        # A DeadlineExceeded too, but no second plan is started for a rider who has moved on
+        # (review of S7).
+        raise
     except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded) as error:
         logger.info("a re-route ahead only: no route ahead (%s)", type(error).__name__)
     else:

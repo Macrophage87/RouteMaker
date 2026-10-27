@@ -3044,9 +3044,15 @@ def route(request, body: RouteIn, response: HttpResponse):
     # A plan that names itself can be cancelled (core.plan_cancel): its router calls ask.
     watch = plan_cancel.watch_for(request)
     watching = routing.watch_cancel(watch)
+    # Its calls on the pool are kept, so a cancelled plan can wait for them (below).
+    tracking = parallel.track() if watch is not None else None
     try:
         answered = _route_answer(request, body, response)
     finally:
+        if tracking is not None:
+            if watch.cancelled:
+                _settle_cancelled(request)
+            parallel.untrack(tracking)
         routing.unwatch_cancel(watching)
         timing.stop(token)
     if watch is not None and watch.cancelled:
@@ -3062,6 +3068,23 @@ def route(request, body: RouteIn, response: HttpResponse):
     loop = routing.loop_wanted(body.points, body.loop, body.preset)
     timings.log(body.preset, span_m(routing.loop_points(body.points, loop)), status)
     return answered
+
+
+def _settle_cancelled(request) -> None:
+    """A cancelled plan's calls still on the pool, before its routing slot is given back
+    (the in-flight decorator releases it after this view returns): the queued ones never go,
+    and the running ones are waited for. Review of S7: a 409 answered at once left up to
+    ROUTER_PARALLEL_CALLS calls running under a slot already given back, so beta's two slots
+    could have the router see more than ROUTER_PARALLEL_CALLS + 1 calls each. The wait ends
+    at the latest when the request's own budget does (LONG_PLAN_BUDGET_S from its arrival,
+    the longest any plan has), as every router call is cut to what is left of that budget;
+    never past LONG_ROUTER_TIMEOUT_S, the longest one call may take, so a request with no
+    arrival time waits no longer than one call. Well inside gunicorn's 60 s."""
+    limit_s = min(
+        routing.LONG_ROUTER_TIMEOUT_S, max(0.0, routing.LONG_PLAN_BUDGET_S - _waited_s(request))
+    )
+    if not parallel.settle(limit_s):
+        logger.warning("a cancelled plan's router calls ran past its budget (%.0f s)", limit_s)
 
 
 def _waited_s(request) -> float:
@@ -4608,7 +4631,13 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
         late = started is not None and routing.clock() - started >= (
             budget_s - routing.ANSWER_RESERVE_S
         )
-        if not late and route_cache.keepable(answered, own_variant, failures):
+        # A plan cancelled meanwhile (core.plan_cancel) is answered 409 whatever it made, and
+        # what it made may be cut short by the cancel: not kept (review of S7).
+        if (
+            not late
+            and not routing.cancel_seen()
+            and route_cache.keepable(answered, own_variant, failures)
+        ):
             route_cache.put(key.key, answered, key.valid_s)
     return answered
 

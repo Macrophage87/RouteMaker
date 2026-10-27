@@ -1466,6 +1466,32 @@ class TestRouterAlternates:
         assert self.asks(world) == []
         assert info["alternates"] == {"given": 0, "ranked": 0, "taken": False, "limited": "time"}
 
+    def test_a_cancel_while_waiting_on_the_early_ask_ends_the_plan(self, monkeypatch) -> None:
+        """Review of S7: the wait on the early ask sees a cancel of the plan (as
+        `routing.await_future` does), and the PlanCancelled is not taken for a slow router."""
+
+        class Cancelled:
+            cancelled = True
+
+            def check(self, poll=True):
+                raise routing.PlanCancelled("the rider replaced this plan")
+
+        orig = analysis("o", self.BUSY)
+        AlternatesWorld(monkeypatch, {"o": orig}, [routing.RouterRefused(400, 442, "")] * 2, [])
+        ctx = self.ctx()
+        ctx.search_budget_s = refine.ALTERNATES_ROUND_RESERVE_S + refine.ALTERNATES_MIN_S + 5.0
+        ctx.early_alternates = self.early(ctx, [trip_of("o", 4.0)])
+        ctx.early_alternates.future = Future()  # never answered
+        watching = routing.watch_cancel(Cancelled())
+        began = routing.clock()
+        try:
+            with pytest.raises(routing.PlanCancelled):
+                refine.refine(trip_of("o", 4.0), ctx)
+        finally:
+            routing.unwatch_cancel(watching)
+        assert routing.clock() - began < 2.0
+        assert ctx.early_alternates.future.cancelled()
+
     def test_the_early_ask_goes_to_the_pool_only_where_it_is_on(
         self, monkeypatch, settings
     ) -> None:

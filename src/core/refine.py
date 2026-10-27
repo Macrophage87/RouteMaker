@@ -1422,7 +1422,9 @@ def _router_alternates(trip, best, first_exposure, stop_at, ctx: Context, info: 
         try:
             if early is not None:
                 # Waited for no longer than the search's own ask would have run.
-                answer = early.future.result(timeout=max(alt_stop - started, 0.0))
+                # Read as every other pooled call is (`routing.await_future`), so a cancel of
+                # the plan is seen while it waits, not seconds later (review of S7).
+                answer = routing.await_future(early.future, timeout=max(alt_stop - started, 0.0))
             else:
                 answer = routing._call(
                     ctx.variant,
@@ -1430,6 +1432,9 @@ def _router_alternates(trip, best, first_exposure, stop_at, ctx: Context, info: 
                     request,
                     routing.Deadline(alt_stop, _alternates_limit(ctx.variant, ctx.deadline)),
                 )
+        except routing.PlanCancelled:
+            # A DeadlineExceeded, but not a slow router: the plan ends here (review of S7).
+            raise
         except routing.RouterRefused:
             return best, trip
         except (routing.DeadlineExceeded, routing.RouterUnavailable, TimeoutError) as error:

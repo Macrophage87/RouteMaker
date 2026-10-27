@@ -29,7 +29,8 @@ route again within minutes; each used to be a whole plan. An answer is kept here
 an answer from another graph than the ride's own (a weekend or off-road router that was
 down: it is answered again once that router is back); and an answer the budget cut short
 (a router call that failed for want of time or an answer, `timing.Timings.failures`, or
-a search that stopped for time), so a retry can do better.
+a search that stopped for time), so a retry can do better; nor a plan the rider cancelled
+(`core.plan_cancel`), which is answered 409 and may have been cut short by the cancel.
 
 **Where it is kept.** Where `settings.CACHES` has a `routes` cache
 (`ROUTE_CACHE_LOCATION`, a memcached the api's workers share; audit S14, the owner's

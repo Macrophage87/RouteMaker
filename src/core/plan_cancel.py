@@ -9,9 +9,11 @@ a time" rule for this: the page names each plan (`X-Plan-Id`), and when it repla
 plan in flight it says so (POST /api/route/cancel) and sends the new plan at once, naming
 the plan it replaces (`X-Plan-Replaces`).
 
-How a cancel reaches the plan: gunicorn's workers share no memory, and this deployment has
-no shared cache (Django's default cache is per process; there is no Redis, by design: see
-`core.ratelimit`). So the flag is a row of the one shared store the limits already use,
+How a cancel reaches the plan: gunicorn's workers share no memory. Django's default cache
+is per process and there is no Redis, by design (see `core.ratelimit`); the routes memcached
+(`ROUTE_CACHE_LOCATION`, `core.route_cache`) is shared, but optional, per deployment, and
+passed over in silence when down or full, so a cancel kept there could be lost (review of
+S7). So the flag is a row of the one shared store the limits already use,
 `rate_limit_window`, under scope `plan-cancel`: a keyed digest of the client's address and
 the plan id (never either of them), stamped with the database's clock and good for
 CANCEL_TTL_S. The digest takes the address the request came from, as the limits count it,
@@ -24,7 +26,9 @@ at most every POLL_S, from the request's own thread (the pool's threads read onl
 thread found), and raises `routing.PlanCancelled`, a DeadlineExceeded, so the plan winds
 down the way it does when its time runs out, with no further router calls. One call already
 running finishes; nothing interrupts it. The answer is then a 409 `plan_cancelled`, which
-the page drops unread, and the slots are released as for any request.
+the page drops unread, and is never kept in the routes cache. Before the slots are released,
+the plan's calls still on the pool are settled (`api._settle_cancelled`): those queued never
+go, and those running are waited for, so the slot given back carries no calls with it.
 
 The new plan and the slots: on beta's routing pool of two, the old plan still holds the
 client's slot when the new plan arrives, and the new plan would be refused (429, or 503
