@@ -229,6 +229,7 @@ import {
   tripStep,
   type RideTrip,
 } from "./lib/rideTrip.ts";
+import { t } from "./lib/i18n.ts";
 
 /**
  * One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). Web
@@ -237,11 +238,11 @@ import {
 export const rideVoice = new Voice(rideSpeech());
 
 /** Said as the ride starts, inside the Start press, so the voice is unlocked by it. */
-export const RIDE_STARTED = "Ride started.";
+export const RIDE_STARTED = t("Ride started.");
 /** How long after the start its note (startNote) is said: after "Ride started.". */
 export const START_NOTE_MS = 1_500;
 /** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
-export const END_RIDE_NAME = "End ride";
+export const END_RIDE_NAME = t("End ride");
 /**
  * ", 8 min · 6:42 AM" after a distance to go: the minutes and the clock time of arrival (the owner, 2026-10-26: "Add
  * estimated clock time of arrival to the ride." and "Stops too"). "about" and "arriving about" are for screen readers
@@ -260,26 +261,26 @@ function TimeToGo({ seconds, nowMs }: { seconds: number; nowMs: number }) {
 }
 
 /** End ride is a slide to end until the rider has arrived (the owner, 2026-10-19: "Add a swipe confirmation on ending the ride unless at the destination"). */
-export const SLIDE_TO_END = "Move it to the end to end the ride";
+export const SLIDE_TO_END = t("Move it to the end to end the ride");
 /** The keys that move a range: only these count as a step of End ride's slide. */
 const SLIDE_KEYS = new Set(["ArrowRight", "ArrowUp", "ArrowLeft", "ArrowDown", "PageUp", "PageDown", "Home", "End"]);
 /** End ride's slide left part way goes back after this long. */
 const SLIDE_BACK_MS = 4_000;
 /** Said and shown when End ride is tapped rather than slid. */
-export const SLIDE_TO_END_HINT = "Slide End ride to the right to end the ride.";
+export const SLIDE_TO_END_HINT = t("Slide End ride to the right to end the ride.");
 /**
  * The last side button opens these, under the top row (the owner, 2026-10-16: "the buttons to change the settings seem
  * hidden"; a gear in the rack since v0.9.0): since 2026-10-24 More, the route's changes above the settings (Stephen:
  * "put options like skip a stop, lower traffic and hills in an expansion with settings").
  */
 export const RIDE_SETTINGS_TEXT = "More";
-export const RIDE_MORE_NAME = "More: change the route or the map, and ride settings";
+export const RIDE_MORE_NAME = t("More: change the route or the map, and ride settings");
 /** Topo lines from More (Stephen 2026-10-26: "In the ... section allow topo lines to be toggled on and off during a ride"): Map layers' own switch (lib/topoLines.ts). */
 export const RIDE_TOPO_ON = `${TOPO_LINES_LABEL} on.`;
 export const RIDE_TOPO_OFF = `${TOPO_LINES_LABEL} off.`;
 export const RIDE_TOPO_OFFLINE = `${TOPO_LINES_LABEL} need a connection. Try again once you have signal.`;
-export const RIDE_SETTINGS_TITLE = "Ride settings";
-export const RIDE_CHANGE_TITLE = "Change the route";
+export const RIDE_SETTINGS_TITLE = t("Ride settings");
+export const RIDE_CHANGE_TITLE = t("Change the route");
 /** Broadcast on the ride screen (Stephen 2026-10-24: "Let people broadcast from a ride"): Plan's and Go's Broadcast, the ride already going. */
 export const RIDE_BROADCAST_NAME = "Broadcast";
 /** What End ride leaves behind (lib/navigate.ts planAfterEnd): the plan from here, or as it was. */
@@ -287,17 +288,17 @@ export type EndedPlan = ReturnType<typeof planAfterEnd>;
 /** How long the 311 line ("Logged for 311: Pothole.") stays (review F4); held the same way. */
 export const SAID_311_MS = 8_000;
 /** Said when a 311 pick has no place on the route yet. */
-export const NO_PLACE_311 = "Your place on the route is not known yet, so nothing was logged.";
+export const NO_PLACE_311 = t("Your place on the route is not known yet, so nothing was logged.");
 /** Said when a problem is logged: "Logged for 311: Pothole." */
 export function loggedSaid(entry: LogEntry): string {
-  return `Logged for 311: ${kindLabel(entry.kind)}.`;
+  return t("Logged for 311: {kind}.", { kind: kindLabel(entry.kind) });
 }
 /** Said as the ride ends, by the voice and the page's polite region; the figures are on the summary card. */
-export const RIDE_ENDED_SAID = "Ride ended.";
+export const RIDE_ENDED_SAID = t("Ride ended.");
 /** Shown and said with the ride's summary in Plan where End ride came part way (lib/navigate.ts planAfterEnd): the plan now starts where the rider is. */
-export const RIDE_ENDED_FROM_HERE_NOTE = "The route now starts where you are.";
+export const RIDE_ENDED_FROM_HERE_NOTE = t("The route now starts where you are.");
 /** Part way in Plan with no recent location: the plan keeps its start, and the rider is told. */
-export const RIDE_ENDED_NO_FIX_NOTE = "Route start unchanged.";
+export const RIDE_ENDED_NO_FIX_NOTE = t("Route start unchanged.");
 
 /**
  * A short-lived message's timer (lib/holdTimer.ts) with the handlers that hold it: while the focus is inside, or a
@@ -328,19 +329,19 @@ function useHoldTimer(ms: number, onDone: () => void) {
 }
 /** Hidden this long, the watch stops (privacy and battery) and the ride offers Resume (plan section 5). */
 export const HIDDEN_STOP_MS = 10 * 60_000;
-export const PAUSED_SAID = "Ride paused while the page was in the background. Press Resume to carry on.";
+export const PAUSED_SAID = t("Ride paused while the page was in the background. Press Resume to carry on.");
 /** A re-plan that has not answered in this long is said as no signal (a hung connection); its answer still counts. */
 export const REPLAN_TIMEOUT_MS = 25_000;
 /** No fix for this long and a failure from the watch: the rider is told (once) that GPS is lost. */
 export const GPS_LOST_MS = 30_000;
-export const GPS_LOST_SAID = "No GPS signal: the cues are paused until it comes back.";
+export const GPS_LOST_SAID = t("No GPS signal: the cues are paused until it comes back.");
 
 /** The rider's responsibility and the battery, in the ride's settings (plan sections 5 and 10). */
 export const RIDE_SAFETY_BROWSER =
-  "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. It needs the screen on and this page in front, and GPS with a lit screen drains the battery quickly.";
+  t("Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. It needs the screen on and this page in front, and GPS with a lit screen drains the battery quickly.");
 /** In the phone app (v0.8.0) the cues go on with the screen locked, so the screen sentence is not said. */
 export const RIDE_SAFETY_APP =
-  "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. In this app the cues go on with the screen locked until you end the ride, and GPS drains the battery.";
+  t("Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. In this app the cues go on with the screen locked until you end the ride, and GPS drains the battery.");
 export const RIDE_SAFETY = ridesHidden() ? RIDE_SAFETY_APP : RIDE_SAFETY_BROWSER;
 
 /** Called inside the Start ride press: unlock the voice with the first sentence, where the rider chose it. */
@@ -357,7 +358,7 @@ export function primeRideVoice(prefs: RidePrefs): void {
   askCompass();
 }
 
-export const VOICE_ON = "Voice on.";
+export const VOICE_ON = t("Voice on.");
 
 /** Called inside the press that changes the ride's outputs: a voice newly chosen is unlocked there (iOS). */
 export function voiceTurnedOn(before: RidePrefs, next: RidePrefs, voice: Pick<Voice, "unlock"> = rideVoice): void {
@@ -365,7 +366,7 @@ export function voiceTurnedOn(before: RidePrefs, next: RidePrefs, voice: Pick<Vo
 }
 
 /** Said politely when Start's closure check takes more than a moment (CLOSURE_SLOW_MS). */
-export const CHECKING_CLOSURES = "Checking closures…";
+export const CHECKING_CLOSURES = t("Checking closures…");
 export const CLOSURE_SLOW_MS = 600;
 
 /** What App shows on the map for the ride. */
@@ -559,7 +560,7 @@ export function RideSettingsFields({
       <>
         <SettingRow infoId={`${idBase}-output-info`} about="say cues with">
           <SettingSelect
-            label="Say cues with"
+            label={t("Say cues with")}
             value={prefs.output}
             options={(Object.keys(OUTPUT_LABELS) as CueOutput[]).map((output) => [output, OUTPUT_LABELS[output]] as const)}
             onChange={(output) => onChange({ ...prefs, output, chosen: true })}
@@ -577,7 +578,7 @@ export function RideSettingsFields({
           }
         >
           <SettingSelect
-            label="How much to say"
+            label={t("How much to say")}
             value={prefs.verbosity}
             options={levels.map((level) => [level, shortLabel(VERBOSITY_LABELS[level])] as const)}
             onChange={(verbosity) => onChange({ ...prefs, verbosity, chosen: true })}
@@ -590,7 +591,7 @@ export function RideSettingsFields({
   return (
     <>
       <fieldset className="ride-choice">
-        <legend>Say cues with</legend>
+        <legend>{t("Say cues with")}</legend>
         {(Object.keys(OUTPUT_LABELS) as CueOutput[]).map((output) => (
           <label key={output} className="radio">
             <input
@@ -604,7 +605,7 @@ export function RideSettingsFields({
         ))}
       </fieldset>
       <fieldset className="ride-choice">
-        <legend>How much to say</legend>
+        <legend>{t("How much to say")}</legend>
         {(Object.keys(VERBOSITY_LABELS) as Verbosity[]).map((level) => (
           <label key={level} className="radio">
             <input
@@ -623,10 +624,10 @@ export function RideSettingsFields({
 
 /** The way back to the planned route, said: "The planned route is 300 feet to the left." */
 /** Said off a fixed route, before the way back: it is not re-routed (the review of #191). */
-export const FIXED_SAID = "This ride stays on its route, never re-routed.";
+export const FIXED_SAID = t("This ride stays on its route, never re-routed.");
 
 function wayBackSaid(back: { metres: number; direction: string }): string {
-  return `The planned route is ${spokenDistance(back.metres)} to the ${back.direction}.`;
+  return t("The planned route is {distance} to the {direction}.", { distance: spokenDistance(back.metres), direction: back.direction });
 }
 
 /** No food, repair or place search given (a test's ride): those detours say they are unavailable. */
@@ -921,7 +922,7 @@ export function RideMode({
     const place = reportPlace(modelRef.current, progress, milesRef.current);
     const entry = report311Log().add(kind, place);
     if (serverOn311 && entry.where === "dc") {
-      setSaid311("Sending to DC 311…");
+      setSaid311(t("Sending to DC 311…"));
       void sendReport311(window.location.origin, kind, place, entryText(entry)).then((sent) => {
         if (ended.current) return;
         if (sent) report311Log().setReported(entry.id, true);
@@ -1567,7 +1568,7 @@ export function RideMode({
   const cycleText = useCallback(() => {
     const next = textSize === "large" ? "normal" : "large";
     onTextSize(next);
-    const said = next === "large" ? "Large text on" : "Large text off";
+    const said = next === "large" ? t("Large text on") : t("Large text off");
     showToast(said);
     announcer.current?.answer(said);
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text: said, count: s.count + 1 }));
@@ -1846,7 +1847,7 @@ export function RideMode({
     setDetourOpen(false);
     // The list (and the pressed button) goes: the focus moves to Where am I?, not to the page's top.
     whereRef.current?.focus();
-    sayDetour(`Finding a way to ${item.place.title}.`);
+    sayDetour(t("Finding a way to {place}.", { place: item.place.title }));
     // The place is a stop of the new route, under its own name on the map and in the cues (2026-10-24).
     void replan(here, VIA_MARKS.named([item.place.point[0], item.place.point[1]], item.place.title));
   };
@@ -2245,7 +2246,7 @@ export function RideMode({
           <h2 id="ride-heading" ref={headingRef} tabIndex={-1} className={light ? "ride-heading ride-light" : "ride-heading"}>
             {light ? (
               <>
-                <span className="visually-hidden">Ride mode</span>
+                <span className="visually-hidden">{t("Ride mode")}</span>
                 <span className="ride-light-lines" aria-hidden="true">
                   {light.shown.map((line) => (
                     <span key={line}>{line}</span>
@@ -2253,7 +2254,7 @@ export function RideMode({
                 </span>
               </>
             ) : (
-              "Ride mode"
+              t("Ride mode")
             )}
           </h2>
           {light && <p className="visually-hidden">{light.said}</p>}
@@ -2302,12 +2303,12 @@ export function RideMode({
             }
           }}
         >
-          <h3 className="ride-settings-title">Settings</h3>
+          <h3 className="ride-settings-title">{t("Settings")}</h3>
           <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} />
           <p className="hint">{RIDE_SAFETY}</p>
           <label className="toggle ride-toggle">
             <input type="checkbox" checked={headingUp} onChange={(event) => onHeadingUp(event.target.checked)} />
-            Turn the map to my heading
+            {t("Turn the map to my heading")}
           </label>
         </div>
         {ride.arrived ? (
@@ -2324,8 +2325,8 @@ export function RideMode({
           <div className="cue-off">
             <CueShape shape="warn" />
             <div>
-              <p className="cue-text">Off the planned route.</p>
-              {replanning && <p className="cue-then">Finding a new way from here…</p>}
+              <p className="cue-text">{t("Off the planned route.")}</p>
+              {replanning && <p className="cue-then">{t("Finding a new way from here…")}</p>}
               {(keepPlanned || fixedRef.current) && back && (
                 <p className="cue-then">
                   The planned route is {formatDistance(back.metres)} to the {back.direction}.
@@ -2338,7 +2339,7 @@ export function RideMode({
           // next first; a list a screen reader reads as one, with no control of its own.
           <div className="cue-sheet">
             <p id={cueSheetId} className="cue-then">
-              Turns ahead, in order:
+              {t("Turns ahead, in order:")}
             </p>
             <ol className="cue-sheet-list" aria-labelledby={cueSheetId}>
               {cueSheet(model, progress ?? 0).map((row, i) => (
@@ -2355,7 +2356,7 @@ export function RideMode({
               {/* Greyed while GPS is weak or lost (any GPS note): the distance is from an old fix, not where the rider is. */}
               <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>
                 {/* Fewer words, larger type (the owner, 2026-10-20); "In" stays for screen readers. */}
-                {distanceShown.us && <span className="visually-hidden">In </span>}
+                {distanceShown.us && <span className="visually-hidden">{t("In")} </span>}
                 {distanceShown.us}
                 {distanceShown.metric && <span className="cue-distance-metric"> {distanceShown.metric}</span>}
               </p>
@@ -2387,7 +2388,7 @@ export function RideMode({
               </div>
             )}
             <div className="ride-togo-end">
-              <dt>To the end</dt>
+              <dt>{t("To the end")}</dt>
               <dd>
                 {formatDistance(togo.end.metres)}
                 {togo.end.seconds !== null && <TimeToGo seconds={togo.end.seconds} nowMs={clockMs} />}
@@ -2402,7 +2403,7 @@ export function RideMode({
       <div className="ride-middle">
         {/* A minimalist compass (the owner, 2026-10-17), turned with the map; a press switches north-up and track-up
             ("maybe clicking on it changes to north up"), the same choice as the ride settings' switch. */}
-        <button type="button" className="ride-compass" aria-pressed={!headingUp} aria-label="North up" title="North up" onClick={() => onHeadingUp(!headingUp)}>
+        <button type="button" className="ride-compass" aria-pressed={!headingUp} aria-label={t("North up")} title={t("North up")} onClick={() => onHeadingUp(!headingUp)}>
           <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true">
             <path d="M20 5 L25 20 L20 17 L15 20 Z" className="ride-compass-north" />
             <path d="M20 35 L15 20 L20 23 L25 20 Z" className="ride-compass-south" />
@@ -2414,7 +2415,7 @@ export function RideMode({
             <p key={toast.n}>{toast.text}</p>
           </div>
         )}
-        <div className="ride-rail" role="group" aria-label="Ride buttons">
+        <div className="ride-rail" role="group" aria-label={t("Ride buttons")}>
           {/* Where am I? with Re-centre in it (the owner, 2026-10-20): highlighted when the map stopped following. */}
           <button
             type="button"
@@ -2422,8 +2423,8 @@ export function RideMode({
             className={`ride-round${follow ? "" : " ride-round-alert"}`}
             onClick={findMe}
             aria-keyshortcuts="W C"
-            aria-label={follow ? "Where am I?" : "Where am I? The map stopped following you"}
-            title="Where am I?"
+            aria-label={follow ? t("Where am I?") : t("Where am I? The map stopped following you")}
+            title={t("Where am I?")}
           >
             <Icon name="locate" size={24} />
           </button>
@@ -2474,7 +2475,7 @@ export function RideMode({
                 ref={detourButton}
                 className="ride-round"
                 aria-label={detourButtonName(DETOUR_SUMMARY, fixed ? null : nextStop)}
-                title="Detour"
+                title={t("Detour")}
                 aria-expanded={detourOpen}
                 aria-controls={detourId}
                 data-idle-close
@@ -2485,7 +2486,7 @@ export function RideMode({
               <div id={detourId} className="ride-menu" role="group" aria-labelledby={`${detourId}-heading`} hidden={!detourOpen}>
                 <div className="ride-menu-head">
                   <h3 id={`${detourId}-heading`} ref={detourHeading} tabIndex={-1}>
-                    Detour
+                    {t("Detour")}
                   </h3>
                   <button
                     type="button"
@@ -2495,7 +2496,7 @@ export function RideMode({
                       detourButton.current?.focus();
                     }}
                   >
-                    Close
+                    {t("Close")}
                   </button>
                 </div>
                 <div className="actions nearest-kinds">
@@ -2546,10 +2547,10 @@ export function RideMode({
                             <button
                               type="button"
                               className="secondary"
-                              aria-label={`Detour here: ${item.place.title}`}
+                              aria-label={t("Detour here: {place}", { place: item.place.title })}
                               onClick={() => detour(item)}
                             >
-                              Detour here
+                              {t("Detour here")}
                             </button>
                             {nextStop && !fixed && (
                               <button
@@ -2612,11 +2613,11 @@ export function RideMode({
                       dockButton.current?.focus();
                     }}
                   >
-                    Close
+                    {t("Close")}
                   </button>
                 </div>
                 {undockAt !== null && (
-                  <p className="hint">{docked ? `Docked at ${docked}.` : `Undocked about ${undockedShown(undockedMinutes(undockAt, now))}.`}</p>
+                  <p className="hint">{docked ? t("Docked at {dock}.", { dock: docked }) : t("Undocked about {time}.", { time: undockedShown(undockedMinutes(undockAt, now)) })}</p>
                 )}
                 <ul className="ride-menu-choices" role="list">
                   {DOCK_WAYS.map(({ way, label, hint }) => (
@@ -2784,7 +2785,7 @@ export function RideMode({
                 <p className="notice">
                   {PAUSED_SAID}{" "}
                   <button type="button" onClick={resume}>
-                    Resume
+                    {t("Resume")}
                   </button>
                 </p>
               )}
@@ -2793,12 +2794,12 @@ export function RideMode({
           {ride.off && (
             <div className="actions ride-off-actions" ref={blockOff}>
               <button type="button" onClick={replanNow} aria-disabled={replanning}>
-                Re-plan from here
+                {t("Re-plan from here")}
               </button>
               {/* A fixed route is always kept: no Keep to press. */}
               {!fixedRef.current && (
                 <button type="button" className="secondary" onClick={keep} aria-pressed={keepPlanned}>
-                  Keep the planned route
+                  {t("Keep the planned route")}
                 </button>
               )}
             </div>

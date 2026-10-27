@@ -60,7 +60,7 @@ test("Go's More ride types: favorites before Common, and neither repeated", () =
   assert.deepEqual(searched.groups.flatMap((g) => g.ids), ["mountain-bike"]);
   const sheets = src("../app/Sheets.tsx");
   const go = sheets.slice(sheets.indexOf("export function RideGroupChips("), sheets.indexOf("export function RideChips("));
-  assert.ok(go.indexOf('<h4 id="ride-sheet-favorites">Favorites</h4>') < go.indexOf('<h4 id="ride-sheet-common">Common</h4>'));
+  assert.ok(go.indexOf('<h4 id="ride-sheet-favorites">{t("Favorites")}</h4>') < go.indexOf('<h4 id="ride-sheet-common">{t("Common")}</h4>'));
 });
 
 test("the star is a toggle button named for its ride type, its state said", () => {

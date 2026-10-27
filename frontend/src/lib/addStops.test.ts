@@ -26,7 +26,7 @@ test("with a route, a searched place is a stop where it adds the least distance"
 
 test("each result row offers 'Make this the destination' as an option of its own", () => {
   const search = source("../PlaceSearch.tsx");
-  assert.match(search, /export const MAKE_DESTINATION = "Make this the destination";/);
+  assert.match(search, /export const MAKE_DESTINATION = t\("Make this the destination"\);/);
   // Plan's Add a stop box offers it too (Plan streamline, 2026-10-17).
   // In a loop too, where it ends the loop (the owner, 2026-10-22: "Setting a destination should end the loop").
   assert.match(search, /const offersDestination = \(variant === "plan" \|\| variant === "add"\) && effect === "via";/);

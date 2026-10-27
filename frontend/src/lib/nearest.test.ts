@@ -393,7 +393,7 @@ test("Ride mode wires the detour: the ride's fix, the ride's settings without th
   assert.match(ride, /if \(check \? gate\.busy \|\| checking\.current : !gate\.begin\(Date\.now\(\)\)\) \{[^}]*if \(via\) sayDetour\(DETOUR_BUSY\);/);
   assert.match(ride, /const tell = \(note: string\) => \{\s*if \(via\) \{\s*sayDetour\(note\);/);
   assert.match(ride, /if \(gate\.busy\) \{\s*sayDetour\(DETOUR_BUSY\);/);
-  assert.match(ride, /whereRef\.current\?\.focus\(\);\s*sayDetour\(`Finding a way to/);
+  assert.match(ride, /whereRef\.current\?\.focus\(\);\s*sayDetour\(t\("Finding a way to \{place\}\."/);
   const app = appSource();
   assert.match(app, /water=\{ensureWater\}/);
 });
