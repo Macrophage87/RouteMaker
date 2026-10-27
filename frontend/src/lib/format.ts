@@ -7,6 +7,8 @@
  * Stored values and API fields stay metric.
  */
 
+import { t } from "./i18n.ts";
+
 const DASH = "–";
 export const METRES_PER_MILE = 1609.344;
 /** The words for the units a rider types in (the target distance, the system weight). */
@@ -270,9 +272,9 @@ export function spokenDistance(metres: number): string {
   if (m < METRES_PER_MILE / 10) {
     const feet = m * FEET_PER_METRE;
     const rounded = feet >= 200 ? Math.round(feet / 50) * 50 : Math.max(10, Math.round(feet / 10) * 10);
-    return `${rounded} feet`;
+    return t("{n} feet", { n: rounded });
   }
   const miles = Math.round((m / METRES_PER_MILE) * 10) / 10;
-  if (miles === 1) return "1 mile";
-  return `${Number.isInteger(miles) ? miles.toFixed(0) : miles.toFixed(1)} miles`;
+  if (miles === 1) return t("1 mile");
+  return t("{n} miles", { n: Number.isInteger(miles) ? miles.toFixed(0) : miles.toFixed(1) });
 }

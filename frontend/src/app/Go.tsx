@@ -32,6 +32,7 @@ import {
   workOf,
   type FavoritePlace,
 } from "../lib/favoritePlaces.ts";
+import { t } from "../lib/i18n.ts";
 
 export type GoSheetSize = "peek" | "half" | "full";
 
@@ -40,7 +41,7 @@ export function nextSheetSize(size: GoSheetSize): GoSheetSize {
   return size === "peek" ? "half" : size === "half" ? "full" : "peek";
 }
 
-const SIZE_SAID: Record<GoSheetSize, string> = { peek: "small", half: "half height", full: "full height" };
+const SIZE_SAID: Record<GoSheetSize, string> = { peek: t("small"), half: t("half height"), full: t("full height") };
 
 /**
  * Go or Plan: two toggle buttons, the pressed one the view in use (the owner's choice 1: either view can switch). For
@@ -108,35 +109,35 @@ export function GoTopBar({
   bar: GoBar | null;
 }) {
   return (
-    <nav className="go-top" aria-label="Go">
+    <nav className="go-top" aria-label={t("Go")}>
       <div className="go-top-row">
         <button type="button" className="icon-button go-menu" onClick={(event) => onMenu(event.currentTarget)}>
           <Icon name="menu" />
-          <span className="icon-button-label">Menu</span>
+          <span className="icon-button-label">{t("Menu")}</span>
         </button>
         <ModeSwitch mode={mode} onChange={onMode} modes={modes} />
         <span className="go-top-end">
           <button type="button" className="icon-button go-layers" onClick={(event) => onLayers(event.currentTarget)}>
             <Icon name="layers" />
-            <span className="icon-button-label">Layers</span>
+            <span className="icon-button-label">{t("Layers")}</span>
           </button>
           <button type="button" className="icon-button go-locate" onClick={onLocate} aria-disabled={locating || undefined}>
             <Icon name="locate" />
-            <span className="icon-button-label">{locating ? "Locating…" : "Locate"}</span>
+            <span className="icon-button-label">{locating ? t("Locating…") : t("Locate")}</span>
           </button>
         </span>
       </div>
       {bar !== null && (
-        <div className="go-destination" role="group" aria-label="Route and edits">
+        <div className="go-destination" role="group" aria-label={t("Route and edits")}>
           {/* The route card shows where to; said here too, as the bar starts the ride there. */}
-          {destination !== null && <span className="go-destination-name visually-hidden">To {destination}</span>}
+          {destination !== null && <span className="go-destination-name visually-hidden">{t("To {place}", { place: destination })}</span>}
           {bar.onUndo && (
-            <button type="button" className="secondary plan-bar-small" data-history="undo" onClick={bar.onUndo} aria-label="Undo" title="Undo">
+            <button type="button" className="secondary plan-bar-small" data-history="undo" onClick={bar.onUndo} aria-label={t("Undo")} title={t("Undo")}>
               <Icon name="undo" size={20} />
             </button>
           )}
           {bar.onRedo && (
-            <button type="button" className="secondary plan-bar-small" data-history="redo" onClick={bar.onRedo} aria-label="Redo" title="Redo">
+            <button type="button" className="secondary plan-bar-small" data-history="redo" onClick={bar.onRedo} aria-label={t("Redo")} title={t("Redo")}>
               <Icon name="redo" size={20} />
             </button>
           )}
@@ -154,7 +155,7 @@ export function GoTopBar({
             </button>
           )}
           {bar.onClear && destination !== null && (
-            <button type="button" className="secondary plan-bar-small go-clear" onClick={bar.onClear} aria-label={`Clear the route to ${destination}`} title="Clear">
+            <button type="button" className="secondary plan-bar-small go-clear" onClick={bar.onClear} aria-label={t("Clear the route to {place}", { place: destination })} title={t("Clear")}>
               <Icon name="trash" size={20} />
             </button>
           )}
@@ -252,7 +253,7 @@ export function FavoritesPopout({
           {home ? (
             <button type="button" className="go-favorite" onClick={(event) => ride(() => places.onHome(event.currentTarget))}>
               <Icon name="home" size={18} />
-              <span className="go-favorite-kind">Home</span>
+              <span className="go-favorite-kind">{t("Home")}</span>
               <span className="go-favorite-name">{homeName(home)}</span>
             </button>
           ) : (
@@ -263,7 +264,7 @@ export function FavoritesPopout({
           )}
           {home && editing && (
             <button type="button" className="secondary" aria-expanded={homeSheetOpen} aria-controls={homeSheetId} onClick={() => onHomeSheet(!homeSheetOpen)}>
-              Change<span className="visually-hidden"> Home</span>
+              {t("Change")}<span className="visually-hidden"> {t("Home")}</span>
             </button>
           )}
         </li>
@@ -297,7 +298,7 @@ export function FavoritesPopout({
                 addChip.current?.focus();
               }}
             >
-              Remove<span className="visually-hidden"> Work</span>
+              {t("Remove")}<span className="visually-hidden"> {t("Work")}</span>
             </button>
           )}
         </li>
@@ -317,7 +318,7 @@ export function FavoritesPopout({
                   addChip.current?.focus();
                 }}
               >
-                Remove<span className="visually-hidden"> {favoriteName(place)}</span>
+                {t("Remove")}<span className="visually-hidden"> {favoriteName(place)}</span>
               </button>
             )}
           </li>
@@ -386,7 +387,7 @@ export function HomeSetter({
     <div className="home-setter" ref={box}>
       {home && (
         <p className="home-now">
-          <strong>Home: </strong>
+          <strong>{t("Home:")} </strong>
           {homeName(home)}
         </p>
       )}
@@ -462,7 +463,7 @@ export function GoRouteCard({ start, destination, stops, onEdit }: { start: stri
       <span className="go-route-ends">
         <span className="go-route-end">
           <Icon name="play" size={16} />
-          <span className="visually-hidden">From </span>
+          <span className="visually-hidden">{t("From")} </span>
           {start}
         </span>
         {stops > 0 && <span className="go-route-stops">{stops === 1 ? "1 stop" : `${stops} stops`}</span>}
@@ -474,7 +475,7 @@ export function GoRouteCard({ start, destination, stops, onEdit }: { start: stri
       </span>
       <span className="go-route-edit">
         <Icon name="edit" size={16} />
-        Edit route
+        {t("Edit route")}
       </span>
     </button>
   );
@@ -549,7 +550,7 @@ export function GoSheet({
   const routeShown = route !== null;
   return (
     <div className={`go-sheet go-${size}`}>
-      <button type="button" className="go-handle" onClick={() => onSize(next)} aria-label={`Sheet: ${SIZE_SAID[size]}. Make it ${SIZE_SAID[next]}`}>
+      <button type="button" className="go-handle" onClick={() => onSize(next)} aria-label={t("Sheet: {size}. Make it {next}", { size: SIZE_SAID[size], next: SIZE_SAID[next] })}>
         <span className="go-handle-bar" aria-hidden="true" />
       </button>
       {/* Where to? stays first while there is no route; with one, the route comes first (it is what the rider is
@@ -565,7 +566,7 @@ export function GoSheet({
             </p>
             {!startMissing && (
               <button type="button" className="link go-change-start" aria-expanded={startOpen} aria-controls={startBoxId} onClick={() => setStartOpen(!startOpen)}>
-                Change start
+                {t("Change start")}
               </button>
             )}
           </div>
@@ -586,7 +587,7 @@ export function GoSheet({
           </div>
         )}
         <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place, _choice: PlaceChoice) => onPick(place)} onTopPlace={onTopPlace} />
-        <div className="chip-row go-places" role="group" aria-label="Places">
+        <div className="chip-row go-places" role="group" aria-label={t("Places")}>
           {places.signedIn ? (
             // Signed in, Home is the first of the rider's favorites (Stephen 2026-10-26: "just have a favorites replace home").
             <button
@@ -615,38 +616,38 @@ export function GoSheet({
               aria-describedby={places.homeReady || homeShown ? undefined : homeHint}
             >
               <Icon name="home" size={18} />
-              Home
+              {t("Home")}
             </button>
           )}
           <button type="button" className="chip place-chip" onClick={(event) => places.onFood(event.currentTarget)}>
             <Icon name="food" size={18} />
-            Food
+            {t("Food")}
           </button>
           <button type="button" className="chip place-chip" onClick={(event) => places.onWater(event.currentTarget)}>
             <Icon name="water" size={18} />
-            Water
+            {t("Water")}
           </button>
           <button type="button" className="chip place-chip" onClick={(event) => places.onRestroom(event.currentTarget)}>
             <Icon name="wc" size={18} />
-            Restroom
+            {t("Restroom")}
           </button>
           <button type="button" className="chip place-chip go-more" aria-expanded={moreOpen} aria-controls={moreId} onClick={() => setMoreOpen(!moreOpen)}>
             <Icon name="more" size={18} />
-            More
+            {t("More")}
           </button>
         </div>
-        <div id={moreId} className="chip-row go-places go-more-row" role="group" aria-label="More places" hidden={!moreOpen}>
+        <div id={moreId} className="chip-row go-places go-more-row" role="group" aria-label={t("More places")} hidden={!moreOpen}>
           <button type="button" className="chip place-chip" onClick={(event) => places.onMetro(event.currentTarget)}>
             <Icon name="train" size={18} />
-            Metro
+            {t("Metro")}
           </button>
           <button type="button" className="chip place-chip" onClick={(event) => places.onRepair(event.currentTarget)}>
             <Icon name="wrench" size={18} />
-            Repair
+            {t("Repair")}
           </button>
           <button type="button" className="chip place-chip" onClick={(event) => places.onSights(event.currentTarget)}>
             <Icon name="camera" size={18} />
-            Sights
+            {t("Sights")}
           </button>
           <button type="button" className="chip place-chip" aria-haspopup="dialog" onClick={places.onSavedRoutes}>
             <Icon name="routes" size={18} />
@@ -681,7 +682,7 @@ export function GoSheet({
             }}
           />
         )}
-        <div id={homeSheetId} className="go-home-sheet" role="group" aria-label="Home" hidden={!homeShown}>
+        <div id={homeSheetId} className="go-home-sheet" role="group" aria-label={t("Home")} hidden={!homeShown}>
           {homeShown && (
             <HomeSetter
               home={places.home}
@@ -736,7 +737,7 @@ export function PlanMapChips({
     <div
       className="map-chips"
       role="group"
-      aria-label="Find on the map"
+      aria-label={t("Find on the map")}
       onKeyDown={(event) => {
         if (event.key === "Escape" && open) {
           event.preventDefault();
@@ -747,20 +748,20 @@ export function PlanMapChips({
     >
       <button type="button" ref={toggleRef} className="chip map-chip map-chips-toggle" aria-expanded={open} aria-controls={rowId} onClick={() => setOpen(!open)}>
         <Icon name="search" size={18} />
-        Find
+        {t("Find")}
       </button>
       <div id={rowId} className="map-chips-row" hidden={!open}>
         <button type="button" className="chip map-chip" onClick={pick(onFood)}>
           <Icon name="food" size={18} />
-          Food
+          {t("Food")}
         </button>
         <button type="button" className="chip map-chip" onClick={pick(onWater)}>
           <Icon name="water" size={18} />
-          Water
+          {t("Water")}
         </button>
         <button type="button" className="chip map-chip" onClick={pick(onPlaces)}>
           <Icon name="camera" size={18} />
-          Places to see
+          {t("Places to see")}
         </button>
       </div>
     </div>
