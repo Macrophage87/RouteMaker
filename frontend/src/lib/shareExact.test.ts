@@ -111,7 +111,7 @@ test("App: Share, Copy link and Save route send a file with its settled route; t
   assert.match(app, /verbatim\.track, points, preset, dials, fileShown\(\)\)/);
   const open = app.slice(app.indexOf("const openSaved = ("), app.indexOf("const exportSaved = "));
   assert.match(open, /savedShown\.current = \{ key: keptPlanKey\(at\.points, at\.preset, at\.dials\), answer \};/);
-  assert.match(open, /openImportedChecked\(asKept\(\{ \.\.\.outcome\.plan, name: saved\.name \}, at, answer\)\);/);
+  assert.match(open, /openImportedChecked\(asKept\(\{ \.\.\.outcome\.plan, name: saved\.name \}, at, answer\), check\);/);
   // The importBase starts in the kept mode; switching it plans the file again rather than replaying the kept line.
   assert.match(app, /importBase\.current = \{ imported, points, preset, exact: imported\.exact === true \};/);
   assert.match(app, /exact: on, unfollowed: false \};\s*\/\/[^\n]*\n\s*savedShown\.current = null;/);
@@ -159,9 +159,9 @@ test("Share route or Share ride: a ride's link opens fixed, with location sharin
   assert.equal(rideLinkFrom(hash.replace("&ride=1", "")), false);
   assert.equal(rideLinkFrom("", "?route=x&ride=1"), true);
   // Only with its exact line kept is a link a ride; the sharer rides it as its openers do.
-  assert.match(app, /const link = ride && kept \? asRideLink\(now\.link, lead\?\.key \?\? null\) : now\.link;/);
+  assert.match(app, /const link = again \? again\.link : ride && kept \? asRideLink\(now!\.link, lead\?\.key \?\? null\) : now!\.link;/);
   // Only once the sheet shared it with the line kept; while the route is still planned, Share ride says to wait.
-  assert.match(app, /\} else if \(ride && kept && done === "shared"\) \{(\s*\/\/[^\n]*\n)+\s*if \(lead && sharedId\) \{\s*leadConsent\(await broadcastRideId\(sharedId\), lead\.token\);[\s\S]*?const open = \{ answer: shown, ride: true, own: true, id: sharedId \?\? undefined, lead: lead && sharedId \? lead\.key : null \};\s*sharedOpenNow\.current = open;\s*setSharedOpen\(open\);/);
+  assert.match(app, /\} else if \(ride && kept && done === "shared"\) \{(\s*\/\/[^\n]*\n)+\s*if \(lead && sharedId\) \{\s*leadConsent\(await broadcastRideId\(sharedId\), lead\.token\);[\s\S]*?if \(led\) rideLinkSent\.current = \{ route: rideRoute, keep: shareKeep, link, lead, id: sharedId \};\s*const open = \{ answer: rideRoute, ride: true, own: true, id: sharedId \?\? undefined, lead: lead && sharedId \? lead\.key : null \};\s*sharedOpenNow\.current = open;\s*setSharedOpen\(open\);/);
   assert.match(app, /if \(ride && !shareExact\(\)\?\.save\.answer\) \{\s*setShareSaid\(\(before\) => \(\{ text: SHARE_RIDE_WAIT, count: before\.count \+ 1 \}\)\);\s*return \{ led: false, said: SHARE_RIDE_WAIT \};\s*\}/);
   assert.match(app, /if \(shared\.answer\) setSharedOpen\(\{ answer: shared\.answer, ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD \}\);/);
   // What each does, on an Info button beside them (a phone has no hover) and as each button's description.

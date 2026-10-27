@@ -215,16 +215,18 @@ test("ride card: fewer words on screen, the whole of them for screen readers (th
 test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a ride\"): a side button, Share ride's link, the ride going on", () => {
   const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
   // A round side button as Roam's, on while this rider leads; not once arrived.
-  assert.match(rail, /\{onBroadcast && !ride\.arrived && \(\s*<button\s+type="button"\s+className=\{`ride-round\$\{broadcasting \? " ride-round-on" : ""\}`\}\s+onClick=\{\(\) => void broadcast\(\)\}/);
+  assert.match(rail, /\{onBroadcast && !ride\.arrived && \(\s*<button\s+type="button"\s+className=\{`ride-round broadcast-hold\$\{broadcasting \? " ride-round-on" : ""\}`\}\s+onClick=\{\(\) => void broadcast\(\)\}/);
   assert.match(rail, /<Icon name="broadcast" size=\{24\} \/>/);
   // The share sheet opens inside the press: nothing awaited before onBroadcast.
   assert.match(ride, /broadcastBusy\.current = true;\s*try \{\s*const said = await onBroadcast\(\);/);
   // App: Share ride's link (shareRoute(true)), the rider its leader; no new ride started.
-  const fromRide = app.slice(app.indexOf("const broadcastFromRide = async"), app.indexOf("// Ride the rest (lib/rideTrip.ts)"));
+  const fromRide = app.slice(app.indexOf("const broadcastFromRide = async"), app.indexOf("// Broadcast held beside Start"));
   assert.match(fromRide, /await shareRoute\(true, broadcastNav\)/);
   assert.doesNotMatch(fromRide, /startRide/);
-  // Only the plan's own route, never Ride the rest's, a detour from Roam, or a ride opened from another's link.
-  assert.match(app, /onBroadcast=\{!rideStart\.roam && rideStart\.route === shown && !\(onShared && !onShared\.own\) \? broadcastFromRide : null\}/);
+  // Only the plan's own route, never Ride the rest's or a detour from Roam; one following another's link passes theirs
+  // on (Stephen 2026-10-26: "allow participants to share that same code as well").
+  assert.match(app, /onBroadcast=\{!rideStart\.roam && rideStart\.route === shown && \(!\(onShared && !onShared\.own\) \|\| passesOn\) \? broadcastFromRide : null\}/);
+  assert.match(fromRide, /const followed = followedLink\(\);\s*if \(followed\) return \(await passOn\(followed, broadcastNav\)\)\.said;/);
   assert.match(app, /broadcasting=\{rideBroadcast\?\.leading === true\}/);
 });
 

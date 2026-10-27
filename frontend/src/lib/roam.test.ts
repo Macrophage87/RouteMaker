@@ -221,11 +221,11 @@ test("App: Broadcast is a tap within Roam; the leader leads a ride with no route
   const { readFileSync } = await import("node:fs");
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   // The share sheet opens before any await: the press's activation holds.
-  assert.match(app, /const broadcastRoam = async \(\): Promise<string> => \{[^]*?const done = await shareLink\(broadcastNav,/);
-  const before = app.slice(app.indexOf("const broadcastRoam"), app.indexOf("const done = await shareLink(broadcastNav,"));
+  assert.match(app, /const broadcastRoam = async \(nav: ShareNavigator \| undefined = broadcastNav\): Promise<string> => \{[^]*?const done = await shareLink\(nav,/);
+  const before = app.slice(app.indexOf("const broadcastRoam"), app.indexOf("const done = await shareLink(nav,"));
   assert.doesNotMatch(before, /await /);
   assert.match(app, /leadConsent\(await roamRideId\(id\), lead\.token\);/);
-  assert.match(app, /onBroadcast=\{broadcastRoam\}/);
+  assert.match(app, /onBroadcast=\{\(\) => broadcastRoam\(\)\}/);
   assert.match(app, /const ROAM_FOLLOW = roamLinkFrom\(window\.location\.hash\);/);
   assert.match(app, /broadcast=\{\{ \.\.\.roamBroadcast, roam: true \}\}/);
   // It ends with the roam.
