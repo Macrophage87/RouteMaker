@@ -65,7 +65,7 @@ export function AccessibilitySwitch({
         onClick: () => onChange(!on),
       },
       h("span", { id: `${idBase}-label`, className: "switch-label" }, ACCESSIBILITY_LABEL),
-      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? "On" : "Off"),
+      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? t("On") : t("Off")),
     ),
     h("p", { className: "hint", id: `${idBase}-hint`, hidden: hintHidden }, [ACCESSIBILITY_HINT, ...notes].join(" ")),
     // Behind the (i), why the state is what it is stays in view (it is in the description too).

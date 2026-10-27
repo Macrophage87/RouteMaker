@@ -14,6 +14,7 @@
  * clock, so one route gives the same bytes.
  */
 import type { RouteResponse } from "./api.ts";
+import { speechLang } from "./i18n.ts";
 import { parkNoticesOf, noticeMarkerName } from "./closureMap.ts";
 import { abbreviateStreet, creditLine, routeCues, type CourseCueType, type RouteCue } from "./course.ts";
 import { routeWarning } from "./dialsPanel.ts";
@@ -319,7 +320,7 @@ export function cueSheetDocument(route: SheetRoute, kind: CueSheetKind, vias: re
   const credit = sheetCredit(route);
   if (kind === "sheet") {
     const foot = { side: 54, y: 36, size: 8 };
-    const pdf = new TaggedPdf(LETTER.width, LETTER.height, { title, creator: CREATOR, lang: "en-US" });
+    const pdf = new TaggedPdf(LETTER.width, LETTER.height, { title, creator: CREATOR, lang: speechLang() });
     const flow = new Flow(pdf, { top: 54, bottom: footerTop(LETTER.width, foot.side, foot.y, foot.size, credit) + 12, side: 54 });
     flow.para(pdf.element("H1"), exportName(route), 18, "bold", 4);
     flow.para(pdf.element("P"), `Rider cue sheet. ${summaryLine(route)}`, 11, "regular", 10);
@@ -350,7 +351,7 @@ export function cueSheetDocument(route: SheetRoute, kind: CueSheetKind, vias: re
     return { bytes: pdf.bytes(), pages: pdf.pageCount };
   }
   const foot = { side: 12, y: 14, size: 6 };
-  const pdf = new TaggedPdf(STRIP.width, STRIP.height, { title, creator: CREATOR, lang: "en-US" });
+  const pdf = new TaggedPdf(STRIP.width, STRIP.height, { title, creator: CREATOR, lang: speechLang() });
   const flow = new Flow(pdf, { top: 18, bottom: footerTop(STRIP.width, foot.side, foot.y, foot.size, credit) + 8, side: 12 });
   flow.para(pdf.element("H1"), exportName(route), 11, "bold", 2);
   flow.para(pdf.element("P"), `Handlebar cue strip. ${summaryLine(route)}`, 7.5, "regular", 4);

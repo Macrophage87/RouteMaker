@@ -14,6 +14,7 @@
  * a test renders it.
  */
 import { createElement as h, useState, type ReactElement, type ReactNode } from "react";
+import { t } from "./i18n.ts";
 import { ICON_PATHS } from "./iconPaths.ts";
 
 export const LAYER_SECTIONS_KEY = "routemaker.layerSections";
@@ -35,7 +36,7 @@ export function sectionState(layers: readonly SectionLayer[]): SectionState {
 }
 
 /** The words of the section switch's state, shown beside it (not colour alone). */
-export const SECTION_STATE_WORDS: Record<SectionState, string> = { on: "On", off: "Off", some: "Some on" };
+export const SECTION_STATE_WORDS: Record<SectionState, string> = { on: t("On"), off: t("Off"), some: t("Some on") };
 
 /** The switch's description while some are on: "Some on: Metro." */
 export function someOnText(layers: readonly SectionLayer[]): string {

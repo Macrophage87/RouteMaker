@@ -20,6 +20,7 @@
  * - when the QR code can be had: it encodes the route's shared link (lib/sharedRoutes.ts), made as Share makes it.
  */
 import type { RouteProfile } from "./api.ts";
+import { t } from "./i18n.ts";
 import { formatClimb, formatDistance, METRES_PER_MILE } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import type { Home } from "./myGo.ts";
@@ -34,7 +35,7 @@ export const PROFILE_LABEL = "Elevation profile";
 export const PROFILE_ON_MAP_LABEL = "Draw it on the map";
 export const DOWNLOAD_LABEL = "Download";
 export const SHARE_FILE_LABEL = "Share image";
-export const CLOSE_LABEL = "Close";
+export const CLOSE_LABEL = t("Close");
 export const BRAND = "RouteMaker";
 
 export const IMAGE_MAKING = "Making the image.";

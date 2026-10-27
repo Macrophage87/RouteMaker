@@ -295,6 +295,7 @@ import { BACK_TO_ROAM, ROAM_BROADCAST_NOT_READY, ROAM_BROADCAST_ON, ROAM_BROADCA
 import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
 import { SaveRoute } from "./SaveRoute.tsx";
+import { firstWordAndRest, t } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
 import { BROADCAST_FOLLOWING, broadcastRideId, isRideLink, leadConsent, leaderKey, newToken, opensIntoRide, roamRideId, type RideLinkType } from "./lib/rideGroup.ts";
 
@@ -341,7 +342,7 @@ VIA_MARKS.nameAt(initialPlan.points, initialPlan.names);
 // link with a plan in it on a wide screen, else by screen size: Plan on a computer, Go on a phone.
 const START_MY_GO = readStartMyGo();
 /** A Go sheet's way back: to the map and the Go sheet, not a planner it does not show. */
-const GO_CLOSE_LABEL = "Close";
+const GO_CLOSE_LABEL = t("Close");
 /** Go's early start (v0.7.0, "Faster routing" step 4) asks only for trips up to this straight-line length (25 mi). */
 const GO_EARLY_MAX_KM = 40;
 /** The top search result is asked for early once it has stayed the top this long, not while the rider types on past it. */
@@ -4739,9 +4740,9 @@ export function App() {
 
   const announcement =
     status.kind === "loading"
-      ? `Planning a ${presetSaid(preset)} route…`
+      ? t("Planning a {ride} route…", { ride: presetSaid(preset) })
       : status.kind === "waiting"
-        ? `The planner is busy; trying again in ${formatSeconds(status.seconds)}.`
+        ? t("The planner is busy; trying again in {time}.", { time: formatSeconds(status.seconds) })
         : status.kind === "ok" && route
           ? // On arrival the answer's own count is said (More direct and Calmer come later, said once by their own
             // line); a route chosen is said by its place among all the routes shown, or by its name.
@@ -4953,7 +4954,7 @@ export function App() {
   // A bikeshare ride's station choice (the Points section's, before): under Route, closed, as the mockup has it.
   const stations =
     usesBikeshare(preset) && points.length > 0 ? (
-      <Fold title="Choose a station" icon="bikeshare" className="stations-fold">
+      <Fold title={t("Choose a station")} icon="bikeshare" className="stations-fold">
         <NearbyStations points={points} pins={stationChoice} onChoose={chooseStation} />
       </Fold>
     ) : null;
@@ -4971,7 +4972,7 @@ export function App() {
     savedNote: savedNoteShown,
   };
   // Go's ride types: before a route under the place chips, with one under the route card (edit-route redesign).
-  const goRides = <RideChips ids={goRideChips(myGo.ride)} preset={preset} onPick={pickRide} more={(opener) => openView("ride", opener)} label="Ride type" ownHint={OWN_RIDE_HINT} />;
+  const goRides = <RideChips ids={goRideChips(myGo.ride)} preset={preset} onPick={pickRide} more={(opener) => openView("ride", opener)} label={t("Ride type")} ownHint={OWN_RIDE_HINT} />;
   const go = {
     peek: goSheet === "peek",
     full: goSheet === "full" || (!narrow && goSheet !== "peek"),
@@ -5087,7 +5088,7 @@ export function App() {
       {/* The page's first stop and first in a screen reader's order, hidden until focused: accessibility mode's
           switch (OWNER-DECISIONS 455, 455a): a button with aria-pressed and a constant name. */}
       <button type="button" className="access-link" aria-pressed={accessMode} onClick={() => toggleAccessMode(true)}>
-        {ACCESS_LABEL}
+        {t(ACCESS_LABEL)}
       </button>
       {onBike ? (
         // During a ride (or Roam) the planner is hidden: the link goes to Ride mode instead.
@@ -5347,7 +5348,7 @@ export function App() {
         <div
           className="plan-map-bar"
           role="group"
-          aria-label="Route and edits"
+          aria-label={t("Route and edits")}
           onFocus={() => (barFocused.current = true)}
           onBlur={(event) => {
             // A button of the bar taken away leaves no focus behind; a click on nothing in particular leaves it on
@@ -5356,12 +5357,12 @@ export function App() {
           }}
         >
           {can.undo && (
-            <button type="button" className="secondary plan-bar-small" data-history="undo" onClick={undo} aria-label="Undo" title="Undo">
+            <button type="button" className="secondary plan-bar-small" data-history="undo" onClick={undo} aria-label={t("Undo")} title={t("Undo")}>
               <Icon name="undo" size={20} />
             </button>
           )}
           {can.redo && (
-            <button type="button" className="secondary plan-bar-small" data-history="redo" onClick={redo} aria-label="Redo" title="Redo">
+            <button type="button" className="secondary plan-bar-small" data-history="redo" onClick={redo} aria-label={t("Redo")} title={t("Redo")}>
               <Icon name="redo" size={20} />
             </button>
           )}
@@ -5391,15 +5392,16 @@ export function App() {
           {barLoad && (
             <button type="button" className="secondary plan-bar-route plan-bar-load" aria-haspopup="dialog" onClick={() => setLoadOpen("plan")}>
               <Icon name="file" size={20} />
-              Load route
+              {t("Load route")}
             </button>
           )}
           {/* Start ride beside it (the owner, 2026-10-21: "We might also want to allow for a start route too"), on a
               route a browser can ride, as Go's bar. */}
           {barSave && shown && rideableRoute(shown) && (
-            <button type="button" className="secondary plan-bar-route plan-bar-start" onClick={startRideChecked} aria-label="Start ride">
+            <button type="button" className="secondary plan-bar-route plan-bar-start" onClick={startRideChecked} aria-label={t("Start ride")}>
               <Icon name="play" size={20} />
-              Start<span className="plan-bar-wide"> ride</span>
+              {firstWordAndRest(t("Start ride"))[0]}
+              <span className="plan-bar-wide">{firstWordAndRest(t("Start ride"))[1]}</span>
             </button>
           )}
           {manualOffered && (
@@ -5547,7 +5549,7 @@ export function App() {
         id="route-planner"
         tabIndex={-1}
         className={`panel ${panelOpen ? "open" : "closed"}${goMode ? ` go-panel go-${goSheet}` : ""}${reviewing ? " review-panel" : ""}`}
-        aria-label="Route planner"
+        aria-label={t("Route planner")}
         hidden={onBike}
       >
         <header className="panel-header">

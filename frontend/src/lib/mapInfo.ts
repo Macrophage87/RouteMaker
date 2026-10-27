@@ -8,17 +8,18 @@
  * attribution entry: MapLibre sorts entries by length, so a shorter source credit would come first.
  */
 import { searchLede } from "./sidebar.ts";
+import { t } from "./i18n.ts";
 import { STRESS_PAGE } from "./stressLegend.ts";
 import { versionSaid } from "./appVersion.ts";
 
 /** The rider-facing documentation pages (public/about/), in the hub's order; Acknowledgements is in the credits. */
 export const DOCS_LINKS: ReadonlyArray<{ href: string; text: string }> = [
-  { href: "/about/using.html", text: "Using RouteMaker" },
-  { href: "/about/how-it-works.html", text: "How RouteMaker works" },
-  { href: "/about/ride-types.html", text: "Ride types" },
-  { href: STRESS_PAGE, text: "Stress ratings" },
-  { href: "/about/routing.html", text: "Routing" },
-  { href: "/about/architecture.html", text: "Architecture" },
+  { href: "/about/using.html", text: t("Using RouteMaker") },
+  { href: "/about/how-it-works.html", text: t("How RouteMaker works") },
+  { href: "/about/ride-types.html", text: t("Ride types") },
+  { href: STRESS_PAGE, text: t("Stress ratings") },
+  { href: "/about/routing.html", text: t("Routing") },
+  { href: "/about/architecture.html", text: t("Architecture") },
 ];
 
 /** The documentation's short version (how-it-works.html, "In short"), one line each. */
@@ -62,7 +63,7 @@ export function wrapCredits(control: HTMLElement | null, doc: WrapDocument = doc
   // The "i" says what it is (Stephen 2026-10-21, "Label the (i)"): the docs are behind it.
   const button = control.querySelector(".maplibregl-ctrl-attrib-button");
   if (button) {
-    button.textContent = "Help";
+    button.textContent = t("Help");
     // And whether it is open (the v0.10.1 end review): MapLibre's class says so, set by a tap, the map's first drag,
     // collapseCredits or a ride's start (MapView.tsx), so the button follows the class, not its own clicks.
     const sync = () => helpExpanded(control, button);

@@ -15,6 +15,7 @@
  * description says only what it changes then.
  */
 import { createElement as h, type ReactElement } from "react";
+import { t } from "./i18n.ts";
 
 export const HIGH_STRESS_LANES_LABEL = "Show bike lanes on high-stress roads";
 
@@ -63,7 +64,7 @@ export function HighStressLanesSwitch({
         onClick: () => onChange(!on),
       },
       h("span", { id: "high-lanes-label", className: "switch-label" }, HIGH_STRESS_LANES_LABEL),
-      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? "On" : "Off"),
+      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? t("On") : t("Off")),
     ),
     h(
       "p",

@@ -66,14 +66,15 @@ export function daysSince(setAt: number, now: number = Date.now()): number {
 /** "set today", "set 1 day ago", "set 3 days ago". */
 export function setAgo(setAt: number, now: number = Date.now()): string {
   const days = daysSince(setAt, now);
-  return days === 0 ? "set today" : `set ${days} ${days === 1 ? "day" : "days"} ago`;
+  if (days === 0) return t("set today");
+  return days === 1 ? t("set 1 day ago") : t("set {days} days ago", { days });
 }
 
 /** The ride panel's line: whether a weight is set and when, never its value. The same words for a screen reader. */
 export function weightLine(weight: StoredWeight | null, now: number = Date.now()): string {
-  if (!weight) return "Rider and bike weight: not set, defaults used";
-  if (weight.name && weight.name !== DEFAULT_NAME) return `Rider and bike: ${weight.name}, ${setAgo(weight.setAt, now)}`;
-  return `Rider and bike weight: ${setAgo(weight.setAt, now)}`;
+  if (!weight) return t("Rider and bike weight: not set, defaults used");
+  if (weight.name && weight.name !== DEFAULT_NAME) return t("Rider and bike: {name}, {ago}", { name: weight.name, ago: setAgo(weight.setAt, now) });
+  return t("Rider and bike weight: {ago}", { ago: setAgo(weight.setAt, now) });
 }
 
 // ---- the dialog's words (317, 318) -------------------------------------------

@@ -11,6 +11,7 @@
  * Written with createElement so a test renders it.
  */
 import { createElement as h, type ReactElement } from "react";
+import { t } from "./i18n.ts";
 import { MTB_MIN_ZOOM } from "../stressStyle.js";
 
 export const MTB_TRAILS_LABEL = "Mountain-bike trails";
@@ -50,7 +51,7 @@ export function MtbTrailsSwitch({
         onClick: () => onChange(!on),
       },
       h("span", { id: "mtb-trails-label", className: "switch-label" }, MTB_TRAILS_LABEL),
-      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? "On" : "Off"),
+      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? t("On") : t("Off")),
     ),
     h("p", { className: "hint", id: "mtb-trails-hint" }, overlay ? MTB_TRAILS_HINT : MTB_TRAILS_NO_MAP_HINT),
   );

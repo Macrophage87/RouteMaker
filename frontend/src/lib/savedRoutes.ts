@@ -12,6 +12,7 @@
  * link it shares (lib/sharedRoutes.ts).
  */
 import type { RouteResponse } from "./api.ts";
+import { t } from "./i18n.ts";
 import type { Dials } from "./dials.ts";
 import { formatDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
@@ -131,18 +132,18 @@ export function differsTooMuch(savedM: number, todayM: number): boolean {
 /** The one line (with the "Update route" link after it): "Today's map plans this 0.8 mi (1.3 km) longer." */
 export function differenceLine(savedM: number, todayM: number): string {
   const by = formatDistance(Math.abs(todayM - savedM));
-  return `Today's map plans this route ${by} ${todayM > savedM ? "longer" : "shorter"}.`;
+  return todayM > savedM ? t("Today's map plans this route {by} longer.", { by }) : t("Today's map plans this route {by} shorter.", { by });
 }
 
-export const UPDATE_ROUTE = "Update route";
-export const SAVE_ROUTE = "Save route";
+export const UPDATE_ROUTE = t("Update route");
+export const SAVE_ROUTE = t("Save route");
 /** Go's chip shows this; it is named SAVE_ROUTE (the words shown are in the name). */
-export const SAVE_SHORT = "Save";
-export const MY_ROUTES = "My routes";
-export const SAVED_SAID = (name: string) => `Saved "${name}" to My routes.`;
-export const SAVE_FAILED = "The route was not saved; try again shortly.";
-export const NONE_SAVED = "No saved routes yet. Plan a route and press Save route.";
-export const OPENED_SAID = (name: string) => `Opened "${name}", as it was saved.`;
+export const SAVE_SHORT = t("Save");
+export const MY_ROUTES = t("My routes");
+export const SAVED_SAID = (name: string) => t('Saved "{name}" to My routes.', { name });
+export const SAVE_FAILED = t("The route was not saved; try again shortly.");
+export const NONE_SAVED = t("No saved routes yet. Plan a route and press Save route.");
+export const OPENED_SAID = (name: string) => t('Opened "{name}", as it was saved.', { name });
 export const VERSION_SAID = (name: string) => `Saved a new version of "${name}"; the one before it is in its versions.`;
 /** Saved again with nothing to keep: a file's own text unchanged (what a saved file keeps, whatever the plan on it), or the plan. */
 export const UNCHANGED_SAID = (name: string, source: SavedSource = "plan") =>

@@ -9,6 +9,7 @@
  * 4.6%"), where on the route it starts and what it gains, without the map.
  */
 import { createElement as h, useSyncExternalStore, type ReactElement } from "react";
+import { t } from "./i18n.ts";
 import { formatDistance } from "./format.ts";
 import {
   CLIMB_CAUTION,
@@ -144,7 +145,7 @@ export function ClimbsHideBusySwitch(): ReactElement {
         onClick: () => setHideBusyClimbs(!on),
       },
       h("span", { id: "climbs-hide-busy-label", className: "switch-label" }, CLIMBS_HIDE_BUSY_LABEL),
-      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? "On" : "Off"),
+      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? t("On") : t("Off")),
     ),
     h("p", { className: "hint", id: "climbs-hide-busy-hint" }, CLIMBS_HIDE_BUSY_HINT),
   );
@@ -213,7 +214,7 @@ export function ClimbsSwitch({ on, onChange }: { on: boolean; onChange: (on: boo
         onClick: () => onChange(!on),
       },
       h("span", { id: "climbs-label", className: "switch-label" }, CLIMBS_LABEL),
-      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? "On" : "Off"),
+      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? t("On") : t("Off")),
     ),
     h("p", { className: "hint", id: "climbs-hint" }, CLIMBS_HINT),
   );

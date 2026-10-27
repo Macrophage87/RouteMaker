@@ -89,6 +89,7 @@ function LanguageSetting() {
           chooseLanguage(next);
         }}
         describedBy="settings-language-info"
+        optionLang={{ en: "en", es: "es" }}
       />
     </SettingRow>
   );
@@ -549,7 +550,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
               {RIDE_TEXT_LABEL}
             </span>
             <span className="switch-state" aria-hidden="true">
-              {props.rideText.size === "large" ? "On" : "Off"}
+              {props.rideText.size === "large" ? t("On") : t("Off")}
             </span>
           </button>
         </SettingRow>
@@ -565,7 +566,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
         <h3 id="settings-display-heading">{t("Display")}</h3>
         <ContrastRow />
         {/* Accessibility mode (OWNER-DECISIONS 455) as a switch here too (the mockup), the same state as the page's first button. */}
-        <SettingRow infoId="settings-access-hint" about="accessibility mode" info={ACCESS_HELP} className="a11y-setting">
+        <SettingRow infoId="settings-access-hint" about="accessibility mode" info={t(ACCESS_HELP)} className="a11y-setting">
           <button
             type="button"
             role="switch"
@@ -577,10 +578,10 @@ export function SettingsSheet(props: SettingsSheetProps) {
             onClick={() => toggleAccessMode(false)}
           >
             <span id="settings-access-label" className="switch-label">
-              {ACCESS_LABEL}
+              {t(ACCESS_LABEL)}
             </span>
             <span className="switch-state" aria-hidden="true">
-              {accessMode ? "On" : "Off"}
+              {accessMode ? t("On") : t("Off")}
             </span>
           </button>
         </SettingRow>

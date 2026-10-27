@@ -12,6 +12,7 @@ import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
 import { leaveNowArrival } from "../lib/arrival.ts";
 import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
+import { t } from "../lib/i18n.ts";
 import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, noviceTripShort, type NoviceTrip } from "../lib/noviceOffer.ts";
 import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
 import { lightLine, type LightMark } from "../lib/lightTimes.ts";
@@ -283,7 +284,7 @@ export function RouteSection(props: RouteSectionProps) {
         Route
       </h2>
       {status.kind === "loading" && <p className="loading">{announcement}</p>}
-      {status.kind === "loading" && <progress className="planning" aria-label="Planning the route" />}
+      {status.kind === "loading" && <progress className="planning" aria-label={t("Planning the route")} />}
       {/* What the route's live region says (routeStatus, outside the panel), shown here; a screen
           reader hears it there, so it is not read twice. */}
       <div className="status-shown" aria-hidden="true">
@@ -450,7 +451,7 @@ export function ShareControls(props: {
           </button>
           <button type="button" className="link icon-button info-button share-about-button" aria-expanded={about} aria-controls={aboutId} onClick={() => setAbout(!about)}>
             <Icon name="info" />
-            <span className="visually-hidden">About sharing</span>
+            <span className="visually-hidden">{t("About sharing")}</span>
           </button>
         </div>
       )}
@@ -493,18 +494,18 @@ function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
     <div className="route-actions">
       <div className="route-actions-row">
         {start}
-        <button type="button" className="secondary icon-button gpx-download" onClick={() => downloadRoute()} aria-label="Download GPX">
+        <button type="button" className="secondary icon-button gpx-download" onClick={() => downloadRoute()} aria-label={t("Download GPX")}>
           <Icon name="download" />
           <span aria-hidden="true">GPX</span>
         </button>
         <button type="button" className="secondary icon-button copy-link" onClick={copyLink} aria-label={COPY_LINK} aria-describedby={linkNote ? "link-note" : undefined}>
           <Icon name="link" />
-          <span aria-hidden="true">Link</span>
+          <span aria-hidden="true">{t("Link")}</span>
         </button>
         {/* Always: Share as image is in it (Download works where the browser has no share sheet). */}
         <button type="button" className="secondary icon-button route-more" aria-expanded={more} aria-controls={moreId} onClick={() => setMore(!more)}>
           <Icon name="more" />
-          <span>More</span>
+          <span>{t("More")}</span>
         </button>
       </div>
       <div id={moreId} className="route-more-body" hidden={!more}>
@@ -832,7 +833,7 @@ export function RouteSummary({
   const infoButton = (
     <button type="button" className="link icon-button info-button route-info-button" aria-expanded={info} aria-controls={infoId} onClick={() => setInfo(!info)}>
       <Icon name="info" />
-      <span>Info</span>
+      <span>{t("Info")}</span>
     </button>
   );
   const noteList =
@@ -848,7 +849,7 @@ export function RouteSummary({
     ) : null;
   const bikeshareFold = bikeshare ? (
     // The bikeshare plan, as a fold kept open (the mockup's table: "Same: a fold, open").
-    <Fold title="Bikeshare plan" open className="bikeshare-fold" icon="bikeshare">
+    <Fold title={t("Bikeshare plan")} open className="bikeshare-fold" icon="bikeshare">
       <BikeshareSummary plan={bikeshare} onEnding={onEnding} />
     </Fold>
   ) : null;
@@ -878,7 +879,7 @@ export function RouteSummary({
         {!go.peek && go.options && <GoBikeOptions options={go.options} />}
         {!go.peek && bikeshareFold}
         <div className="go-head">
-          <h3 className="visually-hidden">Totals</h3>
+          <h3 className="visually-hidden">{t("Totals")}</h3>
           <dl className="stats totals go-totals">
             <div className="total-time">
               <dt className="visually-hidden">{timeName}</dt>
@@ -890,7 +891,7 @@ export function RouteSummary({
             </div>
             {go.peek && alertCount > 0 ? (
               <div className="total-alerts">
-                <dt className="visually-hidden">Warnings</dt>
+                <dt className="visually-hidden">{t("Warnings")}</dt>
                 <dd>
                   <Icon name="warn" size={14} />
                   {alertCount === 1 ? "1 alert" : `${alertCount} alerts`}
@@ -898,7 +899,7 @@ export function RouteSummary({
               </div>
             ) : (
               <div className="total-climb">
-                <dt className="visually-hidden">Climb</dt>
+                <dt className="visually-hidden">{t("Climb")}</dt>
                 <dd>
                   <Icon name="mountain" size={14} />
                   {formatClimb(trip.climb_m)}
@@ -945,7 +946,7 @@ export function RouteSummary({
         {/* The routes and Save; the ride type and Plan in detail moved (edit-route redesign): the ride types sit
             under the route card, and the Go/Plan switch at the top is Plan in detail. */}
         {!go.peek && (picker || actions.save) && (
-          <div className="go-chips" role="group" aria-label="Route options">
+          <div className="go-chips" role="group" aria-label={t("Route options")}>
             {picker && (
               <button type="button" className="chip go-routes-chip" aria-expanded={routesOpen} aria-controls={routesId} onClick={() => setRoutesOpen(!routesOpen)}>
                 {`${pickerCount} routes`}
@@ -973,7 +974,7 @@ export function RouteSummary({
       {bikeshareFold}
       {/* Headings for a screen reader's list, out of sight: the route's figures, then each fold (the a11y review's S5). */}
       <div className="totals-row">
-        <h3 className="visually-hidden">Totals</h3>
+        <h3 className="visually-hidden">{t("Totals")}</h3>
         <dl className="stats totals">
           <div className="total-time">
             <dt className="visually-hidden">{timeName}</dt>
@@ -984,14 +985,14 @@ export function RouteSummary({
             <dd>{formatDistance(trip.distance_m)}</dd>
           </div>
           <div className="total-climb">
-            <dt className="visually-hidden">Climb</dt>
+            <dt className="visually-hidden">{t("Climb")}</dt>
             <dd>
               <span aria-hidden="true">↑ </span>
               {formatClimb(trip.climb_m)}
             </dd>
           </div>
           <div className="total-descent">
-            <dt className="visually-hidden">Descent</dt>
+            <dt className="visually-hidden">{t("Descent")}</dt>
             <dd>
               <span aria-hidden="true">↓ </span>
               {formatClimb(trip.descent_m)}

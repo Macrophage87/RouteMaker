@@ -256,10 +256,10 @@ export const END_RIDE_NAME = t("End ride");
 function TimeToGo({ seconds, nowMs }: { seconds: number; nowMs: number }) {
   return (
     <>
-      , <span className="visually-hidden">about </span>
+      , <span className="visually-hidden">{t("about")} </span>
       {formatDuration(seconds)}
       <span aria-hidden="true"> · </span>
-      <span className="visually-hidden">, arriving about </span>
+      <span className="visually-hidden">{t(", arriving about")} </span>
       <span className="ride-arrive">{arrivalClock(nowMs, seconds)}</span>
     </>
   );
@@ -287,7 +287,7 @@ export const RIDE_TOPO_OFFLINE = `${TOPO_LINES_LABEL} need a connection. Try aga
 export const RIDE_SETTINGS_TITLE = t("Ride settings");
 export const RIDE_CHANGE_TITLE = t("Change the route");
 /** Broadcast on the ride screen (Stephen 2026-10-24: "Let people broadcast from a ride"): Plan's and Go's Broadcast, the ride already going. */
-export const RIDE_BROADCAST_NAME = "Broadcast";
+export const RIDE_BROADCAST_NAME = t("Broadcast");
 /** More > Riders: the riders panel, its count now on Broadcast. */
 export const RIDERS_NAME = t("Riders");
 /** What End ride leaves behind (lib/navigate.ts planAfterEnd): the plan from here, or as it was. */
@@ -2504,7 +2504,7 @@ export function RideMode({
               onClick={() => void broadcast()}
               {...broadcastHold}
               aria-describedby={onBroadcastHold ? broadcastHoldId : undefined}
-              aria-label={`${broadcasting ? `${RIDE_BROADCAST_NAME}: on. Share the link again` : passingOn ? `${RIDE_BROADCAST_NAME}: pass on the link to this ride` : `${RIDE_BROADCAST_NAME}: share a link others follow you with`}${riders === null ? "" : `. ${countText(riders)}`}`}
+              aria-label={`${broadcasting ? t("{name}: on. Share the link again", { name: RIDE_BROADCAST_NAME }) : passingOn ? t("{name}: pass on the link to this ride", { name: RIDE_BROADCAST_NAME }) : t("{name}: share a link others follow you with", { name: RIDE_BROADCAST_NAME })}${riders === null ? "" : `. ${countText(riders)}`}`}
               title={RIDE_BROADCAST_NAME}
             >
               <Icon name="broadcast" size={riders === null ? 24 : 20} />

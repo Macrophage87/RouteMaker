@@ -484,7 +484,7 @@ test("the route's folds: Elevation and climbs, Stress and facilities, Directions
   for (const key of ["facilities", "junctions", "choices", "water"] as const) {
     assert.match(app, new RegExp(`heading=\\{ROUTE_FOLDS\\.${key}\\.title\\}\\s+open=\\{ROUTE_FOLDS\\.${key}\\.open\\}`), key);
   }
-  assert.match(app, /<h3 className="visually-hidden">Totals<\/h3>\s*<dl className="stats totals">/);
+  assert.match(app, /<h3 className="visually-hidden">\{t\("Totals"\)\}<\/h3>\s*<dl className="stats totals">/);
   // The notices are one line (a count, listed behind it: the owner's choice 5); the figures are folded,
   // the four quick figures first (choice 4).
   assert.match(app, /<FacilityBreakdown route=\{route\} part="notices" \/>/);
@@ -579,7 +579,7 @@ test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANU
   assert.doesNotMatch(app, /\{\/\* Pinned under/);
   const summary = app.slice(app.indexOf("export function RouteSummary"));
   assert.ok(summary.indexOf("<StressFigure") < summary.indexOf("<RouteActions {...actions} start={start} />"));
-  assert.match(app, /<div className="route-actions-row">\s*\{start\}\s*<button type="button" className="secondary icon-button gpx-download" onClick=\{\(\) => downloadRoute\(\)\} aria-label="Download GPX">/);
+  assert.match(app, /<div className="route-actions-row">\s*\{start\}\s*<button type="button" className="secondary icon-button gpx-download" onClick=\{\(\) => downloadRoute\(\)\} aria-label=\{t\("Download GPX"\)\}>/);
   assert.match(app, /<span role="status" className="visually-hidden link-spoken">\s*\{linkSpoken\}/);
   // The spoken confirmation carries the location note (OWNER-DECISIONS 395), and the button is described by it.
   assert.equal(linkSpokenFor(true, ""), COPY_LINK_DONE);
@@ -590,7 +590,7 @@ test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANU
   assert.equal(linkSpokenFor(false, "This link includes your location as the start."), COPY_LINK_FAILED);
   assert.match(app, /if \(press === linkPresses\.current\) setLinkSpoken\(linkSpokenFor\(done, note\)\);/);
   // "Link" shown, "Copy link" heard: the visible word is in the name (label in name).
-  assert.match(app, /onClick=\{copyLink\} aria-label=\{COPY_LINK\} aria-describedby=\{linkNote \? "link-note" : undefined\}>\s*<Icon name="link" \/>\s*<span aria-hidden="true">Link<\/span>/);
+  assert.match(app, /onClick=\{copyLink\} aria-label=\{COPY_LINK\} aria-describedby=\{linkNote \? "link-note" : undefined\}>\s*<Icon name="link" \/>\s*<span aria-hidden="true">\{t\("Link"\)\}<\/span>/);
   assert.match(app, /<p id="link-note" className="hint link-note">/);
   // More holds Share and Keep for offline, a disclosure.
   assert.match(app, /className="secondary icon-button route-more" aria-expanded=\{more\} aria-controls=\{moreId\}/);

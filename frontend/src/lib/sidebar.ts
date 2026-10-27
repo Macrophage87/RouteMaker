@@ -24,15 +24,15 @@ export const PLANNER_TITLE = "RouteMaker";
 
 /** The sheets' headings (the focus goes to it on open). Go shows Settings as its Menu. */
 export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
-  layers: "Layers",
+  layers: t("Layers"),
   // Reports (Stephen, 2026-10-21: "Let's pick a better name than suggest then. Reports?"): the 311 checklist and the
   // ways to suggest a map change.
-  suggest: "Reports",
+  suggest: t("Reports"),
   review: "Review",
   // Save and load (the owner, 2026-10-18: "the files tab (maybe call it save or load)"): files, Save, Share, your routes.
-  gpx: "Save and load",
-  settings: "Settings",
-  nearest: "Nearest",
+  gpx: t("Save and load"),
+  settings: t("Settings"),
+  nearest: t("Nearest"),
   food: "Find food",
   ride: "Ride",
   // v0.7.0: Go's Repair (behind More), and Plan's Places to see (Go calls it Sights).
@@ -65,11 +65,11 @@ export interface BarItem {
  * (each key in its layer's section since 2026-10-19), and Suggest took its slot: the one way in to the suggest tools.
  */
 export const BAR_ITEMS: readonly BarItem[] = [
-  { id: "plan", label: "Plan", opens: "planner", description: "Shows the planner: the points, the ride settings and the route." },
-  { id: "layers", label: "Layers", opens: "layers", description: "Opens the map layers, their switches and each layer's key." },
-  { id: "suggest", label: "Reports", opens: "suggest", description: "Opens your 311 checklist and the ways to suggest a change to the map." },
-  { id: "gpx", label: SAVE_LOAD, opens: "gpx", description: "Opens Save and load: save or share the route, find your routes, or open or export a route file." },
-  { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: My Go (Home, ride type), riding, display and your account." },
+  { id: "plan", label: "Plan", opens: "planner", description: t("Shows the planner: the points, the ride settings and the route.") },
+  { id: "layers", label: t("Layers"), opens: "layers", description: t("Opens the map layers, their switches and each layer's key.") },
+  { id: "suggest", label: t("Reports"), opens: "suggest", description: t("Opens your 311 checklist and the ways to suggest a change to the map.") },
+  { id: "gpx", label: SAVE_LOAD, opens: "gpx", description: t("Opens Save and load: save or share the route, find your routes, or open or export a route file.") },
+  { id: "settings", label: t("Settings"), opens: "settings", description: t("Opens the settings: My Go (Home, ride type), riding, display and your account.") },
 ];
 
 /** The sheets a bar button counts as its own: Suggest holds the review. */

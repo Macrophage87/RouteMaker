@@ -11,6 +11,7 @@
  * - whether the plan changed since the route was drawn (planChanged), and why Reset is unavailable.
  */
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
+import { t } from "./i18n.ts";
 import { pathLengthM, type LonLat } from "./geo.ts";
 import { formatDistance, formatDistanceChange } from "./format.ts";
 import { namePoints } from "./pointKinds.ts";
@@ -101,21 +102,21 @@ export function planChanged<R extends { preset: string }>(drawn: DrawnPlan<R> | 
   return drawn.points !== points || drawn.ride.preset !== preset || drawn.dialsKey !== dialsKey;
 }
 
-export const ROUTE_LABEL = "Route";
-export const UPDATE_LABEL = "Update route";
+export const ROUTE_LABEL = t("Route");
+export const UPDATE_LABEL = t("Update route");
 /** The map bar's big button while routing (its progress is in the plan panel). */
-export const ROUTING_LABEL = "Routing…";
-export const ROUTE_NEEDS_POINTS = "Add a start and an end first.";
+export const ROUTING_LABEL = t("Routing…");
+export const ROUTE_NEEDS_POINTS = t("Add a start and an end first.");
 /** A loop needs a start and one stop (OWNER-DECISIONS 374). */
-export const ROUTE_NEEDS_STOP = "Add a start and a stop first.";
-export const ROUTE_UP_TO_DATE = "The route shown is up to date.";
-export const RESET_LABEL = "Reset";
-export const RESET_NOTHING = "Nothing changed since the route was drawn";
-export const CLEAR_LABEL = "Clear";
-export const PLANNING_SAID = "Planning route";
-export const CANCELLED_SAID = "Routing cancelled. The plan is as you left it.";
-export const RESET_SAID = "Reset to the route as drawn. Undo brings your changes back.";
-export const CLEARED_SAID = "Plan cleared. Undo brings it back.";
+export const ROUTE_NEEDS_STOP = t("Add a start and a stop first.");
+export const ROUTE_UP_TO_DATE = t("The route shown is up to date.");
+export const RESET_LABEL = t("Reset");
+export const RESET_NOTHING = t("Nothing changed since the route was drawn");
+export const CLEAR_LABEL = t("Clear");
+export const PLANNING_SAID = t("Planning route");
+export const CANCELLED_SAID = t("Routing cancelled. The plan is as you left it.");
+export const RESET_SAID = t("Reset to the route as drawn. Undo brings your changes back.");
+export const CLEARED_SAID = t("Plan cleared. Undo brings it back.");
 /** How long Clear waits for its route to go before it gives up handing the focus on (review a11y-1). */
 export const CLEAR_FOCUS_WAIT_MS = 1000;
 
@@ -132,10 +133,10 @@ export function routeButton(state: { points: number; drawn: boolean; changed: bo
  * the planner's usual order paced by the clock, not reports from it (an open question for the owner).
  */
 export function routingStep(elapsedMs: number): string {
-  if (elapsedMs < 1500) return "Finding routes";
-  if (elapsedMs < 4000) return "Checking traffic stress";
-  if (elapsedMs < 9000) return "Ranking";
-  return "Drawing";
+  if (elapsedMs < 1500) return t("Finding routes");
+  if (elapsedMs < 4000) return t("Checking traffic stress");
+  if (elapsedMs < 9000) return t("Ranking");
+  return t("Drawing");
 }
 
 /** "3 s", the seconds elapsed while routing. */

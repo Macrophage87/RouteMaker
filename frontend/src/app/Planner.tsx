@@ -5,6 +5,7 @@ import type { RidingSpeedControl } from "../lib/ridingSpeed.ts";
 import { useEffect, useRef, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import type { StressAvailability } from "../MapView.tsx";
 import { ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
+import { t } from "../lib/i18n.ts";
 import { infoHelp } from "../lib/roadInfo.ts";
 import type { RouteResponse } from "../lib/api.ts";
 import { MAX_POINTS, type LonLat } from "../lib/geo.ts";
@@ -121,7 +122,7 @@ export function PointsSection(props: PointsSectionProps) {
               aria-describedby={reverseHint ? "reverse-hint" : "swap-hint"}
             >
               <Icon name="swap" />
-              <span>Swap</span>
+              <span>{t("Swap")}</span>
             </button>
           )}
           {/* Make it a loop (OWNER-DECISIONS 388, 389): by the search, not behind the Ride line's Edit; there
@@ -141,7 +142,7 @@ export function PointsSection(props: PointsSectionProps) {
                 }}
               />
               <span className="visually-hidden">{loop.label}</span>
-              <span aria-hidden="true">Loop</span>
+              <span aria-hidden="true">{t("Loop")}</span>
             </label>
           )}
           {/* No "Edit points" any more (v0.7.0): with a route the search and the point tools stay in view, and the
@@ -149,34 +150,34 @@ export function PointsSection(props: PointsSectionProps) {
           {/* Undo and Redo, beside Swap and Loop (Plan streamline, Stephen 2026-10-17); a phone has Undo in its notices. */}
           {!narrow && (
             <button type="button" className="secondary icon-button" data-history="undo" onClick={undo} disabled={!can.undo} aria-keyshortcuts="Control+Z Meta+Z">
-              Undo
+              {t("Undo")}
             </button>
           )}
           {!narrow && can.redo && (
             <button type="button" className="secondary icon-button" data-history="redo" onClick={redo} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y">
-              Redo
+              {t("Redo")}
             </button>
           )}
           {/* The how-to, behind Info (it was "More tips" under the tools). */}
           <button type="button" className="secondary icon-button tips-toggle" aria-expanded={tips} aria-controls={tipsId} onClick={() => setTips(!tips)}>
             <Icon name="info" />
-            <span>Info</span>
+            <span>{t("Info")}</span>
           </button>
         </div>
       </div>
       {reverseHint && <p className="hint" id="reverse-hint">{reverseHint}</p>}
       <span id="swap-hint" hidden>
-        Reverses the points: the end becomes the start.
+        {t("Reverses the points: the end becomes the start.")}
       </span>
       <div id={tipsId} className="tips-body more-tips" hidden={!tips}>
-        <p className="hint">Bike routes for the DC region and Baltimore. No sign-in needed.</p>
+        <p className="hint">{t("Bike routes for the DC region and Baltimore. No sign-in needed.")}</p>
         {/* The start-up how-to before any point; with points, how to change them (the correctness review's N5). */}
         {points.length > 0 ? <p className="hint">{editingTips(accessMode)}</p> : <p className="hint">{emptyPlanHint(preset, loopVias, accessMode)}</p>}
         {coverageShown && <p className="hint">Gray areas are outside what RouteMaker covers.</p>}
         <p className="hint">{infoHelp(accessMode)}</p>
-        <p className="hint">{ACCESS_HELP}</p>
+        <p className="hint">{t(ACCESS_HELP)}</p>
         <button type="button" className="link access-toggle" aria-pressed={accessMode} onClick={() => toggleAccessMode(false)}>
-          {ACCESS_LABEL}
+          {t(ACCESS_LABEL)}
         </button>
         <InstallOffer idBase="tips-install" compact onSay={announce} />
       </div>

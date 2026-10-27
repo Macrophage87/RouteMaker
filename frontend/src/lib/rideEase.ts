@@ -20,6 +20,7 @@
  * Plain data in, plain data out, so node --test runs all of it.
  */
 import { HILLS_MIN, hillsWords, seeksClimbs, stressMax, stressWords, type Dials } from "./dials.ts";
+import { t } from "./i18n.ts";
 import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 
@@ -34,18 +35,18 @@ export const FLATTER_STEPS: readonly number[] = [50, 0, -40, HILLS_MIN];
 /** Each button's name, heard by screen readers in full; on screen the symbol alone (a car or a mountain, each with a
  * down arrow; the owner, 2026-10-23: "Take the words out. Symbol should be clear"). */
 export const EASE_NAME: Record<Ease, string> = {
-  calmer: "Less traffic: plan again from here",
-  flatter: "Fewer hills: plan again from here",
+  calmer: t("Less traffic: plan again from here"),
+  flatter: t("Fewer hills: plan again from here"),
 };
 /** Their words in the ride's More panel (Stephen 2026-10-24: "lower traffic and hills"), each within its name above. */
 export const EASE_SHOWN: Record<Ease, string> = {
-  calmer: "Less traffic",
-  flatter: "Fewer hills",
+  calmer: t("Less traffic"),
+  flatter: t("Fewer hills"),
 };
 /** Said when the slider is already at its last step: nothing is planned. */
 export const EASE_AT_END: Record<Ease, string> = {
-  calmer: "Already the calmest route.",
-  flatter: "Already the flattest route.",
+  calmer: t("Already the calmest route."),
+  flatter: t("Already the flattest route."),
 };
 
 /**
@@ -67,8 +68,8 @@ export function eased(preset: PresetId, dials: Dials, ease: Ease): Dials | null 
 
 /** Said in place of "New route found." when the press found the line the rider is on: nothing calmer or flatter here. */
 export const EASE_SAME: Record<Ease, string> = {
-  calmer: "Same route: no calmer way from here.",
-  flatter: "Same route: no less steep way from here.",
+  calmer: t("Same route: no calmer way from here."),
+  flatter: t("Same route: no less steep way from here."),
 };
 
 /** Whether a new route keeps to the line the rider was on: nearly all its points are that line's own (one router). */

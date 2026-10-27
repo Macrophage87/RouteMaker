@@ -16,6 +16,7 @@
  * while the rider broadcasts, the position and trail go to /api/rides as any broadcast's do, kept 2 minutes there.
  */
 import { BROADCAST_HOLD_HINT } from "./lib/broadcastQr.ts";
+import { t } from "./lib/i18n.ts";
 import { useHold } from "./lib/useHold.ts";
 import { NOTHING_DISMISSED, RIDE_WEATHER_MS, alertKey, alertSaid, alertUrgent, dismissWeather, newAlerts, rainLine, rainSays, rainStage, roamPoints, weatherToShow } from "./lib/weather.ts";
 import { useWeather } from "./useWeather.ts";
@@ -424,7 +425,7 @@ export function RoamMode({
             {on && <TierBadge tier={on.tier} />}
           </p>
           {roads !== null && roads.ahead.length > 0 && (
-            <ol className="roam-ahead" aria-label="Roads ahead">
+            <ol className="roam-ahead" aria-label={t("Roads ahead")}>
               {roads.ahead.map((road) => (
                 <li key={road.name}>
                   <span className="roam-ahead-name">{road.name}</span>
@@ -434,12 +435,12 @@ export function RoamMode({
               ))}
             </ol>
           )}
-          {roads !== null && heading === null && <p className="cue-more">Start riding to see the roads ahead.</p>}
+          {roads !== null && heading === null && <p className="cue-more">{t("Start riding to see the roads ahead.")}</p>}
           <WeatherLines report={weatherShown} riding now={Date.now()} onDismiss={() => { setWeatherDismissed((d) => dismissWeather(weatherShown, d)); headingRef.current?.focus({ preventScroll: true }); }} />
         </div>
       </div>
       <div className="ride-middle">
-        <button type="button" className="ride-compass" aria-pressed={!headingUp} aria-label="North up" title="North up" onClick={() => onHeadingUp(!headingUp)}>
+        <button type="button" className="ride-compass" aria-pressed={!headingUp} aria-label={t("North up")} title={t("North up")} onClick={() => onHeadingUp(!headingUp)}>
           <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true">
             <path d="M20 5 L25 20 L20 17 L15 20 Z" className="ride-compass-north" />
             <path d="M20 35 L15 20 L20 23 L25 20 Z" className="ride-compass-south" />
@@ -450,14 +451,14 @@ export function RoamMode({
             <p>{toast}</p>
           </div>
         )}
-        <div className="ride-rail" role="group" aria-label="Roam buttons">
+        <div className="ride-rail" role="group" aria-label={t("Roam buttons")}>
           <button
             type="button"
             ref={whereRef}
             className={`ride-round${follow ? "" : " ride-round-alert"}`}
             onClick={whereAmI}
             aria-label={follow ? "Where am I?" : "Where am I? The map stopped following you"}
-            title="Where am I?"
+            title={t("Where am I?")}
           >
             <Icon name="locate" size={24} />
           </button>
@@ -494,7 +495,7 @@ export function RoamMode({
               ref={detourButton}
               className="ride-round"
               aria-label={`Detour: ${DETOUR_SUMMARY.toLowerCase()}`}
-              title="Detour"
+              title={t("Detour")}
               aria-expanded={detourOpen}
               aria-controls={detourId}
               data-idle-close

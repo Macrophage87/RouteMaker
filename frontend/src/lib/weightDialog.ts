@@ -10,6 +10,7 @@
  * createElement so a test renders it.
  */
 import { createElement as h, useEffect, useId, useRef, useState, type ReactElement, type RefObject } from "react";
+import { t } from "./i18n.ts";
 import {
   BLANK,
   WEIGHT_DIALOG_TITLE,
@@ -227,8 +228,8 @@ export function WeightSetting(props: {
     h("p", { className: "weight-line", id: `${id}-line` }, weightLine(props.saved, (props.now ?? Date.now)())),
     h(
       "button",
-      { type: "button", ref: change, className: "secondary", "aria-label": "Change rider and bike weight", "aria-describedby": `${id}-line`, onClick: () => setOpen(true) },
-      "Change",
+      { type: "button", ref: change, className: "secondary", "aria-label": t("Change rider and bike weight"), "aria-describedby": `${id}-line`, onClick: () => setOpen(true) },
+      t("Change"),
     ),
     h(WeightDialog, {
       open,
