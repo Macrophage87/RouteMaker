@@ -36,4 +36,16 @@ public class SharedLinkTest {
         assertNull(SharedLink.find(null, SITE));
         assertNull(SharedLink.find("", SITE));
     }
+
+    @Test
+    public void readsAShareOrATappedLinkAndNothingElse() {
+        String link = "https://routes.example.org/mass-ride#p=-77.04,38.91";
+        assertEquals(link, SharedLink.text("android.intent.action.VIEW", null, link));
+        assertEquals("Ride: " + link, SharedLink.text("android.intent.action.SEND", "Ride: " + link, null));
+        assertEquals("", SharedLink.text("android.intent.action.SEND", null, null));
+        // The "Site address" shortcut is a VIEW with no address; the launcher is MAIN.
+        assertNull(SharedLink.text("android.intent.action.VIEW", null, null));
+        assertNull(SharedLink.text("android.intent.action.MAIN", null, null));
+        assertEquals(link, SharedLink.find(SharedLink.text("android.intent.action.VIEW", null, link), SITE));
+    }
 }

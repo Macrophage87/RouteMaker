@@ -49,8 +49,11 @@ public class SetupActivity extends AppCompatActivity {
         String address = SiteStore.address(this, SiteStore.readConfig(this));
         if (address != null && !change) {
             Intent shared = getIntent();
-            if (shared != null && Intent.ACTION_SEND.equals(shared.getAction())) {
-                String link = SharedLink.find(shared.getStringExtra(Intent.EXTRA_TEXT), address);
+            String text = SharedLink.text(shared == null ? null : shared.getAction(),
+                shared == null ? null : shared.getStringExtra(Intent.EXTRA_TEXT),
+                shared == null ? null : shared.getDataString());
+            if (text != null) {
+                String link = SharedLink.find(text, address);
                 if (link == null) {
                     Toast.makeText(this, R.string.share_not_site, Toast.LENGTH_LONG).show();
                     finish();

@@ -7,6 +7,11 @@ def releaseKeystore = System.getenv("ROUTEMAKER_KEYSTORE_FILE")
 // A steady debug key (CI's ROUTEMAKER_DEBUG_KEYSTORE_BASE64 secret), so each test build installs over the last.
 // Android's standard debug key passwords and alias; without it, Gradle's own per-machine debug key.
 def debugKeystore = System.getenv("ROUTEMAKER_DEBUG_KEYSTORE_FILE")
+// Links open in the app (src/links/AndroidManifest.xml): the store build's site, its https origin. Unset
+// (every test build), the app takes no tapped links.
+def linkSite = envOr("ROUTEMAKER_LINK_SITE", "")
+def linkHost = linkSite ? new URI(linkSite).host : ""
+if (linkSite && (!linkSite.startsWith("https://") || !linkHost)) throw new GradleException("ROUTEMAKER_LINK_SITE must be the site's https origin")
 
 android {
     namespace = "org.routemaker.phone"
@@ -18,6 +23,7 @@ android {
         versionCode envOr("ROUTEMAKER_VERSION_CODE", "1").toInteger()
         versionName envOr("ROUTEMAKER_VERSION_NAME", "0.9.0")
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders = [linkHost: linkHost]
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -54,6 +60,9 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+    }
+    if (linkHost) {
+        sourceSets.release.manifest.srcFile "src/links/AndroidManifest.xml"
     }
 }
 
