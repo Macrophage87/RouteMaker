@@ -507,9 +507,10 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
       )}
       <div className="ride-group-bar">
         {!ridersElsewhere && (
-          <button type="button" className="chip ride-riders" aria-expanded={ridersOpen} data-idle-close aria-controls={ridersPanel} onClick={() => (ridersOpen ? setRidersOpen(false) : openRiders())}>
-            <Icon name="user" size={18} />
-            {countText(riders, !noLine)}
+          // The person icon and a number (Stephen 2026-10-27: "just have the person icon and a number"); the words in its name.
+          <button type="button" className="chip ride-riders" aria-label={countText(riders, !noLine)} aria-expanded={ridersOpen} data-idle-close aria-controls={ridersPanel} onClick={() => (ridersOpen ? setRidersOpen(false) : openRiders())}>
+            <Icon name="user" size={20} />
+            <span aria-hidden="true">{riders}</span>
           </button>
         )}
         <button type="button" className="chip ride-alert-button" aria-expanded={alertOpen} data-idle-close aria-controls={alertPanel} aria-describedby={`${alertPanel}-note`} onClick={() => setAlertOpen(!alertOpen)}>
