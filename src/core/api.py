@@ -3067,7 +3067,8 @@ def _route_answer(request, body: RouteIn, response: HttpResponse):
 # calmer than the rider's own setting (`presets.stress_notches`), for Go to offer beside
 # the rider's own route. Go asks once its own route is shown, and never waits on the answer:
 # a plan or a ride's re-route asked for meanwhile is sent at once (frontend
-# lib/routeScheduler.ts). So this request never takes a slot a plan needs: it has routing's
+# lib/routeScheduler.ts). So this request never takes a slot a plan needs (on a pool of
+# two, beta's, a slot the rider's own plan needs: `ratelimit._free_beside`): it has routing's
 # deployment slots at the lowest priority and a client slot of its own
 # (`ratelimit.NEIGHBOURS_IN_FLIGHT`), and is refused at once when the pool is busy. It counts
 # as two routing requests, for the two plans. The plans run one after the other on the

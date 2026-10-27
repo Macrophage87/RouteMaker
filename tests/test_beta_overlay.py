@@ -839,6 +839,8 @@ def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and
             "= /privacy",
             # Garmin's deregistration notice (core.garmin_views), posted by Garmin's servers.
             "= /garmin/deregistrations",
+            # Android App Links (core.app_links), fetched by Android when the app is installed.
+            "= /.well-known/assetlinks.json",
             # Link previews (core.share_preview; tests/test_link_preview.py): a shared route's
             # link and image, the app's own preview, and the icons a chat app shows.
             "~ ^/s/[^/]+(/preview\\.png)?$",
@@ -854,6 +856,8 @@ def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and
     assert "proxy_pass http://rmbeta_api;" in dict(locations(full))["= /privacy"]
     garmin_notice = dict(locations(full))["= /garmin/deregistrations"]
     assert "proxy_pass http://rmbeta_api;" in garmin_notice
+    app_links = dict(locations(full))["= /.well-known/assetlinks.json"]
+    assert "proxy_pass http://rmbeta_api;" in app_links
     assert not any(p.startswith(("^~ /auth", "= /auth")) for p in exempt)
     # the sign-in page is reachable only as the 401's error page, never directly
     page = dict(locations(full))["= /rmbeta-401.html"]

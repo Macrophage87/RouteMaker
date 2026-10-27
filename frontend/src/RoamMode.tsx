@@ -15,6 +15,8 @@
  * (POST /api/nearest) and the ride it starts send where the rider is, in a POST body, as Ride mode's detours do; and
  * while the rider broadcasts, the position and trail go to /api/rides as any broadcast's do, kept 2 minutes there.
  */
+import { BROADCAST_HOLD_HINT } from "./lib/broadcastQr.ts";
+import { useHold } from "./lib/useHold.ts";
 import { NOTHING_DISMISSED, RIDE_WEATHER_MS, alertKey, alertSaid, alertUrgent, dismissWeather, newAlerts, rainLine, rainSays, rainStage, roamPoints, weatherToShow } from "./lib/weather.ts";
 import { useWeather } from "./useWeather.ts";
 import { WeatherLines } from "./WeatherLines.tsx";
@@ -108,6 +110,8 @@ export function RoamMode({
   onDetour,
   onEnd,
   onBroadcast = null,
+  onBroadcastHold = null,
+  passingOn = false,
   broadcasting = false,
   geoEnv,
 }: {
@@ -134,6 +138,10 @@ export function RoamMode({
   /** Broadcast (Stephen 2026-10-22): opens the share sheet with a link others follow; answers what to say. Null where
    * this browser has no share sheet. */
   onBroadcast?: (() => Promise<string>) | null;
+  /** Broadcast held (or right-clicked): its link as a QR code (lib/broadcastQr.ts); answers what to say. */
+  onBroadcastHold?: (() => Promise<string>) | null;
+  /** Following someone's broadcast: Broadcast passes their link on (they stay its leader). */
+  passingOn?: boolean;
   /** The rider leads a broadcast now. */
   broadcasting?: boolean;
   geoEnv?: RideGeoEnv;
@@ -356,6 +364,15 @@ export function RoamMode({
       broadcastBusy.current = false;
     }
   };
+  const broadcastHoldId = useId();
+  const broadcastHold = useHold(
+    onBroadcastHold
+      ? () =>
+          void onBroadcastHold().then((said) => {
+            if (said && !gone.current) answer(said);
+          })
+      : null,
+  );
 
   // A broadcast's riders and Alert sit just under the card, never over the road names (its height changes as they do).
   const cardRef = useRef<HTMLDivElement>(null);
@@ -447,13 +464,20 @@ export function RoamMode({
           {onBroadcast && (
             <button
               type="button"
-              className={`ride-round${broadcasting ? " ride-round-on" : ""}`}
+              className={`ride-round broadcast-hold${broadcasting ? " ride-round-on" : ""}`}
               onClick={() => void broadcast()}
-              aria-label={broadcasting ? `${ROAM_BROADCAST_NAME}: on. Share the link again` : `${ROAM_BROADCAST_NAME}: share a link others follow you with`}
+              {...broadcastHold}
+              aria-describedby={onBroadcastHold ? broadcastHoldId : undefined}
+              aria-label={broadcasting ? `${ROAM_BROADCAST_NAME}: on. Share the link again` : passingOn ? `${ROAM_BROADCAST_NAME}: pass on the link to this ride` : `${ROAM_BROADCAST_NAME}: share a link others follow you with`}
               title={ROAM_BROADCAST_NAME}
             >
               <Icon name="broadcast" size={24} />
             </button>
+          )}
+          {onBroadcast && onBroadcastHold && (
+            <span id={broadcastHoldId} className="visually-hidden">
+              {BROADCAST_HOLD_HINT}
+            </span>
           )}
           <div
             className="ride-pop ride-detour"
