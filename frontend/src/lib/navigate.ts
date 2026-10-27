@@ -28,6 +28,7 @@
 import { METRES_PER_MILE, formatDistance, formatRoughDistance, spokenDistance } from "./format.ts";
 import { language, t } from "./i18n.ts";
 import { haversineM, type LonLat } from "./geo.ts";
+import { AVOID_PLEA } from "./avoidJunctions.ts";
 import { descriptionEntries } from "./routeDescription.ts";
 import { mileWords, trailMileAt, type TrailMiles } from "./trailMiles.ts";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
@@ -410,6 +411,22 @@ export function crossingWords(street: string | null, control: NonNullable<Descri
 }
 
 /**
+ * An Avoid-rated junction's line in Ride and on its card (OWNER-DECISIONS 307, 309: "Avoid-rated junction" plus the
+ * reason; the owner, 2026-10-10: "this is a really bad idea, please reconsider"): "Avoid-rated junction ahead.
+ * Colesville Road and Georgia Avenue, no safe crossing. Riding through it ...". Built from the entry's own fields, never
+ * cut out of the API's sentence (round-2 audit R2: that dropped the warning word, lowered the name's capital and read
+ * "0.3 mi" aloud, "mi" as the Spanish word; a name such as "St. Paul" holds ". "). The name and reason keep their words.
+ */
+export function avoidWords(entry: Pick<DescriptionEntry, "street"> & Pick<Partial<DescriptionEntry>, "reason">): string {
+  const said = [entry.street, entry.reason]
+    .map((part) => (part ?? "").trim().replace(/\.+$/, ""))
+    .filter(Boolean)
+    .join(", ");
+  const ahead = t("Avoid-rated junction ahead.");
+  return said ? `${ahead} ${said}. ${t(AVOID_PLEA)}` : `${ahead} ${t(AVOID_PLEA)}`;
+}
+
+/**
  * A stretch's change as Ride says and shows it, built here from the entry's own fields rather than read from the API's
  * English sentence (routing audit D14; the owner approved the wording, 2026-10-27): "Busy road on Massachusetts Avenue
  * Northwest.", "Heavy traffic on ...", "Calmer riding on ...", "Unpaved surface on ...", with the surface after where it
@@ -644,6 +661,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
                 : sentenceOf(entry),
         ...(kind === "hazard" && entry.kind === "junction" && !entry.group ? { rideText: crossingWords(entry.street, entry.turn?.control) } : {}),
         ...(entry.kind === "hazard" ? { rideText: roadHazardWords(entry.text) } : {}),
+        ...(entry.kind === "avoid" ? { rideText: avoidWords(entry) } : {}),
         // A stretch's change and a walk in the app's own words (D14), not the API's sentence, which Plan keeps.
         ...(kind === "busy" || kind === "calmer" || kind === "unpaved" ? { rideText: stretchWords(kind, entry) } : {}),
         ...(kind === "walk" ? { rideText: walkWords(entry.to_m - entry.from_m), walkM: Math.max(0, entry.to_m - entry.from_m) } : {}),

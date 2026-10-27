@@ -52,6 +52,9 @@ export const ES: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Intersección con mucho tráfico, sin semáforo.",
   "Busy crossing.": "Intersección con mucho tráfico.",
   "Busy junction.": "Intersección con mucho tráfico.",
+  // An Avoid-rated junction in Ride (round-2 audit R2): the server's words (src/routemaker/lang_es.py).
+  "Avoid-rated junction ahead.": "Intersección calificada Avoid más adelante.",
+  "Riding through it is a really bad idea. Please reconsider your route.": "Pasar por ella es una muy mala idea. Por favor, reconsidere su ruta.",
   // A stretch's change and a walk in Ride (routing audit D14).
   "Busy road on {street}.": "Calle con mucho tráfico en {street}.",
   "Busy road.": "Calle con mucho tráfico.",

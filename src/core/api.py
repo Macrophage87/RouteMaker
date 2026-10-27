@@ -1508,6 +1508,13 @@ class DescriptionEntryOut(Schema):
             "(OWNER-DECISIONS 275); null where that is `text`."
         ),
     )
+    reason: str | None = Field(
+        default=None,
+        description=(
+            'On an "avoid": the reason the junction is rated Avoid ("no safe crossing"),'
+            " as `street` holds its name; null elsewhere or where none was given."
+        ),
+    )
     relation_name: bool = Field(
         default=False,
         description=(

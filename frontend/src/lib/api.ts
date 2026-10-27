@@ -319,6 +319,11 @@ export interface DescriptionEntry {
    */
   relation_name?: boolean;
   /**
+   * On an "avoid": why the junction is rated Avoid ("no safe crossing"), as `street` is its name; Ride words its cue
+   * from the two (round-2 audit R2). Absent from an older API.
+   */
+  reason?: string | null;
+  /**
    * On a Mass Ride's entry for a group of signalized crossings (OWNER-DECISIONS 233, 234).
    * `crossings` lists each crossing in the full description (OWNER-DECISIONS 248) and is
    * null in the overview, which keeps one line per group.

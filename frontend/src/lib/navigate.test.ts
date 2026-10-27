@@ -37,6 +37,7 @@ import {
   compassWord,
   crossingWords,
   crossArrow,
+  avoidWords,
   cueSpoken,
   exitWords,
   ordinal,
@@ -2041,6 +2042,53 @@ test("D14: in Spanish the stretch and walk cues are whole Spanish sentences", ()
     assert.equal(stretchWords("busy", { street: "Georgia Avenue", tier: 3, surface: null }), "Calle con mucho tráfico en Georgia Avenue.");
     assert.equal(stretchWords("busy", { street: "Georgia Avenue", tier: 4, surface: "unpaved" }), "Tráfico intenso en Georgia Avenue, sin pavimentar.");
     assert.equal(walkWords(37, true), "Camine con su bicicleta por 120 pies.");
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+/** An Avoid-rated junction's entry as the API sends it (src/routemaker/avoid_junctions.py entries). */
+function avoidEntry(atM: number, street: string | null, reason: string | null): DescriptionEntry {
+  const where = `${(atM / 1609.344).toFixed(1)} mi (${(atM / 1000).toFixed(1)} km)`;
+  const said = [street, reason].filter(Boolean).join(", ");
+  return {
+    ...stretch(atM, atM, `Avoid-rated junction ahead at ${where}${said ? `: ${said}` : ""}. Riding through it is a really bad idea. Please reconsider your route.`),
+    kind: "avoid",
+    street,
+    reason,
+    tier: null,
+    severity: "avoid",
+  };
+}
+
+test('R2: the Avoid-rated junction cue says the warning, the name with its capitals and the reason, never "mi"', () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1000, "0.0 to 0.6 mi: A Street, low stress (LTS 1).", { street: "A Street" }),
+      avoidEntry(600, "St. Paul Street and Colesville Road", "no safe crossing"),
+    ]),
+  );
+  const cue = model.cues.find((c) => c.source === "avoid") as Cue;
+  const plea = "Riding through it is a really bad idea. Please reconsider your route.";
+  // The card.
+  assert.equal(cue.rideText, `Avoid-rated junction ahead. St. Paul Street and Colesville Road, no safe crossing. ${plea}`);
+  assert.equal(cueSpoken(cue, "advance", 150), `In 500 feet, avoid-rated junction ahead. St. Paul Street and Colesville Road, no safe crossing. ${plea}`);
+  assert.match(whereAmI(model, { ...startState(), progressM: 500 }), /: avoid-rated junction ahead\. St\. Paul Street and Colesville Road, no safe crossing\./);
+  // No name or reason: the warning and the plea, no distance.
+  const bare = { ...cue, rideText: avoidWords({ street: null, reason: null }) };
+  assert.equal(cueSpoken(bare, "advance", 150), `In 500 feet, avoid-rated junction ahead. ${plea}`);
+  // An older API's entry has no reason: the name alone.
+  assert.equal(avoidWords({ street: "Main St." }), `Avoid-rated junction ahead. Main St. ${plea}`);
+  setLanguageForTest("es");
+  try {
+    const es = rideModel(straightRoute([stretch(0, 1000, "x", { street: "A Street" }), avoidEntry(600, "Colesville Road and Georgia Avenue", "no safe crossing")]));
+    const said = cueSpoken(es.cues.find((c) => c.source === "avoid") as Cue, "advance", 150);
+    assert.equal(
+      said,
+      "En 500 pies, intersección calificada Avoid más adelante. Colesville Road and Georgia Avenue, no safe crossing. Pasar por ella es una muy mala idea. Por favor, reconsidere su ruta.",
+    );
+    assert.doesNotMatch(said, /\bmi\b/);
+    assert.doesNotMatch(cueSpoken({ ...bare, rideText: avoidWords({ street: null, reason: null }) }, "advance", 150), /\bmi\b/);
   } finally {
     setLanguageForTest("en");
   }
