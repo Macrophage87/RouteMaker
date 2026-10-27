@@ -12,6 +12,8 @@ ruff
 pyyaml
 osmium
 cryptography
+# Django's PyMemcacheCache, the shared answer cache (docker/requirements.txt says why).
+pymemcache
 shapely
 
 # Used by the worker-schedule tests to derive each alert window from its cron

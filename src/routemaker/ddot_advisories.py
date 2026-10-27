@@ -102,12 +102,14 @@ def updated() -> str:
     return _loaded()[1]
 
 
-def zones_of(closure: Closure) -> list[wz.Zone]:
+def zones_of(closure: Closure, source: str = SOURCE) -> list[wz.Zone]:
+    """A closure's zones, one a line. `source` is another hand-read file's own
+    (`routemaker.purple_line`), which keeps this file's shape."""
     published = datetime.combine(closure.posted, time(0), ZONE)
     return [
         wz.Zone(
-            zone_id=f"{SOURCE}-{closure.closure_id}-{index}",
-            source=SOURCE,
+            zone_id=f"{source}-{closure.closure_id}-{index}",
+            source=source,
             kind=wz.CLOSED,
             penalty_s=0.0,
             line=line,

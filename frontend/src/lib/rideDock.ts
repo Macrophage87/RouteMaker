@@ -21,13 +21,14 @@ import { docksPath, loadDocks, type DockInfo, type DocksAnswer } from "./bikesha
 import { haversineM, type LonLat } from "./geo.ts";
 import { formatDistance } from "./format.ts";
 import { NEAREST_CANDIDATES, howFar, nearestInStraightLine, rankNearest, type Nearby, type NearestAnswer, type NearestPlace, type NearestResult } from "./nearest.ts";
+import { t } from "./i18n.ts";
 
 /** The button's name, heard before the time. */
-export const DOCK_NAME = "Ride to the nearest dock";
+export const DOCK_NAME = t("Ride to the nearest dock");
 export const dockFinding = (way: "closest" | "detour"): string =>
   way === "closest" ? "Finding the closest dock with room." : "Finding the dock with room that adds least to the ride.";
-export const DOCK_NONE = "No Capital Bikeshare dock with room was found nearby.";
-export const DOCK_UNAVAILABLE = "Bikeshare docks are unavailable for now; try again shortly.";
+export const DOCK_NONE = t("No Capital Bikeshare dock with room was found nearby.");
+export const DOCK_UNAVAILABLE = t("Bikeshare docks are unavailable for now; try again shortly.");
 /** Stopped this long within DOCKED_M of a dock (moving under DOCK_STILL_M): taken as docked. */
 export const DOCK_STILL_MS = 150_000;
 export const CHOSEN_STILL_MS = 20_000;
@@ -38,8 +39,8 @@ export const DOCKED_M = 30;
 /** Docked, then this far from the dock: a bike taken again, so the time starts from 0. */
 export const LEFT_DOCK_M = 50;
 export const DOCKED_SHOWN = "Docked";
-export const RESTART_TIME = "Restart the time";
-export const TIME_RESTARTED = "Undocked time restarted.";
+export const RESTART_TIME = t("Restart the time");
+export const TIME_RESTARTED = t("Undocked time restarted.");
 export const dockedSaid = (name: string): string => `Docked at ${name}? The undocked time starts again when you ride off.`;
 
 /** Where the rider has stood still, since when, and whether the docks there have been looked at. */

@@ -2,7 +2,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
+import { t } from "./i18n.ts";
 import {
+  ALERT_LABEL,
   ALERT_KINDS,
   ROAM_ALERT_KINDS,
   CONSENT_KEY,
@@ -16,6 +18,7 @@ import {
   broadcastRideId as broadcastIdForRoamTest,
   consentFor,
   countText,
+  riderTotal,
   dotName,
   dotSaid,
   freshness,
@@ -147,7 +150,9 @@ test("dots are drawn within a quarter mile of the route only, aged since the pol
 });
 
 test("the count and the nearest rider ahead are said on request", () => {
-  assert.equal(countText(0), "No other riders on the route yet");
+  assert.equal(countText(0), "No riders on the route yet");
+  assert.equal(countText(0, false), "No riders yet");
+  assert.equal(countText(1, false), "1 rider");
   assert.equal(countText(1), "1 rider on the route");
   assert.equal(countText(23), "23 riders on the route");
   const shown = shownDots(LINE, [
@@ -157,6 +162,22 @@ test("the count and the nearest rider ahead are said on request", () => {
   const me = project(LINE, [-77.034, 38.9]).alongM;
   const said = ridersSaid(shown, me);
   assert.match(said, /^2 riders on the route\. Nearest rider ahead, 0\.2 mi \(0\.3 km\), seen 10 s ago\.$/);
+  // This rider counted too where the others see them (Stephen 2026-10-27: "include the leader").
+  assert.match(ridersSaid(shown, me, null, true), /^3 riders on the route\. /);
+});
+
+test("the rider count takes in everyone on the ride: a leader alone is 1", () => {
+  assert.equal(riderTotal([], true), 1);
+  assert.equal(riderTotal([], false), 0);
+  const shown = shownDots(LINE, [{ lon: -77.03, lat: 38.9, age_s: 12, leader: true }]);
+  assert.equal(riderTotal(shown, true), 2);
+  assert.equal(countText(riderTotal([], true)), "1 rider on the route");
+});
+
+test("Send alert is its name, in Spanish too", () => {
+  assert.equal(ALERT_LABEL, "Send alert");
+  assert.equal(t("Send alert", undefined, "es"), "Enviar alerta");
+  assert.equal(t("{n} riders on the route", { n: 3 }, "es"), "3 ciclistas en la ruta");
 });
 
 test("sharing stops when turned off, after 10 minutes off the route, or 12 hours after the start", () => {
