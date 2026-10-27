@@ -225,6 +225,9 @@ SHAPE_PARALLEL_DEG = 30.0
 MAIN_CLASSES = frozenset({"motorway", "trunk", "primary", "secondary", "tertiary"})
 # How far from a change of street an event still is that junction.
 MATCH_M = 30.0
+# The events that are another road crossed or ridden along, not the turn: one of these
+# about neither street is never a turn's junction (`describe_both`).
+RELEASED_KINDS = frozenset({"crossing", "slip_lane", "along"})
 # Tiers that are never folded into a neighbour.
 NEVER_HIDDEN = frozenset({"3", "4", "5"})
 
@@ -1539,15 +1542,29 @@ def _road_crossed(events: list, at_m: float, run: _Run) -> str:
     return CROSS_UNNAMED
 
 
-def _nearest_event(events: list, at_m: float, used: set[int]):
-    best, best_gap = None, MATCH_M + 1e-9
-    for index, event in enumerate(events):
-        if index in used:
-            continue
-        gap = abs(event.m - at_m)
-        if gap < best_gap:
-            best, best_gap = index, gap
-    return best
+def _nearest_events(
+    events: list, runs: list[_Run], starts: list[float], at: list[int]
+) -> dict[int, int]:
+    """The junction event each change of street in `at` (run indices) is, by the event's
+    index: each event within MATCH_M goes to its nearest change of street, an event about
+    either street (its `road_names`) first, then the nearest pairs. Matched turn by turn
+    in route order, a quiet corner took the busy junction a few metres on from the next
+    turn (the owner's Q Street jog: 6th Street "at a signal", Rhode Island Avenue
+    plain)."""
+    pairs = []
+    for i in at:
+        ways = runs[i - 1].names | runs[i].names
+        for index, event in enumerate(events):
+            gap = abs(event.m - starts[i])
+            if gap <= MATCH_M:
+                pairs.append((not (event.road_names & ways), gap, i, index))
+    found: dict[int, int] = {}
+    taken: set[int] = set()
+    for _other, _gap, i, index in sorted(pairs):
+        if i not in found and index not in taken:
+            found[i] = index
+            taken.add(index)
+    return found
 
 
 def describe(
@@ -1649,16 +1666,23 @@ def describe_both(
         starts.append(at)
         at += run.metres
 
+    # The changes of street: each is a turn into its stretch.
+    changes = [
+        i
+        for i, run in enumerate(runs)
+        if i > 0
+        and runs[i - 1].leg == run.leg
+        and not (runs[i - 1].untraced or run.untraced)
+        and not (_same_street(runs[i - 1], run) and not _forks(run))
+    ]
+    matched = _nearest_events(events, runs, starts, changes)
     used: set[int] = set()
     turns: dict[int, _Turn] = {}
-    for i, run in enumerate(runs):
-        if i == 0 or runs[i - 1].leg != run.leg:
-            continue
+    for i in changes:
+        run = runs[i]
         before = runs[i - 1]
         same = _same_street(before, run)
-        if before.untraced or run.untraced or (same and not _forks(run)):
-            continue
-        found = _nearest_event(events, starts[i], used)
+        found = matched.get(i)
         if found is not None:
             used.add(found)
         movement = _movement_between(before, run)
@@ -1744,6 +1768,23 @@ def describe_both(
             turn.across_event = events[found]
             if turn.event is None:
                 turn.event = events[found]
+    # A busy road crossed straight over a few metres from a turn (or a name change) is
+    # not that turn's junction: a crossing, slip lane or along event about neither street,
+    # and not the road the turn crosses (`cross`, `across_event`), is given back, so it is
+    # its own "Cross Georgia Avenue (LTS 4)" entry and the turn is not worded with its
+    # signal and severity. Its movement, if the turn took it, stays.
+    for i, index in matched.items():
+        turn, event = turns[i], events[index]
+        if (
+            turn.event is event
+            and event.kind in RELEASED_KINDS
+            and turn.cross is None
+            and turn.across_event is not event
+            and _event_name(event)
+            and not event.road_names & (runs[i - 1].names | runs[i].names)
+        ):
+            used.discard(index)
+            turn.event = None
 
     entries: list[tuple[tuple[float, int, int], dict]] = []
     shared: list[tuple[tuple[float, int, int], dict]] = []

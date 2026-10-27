@@ -2135,6 +2135,55 @@ class TestCrossings:
         assert "cross" not in self.needwood([crossing])[1]["turn"]
 
 
+class TestEventsGoToTheirOwnTurn:
+    """A junction event is matched to its nearest change of street, not taken by the first
+    turn within MATCH_M; and a busy road crossed straight over beside a quiet turn is its
+    own entry, not the turn's."""
+
+    @staticmethod
+    def q_street(names):
+        legs = [
+            flat(
+                road("Q Street Northwest", 1, 900, 90, 90),
+                road("6th Street Northwest", 1, 25, 180, 180),
+                road("Rhode Island Avenue Northwest", 3, 600, 90, 90),
+            )
+        ]
+        return d.describe(legs, [event(925, "left", kind="left_onto", names=names)])
+
+    def test_a_jogs_busy_junction_stays_on_its_own_turn(self):
+        for names in (("rhode island avenue northwest",), ()):
+            entries = self.q_street(names)
+            assert entries[1]["severity"] is None
+            assert entries[1]["text"].split(": ")[1].startswith("Right onto 6th Street Northwest,")
+            assert entries[2]["severity"] == "orange"
+            assert (
+                "Left onto Rhode Island Avenue Northwest at a signal (Higher stress"
+                in (entries[2]["text"])
+            )
+
+    def test_a_busy_road_crossed_beside_a_quiet_turn_keeps_its_own_entry(self):
+        legs = [flat(road("A Street", 1, 900, 0, 0), road("Elm Street", 1, 600, 90, 90))]
+        for at in (880, 920):
+            georgia = event(
+                at, "straight", severity="red", kind="crossing", names=("georgia avenue",), tier=4
+            )
+            entries = d.describe(legs, [georgia])
+            turn = next(e for e in entries if e["street"] == "Elm Street")
+            assert turn["severity"] is None and turn["turn"]["control"] is None
+            assert turn["text"].split(": ")[1].startswith("Right onto Elm Street, low stress")
+            cross = [e for e in entries if e["kind"] == "junction"]
+            assert len(cross) == 1 and cross[0]["severity"] == "red"
+            assert "Cross Georgia Avenue (LTS 4) at a signal" in cross[0]["text"]
+
+    def test_a_crossing_of_the_street_turned_onto_is_still_the_turns(self):
+        legs = [flat(road("A Street", 1, 900, 0, 0), road("Elm Street", 1, 600, 90, 90))]
+        elm = event(905, "straight", kind="crossing", names=("elm street",))
+        entries = d.describe(legs, [elm])
+        assert [e["kind"] for e in entries] == ["stretch", "stretch"]
+        assert entries[1]["turn"]["control"] == "signal"
+
+
 def turned(atoms, turn, choice=True):
     """`atoms` with the first beginning a traced edge whose line turns `turn` degrees
     there (`Atom.turn`), another rideable way meeting the node where `choice`."""
