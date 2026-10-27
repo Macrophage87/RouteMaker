@@ -11,7 +11,7 @@
  * - whether the plan changed since the route was drawn (planChanged), and why Reset is unavailable.
  */
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
-import { t } from "./i18n.ts";
+import { language, t } from "./i18n.ts";
 import { pathLengthM, type LonLat } from "./geo.ts";
 import { formatDistance, formatDistanceChange } from "./format.ts";
 import { namePoints } from "./pointKinds.ts";
@@ -42,7 +42,7 @@ const lower = (text: string) => (text ? text[0].toLowerCase() + text.slice(1) : 
 function linked(items: { name: string; index: number }[]): Phrase[] {
   const out: Phrase[] = [];
   items.forEach((item, i) => {
-    if (i > 0) out.push({ text: ", then " });
+    if (i > 0) out.push({ text: t(", then ") });
     out.push({ text: item.name, target: { kind: "point", index: item.index } });
   });
   return out;
@@ -61,21 +61,23 @@ export function planSentences(
   words: PlanWords,
 ): Phrase[][] {
   const named = namePoints(points, isVia, loop);
-  const nameAt = (i: number) => nameOf(points[i]) ?? "a point on the map";
+  const nameAt = (i: number) => nameOf(points[i]) ?? t("a point on the map");
   const sentences: Phrase[][] = [];
   if (points.length === 0) {
-    sentences.push([{ text: "Start: tap the map or search for a place." }]);
+    sentences.push([{ text: t("Start: tap the map or search for a place.") }]);
   } else {
-    sentences.push([{ text: loop ? "Start and finish at " : "Start at " }, { text: nameAt(0), target: { kind: "point", index: 0 } }, { text: "." }]);
+    sentences.push([{ text: loop ? t("Start and finish at ") : t("Start at ") }, { text: nameAt(0), target: { kind: "point", index: 0 } }, { text: "." }]);
     const stops = named.flatMap((n, index) => (n.role === "stop" ? [{ name: nameAt(index), index }] : []));
     const vias = named.flatMap((n, index) => (n.role === "via" ? [{ name: nameAt(index), index }] : []));
-    if (stops.length) sentences.push([{ text: "Stop at " }, ...linked(stops), { text: "." }]);
-    if (vias.length) sentences.push([{ text: "Pass through " }, ...linked(vias), { text: " (via)." }]);
+    if (stops.length) sentences.push([{ text: t("Stop at ") }, ...linked(stops), { text: "." }]);
+    if (vias.length) sentences.push([{ text: t("Pass through ") }, ...linked(vias), { text: t(" (via).") }]);
     const end = named.findIndex((n) => n.role === "end");
-    if (end >= 0) sentences.push([{ text: "End at " }, { text: nameAt(end), target: { kind: "point", index: end } }, { text: "." }]);
-    else if (!loop) sentences.push([{ text: "End: tap the map or search for a place." }]);
+    if (end >= 0) sentences.push([{ text: t("End at ") }, { text: nameAt(end), target: { kind: "point", index: end } }, { text: "." }]);
+    else if (!loop) sentences.push([{ text: t("End: tap the map or search for a place.") }]);
   }
-  const ride: Phrase[] = [{ text: words.ride, target: { kind: "ride" } }, { text: " ride" }];
+  // Spanish puts the noun first: "Recorrido Default".
+  const rideLink: Phrase = { text: words.ride, target: { kind: "ride" } };
+  const ride: Phrase[] = language() === "es" ? [{ text: "Recorrido " }, rideLink] : [rideLink, { text: " ride" }];
   if (words.traffic) ride.push({ text: ", " }, { text: lower(words.traffic), target: { kind: "traffic" } });
   if (words.hills) ride.push({ text: ", " }, { text: lower(words.hills), target: { kind: "hills" } });
   ride.push({ text: "." });

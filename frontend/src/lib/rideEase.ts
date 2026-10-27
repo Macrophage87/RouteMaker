@@ -84,6 +84,6 @@ export const SAME_SHARE = 0.9;
 /** What a press says while it plans: the step it took, in the sliders' own words. */
 export function easeFinding(preset: PresetId, dials: Dials, ease: Ease): string {
   return ease === "calmer"
-    ? `Finding a calmer route. ${stressWords(dials.stress)}.`
-    : `Finding a flatter route. ${hillsWords(dials.hills, seeksClimbs(preset))}.`;
+    ? t("Finding a calmer route. {words}.", { words: stressWords(dials.stress) })
+    : t("Finding a flatter route. {words}.", { words: hillsWords(dials.hills, seeksClimbs(preset)) });
 }

@@ -107,7 +107,7 @@ export function RailStationsLegend() {
         {metro.map((line) => (
           <li key={line.key}>
             <Swatch colours={[line.color]} />
-            <span className="stress-label">{t("{line} line", { line: line.label })}</span>
+            <span className="stress-label">{t("{line} line", { line: t(line.label) })}</span>
           </li>
         ))}
         <li>
