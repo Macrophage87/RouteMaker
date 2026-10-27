@@ -21,6 +21,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
+from approx_points import approx_points
 from django.conf import settings
 from django.db import connection
 from django.test import override_settings
@@ -1306,7 +1307,7 @@ class TestPlanningTime:
 class TestPolyline:
     def test_it_decodes_what_valhalla_encodes(self) -> None:
         line = [(-77.043400, 38.909700), (-77.0091, 38.8899), (-76.612, 39.29)]
-        assert routing.decode_polyline6(encode_polyline6(line)) == pytest.approx(line)
+        assert routing.decode_polyline6(encode_polyline6(line)) == approx_points(line)
 
     def test_the_empty_shape_is_no_points(self) -> None:
         assert routing.decode_polyline6("") == []
