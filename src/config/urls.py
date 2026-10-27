@@ -18,6 +18,7 @@ from django.urls import path
 
 from core import (
     account_deletion,
+    app_links,
     auth_views,
     connector,
     garmin_views,
@@ -60,6 +61,8 @@ urlpatterns = [
     path(".well-known/oauth-protected-resource", connector.protected_resource),
     path(".well-known/oauth-protected-resource/mcp", connector.protected_resource),
     path(".well-known/oauth-authorization-server", connector.authorization_server),
+    # Android App Links: a tapped link to the site opens the phone app (core.app_links).
+    path(".well-known/assetlinks.json", app_links.assetlinks, name="assetlinks"),
     path("oauth/register", connector.register, name="oauth-register"),
     path("oauth/authorize", connector.authorize, name="oauth-authorize"),
     path("oauth/token", connector.token, name="oauth-token"),

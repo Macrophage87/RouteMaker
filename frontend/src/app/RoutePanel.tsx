@@ -48,6 +48,8 @@ import { SAVE_ROUTE, SAVE_SHORT } from "../lib/savedRoutes.ts";
 import { Fold, QuickFigures } from "../Sidebar.tsx";
 import { COPY_LINK, ROUTE_FOLDS, ROUTE_FOLD_GROUP, chartFoldOpen } from "../lib/sidebar.ts";
 import { BROADCAST_ABOUT, BROADCAST_LABEL, SHARE_LABEL, SHARE_RIDE_LABEL } from "../lib/share.ts";
+import { BROADCAST_HOLD_HINT } from "../lib/broadcastQr.ts";
+import { useHold } from "../lib/useHold.ts";
 import { SHARE_IMAGE_LABEL } from "../lib/shareCard.ts";
 import {
   SHARE_DELETE_AFTER_LABEL,
@@ -232,7 +234,8 @@ export interface RouteSectionProps {
   choose: (index: number) => void;
   startRide: () => void;
   /** Broadcast, beside Start: Share ride's link (the sharer leads), then the ride. Null without a share sheet. */
-  broadcastRide: { onPress: () => void; note: { text: string; count: number } } | null;
+  // `onHold`: held (or right-clicked), its link as a QR code (lib/broadcastQr.ts).
+  broadcastRide: { onPress: () => void; onHold: () => void; note: { text: string; count: number } } | null;
   startRideRef: RefObject<HTMLButtonElement | null>;
   rideSize: number | undefined;
   setDials: Dispatch<SetStateAction<Dials>>;
@@ -344,7 +347,7 @@ export function RouteSection(props: RouteSectionProps) {
             )
           }
           pickerCount={candidateRows(answer)?.length ?? 0}
-          ride={{ onStart: startRide, onBroadcast: broadcastRide?.onPress ?? null, broadcastNote: broadcastRide?.note, startRef: startRideRef }}
+          ride={{ onStart: startRide, onBroadcast: broadcastRide?.onPress ?? null, onBroadcastHold: broadcastRide?.onHold ?? null, broadcastNote: broadcastRide?.note, startRef: startRideRef }}
           rideSize={rideSizeOf({ rideSize })}
           onEnding={(ending) => setDials((d) => ({ ...d, ending }))}
           water={waterStatus === "ready" ? { items: waterAlong, onAddStop: addWaterStop } : null}
@@ -668,7 +671,7 @@ export function RouteSummary({
   federal: readonly string[];
   narrow: boolean;
   /** Ride mode's Start ride (WEB-NAV-plan.md Q1): offered beside the totals and with the directions. */
-  ride: { onStart: () => void; onBroadcast?: (() => void) | null; broadcastNote?: { text: string; count: number }; startRef: RefObject<HTMLButtonElement | null> };
+  ride: { onStart: () => void; onBroadcast?: (() => void) | null; onBroadcastHold?: (() => void) | null; broadcastNote?: { text: string; count: number }; startRef: RefObject<HTMLButtonElement | null> };
   onSelectJunction: (index: number) => void;
   /** The chart's scrub: the map point it reads, or null. */
   onScrub: (point: LonLat | null) => void;
@@ -699,6 +702,8 @@ export function RouteSummary({
   const [routesOpen, setRoutesOpen] = useState(mode === "go");
   const infoId = useId();
   const routesId = useId();
+  // Broadcast held (or right-clicked): its link as a QR code (lib/broadcastQr.ts).
+  const broadcastHold = useHold(ride.onBroadcastHold);
   // A Mass Ride's panel is about riders per minute, in place of the LTS breakdown (OWNER-DECISIONS 325).
   const capacity = capacitySummary(route.stress_spans);
   const segments = capacity ? [] : stressSegments(route.stress_m);
@@ -738,14 +743,14 @@ export function RouteSummary({
       {/* Broadcast (Stephen 2026-10-22: "a small button next to start"): Go's one control for it; the share sheet
           opens, and the ride starts once the link is sent, with the sharer as its leader. */}
       {ride.onBroadcast && (
-        <button type="button" className="secondary broadcast-button" onClick={ride.onBroadcast} title={BROADCAST_ABOUT} aria-describedby="broadcast-about">
+        <button type="button" className="secondary broadcast-button" onClick={ride.onBroadcast} {...broadcastHold} title={BROADCAST_ABOUT} aria-describedby="broadcast-about">
           <Icon name="broadcast" size={18} />
           {BROADCAST_LABEL}
         </button>
       )}
       {ride.onBroadcast && (
         <span id="broadcast-about" className="visually-hidden">
-          {BROADCAST_ABOUT}
+          {BROADCAST_ABOUT} {BROADCAST_HOLD_HINT}
         </span>
       )}
       {/* What went wrong (the route not ready, the sheet failed, the link without its leader), shown and said. */}

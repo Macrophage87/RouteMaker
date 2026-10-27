@@ -29,7 +29,7 @@
             </intent-filter>
 
             <!-- Share a RouteMaker link to the app from any app's Share sheet (SharedLink.java). A tapped
-                 link cannot open the app: that needs the site's address in the APK plus a file on the server naming the signing key, and neither is set up. -->
+                 link opens it in the store build only, whose site is merged in from src/links/AndroidManifest.xml. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
