@@ -150,6 +150,13 @@ PRIVACY_CONTACT = os.environ.get("PRIVACY_CONTACT", "").strip()
 # home or with a hosting company.
 PRIVACY_HOSTING = os.environ.get("PRIVACY_HOSTING", "").strip()
 
+# Android App Links (core.app_links, GET /.well-known/assetlinks.json): the store app's id and the
+# SHA-256 fingerprint of Play's app signing key (several separated by commas), set by the owner in
+# the deployment's environment file, so a tapped link to the site opens the phone app. Either
+# empty (the default): no file, and links open in the browser.
+ANDROID_APP_ID = os.environ.get("ANDROID_APP_ID", "").strip()
+ANDROID_CERT_SHA256 = os.environ.get("ANDROID_CERT_SHA256", "").strip()
+
 # Everything with state in it lives on the separate data volume, so nothing
 # durable sits on the root volume and the code directory holds no data. The
 # scheduled tasks resolve their paths from here rather than from their own
