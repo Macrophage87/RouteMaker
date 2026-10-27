@@ -18,6 +18,7 @@
 import { haversineM, type LonLat } from "./geo.ts";
 import { formatDuration, formatMilePost } from "./format.ts";
 import { lightClock } from "./lightTimes.ts";
+import { t } from "./i18n.ts";
 
 /** One NWS alert, as core.weather.parse_alerts answers it. */
 export interface WeatherAlert {
@@ -140,7 +141,7 @@ export function alertLine(alert: WeatherAlert, now: number): string {
 }
 
 /** The link's words beside each alert. */
-export const NWS_LINK = "NWS notice";
+export const NWS_LINK = t("NWS notice");
 /** Its accessible name: "Severe Thunderstorm Warning: National Weather Service notice (opens in a new tab)". */
 export const nwsLinkName = (alert: WeatherAlert) => `${alert.event}: National Weather Service notice (opens in a new tab)`;
 
@@ -169,9 +170,9 @@ export function rainLine(rain: WeatherRain, alongM: readonly number[], riding: b
 }
 
 /** The forecast's credit, beside the rain line (CC BY 4.0), and its accessible name. */
-export const RAIN_CREDIT = "Forecast: Open-Meteo";
-export const RAIN_CREDIT_NAME = "Forecast: Open-Meteo (opens in a new tab)";
-export const WEATHER_DISMISS_NAME = "Dismiss weather";
+export const RAIN_CREDIT = t("Forecast: Open-Meteo");
+export const RAIN_CREDIT_NAME = t("Forecast: Open-Meteo (opens in a new tab)");
+export const WEATHER_DISMISS_NAME = t("Dismiss weather");
 export const RAIN_CREDIT_URL = "https://open-meteo.com/";
 
 /**

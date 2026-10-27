@@ -316,7 +316,7 @@ riding to one puts it in that plan's link, as any destination is. <strong>Saved 
 saved routes and the routes kept on this device); one tap opens a route in Go, ready for <strong>Start ride</strong>.
 In Go a file always keeps to streets and paths bikes may ride: <strong>Exactly as drawn</strong> applies in Plan
 only.</li>
-<li><strong>The route card</strong> shows the start, the number of stops and the destination; Edit
+<li><strong>The route card</strong> shows the start, the stops and via points between, counted apart ("1 stop · 3 via points"), and the destination; Edit
 opens the points. <strong>Add a stop</strong> under it puts a place where it adds the least distance,
 and <strong>Best order</strong> appears with two or more stops. Undo takes a stop back out.</li>
 <li><strong>Route choice:</strong> beside your route, Go can draw <strong>More direct</strong> and
@@ -325,6 +325,11 @@ up to two notches more tolerant of traffic and is shown only when it saves at le
 Trailmaxxed is planned at the top of the traffic slider and is shown only when it takes at least
 250 ft [80 m] off busy riding. Press a line, or its row, to choose it; your own setting doesn't
 change.</li>
+<li><strong>Arrival time:</strong> beside the route's time, Go's route sheet and Plan's totals give when
+you would arrive if you left now, such as "1 h 48 min · arrive 8:27 AM" (in your device's 12- or 24-hour clock), kept up to date each minute. A screen
+reader hears "arriving about 8:27 AM if you leave now". It isn't shown for a transit or bikeshare trip, on Mass
+Ride, or when the <strong>When</strong> chosen isn't the time it is now, such as Weekend on a Tuesday
+(<strong>Now</strong> always is).</li>
 <li><strong>Transit offer:</strong> on Novice and Nervous, when the only way through is a busy road,
 <strong>Own bike + transit</strong> and <strong>Bikeshare + transit</strong> appear beside the route,
 each naming the busy stretch it avoids.</li>
@@ -388,7 +393,7 @@ directions, elevation and junctions before you go.</p>
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 222" role="img" aria-labelledby="fig-use-plan-t fig-use-plan-d" focusable="false" style="min-width:547px">
 <title id="fig-use-plan-t">Plan&#x27;s points and choices</title>
-<desc id="fig-use-plan-d">Plan lists the points: From, any stops, and To, with Add a stop and Best order under them. A stop&#x27;s grip drags it to a new place in the order. Then choose the ride type and its two sliders, the ride time (weekend, weekday rush, weekday off-hours or night), Loop, which most ride types start with on until you set an end, and Undo or Redo for any change to the points.</desc>
+<desc id="fig-use-plan-d">Plan lists the points: From, any stops, and To, with Add a stop and Best order under them. A stop&#x27;s grip drags it to a new place in the order. Then choose the ride type and its two sliders, When (now, weekend, weekday rush, weekday off-hours or night), Loop, which most ride types start with on until you set an end, and Undo or Redo for any change to the points.</desc>
 <defs><marker id="ah-use-plan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bxa" x="10" y="14" width="150" height="32" rx="6"/>
 <text class="tb" x="85.0" y="34.5" text-anchor="middle">From</text>
@@ -410,8 +415,8 @@ directions, elevation and junctions before you go.</p>
 <text class="tb" x="575.0" y="49.5" text-anchor="middle">Ride type</text>
 <text class="ts" x="575.0" y="65.5" text-anchor="middle">and its two sliders</text>
 <rect class="bx" x="400" y="80" width="350" height="38" rx="6"/>
-<text class="tb" x="575.0" y="95.5" text-anchor="middle">Ride time</text>
-<text class="ts" x="575.0" y="111.5" text-anchor="middle">Weekend, rush, off-hours, night</text>
+<text class="tb" x="575.0" y="95.5" text-anchor="middle">When</text>
+<text class="ts" x="575.0" y="111.5" text-anchor="middle">Now, weekend, rush, off-hours, night</text>
 <rect class="bx" x="400" y="126" width="350" height="38" rx="6"/>
 <text class="tb" x="575.0" y="141.5" text-anchor="middle">Loop</text>
 <text class="ts" x="575.0" y="157.5" text-anchor="middle">on at first for most ride types</text>
@@ -423,7 +428,7 @@ directions, elevation and junctions before you go.</p>
 <div class="fig-narrow">
 <svg viewBox="0 0 320 514" role="img" aria-labelledby="fig-use-plan-n-t fig-use-plan-n-d" focusable="false">
 <title id="fig-use-plan-n-t">Plan&#x27;s points and choices</title>
-<desc id="fig-use-plan-n-d">Plan lists the points: From, any stops, and To, with Add a stop and Best order under them. A stop&#x27;s grip drags it to a new place in the order. Then choose the ride type and its two sliders, the ride time (weekend, weekday rush, weekday off-hours or night), Loop, which most ride types start with on until you set an end, and Undo or Redo for any change to the points.</desc>
+<desc id="fig-use-plan-n-d">Plan lists the points: From, any stops, and To, with Add a stop and Best order under them. A stop&#x27;s grip drags it to a new place in the order. Then choose the ride type and its two sliders, When (now, weekend, weekday rush, weekday off-hours or night), Loop, which most ride types start with on until you set an end, and Undo or Redo for any change to the points.</desc>
 <defs><marker id="ah-use-plan-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bxa" x="10" y="8" width="110" height="36" rx="6"/>
 <text class="tb" x="65.0" y="31.5" text-anchor="middle">From</text>
@@ -445,8 +450,8 @@ directions, elevation and junctions before you go.</p>
 <text class="tb" x="160.0" y="288.5" text-anchor="middle">Ride type</text>
 <text class="ts" x="160.0" y="308.5" text-anchor="middle">and its two sliders</text>
 <rect class="bx" x="10" y="328" width="300" height="54" rx="6"/>
-<text class="tb" x="160.0" y="350.5" text-anchor="middle">Ride time</text>
-<text class="ts" x="160.0" y="370.5" text-anchor="middle">Weekend, rush, off-hours, night</text>
+<text class="tb" x="160.0" y="350.5" text-anchor="middle">When</text>
+<text class="ts" x="160.0" y="370.5" text-anchor="middle">Now, weekend, rush, off-hours, night</text>
 <rect class="bx" x="10" y="390" width="300" height="54" rx="6"/>
 <text class="tb" x="160.0" y="412.5" text-anchor="middle">Loop</text>
 <text class="ts" x="160.0" y="432.5" text-anchor="middle">on at first for most ride types</text>
@@ -501,7 +506,13 @@ router won't take; turning it on during a loop turns the loop off. See
 <ul>
 <li><strong>Ride type</strong> and its <strong>traffic</strong> and <strong>hills</strong> sliders:
 <a href="/about/ride-types.html">Ride types</a>.</li>
-<li><strong>Ride time:</strong> Weekend, Weekday rush, Weekday off-hours, or Night, 9 PM to 7 AM. Rush
+<li><strong>Riding speed</strong>, under the Hills slider: <strong>Ride type's speed</strong> (the default) or your
+own pace on the flat, 8 to 30 mph [13 to 48 km/h]. Route times, the arrival time and the ride's times to go follow
+it; hills and junction waits still count. Not on Mass Ride or the share-bike types, which keep their own pace. Kept on
+this device, and with your account when you are signed in; never in a shared link (see
+<a href="/about/routing.html#route-time">how a route's time is worked out</a>).</li>
+<li><strong>When:</strong> <strong>Now</strong>, the default, which names the time it is, such as "Now
+(Weekday rush)"; or Weekend, Weekday rush, Weekday off-hours, or Night, 9 PM to 7 AM. Rush
 hour and night change how busy roads are taken to be; weekends open roads closed to cars at
 weekends.</li>
 <li><strong>Cargo Bike</strong> asks what you carry: Carrying cargo, or Cargo with passengers.</li>
@@ -660,6 +671,11 @@ again in the same ride sends the same link, and hold it, right-click it or press
 <a href="#suggest">ride links</a>). Following a leader's Share ride or Broadcast link, it passes on the link you
 opened, so whoever joins follows the same leader. It is not on Ride the rest, a Roam detour, a ride opened from
 someone else's link that names no leader (a Share route link, say), or once you have arrived.</li>
+<li>On a Share ride or Broadcast link, <strong>Broadcast</strong> also shows how many are on the ride, the leader
+included, and a screen reader hears it, such as "3 riders on the route". <strong>More</strong> then has
+<strong>Riders</strong>, which opens who is where, Show me as a dot and your role, with its own Close. Roam, Plan
+and rides without Broadcast keep the riders count as a button of its own: a person icon and the number, which
+a screen reader hears in words.</li>
 <li><strong>Detour</strong> has four buttons, <strong>Water</strong>, <strong>Restroom</strong>, <strong>Food</strong> and
 <strong>Repair</strong> (repair stands and bike shops), each listing the three nearest by bike, and a
 <strong>Search</strong> box for anything else. What you type there, at least 3 letters, is matched against Find
@@ -714,18 +730,27 @@ coming within 15 minutes or turning heavy, brings them back.</li>
 <li><strong>Left alone.</strong> During a ride or Roam, if you have moved the map by hand, 30 seconds
 with no touch, wheel or key and nothing open puts it back on you, following at the ride's zoom (<strong>Where am
 I?</strong> does it at once). The same 30 seconds closes a map card (a stop, place, station, closure or climb), the
-road info and the side menus (Detour, More, the dock, 311, Riders, Alert), and the map then goes back to you. Kept
-open: a menu you are typing or speaking in (a Detour search, Alert's Other, its microphone) and anything asking you
-something (Alert's Send to everyone?, Already done?, a stop's name, the group's question, Resume your ride?). In
+road info and the side menus (Detour, More, the dock, 311, Riders, Send alert), and the map then goes back to you. Kept
+open: a menu you are typing or speaking in (a Detour search, Send alert's Other, its microphone) and anything asking you
+something (Send alert's Send to everyone?, Already done?, a stop's name, the group's question, Resume your ride?). In
 accessibility mode nothing closes on its own. A map card's close button (X) is 44 px across.</li>
-<li><strong>Off the route</strong>, RouteMaker plans again from where you are. Whenever the ride plans again (off the route,
+<li><strong>Off the route</strong>, RouteMaker plans again from where you are. On a route you picked over the top-ranked
+one (another line from the routes to choose from, or Go's More direct or Trailmaxxed), it first looks for a way back to that route ahead and
+shows (and, by your voice setting, says) "New route found. It rejoins your
+route ahead."; only with no way back does it plan again to the end. Whenever the ride plans again (off the route,
 Re-plan from here, Road closed, Less traffic, Fewer hills or a Detour), it keeps every stop still ahead but treats via
 points as guides: one less than half a mile [800 m] ahead is dropped, so you are never sent back to touch
-it. <strong>Keep the planned
+it. If the next point ahead is a via point and reaching it would take more than about 5 minutes longer than the
+planned route would have from where you are (past a closed road, say), it is left out too and the ride shows (and,
+by your voice setting, says) "Skipping via point. New route found." Only that one via point is ever left out this
+way, never a later one or a stop, and not on a Detour, Less traffic, Fewer hills or when you start again part
+way. <strong>Keep the planned
 route</strong> stops that until you are back on it, and shows the way back instead.</li>
 <li><strong>No signal:</strong> at Start ride, the map within about 1,000 ft [300 m] either side of the
 route is kept on your device, so dead spots still show the stress lines. It is cleared when the ride
-ends. Only map tiles are kept, never where you were.</li>
+ends. Only map tiles are kept, never where you were. If none of it could be kept, a line in the panel at
+the bottom of the screen says "Map not saved offline: it needs a signal." (shown, not said); the route line and the cues work
+without it.</li>
 <li><strong>In the background:</strong> after 10 minutes with the page out of sight, the ride pauses to
 save battery and stops using your location; <strong>Resume</strong> carries on.</li>
 <li><strong>Back gesture:</strong> swiping back during a ride does nothing, so a glove or a bump
@@ -865,6 +890,11 @@ once it ends. DDOT's permits show only with DC permits on. More:
 </ul>
 <h3>Finding things on the map</h3>
 <ul>
+<li><strong>State and county lines</strong> are always on the map, under the stress lines: a darker, wider
+grey dash for a state line (the District of Columbia's too) and a lighter, thinner one for a county line
+(an independent city's too, such as Alexandria or Baltimore). Other lines, such as town lines, keep the base
+map's faint dash. All are kept thin, so they stay behind the stress lines. They come from
+OpenStreetMap.</li>
 <li>Plan's map has a <strong>Find</strong> button that opens <strong>Food</strong>,
 <strong>Water</strong> and <strong>Places to see</strong>. <strong>Find food</strong>
 has Crab, Coffee, Pizza, Tacos, Ice cream and Farm stands, near you or in the map's view.</li>
@@ -1039,6 +1069,13 @@ this device. The app opens in Go on a phone and in Plan on a computer, a shared 
 included; a tab keeps the view it was last in, and pressing Go or Plan counts for that tab only.</li>
 <li><strong>Riding</strong> and <strong>Display:</strong> cues, large text, rider and bike weight, high
 contrast and the rest, on <a href="/about/accessibility.html">Accessibility</a>.</li>
+<li><strong>Language</strong> (Display): <strong>Phone's language</strong>, the default, <strong>English</strong>
+or <strong>Español</strong>, kept on this device. It changes the app's words and the voice (Spanish cues are said
+in US Spanish). The route's own sentences come in Spanish too, in Go and Plan: the <strong>Directions</strong>, hazard
+and work-zone lines, steep grades, climbs, Novice and Nervous walk-your-bike lines and Avoid-rated junction
+notices. Street, trail and place names and agency notices stay as
+written, and miles stay first. Go, Ride, Roam, Settings, the place search and saved routes are in Spanish; Plan's
+own labels and these guides are still in English. Choosing a different language reloads the page.</li>
 <li><strong>Install RouteMaker</strong> adds it to your home screen when the browser offers it. When a
 new version is ready, a line says so with Reload; it never interrupts a ride.</li>
 <li><strong>Account:</strong> <strong>Sign in with Discord</strong> keeps My Go, starred ride types and
@@ -1119,21 +1156,21 @@ not asked, on opening it or on Start ride.</li>
 re-route shows) and the path it has taken so far (solid), about every 2 minutes and whenever the route
 changes, so someone who opens the link late sees where the ride has been. The start of the path is left
 out until it is 650 ft [200 m] from where it began, as rides often start at home.</li>
-<li>Moving or zooming the map stops following. Tap the riders count and turn on <strong>Follow the
+<li>Moving or zooming the map stops following. Tap the riders count (on a ride with Broadcast, More, then Riders) and turn on <strong>Follow the
 leader</strong> to follow again. While you ride yourself, the map follows you instead.</li>
 <li>When the link opens, it asks once whether to <strong>show me as a dot</strong>, and your role:
 <strong>Participant</strong>, <strong>Lead line</strong>, <strong>Sweep</strong> or
 <strong>Corker</strong>. Your dot is sent only while the app is open, and only within a quarter mile
 [400 m] of the route. On a Share ride or Broadcast link, while you ride, it is shown on or off the
 route, so the leader and riders who get separated can find each other. It stops when you turn it off
-(tap the riders count), close the app, are off the route for 10 minutes (not counted while you ride a
+(tap the riders count, or on a ride with Broadcast, More, then Riders), close the app, are off the route for 10 minutes (not counted while you ride a
 Share ride or Broadcast link), or 12 hours after the start.</li>
-<li><strong>Alert</strong> sends one tap to everyone on the link with your location. A Group Ride has
+<li><strong>Send alert</strong>, a large yellow button, sends one tap to everyone on the link with your location. A Group Ride has
 Rider off the back; Crash; Mechanical or flat, stopping; Wrong turn; Lost, separated from the group;
 Wait up, regroup; and Other. A Mass Ride has Extensive rider spread; Emergency vehicle coming through;
 Aggressive person; Medical emergency or crash; Rerouting, road closed; Lost, separated from the ride;
 and Other. Crash and Medical ask first and offer to call 911.</li>
-<li>In Alert, Other, on the website where your browser supports it (it does not work in the Android app),
+<li>In Send alert, Other, on the website where your browser supports it (it does not work in the Android app),
 <strong>Speak</strong> fills the box from what you say; check it, then tap Send. It needs a connection: your browser's maker (such as Google for Chrome or
 Apple for Safari) turns the recording into text.</li>
 <li>The server keeps dots, the leader's route and path, and alerts in memory only, for 2 minutes. A
@@ -1177,7 +1214,7 @@ from the app's next update.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.12.6. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.13.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

@@ -1,6 +1,7 @@
 // Moved out of App.tsx unchanged (UI-CLEANUP step 4, docs/DEVELOPMENT.md "The App.tsx split"): the same
 // elements, in the same order, with App's state and handlers passed in under the names App gives them,
 // so the DOM, the focus and every announcement are as they were. App.tsx keeps the state and the effects.
+import type { RidingSpeedControl } from "../lib/ridingSpeed.ts";
 import { useEffect, useRef, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import type { StressAvailability } from "../MapView.tsx";
 import { ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
@@ -443,6 +444,8 @@ export interface RideSectionProps {
   route: RouteResponse | null;
   /** Plan: the ride type's own button, first. Go's Ride sheet lists the ride types itself (RideGroupChips). */
   typeCard: boolean;
+  /** The rider's riding speed in whole mph, or null for the ride type's own (lib/ridingSpeed.ts). */
+  ridingSpeed?: RidingSpeedControl;
 }
 
 /**
@@ -450,7 +453,7 @@ export interface RideSectionProps {
  * (OWNER-DECISIONS 312; edit-route redesign, Stephen 2026-10-18: one press to the ride types, not Edit then Change).
  */
 export function RideSection(props: RideSectionProps) {
-  const { preset, dials, choosePreset, commitDials, route, typeCard } = props;
+  const { preset, dials, choosePreset, commitDials, route, typeCard, ridingSpeed } = props;
   const presetsSection = typeCard ? <RideTypePicker key="presets" preset={preset} dials={dials} onChoose={choosePreset} /> : null;
   return (
     <RideSettings key="presets" summary={settingsSummary(preset, dials)} spoken={settingsSummarySpoken(preset, dials)} typeCard={presetsSection}>
@@ -459,6 +462,7 @@ export function RideSection(props: RideSectionProps) {
         dials={dials}
         onCommit={commitDials}
         resolvedWhen={route?.dials?.when ?? null}
+        ridingSpeed={ridingSpeed}
       />
     </RideSettings>
   );

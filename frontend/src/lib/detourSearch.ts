@@ -36,6 +36,7 @@ import {
 import { repairDetails, repairTitle, type RepairPlace } from "./repair.ts";
 import { foodNearestPlaces } from "./roam.ts";
 import type { WaterPoint } from "./waterRestrooms.ts";
+import { t } from "./i18n.ts";
 
 export type DetourKind = "water" | "restroom" | "food" | "repair";
 
@@ -48,10 +49,10 @@ export const DETOUR_CHOICES: ReadonlyArray<{ kind: DetourKind; label: string; ic
 ];
 
 /** The Detour button's summary (rideStops.detourButtonName lower-cases it). */
-export const DETOUR_SUMMARY = "Water, restroom, food, repair or search";
+export const DETOUR_SUMMARY = t("Water, restroom, food, repair or search");
 /** The search box's label and its example words. */
 export const DETOUR_SEARCH_LABEL = "Search";
-export const DETOUR_SEARCH_HINT = "Coffee, grocery, an address";
+export const DETOUR_SEARCH_HINT = t("Coffee, grocery, an address");
 export const DETOUR_SEARCH_BUTTON = "Find";
 
 /** What a found list is headed: "Nearest places to eat", "Nearest matches for “pizza”". */
@@ -190,8 +191,8 @@ export interface DetourOutcome {
   found?: DetourFound;
 }
 
-export const FOOD_NOT_READY = "The places to eat are unavailable for now; try again shortly.";
-export const REPAIR_NOT_READY = "Repair stands and bike shops are unavailable for now; try again shortly.";
+export const FOOD_NOT_READY = t("The places to eat are unavailable for now; try again shortly.");
+export const REPAIR_NOT_READY = t("Repair stands and bike shops are unavailable for now; try again shortly.");
 export const SEARCH_TOO_SHORT = `Type at least ${MIN_QUERY_CHARS} letters to search.`;
 
 /** Said as a search starts. */
