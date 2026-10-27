@@ -3500,7 +3500,7 @@ def plan(
     located: dict = {}
     for _round in range(STRAY_ROUNDS):
         try:
-            return _plan(
+            return _plan_round(
                 points, preset_name, long_ride, started, dials, quick, candidates,
                 traces=traces, located=located,
             )  # fmt: skip
@@ -3521,7 +3521,22 @@ def plan(
     dials = dataclasses.replace(dials, trail_touch=False, trail_strays=())
     traces.clear()
     located.clear()
-    return _plan(points, preset_name, long_ride, started, dials, quick, candidates)
+    return _plan_round(points, preset_name, long_ride, started, dials, quick, candidates)
+
+
+def _plan_round(*args, **kwargs) -> dict:
+    """`_plan`, with the calm search's early ask for the router's alternatives
+    (`refine.ask_alternates_early`) cancelled however the plan ends. The search cancels it
+    once it is done with it; where anything between the ask and the search raises (a router
+    or database error, the clock), one still queued on the pool is never sent, so beta's
+    two router slots never run an ask nobody waits for (review of audit batch 1, S2b). One
+    already running ends at its own deadline, as before."""
+    early: list[Future] = []
+    try:
+        return _plan(*args, early=early, **kwargs)
+    finally:
+        for future in early:
+            future.cancel()
 
 
 def _over_budget(rings) -> bool:
@@ -3543,6 +3558,7 @@ def _plan(
     candidates: bool = True,
     traces: dict | None = None,
     located: dict | None = None,
+    early: list[Future] | None = None,
 ) -> dict:
     """Route through `points` on `preset_name`, returning the contract's body.
 
@@ -3554,7 +3570,8 @@ def _plan(
     no routes to choose from beside the answer (Ride mode's re-plans, review speed-5).
     Raises NoRoute, TooLong, RouterUnavailable, DeadlineExceeded, or KeyError
     for an unknown preset. `traces` and `located` are `plan`'s, shared by its rounds; a
-    plan of its own where they are not given.
+    plan of its own where they are not given. `early` is given the pending early ask for
+    alternatives, for `_plan_round` to cancel.
     """
     if started is None:
         started = clock()
@@ -3897,6 +3914,8 @@ def _plan(
         from . import refine
 
         early_alternates = refine.ask_alternates_early(variant, request, deadline)
+        if early_alternates is not None and early is not None:
+            early.append(early_alternates.future)
     avoid_weight = -hills_dial / 100 if avoiding else 0.0
     # Steep grades warned of and priced either way (`routemaker.steep_grades`): a Mass Ride
     # and a Novice and Nervous ride, wherever the hills slider sits.

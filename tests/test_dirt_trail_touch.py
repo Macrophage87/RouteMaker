@@ -384,7 +384,7 @@ class TestRounds:
         its first `strays` rounds."""
         seen: list[dict] = []
 
-        def fake_plan(*args, traces=None, located=None):
+        def fake_plan(*args, traces=None, located=None, **_):
             seen.append({"traces": traces, "located": located, "started": args[3]})
             if traces is not None:
                 seen[-1]["held"] = (len(traces), len(located))
