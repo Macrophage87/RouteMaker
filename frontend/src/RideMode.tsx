@@ -41,7 +41,7 @@ import { BROADCAST_HOLD_HINT } from "./lib/broadcastQr.ts";
 import { useHold } from "./lib/useHold.ts";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type PointerEvent } from "react";
 import { HoldTimer } from "./lib/holdTimer.ts";
-import { startsWayBack, wayBackRoute } from "./lib/rejoin.ts";
+import { rejoinsFirst, startsWayBack, wayBackRoute } from "./lib/rejoin.ts";
 import {
   ON_DETOUR_SAID,
   ON_STANDARD_SAID,
@@ -53,7 +53,7 @@ import {
   onOtherLine,
   withClosed,
 } from "./lib/roadClosed.ts";
-import { requestRoute, type RouteResponse } from "./lib/api.ts";
+import { requestRoute, type ErrorKind, type RouteResponse } from "./lib/api.ts";
 import { VIA_MARKS, drawnLegs, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
 import {
   SKIP_STOP,
@@ -103,6 +103,7 @@ import {
   withUTurn,
   REPLAN_NO_SIGNAL,
   REPLAN_REJOIN,
+  REPLAN_REJOIN_AHEAD,
   REPLAN_FINDING,
   REPLAN_STILL_WAITING,
   ReplanGate,
@@ -1154,22 +1155,39 @@ export function RideMode({
       // rider's re-plan of a long ride was refused for want of it).
       const ask = (to: LonLat[]) =>
         requestRoute(to, preset, { dials: { ...dialsRef.current, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading, aheadOnly, rideReplan: true, dirtRidden: dirtRidden.current, dirtClosed: dirtClosed.current });
-      const result = await ask(points);
-      // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
-      // the owner, 2026-10-17). Not for a detour, whose place the planned route does not pass. The no-signal
-      // timer runs on through it.
-      let found = result.ok ? result.route : null;
-      let failed = result.ok ? null : result.error.kind;
+      let found: RouteResponse | null = null;
+      let failed: ErrorKind | null = null;
       let note = REPLAN_FOUND;
       const voided = () => ended.current || ticket !== replanTicket.current;
-      if (!result.ok && !via && !check && startsWayBack(result.error.kind) && !voided()) {
-        const kept = keptPoints;
-        // Never back onto a road the rider marked closed: the way back joins the route past it.
-        const closed = blockedUntil.current?.model === modelRef.current ? blockedUntil.current.untilM : -Infinity;
-        const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, kept, ask, voided, closed);
-        if ("route" in back) found = back.route;
-        else if (back.failed) failed = back.failed;
-        note = REPLAN_REJOIN;
+      // Never back onto a road the rider marked closed: a way back joins the route past it.
+      const closed = blockedUntil.current?.model === modelRef.current ? blockedUntil.current.untilM : -Infinity;
+      // Off a route the rider chose over the first, the way back to it ahead first (routing audit D15; the owner,
+      // 2026-10-27: "stops need to be made and via points should be followed as the default unless there's an
+      // overriding reason to change"), so a new plan does not pull them back toward the route they turned down; a new
+      // plan only where there is no way back. A way back is a short ask or three, not a plan to the end.
+      const backFirst = rejoinsFirst(routeRef.current, { asked, detour: !!via, check, restart: !!done, skip: skip !== undefined });
+      if (backFirst) {
+        const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, keptPoints, ask, voided, closed);
+        if ("route" in back) {
+          found = back.route;
+          note = REPLAN_REJOIN_AHEAD;
+        } else failed = back.failed;
+      }
+      // No signal for the way back: a plan to the end would not get through either.
+      if (!found && failed !== "network" && !voided()) {
+        const result = await ask(points);
+        found = result.ok ? result.route : null;
+        failed = result.ok ? null : result.error.kind;
+        // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
+        // the owner, 2026-10-17), unless it was tried first. Not for a detour, whose place the planned route does not
+        // pass. The no-signal timer runs on through it.
+        if (!result.ok && !backFirst && !via && !check && startsWayBack(result.error.kind) && !voided()) {
+          const kept = keptPoints;
+          const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, kept, ask, voided, closed);
+          if ("route" in back) found = back.route;
+          else if (back.failed) failed = back.failed;
+          note = REPLAN_REJOIN;
+        }
       }
       window.clearTimeout(timer);
       if (check) checking.current = false;

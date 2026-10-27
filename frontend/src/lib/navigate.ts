@@ -1620,7 +1620,7 @@ export const UTURN_START: UTurnState = { inARow: 0, held: false, checkedAt: 0 };
 export type UTurnEvent =
   /**
    * A re-route's route taken (a held route's silent check only when it found a way ahead). `note` is what it would
-   * say without the U-turns (REPLAN_FOUND or REPLAN_REJOIN); `stopped`, made without a heading because the rider
+   * say without the U-turns (REPLAN_FOUND, REPLAN_REJOIN or REPLAN_REJOIN_AHEAD); `stopped`, made without a heading because the rider
    * had none (not Road closed, which turns round on purpose).
    */
   | { kind: "rerouted"; turned: boolean; aheadOnly: boolean; stopped: boolean; note: string; now: number }
@@ -1649,7 +1649,7 @@ export function uturnAheadOnly(state: UTurnState, headingDeg: number | null): bo
  * again, and one made while stopped (no heading) leaves it as it is, so a rider who pauses between U-turns they ride
  * past is not asked again and again (the v0.10.1 end review). The third, ahead only, that still turns round says
  * REPLAN_NO_AHEAD once and is held: off route, no re-plan out loud, only a silent check each UTURN_RECHECK_MS. A way
- * back (REPLAN_REJOIN) is never held. Any re-route taken (Re-plan from here's too), UTURN_TAKEN_M along a U-turn
+ * back (REPLAN_REJOIN, REPLAN_REJOIN_AHEAD) is never held. Any re-route taken (Re-plan from here's too), UTURN_TAKEN_M along a U-turn
  * route, or the other line lets go of a hold.
  */
 export function uturnStep(state: UTurnState, event: UTurnEvent): UTurnStep {
@@ -1659,7 +1659,7 @@ export function uturnStep(state: UTurnState, event: UTurnEvent): UTurnStep {
       let note = event.note;
       if (event.turned && note === REPLAN_FOUND) note = REPLAN_UTURN;
       if (!event.turned && event.aheadOnly && note === REPLAN_FOUND) note = REPLAN_AHEAD;
-      const held = event.turned && event.aheadOnly && note !== REPLAN_REJOIN;
+      const held = event.turned && event.aheadOnly && note !== REPLAN_REJOIN && note !== REPLAN_REJOIN_AHEAD;
       return { state: { inARow, held, checkedAt: event.now }, note: held ? REPLAN_NO_AHEAD : note };
     }
     case "along":
@@ -1708,6 +1708,11 @@ export const REPLAN_NO_SIGNAL = t("No signal: the planned route is still shown."
 export const REPLAN_FAILED = t("No new route was found; the planned route is still shown.");
 /** No new route to the end, but one back to the planned route (lib/rejoin.ts), which goes on from there. */
 export const REPLAN_REJOIN = t("No new route was found; follow the way back to the planned route.");
+/**
+ * A re-route on a route the rider chose over the first that rejoins it ahead, tried before a new plan (routing audit D15,
+ * lib/rejoin.ts rejoinsFirst). Not REPLAN_REJOIN: here no new route was looked for, and none failed.
+ */
+export const REPLAN_REJOIN_AHEAD = t("New route found. It rejoins your route ahead.");
 export const REPLAN_FINDING = t("Finding a new way from here.");
 export const REPLAN_STILL_WAITING = t("Still waiting for the last re-plan.");
 
@@ -1719,6 +1724,7 @@ export const REPLAN_STILL_WAITING = t("Still waiting for the last re-plan.");
  */
 export function replanTold(asked: boolean, level: Verbosity, note: string): "answer" | "say" | "quiet" {
   if (asked) return "answer";
-  if (level === "full" || (level === "stoker" && (note === REPLAN_FOUND || note === REPLAN_AHEAD || note === REPLAN_NO_AHEAD || note === REPLAN_REJOIN))) return "say";
+  const found = note === REPLAN_FOUND || note === REPLAN_AHEAD || note === REPLAN_NO_AHEAD || note === REPLAN_REJOIN || note === REPLAN_REJOIN_AHEAD;
+  if (level === "full" || (level === "stoker" && found)) return "say";
   return "quiet";
 }
