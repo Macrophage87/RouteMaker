@@ -9,7 +9,8 @@
  * share bike its own pace; the API ignores the speed there.
  *
  * Kept in this browser, and signed in with the account's settings ("speed", lib/accountSettings.ts), so it
- * follows the rider. Never in a link: a shared route is timed at the reader's own speed.
+ * follows the rider. Never in a plan link, which the reader's page plans again at their own speed; a saved
+ * route or route post keeps the times it was planned with.
  */
 import type { Dials } from "./dials.ts";
 import type { PresetId } from "./presets.ts";

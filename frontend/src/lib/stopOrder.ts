@@ -83,8 +83,8 @@ export async function requestStopOrder(
         points,
         preset,
         // The order does not use the weight, so it is not sent (OWNER-DECISIONS 264's privacy:
-        // the weight leaves the device only for the plan that uses it).
-        ...dialFields({ ...dials, systemWeightKg: undefined }),
+        // the weight leaves the device only for the plan that uses it). Nor the riding speed, which it does not use.
+        ...dialFields({ ...dials, systemWeightKg: undefined, ridingSpeedKmh: undefined }),
       }),
     });
   } catch {

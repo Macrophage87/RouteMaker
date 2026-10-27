@@ -1066,8 +1066,8 @@ VALHALLA_DEFAULT_SPEED_KMH = {"Road": 25.0, "Cross": 20.0, "Hybrid": 18.0, "Moun
 # The rider's own riding speed (the owner, 2026-10-27: "Some people who ride much faster than
 # the defaults would like to be able to override the speed as an advanced feature"), set once in
 # Settings: Valhalla's `cycling_speed`, the flat-ground pace its grade model, and so every time
-# and arrival estimate, starts from. The range is Settings' picker, 5 to 31 mph, inside
-# Valhalla's own bounds for the bicycle costing.
+# and arrival estimate, starts from. The API takes 8 to 50 km/h (about 5 to 31 mph), round the
+# ride settings' picker of 8 to 30 mph and inside Valhalla's own bounds for the bicycle costing.
 RIDER_SPEED_MIN_KMH = 8.0
 RIDER_SPEED_MAX_KMH = 50.0
 

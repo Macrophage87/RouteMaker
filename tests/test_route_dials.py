@@ -2596,3 +2596,24 @@ class TestRiderSpeedRule:
 
     def test_none_is_the_ride_types_own(self):
         assert presets.rider_speed("default", None) is None
+
+
+@db
+class TestRiderSpeedOnAShareBike:
+    def test_a_share_bike_keeps_its_own_pace(self, client, facility_segments, router, monkeypatch):
+        """The rider's speed is not a share bike's: Bikeshare's ride keeps the bike's pace."""
+        assert presets.rider_speed(presets.BIKESHARE, 32.2) is None
+        from core import api
+
+        seen = []
+        real = routing.Dials
+
+        def spy(*args, **kwargs):
+            made = real(*args, **kwargs)
+            seen.append(made)
+            return made
+
+        monkeypatch.setattr(api.routing, "Dials", spy)
+        router(standard_router())
+        post(client, {**good_body(presets.BIKESHARE), "cycling_speed_kmh": 32.2})
+        assert seen and all(d.cycling_speed_kmh is None for d in seen)

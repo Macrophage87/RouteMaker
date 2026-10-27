@@ -1307,8 +1307,9 @@ class Dials:
     # (`VIA_LOCATION_TYPE`); every other point is a stop ("break"), as before.
     vias: tuple[int, ...] = ()
     # The pace the plan's costing rides at instead of the ride type's own (km/h); None: its
-    # own. Set only by a transit trip's lines priced as Novice on a share bike (`api._transit_body`,
-    # `novice_legs` on Bikeshare + Transit), so the lines are timed as its candidates were.
+    # own. Set by the rider's Riding speed (`presets.rider_speed`), and by a transit trip's lines
+    # priced as Novice on a share bike (`api._transit_body`, `novice_legs` on Bikeshare + Transit),
+    # so the lines are timed as its candidates were.
     cycling_speed_kmh: float | None = None
     # Novice and Nervous's walks past a short busy stretch (`core.novice_walks`); off for a
     # transit trip's lines priced as Novice (`novice_legs`), which say no walks.

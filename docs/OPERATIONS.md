@@ -5879,7 +5879,7 @@ the credit's extra reads (a join over the traced pieces) no longer apply.
   per metre of LTS 3 saved) and `WORTH_OVER_TARGET` (2.5, past the target), and the effort model's
   constants (`routemaker.effort`).
 - **Rollback.** Redeploying the previous image removes it all: the new request fields (`target_distance_m`,
-  `system_weight_kg`, `loop`) would be refused as unknown by the older API (the schema forbids extra
+  `system_weight_kg`, `loop`, and v0.13.0's `cycling_speed_kmh`, the ride settings' Riding speed) would be refused as unknown by the older API (the schema forbids extra
   fields), so an older API behind a newer front end would answer 400 to a request that carries one;
   deploy the pair together.
 
