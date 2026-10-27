@@ -22,6 +22,7 @@
 import type { LonLat } from "./geo.ts";
 import { coordinatesText, type GeoResult, type Place } from "./geocode.ts";
 import type { Home } from "./myGo.ts";
+import { t } from "./i18n.ts";
 
 /** The road panel's "Use this spot" button, and what the Home sheet's map way is called. */
 /**
@@ -37,19 +38,19 @@ export function nameWithoutHome(name: (point: LonLat) => string | undefined, hom
   };
 }
 
-export const SET_AS_HOME_TEXT = "Set as Home";
-export const PICK_ON_MAP_TEXT = "Pick on the map";
+export const SET_AS_HOME_TEXT = t("Set as Home");
+export const PICK_ON_MAP_TEXT = t("Pick on the map");
 /** Go's one line while the Home sheet's map way waits for a tap. */
-export const HOME_PICK_LINE = "Tap the map where Home is.";
+export const HOME_PICK_LINE = t("Tap the map where Home is.");
 /** The More row's chip, once there is a Home: the same sheet, to change or clear it. */
-export const CHANGE_HOME_TEXT = "Change Home";
-export const CLEAR_HOME_TEXT = "Clear Home";
+export const CHANGE_HOME_TEXT = t("Change Home");
+export const CLEAR_HOME_TEXT = t("Clear Home");
 
 /** Said once Home is set, whichever way. */
 export function homeSetSaid(home: Home): string {
   return `Home set to ${homeName(home)}.`;
 }
-export const HOME_CLEARED = "Home cleared.";
+export const HOME_CLEARED = t("Home cleared.");
 
 /** A Home's identity for the Home sheet ("" with none): a change to it is a Home set (or cleared). */
 export function homeSetKey(home: Home | null): string {
@@ -60,7 +61,7 @@ export function homeSetKey(home: Home | null): string {
 export function homeClosesSheet(before: string, after: string, open: boolean): boolean {
   return open && after !== "" && after !== before;
 }
-export const HOME_PICK_CANCELLED = "Home not changed.";
+export const HOME_PICK_CANCELLED = t("Home not changed.");
 
 /** Home's name as shown and said: its label, else its coordinates. */
 export function homeName(home: Home): string {

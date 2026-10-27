@@ -132,10 +132,45 @@ class TestMerge:
         assert len(entries) == 1
         assert entries[0]["street"] == "Rockville Pike"
 
+    def test_a_ref_only_piece_between_two_named_ones_still_joins(self):
+        entries = d.describe(
+            [
+                flat(
+                    road(None, 3, 500, names=("Rockville Pike", "MD 355")),
+                    road(None, 3, 200, names=("MD 355",)),
+                    road(None, 3, 500, names=("MD 355", "Rockville Pike")),
+                )
+            ]
+        )
+        assert len(entries) == 1
+        assert entries[0]["street"] == "Rockville Pike"
+
+    def test_two_streets_sharing_only_a_route_number_are_two_streets(self):
+        # US 29 turns off Georgia Avenue onto Colesville Road in Silver Spring: a turn
+        # onto another street, not "Right to stay on Colesville Road".
+        def us29(turn, choice):
+            colesville = road(None, 3, 800, turn, turn, names=("US 29", "Colesville Road"))
+            colesville[0] = replace(colesville[0], turn=float(turn), choice=choice)
+            georgia = road(None, 3, 800, 0, 0, names=("US 29", "Georgia Avenue"))
+            return d.describe([flat(georgia, colesville)])
+
+        for choice in (False, True):
+            entries = us29(90, choice)
+            assert [e["street"] for e in entries] == ["Georgia Avenue", "Colesville Road"]
+            assert "stay" not in entries[1]["turn"]
+            assert entries[1]["text"].split(": ")[1].startswith("Right onto Colesville Road,")
+        # A shallow bend keeps the name change.
+        entries = us29(30, False)
+        assert [e["street"] for e in entries] == ["Georgia Avenue", "Colesville Road"]
+        assert entries[1]["text"].split(": ")[1].startswith("Bear right onto Colesville Road,")
+
     def test_a_route_number_is_not_preferred_to_a_name(self):
         assert d.street_label(("MD 355", "Rockville Pike")) == "Rockville Pike"
         assert d.street_label(("MD 355",)) == "MD 355"
         assert d.street_label(()) is None
+        assert d.street_label(("US 1 Bus", "Washington Street")) == "Washington Street"
+        assert d.street_label(("Route 7", "Leesburg Pike")) == "Leesburg Pike"
+        assert d.street_label(("md 355", "rockville pike")) == "rockville pike"
 
     def test_a_mid_route_name_change_at_the_same_tier_is_a_turn_entry(self):
         entries = d.describe([flat(road("A St", 1, 500), road("B St", 1, 500, 0, 0))])
@@ -806,6 +841,40 @@ class TestOverview:
 
     def test_describe_is_the_full_list(self):
         assert d.describe([bethesda()]) == both(bethesda())[0]
+
+    def test_a_turn_onto_an_unnamed_way_is_kept_in_the_overview(self):
+        for kind, words in (
+            ({}, "right on unnamed road"),
+            ({"use": "service_road"}, "right on the service road"),
+            ({"facility": "path", "use": "cycleway"}, "right on the path"),
+        ):
+            legs = [
+                flat(
+                    road("A St", 2, 1000, 0, 0),
+                    road(None, 2, 350, 90, 90, **kind),
+                    road("B St", 2, 1000, 0, 0),
+                )
+            ]
+            _full, short = both(*legs)
+            assert short[0]["text"].split(": ")[1].startswith(f"A St, then {words}, ")
+            assert short[1]["text"].split(": ")[1].startswith("Left onto B St,")
+
+    def test_two_unnamed_turns_are_two_and_straight_on_is_not_named(self):
+        legs = [
+            flat(
+                road("A St", 2, 1000, 0, 0),
+                road(None, 2, 150, 90, 90),
+                road(None, 2, 150, 0, 0, use="service_road"),
+                road(None, 2, 150, 270, 270, use="service_road", facility="lane"),
+                road("B St", 2, 1000, 270, 270),
+            )
+        ]
+        _full, short = both(*legs)
+        assert (
+            short[0]["text"]
+            .split(": ")[1]
+            .startswith("A St, then right on unnamed road and left on the service road, ")
+        )
 
     def test_a_short_quiet_stretch_is_merged_into_its_neighbour(self):
         a, b, c = (
@@ -1545,6 +1614,51 @@ class TestTheLastTurn:
         assert len(d.describe(stub)) == 1
 
 
+class TestTheFirstTurn:
+    """`_last_turn`'s mirror: a start, or a stop, that snaps less than 300 ft short of a
+    corner the route turns at. Folded forward, the turn went unsaid and the ride was
+    silent at the first decision."""
+
+    def test_a_turn_just_after_the_start_is_said(self):
+        entries = d.describe(
+            [flat(road("A Street", 1, 50, 0, 0), road("B Street", 1, 800, 270, 270))]
+        )
+        assert [e["street"] for e in entries] == ["A Street", "B Street"]
+        assert entries[0]["turn"] is None
+        assert (
+            entries[0]["text"]
+            == "0.0 mi (0.0 km), for 160 ft (50 m): A Street, low stress (LTS 1)."
+        )
+        assert entries[1]["turn"]["movement"] == "left"
+        assert entries[1]["text"].split(": ")[1].startswith("Left onto B Street,")
+
+    def test_a_turn_just_after_a_stop_is_said(self):
+        legs = [
+            road("Path A", 1, 900, 0, 0),
+            flat(road("Path A", 1, 50, 0, 0), road("B Street", 1, 800, 90, 90)),
+        ]
+        entries = d.describe(legs)
+        assert [e["kind"] for e in entries] == ["stretch", "via", "stretch", "stretch"]
+        assert entries[3]["turn"]["movement"] == "right"
+        assert entries[3]["text"].split(": ")[1].startswith("Right onto B Street,")
+
+    def test_straight_on_a_few_metres_or_out_of_a_lot_is_still_folded(self):
+        straight = [flat(road("A Street", 1, 50, 0, 0), road("B Street", 1, 800, 5, 5))]
+        assert [e["street"] for e in d.describe(straight)] == ["B Street"]
+        stub = [flat(road("A Street", 1, 20, 0, 0), road("B Street", 1, 800, 90, 90))]
+        assert [e["street"] for e in d.describe(stub)] == ["B Street"]
+        lot = [flat(road(None, 1, 50, 0, 0, use="parking_aisle"), road("B Street", 1, 800, 90, 90))]
+        assert [e["street"] for e in d.describe(lot)] == ["B Street"]
+
+    def test_a_turn_at_the_via_point_itself_is_still_not_claimed(self):
+        legs = [
+            road("A", 1, 500, 0, 0),
+            flat(road("B", 1, 50, 270, 270), road("B", 1, 500, 270, 270)),
+        ]
+        entries = d.describe(legs)
+        assert entries[2]["turn"] is None and entries[2]["text"].split(": ")[1].startswith("B,")
+
+
 class TestForksAreKeptEverywhere:
     def test_a_tiny_start_before_a_fork_is_folded_into_it_with_the_fork_kept(self):
         legs = [
@@ -1870,6 +1984,38 @@ class TestCircleExits:
         assert ": Take the 1st exit onto B Street at the roundabout," in entries[-1]["text"]
         assert entries[-1]["turn"]["shape"]["ring"] == "left"
 
+    @staticmethod
+    def small_ring(out, passed):
+        # An unnamed ring of 80 m (under TINY_M, so folded into the street before it),
+        # the same street in and out.
+        ring = ringed(
+            [
+                d.Atom(40.0, "2", "none", (), "road", 45, 0),
+                d.Atom(40.0, "2", "none", (), "road", 0, 300),
+            ],
+            [(heading, "road", None, "both") for heading in passed],
+        )
+        legs = [
+            flat(
+                road("Grosvenor Lane", 2, 600, 0, 0), ring, road("Grosvenor Lane", 2, 600, out, out)
+            )
+        ]
+        return d.describe_both(legs)
+
+    def test_a_small_ring_on_one_street_still_says_its_exit(self):
+        full, overview = self.small_ring(270, (90.0, 0.0))
+        for entries in (full, overview):
+            off = entries[-1]
+            assert off["turn"]["exit"] == {"number": 3, "circle": None}
+            assert off["turn"]["movement"] == "left"
+            assert "stay" not in off["turn"]
+            assert ": Take the 3rd exit onto Grosvenor Lane at the roundabout," in off["text"]
+
+    def test_straight_across_a_small_ring_on_one_street_is_a_turn_the_ride_cues(self):
+        full, _overview = self.small_ring(0, (90.0,))
+        assert full[-1]["turn"]["exit"]["number"] == 2
+        assert full[-1]["turn"]["movement"] in d.TURN_WORDS
+
     def test_ordinals(self):
         assert [d.ordinal(n) for n in (1, 2, 3, 4, 11, 12, 13, 21, 22)] == [
             "1st",
@@ -2088,6 +2234,55 @@ class TestCrossings:
             410, "straight", kind="crossing", names=("needwood road bike lane",), flagged=False
         )
         assert "cross" not in self.needwood([crossing])[1]["turn"]
+
+
+class TestEventsGoToTheirOwnTurn:
+    """A junction event is matched to its nearest change of street, not taken by the first
+    turn within MATCH_M; and a busy road crossed straight over beside a quiet turn is its
+    own entry, not the turn's."""
+
+    @staticmethod
+    def q_street(names):
+        legs = [
+            flat(
+                road("Q Street Northwest", 1, 900, 90, 90),
+                road("6th Street Northwest", 1, 25, 180, 180),
+                road("Rhode Island Avenue Northwest", 3, 600, 90, 90),
+            )
+        ]
+        return d.describe(legs, [event(925, "left", kind="left_onto", names=names)])
+
+    def test_a_jogs_busy_junction_stays_on_its_own_turn(self):
+        for names in (("rhode island avenue northwest",), ()):
+            entries = self.q_street(names)
+            assert entries[1]["severity"] is None
+            assert entries[1]["text"].split(": ")[1].startswith("Right onto 6th Street Northwest,")
+            assert entries[2]["severity"] == "orange"
+            assert (
+                "Left onto Rhode Island Avenue Northwest at a signal (Higher stress"
+                in (entries[2]["text"])
+            )
+
+    def test_a_busy_road_crossed_beside_a_quiet_turn_keeps_its_own_entry(self):
+        legs = [flat(road("A Street", 1, 900, 0, 0), road("Elm Street", 1, 600, 90, 90))]
+        for at in (880, 920):
+            georgia = event(
+                at, "straight", severity="red", kind="crossing", names=("georgia avenue",), tier=4
+            )
+            entries = d.describe(legs, [georgia])
+            turn = next(e for e in entries if e["street"] == "Elm Street")
+            assert turn["severity"] is None and turn["turn"]["control"] is None
+            assert turn["text"].split(": ")[1].startswith("Right onto Elm Street, low stress")
+            cross = [e for e in entries if e["kind"] == "junction"]
+            assert len(cross) == 1 and cross[0]["severity"] == "red"
+            assert "Cross Georgia Avenue (LTS 4) at a signal" in cross[0]["text"]
+
+    def test_a_crossing_of_the_street_turned_onto_is_still_the_turns(self):
+        legs = [flat(road("A Street", 1, 900, 0, 0), road("Elm Street", 1, 600, 90, 90))]
+        elm = event(905, "straight", kind="crossing", names=("elm street",))
+        entries = d.describe(legs, [elm])
+        assert [e["kind"] for e in entries] == ["stretch", "stretch"]
+        assert entries[1]["turn"]["control"] == "signal"
 
 
 def turned(atoms, turn, choice=True):

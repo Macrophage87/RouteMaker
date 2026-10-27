@@ -22,6 +22,10 @@ The rules:
 - A task never waits on the pool from inside the pool (that could deadlock a full pool):
   a submit from a pool thread runs inline.
 - The request's context (its `core.timing` recorder) goes with each task.
+- A request whose plan can be cancelled (`core.plan_cancel`) keeps the futures it gave the
+  pool (`track`), and a cancelled one waits for them before it gives back its routing slot
+  (`settle`): an answer of 409 does not stop a call already running, and a slot given back
+  under it would let the next plan add its own, past the bound above (review of S7).
 """
 
 from __future__ import annotations
@@ -29,7 +33,7 @@ from __future__ import annotations
 import contextvars
 import threading
 from collections.abc import Callable
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from typing import Any
 
 from django.conf import settings
@@ -91,6 +95,34 @@ def done(value: Any = None, error: BaseException | None = None) -> Future:
     return future
 
 
+# The futures the request running in this context gave the pool, where it keeps them
+# (`track`), else None. A list, so the copies of the context the pool's tasks run in share it.
+_submitted: contextvars.ContextVar[list[Future] | None] = contextvars.ContextVar(
+    "submitted", default=None
+)
+
+
+def track() -> contextvars.Token:
+    """Keep the futures this context gives the pool from here on, for `settle`."""
+    return _submitted.set([])
+
+
+def untrack(token: contextvars.Token) -> None:
+    _submitted.reset(token)
+
+
+def settle(timeout: float) -> bool:
+    """The futures kept since `track`: those not yet started are cancelled, and those
+    running waited for, for at most `timeout` seconds. Whether none is left running."""
+    futures = _submitted.get() or []
+    for future in futures:
+        future.cancel()
+    if not futures:
+        return True
+    _, running = wait(futures, timeout=max(timeout, 0.0))
+    return not running
+
+
 def submit(fn: Callable[..., Any], *args: Any) -> Future:
     """Run `fn(*args)` on the pool, with the caller's context; inline (already settled)
     where the pool is off or this is a pool thread. Never raises: the future holds it."""
@@ -100,4 +132,8 @@ def submit(fn: Callable[..., Any], *args: Any) -> Future:
         except Exception as error:  # noqa: BLE001 - the future carries it to the reader
             return done(error=error)
     context = contextvars.copy_context()
-    return _executor().submit(context.run, _inside, fn, *args)
+    future = _executor().submit(context.run, _inside, fn, *args)
+    kept = _submitted.get()
+    if kept is not None:
+        kept.append(future)
+    return future

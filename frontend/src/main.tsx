@@ -8,6 +8,7 @@ import { CrashBoundary } from "./CrashScreen.tsx";
 import { watchErrors } from "./lib/crashReport.ts";
 import { followAccessibility } from "./lib/accessibilitySwitch.ts";
 import { watchInstall } from "./lib/installOffer.ts";
+import { markPageLanguage } from "./lib/i18n.ts";
 
 // The page's uncaught errors, kept for the crash screen's error report (lib/crashReport.ts).
 watchErrors(window);
@@ -18,6 +19,8 @@ const root = document.getElementById("root");
 if (!root) throw new Error("index.html has no #root");
 // Before the first render, so the page never shows its plain borders and then the strong ones.
 followAccessibility(document.documentElement);
+// The language in force (lib/i18n.ts), for screen readers and the browser.
+markPageLanguage(document);
 createRoot(root).render(
   <StrictMode>
     <CrashBoundary>

@@ -10,6 +10,7 @@ import type { BikeshareOption, RouteError, RouteResponse } from "../lib/api.ts";
 import { placeLetter } from "../lib/letteredPlaces.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
+import { leaveNowArrival } from "../lib/arrival.ts";
 import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
 import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, noviceTripShort, type NoviceTrip } from "../lib/noviceOffer.ts";
 import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
@@ -257,6 +258,8 @@ export interface RouteSectionProps {
   transitControls: TransitControls;
   /** The light times on the route near dawn or dusk (lib/lightTimes.ts), leaving now; empty otherwise. */
   light: readonly LightMark[];
+  /** When the route shown ends leaving now (lib/arrival.ts leaveNowArriveMs), kept current each minute; else null. */
+  arriveMs: number | null;
   /** Weather along the route, leaving now (lib/weather.ts), once checked; else null. */
   weather: WeatherReport | null;
 }
@@ -272,7 +275,7 @@ export interface TransitControls {
 
 /** The planner's Route section: planning, the long-ride question, errors, the route summary and Start ride. */
 export function RouteSection(props: RouteSectionProps) {
-  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, broadcastRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light, weather } = props;
+  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, broadcastRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light, arriveMs, weather } = props;
   const goMode = mode === "go";
   return (
     <section key="route" aria-labelledby="route-heading" aria-busy={stale} className={goMode ? "route-section go-route" : "route-section"}>
@@ -358,6 +361,7 @@ export function RouteSection(props: RouteSectionProps) {
           go={go}
           transitControls={{ ...transitControls, busy: stale }}
           light={light}
+          arriveMs={arriveMs}
           weather={weather}
         />
       )}
@@ -635,6 +639,17 @@ function StressFigure({ segments }: { segments: StressSegment[] }) {
 
 const climbCount = (n: number) => (n === 1 ? "1 climb" : `${n} climbs`);
 
+/** " · arrive 8:27 AM" after the route's time: when the ride ends if it starts now, as the ride shows it. */
+function ArriveAt({ arriveMs }: { arriveMs: number }) {
+  const { shown, said } = leaveNowArrival(arriveMs);
+  return (
+    <span className="route-arrive">
+      <span aria-hidden="true"> · {shown}</span>
+      <span className="visually-hidden">, {said}</span>
+    </span>
+  );
+}
+
 export function RouteSummary({
   route,
   answer,
@@ -659,6 +674,7 @@ export function RouteSummary({
   go,
   transitControls,
   light = [],
+  arriveMs = null,
   weather = null,
 }: {
   route: RouteResponse;
@@ -692,6 +708,8 @@ export function RouteSummary({
   go: GoRouteControls;
   /** The light times on the route near dawn or dusk (lib/lightTimes.ts): one line, the map marks' accessible form. */
   light?: readonly LightMark[];
+  /** When the ride ends leaving now (lib/arrival.ts leaveNowArriveMs), shown after the route's time; null for none. */
+  arriveMs?: number | null;
   /** Weather along the route (lib/weather.ts): the NWS alerts and rain coming, with the warnings. */
   weather?: WeatherReport | null;
 }) {
@@ -720,6 +738,12 @@ export function RouteSummary({
   const transit = transitOf(route);
   const timeName = transit ? transitTimeName(transit) : "Moving time";
   const timeText = transit ? transitTime(transit) : formatDuration(route.duration_s);
+  const timeShown = (
+    <>
+      {timeText}
+      {arriveMs != null && <ArriveAt arriveMs={arriveMs} />}
+    </>
+  );
   const calm = calmPercent(route.stress_m);
   // Start ride is offered with the directions too (plan Q1). On a Bikeshare or transit plan it follows the
   // riding leg, the line (lib/rideTrip.ts: the walk to the dock and the boarding are said around it);
@@ -858,7 +882,7 @@ export function RouteSummary({
           <dl className="stats totals go-totals">
             <div className="total-time">
               <dt className="visually-hidden">{timeName}</dt>
-              <dd>{timeText}</dd>
+              <dd>{timeShown}</dd>
             </div>
             <div className="stat-distance">
               <dt className="visually-hidden">{transit ? "Distance ridden" : "Distance"}</dt>
@@ -953,7 +977,7 @@ export function RouteSummary({
         <dl className="stats totals">
           <div className="total-time">
             <dt className="visually-hidden">{timeName}</dt>
-            <dd>{timeText}</dd>
+            <dd>{timeShown}</dd>
           </div>
           <div className="stat-distance">
             <dt className="visually-hidden">{transit ? "Distance ridden" : "Distance"}</dt>

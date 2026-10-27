@@ -148,6 +148,9 @@ class TrailClosures:
     # footways into rail stations (`routemaker.station_links`) and short informal
     # connectors (`sidewalks.is_informal_connector`), walked, each also in `walk_bike`
     walk_links: set[int] = field(default_factory=set)
+    # walkways at rail platforms that `bicycle=yes` opens (`station_links.platform_walks`),
+    # walked, not ridden as a path; each also in `walk_bike`
+    platform_walks: set[int] = field(default_factory=set)
     # the Zoo spur: open, destination-only
     destination_only: set[int] = field(default_factory=set)
     # parking aisles where a trail ends, routed as plain service roads
@@ -374,6 +377,31 @@ def add_station_links(
     # Walked, not ridden: a station's footway is no last-resort sidewalk.
     result.sidewalk_rides -= set(found)
     result.sidewalk_links -= set(found)
+
+
+def add_platform_walks(
+    result: TrailClosures, ways: Iterable[Way], platform_nodes: set[int]
+) -> None:
+    """Walk the `bicycle=yes` walkways at rail platforms (`station_links.platform_walks`;
+    the owner, 2026-10-27, Kensington's wheelchair ramp drawn as a bike path), after every
+    closure is in `result.reasons`, and flag them `walk_bike`."""
+    found = station_links.platform_walks(
+        [
+            (
+                way.osm_id,
+                way.tags,
+                way.node_ids,
+                node_coordinates(way) if station_links.is_platform_walk_candidate(way.tags) else (),
+            )
+            for way in ways
+        ],
+        platform_nodes,
+        closed=set(result.reasons) | result.destination_only,
+    )
+    result.platform_walks = found
+    result.walk_bike |= found
+    result.sidewalk_rides -= found
+    result.sidewalk_links -= found
 
 
 def add_aisle_links(result: TrailClosures, ways: Iterable[Way]) -> None:
