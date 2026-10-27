@@ -316,7 +316,7 @@ riding to one puts it in that plan's link, as any destination is. <strong>Saved 
 saved routes and the routes kept on this device); one tap opens a route in Go, ready for <strong>Start ride</strong>.
 In Go a file always keeps to streets and paths bikes may ride: <strong>Exactly as drawn</strong> applies in Plan
 only.</li>
-<li><strong>The route card</strong> shows the start, the number of stops and the destination; Edit
+<li><strong>The route card</strong> shows the start, the stops and via points between, counted apart ("1 stop · 3 via points"), and the destination; Edit
 opens the points. <strong>Add a stop</strong> under it puts a place where it adds the least distance,
 and <strong>Best order</strong> appears with two or more stops. Undo takes a stop back out.</li>
 <li><strong>Route choice:</strong> beside your route, Go can draw <strong>More direct</strong> and
@@ -508,7 +508,7 @@ router won't take; turning it on during a loop turns the loop off. See
 <a href="/about/ride-types.html">Ride types</a>.</li>
 <li><strong>Riding speed</strong>, under the Hills slider: <strong>Ride type's speed</strong> (the default) or your
 own pace on the flat, 8 to 30 mph [13 to 48 km/h]. Route times, the arrival time and the ride's times to go follow
-it; hills and stops still count. Not on Mass Ride or the share-bike types, which keep their own pace. Kept on
+it; hills and junction waits still count. Not on Mass Ride or the share-bike types, which keep their own pace. Kept on
 this device, and with your account when you are signed in; never in a shared link (see
 <a href="/about/routing.html#route-time">how a route's time is worked out</a>).</li>
 <li><strong>When:</strong> <strong>Now</strong>, the default, which names the time it is, such as "Now
@@ -674,7 +674,8 @@ someone else's link that names no leader (a Share route link, say), or once you 
 <li>On a Share ride or Broadcast link, <strong>Broadcast</strong> also shows how many are on the ride, the leader
 included, and a screen reader hears it, such as "3 riders on the route". <strong>More</strong> then has
 <strong>Riders</strong>, which opens who is where, Show me as a dot and your role, with its own Close. Roam, Plan
-and rides without Broadcast keep the riders count as a button of its own.</li>
+and rides without Broadcast keep the riders count as a button of its own: a person icon and the number, which
+a screen reader hears in words.</li>
 <li><strong>Detour</strong> has four buttons, <strong>Water</strong>, <strong>Restroom</strong>, <strong>Food</strong> and
 <strong>Repair</strong> (repair stands and bike shops), each listing the three nearest by bike, and a
 <strong>Search</strong> box for anything else. What you type there, at least 3 letters, is matched against Find
@@ -733,10 +734,17 @@ road info and the side menus (Detour, More, the dock, 311, Riders, Send alert), 
 open: a menu you are typing or speaking in (a Detour search, Send alert's Other, its microphone) and anything asking you
 something (Send alert's Send to everyone?, Already done?, a stop's name, the group's question, Resume your ride?). In
 accessibility mode nothing closes on its own. A map card's close button (X) is 44 px across.</li>
-<li><strong>Off the route</strong>, RouteMaker plans again from where you are. Whenever the ride plans again (off the route,
+<li><strong>Off the route</strong>, RouteMaker plans again from where you are. On a route you picked over the top-ranked
+one (another line from the routes to choose from, or Go's More direct or Trailmaxxed), it first looks for a way back to that route ahead and
+shows (and, by your voice setting, says) "New route found. It rejoins your
+route ahead."; only with no way back does it plan again to the end. Whenever the ride plans again (off the route,
 Re-plan from here, Road closed, Less traffic, Fewer hills or a Detour), it keeps every stop still ahead but treats via
 points as guides: one less than half a mile [800 m] ahead is dropped, so you are never sent back to touch
-it. <strong>Keep the planned
+it. If the next point ahead is a via point and reaching it would take more than about 5 minutes longer than the
+planned route would have from where you are (past a closed road, say), it is left out too and the ride shows (and,
+by your voice setting, says) "Skipping via point. New route found." Only that one via point is ever left out this
+way, never a later one or a stop, and not on a Detour, Less traffic, Fewer hills or when you start again part
+way. <strong>Keep the planned
 route</strong> stops that until you are back on it, and shows the way back instead.</li>
 <li><strong>No signal:</strong> at Start ride, the map within about 1,000 ft [300 m] either side of the
 route is kept on your device, so dead spots still show the stress lines. It is cleared when the ride
@@ -1063,10 +1071,11 @@ included; a tab keeps the view it was last in, and pressing Go or Plan counts fo
 contrast and the rest, on <a href="/about/accessibility.html">Accessibility</a>.</li>
 <li><strong>Language</strong> (Display): <strong>Phone's language</strong>, the default, <strong>English</strong>
 or <strong>Español</strong>, kept on this device. It changes the app's words and the voice (Spanish cues are said
-in US Spanish); street, trail and place names, agency notices and the route description stay as written, and miles
-stay first. Go, Ride, Roam, Settings, the place search and saved routes are in Spanish; Plan and these guides are
-still in English. The Spanish is a first draft, to be checked by a native speaker. Choosing a different language
-reloads the page.</li>
+in US Spanish). The route's own sentences come in Spanish too, in Go and Plan: the <strong>Directions</strong>, hazard
+and work-zone lines, steep grades, climbs, Novice and Nervous walk-your-bike lines and Avoid-rated junction
+notices. Street, trail and place names and agency notices stay as
+written, and miles stay first. Go, Ride, Roam, Settings, the place search and saved routes are in Spanish; Plan's
+own labels and these guides are still in English. Choosing a different language reloads the page.</li>
 <li><strong>Install RouteMaker</strong> adds it to your home screen when the browser offers it. When a
 new version is ready, a line says so with Reload; it never interrupts a ride.</li>
 <li><strong>Account:</strong> <strong>Sign in with Discord</strong> keeps My Go, starred ride types and
@@ -1156,7 +1165,7 @@ leader</strong> to follow again. While you ride yourself, the map follows you in
 route, so the leader and riders who get separated can find each other. It stops when you turn it off
 (tap the riders count, or on a ride with Broadcast, More, then Riders), close the app, are off the route for 10 minutes (not counted while you ride a
 Share ride or Broadcast link), or 12 hours after the start.</li>
-<li><strong>Send alert</strong>, a large button, sends one tap to everyone on the link with your location. A Group Ride has
+<li><strong>Send alert</strong>, a large yellow button, sends one tap to everyone on the link with your location. A Group Ride has
 Rider off the back; Crash; Mechanical or flat, stopping; Wrong turn; Lost, separated from the group;
 Wait up, regroup; and Other. A Mass Ride has Extensive rider spread; Emergency vehicle coming through;
 Aggressive person; Medical emergency or crash; Rerouting, road closed; Lost, separated from the ride;
