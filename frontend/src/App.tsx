@@ -2473,9 +2473,14 @@ export function App() {
     earlyStart.current?.start(routeRequestBody(ends, ridePreset, asked), () => requestRoute(ends, ridePreset, asked));
   };
   // A result shown only between keystrokes costs no router call: the top result must stay the top a moment (Home,
-  // asked for when Go opens, goes at once).
-  const goEarlyToPlace = (found: Place) => {
+  // asked for when Go opens, goes at once). The box cleared or no results (`found` null): the wait goes, and a place
+  // queued behind the request in flight with it (batch-1 review of S4).
+  const goEarlyToPlace = (found: Place | null) => {
     window.clearTimeout(goEarlyTimer.current);
+    if (!found) {
+      earlyStart.current?.forget();
+      return;
+    }
     goEarlyTimer.current = window.setTimeout(() => {
       const point = placeFromSearch(found, () => undefined, entranceForPlace);
       if (point) goEarly(point);

@@ -504,8 +504,8 @@ export function GoSheet({
   geoGate: GeoGate;
   searchBias: () => LonLat | undefined;
   onPick: (place: Place) => void;
-  /** The top result of Where to? while the rider looks at it: Go starts routing there early (v0.7.0, "Faster routing"). */
-  onTopPlace?: (place: Place) => void;
+  /** The top result of Where to? while the rider looks at it: Go starts routing there early (v0.7.0, "Faster routing"); null with none. */
+  onTopPlace?: (place: Place | null) => void;
   places: GoPlaces;
   /** The ride type chips (RideChips), before there is a route; with one, the route holds them. */
   rides: ReactNode;

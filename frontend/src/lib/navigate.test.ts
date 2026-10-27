@@ -86,6 +86,8 @@ import {
   wayWords,
   whereAmI,
   withoutMetric,
+  stretchWords,
+  walkWords,
   type Cue,
   type RideEvent,
   type RideFix,
@@ -94,6 +96,7 @@ import {
   type Verbosity,
 } from "./navigate.ts";
 import { parseTrailMiles } from "./trailMiles.ts";
+import { setLanguageForTest } from "./i18n.ts";
 
 const M_PER_DEG = 111_195;
 const LAT = 38.9;
@@ -1970,4 +1973,72 @@ test("crossArrow: a crossing between two turns turns the way the turn after it d
   assert.equal(crossArrow({ movement: "right" }), null);
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /const across = crossArrow\(cue\);/);
+});
+
+// ---- D14: non-turn cues in Ride's own words (the owner approved the wording, 2026-10-27) ----------------------
+
+test("D14: a straight change onto a busy road is 'Busy road on ...', its street's capitals kept, no LTS said", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1000, "0.0 to 0.6 mi (0.0 to 1.0 km): R Street Northwest, low stress (LTS 1).", { street: "R Street Northwest" }),
+      stretch(1000, 2000, "0.6 to 1.2 mi (1.0 to 2.0 km): Massachusetts Avenue Northwest, busy road (LTS 3).", { street: "Massachusetts Avenue Northwest", tier: 3 }),
+      stretch(2000, 3000, "1.2 to 1.9 mi (2.0 to 3.0 km): US 29, heavy traffic (LTS 4).", { street: "US 29", tier: 4 }),
+    ]),
+  );
+  const [busy, heavy] = model.cues.filter((c) => c.kind === "busy");
+  // The API's sentence stays the cue's text (Plan, the courses); Ride shows and says its own.
+  assert.match(busy.text, /busy road \(LTS 3\)/);
+  assert.equal(busy.rideText, "Busy road on Massachusetts Avenue Northwest.");
+  assert.equal(cueSpoken(busy, "advance", 150), "In 500 feet, busy road on Massachusetts Avenue Northwest.");
+  assert.equal(cueSpoken(heavy, "advance", 150), "In 500 feet, heavy traffic on US 29.");
+  assert.doesNotMatch(cueSpoken(heavy, "advance", 150), /LTS|uS 29/);
+  // The card's large line says the same words.
+  assert.match(cueParts(busy.rideText ?? busy.text).head, /^Busy road on Massachusetts Ave/);
+});
+
+test("D14: calmer, unpaved and Avoid-rated stretches, named and unnamed, with the surface after", () => {
+  assert.equal(stretchWords("calmer", { street: "Q Street Northwest", tier: 2, surface: null }), "Calmer riding on Q Street Northwest.");
+  assert.equal(stretchWords("calmer", { street: "unnamed path", tier: 1, surface: null }), "Calmer riding.");
+  assert.equal(stretchWords("unpaved", { street: "C&O Canal Towpath", tier: 1, surface: "unpaved" }), "Unpaved surface on C&O Canal Towpath.");
+  assert.equal(stretchWords("unpaved", { street: null, tier: 1, surface: "partly unpaved" }), "Partly unpaved surface.");
+  assert.equal(stretchWords("busy", { street: "Whitehurst Freeway", tier: 5, surface: null }), "Avoid-rated road on Whitehurst Freeway.");
+  assert.equal(stretchWords("busy", { street: "Beach Drive", tier: 3, surface: "partly unpaved" }), "Busy road on Beach Drive, partly unpaved.");
+  assert.equal(stretchWords("busy", { street: "service road beside East-West Highway", tier: 3, surface: null }), "Busy road on the service road beside East-West Highway.");
+});
+
+test("D14: a walk says how far, not 'here', in feet aloud and with the metric on screen", () => {
+  const route = straightRoute([
+    stretch(0, 1000, "0.0 to 0.6 mi: A Street, low stress (LTS 1).", { street: "A Street" }),
+    { ...stretch(1000, 1037, "At 0.6 mi (1.0 km): walk your bike here, for 120 ft (37 m)."), kind: "walk" },
+    stretch(1037, 2000, "0.6 to 1.2 mi: A Street, low stress (LTS 1).", { street: "A Street" }),
+  ]);
+  const model = rideModel(route);
+  const walk = model.cues.find((c) => c.kind === "walk")!;
+  assert.match(walk.rideText ?? "", /^Walk your bike for 1\d\d ft \(37 m\)\.$/);
+  assert.equal(cueSpoken(walk, "advance", 150), "In 500 feet, walk your bike for 120 feet.");
+  assert.doesNotMatch(cueSpoken(walk, "advance", 150), /here| ft/);
+  // Where am I? says the same words, the screen's with the metric.
+  assert.match(whereAmI(model, { ...startState(), progressM: 900 }), /Next, in \d+ feet: walk your bike for 120 feet\./);
+  assert.match(whereAmI(model, { ...startState(), progressM: 900 }, true), /: walk your bike for 1\d\d ft \(37 m\)\./);
+});
+
+test("D14: the first letter is lowered by the cue's kind, never a work zone's road name", () => {
+  const zone = { index: 0, kind: "hazard", atM: 100, text: "Connecticut Avenue marked closed ahead.", movement: null, street: null, severity: "red", tier: null, stop: null, source: "workzone" } as Cue;
+  assert.equal(cueSpoken(zone, "advance", 150), "In 500 feet, Connecticut Avenue marked closed ahead.");
+  const crossing = { ...zone, source: "junction", rideText: crossingWords("Georgia Avenue", "none") } as Cue;
+  assert.equal(cueSpoken(crossing, "advance", 150), "In 500 feet, busy crossing at Georgia Avenue, no signal.");
+  // An API sentence a hazard is still read from: its "(LTS 4)" is not said; the screen keeps it.
+  const flagged = { ...zone, source: "stretch", text: "Continue onto Georgia Avenue at a signal (Higher stress junction), heavy traffic (LTS 4)." } as Cue;
+  assert.equal(cueSpoken(flagged, "advance", 150), "In 500 feet, continue onto Georgia Avenue at a signal (Higher stress junction), heavy traffic.");
+});
+
+test("D14: in Spanish the stretch and walk cues are whole Spanish sentences", () => {
+  setLanguageForTest("es");
+  try {
+    assert.equal(stretchWords("busy", { street: "Georgia Avenue", tier: 3, surface: null }), "Calle con mucho tráfico en Georgia Avenue.");
+    assert.equal(stretchWords("busy", { street: "Georgia Avenue", tier: 4, surface: "unpaved" }), "Tráfico intenso en Georgia Avenue, sin pavimentar.");
+    assert.equal(walkWords(37, true), "Camine con su bicicleta durante 120 pies.");
+  } finally {
+    setLanguageForTest("en");
+  }
 });

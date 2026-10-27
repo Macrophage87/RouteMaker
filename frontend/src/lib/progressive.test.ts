@@ -565,6 +565,38 @@ test("the early start goes to the latest place asked for while one is in flight,
   assert.equal(early.busy(), false);
 });
 
+test("a tap on another place, or the box cleared, drops the place waiting behind the one in flight (S4 review)", async () => {
+  const sent: string[] = [];
+  const answers: Array<(r: RouteResult) => void> = [];
+  const early = new EarlyStart({ allowed: () => true, now: () => 0, perMinute: 100 });
+  const send = (body: string) => () =>
+    new Promise<RouteResult>((resolve) => {
+      sent.push(body);
+      answers.push(resolve);
+    });
+  // "station" waits behind "market"; the rider taps "plaza", which makes its own request.
+  assert.equal(early.start("market", send("market")), true);
+  assert.equal(early.start("station", send("station")), false);
+  assert.equal(early.take("plaza"), null);
+  answers[0]({ ok: true, route: FIRST });
+  await flush();
+  assert.deepEqual(sent, ["market"], "the wait for a place not chosen is never sent");
+  // The box cleared while "y" waits behind "x": it is not sent either.
+  assert.equal(early.start("x", send("x")), true);
+  assert.equal(early.start("y", send("y")), false);
+  early.forget();
+  answers[1]({ ok: true, route: FIRST });
+  await flush();
+  assert.deepEqual(sent, ["market", "x"]);
+  assert.equal(early.busy(), false);
+});
+
+test("App and PlaceSearch: the box cleared or emptied clears the settle timer and the wait (S4 review)", () => {
+  assert.match(app, /const goEarlyToPlace = \(found: Place \| null\) => \{\s*window\.clearTimeout\(goEarlyTimer\.current\);\s*if \(!found\) \{\s*earlyStart\.current\?\.forget\(\);\s*return;\s*\}/);
+  const search = readFileSync(new URL("../PlaceSearch.tsx", import.meta.url), "utf8");
+  assert.match(search, /if \(top \|\| toldTop\.current\) onTopPlaceNow\.current\?\.\(top\);\s*toldTop\.current = top !== null;/);
+});
+
 test("App: a search result is asked for early once it stays the top result; Home at once (routing audit S4)", () => {
   assert.match(app, /goEarlyTimer\.current = window\.setTimeout\(\(\) => \{\s*const point = placeFromSearch\(found, \(\) => undefined, entranceForPlace\);\s*if \(point\) goEarly\(point\);\s*\}, GO_EARLY_SETTLE_MS\);/);
   assert.match(app, /const GO_EARLY_SETTLE_MS = 400;/);
