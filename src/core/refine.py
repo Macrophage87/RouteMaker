@@ -1325,6 +1325,11 @@ ROUTER_ALTERNATES = 3
 # their request has three locations or more.
 ALTERNATES_ROUND_RESERVE_S = REFINE_ROUND_MIN_S + 1.0
 ALTERNATES_MIN_S = 1.0
+# The time allowed for the reading of the first route when the plan starts the ask
+# beside it (`ask_alternates_early`): the ask runs on the router no longer than the
+# search, starting after that reading, could wait for it, so that an answer it would
+# never wait for does not keep a router slot (review of S2b).
+EARLY_ALTERNATES_READ_S = 2.0
 
 
 @dataclass
@@ -1360,12 +1365,17 @@ def ask_alternates_early(
     """Start the search's ask for alternatives (`_router_alternates`) on the pool now,
     beside the reading of the first route, which it does not depend on (S2 of the
     v0.13.0 routing audit). Only where the pool is on: inline it would make the first
-    route wait. None where it is off or there is no time for the ask. The search
+    route wait. None where it is off or there is no time for the ask. The ask runs
+    no longer than the search could wait for it (EARLY_ALTERNATES_READ_S), the search
     waits for it no longer than it would have for its own ask, and asks again as
     before where the request has changed since."""
     if not parallel.enabled():
         return None
-    alt_stop = deadline.at - REFINE_TRACE_RESERVE_S - ALTERNATES_ROUND_RESERVE_S
+    search_stop = min(
+        deadline.at - REFINE_TRACE_RESERVE_S,
+        routing.clock() + REFINE_BUDGET_S + EARLY_ALTERNATES_READ_S,
+    )
+    alt_stop = search_stop - ALTERNATES_ROUND_RESERVE_S
     if alt_stop - routing.clock() < ALTERNATES_MIN_S:
         return None
     asked = copy.deepcopy(_alternates_request(request))

@@ -1489,7 +1489,9 @@ class TestRouterAlternates:
             return {"trip": trip_of("o", 4.0)}
 
         monkeypatch.setattr(routing, "_call", call)
+        before = routing.clock()
         early = refine.ask_alternates_early("standard", request, deadline)
+        after = routing.clock()
         assert early.future.result(timeout=5) == {"trip": trip_of("o", 4.0)}
         # The plan changing its request in place afterwards (the work zones) reaches
         # neither the ask nor what it is compared with.
@@ -1503,9 +1505,21 @@ class TestRouterAlternates:
         assert early.request == asked
         ((variant, endpoint, payload, ask),) = seen
         assert (variant, endpoint, payload) == ("standard", "route", asked)
-        reserve = refine.REFINE_TRACE_RESERVE_S + refine.ALTERNATES_ROUND_RESERVE_S
-        assert ask.at == pytest.approx(deadline.at - reserve)
+        # On a long plan the ask runs no longer than the search, after the reading,
+        # could wait for it, not up to the plan's own reserve.
+        window = (
+            refine.REFINE_BUDGET_S
+            + refine.EARLY_ALTERNATES_READ_S
+            - refine.ALTERNATES_ROUND_RESERVE_S
+        )
+        assert before + window <= ask.at <= after + window
         assert ask.per_call_s == min(35, routing.ALTERNATES_TIMEOUT_S)
+        # On a short plan its own reserve ends the ask first.
+        seen.clear()
+        reserve = refine.REFINE_TRACE_RESERVE_S + refine.ALTERNATES_ROUND_RESERVE_S
+        tight = routing.Deadline(routing.clock() + reserve + 3, 35)
+        refine.ask_alternates_early("standard", request, tight).future.result(timeout=5)
+        assert seen[0][3].at == pytest.approx(tight.at - reserve)
         # No time for the ask: none.
         short = routing.Deadline(routing.clock() + reserve + 0.5, 35)
         assert refine.ask_alternates_early("standard", request, short) is None
