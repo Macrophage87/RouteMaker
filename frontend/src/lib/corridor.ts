@@ -25,6 +25,7 @@
  */
 import type { RangeResponse, Source } from "pmtiles";
 import { lonLatToTile, type LonLat } from "./geo.ts";
+import { t } from "./i18n.ts";
 
 /** About 1,000 ft (300 m) either side of the line (plan section 6). */
 export const CORRIDOR_M = 300;
@@ -231,29 +232,16 @@ export async function prefetchCorridor(line: readonly LonLat[], deps: PrefetchDe
   return result;
 }
 
-/** What Ride mode shows of it: a line under the controls, not said (it would only talk over the cues). */
-export function corridorNote(result: PrefetchResult | "saving" | null): string {
-  if (result === null) return "";
-  if (result === "saving") return "Saving the map along the route for dead spots…";
-  if (result.stopped) return "";
-  // A kind with nothing to fetch (a re-plan's route already covered) counts as saved.
-  const stress = result.stress.total === 0 || result.stress.kept > 0;
-  const base = result.base.total === 0 || result.base.kept > 0;
-  if (result.kept === 0 && result.total > 0) return "The map along the route could not be saved; it needs a signal to show.";
-  const part = result.capped ? "the first part of the route" : "the route";
-  if (!base) return `Only the stress lines along ${part} are saved for dead spots, not the base map.`;
-  if (!stress) return `Only the base map along ${part} is saved for dead spots, not the stress lines.`;
-  return `The map along ${part} is saved for dead spots.`;
-}
-
 /**
- * The note only when something is wrong (Ride mode's bottom panel shows only what the rider may need): while
- * saving, and once all of it is saved, nothing; only a part (or a kind) saved, or none, the note.
+ * What Ride mode shows of it, under the controls and never said: one short line, and only when none of the map
+ * along the route could be kept (the owner, 2026-10-27, of the old "Only the stress lines along the route are
+ * saved for dead spots, not the base map.": "This prompt made no sense"). A part kept, or one kind of tile
+ * and not the other, says nothing: the route line and the cues work without either, and the rider can do
+ * nothing about it mid-ride.
  */
 export function corridorWorry(result: PrefetchResult | "saving" | null): string {
   if (result === null || result === "saving" || result.stopped) return "";
-  const note = corridorNote(result);
-  return note.startsWith("The map along the route is saved") ? "" : note;
+  return result.kept === 0 && result.total > 0 ? t("Map not saved offline: it needs a signal.") : "";
 }
 
 // ---- The base map's byte ranges -----------------------------------------------------------------

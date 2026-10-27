@@ -2750,15 +2750,20 @@ RELATION_NAME_MIN_RUN_M = 1609.344 / 4
 
 
 def sidepath_names_of(pieces: list[Piece]) -> dict[int, str]:
-    """The street-side names of the route's ways that have no name of their own
-    (`segment.sidepath_name`, `routemaker.facility.side_street_names`), by way id;
-    else the name of the trail's route relation the way is in (`segment.trail_name`,
+    """The names of the route's ways that have no name of their own, by way id: the
+    name of the trail's route relation the way is in (`segment.trail_name`,
     `pipeline.trail_routes.way_name`), as a `describe.RelationName`, so a change of
     trail on a way named only by its relation is in the description (the owner,
-    2026-10-16). A relation name is taken only for a named run (`trail_run_m`) longer
-    than RELATION_NAME_MIN_RUN_M and never a national or international route's
-    (`describe.NATIONAL_ROUTE_NAME`): the table keeps no network per way, and an East
-    Coast Greenway connector is not "onto East Coast Greenway". Empty where the live
+    2026-10-16); else its street-side name (`segment.sidepath_name`,
+    `routemaker.facility.side_street_names`). The trail's name comes first, as the map
+    labels the way: an unnamed stretch of the Metropolitan Branch Trail beside Blair
+    Road was "Blair Road Northwest bike lane", and the ride said "Continue onto
+    Metropolitan Branch Trail" where it went on as the trail it already was (the
+    owner, 2026-10-27: "why continue"). A relation name is taken only for a named run
+    (`trail_run_m`) longer than RELATION_NAME_MIN_RUN_M and never a national or
+    international route's (`describe.NATIONAL_ROUTE_NAME`): the table keeps no network
+    per way, and an East Coast Greenway connector is not "onto East Coast Greenway";
+    such a way keeps its street-side name. Empty where the live
     table has neither column yet (a table built before it) or the query fails: those
     ways are then just "path"."""
     ids = sorted({p.way_id for p in pieces if not p.names and p.way_id})
@@ -2784,10 +2789,10 @@ def sidepath_names_of(pieces: list[Piece]) -> dict[int, str]:
             )
             names: dict[int, str] = {}
             for way, side_name, trail_name in cursor.fetchall():
-                if side_name:
-                    names[int(way)] = str(side_name)
-                elif trail_name and not describe.NATIONAL_ROUTE_NAME.search(str(trail_name)):
+                if trail_name and not describe.NATIONAL_ROUTE_NAME.search(str(trail_name)):
                     names[int(way)] = describe.RelationName(str(trail_name))
+                elif side_name:
+                    names[int(way)] = str(side_name)
             return names
     except Exception:  # noqa: BLE001 - the description says "path" without them
         logger.warning("the street-side names of unnamed ways could not be read", exc_info=True)
