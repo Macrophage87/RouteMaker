@@ -3,7 +3,7 @@
   "decided": "2026-10-27",
   "decided_by": "the deployment owner",
   "status": "Reported by the owner on 2026-10-27 (12:56 UTC). Load with load_access_overrides (dry run first); takes effect on the next rebuild.",
-  "annotations": "One unpaved path in Silver Spring, way 187699941 (360 ft, 110 m), between Elkhart Street and the Grace Church Road crossing at 3rd Avenue. OSM tags it only highway=path, so it was routed and drawn as a calm trail. The owner saw it on the ground: dirt between houses, not a bike path now (perhaps one later). Closed with a bicycle=no access row, so routing leaves it and the map draws it as a path a bicycle may not ride (routemaker.facility, BARRED). If it is built as a bike path, delete the row in the admin and remove it from this file.",
+  "annotations": "One unpaved path in Silver Spring, way 187699941 (360 ft, 110 m), between Elkhart Street and the Grace Church Road crossing at 3rd Avenue. OSM tags it only highway=path, so it was routed and drawn as a calm trail. The owner saw it on the ground: dirt between houses, not a bike path now (perhaps one later). Closed with a bicycle=no access row, so routing leaves it and the map no longer draws it: a barred way is left to the base map (routemaker.facility, BARRED). If it is built as a bike path, delete the row in the admin and remove it from this file.",
   "rows": [
     {
       "kind": "access",
