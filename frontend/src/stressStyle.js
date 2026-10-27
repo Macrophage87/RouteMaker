@@ -937,9 +937,10 @@ function clearOtherLabel(layer) {
  * admin_level as `kind_detail` (4 a state, and the District of Columbia, which OSM maps at the state level; 6 a
  * county, and an independent city such as Baltimore or Alexandria, which OSM maps at the county level; 8 a town or
  * city), so no tile is rebuilt. The base map drew all of them alike in one layer, 0.4 px of light grey (#adadad)
- * dotted, too faint to find. Here that layer is split in three: a state line is a darker, wider dash, a county line
+ * finely dashed, too faint to find. Here that layer is split in three: a state line is a darker, wider dash, a county line
  * a lighter, narrower one, and a town line keeps the base map's own look. All are grey, under the stress overlay
- * among the base map's roads, so none competes with a stress line. Dashes are in line widths, as MapLibre draws them.
+ * among the base map's roads and narrower than an LTS 1 line at every zoom (thinned zoomed out too, ZOOMED_OUT_SCALE),
+ * so none competes with a stress line. Dashes are in line widths, as MapLibre draws them.
  */
 export const BOUNDARY_LAYER_ID = "boundaries";
 export const BOUNDARY_LINE = {
@@ -947,14 +948,14 @@ export const BOUNDARY_LINE = {
     id: "boundaries_state",
     level: 4,
     color: "#6e7080",
-    width: ["interpolate", ["linear"], ["zoom"], 7, 1.2, 10, 1.7, 14, 2.1, 17, 2.4],
+    width: ["interpolate", ["linear"], ["zoom"], 7, 1, 10, 1.2, 11, 1.5, 14, 2.1, 17, 2.4],
     dash: [4, 2],
   },
   county: {
     id: "boundaries_county",
     level: 6,
     color: "#868894",
-    width: ["interpolate", ["linear"], ["zoom"], 7, 0.8, 10, 1.1, 14, 1.4, 17, 1.6],
+    width: ["interpolate", ["linear"], ["zoom"], 7, 0.7, 10, 0.9, 14, 1.4, 17, 1.6],
     dash: [3, 2],
   },
 };

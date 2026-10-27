@@ -3,15 +3,29 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
-import { validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
-import { BOUNDARY_LAYER_ID, BOUNDARY_LINE, contrastRatio, withClearRoadLabels } from "./stressStyle.js";
+import { featureFilter, validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
+import { BOUNDARY_LAYER_ID, BOUNDARY_LINE, ZOOMED_OUT_NEAR_ZOOM, contrastRatio, currentTiers, withClearRoadLabels, zoomedOutLine } from "./stressStyle.js";
 
 type Layer = { id: string; type: string; filter?: unknown; paint?: Record<string, unknown> };
 const base = () => protomapsLayers("protomaps", namedFlavor("light"), { lang: "en" }) as Layer[];
 const shipped = () => withClearRoadLabels(base(), false) as Layer[];
 const EARTH = namedFlavor("light").earth;
-/** A zoom ramp's width at each of its stops. */
-const widths = (ramp: unknown) => (ramp as number[]).slice(3).filter((_, i) => i % 2 === 1);
+/** A zoom ramp's [zoom, width] stops. */
+const stops = (ramp: unknown) => {
+  const flat = (ramp as number[]).slice(3);
+  return flat.flatMap((zoom, i) => (i % 2 === 0 ? [[zoom, flat[i + 1]]] : []));
+};
+/** A ramp's width at `zoom`, linear between its stops as MapLibre draws it. */
+const widthAt = (ramp: unknown, zoom: number) => {
+  const s = stops(ramp);
+  if (zoom <= s[0][0]) return s[0][1];
+  for (let i = 1; i < s.length; i++) {
+    const [z0, w0] = s[i - 1];
+    const [z1, w1] = s[i];
+    if (zoom <= z1) return w0 + ((w1 - w0) * (zoom - z0)) / (z1 - z0);
+  }
+  return s[s.length - 1][1];
+};
 
 test("boundaries: the base map's layer becomes its other lines, then county, then state, in its place", () => {
   const ids = shipped().map((l) => l.id);
@@ -21,15 +35,19 @@ test("boundaries: the base map's layer becomes its other lines, then county, the
   assert.equal(ids.length, base().length + 2);
 });
 
-test("boundaries: state lines are OSM admin level 4 (the District too), county lines level 6, the rest keep the base map's look", () => {
-  const layers = shipped();
-  const byId = (id: string) => layers.find((l) => l.id === id)!;
-  assert.deepEqual(byId(BOUNDARY_LINE.state.id).filter, ["==", ["get", "kind_detail"], 4]);
-  assert.deepEqual(byId(BOUNDARY_LINE.county.id).filter, ["==", ["get", "kind_detail"], 6]);
-  const others = byId(BOUNDARY_LAYER_ID);
+test("boundaries: each admin level is drawn by exactly one boundary layer: 4 a state line, 6 a county line", () => {
+  const boundaryLayers = shipped().filter((l) => l.id.startsWith("boundaries"));
+  const matches = (layer: Layer, level: number) => featureFilter(layer.filter as never, `layers.${layer.id}.filter`).filter({ zoom: 12 } as never, { type: 2, properties: { kind_detail: level } } as never);
+  for (let level = 1; level <= 10; level++) {
+    const drawnBy = boundaryLayers.filter((l) => matches(l, level)).map((l) => l.id);
+    assert.equal(drawnBy.length, 1, `level ${level} is drawn by ${drawnBy.join(", ") || "nothing"}`);
+    if (level === 4) assert.deepEqual(drawnBy, [BOUNDARY_LINE.state.id]);
+    if (level === 6) assert.deepEqual(drawnBy, [BOUNDARY_LINE.county.id]);
+    if (level > 6) assert.deepEqual(drawnBy, [BOUNDARY_LAYER_ID]);
+  }
+  // The other lines keep the base map's look.
   const original = base().find((l) => l.id === BOUNDARY_LAYER_ID)!;
-  assert.deepEqual(others.paint, original.paint);
-  assert.deepEqual(others.filter, ["all", [">", ["get", "kind_detail"], 2], ["!=", ["get", "kind_detail"], 4], ["!=", ["get", "kind_detail"], 6]]);
+  assert.deepEqual(boundaryLayers.find((l) => l.id === BOUNDARY_LAYER_ID)!.paint, original.paint);
 });
 
 test("boundaries: a state line is darker and wider than a county line, and both stronger than the base map's", () => {
@@ -37,10 +55,16 @@ test("boundaries: a state line is darker and wider than a county line, and both 
   const original = base().find((l) => l.id === BOUNDARY_LAYER_ID)!;
   assert.ok(contrastRatio(state.color, EARTH) > contrastRatio(county.color, EARTH));
   assert.ok(contrastRatio(county.color, EARTH) > contrastRatio(original.paint!["line-color"] as string, EARTH));
-  widths(state.width).forEach((w, i) => assert.ok(w > widths(county.width)[i]));
-  for (const w of widths(county.width)) assert.ok(w > (original.paint!["line-width"] as number));
-  // Subtle: narrower than LTS 1's 2.5 px, the thinnest stress line drawn over it.
-  for (const w of widths(state.width)) assert.ok(w < 2.5);
+  for (const zoom of [7, 10, 11, 12, 14, 17]) {
+    assert.ok(widthAt(state.width, zoom) > widthAt(county.width, zoom), `z${zoom}: state wider than county`);
+    assert.ok(widthAt(county.width, zoom) > (original.paint!["line-width"] as number), `z${zoom}: county wider than before`);
+  }
+  // Subtle: narrower than LTS 1, the thinnest stress line drawn over it, at every zoom it is drawn, thinned at z10-11.
+  const lts1 = currentTiers()[0];
+  const lts1At = (zoom: number) => (zoom >= 12 ? lts1.width : zoomedOutLine(lts1, zoom < ZOOMED_OUT_NEAR_ZOOM ? 10 : ZOOMED_OUT_NEAR_ZOOM));
+  for (const zoom of [10, 10.5, 11, 11.5, 12, 14, 17]) {
+    assert.ok(widthAt(state.width, zoom) < lts1At(zoom), `z${zoom}: state line ${widthAt(state.width, zoom)} px under LTS 1's ${lts1At(zoom)} px`);
+  }
 });
 
 test("boundaries: the shipped style is valid", () => {
