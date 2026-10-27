@@ -379,7 +379,10 @@ transit.</li>
 </tbody>
 </table>
 </div>
-<p>Paces are speeds on smooth, flat roads, only for estimating times. A whole ride averages
+<p>Paces are speeds on smooth, flat roads, only for estimating times. <strong>Riding speed</strong>, in the
+ride settings under the Hills slider, puts your own pace in place of the ride type's: <strong>Ride type's
+speed</strong> (the default) or 8 to 30 mph [13 to 48 km/h]. Mass Ride, Bikeshare, Rebalance and Bikeshare + Transit
+keep their own pace and don't show it. A whole ride averages
 slower: climbs, rough surfaces and waits at junctions all add time (<a href="/about/routing.html#route-time">How
 a route's time is worked out</a>). The Hills column is the grade the Hills slider starts at: the steepest you climb
 comfortably (<a href="/about/routing.html#hills">Hills</a>). "Surfaces" describes Valhalla's bike costing
@@ -475,7 +478,11 @@ point, the app says so, and Undo puts it back. An elevator you tap on the map st
 <li>Routes walk into Metro and MARC stations: the walking tunnels and the last
 footways between a station's entrances or elevator and the nearest road or bike path are walk-your-bike
 links, at most about 800 ft [250 m], and the directions say "walk your bike here", and, from the same update,
-escalators are closed to bikes.</li>
+escalators are closed to bikes. From the next map update, an unnamed walkway that OpenStreetMap opens to bikes
+(<code>bicycle=yes</code> or <code>permissive</code>, not <code>designated</code>), at most 500 ft [150 m] long,
+that reaches a rail platform in service is walked too, not ridden as a bike path, and is no longer drawn as one:
+at Kensington's MARC station, the ramp to the platform, the crossing over the tracks and the walkways by the
+station building.</li>
 <li>Own Bike + transit never leaves the bike. Bikeshare + transit docks the shared bike before you
 board.</li>
 </ul>
@@ -787,7 +794,7 @@ riding. Press a line or its row to ride it; your own setting stays as it was.</l
 <p class="next">Next: <a href="/about/stress.html">Stress ratings</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.12.6. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.13.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

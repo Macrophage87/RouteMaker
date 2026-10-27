@@ -11,6 +11,7 @@ the readings of its routes replaced as in test_refine.
 from __future__ import annotations
 
 import dataclasses
+import threading
 
 import pytest
 from test_refine import (
@@ -924,7 +925,11 @@ class TestTheLongSearch:
     def test_the_trip_is_cut_into_legs_at_points_on_its_route(self, monkeypatch) -> None:
         world = legs_world(monkeypatch)
         trip, info = refine.refine_long(whole_trip(), long_context(ceiling_m=45_000.0))
-        asked = [r["locations"] for r in world.requests if "exclude_locations" not in r]
+        # Asked together on the pool, so in any order.
+        asked = sorted(
+            (r["locations"] for r in world.requests if "exclude_locations" not in r),
+            key=lambda locations: locations[0]["lon"],
+        )
         assert len(asked) == 3
         assert asked[0][0]["lon"] == BASE[0] and asked[2][1]["lon"] == pytest.approx(BASE[0] + EAST)
         assert asked[0][1] == asked[1][0] and asked[1][1] == asked[2][0]
@@ -1106,6 +1111,64 @@ class TestTheLongSearch:
         whole = whole_trip()
         trip, info = refine.refine_long(whole, long_context(ceiling_m=45_000.0))
         assert trip is whole and info["limited"] == "split"
+
+    def test_the_legs_routes_are_asked_together_and_traced_together(
+        self, monkeypatch, settings
+    ) -> None:
+        """Each leg's own route does not depend on the others': all are asked on the pool
+        at once, and their traces started together before the first is read."""
+        settings.ROUTER_PARALLEL_CALLS = 3
+        world = legs_world(monkeypatch)
+        # Each leg's first route waits until all three are being asked.
+        together = threading.Barrier(3, timeout=5)
+        ask = world.call
+
+        def call(variant, endpoint, payload, deadline):
+            if "exclude_locations" not in payload:
+                together.wait()
+            return ask(variant, endpoint, payload, deadline)
+
+        monkeypatch.setattr(routing, "_call", call)
+        prefetched = []
+        monkeypatch.setattr(
+            routing,
+            "prefetch_traces",
+            lambda variant, costing, trips, deadline, traces, at_least=2: prefetched.append(
+                [t["legs"][0]["shape"] for t in trips]
+            ),
+        )
+        trip, info = refine.refine_long(whole_trip(), long_context(ceiling_m=45_000.0))
+        assert info["long"]["legs"] == 3 and info["limited"] != "split"
+        assert prefetched[0] == ["L0", "L1", "L2"]
+        firsts = [a for a in world.analysed if a[0] in ("L0", "L1", "L2")][:3]
+        assert firsts == [("L0", False), ("L1", False), ("L2", False)]
+
+    @pytest.mark.parametrize(
+        ("error", "limited"),
+        [
+            (routing.RouterRefused(400, 171, "no"), "split"),
+            (routing.DeadlineExceeded("late"), "time"),
+            (routing.RouterUnavailable("down"), "time"),
+        ],
+    )
+    def test_a_legs_failure_asked_on_the_pool_is_read_as_before(
+        self, monkeypatch, settings, error, limited
+    ) -> None:
+        settings.ROUTER_PARALLEL_CALLS = 3
+        world = legs_world(monkeypatch)
+        ask = world.call
+
+        def call(variant, endpoint, payload, deadline):
+            if world.leg_of(payload["locations"][0]) == 1:
+                raise error
+            return ask(variant, endpoint, payload, deadline)
+
+        monkeypatch.setattr(routing, "_call", call)
+        whole = whole_trip()
+        trip, info = refine.refine_long(whole, long_context(ceiling_m=45_000.0))
+        assert trip is whole and info["limited"] == limited
+        # The legs before it are read; none after it.
+        assert [a[0] for a in world.analysed if a[0] in ("L0", "L1", "L2")] == ["L0"]
 
     def test_too_little_time_to_start_leaves_the_route(self, monkeypatch) -> None:
         legs_world(monkeypatch)

@@ -5,19 +5,20 @@
 // ride, it's the same link"); a rider following passes on the link they opened, so all who scan it follow its leader.
 import qrcode from "qrcode-generator";
 import { qrModules } from "./shareCard.ts";
+import { t } from "./i18n.ts";
 
 /** How long Broadcast is held before the QR code shows (a right-click, or the keyboard's menu key, shows it at once). */
 export const HOLD_MS = 500;
 /** The key that holds it (useHold), named to screen readers as the button's shortcut. */
 export const HOLD_KEY = "Shift+F10";
 
-export const BROADCAST_QR_HEADING = "Scan to follow";
-export const BROADCAST_QR_LEAD = "Riders nearby point their phone's camera at this code to open the ride and follow its leader.";
-export const BROADCAST_QR_NAME = "QR code for the broadcast link";
-export const BROADCAST_QR_START = "Start ride";
+export const BROADCAST_QR_HEADING = t("Scan to follow");
+export const BROADCAST_QR_LEAD = t("Riders nearby point their phone's camera at this code to open the ride and follow its leader.");
+export const BROADCAST_QR_NAME = t("QR code for the broadcast link");
+export const BROADCAST_QR_START = t("Start ride");
 export const BROADCAST_QR_CLOSE = "Close";
 /** Said with each Broadcast button, so the hold is found by those who do not see it. */
-export const BROADCAST_HOLD_HINT = "Hold it, right-click it, or press Shift+F10 for a QR code to scan instead.";
+export const BROADCAST_HOLD_HINT = t("Hold it, right-click it, or press Shift+F10 for a QR code to scan instead.");
 
 /** The quiet zone round the code, in modules (the standard asks for 4). */
 export const QR_MARGIN = 4;

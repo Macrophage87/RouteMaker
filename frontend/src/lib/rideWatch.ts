@@ -9,6 +9,7 @@
  */
 import { LOCATE_MESSAGES, cleanAccuracy, failureFor, type LocateFailure } from "./geolocation.ts";
 import type { RideFix } from "./navigate.ts";
+import { t } from "./i18n.ts";
 
 /** High accuracy, a fix at most 2 s old, and 15 s before the browser reports a timeout (plan section 2). */
 export const WATCH_OPTIONS = { enableHighAccuracy: true, maximumAge: 2_000, timeout: 15_000 } as const;
@@ -42,7 +43,7 @@ export function watchUnavailable(env: RideGeoEnv): string | null {
 }
 
 /** Shown while the browser has no fix (a timeout keeps the watch going: GPS may come back). */
-export const WAITING_FOR_GPS = "Waiting for a GPS fix.";
+export const WAITING_FOR_GPS = t("Waiting for a GPS fix.");
 
 function finite(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
