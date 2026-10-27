@@ -2849,9 +2849,16 @@ const levelSlider = `${EDITOR} input[type=range]`;
   // N5: the map along the route, kept for dead spots (lib/corridor.ts): the stress tiles at z12-14 in
   // the ride's own Cache Storage bucket (the mocked base map is not served, so its part stops).
   // A part kept (the stress lines, not the base map) says nothing (the owner, 2026-10-27: "This prompt made no
-  // sense"): wait for the kept tiles themselves.
-  const corridorKeys = "(async () => (await (await caches.open('routemaker-corridor-v1')).keys()).length)()";
-  for (let i = 0; i < 60 && (await p.eval(corridorKeys)) < 3; i += 1) await sleep(500);
+  // sense"): wait for the kept tiles themselves, every zoom (z14 is fetched first), then for the count to settle.
+  const corridorKeys = "(async () => (await (await caches.open('routemaker-corridor-v1')).keys()).map((r) => new URL(r.url).pathname))()";
+  let keptBefore = -1;
+  for (let i = 0; i < 60; i += 1) {
+    const kept = await p.eval(corridorKeys);
+    const allZooms = [12, 13, 14].every((z) => kept.some((u) => u.startsWith(`/tiles/stress/${z}/`)));
+    if (allZooms && kept.length === keptBefore) break;
+    keptBefore = kept.length;
+    await sleep(1000);
+  }
   const corridor = await p.eval("(async () => { const note = document.querySelector('.ride-corridor'); const keys = await (await caches.open('routemaker-corridor-v1')).keys(); return { note: note?.textContent, live: !!note?.closest('[aria-live], [role=status], [role=alert]'), kept: keys.map((r) => new URL(r.url).pathname), rev: keys.some((r) => new URL(r.url).searchParams.has('rev')) }; })()");
   check("ride: the stress tiles along the route are kept for dead spots (z12-14, keyed without ?rev), and a part kept puts no note on screen",
     !corridor.note && !corridor.live && !corridor.rev && corridor.kept.length >= 3 && corridor.kept.every((u) => /^\/tiles\/stress\/1[234]\/\d+\/\d+\.pbf$/.test(u)) && [12, 13, 14].every((z) => corridor.kept.some((u) => u.startsWith(`/tiles/stress/${z}/`))),
