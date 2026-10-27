@@ -135,29 +135,36 @@ test("prefetchCorridor: a kind failing in a row is stopped (no signal, or no bas
   assert.ok(asked.stress > STOP_AFTER_FAILURES);
   assert.equal(result.failed, STOP_AFTER_FAILURES);
 
-  // A failure waits longer before the next tile (doubling), so a blip in the signal does not drop a kind;
-  // a few failures with successes between them never stop it.
-  const waits: number[] = [];
-  let n = 0;
-  const blip = await prefetchCorridor(line, {
-    fetch: async (job) => job.kind === "stress" || (n += 1) % 4 !== 1,
-    wait: async (ms) => void waits.push(ms),
-    random: () => 0,
-    signal: new AbortController().signal,
-    done: new Set(),
-  });
-  assert.ok(blip.base.kept > 0 && blip.base.kept < blip.base.total, JSON.stringify(blip.base));
-  assert.ok(waits.includes(FAILURE_WAIT_MS));
-  const failing: number[] = [];
-  await prefetchCorridor(line, {
-    fetch: async (job) => job.kind === "stress",
-    wait: async (ms) => void failing.push(ms),
-    random: () => 0,
-    signal: new AbortController().signal,
-    done: new Set(),
-  });
-  const backoff = failing.filter((ms) => ms >= FAILURE_WAIT_MS);
-  assert.deepEqual(backoff, [1, 2, 4].map((k) => k * FAILURE_WAIT_MS), "1, 2 and 4 s; none after the fourth, which drops the kind");
+  // From the second failure in a row the next tile waits longer (1, 2, 4 s), none after the failure that
+  // drops the kind; a lone failure waits only the gap, so a patchy signal does not hold the stress tiles back.
+  const waitsOf = async (fails: (baseCall: number) => boolean) => {
+    const waits: { kind: string; ms: number }[] = [];
+    let call = 0;
+    let last = "";
+    const result = await prefetchCorridor(line, {
+      fetch: async (job) => {
+        last = job.kind;
+        return job.kind === "stress" || !fails((call += 1));
+      },
+      wait: async (ms) => void waits.push({ kind: last, ms }),
+      random: () => 0,
+      signal: new AbortController().signal,
+      done: new Set(),
+    });
+    return { result, base: waits.filter((w) => w.kind === "base").map((w) => w.ms), stress: waits.filter((w) => w.kind === "stress").map((w) => w.ms) };
+  };
+  const dead = await waitsOf(() => true);
+  assert.deepEqual(dead.base, [BASE_GAP_MS, 1, 2, 4].map((k, i) => (i ? k * FAILURE_WAIT_MS : k)).concat([BASE_GAP_MS]));
+  assert.equal(dead.result.base.kept, 0);
+  assert.ok(dead.result.stress.kept === dead.result.stress.total, "the stress tiles all come all the same");
+  // A blip: four failures in a row (the old limit, a fifth of a second), then the signal is back.
+  const blip = await waitsOf((n) => n >= 2 && n <= 5);
+  assert.equal(blip.result.base.kept, blip.result.base.total - 4);
+  assert.deepEqual(blip.base.filter((ms) => ms !== BASE_GAP_MS), [1, 2, 4].map((k) => k * FAILURE_WAIT_MS));
+  // Patchy: every other base tile fails; never two in a row, so no wait past the gap.
+  const patchy = await waitsOf((n) => n % 2 === 0);
+  assert.ok(patchy.base.every((ms) => ms === BASE_GAP_MS));
+  assert.equal(patchy.result.base.kept, Math.ceil(patchy.result.base.total / 2));
 
   const controller = new AbortController();
   let count = 0;
