@@ -586,6 +586,17 @@ sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has
 - Publisher: District Department of Transportation. The facts of a press release (which block,
   which days) are used with a link to the release; no release text is republished.
 
+### Purple Line construction updates (v0.13.0)
+
+- Credit: `Purple Line construction updates`
+- Page: <https://purplelinemd.com/updates> (Maryland Transit Administration and Purple Line
+  Transit Partners), with its linked PDF notices. Read by a person; what a closure shuts to
+  bicycles is kept as dates, a reason and links in `src/core/geodata/purple-line-closures.json`,
+  its lines OpenStreetMap's (ODbL).
+- Use: closures routed round, whole days, gone after the last day (`routemaker.purple_line`).
+- The facts of a notice (which block, which days) are used with a link to the page; no notice
+  text is republished.
+
 ### DDOT occupancy permits (TOPS)
 
 - Credit: `Road closures: DDOT (TOPS permits), CC BY 4.0`
