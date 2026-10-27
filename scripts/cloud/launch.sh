@@ -72,8 +72,8 @@
 #                        it, but box-rebuild.sh still powers it off at the end
 #   --timeout-hours N    give up waiting for the result after N hours [30]
 #   --keep-resuming N    spot box only: when the box stops with no result and no failure log
-#                        in RUN_URL/failed/ (a spot reclaim), or AWS has no spot room to start
-#                        it, wait 10 minutes and carry the run on by itself (--no-send, never
+#                        in RUN_URL/failed/ from this run (a spot reclaim), or AWS does not
+#                        start it, wait 10 minutes and carry the run on by itself (--no-send, never
 #                        --refire: box-rebuild.sh puts the job that lost its worker back and it
 #                        resumes from its checkpoints, while --refire forgets that job and the
 #                        new one is refused while it is still `doing`), up to N more times
@@ -100,7 +100,7 @@ prefix=${CLOUD_PREFIX:-rebuild-checkpoints/transfer}
 profile=${CLOUD_PROFILE:-}
 repo_url=https://github.com/Macrophage87/RouteMaker.git
 run="" url="" live_dir="" allow_dirty=0 send=1 refire=0 beta=0 swap=0 use_running=0
-timeout_hours=30 dry_run=0 attach=0 keep_resuming=0
+timeout_hours=30 dry_run=0 attach=0 keep_resuming=0 resumed=0
 given=("$@")
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -117,6 +117,7 @@ while [ $# -gt 0 ]; do
 		--repo-url) [ $# -ge 2 ] || die "$1 needs a value"; repo_url=$2; shift 2 ;;
 		--timeout-hours) [ $# -ge 2 ] || die "$1 needs a value"; timeout_hours=$2; shift 2 ;;
 		--keep-resuming) [ $# -ge 2 ] || die "$1 needs a value"; keep_resuming=$2; shift 2 ;;
+		--resumed) resumed=1; shift ;; # internal: a --keep-resuming re-run of this run
 		--allow-dirty) allow_dirty=1; shift ;;
 		--no-send) send=0; shift ;;
 		--attach)
@@ -225,7 +226,7 @@ while [ "$i" -lt "${#given[@]}" ]; do
 	a=${given[$i]}
 	case "$a" in
 		--run | --bucket | --prefix) i=$((i + 2)) ;;
-		--no-send | --refire | --dry-run) i=$((i + 1)) ;;
+		--no-send | --refire | --dry-run | --resumed) i=$((i + 1)) ;;
 		--attach | --keep-resuming) i=$((i + 2)) ;;
 		--box | --instance-id | --on-demand-instance-id | --box-region | --bucket-region | --profile | --live-dir | --repo-url | --timeout-hours)
 			kept+=("$a" "${given[$((i + 1))]}"); i=$((i + 2)) ;;
@@ -249,8 +250,19 @@ more_room() {
 carry_on() { # why
 	[ "$keep_resuming" -gt 0 ] && [ "$box_kind" = spot ] && [ "$attach" = 0 ] && [ "$dry_run" = 0 ] ||
 		return 0
-	if aws_s3 ls "$url/failed/" 2>/dev/null | grep -q 'rebuild-.*\.log\.gz$'; then
-		note "--keep-resuming: $url/failed/ has a failure log, so this is a failed rebuild, not a reclaim; not carrying on"
+	# Only a log written since the first launch of this chain counts: an older one is a
+	# failure a person has read already. Not knowing (S3 unreadable) is not carrying on.
+	local listing rc=0 newest
+	listing=$(aws_s3 ls "$url/failed/" 2>/dev/null) || rc=$?
+	case "$rc" in
+		0 | 1) ;;
+		*)
+			note "--keep-resuming: cannot read $url/failed/ (aws exited $rc), so a failed rebuild cannot be ruled out; not carrying on"
+			return 0 ;;
+	esac
+	newest=$(awk '$NF ~ /^rebuild-.*\.log\.gz$/ {print $1" "$2}' <<<"$listing" | sort | tail -n1)
+	if [ -n "$newest" ] && [ "$(date -d "$newest" +%s 2>/dev/null || echo 0)" -ge "$chain_began" ]; then
+		note "--keep-resuming: $url/failed/ has a failure log from this run, so this is a failed rebuild, not a reclaim; not carrying on"
 		return 0
 	fi
 	trap 'exit 130' INT # it may come from where the start ignores them
@@ -259,8 +271,11 @@ carry_on() { # why
 	note "$1; --keep-resuming: carrying the run on in $((RESUME_WAIT_S / 60)) minutes ($((keep_resuming - 1)) more tries after that)"
 	sleep "$RESUME_WAIT_S"
 	trap - EXIT
-	exec bash "$0" --no-send "${kept[@]}" --keep-resuming "$((keep_resuming - 1))" "$url"
+	CLOUD_LAUNCH_CHAIN_BEGAN=$chain_began exec bash "$0" --no-send --resumed "${kept[@]}" \
+		--keep-resuming "$((keep_resuming - 1))" "$url"
 }
+# When the first launch of a --keep-resuming chain began (failure logs older than it are old).
+chain_began=${CLOUD_LAUNCH_CHAIN_BEGAN:-$(date +%s)}
 box_state() { aws_box ec2 describe-instances --instance-ids "$instance" \
 	--query 'Reservations[0].Instances[0].State.Name' --output text; }
 
@@ -448,7 +463,9 @@ else
 	case "$state" in
 		stopped | stopping) ;;
 		pending | running)
-			[ "$use_running" = 1 ] ||
+			# A --keep-resuming re-run: the persistent spot request started this run's box
+			# again by itself after the reclaim.
+			[ "$use_running" = 1 ] || [ "$resumed" = 1 ] ||
 				die "the box $instance is already $state: another run may be using it. Stop it, or pass --use-running (the launcher then does not stop it; box-rebuild.sh still powers it off at the end)" ;;
 		*) die "the box $instance is $state; it cannot be started" ;;
 	esac
@@ -513,9 +530,15 @@ else
 			trap 'exit 130' INT
 			trap 'exit 143' TERM HUP ;;
 		pending | running)
-			[ "$use_running" = 1 ] ||
-				die "the box $instance was started while the inputs were sent: another run may be using it. Then: $(resume)"
-			note "--use-running: using the box as it is; the launcher does not stop it (box-rebuild.sh powers it off at the end)" ;;
+			if [ "$use_running" = 0 ] && [ "$resumed" = 1 ]; then
+				# Restarted by AWS after the reclaim: this run's box, so stopped as a started one.
+				started=1
+				note "the box $instance is $state again (AWS restarted it after the reclaim); carrying the run on there"
+			else
+				[ "$use_running" = 1 ] ||
+					die "the box $instance was started while the inputs were sent: another run may be using it. Then: $(resume)"
+				note "--use-running: using the box as it is; the launcher does not stop it (box-rebuild.sh powers it off at the end)"
+			fi ;;
 		*) die "the box $instance is $state; it cannot be started" ;;
 	esac
 	note "waiting for the box to run and for its SSM agent"
@@ -608,6 +631,15 @@ while :; do
 			echo "launch: the rebuild command ended $status on the box. Its output:" >&2
 			box_output >&2
 			failed_log
+			# A reclaim often shows first as the command failing (exit 143) while the box stops.
+			case "$state" in
+				stopping | stopped)
+					if [ "$started" = 1 ]; then
+						aws_box ec2 stop-instances --instance-ids "$instance" --output text >/dev/null 2>&1 || true
+					fi
+					stopped=1
+					carry_on "the rebuild command ended $status and the box is $state" ;;
+			esac
 			fail "no result. Read ~/cloud-rebuild.log on the box (Session Manager), then carry the run on: $(resume) (with --refire after a failed rebuild: $(resume --refire))" ;;
 		Success)
 			aws_s3 ls "$url/out/SHA256SUMS" >/dev/null 2>&1 && break
@@ -628,7 +660,7 @@ while :; do
 					note "WARNING: could not stop $instance again; check in the console that it stays stopped"
 			fi
 			stopped=1
-			carry_on "the box $state with no result"
+			case "$state" in stopping | stopped) carry_on "the box $state with no result" ;; esac
 			fail "the box $state with no result: a failed rebuild (it powers itself off; its log is in $url/failed/ and under ~/cloud-runs/$run/ on the box)$([ "$box_kind" = spot ] && echo " or a spot reclaim"). Carry the run on: $(resume) (after a failed rebuild: $(resume --refire))$(more_room)" ;;
 	esac
 	now=$(date +%s)

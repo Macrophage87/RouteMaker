@@ -7592,9 +7592,12 @@ is running; the budget alarm is the backstop. On 2026-10-26 it did not prevent i
 launcher stopped a reclaimed box at 7:51 PM ET and AWS started it again at 11:10 PM.
 
 **Carrying on after a reclaim by itself: `--keep-resuming N`** (spot box only). When the
-box stops with no result and `RUN_URL/failed/` has no failure log (a reclaim), or AWS has
-no spot room to start it, the launcher waits 10 minutes and runs itself again with
-`--no-send` and the same options, up to N more times. It never adds `--refire`: the
+box stops with no result (the command often shows as failed with exit 143 first) and
+`RUN_URL/failed/` has no failure log written since the first launch, or AWS does not
+start the box, the launcher waits 10 minutes and runs itself again with `--no-send` and
+the same options, up to N more times. If the spot request has started the box again by
+itself meanwhile, the re-run takes it as it is and still stops it at the end; if S3
+cannot be read, it does not carry on. It never adds `--refire`: the
 rebuild job the reclaim interrupted is still `doing` in the box's database, and
 `box-rebuild.sh` puts it back (`unwedge_job`) so it resumes from its checkpoints.
 `--refire` would forget that job (it clears `fire.done` and `job` in the run's state on
