@@ -55,13 +55,14 @@ export const ES: Readonly<Record<string, string>> = {
   // An Avoid-rated junction in Ride (round-2 audit R2): the server's words (src/routemaker/lang_es.py).
   "Avoid-rated junction ahead.": "Intersección calificada Avoid más adelante.",
   "Riding through it is a really bad idea. Please reconsider your route.": "Pasar por ella es una muy mala idea. Por favor, reconsidere su ruta.",
-  // A stretch's change and a walk in Ride (routing audit D14).
+  // A stretch's change and a walk in Ride (routing audit D14), the tiers named as Plan names them
+  // (src/routemaker/lang_es.py: "tráfico pesado", and "Avoid" kept as the rating's name; round-2 audit D22).
   "Busy road on {street}.": "Calle con mucho tráfico en {street}.",
   "Busy road.": "Calle con mucho tráfico.",
-  "Heavy traffic on {street}.": "Tráfico intenso en {street}.",
-  "Heavy traffic.": "Tráfico intenso.",
-  "Avoid-rated road on {street}.": "Calle calificada como Evitar en {street}.",
-  "Avoid-rated road.": "Calle calificada como Evitar.",
+  "Heavy traffic on {street}.": "Tráfico pesado en {street}.",
+  "Heavy traffic.": "Tráfico pesado.",
+  "Avoid-rated road on {street}.": "Calle calificada Avoid en {street}.",
+  "Avoid-rated road.": "Calle calificada Avoid.",
   "Calmer riding on {street}.": "Recorrido más tranquilo en {street}.",
   "Calmer riding.": "Recorrido más tranquilo.",
   "Unpaved surface on {street}.": "Superficie sin pavimentar en {street}.",
@@ -122,13 +123,13 @@ export const ES: Readonly<Record<string, string>> = {
   "an unnamed road": "una calle sin nombre",
   "On {way}.": "En {way}.",
   "On {way}, at {mile}.": "En {way}, en {mile}.",
-  "On {way}, about {distance} {direction} of {street}.": "En {way}, a unos {distance} al {direction} de {street}.",
+  "On {way}, about {distance} {direction} of {street}.": "En {way}, a aproximadamente {distance} al {direction} de {street}.",
   "about mile {mile}": "cerca de la milla {mile}",
   "mile marker {mile}": "el marcador de la milla {mile}",
   "near mile marker {mile}": "cerca del marcador de la milla {mile}",
   "Next: {cue}": "Siguiente: {cue}",
   "Next, in {distance}: {cue}": "Siguiente, en {distance}: {cue}",
-  ", arriving about {time}": ", con llegada hacia las {time}",
+  ", arriving about {time}": ", con hora estimada de llegada {time}",
   "{distance} to stop {number}{arriving}.": "{distance} hasta la parada {number}{arriving}.",
   "{distance} to the end{arriving}.": "{distance} hasta el final{arriving}.",
 
@@ -495,7 +496,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Could not copy. Copy the address from the browser's address bar.": "No se pudo copiar. Copie la dirección desde la barra de direcciones del navegador.",
   // ---- The route's arrival time, leaving now (app/RoutePanel.tsx) ----
   "arrive {time}": "llegada {time}",
-  "arriving about {time} if you leave now": "llegada hacia las {time} si sale ahora",
+  "arriving about {time} if you leave now": "hora estimada de llegada {time} si sale ahora",
   // ---- Go's route card: the points between the ends, by kind (lib/pointKinds.ts middleCountSaid) ----
   "1 stop": "1 parada",
   "{n} stops": "{n} paradas",

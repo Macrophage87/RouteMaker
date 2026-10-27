@@ -2040,7 +2040,9 @@ test("D14: in Spanish the stretch and walk cues are whole Spanish sentences", ()
   setLanguageForTest("es");
   try {
     assert.equal(stretchWords("busy", { street: "Georgia Avenue", tier: 3, surface: null }), "Calle con mucho tráfico en Georgia Avenue.");
-    assert.equal(stretchWords("busy", { street: "Georgia Avenue", tier: 4, surface: "unpaved" }), "Tráfico intenso en Georgia Avenue, sin pavimentar.");
+    assert.equal(stretchWords("busy", { street: "Georgia Avenue", tier: 4, surface: "unpaved" }), "Tráfico pesado en Georgia Avenue, sin pavimentar.");
+    // The same names as Plan's (src/routemaker/lang_es.py): "pesado", and "Avoid" as the rating's name (D22).
+    assert.equal(stretchWords("busy", { street: "Georgia Avenue", tier: 5, surface: null }), "Calle calificada Avoid en Georgia Avenue.");
     assert.equal(walkWords(37, true), "Camine con su bicicleta por 120 pies.");
   } finally {
     setLanguageForTest("en");
@@ -2141,6 +2143,21 @@ test("D17: a stop says which side of the street it is on, where the router gives
   setLanguageForTest("es");
   try {
     assert.equal(cueSpoken(stop, "arrive", 0), "Ha llegado a la parada 1. El destino está a su izquierda.");
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+test('D22: Where am I? in Spanish says "a aproximadamente" before miles, not "a unos 0.3 millas"', () => {
+  const route = straightRoute([
+    stretch(0, 1000, "0.0 to 0.6 mi: A Street, low stress (LTS 1).", { street: "A Street" }),
+    stretch(1000, 3000, "x", { street: "Custis Trail", facility: "path", turn: straightOnto("Custis Trail") }),
+  ]);
+  setLanguageForTest("es");
+  try {
+    const said = whereAmI(rideModel(route), { ...startState(), progressM: 1500 });
+    assert.match(said, /^En el Custis Trail, a aproximadamente 0\.3 millas al \S+ de A Street\./);
+    assert.doesNotMatch(said, /a unos/);
   } finally {
     setLanguageForTest("en");
   }

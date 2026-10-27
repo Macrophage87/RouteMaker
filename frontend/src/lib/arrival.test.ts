@@ -130,7 +130,11 @@ test("before a ride, the route's time ends with when it arrives leaving now, in 
   try {
     const es = leaveNowArrival(arrive, "es-US");
     assert.match(es.shown, /^llegada 8:27\s?a/u);
-    assert.match(es.said, /^llegada hacia las 8:27\s?a.* si sale ahora$/u);
+    assert.match(es.said, /^hora estimada de llegada 8:27\s?a.* si sale ahora$/u);
+    // One o'clock needs no "la"/"las" either (round-2 audit D22: "hacia las 1:05" was wrong).
+    const one = leaveNowArrival(new Date(2026, 9, 27, 13, 5, 0).getTime(), "es-US");
+    assert.match(one.said, /^hora estimada de llegada 1:05\s?p.* si sale ahora$/u);
+    assert.doesNotMatch(one.said, /\blas 1:/u);
   } finally {
     setLanguageForTest("en");
   }
