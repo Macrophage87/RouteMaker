@@ -33,10 +33,7 @@ export const WATER_LOADING = t("Loading water and restrooms…");
 export const WATER_UNAVAILABLE = t("Water and restrooms are unavailable for now. The map and your route are not affected.");
 export const WATER_BASIC_SWITCH = t("Portable, pit and composting toilets");
 export const WATER_UNTREATED_SWITCH = t("Untreated water sources (filter or treat first)");
-export const WATER_HELP = t(
-  "Public drinking fountains, water taps, springs and restrooms that OpenStreetMap lists, drawn from street zoom in. Places for customers only, or private, are left out. With a route planned, the ones within {along} of it are listed in riding order under the route, each with an Add as stop button. Your choices here are kept on this device.",
-  { along: ALONG_ROUTE_TEXT },
-);
+export const WATER_HELP = t("Public drinking fountains, water taps, springs and restrooms that OpenStreetMap lists, drawn from street zoom in. Places for customers only, or private, are left out. With a route planned, the ones within {along} of it are listed in riding order under the route, each with an Add as stop button. Your choices here are kept on this device.", { along: ALONG_ROUTE_TEXT });
 export const WATER_UNTREATED_HELP =
   t("Untreated water is a spring, well or tap not marked as drinkable, or a water point marked not drinkable: carry a filter or treat it before you drink.");
 export const WATER_ALONG_HEADING = t("Water and restrooms along your route");

@@ -4419,7 +4419,7 @@ export function App() {
   const placesShown = placesAll && mode !== "go" ? placesAll.slice(0, placesCount) : placesAll;
   const placesStatus =
     placesData === null
-      ? "Loading places to see…"
+      ? t("Loading places to see…")
       : placesData === "unavailable"
         ? PLACES_UNAVAILABLE
         : placesData.length === 0
@@ -5586,7 +5586,7 @@ export function App() {
                 }
               }}
             >
-              {panelOpen ? "Hide planner" : "Show planner"}
+              {panelOpen ? t("Hide planner") : t("Show planner")}
             </button>
           </div>
         </header>

@@ -24,20 +24,20 @@ export const DOCS_LINKS: ReadonlyArray<{ href: string; text: string }> = [
 
 /** The documentation's short version (how-it-works.html, "In short"), one line each. */
 export const INFO_POINTS: readonly string[] = [
-  "Every road is rated for traffic stress, from LTS 1 (comfortable for everyone) to LTS 4 (busy, fast traffic), plus 4.5 and Avoid for the worst roads.",
-  "Your ride type and the traffic slider decide how much extra distance a calmer road is worth.",
-  "Busy junctions cost extra too.",
-  "Real closures move a route. DC's planned-work permits never do.",
+  t("Every road is rated for traffic stress, from LTS 1 (comfortable for everyone) to LTS 4 (busy, fast traffic), plus 4.5 and Avoid for the worst roads."),
+  t("Your ride type and the traffic slider decide how much extra distance a calmer road is worth."),
+  t("Busy junctions cost extra too."),
+  t("Real closures move a route. DC's planned-work permits never do."),
 ];
 
 /** The panel's markup (our own constant, no rider text), before the credits. */
 export const MAP_INFO: string = [
-  `<p><strong>Plan a route.</strong> ${searchLede(false)}</p>`,
+  `<p><strong>${t("Plan a route.")}</strong> ${searchLede(false)}</p>`,
   `<ul>${INFO_POINTS.map((point) => `<li>${point}</li>`).join("")}</ul>`,
-  `<p>More: ${DOCS_LINKS.map((link) => `<a href="${link.href}">${link.text}</a>`).join(" · ")}</p>`,
+  `<p>${t("More:")} ${DOCS_LINKS.map((link) => `<a href="${link.href}">${link.text}</a>`).join(" · ")}</p>`,
   // Which release this is, for Go and rides, where Plan's heading is out of sight (lib/appVersion.ts).
   versionSaid() ? `<p>${versionSaid()}.</p>` : "",
-  "<p><strong>Credits.</strong></p>",
+  `<p><strong>${t("Credits.")}</strong></p>`,
 ].join("");
 
 /** The parts of the DOM wrapCredits touches. */

@@ -148,8 +148,8 @@ export interface LayersSheetProps {
   permits: { on: boolean; onChange: (on: boolean) => void } | null;
 }
 
-export const PLACES_LAYER_TITLE = "Places to see";
-export const PLACES_LAYER_HINT = "Museums, gardens, viewpoints and more. Places to see lists them.";
+export const PLACES_LAYER_TITLE = t("Places to see");
+export const PLACES_LAYER_HINT = t("Museums, gardens, viewpoints and more. Places to see lists them.");
 
 /** The Layers sheet: the map's switches, in the mockup's order, each section with its own key. */
 export function LayersSheet(props: LayersSheetProps) {
@@ -169,10 +169,10 @@ export function LayersSheet(props: LayersSheetProps) {
           row, its name, one switch for the whole section and a disclosure; its layers are inside (lib/layerSection.ts). */}
       <LayerSection
         id="stress"
-        title={massMap ? CAPACITY_LEGEND_TITLE : "Traffic stress"}
+        title={massMap ? CAPACITY_LEGEND_TITLE : t("Traffic stress")}
         headingId="layers-heading"
         switchId="show-stress"
-        layers={stress === "available" ? [{ key: "stress", label: massMap ? CAPACITY_LEGEND_TITLE : "Traffic stress", on: stressVisible }] : []}
+        layers={stress === "available" ? [{ key: "stress", label: massMap ? CAPACITY_LEGEND_TITLE : t("Traffic stress"), on: stressVisible }] : []}
         onLayers={(next) => setStressVisible(next.stress)}
         status={stress === "checking" ? STRESS_CHECKING : stress === "unavailable" ? STRESS_UNAVAILABLE : ""}
       >
@@ -399,10 +399,10 @@ function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean
     <section aria-labelledby="settings-my-go-heading" className="settings-group my-go">
       <div className="setting-line">
         <h3 id="settings-my-go-heading">{t("My Go")}</h3>
-        <InfoButton open={infoOpen} onToggle={() => setInfoOpen((was) => !was)} controls="settings-my-go-info" about="My Go" />
+        <InfoButton open={infoOpen} onToggle={() => setInfoOpen((was) => !was)} controls="settings-my-go-info" about={t("My Go")} />
       </div>
       <p className="hint setting-info" id="settings-my-go-info" hidden={!infoOpen}>
-        {signedIn ? "Kept with your Discord account, on every device you sign in on." : "Kept on this device. Sign in to keep it with your account."}
+        {signedIn ? t("Kept with your Discord account, on every device you sign in on.") : t("Kept on this device. Sign in to keep it with your account.")}
       </p>
       {/* The same Home sheet as Go's (lib/homeSet.ts), without the map way: the map is behind Settings. */}
       <div className="my-go-home" ref={homeBox}>
@@ -631,9 +631,9 @@ export function SettingsSheet(props: SettingsSheetProps) {
             // The plan's one line (item 4); the link is its first words. The plan in hand is kept across the round trip.
             <p className="hint sign-in-line">
               <a href="/auth/login" onClick={(e) => isPlainClick(e) && rememberPlanForSignIn(tabSession(), window.location.hash, linkNote !== "")}>
-                Sign in with Discord
+                {t("Sign in with Discord")}
               </a>
-              {SIGN_IN_LINE.slice("Sign in with Discord".length)}
+              {t(SIGN_IN_LINE.slice("Sign in with Discord".length))}
             </p>
           ) : null}
           {/* Assistant apps connected through the site's MCP connector, and how to connect one (the owner, 2026-10-25). */}
@@ -691,8 +691,7 @@ export function SuggestSheet({ nav, roadInfoAtCentre, onReview }: SuggestSheetPr
       <section aria-labelledby="suggest-map-heading" className="settings-group">
         <h3 id="suggest-map-heading">{t("A road or a junction")}</h3>
         <p className="hint">
-          Right-click a road, or press and hold it, then choose Suggest a change: a road's traffic stress, a junction, or a hazard on a Mass Ride.
-          Suggestions go to the map's admins; nothing changes until one of them reviews it.
+          {t("Right-click a road, or press and hold it, then choose Suggest a change: a road's traffic stress, a junction, or a hazard on a Mass Ride. Suggestions go to the map's admins; nothing changes until one of them reviews it.")}
         </p>
         <button type="button" className="secondary suggest-at-centre" onClick={roadInfoAtCentre}>
           <Icon name="road" />
@@ -734,7 +733,7 @@ export function FoodSheet({ nav, onChip, children }: { nav: SheetNav; onChip: (f
         {FOOD_CHIPS.map((food) => (
           <button key={food} type="button" className="chip" onClick={() => onChip(food.toLowerCase())}>
             <Icon name={food === "Farm stands" ? "apple" : "food"} size={16} />
-            {food}
+            {t(food)}
           </button>
         ))}
       </div>

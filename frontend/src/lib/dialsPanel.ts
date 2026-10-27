@@ -204,10 +204,7 @@ export function calmNote(stress: number, _preset?: PresetId): string | undefined
   }
   // Short sentences (a11y review of integrate-2: one 49-word sentence, which
   // changes at every step and is the slider's description).
-  return t(
-    "Calm detour: up to about {rate} of extra riding for every mile of busy road (LTS 3) avoided. Twice that for a heavy-traffic road (LTS 4). Three times that for a road best avoided. The route can be many times the straight-line distance. The route summary says how much longer it is.",
-    { rate: formatPerMile(rate) },
-  );
+  return t("Calm detour: up to about {rate} of extra riding for every mile of busy road (LTS 3) avoided. Twice that for a heavy-traffic road (LTS 4). Three times that for a road best avoided. The route can be many times the straight-line distance. The route summary says how much longer it is.", { rate: formatPerMile(rate) });
 }
 
 /** The top of the traffic slider's "How this works": the order it weighs things in. */

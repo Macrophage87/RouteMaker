@@ -30,7 +30,7 @@ export function InfoButton({ open, onToggle, controls, about }: { open: boolean;
   return (
     <button type="button" className="info-tip" aria-expanded={open} aria-controls={controls} onClick={onToggle}>
       <Icon name="info" size={18} />
-      <span className="visually-hidden">{t("About {about}", { about })}</span>
+      <span className="visually-hidden">{t("About {about}", { about: t(about) })}</span>
     </button>
   );
 }

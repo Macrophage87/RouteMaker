@@ -84,7 +84,7 @@ export const TOPO_WIDTHS = {
 
 const FOOT_M = 0.3048;
 /** Short, read on every focus; the spacings through lib/format.ts, feet first. */
-export const TOPO_LINES_HINT = `Contours every ${formatClimb(100 * FOOT_M)}, ${formatClimb(40 * FOOT_M)} at zoom 13, ${formatClimb(20 * FOOT_M)} from 14.`;
+export const TOPO_LINES_HINT = t("Contours every {coarse}, {middle} at zoom 13, {fine} from 14.", { coarse: formatClimb(100 * FOOT_M), middle: formatClimb(40 * FOOT_M), fine: formatClimb(20 * FOOT_M) });
 export const TOPO_LINES_UNAVAILABLE_HINT = t("Not available on this server yet.");
 
 type Expr = unknown[];

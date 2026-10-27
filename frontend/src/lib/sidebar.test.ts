@@ -724,7 +724,7 @@ test("where the focus goes on every change of view (mutation SF1)", () => {
   assert.match(app, /const showPlanner = \(focusHeading = true\) => \{\s*viewCause\.current = focusHeading \? "planButton" : "panelToggle";[\s\S]*?if \(viewNow\.current === "planner"\) \{\s*if \(focusHeading\) \{\s*plannerHeadingRef\.current\?\.focus\(\);\s*panelBodyRef\.current\?\.scrollTo\?\.\(\{ top: 0 \}\);\s*\}\s*\} else setView\("planner"\);/);
   // The phone header's toggle: "Show planner" always shows the planner, even if a sheet was open when it was hidden,
   // and leaves the focus on the toggle (showPlanner(false)); the heading focus is the Plan button's.
-  assert.match(app, /\{panelOpen \? "Hide planner" : "Show planner"\}/);
+  assert.match(app, /\{panelOpen \? t\("Hide planner"\) : t\("Show planner"\)\}/);
   assert.match(app, /if \(panelOpen\) setPanelOpen\(false\);\s*else \{\s*setPanelOpen\(true\);[\s\S]*?showPlanner\(false\);/);
   assert.match(app, /target\.kind === "planner"\) \{[^}]*plannerHeadingRef\.current\?\.focus\(\);/);
   // In Go the heading is out of sight but still the planner's focus target and heading.

@@ -28,7 +28,7 @@ import type { Home } from "./myGo.ts";
 // ---- Words ----------------------------------------------------------------------------------------
 
 /** The button beside Share in Plan's More, and the dialog's heading. */
-export const SHARE_IMAGE_LABEL = "Share as image";
+export const SHARE_IMAGE_LABEL = t("Share as image");
 export const SIZE_LABEL = "Size";
 export const QR_LABEL = "QR code";
 export const PROFILE_LABEL = "Elevation profile";

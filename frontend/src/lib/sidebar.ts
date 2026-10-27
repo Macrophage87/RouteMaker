@@ -33,13 +33,13 @@ export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   gpx: t("Save and load"),
   settings: t("Settings"),
   nearest: t("Nearest"),
-  food: "Find food",
+  food: t("Find food"),
   ride: "Ride",
   // v0.7.0: Go's Repair (behind More), and Plan's Places to see (Go calls it Sights).
-  repair: "Repair stands and bike shops",
-  places: "Places to see",
+  repair: t("Repair stands and bike shops"),
+  places: t("Places to see"),
   // Go's Edit route (edit-route redesign, Stephen 2026-10-18): Plan's points, from the route card.
-  points: "Edit route",
+  points: t("Edit route"),
 };
 
 /** The Files sheet's name on its buttons (the owner, 2026-10-18), short enough for the bar. */
@@ -118,9 +118,9 @@ export const FEWER_TIPS = t("Fewer tips");
  */
 export function searchLede(loop: boolean, accessMode = false): string {
   // Map tools exists only in accessibility mode (455): off, the line says how to get it.
-  const how = accessMode ? "Search, click the map, or use Add point at map center in Map tools" : "Search or click the map";
-  const end = loop ? "start, then stops. The ride comes back to the start." : "start, then end. Later clicks add stops.";
-  return `${how}: ${end}${accessMode ? "" : ` ${ACCESS_SENTENCE_WHERE}`}`;
+  const how = accessMode ? t("Search, click the map, or use Add point at map center in Map tools") : t("Search or click the map");
+  const end = loop ? t("start, then stops. The ride comes back to the start.") : t("start, then end. Later clicks add stops.");
+  return `${how}: ${end}${accessMode ? "" : ` ${t(ACCESS_SENTENCE_WHERE)}`}`;
 }
 
 /**
@@ -128,11 +128,11 @@ export function searchLede(loop: boolean, accessMode = false): string {
  * 2026-10-18: "Edit" beside a row of chips read as a tag, not a button). Its state is read from aria-expanded.
  */
 export function rideActionLabel(open: boolean): string {
-  return open ? "Done" : "Adjust";
+  return open ? t("Done") : t("Adjust");
 }
 
 /** The Ride settings line's action as a screen reader hears it: the same word whatever the state (aria-expanded says that). */
-export const RIDE_ACTION_SPOKEN = "Adjust";
+export const RIDE_ACTION_SPOKEN = t("Adjust");
 
 /** The Ride settings line's label, over its summary. */
 export const RIDE_SETTINGS_LABEL = t("Ride settings");

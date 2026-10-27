@@ -929,7 +929,7 @@ export function RouteSummary({
           <div className="go-route-rides">
             {/* Shown, as the route card says what it edits; the chips' group is named "Ride type" for a screen reader. */}
             <p className="go-rides-label" aria-hidden="true">
-              Ride type
+              {t("Ride type")}
             </p>
             {go.rides}
           </div>

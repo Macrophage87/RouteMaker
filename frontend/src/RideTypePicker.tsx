@@ -97,7 +97,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
     <section key="presets" className="ride-type" aria-labelledby="ride-type-heading">
       {/* A label, not a heading: the Ride settings h2 follows it in the outline (the review of the redesign). */}
       <p id="ride-type-heading" className="ride-type-label">
-        Ride type
+        {t("Ride type")}
       </p>
       {/* One button, the ride type and its gist on it, that opens the ride types (edit-route redesign, Stephen
           2026-10-18): it was a line of chips with Edit, then this line's Change, two presses to the list. */}

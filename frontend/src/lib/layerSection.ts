@@ -152,7 +152,7 @@ export function LayerSection({ id, title, headingId = `${id}-heading`, switchId 
           className: "section-chevron",
           "aria-expanded": open,
           "aria-controls": bodyId,
-          "aria-label": `${title} layers`,
+          "aria-label": t("{title} layers", { title }),
           onClick: () => setOpen(!open),
         },
         h("svg", {

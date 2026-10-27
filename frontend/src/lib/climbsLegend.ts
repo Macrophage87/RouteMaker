@@ -33,9 +33,9 @@ import {
   type ClimbsStatus,
 } from "./climbs.ts";
 
-export const CLIMBS_LABEL = "Climbs";
+export const CLIMBS_LABEL = t("Climbs");
 /** Read on every focus, so kept under 150 characters. */
-export const CLIMBS_HINT = `From zoom ${CLIMBS_MIN_ZOOM}. Changes no route.`;
+export const CLIMBS_HINT = t("From zoom {zoom}. Changes no route.", { zoom: CLIMBS_MIN_ZOOM });
 export const CLIMBS_LOADING = "Loading climbs…";
 export const CLIMBS_UNAVAILABLE = "Climbs are unavailable for now. The map and your route are not affected.";
 export const CLIMBS_EMPTY = "No climbs yet: the climbs are measured on the build server, and this map has not had them added.";

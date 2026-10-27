@@ -160,7 +160,7 @@ export function JunctionLegend(): ReactElement {
   return h(
     "div",
     { className: "junction-legend" },
-    h("h4", { id: "junction-legend-heading" }, "Junctions"),
+    h("h4", { id: "junction-legend-heading" }, t("Junctions")),
     h(
       "ul",
       { className: "junction-legend-list", "aria-labelledby": "junction-legend-heading" },
