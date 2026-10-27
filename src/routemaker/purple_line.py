@@ -1,7 +1,7 @@
 """Closures from the Maryland Purple Line's construction updates (v0.13.0).
 
-The owner, 2026-10-27, routed onto Bonifant Street in Silver Spring: "Bonifant street is closed
-for major construction. see why it's missed". The Purple Line's streets are county and city
+The owner, 2026-10-27, of Bonifant Street in Silver Spring: "Bonifant street is closed for major
+construction. see why it's missed". The Purple Line's streets are county and city
 streets, so their closures are in no WZDx feed (Maryland's covers the state's roads only), and
 the project posts them only as words on its "Updates & Detours" page
 (https://purplelinemd.com/updates), sometimes with a PDF notice.

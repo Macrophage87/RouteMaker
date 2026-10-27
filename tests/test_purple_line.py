@@ -21,8 +21,8 @@ BY_ID = {c.closure_id: c for c in CLOSURES}
 WEST, SOUTH, EAST, NORTH = -77.12, 38.93, -76.86, 39.02
 # Bonifant St's junctions: Ramsey Ave, Dixon Ave, Georgia Ave.
 RAMSEY, DIXON, GEORGIA = -77.02916, -77.02796, -77.0266
-# The owner's route: north from Ripley St, west along Bonifant St from Dixon Ave, north up
-# Ramsey Ave.
+# A made-up route through the closure: north from Ripley St, west along Bonifant St from Dixon
+# Ave, north up Ramsey Ave.
 RIDDEN = [
     [DIXON, 38.99293],
     [DIXON, 38.99338],
@@ -83,7 +83,7 @@ class TestZones:
         assert wz.source_text(zone) == "Purple Line construction update, Jul 24"
         assert all(wz.polygon(z) for z in zones)
 
-    def test_the_ridden_route_runs_along_it(self) -> None:
+    def test_a_route_through_it_runs_along_it(self) -> None:
         passages = wz.along(RIDDEN, real(local(2026, 10, 27, 7, 28)))
         assert [p.zone.zone_id for p in passages] == ["purple_line-bonifant-west-0"]
 

@@ -39,7 +39,7 @@ test("the credits are short source names, exactly these, OpenStreetMap first (OW
       "NPS alerts",
       "AlertDC (HSEMA)",
       // v0.13.0: the Purple Line's construction updates, read by hand (routemaker.purple_line).
-      "Purple Line construction updates",
+      "Purple Line construction update",
     ],
   );
   for (const credit of DATA) {
