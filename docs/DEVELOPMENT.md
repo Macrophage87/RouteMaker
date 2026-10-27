@@ -7884,7 +7884,9 @@ per-client draw cap, `TILES_IN_FLIGHT`) and its 429/503 backoff. At most `MAX_JO
 to the byte, and freed again when bytes are given back); a tile counts as kept only when its write
 succeeded (the Cache Storage put resolved, every IndexedDB range's transaction completed; a failed
 write gives its bytes back), and the counts are per kind; a kind failing `STOP_AFTER_FAILURES` times in a row is
-dropped (no signal at the start, or a base map that is not served). Where they are kept:
+dropped (no signal at the start, or a base map that is not served); after each failure the next tile waits
+`FAILURE_WAIT_MS` (1 s), doubled for each failure in a row, so a brief loss of signal (a cell hand-off) does
+not drop a kind for the whole ride. Where they are kept:
 
 * Stress tiles: the Cache Storage bucket `routemaker-corridor-v1`, keyed by the tile's URL without its
   `?rev=` (`stressKey`), the edit generation kept beside it in a header, so an admin's edit mid-ride

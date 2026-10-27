@@ -12,6 +12,7 @@ import {
   MAX_JOBS,
   START_JITTER_MS,
   STOP_AFTER_FAILURES,
+  FAILURE_WAIT_MS,
   STRESS_GAP_MS,
   corridorJobs,
   corridorWorry,
@@ -133,6 +134,30 @@ test("prefetchCorridor: a kind failing in a row is stopped (no signal, or no bas
   assert.equal(asked.base, STOP_AFTER_FAILURES);
   assert.ok(asked.stress > STOP_AFTER_FAILURES);
   assert.equal(result.failed, STOP_AFTER_FAILURES);
+
+  // A failure waits longer before the next tile (doubling), so a blip in the signal does not drop a kind;
+  // a few failures with successes between them never stop it.
+  const waits: number[] = [];
+  let n = 0;
+  const blip = await prefetchCorridor(line, {
+    fetch: async (job) => job.kind === "stress" || (n += 1) % 4 !== 1,
+    wait: async (ms) => void waits.push(ms),
+    random: () => 0,
+    signal: new AbortController().signal,
+    done: new Set(),
+  });
+  assert.ok(blip.base.kept > 0 && blip.base.kept < blip.base.total, JSON.stringify(blip.base));
+  assert.ok(waits.includes(FAILURE_WAIT_MS));
+  const failing: number[] = [];
+  await prefetchCorridor(line, {
+    fetch: async (job) => job.kind === "stress",
+    wait: async (ms) => void failing.push(ms),
+    random: () => 0,
+    signal: new AbortController().signal,
+    done: new Set(),
+  });
+  const backoff = failing.filter((ms) => ms >= FAILURE_WAIT_MS);
+  assert.deepEqual(backoff, [1, 2, 4].map((k) => k * FAILURE_WAIT_MS), "1, 2 and 4 s; none after the fourth, which drops the kind");
 
   const controller = new AbortController();
   let count = 0;
