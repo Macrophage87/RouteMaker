@@ -3168,28 +3168,37 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
             routing.Deadline(hard_stop, ctx.deadline.per_call_s),
             ctx.traces,
         )
-    for number, request in enumerate(leg_requests):
-        try:
-            if asking is not None:
-                answer = routing.await_future(asking[number])
-            else:
-                answer = routing._call(ctx.variant, "route", request, route_deadline)
-            leg_trip = answer.get("trip") or {}
-            read = None
-            if leg_trip.get("legs"):
-                read = analyse(
-                    leg_trip, ctx, routing.Deadline(hard_stop, ctx.deadline.per_call_s), False
-                )
-        except routing.RouterRefused:
-            read = None
-        except (routing.DeadlineExceeded, routing.RouterUnavailable):
-            info["limited"] = "time"
-            return trip, info
-        if read is None:
-            info["limited"] = "split"
-            return trip, info
-        firsts.append(leg_trip)
-        reads.append(read)
+    try:
+        for number, request in enumerate(leg_requests):
+            try:
+                if asking is not None:
+                    answer = routing.await_future(asking[number])
+                else:
+                    answer = routing._call(ctx.variant, "route", request, route_deadline)
+                leg_trip = answer.get("trip") or {}
+                read = None
+                if leg_trip.get("legs"):
+                    read = analyse(
+                        leg_trip, ctx, routing.Deadline(hard_stop, ctx.deadline.per_call_s), False
+                    )
+            except routing.RouterRefused:
+                read = None
+            except (routing.DeadlineExceeded, routing.RouterUnavailable):
+                info["limited"] = "time"
+                return trip, info
+            if read is None:
+                info["limited"] = "split"
+                return trip, info
+            firsts.append(leg_trip)
+            reads.append(read)
+    finally:
+        if asking is not None:
+            # A leg that failed ends the search: the legs after it, not yet read, are not
+            # asked for (those still queued on the pool are cancelled; one already running
+            # ends at its own deadline, never waited for), so they do not hold the router's
+            # slots after the plan has answered (audit R4).
+            for future in asking[len(firsts) + 1 :]:
+                future.cancel()
     results = list(firsts)
     finals = list(reads)
     infos: list[dict | None] = [None] * len(legs)

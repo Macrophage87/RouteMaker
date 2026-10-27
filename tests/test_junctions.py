@@ -1528,6 +1528,29 @@ class TestAReadingTheClockCutsShort:
         with pytest.raises(junctions.ReadingCutShort):
             junctions._ask(raws, range(len(raws)), 10, locate, (routing.DeadlineExceeded,))
 
+    def test_a_batch_cut_off_by_the_clock_cancels_the_batches_not_read(self, monkeypatch) -> None:
+        # Audit R4: the batches after it, still queued on the pool, are not asked.
+        from concurrent.futures import Future
+
+        from core import junctions, parallel, routing
+
+        futures: list[Future] = []
+
+        def submit(fn, payload):
+            future: Future = Future()
+            if len(futures) == 0:
+                future.set_result([{} for _ in payload["locations"]])
+            elif len(futures) == 1:
+                future.set_exception(routing.DeadlineExceeded("no time left for locate"))
+            futures.append(future)  # the third is still queued
+            return future
+
+        monkeypatch.setattr(parallel, "submit", submit)
+        raws = self.raws(junctions.LOCATE_BATCH * 2 + 3)
+        with pytest.raises(junctions.ReadingCutShort):
+            junctions._ask(raws, range(len(raws)), 10, lambda p: [], (routing.DeadlineExceeded,))
+        assert len(futures) == 3 and futures[2].cancelled()
+
     def test_a_batch_the_router_will_not_answer_is_left_out_as_before(self) -> None:
         from core import junctions, routing
 

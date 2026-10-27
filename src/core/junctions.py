@@ -751,10 +751,14 @@ def _ask(
         )
         for chunk in chunks
     ]
-    for chunk, future in zip(chunks, asked, strict=True):
+    for number, (chunk, future) in enumerate(zip(chunks, asked, strict=True)):
         try:
             answers = future.result()
         except cut_short as error:
+            # The batches after it are not read: those still queued on the pool are not
+            # asked (audit R4; one already running ends at its own deadline).
+            for later in asked[number + 1 :]:
+                later.cancel()
             raise ReadingCutShort(
                 f"{len(found)} of {len(positions)} junctions read before {error}"
             ) from error
