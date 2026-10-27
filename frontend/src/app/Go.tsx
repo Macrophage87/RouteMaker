@@ -453,11 +453,11 @@ export function GoAddStop({
 }
 
 /**
- * Go's route card (edit-route redesign, Stephen 2026-10-18): the start and the destination, and the stops between
- * them counted, on one button that opens Edit route (Plan's points in a sheet: change the start or the destination,
- * add or remove a stop, Swap, Loop). It replaced "Add a stop" under Start, and with a route the start was not shown.
+ * Go's route card (edit-route redesign, Stephen 2026-10-18): the start and the destination, and the stops and via
+ * points between them counted apart (lib/pointKinds.ts middleCountSaid), on one button that opens Edit route
+ * (Plan's points in a sheet: change the start or the destination, add or remove a stop, Swap, Loop). It replaced "Add a stop" under Start, and with a route the start was not shown.
  */
-export function GoRouteCard({ start, destination, stops, onEdit }: { start: string; destination: string; stops: number; onEdit: (opener: HTMLButtonElement) => void }) {
+export function GoRouteCard({ start, destination, between, onEdit }: { start: string; destination: string; between: string; onEdit: (opener: HTMLButtonElement) => void }) {
   return (
     <button type="button" className="go-route-card" onClick={(event) => onEdit(event.currentTarget)}>
       <span className="go-route-ends">
@@ -466,7 +466,7 @@ export function GoRouteCard({ start, destination, stops, onEdit }: { start: stri
           <span className="visually-hidden">{t("From")} </span>
           {start}
         </span>
-        {stops > 0 && <span className="go-route-stops">{stops === 1 ? "1 stop" : `${stops} stops`}</span>}
+        {between && <span className="go-route-stops">{between}</span>}
         <span className="go-route-end go-route-to">
           <Icon name="pin" size={16} />
           <span className="visually-hidden">to </span>

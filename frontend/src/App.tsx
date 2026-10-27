@@ -85,6 +85,7 @@ import {
   cleanStopName,
   stopNamedSaid,
   namePoints,
+  middleCountSaid,
   stopAddedSaid,
   stopsOnly,
   withVias,
@@ -4993,7 +4994,7 @@ export function App() {
         <GoRouteCard
           start={fromHere.includes(points[0]) ? YOUR_LOCATION : goPlaceName(namer.name(points[0])?.name, points[0])}
           destination={loopVias ? "Back to the start" : goPlaceName(namer.name(points[points.length - 1])?.name, points[points.length - 1])}
-          stops={loopVias ? points.length - 1 : points.length - 2}
+          between={middleCountSaid(points, VIA_MARKS.isVia, loopVias)}
           onEdit={(opener) => openView("points", opener)}
         />
       ) : null,

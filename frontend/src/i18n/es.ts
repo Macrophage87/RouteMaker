@@ -481,4 +481,9 @@ export const ES: Readonly<Record<string, string>> = {
   // ---- The route's arrival time, leaving now (app/RoutePanel.tsx) ----
   "arrive {time}": "llegada {time}",
   "arriving about {time} if you leave now": "llegada hacia las {time} si sale ahora",
+  // ---- Go's route card: the points between the ends, by kind (lib/pointKinds.ts middleCountSaid) ----
+  "1 stop": "1 parada",
+  "{n} stops": "{n} paradas",
+  "1 via point": "1 punto de paso",
+  "{n} via points": "{n} puntos de paso",
 };
