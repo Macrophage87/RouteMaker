@@ -6296,6 +6296,20 @@ Drive, Francis Drive and Huntley Avenue are all mapped `informal=yes`): its `inf
 closure comes off and it gets `rm:walk_link`, `bicycle=dismount`, as a station's footway
 does, so the route says to walk the bike.
 
+**Walkways at rail platforms (v0.13.0, with the next map update).** OSM sometimes tags a
+station's walkways `bicycle=yes`, and an unnamed footway open to bicycles is otherwise a
+traffic-free path. The owner reported Kensington's MARC station, where the wheelchair ramp
+from Howard Avenue to the platform, the crossing over the tracks between the platforms and
+the walkways by the station building all read as a bike path ("it's a busy rail station and
+would go across train tracks, it's less than ideal"). `routemaker.station_links.platform_walks`
+finds each unnamed footway or path that `bicycle=yes` or `permissive` opens (not
+`designated`), at most 500 ft (150 m) long, that reaches a rail platform in service
+(`railway=platform` with `public_transport=platform` or a rail mode; not a miniature or
+disused railway's) within 33 ft (10 m) along such walkways. It gets `rm:platform_walk`: the
+remap writes `bicycle=dismount`, it is no facility, the map does not draw it, and the route
+says to walk the bike. The rebuild log's facility line counts them ("walkways at rail
+platforms walked").
+
 **Trailhead parking aisles (v0.12.5, with the next map update).** Valhalla makes every
 parking aisle destination-only (a 600 s penalty to enter), so a trail that starts in a
 parking lot was cut off from the road beside it. The owner reported the Rock Creek Trail
