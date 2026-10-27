@@ -800,6 +800,27 @@ class TestTheRoutersOwnAlternatives:
             "limited": None,
         }
 
+    def test_with_the_pool_on_the_ask_starts_beside_the_first_reading(
+        self, client, segments, router, settings, monkeypatch
+    ) -> None:
+        """Routing audit S2: the plan starts the search's ask on the pool before the first
+        route is read; it is still asked once, and its answer ranked."""
+        fake = router(standard_router())
+        settings.ROUTER_PARALLEL_CALLS = 3
+        started = []
+        real = refine.ask_alternates_early
+
+        def spy(*args):
+            started.append(real(*args))
+            return started[-1]
+
+        monkeypatch.setattr(refine, "ask_alternates_early", spy)
+        body = post(client, {**good_body("default"), "stress": 90}).json()
+        asks = [p for url, p in fake.calls if url.endswith("/route") and "alternates" in p]
+        assert [p["alternates"] for p in asks] == [refine.ROUTER_ALTERNATES]
+        assert len(started) == 1 and started[0] is not None and started[0].future.done()
+        assert body["calm_search"]["alternates"]["limited"] is None
+
     def test_none_without_a_calm_search(self, client, segments, router) -> None:
         fake = router(standard_router())
         body = post(client, good_body("default")).json()

@@ -3856,6 +3856,23 @@ def _plan(
     trips = [answer.get("trip") or {}] + [
         (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
     ]
+    # The calm search's ask for the router's alternatives (`refine._router_alternates`)
+    # depends on the request alone: where the search will make it, it starts now on the
+    # pool, beside the reading of this route, instead of after it (v0.13.0 routing audit,
+    # S2). Not where the plan asked for them itself, nor where the target fitting will
+    # ask again with another request (this route is past the target).
+    early_alternates = None
+    if (
+        presets.calm_rate_for(stress_dial) > 0
+        and "alternates" not in request
+        and len(points) == 2
+        and not (quick or fixed or loop or long_calm)
+        and not (maxcalm and target_m is not None and _trip_length_m(trips[0]) > target_m)
+        and _refine_limit(preset_name, points, long_ride, climb_seek, deadline, long_calm) is None
+    ):
+        from . import refine
+
+        early_alternates = refine.ask_alternates_early(variant, request, deadline)
     avoid_weight = -hills_dial / 100 if avoiding else 0.0
     # Steep grades warned of and priced either way (`routemaker.steep_grades`): a Mass Ride
     # and a Novice and Nervous ride, wherever the hills slider sits.
@@ -4008,6 +4025,7 @@ def _plan(
         # within the target is the plan's own request, its alternatives already in `trips`.
         rank_alternates=presets.calm_rate_for(stress_dial) > 0,
         router_trips=plan_alternates(request, trips, timed_out, bool(past)),
+        early_alternates=early_alternates,
         options=[] if offering and not long_calm else None,
         avoid=avoid_list,
         junction_ratings=junction_ratings,
@@ -4059,6 +4077,9 @@ def _plan(
             "excluded": 0,
             "limited": refine_limited,
         }
+    if early_alternates is not None:
+        # Not started yet where the search ended before it was wanted: not asked at all.
+        early_alternates.future.cancel()
     # Mountain Bike (docs/MTB-TOPO-PLAN.md, slice 6): the rider's hardest trail level held, the
     # trail-seeking ranking and the connecting-road rule, on the route as it now is and the
     # router's own alternatives (`core.mtb.settle`). Before the dodge and Avoid passes, so what
