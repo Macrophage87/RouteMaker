@@ -3484,13 +3484,26 @@ def plan(
     (`StrayTrails`) is made again without them, STRAY_ROUNDS times at most, then on the
     ride type's own graph, the dirt trails closed as before. So it is too where leaving them
     out leaves no route.
+
+    The rounds share their traces and `/locate` answers (audit S12, part 2): a round
+    re-plans the whole search with the strays left out, and most of what it traces and
+    locates the round before already had. Both are keyed by what was asked (the shape and
+    costing; the graph, place and radius), never by the round, so a later round reads
+    nothing a different question answered. They are dropped before the final plan on the
+    ride type's own graph, which asks other questions and so would only hold them longer
+    on the 512M worker.
     """
     if started is None:
         started = clock()
     dials = dials or Dials()
+    traces: dict = {}
+    located: dict = {}
     for _round in range(STRAY_ROUNDS):
         try:
-            return _plan(points, preset_name, long_ride, started, dials, quick, candidates)
+            return _plan(
+                points, preset_name, long_ride, started, dials, quick, candidates,
+                traces=traces, located=located,
+            )  # fmt: skip
         except StrayTrails as found:
             logger.info("planning again without %s", found)
             dials = dataclasses.replace(
@@ -3506,6 +3519,8 @@ def plan(
             logger.info("no route without the dirt trails found; planning without dirt trails")
             break
     dials = dataclasses.replace(dials, trail_touch=False, trail_strays=())
+    traces.clear()
+    located.clear()
     return _plan(points, preset_name, long_ride, started, dials, quick, candidates)
 
 
@@ -3526,6 +3541,8 @@ def _plan(
     dials: Dials | None = None,
     quick: bool = False,
     candidates: bool = True,
+    traces: dict | None = None,
+    located: dict | None = None,
 ) -> dict:
     """Route through `points` on `preset_name`, returning the contract's body.
 
@@ -3536,7 +3553,8 @@ def _plan(
     routing" step 2): the answer then says `provisional`. `candidates` False looks for
     no routes to choose from beside the answer (Ride mode's re-plans, review speed-5).
     Raises NoRoute, TooLong, RouterUnavailable, DeadlineExceeded, or KeyError
-    for an unknown preset.
+    for an unknown preset. `traces` and `located` are `plan`'s, shared by its rounds; a
+    plan of its own where they are not given.
     """
     if started is None:
         started = clock()
@@ -3894,8 +3912,9 @@ def _plan(
         brake_grade=preset.brake_grade,
         steep=steep_ride,
     )
-    # This plan's traces, so a route the guards traced is not traced again.
-    traces: dict = {}
+    # This plan's traces, so a route the guards traced is not traced again; `plan`'s, where
+    # it re-plans without stray dirt trails, so a later round does not trace them again.
+    traces = {} if traces is None else traces
     # The hill seek (FOLLOWUP-HILL-SEEK, 205): routes through the climbs near the line
     # join the router's own, where the climb search runs at all; without the climbs
     # file it asks nothing and the search is the router's alternatives alone, as before.
@@ -3999,6 +4018,7 @@ def _plan(
         when=when,
         deadline=deadline,
         traces=traces,
+        located={} if located is None else located,
         points=points,
         roadway_only=variant == Variant.NO_TRAIL.value,
         lanes_as_roadway=lanes_as_roadway,
