@@ -3053,17 +3053,37 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
     # are read for the legs that are searched).
     firsts: list[dict] = []
     reads: list[Analysis] = []
-    for leg in legs:
-        request = {**base_request, "locations": [leg["a"], leg["b"]]}
+    leg_requests = [{**base_request, "locations": [leg["a"], leg["b"]]} for leg in legs]
+    route_deadline = routing.Deadline(
+        hard_stop, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
+    )
+    # The legs' routes do not depend on each other: asked together on the pool, and
+    # their traces after them up to the first leg that failed (v0.7.0, "Faster routing"
+    # step 3); each is then read in leg order below, as before, its failure too.
+    asking = None
+    if parallel.enabled() and len(legs) > 1:
+        asking = [
+            parallel.submit(routing._call, ctx.variant, "route", request, route_deadline)
+            for request in leg_requests
+        ]
+        answered = []
+        for future in asking:
+            if future.exception() is not None:
+                break
+            answered.append(future.result().get("trip") or {})
+        routing.prefetch_traces(
+            ctx.variant,
+            ctx.costing,
+            answered,
+            routing.Deadline(hard_stop, ctx.deadline.per_call_s),
+            ctx.traces,
+        )
+    for number, request in enumerate(leg_requests):
         try:
-            answer = routing._call(
-                ctx.variant,
-                "route",
-                request,
-                routing.Deadline(
-                    hard_stop, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
-                ),
-            )
+            if asking is not None:
+                answer = asking[number].result()
+            else:
+                answer = routing._call(ctx.variant, "route", request, route_deadline)
             leg_trip = answer.get("trip") or {}
             read = None
             if leg_trip.get("legs"):
