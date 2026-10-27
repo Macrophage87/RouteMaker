@@ -620,6 +620,12 @@ elevation with GDAL<sup class="cite"><a href="#ref-14" aria-label="source 14">[1
 <p>Each request has a time budget, a rate limit and a cap on plans in flight, so one busy rider cannot
 slow everyone else. Trips over about 19 mi [30 km] are refined leg by leg. A route can have 2 to 25
 points; very long plans over 93 mi [150 km] ask for confirmation when signed out.</p>
+<p>A plan's answer is kept for 10 minutes, so asking for the same route again (Undo, or opening it
+again) is answered at once. On the public site the app server's workers share these answers through a small
+memcached kept only in memory (16 MB of answers); if it is down or slow, the route is simply planned again. When
+you change a plan in Go while it is still being worked out, the app cancels the old one
+(<code>/api/route/cancel</code>), so the server stops asking the router for it and the new plan does not wait
+behind it.</p>
 
 </div></details>
 <h2 id="map">Drawing the map</h2>
