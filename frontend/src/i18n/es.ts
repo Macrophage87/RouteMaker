@@ -68,7 +68,7 @@ export const ES: Readonly<Record<string, string>> = {
   "{cue}, {surface}.": "{cue}, {surface}.",
   "unpaved": "sin pavimentar",
   "partly unpaved": "parcialmente sin pavimentar",
-  "Walk your bike for {distance}.": "Camine con su bicicleta durante {distance}.",
+  "Walk your bike for {distance}.": "Camine con su bicicleta por {distance}.",
   "Walk your bike.": "Camine con su bicicleta.",
   "Destination on your left.": "El destino está a su izquierda.",
   "Destination on your right.": "El destino está a su derecha.",

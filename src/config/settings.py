@@ -335,6 +335,21 @@ ROUTE_CACHE_TTL_S = max(0, int(os.environ.get("ROUTE_CACHE_TTL_S", "600")))
 ROUTE_CACHE_LOCATION = os.environ.get("ROUTE_CACHE_LOCATION", "").strip()
 
 
+class BytesOnlySerde:
+    """pymemcache's serde for the shared route cache: bytes in, bytes out, nothing else.
+    Django's own default unpickles whatever the server hands back, and any container on
+    the compose network can write to memcached; a stored item with a flag we did not set
+    is read as a miss, never unpickled."""
+
+    def serialize(self, key, value):
+        if not isinstance(value, bytes):
+            raise TypeError("the shared route cache keeps bytes only")
+        return value, 0
+
+    def deserialize(self, key, value, flags):
+        return value if flags == 0 else None
+
+
 def caches_for(route_cache_location: str) -> dict:
     """Django's caches: its own default (in each process's memory, as when unset), and
     `routes` (`core.route_cache.SHARED`) where a memcached is given."""
@@ -350,6 +365,7 @@ def caches_for(route_cache_location: str) -> dict:
                 "no_delay": True,
                 "connect_timeout": 0.1,
                 "timeout": 0.25,
+                "serde": BytesOnlySerde(),
             },
         }
     return caches

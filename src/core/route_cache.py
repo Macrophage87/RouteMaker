@@ -31,15 +31,17 @@ down: it is answered again once that router is back); and an answer the budget c
 (a router call that failed for want of time or an answer, `timing.Timings.failures`, or
 a search that stopped for time), so a retry can do better.
 
-**Where it is kept.** Where `settings.CACHES` has a `routes` cache (`ROUTE_CACHE_LOCATION`,
-a memcached the api's workers share; audit S14, the owner's sign-off of 2026-10-27 for
-a ~16 MB memcached on beta), every worker reads and keeps answers there, so a repeat finds
-the answer whichever worker takes it. The answer is pickled and compressed; one whose
-stored form is past memcached's 1 MB item limit is not kept there (it is planned again
-when asked), and a cache that is down, full or slow is passed over in silence: the plan
-is made as if nothing were kept. Its keys also carry the running code's fingerprint, so an
-answer made by the release before a deploy is never given by the one after it. memcached
-runs with no disk and logs nothing, so nothing in it is a location in a log or on disk.
+**Where it is kept.** Where `settings.CACHES` has a `routes` cache
+(`ROUTE_CACHE_LOCATION`, a memcached the api's workers share; audit S14, the owner's
+sign-off of 2026-10-27 for a ~16 MB memcached on beta), every worker reads and keeps
+answers there, so a repeat finds the answer whichever worker takes it. The answer is kept
+as compressed JSON, never pickle (anything on the compose network can write to memcached);
+one whose stored form is past memcached's 1 MB item limit is not kept there (it is planned
+again when asked), and a cache that is down, full or slow is passed over in silence: the
+plan is made as if nothing were kept. Its keys also carry the running code's fingerprint,
+so an answer made by the release before a deploy is never given by the one after it.
+memcached runs with no disk and logs nothing, so nothing in it is a location in a log or
+on disk.
 
 Without one (the tests, a stack with no memcached), one cache per process as before
 (gunicorn's workers do not share it), at most `MAX_ENTRIES` answers, least recently
@@ -52,7 +54,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import pickle
 import threading
 import time
 import zlib
@@ -174,7 +175,7 @@ def _shared_get(shared, key: str, kinds: tuple[str, ...]) -> dict | None:
         for kind in kinds:
             stored = found.get(_shared_name(key, kind))
             if isinstance(stored, bytes):
-                return pickle.loads(zlib.decompress(stored))
+                return json.loads(zlib.decompress(stored))
     except Exception:  # noqa: BLE001 - a cache that fails is passed over: the plan is made
         logger.info("the shared route cache could not be read", exc_info=True)
     return None
@@ -189,7 +190,7 @@ def _shared_put(shared, key: str, kind: str, body: dict, ttl: float) -> None:
             shared.delete(_shared_name(key, QUICK))
         if timeout < 1:
             return
-        stored = zlib.compress(pickle.dumps(body, pickle.HIGHEST_PROTOCOL), 1)
+        stored = zlib.compress(json.dumps(body, separators=(",", ":")).encode(), 1)
         if len(stored) > MAX_SHARED_BYTES:
             logger.info(
                 "an answer of %d bytes is too large for the shared route cache", len(stored)

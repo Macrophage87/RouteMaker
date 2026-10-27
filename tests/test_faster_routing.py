@@ -729,3 +729,16 @@ class TestCachesSetting:
         assert routes["LOCATION"] == "memcached:11211"
         assert routes["OPTIONS"]["ignore_exc"] is True and routes["OPTIONS"]["no_delay"] is True
         assert routes["OPTIONS"]["timeout"] <= 0.25
+
+    def test_it_never_unpickles_what_the_server_hands_back(self) -> None:
+        import pickle
+
+        from config.settings import caches_for
+
+        serde = caches_for("memcached:11211")[route_cache.SHARED]["OPTIONS"]["serde"]
+        assert serde.serialize("k", b"answer") == (b"answer", 0)
+        with pytest.raises(TypeError):
+            serde.serialize("k", {"a": 1})
+        # An item stored with pymemcache's pickle flag (1) by anything else is a miss.
+        assert serde.deserialize("k", pickle.dumps({"a": 1}), 1) is None
+        assert serde.deserialize("k", b"answer", 0) == b"answer"

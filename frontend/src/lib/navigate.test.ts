@@ -2037,7 +2037,7 @@ test("D14: in Spanish the stretch and walk cues are whole Spanish sentences", ()
   try {
     assert.equal(stretchWords("busy", { street: "Georgia Avenue", tier: 3, surface: null }), "Calle con mucho tráfico en Georgia Avenue.");
     assert.equal(stretchWords("busy", { street: "Georgia Avenue", tier: 4, surface: "unpaved" }), "Tráfico intenso en Georgia Avenue, sin pavimentar.");
-    assert.equal(walkWords(37, true), "Camine con su bicicleta durante 120 pies.");
+    assert.equal(walkWords(37, true), "Camine con su bicicleta por 120 pies.");
   } finally {
     setLanguageForTest("en");
   }
