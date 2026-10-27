@@ -62,7 +62,7 @@ test("boundaries: a state line is darker and wider than a county line, and both 
   // Subtle: narrower than LTS 1, the thinnest stress line drawn over it, at every zoom it is drawn, thinned at z10-11.
   const lts1 = currentTiers()[0];
   const lts1At = (zoom: number) => (zoom >= 12 ? lts1.width : zoomedOutLine(lts1, zoom < ZOOMED_OUT_NEAR_ZOOM ? 10 : ZOOMED_OUT_NEAR_ZOOM));
-  for (const zoom of [10, 10.5, 11, 11.5, 12, 14, 17]) {
+  for (const zoom of [10, 10.5, 10.75, 10.99, 11, 11.5, 12, 14, 17]) {
     assert.ok(widthAt(state.width, zoom) < lts1At(zoom), `z${zoom}: state line ${widthAt(state.width, zoom)} px under LTS 1's ${lts1At(zoom)} px`);
   }
 });
