@@ -13,6 +13,7 @@ import type { BikeshareEnding, BikesharePlan, BikeshareStop, RouteResponse } fro
 import type { Bike, Ending } from "./dials.ts";
 import { formatDistance, formatDuration } from "./format.ts";
 import type { LonLat } from "./geo.ts";
+import { t } from "./i18n.ts";
 
 /**
  * The source citation (OWNER-DECISIONS 301: "Even if the license doesn't require crediting
@@ -41,13 +42,13 @@ export function linkParts(text: string): { text: string; href?: string }[] {
 export const BIKES: readonly { id: Bike; label: string; hint: string }[] = [
   {
     id: "classic",
-    label: "Classic bike",
-    hint: "A few gears and heavy: slower, and hills count against a route.",
+    label: t("Classic bike"),
+    hint: t("A few gears and heavy: slower, and hills count against a route."),
   },
   {
     id: "ebike",
-    label: "E-bike",
-    hint: "Assisted: hills barely count and the pace is faster. It may also start from an e-bike left outside a dock.",
+    label: t("E-bike"),
+    hint: t("Assisted: hills barely count and the pace is faster. It may also start from an e-bike left outside a dock."),
   },
 ];
 

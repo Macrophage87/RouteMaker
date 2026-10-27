@@ -2,6 +2,7 @@ import { METRO_LINES, PENN_LABEL, type RailVisibility } from "./lib/railStations
 import { PENN_COLOUR } from "./lib/railData.ts";
 import { OUTLINE } from "./lib/stationIcons.ts";
 import { LayerSection } from "./lib/layerSection.ts";
+import { t } from "./lib/i18n.ts";
 
 // The map's icons are ringed in OUTLINE, for the light base map; the legend
 // sits on the panel, which is dark in the dark theme, so its ring follows the
@@ -54,10 +55,9 @@ interface Props {
 }
 
 /** Layers' one line for the section; RAIL_HELP, by the legend, says the rest. */
-export const RAIL_HINT = "Tap a station to start, end or pass through it.";
+export const RAIL_HINT = t("Tap a station to start, end or pass through it.");
 export const RAIL_HELP =
-  "The route uses a station's elevator, or its nearest entrance where none is listed. The station's card also links to " +
-  "its WMATA page or the MARC Penn Line timetable, and the road info panel offers them for a station nearby.";
+  t("The route uses a station's elevator, or its nearest entrance where none is listed. The station's card also links to its WMATA page or the MARC Penn Line timetable, and the road info panel offers them for a station nearby.");
 
 /**
  * The Layers sheet's rail stations section (lib/layerSection.ts): one row, its switch for Metro and MARC
@@ -68,7 +68,7 @@ export function RailStationsSection({ visibility, onChange }: Props) {
   return (
     <LayerSection
       id="rail"
-      title="Rail stations"
+      title={t("Rail stations")}
       headingId="rail-heading"
       layers={[
         { key: "metro", label: "Metro", on: visibility.metro },
@@ -90,7 +90,7 @@ export function RailStationsSection({ visibility, onChange }: Props) {
           checked={visibility.marc}
           onChange={(event) => onChange({ ...visibility, marc: event.target.checked })}
         />
-        {PENN_LABEL}, Washington to Baltimore
+        {t("{line}, Washington to Baltimore", { line: PENN_LABEL })}
       </label>
       <p className="hint">{RAIL_HINT}</p>
       {(visibility.metro || visibility.marc) && <RailStationsLegend />}
@@ -103,30 +103,30 @@ export function RailStationsLegend() {
   const metro = Object.values(METRO_LINES);
   return (
     <>
-      <ul className="legend rail-legend" aria-label="Rail stations legend">
+      <ul className="legend rail-legend" aria-label={t("Rail stations legend")}>
         {metro.map((line) => (
           <li key={line.key}>
             <Swatch colours={[line.color]} />
-            <span className="stress-label">{line.label} line</span>
+            <span className="stress-label">{t("{line} line", { line: line.label })}</span>
           </li>
         ))}
         <li>
           <Swatch colours={[PENN_COLOUR]} square />
-          <span className="stress-label">{PENN_LABEL} (square)</span>
+          <span className="stress-label">{t("{line} (square)", { line: PENN_LABEL })}</span>
         </li>
         <li>
           <Swatch colours={[METRO_LINES.red.color, METRO_LINES.blue.color, METRO_LINES.orange.color]} />
-          <span className="stress-label">Several lines: one slice each</span>
+          <span className="stress-label">{t("Several lines: one slice each")}</span>
         </li>
         <li>
           <ElevatorSwatch />
-          <span className="stress-label">Elevator, the way in with a bike (street zoom)</span>
+          <span className="stress-label">{t("Elevator, the way in with a bike (street zoom)")}</span>
         </li>
         <li>
           <svg width="16" height="16" aria-hidden="true" className="rail-swatch">
             <circle cx="8" cy="8" r="4" fill="#6b7280" fillOpacity="0.7" stroke="#ffffff" strokeWidth="1" />
           </svg>
-          <span className="stress-label">Stairs or escalator entrance (closer in)</span>
+          <span className="stress-label">{t("Stairs or escalator entrance (closer in)")}</span>
         </li>
       </ul>
       <p className="hint">{RAIL_HELP}</p>

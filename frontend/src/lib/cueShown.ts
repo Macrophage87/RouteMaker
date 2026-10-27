@@ -49,15 +49,15 @@ const SHORT_ES: readonly [RegExp, string][] = [
   [/\b([Gg])ire ligeramente a la (izquierda|derecha)\b/g, "leve a la $2"],
   [/\b([Gg])ire a la (izquierda|derecha)\b/g, "a la $2"],
   [/\b([Dd])é la vuelta en U\b/g, "vuelta en U"],
-  [/\b(i)nmediatamente\b/g, "enseguida"],
+  [/\b([Ii])nmediatamente\b/g, "enseguida"],
 ];
 
 /** The Spanish turn words shortened, with a capital where the long words had one (the first group is that letter). */
 function shortTurnsEs(text: string): string {
   return SHORT_ES.reduce(
     (out, [long, short]) =>
-      out.replace(long, (_, first: string, side?: string) => {
-        const said = short.replace("$2", side ?? "");
+      out.replace(long, (_, first: string, side: unknown) => {
+        const said = typeof side === "string" ? short.replace("$2", side) : short;
         return first === first.toUpperCase() ? said.charAt(0).toUpperCase() + said.slice(1) : said;
       }),
     text,

@@ -179,9 +179,9 @@ test("App puts the ride type's button first and every dial behind the Ride setti
     return i;
   };
   const order = [
-    'label="Traffic"',
-    'label="Hills"',
-    "<legend>When</legend>",
+    'label={t("Traffic")}',
+    'label={t("Hills")}',
+    '<legend>{t("When")}</legend>',
     "{view.target && (",
     "Avoid gravel",
   ].map(at);
