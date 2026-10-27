@@ -15,6 +15,7 @@ import { twoPointsOnly, type PresetId } from "./presets.ts";
 import type { StressMetres } from "./stressBar.ts";
 import type { FacilityMetres } from "./facilityBar.ts";
 import type { NearbyStationsAnswer, StationAction } from "./stations.ts";
+import { language } from "./i18n.ts";
 import type { WithClosures } from "./closureMap.ts";
 import { dialFields, type Bike, type Carrying, type Dials, type Ending, type When } from "./dials.ts";
 
@@ -1397,6 +1398,8 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
     ...(options.rideReplan
       ? { ride_replan: true, ...(options.dirtRidden ? { dirt_ridden: true } : {}), ...(options.dirtClosed ? { dirt_closed: true } : {}) }
       : {}),
+    // The language of the answer's sentences (lib/i18n.ts); English, the API's own, is not sent.
+    ...(language() !== "en" ? { lang: language() } : {}),
   });
 }
 

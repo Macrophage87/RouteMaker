@@ -93,6 +93,7 @@ from .intersections import (
     Movement,
     crossing_groups,
 )
+from .lang import spanish, t, way_es
 
 METRES_PER_MILE = 1609.344
 FEET_PER_METRE = 3.28084
@@ -132,6 +133,13 @@ TURN_WORDS = {
     "bear_left": "Bear left",
     "bear_right": "Bear right",
 }
+# A turn's whole phrases, so a language words each its own way (`routemaker.lang`): onto a
+# street, staying on one at a fork, after a crossing (", then right onto ..."), and in a
+# merged stretch's list ("left on A").
+_ONTO = {m: f"{w} onto {{street}}" for m, w in TURN_WORDS.items()}
+_STAY = {m: f"{w} to stay on {{street}}" for m, w in TURN_WORDS.items()}
+_THEN_ONTO = {m: f", then {w.lower()} onto {{street}}" for m, w in TURN_WORDS.items()}
+_ON = {m: f"{w.lower()} on {{street}}" for m, w in TURN_WORDS.items()}
 # A fork: another rideable way at a node within FORK_AHEAD_DEG of straight ahead is
 # one a rider could take for the way on, unless the route's own way is nearer
 # straight by at least FORK_CLEAR_DEG (then straight on is plainly the route).
@@ -683,10 +691,10 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
 def tier_words(tier: str, facility: str) -> str:
     """How the stretch's traffic is said: the legend's words, the facility after."""
     if facility == "path":
-        return PATH_WORDS
-    words = TIER_WORDS.get(tier, UNRATED_WORDS)
+        return t(PATH_WORDS)
+    words = t(TIER_WORDS.get(tier, UNRATED_WORDS))
     extra = FACILITY_WORDS.get(facility)
-    return f"{words}, {extra}" if extra else words
+    return f"{words}, {t(extra)}" if extra else words
 
 
 def surface_of(run: _Run) -> str | None:
@@ -728,11 +736,20 @@ def range_words(start_m: float, end_m: float) -> str:
     """ "0.0 to 1.2 mi (0.0 to 1.9 km)": miles first, the metric once, "to" and not a
     dash, which a screen reader may say as "dash" or not at all."""
     if end_m - start_m < SHORT_M:
-        return (
-            f"{_miles(start_m)} mi ({_km(start_m)} km), for {_feet(end_m - start_m)} ft "
-            f"({round(end_m - start_m)} m)"
+        return t(
+            "{mi} mi ({km} km), for {ft} ft ({m} m)",
+            mi=_miles(start_m),
+            km=_km(start_m),
+            ft=_feet(end_m - start_m),
+            m=round(end_m - start_m),
         )
-    return f"{_miles(start_m)} to {_miles(end_m)} mi ({_km(start_m)} to {_km(end_m)} km)"
+    return t(
+        "{mi} to {mi_end} mi ({km} to {km_end} km)",
+        mi=_miles(start_m),
+        mi_end=_miles(end_m),
+        km=_km(start_m),
+        km_end=_km(end_m),
+    )
 
 
 def point_words(at_m: float) -> str:
@@ -763,14 +780,14 @@ def _crossed(tier: int | None) -> str:
 def _control_words(control, flagged: bool, beacon: bool = False) -> str:
     if beacon:
         # The map's signal is a flashing beacon (`intersections.with_beacons`).
-        phrase = CONTROL_PHRASES.get(control, "")
-        return f"{phrase}, flashing light, not a signal" if flagged or phrase else phrase
+        phrase = t(CONTROL_PHRASES[control]) if control in CONTROL_PHRASES else ""
+        return f"{phrase}{t(', flashing light, not a signal')}" if flagged or phrase else phrase
     phrase = CONTROL_PHRASES.get(control)
     if phrase is not None:
-        return phrase
+        return t(phrase)
     # Nothing in the data. Said only where the junction was flagged: that is
     # when "no signal mapped" is what the rider needs to know.
-    return ", no signal mapped" if flagged else ""
+    return t(", no signal mapped") if flagged else ""
 
 
 def _junction_words(event) -> str:
@@ -783,7 +800,7 @@ def _junction_words(event) -> str:
 
 
 def _severity_suffix(severity: str | None) -> str:
-    return f" ({SEVERITY_WORDS[severity]} junction)" if severity in SEVERITY_WORDS else ""
+    return t(f" ({SEVERITY_WORDS[severity]} junction)") if severity in SEVERITY_WORDS else ""
 
 
 _POINT_VERBS = {
@@ -797,18 +814,20 @@ _POINT_VERBS = {
     "straight_onto": "Join",
     "along": "Pass side streets along",
 }
+_POINT_OTHER = "Pass a junction with"
 
 
 def _point_sentence(event, at_m: float) -> str:
     name = _event_name(event)
-    verb = _POINT_VERBS.get(event.kind, "Pass a junction with")
-    what = (
-        (name + _crossed(event.crossed_tier))
-        if name
-        else "a busy road" + _crossed(event.crossed_tier)
-    )
+    verb = _POINT_VERBS.get(event.kind, _POINT_OTHER)
+    what = (name if name else t("a busy road")) + _crossed(event.crossed_tier)
     control = _control_words(event.control, True, getattr(event, "beacon", False))
-    return f"At {point_words(at_m)}: {verb} {what}{control}{_severity_suffix(event.severity)}."
+    said = t(f"{verb} {{what}}", what=what)
+    return t(
+        "At {where}: {said}.",
+        where=point_words(at_m),
+        said=f"{said}{control}{_severity_suffix(event.severity)}",
+    )
 
 
 MAX_NAMED_STREETS = 3
@@ -833,9 +852,9 @@ def _streets_words(streets: list[str]) -> str:
     shown = streets[:MAX_NAMED_STREETS]
     more = len(streets) - len(shown)
     if more > 0:
-        listed = ", ".join(shown) + f" and {more} more"
+        listed = ", ".join(shown) + t(" and {count} more", count=more)
     elif len(shown) > 1:
-        listed = ", ".join(shown[:-1]) + " and " + shown[-1]
+        listed = ", ".join(shown[:-1]) + t(" and ") + shown[-1]
     else:
         listed = shown[0]
     return f" ({listed})"
@@ -854,8 +873,10 @@ def _lts4_words(lts4: int, count: int) -> str:
     if lts4 <= 0:
         return ""
     if lts4 == 1:
-        return f", 1 of them a {LTS4_ROAD}"
-    return f", all of them {LTS4_ROADS}" if lts4 == count else f", {lts4} of them {LTS4_ROADS}"
+        return t(f", 1 of them a {LTS4_ROAD}")
+    if lts4 == count:
+        return t(f", all of them {LTS4_ROADS}")
+    return t(f", {{count}} of them {LTS4_ROADS}", count=lts4)
 
 
 # What a group is, in plain US English ("signalized" was UK spelling, and the
@@ -870,7 +891,7 @@ def group_words(group: CrossingGroup, start_m: float, end_m: float) -> str:
     them heavy-traffic roads (LTS 4)". `start_m` and `end_m` are where the first and
     the last crossing are, in whatever measure the caller shows."""
     return (
-        f"{range_words(start_m, end_m)}: {group.count} {GROUP_NOUN}"
+        f"{range_words(start_m, end_m)}: {t(f'{{count}} {GROUP_NOUN}', count=group.count)}"
         f"{_streets_words(group_streets(group))}{_lts4_words(group.lts4, group.count)}"
     )
 
@@ -902,7 +923,8 @@ def group_crossings(group: CrossingGroup, scale: float = 1.0) -> list[dict]:
 def group_sentence(group: CrossingGroup, start_m: float, end_m: float) -> str:
     """The group as a description entry: its phrase, then its severity in words, so
     a colour is never the only way to hear it ("Very high stress junctions")."""
-    return f"{group_words(group, start_m, end_m)} ({SEVERITY_WORDS[group.severity]} junctions)."
+    severity = t(f" ({SEVERITY_WORDS[group.severity]} junctions)")
+    return f"{group_words(group, start_m, end_m)}{severity}."
 
 
 @dataclass
@@ -1133,7 +1155,9 @@ def main_road_side(heading_out: float | None, others, prior) -> str | None:
 
 
 def ordinal(number: int) -> str:
-    """1st, 2nd, 3rd, 4th, ... 11th, 12th, 13th, ... 21st."""
+    """1st, 2nd, 3rd, 4th, ... 11th, 12th, 13th, ... 21st; in Spanish "3.ª" (la salida)."""
+    if spanish():
+        return f"{number}.ª"
     if number % 100 in (11, 12, 13):
         return f"{number}th"
     return f"{number}{ {1: 'st', 2: 'nd', 3: 'rd'}.get(number % 10, 'th') }"
@@ -1142,7 +1166,12 @@ def ordinal(number: int) -> str:
 def exit_words(number: int, street: str, circle: str | None) -> str:
     """ "Take the 3rd exit onto P Street Northwest at Dupont Circle Northwest"; "... at the
     roundabout" where it has no name. The exit first, so the ride card shows it whole."""
-    return f"Take the {ordinal(number)} exit onto {street} at {circle or 'the roundabout'}"
+    return t(
+        "Take the {nth} exit onto {street} at {circle}",
+        nth=ordinal(number),
+        street=street,
+        circle=circle or t("the roundabout"),
+    )
 
 
 def _on_circle(atom: Atom) -> bool:
@@ -1237,6 +1266,8 @@ def _in_sentence(street: str) -> str:
     """The street as a sentence names it after "onto" or "on": "the path" for a path
     with no name, "the service road beside East-West Highway", the street itself
     otherwise."""
+    if spanish():
+        return way_es(street) or street
     return f"the {street}" if _COMMON_WAY.match(street) else street
 
 
@@ -1251,44 +1282,60 @@ def _stretch_sentence(
     street = _street_words(run)
     where = range_words(start_m, end_m)
     if run.untraced:
-        return f"{where}: no street details for this part of the route, {UNRATED_WORDS}."
+        return f"{where}: {t(f'no street details for this part of the route, {UNRATED_WORDS}.')}"
     event = turn.event if turn else None
     if turn is not None:
         movement = turn.movement
         if turn.exit is not None:
             lead = exit_words(turn.exit["number"], _in_sentence(street), turn.exit["circle"])
         elif turn.cross is not None:
-            lead = f"Cross {turn.cross}"
+            lead = t("Cross {road}", road=_crossed_road(turn.cross))
         elif movement in TURN_WORDS and turn.stay:
-            lead = f"{TURN_WORDS[movement]} to stay on {_in_sentence(street)}"
+            lead = t(_STAY[movement], street=_in_sentence(street))
         elif movement in TURN_WORDS:
-            lead = f"{TURN_WORDS[movement]} onto {_in_sentence(street)}"
+            lead = t(_ONTO[movement], street=_in_sentence(street))
         else:
-            lead = f"Continue onto {_in_sentence(street)}"
+            lead = t("Continue onto {street}", street=_in_sentence(street))
         if turn.across is not None and movement in TURN_WORDS and turn.exit is None:
             # Each junction's control after its own part: "Cross Saint Paul Street at a
             # signal, then right onto ...".
-            lead = f"Cross {turn.across}{_junction_words(turn.across_event)}"
-            lead += f", then {TURN_WORDS[movement].lower()} onto {_in_sentence(street)}"
+            lead = t("Cross {road}", road=_crossed_road(turn.across))
+            lead += _junction_words(turn.across_event)
+            lead += t(_THEN_ONTO[movement], street=_in_sentence(street))
             if event is not turn.across_event:
                 lead += _junction_words(event)
         else:
             lead += _junction_words(event)
     elif same_street_continues:
-        lead = f"Continue on {_in_sentence(street)}"
+        lead = t("Continue on {street}", street=_in_sentence(street))
+    elif spanish() and way_es(street):
+        lead = _capital(way_es(street) or street)
     else:
-        lead = street[:1].upper() + street[1:] if _COMMON_WAY.match(street) else street
+        lead = _capital(street) if _COMMON_WAY.match(street) else street
     words = tier_words(run.tier, run.facility)
-    if words == PATH_WORDS and _COMMON_WAY.match(street):
-        words = "traffic-free"
+    if words == t(PATH_WORDS) and _COMMON_WAY.match(street):
+        words = t("traffic-free")
     elif street.endswith(" bike lane"):
         # A bike lane named for its street ("9th Street Northwest protected bike lane")
         # already says what it is: the facility is not said twice.
-        words = "traffic-free" if words == PATH_WORDS else TIER_WORDS.get(run.tier, UNRATED_WORDS)
+        words = (
+            t("traffic-free")
+            if words == t(PATH_WORDS)
+            else t(TIER_WORDS.get(run.tier, UNRATED_WORDS))
+        )
     surface = surface_of(run)
     if surface:
-        words = f"{words}, {surface}"
+        words = f"{words}, {t(surface)}"
     return f"{where}: {lead}{then}, {words}."
+
+
+def _capital(text: str) -> str:
+    return text[:1].upper() + text[1:]
+
+
+def _crossed_road(road: str) -> str:
+    """The road a crossing names: as mapped, or CROSS_UNNAMED ("the road") in the language."""
+    return (way_es(road) or road) if spanish() else road
 
 
 MAX_NAMED_TURNS = 3
@@ -1303,18 +1350,20 @@ def _then_words(streets: list[tuple[str, str | None]]) -> str:
     pieces = []
     for street, movement in streets[:MAX_NAMED_TURNS]:
         pieces.append(
-            f"{TURN_WORDS[movement].lower()} on {_in_sentence(street)}"
+            t(_ON[movement], street=_in_sentence(street))
             if movement in TURN_WORDS
             else _in_sentence(street)
         )
     more = len(streets) - MAX_NAMED_TURNS
     if more > 0:
-        listed = ", ".join(pieces) + f" and {more} more turn{'s' if more > 1 else ''}"
+        listed = ", ".join(pieces) + (
+            t(" and 1 more turn") if more == 1 else t(" and {count} more turns", count=more)
+        )
     elif len(pieces) == 1:
         listed = pieces[0]
     else:
-        listed = ", ".join(pieces[:-1]) + " and " + pieces[-1]
-    return f", then {listed}"
+        listed = ", ".join(pieces[:-1]) + t(" and ") + pieces[-1]
+    return t(", then {listed}", listed=listed)
 
 
 def _flagged_turn(turns: dict[int, _Turn], i: int) -> bool:
@@ -1622,9 +1671,11 @@ def walk_sentence(start_m: float, end_m: float) -> str:
     """The note for a short stretch a bicycle is walked over (OWNER-DECISIONS
     291(5): a `bicycle=dismount` connector kept, "walk your bike here")."""
     length = end_m - start_m
-    return (
-        f"At {point_words(start_m)}: walk your bike here, for {_feet(length)} ft "
-        f"({round(length)} m)."
+    return t(
+        "At {where}: walk your bike here, for {ft} ft ({m} m).",
+        where=point_words(start_m),
+        ft=_feet(length),
+        m=round(length),
     )
 
 
@@ -1844,7 +1895,7 @@ def describe_both(
                             "via",
                             start,
                             start,
-                            f"Stop {number} at {point_words(start)}.",
+                            t("Stop {number} at {where}.", number=number, where=point_words(start)),
                             via=number,
                         ),
                     )

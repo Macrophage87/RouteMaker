@@ -83,7 +83,7 @@ from pydantic import (
     model_validator,
 )
 
-from routemaker import effort, ridetime
+from routemaker import effort, lang, ridetime
 from routemaker.geo import Point, haversine
 
 from . import (
@@ -352,6 +352,16 @@ class RouteIn(Schema):
             " Sent with the ride's re-plans only; never remembered by the server."
         ),
     )
+    lang: str = Field(
+        default="en",
+        max_length=16,
+        description=(
+            "The language of the route's sentences (the description list, hazards, work-zone"
+            ' lines, climbs): "en" or "es"; any other is answered in English, so an app that'
+            " knows a language this server does not still gets its route. Street and place"
+            " names, agencies' own notices and the closure cards' words are not translated."
+        ),
+    )
     heading: float | None = Field(
         default=None,
         ge=0,
@@ -596,6 +606,12 @@ class RouteIn(Schema):
         """An old ride type's name (a link or a saved plan from before it was renamed) plans
         as the ride type it became: "kids" is Novice and Nervous (v0.7.0)."""
         return presets.resolve_preset(value) if isinstance(value, str) else value
+
+    @field_validator("lang")
+    @classmethod
+    def _known_language(cls, value: str) -> str:
+        """A language this server does not word is English, so the cache keeps one answer."""
+        return value if value in lang.LANGUAGES else "en"
 
     @model_validator(mode="after")
     def dials_fit_the_preset(self):
@@ -3047,7 +3063,8 @@ def route(request, body: RouteIn, response: HttpResponse):
     # Its calls on the pool are kept, so a cancelled plan can wait for them (below).
     tracking = parallel.track() if watch is not None else None
     try:
-        answered = _route_answer(request, body, response)
+        with lang.speaking(body.lang):
+            answered = _route_answer(request, body, response)
     finally:
         if tracking is not None:
             if watch.cancelled:
@@ -3279,7 +3296,8 @@ def route_neighbours(request, body: RouteIn):
         kind: body.model_copy(update={"stress": notch, "quick": False, "candidates": False})
         for kind, notch in wanted
     }
-    answered = {kind: _neighbour(bodies[kind], started) for kind, _ in wanted}
+    with lang.speaking(body.lang):
+        answered = {kind: _neighbour(bodies[kind], started) for kind, _ in wanted}
     options = [
         {"kind": kind, "stress": notch, "route": answered[kind]}
         for kind, notch in wanted

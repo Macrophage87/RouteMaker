@@ -30,6 +30,8 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from routemaker.lang import t
+
 # 308: the junction equivalent of an Avoid road's entry charge, cost seconds (30 minutes).
 AVOID_JUNCTION_PENALTY_S = 1800.0
 # A route passes a junction where its line comes this close to the junction's point
@@ -208,7 +210,8 @@ def ahead_text(junction: AvoidJunction, at_m: float) -> str:
     'Avoid-rated junction ahead'"), US units first and the metric in brackets."""
     said = _said(junction)
     where = f"{_miles(at_m)} mi ({_km(at_m)} km)"
-    return f"{NOUN} ahead at {where}{': ' + said if said else ''}. {PLEA}"
+    ahead = t(f"{NOUN} ahead at {{where}}", where=where)
+    return f"{ahead}{': ' + said if said else ''}. {t(PLEA)}"
 
 
 def entries(found: Sequence[Passage], scale: float = 1.0) -> list[dict]:

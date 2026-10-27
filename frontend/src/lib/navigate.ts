@@ -807,9 +807,10 @@ function joinJogs(cues: Cue[]): void {
  * Cross them square on, a wheel can drop into the groove.", said "In 500 feet, rails in the road on ...".
  */
 export function roadHazardWords(text: string): string {
-  const m = /^(.*?) on (.*?), (?:at [\d.]+|[\d.]+ to [\d.]+) mi \([^)]*\): (.*)$/.exec(text);
+  // The server words it in the rider's language (routemaker.lang): "Rieles en la calle en ..., 0.4 a 1.2 mi".
+  const m = /^(.*?) (on|en) (.*?), (?:(?:at|en) [\d.]+|[\d.]+ (?:to|a) [\d.]+) mi \([^)]*\): (.*)$/.exec(text);
   if (!m) return text;
-  return `${m[1]} on ${m[2]}. ${m[3].charAt(0).toUpperCase()}${m[3].slice(1)}`;
+  return `${m[1]} ${m[2]} ${m[3]}. ${m[4].charAt(0).toUpperCase()}${m[4].slice(1)}`;
 }
 
 export function says(level: Verbosity, cue: Pick<Cue, "kind" | "tier" | "severity"> & Pick<Partial<Cue>, "source">): boolean {
@@ -986,7 +987,7 @@ function inSentence(cue: Pick<Cue, "kind"> & Pick<Partial<Cue>, "source">, text:
 
 /** Speech drops the metric the screen keeps: " (90 m)", " (0.6 to 1.9 km)" and "(LTS 1)" kept. */
 export function withoutMetric(text: string): string {
-  return text.replace(/\s\((?:about )?[\d.,]+(?: to [\d.,]+)? (?:km|m|km\/h)\)/g, "");
+  return text.replace(/\s\((?:about |unos )?[\d.,]+(?: (?:to|a) [\d.,]+)? (?:km|m|km\/h)\)/g, "");
 }
 
 /**

@@ -41,6 +41,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, time, timedelta
 
+from routemaker.lang import spanish, t
+
 CLOSED, UNKNOWN, PENALTY = "closed", "unknown", "penalty"
 # A bike lane blocked with the road open (DDOT's TOPS permits, v0.7.0 "DC closures
 # source"): a warning on the route, never a closure, no penalty.
@@ -958,16 +960,16 @@ def heads_up(zone: Zone) -> str:
     move (the owner, 2026-10-17: "the statement is way too verbose. We can cite our sources
     without all that extra noise"). Where it is, the source and until when are the
     entry's `citation`, shown in small text and not read out."""
-    name = zone.road or "The road"
-    on = f" on {zone.road}" if zone.road else ""
+    name = zone.road or t("The road")
+    on = t(" on {road}", road=zone.road) if zone.road else ""
     if zone.kind == CLOSED:
-        return f"{name} marked closed ahead."
+        return t("{road} marked closed ahead.", road=name)
     if zone.kind == UNKNOWN:
-        return f"{name} has every lane closed ahead; bike access unclear."
+        return t("{road} has every lane closed ahead; bike access unclear.", road=name)
     if zone.kind == LANE:
-        return f"Bike lane blocked ahead{on}."
+        return t("Bike lane blocked ahead{on}.", on=on)
     reason = (zone.reason or "").rstrip(".")
-    lead = "Heads-up" if zone.source in DC_SOURCES else "Work zone ahead"
+    lead = t("Heads-up") if zone.source in DC_SOURCES else t("Work zone ahead")
     return f"{lead}{on}, {reason}." if reason else f"{lead}{on}."
 
 
@@ -975,18 +977,18 @@ def citation(zone: Zone) -> str:
     """The small print under a zone's sentence: its source, and until when."""
     source = SOURCES.get(zone.source, zone.source)
     if zone.end is None:
-        return f"Source: {source}."
+        return t("Source: {source}.", source=source)
     last = last_day(zone.source, zone.end)
     if last is not None:
-        return f"Source: {source}, through {date_text(last)}."
-    return f"Source: {source}, until {date_text(zone.end)}."
+        return t("Source: {source}, through {date}.", source=source, date=cited_date(last))
+    return t("Source: {source}, until {date}.", source=source, date=cited_date(zone.end))
 
 
 def split_words(zone: Zone | None) -> str:
     """Where the route leaves the standard way for a closure it goes round (v0.8.2): the
     owner's "this road/bike path has been marked for closure, detour posted"."""
-    name = zone.road if zone is not None and zone.road else "The road ahead"
-    return f"{name} marked closed. Detour posted."
+    name = zone.road if zone is not None and zone.road else t("The road ahead")
+    return t("{road} marked closed. Detour posted.", road=name)
 
 
 # The sources whose zones are DC's closures and blocked lanes, not work zones (v0.7.0).
@@ -1000,6 +1002,7 @@ CLOSURE_SOURCES = DC_SOURCES | {"reviewer", "purple_line"}
 
 _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 _DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_MONTHS_ES = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic")
 
 
 def _local(moment: datetime) -> datetime:
@@ -1024,6 +1027,15 @@ def date_text(moment: datetime) -> str:
     """'Oct 20', in the region's time."""
     local = _local(moment)
     return f"{_MONTHS[local.month - 1]} {local.day}"
+
+
+def cited_date(moment: datetime) -> str:
+    """A citation's date in the route's language: 'Oct 20', or '20 de oct' in Spanish.
+    Only the citation is worded in Spanish; the cards' when-words stay English."""
+    if not spanish():
+        return date_text(moment)
+    local = _local(moment)
+    return f"{local.day} de {_MONTHS_ES[local.month - 1]}"
 
 
 # The sources whose windows are whole days: a reviewer's, a DDOT project advisory's
