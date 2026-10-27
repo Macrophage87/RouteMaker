@@ -7740,7 +7740,9 @@ no repository variables. The release key is four repository secrets the owner ad
 `ROUTEMAKER_KEYSTORE_BASE64`, `ROUTEMAKER_KEYSTORE_PASSWORD`, `ROUTEMAKER_KEY_ALIAS`,
 `ROUTEMAKER_KEY_PASSWORD`; never a file in the repository. The Play id comes from the
 `ROUTEMAKER_APP_ID` secret (`ROUTEMAKER_SITE_URL` is the store build's site); a debug build adds
-`.debug`, so a test build sits beside the store app. Changes under `mobile/` never trigger a beta deploy
+`.debug`, so a test build sits beside the store app. Tapped links to the site open the store app once the
+deployment sets `ANDROID_APP_ID` and `ANDROID_CERT_SHA256` (`/.well-known/assetlinks.json`, `core.app_links`;
+`mobile/README.md`, "Links open in the app"). Changes under `mobile/` never trigger a beta deploy
 (`scripts/beta/cd_logic.py`).
 
 The server needs nothing for it: the WebView loads the site at its own origin, so cookies, CSRF and
