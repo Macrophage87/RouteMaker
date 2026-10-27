@@ -7,6 +7,8 @@ import { ES } from "../i18n/es.ts";
 import { deviceLanguage, readLanguageChoice, setLanguageForTest, speechLang, t, writeLanguageChoice } from "./i18n.ts";
 import { arrivalSideWords, crossingWords, cueSpoken, endWords, exitWords, ontoWords, stopText, turnWords, type Cue } from "./navigate.ts";
 import { spokenDistance } from "./format.ts";
+import * as navigate from "./navigate.ts";
+import { OUTPUT_LABELS } from "./rideOutput.ts";
 
 const SRC = fileURLToPath(new URL("..", import.meta.url));
 
@@ -101,4 +103,18 @@ test("English is unchanged by the lookup", () => {
   assert.equal(exitWords({ number: 3, circle: "Dupont Circle" }, "P Street Northwest"), "Take the 3rd exit onto P Street Northwest at Dupont Circle");
   assert.equal(spokenDistance(150), "500 feet");
   assert.equal(crossingWords("sidewalk beside Georgia Avenue", "none"), "Busy crossing at sidewalk beside Georgia Avenue, no signal.");
+});
+
+test("every off-route, re-plan, weak-GPS and back-on-route sentence Ride says has its Spanish (routing audit D4)", () => {
+  // Module constants are made once at load (in English here), so each one's English is looked up in the catalog.
+  const said = Object.entries(navigate).filter(([name, value]) => /_SAID$|^REPLAN_/.test(name) && typeof value === "string") as [string, string][];
+  for (const name of ["OFF_ROUTE_SAID", "OFF_ROUTE_KEPT_SAID", "BACK_ON_ROUTE_SAID", "GPS_WEAK_SAID", "CUE_SHEET_SAID", "REPLAN_NO_AHEAD", "REPLAN_FINDING"])
+    assert.ok(said.some(([n]) => n === name), name);
+  assert.deepEqual(said.filter(([, english]) => !(english in ES)).map(([name]) => name), []);
+  const labels = [...Object.values(navigate.VERBOSITY_LABELS), ...Object.values(OUTPUT_LABELS)];
+  assert.deepEqual(labels.filter((english) => !(english in ES)), []);
+  // A level's short label is its name before the colon (lib/shortLabel.ts), in Spanish too.
+  for (const english of Object.values(navigate.VERBOSITY_LABELS)) assert.match(ES[english], /^[^:]+: /, english);
+  assert.equal(t("In {distance}", { distance: "0.4 mi (0.6 km)" }, "es"), "En 0.4 mi (0.6 km)");
+  assert.equal(t("Then in {distance}", { distance: "0.4 mi (0.6 km)" }, "es"), "Luego en 0.4 mi (0.6 km)");
 });
