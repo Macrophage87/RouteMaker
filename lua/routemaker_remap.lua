@@ -886,6 +886,15 @@ function M.remap_way(tags, derived)
     out.bicycle = "dismount"
   end
 
+  -- A walkway at a rail platform that `bicycle=yes` opens (`rm:platform_walk`,
+  -- routemaker.station_links.platform_walks; the owner, 2026-10-27: "For some strange
+  -- reason the handicap ramp at the Kensington rail station was marked as a bike path"):
+  -- walked as a station link is. This narrows the tag, from riding to walking, and only
+  -- for the ways the rebuild names; a closure reason still closes.
+  if derived.platform_walk and out.bicycle == nil and not derived.no_bicycle then
+    out.bicycle = "dismount"
+  end
+
   -- A sidewalk ridden as a last resort (`rm:sidewalk`, routemaker.sidewalks; the
   -- owner, 2026-10-20: "Bikes can go on sidewalks, especially in more rural parts",
   -- then "Also sidewalks as last resort"): a sidewalk or crosswalk, or a short footway

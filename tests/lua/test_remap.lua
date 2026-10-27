@@ -1156,6 +1156,17 @@ check("nor a closure reason (a CBD sidewalk)",
   M.remap_way({ highway = "footway", footway = "sidewalk" },
     { walk_link = true, is_trail_class = true, no_bicycle = "cbd_sidewalk" }).bicycle == "no")
 
+-- A bicycle=yes walkway at a rail platform (station_links.platform_walks, 2026-10-27,
+-- Kensington's wheelchair ramp): walked, not ridden as a path.
+check("a platform walkway that bicycle=yes opens is walked",
+  M.remap_way({ highway = "footway", bicycle = "yes" },
+    { platform_walk = true, is_trail_class = true }).bicycle == "dismount")
+check("but a closure reason still closes it",
+  M.remap_way({ highway = "footway", bicycle = "yes" },
+    { platform_walk = true, is_trail_class = true, no_bicycle = "cbd_sidewalk" }).bicycle == "no")
+check("and without the mark bicycle=yes is ridden",
+  M.remap_way({ highway = "footway", bicycle = "yes" }, { is_trail_class = true }).bicycle == nil)
+
 -- A paved way is not a mountain-bike trail: its rating, which Valhalla's parser
 -- prices as dirt, comes off (the Rock Creek Trail in Montgomery County, way
 -- 851669430 among others, as the 2026-10-03 extract tags it).

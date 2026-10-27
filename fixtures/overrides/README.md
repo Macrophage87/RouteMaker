@@ -512,3 +512,10 @@ in the database still names it: delete that row in the admin when loading the fi
   owner, 2026-10-25: "It's not a 4" and "Probably a 2.5". Stress rows at tier 2 with
   `half` (LTS 2.5), hidden, with fingerprints. Load like the others; takes effect on the
   next rebuild.
+
+- `2026-10-27-owner-third-ave-dirt-path.json`: one unpaved path in Silver Spring, way
+  187699941 (360 ft, 110 m), Elkhart Street to the Grace Church Road crossing at 3rd
+  Avenue, tagged only `highway=path` in OSM. The owner, 2026-10-27: "This path is
+  basically a bunch of dirt between houses. It might eventually be a bike path but isn't
+  now". Closed with a `bicycle=no` access row (so it is not drawn as a bike path either),
+  with a fingerprint. Load like the others; takes effect on the next rebuild.

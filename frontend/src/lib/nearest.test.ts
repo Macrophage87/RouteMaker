@@ -383,7 +383,7 @@ test("a detour is refused, not cut short, when the route already has as many poi
 
 test("Ride mode wires the detour: the ride's fix, the ride's settings without the loop, and a re-plan through the place", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(ride, /const points = via \? detourPoints\(left, via\) : left;/);
+  assert.match(ride, /let points = via \? detourPoints\(left, via\) : left;/);
   assert.match(ride, /here: fix\.point,/);
   assert.match(ride, /requestNearest\(from, places, preset, \{ \.\.\.dialsRef\.current, loop: false \}\)/);
   assert.match(ride, /void replan\(here, VIA_MARKS\.named\(\[item\.place\.point\[0\], item\.place\.point\[1\]\], item\.place\.title\)\);/);
@@ -393,7 +393,7 @@ test("Ride mode wires the detour: the ride's fix, the ride's settings without th
   assert.match(ride, /if \(check \? gate\.busy \|\| checking\.current : !gate\.begin\(Date\.now\(\)\)\) \{[^}]*if \(via\) sayDetour\(DETOUR_BUSY\);/);
   assert.match(ride, /const tell = \(note: string\) => \{\s*if \(via\) \{\s*sayDetour\(note\);/);
   assert.match(ride, /if \(gate\.busy\) \{\s*sayDetour\(DETOUR_BUSY\);/);
-  assert.match(ride, /whereRef\.current\?\.focus\(\);\s*sayDetour\(`Finding a way to/);
+  assert.match(ride, /whereRef\.current\?\.focus\(\);\s*sayDetour\(t\("Finding a way to \{place\}\."/);
   const app = appSource();
   assert.match(app, /water=\{ensureWater\}/);
 });

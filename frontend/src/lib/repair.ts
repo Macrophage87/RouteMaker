@@ -20,6 +20,7 @@ import { formatDistance, formatExtra, milesFigure } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { hexToRgb, rasterise, type Raster, type Rgb } from "./stationIcons.ts";
 import { WATER_ICON_PADDING } from "./waterRestrooms.ts";
+import { t } from "./i18n.ts";
 
 export interface RepairPlace {
   /** The OSM element, "n123" or "w456". */
@@ -234,10 +235,10 @@ export function repairText(item: RepairNearby, at: Date): string {
   return [`${repairTitle(item.place)}: ${repairHowFar(item)}.`, ...repairDetails(item.place, at)].join(" ");
 }
 
-export const REPAIR_NONE = "No repair stands or bike shops known yet: they arrive with the next map data update.";
-export const REPAIR_UNAVAILABLE = "Repair stands and bike shops are unavailable for now; try again shortly.";
-export const REPAIR_NO_ORIGIN = "Location unknown: press Locate, or move the map.";
-export const REPAIR_NOTE = "Straight-line distances, or estimated detours with a route; check hours (OpenStreetMap).";
+export const REPAIR_NONE = t("No repair stands or bike shops known yet: they arrive with the next map data update.");
+export const REPAIR_UNAVAILABLE = t("Repair stands and bike shops are unavailable for now; try again shortly.");
+export const REPAIR_NO_ORIGIN = t("Location unknown: press Locate, or move the map.");
+export const REPAIR_NOTE = t("Straight-line distances, or estimated detours with a route; check hours (OpenStreetMap).");
 
 /** The status line once the list is in. */
 export function repairFoundSaid(items: readonly RepairNearby[], fromHere: boolean): string {
