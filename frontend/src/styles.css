@@ -8405,6 +8405,23 @@ details.fold > summary .icon {
   min-height: 52px;
 }
 
+/* Held for its QR code (lib/broadcastQr.ts): no text selection or the phone's own long-press menu on it. */
+.broadcast-button,
+.ride-round.broadcast-hold {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Big and on white, whatever the theme, for a camera to read. */
+.broadcast-qr {
+  display: block;
+  width: min(100%, 320px);
+  height: auto;
+  margin: 0 auto 12px;
+  background: #ffffff;
+}
+
 .start-ride .broadcast-note,
 .route-actions-row > .broadcast-note {
   flex-basis: 100%;
