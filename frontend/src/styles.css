@@ -6808,6 +6808,13 @@ details.fold > summary .icon {
   font-size: 20px;
   font-weight: 700;
   border-width: 2px;
+  /* Yellow (Stephen 2026-10-27: "Make the button yellow"), the same in both themes: near-black on it, 12:1. */
+  background: #ffd21f;
+  color: #1a1a1a;
+  border-color: #1a1a1a;
+}
+.ride-group-bar .ride-alert-button[aria-expanded="true"] {
+  background: #f0b800;
 }
 .ride-group-bar .ride-riders {
   min-height: 56px;
