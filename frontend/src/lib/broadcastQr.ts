@@ -16,7 +16,7 @@ export const BROADCAST_QR_HEADING = t("Scan to follow");
 export const BROADCAST_QR_LEAD = t("Riders nearby point their phone's camera at this code to open the ride and follow its leader.");
 export const BROADCAST_QR_NAME = t("QR code for the broadcast link");
 export const BROADCAST_QR_START = t("Start ride");
-export const BROADCAST_QR_CLOSE = "Close";
+export const BROADCAST_QR_CLOSE = t("Close");
 /** Said with each Broadcast button, so the hold is found by those who do not see it. */
 export const BROADCAST_HOLD_HINT = t("Hold it, right-click it, or press Shift+F10 for a QR code to scan instead.");
 

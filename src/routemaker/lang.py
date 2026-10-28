@@ -68,6 +68,11 @@ _WAY_ES = (
     (re.compile(r"^an unnamed road\b"), "una calle sin nombre"),
     (re.compile(r"^the road\b"), "la calle"),
     (re.compile(r"^this part of the route\b"), "esta parte de la ruta"),
+    # An unnamed lane named after its street at the rebuild (facility.sidepath_name,
+    # "9th Street Northwest protected bike lane"), the protected one first (round-2
+    # audit D16): the facility words lang_es already uses, the street as it is.
+    (re.compile(r"^(.+) protected bike lane$"), r"el carril bici protegido de \1"),
+    (re.compile(r"^(.+) bike lane$"), r"el carril bici de \1"),
 )
 
 

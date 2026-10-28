@@ -93,6 +93,6 @@ test("the station lists (crowded to pick up, low to return) and the route option
   const pins = { pickup: { id: "a", name: "A", at: start }, dropoff: { id: "b", name: "B", at: end } };
   assert.deepEqual(activePins("rebalance", [start, end], pins), pins);
   const app = appSource();
-  assert.match(app, /usesBikeshare\(preset\) && points\.length > 0 \? \(\s*<Fold title="Choose a station"/);
+  assert.match(app, /usesBikeshare\(preset\) && points\.length > 0 \? \(\s*<Fold title=\{t\("Choose a station"\)\}/);
   assert.match(app, /mode === "go" && usesBikeshare\(preset\) && shown/);
 });

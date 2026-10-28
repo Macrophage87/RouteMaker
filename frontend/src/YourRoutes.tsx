@@ -7,9 +7,10 @@ import { useId, useState } from "react";
 import { KeptRoutes } from "./InstallableApp.tsx";
 import { MyRoutes, type MyRoutesProps } from "./MyRoutes.tsx";
 import type { KeptRoute } from "./lib/offlineRoutes.ts";
+import { t } from "./lib/i18n.ts";
 
-export const YOUR_ROUTES = "Your routes";
-export const SEARCH_ROUTES = "Search your routes";
+export const YOUR_ROUTES = t("Your routes");
+export const SEARCH_ROUTES = t("Search your routes");
 
 export function YourRoutes({
   signedIn,

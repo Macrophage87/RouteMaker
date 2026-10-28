@@ -12,6 +12,7 @@
  * the afternoon, nothing is shown ("Then just leave empty"). Times in the region's time, miles first.
  */
 import type { LonLat } from "./geo.ts";
+import { t } from "./i18n.ts";
 import { haversineM } from "./geo.ts";
 import { formatDuration, formatMilePost } from "./format.ts";
 import type { When } from "./dials.ts";
@@ -29,10 +30,10 @@ const ZENITH_CIVIL = 96;
 export type LightKind = "civil_dawn" | "sunrise" | "sunset" | "civil_dusk";
 
 export const LIGHT_NAME: Record<LightKind, string> = {
-  civil_dawn: "Civil twilight begins",
-  sunrise: "Sunrise",
-  sunset: "Sunset",
-  civil_dusk: "Civil twilight ends",
+  civil_dawn: t("Civil twilight begins"),
+  sunrise: t("Sunrise"),
+  sunset: t("Sunset"),
+  civil_dusk: t("Civil twilight ends"),
 };
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
@@ -205,8 +206,8 @@ export function lightClock(ms: number): string {
 /** One event in words: "Sunset 6:31 PM near mile 12.4 (20.0 km)", "Sunrise 7:18 AM, after you arrive". */
 export function lightMarkSaid(mark: LightMark): string {
   const head = `${LIGHT_NAME[mark.kind]} ${lightClock(mark.at)}`;
-  if (mark.where === "after") return `${head}, after you arrive`;
-  return `${head} near ${formatMilePost(mark.alongM ?? 0)}`;
+  if (mark.where === "after") return t("{head}, after you arrive", { head });
+  return t("{head} near {mile}", { head, mile: formatMilePost(mark.alongM ?? 0) });
 }
 
 /** The route summary's one line (the accessible form of the map's marks), or null: "Sunset 6:31 PM near mile 12.4 (20.0 km); civil twilight ends 6:58 PM, after you arrive." */
@@ -223,7 +224,7 @@ export function lightMarkerText(mark: LightMark): string {
 
 /** The map marker's accessible name: "Sunset 6:31 PM, where you will be near mile 12.4 (20.0 km)". */
 export function lightMarkerLabel(mark: LightMark): string {
-  return `${lightMarkerText(mark)}, where you will be near ${formatMilePost(mark.alongM ?? 0)}`;
+  return t("{mark}, where you will be near {mile}", { mark: lightMarkerText(mark), mile: formatMilePost(mark.alongM ?? 0) });
 }
 
 export interface Box {
@@ -266,10 +267,10 @@ export function routeLightMarks(
 
 /** Ride mode's corner (the owner, 2026-10-19): the light names kept short to fit beside the top row's buttons. */
 const LIGHT_SHORT: Record<LightKind, string> = {
-  civil_dawn: "Twilight",
-  sunrise: "Sunrise",
-  sunset: "Sunset",
-  civil_dusk: "Twilight",
+  civil_dawn: t("Twilight"),
+  sunrise: t("Sunrise"),
+  sunset: t("Sunset"),
+  civil_dusk: t("Twilight"),
 };
 
 /**
@@ -297,12 +298,13 @@ export function rideLightCorner(
   if (marks.length === 0) return null;
   // The time till each, while it is still ahead (the owner, 2026-10-20: "put minutes till in parentheses").
   const till = (at: number) => (at - nowMs >= 30_000 ? formatDuration((at - nowMs) / 1000) : "");
-  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const minutesSaid = (n: number) => (n === 1 ? t("1 minute") : t("{n} minutes", { n }));
+  const hoursSaid = (n: number) => (n === 1 ? t("1 hour") : t("{n} hours", { n }));
   const tillSaid = (at: number) => {
     const minutes = Math.max(1, Math.round((at - nowMs) / 60_000));
-    return minutes < 60 ? plural(minutes, "minute") : `${plural(Math.floor(minutes / 60), "hour")} ${plural(minutes % 60, "minute")}`;
+    return minutes < 60 ? minutesSaid(minutes) : `${hoursSaid(Math.floor(minutes / 60))} ${minutesSaid(minutes % 60)}`;
   };
-  const said = marks.map((m) => `${LIGHT_NAME[m.kind]} ${lightClock(m.at)}${till(m.at) ? `, in ${tillSaid(m.at)}` : ""}`);
+  const said = marks.map((m) => `${LIGHT_NAME[m.kind]} ${lightClock(m.at)}${till(m.at) ? t(", in {time}", { time: tillSaid(m.at) }) : ""}`);
   return {
     shown: marks.map((m) => `${LIGHT_SHORT[m.kind]} ${lightClock(m.at)}${till(m.at) ? ` (${till(m.at)})` : ""}`),
     said: `${said.map((text, i) => (i === 0 ? text : text.charAt(0).toLowerCase() + text.slice(1))).join("; ")}.`,

@@ -180,6 +180,7 @@ import {
 import { ViaHold } from "./lib/viaHold.ts";
 import { planLegLines, routeDrawnLines } from "./lib/planLegs.ts";
 import { browserCompassEnv, watchCompass } from "./lib/compassHeading.ts";
+import { t } from "./lib/i18n.ts";
 
 
 export type StressAvailability = "checking" | "available" | "unavailable";
@@ -710,7 +711,12 @@ export function MapView(props: Props) {
       attributionControl: false,
       // The "i" opens the map's info panel (lib/mapInfo.ts), not only the credits: say so. It reads
       // "Help" on screen, so its name starts with that word.
-      locale: { "AttributionControl.ToggleAttribution": "Help: map info and credits" },
+      locale: {
+        "AttributionControl.ToggleAttribution": t("Help: map info and credits"),
+        "NavigationControl.ZoomIn": t("Zoom in"),
+        "NavigationControl.ZoomOut": t("Zoom out"),
+        "NavigationControl.ResetBearing": t("Drag to rotate map, click to reset north"),
+      },
       cooperativeGestures: false,
       // The labels' font comes with the app, not the base map (lib/mapGlyphs.ts).
       transformRequest: mapGlyphRequest,
@@ -743,7 +749,7 @@ export function MapView(props: Props) {
     const canvas = map.getCanvas();
     canvas.setAttribute(
       "aria-label",
-      "Map. Use arrow keys to pan and plus or minus to zoom. Press I for what is known about the road at the center.",
+      t("Map. Use arrow keys to pan and plus or minus to zoom. Press I for what is known about the road at the center."),
     );
     canvas.setAttribute("aria-keyshortcuts", "I");
     canvas.addEventListener("focus", () => callbacks.current.onCanvasFocus(true));
@@ -2831,7 +2837,7 @@ export function MapView(props: Props) {
 
   return (
     <>
-      <div ref={container} className="map" role="region" aria-label="Map" inert={props.screenReaderRide || undefined} />
+      <div ref={container} className="map" role="region" aria-label={t("Map")} inert={props.screenReaderRide || undefined} />
       {toolsHost && props.tools ? createPortal(props.tools, toolsHost) : null}
     </>
   );

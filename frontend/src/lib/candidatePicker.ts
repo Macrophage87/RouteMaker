@@ -11,6 +11,7 @@
  * arrow press (the a11y review's SF2). Written with createElement so a test renders it.
  */
 import { createElement as h, useId, type ReactElement } from "react";
+import { t } from "./i18n.ts";
 import { candidateRows, candidatesHint } from "./candidates.ts";
 import type { RouteResponse } from "./api.ts";
 
@@ -34,7 +35,7 @@ export function candidateFieldset(id: string, { answer, choice, onChoose, colour
   return h(
     "fieldset",
     { className: "candidates", "aria-describedby": hintId },
-    h("legend", null, "Routes to choose from"),
+    h("legend", null, t("Routes to choose from")),
     h("p", { className: "hint", id: hintId }, candidatesHint(answer)),
     ...rows.map((row, index) =>
       h(
