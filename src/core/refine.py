@@ -102,6 +102,7 @@ import copy
 import dataclasses
 import logging
 import math
+import threading
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 
@@ -2609,10 +2610,19 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
             continue
         seen.add(key)
         asks.append(chosen)
-    asking = _ask_ways_back(asks, stop_at, ctx, k)
+    abandoned = threading.Event()
+    asking = _ask_ways_back(asks, stop_at, ctx, k, abandoned)
     try:
         for number, chosen in enumerate(asks):
-            if stop_at - routing.clock() < REFINE_ROUND_MIN_S:
+            future = asking[number] if asking else None
+            # A way back still to be asked, or still being asked, needs a whole round; one
+            # already answered (its trace with it) needs only the time to read it, which the
+            # reads below are held to (review of S24: with the gate on every one, a slow
+            # router's answers, all in hand, were passed over and the loop was the
+            # out-and-back where asking them in turn found one).
+            ready = future is not None and future.done()
+            left = stop_at - routing.clock()
+            if left <= 0 or (not ready and left < REFINE_ROUND_MIN_S):
                 break
             info["tried"] += 1
             # The way back alone is read for its route only, without its junctions (audit
@@ -2620,7 +2630,8 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
             # it could be read at all, not that its junctions were, or every way back would
             # be passed over and the loop would be the out-and-back.
             read, back_trip = _through(
-                (), stop_at, ctx, chosen, k, asked=asking[number] if asking else None,
+                (), stop_at, ctx, chosen, k,
+                asked=_way_back_answer(future, ctx) if future is not None else None,
                 with_events=False,
             )  # fmt: skip
             if read == "time":
@@ -2645,8 +2656,11 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
                 best = (ranked, joined, whole, len(chosen), share)
     finally:
         # The asks not read (the time ran out, or the plan was cancelled): one still queued
-        # is never sent; one already running ends at its own deadline, and a cancelled plan
-        # waits for it before it gives back its routing slot (`parallel.settle`).
+        # is never sent; one already running ends at its own deadline and does not go on to
+        # its trace, and a cancelled plan waits for it before it gives back its routing slot
+        # (`parallel.settle`). Their traces are never in `ctx.traces` until the way back is
+        # read (`_way_back_answer`), so none is left there without a reader.
+        abandoned.set()
         for future in asking or ():
             future.cancel()
     if best is None or best[4] >= LOOP_OUT_AND_BACK:
@@ -2667,40 +2681,70 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
 
 
 def _ask_ways_back(
-    asks: list[list[tuple[float, float]]], stop_at: float, ctx: Context, k: int
+    asks: list[list[tuple[float, float]]],
+    stop_at: float,
+    ctx: Context,
+    k: int,
+    abandoned: threading.Event,
 ) -> list[Future] | None:
     """`make_loop`'s ways back, each leg `k` with one of `asks` excluded, asked together on
-    the pool and their traces after them (audit round 2, S24, as `_wide` asks its routes):
-    they do not depend on each other. None (each asked in turn, as before) where the pool is
-    off, there is one, or there is not the time for one round. The pool's bound holds: at
-    most ROUTER_PARALLEL_CALLS of them run at once beside the request's own thread
-    (`core.parallel`), and each answer, a route of one leg, is held only until it is read."""
+    the pool, each with its own trace after it (audit round 2, S24, as `_wide` asks its
+    routes): they do not depend on each other. None (each asked in turn, as before) where the
+    pool is off, there is one, or there is not the time for one round. Not waited for here:
+    `make_loop` reads each as soon as it answers (`_way_back_answer`). The pool's bound
+    holds: at most ROUTER_PARALLEL_CALLS of them run at once beside the request's own thread
+    (`core.parallel`, which also keeps them for a cancelled plan's `settle`), and each
+    answer, a route of one leg and its trace, is held only until it is read. Once
+    `abandoned` is set an ask that answers does not go on to its trace."""
     if not parallel.enabled() or len(asks) < 2 or stop_at - routing.clock() < REFINE_ROUND_MIN_S:
         return None
     deadline = _round_deadline(stop_at, ctx)
-    asking = [
+    reading = routing.Deadline(stop_at, ctx.deadline.per_call_s)
+    return [
         parallel.submit(
-            routing._call, ctx.variant, "route", _through_request((), ctx, chosen, k), deadline
+            _way_back, ctx, _through_request((), ctx, chosen, k), deadline, reading, abandoned
         )
         for chosen in asks
     ]
-    answered = []
-    for future in asking:
-        try:
-            answered.append(routing.await_future(future).get("trip") or {})
-        except routing.PlanCancelled:
-            # Cancelled while waiting (`core.plan_cancel`): the reading gives way.
-            break
-        except Exception:  # noqa: BLE001 - read again, and handled, in `make_loop`
+
+
+def _way_back(
+    ctx: Context,
+    request: dict,
+    deadline: routing.Deadline,
+    reading: routing.Deadline,
+    abandoned: threading.Event,
+) -> tuple[dict, dict]:
+    """On the pool: one way back's /route and then, where the plan keeps traces and the way
+    back is still wanted, its legs' traces, as (answer, {shape: trace}). A trace that fails
+    is left out, to be asked again by its reader."""
+    answer = routing._call(ctx.variant, "route", request, deadline)
+    traced: dict = {}
+    if ctx.traces is None:
+        return answer, traced
+    for leg in (answer.get("trip") or {}).get("legs") or []:
+        shape = leg.get("shape", "")
+        if abandoned.is_set() or leg.get("drawn") or shape in traced:
             continue
-    routing.prefetch_traces(
-        ctx.variant,
-        ctx.costing,
-        answered,
-        routing.Deadline(stop_at, ctx.deadline.per_call_s),
-        ctx.traces,
-    )
-    return asking
+        try:
+            traced[shape] = routing.trace_leg(ctx.variant, ctx.costing, shape, reading)
+        except Exception:  # noqa: BLE001 - its reader asks again and handles it
+            continue
+    return answer, traced
+
+
+def _way_back_answer(future: Future, ctx: Context) -> Future:
+    """A way back asked on the pool (`_way_back`), waited for: its traces put in the plan's
+    `ctx.traces` for its reader, and its answer as a settled future for `_through` (or the
+    error it raised, which `_through` handles as before)."""
+    try:
+        answer, traced = routing.await_future(future)
+    except Exception as error:  # noqa: BLE001 - `_through` handles it, as before
+        return parallel.done(error=error)
+    if ctx.traces is not None:
+        for shape, trace in traced.items():
+            ctx.traces.setdefault(routing._trace_key(ctx.variant, ctx.costing, shape), trace)
+    return parallel.done(answer)
 
 
 def _loop_before(ranked: tuple, whole: Analysis, best: tuple, ctx: Context) -> bool:
