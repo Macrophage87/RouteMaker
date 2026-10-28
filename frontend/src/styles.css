@@ -450,15 +450,6 @@ progress.planning {
   margin: 0;
 }
 
-details.how {
-  margin: 2px 0 6px;
-}
-
-details.how summary {
-  cursor: pointer;
-  min-height: 24px;
-}
-
 .stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -958,6 +949,12 @@ button.secondary {
   margin: 0;
 }
 
+/* A route up to date (P10): nothing of the panel shows, so it takes no room (its words are still read). */
+.plan-panel.plan-panel-quiet {
+  padding: 0;
+  border: 0;
+}
+
 .plan-sentences {
   margin: 0;
   line-height: 1.6;
@@ -971,8 +968,7 @@ button.secondary {
 
 .plan-route,
 .plan-routing,
-.plan-change,
-.plan-reset-clear {
+.plan-change {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -998,7 +994,11 @@ button.secondary {
   font-variant-numeric: tabular-nums;
 }
 
-.plan-reset-clear button[aria-disabled="true"] {
+.plan-reset {
+  min-height: 44px;
+}
+
+.plan-reset[aria-disabled="true"] {
   opacity: 0.6;
 }
 
@@ -1120,6 +1120,15 @@ button.secondary {
 
 .point-place .coords {
   font-size: 0.78rem;
+}
+
+/* A named point's street or neighbourhood (P10), where its coordinates were. */
+.point-place .place-area {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* A Mass Ride point on federal land (lib/federalStops.ts, item 239): its warning on a line of its own
@@ -1613,6 +1622,28 @@ dialog.ride-types::backdrop {
   justify-content: space-between;
   gap: 8px;
   font-weight: 600;
+}
+
+/* P10: a dial's line with its one (i) at the end, in Settings' style (SettingRow's .info-tip). */
+.dial-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.dial-head > .dial-label,
+.dial-head > .toggle,
+.dial-head > .hint {
+  flex: 1;
+  min-width: 0;
+}
+.dial-head > .hint {
+  margin: 0;
+}
+.dial-head .info-tip {
+  flex: none;
+}
+.dial-info p {
+  margin: 0 0 6px;
 }
 
 .dial-now {
@@ -2670,13 +2701,6 @@ dialog.weight-dialog h2 {
   min-height: 44px;
 }
 
-/* `details.how summary` (24 px, above) is more specific than `.panel summary`, so in the planner it
-   would win: say 44 px here too (the trails-off a11y review's SF1). Its display stays list-item, so the
-   disclosure marker stays. */
-.panel details.how summary {
-  min-height: 44px;
-}
-
 .panel button.link,
 .panel .toggle {
   min-height: 44px;
@@ -2823,7 +2847,8 @@ button.secondary,
 }
 
 .dials fieldset.when .hint,
-.dials fieldset.when .how {
+.dials fieldset.when .dial-head,
+.dials fieldset.when .dial-info {
   flex-basis: 100%;
   margin: 2px 0 0;
 }
@@ -3571,6 +3596,23 @@ details.zoom-notes {
   border: 0;
 }
 
+/* The chart's prompt names the arrow keys only where there is a keyboard (P10): on a touch screen, unless
+   accessibility mode is on, it says "Move along the chart" alone. */
+.pc-readout .pc-prompt-touch {
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .app:not(.access-mode) .pc-readout .pc-prompt-keys {
+    display: none;
+  }
+
+  .app:not(.access-mode) .pc-readout .pc-prompt-touch {
+    display: inline;
+  }
+}
+
+.pc-key-fold > summary,
 .pc-table-fold > summary {
   min-height: 44px;
   display: flex;
@@ -5444,6 +5486,45 @@ details.zoom-notes {
   height: 5px;
   border-radius: 3px;
   background: var(--swatch-border);
+}
+
+/* Plan on a phone (P10): Go's handle and sizes. The handle row is the handle across the sheet's top with the Go/Plan
+   switch on its right; the peek is the planner hidden (the handle row only), half and full are Go's heights. */
+@media (max-width: 720px) {
+  .panel.plan-sheet .plan-handle-row {
+    position: relative;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    min-height: 52px;
+    padding: 4px 10px;
+  }
+
+  .panel.plan-sheet .plan-handle-row .go-handle {
+    position: absolute;
+    inset: 0;
+    min-height: 0;
+    margin: 0;
+  }
+
+  .panel.plan-sheet .plan-handle-row .mode-switch {
+    position: relative;
+  }
+
+  .panel.plan-sheet.plan-half {
+    max-height: 56%;
+  }
+
+  .panel.plan-sheet.plan-full {
+    max-height: calc(100% - 64px);
+  }
+
+  .app:has(.panel.plan-sheet.plan-half) .maplibregl-ctrl-bottom-right {
+    bottom: 56%;
+  }
+
+  .app:has(.panel.plan-sheet.plan-half) .beta-chip {
+    bottom: calc(56% + 10px);
+  }
 }
 
 .go-search .place-search-row {
@@ -7661,28 +7742,8 @@ details.fold > summary .icon {
   min-height: 44px;
 }
 
-.route-state {
-  font-weight: 400;
-}
-
-.route-button[aria-disabled="true"]:has(.route-state) {
-  opacity: 1;
-  background: var(--bg-soft);
-  color: var(--accent);
-  border: 1px solid var(--border);
-}
-
 .plan-route .route-button {
   flex: 1 1 auto;
-}
-
-.plan-more {
-  min-width: 44px;
-  min-height: 44px;
-}
-
-.plan-reset-clear[hidden] {
-  display: none;
 }
 
 /* Plan's route totals on one line (Plan streamline, Stephen 2026-10-17): time, distance, climb and descent. */

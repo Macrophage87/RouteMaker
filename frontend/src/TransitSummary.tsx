@@ -157,8 +157,7 @@ export function TransitSummary({
           </p>
         </>
       )}
-      {plan.credits.length > 0 && <p className="route-credit">Transit times: {plan.credits.join("; ")}.</p>}
-      {plan.live && <p className="route-credit">Live: {plan.live.credit}.</p>}
+      {/* The trip's sources (its schedules and WMATA's live data) are in the route's Info, once (P10). */}
     </section>
   );
 }

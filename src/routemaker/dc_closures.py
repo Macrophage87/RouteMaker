@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from xml.etree import ElementTree
 
 from . import workzones as wz
@@ -1312,6 +1312,22 @@ def segment_zone(advisory: Advisory, index: int, segment: Segment, line) -> wz.Z
 # --- NPS alerts -----------------------------------------------------------------------
 
 NPS_PARKS = ("rocr", "nama", "gwmp", "choh", "anac")
+# A link's host: dotted names of letters, digits and hyphens, nothing else (no port, no second scheme).
+_HOST = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}")
+
+
+def web_link(url: str) -> bool:
+    """An https link a rider can open: a real host, and no second address run into it. An NPS
+    alert once linked "https://www.nps.govhttos://www.nps.gov/rocr" (a typo'd link pasted after
+    the site's own address); such a link is dropped for the park's page, never repaired."""
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return False
+    host = parts.netloc.lower()
+    return parts.scheme == "https" and _HOST.fullmatch(host) is not None and "://" not in url[len("https://") :]
+
+
 # The alert categories that can close the way (NPS: Danger, Caution, Information, Park
 # Closure); "Information" is left out.
 NPS_CATEGORIES = frozenset({"park closure", "danger", "caution"})
@@ -1341,7 +1357,7 @@ def parse_nps(document: Mapping) -> list[Notice]:
                 source="nps",
                 title=title[:160],
                 text=text,
-                url=url if url.startswith("https://") else PARKS[park].url,
+                url=url if web_link(url) else PARKS[park].url,
                 area=park,
                 published=_published(str(alert.get("lastIndexedDate") or "") or None),
                 category=category,

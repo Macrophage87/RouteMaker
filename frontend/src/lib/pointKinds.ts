@@ -171,6 +171,8 @@ export const MANUAL_LABEL = t("Manual mode");
 export const MANUAL_TITLE = t("Manual mode: each point you tap is joined by a straight line");
 export const MANUAL_ON_SAID = t("Manual mode on. Each point you tap is the new end, joined by a straight line.");
 export const MANUAL_OFF_SAID = t("Manual mode off. New points are routed.");
+/** Manual mode turned on in a loop turns the loop off (each tap is the new end): said, and shown on the badge (P10). */
+export const MANUAL_LOOP_OFF = t("Loop off.");
 /** Said after a point's "added" when the line to it is drawn. */
 export const DRAWN_SAID = t("Joined by a straight line.");
 

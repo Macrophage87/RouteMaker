@@ -367,7 +367,7 @@ export function PlaceSearch({
     <div className={variant === "go" ? "place-search go-search" : "place-search"}>
       {/* Go's Where to? and Add a stop say their names in the box (and Add a stop on the button that opens it). */}
       <label htmlFor={`${id}-input`} className={variant === "go" || variant === "stop" ? "place-search-label visually-hidden" : "place-search-label"}>
-        {t(variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "work" ? "Find your Work" : variant === "favorite" ? "Find a place to save" : variant === "start" ? "Start from" : variant === "stop" || variant === "add" ? "Add a stop" : variant === "from" ? "From" : variant === "to" ? "To" : "Find a place")}
+        {t(variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "work" ? "Find your Work" : variant === "favorite" ? "Find a place to save" : variant === "start" ? "Start from" : variant === "stop" || variant === "add" ? "Add a stop" : variant === "from" ? (loop ? "Start and finish (loop)" : "From") : variant === "to" ? "To" : "Find a place")}
         {current && <span className="place-search-current">{` (now ${current})`}</span>}
       </label>
       <div className={(locate && !locate.listOnly) || variant === "go" ? "place-search-row" : undefined}>

@@ -657,6 +657,18 @@ export interface PointRow {
   coords: string;
 }
 
+/**
+ * Where a named point is, under its name in the points list (P10, in place of its coordinates): the rest of its
+ * label, the street or neighbourhood the reverse geocoder gives ("Connecticut Avenue Northwest, Dupont Circle,
+ * Washington" is "Dupont Circle, Washington"), or "" where the label says no more than the name.
+ */
+export function placeArea(place: { name: string; label: string }): string {
+  const label = place.label.trim();
+  const name = place.name.trim();
+  if (label === name) return "";
+  return label.startsWith(`${name}, `) ? label.slice(name.length + 2) : label;
+}
+
 /** The points list the panel shows (App.tsx renders these). */
 export function pointRows(
   points: readonly LonLat[],

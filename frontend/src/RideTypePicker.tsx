@@ -147,7 +147,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
             </button>
           </header>
           <p className="hint">
-            Choosing one moves the traffic and hills sliders to where it starts them.{" "}
+            {t("Sets traffic and hills for this kind of ride.")}{" "}
             <button type="button" className="link ride-types-full" aria-pressed={full} onClick={() => setFull(!full)}>
               What each does
             </button>

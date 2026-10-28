@@ -49,3 +49,34 @@
 .description-status {
   margin: 0;
 }
+/* The notices before step 1 (P10): one closed line, "8 alerts on this route ›", a 44 px target. */
+.route-notices {
+  margin: 4px 0;
+  font-size: 0.9rem;
+}
+.route-notices > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 700;
+  list-style: none;
+}
+.route-notices > summary::-webkit-details-marker {
+  display: none;
+}
+.route-notices > summary > span {
+  display: inline-block;
+  margin-left: 0.3em;
+}
+.route-notices[open] > summary > span {
+  transform: rotate(90deg);
+}
+.route-notices ul {
+  margin: 0 0 8px;
+  padding-left: 1.2rem;
+}
+.route-notices li {
+  margin: 4px 0;
+}

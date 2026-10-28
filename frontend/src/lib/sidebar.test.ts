@@ -153,8 +153,12 @@ test("the Ride line is a heading holding a button with aria-expanded, whose word
     html,
     /<span class="ride-line-label">Ride settings<\/span><span class="ride-line-summary" aria-hidden="true"><span class="ride-chip">quiet streets<\/span><span class="ride-chip">now<\/span><\/span><span class="visually-hidden">: quiet streets, now\.<\/span>/,
   );
-  // Shown Adjust or Done, heard Adjust whatever the state: aria-expanded says it (no "Done, expanded": N8).
-  assert.match(html, /<span class="ride-line-action" aria-hidden="true">Adjust<\/span><span class="visually-hidden"> Adjust<\/span>/);
+  // Shown Adjust or Done, heard Adjust whatever the state: aria-expanded says it (no "Done, expanded": N8). Closed,
+  // the word is there once, shown and heard (P10: not "Adjust Adjust"); open, "Done" is shown and "Adjust" heard.
+  assert.match(html, /<span class="ride-line-action"> Adjust<\/span><\/button>/);
+  assert.doesNotMatch(html, /Adjust<\/span><span class="visually-hidden"> Adjust/);
+  const parts = readFileSync(new URL("./sidebarParts.ts", import.meta.url), "utf8");
+  assert.match(parts, /h\("span", \{ key: "shown", className: "ride-line-action", "aria-hidden": "true" \}, rideActionLabel\(open\)\),\s*h\("span", \{ key: "said", className: "visually-hidden" \}, ` \$\{RIDE_ACTION_SPOKEN\}`\),/);
   assert.equal(rideActionLabel(false), "Adjust");
   assert.equal(rideActionLabel(true), "Done");
   assert.equal(RIDE_ACTION_SPOKEN, "Adjust");
@@ -238,13 +242,16 @@ test("the points come first, the how-to is behind Points' Info, Swap and Undo be
   );
   assert.match(app, /className="secondary icon-button tips-toggle" aria-expanded=\{tips\} aria-controls=\{tipsId\} onClick=\{\(\) => setTips\(!tips\)\}/);
   // Every existing button is still there: Swap, Undo and Redo in the heading's row, Info last (Plan streamline,
-  // 2026-10-17); Reset and Clear behind the plan panel's More. Add point at map center is in Map tools (450).
+  // 2026-10-17), where Plan's bar is not (P10: the bar holds them in Plan, one set per layout); Reset in the plan
+  // panel, Clear the bar's trash. Add point at map center is in Map tools (450).
   const row = ["swap-points", 'data-history="undo"', 'data-history="redo"', "tips-toggle"].map((t) => app.indexOf(t));
   assert.ok(row.every((i) => i > 0));
   assert.deepEqual(row, [...row].sort((a, b) => a - b));
+  assert.match(app, /\{historyHere && \(\s*<button type="button" className="secondary icon-button" data-history="undo"/);
+  assert.match(src("../App.tsx"), /historyHere: !narrow && !planFirst,/);
   const panel = src("../app/PlanPanel.tsx");
-  assert.ok(panel.indexOf('className="actions plan-reset-clear" hidden={!moreOpen}') > panel.indexOf('aria-label="More: Reset and Clear"'));
-  assert.ok(panel.indexOf("{RESET_LABEL}") < panel.indexOf("{CLEAR_LABEL}"));
+  assert.ok(panel.includes("{RESET_LABEL}"));
+  assert.ok(!panel.includes("{CLEAR_LABEL}"));
   assert.doesNotMatch(app, /className="actions point-add"|ref=\{addRef\}/);
   assert.match(app, /accessMode && !onBike \? \(\s*<MapTools\s+toggleRef=\{toolsToggleRef\}\s+onAddPoint=\{addAtCentre\}/);
   assert.equal(
@@ -513,7 +520,7 @@ test("the route's folds: Elevation and climbs, Stress and facilities, Directions
   const order = [
     "title={elevationTitle}",
     "title={ROUTE_FOLDS.facilities.title}",
-    "<RouteDescription route={route} fold rideAction={rideAction} federal={federal} />",
+    "<RouteDescription route={route} fold federal={federal} />",
     "<Fold title={ROUTE_FOLDS.junctions.title} count={junctions}",
     "<Fold title={ROUTE_FOLDS.choices.title} count={pickerCount}",
     "title={ROUTE_FOLDS.water.title}",
@@ -600,7 +607,7 @@ test("Directions as a fold: an h3 first, a closed details named with its steps, 
   const component = src("../RouteDescription.tsx");
   const fold = component.slice(component.indexOf("if (fold) {"), component.indexOf('<section className="route-description"'));
   assert.match(fold, /if \(entries\.length === 0\) return null;/, "no \"Directions (0 steps)\"");
-  assert.match(fold, /<Fold\s+title=\{ROUTE_FOLDS\.directions\.title\}\s+count=\{stepsCount\(entries\.length\)\}\s+icon="list"\s+heading=\{ROUTE_FOLDS\.directions\.title\}\s+headingId="route-description-heading"\s+open=\{open\}/);
+  assert.match(fold, /<Fold\s+title=\{ROUTE_FOLDS\.directions\.title\}\s+count=\{stepsCount\(steps\.length\)\}\s+icon="list"\s+heading=\{ROUTE_FOLDS\.directions\.title\}\s+headingId="route-description-heading"\s+open=\{open\}/);
   // The rider's open or closed is remembered (writeOpen), once per change.
   assert.match(fold, /onToggle=\{\(now\) => \{\s*if \(now !== open\) \{\s*setOpen\(now\);\s*writeOpen\(now\);/);
   assert.match(fold, /<ol className="description-list">\{items\}<\/ol>/);

@@ -297,6 +297,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Already done?": "¿Ya terminó?",
   "Manual mode": "Modo manual",
   "Manual mode off. New points are routed.": "Modo manual desactivado. Los puntos nuevos siguen las calles.",
+  "Loop off.": "Circuito desactivado.",
   "Manual mode on. Each point you tap is the new end, joined by a straight line.":
     "Modo manual activado. Cada punto que toque es el nuevo final, unido por una línea recta.",
   "Manual mode: each point you tap is joined by a straight line": "Modo manual: cada punto que toque se une con una línea recta",
@@ -805,6 +806,8 @@ export const ES: Readonly<Record<string, string>> = {
   // Go's and Plan's place search (PlaceSearch.tsx).
   "Type a start": "Escriba un inicio",
   "Search for a start": "Busque un inicio",
+  // Plan's first box while Loop is on (P10): the place picked is the start and the finish, not a destination.
+  "Start and finish (loop)": "Inicio y llegada (circuito)",
   "Search for a destination": "Busque un destino",
   "A place, an address or a street": "Un lugar, una dirección o una calle",
   Start: "Inicio",
@@ -1257,6 +1260,11 @@ export const ES: Readonly<Record<string, string>> = {
   "Pass through ": "Pasar por ",
   " (via).": " (vía).",
   "End at ": "Llegada en ",
+  // A spot named for what is near it ("near Capitol Stones"): "End near ...", never "End at near ..." (P10).
+  "Start and finish near ": "Inicio y llegada cerca de ",
+  "Start near ": "Inicio cerca de ",
+  "Stop near ": "Parada cerca de ",
+  "End near ": "Llegada cerca de ",
   "End: tap the map or search for a place.": "Llegada: toque el mapa o busque un lugar.",
   "Red": "Roja",
   "Orange": "Naranja",
@@ -1268,6 +1276,9 @@ export const ES: Readonly<Record<string, string>> = {
   "Climbs and rolling stress as tables": "Subidas y estrés continuo como tablas",
   "Climbs as a table": "Subidas como tabla",
   "Move along the chart, or use the arrow keys, to read the route at a point.": "Recorra el gráfico, o use las flechas, para leer la ruta en un punto.",
+  "Move along the chart to read the route at a point.": "Recorra el gráfico para leer la ruta en un punto.",
+  // The chart's key behind one line (P10).
+  "Key": "Leyenda",
   "Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift+C go to the next and previous climb.": "Las flechas avanzan por la ruta; Re Pág y Av Pág avanzan más; Inicio y Fin van a los extremos; C y Mayús+C van a la subida siguiente y anterior.",
   "Elevation and rolling stress along the route": "Elevación y estrés continuo a lo largo de la ruta",
   "Elevation and stress along the route": "Elevación y estrés a lo largo de la ruta",
@@ -1328,6 +1339,9 @@ export const ES: Readonly<Record<string, string>> = {
   "Copied.": "Copiado.",
   "Could not copy. Use Download as text.": "No se pudo copiar. Use Descargar como texto.",
   "Full detail": "Todo el detalle",
+  // Directions' notices in one line (P10).
+  "1 alert on this route": "1 aviso en esta ruta",
+  "{count} alerts on this route": "{count} avisos en esta ruta",
   "The stretch could not be found just now.": "No se pudo encontrar el tramo en este momento.",
   "Loading the road's level…": "Cargando el nivel de la calle…",
   "This road piece:": "Este tramo de calle:",
@@ -1363,8 +1377,6 @@ export const ES: Readonly<Record<string, string>> = {
   "Start at current location": "Iniciar en su ubicación actual",
   "Your plan": "Su plan",
   "Planning route: {step}": "Planeando la ruta: {step}",
-  "✓ up to date": "✓ al día",
-  "More: Reset and Clear": "Más: Restablecer y Borrar",
   "by leg": "por tramo",
   "Close the change summary": "Cerrar el resumen de cambios",
   "Bikeshare options": "Opciones de bicicleta compartida",
@@ -1383,6 +1395,10 @@ export const ES: Readonly<Record<string, string>> = {
   "To reshape the route, press and hold the line, then drag it.": "Para cambiar la forma de la ruta, mantenga presionada la línea y arrástrela.",
   "To reshape the route, drag the line.": "Para cambiar la forma de la ruta, arrastre la línea.",
   "Route data: {sources}.": "Datos de la ruta: {sources}.",
+  "Live departures: {credit}.": "Salidas en vivo: {credit}.",
+  // A transit option with no ride (P10).
+  "No bike on this option.": "Esta opción no usa bicicleta.",
+  "No bike on this option. Pick {letter} to ride.": "Esta opción no usa bicicleta. Elija {letter} para ir en bici.",
   "{ride} trip": "Viaje {ride}",
   "Distance ridden": "Distancia en bici",
   "Distance": "Distancia",
@@ -1552,4 +1568,17 @@ export const ES: Readonly<Record<string, string>> = {
   "{n} grocery stores, {order}.": "{n} supermercados, {order}.",
   "{distance} from your start in a straight line.": "A {distance} de su punto de partida en línea recta.",
   "Route here": "Ruta hasta aquí",
+  // ---- The dials' short lines and their (i) (DialsPanel.tsx, lib/dialsPanel.ts; P10) ----
+  "Calm detour: up to {rate} extra per busy mile avoided.": "Desvío tranquilo: hasta {rate} más por cada milla de vía concurrida evitada.",
+  "Looks for climbs, on routes up to half again as long.": "Busca subidas, en rutas hasta un 50% más largas.",
+  "Climbs only choose between equally calm routes.": "Las subidas solo deciden entre rutas igual de tranquilas.",
+  "Climbs up to this grade cost only their time.": "Las subidas hasta esta pendiente solo cuentan su tiempo.",
+  "Calmest route decides; climbs cost their time.": "Decide la ruta más tranquila; las subidas cuentan su tiempo.",
+  "Grades past this one cost extra.": "Las pendientes mayores que esta cuentan más.",
+  "Sets group length; route unchanged.": "Fija el largo del grupo; la ruta no cambia.",
+  "Sets traffic and hills for this kind of ride.": "Ajusta el tráfico y las cuestas para este tipo de paseo.",
+  "traffic": "tráfico",
+  "hills": "cuestas",
+  "ride size": "tamaño del paseo",
+  "target distance": "distancia objetivo",
 };

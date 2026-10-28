@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import type { BikesharePlan, DescriptionEntry, RouteResponse, TransitPlan, TransitStep } from "./api.ts";
+import type { BikesharePlan, DescriptionEntry, RouteResponse, TransitOption, TransitPlan, TransitStep } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import { setLanguageForTest } from "./i18n.ts";
 import { RIDE_MAX_M, pointAt, rideModel, startState, step, type RideEvent, type RideFix, type RideState } from "./navigate.ts";
@@ -28,6 +28,8 @@ import {
   rideTripOf,
   rideable,
   ridesLine,
+  noBikeLine,
+  optionRides,
   withFinish,
   withoutSpare,
   type RideTrip,
@@ -110,6 +112,26 @@ test("Start ride is offered on a Bikeshare plan and on a transit plan's riding l
   assert.equal(rideable(line({ transit: PLAN, distance_m: RIDE_MAX_M + 1 })), false);
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /const rideable = rideableRoute\(route\);/);
+});
+
+test("an option with no ride says which option rides, in Start's place, with no stress bar (P10)", () => {
+  const option = (o: Partial<TransitOption>): TransitOption => ({ key: "k", label: "", total_s: 0, minutes: 30, direct: false, chosen: false, ...o });
+  const walkLeg = { mode: "walk", minutes: 4 };
+  const metro = { mode: "metro", minutes: 25, system: "Metro", lines: ["Red Line"] };
+  assert.equal(optionRides(option({ legs: [walkLeg, metro, walkLeg] })), false);
+  assert.equal(optionRides(option({ legs: [{ mode: "bikeshare", minutes: 8 }, metro] })), true);
+  assert.equal(optionRides(option({ direct: true })), true);
+  assert.equal(optionRides(option({ direct: true, walk: true })), false);
+  const walkLine = { ...PLAN, steps: PLAN.steps.map((s) => (s.route_line ? { ...s, mode: "walk" as const } : s)) };
+  const options = [option({ legs: [walkLeg, metro, walkLeg] }), option({ legs: [walkLeg, metro] }), option({ legs: [walkLeg] , walk: true }), option({ direct: true })];
+  assert.equal(noBikeLine(line({ transit: { ...walkLine, options } })), "No bike on this option. Pick D to ride.");
+  assert.equal(noBikeLine(line({ transit: { ...walkLine, options: options.slice(0, 2) } })), "No bike on this option.");
+  // An option that rides, and a route that is not a transit trip, have no such line.
+  assert.equal(noBikeLine(line({ transit: { ...PLAN, options } })), null);
+  assert.equal(noBikeLine(BIKESHARE), null);
+  const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /const segments = capacity \|\| noBike \? \[\] : stressSegments\(route\.stress_m\);/);
+  assert.match(panel, /\) : noBike \? \(\s*<p className="hint no-bike-line">\{noBike\}<\/p>/);
 });
 
 test("the phone app offers Start ride at any length; a browser stops at RIDE_MAX_M (Stephen, 2026-10-18: a 37 mi saved route)", () => {

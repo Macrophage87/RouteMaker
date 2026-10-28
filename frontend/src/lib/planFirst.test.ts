@@ -62,6 +62,16 @@ test("a ride type named as a ride already is not called a ride twice (the audit'
   assert.match(sentencesText(planSentences([], none, false, () => undefined, { ride: "Gravel", traffic: null, hills: null })), /Gravel ride\.$/);
 });
 
+test("a spot named for what is near it is said \"near\", never \"at near\" (P10)", () => {
+  const none = new ViaMarks().isVia;
+  const near = (q: LonLat) => (q[0] === -77 ? "Connecticut Avenue Northwest" : "near Capitol Stones");
+  const text = sentencesText(planSentences([p(-77), p(-76.99)], none, false, near, words));
+  assert.equal(text, "Start at Connecticut Avenue Northwest. End near Capitol Stones. Default ride, balanced, avoids hills.");
+  assert.doesNotMatch(text, /at near/);
+  const loop = sentencesText(planSentences([p(-76.99), p(-77)], none, true, near, words));
+  assert.match(loop, /^Start and finish near Capitol Stones\. Stop at Connecticut Avenue Northwest\./);
+});
+
 test("an unfinished plan says what to do next, and a loop starts and finishes at its start", () => {
   const none = new ViaMarks().isVia;
   assert.equal(sentencesText(planSentences([], none, false, () => undefined, { ride: "Default", traffic: null, hills: null })), "Start: tap the map or search for a place. Default ride.");
@@ -152,9 +162,9 @@ test("the per-leg details: each leg's length and change, new legs, and legs no l
 test("an empty plan has Start at current location in Route's place, and From keeps it in its list only", () => {
   const panel = readFileSync(new URL("../app/PlanPanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /export const START_HERE_LABEL = t\("Start at current location"\);/);
-  assert.match(panel, /\{locate \? \([\s\S]{0,400}className="route-button start-here"[\s\S]{0,300}if \(locate\.unavailable === null\) locate\.onLocate\(\);/);
-  // Why Route is unavailable is said with it, not shown (Stephen 2026-10-20: simpler).
-  assert.match(panel, /<span id=\{routeWhy\} className="visually-hidden">/);
+  assert.match(panel, /\{locate && \([\s\S]{0,400}className="route-button start-here"[\s\S]{0,300}if \(locate\.unavailable === null\) locate\.onLocate\(\);/);
+  // Why Route is unavailable is said, not shown (Stephen 2026-10-20: simpler); the button is Plan's bar's (P10).
+  assert.match(panel, /<p id=\{routeWhy\} className="visually-hidden plan-route-state">/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /\? \{ onLocate: \(\) => void useMyLocation\("start"\), busy: locating, unavailable: locateReady\.available \? null : locateReady\.reason \}/);
   const planner = readFileSync(new URL("../app/Planner.tsx", import.meta.url), "utf8");
