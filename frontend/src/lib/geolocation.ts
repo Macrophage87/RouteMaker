@@ -105,6 +105,25 @@ export const DENIED_IN_BROWSER = t("Your location is blocked for this site. Allo
 /** The denied notice in an iPhone Home Screen app (see iosHomeScreenApp); the tester steps are in docs/OPERATIONS.md. */
 export const DENIED_IN_IOS_APP = t("Your location is blocked for this Home Screen app. Check Location in iPhone Settings, or search for a place.");
 
+/**
+ * The fold under that notice (IosLocationHelp.tsx). A web app cannot open iPhone Settings, so tapping the notice
+ * went nowhere (a tester, 2026-10-28); the fold says where to go instead. In-App Web Browsing first: the tester's
+ * Home Screen app stayed blocked while it was off, though Safari tabs worked.
+ */
+export const IOS_LOCATION_HELP_TITLE = t("How to turn location on");
+export const IOS_LOCATION_STEPS: readonly string[] = [
+  t("Open the Settings app, then Privacy & Security, then Location Services."),
+  t("Turn Location Services on. Open System Services and turn on In-App Web Browsing."),
+  t("Back in Location Services, open Safari Websites and choose While Using the App."),
+  t("Still blocked? Delete this app's icon, open the site in Safari and add it to the Home Screen again."),
+];
+
+/** Whether a notice holds the Home Screen app's denied notice (Go's version ends "type a start." instead). */
+export function showsIosLocationHelp(notice: string | null | undefined): boolean {
+  const lead = DENIED_IN_IOS_APP.slice(0, DENIED_IN_IOS_APP.indexOf(". ") + 1);
+  return !!notice && notice.includes(lead);
+}
+
 /** The denied notice for where the page runs (isStandalone in installOffer.ts also counts Android's installed app, which has site settings). */
 export function deniedNotice(nav: unknown = typeof navigator !== "undefined" ? navigator : undefined): string {
   return iosHomeScreenApp(nav) ? DENIED_IN_IOS_APP : DENIED_IN_BROWSER;
