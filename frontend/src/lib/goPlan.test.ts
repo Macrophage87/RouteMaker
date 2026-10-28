@@ -354,6 +354,30 @@ test("go pick: route from the start Go has, wait while the location is found, el
   assert.match(goDestinationLocating("Union Station"), /^To Union Station: finding your location/);
 });
 
+test("go tap: a tap on the map in Go opens the road card, whose big Route here routes there as the tap did (the owner, 2026-10-28)", () => {
+  const tap = appFile.slice(appFile.indexOf("const tapMap = useCallback("), appFile.indexOf("const goRouteHere ="));
+  // Go: the card at the spot, after the area check; the Home pick's tap and Plan's taps still go to place.
+  assert.match(tap, /if \(goTapSetsEnd\(modeRef\.current\) && !homePickRef\.current\) \{/);
+  assert.match(tap, /if \(!insideCoverage\(point\)\) \{\s*setNotice\(OUTSIDE_NOTICE\);\s*return;\s*\}\s*setRoadInfo\(\{ point, origin: "spot" \}\);\s*return;\s*\}\s*place\(point\);/);
+  assert.doesNotMatch(tap, /goToRef/, "a tap alone never routes");
+  assert.match(appFile, /onMapClick=\{onBike \|\| reviewing \? ignore : tapMap\}/);
+  // Route here is the old tap: goTo with the same name and as a pressed destination ("Destination set").
+  assert.match(appFile, /const goRouteHere = \(point: LonLat\) => void goToRef\.current\(point, goPlaceName\(namer\.name\(point\)\?\.name, point\), true\);/);
+  assert.match(appFile, /onRouteHere=\{mode === "go" \? goRouteHere : undefined\}/);
+  // The card's Set as end is open with the location as Go's start, and routes the same way before the plan has a point.
+  assert.match(appFile, /plan=\{\{ count: points\.length, loop: loopVias, startKnown: mode === "go" && goStart\.kind === "here" \}\}/);
+  assert.match(appFile, /choice === "end" && mode === "go" && points\.length === 0 \? goRouteHere\(point\)/);
+  // Map tools' Set destination at map center still places through place, at once.
+  assert.match(appFile, /const addAtCentre = \(\) => \{[\s\S]*?place\(\[lng, lat\]\);/);
+  // The card: Route here right under its title, full width, before the other actions; it routes the spot and closes.
+  const card = src("../RoadInfoDialog.tsx");
+  const header = card.indexOf("{infoHeading(state)}");
+  const button = card.indexOf('className="road-info-route-here"');
+  assert.ok(header > 0 && button > header && button < card.indexOf('className="road-info-kind"') && button < card.indexOf('className="road-info-place"'));
+  assert.match(card, /\{request && onRouteHere && \([\s\S]*?onRouteHere\(request\.point\);\s*close\(\);[\s\S]*?\{ROUTE_HERE_TEXT\}/);
+  assert.match(src("../styles.css"), /\.road-info-route-here \{\s*display: block;\s*width: 100%;\s*min-height: 52px;/);
+});
+
 test("go tap: a press on the map in Go is the destination, routed as a picked one is (the owner, 2026-10-12)", () => {
   assert.equal(goTapSetsEnd("go"), true);
   assert.equal(goTapSetsEnd("plan"), false, "Plan's presses add points as before");

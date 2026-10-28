@@ -268,7 +268,7 @@ test("the map: a Ctrl+click asks for a stop, a stop's menu names it, and the rid
   assert.match(map, /label\.className = "ride-stop-name";/);
   const app = src("../App.tsx");
   // The road panel's Add as stop asks for the name first; Route through this trail is still a via point at once.
-  assert.match(app, /onPlace=\{\(choice, point, asVia\) => \(choice === "via" && !asVia \? askStopAt\(point\) : placeSpot\(choice, point, asVia\)\)\}/);
+  assert.match(app, /onPlace=\{\(choice, point, asVia\) =>\s*choice === "end" && mode === "go" && points\.length === 0 \? goRouteHere\(point\) : choice === "via" && !asVia \? askStopAt\(point\) : placeSpot\(choice, point, asVia\)\s*\}/);
   assert.match(app, /rideStops=\{riding \? \(rideView\?\.stops \?\? null\) : null\}/);
   // A ride stop's name is 20 px in the app's font, as the ride's street names are.
   assert.match(src("../styles.css"), /\.ride-stop-name \{\s*font: 700 20px\/1\.2 var\(--font\);/);

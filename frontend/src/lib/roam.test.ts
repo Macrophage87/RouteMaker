@@ -182,7 +182,7 @@ test("App: Roam is Go's one button with no destination, a detour's end comes bac
   assert.match(app, /const onBike = riding \|\| roaming;/);
   assert.match(app, /if \(onBike\) return null;/);
   assert.match(app, /useEffect\(\(\) => closeStopCard\(\), \[onBike, mode\]\);/);
-  assert.match(app, /onMapClick=\{onBike \|\| reviewing \? ignore : place\}/);
+  assert.match(app, /onMapClick=\{onBike \|\| reviewing \? ignore : tapMap\}/);
   assert.doesNotMatch(app, /\bon=\{[^}]*&& !riding\}/);
 });
 

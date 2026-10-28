@@ -45,10 +45,12 @@ export interface FoodFinderProps {
   onAddStop: (result: FoodResult) => void;
   /** A fold of its own (the default), or the body alone, in the map's Food sheet (UI-CLEANUP), whose heading names it. */
   folded?: boolean;
+  /** The list's heading: Places to eat (the default), or Grocery stores for the Grocery chip's list (lib/grocery.ts). */
+  heading?: string;
 }
 
 export function FoodFinder(props: FoodFinderProps): ReactElement {
-  const { query, onQuery, scope, onScope, onSearch, busy, status, results, total, onMore, canAddStop, onShow, onAddStop, onRide, folded = true } = props;
+  const { query, onQuery, scope, onScope, onSearch, busy, status, results, total, onMore, canAddStop, onShow, onAddStop, onRide, folded = true, heading = t("Places to eat") } = props;
   const list = useRef<HTMLOListElement | null>(null);
   // After Show more: the index of the first new result, whose first button takes the focus.
   const focusFrom = useRef<number | null>(null);
@@ -112,7 +114,7 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
         h(
           "div",
           { className: "nearest-list food-list" },
-          h("h3", { id: "food-list-heading" }, t("Places to eat")),
+          h("h3", { id: "food-list-heading" }, heading),
           h(
             "ol",
             // role="list": WebKit drops a list's role once its bullets are styled away.

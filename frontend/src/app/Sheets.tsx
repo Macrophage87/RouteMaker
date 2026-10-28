@@ -725,7 +725,9 @@ export function NearestSheet({ nav, children }: { nav: SheetNav; children: React
 
 /** The cuisine chips over Find food (the mockup's Food sheet): each one searches for it. */
 // Farm stands (v0.7.0, the owner 2026-10-14: "Lots of places are selling apples in the fall"), with the apple.
-export const FOOD_CHIPS = ["Crab", "Coffee", "Pizza", "Tacos", "Ice cream", "Farm stands"] as const;
+// Grocery (the owner, 2026-10-28): grocery stores and supermarkets nearest the start, from the geocoder (lib/grocery.ts).
+export const FOOD_CHIPS = ["Crab", "Coffee", "Pizza", "Tacos", "Ice cream", "Farm stands", "Grocery"] as const;
+const FOOD_CHIP_ICON: Partial<Record<(typeof FOOD_CHIPS)[number], IconName>> = { "Farm stands": "apple", Grocery: "shop" };
 
 /** The map's Food chip: Find food (the panel that was a fold in Points), with the mockup's cuisine chips over it. */
 export function FoodSheet({ nav, onChip, children }: { nav: SheetNav; onChip: (food: string) => void; children: ReactNode }) {
@@ -734,7 +736,7 @@ export function FoodSheet({ nav, onChip, children }: { nav: SheetNav; onChip: (f
       <div className="chip-row food-chips" role="group" aria-label={t("Quick searches")}>
         {FOOD_CHIPS.map((food) => (
           <button key={food} type="button" className="chip" onClick={() => onChip(food.toLowerCase())}>
-            <Icon name={food === "Farm stands" ? "apple" : "food"} size={16} />
+            <Icon name={FOOD_CHIP_ICON[food] ?? "food"} size={16} />
             {t(food)}
           </button>
         ))}

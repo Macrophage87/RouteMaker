@@ -199,6 +199,7 @@ import {
   type FoodScope,
 } from "./lib/food.ts";
 import { FoodFinder } from "./lib/foodFinder.ts";
+import { GROCERY_HEADING, GROCERY_LOOKING, GROCERY_QUERY, GROCERY_UNAVAILABLE, groceryFoundSaid, groceryResults, isGroceryQuery, type GroceryFrom } from "./lib/grocery.ts";
 // food.json is a committed snapshot, as climbs.json, refreshed with scripts/build_food.py and committed;
 // places.json is a few bytes until scripts/build_places.py fills it. `no-inline`, as climbs.json: an
 // inlined data: URL is refused by the edge's connect-src 'self'. Its own hashed file under
@@ -1832,6 +1833,25 @@ export function App() {
     const said = kindSaid(next, index, VIA_MARKS.isVia, loopVias, "added");
     announce(index > 0 && VIA_MARKS.isDrawn(point) ? `${said} ${DRAWN_SAID}` : said);
   }, [commit, announce, loopVias]); // namer is the page's one, kept for the page (usePlaceNames)
+
+  // A tap on the map (MapView's onMapClick). In Go it opens the road card, whose big Route here routes to the spot as
+  // the tap itself did until 2026-10-28 (the owner: "Put the route here as a big button on top of the card"): a
+  // stray tap no longer plans a ride. The Home pick's tap, Plan's taps and Map tools' button go to `place` as before.
+  const tapMap = useCallback((point: LonLat) => {
+    if (goTapSetsEnd(modeRef.current) && !homePickRef.current) {
+      cancelLocateNotice();
+      if (!insideCoverage(point)) {
+        setNotice(OUTSIDE_NOTICE);
+        return;
+      }
+      setRoadInfo({ point, origin: "spot" });
+      return;
+    }
+    place(point);
+  }, [place]);
+  // Go's Route here, and its Set as end before the plan has a point: the spot is the destination, routed from Go's
+  // start as a tap was (goTo, a pressed destination).
+  const goRouteHere = (point: LonLat) => void goToRef.current(point, goPlaceName(namer.name(point)?.name, point), true);
 
   // "Use my location": one look-up per press (lib/geolocation.ts), then placeFix decides: from the button,
   // the map click's path; from the "Your location" choice, the search's Start / Destination / Stop choice.
@@ -4319,9 +4339,16 @@ export function App() {
     () => (foodAsked && foodPlaces ? searchFood(foodPlaces, { ...foodAsked, route: foodRoute }) : null),
     [foodAsked, foodPlaces, foodRoute],
   );
-  const foodResults = useMemo(() => foodAll?.slice(0, foodCount) ?? null, [foodAll, foodCount]);
+  // The Grocery chip's stores (lib/grocery.ts), listed in place of the places to eat until the next search.
+  const [grocery, setGrocery] = useState<FoodResult[] | null>(null);
+  const groceryShown = useRef(false);
+  groceryShown.current = grocery !== null;
+  const foodPage = useMemo(() => foodAll?.slice(0, foodCount) ?? null, [foodAll, foodCount]);
+  const foodResults = grocery ?? foodPage;
   const foodRecentred = useRef(false);
   useEffect(() => {
+    // The stores' own words stand while they are listed.
+    if (groceryShown.current) return;
     if (foodRecentred.current) {
       foodRecentred.current = false;
       return;
@@ -4360,6 +4387,11 @@ export function App() {
   const searchFoodNow = async (asked?: string) => {
     const seq = ++foodSeq.current;
     const query = asked ?? foodQuery;
+    if (isGroceryQuery(query)) {
+      void searchGrocery(seq);
+      return;
+    }
+    setGrocery(null);
     if (!foodLoad.current) {
       foodLoad.current = loadFood(foodUrl).then((data) => {
         if (!data) foodLoad.current = null;
@@ -4403,6 +4435,30 @@ export function App() {
       foodRecentred.current = true;
       return { ...asked, centre: now };
     });
+  };
+  // The Grocery chip (the owner, 2026-10-28), or its words typed: the grocery stores nearest the route's start (Go's
+  // start, the rider's location or the start typed in; Plan's first point), from the geocoder's supermarket search
+  // biased there, nearest first (lib/grocery.ts). One request, through the page's one geocoder gate.
+  const searchGrocery = async (seq: number) => {
+    const start = goSearchOrigin();
+    const c = mapRef.current?.getCenter();
+    const origin: LonLat | undefined = start ?? (c ? [c.lng, c.lat] : undefined);
+    if (!origin) return;
+    // With a plan its first point is the start (the location or not); before one, Go's start is the rider's location.
+    const from: GroceryFrom = !start ? "centre" : pointsRef.current.length > 0 ? "start" : "rider";
+    setFoodBusy(true);
+    sayFood(GROCERY_LOOKING);
+    const answer = await geoGate.run(() => fetchPlaces(searchUrl(GROCERY_QUERY, startBiasPoint(origin) ?? searchBias(), MAX_DETOUR_SEARCH))).catch(() => null);
+    if (seq !== foodSeq.current) return;
+    setFoodBusy(false);
+    if (!answer?.ok) {
+      setGrocery(null);
+      sayFood(GROCERY_UNAVAILABLE);
+      return;
+    }
+    const found = groceryResults(answer.places, origin, from);
+    setGrocery(found);
+    sayFood(groceryFoundSaid(found.length, from));
   };
   // Opening the Food sheet with nothing typed shows all food at once (the owner, 2026-10-18: "when searching
   // for food, all food should be shown up"), so a hungry rider needs no typing; each opening is from where the
@@ -4663,9 +4719,10 @@ export function App() {
       busy={foodBusy}
       status={foodStatus}
       results={foodResults}
-      total={foodAll?.length ?? 0}
+      total={grocery ? grocery.length : (foodAll?.length ?? 0)}
+      heading={grocery ? GROCERY_HEADING : undefined}
       onMore={() => {
-        if (!foodAll) return;
+        if (grocery || !foodAll) return;
         const next = Math.min(foodCount + FOOD_PAGE, foodAll.length);
         setFoodCount(next);
         sayFood(foodMoreSaid(next, foodAll.length));
@@ -5175,7 +5232,7 @@ export function App() {
         framePadding={framePadding}
         coveredBelow={coveredBelow}
         onStressAvailability={setStress}
-        onMapClick={onBike || reviewing ? ignore : place}
+        onMapClick={onBike || reviewing ? ignore : tapMap}
         onMovePoint={onBike ? ignore : move}
         lineEdit={riding || reviewing ? null : lineEdit}
         choices={choices}
@@ -5266,7 +5323,7 @@ export function App() {
       />
       <RepairStandsOverlay getMap={getMap} places={Array.isArray(repairData) ? repairData : null} on={waterPrefs.on && !onBike} pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))} actionFor={stopActionFor} />
       <PlacesOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={placesOn && !onBike} actionFor={stopActionFor} />
-      <FoodOverlay getMap={getMap} results={foodAll} on={letteredOf === "food" && !onBike} actionFor={stopActionFor} />
+      <FoodOverlay getMap={getMap} results={grocery ? null : foodAll} on={letteredOf === "food" && !onBike} actionFor={stopActionFor} />
       <TrailMilesOverlay getMap={getMap} data={trailMiles} />
       {/* Not in Go, and not on the Mass Ride map (lib/scenicLayer.ts scenicShown). */}
       <ScenicOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={scenicShown(scenicOn, mode, massMap)} placesOn={placesOn && !onBike} />
@@ -5377,9 +5434,14 @@ export function App() {
           const map = mapRef.current;
           if (map) refreshStressTiles(map, window.location.origin, generation);
         }}
-        plan={{ count: points.length, loop: loopVias }}
-        // Its Add as stop (after a long press or a right-click) asks for the stop's name first (2026-10-24).
-        onPlace={(choice, point, asVia) => (choice === "via" && !asVia ? askStopAt(point) : placeSpot(choice, point, asVia))}
+        // Go with the rider's location as its start: Set as end is open before the plan has a point (2026-10-28).
+        plan={{ count: points.length, loop: loopVias, startKnown: mode === "go" && goStart.kind === "here" }}
+        // Its Add as stop (after a long press or a right-click) asks for the stop's name first (2026-10-24). In Go before
+        // the plan has a point, Set as end routes there from the location, as Route here does.
+        onPlace={(choice, point, asVia) =>
+          choice === "end" && mode === "go" && points.length === 0 ? goRouteHere(point) : choice === "via" && !asVia ? askStopAt(point) : placeSpot(choice, point, asVia)
+        }
+        onRouteHere={mode === "go" ? goRouteHere : undefined}
         trailRider={trailRider}
         onSetHome={(point) => void setHomeAt(point)}
         onSaveFavorite={me.signed_in ? (point) => void addFavoriteAt(point) : undefined}

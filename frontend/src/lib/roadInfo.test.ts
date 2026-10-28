@@ -22,6 +22,7 @@ import {
   liftOpenedInfo,
   requestAfterClose,
   spotActions,
+  ROUTE_HERE_TEXT,
   segmentInfoUrl,
   shownSections,
   shownSummary,
@@ -124,6 +125,15 @@ test("the top row offers start, end and stop as the search does, each unavailabl
     `Set as end (The route has the most points it can (${MAX_POINTS}).)`,
     `Add as stop (The route has the most points it can (${MAX_POINTS}).)`,
   ]);
+});
+
+test("Go with the location as its start: the card's Set as end is open before the plan has a point (2026-10-28)", () => {
+  const row = (count: number, startKnown: boolean) => spotActions(count, false, startKnown).map((a) => `${a.text}${a.unavailable ? ` (${a.unavailable})` : ""}`);
+  assert.deepEqual(row(0, true), ["Set as start", "Set as end", "Add as stop (Set an end first.)"]);
+  assert.deepEqual(row(0, false), ["Set as start", "Set as end (Set a start first.)", "Add as stop (Set a start first.)"]);
+  // A plan with points is as before, whatever Go's start.
+  assert.deepEqual(row(2, true), row(2, false));
+  assert.equal(ROUTE_HERE_TEXT, "Route here");
 });
 
 test("a top-row button places the spot as the search's choice would, and says so", () => {

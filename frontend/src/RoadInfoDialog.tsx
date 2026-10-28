@@ -34,6 +34,7 @@ import {
   OSM_EDIT_NOTE,
   OSM_EDIT_TEXT,
   spotActions,
+  ROUTE_HERE_TEXT,
   STREET_VIEW_NOTE,
   STREET_VIEW_TEXT,
   fetchSegmentInfo,
@@ -141,8 +142,16 @@ interface Props {
    * map asks for its tiles again under the new edit generation. The panel refreshes itself.
    */
   onStressChanged?: (generation: number) => void;
-  /** The plan's point count and whether it is a loop, for the top row (OWNER-DECISIONS 441n). */
-  plan: { count: number; loop: boolean };
+  /**
+   * The plan's point count and whether it is a loop, for the top row (OWNER-DECISIONS 441n); `startKnown`: Go's start
+   * is the rider's location though the plan has no point yet, so Set as end is open (lib/roadInfo.ts spotActions).
+   */
+  plan: { count: number; loop: boolean; startKnown?: boolean };
+  /**
+   * Go: the big Route here button over the card's other actions (ROUTE_HERE_TEXT), which routes to the spot as a map
+   * tap did before 2026-10-28; the panel then closes. Absent (Plan, Review): no button.
+   */
+  onRouteHere?: (point: [number, number]) => void;
   /** Put the spot in the plan as its start, its end or a stop; the panel then closes. */
   /** `asVia`: the point is a via point (a tapped trail's Route through this trail), not a stop. */
   onPlace: (choice: PlaceChoice, point: [number, number], asVia?: boolean) => void;
@@ -213,7 +222,7 @@ function StationTimesList({ station, rail, closed }: { station: Station; rail: R
   );
 }
 
-export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, trailMiles = null, onClose, fallbackFocus, onStressChanged, plan, onPlace, onSetHome, onSaveFavorite, trailRider = NO_TRAIL_RIDER }: Props) {
+export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, trailMiles = null, onClose, fallbackFocus, onStressChanged, plan, onPlace, onRouteHere, onSetHome, onSaveFavorite, trailRider = NO_TRAIL_RIDER }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -509,7 +518,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
   const where = request ? subtitle(state, request.origin) : "";
   const osmEdit = ready ? osmEditUrl(ready) : null;
   const more = moreLink(ready);
-  const actions = spotActions(plan.count, plan.loop);
+  const actions = spotActions(plan.count, plan.loop, plan.startKnown === true);
   const editableWay = ready && me.can_change_lts && ready.osm_way_id != null ? ready.osm_way_id : null;
   // A rider the settings allow may suggest a level (an instance admin changes it instead).
   // Not on a mountain-bike trail: it has no traffic to rate (the owner, 2026-10-19).
@@ -612,6 +621,19 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
             {t("Close")}
           </button>
         </header>
+        {request && onRouteHere && (
+          // The card's first action, full width under its title (the owner, 2026-10-28).
+          <button
+            type="button"
+            className="road-info-route-here"
+            onClick={() => {
+              onRouteHere(request.point);
+              close();
+            }}
+          >
+            {ROUTE_HERE_TEXT}
+          </button>
+        )}
         <p id={id("where")} className="road-info-kind">
           {where}
         </p>

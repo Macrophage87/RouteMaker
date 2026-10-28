@@ -1716,6 +1716,17 @@ dialog.road-info::backdrop {
   color: var(--text-muted);
 }
 
+/* Go's Route here (the owner, 2026-10-28): a big full-width primary button at the top of the card. */
+.road-info-route-here {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  margin: 10px 0 4px;
+  font-size: 1.125rem;
+  font-weight: 700;
+  border-radius: 8px;
+}
+
 /* The top row (OWNER-DECISIONS 441n): real buttons, compact, wrapping on a phone. */
 .road-info-place {
   list-style: none;

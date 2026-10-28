@@ -75,6 +75,7 @@ test("the list draws the apple beside a farm stand, hidden from screen readers, 
 
 test("the Food sheet has a Farm stands chip with the apple", () => {
   const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
-  assert.match(sheets, /"Ice cream", "Farm stands"\] as const/);
-  assert.match(sheets, /<Icon name=\{food === "Farm stands" \? "apple" : "food"\} size=\{16\} \/>/);
+  assert.match(sheets, /"Ice cream", "Farm stands", "Grocery"\] as const/);
+  assert.match(sheets, /\{ "Farm stands": "apple", Grocery: "shop" \}/);
+  assert.match(sheets, /<Icon name=\{FOOD_CHIP_ICON\[food\] \?\? "food"\} size=\{16\} \/>/);
 });

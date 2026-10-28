@@ -114,6 +114,13 @@ export interface InfoRequest {
   trail?: boolean;
 }
 
+/**
+ * Go's road card (the owner, 2026-10-28: "Put the route here as a big button on top of the card"): a map tap in Go
+ * opens the card, and this button routes to the spot as the tap did before (App's goTo, the destination in place
+ * of any before it). Two taps where it was one, so a stray tap never plans a ride.
+ */
+export const ROUTE_HERE_TEXT = t("Route here");
+
 /** The trail panel's via button: a via point on the trail, which shapes the route through it (lib/pointKinds.ts). */
 export const TRAIL_VIA_TEXT = t("Route through this trail");
 
@@ -266,8 +273,11 @@ export const SPOT_ACTION_TEXT: Record<PlaceChoice, string> = {
  * The top row for a plan of `count` points: Set as start, Set as end, Add as stop, each
  * available as the search's Start / Destination / Stop choice is (`choicesFor`), else
  * with the reason it is not. In a loop Set as end is there too: it ends the ride there (placeAtSpot).
+ * `startKnown`: Go, whose start is the rider's location before the plan has a point (the owner, 2026-10-28):
+ * the row is as for a plan with its start, so Set as end is open (routed from the location, App's goTo).
  */
-export function spotActions(count: number, loop: boolean): SpotAction[] {
+export function spotActions(points: number, loop: boolean, startKnown = false): SpotAction[] {
+  const count = points === 0 && startKnown ? 1 : points;
   const full = count >= MAX_POINTS;
   // In a loop, Set as end ends the ride there and turns the loop off (Stephen 2026-10-20: "allow an end to be set,
   // stopping the loop"); it adds a point, so not on a full plan.
