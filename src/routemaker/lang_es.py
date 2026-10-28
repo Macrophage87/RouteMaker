@@ -177,4 +177,91 @@ ES: dict[str, str] = {
         " minutos. Pueden estar desactualizados o ser incorrectos, y no garantizan que el camino"
         " esté abierto o cerrado."
     ),
+    # ---- A transit plan's steps (core.transit Leg.words; routing audit D30). A bike ride is
+    # "Vaya en bicicleta", the time on a train or bus "viaje"; a dock is an "estación" as in
+    # the app. Line and stop names stay as they are, after their noun: "tren MARC Penn Line".
+    "your destination": "su destino",
+    "Ride {m} min to {place}.": "Vaya en bicicleta {m} min hasta {place}.",
+    "Ride {m} min.": "Vaya en bicicleta {m} min.",
+    "Walk {m} min to the bikeshare dock at {place} and take a classic bike.": (
+        "Camine {m} min hasta la estación de bicicletas compartidas {place} y tome una"
+        " bicicleta clásica."
+    ),
+    "Ride the bikeshare bike {m} min and dock it at {place}.": (
+        "Vaya en la bicicleta compartida {m} min y devuélvala en {place}."
+    ),
+    "Walk {m} min to {place}.": "Camine {m} min hasta {place}.",
+    "Walk {m} min.": "Camine {m} min.",
+    "About {m} min into the station by the elevator.": (
+        "Unos {m} min para entrar a la estación, por el ascensor."
+    ),
+    "About {m} min into the station.": "Unos {m} min para entrar a la estación.",
+    "About {m} min out of the station by the elevator.": (
+        "Unos {m} min para salir de la estación, por el ascensor."
+    ),
+    "About {m} min out of the station.": "Unos {m} min para salir de la estación.",
+    " or ": " o ",
+    "bus {name}": "autobús {name}",
+    "train {name}": "tren {name}",
+    "Put your bike on the front rack of {vehicle}": (
+        "Ponga su bicicleta en el portabicicletas delantero del {vehicle}"
+    ),
+    "Change to {vehicle}": "Cambie al {vehicle}",
+    "Board {vehicle}": "Suba al {vehicle}",
+    "ride {m} min to {place}": "viaje {m} min hasta {place}",
+    "ride {m} min": "viaje {m} min",
+    "about {m} min wait": "unos {m} min de espera",
+    "scheduled": "según horario",
+    "live": "en vivo",
+    "{board} (first train {time} {source}; {wait}); {ride}.": (
+        "{board} (primer tren {time} {source}; {wait}); {ride}."
+    ),
+    "{board} ({wait}, {source}); {ride}.": "{board} ({wait}, {source}); {ride}.",
+    "{board} (every {n} min, {source}; {wait}); {ride}.": (
+        "{board} (cada {n} min, {source}; {wait}); {ride}."
+    ),
+    " from {place}": " desde {place}",
+    "{board} at {time} {source}{from}": "{board}, sale {time} {source}{from}",
+    # The app takes the arrival clause out once riding (frontend/src/lib/rideTrip.ts
+    # withoutSpare): it starts ": llegada " here, as ": you arrive " in English.
+    "{head}: you arrive {time}, {spare} min spare; {after}. {ride}.": (
+        "{head}: llegada {time}, {spare} min de margen; {after}. {ride}."
+    ),
+    "no later bus within the hour": "no hay otro autobús en la próxima hora",
+    "no later train within the hour": "no hay otro tren en la próxima hora",
+    "next bus after that: {time} {source}": "siguiente autobús: {time} {source}",
+    "next train after that: {time} {source}": "siguiente tren: {time} {source}",
+    # ---- A Bikeshare plan's steps and summary (core.bikeshare; routing audit D30) ----
+    "Walk {distance} to an e-bike parked outside a dock, and unlock it with the operator's app.": (
+        "Camine {distance} hasta una bicicleta eléctrica estacionada fuera de una estación y"
+        " desbloquéela con la app del operador."
+    ),
+    "availability unknown": "disponibilidad desconocida",
+    "1 available": "1 disponible",
+    "{n} available": "{n} disponibles",
+    "Start at the dock at {place}": "Empiece en la estación {place}",
+    "Walk {distance} to the dock at {place}": "Camine {distance} hasta la estación {place}",
+    ", which is crowded": ", que está llena",
+    "{lead}{crowded}, take an e-bike ({count}).": (
+        "{lead}{crowded}, tome una bicicleta eléctrica ({count})."
+    ),
+    "{lead}{crowded}, take a classic bike ({count}).": (
+        "{lead}{crowded}, tome una bicicleta clásica ({count})."
+    ),
+    "Ride {distance} to your destination and leave the e-bike there, outside a dock.": (
+        "Vaya en bicicleta {distance} hasta su destino y deje allí la bicicleta eléctrica,"
+        " fuera de una estación."
+    ),
+    "1 free slot": "1 espacio libre",
+    "{n} free slots": "{n} espacios libres",
+    ", which needs bikes": ", que necesita bicicletas",
+    "Ride {distance} to the dock at {place}{needs} ({slots}).": (
+        "Vaya en bicicleta {distance} hasta la estación {place}{needs} ({slots})."
+    ),
+    "Return the bike, then walk {distance} to your destination.": (
+        "Devuelva la bicicleta y luego camine {distance} hasta su destino."
+    ),
+    "e-bike": "bicicleta eléctrica",
+    "classic bike": "bicicleta clásica",
+    "about {time} in all": "unos {time} en total",
 }
