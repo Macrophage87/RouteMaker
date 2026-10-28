@@ -1514,13 +1514,9 @@ def _router_alternates(trip, best, first_exposure, stop_at, ctx: Context, info: 
     return best, best_trip
 
 
-def _through(vias, stop_at, ctx: Context, excludes=(), leg: int = 0):
-    """The router's route from the leg's start through `vias` (each a `through`
-    location) to its end, read: (reading, trip), (None, None) where there is no
-    route or it could not be read, or "time" where the budget or the router ran
-    out. The reading's junctions may be None (the caller decides). `leg` is the
-    plan's leg (the stretch between consecutive locations); the one leg is asked
-    for alone."""
+def _through_request(vias, ctx: Context, excludes=(), leg: int = 0) -> dict:
+    """`_through`'s request: the leg's start, `vias` (each a `through` location) and its end,
+    with `excludes` left out."""
     locations = ctx.request.get("locations") or []
     request = {k: v for k, v in ctx.request.items() if k not in ("alternates", "exclude_locations")}
     if excludes:
@@ -1530,15 +1526,46 @@ def _through(vias, stop_at, ctx: Context, excludes=(), leg: int = 0):
         *({"lon": lon, "lat": lat, "type": "through"} for lon, lat in vias),
         locations[leg + 1],
     ]
-    round_deadline = routing.Deadline(
-        stop_at, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
-    )
+    return request
+
+
+def _round_deadline(stop_at: float, ctx: Context) -> routing.Deadline:
+    """The deadline of one of the search's /route asks: the round's end, each call held to
+    the alternatives' timeout."""
+    return routing.Deadline(stop_at, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S))
+
+
+def _through(
+    vias,
+    stop_at,
+    ctx: Context,
+    excludes=(),
+    leg: int = 0,
+    asked: Future | None = None,
+    with_events: bool = True,
+):
+    """The router's route from the leg's start through `vias` (each a `through`
+    location) to its end, read: (reading, trip), (None, None) where there is no
+    route or it could not be read, or "time" where the budget or the router ran
+    out. The reading's junctions may be None (the caller decides), and are where it is
+    read without `with_events` (`analyse`). `leg` is the plan's leg (the stretch between
+    consecutive locations); the one leg is asked for alone. `asked`: the same request's
+    answer already asked for on the pool (`_through_request`), read here instead."""
     try:
-        answer = routing._call(ctx.variant, "route", request, round_deadline)
+        if asked is not None:
+            answer = routing.await_future(asked)
+        else:
+            request = _through_request(vias, ctx, excludes, leg)
+            answer = routing._call(ctx.variant, "route", request, _round_deadline(stop_at, ctx))
         candidate = answer.get("trip") or {}
         if not candidate.get("legs"):
             return None, None
-        read = analyse(candidate, ctx, routing.Deadline(stop_at, ctx.deadline.per_call_s))
+        reading = routing.Deadline(stop_at, ctx.deadline.per_call_s)
+        read = (
+            analyse(candidate, ctx, reading)
+            if with_events
+            else analyse(candidate, ctx, reading, with_events=False)
+        )
     except routing.RouterRefused:
         return None, None
     except (routing.DeadlineExceeded, routing.RouterUnavailable):
@@ -2573,6 +2600,7 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
         points.append((lon, lat))
     stop_at = min(routing.clock() + LOOP_BUDGET_S, ctx.deadline.at - REFINE_TRACE_RESERVE_S)
     best: tuple[tuple, dict, Analysis, int, float] | None = None
+    asks: list[list[tuple[float, float]]] = []
     seen: set[frozenset] = set()
     for step in LOOP_THINNING:
         chosen = points[::step][:MAX_EXCLUDES]
@@ -2580,27 +2608,47 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
         if not chosen or key in seen:
             continue
         seen.add(key)
-        if stop_at - routing.clock() < REFINE_ROUND_MIN_S:
-            break
-        info["tried"] += 1
-        read, back_trip = _through((), stop_at, ctx, chosen, k)
-        if read == "time":
-            break
-        if read is None or read.events is None:
-            continue
-        joined = _splice(
-            trip, k, {"legs": back_trip["legs"], "summary": back_trip.get("summary") or {}}
-        )
-        if too_long(_trip_m(joined), ctx):
-            continue
-        whole = analyse(joined, ctx, routing.Deadline(stop_at, ctx.deadline.per_call_s))
-        if whole is None or whole.events is None:
-            continue
-        shared, back = return_overlap(whole)
-        share = shared / back if back > 0 else 1.0
-        ranked = (share > LOOP_OVERLAP_OK, whole.key(ctx) if share <= LOOP_OVERLAP_OK else share)
-        if best is None or _loop_before(ranked, whole, best, ctx):
-            best = (ranked, joined, whole, len(chosen), share)
+        asks.append(chosen)
+    asking = _ask_ways_back(asks, stop_at, ctx, k)
+    try:
+        for number, chosen in enumerate(asks):
+            if stop_at - routing.clock() < REFINE_ROUND_MIN_S:
+                break
+            info["tried"] += 1
+            # The way back alone is read for its route only, without its junctions (audit
+            # round 2, S24): the whole loop's reading below has them. So the gate is that
+            # it could be read at all, not that its junctions were, or every way back would
+            # be passed over and the loop would be the out-and-back.
+            read, back_trip = _through(
+                (), stop_at, ctx, chosen, k, asked=asking[number] if asking else None,
+                with_events=False,
+            )  # fmt: skip
+            if read == "time":
+                break
+            if read is None:
+                continue
+            joined = _splice(
+                trip, k, {"legs": back_trip["legs"], "summary": back_trip.get("summary") or {}}
+            )
+            if too_long(_trip_m(joined), ctx):
+                continue
+            whole = analyse(joined, ctx, routing.Deadline(stop_at, ctx.deadline.per_call_s))
+            if whole is None or whole.events is None:
+                continue
+            shared, back = return_overlap(whole)
+            share = shared / back if back > 0 else 1.0
+            ranked = (
+                share > LOOP_OVERLAP_OK,
+                whole.key(ctx) if share <= LOOP_OVERLAP_OK else share,
+            )
+            if best is None or _loop_before(ranked, whole, best, ctx):
+                best = (ranked, joined, whole, len(chosen), share)
+    finally:
+        # The asks not read (the time ran out, or the plan was cancelled): one still queued
+        # is never sent; one already running ends at its own deadline, and a cancelled plan
+        # waits for it before it gives back its routing slot (`parallel.settle`).
+        for future in asking or ():
+            future.cancel()
     if best is None or best[4] >= LOOP_OUT_AND_BACK:
         info["fallback"] = "out_and_back"
         return trip, info
@@ -2616,6 +2664,43 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
         excluded=excluded,
     )
     return joined, info
+
+
+def _ask_ways_back(
+    asks: list[list[tuple[float, float]]], stop_at: float, ctx: Context, k: int
+) -> list[Future] | None:
+    """`make_loop`'s ways back, each leg `k` with one of `asks` excluded, asked together on
+    the pool and their traces after them (audit round 2, S24, as `_wide` asks its routes):
+    they do not depend on each other. None (each asked in turn, as before) where the pool is
+    off, there is one, or there is not the time for one round. The pool's bound holds: at
+    most ROUTER_PARALLEL_CALLS of them run at once beside the request's own thread
+    (`core.parallel`), and each answer, a route of one leg, is held only until it is read."""
+    if not parallel.enabled() or len(asks) < 2 or stop_at - routing.clock() < REFINE_ROUND_MIN_S:
+        return None
+    deadline = _round_deadline(stop_at, ctx)
+    asking = [
+        parallel.submit(
+            routing._call, ctx.variant, "route", _through_request((), ctx, chosen, k), deadline
+        )
+        for chosen in asks
+    ]
+    answered = []
+    for future in asking:
+        try:
+            answered.append(routing.await_future(future).get("trip") or {})
+        except routing.PlanCancelled:
+            # Cancelled while waiting (`core.plan_cancel`): the reading gives way.
+            break
+        except Exception:  # noqa: BLE001 - read again, and handled, in `make_loop`
+            continue
+    routing.prefetch_traces(
+        ctx.variant,
+        ctx.costing,
+        answered,
+        routing.Deadline(stop_at, ctx.deadline.per_call_s),
+        ctx.traces,
+    )
+    return asking
 
 
 def _loop_before(ranked: tuple, whole: Analysis, best: tuple, ctx: Context) -> bool:
