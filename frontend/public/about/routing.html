@@ -1282,7 +1282,8 @@ park paths.</p>
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 220" role="img" aria-labelledby="fig-uturn-t fig-uturn-d" focusable="false" style="min-width:547px">
 <title id="fig-uturn-t">The U-turn rule when re-routing</title>
-<desc id="fig-uturn-d">A rider heading east goes off route. RouteMaker plans on from the rider&#x27;s heading, so the default new route continues ahead. A route that turns back, setting off 120 degrees or more from the heading, is used only if it is at least half a mile, 0.8 km, shorter, and then the first cue says Make a U-turn.</desc>
+<desc id="fig-uturn-d">A rider heading east goes off route. RouteMaker plans on from the rider&#x27;s heading, so the default new route continues ahead. A route that turns back, setting off 120 degrees or more from the heading, is used only if it is at least half a mile, 0.8 km, shorter, or there is no way ahead, and then the first cue
+says Make a U-turn. After two U-turns ridden past, the route ahead is kept whatever turning back would save.</desc>
 <defs><marker id="ah-uturn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <path d="M60,140 L360,140" stroke="#57a06c" stroke-width="8" fill="none"/>
 <circle cx="300" cy="140" r="9" class="fillacc"/>
@@ -1299,7 +1300,8 @@ park paths.</p>
 <div class="fig-narrow">
 <svg viewBox="0 0 320 306" role="img" aria-labelledby="fig-uturn-n-t fig-uturn-n-d" focusable="false">
 <title id="fig-uturn-n-t">The U-turn rule when re-routing</title>
-<desc id="fig-uturn-n-d">A rider heading east goes off route. RouteMaker plans on from the rider&#x27;s heading, so the default new route continues ahead. A route that turns back, setting off 120 degrees or more from the heading, is used only if it is at least half a mile, 0.8 km, shorter, and then the first cue says Make a U-turn.</desc>
+<desc id="fig-uturn-n-d">A rider heading east goes off route. RouteMaker plans on from the rider&#x27;s heading, so the default new route continues ahead. A route that turns back, setting off 120 degrees or more from the heading, is used only if it is at least half a mile, 0.8 km, shorter, or there is no way ahead, and then the first cue
+says Make a U-turn. After two U-turns ridden past, the route ahead is kept whatever turning back would save.</desc>
 <defs><marker id="ah-uturn-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <text class="t" x="10" y="24" text-anchor="start">Route behind you: kept only if</text>
 <text class="t" x="10" y="44" text-anchor="start">at least 0.5 mi [0.8 km] shorter</text>
@@ -1313,7 +1315,8 @@ park paths.</p>
 <text class="ts" x="10" y="286" text-anchor="start">from your heading counts as a U-turn.</text>
 </svg>
 </div>
-<figcaption>Re-routing keeps your heading. A U-turn is offered only when it saves at least 0.5 mi [0.8 km], and the cue says so plainly.</figcaption>
+<figcaption>Re-routing keeps your heading. A U-turn is offered only when it saves at least 0.5 mi [0.8 km] or there is no way ahead (after two ridden
+past, only when there is no way ahead), and the cue says so plainly.</figcaption>
 </figure>
 <details class="more"><summary>More: While you ride</summary>
 <div class="more-body">
@@ -1323,11 +1326,11 @@ seconds before, and "now" at the turn. Cues say the turn and the street, and a f
 router knows it: "You have reached stop 2, Union Market. Destination on your left." A destination on the left across a busy
 (LTS 3 or more) two-way road with no bike facility is said early: "In 500 feet, the destination is across Georgia
 Avenue, on your left." A painted or protected bike lane that ends on a street rated LTS 3 or calmer, with no lane
-back within about 500 ft [150 m], is said: "Bike lane ends on Connecticut Avenue Northwest." A turn onto an unnamed
+back within about 500 ft [150 m], is said at <strong>Full</strong>: "Bike lane ends on Connecticut Avenue Northwest." A turn onto an unnamed
 path that leads to a named one names it: "Right onto the path to Rock Creek Trail". At <strong>Full</strong>, just
 past a turn onto a stretch that runs on for a mile [1.6 km] or more, the ride says how far: "Continue on Washington
 and Old Dominion Trail for 2 miles." A route that turns back on the same way, at a dead end or past a via point on
-a spur, says "Make a U-turn on" the street, in the directions and in the ride. Where the path you turn onto starts on the far side of a road you go straight across just before, the
+a spur, says so: "Make a U-turn on" the street in the directions, and "Make a U-turn" in the ride. Where the path you turn onto starts on the far side of a road you go straight across just before, the
 cue says the crossing first: "Cross Saint Paul Street, then right onto Saint Paul Street bike lane"; the
 directions also name the crossing's control, such as "at a signal". Turns in quick succession, each within 330 ft [100 m] of the one before, are said together early,
 up to three of them: "Right onto 6th Street, then immediately bear left onto Rhode Island Avenue". Each turn
