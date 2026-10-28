@@ -1,14 +1,15 @@
 /**
  * The major closure warning (v0.7.0 plan, "GPX export as close to identical as possible, closure warning
  * first", and its correction): a modal dialog, not a toast, when a kept route runs along closures in force now.
- * "This route goes through 2 closures", each named in one line, and three choices: Reroute around them (the
- * default), Ride it anyway (or Download or Save anyway), and Cancel. The platform's <dialog> opened with
+ * "This route goes through 2 closures", each named in one line, and three choices: Reroute around them ("it" for
+ * one; the default), Ride it anyway (or Download or Save anyway), and Cancel. The park-wide notices, which are not
+ * closures on the route, wait behind "Park notices (N)" (P11). The platform's <dialog> opened with
  * showModal makes the page behind inert; the focus starts on the heading so a screen reader reads the list;
  * Escape is Cancel; on close the focus goes back where it was.
  */
 import { useEffect, useId, useRef } from "react";
 import type { ClosureNotice } from "./lib/closureMap.ts";
-import { CANCEL_LABEL, REROUTE_LABEL, anywayLabel, closureHeading, closureLead, type CheckFor, type Closure } from "./lib/closureCheck.ts";
+import { CANCEL_LABEL, anywayLabel, closureHeading, closureLead, parkNoticesSummary, rerouteLabel, type CheckFor, type Closure } from "./lib/closureCheck.ts";
 
 export interface ClosureAsk {
   why: CheckFor;
@@ -77,9 +78,10 @@ export function ClosureDialog({ ask, onReroute, onAnyway, onCancel }: { ask: Clo
                 </li>
               ))}
             </ul>
+            {/* Park-wide notices are not closures on the route: behind a disclosure, the list above them (P11). */}
             {ask.notices && ask.notices.length > 0 && (
-              <>
-                <h3 className="closure-notices-heading">Check before you go</h3>
+              <details className="closure-notices">
+                <summary className="closure-notices-heading">{parkNoticesSummary(ask.notices.length)}</summary>
                 <ul role="list" className="closure-list">
                   {ask.notices.map((n) => (
                     <li key={n.id}>
@@ -95,13 +97,13 @@ export function ClosureDialog({ ask, onReroute, onAnyway, onCancel }: { ask: Clo
                     </li>
                   ))}
                 </ul>
-              </>
+              </details>
             )}
             {ask.unchecked && <p className="hint">{ask.unchecked}</p>}
           </div>
           <div className="closure-choices">
             <button type="button" className="primary closure-reroute" onClick={onReroute}>
-              {REROUTE_LABEL}
+              {rerouteLabel(ask.closures.length)}
             </button>
             <button type="button" className="secondary closure-anyway" onClick={onAnyway}>
               {anywayLabel(ask.why)}

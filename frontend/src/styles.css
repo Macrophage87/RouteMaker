@@ -7206,6 +7206,15 @@ details.fold > summary .icon {
   font-size: 1rem;
   margin: 12px 0 4px;
 }
+/* The park notices' disclosure in the closure dialog (P11): a 44 px target. */
+summary.closure-notices-heading {
+  min-height: 44px;
+  padding: 10px 0;
+  margin: 4px 0 0;
+  box-sizing: border-box;
+  font-weight: 700;
+  cursor: pointer;
+}
 @media (forced-colors: active) {
   .closure-marker {
     forced-color-adjust: none;

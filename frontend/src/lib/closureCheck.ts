@@ -131,7 +131,18 @@ export function closureHeading(count: number): string {
 }
 
 export const REROUTE_LABEL = "Reroute around them";
+export const REROUTE_ONE_LABEL = "Reroute around it";
 export const CANCEL_LABEL = "Cancel";
+
+/** The default choice, for one closure or more (P11). */
+export function rerouteLabel(count: number): string {
+  return count === 1 ? REROUTE_ONE_LABEL : REROUTE_LABEL;
+}
+
+/** The park-wide notices' disclosure under the list (P11): "Park notices (6)", opened only when asked. */
+export function parkNoticesSummary(count: number): string {
+  return `Park notices (${count})`;
+}
 
 /** The middle choice, by what the check was for. */
 export function anywayLabel(why: CheckFor): string {
@@ -142,7 +153,8 @@ export function anywayLabel(why: CheckFor): string {
 export function closureLead(why: CheckFor): string {
   if (why === "download") return "Closures in force now that the file's line runs along. Reroute first, or download it as it is.";
   if (why === "save") return "Closures in force now that this route runs along. Reroute first, or save it as it is.";
-  return "This route was planned before these closures. Reroute around them, or ride it as it is.";
+  // At Start ride the route may have been planned a moment ago: it says what is so, not when it was planned (P11).
+  return "Closures on this route now.";
 }
 
 /** Metres along each vertex of a line. */
