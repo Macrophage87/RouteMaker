@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import * as garminLink from "./lib/garminLink.ts";
 import * as wahooLink from "./lib/wahooLink.ts";
+import { t } from "./lib/i18n.ts";
 
 /** What one service's line needs: its words, where Connect goes, and its two requests. */
 interface Service {
@@ -108,14 +109,14 @@ function ConnectionSetting({ service, origin = window.location.origin, returned 
       {state?.connected ? (
         <div className="assistant-key-actions">
           <button type="button" className="secondary" disabled={busy} onClick={() => void disconnect()}>
-            Disconnect
+            {t("Disconnect")}
           </button>
         </div>
       ) : (
         state?.available && (
           // A link, as Sign in with Discord is: it leaves for the service's page and comes back here.
           <p className="hint sign-in-line">
-            <a href={service.connectPath}>Connect {service.label}</a>
+            <a href={service.connectPath}>{t("Connect {service}", { service: service.label })}</a>
           </p>
         )
       )}

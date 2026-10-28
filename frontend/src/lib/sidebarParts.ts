@@ -8,6 +8,7 @@
  * and its words in text; none depends on colour.
  */
 import { Fragment, createElement as h, useId, useState, type ReactElement, type ReactNode } from "react";
+import { t } from "./i18n.ts";
 import { RIDE_ACTION_SPOKEN, RIDE_SETTINGS_LABEL, foldTitle, rideActionLabel } from "./sidebar.ts";
 import { SEVERITY_COLOURS, warningIconSvg, type Severity } from "./intersectionMarkers.ts";
 import { stressZoomNotice } from "./stressLegend.ts";
@@ -159,7 +160,7 @@ export function JunctionLegend(): ReactElement {
   return h(
     "div",
     { className: "junction-legend" },
-    h("h4", { id: "junction-legend-heading" }, "Junctions"),
+    h("h4", { id: "junction-legend-heading" }, t("Junctions")),
     h(
       "ul",
       { className: "junction-legend-list", "aria-labelledby": "junction-legend-heading" },
@@ -210,7 +211,7 @@ export function HighContrastShortcut({
       "button",
       { type: "button", className: "secondary high-contrast-shortcut", "aria-pressed": on, "aria-describedby": hintId, onClick: () => onChange(!on) },
       ACCESSIBILITY_LABEL,
-      h("span", { "aria-hidden": "true" }, `: ${on ? "On" : "Off"}`),
+      h("span", { "aria-hidden": "true" }, `: ${on ? t("On") : t("Off")}`),
     ),
     h("span", { id: hintId, className: "visually-hidden" }, hint),
   );

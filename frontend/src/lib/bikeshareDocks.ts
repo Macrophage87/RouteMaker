@@ -30,6 +30,7 @@
  */
 import { CLIMB_FONT } from "./climbs.ts";
 import { hexToRgb, rasterise, type Raster, type Rgb } from "./stationIcons.ts";
+import { t } from "./i18n.ts";
 
 export interface DockInfo {
   id: string;
@@ -264,11 +265,11 @@ export function freeBikeCard(bike: FreeBike, operators: readonly OperatorInfo[],
   return [`${name} e-bike`, "Not at a dock: end the ride where the operator allows.", ...freshness(answer), ...sourceLine(answer.credit)];
 }
 
-export const DOCKS_UNAVAILABLE = "Bikeshare docks are unavailable for now; the map tries again in a minute.";
-export const DOCKS_ZOOM_IN = "Zoom in to see bikeshare docks.";
-export const DOCKS_ALL_OFF = "Bikeshare docks are off: switch them on to see the bikes.";
-export const DOCKS_HINT = "Capital Bikeshare's docks and e-bikes. On by default in the Bikeshare, Bikeshare + Transit and Rebalance ride types.";
-export const DOCKS_SECTION_TITLE = "Bikeshare and e-bikes";
+export const DOCKS_UNAVAILABLE = t("Bikeshare docks are unavailable for now; the map tries again in a minute.");
+export const DOCKS_ZOOM_IN = t("Zoom in to see bikeshare docks.");
+export const DOCKS_ALL_OFF = t("Bikeshare docks are off: switch them on to see the bikes.");
+export const DOCKS_HINT = t("Capital Bikeshare's docks and e-bikes. On by default in the Bikeshare, Bikeshare + Transit and Rebalance ride types.");
+export const DOCKS_SECTION_TITLE = t("Bikeshare and e-bikes");
 
 /** The section's status line. */
 export function docksStatus(answer: DocksAnswer | null, asked: boolean, zoom: number, anyOn: boolean): string {
