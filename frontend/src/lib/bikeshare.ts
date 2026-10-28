@@ -13,6 +13,7 @@ import type { BikeshareEnding, BikesharePlan, BikeshareStop, RouteResponse } fro
 import type { Bike, Ending } from "./dials.ts";
 import { formatDistance, formatDuration } from "./format.ts";
 import type { LonLat } from "./geo.ts";
+import { t } from "./i18n.ts";
 
 /**
  * The source citation (OWNER-DECISIONS 301: "Even if the license doesn't require crediting
@@ -41,13 +42,13 @@ export function linkParts(text: string): { text: string; href?: string }[] {
 export const BIKES: readonly { id: Bike; label: string; hint: string }[] = [
   {
     id: "classic",
-    label: "Classic bike",
-    hint: "A few gears and heavy: slower, and hills count against a route.",
+    label: t("Classic bike"),
+    hint: t("A few gears and heavy: slower, and hills count against a route."),
   },
   {
     id: "ebike",
-    label: "E-bike",
-    hint: "Assisted: hills barely count and the pace is faster. It may also start from an e-bike left outside a dock.",
+    label: t("E-bike"),
+    hint: t("Assisted: hills barely count and the pace is faster. It may also start from an e-bike left outside a dock."),
   },
 ];
 
@@ -139,13 +140,15 @@ export interface DockMarker {
 
 /** A dock's count in words: "5 classic bikes available" to take a bike, "3 free slots" to return one. */
 export function dockCountWords(stop: BikeshareStop, bike: Bike, taking: boolean): string {
-  if (stop.availability === "unknown") return "availability unknown";
+  // Whole phrases, so a language with its own plural and word order says them its own way (routing audit D30).
+  if (stop.availability === "unknown") return t("availability unknown");
   if (taking) {
     const n = stop.bikes_available ?? 0;
-    return `${n} ${bike === "ebike" ? (n === 1 ? "e-bike" : "e-bikes") : n === 1 ? "classic bike" : "classic bikes"} available`;
+    if (bike === "ebike") return n === 1 ? t("1 e-bike available") : t("{n} e-bikes available", { n });
+    return n === 1 ? t("1 classic bike available") : t("{n} classic bikes available", { n });
   }
   const n = stop.docks_available ?? 0;
-  return `${n} ${n === 1 ? "free slot" : "free slots"}`;
+  return n === 1 ? t("1 free slot") : t("{n} free slots", { n });
 }
 
 /** Where a bike is taken and where it is returned, as markers; an out-of-dock end has no marker of its own (the End point is there). */
@@ -160,8 +163,10 @@ export function dockMarkers(plan: BikesharePlan | null): DockMarker[] {
     badge: "1",
     label:
       start.kind === "free_bike"
-        ? "Step 1: take an e-bike parked outside a dock"
-        : `Step 1: take ${plan.bike === "ebike" ? "an e-bike" : "a classic bike"} at the dock at ${start.name}, ${dockCountWords(start, plan.bike, true)}`,
+        ? t("Step 1: take an e-bike parked outside a dock")
+        : plan.bike === "ebike"
+          ? t("Step 1: take an e-bike at the dock at {place}, {count}", { place: start.name, count: dockCountWords(start, plan.bike, true) })
+          : t("Step 1: take a classic bike at the dock at {place}, {count}", { place: start.name, count: dockCountWords(start, plan.bike, true) }),
   });
   if (end.kind === "dock") {
     markers.push({
@@ -169,7 +174,7 @@ export function dockMarkers(plan: BikesharePlan | null): DockMarker[] {
       lon: end.lon,
       lat: end.lat,
       badge: "2",
-      label: `Step 2: return the bike at the dock at ${end.name}, ${dockCountWords(end, plan.bike, false)}`,
+      label: t("Step 2: return the bike at the dock at {place}, {count}", { place: end.name, count: dockCountWords(end, plan.bike, false) }),
     });
   }
   return markers;
@@ -181,8 +186,8 @@ export function dockMarkers(plan: BikesharePlan | null): DockMarker[] {
 export function bikeshareSaid(route: Pick<RouteResponse, "bikeshare">): string | null {
   const plan = bikeshareOf(route);
   if (!plan) return null;
-  const unknown = plan.availability === "unknown" ? " Availability is unknown." : "";
-  return `Bikeshare plan: ${plan.summary}${unknown}`;
+  const said = t("Bikeshare plan: {summary}", { summary: plan.summary });
+  return plan.availability === "unknown" ? `${said} ${t("Availability is unknown.")}` : said;
 }
 
 /** The totals, as dt/dd rows: walking, riding, and both. */

@@ -34,6 +34,16 @@ PLAN = "0123456789abcdef0123456789abcdef"
 OTHER_PLAN = "fedcba9876543210fedcba9876543210"
 
 
+def outside_a_transaction(monkeypatch) -> None:
+    """`plan_cancel` polls only outside a transaction. Patched on the connection
+    itself, not on `django.db.connection`: that is a proxy with no attributes of
+    its own, and since pytest 9.2 undoing a patch on it deletes `in_atomic_block`
+    from the real connection, which breaks the next test that opens a cursor."""
+    from django.db import DEFAULT_DB_ALIAS, connections
+
+    monkeypatch.setattr(connections[DEFAULT_DB_ALIAS], "in_atomic_block", False)
+
+
 @pytest.fixture
 def store(monkeypatch):
     """The cancel store, in memory: the keys flagged, and how often each was read."""
@@ -45,7 +55,7 @@ def store(monkeypatch):
         return key in flagged
 
     monkeypatch.setattr(plan_cancel, "flagged", read)
-    monkeypatch.setattr(plan_cancel.connection, "in_atomic_block", False, raising=False)
+    outside_a_transaction(monkeypatch)
     return flagged, reads
 
 
@@ -126,7 +136,7 @@ class TestThePlanStops:
             raise DatabaseError("down")
 
         monkeypatch.setattr(plan_cancel, "flagged", broken)
-        monkeypatch.setattr(plan_cancel.connection, "in_atomic_block", False, raising=False)
+        outside_a_transaction(monkeypatch)
         watch = plan_cancel.Watch("k")
         watch.check()
         assert not watch.cancelled

@@ -887,7 +887,9 @@ def road_list(answer: dict) -> dict | None:
             rows.append(last)
         last["to_mi"] = entry["to_mi"]
         last["tiers"][tier] = last["tiers"].get(tier, 0.0) + miles
-        kind = entry.get("facility") or "street"
+        # "none" (known no facility, round-2 D28) and None (not known) are both plain street.
+        kind = entry.get("facility")
+        kind = kind if kind in ("path", "protected", "lane") else "street"
         last["facility"][kind] = last["facility"].get(kind, 0.0) + miles
     rows = _bridged(rows)
     scenic = _scenic_rows(answer)
