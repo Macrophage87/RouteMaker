@@ -8219,6 +8219,8 @@ summary.closure-notices-heading {
   width: 44px;
   height: 44px;
   min-height: 44px;
+  /* Never squeezed by a long name and its choices on a narrow phone (Screen-reader detail's row at 390 px). */
+  flex-shrink: 0;
   padding: 0;
   margin-left: auto;
   border: 0;

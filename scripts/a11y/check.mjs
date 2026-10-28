@@ -3915,7 +3915,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
 {
   // The committed file (15,480 places since #92) answers a search across the whole area.
   const p = await open({ ride: false, junctions: false });
-  const openFood = "(() => { if (document.getElementById('sheet-food')?.hidden !== false) [...document.querySelectorAll('.map-chip')].find((c) => c.textContent.trim() === 'Food')?.click(); const d = document.querySelector('.food-sheet'); return !!d; })()";
+  const openFood = "(() => { if (document.getElementById('sheet-food')?.hidden !== false) [...document.querySelectorAll('.map-chip')].find((c) => c.textContent.trim() === 'Eat')?.click(); const d = document.querySelector('.food-sheet'); return !!d; })()";
   await p.eval(openFood);
   await sleep(200);
   await p.eval("document.getElementById('food-query').focus(); true");
@@ -3933,7 +3933,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
     window.fetch = (input, init) => /food[^/]*\.json/.test(String(input?.url ?? input)) ? Promise.resolve(new Response(JSON.stringify({ source: "test", points: [] }), { headers: { "Content-Type": "application/json" } })) : real(input, init);
   })();`;
   const p = await open({ ride: false, junctions: false, init: EMPTY_FOOD });
-  const openFood = "(() => { if (document.getElementById('sheet-food')?.hidden !== false) [...document.querySelectorAll('.map-chip')].find((c) => c.textContent.trim() === 'Food')?.click(); const d = document.querySelector('.food-sheet'); return !!d; })()";
+  const openFood = "(() => { if (document.getElementById('sheet-food')?.hidden !== false) [...document.querySelectorAll('.map-chip')].find((c) => c.textContent.trim() === 'Eat')?.click(); const d = document.querySelector('.food-sheet'); return !!d; })()";
   await p.eval(openFood);
   await sleep(200);
   await p.eval("document.getElementById('food-query').focus(); true");
@@ -3951,7 +3951,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
     window.fetch = (input, init) => /food[^/]*\.json/.test(String(input?.url ?? input)) ? Promise.resolve(new Response(JSON.stringify({ source: "test", points }), { headers: { "Content-Type": "application/json" } })) : real(input, init);
   })();`;
   const p = await open({ ride: false, junctions: false, init: FOOD_STUB });
-  const openFood = "(() => { if (document.getElementById('sheet-food')?.hidden !== false) [...document.querySelectorAll('.map-chip')].find((c) => c.textContent.trim() === 'Food')?.click(); const d = document.querySelector('.food-sheet'); return !!d; })()";
+  const openFood = "(() => { if (document.getElementById('sheet-food')?.hidden !== false) [...document.querySelectorAll('.map-chip')].find((c) => c.textContent.trim() === 'Eat')?.click(); const d = document.querySelector('.food-sheet'); return !!d; })()";
   await p.eval(openFood);
   await sleep(200);
   const form = await axNode(p, "form.food-search");
@@ -4014,7 +4014,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
     window.fetch = (input, init) => /food[^/]*\.json/.test(String(input?.url ?? input)) ? Promise.resolve(new Response(JSON.stringify({ source: "test", points }), { headers: { "Content-Type": "application/json" } })) : real(input, init);
   })();`;
   const p = await open({ ride: false, junctions: false, init: FOOD_STUB, width: 320, height: 800, mobile: true });
-  await p.eval("(() => { if (document.getElementById('sheet-food')?.hidden !== false) [...document.querySelectorAll('.map-chip')].find((c) => c.textContent.trim() === 'Food')?.click(); const d = document.querySelector('.food-sheet'); document.getElementById('food-query').focus(); return true; })()");
+  await p.eval("(() => { if (document.getElementById('sheet-food')?.hidden !== false) [...document.querySelectorAll('.map-chip')].find((c) => c.textContent.trim() === 'Eat')?.click(); const d = document.querySelector('.food-sheet'); document.getElementById('food-query').focus(); return true; })()");
   await p.type("coffee");
   await p.enter();
   await p.waitFor("document.querySelectorAll('.food-list li').length === 4", 8000);
@@ -4655,7 +4655,9 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   await p.waitFor("!!document.querySelector('.mode-switch')", 40000);
   await sleep(800);
   const kept = await p.eval(modeNow);
-  await p.eval("[...document.querySelectorAll('.mode-switch .mode-button')].find((x) => x.textContent === 'Go' && x.getClientRects().length).click(); true");
+  // Plan's switch is in the phone sheet's handle row since P10: wait for it to be laid out after the reload.
+  await p.waitFor("[...document.querySelectorAll('.mode-switch .mode-button')].some((x) => x.textContent === 'Go' && x.getClientRects().length)", 10000);
+  await p.eval("([...document.querySelectorAll('.mode-switch .mode-button')].find((x) => x.textContent === 'Go' && x.getClientRects().length) ?? { click() { throw new Error('no Go: ' + JSON.stringify([...document.querySelectorAll('.mode-switch')].map((g) => [g.className, g.parentElement?.className, g.getClientRects().length, !!g.closest('[hidden]'), document.querySelector('.panel')?.className]))); } }).click(); true");
   await sleep(500);
   check("go: the choice is remembered across a reload, and Go comes back with the switch", kept === "Plan" && (await p.eval(modeNow)) === "Go", JSON.stringify({ kept }));
   // Every control within two presses: Go's Settings holds Reports and Save & load above the tabs (P12: no Plan, the switch is beside it).
@@ -5052,12 +5054,17 @@ async function goPressMap(p, card = null) {
 {
   // Lettered places (the owner, 2026-10-11 21:04 UTC): the nearest listed are lettered in the list and on the
   // map; a marker's tap or the letter's key opens the place's card (Stephen 2026-10-19: "don't auto route"), whose
-  // Route here (no route yet) or Add as stop (with one) acts.
-  const p = await goWith("granted");
+  // Route here (no route yet) or Add as stop (with one) acts. On a tablet's width, where the Nearest sheet is in the
+  // side panel beside the map: on a phone it is a popup since 955ba2b8, the map and its markers inert behind it.
+  const p = await goWith("granted", { width: 1024, height: 800 });
+  if ((await p.eval(modeNow)) !== "Go") {
+    await p.eval("[...document.querySelectorAll('.mode-switch .mode-button')].find((x) => x.textContent === 'Go' && x.getClientRects().length).click(); true");
+    await sleep(1500);
+  }
+  // Metro is its own chip behind More (each chip names its sheet; the Nearest sheet's kind buttons are gone). Pressed
+  // as the Water chip was, also while a route folds the chips behind New destination.
   const openMetro = async () => {
-    await p.eval("[...document.querySelectorAll('.go-places .place-chip')].find((c) => c.textContent.trim() === 'Water').click(); true");
-    await sleep(600);
-    await p.eval("[...document.querySelectorAll('#sheet-nearest .nearest-kinds button')].find((x) => /Metro/.test(x.textContent)).click(); true");
+    await p.eval("[...document.querySelectorAll('.go-more-row .place-chip')].find((c) => c.textContent.trim() === 'Metro').click(); true");
     return p.waitFor("document.querySelectorAll('.lettered-marker').length === 3", 20000);
   };
   const shown = await openMetro();
