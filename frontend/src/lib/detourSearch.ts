@@ -33,6 +33,7 @@ import {
   type NearestPlace,
   type NearestResult,
 } from "./nearest.ts";
+import { letterPlaces, placeLetter, type LetteredPlace } from "./letteredPlaces.ts";
 import { repairDetails, repairTitle, type RepairPlace } from "./repair.ts";
 import { foodNearestPlaces } from "./roam.ts";
 import type { WaterPoint } from "./waterRestrooms.ts";
@@ -297,4 +298,63 @@ export async function findDetour(deps: DetourDeps, ask: DetourAsk): Promise<Deto
   const outcome = await rank(deps, "search", places, query);
   const credited = searched.ok && searched.attribution.length > 0 && outcome.found?.items.some((i) => i.place.id.startsWith("geo-"));
   return credited && outcome.found ? { ...outcome, found: { ...outcome.found, attribution: searched.attribution } } : outcome;
+}
+
+/**
+ * The places found, on the ride's map (the owner, 2026-10-28, of Food's lettered pins and its Show on map: "make sure
+ * that happens in a ride too"): lettered A, B, C as their rows, each pin named as the planner's are
+ * (lib/letteredPlaces.ts). Null with nothing found, so no pins.
+ */
+export function detourLettered(found: DetourFound | null): LetteredPlace[] | null {
+  if (!found || found.items.length === 0) return null;
+  return letterPlaces(found.items, (item) => ({ point: item.place.point, title: item.place.title, metres: item.distanceM }));
+}
+
+/** A row's Show on map, named as Find food's is: "Show on map: Drinking water, marker B". */
+export function detourShowName(item: Nearby, index: number): string {
+  return t("Show on map: {place}, marker {letter}", { place: item.place.title, letter: placeLetter(index) });
+}
+
+/** Said as Show on map frames the place. */
+export function detourShownSaid(item: Nearby, index: number): string {
+  return t("Showing {place} on the map, marker {letter}.", { place: item.place.title, letter: placeLetter(index) });
+}
+
+/** A box on the screen, in CSS pixels (a getBoundingClientRect). */
+export interface ScreenBox {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+/**
+ * Show on map's padding in a ride: the map between the ride's card and its bottom panel (`middle`) and left of its
+ * side buttons (`rail`), with room above the place for its pin, which stands 40 px over its point. Where the screen is
+ * short (Large text's card), the paddings shrink together so at least 120 px of map stays each way.
+ */
+export function rideOpenPadding(map: ScreenBox, middle: ScreenBox | null, rail: ScreenBox | null): ScreenBox {
+  const top = Math.max(0, (middle?.top ?? map.top) - map.top) + 60;
+  const bottom = Math.max(0, map.bottom - (middle?.bottom ?? map.bottom)) + 30;
+  const right = Math.max(0, map.right - (rail?.left ?? map.right)) + 30;
+  const left = 40;
+  const fit = (a: number, b: number, size: number): [number, number] => {
+    const room = Math.max(0, size - 120);
+    if (a + b <= room) return [a, b];
+    const k = room / (a + b);
+    return [Math.floor(a * k), Math.floor(b * k)];
+  };
+  const [t1, b1] = fit(top, bottom, map.bottom - map.top);
+  const [l1, r1] = fit(left, right, map.right - map.left);
+  return { top: t1, bottom: b1, left: l1, right: r1 };
+}
+
+/** The box that frames the place and the rider together, [west, south] and [east, north]: Show on map's view. */
+export function frameAround(points: readonly LonLat[]): [LonLat, LonLat] {
+  const lons = points.map((p) => p[0]);
+  const lats = points.map((p) => p[1]);
+  return [
+    [Math.min(...lons), Math.min(...lats)],
+    [Math.max(...lons), Math.max(...lats)],
+  ];
 }

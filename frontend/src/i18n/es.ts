@@ -1033,6 +1033,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Several lines: one slice each": "Varias líneas: una porción cada una",
   "Show bike lanes on high-stress roads": "Mostrar carriles bici en calles de estrés alto",
   "Show on map: {place}, marker {letter}": "Mostrar en el mapa: {place}, marcador {letter}",
+  "Showing {place} on the map, marker {letter}.": "Mostrando {place} en el mapa, marcador {letter}.",
   "Show {count} more": "Mostrar {count} más",
   "Showing {shown} of {total}.": "Se muestran {shown} de {total}.",
   "Skip to ride mode": "Ir al modo recorrido",

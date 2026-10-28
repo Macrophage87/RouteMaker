@@ -2469,8 +2469,10 @@ export function MapView(props: Props) {
     });
     // Bring them into view in the part of the map the panel does not cover (App's framePadding: above a phone's
     // sheet as it is now, not a guess at half the map; the 2026-10-28 audit, P7: "pins hide under the sheet"). Room
-    // above each pin's point for the pin itself, and at least 120 px of map between the paddings.
-    if (props.lettered.length > 0) {
+    // above each pin's point for the pin itself, and at least 120 px of map between the paddings. Not while a ride's
+    // camera follows the rider (its Detour list, 2026-10-28): the next fix would take the map straight back; a row's
+    // Show on map frames its place instead.
+    if (props.lettered.length > 0 && !callbacks.current.follow) {
       const lons = props.lettered.map((place) => place.point[0]);
       const lats = props.lettered.map((place) => place.point[1]);
       const height = map.getContainer().clientHeight;
