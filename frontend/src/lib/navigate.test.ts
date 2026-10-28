@@ -501,16 +501,21 @@ test("spokenDistance and withoutMetric: US units only when spoken", () => {
 });
 
 test("spokenText: a group of crossings is said without its severity, which the screen keeps (D33)", () => {
+  // The server's own shape (describe.group_sentence): "(LTS 4)" before the severity.
   const group =
-    "1.0 to 1.2 mi (1.6 to 1.9 km): 2 crossings with traffic signals (A Street and B Street), 2 of them heavy-traffic roads (Very high stress junctions).";
+    "1.0 to 1.2 mi (1.6 to 1.9 km): 2 crossings with traffic signals (A Street and B Street), 2 of them heavy-traffic roads (LTS 4) (Very high stress junctions).";
   assert.equal(spokenText(group), "1.0 to 1.2 mi: 2 crossings with traffic signals (A Street and B Street), 2 of them heavy-traffic roads.");
+  assert.equal(
+    spokenText("3 crossings with traffic signals (A Street, B Street and C Street), 1 of them a heavy-traffic road (LTS 4) (Very high stress junctions)."),
+    "3 crossings with traffic signals (A Street, B Street and C Street), 1 of them a heavy-traffic road.",
+  );
   assert.equal(
     spokenText("2 cruces con semáforo, todos ellos calles de tráfico pesado (LTS 4) (intersecciones de estrés muy alto)."),
     "2 cruces con semáforo, todos ellos calles de tráfico pesado.",
   );
   // Red with no heavy-traffic road (LTS 3.5): nothing else says how bad, so it stays.
   assert.equal(spokenText("2 crossings (Very high stress junctions)."), "2 crossings (Very high stress junctions).");
-  // A higher stress group has nothing else that says so.
+  // A higher stress group keeps its severity: nothing else in it says so.
   assert.equal(spokenText("2 crossings (Higher stress junctions)."), "2 crossings (Higher stress junctions).");
   assert.equal(spokenText("2 cruces (intersecciones de estrés más alto)."), "2 cruces (intersecciones de estrés más alto).");
   // One junction's own severity is not this change's.
