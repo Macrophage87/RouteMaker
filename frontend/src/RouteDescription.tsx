@@ -20,6 +20,7 @@
  * that summary, in place of its own heading and toggle button. Without `fold` it is as it was.
  */
 import { AVOID_SYMBOL } from "./lib/avoidJunctions.ts";
+import { t } from "./lib/i18n.ts";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { RouteResponse } from "./lib/api.ts";
 import "./routeDescription.css";
@@ -144,7 +145,7 @@ export function RouteDescription({
         {entry.citation && <small className="description-citation">{entry.citation}</small>}
         {crossings.length > 0 ? (
           // A group's crossings, each with its mile marker (OWNER-DECISIONS 248).
-          <ol className="description-crossings" aria-label="Crossings in this group, in route order">
+          <ol className="description-crossings" aria-label={t("Crossings in this group, in route order")}>
             {crossings.map((crossing, k) => (
               <li key={k}>{crossing.text}</li>
             ))}
@@ -195,14 +196,14 @@ export function RouteDescription({
   const actions = (
     <div className="actions description-actions">
       <button type="button" onClick={onCopy}>
-        Copy description
+        {t("Copy description")}
       </button>
       <button type="button" onClick={onDownload}>
-        Download as text
+        {t("Download as text")}
       </button>
       {rideAction}
       <span role="status" className="hint description-status">
-        {copied === "done" ? "Copied." : copied === "failed" ? "Could not copy. Use Download as text." : ""}
+        {copied === "done" ? t("Copied.") : copied === "failed" ? t("Could not copy. Use Download as text.") : ""}
       </span>
     </div>
   );
@@ -232,7 +233,7 @@ export function RouteDescription({
         {choice ? (
           <label className="description-view">
             <input type="checkbox" checked={view === "full"} onChange={(e) => onView(e.target.checked)} />
-            Full detail
+            {t("Full detail")}
           </label>
         ) : null}
         {lead && <p className="hint capacity-lead">{lead}</p>}
@@ -262,7 +263,7 @@ export function RouteDescription({
       {choice ? (
         <label className="description-view">
           <input type="checkbox" checked={view === "full"} onChange={(e) => onView(e.target.checked)} />
-          Full detail
+          {t("Full detail")}
         </label>
       ) : null}
       {/* No scroll box of its own: the panel scrolls, so the list is read and

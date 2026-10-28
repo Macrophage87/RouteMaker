@@ -326,21 +326,18 @@ def add_sidewalk_rides(result: TrailClosures, ways: Iterable[Way]) -> None:
         )
     }
     closed = (set(result.reasons) - walkable) | result.destination_only
-    found = set(
-        sidewalks.links(
-            [
-                (
-                    way.osm_id,
-                    way.tags,
-                    way.node_ids,
-                    node_coordinates(way) if sidewalks.takes_part(way.tags) else (),
-                )
-                for way in ways
-            ],
-            closed=closed,
-            walkable=walkable,
+    placed = [
+        (
+            way.osm_id,
+            way.tags,
+            way.node_ids,
+            node_coordinates(way) if sidewalks.takes_part(way.tags) else (),
         )
-    )
+        for way in ways
+    ]
+    found = set(sidewalks.links(placed, closed=closed, walkable=walkable))
+    # Street-end cut-throughs (the owner, 2026-10-28), ridden as the links are.
+    found |= set(sidewalks.cut_throughs(placed, closed=closed | walkable))
     walked = found & walkable
     for osm_id in walked:
         result.reasons.pop(osm_id, None)

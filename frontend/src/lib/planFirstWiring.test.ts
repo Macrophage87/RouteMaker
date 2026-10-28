@@ -68,7 +68,7 @@ test("in Plan a station or a transit option is an edit like any other: it marks 
 
 test("the change line's Details opens the per-leg changes, a disclosure for the keyboard and screen readers", () => {
   assert.match(panel, /aria-expanded=\{detailsOpen\} aria-controls=\{detailsId\} onClick=\{\(\) => setDetailsOpen\(!detailsOpen\)\}/);
-  assert.match(panel, /Details<span className="visually-hidden"> by leg<\/span>/);
+  assert.match(panel, /\{t\("Details"\)\}<span className="visually-hidden">\{" "\}\{t\("by leg"\)\}<\/span>/);
   assert.match(panel, /<ul id=\{detailsId\} className="plan-change-details" hidden=\{!detailsOpen\}>/);
   assert.match(app, /details=\{changeDetails\}/);
 });
@@ -80,11 +80,11 @@ test("the panel: the plan in words as Route's description, Route with Enter or C
   assert.match(panel, /aria-describedby=\{button\.unavailable \? `\$\{routeWhy\} \$\{planId\}` : planId\}/);
   // "Up to date" on the button itself; Reset and Clear behind More.
   assert.match(panel, /✓ up to date/);
-  assert.match(panel, /aria-label="More: Reset and Clear"/);
+  assert.match(panel, /aria-label=\{t\("More: Reset and Clear"\)\}/);
   assert.match(panel, /<div id=\{moreId\} className="actions plan-reset-clear" hidden=\{!moreOpen\}>/);
   assert.match(panel, /aria-keyshortcuts="Control\+Enter Meta\+Enter"/);
   assert.match(panel, /if \(!\(event\.ctrlKey \|\| event\.metaKey\) && event\.target !== event\.currentTarget\) return;/);
-  assert.match(panel, /<progress className="planning" aria-label=\{`Planning route: \$\{routing\.step\}`\} \/>/);
+  assert.match(panel, /<progress className="planning" aria-label=\{t\("Planning route: \{step\}", \{ step: routing\.step \}\)\} \/>/);
   assert.match(panel, /Cancel/);
   // It follows the points and the ride, above the route; on a phone with a route, where the route comes first, on top.
   assert.match(app, /\{\(order\[0\] === "route" \? \[planPanel, \.\.\.order\.map\(\(id\) => sections\[id\]\)\] : order\.flatMap\(\(id\) => \(id === "route" \? \[planPanel, sections\[id\]\] : \[sections\[id\]\]\)\)\)\}/);
