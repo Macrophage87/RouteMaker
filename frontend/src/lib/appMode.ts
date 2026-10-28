@@ -36,7 +36,7 @@ export const MODE_LABEL: Record<AppMode, string> = { go: "Go", plan: "Plan", rev
 /** What each view is for, said as the switch's description. */
 export const MODE_SWITCH_HINT = t("Go: type a place and ride. Plan: every tool. Both keep the same route.");
 /** The same with Review, for an admin. */
-export const MODE_SWITCH_HINT_REVIEW = `${MODE_SWITCH_HINT} Review: roads waiting for your ruling.`;
+export const MODE_SWITCH_HINT_REVIEW = `${MODE_SWITCH_HINT} ${t("Review: roads waiting for your ruling.")}`;
 
 /** The views the switch offers: Review only to someone who may review. */
 export function switchModes(canReview: boolean): AppMode[] {
@@ -44,7 +44,7 @@ export function switchModes(canReview: boolean): AppMode[] {
 }
 
 /** The switch's landmark-free group name. */
-export const MODE_SWITCH_NAME = "View";
+export const MODE_SWITCH_NAME = t("View");
 
 export function isMode(value: unknown): value is AppMode {
   return value === "go" || value === "plan" || value === "review";
@@ -328,7 +328,9 @@ export function goPressLocatingSaid(name: string): string {
  * try), ending in typing a start, as the start box asks, in place of searching for a place.
  */
 export function goStartFailedReason(reason: LocateFailure): string {
-  return LOCATE_MESSAGES[reason].replace(/search for a place\.$/, "type a start.").replace(/Search for a place instead\.$/, "Type a start instead.");
+  return LOCATE_MESSAGES[reason].replace(/search for a place\.$/, "type a start.").replace(/Search for a place instead\.$/, "Type a start instead.")
+    .replace(/busque un lugar\.$/, "escriba un inicio.")
+    .replace(/Busque un lugar\.$/, "Escriba un inicio.");
 }
 
 /** Shown when a destination waited on Go's Locate and it failed: the destination and Locate's reason. */
@@ -359,5 +361,5 @@ export function goPressNeedsStartSaid(name: string): string {
  */
 export function goTapRoutedSaid(name: string, located: boolean, full: boolean): string {
   const set = goDestinationSet(name);
-  return full ? `${set} Planning a route from ${located ? "your location" : "your start"}.` : set;
+  return full ? `${set} ${located ? t("Planning a route from your location.") : t("Planning a route from your start.")}` : set;
 }

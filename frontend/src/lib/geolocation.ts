@@ -17,7 +17,7 @@ import { formatRadius } from "./format.ts";
 import { pointName } from "./summary.ts";
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./geo.ts";
 import { applyPlace, placeEffect, type PlaceChoice, type PlaceEffect } from "./geocode.ts";
-import { t } from "./i18n.ts";
+import { language, t } from "./i18n.ts";
 
 /** A high-accuracy look-up, given 10 seconds, that may reuse a fix up to 30 seconds old. */
 export const LOCATE_OPTIONS = { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 } as const;
@@ -101,9 +101,9 @@ export function iosHomeScreenApp(nav: unknown = typeof navigator !== "undefined"
 }
 
 /** The denied notice in a browser tab. */
-export const DENIED_IN_BROWSER = "Your location is blocked for this site. Allow location in the browser's site settings, or search for a place.";
+export const DENIED_IN_BROWSER = t("Your location is blocked for this site. Allow location in the browser's site settings, or search for a place.");
 /** The denied notice in an iPhone Home Screen app (see iosHomeScreenApp); the tester steps are in docs/OPERATIONS.md. */
-export const DENIED_IN_IOS_APP = "Your location is blocked for this Home Screen app. Check Location in iPhone Settings, or search for a place.";
+export const DENIED_IN_IOS_APP = t("Your location is blocked for this Home Screen app. Check Location in iPhone Settings, or search for a place.");
 
 /** The denied notice for where the page runs (isStandalone in installOffer.ts also counts Android's installed app, which has site settings). */
 export function deniedNotice(nav: unknown = typeof navigator !== "undefined" ? navigator : undefined): string {
@@ -112,16 +112,16 @@ export function deniedNotice(nav: unknown = typeof navigator !== "undefined" ? n
 
 export const LOCATE_MESSAGES: Record<LocateFailure, string> = {
   denied: deniedNotice(),
-  unavailable: "Your location could not be found right now. Try again, or search for a place.",
-  timeout: "Finding your location took too long. Try again, or search for a place.",
-  unsupported: "This browser cannot share your location. Search for a place instead.",
-  insecure: "Your location can only be used on a secure (HTTPS) page. Search for a place instead.",
+  unavailable: t("Your location could not be found right now. Try again, or search for a place."),
+  timeout: t("Finding your location took too long. Try again, or search for a place."),
+  unsupported: t("This browser cannot share your location. Search for a place instead."),
+  insecure: t("Your location can only be used on a secure (HTTPS) page. Search for a place instead."),
 };
 
 /** The notice when the fix is outside the map (the correctness review's N1: said as the rider's location). */
 export const LOCATION_OUTSIDE = t("Your location is outside the area this map covers (the DC region to Baltimore).");
 /** The notice when the plan has no room for another point (the same words as a map click's). */
-export const maxPointsNotice = (): string => `A route can have at most ${MAX_POINTS} points.`;
+export const maxPointsNotice = (): string => t("A route can have at most {max} points.", { max: MAX_POINTS });
 
 /** Whether the button can work here, and if not, why (shown as its reason). */
 export function locateSupport(env: GeoEnv): { available: true } | { available: false; reason: string } {
@@ -243,7 +243,7 @@ export async function locate(
  * figure (formatRadius), so 15 m is "about 50 ft", not a falsely precise "49 ft".
  */
 export function accuracyText(accuracyM: number): string {
-  return accuracyM > 0 ? `about ${formatRadius(accuracyM)}` : "";
+  return accuracyM > 0 ? t("about {radius}", { radius: formatRadius(accuracyM) }) : "";
 }
 
 /** Coarser than this (about 330 ft), the announcement warns that the point is rough (a laptop's Wi-Fi fix). */
@@ -252,9 +252,11 @@ export const ROUGH_SAID = t("That is rough; search for the exact place if you ca
 
 /** Whether the search box's text asks for the rider's location: empty, or the start of a phrase for it (two letters or more). */
 export function locationMatches(query: string): boolean {
-  const q = query.trim().toLowerCase();
+  const plain = (text: string) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "");
+  const q = plain(query.trim().toLowerCase());
   if (q === "") return true;
-  return q.length >= 2 && ["your location", "my location", "current location"].some((phrase) => phrase.startsWith(q));
+  const phrases = ["your location", "my location", "current location", ...(language() === "es" ? ["su ubicacion", "mi ubicacion", "ubicacion actual"] : [])];
+  return q.length >= 2 && phrases.some((phrase) => phrase.startsWith(q));
 }
 
 export const FINDING_LOCATION = t("Finding your location…");
@@ -267,28 +269,31 @@ export const FINDING_LOCATION = t("Finding your location…");
 export function locationSaid(index: number, count: number, loop: boolean, accuracyM: number): string {
   const accuracy = accuracyText(accuracyM);
   const rough = accuracyM > ROUGH_ACCURACY_M ? ` ${ROUGH_SAID}` : "";
-  return `${pointName(index, count, loop)} set to your location${accuracy ? `, accurate to ${accuracy}` : ""}.${rough}`;
+  const point = pointName(index, count, loop);
+  return (accuracy ? t("{point} set to your location, accurate to {accuracy}.", { point, accuracy }) : t("{point} set to your location.", { point })) + rough;
 }
 
 /** The note under the search once a point is the rider's location: approximate, and how to adjust it without a pointer too. */
 export function approximateHint(accuracyM: number): string {
   const accuracy = accuracyText(accuracyM);
-  return `Your location is approximate${accuracy ? `, to ${accuracy}` : ""}. Drag its marker, or search for the exact place, to adjust it.`;
+  return accuracy
+    ? t("Your location is approximate, to {accuracy}. Drag its marker, or search for the exact place, to adjust it.", { accuracy })
+    : t("Your location is approximate. Drag its marker, or search for the exact place, to adjust it.");
 }
 
 /** The "Your location" choice's second line: what it will do, by the Start / Destination / Stop choice in force. */
 export function hereEffectLine(effect: PlaceEffect, loop = false): string {
   switch (effect) {
     case "start":
-      return loop ? "Sets the start and finish." : "Sets the start.";
+      return loop ? t("Sets the start and finish.") : t("Sets the start.");
     case "replace-start":
-      return loop ? "Replaces the start and finish." : "Replaces the start.";
+      return loop ? t("Replaces the start and finish.") : t("Replaces the start.");
     case "end":
-      return "Adds it as the destination.";
+      return t("Adds it as the destination.");
     case "replace-end":
-      return "Replaces the destination.";
+      return t("Replaces the destination.");
     case "via":
-      return "Adds it as a stop.";
+      return t("Adds it as a stop.");
   }
 }
 
@@ -299,8 +304,8 @@ export function hereEffectLine(effect: PlaceEffect, loop = false): string {
  */
 export function searchStatusWithHere(status: string, here: boolean): string {
   if (!here || status === "") return status;
-  if (/places? found\.$/.test(status)) return status.replace(/\.$/, ", plus Your location.");
-  return `${status} Your location is also listed.`;
+  if (/(places? found|lugar(es)? encontrados?)\.$/.test(status)) return status.replace(/\.$/, t(", plus Your location."));
+  return t("{status} Your location is also listed.", { status });
 }
 
 /**
