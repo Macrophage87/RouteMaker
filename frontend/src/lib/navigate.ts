@@ -827,11 +827,11 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
   for (const [i, entry] of entries.entries()) {
     const fromM = toLine(entry.from_m);
     if (entry.kind === "stretch") stretches.push({ fromM, toM: toLine(entry.to_m), street: entry.street, tier: entry.tier, facility: entry.facility });
-    // A via point (v0.7.0): its place is kept for the re-plan, but it is no cue and has no number.
+    // A via point (v0.7.0): its place is kept for the re-plan, but it is no cue and has no number. The rider rides on
+    // through it, so the stretch after it is read against the one before, a busy road or a new trail said as anywhere
+    // else (round-3 audit D29); only a stop starts afresh.
     if (entry.kind === "via" && entry.via != null && vias.includes(entry.via)) {
       passes.push({ point: entry.via, atM: fromM });
-      before = null;
-      lastNamed = null;
       continue;
     }
     let kind = cueKindOf(entry, before, lastNamed);

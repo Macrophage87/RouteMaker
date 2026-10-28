@@ -1662,8 +1662,9 @@ def _same_pace(options: dict, request: dict) -> dict:
 # Valhalla's "through" (no forced stop, no U-turn). "break_through" is the same at the
 # point itself (no U-turn) but keeps the leg there, so the answer keeps one leg per point
 # and every per-leg figure (`leg_ends`, the calm search's legs, the stop list's distances)
-# lines up with the rider's points as before; the page does not announce, number or list
-# a via point, so nothing reads it as a stop.
+# lines up with the rider's points as before; the page does not announce or number a via
+# point, and the description lists it as "Via point at ..." and reads the turn at it as
+# any other (`via_boundaries`, round-3 audit D29), so nothing reads it as a stop.
 VIA_LOCATION_TYPE = "break_through"
 
 
@@ -1673,6 +1674,16 @@ def location_type(index: int, count: int, vias: tuple[int, ...]) -> str:
     if 0 < index < count - 1 and index in vias:
         return VIA_LOCATION_TYPE
     return "break"
+
+
+def via_boundaries(count: int, vias, legs: int) -> tuple[int, ...]:
+    """The leg boundaries the route rides through at a via point, for the description
+    (`describe_route`), each by the number of the leg it begins: the rider's point there,
+    one of `vias` (`location_type`). Empty where the answer's legs are not one per gap
+    between the `count` points, as then a boundary is not known to be a point's."""
+    if legs != count - 1:
+        return ()
+    return tuple(sorted(i for i in set(vias or ()) if 0 < i < count - 1))
 
 
 # Novice and Nervous (v0.7.0 plan): real LTS 3 or worse along the bike route past this
@@ -3160,6 +3171,7 @@ def describe_route(
     summary: dict,
     walks: list[tuple[float, float]] | None = None,
     side_names: dict[int, str] | None = None,
+    through: tuple[int, ...] = (),
 ) -> tuple[list[dict], list[dict]] | None:
     """The route as words, in full and as an overview (`routemaker.describe`,
     OWNER-DECISIONS 220 and 226): built
@@ -3167,8 +3179,10 @@ def describe_route(
     call. `side_names` (`sidepath_names_of`) names a piece of a way with no name of
     its own after the street it runs alongside ("9th Street Northwest protected bike
     lane"), or after its trail's route relation (a `describe.RelationName`): a stretch
-    named only so is flagged `relation_name`. None where it could not be built: the
-    route is answered all the same."""
+    named only so is flagged `relation_name`. `through` are the leg boundaries that are
+    via points, by the number of the leg each begins (`via_boundaries`): the description
+    reads a turn there as anywhere else and numbers the stops among themselves (round-3
+    audit D29). None where it could not be built: the route is answered all the same."""
     side_names = side_names or {}
     try:
         # A relation's name that no way of the route carries itself: only that is "by relation".
@@ -3207,7 +3221,9 @@ def describe_route(
             else:
                 legs.append(run)
         length = float(summary.get("length", 0.0)) * 1000.0
-        return describe.describe_both(legs, events, length or None, walks, by_relation)
+        return describe.describe_both(
+            legs, events, length or None, walks, by_relation, through=through
+        )
     except Exception:  # noqa: BLE001 - a route is answered without its description
         logger.warning("the route description could not be built", exc_info=True)
         return None
@@ -4903,6 +4919,7 @@ def _plan(
             trip.get("summary") or {},
             walks,
             _way_names_of(pieces),
+            via_boundaries(len(points), dials.vias, len(leg_runs)),
         )
         described_full, described_overview = described if described else (None, None)
         # The Avoid-rated junctions it passes (307, 335), at their distance along the

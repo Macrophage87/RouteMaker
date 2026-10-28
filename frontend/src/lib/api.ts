@@ -247,7 +247,7 @@ export interface HillClimb {
 /**
  * One entry of the route's description (core.api.DescriptionEntryOut;
  * OWNER-DECISIONS 220): a stretch of one street at one stress tier, a
- * junction that is not a turn, or a stop (a via point, "Stop 1"). `text` is the one plain
+ * junction that is not a turn, or a leg boundary (`via`: "Stop 1 at ..." or "Via point at ..."). `text` is the one plain
  * sentence to read aloud, US units first.
  */
 export interface DescriptionEntry {

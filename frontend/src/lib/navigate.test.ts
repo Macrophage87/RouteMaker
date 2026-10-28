@@ -912,6 +912,20 @@ test("a via point is no cue and no number, and a passed one is dropped from the 
   assert.deepEqual(replanPoints(model, 1200, at(1200, 50), plan, false), [at(1200, 50), plan[3]]);
 });
 
+test("the stretch after a via point is read against the one before it; after a stop it starts afresh (audit D29)", () => {
+  const coordinates = [at(0, 0), at(500, 0), at(1000, 0)];
+  const description: DescriptionEntry[] = [
+    stretch(0, 500, "a", { street: "A Street", tier: 1 }),
+    { ...stretch(500, 500, "Via point at 0.3 mi (0.5 km)."), kind: "via", via: 1 },
+    stretch(500, 1000, "b", { street: "Georgia Avenue", tier: 3 }),
+  ];
+  const route = { ...lRoute(), geometry: { type: "LineString" as const, coordinates }, distance_m: 1000, leg_ends: [1, 2], description };
+  // Ridden through: the busy road ahead is said.
+  assert.deepEqual(rideModel(route, [1]).cues.map((c) => c.kind), ["busy", "end"]);
+  // A stop: the ride starts again there, as before.
+  assert.deepEqual(rideModel(route).cues.map((c) => c.kind), ["stop", "end"]);
+});
+
 /** East 300 m on A Street, left onto the Capital Crescent Trail north for 2,700 m, crossing River Road at 2,500 m. */
 function trailRoute(): RouteResponse {
   const description: DescriptionEntry[] = [

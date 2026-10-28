@@ -2923,3 +2923,89 @@ class TestAWalkAtATurn:
         legs = [road("A Street", 1, 420, 0, 0), road("Georgia Avenue", 3, 150, 90, 90)]
         entries = d.describe(legs, walks=[(420.0 + 1e-9, 570.0)])
         assert [e["kind"] for e in entries] == ["stretch", "via", "walk", "stretch"]
+
+
+class TestViaPointsRiddenThrough:
+    """Round-3 audit D29: a via point (`through`) is ridden through, so a turn at it, or a
+    few metres either side of it, is said as anywhere else; its entry says "Via point at";
+    the stops are numbered among themselves. A stop keeps the old rules (`TestVias`)."""
+
+    TURN = "0.3 to 0.6 mi (0.5 to 1.0 km): Right onto Georgia Avenue, busy road (LTS 3)."
+
+    def test_a_via_on_the_corner_keeps_the_turn(self):
+        legs = [road("A Street", 1, 500, 0, 0), road("Georgia Avenue", 3, 500, 90, 90)]
+        assert texts(d.describe(legs, through={1})) == [
+            "0.0 to 0.3 mi (0.0 to 0.5 km): A Street, low stress (LTS 1).",
+            "Via point at 0.3 mi (0.5 km).",
+            self.TURN,
+        ]
+
+    def test_a_via_20_m_before_the_corner_keeps_the_turn(self):
+        legs = [
+            road("A Street", 1, 480, 0, 0),
+            flat(road("A Street", 1, 20, 0, 0), road("Georgia Avenue", 3, 500, 90, 90)),
+        ]
+        entries = d.describe(legs, through={1})
+        assert self.TURN in texts(entries)
+        assert [e["kind"] for e in entries] == ["stretch", "via", "stretch"]
+
+    def test_a_via_10_m_after_the_corner_keeps_the_turn(self):
+        legs = [
+            flat(road("A Street", 1, 500, 0, 0), road("Georgia Avenue", 3, 10, 90, 90)),
+            road("Georgia Avenue", 3, 490, 90, 90),
+        ]
+        entries = d.describe(legs, through={1})
+        assert self.TURN in texts(entries)
+        via = [e for e in entries if e["kind"] == "via"]
+        assert [(v["via"], v["from_m"]) for v in via] == [(1, 510)]
+
+    def test_a_stop_on_the_corner_still_claims_no_turn(self):
+        legs = [road("A Street", 1, 500, 0, 0), road("Georgia Avenue", 3, 500, 90, 90)]
+        entries = d.describe(legs)
+        assert texts(entries)[1] == "Stop 1 at 0.3 mi (0.5 km)."
+        assert entries[2]["turn"] is None
+
+    def test_stops_are_numbered_among_stops_and_every_boundary_keeps_its_entry(self):
+        legs = [road("A", 1, 500), road("B", 1, 500, 90, 90), road("C", 1, 500), road("D", 1, 500)]
+        vias = [e for e in d.describe(legs, through={2}) if e["kind"] == "via"]
+        assert [(v["via"], v["text"]) for v in vias] == [
+            (1, "Stop 1 at 0.3 mi (0.5 km)."),
+            (2, "Via point at 0.6 mi (1.0 km)."),
+            (3, "Stop 2 at 0.9 mi (1.5 km)."),
+        ]
+
+    def test_the_overview_keeps_the_via_entry_too(self):
+        legs = [road("A Street", 1, 500, 0, 0), road("Georgia Avenue", 3, 500, 90, 90)]
+        full, overview = d.describe_both(legs, through={1})
+        assert [e["via"] for e in overview if e["kind"] == "via"] == [1]
+        assert self.TURN in texts(overview)
+
+    def test_an_untraced_leg_after_a_via_is_still_its_own(self):
+        entries = d.describe([road("A", 1, 500), 800.0, road("C", 1, 500)], through={1})
+        assert [e["kind"] for e in entries] == ["stretch", "via", "stretch", "via", "stretch"]
+        assert entries[1]["text"] == "Via point at 0.3 mi (0.5 km)."
+        assert entries[3]["text"] == "Stop 1 at 0.8 mi (1.3 km)."
+
+    def test_a_hairpin_across_a_via_reads_on_the_side_the_line_turns(self):
+        # Each leg's bearings are unwrapped along its own trace, the first leg's wound once
+        # round (460, compass 100) and the second's begun afresh (190): carried on from
+        # the first's, the line turns +90 between them, so the hairpin is a right, as it
+        # is read along one leg (550).
+        first = road("A Street", 1, 500, 0, 0)
+        first = [replace(a, bearing=360.0) for a in first[:-1]] + [
+            replace(first[-1], bearing=460.0)
+        ]
+        second = road("B Street", 1, 500, 190, 190)
+        one = d.describe([flat(first, [replace(a, bearing=550.0) for a in second])])
+        two = d.describe([first, [replace(a, bearing=190.0) for a in second]], through={1})
+        movements = [[e["turn"]["movement"] for e in x if e["turn"]] for x in (one, two)]
+        assert movements == [["right"], ["right"]]
+
+    def test_in_spanish(self):
+        from routemaker.lang import speaking
+
+        legs = [road("A Street", 1, 500, 0, 0), road("Georgia Avenue", 3, 500, 90, 90)]
+        with speaking("es"):
+            said = texts(d.describe(legs, through={1}))
+        assert said[1] == "Punto de paso en 0.3 mi (0.5 km)."
+        assert said[2].startswith("0.3 a 0.6 mi (0.5 a 1.0 km): Gire a la derecha hacia Georgia")

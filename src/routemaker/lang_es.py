@@ -91,6 +91,7 @@ ES: dict[str, str] = {
     ),
     # ---- Stops and walks ----
     "Stop {number} at {where}.": "Parada {number} en {where}.",
+    "Via point at {where}.": "Punto de paso en {where}.",
     "At {where}: walk your bike here, for {ft} ft ({m} m).": (
         "En {where}: camine con su bicicleta aquí, por {ft} ft ({m} m)."
     ),
