@@ -1654,7 +1654,8 @@ test("a fork along one trail stays 'to stay on' at the turn and inside a jog, ne
   const fork = model.cues[0];
   assert.equal(fork.text, "Bear right to stay on Paint Branch Trail.");
   assert.equal(cueSpoken(fork, "advance", 152.4), `In ${spokenDistance(152.4)}, bear right to stay on Paint Branch Trail.`);
-  assert.equal(cueSpoken(fork, "now", 0), "Bear right now.");
+  // "Keep right now." since round-2 D22(d) (owner-approved 2026-10-27; was "Bear right now.").
+  assert.equal(cueSpoken(fork, "now", 0), "Keep right now.");
   // A stay fork as a jog's later turn: said "to stay on" in the first turn's text, and "now" alone at its own turn.
   const jog = rideModel(
     straightRoute([
@@ -1670,7 +1671,7 @@ test("a fork along one trail stays 'to stay on' at the turn and inside a jog, ne
   const [first, second] = jog.cues;
   assert.equal(first.text, "Right onto Paint Branch Trail, then immediately bear right to stay on Paint Branch Trail.");
   assert.ok(second.joined);
-  assert.equal(cueSpoken(second, "now", 0), "Bear right now.");
+  assert.equal(cueSpoken(second, "now", 0), "Keep right now.");
   // A plain turn keeps its street at "now".
   assert.equal(cueSpoken(first, "now", 0), "Right now onto Paint Branch Trail.");
 });
@@ -2263,6 +2264,31 @@ test("D25: a flagged straight-on name change is said in Ride's words, its contro
       "Continúe por Georgia Avenue. Intersección con mucho tráfico, sin semáforo. Tráfico pesado.",
     );
     assert.equal(flaggedOntoWords(flaggedStraight(1000, 2000, "Georgia Avenue", "signal", 1), before), "Continúe por Georgia Avenue. Intersección con mucho tráfico, con semáforo.");
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+test("D22(d): a bear at a fork along one way says 'Keep right now.', the advance cue's verb in Spanish too", () => {
+  const fork = (movement: "bear_right" | "bear_left" | "right") =>
+    rideModel(
+      straightRoute([
+        stretch(0, 900, "Paint Branch Trail.", { street: "Paint Branch Trail", facility: "path" }),
+        stretch(900, 2200, "x", { street: "Paint Branch Trail", facility: "path", turn: { ...turning(movement, "Paint Branch Trail"), stay: true } }),
+      ]),
+    ).cues[0];
+  assert.equal(cueSpoken(fork("bear_right"), "now", 0), "Keep right now.");
+  assert.equal(cueSpoken(fork("bear_left"), "now", 0), "Keep left now.");
+  // A full turn to stay on the way keeps its own verb; a bear that is no fork keeps "Bear right now onto ...".
+  assert.equal(cueSpoken(fork("right"), "now", 0), "Right now.");
+  const plain = { ...fork("bear_right"), stay: undefined, street: "B Street" };
+  assert.equal(cueSpoken(plain, "now", 0), "Bear right now onto B Street.");
+  setLanguageForTest("es");
+  try {
+    const cue = fork("bear_right");
+    assert.equal(cueSpoken(cue, "advance", 152.4), "En 500 pies, manténgase a la derecha para seguir en Paint Branch Trail.");
+    assert.equal(cueSpoken(cue, "now", 0), "Manténgase a la derecha ahora.");
+    assert.equal(cueSpoken(fork("bear_left"), "now", 0), "Manténgase a la izquierda ahora.");
   } finally {
     setLanguageForTest("en");
   }

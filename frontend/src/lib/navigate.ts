@@ -251,7 +251,7 @@ export interface Cue {
   junction?: JunctionShape;
   /** The way off a circle (v0.10.0): its exit, said ("take the 3rd exit") and drawn as a ring. */
   exit?: CircleExit;
-  /** A fork that keeps to the same street or trail (the API's turn.stay): "Bear right to stay on ...", and at "now" "Bear right now." */
+  /** A fork that keeps to the same street or trail (the API's turn.stay): "Bear right to stay on ...", and at "now" "Keep right now." (D22(d)) */
   stay?: boolean;
   /** A short path across a road between two turns: the road, said in place of the turn ("Cross Redland Road."), drawn straight on. */
   cross?: string;
@@ -338,6 +338,7 @@ const TURN_SENTENCES = {
     alone: "Bear left.",
     now: "Bear left now onto {street}.",
     nowAlone: "Bear left now.",
+    stayNow: "Keep left now.",
   },
   bear_right: {
     onto: "Bear right onto {street}.",
@@ -345,6 +346,7 @@ const TURN_SENTENCES = {
     alone: "Bear right.",
     now: "Bear right now onto {street}.",
     nowAlone: "Bear right now.",
+    stayNow: "Keep right now.",
   },
 } as const satisfies Record<Exclude<TurnMovement, "uturn">, Record<string, string>>;
 
@@ -1183,7 +1185,10 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
     if (cue.movement === "uturn") return t("Make a U-turn now.");
     if (cue.exit) return cue.street && !isUnnamed(cue.street) ? t("Exit now onto {street}.", { street: wayWords(cue.street) }) : t("Exit now.");
     const sentences = TURN_SENTENCES[cue.movement];
-    // A fork on the same trail: "Bear right now.", not "now onto" the trail the rider is already on (its name was said before).
+    // A fork on the same trail: not "now onto" the trail the rider is already on (its name was said before). A bear
+    // there is "Keep right now.", the verb its advance cue used in Spanish too ("Manténgase a la derecha"; round-2
+    // audit D22(d), the owner approved the banked changes 2026-10-27 7:52 PM ET: "make the banked changes").
+    if (cue.stay && "stayNow" in sentences) return t(sentences.stayNow);
     if (cue.toward) return t(sentences.now, { street: pathWords(cue.toward) });
     return cue.street && !cue.stay ? t(sentences.now, { street: wayWords(cue.street) }) : t(sentences.nowAlone);
   }

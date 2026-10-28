@@ -26,6 +26,9 @@ export const ES: Readonly<Record<string, string>> = {
   "Bear right.": "Gire ligeramente a la derecha.",
   "Bear right now onto {street}.": "Gire ligeramente a la derecha ahora hacia {street}.",
   "Bear right now.": "Gire ligeramente a la derecha ahora.",
+  // At a fork along one way, the advance cue's verb (round-2 audit D22(d)).
+  "Keep left now.": "Manténgase a la izquierda ahora.",
+  "Keep right now.": "Manténgase a la derecha ahora.",
   "Make a U-turn.": "Dé la vuelta en U.",
   "Make a U-turn now.": "Dé la vuelta en U ahora.",
   "Take the {nth} exit onto {street} at {circle}": "Tome la {nth} salida hacia {street} en {circle}",
