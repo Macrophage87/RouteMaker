@@ -7,13 +7,16 @@
  * - The card: the road the rider is on and the next roads ahead, each with its stress level as the map colours it,
  *   read from the map's own tiles on the phone. Fewer words on screen; a screen reader and the voice hear the road
  *   as it changes, in whole words.
- * - The side buttons: Where am I? (re-centring), Detour (water, restroom, food, repair or a search: the three nearest by bike, each with
- *   Ride here, which starts an ordinary ride there; ending that ride comes back to Roam), and the compass.
+ * - The side buttons, Ride's (the audit's P13, approved 2026-10-28: "Roam matches Ride"): Where am I? (re-centring),
+ *   Large text, Broadcast, Nearby (water, restroom, food, repair or a search: the three nearest by bike, each with Ride
+ *   here, which starts an ordinary ride there; ending that ride comes back to Roam; Detour before, but Roam has no
+ *   route to detour from), 311 (one tap logs, as in a ride), and the compass.
  * - End roam, slid as End ride is, so a bump does not end it.
  *
- * Privacy (the owner, 2026-10-22: nothing kept on the server): the position stays on the phone. Only a Detour search
- * (POST /api/nearest) and the ride it starts send where the rider is, in a POST body, as Ride mode's detours do; and
- * while the rider broadcasts, the position and trail go to /api/rides as any broadcast's do, kept 2 minutes there.
+ * Privacy (the owner, 2026-10-22: nothing kept on the server): the position stays on the phone. Only a Nearby search
+ * (POST /api/nearest) and the ride it starts send where the rider is, in a POST body, as Ride mode's detours do; a 311
+ * pick sent to DC 311 sends its point, as a ride's does; and while the rider broadcasts, the position and trail go to
+ * /api/rides as any broadcast's do, kept 2 minutes there.
  */
 import { BROADCAST_HOLD_HINT } from "./lib/broadcastQr.ts";
 import { t } from "./lib/i18n.ts";
@@ -23,7 +26,10 @@ import { useWeather } from "./useWeather.ts";
 import { WeatherLines } from "./WeatherLines.tsx";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Icon } from "./Icon.tsx";
-import { LiveRegion, SlideToEnd, rideVoice } from "./RideMode.tsx";
+import { LiveRegion, SAID_311_MS, SlideToEnd, loggedSaid, rideVoice } from "./RideMode.tsx";
+import { REPORT_SENT, report311Enabled, sendReport311, type ReportKind } from "./lib/report311.ts";
+import { entryText, report311Log } from "./lib/report311Log.ts";
+import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu } from "./lib/ride311.ts";
 import { currentTiers } from "./stressStyle.js";
 import { useStressStyle } from "./useStressStyle.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
@@ -34,7 +40,7 @@ import type { WaterPoint } from "./lib/waterRestrooms.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
 import type { RideFix } from "./lib/navigate.ts";
-import { ScreenWake, toScreenReader, type RidePrefs } from "./lib/rideOutput.ts";
+import { RIDE_TEXT_BUTTON, ScreenWake, toScreenReader, type RidePrefs, type RideTextSize } from "./lib/rideOutput.ts";
 import { WAITING_FOR_GPS, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import { rideGeoEnv, rideWake, speaksAloud } from "./lib/nativeShell.ts";
 import { NO_FIX_YET, STILL_SEARCHING, nearbyShort, requestNearest, type Nearby, type NearestPlace } from "./lib/nearest.ts";
@@ -58,13 +64,16 @@ import {
   ROAM_DETOUR_HELP,
   ROAM_BROADCAST_NAME,
   ROAM_NAME,
+  ROAM_NEARBY_NAME,
+  ROAM_NO_PLACE_311,
+  aheadRow,
   aheadSaid,
-  aheadShown,
   HeadingTrack,
   mapLines,
   onRoadSaid,
   roadsAhead,
   roamLight,
+  roamReportPlace,
   roamTier,
   type RoadsAhead,
   type RoamMap,
@@ -80,16 +89,20 @@ const AHEAD_MOVED_M = 15;
 /** A new road is said once it has been the road for this many readings in a row (GPS wanders at a junction). */
 const SAME_READINGS = 2;
 
-/** The level's swatch, in the map's colours (a shape and its words too: never colour alone). */
-function TierBadge({ tier }: { tier: number | null }) {
+/**
+ * The level's swatch, in the map's colours, the same colour and edge as the road's line on the map beside it. The
+ * words ("LTS 4") are for screen readers only (the audit's P13, approved 2026-10-28: "Replace 'LTS 4' next to the street
+ * name with the colour swatch alone"); `hidden` leaves them out where the row says them already.
+ */
+function TierBadge({ tier, hidden = false }: { tier: number | null; hidden?: boolean }) {
   useStressStyle();
   const words = roamTier(tier);
   if (!words) return null;
   const look = (currentTiers() as Array<{ tier: number; color: string; casing: string }>).find((t) => t.tier === tier);
   return (
-    <span className="roam-tier">
+    <span className="roam-tier" aria-hidden={hidden || undefined}>
       <span className="roam-swatch" aria-hidden="true" style={look ? { background: look.color, borderColor: look.casing } : undefined} />
-      {words}
+      {!hidden && <span className="visually-hidden">, {words}</span>}
     </span>
   );
 }
@@ -101,6 +114,8 @@ export function RoamMode({
   onFollow,
   headingUp,
   onHeadingUp,
+  textSize = "normal",
+  onTextSize = () => undefined,
   preset,
   dials,
   water,
@@ -122,6 +137,9 @@ export function RoamMode({
   onFollow: (on: boolean) => void;
   headingUp: boolean;
   onHeadingUp: (on: boolean) => void;
+  /** Large text (Ride's button and Settings' switch, the same choice): the card half the screen, its words larger. */
+  textSize?: RideTextSize;
+  onTextSize?: (size: RideTextSize) => void;
   /** The ride type and settings Go has: a detour's search and its ride use them. */
   preset: PresetId;
   dials: Dials;
@@ -318,6 +336,70 @@ export function RoamMode({
     }
   };
 
+  // Large text (Ride's button, the same choice as Settings' switch): the change said as an answer, as Ride's is.
+  const cycleText = () => {
+    const next = textSize === "large" ? "normal" : "large";
+    onTextSize(next);
+    answer(next === "large" ? t("Large text on") : t("Large text off"));
+  };
+
+  // 311, as in a ride (lib/ride311.ts; the audit's P13): one tap logs the problem with the road ridden and the GPS
+  // point; in DC, where the server has DC's key, it is sent there too and checked off. One side menu open at a time.
+  const [menu311, setMenu311] = useState(false);
+  const menu311Id = useId();
+  const menu311Heading = useRef<HTMLHeadingElement>(null);
+  const button311 = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (menu311) menu311Heading.current?.focus();
+  }, [menu311]);
+  const openMenu = (which: "detour" | "311" | null) => {
+    setDetourOpen(which === "detour");
+    setMenu311(which === "311");
+  };
+  const close311 = () => {
+    setMenu311(false);
+    button311.current?.focus();
+  };
+  const [serverOn311, setServerOn311] = useState(false);
+  useEffect(() => {
+    let current = true;
+    void report311Enabled(window.location.origin).then((on) => {
+      if (current) setServerOn311(on);
+    });
+    return () => {
+      current = false;
+    };
+  }, []);
+  // What the pick did, shown under the 311 button for SAID_311_MS and said through the rider's outputs.
+  const [said311, setSaid311] = useState("");
+  useEffect(() => {
+    if (!said311) return;
+    const timer = window.setTimeout(() => setSaid311(""), SAID_311_MS);
+    return () => window.clearTimeout(timer);
+  }, [said311]);
+  const tell311 = (text: string) => {
+    if (gone.current) return;
+    setSaid311(text);
+    say(text);
+  };
+  const pick311 = (kind: ReportKind) => {
+    close311();
+    const here = fixRef.current?.point;
+    if (!here) {
+      tell311(ROAM_NO_PLACE_311);
+      return;
+    }
+    const place = roamReportPlace(here, roads);
+    const entry = report311Log().add(kind, place);
+    if (serverOn311 && entry.where === "dc") {
+      setSaid311(t("Sending to DC 311…"));
+      void sendReport311(window.location.origin, kind, place, entryText(entry)).then((sent) => {
+        if (sent) report311Log().setReported(entry.id, true);
+        tell311(sent ? REPORT_SENT : loggedSaid(entry));
+      });
+    } else tell311(loggedSaid(entry));
+  };
+
   // Sunrise and sunset (Stephen 2026-10-22: "Also add sunrise and sunset"): the next of each at the rider, in the
   // heading's corner as Ride mode shows them, worked out again each minute.
   const [minute, setMinute] = useState(() => Math.floor(Date.now() / 60_000));
@@ -391,10 +473,10 @@ export function RoamMode({
     };
   }, []);
 
-  const slideHint = () => answer(`Slide ${END_ROAM_NAME} to the right to end it.`);
+  const slideHint = () => answer(t("Slide it to the right to end roam."));
   const on = roads?.on ?? null;
   return (
-    <section className="ride roam" aria-labelledby="ride-heading">
+    <section className={`ride roam${textSize === "large" ? " ride-large" : ""}`} aria-labelledby="ride-heading">
       <LiveRegion said={polite} urgent={false} />
       <div ref={cardRef} className="cue-card">
         <div className="ride-top">
@@ -426,13 +508,26 @@ export function RoamMode({
           </p>
           {roads !== null && roads.ahead.length > 0 && (
             <ol className="roam-ahead" aria-label={t("Roads ahead")}>
-              {roads.ahead.map((road) => (
-                <li key={road.name}>
-                  <span className="roam-ahead-name">{road.name}</span>
-                  <span className="roam-ahead-far">{aheadShown(road)}</span>
-                  <TierBadge tier={road.tier} />
-                </li>
-              ))}
+              {/* One line each, at most ROADS_AHEAD (the audit's P13): Ride's short street words, the distance, the
+                  swatch; the whole of it in words for screen readers. */}
+              {roads.ahead.map((road) => {
+                const row = aheadRow(road);
+                return (
+                  <li key={road.name}>
+                    <span className="visually-hidden">{row.said}</span>
+                    <span className="roam-ahead-name" aria-hidden="true">{row.name}</span>
+                    <span className="roam-ahead-far" aria-hidden="true">
+                      {` · ${row.us}`}
+                    </span>
+                    {row.metric && (
+                      <span className="roam-ahead-metric" aria-hidden="true">
+                        <span>{` ${row.metric}`}</span>
+                      </span>
+                    )}
+                    <TierBadge tier={road.tier} hidden />
+                  </li>
+                );
+              })}
             </ol>
           )}
           {roads !== null && heading === null && <p className="cue-more">{t("Start riding to see the roads ahead.")}</p>}
@@ -446,7 +541,7 @@ export function RoamMode({
             <path d="M20 35 L15 20 L20 23 L25 20 Z" className="ride-compass-south" />
           </svg>
         </button>
-        {toast && !detourOpen && (
+        {toast && !detourOpen && !menu311 && (
           <div className="ride-toast">
             <p>{toast}</p>
           </div>
@@ -461,6 +556,17 @@ export function RoamMode({
             title={t("Where am I?")}
           >
             <Icon name="locate" size={24} />
+          </button>
+          {/* Large text on and off, as in a ride, shown pressed while on. */}
+          <button
+            type="button"
+            className="ride-round ride-text-size"
+            onClick={cycleText}
+            aria-pressed={textSize === "large"}
+            aria-label={RIDE_TEXT_BUTTON}
+            title={RIDE_TEXT_BUTTON}
+          >
+            <Icon name="textsize" size={24} />
           </button>
           {onBroadcast && (
             <button
@@ -494,19 +600,19 @@ export function RoamMode({
               type="button"
               ref={detourButton}
               className="ride-round"
-              aria-label={t("Detour: {summary}", { summary: DETOUR_SUMMARY.toLowerCase() })}
-              title={t("Detour")}
+              aria-label={t("Nearby: {summary}", { summary: DETOUR_SUMMARY.toLowerCase() })}
+              title={ROAM_NEARBY_NAME}
               aria-expanded={detourOpen}
               aria-controls={detourId}
               data-idle-close
-              onClick={() => setDetourOpen(!detourOpen)}
+              onClick={() => openMenu(detourOpen ? null : "detour")}
             >
               <Icon name="detour" size={24} />
             </button>
             <div id={detourId} className="ride-menu" role="group" aria-labelledby={`${detourId}-heading`} hidden={!detourOpen}>
               <div className="ride-menu-head">
                 <h3 id={`${detourId}-heading`} ref={detourHeading} tabIndex={-1}>
-                  Detour
+                  {ROAM_NEARBY_NAME}
                 </h3>
                 <button
                   type="button"
@@ -583,6 +689,44 @@ export function RoamMode({
               )}
               <p className="hint">{ROAM_DETOUR_HELP}</p>
             </div>
+          </div>
+          {/* 311, as in a ride (lib/ride311.ts): one tap opens the problems, one more logs it; the menu beside the buttons. */}
+          <div
+            className="ride-311"
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && menu311) {
+                event.preventDefault();
+                close311();
+              }
+            }}
+          >
+            <button
+              type="button"
+              ref={button311}
+              className="ride-311-button"
+              aria-label={RIDE_311_NAME}
+              aria-expanded={menu311}
+              aria-controls={menu311Id}
+              data-idle-close
+              onClick={() => openMenu(menu311 ? null : "311")}
+            >
+              <Icon name="flag" size={18} />
+              <span aria-hidden="true">{RIDE_311_TEXT}</span>
+            </button>
+            <Ride311Menu
+              id={menu311Id}
+              open={menu311}
+              place={fix ? roamReportPlace(fix.point, roads) : null}
+              headingRef={menu311Heading}
+              onPick={pick311}
+              onClose={close311}
+            />
+            {said311 && !menu311 && (
+              <div className="ride-311-said">
+                {/* Shown, not a live region: it is said through the rider's own outputs (tell311). */}
+                <p>{said311}</p>
+              </div>
+            )}
           </div>
         </div>
       </div>

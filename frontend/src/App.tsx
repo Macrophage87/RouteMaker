@@ -3974,8 +3974,14 @@ export function App() {
   const finishRide = () => {
     endedRide.current = null;
     setRideEnded(null);
-    if (mode === "go" && pointsRef.current.length > 0) clearPlan();
-    else backToRideOpener();
+    if (mode === "go" && pointsRef.current.length > 0) {
+      clearPlan();
+      // Done shows the empty Go map, not Where to? opened on the last places (the audit's P14): the clear's move of
+      // the focus to the search is dropped, and the focus goes to Go's big button (Roam) once it shows.
+      focusAfterRemove.current = null;
+      if (document.activeElement instanceof HTMLElement && document.activeElement.closest(".go-search")) document.activeElement.blur();
+      window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".go-bar-start")?.focus());
+    } else backToRideOpener();
   };
   // Roam (RoamMode.tsx): Go's one button while Go has no destination. The voice is unlocked inside the press (iOS).
   const startRoam = () => {
@@ -5484,8 +5490,8 @@ export function App() {
       {/* The mountain-bike trails' key on the map (the owner, 2026-10-19), while their layer draws. */}
       {/* Not in Go, which keeps its map clear (the owner: streamline Go); Layers holds the key there. */}
       {!riding && !goNow && <MtbMapKey drawn={stress === "available" && zoom !== null && zoom >= MTB_MIN_ZOOM} />}
-      {/* The beta notice: a chip in the map's free bottom-left corner, only in a VITE_BETA=1 build. */}
-      {!riding && (
+      {/* The beta notice: a chip in the map's free bottom-left corner, only in a VITE_BETA=1 build; not in a ride or Roam. */}
+      {!onBike && (
         <BetaChip
           enabled={isBetaBuild(import.meta.env.VITE_BETA)}
           reportUrl={betaReportUrl(import.meta.env.VITE_BETA_REPORT_URL)}
@@ -5561,6 +5567,8 @@ export function App() {
           onFollow={setFollow}
           headingUp={headingUp}
           onHeadingUp={setHeadingUp}
+          textSize={rideText}
+          onTextSize={setRideText}
           preset={preset}
           dials={planDials}
           water={ensureWater}
