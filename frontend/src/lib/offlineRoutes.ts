@@ -209,9 +209,9 @@ export const KEPT_PRIVATE = t("Kept on this device only, until you remove them; 
 
 /** Below the list: what `navigator.storage.persisted()` said, and the iOS seven-day rule for a tab. */
 export function storageNote(persisted: boolean | null, installed: boolean): string {
-  const tab = installed ? "" : " In a browser tab, Safari may clear them after seven days without a visit; the installed app keeps them.";
-  if (persisted === true) return `Your browser will keep them until you remove them.${tab}`;
-  return `Your browser may clear them if the device runs short of space.${tab}`;
+  const tab = installed ? "" : t(" In a browser tab, Safari may clear them after seven days without a visit; the installed app keeps them.");
+  if (persisted === true) return `${t("Your browser will keep them until you remove them.")}${tab}`;
+  return `${t("Your browser may clear them if the device runs short of space.")}${tab}`;
 }
 
 export type KeepOutcome = "kept" | "partial" | "no-map" | "full" | "failed";

@@ -226,11 +226,11 @@ test("the preferred level is sent and linked on Mountain Bike only", () => {
 test("the preferred picker: real radio buttons in a fieldset with a legend, above-the-hardest disabled, a polite status", () => {
   const panel = readFileSync(new URL("../DialsPanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /<fieldset className="mtb-level mtb-preferred" aria-describedby=\{mtbPreferredHintId\}>\s+<legend>\{MTB_PREFERRED_LEGEND\}<\/legend>/);
-  assert.match(panel, /<p className="hint" id=\{mtbPreferredHintId\}>\s+[^<]*can&apos;t be harder than your hardest level/);
+  assert.match(panel, /<p className="hint" id=\{mtbPreferredHintId\}>\s+\{t\("[^"]*can't be harder than your hardest level/);
   assert.match(panel, /type="radio"\s+name="mtb-preferred"/);
   assert.match(panel, /disabled=\{option\.level > mtbLevelOf\(dials\)\}/);
   // A disabled level says why in its own name, not by its dimming alone.
-  assert.match(panel, /\{option\.level > mtbLevelOf\(dials\) && <span className="visually-hidden"> \(above your hardest level\)<\/span>\}/);
+  assert.match(panel, /\{option\.level > mtbLevelOf\(dials\) && <span className="visually-hidden">\{t\(" \(above your hardest level\)"\)\}<\/span>\}/);
   assert.match(panel, /const said = mtbPreferredClamped\(dials, next\);/);
   assert.match(panel, /<p className="hint mtb-preferred-said" role="status">\s+\{mtbClampSaid\}/);
   // The status is of the levels it was said of: a change from outside (a link, a ride type) clears it.

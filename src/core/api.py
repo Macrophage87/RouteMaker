@@ -1381,8 +1381,11 @@ class DescriptionTurnOut(Schema):
     is: the movement, the street turned onto, who has the right of way where
     the junction model read the junction, and its severity where it flagged it."""
 
-    movement: Literal["left", "straight", "right", "bear_left", "bear_right"] | None = Field(
-        description="Null where the router gave no headings and no junction event did."
+    movement: Literal["left", "straight", "right", "bear_left", "bear_right", "uturn"] | None = (
+        Field(
+            description="Null where the router gave no headings and no junction event did. "
+            '"uturn": back the way the route came, on the same way (a dead end).'
+        )
     )
     onto: str | None = Field(description="The street turned onto; null on a junction entry.")
     control: Literal["signal", "stop", "cross_stop", "all_stop", "none"] | None = Field(
@@ -1405,6 +1408,14 @@ class DescriptionTurnOut(Schema):
     exit: DescriptionExitOut | None = Field(
         default=None,
         description='Off a circle: "Take the 3rd exit onto ... at Dupont Circle Northwest".',
+    )
+    toward: str | None = Field(
+        default=None,
+        description=(
+            "On a turn onto an unnamed path that leads to a named one (`describe._toward`):"
+            ' that one\'s name, said with the path ("Right onto the path to Rock Creek Trail");'
+            " `onto` stays the path's own. Null elsewhere."
+        ),
     )
 
 
@@ -1469,8 +1480,19 @@ class DescriptionEntryOut(Schema):
         " and where a junction's road has no name."
     )
     tier: int | None = Field(description="1-5 on a stretch; null: not rated, or not a stretch.")
-    facility: Literal["path", "protected", "lane"] | None = Field(
-        description='The bike facility, where there is one; "none" and unknown are null.'
+    facility: Literal["path", "protected", "lane", "none"] | None = Field(
+        description=(
+            'The bike facility: "none" where the map says the way has none, null where it'
+            ' is not known (round-2 audit D28: Ride\'s "Bike lane ends" fires on "none" only).'
+        )
+    )
+    oneway: bool | None = Field(
+        default=None,
+        description=(
+            "On a stretch: whether its road is one-way where it ends; null where the map"
+            " does not say (round-2 audit D26: Ride warns of a destination across a known"
+            " two-way road only)."
+        ),
     )
     turn: DescriptionTurnOut | None = Field(
         description="How the stretch is entered, where it begins at a change of street."
@@ -1506,6 +1528,13 @@ class DescriptionEntryOut(Schema):
             "On a stretch: `text` with painted lanes on LTS 4 and Avoid not called bike "
             'lanes, for the client switch "Show bike lanes on high-stress roads" '
             "(OWNER-DECISIONS 275); null where that is `text`."
+        ),
+    )
+    reason: str | None = Field(
+        default=None,
+        description=(
+            'On an "avoid": the reason the junction is rated Avoid ("no safe crossing"),'
+            " as `street` holds its name; null elsewhere or where none was given."
         ),
     )
     relation_name: bool = Field(
@@ -2255,6 +2284,14 @@ class RouteBody(Schema):
         description=(
             "Which side of the street the destination is on, from the router's destination"
             " maneuver (Ride mode's last cue: 'Destination on your right'); null where unknown."
+        ),
+    )
+    leg_arrival_sides: list[Literal["left", "right"] | None] | None = Field(
+        default=None,
+        description=(
+            "Which side of the street each leg ends on, one per leg as `leg_ends`, from its"
+            " destination maneuver (Ride mode's stop cue: 'Destination on your left'); an entry"
+            " is null where unknown, and the list is null from an answer that does not give it."
         ),
     )
     # The route's stressful junctions, in route order; null where they could not

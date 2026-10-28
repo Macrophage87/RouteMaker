@@ -89,8 +89,29 @@ export function browserEnv(): GeoEnv {
   return { isSecureContext: secure, geolocation, permission };
 }
 
+/**
+ * Whether the page runs as an iPhone or iPad Home Screen web app: `navigator.standalone` exists only in
+ * iOS WebKit and is true only there. Such an app has no address bar and no site settings, and iOS keeps
+ * its location permission apart from Safari's: a tester's Home Screen app reported "blocked" without ever
+ * asking while the same site in a Safari tab could use the location. So its denied notice names the
+ * iPhone's own settings instead.
+ */
+export function iosHomeScreenApp(nav: unknown = typeof navigator !== "undefined" ? navigator : undefined): boolean {
+  return (nav as { standalone?: unknown } | undefined)?.standalone === true;
+}
+
+/** The denied notice in a browser tab. */
+export const DENIED_IN_BROWSER = "Your location is blocked for this site. Allow location in the browser's site settings, or search for a place.";
+/** The denied notice in an iPhone Home Screen app (see iosHomeScreenApp); the tester steps are in docs/OPERATIONS.md. */
+export const DENIED_IN_IOS_APP = "Your location is blocked for this Home Screen app. Check Location in iPhone Settings, or search for a place.";
+
+/** The denied notice for where the page runs (isStandalone in installOffer.ts also counts Android's installed app, which has site settings). */
+export function deniedNotice(nav: unknown = typeof navigator !== "undefined" ? navigator : undefined): string {
+  return iosHomeScreenApp(nav) ? DENIED_IN_IOS_APP : DENIED_IN_BROWSER;
+}
+
 export const LOCATE_MESSAGES: Record<LocateFailure, string> = {
-  denied: "Your location is blocked for this site. Allow location in the browser's site settings, or search for a place.",
+  denied: deniedNotice(),
   unavailable: "Your location could not be found right now. Try again, or search for a place.",
   timeout: "Finding your location took too long. Try again, or search for a place.",
   unsupported: "This browser cannot share your location. Search for a place instead.",

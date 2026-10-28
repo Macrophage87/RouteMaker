@@ -1,6 +1,7 @@
 /** What the GPX section says, and the export's name and description. */
 import type { RouteProfile, RouteResponse } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
+import { t } from "./i18n.ts";
 import { WHENS, carryingWords, hillsWords, seeksClimbs, stressWords, whenInSentence } from "./dials.ts";
 import type { ExportDials, GpxExport } from "./gpx.ts";
 import { JOIN_GAP_M, type ImportNote, type ImportedPlan } from "./gpxPlan.ts";
@@ -42,18 +43,18 @@ export function exportDescription(route: Pick<RouteResponse, "preset" | "distanc
 
 /** The ride type and the sliders the route was planned with, in words (rte/desc). */
 export function rideText(route: Pick<RouteResponse, "preset"> & Partial<Pick<RouteResponse, "dials">>): string {
-  const head = `Ride type: ${presetSaid(route.preset)}.`;
+  const head = t("Ride type: {type}.", { type: presetSaid(route.preset) });
   const d = route.dials;
   if (!d) return head;
   const when = WHENS.find((w) => w.id === d.when)?.label;
   return (
-    `${head} Traffic slider ${d.stress} of 100 (${stressWords(d.stress)}); ` +
-    `hills slider ${d.hills} (${hillsWords(d.hills, seeksClimbs(route.preset))})` +
-    (when ? `; ride time ${whenInSentence(when)}` : "") +
+    `${head} ${t("Traffic slider {value} of 100 ({words})", { value: d.stress, words: stressWords(d.stress) })}; ` +
+    t("hills slider {value} ({words})", { value: d.hills, words: hillsWords(d.hills, seeksClimbs(route.preset)) }) +
+    (when ? `; ${t("ride time {when}", { when: whenInSentence(when) })}` : "") +
     (d.carrying ? `; ${carryingWords(d.carrying)}` : "") +
-    (d.assist ? "; electric assist" : "") +
+    (d.assist ? `; ${t("electric assist")}` : "") +
     // "Keep to roads, not trails" (OWNER-DECISIONS 463); Mass Ride always keeps to roads, so it is not said there.
-    (d.trails_off === true && route.preset !== "mass-ride" ? "; roads only, no trails" : "") +
+    (d.trails_off === true && route.preset !== "mass-ride" ? `; ${t("roads only, no trails")}` : "") +
     "."
   );
 }

@@ -9,6 +9,7 @@
  * 4.6%"), where on the route it starts and what it gains, without the map.
  */
 import { createElement as h, useSyncExternalStore, type ReactElement } from "react";
+import { t } from "./i18n.ts";
 import { formatDistance } from "./format.ts";
 import {
   CLIMB_CAUTION,
@@ -32,9 +33,9 @@ import {
   type ClimbsStatus,
 } from "./climbs.ts";
 
-export const CLIMBS_LABEL = "Climbs";
+export const CLIMBS_LABEL = t("Climbs");
 /** Read on every focus, so kept under 150 characters. */
-export const CLIMBS_HINT = `From zoom ${CLIMBS_MIN_ZOOM}. Changes no route.`;
+export const CLIMBS_HINT = t("From zoom {zoom}. Changes no route.", { zoom: CLIMBS_MIN_ZOOM });
 export const CLIMBS_LOADING = "Loading climbs…";
 export const CLIMBS_UNAVAILABLE = "Climbs are unavailable for now. The map and your route are not affected.";
 export const CLIMBS_EMPTY = "No climbs yet: the climbs are measured on the build server, and this map has not had them added.";
@@ -144,7 +145,7 @@ export function ClimbsHideBusySwitch(): ReactElement {
         onClick: () => setHideBusyClimbs(!on),
       },
       h("span", { id: "climbs-hide-busy-label", className: "switch-label" }, CLIMBS_HIDE_BUSY_LABEL),
-      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? "On" : "Off"),
+      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? t("On") : t("Off")),
     ),
     h("p", { className: "hint", id: "climbs-hide-busy-hint" }, CLIMBS_HIDE_BUSY_HINT),
   );
@@ -213,7 +214,7 @@ export function ClimbsSwitch({ on, onChange }: { on: boolean; onChange: (on: boo
         onClick: () => onChange(!on),
       },
       h("span", { id: "climbs-label", className: "switch-label" }, CLIMBS_LABEL),
-      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? "On" : "Off"),
+      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? t("On") : t("Off")),
     ),
     h("p", { className: "hint", id: "climbs-hint" }, CLIMBS_HINT),
   );
