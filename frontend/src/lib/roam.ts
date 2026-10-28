@@ -244,7 +244,7 @@ export const roamTier = (tier: number | null): string | null => tierWords(tier);
 export function onRoadSaid(on: RoadNow | null): string {
   if (!on) return `${NO_NAMED_ROAD}.`;
   const tier = roamTier(on.tier);
-  return tier ? `On ${on.name}, ${tier}.` : `On ${on.name}.`;
+  return tier ? t("On {road}, {tier}.", { road: on.name, tier }) : t("On {road}.", { road: on.name });
 }
 
 /** One road ahead, as shown under the card's road: the distance, US units first. */
@@ -255,9 +255,10 @@ export function aheadSaid(ahead: readonly RoadAhead[]): string {
   if (ahead.length === 0) return "";
   const parts = ahead.map((road) => {
     const tier = roamTier(road.tier);
-    return `${road.name} in ${spokenDistance(road.distanceM)}${tier ? `, ${tier}` : ""}`;
+    const at = t("{road} in {distance}", { road: road.name, distance: spokenDistance(road.distanceM) });
+    return tier ? `${at}, ${tier}` : at;
   });
-  return `Ahead: ${parts.join("; ")}.`;
+  return t("Ahead: {roads}.", { roads: parts.join("; ") });
 }
 
 /**
@@ -296,7 +297,7 @@ export function foodNearestPlaces(food: readonly FoodPlace[]): NearestPlace[] {
     kind: "water",
     point: [place.lon, place.lat],
     title: place.name || foodKindText(place),
-    details: [place.name ? `${foodKindText(place)}.` : "", place.hours ? `Hours as mapped: ${place.hours}.` : ""].filter(Boolean),
+    details: [place.name ? `${foodKindText(place)}.` : "", place.hours ? t("Hours as mapped: {hours}.", { hours: place.hours }) : ""].filter(Boolean),
   }));
 }
 
@@ -359,7 +360,7 @@ export function mapLines(map: RoamMap, rider: LonLat, reach = AHEAD_M + 200): { 
 // ---- Broadcast from Roam (Stephen 2026-10-22: "Yes, but have it as a tap within roam") ----------------------------
 
 /** Roam's Broadcast: one tap on the Roam screen opens the share sheet; those who open the link follow the rider. */
-export const ROAM_BROADCAST_NAME = "Broadcast";
+export const ROAM_BROADCAST_NAME = t("Broadcast");
 export const ROAM_BROADCAST_TITLE = t("Follow my ride");
 export const ROAM_BROADCAST_TEXT = t("Follow my ride on RouteMaker: my dot and the way I've ridden, while my app is open.");
 export const ROAM_BROADCAST_ON = t("Broadcasting. Those who open your link see your dot and the way you ride.");
@@ -406,12 +407,12 @@ export function roamLight(nowMs: number, at: LonLat): { shown: string[]; said: s
     .filter((e): e is { kind: "sunrise" | "sunset"; at: number } => e.at !== null)
     .sort((a, b) => a.at - b.at);
   if (events.length === 0) return null;
-  const name = (kind: "sunrise" | "sunset") => (kind === "sunrise" ? "Sunrise" : "Sunset");
-  const soon = (t: number) => t - nowMs <= 3_600_000 && t - nowMs >= 30_000;
+  const name = (kind: "sunrise" | "sunset") => (kind === "sunrise" ? t("Sunrise") : t("Sunset"));
+  const soon = (at: number) => at - nowMs <= 3_600_000 && at - nowMs >= 30_000;
   const shown = events.map((e) => `${name(e.kind)} ${lightClock(e.at)}${soon(e.at) ? ` (${formatDuration((e.at - nowMs) / 1000)})` : ""}`);
   const said = events.map((e) => {
     const minutes = Math.max(1, Math.round((e.at - nowMs) / 60_000));
-    return `${name(e.kind)} ${lightClock(e.at)}${soon(e.at) ? `, in ${minutes} minute${minutes === 1 ? "" : "s"}` : ""}`;
+    return `${name(e.kind)} ${lightClock(e.at)}${soon(e.at) ? (minutes === 1 ? t(", in 1 minute") : t(", in {minutes} minutes", { minutes })) : ""}`;
   });
   return { shown, said: `${said.join("; ")}.` };
 }

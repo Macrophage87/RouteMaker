@@ -401,3 +401,144 @@ def test_an_informal_path_the_rules_leave_open_is_still_ridden():
     assert 102 not in result.reasons
     tc.add_sidewalk_rides(result, ways)
     assert 102 not in result.walk_links and 102 not in result.walk_bike
+
+
+FOOTWAY = {"highway": "footway"}
+CROSSWALK = {"highway": "footway", "footway": "crossing"}
+
+
+def glenmont(street=None, path_m=88.0, far=CROSSWALK):
+    """Flack Street, Glenmont, as OSM has it (the owner, 2026-10-28): the street comes in
+    from the west and ends 8 m past the node the paved path leaves from; the path runs
+    east to a crosswalk over the garage road, which leads on to a sidewalk. The street's
+    west end meets a cross street."""
+    return [
+        placed(70, street or {"highway": "residential"}, [(-300.0, 0.0), (0.0, 0.0), (8.0, 0.0)]),
+        placed(71, FOOTWAY, [(0.0, 0.0), (0.0, 5.0), (path_m, 5.0)]),
+        placed(72, far, [(path_m, 5.0), (path_m, -3.0), (path_m, -11.0)]),
+        placed(73, {"highway": "service"}, [(path_m - 30.0, -3.0), (path_m, -3.0)]),
+        placed(74, SIDEWALK, [(path_m, -11.0), (path_m + 40.0, -11.0)]),
+        placed(76, {"highway": "residential"}, [(-300.0, -100.0), (-300.0, 0.0), (-300.0, 100.0)]),
+    ]
+
+
+def test_the_path_from_a_dead_end_street_to_a_crosswalk_is_a_cut_through():
+    ways = glenmont()
+    assert set(sw.cut_throughs(ways)) == {71}
+    assert sw.links(ways) == {}, "no bike way dead-ends on it: not a link"
+    assert 71 in sw.rides(ways)
+
+
+def test_a_cut_through_is_at_most_500_ft():
+    assert set(sw.cut_throughs(glenmont(path_m=sw.CUT_THROUGH_M - 10.0))) == {71}
+    assert sw.cut_throughs(glenmont(path_m=sw.CUT_THROUGH_M + 10.0)) == {}
+
+
+def test_a_service_road_is_no_dead_end_street_and_no_far_end():
+    assert sw.cut_throughs(glenmont(street={"highway": "service"})) == {}
+    ways = glenmont(far={"highway": "steps"})
+    assert sw.cut_throughs(ways) == {}, "only the garage road meets it: a parking lot"
+    # The footway itself ends on the garage road: still no far end.
+    street, path = glenmont()[:2]
+    garage = placed(73, {"highway": "service"}, [(58.0, 5.0), (88.0, 5.0), (88.0, -40.0)])
+    assert sw.cut_throughs([street, path, garage]) == {}
+    road = placed(73, {"highway": "residential"}, [(58.0, 5.0), (88.0, 5.0), (88.0, -40.0)])
+    assert set(sw.cut_throughs([street, path, road])) == {71}, "a street there is a far end"
+
+
+def test_a_street_that_ends_in_a_parking_aisle_is_no_dead_end():
+    ways = glenmont()
+    ways.append(placed(78, {"highway": "service"}, [(8.0, 0.0), (8.0, -50.0)]))
+    assert sw.cut_throughs(ways) == {}
+
+
+def test_a_loop_street_has_no_dead_end():
+    """A street drawn as a closed way, its first and last node where the footway leaves."""
+    loop = placed(
+        100,
+        {"highway": "residential"},
+        [(0.0, 0.0), (20.0, 20.0), (40.0, 0.0), (20.0, -20.0), (0.0, 0.0)],
+    )
+    ways = [
+        loop,
+        placed(101, {"highway": "residential"}, [(40.0, 0.0), (140.0, 0.0)]),
+        placed(102, FOOTWAY, [(0.0, 0.0), (-60.0, 0.0)]),
+        placed(103, CROSSWALK, [(-60.0, -8.0), (-60.0, 0.0), (-60.0, 8.0)]),
+    ]
+    assert sw.cut_throughs(ways) == {}
+    # The same street drawn open, ending where the footway leaves, is a dead end.
+    ways[0] = placed(100, {"highway": "residential"}, [(40.0, 0.0), (20.0, 20.0), (0.0, 0.0)])
+    assert set(sw.cut_throughs(ways)) == {102}
+
+
+def test_a_footway_off_a_street_that_goes_on_is_no_cut_through():
+    ways = glenmont()
+    ways.append(placed(75, {"highway": "residential"}, [(8.0, 0.0), (8.0, -100.0)]))
+    assert sw.cut_throughs(ways) == {}
+
+
+def test_a_cut_through_to_another_street_and_a_closed_or_tagged_one():
+    ways = [
+        placed(80, {"highway": "residential"}, [(0.0, -100.0), (0.0, 0.0)]),
+        placed(81, FOOTWAY, [(0.0, 0.0), (0.0, 60.0)]),
+        placed(82, {"highway": "residential"}, [(-100.0, 60.0), (0.0, 60.0), (100.0, 60.0)]),
+    ]
+    assert set(sw.cut_throughs(ways)) == {81}
+    assert sw.cut_throughs(ways, closed={81}) == {}
+    for extra in ({"bicycle": "no"}, {"access": "private"}, {"informal": "yes"}):
+        tagged = [ways[0], placed(81, {**FOOTWAY, **extra}, [(0.0, 0.0), (0.0, 60.0)]), ways[2]]
+        assert sw.cut_throughs(tagged) == {}, extra
+
+
+def test_the_rebuild_rides_a_cut_through_as_a_link():
+    ways = [
+        way(70, {"highway": "residential"}, [(-300.0, 0.0), (0.0, 0.0), (8.0, 0.0)]),
+        way(71, FOOTWAY, [(0.0, 0.0), (0.0, 5.0), (88.0, 5.0)]),
+        way(72, CROSSWALK, [(88.0, 5.0), (88.0, -3.0), (88.0, -11.0)]),
+        way(73, {"highway": "service"}, [(58.0, -3.0), (88.0, -3.0)]),
+    ]
+    result = tc.closures(ways, {}, [])
+    tc.add_sidewalk_rides(result, ways)
+    assert {71, 72} <= result.sidewalk_rides
+    assert 71 in result.sidewalk_links, "priced as a link, not a last-resort sidewalk"
+    assert 71 not in result.walk_bike, "ridden, not walked"
+
+
+def test_the_whole_walk_is_at_most_500_ft():
+    """Two footways of 100 m each, each under the cap: 200 m in all is too far."""
+    street = placed(90, {"highway": "residential"}, [(0.0, -100.0), (0.0, 0.0)])
+    far = placed(93, {"highway": "residential"}, [(-100.0, 200.0), (0.0, 200.0), (100.0, 200.0)])
+    first = placed(91, FOOTWAY, [(0.0, 0.0), (0.0, 100.0)])
+    assert (
+        sw.cut_throughs([street, first, placed(92, FOOTWAY, [(0.0, 100.0), (0.0, 200.0)]), far])
+        == {}
+    )
+    near = placed(92, FOOTWAY, [(0.0, 100.0), (0.0, 140.0)])
+    far = placed(93, {"highway": "residential"}, [(-100.0, 140.0), (0.0, 140.0), (100.0, 140.0)])
+    assert set(sw.cut_throughs([street, first, near, far])) == {91, 92}
+
+
+def test_a_path_to_a_door_nearer_the_end_does_not_hide_the_cut_through():
+    ways = glenmont()
+    street = [(-300.0, 0.0), (0.0, 0.0), (4.0, 0.0), (8.0, 0.0)]
+    ways[0] = placed(70, {"highway": "residential"}, street)
+    ways.append(placed(77, FOOTWAY, [(4.0, 0.0), (4.0, -10.0)]))
+    assert set(sw.cut_throughs(ways)) == {71}
+
+
+def test_a_dirt_or_hiking_footway_or_a_pedestrian_area_is_no_cut_through():
+    for tags in (
+        {**FOOTWAY, "surface": "ground"},
+        {**FOOTWAY, "surface": "dirt"},
+        {**FOOTWAY, "sac_scale": "hiking"},
+        {**FOOTWAY, "trail_visibility": "bad"},
+        {"highway": "pedestrian"},
+    ):
+        ways = glenmont()
+        ways[1] = placed(71, tags, [(0.0, 0.0), (0.0, 5.0), (88.0, 5.0)])
+        assert sw.cut_throughs(ways) == {}, tags
+    ways = glenmont()
+    ways[1] = placed(
+        71, {**FOOTWAY, "surface": "paving_stones"}, [(0.0, 0.0), (0.0, 5.0), (88.0, 5.0)]
+    )
+    assert set(sw.cut_throughs(ways)) == {71}
