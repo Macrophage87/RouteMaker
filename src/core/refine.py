@@ -2426,9 +2426,12 @@ LONG_FINAL_RESERVE_S = REFINE_TRACE_RESERVE_S
 # A leg's share of its time that goes to the exclusion rounds; the rest is the
 # seek's.
 LONG_SEARCH_SHARE = 0.7
-# A leg is searched only if its time share is at least this (seconds): a round
-# and the reading of its route.
-LONG_LEG_MIN_S = REFINE_ROUND_MIN_S + 1.0
+# A leg is searched only if its time share is at least this (seconds): enough that its
+# rounds' part (LONG_SEARCH_SHARE) holds a whole round, the least a round starts with
+# (audit round 3, S31). Under it no round could run and the seek's part is too short to
+# ask anything after its table read, so the leg could change nothing; it is skipped,
+# keeps the router's route, and its time goes to the legs after it.
+LONG_LEG_MIN_S = REFINE_ROUND_MIN_S / LONG_SEARCH_SHARE + 0.1
 # What a leg's weight counts a metre of LTS 4 or Avoid as, against a metre of
 # LTS 3 (the order the search ranks by, in a weight).
 LONG_LTS4_PRIORITY = 8.0

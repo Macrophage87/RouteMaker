@@ -116,6 +116,7 @@ export function PlaceSearch({
   current,
   inputRef,
   onDismiss,
+  onFocusBox,
 }: {
   /**
    * "plan": the Points search, with Start / Destination / Stop. "go" (UI-CLEANUP): Go's one Where to? box,
@@ -145,6 +146,8 @@ export function PlaceSearch({
   inputRef?: RefObject<HTMLInputElement | null>;
   /** Escape on an empty box (Plan's From or To while changing a point): the box is put away. */
   onDismiss?: () => void;
+  /** The box takes the focus (Go's Where to?: a warm look-up of the location; routing audit S28). */
+  onFocusBox?: () => void;
 }) {
   const id = useId();
   const single = variant !== "plan";
@@ -368,6 +371,7 @@ export function PlaceSearch({
           stopKeyboardWatch();
         }}
         onFocus={(event) => {
+          onFocusBox?.();
           setOpen(true);
           setRecent(readRecentPlaces());
           // On a phone the sheet is half the screen and the keyboard takes

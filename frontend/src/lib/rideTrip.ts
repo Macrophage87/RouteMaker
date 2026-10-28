@@ -82,14 +82,17 @@ export const RIDE_REST = t("Ride the rest");
 export const RIDE_REST_HINT = t("Turn-by-turn from where you are to your destination, for the ride after transit.");
 export const RIDE_REST_FINDING = t("Finding the ride to your destination…");
 /** Said once on the ride screen when the button shows (near or past the stop where the transit ends). */
+// These words are built when they are said, not when the module loads (routing audit D30), so they follow the
+// language in force (lib/i18n.ts): Spanish riders hear the walk, dock and hand-off lines in Spanish.
 export function restReadySaid(rest: Pick<RideRest, "alightName">): string {
-  return `${rest.alightName ? `Near ${rest.alightName}. ` : ""}${RIDE_REST} plans the ride to your destination.`;
+  const near = rest.alightName ? `${t("Near {place}.", { place: rest.alightName })} ` : "";
+  return `${near}${t("{button} plans the ride to your destination.", { button: t("Ride the rest") })}`;
 }
 /** Ride the rest pressed again within this, after closures were said, rides it anyway. */
 export const REST_ANYWAY_MS = 60_000;
 /** Closures on the rest's line, said on the ride screen (its dialog is in the hidden panel). */
 export function restClosedSaid(names: readonly string[]): string {
-  return `Closed on the way: ${[...new Set(names)].join(", ")}. Press ${RIDE_REST} again to ride anyway.`;
+  return t("Closed on the way: {names}. Press {button} again to ride anyway.", { names: [...new Set(names)].join(", "), button: t("Ride the rest") });
 }
 /** How near the stop where the transit ends the ride screen offers Ride the rest. */
 export const REST_NEAR_M = 400;
@@ -144,7 +147,10 @@ export function approachWords(approach: RideApproach, here: LonLat | null): Trip
   if (approach.name === null) return same(approach.extra);
   const far = distanceWords(here ? haversineM(here, approach.at) : approach.metres);
   const extra = approach.extra ? ` ${approach.extra}` : "";
-  return { shown: `Walk to ${approach.name}${far.shown}.${extra}`, spoken: `Walk to ${approach.name}${far.spoken}.${extra}` };
+  return {
+    shown: `${t("Walk to {place}{distance}.", { place: approach.name, distance: far.shown })}${extra}`,
+    spoken: `${t("Walk to {place}{distance}.", { place: approach.name, distance: far.spoken })}${extra}`,
+  };
 }
 
 /** What is said as the walk starts: the walk to the dock, or only the first of the steps before the line (Where am I? says them all). */
@@ -161,20 +167,21 @@ function bikeshareTrip(route: RouteResponse): RideTrip | null {
   if (at && plan.walk_start) {
     approach = {
       at,
-      name: start.kind === "free_bike" ? "the e-bike parked outside a dock" : start.name,
+      name: start.kind === "free_bike" ? t("the e-bike parked outside a dock") : start.name,
       metres: plan.walk_start.distance_m,
       extra: start.kind === "dock" && start.availability === "known" ? `${dockCountWords(start, plan.bike, true)}.` : "",
       first: "",
-      reached: start.kind === "free_bike" ? "At the e-bike. Take it and ride." : `At ${start.name}. Take a bike and ride.`,
+      reached: start.kind === "free_bike" ? t("At the e-bike. Take it and ride.") : t("At {place}. Take a bike and ride.", { place: start.name }),
     };
   }
   let finish: TripWords | null = null;
   if (end.kind === "dock") {
     const walk = plan.walk_end;
-    const on = (far: string) => (walk ? ` Walk${far} to the finish.` : "");
+    const on = (far: string) => (walk ? ` ${t("Walk {distance} to the finish.", { distance: far })}` : "");
+    const dock = t("Dock at {place}.", { place: end.name });
     finish = {
-      shown: `Dock at ${end.name}.${on(walk ? ` ${formatDistance(walk.distance_m)}` : "")}`,
-      spoken: `Dock at ${end.name}.${on(walk ? ` ${spokenDistance(walk.distance_m)}` : "")}`,
+      shown: `${dock}${on(walk ? formatDistance(walk.distance_m) : "")}`,
+      spoken: `${dock}${on(walk ? spokenDistance(walk.distance_m) : "")}`,
     };
   }
   return { approach, finish, departure: null, rest: null, shareBike: true };
@@ -185,7 +192,8 @@ function bikeshareTrip(route: RouteResponse): RideTrip | null {
  * time the ride gets there (DepartureTimer counts down the time left instead).
  */
 export function withoutSpare(text: string): string {
-  return text.replace(/: you arrive [^;]*; (\w)/, (_, first: string) => `. ${first.toUpperCase()}`);
+  // The API writes the clause in the request's language (src/core/transit.py Leg.words): ": llegada " in Spanish.
+  return text.replace(/: (?:you arrive|llegada) [^;]*; (\w)/, (_, first: string) => `. ${first.toUpperCase()}`);
 }
 
 function same(text: string): TripWords {
@@ -207,17 +215,17 @@ function transitTrip(route: RouteResponse, destination: LonLat | null): RideTrip
     const take = before.length === 1 && before[0].mode === "take" ? before[0] : null;
     if (take && take.to) {
       const metres = take.coordinates.length >= 2 ? pathLengthM(take.coordinates) : null;
-      approach = { at, name: take.to, metres, extra: "", first: "", reached: `At ${take.to}. Take a bike and ride.` };
+      approach = { at, name: take.to, metres, extra: "", first: "", reached: t("At {place}. Take a bike and ride.", { place: take.to }) };
     } else {
       const extra = before.map((s) => s.text).join(" ");
-      approach = { at, name: null, metres: null, extra, first: before[0].text, reached: "At the start of the ride." };
+      approach = { at, name: null, metres: null, extra, first: before[0].text, reached: t("At the start of the ride.") };
     }
   }
   // At the line's end: the plan's own steps to the first transit after it (dock, walk, into the station,
   // board), or with no transit after it, to the trip's end (a share bike's dock and the walk on).
   const boardAt = steps.findIndex((s, i) => i > line && isTransitStep(s));
   const upTo = boardAt > line ? boardAt : steps.length - 1;
-  const dock = lineStep.mode === "bikeshare" && lineStep.to ? `Dock at ${lineStep.to}.` : "";
+  const dock = lineStep.mode === "bikeshare" && lineStep.to ? t("Dock at {place}.", { place: lineStep.to }) : "";
   const words = [dock, ...steps.slice(line + 1, upTo + 1).map((s) => withoutSpare(s.text))].filter(Boolean).join(" ");
   const finish = words ? same(words) : null;
   const departure = plan.departure && plan.departure.step > line ? plan.departure : null;
@@ -254,12 +262,12 @@ function walkInTrip(route: RouteResponse): RideTrip | null {
   const at = route.geometry.coordinates[0] as LonLat | undefined;
   const approach: RideApproach | null =
     at && walks.start
-      ? { at, name: "the start of the ride", metres: walks.start.distance_m, extra: "", first: "", reached: "At the start of the ride. Ride on." }
+      ? { at, name: t("the start of the ride"), metres: walks.start.distance_m, extra: "", first: "", reached: t("At the start of the ride. Ride on.") }
       : null;
   const finish: TripWords | null = walks.end
     ? {
-        shown: `The ride ends here. Walk your bike ${formatDistance(walks.end.distance_m)} to your destination.`,
-        spoken: `The ride ends here. Walk your bike ${spokenDistance(walks.end.distance_m)} to your destination.`,
+        shown: t("The ride ends here. Walk your bike {distance} to your destination.", { distance: formatDistance(walks.end.distance_m) }),
+        spoken: t("The ride ends here. Walk your bike {distance} to your destination.", { distance: spokenDistance(walks.end.distance_m) }),
       }
     : null;
   return { approach, finish, departure: null, rest: null, asPlanned: true };
