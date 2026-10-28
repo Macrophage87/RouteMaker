@@ -118,7 +118,35 @@ class TestMerge:
                 )
             ]
         )
-        assert [e["facility"] for e in entries] == [None, "lane"]
+        # A known "none" is sent as such since round-2 D28 (was None, the same as unknown).
+        assert [e["facility"] for e in entries] == ["none", "lane"]
+
+    def test_no_facility_and_not_known_are_two_values(self):
+        # Round-2 audit D28 (owner-approved 2026-10-27): Ride's "Bike lane ends" fires only
+        # where the map says "none"; a way no segment matched stays None.
+        entries = d.describe(
+            [
+                flat(
+                    road("Main St", 2, 700, facility="lane"),
+                    road("Main St", 2, 700, facility="unknown"),
+                    road("Main St", 2, 700, facility="none"),
+                )
+            ]
+        )
+        assert [e["facility"] for e in entries] == ["lane", None, "none"]
+        assert [d.entry_facility(f) for f in ("path", "protected", "lane", "none", "unknown")] == [
+            "path",
+            "protected",
+            "lane",
+            "none",
+            None,
+        ]
+        # An overview stretch that merges different facilities claims none of them.
+        merged, _then = d._group_run(
+            [d._run_of(road("Main St", 2, 700, facility=f)[0], 0) for f in ("lane", "none")],
+            [0, 1],
+        )
+        assert d.entry_facility(merged.facility) is None
 
     def test_a_street_with_two_names_is_one_street(self):
         entries = d.describe(

@@ -187,6 +187,8 @@ function fromRide(cue: Cue): { type: CourseCueType; name: string; priority: numb
       return { type: "note", name: "Calmer", priority: 0 };
     case "unpaved":
       return { type: "note", name: "Unpaved", priority: 0 };
+    case "laneEnds":
+      return { type: "note", name: "Lane ends", priority: 0 };
     case "stop":
       // A named stop (2026-10-24) is named on the unit, as its number is otherwise.
       return { type: "stop", name: cue.stopName ?? `Stop ${cue.stop ?? ""}`.trim(), priority: PROTECTED };

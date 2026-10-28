@@ -266,7 +266,8 @@ export interface DescriptionEntry {
   to_mi: number;
   street: string | null;
   tier: number | null;
-  facility: "path" | "protected" | "lane" | null;
+  /** "none": the map says the way has no bike facility; null: not known (an older API sent null for both; round-2 D28). */
+  facility: "path" | "protected" | "lane" | "none" | null;
   turn: {
     /** "bear_left" / "bear_right": a change of street 20 to 60 degrees off straight (describe.SLIGHT_MIN_DEG, BEAR_MAX_DEG). */
     movement: "left" | "straight" | "right" | "bear_left" | "bear_right" | null;

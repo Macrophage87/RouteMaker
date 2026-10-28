@@ -90,6 +90,7 @@ import {
   stretchWords,
   walkWords,
   flaggedOntoWords,
+  laneEndsWords,
   type Cue,
   type RideEvent,
   type RideFix,
@@ -2264,6 +2265,41 @@ test("D25: a flagged straight-on name change is said in Ride's words, its contro
       "Continúe por Georgia Avenue. Intersección con mucho tráfico, sin semáforo. Tráfico pesado.",
     );
     assert.equal(flaggedOntoWords(flaggedStraight(1000, 2000, "Georgia Avenue", "signal", 1), before), "Continúe por Georgia Avenue. Intersección con mucho tráfico, con semáforo.");
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+test("D28: 'Bike lane ends' only on a known no-lane that lasts, on the same street, never on LTS 4 or Avoid", () => {
+  const ct = "Connecticut Avenue Northwest";
+  const lane = (from: number, to: number, facility: DescriptionEntry["facility"], tier = 2, street = ct) =>
+    stretch(from, to, `x: Continue on ${street}, fairly low stress (LTS ${tier}).`, { street, tier, facility });
+  const cuesOf = (...rest: DescriptionEntry[]) =>
+    rideModel(straightRoute([stretch(0, 500, "A Street.", { street: "A Street" }), { ...lane(500, 1300, "protected"), turn: turning("right", ct) }, ...rest])).cues;
+  // A protected lane ends, the street goes on with no lane: said, in the app's words, at Full only.
+  const ends = cuesOf(lane(1300, 2100, "none")).find((c) => c.kind === "laneEnds") as Cue;
+  assert.ok(ends);
+  assert.equal(ends.rideText, `Bike lane ends on ${ct}.`);
+  assert.equal(cueSpoken(ends, "advance", 150), `In 500 feet, bike lane ends on ${ct}.`);
+  assert.ok(says("full", ends) && !says("stoker", ends) && !says("quiet", ends));
+  // Not known (null, as an older API sent "none" too): nothing.
+  assert.ok(!cuesOf(lane(1300, 2100, null)).some((c) => c.kind === "laneEnds"));
+  // The lane comes back within LANE_RETURN_M, or a turn comes first: nothing.
+  assert.ok(!cuesOf(lane(1300, 1400, "none"), lane(1400, 2100, "lane")).some((c) => c.kind === "laneEnds"));
+  assert.ok(!cuesOf(lane(1300, 1400, "none"), { ...lane(1400, 2100, "none", 2, "B Street"), turn: turning("left", "B Street") }).some((c) => c.kind === "laneEnds"));
+  // Two no-lane pieces of the same street that together last: said.
+  assert.ok(cuesOf(lane(1300, 1400, "none"), lane(1400, 2100, "none", 1)).some((c) => c.kind === "laneEnds"));
+  // LTS 4 or Avoid, where painted lanes are hidden: never.
+  assert.ok(!cuesOf(lane(1300, 2100, "none", 4)).some((c) => c.kind === "laneEnds"));
+  // The tier rises to a busy road too: the busy cue says the lane ended first.
+  const busy = cuesOf(lane(1300, 2100, "none", 3)).find((c) => c.kind === "busy") as Cue;
+  assert.equal(busy.rideText, `Bike lane ends. Busy road on ${ct}.`);
+  assert.equal(cueSpoken(busy, "advance", 150), `In 500 feet, bike lane ends. Busy road on ${ct}.`);
+  setLanguageForTest("es");
+  try {
+    const es = cuesOf(lane(1300, 2100, "none")).find((c) => c.kind === "laneEnds") as Cue;
+    assert.equal(cueSpoken(es, "advance", 150), `En 500 pies, termina el carril bici en ${ct}.`);
+    assert.equal(laneEndsWords(null), "Termina el carril bici.");
   } finally {
     setLanguageForTest("en");
   }

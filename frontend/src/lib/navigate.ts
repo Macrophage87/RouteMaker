@@ -179,7 +179,7 @@ const MAX_SPEED_MS = 20;
 
 // ---- The ride's model ---------------------------------------------------------------------------
 
-export type CueKind = "turn" | "onto" | "hazard" | "walk" | "busy" | "calmer" | "unpaved" | "stop" | "end";
+export type CueKind = "turn" | "onto" | "hazard" | "walk" | "busy" | "calmer" | "unpaved" | "laneEnds" | "stop" | "end";
 
 /** A turn's movement: a bear is a change of street a little off straight (the API's describe.SLIGHT_MIN_DEG). */
 export type TurnMovement = "left" | "right" | "bear_left" | "bear_right" | "uturn";
@@ -684,6 +684,44 @@ function stretchChange(entry: DescriptionEntry, before: DescriptionEntry | null)
 }
 
 /**
+ * A bike lane that ends is said only where no lane comes back within this of where it ended (round-2 audit D28):
+ * OSM lane tags often break for a block end or a junction's width, and "ends" then "starts" again is noise.
+ */
+export const LANE_RETURN_M = 150;
+
+/**
+ * Whether the stretch at `entries[i]` is where a painted or protected bike lane ends on the same street (round-2 audit
+ * D28; the owner approved the banked changes 2026-10-27 7:52 PM ET, "make the banked changes"). Only on a known no
+ * lane (the API's facility "none", never null, which is not known); only where the street then goes on with no lane
+ * for LANE_RETURN_M (no lane back, no turn, no other street, no stop before); never on LTS 4 or Avoid, before or after,
+ * where Plan hides painted lanes (OWNER-DECISIONS 275). A lane that starts is not said.
+ */
+function laneEnds(entries: readonly DescriptionEntry[], i: number, before: DescriptionEntry | null): boolean {
+  const entry = entries[i];
+  if (entry.kind !== "stretch" || before?.kind !== "stretch") return false;
+  if ((before.facility !== "lane" && before.facility !== "protected") || entry.facility !== "none") return false;
+  if (isTurnMovement(entry.turn?.movement) || entry.turn?.cross || entry.turn?.across) return false;
+  const calm = (tier: number | null) => tier !== null && tier >= 1 && tier <= 3;
+  if (!calm(before.tier) || !calm(entry.tier)) return false;
+  const street = entry.street;
+  if (!street || isUnnamed(street) || !sameStem(before.street, street)) return false;
+  let reach = entry.to_m;
+  for (let k = i + 1; k < entries.length && reach - entry.from_m < LANE_RETURN_M; k++) {
+    const next = entries[k];
+    if (next.kind === "via") return false;
+    if (next.kind !== "stretch") continue;
+    if (next.facility !== "none" || isTurnMovement(next.turn?.movement) || !next.street || !sameStem(street, next.street)) return false;
+    reach = next.to_m;
+  }
+  return reach - entry.from_m >= LANE_RETURN_M;
+}
+
+/** "Bike lane ends on Connecticut Avenue Northwest." (D28); "Bike lane ends." where the street has no name. */
+export function laneEndsWords(street: string | null): string {
+  return street && !isUnnamed(street) ? t("Bike lane ends on {street}.", { street: wayWords(street) }) : t("Bike lane ends.");
+}
+
+/**
  * The junction a flagged straight-on stretch is entered at, in Ride's words, with its control where the
  * rider uses it ("at a signal", "no signal"): never the API's "(Higher stress junction)".
  */
@@ -759,7 +797,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
   const passes: { point: number; atM: number }[] = [];
   let before: DescriptionEntry | null = null;
   let lastNamed: LastNamed = null;
-  for (const entry of entries) {
+  for (const [i, entry] of entries.entries()) {
     const fromM = toLine(entry.from_m);
     if (entry.kind === "stretch") stretches.push({ fromM, toM: toLine(entry.to_m), street: entry.street, tier: entry.tier, facility: entry.facility });
     // A via point (v0.7.0): its place is kept for the re-plan, but it is no cue and has no number.
@@ -769,7 +807,10 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
       lastNamed = null;
       continue;
     }
-    const kind = cueKindOf(entry, before, lastNamed);
+    let kind = cueKindOf(entry, before, lastNamed);
+    // A bike lane that ends on the same street (D28): its own cue, or said first in a busy road's.
+    const ends = (kind === null || kind === "busy") && laneEnds(entries, i, before);
+    if (ends && kind === null) kind = "laneEnds";
     if (kind === "stop" && vias.length && entry.via != null) {
       // Stops are numbered among themselves: the via points before this one are left out of its number.
       const point = entry.via;
@@ -800,7 +841,10 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
         ...(kind === "hazard" && entry.kind === "stretch" ? { rideText: flaggedOntoWords(entry, before) } : {}),
         ...(entry.kind === "avoid" ? { rideText: avoidWords(entry) } : {}),
         // A stretch's change and a walk in the app's own words (D14), not the API's sentence, which Plan keeps.
-        ...(kind === "busy" || kind === "calmer" || kind === "unpaved" ? { rideText: stretchWords(kind, entry) } : {}),
+        ...(kind === "busy" || kind === "calmer" || kind === "unpaved"
+          ? { rideText: ends ? `${laneEndsWords(null)} ${stretchWords(kind, entry)}` : stretchWords(kind, entry) }
+          : {}),
+        ...(kind === "laneEnds" ? { rideText: laneEndsWords(entry.street) } : {}),
         ...(kind === "walk" ? { rideText: walkWords(entry.to_m - entry.from_m), walkM: Math.max(0, entry.to_m - entry.from_m) } : {}),
         ...(entry.citation ? { citation: entry.citation } : {}),
         ...(kind === "turn" && entry.turn?.shape && !entry.turn.cross ? { junction: entry.turn.shape } : {}),
@@ -974,7 +1018,8 @@ export function says(level: Verbosity, cue: Pick<Cue, "kind" | "tier" | "severit
   if (cue.kind === "stop" || cue.kind === "end") return true;
   if (level === "quiet") return false;
   if (level === "full") return true;
-  // Stoker: turns, red and orange junctions, walking, and the start of LTS 4 and Avoid stretches.
+  // Stoker: turns, red and orange junctions, walking, and the start of LTS 4 and Avoid stretches; not a bike lane's end
+  // (D28), which is the captain's to act on.
   if (cue.kind === "turn" || cue.kind === "walk") return true;
   if (cue.kind === "hazard") return cue.source === "hazard" || cue.severity === "orange" || cue.severity === "red" || cue.severity === "avoid";
   if (cue.kind === "busy") return (cue.tier ?? 0) >= 4;
@@ -1134,7 +1179,7 @@ function lowerFirst(text: string): string {
  */
 function leadsWithTemplate(cue: Pick<Cue, "kind"> & Pick<Partial<Cue>, "source">): boolean {
   if (cue.kind === "hazard") return cue.source !== "workzone";
-  return cue.kind === "turn" || cue.kind === "onto" || cue.kind === "busy" || cue.kind === "calmer" || cue.kind === "unpaved" || cue.kind === "walk";
+  return cue.kind === "turn" || cue.kind === "onto" || cue.kind === "busy" || cue.kind === "calmer" || cue.kind === "unpaved" || cue.kind === "laneEnds" || cue.kind === "walk";
 }
 
 /** A cue's words placed after "In 500 feet, ": the first letter lowered only where it is the app's template. */

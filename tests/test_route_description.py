@@ -57,7 +57,8 @@ class TestInTheAnswer:
         assert [e["kind"] for e in entries] == ["stretch", "junction"]
         stretch, junction = entries
         assert stretch["street"] == "Quiet Street"
-        assert stretch["tier"] == 2 and stretch["facility"] is None
+        # The map says no facility: "none", not unknown (round-2 D28; was None).
+        assert stretch["tier"] == 2 and stretch["facility"] == "none"
         assert stretch["turn"] is None
         assert stretch["text"] == (
             "0.0 to 1.7 mi (0.0 to 2.7 km): Quiet Street, fairly low stress (LTS 2)."
@@ -459,7 +460,7 @@ class TestDescribeRoute:
         assert [e["tier"] for e in overview] == [3, 1]
         assert [e["street"] for e in entries] == ["A St", "B St"]
         assert [e["tier"] for e in entries] == [3, 1]
-        assert [e["facility"] for e in entries] == [None, "path"]
+        assert [e["facility"] for e in entries] == ["none", "path"]  # known, round-2 D28
         assert entries[1]["turn"]["movement"] == "left"
         assert entries[-1]["to_m"] == 1000
 

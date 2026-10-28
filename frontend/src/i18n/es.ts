@@ -81,6 +81,9 @@ export const ES: Readonly<Record<string, string>> = {
   "{cue}, {surface}.": "{cue}, {surface}.",
   "unpaved": "sin pavimentar",
   "partly unpaved": "parcialmente sin pavimentar",
+  // A bike lane that ends on the same street (round-2 audit D28).
+  "Bike lane ends on {street}.": "Termina el carril bici en {street}.",
+  "Bike lane ends.": "Termina el carril bici.",
   "Walk your bike for {distance}.": "Camine con su bicicleta por {distance}.",
   "Walk your bike.": "Camine con su bicicleta.",
   "Destination on your left.": "El destino está a su izquierda.",
