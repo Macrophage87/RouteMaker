@@ -20,6 +20,7 @@
  * as a table. Everything it says is made in lib/profileChart.ts.
  */
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { t } from "./lib/i18n.ts";
 import type { RouteProfile } from "./lib/api.ts";
 import type { LonLat } from "./lib/geo.ts";
 import {
@@ -162,9 +163,9 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
   const markerX = x(reading.m);
   const elevAtMarker = reading.elevationM;
   const present = stripKey(sections);
-  const tableName = calm ? "Climbs and rolling stress as tables" : "Climbs as a table";
-  const prompt = "Move along the chart, or use the arrow keys, to read the route at a point.";
-  const keys = "Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift+C go to the next and previous climb.";
+  const tableName = calm ? t("Climbs and rolling stress as tables") : t("Climbs as a table");
+  const prompt = t("Move along the chart, or use the arrow keys, to read the route at a point.");
+  const keys = t("Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift+C go to the next and previous climb.");
 
   const defs = (
     <defs>
@@ -199,7 +200,7 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
         className="pc-plot"
         role="slider"
         tabIndex={0}
-        aria-label={calm ? "Elevation and rolling stress along the route" : "Elevation and stress along the route"}
+        aria-label={calm ? t("Elevation and rolling stress along the route") : t("Elevation and stress along the route")}
         aria-orientation="horizontal"
         aria-valuemin={0}
         aria-valuemax={Math.round(total)}
@@ -253,10 +254,10 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
             <g>
               {/* The side: the unit on the marker row (nothing else is drawn left of the plot there), and the log scale's figures, right-aligned against the plot and never crowded. */}
               <text className="pc-axis-text" x={2} y={calmLayout.markerY - 6}>
-                calm mi
+                {t("calm mi")}
               </text>
               <text className="pc-axis-text" x={2} y={calmLayout.markerY - 6 + CHART_TYPE}>
-                per mi
+                {t("per mi")}
               </text>
               {calmTicks(calmMax, calmY).map((t) => (
                 <text key={t} className="pc-axis-text" x={LEFT - 3} y={calmY(t) + 4} textAnchor="end">
@@ -356,7 +357,7 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
       </p>
       {!compact && (
         <>
-          <ul className="pc-legend" aria-label="Chart key">
+          <ul className="pc-legend" aria-label={t("Chart key")}>
             {GRADE_BANDS.map((band) => (
               <li key={band.band}>
                 <svg width="14" height="10" aria-hidden="true">
@@ -369,7 +370,7 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
             {calm ? (
               <>
                 <li className="pc-legend-strip">
-                  Under the elevation: rolling stress{calm.estimate ? " (an estimate)" : ""}, calm miles per mile (calm km per km) over the mile around each point, on a log scale (1 to 2 is as tall as 5 to 10); about 1 is all quiet streets
+                  {t("Under the elevation: rolling stress{estimate}, calm miles per mile (calm km per km) over the mile around each point, on a log scale (1 to 2 is as tall as 5 to 10); about 1 is all quiet streets", { estimate: calm.estimate ? t(" (an estimate)") : "" })}
                 </li>
                 {CALM_BANDS.map((band) => {
                   const cls = spanClass({ tier: band.tier, facility: "none" });
@@ -387,13 +388,13 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
                   <svg width="14" height="10" aria-hidden="true">
                     <path d="M0 7H5V3H14" className="pc-calm-steps" fill="none" />
                   </svg>
-                  Dashed steps: each stretch's own figure, without the mile around it
+                  {t("Dashed steps: each stretch's own figure, without the mile around it")}
                 </li>
                 <li>
                   <svg width="14" height="10" aria-hidden="true">
                     <path d="M0 5H14" className="pc-calm-guide" fill="none" />
                   </svg>
-                  Dotted lines: where the levels change (the solid grey line is 1)
+                  {t("Dotted lines: where the levels change (the solid grey line is 1)")}
                 </li>
                 {calmAvoids.length > 0 && (
                   <li>
@@ -402,17 +403,17 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
                       <rect width="14" height="10" fill={`url(#${uid}-avoid)`} />
                       <rect x="0.5" y="0.5" width="13" height="9" fill="none" stroke={AVOID_INK} strokeWidth="1" />
                     </svg>
-                    Avoid (A where narrow)
+                    {t("Avoid (A where narrow)")}
                   </li>
                 )}
                 <JunctionKey orange={calmMarks.some((p) => p.severity === "orange")} red={calmMarks.some((p) => p.severity === "red")} dot={false} />
               </>
             ) : (
-              <li className="pc-legend-strip">Strip under the elevation: traffic stress along the route</li>
+              <li className="pc-legend-strip">{t("Strip under the elevation: traffic stress along the route")}</li>
             )}
           </ul>
           {!calm && present.length > 0 && (
-            <ul className="pc-tiers" aria-label="Stress on the strip">
+            <ul className="pc-tiers" aria-label={t("Stress on the strip")}>
               {present.map((s) => {
                 const cls = spanClass(s);
                 return (
@@ -422,15 +423,15 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
                       style={{ backgroundColor: cls.color, ["--seg-accent" as string]: cls.halo }}
                       aria-hidden="true"
                     />
-                    {capitalise(sectionWords(s) ?? "not rated")}
+                    {capitalise(sectionWords(s) ?? t("not rated"))}
                   </li>
                 );
               })}
             </ul>
           )}
           <details className="pc-source-fold">
-            <summary>Sources</summary>
-            <p className="hint pc-source">{calm ? `Elevation: USGS 3DEP. ${calmSource(calm)}` : "Elevation: USGS 3DEP."}</p>
+            <summary>{t("Sources")}</summary>
+            <p className="hint pc-source">{calm ? `${t("Elevation: USGS 3DEP.")} ${calmSource(calm)}` : t("Elevation: USGS 3DEP.")}</p>
           </details>
           <details className="pc-table-fold">
             <summary>{tableName}</summary>

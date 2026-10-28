@@ -328,7 +328,9 @@ export function goPressLocatingSaid(name: string): string {
  * try), ending in typing a start, as the start box asks, in place of searching for a place.
  */
 export function goStartFailedReason(reason: LocateFailure): string {
-  return LOCATE_MESSAGES[reason].replace(/search for a place\.$/, "type a start.").replace(/Search for a place instead\.$/, "Type a start instead.");
+  return LOCATE_MESSAGES[reason].replace(/search for a place\.$/, "type a start.").replace(/Search for a place instead\.$/, "Type a start instead.")
+    .replace(/busque un lugar\.$/, "escriba un inicio.")
+    .replace(/Busque un lugar\.$/, "Escriba un inicio.");
 }
 
 /** Shown when a destination waited on Go's Locate and it failed: the destination and Locate's reason. */

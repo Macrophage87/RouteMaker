@@ -11,7 +11,7 @@
  * - whether the plan changed since the route was drawn (planChanged), and why Reset is unavailable.
  */
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
-import { language, t } from "./i18n.ts";
+import { t } from "./i18n.ts";
 import { pathLengthM, type LonLat } from "./geo.ts";
 import { formatDistance, formatDistanceChange } from "./format.ts";
 import { namePoints } from "./pointKinds.ts";
@@ -75,9 +75,10 @@ export function planSentences(
     if (end >= 0) sentences.push([{ text: t("End at ") }, { text: nameAt(end), target: { kind: "point", index: end } }, { text: "." }]);
     else if (!loop) sentences.push([{ text: t("End: tap the map or search for a place.") }]);
   }
-  // Spanish puts the noun first: "Recorrido Default".
+  // The words around the ride type, in the language's own order ("Default ride", "Recorrido Default").
   const rideLink: Phrase = { text: words.ride, target: { kind: "ride" } };
-  const ride: Phrase[] = language() === "es" ? [{ text: "Recorrido " }, rideLink] : [rideLink, { text: " ride" }];
+  const [before, after] = t("{ride} ride").split("{ride}");
+  const ride: Phrase[] = [{ text: before }, rideLink, { text: after }].filter((p) => p === rideLink || p.text !== "");
   if (words.traffic) ride.push({ text: ", " }, { text: lower(words.traffic), target: { kind: "traffic" } });
   if (words.hills) ride.push({ text: ", " }, { text: lower(words.hills), target: { kind: "hills" } });
   ride.push({ text: "." });
