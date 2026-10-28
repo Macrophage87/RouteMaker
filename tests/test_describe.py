@@ -2875,3 +2875,51 @@ class TestThePathToATrail:
             )
         ]
         assert all("toward" not in (e["turn"] or {}) for e in d.describe(legs))
+
+
+class TestAWalkAtATurn:
+    """Round-3 audit D32: a walk that begins where a turn's stretch begins is listed (and so
+    cued in Ride) before it, whichever way the float noise of the two sums falls."""
+
+    @staticmethod
+    def legs():
+        return [
+            flat(
+                road("A Street", 1, 420, 0, 0),
+                road("Georgia Avenue", 3, 150, 90, 90),
+                road("B Street", 1, 400, 0, 0),
+            )
+        ]
+
+    def kinds(self, walk_from):
+        entries = d.describe(self.legs(), walks=[(walk_from, walk_from + 150.0)])
+        return [(e["kind"], e["street"]) for e in entries]
+
+    WALK_FIRST = [
+        ("stretch", "A Street"),
+        ("walk", None),
+        ("stretch", "Georgia Avenue"),
+        ("stretch", "B Street"),
+    ]
+
+    def test_an_exact_tie_puts_the_walk_first(self):
+        assert self.kinds(420.0) == self.WALK_FIRST
+
+    def test_a_walk_a_hair_after_the_turn_is_still_first(self):
+        assert self.kinds(420.0 + 1e-9) == self.WALK_FIRST
+
+    def test_a_walk_a_hair_before_the_turn_is_still_first(self):
+        assert self.kinds(420.0 - 1e-9) == self.WALK_FIRST
+
+    def test_a_walk_clearly_after_the_turn_stays_after_it(self):
+        assert self.kinds(425.0) == [
+            ("stretch", "A Street"),
+            ("stretch", "Georgia Avenue"),
+            ("walk", None),
+            ("stretch", "B Street"),
+        ]
+
+    def test_a_stop_at_the_same_spot_is_still_said_before_the_walk(self):
+        legs = [road("A Street", 1, 420, 0, 0), road("Georgia Avenue", 3, 150, 90, 90)]
+        entries = d.describe(legs, walks=[(420.0 + 1e-9, 570.0)])
+        assert [e["kind"] for e in entries] == ["stretch", "via", "walk", "stretch"]

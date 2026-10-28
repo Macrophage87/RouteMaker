@@ -83,6 +83,7 @@ The rules:
 
 from __future__ import annotations
 
+import bisect
 import re
 from dataclasses import dataclass, replace
 
@@ -116,6 +117,11 @@ BEAR_MAX_DEG = 60.0
 # A jog's middle is at least this long: a shorter piece of another street between
 # two turns is a median or a carriageway crossed, not a street ridden.
 JOG_MIN_M = 15.0
+# A walk that begins this near where another entry begins begins there (`_walk_at`): the
+# walk's start and a stretch's are added up in different groupings (`core.routing.
+# walk_spans`), so one that starts at a turn can land a hair either side of the turn's
+# stretch (round-3 audit D32).
+WALK_TIE_M = 0.01
 # An unnamed jog's middle (`_unnamed_jog`) is at least this long: a shorter path or
 # alley between two turns is a crosswalk or a corner cut, not a way ridden.
 JOG_UNNAMED_MIN_M = 30.0
@@ -2062,8 +2068,8 @@ def describe_both(
     for i, turn in turns.items():
         turn.toward = _toward(runs, turns, i)
 
-    entries: list[tuple[tuple[float, int, int], dict]] = []
-    shared: list[tuple[tuple[float, int, int], dict]] = []
+    entries: list[tuple[tuple[float, float, int], dict]] = []
+    shared: list[tuple[tuple[float, float, int], dict]] = []
     for i, run in enumerate(runs):
         start, end = starts[i] * scale, (starts[i] + run.metres) * scale
         if i == 0 or runs[i - 1].leg != run.leg:
@@ -2126,19 +2132,24 @@ def describe_both(
                 ),
             )
         )
+    # A walk is listed, and so cued, before a stretch that begins where it does (kind order
+    # 0.5: after a stop there, before the stretch and its turn), as `core.novice_walks.
+    # with_entries` puts a Novice walk (round-3 audit D32): said after the turn's "now", the
+    # warning would come a few feet before the walk.
+    begins = sorted(start * scale for start in starts)
     for number, (walk_from, walk_to) in enumerate(sorted(walks or ())):
         from_at, to_at = walk_from * scale, walk_to * scale
         shared.append(
             (
-                (from_at, 3, number),
+                (_walk_at(from_at, begins), 0.5, number),
                 _entry("walk", from_at, to_at, walk_sentence(from_at, to_at)),
             )
         )
     by_group = {g.number: g for g in crossing_groups(events)}
     said: set[int] = set()
     # A group's entry in each list: the full one with its crossings (item 248).
-    full_only: list[tuple[tuple[float, int, int], dict]] = []
-    short_only: list[tuple[tuple[float, int, int], dict]] = []
+    full_only: list[tuple[tuple[float, float, int], dict]] = []
+    short_only: list[tuple[tuple[float, float, int], dict]] = []
     for index, event in enumerate(events):
         if index in used or not event.flagged:
             continue
@@ -2199,7 +2210,7 @@ def describe_both(
                 ),
             )
         )
-    overview: list[tuple[tuple[float, int, int], dict]] = []
+    overview: list[tuple[tuple[float, float, int], dict]] = []
     for first, last in _overview_groups(runs, turns):
         run, then = _group_run(runs, [first, last], turns)
         hidden = _lanes_hidden(run, runs[first : last + 1])
@@ -2253,6 +2264,16 @@ def describe_both(
     full = sorted(entries + shared + full_only, key=lambda pair: pair[0])
     short = sorted(overview + shared + short_only, key=lambda pair: pair[0])
     return [e for _k, e in full], [e for _k, e in short]
+
+
+def _walk_at(at: float, begins: list[float]) -> float:
+    """Where a walk from `at` sorts: the nearest place another entry begins (`begins`,
+    sorted) within WALK_TIE_M of it, else `at`. Only the walk's own key is moved, so no
+    other entries' order changes."""
+    k = bisect.bisect_left(begins, at)
+    near = [begins[j] for j in (k - 1, k) if 0 <= j < len(begins)]
+    near = [b for b in near if abs(b - at) <= WALK_TIE_M]
+    return min(near, key=lambda b: abs(b - at)) if near else at
 
 
 def _entry(kind: str, start: float, end: float, text: str, **fields) -> dict:
