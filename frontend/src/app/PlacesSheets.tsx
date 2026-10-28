@@ -192,7 +192,7 @@ export function PlacesSheet(props: PlacesSheetProps) {
 }
 
 /** Go's name for the sheet, as its chip says it. */
-export const GO_SIGHTS_TITLE = "Sights";
+export const GO_SIGHTS_TITLE = t("Sights");
 
 /** The views these sheets are, for App's lettered places. */
 export const PLACE_VIEWS: readonly PanelView[] = ["repair", "places"];

@@ -541,7 +541,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
           >
             <span className="switch-label">{FOLLOW_LEADER}</span>
             <span className="switch-state" aria-hidden="true">
-              {following ? "On" : "Off"}
+              {following ? t("On") : t("Off")}
             </span>
           </button>
         )}
@@ -578,7 +578,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
           >
             <span className="switch-label">Show me as a dot</span>
             <span className="switch-state" aria-hidden="true">
-              {shareOn ? "On" : "Off"}
+              {shareOn ? t("On") : t("Off")}
             </span>
           </button>
         )}

@@ -1,5 +1,6 @@
 /** Sentences the route panel says about a route. */
 import { bikeshareSaid } from "./bikeshare.ts";
+import { t } from "./i18n.ts";
 import { transitSaid } from "./transit.ts";
 import type { HillClimb, RouteResponse } from "./api.ts";
 import { STRESS_TODAYS_TOP, TARGET_CEILING_RATIO } from "./dials.ts";
@@ -163,7 +164,7 @@ export function targetSaid(route: Pick<RouteResponse, "calm_search" | "distance_
   const target = route.calm_search?.target_distance_m;
   const over = overTarget(route);
   if (!target || over === null) return null;
-  return `${formatDistance(over)} over your target of ${formatDistance(target)}.`;
+  return t("{over} over your target of {target}.", { over: formatDistance(over), target: formatDistance(target) });
 }
 
 /**
@@ -223,8 +224,8 @@ export function detourSaid(
   const found = route.detour;
   if (found && found.basis === "direct_route" && route.preset !== "mass-ride" && found.level !== null) {
     const ratio = found.ratio ?? route.distance_m / Math.max(found.reference_m, 1);
-    const tier = { note: "Note", warning: "Warning", strong: "Strong warning" }[found.level];
-    return `${tier}: ${ratioText(ratio, found.level)} times the direct distance, ${formatDistance(found.extra_m)} longer.`;
+    const tier = { note: t("Note"), warning: t("Warning"), strong: t("Strong warning") }[found.level];
+    return t("{tier}: {ratio} times the direct distance, {extra} longer.", { tier, ratio: ratioText(ratio, found.level), extra: formatDistance(found.extra_m) });
   }
   // The straight-line notice: its first sentence says it.
   return `Warning: ${view.text.split(". ")[0].replace(/^This/, "this").replace(/\.$/, "")}.`;
@@ -234,7 +235,7 @@ export function detourSaid(
 export function redJunctionsSaid(route: Pick<RouteResponse, "intersections">): string | null {
   const red = (route.intersections ?? []).filter((junction) => junction.severity === "red").length;
   if (red === 0) return null;
-  return `${red} very high stress ${red === 1 ? "junction" : "junctions"}.`;
+  return red === 1 ? t("1 very high stress junction.") : t("{count} very high stress junctions.", { count: red });
 }
 
 /**
@@ -258,9 +259,9 @@ export interface AnnounceHow {
 export function announceRoute(route: RouteResponse, points: readonly LonLat[] = [], how: AnnounceHow = {}): string {
   const head = how.chosen
     ? how.chosen.name
-      ? `${how.chosen.name} route chosen: `
-      : `Route ${how.chosen.rank} of ${how.chosen.of} chosen: `
-    : "Route planned: ";
+      ? t("{name} route chosen: ", { name: how.chosen.name })
+      : t("Route {rank} of {of} chosen: ", { rank: how.chosen.rank, of: how.chosen.of })
+    : t("Route planned: ");
   // A transit trip: its scheduled total and the comparison, in brief; the steps are in the panel's list.
   const transit = transitSaid(route);
   if (transit) return transit;
@@ -269,8 +270,8 @@ export function announceRoute(route: RouteResponse, points: readonly LonLat[] = 
     return [bikeshare, detourSaid(route, points), redJunctionsSaid(route)].filter(Boolean).join(" ");
   }
   const figures =
-    `${head}${formatDistance(route.distance_m)}, ` +
-    `${formatDuration(route.duration_s)} moving time, climb ${formatClimb(route.climb_m)}.`;
+    head +
+    t("{distance}, {time} moving time, climb {climb}.", { distance: formatDistance(route.distance_m), time: formatDuration(route.duration_s), climb: formatClimb(route.climb_m) });
   const others = !how.chosen && how.others ? othersSaid(how.others) : null;
   // A Mass Ride's rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3, 325: "announced"), after the junctions.
   return [figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), others]
@@ -300,8 +301,8 @@ export function walkInNote(route: Pick<RouteResponse, "walk_in">): string | null
   const walks = route.walk_in;
   if (!walks) return null;
   const said: string[] = [];
-  if (walks.start) said.push(`Walk your bike ${formatDistance(walks.start.distance_m)} to where the ride starts.`);
-  if (walks.end) said.push(`Walk your bike the last ${formatDistance(walks.end.distance_m)} to your destination.`);
+  if (walks.start) said.push(t("Walk your bike {distance} to where the ride starts.", { distance: formatDistance(walks.start.distance_m) }));
+  if (walks.end) said.push(t("Walk your bike the last {distance} to your destination.", { distance: formatDistance(walks.end.distance_m) }));
   return said.length ? said.join(" ") : null;
 }
 
@@ -315,13 +316,15 @@ export function noviceWalksNote(route: Pick<RouteResponse, "novice">): string | 
   const walks = route.novice?.walks ?? [];
   if (!walks.length) return null;
   const metres = walks.reduce((sum, walk) => sum + walk.distance_m, 0);
-  if (walks.length === 1) return `Walk your bike on the sidewalk along ${walks[0].road ?? "a busy road"}, ${formatDistance(metres)}.`;
-  return `Walk your bike on the sidewalk past ${walks.length} busy stretches, ${formatDistance(metres)}.`;
+  if (walks.length === 1) return t("Walk your bike on the sidewalk along {road}, {distance}.", { road: walks[0].road ?? t("a busy road"), distance: formatDistance(metres) });
+  return t("Walk your bike on the sidewalk past {count} busy stretches, {distance}.", { count: walks.length, distance: formatDistance(metres) });
 }
 
 /** "2 other routes to choose from, under Routes to choose from." */
 export function othersSaid(others: number): string {
-  return `${others} other ${others === 1 ? "route" : "routes"} to choose from, under Routes to choose from.`;
+  return others === 1
+    ? t("1 other route to choose from, under Routes to choose from.")
+    : t("{count} other routes to choose from, under Routes to choose from.", { count: others });
 }
 
 /**

@@ -58,15 +58,19 @@ from __future__ import annotations
 
 import bisect
 import contextvars
+import copy
 import dataclasses
 import functools
+import hashlib
 import http.client
 import itertools
 import json
 import logging
+import math
 import time
 import urllib.error
 import urllib.request
+from array import array
 from collections.abc import Callable, Iterator
 from concurrent.futures import FIRST_EXCEPTION, Future
 from concurrent.futures import wait as wait_futures
@@ -79,8 +83,10 @@ from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
 
 from pipeline.schema import (
+    HAZARD_COLUMN,
     MASS_WIDTH_COLUMN,
     ROUGH_COLUMN,
+    SCENIC_COLUMN,
     SIDEPATH_NAME_COLUMN,
     STRESS_HALF_COLUMN,
     TRAIL_NAME_COLUMN,
@@ -110,7 +116,14 @@ from routemaker import (
 from routemaker import detour as detour_rules
 from routemaker import profile as profile_rules
 from routemaker.facility import FACILITIES
-from routemaker.geo import Point, bearing, bearing_delta, haversine
+from routemaker.geo import (
+    Point,
+    bearing,
+    bearing_delta,
+    bearing_lonlat,
+    haversine,
+    haversine_lonlat,
+)
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
@@ -560,15 +573,85 @@ class Piece:
     # Whether another way a bicycle may ride away on meets that node (`_choice_of`); None
     # where `turn` is.
     choice: bool | None = field(default=None, compare=False)
+    # Whether the piece's edge is on the way the edge before was on and the line goes back
+    # there over the points it came in on (`_retraces`): a turnaround on the way itself,
+    # said as a U-turn (`describe.UTURN_DEG`, round-3 audit D31). False on every piece of
+    # an edge but its first.
+    retrace: bool = field(default=False, compare=False)
 
 
 def _heading(value) -> float | None:
     return float(value) if isinstance(value, (int, float)) else None
 
 
-def pieces_of_trace(trace: dict) -> list[Piece]:
-    """Cut every traced edge at its shape vertices, apportioning its length."""
-    shape = decode_polyline6(trace.get("shape", ""))
+# The plan's memo of its readings of each trace (audit S19): the trace cut into pieces
+# (`pieces_of_trace`) and its junctions and edge middles (`trace_junctions.read_edges`), read
+# at the leg's start once and shifted for each caller. A plan reads the same trace several
+# times: the hill guards' `_exposure` (the kept trip twice), the calm search's
+# `refine.analyse` (a stress-only reading is never kept as an analysis) and the answer.
+# Keyed by the trace object's id. Each entry holds the trace itself: that keeps the id from
+# being reused, and it also pins the trace (its whole parsed JSON) for as long as the entry
+# lives. The cap counts pieces, not those traces, so `_plan_rounds` empties the memo with the
+# rounds' own traces before the final round, whose traces are new objects no entry can match
+# (review of audit S19). Pieces and junctions are frozen, so the entries' are shared, in new
+# lists; an analysis kept for the plan holds the same pieces, so an entry adds little beside
+# it. At most READING_MEMO_PIECES pieces, the least recently used trace dropped first: about
+# 0.5 KB a piece with its junctions, so a few MB at most beside the plan's own analyses and
+# traces (measured in tests/test_trace_reading.py, `test_the_memo_holds_little_beside_the_
+# plans_own_analyses`, which leaves the traces out as the plan holds them anyway). `plan`
+# sets it for its own context and clears it as it ends; None outside a plan (nothing
+# remembered).
+_reading_memo: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "reading_memo", default=None
+)
+READING_MEMO_PIECES = 12_000
+
+
+@dataclass
+class _Reading:
+    trace: dict
+    pieces: tuple[Piece, ...] | None = None
+    edges: trace_junctions.EdgeReading | None = None
+
+
+def trace_reading(
+    trace: dict, shape: list | None = None, edges: bool = False, marks: bool = False
+) -> tuple[list[Piece], trace_junctions.EdgeReading | None]:
+    """The trace's pieces (`pieces_of_trace`, a new list) and, with `edges` or `marks`, its
+    junctions (and with `marks` its edge middles) at the leg's start, `trace_junctions.
+    read_edges`; `shape` the leg's own shape decoded, read only where the trace has none.
+    Read once a plan (`_reading_memo`), the trace's shape decoded once for all of it."""
+    memo = _reading_memo.get()
+    entry = memo.pop(id(trace), None) if memo is not None else None
+    if entry is None or entry.trace is not trace:
+        entry = _Reading(trace)
+    want_edges = edges or marks
+    need_edges = want_edges and (entry.edges is None or (marks and entry.edges.marks is None))
+    encoded = trace.get("shape") or ""
+    own = decode_polyline6(encoded) if entry.pieces is None or need_edges else None
+    if entry.pieces is None:
+        entry.pieces = tuple(pieces_of_trace(trace, own))
+    found = entry.edges
+    if need_edges:
+        found = trace_junctions.read_edges(trace, shape or [], marks, own)
+        # Only a reading of the trace's own shape is kept: one read from the leg's is the
+        # leg's, not the trace's.
+        if encoded:
+            entry.edges = found
+    if memo is not None:
+        memo[id(trace)] = entry  # the most recently used last
+        held = sum(len(kept.pieces or ()) for kept in memo.values())
+        while held > READING_MEMO_PIECES and len(memo) > 1:
+            dropped = memo.pop(next(iter(memo)))
+            held -= len(dropped.pieces or ())
+    return list(entry.pieces), found if want_edges else None
+
+
+def pieces_of_trace(trace: dict, shape: list | None = None) -> list[Piece]:
+    """Cut every traced edge at its shape vertices, apportioning its length. `shape` is the
+    trace's own shape decoded, where the caller has it already (`trace_reading`)."""
+    if shape is None:
+        shape = decode_polyline6(trace.get("shape", ""))
     to_metres = 1609.344 if trace.get("units") == "miles" else 1000.0
     pieces: list[Piece] = []
     # The last edge kept: the node a fork is read at is where it ends; and every one
@@ -608,7 +691,10 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
         }
         line_in = line_out = turn = None
         choice = None
+        retrace = False
         if before is not None:
+            retrace = bool(way_id) and way_id == int(before.get("way_id") or 0)
+            retrace = retrace and _retraces(shape, begin)
             line_in, line_out, first, last = _line_headings(shape, begin, nodes)
             turn = _line_turn(shape, line_in, line_out, first, last)
             choice = _choice_of(
@@ -623,7 +709,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
         kept.append((edge, length))
         stretches = []
         for a, b in zip(shape[begin:end], shape[begin + 1 : end + 1], strict=True):
-            stretches.append((a, b, haversine(Point(*a), Point(*b))))
+            stretches.append((a, b, haversine_lonlat(a, b)))
         ground = sum(s[2] for s in stretches)
         if ground <= 0:
             # A degenerate edge: all its length on its first vertex.
@@ -641,6 +727,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
                     prior=prior,
                     turn=turn,
                     choice=choice,
+                    retrace=retrace,
                 )
             )
             continue
@@ -648,7 +735,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
             if d > 0:
                 along.append(walked)
                 walked += d
-                compass = bearing(Point(*a), Point(*b))
+                compass = bearing_lonlat(a, b)
                 unwrapped = (
                     compass
                     if unwrapped is None
@@ -667,6 +754,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
                         bearing=unwrapped,
                         turn=turn,
                         choice=choice,
+                        retrace=retrace,
                     )
                 )
                 fork = None
@@ -674,7 +762,44 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
                 prior = None
                 turn = None
                 choice = None
+                retrace = False
     return _one_turn_per_junction(pieces, along)
+
+
+# How near the line must come back to the points it went out on, at a node, for the turn
+# there to be a retrace (`_retraces`): a dead end's way back is the same points, give or
+# take the router's rounding.
+RETRACE_M = 1.0
+
+
+def _retraces(shape: list, at: int) -> bool:
+    """Whether the route's line, at shape vertex `at`, goes back over the points it came
+    in on: the first vertex on from `at` lies on the last stretch in (within RETRACE_M of
+    it), or the last vertex in lies on the first stretch out (a leg begun part way along
+    the way, short of the node). Only where both stretches have a length."""
+    if not 0 < at < len(shape) - 1:
+        return False
+    node = shape[at]
+    back = next((shape[j] for j in range(at - 1, -1, -1) if shape[j] != node), None)
+    ahead = next((shape[j] for j in range(at + 1, len(shape)) if shape[j] != node), None)
+    if back is None or ahead is None:
+        return False
+    return (
+        _off_stretch_m(ahead, node, back) <= RETRACE_M
+        or _off_stretch_m(back, node, ahead) <= RETRACE_M
+    )
+
+
+def _off_stretch_m(point: tuple, a: tuple, b: tuple) -> float:
+    """How far `point` is from the stretch from `a` to `b` (each lon, lat), in metres, on
+    a flat projection about `a` (a few metres of a node)."""
+    scale = math.cos(math.radians(a[1]))
+    bx, by = (b[0] - a[0]) * scale, b[1] - a[1]
+    px, py = (point[0] - a[0]) * scale, point[1] - a[1]
+    length2 = bx * bx + by * by
+    f = 0.0 if length2 <= 0 else max(0.0, min(1.0, (px * bx + py * by) / length2))
+    near = (a[0] + bx * f / scale, a[1] + by * f)
+    return haversine_lonlat(point, near)
 
 
 def _one_turn_per_junction(pieces: list[Piece], along: list[float]) -> list[Piece]:
@@ -722,7 +847,7 @@ def _line_point(shape: list, at: int, step: int, nodes: frozenset[int]) -> tuple
         if j != at and j in nodes and gone >= describe.JUNCTION_M:
             return here, j
         nxt = shape[j + step]
-        d = haversine(Point(*here), Point(*nxt))
+        d = haversine_lonlat(here, nxt)
         if d > 0 and gone + d >= describe.LINE_SPAN_M:
             f = (describe.LINE_SPAN_M - gone) / d
             return (here[0] + (nxt[0] - here[0]) * f, here[1] + (nxt[1] - here[1]) * f), j + step
@@ -740,12 +865,12 @@ def _line_headings(shape: list, at: int, nodes: frozenset[int]) -> tuple:
     owner, 2026-10-23, on Sligo Creek Trail: "Left to stay on" a gentle bend)."""
     if not 0 <= at < len(shape):
         return None, None, at, at
-    node = Point(*shape[at])
+    node = shape[at]
     back, first = _line_point(shape, at, -1, nodes)
     ahead, last = _line_point(shape, at, 1, nodes)
     return (
-        bearing(Point(*back), node) if back is not None else None,
-        bearing(node, Point(*ahead)) if ahead is not None else None,
+        bearing_lonlat(back, node) if back is not None else None,
+        bearing_lonlat(node, ahead) if ahead is not None else None,
         first,
         last,
     )
@@ -766,9 +891,9 @@ def _line_turn(
     wound = 0.0
     previous = None
     for a, b in zip(shape[first:last], shape[first + 1 : last + 1], strict=True):
-        if haversine(Point(*a), Point(*b)) <= 0:
+        if haversine_lonlat(a, b) <= 0:
             continue
-        compass = bearing(Point(*a), Point(*b))
+        compass = bearing_lonlat(a, b)
         if previous is not None:
             wound += (compass - previous + 540.0) % 360.0 - 180.0
         previous = compass
@@ -861,10 +986,11 @@ def _behind_of(kept: list[tuple[dict, float]]) -> tuple | None:
 
 # One row per piece, in the pieces' order: the tier and facility class of the
 # segment nearest the piece on its way. The breakdown sums them; the route's
-# coloured sections (`stress_spans`) keep their order.
+# coloured sections (`stress_spans`) keep their order. The answer's scenic roads and stress
+# adjustments are read in it too (audit S17), each where the table has its columns.
 _STRESS_JOIN = """
 SELECT {tier}, {facility}, seg.is_unpaved, seg.road_lanes,
-       seg.road_oneway{capacity_out}{half_out}{rough_out}
+       seg.road_oneway{capacity_out}{half_out}{rough_out}{hazard_out}{scenic_out}{adjustment_out}
 FROM unnest(%s::bigint[], %s::float8[], %s::float8[])
      WITH ORDINALITY AS p(way_id, lon, lat, ordinality)
 LEFT JOIN LATERAL (
@@ -992,22 +1118,146 @@ class PieceClass(tuple):
         )
 
 
+class Classes(list):
+    """`classify`'s answer: a list of `PieceClass`, with each piece's hazard kinds beside
+    it (`hazards`, as `route_hazards.kinds_of` reads them), read in the same query rather than
+    a second one over the same pieces (audit S16); None where the live table has no hazard
+    column. Beside the classes, not on them: `refine.shift_classes` and `hazard_priced`
+    make new ones.
+
+    The answer's scenic designations and stress adjustments are read in the same query too
+    (audit S17), kept only for the pieces that have one, by the piece's index: `scenic`
+    {index: designation in words} (as `route_scenic.designations_of` reads them) and
+    `adjustments` {index: (id, the table's own tier, direction, category, note, display)}
+    (as `adjustments_used` groups them). None where the table has no such columns. Off the
+    per-piece classes, so their long text costs nothing on the pieces without it."""
+
+    hazards: list[tuple[str, ...]] | None = None
+    scenic: dict[int, str] | None = None
+    adjustments: dict[int, tuple] | None = None
+
+
+def hazards_read(classes, pieces: list) -> list[tuple[str, ...]] | None:
+    """The hazard kinds `classify` read beside `classes` for `pieces`, or None where it read
+    none (a table without the column, or classes not from `classify`)."""
+    kinds = getattr(classes, "hazards", None)
+    return kinds if kinds is not None and len(kinds) == len(pieces) else None
+
+
+# The plan's memo of its stress readings (`classify`, audit S18): a hill-avoiding plan reads
+# the trip it keeps two or three times (`calmer_or_own`, `no_busier_than_middle`, then the
+# calm search's `refine.analyse`), each the same nearest-segment search with the same answer.
+# Keyed by the live table's name, the ride time and a digest of the pieces' ways and points;
+# each entry the readings as plain rows, each row kept once (the rows repeat: a few hundred
+# distinct in a long route), and the hazard kinds beside: about 16 bytes a piece, so under
+# 1 MB at STRESS_MEMO_TRIPS long routes. Only a reading that finished is kept. `plan` sets it
+# for its own context and clears it as it ends; None outside a plan (nothing remembered).
+_stress_memo: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "stress_memo", default=None
+)
+# The most readings remembered, the least recently used dropped first.
+STRESS_MEMO_TRIPS = 8
+
+
+def _stress_key(schema: str, when: str, pieces: list[Piece]) -> tuple:
+    digest = hashlib.blake2b(digest_size=16)
+    digest.update(array("q", [p.way_id for p in pieces]).tobytes())
+    digest.update(array("d", [p.lon for p in pieces]).tobytes())
+    digest.update(array("d", [p.lat for p in pieces]).tobytes())
+    return (schema, when, len(pieces), digest.digest())
+
+
 def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list[tuple[str, str]]:
     """Each piece's stress key ("1".."5" or "unknown") and facility key
     ("path", "protected", "lane", "none" or "unknown"), in the pieces' order,
     for a ride at `when`, each a `PieceClass` that also carries the segment's
     surface. With `roadway_only` (a ride that takes the roadway: Mass Ride,
     not every ride on the no-trail variant), bicycle lanes of either class are
-    "none"; a road closed to cars is still a path."""
+    "none"; a road closed to cars is still a path. A `Classes`, with the
+    pieces' hazard kinds beside. Read once a plan (`_stress_memo`); each call is
+    given classes of its own."""
     if not pieces:
-        return []
+        return Classes()
     # The schema name comes from settings and is validated the way every DDL
     # that names it is; an identifier cannot be a query parameter.
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    memo = _stress_memo.get()
+    key = _stress_key(schema, when, pieces) if memo is not None else None
+    found = memo.pop(key, None) if memo is not None else None
+    if found is None:
+        found = _read_stress(pieces, when, schema)
+    if memo is not None:
+        memo[key] = found  # the most recently used last
+        while len(memo) > STRESS_MEMO_TRIPS:
+            memo.pop(next(iter(memo)))
+    # A reading without the scenic and adjustment parts leaves them to queries of their own.
+    rows, hazards, *side = found
+    classes = Classes()
+    for tier, kind, *rest in rows:
+        # After the lookup, so a Mass Ride and any other plan share one reading.
+        if roadway_only and kind in ROADWAY_ONLY_AS_NONE:
+            kind = "none"
+        classes.append(PieceClass(tier, kind, *rest))
+    if hazards is not None:
+        classes.hazards = list(hazards)
+    scenic, adjustments = side[0] if side else (None, None)
+    if scenic is not None:
+        classes.scenic = dict(scenic)
+    if adjustments is not None:
+        classes.adjustments = dict(adjustments)
+    return classes
+
+
+def scenic_read(classes, pieces: list) -> list[str | None] | None:
+    """Each piece's scenic designations as `classify` read them beside `classes`, in the
+    pieces' order (`route_scenic.along`'s `designations`), or None where it read none."""
+    if len(classes) != len(pieces):
+        return None
+    return designations_from(getattr(classes, "scenic", None), pieces)
+
+
+def designations_from(found: dict | None, pieces: list) -> list[str | None] | None:
+    """The designations of `found` ({index: designation}, as `Classes.scenic`) as a list a
+    piece; None where `found` is None."""
+    if found is None:
+        return None
+    return [found.get(i) for i in range(len(pieces))]
+
+
+def adjustments_read(classes, pieces: list) -> list[dict] | None:
+    """`adjustments_used(pieces)` from the adjustments `classify` read beside `classes`,
+    with no query of its own (audit S17); None where it read none."""
+    if len(classes) != len(pieces):
+        return None
+    return adjustments_from(getattr(classes, "adjustments", None), pieces)
+
+
+def adjustments_from(found: dict | None, pieces: list) -> list[dict] | None:
+    """`adjustments_used`'s answer built from `found` ({index: (id, tier, direction,
+    category, note, display)}, as `Classes.adjustments`) by its query's own rules: a piece on
+    no segment or on no adjustment is left out; the metres are summed per (id, tier,
+    direction, category, note, display), each in the order the route first rides it. None
+    where `found` is None."""
+    if found is None:
+        return None
+    metres: dict[tuple, float] = {}
+    for index in sorted(found):
+        key = found[index]
+        metres[key] = metres.get(key, 0.0) + pieces[index].metres
+    return [_adjustment_entry(*key, total) for key, total in metres.items()]
+
+
+def _read_stress(pieces: list[Piece], when: str, schema: str) -> tuple[list[tuple], list | None]:
+    """`classify`'s reading of the segment table: a row a piece (the `PieceClass` arguments,
+    before the roadway-only lanes are made "none"), and the hazard kinds (None where the
+    table has no hazard column)."""
     with_facility = _has_facility_columns(schema)
     with_capacity = _has_capacity_column(schema)
     with_half = _has_half_column(schema)
     with_rough = segment_info.has_columns(schema, ROUGH_COLUMN)
+    with_hazard = segment_info.has_columns(schema, HAZARD_COLUMN)
+    with_scenic = segment_info.has_columns(schema, SCENIC_COLUMN)
+    with_adjustments = _has_adjustment_columns(schema)
     query = _STRESS_JOIN.format(
         schema=schema,
         tier=_TIER_AT if with_facility else "seg.stress_tier",
@@ -1015,7 +1265,10 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
         columns=("s.facility, s.car_free_when" if with_facility else "NULL AS facility")
         + (f", s.{MASS_WIDTH_COLUMN}" if with_capacity else "")
         + (f", s.{STRESS_HALF_COLUMN}" if with_half else "")
-        + (f", s.{ROUGH_COLUMN}" if with_rough else ""),
+        + (f", s.{ROUGH_COLUMN}" if with_rough else "")
+        + (f", s.{HAZARD_COLUMN}" if with_hazard else "")
+        + (f", s.{SCENIC_COLUMN}" if with_scenic else "")
+        + ("".join(f", s.{name}" for name in ADJUSTMENT_COLUMNS) if with_adjustments else ""),
         traits=(
             "s.road_lanes, s.road_oneway"
             if _has_trait_columns(schema)
@@ -1032,39 +1285,65 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
             else f", seg.{STRESS_HALF_COLUMN}"
         ),
         rough_out=f", seg.{ROUGH_COLUMN}" if with_rough else "",
+        hazard_out=f", seg.{HAZARD_COLUMN}" if with_hazard else "",
+        scenic_out=f", seg.{SCENIC_COLUMN}" if with_scenic else "",
+        # In `adjustments_used`'s order: the id, then the table's own tier (as it groups by
+        # it: never the ride time's), then the why.
+        adjustment_out=(
+            f", seg.{ADJUSTMENT_COLUMNS[0]}, seg.stress_tier"
+            + "".join(f", seg.{name}" for name in ADJUSTMENT_COLUMNS[1:])
+            if with_adjustments
+            else ""
+        ),
     )
     arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
     whens = ([when, when] + ([when] if with_half else [])) if with_facility else []
-    classes = []
+    rows: list[tuple] = []
+    seen: dict[tuple, tuple] = {}
+    hazard_values = []
+    scenic: dict[int, str] | None = {} if with_scenic else None
+    adjustments: dict[int, tuple] | None = {} if with_adjustments else None
+    kept: dict = {}
     with plan_cursor() as cursor:
         cursor.execute(query, whens + arrays)
-        for row in cursor.fetchall():
+        for index, row in enumerate(cursor.fetchall()):
             tier, kind = row[0], row[1]
             unpaved = row[2] if len(row) > 2 and isinstance(row[2], bool) else None
             lanes = row[3] if len(row) > 3 and isinstance(row[3], int) else None
             oneway = row[4] if len(row) > 4 and isinstance(row[4], bool) else None
-            # After the five fixed columns: the capacity, the half step and the surface's
-            # roughness, each where the table has it, in that order.
+            # After the five fixed columns: the capacity, the half step, the surface's
+            # roughness and the hazards, each where the table has it, in that order.
             extra = list(row[5:])
             width = extra.pop(0) if with_capacity else None
             half = extra.pop(0) is True if with_half else False
             rough = extra.pop(0) if with_rough else None
             rough = rough if isinstance(rough, bool) else None
-            if roadway_only and kind in ROADWAY_ONLY_AS_NONE:
-                kind = "none"
-            classes.append(
-                PieceClass(
-                    str(tier) if tier in (1, 2, 3, 4, 5) else "unknown",
-                    kind if kind in FACILITY_KEYS else "unknown",
-                    unpaved,
-                    lanes,
-                    oneway,
-                    None if width is None else float(width),
-                    half,
-                    rough,
-                )
+            if with_hazard:
+                hazard_values.append(extra.pop(0))
+            # Then the scenic designations and the adjustment, each kept once (they repeat).
+            if scenic is not None:
+                words = route_scenic.designation_of(extra.pop(0))
+                if words is not None:
+                    scenic[index] = kept.setdefault(words, words)
+            if adjustments is not None:
+                adjustment = tuple(extra[:6])
+                del extra[:6]
+                # No segment, or no adjustment on it: the adjustments' own query leaves it out.
+                if adjustment[0] is not None:
+                    adjustments[index] = kept.setdefault(adjustment, adjustment)
+            read = (
+                str(tier) if tier in (1, 2, 3, 4, 5) else "unknown",
+                kind if kind in FACILITY_KEYS else "unknown",
+                unpaved,
+                lanes,
+                oneway,
+                None if width is None else float(width),
+                half,
+                rough,
             )
-    return classes
+            rows.append(seen.setdefault(read, read))
+    hazards = route_hazards.decoded(hazard_values) if with_hazard else None
+    return rows, hazards, (scenic, adjustments)
 
 
 def breakdown(
@@ -1251,26 +1530,45 @@ def adjustments_used(pieces: list[Piece]) -> list[dict]:
     with plan_cursor() as cursor:
         cursor.execute(query, arrays)
         for adjustment_id, tier, direction, category, note, display, metres in cursor.fetchall():
-            # The why is null where the table holds none: a hidden or
-            # unapproved adjustment, which the writer never fills.
             used.append(
-                {
-                    "adjustment_id": adjustment_id,
-                    "tier": tier,
-                    "adjusted": True,
-                    "length_m": round(float(metres), 1),
-                    "direction": direction,
-                    "category": category,
-                    "public_note": note,
-                    "display": display,
-                }
+                _adjustment_entry(adjustment_id, tier, direction, category, note, display, metres)
             )
     return used
 
 
+def _adjustment_entry(adjustment_id, tier, direction, category, note, display, metres) -> dict:
+    """One entry of `adjustments_used`. The why is null where the table holds none: a
+    hidden or unapproved adjustment, which the writer never fills."""
+    return {
+        "adjustment_id": adjustment_id,
+        "tier": tier,
+        "adjusted": True,
+        "length_m": round(float(metres), 1),
+        "direction": direction,
+        "category": category,
+        "public_note": note,
+        "display": display,
+    }
+
+
+# The map snap `trace_leg` falls back to looks this far from each point for an edge (audit
+# round 3, S29): the leg's shape is the router's own, so it lies on the graph, and Valhalla's
+# default 50 m only made each match slower. A snap refused at this radius is asked again at the
+# default, so no leg's stress is lost to it. GPX matching (core.map_match, core.follow) keeps
+# its own 50 m: a rider's track is not on the graph.
+TRACE_SNAP_RADIUS_M = 10
+# The matches `trace_leg` asks for, in turn: (shape_match, trace_options or None).
+TRACE_MATCHES: tuple[tuple[str, dict | None], ...] = (
+    ("edge_walk", None),
+    ("map_snap", {"search_radius": TRACE_SNAP_RADIUS_M}),
+    ("map_snap", None),
+)
+
+
 def trace_leg(variant: str, costing: dict, shape: str, deadline: Deadline) -> dict | None:
-    """The leg's edges, by edge walk and then by map snap; None if neither works."""
-    for match in ("edge_walk", "map_snap"):
+    """The leg's edges, by edge walk, then by a close map snap, then by a plain one; None if
+    none works."""
+    for match, options in TRACE_MATCHES:
         payload = {
             "encoded_polyline": shape,
             "shape_match": match,
@@ -1292,10 +1590,18 @@ def trace_leg(variant: str, costing: dict, shape: str, deadline: Deadline) -> di
                 "action": "include",
             },
         }
+        if options is not None:
+            payload["trace_options"] = options
         try:
             return _call(variant, "trace_attributes", payload, deadline)
         except RouterRefused as refusal:
-            logger.info("trace_attributes %s refused on %s: %s", match, variant, refusal)
+            logger.info(
+                "trace_attributes %s%s refused on %s: %s",
+                match,
+                "" if options is None else f" {options}",
+                variant,
+                refusal,
+            )
     return None
 
 
@@ -1427,8 +1733,9 @@ def _same_pace(options: dict, request: dict) -> dict:
 # Valhalla's "through" (no forced stop, no U-turn). "break_through" is the same at the
 # point itself (no U-turn) but keeps the leg there, so the answer keeps one leg per point
 # and every per-leg figure (`leg_ends`, the calm search's legs, the stop list's distances)
-# lines up with the rider's points as before; the page does not announce, number or list
-# a via point, so nothing reads it as a stop.
+# lines up with the rider's points as before; the page does not announce or number a via
+# point, and the description lists it as "Via point at ..." and reads the turn at it as
+# any other (`via_boundaries`, round-3 audit D29), so nothing reads it as a stop.
 VIA_LOCATION_TYPE = "break_through"
 
 
@@ -1438,6 +1745,16 @@ def location_type(index: int, count: int, vias: tuple[int, ...]) -> str:
     if 0 < index < count - 1 and index in vias:
         return VIA_LOCATION_TYPE
     return "break"
+
+
+def via_boundaries(count: int, vias, legs: int) -> tuple[int, ...]:
+    """The leg boundaries the route rides through at a via point, for the description
+    (`describe_route`), each by the number of the leg it begins: the rider's point there,
+    one of `vias` (`location_type`). Empty where the answer's legs are not one per gap
+    between the `count` points, as then a boundary is not known to be a point's."""
+    if legs != count - 1:
+        return ()
+    return tuple(sorted(i for i in set(vias or ()) if 0 < i < count - 1))
 
 
 # Novice and Nervous (v0.7.0 plan): real LTS 3 or worse along the bike route past this
@@ -1884,7 +2201,7 @@ def _exposure(
         trace = _trace(variant, costing, leg.get("shape", ""), deadline, traces)
         if trace is None:
             return None
-        pieces.extend(pieces_of_trace(trace))
+        pieces.extend(trace_reading(trace)[0])
     classes = refine.shift_classes(classify(pieces, when), exposure.shift)
     stress = totals(zip(pieces, classes, strict=True))[0]
     halves = refine.half_metres(pieces, classes)
@@ -2449,7 +2766,11 @@ def _outside_dc(piece) -> bool:
 
 
 def _flow_stretches(
-    leg_runs: list, pieces: list[Piece], classes: list, capacity: bool = False
+    leg_runs: list,
+    pieces: list[Piece],
+    classes: list,
+    capacity: bool = False,
+    outside: list[bool] | None = None,
 ) -> list[tuple[float, float | None, str | None]]:
     """(metres, physical usable width, note) along the route in the order ridden, as the
     stress sections are cut (`stress_spans`): the width a Mass Ride's group has, None with
@@ -2461,15 +2782,16 @@ def _flow_stretches(
     direction, parked cars out, DC's Roadway Block first; OWNER-DECISIONS 404, 406), so the
     chart and the map always agree; a piece on no segment has none. Without the column (a
     table built before the rebuild bundle) it is `routemaker.flow.usable_width_m`'s
-    estimate from the classifier's lanes."""
+    estimate from the classifier's lanes. `outside`: each piece's `_outside_dc`, where the
+    caller has already read it (audit S20)."""
     out: list[tuple[float, float | None, str | None]] = []
     for run in leg_runs:
         if isinstance(run, tuple):
             for i in range(run[0], run[1]):
                 klass = classes[i]
                 avoid = flow.is_avoid(klass[0])
-                outside = _outside_dc(pieces[i])
-                if avoid or outside:
+                beyond = outside[i] if outside is not None else _outside_dc(pieces[i])
+                if avoid or beyond:
                     width = None
                 elif capacity:
                     width = getattr(klass, "width_m", None)
@@ -2480,7 +2802,7 @@ def _flow_stretches(
                         getattr(klass, "lanes", None),
                         getattr(klass, "oneway", None),
                     )
-                note = STRETCH_AVOID if avoid else STRETCH_OUTSIDE_DC if outside else None
+                note = STRETCH_AVOID if avoid else STRETCH_OUTSIDE_DC if beyond else None
                 out.append((pieces[i].metres, width, note))
         else:
             out.append((run, None, STRETCH_UNTRACED))
@@ -2824,6 +3146,18 @@ def arrival_side_of(trip: dict) -> str | None:
         return None
 
 
+def leg_arrival_side(leg: dict) -> str | None:
+    """Which side of the street a leg's end is on, from its own destination maneuver
+    (round-2 audit D17: every rider point is a break, so every leg ends with one); None
+    where the router says no side (a stop on the line itself, a drawn leg, a leg without
+    maneuvers)."""
+    try:
+        maneuvers = leg.get("maneuvers") or []
+        return _DESTINATION_SIDES.get(maneuvers[-1].get("type")) if maneuvers else None
+    except (AttributeError, IndexError, TypeError):
+        return None
+
+
 # A trail relation names an unnamed way only where its named run is longer than this
 # (a quarter mile).
 RELATION_NAME_MIN_RUN_M = 1609.344 / 4
@@ -2908,6 +3242,7 @@ def describe_route(
     summary: dict,
     walks: list[tuple[float, float]] | None = None,
     side_names: dict[int, str] | None = None,
+    through: tuple[int, ...] = (),
 ) -> tuple[list[dict], list[dict]] | None:
     """The route as words, in full and as an overview (`routemaker.describe`,
     OWNER-DECISIONS 220 and 226): built
@@ -2915,8 +3250,10 @@ def describe_route(
     call. `side_names` (`sidepath_names_of`) names a piece of a way with no name of
     its own after the street it runs alongside ("9th Street Northwest protected bike
     lane"), or after its trail's route relation (a `describe.RelationName`): a stretch
-    named only so is flagged `relation_name`. None where it could not be built: the
-    route is answered all the same."""
+    named only so is flagged `relation_name`. `through` are the leg boundaries that are
+    via points, by the number of the leg each begins (`via_boundaries`): the description
+    reads a turn there as anywhere else and numbers the stops among themselves (round-3
+    audit D29). None where it could not be built: the route is answered all the same."""
     side_names = side_names or {}
     try:
         # A relation's name that no way of the route carries itself: only that is "by relation".
@@ -2947,6 +3284,8 @@ def describe_route(
                             bearing=pieces[i].bearing,
                             turn=pieces[i].turn,
                             choice=bool(pieces[i].choice),
+                            oneway=getattr(classes[i], "oneway", None),
+                            retrace=bool(getattr(pieces[i], "retrace", False)),
                         )
                         for i in range(run[0], run[1])
                     ]
@@ -2954,7 +3293,9 @@ def describe_route(
             else:
                 legs.append(run)
         length = float(summary.get("length", 0.0)) * 1000.0
-        return describe.describe_both(legs, events, length or None, walks, by_relation)
+        return describe.describe_both(
+            legs, events, length or None, walks, by_relation, through=through
+        )
     except Exception:  # noqa: BLE001 - a route is answered without its description
         logger.warning("the route description could not be built", exc_info=True)
         return None
@@ -3047,6 +3388,76 @@ def _intersection_groups(events: list) -> list[dict]:
 # comparison, which traces it as well, wants this much more.
 DETOUR_PROBE_MIN_S = 4
 DETOUR_AVOIDED_MIN_S = 7
+# The least time left for the probe to be asked early, beside the search (`_ask_direct_early`,
+# audit S23): the busy-road comparison's and the calm search's trace reserve on top, so a
+# plan short of time never gives a router slot to it that the search needs.
+EARLY_DIRECT_MIN_S = DETOUR_AVOIDED_MIN_S + 6
+
+
+def _direct_request(
+    request: dict, preset_name: str, dials: tuple
+) -> tuple[dict, dict, tuple[str, str]]:
+    """The detour check's ask for the most direct legal route (`_detour`): its costing, the
+    request, and the key it is remembered by in a plan's traces (OWNER-DECISIONS 265)."""
+    _stress_dial, assist, avoid_gravel = dials
+    direct_costing = _same_pace(
+        presets.costing(preset_name, 0, 0, assist=assist, avoid_gravel=avoid_gravel), request
+    )
+    direct_request = {
+        key: value
+        for key, value in request.items()
+        if key not in ("alternates", "exclude_locations")
+    } | {"costing_options": direct_costing}
+    return (
+        direct_costing,
+        direct_request,
+        ("direct-route", json.dumps(direct_request, sort_keys=True)),
+    )
+
+
+def _beyond_allowance(route_m: float, straight_m: float) -> bool:
+    """Whether a route of `route_m` is past the detour warning's allowance of the straight
+    line, where the direct route is asked for (`_detour`)."""
+    return straight_m > 0 and route_m > max(
+        straight_m * detour_rules.SILENT_RATIO, straight_m + detour_rules.SILENT_EXTRA_M
+    )
+
+
+def _ask_direct_early(
+    first_m: float,
+    straight_m: float,
+    request: dict,
+    variant: str,
+    preset_name: str,
+    dials: tuple,
+    deadline: Deadline,
+    traces: dict,
+) -> dict[tuple[str, str], Future]:
+    """The detour check's direct route started on the pool now, beside the search, where
+    its answer will almost surely be wanted (audit S23, round 1's S6 without the
+    neighbours): above Default (where `_detour` asks for it), never on a Mass Ride, where
+    the router's first route (`first_m`) is already past the allowance (a calmer route is
+    longer still), with EARLY_DIRECT_MIN_S to spare, on the pool only. {its key: the
+    future}, for `_detour` to read; empty where not asked."""
+    if (
+        preset_name == "mass-ride"
+        or not parallel.enabled()
+        or dials[0] <= presets.STRESS_DEFAULT_AT
+        or not _beyond_allowance(first_m, straight_m)
+        or deadline.at - clock() < EARLY_DIRECT_MIN_S
+    ):
+        return {}
+    _costing, direct_request, direct_key = _direct_request(request, preset_name, dials)
+    if direct_key in traces:
+        return {}
+    future = parallel.submit(
+        _call,
+        variant,
+        "route",
+        copy.deepcopy(direct_request),
+        Deadline(deadline.at, min(deadline.per_call_s, ALTERNATES_TIMEOUT_S)),
+    )
+    return {direct_key: future}
 
 
 def _detour(
@@ -3060,6 +3471,7 @@ def _detour(
     when: str,
     deadline: Deadline,
     traces: dict,
+    early: dict | None = None,
 ) -> dict | None:
     """How much longer the route is than the most direct legal one, for the
     answer's warning (OWNER-DECISIONS 164; `routemaker.detour`).
@@ -3069,12 +3481,12 @@ def _detour(
     Otherwise the router is asked for the most direct route (the traffic
     tolerant end, the hills detent); where it cannot be had in time, or on a
     Mass Ride, which is the direct route by design, the straight line is the
-    reference and only a route twice as long says so."""
-    if straight_m <= 0 or route_m <= max(
-        straight_m * detour_rules.SILENT_RATIO, straight_m + detour_rules.SILENT_EXTRA_M
-    ):
+    reference and only a route twice as long says so. `early`: the direct route
+    already asked for (`_ask_direct_early`), by its key, read where the key is this
+    request's; a fresh ask where it is not."""
+    if not _beyond_allowance(route_m, straight_m):
         return None
-    stress_dial, assist, avoid_gravel = dials
+    stress_dial = dials[0]
     # At or below Default the rider asked for no calm detour, and the route
     # cannot be more than the straight line's ratio longer than the direct one
     # (1.5 times at most, a note): the second route is asked for from just above
@@ -3087,25 +3499,22 @@ def _detour(
         and asked_for_calm
         and deadline.at - clock() >= DETOUR_PROBE_MIN_S
     ):
-        direct_costing = _same_pace(
-            presets.costing(preset_name, 0, 0, assist=assist, avoid_gravel=avoid_gravel), request
-        )
-        direct_request = {
-            key: value
-            for key, value in request.items()
-            if key not in ("alternates", "exclude_locations")
-        } | {"costing_options": direct_costing}
+        direct_costing, direct_request, direct_key = _direct_request(request, preset_name, dials)
         # Asked once for a plan and its candidate routes (OWNER-DECISIONS 265).
-        direct_key = ("direct-route", json.dumps(direct_request, sort_keys=True))
+        asked = (early or {}).pop(direct_key, None)
         if direct_key in traces:
             direct, direct_m = traces[direct_key]
         else:
             try:
-                answer = _call(
-                    variant,
-                    "route",
-                    direct_request,
-                    Deadline(deadline.at, min(deadline.per_call_s, ALTERNATES_TIMEOUT_S)),
+                answer = (
+                    await_future(asked)
+                    if asked is not None and not asked.cancelled()
+                    else _call(
+                        variant,
+                        "route",
+                        direct_request,
+                        Deadline(deadline.at, min(deadline.per_call_s, ALTERNATES_TIMEOUT_S)),
+                    )
                 )
                 direct = answer.get("trip") or {}
                 direct_m = float((direct.get("summary") or {}).get("length", 0.0)) * 1000.0
@@ -3125,7 +3534,7 @@ def _detour(
                         )
                         if trace is None:
                             raise RouterUnavailable("no trace")
-                        pieces.extend(pieces_of_trace(trace))
+                        pieces.extend(trace_reading(trace)[0])
                     direct_stress, _facility = breakdown(pieces, when)
                     avoided = direct_stress["3"] + direct_stress["4"] + direct_stress["5"] - busy_m
                 except (DeadlineExceeded, RouterUnavailable):
@@ -3447,6 +3856,10 @@ WALKWAY_USES = frozenset(
 MAIN_ROAD_CLASSES = frozenset(
     {"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified"}
 )
+# How far from the walk's line its map-snap fallback may look for an edge: the walk is the
+# router's own line, so it lies on the graph, and a small radius keeps it from snapping a
+# carriageway walk onto a separately mapped sidewalk beside it, or the other way round.
+WALK_SNAP_RADIUS_M = 10
 
 
 def walk_roadside_m(line: list, deadline: Deadline) -> float | None:
@@ -3467,14 +3880,25 @@ def walk_roadside_m(line: list, deadline: Deadline) -> float | None:
         },
         "units": "kilometers",
     }
-    try:
-        answer = _call(
-            Variant.STANDARD.value,
-            "trace_attributes",
-            payload,
-            Deadline(deadline.at, min(deadline.per_call_s, WALK_IN_CALL_S)),
-        )
-    except (RouterRefused, DeadlineExceeded, RouterUnavailable):
+    # By edge walk, and where that is refused by map snap held to WALK_SNAP_RADIUS_M, as
+    # `trace_leg` falls back (audit round 3, R6): without it a walk the edge walk could not
+    # follow was quietly not offered. Both are held to the walk check's own deadline.
+    answer = None
+    snap = {"shape_match": "map_snap", "trace_options": {"search_radius": WALK_SNAP_RADIUS_M}}
+    for extra in ({}, snap):
+        try:
+            answer = _call(
+                Variant.STANDARD.value,
+                "trace_attributes",
+                {**payload, **extra},
+                Deadline(deadline.at, min(deadline.per_call_s, WALK_IN_CALL_S)),
+            )
+            break
+        except RouterRefused as refusal:
+            logger.info("walk trace %s refused: %s", extra.get("shape_match", "edge_walk"), refusal)
+        except (DeadlineExceeded, RouterUnavailable):
+            return None
+    if answer is None:
         return None
     edges = answer.get("edges") or []
     if not edges:
@@ -3562,7 +3986,8 @@ def plan(
     A plan that rides a dirt trail a point touches and found others for itself
     (`StrayTrails`) is made again without them, STRAY_ROUNDS times at most, then on the
     ride type's own graph, the dirt trails closed as before. So it is too where leaving them
-    out leaves no route.
+    out leaves no route. A round checks the router's own route for strays before its search
+    (`_early_strays`, audit S12 part 1), so one that strays there starts the next at once.
 
     The rounds share their traces and `/locate` answers (audit S12, part 2): a round
     re-plans the whole search with the strays left out, and most of what it traces and
@@ -3572,6 +3997,30 @@ def plan(
     ride type's own graph, which asks other questions and so would only hold them longer
     on the 512M worker.
     """
+    # Its stress readings, for its own context only (audit S18), dropped as it ends: a pool
+    # task still running after it holds a copy of the context, never the readings.
+    memo: dict = {}
+    _stress_memo.set(memo)
+    # And its readings of each trace (audit S19), the same way.
+    readings: dict = {}
+    _reading_memo.set(readings)
+    try:
+        return _plan_rounds(points, preset_name, long_ride, started, dials, quick, candidates)
+    finally:
+        memo.clear()
+        readings.clear()
+
+
+def _plan_rounds(
+    points: list[list[float]],
+    preset_name: str,
+    long_ride: bool,
+    started: float | None,
+    dials: Dials | None,
+    quick: bool,
+    candidates: bool,
+) -> dict:
+    """`plan`'s rounds."""
     if started is None:
         started = clock()
     dials = dials or Dials()
@@ -3600,6 +4049,13 @@ def plan(
     dials = dataclasses.replace(dials, trail_touch=False, trail_strays=())
     traces.clear()
     located.clear()
+    # The earlier rounds' readings too: keyed by trace objects the final round never asks
+    # about, and each entry pins its trace, so keeping them would hold every trace above
+    # through the final round all the same (review of audit S19). The stress memo stays: it is
+    # keyed by the pieces read, which the final round can ask again, and holds no trace.
+    readings = _reading_memo.get()
+    if readings is not None:
+        readings.clear()
     return _plan_round(points, preset_name, long_ride, started, dials, quick, candidates)
 
 
@@ -3959,6 +4415,21 @@ def _plan(
             lambda trial: _route(variant, trial, deadline)[0],
             lambda: deadline.at - clock(),
         )
+    # This plan's traces, so a route the guards traced is not traced again; `plan`'s, where
+    # it re-plans without stray dirt trails, so a later round does not trace them again.
+    traces = {} if traces is None else traces
+    if (touched_trails or any_dirt) and variant == Variant.OFFROAD.value:
+        # The router's own route is checked for stray dirt trails at once, before the search
+        # and anything started beside it, so a round that strays starts again without them
+        # now instead of after the whole search (audit S12, part 1; the owner, 2026-10-27
+        # 7:52 PM ET: "make the banked changes"). Its traces are the plan's, which the search
+        # and the answer read again, so a route that does not stray is traced once as before.
+        stray = _early_strays(
+            answer.get("trip") or {}, variant, costing, deadline, traces, touched_trails, any_dirt
+        )
+        if stray:
+            raise StrayTrails(tuple(stray), per_point)
+    if zones_plan is not None and not fixed:
         # What each closure did to this route and the time its detour adds (v0.7.0,
         # "Closures on the map"): the card's "Detour adds about 4 min". It changes no
         # route, so it runs beside the rest of the plan (v0.7.0 "Faster routing", step
@@ -4010,9 +4481,25 @@ def _plan(
         brake_grade=preset.brake_grade,
         steep=steep_ride,
     )
-    # This plan's traces, so a route the guards traced is not traced again; `plan`'s, where
-    # it re-plans without stray dirt trails, so a later round does not trace them again.
-    traces = {} if traces is None else traces
+    # The detour check's direct route depends on the request alone: where it will surely be
+    # asked for, it starts now on the pool, beside the search, as the early alternatives do
+    # (audit S23). Not on a first route or the rider's own line (no detour check), nor where
+    # the target fitting will ask with another request. One not read is cancelled however
+    # the plan ends (`_plan_round`; one already running ends at its own deadline).
+    early_direct: dict[tuple[str, str], Future] = {}
+    if not (quick or fixed or (maxcalm and target_m is not None)):
+        early_direct = _ask_direct_early(
+            _trip_length_m(trips[0]),
+            sum(haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)),
+            request,
+            variant,
+            preset_name,
+            (stress_dial, assist, avoid_gravel),
+            deadline,
+            traces,
+        )
+        if early is not None:
+            early.extend(early_direct.values())
     # The hill seek (FOLLOWUP-HILL-SEEK, 205): routes through the climbs near the line
     # join the router's own, where the climb search runs at all; without the climbs
     # file it asks nothing and the search is the router's alternatives alone, as before.
@@ -4335,6 +4822,9 @@ def _plan(
         # shared, so leg k runs from leg_ends[k - 1] (or 0) to leg_ends[k]. The
         # front end reads which leg a point on the line belongs to from these.
         leg_ends: list[int] = []
+        # The side of the street each leg ends on (`leg_arrival_side`), one per leg as
+        # `leg_ends`: a stop's side for its cue (round-2 audit D17).
+        leg_sides: list[str | None] = []
         # Where each leg begins along the traced length: the stops (and the start,
         # which no crossing lies before), which a Mass Ride's crossing group never
         # spans (OWNER-DECISIONS 247).
@@ -4346,6 +4836,7 @@ def _plan(
             shape = decode_polyline6(leg.get("shape", ""))
             coordinates.extend(shape[1:] if coordinates else shape)
             leg_ends.append(len(coordinates) - 1)
+            leg_sides.append(leg_arrival_side(leg))
             elevations.extend(leg.get("elevation") or [])
             try:
                 # A leg the rider drew follows no road: it is not traced, and its stress is
@@ -4368,9 +4859,10 @@ def _plan(
                 traced_m += untraced
             else:
                 start = len(pieces)
-                pieces.extend(pieces_of_trace(trace))
+                made, read = trace_reading(trace, shape, edges=True)
+                pieces.extend(made)
                 leg_runs.append((start, len(pieces)))
-                raw_junctions.extend(trace_junctions.junctions_of_trace(trace, shape, traced_m))
+                raw_junctions.extend(trace_junctions.junctions_along(read, traced_m))
                 traced_m += sum(piece.metres for piece in pieces[start:])
         # The router's seconds along the line, read before a long plan's legs are grouped.
         router_at = time_marks.router_marks(legs, coordinates, leg_ends)
@@ -4395,6 +4887,7 @@ def _plan(
                 ends = list(itertools.accumulate(groups))
                 first = [e - g for e, g in zip(ends, groups, strict=True)]
                 leg_ends = [leg_ends[e - 1] for e in ends]
+                leg_sides = [leg_sides[e - 1] for e in ends]
                 stops_m = [stops_m[f] for f in first]
                 leg_runs = [
                     _joined_runs(leg_runs[f:e], pieces) for f, e in zip(first, ends, strict=True)
@@ -4406,6 +4899,9 @@ def _plan(
         # past it (correctness review, 2026-09-28: one request took 49 s).
         over_budget = traced_at >= started + budget_s
         effort_m = None
+        hazard_kinds = None
+        # The scenic roads as the stress query read them (audit S17), else read below.
+        designations = None
         if over_budget:
             untraced = sum(piece.metres for piece in pieces)
             stress["unknown"] += untraced
@@ -4416,17 +4912,30 @@ def _plan(
         else:
             analysed = refine_context.analyses.get(tuple(leg.get("shape", "") for leg in legs))
             effort_m = round(analysed.effort_m, 1) if analysed is not None else None
-            classes = (
-                analysed.rated_classes
-                if analysed is not None and len(analysed.pieces) == len(pieces)
-                else classify(pieces, when, roadway_only=lanes_as_roadway)
-            )
+            if analysed is not None and len(analysed.pieces) == len(pieces):
+                classes = analysed.rated_classes
+                hazard_kinds = analysed.hazard_kinds
+                designations = designations_from(analysed.scenic, pieces)
+                read_adjustments = adjustments_from(analysed.adjustments, pieces)
+            else:
+                classes = classify(pieces, when, roadway_only=lanes_as_roadway)
+                hazard_kinds = hazards_read(classes, pieces)
+                designations = scenic_read(classes, pieces)
+                read_adjustments = adjustments_read(classes, pieces)
             traced_stress, traced_facility = totals(zip(pieces, classes, strict=True))
             for key, metres in traced_stress.items():
                 stress[key] += metres
             for key, metres in traced_facility.items():
                 facility[key] += metres
-            used_adjustments = adjustments_used(pieces)
+            # As the stress query read them (audit S17), else in a query of their own.
+            used_adjustments = (
+                adjustments_used(pieces) if read_adjustments is None else read_adjustments
+            )
+        # Each piece outside the District or not, read once for the sections and the flow
+        # chart both (audit S20); a Mass Ride's only.
+        outside_dc = (
+            [_outside_dc(piece) for piece in pieces] if preset_name == "mass-ride" else None
+        )
         stretches: list[tuple] = []
         for run in leg_runs:
             if isinstance(run, tuple):
@@ -4436,7 +4945,7 @@ def _plan(
                         *classes[i],
                         getattr(classes[i], "unpaved", None),
                         getattr(classes[i], "rpm", None),
-                        preset_name == "mass-ride" and _outside_dc(pieces[i]),
+                        outside_dc is not None and outside_dc[i],
                         getattr(classes[i], "half", False),
                         getattr(classes[i], "rough", None),
                     )
@@ -4468,7 +4977,9 @@ def _plan(
         profile = route_profile(
             legs,
             spans,
-            (lambda: _flow_stretches(leg_runs, pieces, classes, capacity)) if mass_ride else None,
+            (lambda: _flow_stretches(leg_runs, pieces, classes, capacity, outside_dc))
+            if mass_ride
+            else None,
             majors if mass_ride else None,
             majors_complete,
             None
@@ -4495,6 +5006,7 @@ def _plan(
             trip.get("summary") or {},
             walks,
             _way_names_of(pieces),
+            via_boundaries(len(points), dials.vias, len(leg_runs)),
         )
         described_full, described_overview = described if described else (None, None)
         # The Avoid-rated junctions it passes (307, 335), at their distance along the
@@ -4507,11 +5019,12 @@ def _plan(
         described_overview = avoid_rules.with_entries(described_overview, avoid_found, avoid_scale)
         # The known hazards it rides (v0.10.0, `core.route_hazards`): said in place in the
         # directions and drawn as symbols on the route only.
-        hazards_ridden = route_hazards.along(leg_runs, pieces)
+        # Their kinds as the stress query read them (audit S16), else read here.
+        hazards_ridden = route_hazards.along(leg_runs, pieces, hazard_kinds)
         described_full = route_hazards.with_entries(described_full, hazards_ridden)
         described_overview = route_hazards.with_entries(described_overview, hazards_ridden)
         # Its rustic roads, byways and named bike routes (v0.12.3): for the connector's road list.
-        scenic_ridden = [] if over_budget else route_scenic.along(leg_runs, pieces)
+        scenic_ridden = [] if over_budget else route_scenic.along(leg_runs, pieces, designations)
         # The climbs the route rides uphill, where the hill seek ran (205): each named in
         # `hills_seek.climbs` and as an entry of the description.
         climbs_ridden = []
@@ -4644,6 +5157,7 @@ def _plan(
                 when=when,
                 deadline=deadline,
                 traces=traces,
+                early=early_direct,
             )
         )
         # The time its junctions cost the rider, which the router's own time leaves out
@@ -4737,6 +5251,7 @@ def _plan(
             "attribution": list(ATTRIBUTION),
             "leg_ends": leg_ends,
             "arrival_side": arrival_side_of(trip),
+            "leg_arrival_sides": leg_sides,
             "intersections": None if events is None else _intersection_rows(events),
             "intersection_groups": None if events is None else _intersection_groups(events),
             "junctions_debug": (
@@ -4995,10 +5510,12 @@ def _plan_ahead_first(
 ) -> dict:
     """`plan_onward` after the rider has ridden on past two U-turns (`dials.ahead_only`): the
     route that sets off ahead is planned first, as it is the answer whatever turning round would
-    save, and the plan that ignores the heading is made only where that fails or still turns
-    round (audit S5; the owner approved planning ahead first on 2026-10-27). The second plan
-    runs on the same `started`, so it has what time the first left; the rider is never left
-    without a route."""
+    save (audit S5; the owner approved planning ahead first on 2026-10-27). Where that plan
+    answers, its route is the answer at once, even where it still turns round: it is the way
+    ahead the rider chose by riding past two U-turns, and a second plan would cost beta a whole
+    plan (audit round 2, R1 option; the owner, 2026-10-27 7:52 PM ET: "make the banked
+    changes"). The plan that ignores the heading is made only where the first fails, on the
+    same `started`, so it has what time the first left."""
     timings = timing.current()
     if timings is not None:
         timings.note("uturn", "ahead first")
@@ -5011,13 +5528,45 @@ def _plan_ahead_first(
     except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded) as error:
         logger.info("a re-route ahead only: no route ahead (%s)", type(error).__name__)
     else:
-        # The router takes the way back where it has no way ahead within its tolerance.
-        if not sets_off_back(ahead, heading):
-            return ahead
-        logger.info("a re-route ahead only: the route ahead turns round")
+        if sets_off_back(ahead, heading):
+            # The router takes the way back where it has no way ahead within its tolerance.
+            logger.info("a re-route ahead only: the route ahead turns round, kept")
+        return ahead
     if timings is not None:
         timings.note("uturn", "ahead first, replanned")
     return plan(points, preset_name, dials=dataclasses.replace(dials, heading=None), **asked)
+
+
+def _early_strays(
+    trip: dict,
+    variant: str,
+    costing: dict,
+    deadline: Deadline,
+    traces: dict,
+    touched_trails: frozenset[int],
+    any_dirt: bool,
+) -> list:
+    """The strips across the stray dirt trails (`trail_touch.stray_rings`) of the router's own
+    route `trip`, read as the answer reads them (`_plan`, audit S12 part 1); none where a leg
+    is drawn or the router cannot trace it now: the answer's own check still runs. A cancel is
+    raised (review of S7)."""
+    legs = trip.get("legs") or []
+    if not legs or any(leg.get("drawn") for leg in legs):
+        return []
+    prefetch_traces(variant, costing, [trip], deadline, traces)
+    pieces: list[Piece] = []
+    for leg in legs:
+        try:
+            trace = _trace(variant, costing, leg.get("shape", ""), deadline, traces)
+        except PlanCancelled:
+            raise
+        except (DeadlineExceeded, RouterUnavailable) as error:
+            logger.info("dirt trails: no early check (%s)", type(error).__name__)
+            return []
+        if trace is not None:
+            pieces.extend(pieces_of_trace(trace))
+    ways = trail_touch.off_road_ways([piece.way_id for piece in pieces])
+    return trail_touch.stray_rings(pieces, ways, touched_trails, any_dirt)
 
 
 def quick_applies(preset_name: str, loop: bool, long_ride: bool, long_calm: bool) -> bool:

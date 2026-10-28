@@ -127,7 +127,8 @@ You stay responsible for riding safely; the route can be wrong.
   browser asks to use your location.
 - The ride starts at once. The cues use your Settings (Riding): who says them, your screen
   reader, RouteMaker's voice, both, or neither (on screen only), and how much: Full (every turn,
-  early and again close to it), Stoker (each turn once ahead and as it happens, busy crossings and
+  early and again close to it, and just past a turn onto a stretch of a mile or more, how far it
+  goes on: "Continue on Washington and Old Dominion Trail for 2 miles."), Stoker (each turn once ahead and as it happens, busy crossings and
   stops: for the rider behind on a tandem) or Quiet (only arrival). Until you change them,
   RouteMaker's voice says every turn. Both choices stay on this device; change them during a
   ride under More (the last side button), then the Settings gear, or in Settings.

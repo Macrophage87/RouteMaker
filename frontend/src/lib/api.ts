@@ -247,7 +247,7 @@ export interface HillClimb {
 /**
  * One entry of the route's description (core.api.DescriptionEntryOut;
  * OWNER-DECISIONS 220): a stretch of one street at one stress tier, a
- * junction that is not a turn, or a stop (a via point, "Stop 1"). `text` is the one plain
+ * junction that is not a turn, or a leg boundary (`via`: "Stop 1 at ..." or "Via point at ..."). `text` is the one plain
  * sentence to read aloud, US units first.
  */
 export interface DescriptionEntry {
@@ -266,10 +266,14 @@ export interface DescriptionEntry {
   to_mi: number;
   street: string | null;
   tier: number | null;
-  facility: "path" | "protected" | "lane" | null;
+  /** "none": the map says the way has no bike facility; null: not known (an older API sent null for both; round-2 D28). */
+  facility: "path" | "protected" | "lane" | "none" | null;
+  /** On a stretch: whether its road is one-way where it ends; null or absent where not known (round-2 D26). */
+  oneway?: boolean | null;
   turn: {
     /** "bear_left" / "bear_right": a change of street 20 to 60 degrees off straight (describe.SLIGHT_MIN_DEG, BEAR_MAX_DEG). */
-    movement: "left" | "straight" | "right" | "bear_left" | "bear_right" | null;
+    /** "uturn": back the way the route came on the same way, at a dead end (describe.UTURN_DEG, round-3 audit D31). */
+    movement: "left" | "straight" | "right" | "bear_left" | "bear_right" | "uturn" | null;
     onto: string | null;
     control: "signal" | "stop" | "cross_stop" | "all_stop" | "none" | null;
     severity: "orange" | "red" | null;
@@ -293,6 +297,11 @@ export interface DescriptionEntry {
      * road, said before the turn ("Cross Saint Paul Street, then right onto ...").
      */
     across?: string | null;
+    /**
+     * A turn onto an unnamed path that leads to a named one (describe._toward, round-2 D21): that one's name, said with
+     * the path ("Right onto the path to Rock Creek Trail"). `onto` stays "path". Null elsewhere; absent from older APIs.
+     */
+    toward?: string | null;
   } | null;
   severity?: "orange" | "red" | "avoid" | null;
   via?: number | null;
@@ -318,6 +327,11 @@ export interface DescriptionEntry {
    * ride never cues "Continue onto" it. Absent from an older API.
    */
   relation_name?: boolean;
+  /**
+   * On an "avoid": why the junction is rated Avoid ("no safe crossing"), as `street` is its name; Ride words its cue
+   * from the two (round-2 audit R2). Absent from an older API.
+   */
+  reason?: string | null;
   /**
    * On a Mass Ride's entry for a group of signalized crossings (OWNER-DECISIONS 233, 234).
    * `crossings` lists each crossing in the full description (OWNER-DECISIONS 248) and is
@@ -1057,6 +1071,11 @@ export interface RouteResponse {
    * router does not say; absent from an older API.
    */
   arrival_side?: "left" | "right" | null;
+  /**
+   * Which side of the street each leg ends on, one per leg as `leg_ends` (round-2 audit D17): a stop's cue says
+   * "Destination on your left". An entry is null where the router does not say; absent from an older API.
+   */
+  leg_arrival_sides?: ("left" | "right" | null)[] | null;
   /**
    * The route's sections by traffic stress, in route order, meeting end to
    * end from 0; one unknown section for a plan whose joins ran past the

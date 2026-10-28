@@ -175,6 +175,152 @@ class TestAlong:
         assert wz.along(crossing, [zones()["md-wz-closed-bikes"]]) == []
 
 
+def _along_every_segment(coordinates, zones):
+    """`along` as it was before audit round 3, S27: each zone's box tested against every
+    segment of the route. The grid must give exactly what this gives."""
+    if len(coordinates) < 2:
+        return []
+    lat0 = coordinates[0][1]
+    route = [wz._xy(c[0], c[1], lat0) for c in coordinates]
+    cumulative = [0.0]
+    for a, b in zip(route, route[1:], strict=False):
+        cumulative.append(cumulative[-1] + math.dist(a, b))
+    xs = [p[0] for p in route]
+    ys = [p[1] for p in route]
+    box = (min(xs) - 100, min(ys) - 100, max(xs) + 100, max(ys) + 100)
+    found = []
+    for zone in zones:
+        points = [wz._xy(lon, lat, lat0) for lon, lat in zone.line]
+        if not any(box[0] <= x <= box[2] and box[1] <= y <= box[3] for x, y in points):
+            continue
+        if wz._length(points) < 1.0:
+            continue
+        samples = wz._samples(wz._trim(points, wz.TRIM_M))
+        zx = [x for x, _ in points]
+        zy = [y for _, y in points]
+        near_box = (
+            min(zx) - wz.ALONG_M,
+            min(zy) - wz.ALONG_M,
+            max(zx) + wz.ALONG_M,
+            max(zy) + wz.ALONG_M,
+        )
+        nearby = [
+            i
+            for i in range(len(route) - 1)
+            if min(xs[i], xs[i + 1]) <= near_box[2]
+            and max(xs[i], xs[i + 1]) >= near_box[0]
+            and min(ys[i], ys[i + 1]) <= near_box[3]
+            and max(ys[i], ys[i + 1]) >= near_box[1]
+        ]
+        if not nearby:
+            continue
+        near = []
+        for s in samples:
+            best, at = math.inf, 0.0
+            for i in nearby:
+                a, b = route[i], route[i + 1]
+                d = wz._to_segment(s, a, b)
+                if d < best:
+                    seg = math.dist(a, b)
+                    t = (
+                        0.0
+                        if seg == 0
+                        else max(
+                            0.0,
+                            min(
+                                1.0,
+                                ((s[0] - a[0]) * (b[0] - a[0]) + (s[1] - a[1]) * (b[1] - a[1]))
+                                / seg**2,
+                            ),
+                        )
+                    )
+                    best, at = d, cumulative[i] + t * seg
+            if best <= wz.ALONG_M:
+                near.append(at)
+        if near and len(near) >= wz.ALONG_SHARE * len(samples):
+            found.append(wz.Passage(zone, min(near), max(near)))
+    return sorted(found, key=lambda p: (p.from_m, p.zone.zone_id))
+
+
+def _reference_route(name: str) -> list[tuple[float, float]]:
+    import re
+
+    text = (
+        Path(__file__).resolve().parent.parent / "fixtures" / "reference-routes" / name
+    ).read_text()
+    return [
+        (float(lon), float(lat))
+        for lat, lon in re.findall(r'<trkpt lat="([-0-9.]+)" lon="([-0-9.]+)"', text)
+    ]
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "2026-04-dcbp.gpx",
+        "group-crit-mass-jan.gpx",
+        "trail-bethesda-loop.gpx",
+        "rural-group-tnl.gpx",
+    ],
+)
+def test_along_on_the_grid_finds_exactly_what_every_segment_found(name: str) -> None:
+    """Audit round 3, S27(a): `along` looks only at the route's segments in the grid cells round
+    each zone. On the reference routes, with zones laid along them, beside them, across them
+    and away from them, it finds the same passages, metre for metre, in the same order."""
+    import random
+
+    route = _reference_route(name)
+    assert len(route) > 50
+    rng = random.Random(name)
+    found_zones = list(zones().values())
+    for n in range(300):
+        i = rng.randrange(len(route) - 1)
+        j = min(len(route) - 1, i + rng.randrange(1, 30))
+        # Along the route (offset a little, up to past ALONG_M), across it, or anywhere near.
+        dx, dy = rng.uniform(-0.0004, 0.0004), rng.uniform(-0.0004, 0.0004)
+        kind = n % 3
+        if kind == 0:
+            line = tuple((lon + dx, lat + dy) for lon, lat in route[i : j + 1])
+        elif kind == 1:
+            lon, lat = route[i]
+            line = ((lon - 0.002, lat + dy), (lon + 0.002, lat - dy))
+        else:
+            lon, lat = route[i]
+            line = ((lon + dx * 20, lat + dy * 20), (lon + dx * 25, lat - dy * 25))
+        found_zones.append(wz.Zone(f"z{n}", "dc", wz.CLOSED, 0.0, line, None, None, None, None))
+    fast = wz.along(route, found_zones)
+    assert fast == _along_every_segment(route, found_zones)
+    assert len(fast) > 20, "the zones laid along the route are found"
+
+
+def test_along_looks_only_at_the_segments_round_each_zone(monkeypatch) -> None:
+    """Audit round 3, S27(a): the route is put on the grid once per call, and each zone near it
+    is box-tested against the segments in its cells, not every segment of the line."""
+    route = _reference_route("rural-group-tnl.gpx")
+    built, looked = [], []
+    real_init, real_segments = wz.RouteGrid.__init__, wz.RouteGrid.segments
+
+    def init(self, coordinates):
+        built.append(len(coordinates))
+        real_init(self, coordinates)
+
+    def segments(self, *box):
+        found = real_segments(self, *box)
+        looked.append(len(found))
+        return found
+
+    monkeypatch.setattr(wz.RouteGrid, "__init__", init)
+    monkeypatch.setattr(wz.RouteGrid, "segments", segments)
+    middle = route[len(route) // 2 : len(route) // 2 + 10]
+    zone_list = [
+        wz.Zone(f"z{n}", "dc", wz.CLOSED, 0.0, tuple(middle), None, None, None, None)
+        for n in range(3)
+    ]
+    assert len(wz.along(route, zone_list)) == 3
+    assert built == [len(route)]
+    assert len(looked) == 3 and all(0 < n < (len(route) - 1) / 4 for n in looked), looked
+
+
 class TestTheWords:
     def test_one_short_line_said_and_the_source_in_small_print(self) -> None:
         # The owner, 2026-10-17: "the statement is way too verbose. We can cite our sources

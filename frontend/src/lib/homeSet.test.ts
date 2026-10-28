@@ -117,7 +117,7 @@ test("App: Home is said politely at once, saved to the account signed in or this
 test("the map: Set as Home in the road panel (hold or right-click a spot), and Pick on the map's next tap", () => {
   assert.equal(SET_AS_HOME_TEXT, "Set as Home");
   // The road panel's "Use this spot" row has Set as Home; it closes the panel, whose close gives the focus back.
-  const row = road.slice(road.indexOf('aria-label="Use this spot"'), road.indexOf("road-info-place-why"));
+  const row = road.slice(road.indexOf('aria-label={t("Use this spot")}'), road.indexOf("road-info-place-why"));
   assert.match(row, /onSetHome\(request\.point\);\s*close\(\);/);
   assert.match(row, /\{SET_AS_HOME_TEXT\}/);
   assert.match(app, /onSetHome=\{\(point\) => void setHomeAt\(point\)\}/);
