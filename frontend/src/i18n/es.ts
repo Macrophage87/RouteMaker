@@ -1336,6 +1336,7 @@ export const ES: Readonly<Record<string, string>> = {
   "No route to {place} with this ride type. Try another ride type.": "No hay ruta a {place} con este tipo de recorrido. Pruebe otro tipo de recorrido.",
   "Planner busy": "Planificador ocupado",
   "Try again in a moment.": "Inténtelo de nuevo en un momento.",
+  "Error report copied. Paste it into your bug report in our Discord.": "Informe de error copiado. Péguelo en su informe de fallo en nuestro Discord.",
   "Try another start or destination.": "Pruebe otro inicio u otro destino.",
   "Location off. Type a start, or allow location in site settings.": "Ubicación desactivada. Escriba un inicio o permita la ubicación en la configuración del sitio.",
   "Location off. Type a start, or allow location in iPhone Settings.": "Ubicación desactivada. Escriba un inicio o permita la ubicación en la Configuración del iPhone.",
