@@ -1724,8 +1724,9 @@ dialog.ride-types::backdrop {
 /* The map's road panel (OWNER-DECISIONS 441a; RoadInfoDialog.tsx): a modal dialog like
    the ride-type picker; compact, so the common case fits a phone without scrolling (a
    sheet from the bottom there). The summary is a plain list, one line a fact; the
-   details are a native disclosure. Nothing is said by colour. */
-dialog.road-info {
+   details are a native disclosure. Nothing is said by colour. Go's tapped-spot card (dialog.go-spot) looks the same. */
+dialog.road-info,
+dialog.go-spot {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 0;
@@ -2467,7 +2468,8 @@ ul.station-links {
 }
 
 @media (max-width: 720px) {
-  dialog.road-info {
+  dialog.road-info,
+  dialog.go-spot {
     width: 100vw;
     max-width: 100vw;
     max-height: 100dvh;

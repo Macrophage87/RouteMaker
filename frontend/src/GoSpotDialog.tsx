@@ -130,7 +130,7 @@ export function GoSpotDialog({ request, lookup, fallbackName, here = null, rows,
   const count = rows === null ? NEARBY_LOADING : rows.length === 0 ? NOTHING_NEAR : spotCountLine(rows.length);
 
   return (
-    <dialog ref={dialogRef} className="road-info go-spot" aria-labelledby={titleId} aria-busy={address === null ? true : undefined} onKeyDown={onKeyDown}>
+    <dialog ref={dialogRef} className="go-spot" aria-labelledby={titleId} aria-busy={address === null ? true : undefined} onKeyDown={onKeyDown}>
       <div className="road-info-body">
         <div className="go-spot-top">
           <button type="button" className="secondary go-spot-close" aria-label={t("Close")} title={t("Close")} onClick={close}>
