@@ -1266,6 +1266,8 @@ class TestTheGlenmontFlackPathFile:
         assert not sidewalks.rideable(tags)
         assert sidewalks.is_link_candidate(tags)
         assert not sidewalks.is_link_candidate({**tags, "bicycle": "yes"})
+        assert not sidewalks.bicycle_open(tags)
+        assert sidewalks.bicycle_open({**tags, "bicycle": "yes"})
 
 
 ASPEN_STREET = REPO / "fixtures" / "overrides" / "2026-10-25-owner-aspen-street-nw.json"

@@ -12,7 +12,7 @@
         "bicycle": "yes"
       },
       "reason": "The owner, 2026-10-28, of the path from Flack Street to the Glenmont Metro: \"This path was missed from the Glenmont metro\".",
-      "evidence": "The owner's report from the ground, 2026-10-28. OSM, read 2026-10-28: way 656592016 (version 4), highway=footway, surface=concrete, lit=yes, no access or bicycle tag; it joins Flack Street (5987962) to crosswalk 991302747 over the garage entrance road 413505139, then sidewalk 991302746 to the signalised Georgia Avenue crossing 1164218582.",
+      "evidence": "The owner's report, 2026-10-28. OSM, read 2026-10-28: way 656592016 (version 4), highway=footway, surface=concrete, lit=yes, no access or bicycle tag; it joins Flack Street (5987962) to crosswalk 991302747 over the garage entrance road 413505139, then sidewalk 991302746 to the signalised Georgia Avenue crossing 1164218582.",
       "fingerprint": {
         "name": null,
         "highway": "footway",
