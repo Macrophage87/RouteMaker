@@ -647,6 +647,112 @@ class TestDetour:
         assert probe["costing_options"]["bicycle"]["use_hills"] == 1.0
         assert "exclude_locations" not in probe and "alternates" not in probe
 
+    @staticmethod
+    def by_costing() -> Router:
+        """The direct probe (the traffic tolerant end) is 3 km, every other route 9 km: an
+        answer by what is asked, never by order, as the pool may ask in any order."""
+
+        class ByCosting(Router):
+            def __call__(self, url: str, payload: dict, timeout: float):
+                if url.endswith("/route"):
+                    self.calls.append((url, payload))
+                    direct = payload["costing_options"]["bicycle"].get("use_roads") == 1.0
+                    return route_answer([(VERTICES, 3.0 if direct else 9.0, [1.0] * 5)])
+                return super().__call__(url, payload, timeout)
+
+        return ByCosting(
+            {
+                "trace_attributes": {
+                    "units": "kilometers",
+                    "shape": encode_polyline6(VERTICES),
+                    "edges": trace_edges(VERTICES, 2),
+                }
+            }
+        )
+
+    @staticmethod
+    def probes(fake) -> list[int]:
+        routes = [p for url, p in fake.calls if url.endswith("/route")]
+        return [
+            i for i, p in enumerate(routes) if p["costing_options"]["bicycle"]["use_roads"] == 1.0
+        ]
+
+    def test_above_default_the_direct_route_is_asked_beside_the_search(
+        self, client, arterial, router, settings
+    ) -> None:
+        """Audit S23: where the router's first route is already past the allowance, the
+        direct route starts on the pool beside the search, not after it; the answer's
+        detour is the same, and the direct route is asked once."""
+        body = {**good_body(), "stress": 90}
+        router(self.by_costing())  # the pool off: asked last, as before
+        alone = post(client, body).json()["detour"]
+        settings.ROUTER_PARALLEL_CALLS = 3
+        fake = router(self.by_costing())
+        detour = post(client, body).json()["detour"]
+        assert detour == alone and detour["basis"] == "direct_route"
+        assert detour["reference_m"] == 3000.0
+        routes = [p for url, p in fake.calls if url.endswith("/route")]
+        (probe,) = self.probes(fake)
+        assert probe < len(routes) - 1, "asked before the search's own routes"
+        assert "exclude_locations" not in routes[probe] and "alternates" not in routes[probe]
+
+    @pytest.mark.parametrize("extra", [{"stress": presets.STRESS_DEFAULT_AT}, {"quick": True}])
+    def test_at_default_or_on_a_first_route_nothing_is_asked_early(
+        self, client, arterial, router, settings, monkeypatch, extra
+    ) -> None:
+        settings.ROUTER_PARALLEL_CALLS = 3
+        early = []
+        real = routing._ask_direct_early
+
+        def spy(*args, **kwargs):
+            early.append(real(*args, **kwargs))
+            return early[-1]
+
+        monkeypatch.setattr(routing, "_ask_direct_early", spy)
+        router(self.by_costing())
+        assert post(client, {**good_body(), "stress": 90, **extra}).status_code == 200
+        assert all(asked == {} for asked in early)
+
+    def test_a_direct_route_asked_early_and_not_wanted_is_cancelled(self, monkeypatch) -> None:
+        """Where the plan's route comes back within the allowance, the early ask is not
+        read; `_plan_round` cancels it as the plan ends (one still queued never goes)."""
+        from concurrent.futures import Future
+
+        pending: Future = Future()
+
+        def plan(*args, early=None, **kwargs):
+            early.append(pending)
+            return {"ok": True}
+
+        monkeypatch.setattr(routing, "_plan", plan)
+        assert routing._plan_round([[0, 0], [1, 0]], "default") == {"ok": True}
+        assert pending.cancelled()
+
+    def test_the_early_ask_is_read_only_for_its_own_request(self, monkeypatch) -> None:
+        """A request changed since the early ask (another key) asks afresh."""
+        from core import parallel
+
+        request = {"locations": [{"lon": 0, "lat": 0}, {"lon": 1, "lat": 0}], "costing": "bicycle"}
+        dials = (90, False, False)
+        _costing, _asked, key = routing._direct_request(request, "default", dials)
+        calls = []
+
+        def call(variant, endpoint, payload, deadline):
+            calls.append(payload)
+            return {"trip": {"summary": {"length": 1.0}}}
+
+        monkeypatch.setattr(routing, "_call", call)
+        early = {key: parallel.done({"trip": {"summary": {"length": 2.0}}})}
+        args = (9000.0, 3000.0, request, "standard", "default", dials, 0.0, "weekday_offpeak")
+        deadline = routing.Deadline(routing.clock() + 30, 10)
+        read = routing._detour(*args, deadline, {}, early=early)
+        assert read["reference_m"] == 2000.0 and calls == []
+        moved = {**request, "locations": [{"lon": 0, "lat": 0}, {"lon": 2, "lat": 0}]}
+        early = {key: parallel.done({"trip": {"summary": {"length": 2.0}}})}
+        args = (9000.0, 3000.0, moved, "standard", "default", dials, 0.0, "weekday_offpeak")
+        again = routing._detour(*args, deadline, {}, early=early)
+        assert again["reference_m"] == 1000.0 and len(calls) == 1
+
     def test_a_mass_ride_is_compared_with_the_straight_line(self, client, arterial, router) -> None:
         router(world(length_km=9.0))
         detour = post(client, good_body("mass-ride")).json()["detour"]

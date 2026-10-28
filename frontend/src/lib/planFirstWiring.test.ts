@@ -16,7 +16,7 @@ test("Plan routes on its Route button; Go routes at once; a link, a file or Undo
   // A link and an opened file are routed as they open.
   assert.ok((app.match(/forgetDrawn\(\);\s*setRouteAsk\(\(n\) => n \+ 1\);/g) ?? []).length >= 2);
   // The Route button says "Planning route", and Cancel stops the request and keeps the plan.
-  assert.match(app, /const pressRoute = \(\) => \{\s*setRouteAsk\(\(n\) => n \+ 1\);\s*announce\(PLANNING_SAID\);/);
+  assert.match(app, /const pressRoute = \(\) => \{\s*sendNow\.current = true;\s*setRouteAsk\(\(n\) => n \+ 1\);\s*announce\(PLANNING_SAID\);/);
   assert.match(app, /const cancelRouting = \(\) => \{\s*scheduler\.current\?\.clear\(\);/);
 });
 

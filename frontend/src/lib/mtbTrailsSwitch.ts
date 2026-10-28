@@ -11,18 +11,19 @@
  * Written with createElement so a test renders it.
  */
 import { createElement as h, type ReactElement } from "react";
+import { t } from "./i18n.ts";
 import { MTB_MIN_ZOOM } from "../stressStyle.js";
 
-export const MTB_TRAILS_LABEL = "Mountain-bike trails";
+export const MTB_TRAILS_LABEL = t("Mountain-bike trails");
 
 /**
  * Read on every focus, so one short line (the owner, 2026-10-12: "less wordy"). The levels, and that Gravel
  * and Mountain Goat may use the unrated trails (456), are said by the legend's rows (stressLegend.ts).
  */
-export const MTB_TRAILS_HINT = `From zoom ${MTB_MIN_ZOOM}. Only off-road ride types route on them.`;
+export const MTB_TRAILS_HINT = t("From zoom {zoom}. Only off-road ride types route on them.", { zoom: MTB_MIN_ZOOM });
 
 /** The description while the stress map, which carries the trails, is unavailable. */
-export const MTB_TRAILS_NO_MAP_HINT = "Needs the stress map, which is unavailable for now.";
+export const MTB_TRAILS_NO_MAP_HINT = t("Needs the stress map, which is unavailable for now.");
 
 export function MtbTrailsSwitch({
   on,
@@ -50,7 +51,7 @@ export function MtbTrailsSwitch({
         onClick: () => onChange(!on),
       },
       h("span", { id: "mtb-trails-label", className: "switch-label" }, MTB_TRAILS_LABEL),
-      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? "On" : "Off"),
+      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? t("On") : t("Off")),
     ),
     h("p", { className: "hint", id: "mtb-trails-hint" }, overlay ? MTB_TRAILS_HINT : MTB_TRAILS_NO_MAP_HINT),
   );

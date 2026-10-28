@@ -902,29 +902,16 @@ MAP_MOST = 60
 MAP_KINDS = (rules.CLOSED, rules.UNKNOWN, rules.LANE)
 
 
-class _RouteIndex:
-    """The route's segments in a coarse grid of lon/lat cells, so each zone is measured against
-    the few segments near it, not the whole line. A 100 mi loop's box covers most of DC, and
-    measuring every zone's every point against every segment of it took the plan past the web
-    server's 60 s (the MCP tester, 2026-10-19). Built once per route."""
-
-    CELL_DEG = 0.01  # about 0.7 mi of longitude here, 0.7 mi of latitude
+class _RouteIndex(rules.RouteGrid):
+    """The route's segments in a coarse grid of lon/lat cells (`rules.RouteGrid`, which
+    `rules.along` uses too), so each zone is measured against the few segments near it, not the
+    whole line. A 100 mi loop's box covers most of DC, and measuring every zone's every point
+    against every segment of it took the plan past the web server's 60 s (the MCP tester,
+    2026-10-19). Built once per route."""
 
     def __init__(self, coordinates, margin_m: float):
-        self.coordinates = coordinates
+        super().__init__(coordinates)
         self.margin_m = margin_m
-        self.cells: dict[tuple[int, int], list[int]] = {}
-        for i, (a, b) in enumerate(zip(coordinates, coordinates[1:], strict=False)):
-            for cell in self._cells(
-                min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1])
-            ):
-                self.cells.setdefault(cell, []).append(i)
-
-    def _cells(self, west, south, east, north):
-        size = self.CELL_DEG
-        for x in range(math.floor(west / size), math.floor(east / size) + 1):
-            for y in range(math.floor(south / size), math.floor(north / size) + 1):
-                yield (x, y)
 
     def near(self, zone: rules.Zone) -> float:
         """How near the zone comes to the route's line, metres; inf when no segment of the
@@ -934,11 +921,9 @@ class _RouteIndex:
         # A little over the margin, so a segment just inside it is never missed.
         dlat = self.margin_m * 1.1 / 111_195.0
         dlon = dlat / max(math.cos(math.radians(max(abs(min(lats)), abs(max(lats))))), 0.01)
-        found: set[int] = set()
-        for cell in self._cells(
+        found = self.segments(
             min(lons) - dlon, min(lats) - dlat, max(lons) + dlon, max(lats) + dlat
-        ):
-            found.update(self.cells.get(cell, ()))
+        )
         if not found:
             return math.inf
         lat0 = zone.line[0][1]
@@ -947,7 +932,7 @@ class _RouteIndex:
                 rules._xy(self.coordinates[i][0], self.coordinates[i][1], lat0),
                 rules._xy(self.coordinates[i + 1][0], self.coordinates[i + 1][1], lat0),
             )
-            for i in sorted(found)
+            for i in found
         ]
         return min(
             rules._distance_to_line(rules._xy(lon, lat, lat0), [a, b])

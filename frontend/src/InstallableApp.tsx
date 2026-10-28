@@ -35,6 +35,7 @@ import { matchSaid, matching } from "./lib/routeSearch.ts";
 import { KEPT_HEADING, KEPT_HOW, KEPT_NONE, KEPT_NONE_SHORT, KEPT_PRIVATE, focusAfterRemove, keptDetail, removeFailedSaid, removedSaid, sortKept, storageNote, type KeptRoute } from "./lib/offlineRoutes.ts";
 import { listKept, persisted } from "./lib/offlineRouteStore.ts";
 import { InfoButton } from "./SettingRow.tsx";
+import { t } from "./lib/i18n.ts";
 
 // ---- The new version and the network --------------------------------------------------------------
 
@@ -197,7 +198,7 @@ export function InstallOffer({ idBase, compact = false, onSay }: { idBase: strin
       )}
       {offer === "ios" && (
         <p className="hint install-ios">
-          {compact ? "To install RouteMaker: " : `${INSTALL_WHY} `}
+          {compact ? t("To install RouteMaker: ") : `${INSTALL_WHY} `}
           {IOS_INSTALL}
         </p>
       )}
@@ -288,7 +289,7 @@ export function KeptRoutes({
     <section aria-labelledby={`${id}-heading`} className="kept-routes">
       <div className="setting-line">
         {createElement(level === 4 ? "h4" : "h3", { id: `${id}-heading`, ref: heading, tabIndex: -1 }, KEPT_HEADING)}
-        {compact && <InfoButton open={infoOpen} onToggle={() => setInfoOpen((was) => !was)} controls={`${id}-info`} about="routes kept for offline" />}
+        {compact && <InfoButton open={infoOpen} onToggle={() => setInfoOpen((was) => !was)} controls={`${id}-info`} about={t("routes kept for offline")} />}
       </div>
       {compact && (
         <p className="hint setting-info" id={`${id}-info`} hidden={!infoOpen}>
@@ -301,7 +302,7 @@ export function KeptRoutes({
         </p>
       )}
       {routes === null ? (
-        <p className="hint">Reading the routes kept on this device…</p>
+        <p className="hint">{t("Reading the routes kept on this device…")}</p>
       ) : routes.length === 0 ? (
         <p className="hint">{compact ? KEPT_NONE_SHORT : KEPT_NONE}</p>
       ) : matching(routes, filter, (r) => r.title).length === 0 ? null : (
