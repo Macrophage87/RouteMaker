@@ -60,6 +60,7 @@ import bisect
 import contextvars
 import dataclasses
 import functools
+import hashlib
 import http.client
 import itertools
 import json
@@ -67,6 +68,7 @@ import logging
 import time
 import urllib.error
 import urllib.request
+from array import array
 from collections.abc import Callable, Iterator
 from concurrent.futures import FIRST_EXCEPTION, Future
 from concurrent.futures import wait as wait_futures
@@ -1010,6 +1012,29 @@ def hazards_read(classes, pieces: list) -> list[tuple[str, ...]] | None:
     return kinds if kinds is not None and len(kinds) == len(pieces) else None
 
 
+# The plan's memo of its stress readings (`classify`, audit S18): a hill-avoiding plan reads
+# the trip it keeps two or three times (`calmer_or_own`, `no_busier_than_middle`, then the
+# calm search's `refine.analyse`), each the same nearest-segment search with the same answer.
+# Keyed by the live table's name, the ride time and a digest of the pieces' ways and points;
+# each entry the readings as plain rows, each row kept once (the rows repeat: a few hundred
+# distinct in a long route), and the hazard kinds beside: about 16 bytes a piece, so under
+# 1 MB at STRESS_MEMO_TRIPS long routes. Only a reading that finished is kept. `plan` sets it
+# for its own context and clears it as it ends; None outside a plan (nothing remembered).
+_stress_memo: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "stress_memo", default=None
+)
+# The most readings remembered, the least recently used dropped first.
+STRESS_MEMO_TRIPS = 8
+
+
+def _stress_key(schema: str, when: str, pieces: list[Piece]) -> tuple:
+    digest = hashlib.blake2b(digest_size=16)
+    digest.update(array("q", [p.way_id for p in pieces]).tobytes())
+    digest.update(array("d", [p.lon for p in pieces]).tobytes())
+    digest.update(array("d", [p.lat for p in pieces]).tobytes())
+    return (schema, when, len(pieces), digest.digest())
+
+
 def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list[tuple[str, str]]:
     """Each piece's stress key ("1".."5" or "unknown") and facility key
     ("path", "protected", "lane", "none" or "unknown"), in the pieces' order,
@@ -1017,12 +1042,38 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
     surface. With `roadway_only` (a ride that takes the roadway: Mass Ride,
     not every ride on the no-trail variant), bicycle lanes of either class are
     "none"; a road closed to cars is still a path. A `Classes`, with the
-    pieces' hazard kinds beside."""
+    pieces' hazard kinds beside. Read once a plan (`_stress_memo`); each call is
+    given classes of its own."""
     if not pieces:
         return Classes()
     # The schema name comes from settings and is validated the way every DDL
     # that names it is; an identifier cannot be a query parameter.
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    memo = _stress_memo.get()
+    key = _stress_key(schema, when, pieces) if memo is not None else None
+    found = memo.pop(key, None) if memo is not None else None
+    if found is None:
+        found = _read_stress(pieces, when, schema)
+    if memo is not None:
+        memo[key] = found  # the most recently used last
+        while len(memo) > STRESS_MEMO_TRIPS:
+            memo.pop(next(iter(memo)))
+    rows, hazards = found
+    classes = Classes()
+    for tier, kind, *rest in rows:
+        # After the lookup, so a Mass Ride and any other plan share one reading.
+        if roadway_only and kind in ROADWAY_ONLY_AS_NONE:
+            kind = "none"
+        classes.append(PieceClass(tier, kind, *rest))
+    if hazards is not None:
+        classes.hazards = list(hazards)
+    return classes
+
+
+def _read_stress(pieces: list[Piece], when: str, schema: str) -> tuple[list[tuple], list | None]:
+    """`classify`'s reading of the segment table: a row a piece (the `PieceClass` arguments,
+    before the roadway-only lanes are made "none"), and the hazard kinds (None where the
+    table has no hazard column)."""
     with_facility = _has_facility_columns(schema)
     with_capacity = _has_capacity_column(schema)
     with_half = _has_half_column(schema)
@@ -1057,7 +1108,8 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
     )
     arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
     whens = ([when, when] + ([when] if with_half else [])) if with_facility else []
-    classes = Classes()
+    rows: list[tuple] = []
+    seen: dict[tuple, tuple] = {}
     hazard_values = []
     with plan_cursor() as cursor:
         cursor.execute(query, whens + arrays)
@@ -1075,23 +1127,18 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
             rough = rough if isinstance(rough, bool) else None
             if with_hazard:
                 hazard_values.append(extra.pop(0))
-            if roadway_only and kind in ROADWAY_ONLY_AS_NONE:
-                kind = "none"
-            classes.append(
-                PieceClass(
-                    str(tier) if tier in (1, 2, 3, 4, 5) else "unknown",
-                    kind if kind in FACILITY_KEYS else "unknown",
-                    unpaved,
-                    lanes,
-                    oneway,
-                    None if width is None else float(width),
-                    half,
-                    rough,
-                )
+            read = (
+                str(tier) if tier in (1, 2, 3, 4, 5) else "unknown",
+                kind if kind in FACILITY_KEYS else "unknown",
+                unpaved,
+                lanes,
+                oneway,
+                None if width is None else float(width),
+                half,
+                rough,
             )
-    if with_hazard:
-        classes.hazards = route_hazards.decoded(hazard_values)
-    return classes
+            rows.append(seen.setdefault(read, read))
+    return rows, route_hazards.decoded(hazard_values) if with_hazard else None
 
 
 def breakdown(
@@ -3599,6 +3646,26 @@ def plan(
     ride type's own graph, which asks other questions and so would only hold them longer
     on the 512M worker.
     """
+    # Its stress readings, for its own context only (audit S18), dropped as it ends: a pool
+    # task still running after it holds a copy of the context, never the readings.
+    memo: dict = {}
+    _stress_memo.set(memo)
+    try:
+        return _plan_rounds(points, preset_name, long_ride, started, dials, quick, candidates)
+    finally:
+        memo.clear()
+
+
+def _plan_rounds(
+    points: list[list[float]],
+    preset_name: str,
+    long_ride: bool,
+    started: float | None,
+    dials: Dials | None,
+    quick: bool,
+    candidates: bool,
+) -> dict:
+    """`plan`'s rounds."""
     if started is None:
         started = clock()
     dials = dials or Dials()

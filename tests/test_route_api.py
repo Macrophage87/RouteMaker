@@ -3029,6 +3029,124 @@ class TestHazardsInTheStressQuery:
 
 
 @db
+class TestStressReadOncePerPlan:
+    """Audit S18: a plan reads each trip's stress once (`routing._stress_memo`): the
+    trip a hill-avoiding plan keeps is read by `calmer_or_own`, `no_busier_than_middle` and
+    the calm search's reading, each the same search with the same answer."""
+
+    PIECES = TestHazardsInTheStressQuery.PIECES
+
+    @staticmethod
+    def counted(monkeypatch) -> list:
+        reads: list = []
+        real = routing._read_stress
+
+        def read(pieces, when, schema):
+            reads.append(when)
+            return real(pieces, when, schema)
+
+        monkeypatch.setattr(routing, "_read_stress", read)
+        return reads
+
+    @staticmethod
+    def in_a_plan(fn):
+        """`fn()` with a plan's memo, as `routing.plan` sets it."""
+        import contextvars
+
+        def run():
+            routing._stress_memo.set({})
+            return fn()
+
+        return contextvars.copy_context().run(run)
+
+    def test_a_trip_is_read_once_and_each_reader_gets_its_own_classes(
+        self, segments, monkeypatch
+    ) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {segments}.segment SET facility = 'lane' WHERE osm_way_id = 101"
+            )
+            cursor.execute(f"UPDATE {segments}.segment SET hazard = 'rails' WHERE osm_way_id = 202")
+        segment_info.forget_columns()
+        reads = self.counted(monkeypatch)
+        outside = routing.classify(self.PIECES, "weekday_offpeak")
+
+        def twice():
+            first = routing.classify(self.PIECES, "weekday_offpeak")
+            again = routing.classify(self.PIECES, "weekday_offpeak")
+            # The lanes-as-roadway remap is made after the lookup: one reading serves both.
+            roadway = routing.classify(self.PIECES, "weekday_offpeak", roadway_only=True)
+            return first, again, roadway
+
+        first, again, roadway = self.in_a_plan(twice)
+        assert reads == ["weekday_offpeak", "weekday_offpeak"], "once outside, once in the plan"
+        assert first == again == outside and first is not again
+        assert [c.unpaved for c in first] == [c.unpaved for c in outside]
+        assert first.hazards == again.hazards == outside.hazards == [(), ("rails",), ("rails",)]
+        assert first.hazards is not again.hazards
+        assert [c[1] for c in first] == ["lane", "none", "none"]
+        assert [c[1] for c in roadway] == ["none", "none", "none"]
+
+    def test_another_ride_time_or_other_pieces_is_read_again(self, segments, monkeypatch) -> None:
+        reads = self.counted(monkeypatch)
+
+        def each():
+            routing.classify(self.PIECES, "weekday_offpeak")
+            routing.classify(self.PIECES, "weekend")
+            routing.classify(self.PIECES[:2], "weekday_offpeak")
+            moved = [routing.Piece(101, -77.046, LAT, 100.0), *self.PIECES[1:]]
+            routing.classify(moved, "weekday_offpeak")
+
+        self.in_a_plan(each)
+        assert len(reads) == 4
+
+    def test_a_reading_cut_short_is_not_remembered(self, segments, monkeypatch) -> None:
+        reads = self.counted(monkeypatch)
+        real = routing._read_stress
+
+        def late_once(pieces, when, schema):
+            if len(reads) == 0:
+                reads.append("late")
+                raise routing.DeadlineExceeded("a segment table read ran past 10 ms")
+            return real(pieces, when, schema)
+
+        monkeypatch.setattr(routing, "_read_stress", late_once)
+
+        def twice():
+            with pytest.raises(routing.DeadlineExceeded):
+                routing.classify(self.PIECES, "weekday_offpeak")
+            return routing.classify(self.PIECES, "weekday_offpeak")
+
+        assert [c[0] for c in self.in_a_plan(twice)] == ["3", "1", "4"]
+        assert reads == ["late", "weekday_offpeak"]
+
+    def test_outside_a_plan_nothing_is_remembered(self, segments, monkeypatch) -> None:
+        reads = self.counted(monkeypatch)
+        routing.classify(self.PIECES, "weekday_offpeak")
+        routing.classify(self.PIECES, "weekday_offpeak")
+        assert len(reads) == 2 and routing._stress_memo.get() is None
+
+    def test_the_memo_keeps_the_most_recent_and_is_dropped_as_the_plan_ends(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(routing, "_read_stress", lambda pieces, when, schema: ([], None))
+        seen = []
+
+        def rounds(*args):
+            for i in range(routing.STRESS_MEMO_TRIPS + 2):
+                routing.classify([routing.Piece(i, -77.0, LAT, 10.0)], "weekday_offpeak")
+            memo = routing._stress_memo.get()
+            seen.append((memo, len(memo)))
+            return {"ok": True}
+
+        monkeypatch.setattr(routing, "_plan_rounds", rounds)
+        assert routing.plan([[-77.0, LAT], [-77.01, LAT]], "default") == {"ok": True}
+        ((memo, size),) = seen
+        assert size == routing.STRESS_MEMO_TRIPS and memo == {}
+        assert routing._stress_memo.get() is None
+
+
+@db
 class TestMassRideCapacitySections:
     """The Mass Ride's route line is coloured by carrying capacity, riders a minute
     (OWNER-DECISIONS 325-327, 387): the API's sections carry `rpm` from the segment
