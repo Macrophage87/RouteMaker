@@ -10,6 +10,7 @@
  */
 import type { DescriptionCrossing, DescriptionEntry, RouteResponse } from "./api.ts";
 import { formatDistance, milesFigure } from "./format.ts";
+import { t } from "./i18n.ts";
 import { presetSaid } from "./presets.ts";
 import { capacityDescription, capacitySummary } from "./massCapacity.ts";
 import { hazardLines } from "./massHazards.ts";
@@ -103,6 +104,35 @@ export function hasOverview(route: Described): boolean {
 /** The view that applies to a route: the full list where there is no shorter one. */
 export function viewFor(route: Described, view: DescriptionView): DescriptionView {
   return hasOverview(route) ? view : "full";
+}
+
+/**
+ * A notice among the entries rather than a step: a work-zone line with no severity, at the route's start (the feeds
+ * not read, "Work zones could not be checked ...", and the "Check before you go" park alerts and advisories that could
+ * not be placed). Directions folds them into one line before step 1 (Plan on a phone, P10): the steps come first.
+ */
+export function isRouteNotice(entry: DescriptionEntry): boolean {
+  return entry.kind === "workzone" && !entry.severity;
+}
+
+/** The notices' one line: "8 alerts on this route". */
+export function noticesLine(count: number): string {
+  return count === 1 ? t("1 alert on this route") : t("{count} alerts on this route", { count });
+}
+
+/**
+ * A notice's words and the link at its end apart ("... (NPS alerts). https://www.nps.gov/..."), so the link shows as
+ * a link named by its site, not as a raw address. Text with no https link at its end is all words.
+ */
+export function noticeParts(text: string): { words: string; url: string | null; site: string | null } {
+  const match = /\s(https:\/\/\S+)$/.exec(text);
+  if (!match) return { words: text, url: null, site: null };
+  try {
+    const site = new URL(match[1]).hostname.replace(/^www\./, "");
+    return { words: text.slice(0, match.index), url: match[1], site };
+  } catch {
+    return { words: text, url: null, site: null };
+  }
 }
 
 /** How many steps the list has, for the toggle: "12 steps", "1 step". */

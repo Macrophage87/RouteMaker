@@ -1287,6 +1287,9 @@ export const ES: Readonly<Record<string, string>> = {
   "Copied.": "Copiado.",
   "Could not copy. Use Download as text.": "No se pudo copiar. Use Descargar como texto.",
   "Full detail": "Todo el detalle",
+  // Directions' notices in one line (P10).
+  "1 alert on this route": "1 aviso en esta ruta",
+  "{count} alerts on this route": "{count} avisos en esta ruta",
   "The stretch could not be found just now.": "No se pudo encontrar el tramo en este momento.",
   "Loading the road's level…": "Cargando el nivel de la calle…",
   "This road piece:": "Este tramo de calle:",

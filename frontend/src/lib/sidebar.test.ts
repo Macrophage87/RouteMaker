@@ -465,7 +465,7 @@ test("the route's folds: Elevation and climbs, Stress and facilities, Directions
   const order = [
     "title={elevationTitle}",
     "title={ROUTE_FOLDS.facilities.title}",
-    "<RouteDescription route={route} fold rideAction={rideAction} federal={federal} />",
+    "<RouteDescription route={route} fold federal={federal} />",
     "<Fold title={ROUTE_FOLDS.junctions.title} count={junctions}",
     "<Fold title={ROUTE_FOLDS.choices.title} count={pickerCount}",
     "title={ROUTE_FOLDS.water.title}",
@@ -552,7 +552,7 @@ test("Directions as a fold: an h3 first, a closed details named with its steps, 
   const component = src("../RouteDescription.tsx");
   const fold = component.slice(component.indexOf("if (fold) {"), component.indexOf('<section className="route-description"'));
   assert.match(fold, /if \(entries\.length === 0\) return null;/, "no \"Directions (0 steps)\"");
-  assert.match(fold, /<Fold\s+title=\{ROUTE_FOLDS\.directions\.title\}\s+count=\{stepsCount\(entries\.length\)\}\s+icon="list"\s+heading=\{ROUTE_FOLDS\.directions\.title\}\s+headingId="route-description-heading"\s+open=\{open\}/);
+  assert.match(fold, /<Fold\s+title=\{ROUTE_FOLDS\.directions\.title\}\s+count=\{stepsCount\(steps\.length\)\}\s+icon="list"\s+heading=\{ROUTE_FOLDS\.directions\.title\}\s+headingId="route-description-heading"\s+open=\{open\}/);
   // The rider's open or closed is remembered (writeOpen), once per change.
   assert.match(fold, /onToggle=\{\(now\) => \{\s*if \(now !== open\) \{\s*setOpen\(now\);\s*writeOpen\(now\);/);
   assert.match(fold, /<ol className="description-list">\{items\}<\/ol>/);

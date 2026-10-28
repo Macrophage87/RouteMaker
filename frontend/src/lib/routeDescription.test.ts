@@ -21,6 +21,9 @@ import {
   crossingsOf,
   entryLines,
   writeOpen,
+  isRouteNotice,
+  noticeParts,
+  noticesLine,
 } from "./routeDescription.ts";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import { planPointName, writeGpx } from "./gpx.ts";
@@ -158,7 +161,7 @@ test("nothing is announced on a route change: no live region but the copy reply"
 test("App places it in the route summary and the component stays separate", () => {
   // In the sidebar redesign (312) it is the "Directions" fold of the route summary: `fold`.
   // A Mass Ride's federal-land lines (item 239) are handed in from the App, which has the overlay's data.
-  assert.match(app, /<RouteDescription route=\{route\} fold rideAction=\{rideAction\} federal=\{federal\} \/>/);
+  assert.match(app, /<RouteDescription route=\{route\} fold federal=\{federal\} \/>/);
 });
 
 // --- OWNER-DECISIONS 224: stops are "Stop N" everywhere ---
@@ -413,4 +416,29 @@ test("the text and the GPX list a group's crossings under it, numbered within it
 test("in the page a group's crossings are a nested, named ordered list", () => {
   assert.match(component, /<ol className="description-crossings" aria-label=\{t\("Crossings in this group, in route order"\)\}>/);
   assert.match(component, /crossingsOf\(entry\)/);
+});
+
+// --- P10: the notices fold into one line before the steps; the steps' count is the steps' ---
+
+test("the feeds not read and the park alerts are notices, a work zone on the route is a step", () => {
+  assert.equal(isRouteNotice(entry("Work zones could not be checked for this route: AlertDC not available.", { kind: "workzone", severity: null })), true);
+  assert.equal(isRouteNotice(entry("Check before you go: Beach Drive (NPS alerts). https://www.nps.gov/rocr", { kind: "workzone" })), true);
+  assert.equal(isRouteNotice(entry("Closed: K Street", { kind: "workzone", severity: "red" })), false);
+  assert.equal(isRouteNotice(entry("Left onto M Street")), false);
+  assert.equal(noticesLine(8), "8 alerts on this route");
+  assert.equal(noticesLine(1), "1 alert on this route");
+});
+
+test("a notice's link shows by its site, not as a raw address", () => {
+  assert.deepEqual(noticeParts("Check before you go: Beach Drive (NPS alerts). https://www.nps.gov/rocr/planyourvisit/conditions.htm"), {
+    words: "Check before you go: Beach Drive (NPS alerts).",
+    url: "https://www.nps.gov/rocr/planyourvisit/conditions.htm",
+    site: "nps.gov",
+  });
+  assert.deepEqual(noticeParts("Work zones could not be checked."), { words: "Work zones could not be checked.", url: null, site: null });
+  // The fold lists the steps only, counts them, and puts the notices' one line before step 1.
+  assert.match(component, /const steps = fold \? entries\.filter\(\(entry\) => !isRouteNotice\(entry\)\) : entries;/);
+  assert.ok(component.indexOf("{noticeBlock}") < component.indexOf('<ol className="description-list">{items}</ol>'));
+  // Start ride is not offered here any more: the route row and Plan's bar hold it.
+  assert.doesNotMatch(component, /rideAction/);
 });

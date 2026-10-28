@@ -746,15 +746,10 @@ export function RouteSummary({
     </>
   );
   const calm = calmPercent(route.stress_m);
-  // Start ride is offered with the directions too (plan Q1). On a Bikeshare or transit plan it follows the
-  // riding leg, the line (lib/rideTrip.ts: the walk to the dock and the boarding are said around it);
-  // the bike computer rule is that leg's.
+  // On a Bikeshare or transit plan Start ride follows the riding leg, the line (lib/rideTrip.ts: the walk to the dock
+  // and the boarding are said around it); the bike computer rule is that leg's. One Start in the sheet, the route
+  // row's (P10: the one that was also in Directions went; Plan's bar keeps its own at the top of the map).
   const rideable = rideableRoute(route);
-  const rideAction = rideable ? (
-    <button type="button" className="secondary" onClick={ride.onStart}>
-      {t("Start ride")}
-    </button>
-  ) : null;
   const goMode = mode === "go";
   // "Start ride" in Go; Plan shows its first word only ("Start", "Iniciar") and keeps the rest for a screen reader.
   const [startWord, rideWord] = firstWordAndRest(t("Start ride"));
@@ -1070,7 +1065,7 @@ export function RouteSummary({
           <FacilityBreakdown route={route} part="figures" />
         </Fold>
       )}
-      <RouteDescription route={route} fold rideAction={rideAction} federal={federal} />
+      <RouteDescription route={route} fold federal={federal} />
       {junctions !== null && (
         <Fold title={ROUTE_FOLDS.junctions.title} count={junctions} heading={ROUTE_FOLDS.junctions.title} open={ROUTE_FOLDS.junctions.open} icon="junction" name={ROUTE_FOLD_GROUP}>
           <IntersectionList route={route} onSelect={onSelectJunction} />
