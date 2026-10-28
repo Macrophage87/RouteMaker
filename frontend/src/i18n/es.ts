@@ -1540,4 +1540,16 @@ export const ES: Readonly<Record<string, string>> = {
   "{ratio}× as far as the direct route.": "{ratio}× más lejos que la ruta directa.",
   "Data sources": "Fuentes de datos",
   "New destination": "Nuevo destino",
+  // The Eat sheet's Grocery chip and Go's Route here (2026-10-28).
+  "Grocery": "Supermercado",
+  "Grocery store": "Supermercado",
+  "Grocery stores": "Supermercados",
+  "Looking for grocery stores…": "Buscando supermercados…",
+  "The grocery store search is unavailable for now; try again shortly.": "La búsqueda de supermercados no está disponible por ahora; inténtelo de nuevo en breve.",
+  "No grocery stores found near here.": "No se encontraron supermercados cerca de aquí.",
+  "nearest your start first": "el más cercano a su punto de partida primero",
+  "1 grocery store, {order}.": "1 supermercado, {order}.",
+  "{n} grocery stores, {order}.": "{n} supermercados, {order}.",
+  "{distance} from your start in a straight line.": "A {distance} de su punto de partida en línea recta.",
+  "Route here": "Ruta hasta aquí",
 };

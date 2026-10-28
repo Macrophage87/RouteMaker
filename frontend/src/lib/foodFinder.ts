@@ -53,10 +53,12 @@ export interface FoodFinderProps {
   folded?: boolean;
   /** The hours are said for this moment (lib/openingHours.ts); the time now by default. */
   at?: Date;
+  /** The list's heading: Places to eat (the default), or Grocery stores for the Grocery chip's list (lib/grocery.ts). */
+  heading?: string;
 }
 
 export function FoodFinder(props: FoodFinderProps): ReactElement {
-  const { query, onQuery, onSearch, onSearchArea, areaMoved = false, chips, busy, status, results, total, onMore, canAddStop, onShow, onAddStop, onRide, folded = true } = props;
+  const { query, onQuery, onSearch, onSearchArea, areaMoved = false, chips, busy, status, results, total, onMore, canAddStop, onShow, onAddStop, onRide, folded = true, heading = t("Places to eat") } = props;
   const at = props.at ?? new Date();
   const list = useRef<HTMLOListElement | null>(null);
   // After Show more: the index of the first new result, whose first button takes the focus.
@@ -113,7 +115,7 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
         h(
           "div",
           { className: "nearest-list food-list" },
-          h("h3", { id: "food-list-heading", className: "visually-hidden" }, t("Places to eat")),
+          h("h3", { id: "food-list-heading", className: "visually-hidden" }, heading),
           h(
             "ol",
             // role="list": WebKit drops a list's role once its bullets are styled away.

@@ -293,6 +293,10 @@ export function goDestinationNeedsStart(name: string): string {
  * Go has, else it waits for one. A press on a station, a place's letter or a water stop still opens its card. In
  * Plan a press adds a point as before. This replaces the tap that was the start of a waiting destination (PR #95's
  * follow-up review): with no location, the start is typed in the start box.
+ *
+ * Since 2026-10-28 (the owner: "Put the route here as a big button on top of the card") a tap on the open map in Go
+ * opens the road card first, and its big Route here makes the spot the destination as the tap did (App's tapMap and
+ * goRouteHere): two taps, so a stray tap never plans a ride. Map tools' Set destination at map center still routes at once.
  */
 export function goTapSetsEnd(mode: AppMode): boolean {
   return mode === "go";

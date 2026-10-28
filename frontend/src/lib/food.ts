@@ -42,7 +42,8 @@ import type { LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
 import { hoursText } from "./openingHours.ts";
 
-export type FoodKind = "r" | "f" | "c" | "i" | "p" | "b" | "fc" | "fs" | "m";
+// "g", a grocery store, is never in the file: the Eat sheet's Grocery chip finds those with the geocoder (lib/grocery.ts).
+export type FoodKind = "r" | "f" | "c" | "i" | "p" | "b" | "fc" | "fs" | "m" | "g";
 
 export interface FoodPlace {
   /** The OSM element: "n123", "w456" or "r789". */
@@ -75,6 +76,7 @@ export const KIND_LABEL: Record<FoodKind, string> = {
   fc: t("Food court"),
   fs: t("Farm stand"),
   m: t("Market"),
+  g: t("Grocery store"),
 };
 
 // --- The file ------------------------------------------------------------
@@ -342,6 +344,8 @@ export interface FoodResult {
   fromCentreM: number;
   /** The search was from the rider's location, not the map's center (the words say "from you"). */
   fromRider?: boolean;
+  /** The search was from the route's start, typed or placed (the Grocery chip, lib/grocery.ts): "from your start". */
+  fromStart?: boolean;
   /** With a route: the detour and where on the route to turn off. */
   detour?: { offM: number; alongM: number; extraM: number; extraS: number };
 }
@@ -402,6 +406,7 @@ export function foodKindText(place: FoodPlace): string {
  */
 export function foodHowFar(result: FoodResult): string {
   const d = result.detour;
+  if (!d && result.fromStart && !result.fromRider) return t("{distance} from your start in a straight line.", { distance: formatDistance(result.fromCentreM) });
   if (!d) return result.fromRider ? t("{distance} from you in a straight line.", { distance: formatDistance(result.fromCentreM) }) : t("{distance} from the map's center in a straight line.", { distance: formatDistance(result.fromCentreM) });
   const at = formatDistance(d.alongM);
   if (d.extraM === 0 || milesFigure(d.extraM) === "0.0") return t("On your route at {at}.", { at });
