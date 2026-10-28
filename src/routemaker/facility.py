@@ -442,6 +442,9 @@ def bicycle_link_service(tags: dict[str, str]) -> bool:
 # How short an unnamed footway or path has to be for the map to leave it out
 # (82), unless it joins two trails the map keeps (`short_paths_to_hide`).
 SHORT_PATH_M = 150.0
+# A short link may be mapped in this many pieces (a bridge or a tunnel splits it)
+# and still be kept as one (`short_paths_to_hide`); more is a web of paths, not a link.
+SHORT_LINK_PIECES = 3
 
 
 def _sidewalk_or_crossing(tags: dict[str, str]) -> bool:
@@ -1090,6 +1093,12 @@ def short_paths_to_hide(
     touch a trail-class way the map keeps - a short link between two trails
     stays, so the trails do not look broken where it joins them.
 
+    A link mapped in pieces counts as one (the owner, 2026-10-28, of a link from
+    Percheron Trail under Airpark Road to Tree Farm Trail, split at its tunnel,
+    both pieces hidden: "see why this trail isn't marked, and others like it"):
+    up to SHORT_LINK_PIECES short pieces joined end to end stay when the chain's
+    ends touch two kept trails at two different nodes.
+
     `ways` is (osm id, tags, node ids, [(lon, lat), ...]). A kept trail is a
     trail-class way that is not a candidate and that `map_class` draws (a named
     trail, a long path, a shared-use path, a roadside trail).
@@ -1106,8 +1115,32 @@ def short_paths_to_hide(
             short[osm_id] = (node_ids[0], node_ids[-1])
         else:
             kept_nodes.update(node_ids)
-    return {
-        osm_id
-        for osm_id, (first, last) in short.items()
-        if not (first in kept_nodes and last in kept_nodes)
-    }
+    # The short pieces joined end to end, at a node no kept trail has.
+    by_end: dict[int, list[int]] = {}
+    for osm_id, ends in short.items():
+        for node in set(ends):
+            if node not in kept_nodes:
+                by_end.setdefault(node, []).append(osm_id)
+    hidden = set()
+    seen: set[int] = set()
+    for start in short:
+        if start in seen:
+            continue
+        chain, stack = set(), [start]
+        while stack:
+            osm_id = stack.pop()
+            if osm_id in chain:
+                continue
+            chain.add(osm_id)
+            for node in short[osm_id]:
+                stack.extend(by_end.get(node, ()))
+        seen |= chain
+        if len(chain) == 1:
+            first, last = short[start]
+            if not (first in kept_nodes and last in kept_nodes):
+                hidden.add(start)
+            continue
+        touching = {node for osm_id in chain for node in short[osm_id] if node in kept_nodes}
+        if len(chain) > SHORT_LINK_PIECES or len(touching) < 2:
+            hidden |= chain
+    return hidden

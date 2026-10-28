@@ -701,6 +701,48 @@ def test_short_unnamed_paths_are_hidden_unless_they_join_two_kept_trails() -> No
     ) == {11}
 
 
+def test_a_short_link_mapped_in_pieces_is_kept_when_the_chain_joins_two_trails() -> None:
+    """The owner, 2026-10-28: a link from Percheron Trail under Airpark Road to Tree Farm
+    Trail (ways 971529119 and its tunnel 971529120) was hidden, each piece touching a trail
+    at one end only. "see why this trail isn't marked, and others like it"."""
+    trail = {"highway": "path", "name": "Percheron Trail", "bicycle": "designated"}
+    other = {"highway": "path", "name": "Tree Farm Trail", "bicycle": "yes"}
+    link = {"highway": "path", "bicycle": "yes", "surface": "unpaved"}
+    tunnel = {**link, "tunnel": "yes", "layer": "-1"}
+    ways = [
+        (1, trail, [10, 11], _west_east(-77.14, 39.15, 900)),
+        (2, other, [20, 21], _west_east(-77.15, 39.15, 900)),
+        (3, link, [11, 30], _west_east(-77.141, 39.15, 130)),
+        (4, tunnel, [30, 20], _west_east(-77.142, 39.15, 40)),
+    ]
+    assert facility_rules.short_paths_to_hide(ways) == set()
+    # A spur in two pieces still goes: its chain touches one trail.
+    spur = [
+        ways[0],
+        (5, link, [11, 40], _west_east(0, 0, 60)),
+        (6, link, [40, 41], _west_east(0, 0, 60)),
+    ]
+    assert facility_rules.short_paths_to_hide(spur) == {5, 6}
+    # A chain touching the same trail node twice is a loop off it, not a link.
+    loop = [
+        ways[0],
+        (7, link, [11, 50], _west_east(0, 0, 60)),
+        (8, link, [50, 11], _west_east(0, 0, 60)),
+    ]
+    assert facility_rules.short_paths_to_hide(loop) == {7, 8}
+    # A web of more pieces than a split link has stays hidden, as before.
+    web = (
+        [ways[0], ways[1]]
+        + [
+            (100 + i, link, [n, n + 1], _west_east(0, 0, 30))
+            for i, n in enumerate([11, 61, 62, 63])
+        ]
+        + [(110, link, [64, 20], _west_east(0, 0, 30))]
+    )
+    assert facility_rules.short_paths_to_hide(web) == {100, 101, 102, 103, 110}
+    assert facility_rules.SHORT_LINK_PIECES == 3
+
+
 def test_roads_inside_a_military_base_are_found_and_trails_along_it_are_not() -> None:
     """ "Don't show roads that most typical people can't ride on, such as within
     military bases, or the pentagon" (OWNER-DECISIONS 88)."""
