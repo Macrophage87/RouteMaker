@@ -35,7 +35,7 @@ import { chartKind, corkerFigure, foldName, usableProfile } from "../lib/profile
 import { RouteDescription } from "../RouteDescription.tsx";
 import { RIDE_TOO_LONG } from "../lib/navigate.ts";
 import { ridesHidden } from "../lib/nativeShell.ts";
-import { restOffered, rideTripOf, rideable as rideableRoute, ridesLine } from "../lib/rideTrip.ts";
+import { noBikeLine, restOffered, rideTripOf, rideable as rideableRoute, ridesLine } from "../lib/rideTrip.ts";
 import { BikeshareSummary } from "../BikeshareSummary.tsx";
 import { TransitSummary } from "../TransitSummary.tsx";
 import { DepartureTimer } from "../DepartureTimer.tsx";
@@ -725,7 +725,10 @@ export function RouteSummary({
   const broadcastHold = useHold(ride.onBroadcastHold);
   // A Mass Ride's panel is about riders per minute, in place of the LTS breakdown (OWNER-DECISIONS 325).
   const capacity = capacitySummary(route.stress_spans);
-  const segments = capacity ? [] : stressSegments(route.stress_m);
+  // A transit option with no ride (P10): no stress bar (it was 100% not rated) and no distance ridden; a line says
+  // which option rides instead.
+  const noBike = noBikeLine(route);
+  const segments = capacity || noBike ? [] : stressSegments(route.stress_m);
   const notes = noteLines(route, points, light);
   const pace = paceText(route);
   // A transit trip's rides joined (lib/tripRides.ts): the distance ridden, the climb and the chart are every ride's.
@@ -790,6 +793,8 @@ export function RouteSummary({
     <p id="start-ride-hint" className={goMode ? "hint start-ride-hint" : "visually-hidden start-ride-hint"}>
       {t("Turn-by-turn directions on this phone, said as you chose.")}{ridesHidden() ? "" : t(" Keep the screen on and this page in front.")}
     </p>
+  ) : noBike ? (
+    <p className="hint no-bike-line">{noBike}</p>
   ) : !ridesLine(route) ? null : (
     <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>
   );
@@ -825,7 +830,9 @@ export function RouteSummary({
       <p className="hint reshape">
         {narrow ? t("To reshape the route, press and hold the line, then drag it.") : t("To reshape the route, drag the line.")}
       </p>
+      {/* The sources once, here (P10): the trip's schedules are among them, so its panel no longer says them again. */}
       <p className="route-credit">{t("Route data: {sources}.", { sources: routeCredits(route).join("; ") })}</p>
+      {transit?.live && <p className="route-credit">{t("Live departures: {credit}.", { credit: transit.live.credit })}</p>}
     </div>
   );
   const infoButton = (
@@ -883,10 +890,12 @@ export function RouteSummary({
               <dt className="visually-hidden">{timeName}</dt>
               <dd>{timeShown}</dd>
             </div>
-            <div className="stat-distance">
-              <dt className="visually-hidden">{transit ? t("Distance ridden") : t("Distance")}</dt>
-              <dd>{formatDistance(trip.distance_m)}</dd>
-            </div>
+            {!noBike && (
+              <div className="stat-distance">
+                <dt className="visually-hidden">{transit ? t("Distance ridden") : t("Distance")}</dt>
+                <dd>{formatDistance(trip.distance_m)}</dd>
+              </div>
+            )}
             {go.peek && alertCount > 0 ? (
               <div className="total-alerts">
                 <dt className="visually-hidden">{t("Warnings")}</dt>
@@ -895,7 +904,7 @@ export function RouteSummary({
                   {alertCount === 1 ? t("1 alert") : t("{count} alerts", { count: alertCount })}
                 </dd>
               </div>
-            ) : (
+            ) : noBike ? null : (
               <div className="total-climb">
                 <dt className="visually-hidden">{t("Climb")}</dt>
                 <dd>
@@ -905,7 +914,7 @@ export function RouteSummary({
               </div>
             )}
           </dl>
-          {go.peek ? start : infoButton}
+          {go.peek ? (start ?? (noBike ? startHint : null)) : infoButton}
         </div>
         {!go.peek && infoBody}
         {!go.peek && transitFold}
@@ -978,24 +987,29 @@ export function RouteSummary({
             <dt className="visually-hidden">{timeName}</dt>
             <dd>{timeShown}</dd>
           </div>
-          <div className="stat-distance">
-            <dt className="visually-hidden">{transit ? t("Distance ridden") : t("Distance")}</dt>
-            <dd>{formatDistance(trip.distance_m)}</dd>
-          </div>
-          <div className="total-climb">
-            <dt className="visually-hidden">{t("Climb")}</dt>
-            <dd>
-              <span aria-hidden="true">↑ </span>
-              {formatClimb(trip.climb_m)}
-            </dd>
-          </div>
-          <div className="total-descent">
-            <dt className="visually-hidden">{t("Descent")}</dt>
-            <dd>
-              <span aria-hidden="true">↓ </span>
-              {formatClimb(trip.descent_m)}
-            </dd>
-          </div>
+          {/* No distance ridden or climb on a transit option with no ride (P10): "No bike on this option" says why. */}
+          {!noBike && (
+            <>
+              <div className="stat-distance">
+                <dt className="visually-hidden">{transit ? t("Distance ridden") : t("Distance")}</dt>
+                <dd>{formatDistance(trip.distance_m)}</dd>
+              </div>
+              <div className="total-climb">
+                <dt className="visually-hidden">{t("Climb")}</dt>
+                <dd>
+                  <span aria-hidden="true">↑ </span>
+                  {formatClimb(trip.climb_m)}
+                </dd>
+              </div>
+              <div className="total-descent">
+                <dt className="visually-hidden">{t("Descent")}</dt>
+                <dd>
+                  <span aria-hidden="true">↓ </span>
+                  {formatClimb(trip.descent_m)}
+                </dd>
+              </div>
+            </>
+          )}
         </dl>
         {infoButton}
       </div>
@@ -1039,7 +1053,7 @@ export function RouteSummary({
           heading={ROUTE_FOLDS.facilities.title}
           open={ROUTE_FOLDS.facilities.open}
           icon="road"
-          count={calm === null ? null : t("{percent}% quiet", { percent: calm })}
+          count={calm === null || noBike ? null : t("{percent}% quiet", { percent: calm })}
           className="facilities-fold"
           name={ROUTE_FOLD_GROUP}
         >

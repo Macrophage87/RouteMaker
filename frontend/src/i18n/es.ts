@@ -1351,6 +1351,10 @@ export const ES: Readonly<Record<string, string>> = {
   "To reshape the route, press and hold the line, then drag it.": "Para cambiar la forma de la ruta, mantenga presionada la línea y arrástrela.",
   "To reshape the route, drag the line.": "Para cambiar la forma de la ruta, arrastre la línea.",
   "Route data: {sources}.": "Datos de la ruta: {sources}.",
+  "Live departures: {credit}.": "Salidas en vivo: {credit}.",
+  // A transit option with no ride (P10).
+  "No bike on this option.": "Esta opción no usa bicicleta.",
+  "No bike on this option. Pick {letter} to ride.": "Esta opción no usa bicicleta. Elija {letter} para ir en bici.",
   "{ride} trip": "Viaje {ride}",
   "Distance ridden": "Distancia en bici",
   "Distance": "Distancia",
