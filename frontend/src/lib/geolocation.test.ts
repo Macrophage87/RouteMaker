@@ -2,6 +2,7 @@
 import { mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { ES } from "../i18n/es.ts";
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./geo.ts";
 import { pickTarget } from "./geocode.ts";
 import {
@@ -813,4 +814,14 @@ test("the Home Screen app's denied notice gets the iPhone Settings steps; no oth
   // The tester's missing step: In-App Web Browsing, under System Services.
   assert.ok(IOS_LOCATION_STEPS.some((step) => /System Services.*In-App Web Browsing/.test(step)));
   assert.ok(IOS_LOCATION_STEPS.length <= 4);
+  // The Spanish notice and steps exist, and the first-sentence match holds for the Spanish notice too.
+  const es = ES[DENIED_IN_IOS_APP];
+  assert.ok(es);
+  const esLead = es.slice(0, es.indexOf(". ") + 1);
+  assert.ok(`A Union Station. ${es.replace(/busque un lugar\.$/, "escriba un inicio.")}`.includes(esLead));
+  for (const step of IOS_LOCATION_STEPS) assert.ok(ES[step], step);
+  // Every screen that shows the location notice carries the fold.
+  for (const file of ["../app/Go.tsx", "../app/Planner.tsx", "../RoamMode.tsx", "../RideMode.tsx"]) {
+    assert.match(readFileSync(new URL(file, import.meta.url), "utf8"), /<IosLocationHelp notice=/, file);
+  }
 });

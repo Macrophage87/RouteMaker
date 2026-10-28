@@ -3527,7 +3527,7 @@ from Safari's, and on iOS 26 it can refuse without a prompt; other web apps repo
 same ([Apple developer forums](https://developer.apple.com/forums/thread/804381)).
 So in a Home Screen app the denied notice points to iPhone Settings
 (`DENIED_IN_IOS_APP`, frontend/src/lib/geolocation.ts) and stays one line, since the
-ride screen shows it too. A web app cannot open iPhone Settings, so in Go, Plan and Roam
+ride screen shows it too. A web app cannot open iPhone Settings, so in Go, Plan, Roam and Ride
 a "How to turn location on" fold under the notice (IosLocationHelp.tsx) lists where to
 go. A second tester found the Home Screen app blocked while **In-App Web Browsing**
 (Location Services > System Services, iOS 18.2 and later) was off, though Safari tabs

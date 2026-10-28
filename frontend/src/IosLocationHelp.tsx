@@ -7,9 +7,9 @@ import { IOS_LOCATION_HELP_TITLE, IOS_LOCATION_STEPS, showsIosLocationHelp } fro
 export function IosLocationHelp({ notice }: { notice: string | null | undefined }) {
   if (!showsIosLocationHelp(notice)) return null;
   return (
-    <details className="ios-location-help">
+    <details className="fold ios-location-help">
       <summary>{IOS_LOCATION_HELP_TITLE}</summary>
-      <ol>
+      <ol className="fold-body">
         {IOS_LOCATION_STEPS.map((step) => (
           <li key={step}>{step}</li>
         ))}
