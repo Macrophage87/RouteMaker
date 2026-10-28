@@ -113,6 +113,7 @@ from pathlib import Path
 from typing import Protocol
 
 from routemaker.geo import Point, haversine
+from routemaker.lang import spanish, t
 from routemaker.ridetime import ZONE, is_federal_holiday
 
 from . import bikeshare, gbfs, presets
@@ -1055,53 +1056,114 @@ class Leg:
     def transit(self) -> bool:
         return self.mode in TRANSIT_MODES
 
+    def _source_said(self) -> str:
+        """`source` in a sentence, in the language in force ("scheduled", "live")."""
+        return t("live") if self.live else t("scheduled")
+
     def _after_words(self) -> str:
-        noun = "bus" if self.mode == BUS else "train"
         if self.after is None:
-            return f"no later {noun} within the hour"
-        return f"next {noun} after that: {clock(self.after, self.service_day)} {self.source}"
+            if self.mode == BUS:
+                return t("no later bus within the hour")
+            return t("no later train within the hour")
+        time = clock(self.after, self.service_day)
+        if self.mode == BUS:
+            return t("next bus after that: {time} {source}", time=time, source=self._source_said())
+        return t("next train after that: {time} {source}", time=time, source=self._source_said())
+
+    def _vehicle_said(self) -> str:
+        """The vehicle as a sentence names it: the schedule's words in English ("the MARC Penn
+        Line", "bus B10"); in Spanish the line's name after its noun ("tren MARC Penn Line",
+        "autobús B10"), the names as they are (routing audit D30)."""
+        if not spanish():
+            return self.vehicle
+        name = self.vehicle.removeprefix("the ").replace(" or ", t(" or "))
+        if self.mode == BUS:
+            return t("bus {name}", name=name.removeprefix("bus "))
+        return t("train {name}", name=name)
 
     def words(self, last: bool = False) -> str:
-        """The step as one sentence."""
+        """The step as one sentence, in the language in force (`routemaker.lang`; routing
+        audit D30). English is as it always was."""
         m = minutes(self.seconds)
-        to = self.to or ("your destination" if last else None)
-        at = f" to {to}" if to else ""
+        to = self.to or (t("your destination") if last else None)
         if self.mode == RIDE:
-            return f"Ride {m} min{at}."
+            return t("Ride {m} min to {place}.", m=m, place=to) if to else t("Ride {m} min.", m=m)
         if self.mode == TAKE:
-            return f"Walk {m} min to the bikeshare dock at {self.to} and take a classic bike."
+            return t(
+                "Walk {m} min to the bikeshare dock at {place} and take a classic bike.",
+                m=m,
+                place=self.to,
+            )
         if self.mode == SHARE:
-            return f"Ride the bikeshare bike {m} min and dock it at {self.to}."
+            return t("Ride the bikeshare bike {m} min and dock it at {place}.", m=m, place=self.to)
         if self.mode == WALK:
-            return f"Walk {m} min{at}."
+            return t("Walk {m} min to {place}.", m=m, place=to) if to else t("Walk {m} min.", m=m)
+        lift = self.bike and self.elevator
         if self.mode == ENTER:
-            how = " by the elevator" if self.bike and self.elevator else ""
-            return f"About {m} min into the station{how}."
+            if lift:
+                return t("About {m} min into the station by the elevator.", m=m)
+            return t("About {m} min into the station.", m=m)
         if self.mode == EXIT:
-            how = " by the elevator" if self.bike and self.elevator else ""
-            return f"About {m} min out of the station{how}."
+            if lift:
+                return t("About {m} min out of the station by the elevator.", m=m)
+            return t("About {m} min out of the station.", m=m)
+        vehicle = self._vehicle_said()
         if self.mode == BUS and self.bike:
-            board = f"Put your bike on the front rack of {self.vehicle}"
+            board = t("Put your bike on the front rack of {vehicle}", vehicle=vehicle)
+        elif self.change:
+            board = t("Change to {vehicle}", vehicle=vehicle)
         else:
-            board = f"{'Change to' if self.change else 'Board'} {self.vehicle}"
+            board = t("Board {vehicle}", vehicle=vehicle)
+        # The time on board, after the boarding ("ride 10 min to Federal Triangle"): a transit
+        # ride, worded apart from a bike ride's "Ride 10 min to ..." above.
+        ride = t("ride {m} min to {place}", m=m, place=to) if to else t("ride {m} min", m=m)
         if self.depart is None:
-            wait = f"about {minutes(self.wait_s)} min wait"
+            wait = t("about {m} min wait", m=minutes(self.wait_s))
+            source = t("scheduled")
             if self.first is not None:
                 # Before opening (#111's review): the first train, not the interval after it.
-                first = f"first train {clock(self.first, self.service_day)} {SCHEDULED}"
-                return f"{board} ({first}; {wait}); ride {m} min{at}."
+                return t(
+                    "{board} (first train {time} {source}; {wait}); {ride}.",
+                    board=board,
+                    time=clock(self.first, self.service_day),
+                    source=source,
+                    wait=wait,
+                    ride=ride,
+                )
             if self.every is None:
-                return f"{board} ({wait}, {SCHEDULED}); ride {m} min{at}."
-            every = f"every {max(1, round(self.every))} min, {SCHEDULED}"
-            return f"{board} ({every}; {wait}); ride {m} min{at}."
+                return t(
+                    "{board} ({wait}, {source}); {ride}.",
+                    board=board,
+                    wait=wait,
+                    source=source,
+                    ride=ride,
+                )
+            return t(
+                "{board} (every {n} min, {source}; {wait}); {ride}.",
+                board=board,
+                n=max(1, round(self.every)),
+                source=source,
+                wait=wait,
+                ride=ride,
+            )
         # An infrequent service (the owner, 2026-10-12): the departure, when the rider gets
-        # there and the time to spare, and the one after it.
-        spare = round(self.wait_s / 60)
-        place = f" from {self.board_at}" if self.board_at else ""
-        return (
-            f"{board} at {clock(self.depart, self.service_day)} {self.source}{place}: you arrive"
-            f" {clock(self.arrive, self.service_day)},"
-            f" {spare} min spare; {self._after_words()}. Ride {m} min{at}."
+        # there and the time to spare, and the one after it. The app takes the "you arrive"
+        # clause out once riding (frontend/src/lib/rideTrip.ts withoutSpare, in both languages).
+        place = t(" from {place}", place=self.board_at) if self.board_at else ""
+        head = t(
+            "{board} at {time} {source}{from}",
+            board=board,
+            time=clock(self.depart, self.service_day),
+            source=self._source_said(),
+            **{"from": place},
+        )
+        return t(
+            "{head}: you arrive {time}, {spare} min spare; {after}. {ride}.",
+            head=head,
+            time=clock(self.arrive, self.service_day),
+            spare=round(self.wait_s / 60),
+            after=self._after_words(),
+            ride=ride[:1].upper() + ride[1:],
         )
 
 
@@ -1228,9 +1290,9 @@ FREQUENT_SEEN = 3
 def _distinct(times) -> list[float]:
     """The departures in order, two within half a minute counted once."""
     distinct: list[float] = []
-    for t in sorted(times):
-        if not distinct or t - distinct[-1] >= 0.5:
-            distinct.append(t)
+    for dep in sorted(times):
+        if not distinct or dep - distinct[-1] >= 0.5:
+            distinct.append(dep)
     return distinct
 
 
@@ -1293,9 +1355,9 @@ def _hop(minute: float, entries, typical: bool = False) -> Hop:
             first=first,
         )
     later_times = []
-    for t in times:
-        if t >= (later_times[-1] if later_times else deps[0]) + 0.5:
-            later_times.append(t)
+    for dep in times:
+        if dep >= (later_times[-1] if later_times else deps[0]) + 0.5:
+            later_times.append(dep)
     return Hop(
         (deps[0] - minute) * 60.0,
         ride,
@@ -2164,10 +2226,10 @@ def _every_min(times: list[float]) -> int | None:
     """The minutes between the next trains, read from at least `EVERY_SEEN` of them within
     `EVERY_SEEN_MIN` of the first, else None."""
     distinct: list[float] = []
-    for t in sorted(times):
-        if not distinct or t - distinct[-1] >= 0.5:
-            distinct.append(t)
-    seen = [t for t in distinct if t - distinct[0] <= EVERY_SEEN_MIN][:DEPARTURES_SEEN]
+    for dep in sorted(times):
+        if not distinct or dep - distinct[-1] >= 0.5:
+            distinct.append(dep)
+    seen = [dep for dep in distinct if dep - distinct[0] <= EVERY_SEEN_MIN][:DEPARTURES_SEEN]
     if len(seen) < EVERY_SEEN:
         return None
     return max(1, round((seen[-1] - seen[0]) / (len(seen) - 1)))

@@ -7,6 +7,7 @@
  * Go's More ride types (the Ride sheet) and Plan's ride type dialog both use it
  * (RideTypeSearch, below); nothing else is added to either.
  */
+import { t } from "./i18n.ts";
 import { createElement as h, type ChangeEvent, type ReactElement } from "react";
 import { PRESETS, type PresetId, type PresetOption } from "./presets.ts";
 
@@ -22,17 +23,17 @@ export interface RideGroup {
 export const RIDE_GROUPS: readonly RideGroup[] = [
   {
     id: "transportation",
-    label: "Transportation",
+    label: t("Transportation"),
     ids: ["default", "bike-transit", "bikeshare-transit", "bikeshare", "cargo", "ebike", "novice"],
   },
   {
     id: "adventure",
-    label: "Adventure",
+    label: t("Adventure"),
     ids: ["fast", "trailmaxxing", "mountain-goat", "mountain-bike", "gravel", "rebalance"],
   },
   {
     id: "group",
-    label: "Group",
+    label: t("Group"),
     ids: ["group-ride", "mass-ride"],
   },
 ];
@@ -72,7 +73,7 @@ export function withFavorites(groups: readonly RideGroup[], favorites: readonly 
   const ids = favorites.filter((id) => shown.has(id));
   if (ids.length === 0) return [...groups];
   return [
-    { id: "favorites", label: "Favorites", ids },
+    { id: "favorites", label: t("Favorites"), ids },
     ...groups.map((g) => ({ ...g, ids: g.ids.filter((id) => !ids.includes(id)) })).filter((g) => g.ids.length > 0),
   ];
 }
@@ -112,7 +113,7 @@ export function rideTypeCount(groups: readonly RideGroup[]): number {
   return groups.reduce((sum, group) => sum + group.ids.length, 0);
 }
 
-export const NO_RIDE_TYPES_MATCH = "No ride types match.";
+export const NO_RIDE_TYPES_MATCH = t("No ride types match.");
 
 /** What the search's status says (politely, to a screen reader): nothing until something is typed. */
 export function rideTypeCountSaid(count: number, query: string): string {
@@ -142,7 +143,7 @@ export function RideTypeSearch({
   return h(
     "div",
     { className: "ride-type-search" },
-    h("label", { htmlFor: id }, "Search ride types"),
+    h("label", { htmlFor: id }, t("Search ride types")),
     h("input", {
       id,
       type: "search",

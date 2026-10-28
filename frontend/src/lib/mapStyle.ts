@@ -12,6 +12,7 @@ import { MASS_SOURCE_ID } from "../massStyle.js";
 import CREDITS_DATA from "./credits.json" with { type: "json" };
 import { protocolUrl } from "./stressProtocol.ts";
 import { refreshTiles, revSuffix } from "./tileRev.ts";
+import { t } from "./i18n.ts";
 
 export const BASEMAP_SOURCE_ID = "protomaps";
 export const STRESS_SOURCE_ID = "stress";
@@ -60,7 +61,7 @@ export const MAP_CREDITS: readonly string[] = CREDITS.map((credit) => credit.htm
  * The rider-facing page that names every data source and open source project with its
  * link and licence (the owner, 2026-10-19), a static page in public/about/ like the stress page.
  */
-export const ACKNOWLEDGEMENTS_LINK = '<a href="/about/acknowledgements.html">Acknowledgements</a>';
+export const ACKNOWLEDGEMENTS_LINK = `<a href="/about/acknowledgements.html">${t("Acknowledgements")}</a>`;
 
 /**
  * The attribution control's one entry. MapLibre sorts separate entries by
@@ -72,7 +73,7 @@ export const ACKNOWLEDGEMENTS_LINK = '<a href="/about/acknowledgements.html">Ack
 export const MAP_ATTRIBUTION: string = [
   ...MAP_CREDITS,
   ACKNOWLEDGEMENTS_LINK,
-  '<a href="/licenses.txt">Software licences</a>',
+  `<a href="/licenses.txt">${t("Software licences")}</a>`,
 ].join(" | ");
 
 export interface BasemapStyle {

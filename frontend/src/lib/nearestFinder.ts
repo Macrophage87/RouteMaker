@@ -23,12 +23,11 @@ import {
 } from "./nearest.ts";
 import { WATER_CAUTION } from "./waterRestrooms.ts";
 import { placeLetter } from "./letteredPlaces.ts";
+import { t } from "./i18n.ts";
 
-export const NEAREST_SUMMARY = "Find the nearest water, restroom or Metro";
+export const NEAREST_SUMMARY = t("Find the nearest water, restroom or Metro");
 export const NEAREST_HELP =
-  "Each place has a letter, on the map too: a tap on its marker, or its letter's key, is the same as Ride here. " +
-  "Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. " +
-  "Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.";
+  t("Each place has a letter, on the map too: a tap on its marker, or its letter's key, is the same as Ride here. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.");
 
 export interface NearestList {
   kind: NearestKind;
@@ -72,7 +71,7 @@ export function NearestFinder(props: FinderProps): ReactElement {
             key: kind,
             type: "button",
             className: "secondary",
-            "aria-label": `Nearest ${label === "Metro" ? "Metro" : label.toLowerCase()}`,
+            "aria-label": t("Nearest {noun}", { noun: kind === "metro" ? label : label.toLowerCase() }),
             "aria-disabled": busy ? true : undefined,
             onClick: () => onFind(kind),
           },
@@ -83,7 +82,7 @@ export function NearestFinder(props: FinderProps): ReactElement {
     h(
       "fieldset",
       { className: "nearest-from" },
-      h("legend", null, "Search from"),
+      h("legend", null, t("Search from")),
       ...fromOptions.map((option) =>
         h(
           "label",
@@ -105,7 +104,7 @@ export function NearestFinder(props: FinderProps): ReactElement {
       h(
         "div",
         { className: "nearest-list" },
-        h("h3", { id: "nearest-list-heading" }, `Nearest ${nounOf(list.kind)}`),
+        h("h3", { id: "nearest-list-heading" }, t("Nearest {noun}", { noun: nounOf(list.kind) })),
         h(
           "ol",
           // role="list": WebKit drops a list's role once its bullets are styled away.
@@ -123,21 +122,21 @@ export function NearestFinder(props: FinderProps): ReactElement {
                 nearbyShort(item),
                 // Its details (how to open a Throne, opening hours, access) behind a native fold.
                 item.place.details.length > 0 &&
-                  h("details", { className: "nearest-details" }, h("summary", null, "Details", h("span", { className: "visually-hidden" }, ` of ${item.place.title}`)), h("p", { className: "hint" }, item.place.details.join(" "))),
+                  h("details", { className: "nearest-details" }, h("summary", null, t("Details"), h("span", { className: "visually-hidden" }, t(" of {place}", { place: item.place.title }))), h("p", { className: "hint" }, item.place.details.join(" "))),
               ),
               h(
                 "span",
                 { className: "actions" },
                 h(
                   "button",
-                  { type: "button", className: "secondary", "aria-label": `Ride here: ${item.place.title}`, onClick: () => onRide(item) },
-                  "Ride here",
+                  { type: "button", className: "secondary", "aria-label": t("Ride here: {place}", { place: item.place.title }), onClick: () => onRide(item) },
+                  t("Ride here"),
                 ),
                 addStops &&
                   h(
                     "button",
-                    { type: "button", className: "secondary", "aria-label": `Add as stop: ${item.place.title}`, onClick: () => onAddStop(item) },
-                    "Add as stop",
+                    { type: "button", className: "secondary", "aria-label": t("Add as stop: {place}", { place: item.place.title }), onClick: () => onAddStop(item) },
+                    t("Add as stop"),
                   ),
               ),
             ),
@@ -145,7 +144,7 @@ export function NearestFinder(props: FinderProps): ReactElement {
         ),
         stopsOnTheWay(list.kind) && h("p", { className: "hint" }, WATER_CAUTION),
       ),
-    h("details", { className: "nearest-help" }, h("summary", null, "How this works"), h("p", { className: "hint" }, NEAREST_HELP)),
+    h("details", { className: "nearest-help" }, h("summary", null, t("How this works")), h("p", { className: "hint" }, NEAREST_HELP)),
     ),
   );
 }

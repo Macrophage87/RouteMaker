@@ -1,3 +1,5 @@
+import { language } from "./i18n.ts";
+
 /**
  * How Ride mode's card shows a cue (the owner, 2026-10-19: "Ride mode title takes up way too much real
  * estate"): the instruction large, what follows its first comma in small print under it, street words
@@ -38,8 +40,29 @@ const SHORT: readonly [RegExp, string][] = [
       ["Southwest", "SW"],
       ["Southeast", "SE"],
     ] as const
-  ).map(([long, short]) => [new RegExp(`${AFTER_NAME}${long}(?=[,.;:)]|$)`, "g"), short] as [RegExp, string]),
+  ).map(([long, short]) => [new RegExp(`${AFTER_NAME}${long}(?=[,.;:)]|$| [a-z])`, "g"), short] as [RegExp, string]),
 ];
+
+// Spanish turn words run half again as long as the English (the owner, 2026-10-27: "use shorter words so it all
+// fits"): the card shows them shorter, "Gire a la izquierda hacia" as "A la izquierda hacia". Shown only, as above.
+const SHORT_ES: readonly [RegExp, string][] = [
+  [/\b([Gg])ire ligeramente a la (izquierda|derecha)\b/g, "leve a la $2"],
+  [/\b([Gg])ire a la (izquierda|derecha)\b/g, "a la $2"],
+  [/\b([Dd])é la vuelta en U\b/g, "vuelta en U"],
+  [/\b([Ii])nmediatamente\b/g, "enseguida"],
+];
+
+/** The Spanish turn words shortened, with a capital where the long words had one (the first group is that letter). */
+function shortTurnsEs(text: string): string {
+  return SHORT_ES.reduce(
+    (out, [long, short]) =>
+      out.replace(long, (_, first: string, side: unknown) => {
+        const said = typeof side === "string" ? short.replace("$2", side) : short;
+        return first === first.toUpperCase() ? said.charAt(0).toUpperCase() + said.slice(1) : said;
+      }),
+    text,
+  );
+}
 
 /** "Left onto R Street Northwest." as "Left onto R St NW.". */
 export function shortStreets(text: string): string {
@@ -48,7 +71,8 @@ export function shortStreets(text: string): string {
 
 /** The cue split at its first comma: the instruction, then the rest with a capital ("No signal mapped, busy road (LTS 3)."). */
 export function cueParts(text: string): { head: string; rest: string } {
-  const short = shortStreets(text.trim());
+  const streets = shortStreets(text.trim());
+  const short = language() === "es" ? shortTurnsEs(streets) : streets;
   const at = short.indexOf(", ");
   if (at < 0) return { head: short, rest: "" };
   const rest = short.slice(at + 2);

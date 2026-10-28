@@ -236,24 +236,24 @@ export function whenInSentence(label: string): string {
 }
 
 export const WHENS: readonly { id: When; label: string }[] = [
-  { id: "weekend", label: "Weekend" },
-  { id: "weekday_rush", label: "Weekday rush" },
-  { id: "weekday_offpeak", label: "Weekday off-hours" },
+  { id: "weekend", label: t("Weekend") },
+  { id: "weekday_rush", label: t("Weekday rush") },
+  { id: "weekday_offpeak", label: t("Weekday off-hours") },
   // OWNER-DECISIONS 469c: 9 PM to 7 AM on any day; busy-road junctions count for less.
-  { id: "night", label: "Night, 9 PM to 7 AM" },
+  { id: "night", label: t("Night, 9 PM to 7 AM") },
 ];
 
 // summary is the few words shown on the ride type dialog's choice; hint is the full sentence ("What each does",
 // and what a screen reader hears either way), as with the ride types' summary and description.
 export const CARRYINGS: readonly { id: Carrying; label: string; summary: string; hint: string }[] = [
-  { id: "cargo", label: "Carrying cargo", summary: "Gentle grades.", hint: "Quiet roads and bike lanes, gentle grades." },
+  { id: "cargo", label: t("Carrying cargo"), summary: t("Gentle grades."), hint: t("Quiet roads and bike lanes, gentle grades.") },
   {
     id: "people",
     // OWNER-DECISIONS 241: "Let's also call it passengers, as people bring dogs too."
     // The id stays "people", which links, saved plans and the API carry.
-    label: "Cargo with passengers",
-    summary: "People or pets aboard.",
-    hint: "People or pets aboard: paths and protected lanes; busy streets only where avoiding them takes much longer.",
+    label: t("Cargo with passengers"),
+    summary: t("People or pets aboard."),
+    hint: t("People or pets aboard: paths and protected lanes; busy streets only where avoiding them takes much longer."),
   },
 ];
 
@@ -479,14 +479,14 @@ export const CALM_FAR_FROM = 95;
 
 /** The words for a stress position: both ends and the middle are named. */
 export function stressWords(stress: number): string {
-  if (stress <= TRAFFIC_TOLERANT_MAX) return "Traffic tolerant";
-  if (stress < 30) return "Direct, some busy streets";
-  if (stress <= 50) return "Balanced";
-  if (stress < 75) return "Prefers quiet streets and paths";
-  if (stress <= STRESS_TODAYS_TOP) return "Low-stress, unless avoiding busy streets takes much longer";
-  if (stress < CALM_FAR_FROM) return "Calm: will go well out of the way to avoid busy roads";
-  if (stress < STRESS_MAX) return "Calmest: detours many times the straight line to avoid busy roads";
-  return "Calmest: the least stressful route, aiming at your target distance";
+  if (stress <= TRAFFIC_TOLERANT_MAX) return t("Traffic tolerant");
+  if (stress < 30) return t("Direct, some busy streets");
+  if (stress <= 50) return t("Balanced");
+  if (stress < 75) return t("Prefers quiet streets and paths");
+  if (stress <= STRESS_TODAYS_TOP) return t("Low-stress, unless avoiding busy streets takes much longer");
+  if (stress < CALM_FAR_FROM) return t("Calm: will go well out of the way to avoid busy roads");
+  if (stress < STRESS_MAX) return t("Calmest: detours many times the straight line to avoid busy roads");
+  return t("Calmest: the least stressful route, aiming at your target distance");
 }
 
 /** The rider's LT1 grade (percent) the hills slider sets: 1% at full avoid to 15% at the far end, in a straight line
@@ -511,8 +511,8 @@ export function hillsAtGrade(pct: number): number {
 
 /** The hills slider in words: the grade it sets, whole percent; Mountain Goat's right half seeks climbs. */
 export function hillsWords(hills: number, climbs: boolean): string {
-  if (climbs && hills > 10) return hills < 80 ? "Some extra climbing" : "Seeks hills";
-  return `Easy up to ${Math.round(lt1GradePct(hills))}%`;
+  if (climbs && hills > 10) return hills < 80 ? t("Some extra climbing") : t("Seeks hills");
+  return t("Easy up to {grade}%", { grade: Math.round(lt1GradePct(hills)) });
 }
 
 export function isWhen(value: unknown): value is When {

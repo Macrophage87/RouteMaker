@@ -390,6 +390,9 @@ def wrong_way(
                 "edge.begin_shape_index",
                 "edge.end_shape_index",
                 "matched.edge_index",
+                # The match's line, for each stretch's points (`at`, `gone_round`): with an
+                # include filter the router leaves out any field not named (audit R3).
+                "shape",
             ],
             "action": "include",
         },

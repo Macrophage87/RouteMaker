@@ -170,8 +170,8 @@ export function laterMyGoApplies(by: "tab" | "link" | "screen", switched: boolea
 
 /** What a switch says, politely, once the view has changed. */
 export function modeSaid(mode: AppMode): string {
-  if (mode === "review") return "Review: roads waiting for your ruling.";
-  return mode === "go" ? "Go: type a place, then Start." : "Plan: the full planner.";
+  if (mode === "review") return t("Review: roads waiting for your ruling.");
+  return mode === "go" ? t("Go: type a place, then Start.") : t("Plan: the full planner.");
 }
 
 // ---- Go's start (the owner, 2026-10-11 19:53 UTC: "in go, make the current location the starting location by default") ----
@@ -217,10 +217,10 @@ export function shouldAskGoStart(state: { mode: AppMode; asked: boolean; pointCo
  * the location), else the location, else what is happening.
  */
 export function goStartLine(start: GoStart, firstPointName: string | null): string {
-  if (firstPointName !== null) return `Start: ${firstPointName}`;
-  if (start.kind === "here") return "Start: your current location";
-  if (start.kind === "locating") return "Start: finding your location…";
-  return "Start: none yet; type a start";
+  if (firstPointName !== null) return t("Start: {place}", { place: firstPointName });
+  if (start.kind === "here") return t("Start: your current location");
+  if (start.kind === "locating") return t("Start: finding your location…");
+  return t("Start: none yet; type a start");
 }
 
 /** The start Go routes from: the plan's first point, else the location found recently (goStartStale); null when there is neither. */
@@ -259,14 +259,31 @@ export function goPickStart(prior: [number, number], fix: { point: [number, numb
   return { point: prior, moved: false };
 }
 
+/**
+ * Go's warm look-up (routing audit S28): while the rider is in Where to? (the box takes the focus, or an early start
+ * fires), a location older than this is looked up again quietly, so the destination's own look-up (GO_PICK_LOOK_MS)
+ * gets the browser's recent fix (LOCATE_OPTIONS.maximumAge, 30 s) at once instead of waiting on the GPS. At most one
+ * warm look-up per this long, so a box focused again and again costs no more GPS.
+ */
+export const GO_WARM_AFTER_MS = 20_000;
+
+/** Whether Go's start (the location) is old enough for a warm look-up, and the last one was long enough ago. */
+export function goWarmDue(start: GoStart, lastWarm: number | null, now: number = Date.now()): boolean {
+  if (start.kind !== "here") return false;
+  if (lastWarm !== null && now - lastWarm >= 0 && now - lastWarm < GO_WARM_AFTER_MS) return false;
+  const age = now - start.at;
+  // A clock set back is not trusted, as goStartStale.
+  return age < 0 || age >= GO_WARM_AFTER_MS;
+}
+
 /** Shown and said while a picked destination waits for the location. */
 export function goDestinationLocating(name: string): string {
-  return `To ${name}: finding your location for the start…`;
+  return t("To {place}: finding your location for the start…", { place: name });
 }
 
 /** Shown and said when a picked destination has no start: the location is not available. */
 export function goDestinationNeedsStart(name: string): string {
-  return `To ${name}. ${GO_START_UNAVAILABLE}`;
+  return t("To {place}. {why}", { place: name, why: GO_START_UNAVAILABLE });
 }
 
 /**
@@ -294,7 +311,7 @@ export function goPlaceName(name: string | undefined, point: LonLat): string {
 
 /** Said when a press on the map sets Go's destination: an essential, said at Brief and at Full. */
 export function goDestinationSet(name: string): string {
-  return `Destination set: ${name}.`;
+  return t("Destination set: {place}.", { place: name });
 }
 
 /**
@@ -303,7 +320,7 @@ export function goDestinationSet(name: string): string {
  * the location denied), so a screen reader could miss the essential part.
  */
 export function goPressLocatingSaid(name: string): string {
-  return `${goDestinationSet(name)} Finding your location for the start…`;
+  return `${goDestinationSet(name)} ${t("Finding your location for the start…")}`;
 }
 
 /**
@@ -316,7 +333,7 @@ export function goStartFailedReason(reason: LocateFailure): string {
 
 /** Shown when a destination waited on Go's Locate and it failed: the destination and Locate's reason. */
 export function goDestinationNeedsStartBecause(name: string, reason: LocateFailure): string {
-  return `To ${name}. ${goStartFailedReason(reason)}`;
+  return t("To {place}. {why}", { place: name, why: goStartFailedReason(reason) });
 }
 
 /** Said when a pressed destination waited on Go's Locate and it failed: one announcement, as goPressNeedsStartSaid. */

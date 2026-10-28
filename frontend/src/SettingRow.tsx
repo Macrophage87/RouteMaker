@@ -30,7 +30,7 @@ export function InfoButton({ open, onToggle, controls, about }: { open: boolean;
   return (
     <button type="button" className="info-tip" aria-expanded={open} aria-controls={controls} onClick={onToggle}>
       <Icon name="info" size={18} />
-      <span className="visually-hidden">{t("About {about}", { about })}</span>
+      <span className="visually-hidden">{t("About {about}", { about: t(about) })}</span>
     </button>
   );
 }
@@ -43,6 +43,7 @@ export function SettingSelect<T extends string>({
   onChange,
   describedBy,
   className,
+  optionLang,
 }: {
   label: string;
   value: T;
@@ -50,13 +51,15 @@ export function SettingSelect<T extends string>({
   onChange: (next: T) => void;
   describedBy?: string;
   className?: string;
+  /** An option's own language, where it is not the page's ("Español" on an English page), for a screen reader. */
+  optionLang?: Partial<Record<T, string>>;
 }) {
   return (
     <label className={className ? `select-setting ${className}` : "select-setting"}>
       <span className="setting-name">{label}</span>
       <select value={value} aria-describedby={describedBy} onChange={(event) => onChange(event.target.value as T)}>
         {options.map(([option, words]) => (
-          <option key={option} value={option}>
+          <option key={option} value={option} lang={optionLang?.[option]}>
             {words}
           </option>
         ))}

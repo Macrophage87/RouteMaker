@@ -15,24 +15,25 @@
  * description says only what it changes then.
  */
 import { createElement as h, type ReactElement } from "react";
+import { t } from "./i18n.ts";
 
-export const HIGH_STRESS_LANES_LABEL = "Show bike lanes on high-stress roads";
+export const HIGH_STRESS_LANES_LABEL = t("Show bike lanes on high-stress roads");
 
 /**
  * Read on every focus, so one short line (the salience review; the owner, 2026-10-12: "less wordy"), in plain
  * words (the a11y review's N2); the legend's facility hint (stressLegend.ts) says how each facility is drawn.
  */
-export const HIGH_STRESS_LANES_HINT = "Painted lanes on heavy-traffic (LTS 4) and best-avoided roads, on the map and in the route.";
+export const HIGH_STRESS_LANES_HINT = t("Painted lanes on heavy-traffic (LTS 4) and best-avoided roads, on the map and in the route.");
 
 /** The description while the stress map is unavailable: the map has no lanes to hide then. */
-export const HIGH_STRESS_LANES_NO_MAP_HINT = "Painted lanes on heavy-traffic (LTS 4) and best-avoided roads, in route totals and description.";
+export const HIGH_STRESS_LANES_NO_MAP_HINT = t("Painted lanes on heavy-traffic (LTS 4) and best-avoided roads, in route totals and description.");
 
 /**
  * The description on the Mass Ride map, which draws no lane, protected lane or path at any zoom
  * (OWNER-DECISIONS 417, 417a): "Protected lanes and paths always show" would be untrue there
  * (REBUILD-BUNDLE spec review S3), and the switch changes only the route's words.
  */
-export const HIGH_STRESS_LANES_MASS_HINT = "Painted lanes on heavy-traffic (LTS 4) and best-avoided roads, in the route's description only.";
+export const HIGH_STRESS_LANES_MASS_HINT = t("Painted lanes on heavy-traffic (LTS 4) and best-avoided roads, in the route's description only.");
 
 export function HighStressLanesSwitch({
   on,
@@ -63,7 +64,7 @@ export function HighStressLanesSwitch({
         onClick: () => onChange(!on),
       },
       h("span", { id: "high-lanes-label", className: "switch-label" }, HIGH_STRESS_LANES_LABEL),
-      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? "On" : "Off"),
+      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? t("On") : t("Off")),
     ),
     h(
       "p",

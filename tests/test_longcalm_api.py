@@ -1077,6 +1077,8 @@ class TestALongPlansCandidatesAreInThePlansLegs:
         body = post(client, top_body()).json()
         last = len(body["geometry"]["coordinates"]) - 1
         assert body["leg_ends"] == [last]
+        # One side per plan leg, as `leg_ends` (round-2 audit D17).
+        assert len(body["leg_arrival_sides"]) == len(body["leg_ends"])
         (candidate,) = body["candidates"]
         assert candidate["leg_ends"] == [len(candidate["geometry"]["coordinates"]) - 1]
         assert not [e for e in candidate["description"] if e["kind"] == "via"]

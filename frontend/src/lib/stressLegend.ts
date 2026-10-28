@@ -11,6 +11,7 @@
  * Written with createElement so a test renders it (as pointsList.ts).
  */
 import { createElement as h, Fragment, type ReactElement } from "react";
+import { t } from "./i18n.ts";
 import { STRESS_ZOOMS } from "./mapStyle.ts";
 import { METRES_PER_MILE, formatDistance } from "./format.ts";
 import {
@@ -195,7 +196,7 @@ export const STRESS_PAGE_TEXT = "How stress ratings work";
  * acknowledgements, static pages in public/about/ beside STRESS_PAGE. Settings links to it, once.
  */
 export const DOCS_PAGE = "/about/how-it-works.html";
-export const DOCS_PAGE_TEXT = "How RouteMaker works";
+export const DOCS_PAGE_TEXT = t("How RouteMaker works");
 
 /**
  * The link to DOCS_PAGE, at the end of Settings. Like StressPageLink it keeps the plan for the
