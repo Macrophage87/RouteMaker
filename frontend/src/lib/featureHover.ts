@@ -10,7 +10,7 @@ import { categoryName, climbLength, type Climb } from "./climbs.ts";
 import { formatClimb } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import { fetchSegmentInfo } from "./roadInfo.ts";
-import { TrailProfileChart, fetchTrailProfile } from "./trailProfile.ts";
+import { TrailProfileChart, fetchTrailProfile, type TrailProfile } from "./trailProfile.ts";
 import { MTB_LEVEL_OPTIONS } from "./mtbMode.ts";
 import { MTB_LEVELS } from "../stressStyle.js";
 
@@ -99,22 +99,28 @@ export function climbHoverChart(c: Climb, fetcher?: Parameters<typeof fetchClimb
   };
 }
 
-const trailCharts = new Map<number, Promise<ReactElement | null>>();
+const trailProfiles = new Map<number, Promise<TrailProfile | null>>();
 
 /**
  * The trail's profile chart: which OSM way the trail at `point` is (GET /api/segment-info, as a click asks), then its
- * heights (GET /api/trails/{way}/profile), kept by way once drawn; null where there is none.
+ * heights (GET /api/trails/{way}/profile), kept by way once drawn; null where there is none. `onLine` gets the way's
+ * line, for the map to light up (lib/trailHighlight.ts), where the answer has one.
  */
-export function trailHoverChart(origin: string, point: LonLat): () => Promise<ReactElement | null> {
+export function trailHoverChart(origin: string, point: LonLat, onLine?: (line: LonLat[]) => void): () => Promise<ReactElement | null> {
   return async () => {
     const info = await fetchSegmentInfo(origin, point, undefined, false, true);
     const way = info.kind === "ready" && info.info.found ? (info.info.osm_way_id ?? null) : null;
     if (way === null) return null;
-    const kept = trailCharts.get(way);
-    if (kept) return kept;
-    const made = fetchTrailProfile(way).then((state) => (state.kind === "ready" ? h(TrailProfileChart, { profile: state.profile, uid: uidOf(String(way)) }) : null));
-    made.then((element) => element === null && trailCharts.delete(way), () => trailCharts.delete(way));
-    trailCharts.set(way, made);
-    return made;
+    let made = trailProfiles.get(way);
+    if (!made) {
+      made = fetchTrailProfile(way).then((state) => (state.kind === "ready" ? state.profile : null));
+      // An error or none is not kept: the next hover asks again.
+      made.then((profile) => profile === null && trailProfiles.delete(way), () => trailProfiles.delete(way));
+      trailProfiles.set(way, made);
+    }
+    const profile = await made;
+    if (profile === null) return null;
+    if (profile.line && profile.line.length >= 2) onLine?.(profile.line);
+    return h(TrailProfileChart, { profile, uid: uidOf(String(way)) });
   };
 }

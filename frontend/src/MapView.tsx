@@ -3,6 +3,7 @@ import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
 import { followZoom } from "./lib/idleRecentre.ts";
 import { createPortal } from "react-dom";
 import { attachFeatureHover } from "./featureHoverCard.ts";
+import { attachTrailHighlight, setHoverTrail } from "./lib/trailHighlight.ts";
 import { climbHoverChart, climbHoverWords, trailHoverChart, trailHoverWords } from "./lib/featureHover.ts";
 import * as maplibregl from "maplibre-gl";
 import type { DataDrivenPropertyValueSpecification, GeoJSONSource, Map as MapLibreMap, Marker, Popup } from "maplibre-gl";
@@ -966,7 +967,26 @@ export function MapView(props: Props) {
     let hoverFrame = 0;
     let hoverPoint: { x: number; y: number } | null = null;
     // The climbs' and the trails' hover card (featureHoverCard.ts), as the stations' own.
-    const featureHover = attachFeatureHover(map);
+    // A trail's hover card also lights up the section its profile and rating are of (lib/trailHighlight.ts), until the
+    // card goes or moves to another feature.
+    const hoverCard = attachFeatureHover(map);
+    const detachHighlight = attachTrailHighlight(map);
+    let hoverKey = "";
+    const featureHover: typeof hoverCard = {
+      show: (words, at, chart) => {
+        if (words.key !== hoverKey) setHoverTrail(null);
+        hoverKey = words.key;
+        hoverCard.show(words, at, chart);
+      },
+      hide: () => {
+        hoverKey = "";
+        setHoverTrail(null);
+        hoverCard.hide();
+      },
+    };
+    const lightUp = (key: string) => (line: LonLat[]) => {
+      if (key === hoverKey) setHoverTrail(line);
+    };
     // Mouse only: a tap's compatibility mousemove (after its touch pointerdown) shows no hover card.
     let mousePointer = true;
     const onPointer = (event: PointerEvent) => {
@@ -1003,7 +1023,8 @@ export function MapView(props: Props) {
           const { lng, lat } = map.unproject([hoverPoint.x, hoverPoint.y]);
           featureHover.show(climbHoverWords(climb), [lng, lat], climbHoverChart(climb));
         } else if (trail) {
-          featureHover.show(trailHoverWords(trail.properties, trail.way), trail.point, trailHoverChart(window.location.origin, trail.point));
+          const words = trailHoverWords(trail.properties, trail.way);
+          featureHover.show(words, trail.point, trailHoverChart(window.location.origin, trail.point, lightUp(words.key)));
         } else featureHover.hide();
         runHover(under, anyPopupOpen(), { handle: hoverShown.current, cursor: canvas.style.cursor }, {
           drawHandle: (at) => showEdit(at as LonLat | null),
@@ -1681,6 +1702,7 @@ export function MapView(props: Props) {
     return () => {
       disposed = true;
       featureHover.hide();
+      detachHighlight();
       canvas.removeEventListener("pointerdown", onPointer);
       canvas.removeEventListener("pointermove", onPointer);
       rail?.close();
