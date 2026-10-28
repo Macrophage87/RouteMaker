@@ -982,11 +982,12 @@ def analyse(
         trace = routing._trace(ctx.variant, ctx.costing, leg.get("shape", ""), deadline, ctx.traces)
         if trace is None:
             return None
-        made = routing.pieces_of_trace(trace)
-        pieces.extend(made)
         shape = routing.decode_polyline6(leg.get("shape", ""))
-        raws.extend(trace_junctions.junctions_of_trace(trace, shape, offset))
-        leg_marks = trace_junctions.edge_midpoints(trace, shape, offset)
+        # Each trace read once a plan, at its start, and shifted here (audit S19).
+        made, read = routing.trace_reading(trace, shape, marks=True)
+        pieces.extend(made)
+        raws.extend(trace_junctions.junctions_along(read, offset))
+        leg_marks = trace_junctions.marks_along(read, offset)
         marks.extend(leg_marks)
         mark_legs.extend([number] * len(leg_marks))
         line.extend(shape[1:] if line else shape)

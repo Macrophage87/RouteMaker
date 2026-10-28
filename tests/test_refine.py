@@ -16,7 +16,7 @@ from concurrent.futures import Future
 import pytest
 
 from core import parallel, presets, refine, routing, trailseek
-from routemaker import calm
+from routemaker import calm, trace_junctions
 from routemaker import intersections as model
 from routemaker.intersections import Control, Event, Movement
 
@@ -1672,20 +1672,31 @@ class TestRetrace:
         # past `via_m`: the reading's own legs keep the two apart.
         out = [(BASE[0] + 0.001, BASE[1]), (BASE[0] + 0.002, BASE[1])]
 
-        def midpoints(trace, shape, offset):
-            if offset == 0.0:
-                return [(50.0, *out[0], 100.0), (250.0, *out[1], 100.0)]
-            return [(offset + 50.0, *out[1], 100.0), (offset + 150.0, *out[0], 100.0)]
+        # Each leg's edge middles as read at its start (audit S19: shifted by the reading):
+        # out at 50 and 250 m (a dropped edge between them), back at 50 and 150 m on.
+        legs = iter(
+            [
+                trace_junctions.EdgeReading(
+                    (100.0, 100.0, 100.0), (), ((0, *out[0], 100.0), (2, *out[1], 100.0))
+                ),
+                trace_junctions.EdgeReading(
+                    (100.0, 100.0), (), ((0, *out[1], 100.0), (1, *out[0], 100.0))
+                ),
+            ]
+        )
+
+        def midpoints(trace, shape, marks=False, own=None):
+            return next(legs)
 
         pieces = [routing.Piece(1, BASE[0] + i * 1e-4, BASE[1], 100.0) for i in range(2)]
         monkeypatch.setattr(routing, "_trace", lambda *a, **k: {"shape": "x"})
-        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace: pieces)
+        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace, shape=None: pieces)
         monkeypatch.setattr(routing, "decode_polyline6", lambda s: [BASE, out[1]])
         monkeypatch.setattr(
             routing, "classify", lambda p, when, roadway_only=False: [("1", "none")] * len(p)
         )
         monkeypatch.setattr(refine.trace_junctions, "junctions_of_trace", lambda *a: [])
-        monkeypatch.setattr(refine.trace_junctions, "edge_midpoints", midpoints)
+        monkeypatch.setattr(refine.trace_junctions, "read_edges", midpoints)
         monkeypatch.setattr(refine, "events_of_raws", lambda raws, ctx, deadline: [])
         leg = {"shape": "x"}
         trip = {"legs": [leg, dict(leg)], "summary": {"length": 0.4, "time": 100.0, "cost": 1.0}}
@@ -3186,7 +3197,7 @@ class TestStressAverseWeights:
         classes = [("3", "none"), ("4", "none"), ("5", "none"), ("1", "none")]
         pieces = [routing.Piece(1, BASE[0] + i * 1e-4, BASE[1], 100.0) for i in range(4)]
         monkeypatch.setattr(routing, "_trace", lambda *a, **k: {"shape": "x"})
-        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace: pieces)
+        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace, shape=None: pieces)
         monkeypatch.setattr(
             routing, "decode_polyline6", lambda s: [BASE, (BASE[0] + 0.01, BASE[1])]
         )
@@ -3206,7 +3217,7 @@ class TestStressAverseWeights:
         classes.hazards = [(), ("rails",)]
         pieces = [routing.Piece(1, BASE[0] + i * 1e-4, BASE[1], 100.0) for i in range(2)]
         monkeypatch.setattr(routing, "_trace", lambda *a, **k: {"shape": "x"})
-        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace: pieces)
+        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace, shape=None: pieces)
         monkeypatch.setattr(
             routing, "decode_polyline6", lambda s: [BASE, (BASE[0] + 0.01, BASE[1])]
         )
@@ -3276,7 +3287,7 @@ class TestLts2Weight:
         classes = [("2", "none"), ("2", "none"), ("3", "none"), ("1", "none")]
         pieces = [routing.Piece(1, BASE[0] + i * 1e-4, BASE[1], 100.0) for i in range(4)]
         monkeypatch.setattr(routing, "_trace", lambda *a, **k: {"shape": "x"})
-        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace: pieces)
+        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace, shape=None: pieces)
         monkeypatch.setattr(
             routing, "decode_polyline6", lambda s: [BASE, (BASE[0] + 0.01, BASE[1])]
         )
@@ -3410,7 +3421,7 @@ class TestLts2Weight:
         classes = [("2", "none"), ("3", "none"), ("4", "none"), ("1", "none")]
         pieces = [routing.Piece(1, BASE[0] + i * 1e-4, BASE[1], 100.0) for i in range(4)]
         monkeypatch.setattr(routing, "_trace", lambda *a, **k: {"shape": "x"})
-        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace: pieces)
+        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace, shape=None: pieces)
         monkeypatch.setattr(
             routing, "decode_polyline6", lambda s: [BASE, (BASE[0] + 0.01, BASE[1])]
         )

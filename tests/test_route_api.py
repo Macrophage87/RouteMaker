@@ -3189,6 +3189,42 @@ class TestScenicAndAdjustmentsInTheStressQuery:
 
 
 @db
+class TestTraceReadOncePerPlan:
+    """Audit S19: a plan cuts each trace into pieces once and finds its junctions once
+    (`routing.trace_reading`); the calm search's reading and the answer share them."""
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            # The calm search's reading, then the answer.
+            {**good_body(), "stress": 100},
+            # The hill guards' readings, then the answer.
+            {**good_body("novice"), "hills": 0},
+            good_body("mass-ride"),
+        ],
+    )
+    def test_each_trace_is_cut_once_and_the_answer_is_the_same(
+        self, client, segments, router, monkeypatch, body
+    ) -> None:
+        router(standard_router())
+        before = post(client, body).json()
+        cut: dict[int, int] = {}
+        real_pieces = routing.pieces_of_trace
+
+        def pieces(trace, *shape):
+            cut[id(trace)] = cut.get(id(trace), 0) + 1
+            return real_pieces(trace, *shape)
+
+        monkeypatch.setattr(routing, "pieces_of_trace", pieces)
+        router(standard_router())
+        after = post(client, body).json()
+        assert cut and set(cut.values()) == {1}, cut
+        assert after.keys() == before.keys()
+        for key in ("stress_m", "stress_spans", "description", "intersections", "road_hazards"):
+            assert after.get(key) == before.get(key), key
+
+
+@db
 class TestStressReadOncePerPlan:
     """Audit S18: a plan reads each trip's stress once (`routing._stress_memo`): the
     trip a hill-avoiding plan keeps is read by `calmer_or_own`, `no_busier_than_middle` and

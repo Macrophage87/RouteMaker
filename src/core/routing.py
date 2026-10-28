@@ -571,9 +571,69 @@ def _heading(value) -> float | None:
     return float(value) if isinstance(value, (int, float)) else None
 
 
-def pieces_of_trace(trace: dict) -> list[Piece]:
-    """Cut every traced edge at its shape vertices, apportioning its length."""
-    shape = decode_polyline6(trace.get("shape", ""))
+# The plan's memo of its readings of each trace (audit S19): the trace cut into pieces
+# (`pieces_of_trace`) and its junctions and edge middles (`trace_junctions.read_edges`), read
+# at the leg's start once and shifted for each caller. A plan reads the same trace several
+# times: the hill guards' `_exposure` (the kept trip twice), the calm search's
+# `refine.analyse` (a stress-only reading is never kept as an analysis) and the answer. Keyed
+# by the trace object, which each entry holds (so its id is not reused while the entry is
+# kept). Pieces and junctions are frozen, so the entries' are shared, in new lists; an
+# analysis kept for the plan holds the same pieces, so an entry adds little beside it. At
+# most READING_MEMO_PIECES pieces, the least recently used trace dropped first: about
+# 0.5 KB a piece with its junctions, so a few MB at most beside the plan's own analyses
+# (measured in tests/test_route_api.py, `TestTraceReadOncePerPlan`). `plan` sets it for its
+# own context and clears it as it ends; None outside a plan (nothing remembered).
+_reading_memo: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "reading_memo", default=None
+)
+READING_MEMO_PIECES = 12_000
+
+
+@dataclass
+class _Reading:
+    trace: dict
+    pieces: tuple[Piece, ...] | None = None
+    edges: trace_junctions.EdgeReading | None = None
+
+
+def trace_reading(
+    trace: dict, shape: list | None = None, edges: bool = False, marks: bool = False
+) -> tuple[list[Piece], trace_junctions.EdgeReading | None]:
+    """The trace's pieces (`pieces_of_trace`, a new list) and, with `edges` or `marks`, its
+    junctions (and with `marks` its edge middles) at the leg's start, `trace_junctions.
+    read_edges`; `shape` the leg's own shape decoded, read only where the trace has none.
+    Read once a plan (`_reading_memo`), the trace's shape decoded once for all of it."""
+    memo = _reading_memo.get()
+    entry = memo.pop(id(trace), None) if memo is not None else None
+    if entry is None or entry.trace is not trace:
+        entry = _Reading(trace)
+    want_edges = edges or marks
+    need_edges = want_edges and (entry.edges is None or (marks and entry.edges.marks is None))
+    encoded = trace.get("shape") or ""
+    own = decode_polyline6(encoded) if entry.pieces is None or need_edges else None
+    if entry.pieces is None:
+        entry.pieces = tuple(pieces_of_trace(trace, own))
+    found = entry.edges
+    if need_edges:
+        found = trace_junctions.read_edges(trace, shape or [], marks, own)
+        # Only a reading of the trace's own shape is kept: one read from the leg's is the
+        # leg's, not the trace's.
+        if encoded:
+            entry.edges = found
+    if memo is not None:
+        memo[id(trace)] = entry  # the most recently used last
+        held = sum(len(kept.pieces or ()) for kept in memo.values())
+        while held > READING_MEMO_PIECES and len(memo) > 1:
+            dropped = memo.pop(next(iter(memo)))
+            held -= len(dropped.pieces or ())
+    return list(entry.pieces), found if want_edges else None
+
+
+def pieces_of_trace(trace: dict, shape: list | None = None) -> list[Piece]:
+    """Cut every traced edge at its shape vertices, apportioning its length. `shape` is the
+    trace's own shape decoded, where the caller has it already (`trace_reading`)."""
+    if shape is None:
+        shape = decode_polyline6(trace.get("shape", ""))
     to_metres = 1609.344 if trace.get("units") == "miles" else 1000.0
     pieces: list[Piece] = []
     # The last edge kept: the node a fork is read at is where it ends; and every one
@@ -2047,7 +2107,7 @@ def _exposure(
         trace = _trace(variant, costing, leg.get("shape", ""), deadline, traces)
         if trace is None:
             return None
-        pieces.extend(pieces_of_trace(trace))
+        pieces.extend(trace_reading(trace)[0])
     classes = refine.shift_classes(classify(pieces, when), exposure.shift)
     stress = totals(zip(pieces, classes, strict=True))[0]
     halves = refine.half_metres(pieces, classes)
@@ -3373,7 +3433,7 @@ def _detour(
                         )
                         if trace is None:
                             raise RouterUnavailable("no trace")
-                        pieces.extend(pieces_of_trace(trace))
+                        pieces.extend(trace_reading(trace)[0])
                     direct_stress, _facility = breakdown(pieces, when)
                     avoided = direct_stress["3"] + direct_stress["4"] + direct_stress["5"] - busy_m
                 except (DeadlineExceeded, RouterUnavailable):
@@ -3824,10 +3884,14 @@ def plan(
     # task still running after it holds a copy of the context, never the readings.
     memo: dict = {}
     _stress_memo.set(memo)
+    # And its readings of each trace (audit S19), the same way.
+    readings: dict = {}
+    _reading_memo.set(readings)
     try:
         return _plan_rounds(points, preset_name, long_ride, started, dials, quick, candidates)
     finally:
         memo.clear()
+        readings.clear()
 
 
 def _plan_rounds(
@@ -4659,9 +4723,10 @@ def _plan(
                 traced_m += untraced
             else:
                 start = len(pieces)
-                pieces.extend(pieces_of_trace(trace))
+                made, read = trace_reading(trace, shape, edges=True)
+                pieces.extend(made)
                 leg_runs.append((start, len(pieces)))
-                raw_junctions.extend(trace_junctions.junctions_of_trace(trace, shape, traced_m))
+                raw_junctions.extend(trace_junctions.junctions_along(read, traced_m))
                 traced_m += sum(piece.metres for piece in pieces[start:])
         # The router's seconds along the line, read before a long plan's legs are grouped.
         router_at = time_marks.router_marks(legs, coordinates, leg_ends)
