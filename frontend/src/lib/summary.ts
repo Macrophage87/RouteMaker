@@ -307,6 +307,19 @@ export function walkInNote(route: Pick<RouteResponse, "walk_in">): string | null
 }
 
 /**
+ * The walks as the route's note line shows them, short enough for a phone's line (the audit's P14: the whole sentence
+ * was cut off at "to your destin…"): "Walk the last 300 ft (90 m)". The whole sentence stays for screen readers and Info.
+ */
+export function walkInShort(route: Pick<RouteResponse, "walk_in">): string | null {
+  const walks = route.walk_in;
+  if (!walks) return null;
+  const shown: string[] = [];
+  if (walks.start) shown.push(t("Walk {distance} to the start", { distance: formatDistance(walks.start.distance_m) }));
+  if (walks.end) shown.push(t("Walk the last {distance}", { distance: formatDistance(walks.end.distance_m) }));
+  return shown.length ? shown.join(" · ") : null;
+}
+
+/**
  * Novice and Nervous's walks past a short busy stretch (v0.11.0; core.novice_walks; the owner, 2026-10-21: "walk a
  * bike on sidewalk mode should definitely be a consideration"): "Walk your bike on the sidewalk along Redland Road,
  * 0.2 mi (0.3 km)." or, for more than one, "Walk your bike on the sidewalk past 2 busy stretches, 0.5 mi (0.8 km)."
