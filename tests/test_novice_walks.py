@@ -254,6 +254,50 @@ class TestRouterCalls:
         monkeypatch.setattr(routing, "_call", refuse)
         assert routing.walk_roadside_m(LINE, deadline()) is None
 
+    def test_a_refused_edge_walk_is_read_by_a_close_map_snap(self, monkeypatch) -> None:
+        # Audit round 3, R6: as trace_leg, where the edge walk is refused the walk is read by
+        # map snap, held to 10 m and to the walk check's own deadline, not a fresh one.
+        edges = [{"use": "road", "road_class": "secondary", "sidewalk": "none", "length": 0.04}]
+        asked = []
+
+        def fake_call(variant, action, payload, call_deadline):
+            asked.append((payload["shape_match"], payload.get("trace_options"), call_deadline))
+            if payload["shape_match"] == "edge_walk":
+                raise routing.RouterRefused(400, 443, "no edge walk")
+            return {"edges": edges}
+
+        monkeypatch.setattr(routing, "_call", fake_call)
+        walk_deadline = deadline()
+        assert routing.walk_roadside_m(LINE, walk_deadline) == 40.0
+        assert [(match, options) for match, options, _ in asked] == [
+            ("edge_walk", None),
+            ("map_snap", {"search_radius": 10}),
+        ]
+        assert all(d.at == walk_deadline.at for _, _, d in asked)
+        assert all(d.per_call_s <= routing.WALK_IN_CALL_S for _, _, d in asked)
+
+    def test_both_refused_is_none(self, monkeypatch) -> None:
+        calls = []
+
+        def refuse(variant, action, payload, _deadline):
+            calls.append(payload["shape_match"])
+            raise routing.RouterRefused(400, 443, "no match")
+
+        monkeypatch.setattr(routing, "_call", refuse)
+        assert routing.walk_roadside_m(LINE, deadline()) is None
+        assert calls == ["edge_walk", "map_snap"]
+
+    def test_an_edge_walk_that_answers_asks_no_more(self, monkeypatch) -> None:
+        calls = []
+
+        def answer(variant, action, payload, _deadline):
+            calls.append(payload["shape_match"])
+            return {"edges": []}
+
+        monkeypatch.setattr(routing, "_call", answer)
+        assert routing.walk_roadside_m(LINE, deadline()) is None
+        assert calls == ["edge_walk"]
+
 
 # On real tiles (as tests/test_tile_build_access.py builds them): an LTS 4 road with its
 # sidewalk mapped as a way of its own, one with none, and one tagged sidewalk=both.

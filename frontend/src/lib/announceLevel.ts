@@ -19,8 +19,8 @@ export type AnnounceChoice = "" | AnnounceLevel;
 export const ANNOUNCE_KEY = "routemaker.announcements";
 
 export const ANNOUNCE_LABEL: Record<AnnounceLevel, string> = {
-  brief: "Brief: the route, guidance and errors",
-  full: "Full: also what the app is doing",
+  brief: t("Brief: the route, guidance and errors"),
+  full: t("Full: also what the app is doing"),
 };
 
 export const ANNOUNCE_HINT = t("What screen readers are told. Unset, Go is brief and Plan is full. Routes, guidance and errors are always said.");

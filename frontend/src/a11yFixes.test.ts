@@ -180,7 +180,7 @@ test("App: 'Planning...' is shown but not said, and the route is said once it se
   const live = region.slice(0, end);
   assert.ok(live.length > 0);
   assert.doesNotMatch(live, /\{announcement\}<\/p>\}[\s\S]*status\.kind === "loading"|status\.kind === "loading" && <p[^>]*>\{announcement\}/, "'Planning...' is not in the live region");
-  assert.match(app, /\{status\.kind === "loading" && <p className="loading">\{announcement\}<\/p>\}\s*\{status\.kind === "loading" && <progress className="planning" aria-label="Planning the route" \/>\}\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<div className="status-shown" aria-hidden="true">/, "shown, with a labelled progress bar, before the shown copy of the live region");
+  assert.match(app, /\{status\.kind === "loading" && <p className="loading">\{announcement\}<\/p>\}\s*\{status\.kind === "loading" && <progress className="planning" aria-label=\{t\("Planning the route"\)\} \/>\}\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<div className="status-shown" aria-hidden="true">/, "shown, with a labelled progress bar, before the shown copy of the live region");
   // Only a slow plan is said, once (the a11y review's SF1).
   assert.match(live, /\{status\.kind === "loading" && slow && <p>\{stillPlanningSaid\(preset, dials\)\}<\/p>\}/);
   assert.match(app, /const slow = useLongerThan\(status\.kind === "loading", STILL_PLANNING_AFTER_MS\)/);
@@ -244,7 +244,7 @@ test("the toggle rows (loop, avoid gravel, the ride times) are 24 px targets, no
 test("App: the accessibility mode switch is the first thing in the page, before the skip link and the map (455)", () => {
   const access = app.indexOf('className="access-link"');
   assert.ok(access > 0 && access < app.indexOf('className="skip-link"'), "before the skip link");
-  assert.match(app, /<button type="button" className="access-link" aria-pressed=\{accessMode\} onClick=\{\(\) => toggleAccessMode\(true\)\}>\s*\{ACCESS_LABEL\}\s*<\/button>/);
+  assert.match(app, /<button type="button" className="access-link" aria-pressed=\{accessMode\} onClick=\{\(\) => toggleAccessMode\(true\)\}>\s*\{t\(ACCESS_LABEL\)\}\s*<\/button>/);
   // Hidden until it has the focus, as the skip link is.
   assert.match(declared(".access-link"), /transform:\s*translateY\(-200%\)/);
   assert.match(declared(".access-link:focus"), /transform:\s*none/);
@@ -257,7 +257,7 @@ test("App: Map tools is rendered only in accessibility mode; the toggle is in Po
   const tips = app.slice(app.indexOf('className="tips-body more-tips"'), app.indexOf("<InstallOffer idBase=\"tips-install\""));
   assert.match(tips, /infoHelp\(accessMode\)/);
   assert.match(tips, /onClick=\{\(\) => toggleAccessMode\(false\)\}/);
-  assert.match(tips, /aria-pressed=\{accessMode\}[\s\S]{0,80}?>\s*\{ACCESS_LABEL\}/);
+  assert.match(tips, /aria-pressed=\{accessMode\}[\s\S]{0,80}?>\s*\{t\(ACCESS_LABEL\)\}/);
 });
 
 test("App: a press goes through accessModeToggle (tested in accessMode.test.ts): kept, said, and the focus flag (455)", () => {
@@ -265,7 +265,7 @@ test("App: a press goes through accessModeToggle (tested in accessMode.test.ts):
   assert.match(fn, /const step = accessModeToggle\(accessMode, focusTools\)/);
   assert.match(fn, /writeAccessMode\(step\.next\)/);
   assert.match(fn, /setAccessMode\(step\.next\)/);
-  assert.match(fn, /announce\(step\.said\)/);
+  assert.match(fn, /announce\(t\(step\.said\)\)/);
   assert.match(fn, /focusToolsNext\.current = step\.focusTools/);
   // The move waits for Map tools to be on the page (its onShown), which may be after the map loads (the a11y review's N5).
   assert.match(app, /onShown=\{toolsShown\}/);

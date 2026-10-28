@@ -7,6 +7,7 @@ The shapes of the answers here are what the live standard router returned
 from __future__ import annotations
 
 import pytest
+from approx_points import approx_points
 
 from routemaker import trace_junctions as t
 from routemaker.intersections import Movement
@@ -184,7 +185,7 @@ class TestTheTracesOwnShape:
 
     def test_the_decoder_reads_the_encoder(self) -> None:
         points = [(-77.123456, 38.987654), (-77.0, 39.1), (-76.5, 38.5)]
-        assert t.decode_polyline6(encode6(points)) == pytest.approx(points)
+        assert t.decode_polyline6(encode6(points)) == approx_points(points)
 
 
 class TestApproachAndMiddles:

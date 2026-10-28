@@ -82,7 +82,7 @@ export function Ride311Menu({
       "div",
       { className: "ride-311-head" },
       h("h3", { id: `${id}-heading`, ref: headingRef, tabIndex: -1 }, RIDE_311_NAME),
-      h("button", { type: "button", className: "secondary ride-311-close", onClick: onClose }, "Close"),
+      h("button", { type: "button", className: "secondary ride-311-close", onClick: onClose }, t("Close")),
     ),
     h("p", { className: "hint ride-311-place" }, menuPlaceLine(place)),
     h(

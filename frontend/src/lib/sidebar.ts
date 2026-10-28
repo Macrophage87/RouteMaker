@@ -24,29 +24,29 @@ export const PLANNER_TITLE = "RouteMaker";
 
 /** The sheets' headings (the focus goes to it on open). Go shows Settings as its Menu. */
 export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
-  layers: "Layers",
+  layers: t("Layers"),
   // Reports (Stephen, 2026-10-21: "Let's pick a better name than suggest then. Reports?"): the 311 checklist and the
   // ways to suggest a map change.
-  suggest: "Reports",
+  suggest: t("Reports"),
   review: "Review",
   // Save and load (the owner, 2026-10-18: "the files tab (maybe call it save or load)"): files, Save, Share, your routes.
-  gpx: "Save and load",
-  settings: "Settings",
-  nearest: "Nearest",
-  food: "Find food",
+  gpx: t("Save and load"),
+  settings: t("Settings"),
+  nearest: t("Nearest"),
+  food: t("Find food"),
   ride: "Ride",
   // v0.7.0: Go's Repair (behind More), and Plan's Places to see (Go calls it Sights).
-  repair: "Repair stands and bike shops",
-  places: "Places to see",
+  repair: t("Repair stands and bike shops"),
+  places: t("Places to see"),
   // Go's Edit route (edit-route redesign, Stephen 2026-10-18): Plan's points, from the route card.
-  points: "Edit route",
+  points: t("Edit route"),
 };
 
 /** The Files sheet's name on its buttons (the owner, 2026-10-18), short enough for the bar. */
 export const SAVE_LOAD = t("Save & load");
 
 /** Go's Menu (the mockup's Menu sheet): Settings, with Plan, Suggest, GPX and Review above them. */
-export const MENU_TITLE = "Menu";
+export const MENU_TITLE = t("Menu");
 
 export interface BarItem {
   /** The button's own id, for the focus on the way back. */
@@ -65,11 +65,11 @@ export interface BarItem {
  * (each key in its layer's section since 2026-10-19), and Suggest took its slot: the one way in to the suggest tools.
  */
 export const BAR_ITEMS: readonly BarItem[] = [
-  { id: "plan", label: "Plan", opens: "planner", description: "Shows the planner: the points, the ride settings and the route." },
-  { id: "layers", label: "Layers", opens: "layers", description: "Opens the map layers, their switches and each layer's key." },
-  { id: "suggest", label: "Reports", opens: "suggest", description: "Opens your 311 checklist and the ways to suggest a change to the map." },
-  { id: "gpx", label: SAVE_LOAD, opens: "gpx", description: "Opens Save and load: save or share the route, find your routes, or open or export a route file." },
-  { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: My Go (Home, ride type), riding, display and your account." },
+  { id: "plan", label: "Plan", opens: "planner", description: t("Shows the planner: the points, the ride settings and the route.") },
+  { id: "layers", label: t("Layers"), opens: "layers", description: t("Opens the map layers, their switches and each layer's key.") },
+  { id: "suggest", label: t("Reports"), opens: "suggest", description: t("Opens your 311 checklist and the ways to suggest a change to the map.") },
+  { id: "gpx", label: SAVE_LOAD, opens: "gpx", description: t("Opens Save and load: save or share the route, find your routes, or open or export a route file.") },
+  { id: "settings", label: t("Settings"), opens: "settings", description: t("Opens the settings: My Go (Home, ride type), riding, display and your account.") },
 ];
 
 /** The sheets a bar button counts as its own: Suggest holds the review. */
@@ -118,9 +118,9 @@ export const FEWER_TIPS = t("Fewer tips");
  */
 export function searchLede(loop: boolean, accessMode = false): string {
   // Map tools exists only in accessibility mode (455): off, the line says how to get it.
-  const how = accessMode ? "Search, click the map, or use Add point at map center in Map tools" : "Search or click the map";
-  const end = loop ? "start, then stops. The ride comes back to the start." : "start, then end. Later clicks add stops.";
-  return `${how}: ${end}${accessMode ? "" : ` ${ACCESS_SENTENCE_WHERE}`}`;
+  const how = accessMode ? t("Search, click the map, or use Add point at map center in Map tools") : t("Search or click the map");
+  const end = loop ? t("start, then stops. The ride comes back to the start.") : t("start, then end. Later clicks add stops.");
+  return `${how}: ${end}${accessMode ? "" : ` ${t(ACCESS_SENTENCE_WHERE)}`}`;
 }
 
 /**
@@ -128,11 +128,11 @@ export function searchLede(loop: boolean, accessMode = false): string {
  * 2026-10-18: "Edit" beside a row of chips read as a tag, not a button). Its state is read from aria-expanded.
  */
 export function rideActionLabel(open: boolean): string {
-  return open ? "Done" : "Adjust";
+  return open ? t("Done") : t("Adjust");
 }
 
 /** The Ride settings line's action as a screen reader hears it: the same word whatever the state (aria-expanded says that). */
-export const RIDE_ACTION_SPOKEN = "Adjust";
+export const RIDE_ACTION_SPOKEN = t("Adjust");
 
 /** The Ride settings line's label, over its summary. */
 export const RIDE_SETTINGS_LABEL = t("Ride settings");

@@ -141,6 +141,18 @@ def _dc_polygons() -> list:
     ]
 
 
+@lru_cache(maxsize=1)
+def _dc_box() -> tuple[float, float, float, float]:
+    """The box (west, south, east, north) of every ring of `_dc_polygons`."""
+    points = [pt for polygon in _dc_polygons() for ring in polygon for pt in ring]
+    return (
+        min(x for x, _ in points),
+        min(y for _, y in points),
+        max(x for x, _ in points),
+        max(y for _, y in points),
+    )
+
+
 def inside_dc(lon: float, lat: float, tolerance_m: float = DC_EDGE_TOLERANCE_M) -> bool:
     """Whether a point counts as inside the District for Mass Ride planning: inside the
     boundary, or within `tolerance_m` of its edge, so a border road is inside (OWNER-
@@ -148,6 +160,13 @@ def inside_dc(lon: float, lat: float, tolerance_m: float = DC_EDGE_TOLERANCE_M) 
     Ride's route gives no riders-per-minute figure for its parts outside (427)."""
     from routemaker.cbd import in_polygons
 
+    # Past the boundary's box by more than the tolerance (in degrees, generously, as
+    # `_EDGE_PAD_DEG`), a point is neither inside nor near any edge: no ring is walked
+    # (audit S20; a Mass Ride mostly in Maryland walked all 162 edges a piece).
+    pad = max(tolerance_m, 0.0) / 80_000
+    west, south, east, north = _dc_box()
+    if not (west - pad <= lon <= east + pad and south - pad <= lat <= north + pad):
+        return False
     polygons = _dc_polygons()
     if in_polygons((lon, lat), polygons):
         return True

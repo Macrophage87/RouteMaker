@@ -262,6 +262,90 @@ def _flag(entry: dict, key: str) -> bool:
     return bool((entry.get("edge") or {}).get(key))
 
 
+# The fields of a verbose `/locate` answer this module reads (`node_from_locate`,
+# `control_of`, `_Approaches`), by where they sit: each edge's own, its `edge` (the flags
+# through `_flag`: the signal, stop and yield signs), its `edge_info` (the shape only for its
+# two ends, `_edge_ends`), and each node's. `slim_locate` keeps these alone, so a plan holds
+# about half the memory for each answer it keeps (`refine.locator`, audit S21); a field read
+# here and not listed would read as missing, which tests/test_junctions.py guards.
+LOCATE_EDGE_FIELDS = frozenset(
+    {"edge_id", "percent_along", "heading", "correlated_lon", "correlated_lat", "edge", "edge_info"}
+)
+LOCATE_EDGE_EDGE_FIELDS = frozenset(
+    {
+        "access",
+        "classification",
+        "cycle_lane",
+        "end_node",
+        "forward",
+        "stop_sign",
+        "traffic_signal",
+        "yield_sign",
+    }
+)
+LOCATE_EDGE_INFO_FIELDS = frozenset({"names", "shape", "way_id"})
+LOCATE_NODE_FIELDS = frozenset({"node_id", "lon", "lat", "traffic_signal"})
+
+
+def slim_locate(answer):
+    """One location's `/locate` answer with only the fields this module reads (the
+    `LOCATE_*_FIELDS`), nested as the router gives them, and each edge's shape cut to its
+    first and last points at the same precision. Anything not a dict is as it came."""
+    if not isinstance(answer, dict):
+        return answer
+    out: dict = {}
+    for key, slim, fields in (("edges", _slim_edge, None), ("nodes", None, LOCATE_NODE_FIELDS)):
+        if key not in answer:
+            continue
+        items = answer[key]
+        if isinstance(items, list):
+            items = [slim(item) if slim is not None else _only(item, fields) for item in items]
+        out[key] = items
+    return out
+
+
+def _only(item, fields: frozenset):
+    return {k: v for k, v in item.items() if k in fields} if isinstance(item, dict) else item
+
+
+def _slim_edge(entry):
+    if not isinstance(entry, dict):
+        return entry
+    out = _only(entry, LOCATE_EDGE_FIELDS)
+    if "edge" in out:
+        out["edge"] = _only(out["edge"], LOCATE_EDGE_EDGE_FIELDS)
+    if "edge_info" in out:
+        info = _only(out["edge_info"], LOCATE_EDGE_INFO_FIELDS)
+        if isinstance(info, dict) and isinstance(info.get("shape"), str):
+            info["shape"] = _two_ends(info["shape"])
+        out["edge_info"] = info
+    return out
+
+
+def _two_ends(shape: str) -> str:
+    """An encoded shape (precision 6) cut to its first and last points, which decode to
+    exactly the same two as the whole; as it came where it does not decode, or has fewer
+    than three points."""
+    try:
+        points = decode_polyline6(shape)
+    except (IndexError, TypeError, ValueError):
+        return shape
+    if len(points) < 3:
+        return shape
+    out = []
+    lat = lon = 0
+    for x, y in (points[0], points[-1]):
+        new_lat, new_lon = round(y * 1e6), round(x * 1e6)
+        for delta in (new_lat - lat, new_lon - lon):
+            delta = ~(delta << 1) if delta < 0 else delta << 1
+            while delta >= 0x20:
+                out.append(chr((0x20 | (delta & 0x1F)) + 63))
+                delta >>= 5
+            out.append(chr(delta + 63))
+        lat, lon = new_lat, new_lon
+    return "".join(out)
+
+
 def node_from_locate(
     answer: dict, raw: RawJunction, around: dict | None = None, approaches: bool = True
 ) -> Node | None:
@@ -751,10 +835,14 @@ def _ask(
         )
         for chunk in chunks
     ]
-    for chunk, future in zip(chunks, asked, strict=True):
+    for number, (chunk, future) in enumerate(zip(chunks, asked, strict=True)):
         try:
             answers = future.result()
         except cut_short as error:
+            # The batches after it are not read: those still queued on the pool are not
+            # asked (audit R4; one already running ends at its own deadline).
+            for later in asked[number + 1 :]:
+                later.cancel()
             raise ReadingCutShort(
                 f"{len(found)} of {len(positions)} junctions read before {error}"
             ) from error

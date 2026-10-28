@@ -3,6 +3,7 @@
  * with the CSRF token, as any form sends it. The server ends the session and sends the page to "/", which loads
  * signed out. The token is the cookie GET /api/me/go set when the page read the account's My Go.
  */
+import { t } from "./lib/i18n.ts";
 import { csrfFromCookie } from "./lib/stressEditor.ts";
 
 export function SignOutForm() {
@@ -10,7 +11,7 @@ export function SignOutForm() {
     <form method="post" action="/auth/logout" className="sign-out">
       <input type="hidden" name="csrfmiddlewaretoken" value={csrfFromCookie(document.cookie) ?? ""} />
       <button type="submit" className="secondary">
-        Sign out
+        {t("Sign out")}
       </button>
     </form>
   );
