@@ -471,3 +471,41 @@ def test_the_rebuild_rides_a_cut_through_as_a_link():
     assert {71, 72} <= result.sidewalk_rides
     assert 71 in result.sidewalk_links, "priced as a link, not a last-resort sidewalk"
     assert 71 not in result.walk_bike, "ridden, not walked"
+
+
+def test_the_whole_walk_is_at_most_500_ft():
+    """Two footways of 100 m each, each under the cap: 200 m in all is too far."""
+    street = placed(90, {"highway": "residential"}, [(0.0, -100.0), (0.0, 0.0)])
+    far = placed(93, {"highway": "residential"}, [(-100.0, 200.0), (0.0, 200.0), (100.0, 200.0)])
+    first = placed(91, FOOTWAY, [(0.0, 0.0), (0.0, 100.0)])
+    assert (
+        sw.cut_throughs([street, first, placed(92, FOOTWAY, [(0.0, 100.0), (0.0, 200.0)]), far])
+        == {}
+    )
+    near = placed(92, FOOTWAY, [(0.0, 100.0), (0.0, 140.0)])
+    far = placed(93, {"highway": "residential"}, [(-100.0, 140.0), (0.0, 140.0), (100.0, 140.0)])
+    assert set(sw.cut_throughs([street, first, near, far])) == {91, 92}
+
+
+def test_a_path_to_a_door_nearer_the_end_does_not_hide_the_cut_through():
+    ways = glenmont()
+    ways.append(placed(77, FOOTWAY, [(4.0, 0.0), (4.0, -10.0)]))
+    assert set(sw.cut_throughs(ways)) == {71}
+
+
+def test_a_dirt_or_hiking_footway_or_a_pedestrian_area_is_no_cut_through():
+    for tags in (
+        {**FOOTWAY, "surface": "ground"},
+        {**FOOTWAY, "surface": "dirt"},
+        {**FOOTWAY, "sac_scale": "hiking"},
+        {**FOOTWAY, "trail_visibility": "bad"},
+        {"highway": "pedestrian"},
+    ):
+        ways = glenmont()
+        ways[1] = placed(71, tags, [(0.0, 0.0), (0.0, 5.0), (88.0, 5.0)])
+        assert sw.cut_throughs(ways) == {}, tags
+    ways = glenmont()
+    ways[1] = placed(
+        71, {**FOOTWAY, "surface": "paving_stones"}, [(0.0, 0.0), (0.0, 5.0), (88.0, 5.0)]
+    )
+    assert set(sw.cut_throughs(ways)) == {71}

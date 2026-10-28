@@ -6361,8 +6361,10 @@ paved path from the end of Flack Street to the Glenmont Metro (OSM 656592016, 29
 (88 m), `highway=footway` and no bicycle tag): "This path was missed from the Glenmont
 metro". It is no sidewalk, and no bike way dead-ends on it, so neither rule above opened
 it, and routes went round on Georgia Avenue. He chose "Rule: ride them, up to 500 ft".
-`routemaker.sidewalks.cut_throughs` finds each plain footway (no sidewalk or crosswalk, no
-bicycle tag, open on foot, not informal, not closed for a reason) that leaves the dead-end
+`routemaker.sidewalks.cut_throughs` finds each plain `highway=footway` (no sidewalk or
+crosswalk, no bicycle tag, open on foot, not informal, not closed for a reason, paved or of
+unknown surface, and no `sac_scale`, `trail_visibility` or `mtb:scale`, which the trail
+rules never read on a footway upstream already closes) that leaves the dead-end
 stretch of a public street (residential, unclassified, living street, tertiary; never a
 service road, so a parking lot is no dead-end street) for a ridden sidewalk or crosswalk,
 or for another bicycle-open way that is no service road, within 500 ft (150 m) along the

@@ -51,7 +51,8 @@ count them as the router prices them, not as a quiet trail.
   close (`trailaccess.INFORMAL`), so its one way in was Windham Lane and routes passed it
   by. Walking a bicycle is walking, so this widens nothing a pedestrian may not do.
 
-- `cut_throughs`: a plain footway (no sidewalk, no bicycle tag) leaving a street's dead
+- `cut_throughs`: a plain footway (`highway=footway`, no sidewalk, no bicycle tag, paved
+  or of unknown surface, no hiking-trail marks) leaving a street's dead
   end for a ridden sidewalk or crosswalk, or another bicycle-open way that is no service
   road, within `CUT_THROUGH_M` (about 500 ft), ridden and priced as a link. The owner,
   2026-10-28, of the paved path from the end of Flack Street to the Glenmont Metro (OSM
@@ -73,8 +74,8 @@ import math
 from collections import defaultdict
 from collections.abc import Callable, Sequence, Set
 
+from . import surfaces, trailaccess
 from . import tags as osm_tags
-from . import trailaccess
 from .facility import _angle_between, _bearing, _point_segment_m, _samples, _xy
 
 # What a link, or a sidewalk beside a 4.5 or Avoid road, is rated: LTS 3, as the graph
@@ -105,6 +106,9 @@ INFORMAL_WAY_MAX_M = GAP_M
 # The longest walk a street-end cut-through may take (about 500 ft), along the footways it
 # opens, each of which is wholly within it (`cut_throughs`).
 CUT_THROUGH_M = 150.0
+# How many footways off one dead-end stretch a cut-through is looked for from, nearest the
+# end first (a short path to a door may leave nearer the end than the cut-through does).
+STRETCH_FOOTWAYS = 4
 
 LINK_HIGHWAY = frozenset({"footway", "pedestrian"})
 INFORMAL_HIGHWAY = frozenset({"footway", "path"})
@@ -132,6 +136,8 @@ OPEN_ROAD_HIGHWAY = frozenset(
     }
 )
 MOTORWAY_HIGHWAY = frozenset({"motorway", "motorway_link"})
+# Tags that mark a footway as a hiking trail, which a cut-through never opens.
+TRAIL_MARKS = ("sac_scale", "trail_visibility", "mtb:scale", "mtb:scale:imba")
 # The streets a cut-through leaves from: public streets, never a service road (a parking
 # lot or a driveway that meets the street through a footway is no cut-through).
 STREET_HIGHWAY = frozenset(
@@ -195,6 +201,20 @@ def is_informal_connector(tags: dict[str, str]) -> bool:
     if tags.get("foot") in CLOSING_FOOT:
         return False
     return not _closed_by_its_tags(tags)
+
+
+def is_cut_through_candidate(tags: dict[str, str]) -> bool:
+    """A footway `cut_throughs` may open: a link candidate that is no sidewalk or crosswalk,
+    paved or of unknown surface, and with nothing marking it a hiking trail. Upstream closes
+    a footway before the trail rules read its surface or difficulty
+    (`trailaccess.verdict`), so they are read here."""
+    if tags.get("highway") != "footway" or tags.get("footway") in SIDEWALK_KINDS:
+        return False
+    if any(key in tags for key in TRAIL_MARKS):
+        return False
+    if tags.get("surface") is not None and not surfaces.is_paved(tags):
+        return False
+    return is_link_candidate(tags)
 
 
 def takes_part(tags: dict[str, str]) -> bool:
@@ -410,8 +430,8 @@ def cut_throughs(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> dict
     metres) of a cut-through it is part of. `ways` as `links` takes them.
 
     A cut-through leaves a street's dead-end stretch (`STREET_HIGHWAY`; the stretch from
-    the street's end that no other bicycle-open way reaches) along plain footways, ones no
-    bicycle tag speaks for and that are not themselves sidewalks or crosswalks, to a node
+    the street's end that no other bicycle-open way reaches) along plain footways
+    (`is_cut_through_candidate`), to a node
     a ridden sidewalk or crosswalk (`rideable`) or another bicycle-open way that is no
     service road reaches, within CUT_THROUGH_M; each footway it opens lies wholly within
     CUT_THROUGH_M. The owner, 2026-10-28, of the paved path from the end of Flack Street
@@ -426,7 +446,7 @@ def cut_throughs(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> dict
         if rideable(tags):
             rideable_at.update(node_ids)
             continue
-        if not is_link_candidate(tags):
+        if not is_cut_through_candidate(tags):
             continue
         lengths[osm_id] = _length(coords)
         if lengths[osm_id] > CUT_THROUGH_M:
@@ -441,8 +461,8 @@ def cut_throughs(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> dict
     if not adjacent:
         return {}
 
-    # Each street end's stretch up to the first node a plain footway reaches: (street,
-    # that node, the stretch's nodes). A loop has no end.
+    # Each street end's stretch up to each of the first STRETCH_FOOTWAYS nodes a plain
+    # footway reaches: (street, that node, the stretch's nodes). A loop has no end.
     stretches: list[tuple[int, int, list[int]]] = []
     for osm_id, tags, node_ids, _coords in ways:
         if (
@@ -454,10 +474,13 @@ def cut_throughs(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> dict
         ):
             continue
         for order in (node_ids, node_ids[::-1]):
+            tried = 0
             for i, node in enumerate(order):
                 if node in adjacent:
                     stretches.append((osm_id, node, list(order[: i + 1])))
-                    break
+                    tried += 1
+                    if tried == STRETCH_FOOTWAYS:
+                        break
     if not stretches:
         return {}
 
