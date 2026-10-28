@@ -75,6 +75,7 @@ def test_stale_rows_are_updated_and_a_variant_without_current_loses_its_row(tmp_
 
 
 def test_a_second_run_writes_nothing(tmp_path) -> None:
+    _link(tmp_path, "standard", "B2", "B1")
     _link(tmp_path, "mtb", "B2", "B1")
     promotion.sync_upstreams(tmp_path, UPSTREAMS)
     stamp = ValhallaUpstream.objects.get(variant="mtb").updated_at
@@ -109,6 +110,7 @@ def test_mountain_bike_is_served_once_its_row_is_synced(
     tmp_path, settings, weekend_rows_read
 ) -> None:
     settings.TILES_DIR = tmp_path
+    _link(tmp_path, "standard", "B2")
     _link(tmp_path, "mtb", "B2")
     assert not routing._is_promoted(Variant.MTB.value)
 
@@ -118,3 +120,35 @@ def test_mountain_bike_is_served_once_its_row_is_synced(
     assert routing._is_promoted(Variant.MTB.value)
     assert "mtb: B2 (previous none), was no row" in out.getvalue()
     assert "offroad: no row" in out.getvalue()
+
+
+def test_a_tiles_folder_with_no_standard_graph_is_refused_and_nothing_written(tmp_path) -> None:
+    # An unmounted tiles folder would otherwise delete every row, the standard graph's with them.
+    ValhallaUpstream.objects.create(variant="standard", url="u", build_id="A", previous_build_id="")
+    _link(tmp_path, "mtb", "B2")
+
+    with pytest.raises(FileNotFoundError):
+        promotion.sync_upstreams(tmp_path / "missing", UPSTREAMS)
+    with pytest.raises(FileNotFoundError):
+        promotion.sync_upstreams(tmp_path, UPSTREAMS)
+
+    assert _rows() == {"standard": ("u", "A", "")}
+
+
+def test_a_failure_after_a_delete_brings_the_deleted_row_back(tmp_path) -> None:
+    ValhallaUpstream.objects.create(variant="weekend", url="u", build_id="A", previous_build_id="")
+    for variant in ("standard", "mtb"):
+        _link(tmp_path, variant, "B2")
+    before = _rows()
+    real_create = ValhallaUpstream.objects.create
+
+    def create(**kwargs):
+        if kwargs["variant"] == "mtb":
+            raise RuntimeError("the database went away")
+        return real_create(**kwargs)
+
+    with mock.patch.object(ValhallaUpstream.objects, "create", side_effect=create):
+        with pytest.raises(RuntimeError):
+            promotion.sync_upstreams(tmp_path, UPSTREAMS)
+
+    assert _rows() == before

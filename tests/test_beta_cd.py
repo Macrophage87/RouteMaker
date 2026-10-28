@@ -502,7 +502,7 @@ def test_a_failed_compose_diff_fails_the_gate_closed(tmp_path: Path, monkeypatch
 STUB_COMPOSE = """#!/bin/sh
 # a stand-in for beta-compose.sh: records its arguments, starts nothing. With STUB_RUNNING=postgis
 # it answers what receive-data.sh asks of a healthy postgis; STUB_PENDING=1 makes one migration
-# pending until `migrate --noinput` has run.
+# pending until `migrate --noinput` has run. STUB_SYNC_RC: sync_upstreams' exit status.
 echo "$*" >> "$STUB_LOG"
 case "$*" in
   "ps --status running --services") [ -n "${STUB_RUNNING:-}" ] && printf '%s\\n' $STUB_RUNNING ;;
@@ -514,6 +514,7 @@ case "$*" in
   *"migrate --noinput"*) touch "$STUB_MIGRATED"
     # STUB_KILL_AT_*: the whole process group is signalled, as systemd stops a unit's cgroup
     [ -n "${STUB_KILL_AT_MIGRATE:-}" ] && kill -"$STUB_KILL_AT_MIGRATE" 0 ;;
+  *sync_upstreams*) exit "${STUB_SYNC_RC:-0}" ;;
   *predraw_stress_tiles*) [ -n "${STUB_KILL_AT_PREDRAW:-}" ] && kill -"$STUB_KILL_AT_PREDRAW" 0
     exit "${STUB_PREDRAW_RC:-0}" ;;
 esac
@@ -1206,6 +1207,27 @@ def test_a_trail_router_with_its_tiles_is_started_on_every_deploy(beta: Beta) ->
         "exec -T api ./manage.py sync_upstreams",
         "smoke --local",
     )
+
+
+def test_a_failing_row_sync_is_a_warning_not_a_rollback(beta: Beta) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_SYNC_RC="1")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status()
+    assert "WARNING: sync_upstreams failed" in done.stdout
+    _order(
+        beta.calls(), "up -d api worker", "exec -T api ./manage.py sync_upstreams", "smoke --local"
+    )
+
+
+def test_a_rollback_syncs_the_rows_again_after_the_restore(beta: Beta) -> None:
+    # The pre-release snapshot carries the rows as they were; the tile links are the truth.
+    beta.release(
+        "v0.2.0", {"src/core/a.py": "x = 2\n", "scripts/beta/smoke-test.sh": STUB_SMOKE_FAILS}
+    )
+    beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert "rolled-back" in beta.status()
+    assert beta.calls().count("exec -T api ./manage.py sync_upstreams") == 2
 
 
 def test_a_rollback_after_a_router_restart_restarts_the_same_four(beta: Beta) -> None:

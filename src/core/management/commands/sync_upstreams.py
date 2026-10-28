@@ -10,14 +10,14 @@ routers up (2026-10-28). This writes every row from the links, in one
 transaction (`pipeline.promotion.sync_upstreams`), and is safe to run again.
 
 It only reads `TILES_DIR`, so it runs in the api container, which binds the
-tiles read-only. Answers are cached for up to 10 minutes (`ROUTE_CACHE_TTL_S`):
-check with a route not asked before.
+tiles read-only. It refuses, writing nothing, when the standard graph has no `current`
+link (an unmounted tiles folder would otherwise delete every row).
 """
 
 from __future__ import annotations
 
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from core.models import ValhallaUpstream
 from pipeline.promotion import sync_upstreams
@@ -28,7 +28,10 @@ class Command(BaseCommand):
     help = "Write each variant's valhalla_upstream row from its tile links (current, previous)."
 
     def handle(self, *args, **options) -> None:
-        before = sync_upstreams(settings.TILES_DIR, settings.VALHALLA_UPSTREAMS)
+        try:
+            before = sync_upstreams(settings.TILES_DIR, settings.VALHALLA_UPSTREAMS)
+        except FileNotFoundError as error:
+            raise CommandError(f"nothing written: {error}") from error
         rows = {row.variant: row for row in ValhallaUpstream.objects.all()}
         for variant in Variant:
             row = rows.get(variant.value)

@@ -186,7 +186,7 @@ if [ "$beta" = 1 ]; then
 			note "WARNING: a trail router did not start; Mountain Bike, Gravel and Mountain Goat stay on the standard graph until: $bcompose up -d --force-recreate ${trail[*]}"
 	fi
 	# The settings rows the api serves each variant by, written from the links `files` moved
-	# (receive-data.sh ran it before the database update; a --replace-db would bring home's back).
+	# (receive-data.sh runs it too, when the api is up; run again here, it changes nothing).
 	"$bcompose" exec -T api ./manage.py sync_upstreams </dev/null ||
 		note "WARNING: sync_upstreams failed; run it once the api is up: $bcompose exec -T api ./manage.py sync_upstreams"
 	note "drawing the stress tiles again, in the background: $beta_state/predraw.log"

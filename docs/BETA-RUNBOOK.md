@@ -1320,11 +1320,14 @@ runs it (or prints it when the api is down), `db` prints it, and the agent and t
 hand after anything else that moves the links, a rollback A included:
 
 ```sh
+. "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
 scripts/beta/beta-compose.sh exec -T api ./manage.py sync_upstreams
 scripts/beta/smoke-test.sh --local --trails     # the Mountain Bike and Gravel checks: each on its own graph
 ```
 
-Answers are cached for up to 10 minutes, so check by hand with a route not asked before.
+A route planned on the standard graph instead is never kept in the answer cache, so a check right after the sync
+sees the fix at once.
 
 ## Alerts
 

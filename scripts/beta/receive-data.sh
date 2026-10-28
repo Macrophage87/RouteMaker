@@ -149,7 +149,7 @@ bc() { BETA_ENV_FILE="$env_file" "$repo/scripts/beta/beta-compose.sh" "$@"; }
 # the api container when it is running; otherwise say the line to run once it is.
 SYNC_UPSTREAMS="scripts/beta/beta-compose.sh exec -T api ./manage.py sync_upstreams"
 sync_upstreams_or_say() {
-	if bc ps --status running --services 2>/dev/null | grep -qx api; then
+	if bc ps --status running --services 2>/dev/null | grep -x api >/dev/null; then
 		note "writing the routers' settings rows from the tile links (manage.py sync_upstreams)"
 		bc exec -T api ./manage.py sync_upstreams </dev/null ||
 			note "WARNING: sync_upstreams failed; run it once the api is up: $SYNC_UPSTREAMS"

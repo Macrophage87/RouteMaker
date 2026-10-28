@@ -276,14 +276,22 @@ def sync_upstreams(tiles_dir: Path, upstreams: Mapping[str, str]) -> dict[str, U
 
     A variant whose `current` is a link gets `build_id` = its target and
     `previous_build_id` = `previous`'s (or empty); one with no `current` keeps no row.
+    Refused (FileNotFoundError, nothing written) when the standard graph has no `current`.
     Idempotent: a row that already matches is not written. Returns the rows as they were.
     """
     from core.models import ValhallaUpstream
 
+    found = {variant: tiles.links(tiles_dir, variant) for variant in Variant}
+    if not found[Variant.STANDARD].current:
+        # An unmounted or empty tiles folder, not a deployment with no graphs: syncing it would
+        # delete every row, the standard graph's with them.
+        raise FileNotFoundError(
+            f"{tiles_dir} has no standard/current link; is the tiles folder mounted here?"
+        )
     before = upstream_states(upstreams)
     with transaction.atomic():
         for variant in Variant:
-            state = tiles.links(tiles_dir, variant)
+            state = found[variant]
             if state.current is None:
                 ValhallaUpstream.objects.filter(variant=variant.value).delete()
                 continue
