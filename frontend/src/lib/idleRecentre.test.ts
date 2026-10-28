@@ -137,8 +137,10 @@ test("the follow camera's zoom: back to the ride's own after a reset, a pinch ke
   assert.equal(followZoom(false, false, 17.5, 16), 17.5);
 });
 
-test("the map's Help panel open counts as a panel", () => {
-  assert.match(RIDE_PANEL_OPEN, /\.maplibregl-ctrl-attrib\[open\]/);
+test("the map's Help panel open counts as a panel; folded to its i, it does not", () => {
+  // MapLibre's compact credits: shown with maplibregl-compact-show, while `open` is on the details folded to the "i".
+  assert.match(RIDE_PANEL_OPEN, /\.maplibregl-ctrl-attrib\.maplibregl-compact-show/);
+  assert.doesNotMatch(RIDE_PANEL_OPEN, /ctrl-attrib\[open\]/);
 });
 
 test("the screen left alone 30 s: the cards and side menus close, then the map goes back to the rider", () => {

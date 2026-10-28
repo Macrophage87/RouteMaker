@@ -53,12 +53,16 @@ import {
   DETOUR_SEARCH_LABEL,
   DETOUR_SUMMARY,
   detourFindingSaid,
+  detourLettered,
+  detourShowName,
+  detourShownSaid,
   findDetour,
   type DetourAsk,
   type DetourDeps,
   type DetourFound,
 } from "./lib/detourSearch.ts";
 import type { RepairPlace } from "./lib/repair.ts";
+import { placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
 import {
   END_ROAM_NAME,
   NO_NAMED_ROAD,
@@ -126,6 +130,8 @@ export function RoamMode({
   repair = noPlaces,
   geocode = noSearch,
   onView,
+  onLettered = () => undefined,
+  onShowPlace = () => undefined,
   onDetour,
   onEnd,
   onLocationOff,
@@ -155,6 +161,10 @@ export function RoamMode({
   geocode?: DetourDeps["geocode"];
   /** The rider, for the map's arrow, accuracy circle and follow camera. */
   onView: (rider: { point: LonLat; headingDeg: number | null; accuracyM: number } | null) => void;
+  /** Nearby's places for the map's lettered pins, and what a pin's press does; null for none (2026-10-28). */
+  onLettered?: (pins: { places: LetteredPlace[]; pick: (index: number) => void } | null) => void;
+  /** A Nearby row's Show on map: the map frames the place and the rider. */
+  onShowPlace?: (point: LonLat) => void;
   /** Ride here: a ride from `here` to the place starts; null, else the words to say why not. */
   onDetour: (here: LonLat, place: NearestPlace) => Promise<string | null>;
   onEnd: () => void;
@@ -290,8 +300,21 @@ export function RoamMode({
   const [detourOpen, setDetourOpen] = useState(false);
   const detourButton = useRef<HTMLButtonElement>(null);
   const detourHeading = useRef<HTMLHeadingElement>(null);
+  // A row's Show on map (as Ride's Detour and Find food's, 2026-10-28): the menu closes with its list and its pins kept;
+  // reopening shows the same list, the focus on that row's Show on map. Any other close takes the pins away.
+  const shownRow = useRef<number | null>(null);
+  const [pinsKept, setPinsKept] = useState(false);
+  const foundRows = useRef<HTMLOListElement>(null);
   useEffect(() => {
-    if (detourOpen) detourHeading.current?.focus();
+    if (!detourOpen) {
+      if (shownRow.current === null) setPinsKept(false);
+      return;
+    }
+    const row = shownRow.current;
+    shownRow.current = null;
+    const back = row === null ? null : foundRows.current?.querySelectorAll("li")[row]?.querySelector<HTMLButtonElement>("button");
+    if (back) back.focus();
+    else detourHeading.current?.focus();
   }, [detourOpen]);
   const [detourStatus, setDetourStatus] = useState("");
   const [found, setFound] = useState<DetourFound | null>(null);
@@ -381,6 +404,33 @@ export function RoamMode({
   const openMenu = (which: "detour" | "311" | null) => {
     setDetourOpen(which === "detour");
     setMenu311(which === "311");
+  };
+  // Nearby's places, lettered on the map as its rows, while the menu is open and after a row's Show on map; a pin
+  // pressed opens Nearby on its row. Gone with the list, and at End roam.
+  const letters = useMemo(() => detourLettered(found), [found]);
+  const pinsShown = detourOpen || pinsKept ? letters : null;
+  const openOnRow = useRef((index: number) => void index);
+  openOnRow.current = (index: number) => {
+    if (detourOpen) {
+      foundRows.current?.querySelectorAll("li")[index]?.querySelector<HTMLButtonElement>("button")?.focus();
+      return;
+    }
+    shownRow.current = index;
+    openMenu("detour");
+  };
+  useEffect(() => {
+    onLettered(pinsShown ? { places: pinsShown, pick: (index) => openOnRow.current(index) } : null);
+  }, [pinsShown, onLettered]);
+  useEffect(() => () => onLettered(null), [onLettered]);
+  const showFound = (item: Nearby, index: number) => {
+    shownRow.current = index;
+    setPinsKept(true);
+    setDetourOpen(false);
+    detourButton.current?.focus();
+    // Following stops, as a pan by hand stops it: Where am I? or 30 s untouched brings it back (lib/idleRecentre.ts).
+    onFollow(false);
+    onShowPlace(item.place.point);
+    answer(detourShownSaid(item, index));
   };
   const close311 = () => {
     setMenu311(false);
@@ -697,12 +747,18 @@ export function RoamMode({
               {found && found.items.length > 0 && (
                 <div className="nearest-list">
                   <h4 id={`${detourId}-found`}>{found.heading}</h4>
-                  <ol role="list" aria-labelledby={`${detourId}-found`}>
+                  <ol role="list" aria-labelledby={`${detourId}-found`} ref={foundRows}>
                     {found.items.map((item, i) => (
                       <li key={item.place.id}>
-                        {/* The row's words describe its Ride here, so three waters are told apart by how far each is. */}
-                        <span id={`${detourId}-place-${i}`}>{nearbyShort(item)}</span>
+                        {/* The row's words describe its Ride here, so three waters are told apart by how far each is; the
+                            letter is its pin's on the map. */}
+                        <span id={`${detourId}-place-${i}`}>
+                          <strong aria-hidden="true">{placeLetter(i)}.</strong> {nearbyShort(item)}
+                        </span>
                         <span className="actions">
+                          <button type="button" className="secondary" aria-label={detourShowName(item, i)} onClick={() => showFound(item, i)}>
+                            {t("Show on map")}
+                          </button>
                           <button
                             type="button"
                             className="secondary"

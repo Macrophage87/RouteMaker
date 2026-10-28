@@ -258,7 +258,8 @@ import { NearbyStations } from "./NearbyStations.tsx";
 import { Fold } from "./Sidebar.tsx";
 import { BACK_LABEL, POPUP_VIEWS, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib/sidebar.ts";
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
-import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
+import { letterKeyIndex, letterPlaces, placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
+import { frameAround, rideOpenPadding } from "./lib/detourSearch.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
 import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_PICK_LOOK_MS, goHereStart, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { ReviewMode } from "./ReviewMode.tsx";
@@ -964,6 +965,10 @@ export function App() {
   // ending that ride comes back here.
   const [roaming, setRoaming] = useState(false);
   const [roamRider, setRoamRider] = useState<{ point: LonLat; headingDeg: number | null; accuracyM: number } | null>(null);
+  const roamRiderNow = useRef(roamRider);
+  roamRiderNow.current = roamRider;
+  // Roam's Nearby places, lettered on the map as its rows (as a ride's Detour, RideView.lettered).
+  const [roamLettered, setRoamLettered] = useState<{ places: LetteredPlace[]; pick: (index: number) => void } | null>(null);
   const onBike = riding || roaming;
   // How many are on the ride's broadcast (RideGroup's count), shown in Ride mode's Broadcast; More > Riders opens its panel.
   const [rideRiders, setRideRiders] = useState<number | null>(null);
@@ -992,6 +997,8 @@ export function App() {
   // What the next ride screen says once it is up (rideStart.note); a ride started any other way says nothing.
   const rideNote = useRef("");
   const [rideView, setRideView] = useState<RideView | null>(null);
+  const rideViewNow = useRef(rideView);
+  rideViewNow.current = rideView;
   const [follow, setFollow] = useState(true);
   // A screen left alone 30 s with no panel open goes back to the ride's own view (lib/idleRecentre.ts, the owner,
   // 2026-10-24): `movedByHand` marks a pan, pinch or turn since, and `followReset` takes the zoom back too.
@@ -4102,6 +4109,20 @@ export function App() {
       },
     });
   }, [onBike]);
+  // A Detour row's Show on map in a ride or Roam (2026-10-28, as Find food's popup): the place and the rider framed in the
+  // map the card, the side buttons and the bottom panel leave open, the map's turn kept. The ride has stopped following,
+  // so the idle recentre above (or Where am I?) puts the map back on the rider.
+  const showOnRideMap = useCallback((point: LonLat) => {
+    requestAnimationFrame(() => {
+      const map = mapRef.current;
+      if (!map) return;
+      const rider = rideViewNow.current?.rider?.point ?? roamRiderNow.current?.point ?? null;
+      const box = (selector: string) => document.querySelector(selector)?.getBoundingClientRect() ?? null;
+      const padding = rideOpenPadding(map.getContainer().getBoundingClientRect(), box(".ride-middle"), box(".ride-rail"));
+      const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      map.fitBounds(frameAround(rider ? [point, rider] : [point]), { padding, bearing: map.getBearing(), maxZoom: 17, duration: still ? 0 : 400 });
+    });
+  }, []);
   // No ride is on at load: a ride's entry left by a reload is the page's own again.
   useEffect(() => forgetStaleRideEntry(window), []);
   // A ride left going when the page closed (lib/rideResume.ts): asked once at load. Resume starts it again from where
@@ -5566,8 +5587,8 @@ export function App() {
         followReset={followReset}
         junctionFocus={junctionFocus}
         scrubPoint={scrubPoint}
-        lettered={riding ? null : lettered}
-        onLettered={pickLettered}
+        lettered={riding ? (rideView?.lettered ?? null) : roaming && roamLettered ? roamLettered.places : lettered}
+        onLettered={riding ? (rideView?.onLettered ?? ignore) : roaming && roamLettered ? roamLettered.pick : pickLettered}
         stopActionFor={stopActionFor}
         onClosureBypass={(item, on) => {
           setClosureBypass((now) => toggleBypass(now, bypassPlan, item.id, on));
@@ -5935,6 +5956,7 @@ export function App() {
           textSize={rideText}
           onTextSize={setRideText}
           onView={setRideView}
+          onShowPlace={showOnRideMap}
           onEnd={endRide}
           resumeStats={resumeStats}
           water={ensureWater}
@@ -5972,6 +5994,8 @@ export function App() {
           repair={ensureRepair}
           geocode={detourGeocode}
           onView={setRoamRider}
+          onLettered={setRoamLettered}
+          onShowPlace={showOnRideMap}
           onDetour={roamDetour}
           onEnd={endRoam}
           onLocationOff={roamLocationOff}

@@ -6583,6 +6583,15 @@ details.fold > summary .icon {
   display: none;
 }
 
+/* Beside Large text's pills (lib/railFit.ts) a menu ran off the screen's left edge, its rows' buttons cut: there it
+   lies over the buttons instead, the screen's width less its gutters, closed by its own Close. */
+.ride-rail-pill .ride-menu {
+  z-index: 3;
+  right: 0;
+  width: min(22rem, calc(100vw - 24px));
+  box-sizing: border-box;
+}
+
 .ride-menu-head {
   display: flex;
   align-items: center;

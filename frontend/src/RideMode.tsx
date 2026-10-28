@@ -75,6 +75,7 @@ import { RestartStopsDialog } from "./RestartStopsDialog.tsx";
 import { keepLeftRide } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
+import { placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
 import type { PresetId } from "./lib/presets.ts";
 import { formatDistance, formatDuration, spokenDistance } from "./lib/format.ts";
 import { arrivalClock, atPace, paceFactor, paceStart, paceStep, type PaceTrack } from "./lib/arrival.ts";
@@ -175,6 +176,9 @@ import {
   DETOUR_SEARCH_LABEL,
   DETOUR_SUMMARY,
   detourFindingSaid,
+  detourLettered,
+  detourShowName,
+  detourShownSaid,
   findDetour as searchDetour,
   type DetourAsk,
   type DetourDeps,
@@ -407,6 +411,10 @@ export interface RideView {
   vehicle?: VehicleMark | null;
   /** The stops still ahead, drawn on the ride's map with their names (2026-10-24). */
   stops?: RideStopMark[];
+  /** The places Detour found, lettered as their rows, while its menu is open or after a row's Show on map (2026-10-28). */
+  lettered?: LetteredPlace[] | null;
+  /** A lettered pin pressed: Detour opens on its row. */
+  onLettered?: (index: number) => void;
 }
 
 function arrowFor(
@@ -687,6 +695,7 @@ export function RideMode({
   textSize,
   onTextSize,
   onView,
+  onShowPlace,
   onEnd,
   resumeStats = null,
   water,
@@ -726,6 +735,8 @@ export function RideMode({
   onTextSize: (size: RideTextSize) => void;
   /** The ride's route and the rider's position, for the map. */
   onView: (view: RideView) => void;
+  /** A Detour row's Show on map: the map frames the place and the rider (following is off until Where am I? or 30 s idle). */
+  onShowPlace?: (point: LonLat) => void;
   /** End ride: with the plan the ride leaves (part way, from here; lib/navigate.ts planAfterEnd) and the ride's figures. */
   onEnd: (after: EndedPlan, stats: RideStats) => void;
   /** Undo after End ride: the ended ride's figures, to carry on from. */
@@ -1005,8 +1016,16 @@ export function RideMode({
   const detourChange = useRef<HTMLButtonElement>(null);
   const detourKinds = useRef<HTMLDivElement>(null);
   const pickedFocus = useRef<"change" | "kinds" | null>(null);
+  // A row's Show on map (the owner, 2026-10-28: Food's popup behaviour, "make sure that happens in a ride too") closes
+  // the menu with all in it kept, its pins left on the map: the row it was pressed in, so reopening Detour shows the
+  // same list with the focus on that row's Show on map. Any other close starts afresh and takes the pins away.
+  const shownRow = useRef<number | null>(null);
+  const [detourPinsKept, setDetourPinsKept] = useState(false);
+  const detourRows = useRef<HTMLOListElement>(null);
   useEffect(() => {
-    if (!detourOpen) setDetourKind(null);
+    if (detourOpen || shownRow.current !== null) return;
+    setDetourKind(null);
+    setDetourPinsKept(false);
   }, [detourOpen]);
   useEffect(() => {
     // The pressed button goes: the focus to what took its place.
@@ -1020,7 +1039,12 @@ export function RideMode({
   const dockHeading = useRef<HTMLHeadingElement>(null);
   const dockButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    if (detourOpen) detourHeading.current?.focus();
+    if (!detourOpen) return;
+    const row = shownRow.current;
+    shownRow.current = null;
+    const back = row === null ? null : detourRows.current?.querySelectorAll("li")[row]?.querySelector<HTMLButtonElement>("button");
+    if (back) back.focus();
+    else detourHeading.current?.focus();
   }, [detourOpen]);
   useEffect(() => {
     if (dockOpen) dockHeading.current?.focus();
@@ -1602,6 +1626,21 @@ export function RideMode({
     [model, aheadKey, stopName],
   );
   const nextStop = ride.arrived ? null : (stops[0] ?? null);
+  // Detour's places, lettered on the map as in its rows (Find food's pins, 2026-10-28): while the menu is open, and
+  // after a row's Show on map until the menu next closes. They go with the list (a new search, a detour or Instead chosen).
+  const detourLetters = useMemo(() => detourLettered(detourList), [detourList]);
+  const lettered = detourOpen || detourPinsKept ? detourLetters : null;
+  // A pin pressed opens Detour on its row, the focus on its Show on map, as a reopening after Show on map does.
+  const openOnRow = useRef((index: number) => void index);
+  openOnRow.current = (index: number) => {
+    if (detourOpen) {
+      detourRows.current?.querySelectorAll("li")[index]?.querySelector<HTMLButtonElement>("button")?.focus();
+      return;
+    }
+    shownRow.current = index;
+    openMenu("detour");
+  };
+  const onLettered = useCallback((index: number) => openOnRow.current(index), []);
   useEffect(() => {
     onView({
       route,
@@ -1609,8 +1648,10 @@ export function RideMode({
       rider: fix ? { point: fix.point, headingDeg: fix.headingDeg, accuracyM: fix.accuracyM } : null,
       vehicle,
       stops,
+      lettered,
+      onLettered,
     });
-  }, [route, other, fix, onView, vehicle, stops]);
+  }, [route, other, fix, onView, vehicle, stops, lettered, onLettered]);
 
   // The map along the route, kept for dead spots (lib/corridor.ts, plan section 6): fetched at Start ride
   // and again for a re-plan's new route (only the tiles the first did not cover), cleared at End ride.
@@ -1959,6 +2000,22 @@ export function RideMode({
     sayDetour(t("Finding a way to {place}.", { place: item.place.title }));
     // The place is a stop of the new route, under its own name on the map and in the cues (2026-10-24).
     void replan(here, VIA_MARKS.named([item.place.point[0], item.place.point[1]], item.place.title));
+  };
+  // A row's Show on map (as Find food's, 2026-10-28): the menu closes, its list kept, and the map frames the place with
+  // the rider. Following stops, as a pan by hand stops it: Where am I? brings it back, or 30 s untouched does (App's
+  // idle recentre, lib/idleRecentre.ts). The focus goes to Detour, which opens the same list again.
+  const showDetour = (item: Nearby, index: number) => {
+    shownRow.current = index;
+    setDetourPinsKept(true);
+    setDetourOpen(false);
+    detourButton.current?.focus();
+    onFollow(false);
+    onShowPlace?.(item.place.point);
+    // Said as an answer and shown by the side buttons, the menu going; its own status line stays as it was.
+    const said = detourShownSaid(item, index);
+    showToast(said);
+    announcer.current?.answer(said);
+    if (prefsRef.current.output === "neither") setPolite((s) => ({ text: said, count: s.count + 1 }));
   };
 
   // The next stop's two options (2026-10-24: "add the option to skip a stop or go to a different one"): Skip this stop
@@ -2754,13 +2811,18 @@ export function RideMode({
                 {detourList && detourList.items.length > 0 && (
                   <div className="nearest-list">
                     <h4 id={`${settingsId}-detour`}>{detourList.heading}</h4>
-                    <ol role="list" aria-labelledby={`${settingsId}-detour`}>
-                      {detourList.items.map((item) => (
+                    <ol role="list" aria-labelledby={`${settingsId}-detour`} ref={detourRows}>
+                      {detourList.items.map((item, i) => (
                         <li key={item.place.id}>
-                          {/* Short on screen (the name, how far, ahead or behind), the whole line for screen readers. */}
-                          <span aria-hidden="true">{detourRowShown(item, detourSide(item.place.point))}</span>
+                          {/* Short on screen (the map pin's letter, the name, how far, ahead or behind), the whole line for screen readers. */}
+                          <span aria-hidden="true">
+                            <strong>{placeLetter(i)}.</strong> {detourRowShown(item, detourSide(item.place.point))}
+                          </span>
                           <span className="visually-hidden">{nearbyText(item)}</span>
                           <span className="actions">
+                            <button type="button" className="secondary" aria-label={detourShowName(item, i)} onClick={() => showDetour(item, i)}>
+                              {t("Show on map")}
+                            </button>
                             <button
                               type="button"
                               className="secondary"

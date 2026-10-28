@@ -6,7 +6,12 @@ import {
   DETOUR_SUMMARY,
   SEARCH_TOO_SHORT,
   detourFindingSaid,
+  detourLettered,
+  detourShowName,
+  detourShownSaid,
   findDetour,
+  frameAround,
+  rideOpenPadding,
   kindForQuery,
   mergeCandidates,
   repairNearestPlaces,
@@ -225,6 +230,74 @@ test("repair places are titled as Go's Repair list titles them", () => {
   const [stand, shop] = repairNearestPlaces(REPAIR, new Date());
   assert.equal(stand.title, "Repair stand");
   assert.equal(shop.title, "Bike shop, Spokes");
+});
+
+test("the places found are lettered A, B, C on the map, as their rows, each pin named as the planner's", async () => {
+  const { d } = deps();
+  const outcome = await findDetour(d, { kind: "food" });
+  const pins = detourLettered(outcome.found ?? null);
+  assert.ok(pins);
+  assert.deepEqual(
+    pins.map((p) => p.letter),
+    ["A", "B", "C"],
+  );
+  assert.deepEqual(pins[0], { letter: "A", point: near(100), name: "A: Bean, 390 ft (120 m)" });
+  // Nothing found, or no list: no pins.
+  assert.equal(detourLettered(null), null);
+  assert.equal(detourLettered({ kind: "water", heading: "Nearest water", items: [] }), null);
+});
+
+test("a row's Show on map is named as Find food's, and says what it shows", async () => {
+  const { d } = deps();
+  const items = (await findDetour(d, { kind: "food" })).found?.items ?? [];
+  assert.equal(detourShowName(items[1], 1), "Show on map: Pizza Place, marker B");
+  assert.equal(detourShownSaid(items[1], 1), "Showing Pizza Place on the map, marker B.");
+});
+
+test("Show on map frames the place and the rider together", () => {
+  assert.deepEqual(frameAround([near(300), HERE]), [HERE, near(300)]);
+  const north: LonLat = [HERE[0], HERE[1] + 0.01];
+  assert.deepEqual(frameAround([HERE, north, near(-100)]), [
+    [near(-100)[0], HERE[1]],
+    [HERE[0], north[1]],
+  ]);
+  assert.deepEqual(frameAround([HERE]), [HERE, HERE]);
+});
+
+test("Show on map's padding keeps the place clear of the ride's card, its side buttons and its bottom panel", () => {
+  const map = { top: 0, bottom: 844, left: 0, right: 390 };
+  // The card down to 215, the bottom panel from 770, the side buttons from 320: room over the place for its pin.
+  assert.deepEqual(rideOpenPadding(map, { top: 215, bottom: 770, left: 0, right: 390 }, { top: 230, bottom: 760, left: 320, right: 378 }), {
+    top: 275,
+    bottom: 104,
+    left: 40,
+    right: 100,
+  });
+  // Nothing measured: the map's own edges, with the same room.
+  assert.deepEqual(rideOpenPadding(map, null, null), { top: 60, bottom: 30, left: 40, right: 30 });
+  // Large text's card on a short screen: the paddings shrink together, 120 px of map kept.
+  const short = rideOpenPadding({ top: 0, bottom: 600, left: 0, right: 390 }, { top: 420, bottom: 560, left: 0, right: 390 }, null);
+  assert.ok(600 - short.top - short.bottom >= 120);
+  assert.ok(short.top > short.bottom);
+});
+
+test("Ride mode and Roam letter their found places on the map, each row with Show on map first", () => {
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  const roam = readFileSync(new URL("../RoamMode.tsx", import.meta.url), "utf8");
+  for (const src of [ride, roam]) {
+    assert.match(src, /detourLettered\((detourList|found)\)/);
+    assert.match(src, /<strong[^>]*>\{placeLetter\(i\)\}\.<\/strong>/);
+    assert.match(src, /<span className="actions">\s*<button type="button" className="secondary" aria-label=\{detourShowName\(item, i\)\}/);
+    // Following stops until Where am I? or the idle recentre brings it back.
+    assert.match(src, /onFollow\(false\);\s*onShowPlace\??\.?\(item\.place\.point\);/);
+  }
+  // A ride's pins: while Detour is open, or after Show on map, and only from its list.
+  assert.match(ride, /const lettered = detourOpen \|\| detourPinsKept \? detourLetters : null;/);
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /lettered=\{riding \? \(rideView\?\.lettered \?\? null\) : roaming && roamLettered \? roamLettered\.places : lettered\}/);
+  // The follow camera keeps the map while following: the pins are not framed over it.
+  const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(view, /if \(props\.lettered\.length > 0 && !callbacks\.current\.follow\) \{/);
 });
 
 test("Ride mode and Roam both use the shared Detour search and its box", () => {
