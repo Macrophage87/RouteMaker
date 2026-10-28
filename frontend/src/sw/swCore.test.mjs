@@ -160,6 +160,12 @@ function fakeScope({ network } = {}) {
             return store.get(keyOf(request));
           },
           put: async (request, response) => void store.set(keyOf(request), response),
+          keys: async () => [...store.keys()].map((url) => ({ url })),
+          add: async (url) => {
+            const response = await scope.fetch(url);
+            if (!response.ok) throw new Error(`${url} ${response.status}`);
+            store.set(keyOf(url), response);
+          },
           addAll: async (urls) => {
             for (const url of urls) {
               const response = await scope.fetch(url);
@@ -457,6 +463,15 @@ test("a lazy asset: fetched on first use and kept, then answered from the cache 
   down = true;
   const again = await scope.dispatch("fetch", { request: get("/assets/food-1.json") });
   assert.equal((await again.responded).label, "network");
+});
+
+test("an update fetches a changed catalog of a language the rider used, and leaves the others lazy (v0.14.0 review)", async () => {
+  const scope = fakeScope({ network: site("b2") });
+  scope.stores.set(buildCache("b1"), new Map([[`${ORIGIN}/assets/lang-fr-Old1.js`, new FakeResponse("f", 200, "old-fr")]]));
+  await precache(scope, "b2", ASSETS, ["/assets/lang-fr-New2.js", "/assets/lang-ar-New3.js"]);
+  const kept = scope.stores.get(buildCache("b2"));
+  assert.equal(kept.has(`${ORIGIN}/assets/lang-fr-New2.js`), true);
+  assert.equal(kept.has(`${ORIGIN}/assets/lang-ar-New3.js`), false);
 });
 
 test("a lazy asset is not kept when the edge refuses it", async () => {

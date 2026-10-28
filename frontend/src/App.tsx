@@ -926,7 +926,7 @@ export function App() {
   // A Go destination just picked (v0.7.0, "Faster routing" step 4): its route is asked for at once, not after the
   // debounce that folds a burst of edits into one request.
   const goPickedNow = useRef(false);
-  // Go: a place picked (Where to?, Ride here) moves the focus to the route's heading once it is routed (v0.14.0 end
+  // Go: a place picked (Where to?, Ride here) moves the focus to the route's heading as its points are set (v0.14.0 end
   // review: Where to? folds away under a route, and the focus fell to the page).
   const goFocusRoute = useRef(false);
   // One deliberate press (Plan's Route, Try again, a transit option picked; routing audit S26): its route is asked
@@ -1504,7 +1504,7 @@ export function App() {
     if (!goFocusRoute.current) return;
     goFocusRoute.current = false;
     const active = document.activeElement;
-    const lost = !(active instanceof HTMLElement) || active === document.body || active === plannerHeadingRef.current || active.offsetParent === null;
+    const lost = !(active instanceof HTMLElement) || active === document.body || active === plannerHeadingRef.current || active.getClientRects().length === 0;
     if (lost) routeHeadingRef.current?.focus({ preventScroll: true });
   }, [points]);
   useEffect(() => {
