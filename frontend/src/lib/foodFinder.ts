@@ -1,35 +1,41 @@
 /**
  * The planner's "Find food" panel (lib/food.ts): a search box for a food or a name (blank for all
- * food), where to search (near you, the default, or the map's view), one persistent status line, and the results as a
- * numbered list whose numbers are the map's markers. Each result has Show on map and, with a
- * plan to add it to, Add as stop; a website where one is mapped. Written with createElement so a
- * test renders it (as nearestFinder.ts).
+ * food), the cuisine chips, one persistent status line, and the results as a lettered list whose
+ * letters are the map's markers. Each result has Show on map and, with a plan to add it to, Add as
+ * stop; a website where one is mapped. Written with createElement so a test renders it (as
+ * nearestFinder.ts).
  *
- * Collapsed by default, beside "Find the nearest water, restroom or Metro". The status line is
- * always rendered and its words change (a live region inserted with its text is often not read).
- * Show more adds a page and moves the focus to the first new result, so a keyboard rider goes on
- * from where they were.
+ * Results first (the 2026-10-28 audit, P7: "Food's first result starts at the bottom edge of the
+ * screen"): the search, one row of chips, then the list. A search is near you; once the rider moves
+ * the map, a "Search this area" button searches the map's view instead (it was two radios, always
+ * shown). The count sentence ("15,663 places to eat…") is for screen readers only once a list shows.
+ *
+ * The status line is always rendered and its words change (a live region inserted with its text is
+ * often not read). Show more adds a page and moves the focus to the first new result, so a keyboard
+ * rider goes on from where they were.
  */
 import { placeLetter } from "./letteredPlaces.ts";
-import { createElement as h, useEffect, useRef, type ReactElement } from "react";
-import { FOOD_DETOUR_NOTE, foodHoursText, foodHowFar, foodKindText, FOOD_PAGE, isFarmFood, type FoodResult, type FoodScope } from "./food.ts";
+import { createElement as h, useEffect, useRef, type ReactElement, type ReactNode } from "react";
+import { FOOD_DETOUR_METHOD, FOOD_DETOUR_NOTE, foodHoursText, foodHowFar, foodKindText, FOOD_PAGE, isFarmFood, type FoodResult } from "./food.ts";
 import { ICON_PATHS } from "./iconPaths.ts";
 import { t } from "./i18n.ts";
 
 export const FOOD_SUMMARY = t("Find food");
-export const FOOD_HELP =
-  t("Search by food (crab, pizza, coffee) or a place's name, or leave it blank for all food. With a route shown, results are sorted by detour; Add as stop puts a place into your plan.");
-export const FOOD_SCOPE_LABEL: Record<FoodScope, string> = {
-  near: t("Near you"),
-  view: t("In the map view"),
-};
+/** On screen, short (the audit's P7); FOOD_HELP_MORE goes on for screen readers. */
+export const FOOD_HELP = t("Search a food or a name; blank shows all.");
+export const FOOD_HELP_MORE = t("With a route shown, results are sorted by detour; Add as stop puts a place into your plan.");
+export const FOOD_PLACEHOLDER = t("Search food or a name");
+export const FOOD_SEARCH_AREA = t("Search this area");
 
 export interface FoodFinderProps {
   query: string;
   onQuery: (query: string) => void;
-  scope: FoodScope;
-  onScope: (scope: FoodScope) => void;
   onSearch: () => void;
+  /** Search the map's view: offered (areaMoved) once the rider has moved the map since the list was found. */
+  onSearchArea?: () => void;
+  areaMoved?: boolean;
+  /** The cuisine chips (app/Sheets.tsx FoodChips), under the search box. */
+  chips?: ReactNode;
   busy: boolean;
   status: string;
   /** The results shown (a page or more of them), in order; null before a search. */
@@ -45,10 +51,13 @@ export interface FoodFinderProps {
   onAddStop: (result: FoodResult) => void;
   /** A fold of its own (the default), or the body alone, in the map's Food sheet (UI-CLEANUP), whose heading names it. */
   folded?: boolean;
+  /** The hours are said for this moment (lib/openingHours.ts); the time now by default. */
+  at?: Date;
 }
 
 export function FoodFinder(props: FoodFinderProps): ReactElement {
-  const { query, onQuery, scope, onScope, onSearch, busy, status, results, total, onMore, canAddStop, onShow, onAddStop, onRide, folded = true } = props;
+  const { query, onQuery, onSearch, onSearchArea, areaMoved = false, chips, busy, status, results, total, onMore, canAddStop, onShow, onAddStop, onRide, folded = true } = props;
+  const at = props.at ?? new Date();
   const list = useRef<HTMLOListElement | null>(null);
   // After Show more: the index of the first new result, whose first button takes the focus.
   const focusFrom = useRef<number | null>(null);
@@ -60,6 +69,8 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
     list.current.querySelectorAll("li")[from]?.querySelector("button")?.focus();
   }, [shown]);
   const anyDetour = results?.some((r) => r.detour) ?? false;
+  // With a list on screen, its count sentence is heard, not shown: the list is what it counts.
+  const statusHidden = shown > 0 && !busy;
   const wrap = (body: ReactElement) =>
     folded ? h("details", { className: "fold food" }, h("summary", null, FOOD_SUMMARY), body) : h("div", { className: "food food-sheet" }, body);
   return wrap(
@@ -77,7 +88,7 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
             onSearch();
           },
         },
-        h("label", { htmlFor: "food-query", className: "place-search-label" }, t("Food or name")),
+        h("label", { htmlFor: "food-query", className: "visually-hidden" }, t("Food or name")),
         h(
           "div",
           { className: "place-search-row" },
@@ -85,6 +96,7 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
             id: "food-query",
             type: "search",
             value: query,
+            placeholder: FOOD_PLACEHOLDER,
             autoComplete: "off",
             enterKeyHint: "search",
             "aria-describedby": "food-help",
@@ -92,27 +104,16 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
           }),
           h("button", { type: "submit", className: "secondary", "aria-disabled": busy ? true : undefined }, t("Search")),
         ),
-        h(
-          "fieldset",
-          { className: "food-scope" },
-          h("legend", null, t("Where")),
-          ...(["near", "view"] as const).map((option) =>
-            h(
-              "label",
-              { key: option, className: "toggle" },
-              h("input", { type: "radio", name: "food-scope", value: option, checked: option === scope, onChange: () => onScope(option) }),
-              FOOD_SCOPE_LABEL[option],
-            ),
-          ),
-        ),
       ),
-      h("p", { className: "hint food-status", role: "status" }, status),
+      chips ?? null,
+      areaMoved && onSearchArea && h("button", { type: "button", className: "secondary food-area", "aria-disabled": busy ? true : undefined, onClick: onSearchArea }, FOOD_SEARCH_AREA),
+      h("p", { className: statusHidden ? "hint food-status visually-hidden" : "hint food-status", role: "status" }, status),
       results !== null &&
         results.length > 0 &&
         h(
           "div",
           { className: "nearest-list food-list" },
-          h("h3", { id: "food-list-heading" }, t("Places to eat")),
+          h("h3", { id: "food-list-heading", className: "visually-hidden" }, t("Places to eat")),
           h(
             "ol",
             // role="list": WebKit drops a list's role once its bullets are styled away.
@@ -141,7 +142,7 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
                       dangerouslySetInnerHTML: { __html: ICON_PATHS.apple },
                     }),
                   ` ${foodKindText(r.place)}. ${foodHowFar(r)}`,
-                  foodHoursText(r.place) ? ` ${foodHoursText(r.place)}` : "",
+                  foodHoursText(r.place, at) ? ` ${foodHoursText(r.place, at)}` : "",
                 ),
                 h(
                   "span",
@@ -186,9 +187,11 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
               },
               t("Show {count} more", { count: Math.min(FOOD_PAGE, total - shown) }),
             ),
-          h("p", { className: "hint" }, anyDetour ? FOOD_DETOUR_NOTE : t("From OpenStreetMap: check the hours before you count on them. No ratings.")),
+          anyDetour
+            ? h("p", { className: "hint" }, h("span", { "aria-hidden": "true" }, FOOD_DETOUR_NOTE), h("span", { className: "visually-hidden" }, FOOD_DETOUR_METHOD))
+            : h("p", { className: "hint" }, t("From OpenStreetMap: check the hours before you count on them. No ratings.")),
         ),
-      h("p", { className: "hint", id: "food-help" }, FOOD_HELP),
+      h("p", { className: "hint", id: "food-help" }, FOOD_HELP, h("span", { className: "visually-hidden" }, ` ${FOOD_HELP_MORE}`)),
     ),
   );
 }

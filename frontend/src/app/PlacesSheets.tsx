@@ -45,6 +45,7 @@ import { ROUTE_BOTTOM_LAYER } from "../lib/railLayer.ts";
 import { SHEET_TITLES, type PanelView } from "../lib/sidebar.ts";
 import type { SheetNav } from "./Sheets.tsx";
 import { t } from "../lib/i18n.ts";
+import { hoursText } from "../lib/openingHours.ts";
 
 /** Go's Repair: the nearest repair stands and bike shops, lettered; a row opens its card. */
 export function RepairSheet({ nav, status, items, at, onPick }: { nav: SheetNav; status: string; items: readonly RepairNearby[] | null; at: Date; onPick: (item: RepairNearby) => void }) {
@@ -136,6 +137,8 @@ export interface PlacesSheetProps {
 /** Plan's Places to see (filters, hours, website) and Go's Sights (the nearest five, one tap each). */
 export function PlacesSheet(props: PlacesSheetProps) {
   const { nav, go, status, items, total, onMore, filter, onFilter, canAddStop, onShow, onAddStop, onGoPick } = props;
+  // The hours in words for now ("Open now · closes 5 PM": lib/openingHours.ts).
+  const now = new Date();
   return (
     <SheetFrame id="sheet-places" title={go ? GO_SIGHTS_TITLE : SHEET_TITLES.places} open={nav.view === "places"} onBack={nav.back} backLabel={nav.backLabel("places")}>
       {!go && (
@@ -160,7 +163,7 @@ export function PlacesSheet(props: PlacesSheetProps) {
           {items.map((r, i) => (
             <li key={r.place.id}>
               <SightRow result={r} index={i}>
-                {r.place.hours ? ` Hours: ${r.place.hours}.` : ""}
+                {r.place.hours ? ` ${hoursText(r.place.hours, now)}.` : ""}
               </SightRow>
               <span className="actions">
                 <button type="button" className="secondary" aria-label={`Show on map: ${r.place.name}, marker ${placeLetter(i)}`} onClick={() => onShow(r)}>

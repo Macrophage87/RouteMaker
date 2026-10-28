@@ -98,7 +98,8 @@ test("food places search like water, named by name or kind", () => {
   assert.deepEqual(place.point, [-77, 38.9]);
   assert.equal(place.title, "Bean");
   assert.ok(place.details[0].includes("coffee shop"));
-  assert.ok(place.details[1].startsWith("Hours as mapped"));
+  // The hours in words (lib/openingHours.ts), never the raw tag.
+  assert.match(place.details[1], /^(Open now · closes 3 PM|Closed now · opens .*)\.$/);
 });
 
 test("only lines are read from the map's features", () => {

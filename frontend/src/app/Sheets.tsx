@@ -734,18 +734,24 @@ export function NearestSheet({ nav, children }: { nav: SheetNav; children: React
 // Farm stands (v0.7.0, the owner 2026-10-14: "Lots of places are selling apples in the fall"), with the apple.
 export const FOOD_CHIPS = ["Crab", "Coffee", "Pizza", "Tacos", "Ice cream", "Farm stands"] as const;
 
-/** The map's Food chip: Find food (the panel that was a fold in Points), with the mockup's cuisine chips over it. */
-export function FoodSheet({ nav, onChip, children }: { nav: SheetNav; onChip: (food: string) => void; children: ReactNode }) {
+/** The cuisine chips, under Find food's search box: one row that scrolls sideways (the 2026-10-28 audit, P7: results first). */
+export function FoodChips({ onChip }: { onChip: (food: string) => void }) {
+  return (
+    <div className="chip-row food-chips" role="group" aria-label={t("Quick searches")}>
+      {FOOD_CHIPS.map((food) => (
+        <button key={food} type="button" className="chip" onClick={() => onChip(food.toLowerCase())}>
+          <Icon name={food === "Farm stands" ? "apple" : "food"} size={16} />
+          {t(food)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The map's Food chip: Find food (the panel that was a fold in Points), its cuisine chips (FoodChips) under its search box. */
+export function FoodSheet({ nav, children }: { nav: SheetNav; children: ReactNode }) {
   return (
     <SheetFrame id="sheet-food" title={SHEET_TITLES.food} open={nav.view === "food"} onBack={nav.back} backLabel={nav.backLabel("food")}>
-      <div className="chip-row food-chips" role="group" aria-label={t("Quick searches")}>
-        {FOOD_CHIPS.map((food) => (
-          <button key={food} type="button" className="chip" onClick={() => onChip(food.toLowerCase())}>
-            <Icon name={food === "Farm stands" ? "apple" : "food"} size={16} />
-            {t(food)}
-          </button>
-        ))}
-      </div>
       {children}
     </SheetFrame>
   );

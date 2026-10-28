@@ -246,7 +246,7 @@ import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTime
 import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, ShareControls, type Status } from "./app/RoutePanel.tsx";
 import { REPORTS_WHERE, openCount, outstandingSaid, report311Log } from "./lib/report311Log.ts";
-import { EditRouteSheet, FoodSheet, GpxSheet, LayersSheet, NearestSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
+import { EditRouteSheet, FoodChips, FoodSheet, GpxSheet, LayersSheet, NearestSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
 import { GoAddStop, GoRouteCard, GoSheet, GoTopBar, ModeSwitch, PlanMapChips } from "./app/Go.tsx";
 import { useSharedLaunch } from "./app/sharedLaunch.ts";
 import { NearestFinder } from "./lib/nearestFinder.ts";
@@ -4424,6 +4424,8 @@ export function App() {
   // the app has one (the owner, 2026-10-18), else from the map's center where the search was made.
   const [foodQuery, setFoodQuery] = useState("");
   const [foodScope, setFoodScope] = useState<FoodScope>("near");
+  // The rider moved the map since the list was found: Search this area is offered.
+  const [foodMoved, setFoodMoved] = useState(false);
   const [foodAsked, setFoodAsked] = useState<{ query: string; scope: FoodScope; bounds: Bounds | null; centre: LonLat; fromRider: boolean } | null>(null);
   const [foodPlaces, setFoodPlaces] = useState<FoodPlace[] | null>(null);
   const [foodCount, setFoodCount] = useState(FOOD_PAGE);
@@ -4487,9 +4489,11 @@ export function App() {
   const freshWanted = () => nearestRoute.current === null && !ridingNow.current;
   // The latest search wins: a chip tapped while the opening search is still loading the file is not lost.
   const foodSeq = useRef(0);
-  const searchFoodNow = async (asked?: string) => {
+  const searchFoodNow = async (asked?: string, scope: FoodScope = foodScope) => {
     const seq = ++foodSeq.current;
     const query = asked ?? foodQuery;
+    // A new list is for the map as it is now: Search this area waits for the next move.
+    setFoodMoved(false);
     if (!foodLoad.current) {
       foodLoad.current = loadFood(foodUrl).then((data) => {
         if (!data) foodLoad.current = null;
@@ -4517,14 +4521,14 @@ export function App() {
     setFoodCount(FOOD_PAGE);
     setFoodAsked({
       query,
-      scope: foodScope,
+      scope,
       bounds: b ? [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()] : null,
       centre: fix ?? (c ? [c.lng, c.lat] : [(COVERAGE_BBOX[0] + COVERAGE_BBOX[2]) / 2, (COVERAGE_BBOX[1] + COVERAGE_BBOX[3]) / 2]),
       fromRider: fix !== null,
     });
     // Near you: the list again from where the rider is now, once the look-up answers (whichever search asked it: a
     // second one while it is under way finds the gate busy and is answered by the first's).
-    if (fix === null || foodScope !== "near" || !freshWanted()) return;
+    if (fix === null || scope !== "near" || !freshWanted()) return;
     const now = await freshHere();
     if (!now || haversineM(now, fix) < MOVED_M || viewNow.current !== "food") return;
     setFoodAsked((asked) => {
@@ -4536,12 +4540,33 @@ export function App() {
   };
   // Opening the Food sheet with nothing typed shows all food at once (the owner, 2026-10-18: "when searching
   // for food, all food should be shown up"), so a hungry rider needs no typing; each opening is from where the
-  // rider is then.
+  // rider is then. Each opening is near the rider again; the map's view is Search this area's, once the map is moved.
   useEffect(() => {
-    if (view === "food" && panelOpen && !foodQuery.trim()) void searchFoodNow("");
+    if (!(view === "food" && panelOpen)) return;
+    setFoodScope("near");
+    setFoodMoved(false);
+    if (!foodQuery.trim()) void searchFoodNow("", "near");
     // Only on opening the sheet.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, panelOpen]);
+  // Search this area (the 2026-10-28 audit, P7, in place of the Near you / In the map view radios): offered once the
+  // rider moves the map themselves while the sheet is open (a move with an originalEvent: a drag, a pinch, a zoom
+  // button), never for the app's own framing of the list.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !(view === "food" && panelOpen)) return;
+    const onMove = (event: { originalEvent?: unknown }) => {
+      if (event.originalEvent) setFoodMoved(true);
+    };
+    map.on("movestart", onMove);
+    return () => {
+      map.off("movestart", onMove);
+    };
+  }, [view, panelOpen]);
+  const searchFoodArea = () => {
+    setFoodScope("view");
+    void searchFoodNow(undefined, "view");
+  };
   const showFood = (result: FoodResult) => {
     const map = mapRef.current;
     const n = foodResults?.indexOf(result) ?? -1;
@@ -4787,9 +4812,17 @@ export function App() {
       onRide={mode === "go" ? (r) => goToLettered([r.place.lon, r.place.lat], r.place.name) : undefined}
       query={foodQuery}
       onQuery={setFoodQuery}
-      scope={foodScope}
-      onScope={setFoodScope}
       onSearch={() => void searchFoodNow()}
+      onSearchArea={searchFoodArea}
+      areaMoved={foodMoved}
+      chips={
+        <FoodChips
+          onChip={(food) => {
+            setFoodQuery(food);
+            void searchFoodNow(food);
+          }}
+        />
+      }
       busy={foodBusy}
       status={foodStatus}
       results={foodResults}
@@ -5977,15 +6010,7 @@ export function App() {
             <NearestSheet nav={sheetNav}>
               <NearestFinder {...nearestProps} folded={false} />
             </NearestSheet>
-            <FoodSheet
-              nav={sheetNav}
-              onChip={(food) => {
-                setFoodQuery(food);
-                void searchFoodNow(food);
-              }}
-            >
-              {foodFinder}
-            </FoodSheet>
+            <FoodSheet nav={sheetNav}>{foodFinder}</FoodSheet>
             <RepairSheet nav={sheetNav} status={repairList?.said ?? ""} items={repairList?.items ?? null} at={new Date()} onPick={(item) => pickLettered(repairList?.items.indexOf(item) ?? -1)} />
             <PlacesSheet
               nav={sheetNav}
