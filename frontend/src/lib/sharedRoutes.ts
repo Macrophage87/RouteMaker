@@ -66,8 +66,8 @@ export const BROADCAST_NO_LEAD = t("The link went without you as its leader, so 
 /** Broadcast's own line when the share sheet failed: Copy link would not start a broadcast, and Go has none on screen. */
 export const BROADCAST_SHARE_FAILED = t("Could not open the share sheet, so the ride did not start.");
 /** Broadcast pressed during a ride (Stephen 2026-10-24: "Let people broadcast from a ride"): the ride goes on either way. */
-export const BROADCAST_RIDE_NO_LEAD = t("The link went without you as its leader. Press Broadcast to try again.");
-export const BROADCAST_RIDE_FAILED = t("Could not open the share sheet. Press Broadcast to try again.");
+export const BROADCAST_RIDE_NO_LEAD = t("The link went without you as its leader. Press Share live to try again.");
+export const BROADCAST_RIDE_FAILED = t("Could not open the share sheet. Press Share live to try again.");
 export const SHARE_RIDE_WAIT = t("Share ride needs the route ready. Try again once it shows.");
 export const SHARE_RIDE_ABOUT =
   t("Share ride: you lead. Everyone rides this exact route, never re-routed; those who open it follow your dot and the path you take, and each can choose to show where they are.");

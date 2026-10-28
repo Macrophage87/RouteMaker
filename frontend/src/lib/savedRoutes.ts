@@ -140,6 +140,8 @@ export const SAVE_ROUTE = t("Save route");
 /** Go's chip shows this; it is named SAVE_ROUTE (the words shown are in the name). */
 export const SAVE_SHORT = t("Save");
 export const MY_ROUTES = t("My routes");
+/** The saved routes' heading under My routes (YourRoutes.tsx), beside the routes kept for offline. */
+export const ACCOUNT_ROUTES = t("Saved to your account");
 export const SAVED_SAID = (name: string) => t('Saved "{name}" to My routes.', { name });
 export const SAVE_FAILED = t("The route was not saved; try again shortly.");
 export const NONE_SAVED = t("No saved routes yet. Plan a route and press Save route.");

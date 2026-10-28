@@ -22,32 +22,32 @@ export type PanelView = "planner" | "layers" | "suggest" | "review" | "gpx" | "s
 /** The planner's own heading, where the focus goes when the Plan button returns to it (OWNER-DECISIONS 392). */
 export const PLANNER_TITLE = "RouteMaker";
 
-/** The sheets' headings (the focus goes to it on open). Go shows Settings as its Menu. */
+/** The sheets' headings (the focus goes to it on open). Go's Settings is Plan's, with its pages above the tabs (P12: it was Go's Menu). */
 export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   layers: t("Layers"),
   // Reports (Stephen, 2026-10-21: "Let's pick a better name than suggest then. Reports?"): the 311 checklist and the
   // ways to suggest a map change.
   suggest: t("Reports"),
   review: "Review",
-  // Save and load (the owner, 2026-10-18: "the files tab (maybe call it save or load)"): files, Save, Share, your routes.
-  gpx: t("Save and load"),
+  // Save & load (the owner, 2026-10-18: "the files tab (maybe call it save or load)"): files, Save, Share, My routes.
+  // One name on its buttons and its heading (P12: it was also "Save and load").
+  gpx: t("Save & load"),
   settings: t("Settings"),
   nearest: t("Nearest"),
-  // Go's Eat chip opens it (P2): restaurants and cafes, not groceries.
-  food: t("Find a place to eat"),
+  // Go's and Plan's Eat chips open it (P2): restaurants and cafes, not groceries. Named as the chip (P12).
+  food: t("Eat"),
   ride: t("Ride"),
-  // v0.7.0: Go's Repair (behind More), and Plan's Places to see (Go calls it Sights).
-  repair: t("Repair stands and bike shops"),
+  // v0.7.0: Go's Repair (behind More), and Places to see (Go's More and Plan's map chips). Each sheet is named as
+  // its chip says it (P12).
+  repair: t("Repair"),
   places: t("Places to see"),
   // Go's Edit route (edit-route redesign, Stephen 2026-10-18): Plan's points, from the route card.
   points: t("Edit route"),
 };
 
-/** The Files sheet's name on its buttons (the owner, 2026-10-18), short enough for the bar. */
-export const SAVE_LOAD = t("Save & load");
+/** The Files sheet's name on its buttons and its heading (the owner, 2026-10-18), short enough for the bar. */
+export const SAVE_LOAD = SHEET_TITLES.gpx;
 
-/** Go's Menu (the mockup's Menu sheet): Settings, with Plan, Suggest, GPX and Review above them. */
-export const MENU_TITLE = t("Menu");
 
 export interface BarItem {
   /** The button's own id, for the focus on the way back. */
@@ -69,7 +69,7 @@ export const BAR_ITEMS: readonly BarItem[] = [
   { id: "plan", label: "Plan", opens: "planner", description: t("Shows the planner: the points, the ride settings and the route.") },
   { id: "layers", label: t("Layers"), opens: "layers", description: t("Opens the map layers, their switches and each layer's key.") },
   { id: "suggest", label: t("Reports"), opens: "suggest", description: t("Opens your 311 checklist and the ways to suggest a change to the map.") },
-  { id: "gpx", label: SAVE_LOAD, opens: "gpx", description: t("Opens Save and load: save or share the route, find your routes, or open or export a route file.") },
+  { id: "gpx", label: SAVE_LOAD, opens: "gpx", description: t("Opens Save & load: save or share the route, find My routes, or open or export a route file.") },
   { id: "settings", label: t("Settings"), opens: "settings", description: t("Opens the settings: My Go (Home, ride type), riding, display and your account.") },
 ];
 
@@ -93,12 +93,12 @@ export const BACK_LABEL = t("Back to planner");
 /**
  * The destinations that open as a popup on a phone (the owner, 2026-10-28: "Have some of the destinations open as a
  * popup, which is easier to work with than scroll, or a side panel"): one screen high at most, a title and Close,
- * over the map; on a computer the same sheet is the panel's side panel, as before. Repair, Sights and Edit route
+ * over the map; on a computer the same sheet is the panel's side panel, as before. Repair, Places to see and Edit route
  * stay sheets in the panel.
  */
 export const POPUP_VIEWS: readonly PanelView[] = ["settings", "ride", "layers", "gpx", "suggest", "nearest", "food"];
 
-/** A popup's way out to the map: Close, or Back to Menu where the Menu opened it. */
+/** A popup's way out to the map: Close, or Back to Settings where Go's Settings opened it. */
 export const POPUP_CLOSE = t("Close");
 
 export function popupBackLabel(backLabel: string): string {

@@ -327,7 +327,7 @@ test("after End ride: how many are still to report, where Reports is, and Open R
   assert.equal(openCount([fresh, done, old], now), 1);
   assert.equal(outstandingSaid(1), "1 problem still to report to 311.");
   assert.equal(outstandingSaid(3), "3 problems still to report to 311.");
-  assert.equal(REPORTS_WHERE, "Reports is in Go's Menu and Plan's bottom bar.");
+  assert.equal(REPORTS_WHERE, "Reports is in Go's Settings and Plan's bottom bar.");
   assert.equal(OPEN_REPORTS, "Open Reports");
   const { readFileSync } = await import("node:fs");
   const card = readFileSync(new URL("../RideSummaryCard.tsx", import.meta.url), "utf8");

@@ -411,12 +411,12 @@ export function mapLines(map: RoamMap, rider: LonLat, reach = AHEAD_M + 200): { 
 // ---- Broadcast from Roam (Stephen 2026-10-22: "Yes, but have it as a tap within roam") ----------------------------
 
 /** Roam's Broadcast: one tap on the Roam screen opens the share sheet; those who open the link follow the rider. */
-export const ROAM_BROADCAST_NAME = t("Broadcast");
+export const ROAM_BROADCAST_NAME = t("Share live");
 export const ROAM_BROADCAST_TITLE = t("Follow my ride");
 export const ROAM_BROADCAST_TEXT = t("Follow my ride on RouteMaker: my dot and the way I've ridden, while my app is open.");
-export const ROAM_BROADCAST_ON = t("Broadcasting. Those who open your link see your dot and the way you ride.");
+export const ROAM_BROADCAST_ON = t("Sharing live. Those who open your link see your dot and the way you ride.");
 /** The link went without the leader key (not ready yet, or no SHA-256 here): nothing is broadcast. */
-export const ROAM_BROADCAST_NOT_READY = t("Broadcast is not ready yet; try again in a moment.");
+export const ROAM_BROADCAST_NOT_READY = t("Share live is not ready yet; try again in a moment.");
 
 /** The fragment keys of a Roam broadcast link: the ride's random id and the leader key. */
 export const ROAM_PARAM = "roam";
