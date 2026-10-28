@@ -5,7 +5,7 @@ import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
 import { t } from "./lib/i18n.ts";
 import { APP_VERSION, versionShort } from "./lib/appVersion.ts";
-import { ACCESS_LABEL, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
+import { ACCESS_LABEL, ACCESS_MODE_CLASS, accessModeParts, accessModeToggle, browserStore, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
 import { placeAtSpot, requestAfterClose, type InfoRequest, type TrailRider } from "./lib/roadInfo.ts";
 import { stationNearSpot } from "./lib/stationLinks.ts";
 import { reorder } from "./lib/pointMover.ts";
@@ -14,12 +14,12 @@ import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.
 import { cancelRoute, requestNeighbours, requestRoute, routeRequestBody, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
 import { choiceColour, choiceFeatures } from "./lib/routeChoice.ts";
 import { displacedBy, keptNeighbours, neighbourDials, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
-import { betterRouteSaid, EarlyStart, takesRefined } from "./lib/progressive.ts";
+import { betterRouteSaid, EarlyStart, replannedSaid, takesRefined } from "./lib/progressive.ts";
 import { RAIL_STATUS_MS, closedReason, matchAlerts, withMetroClosed, matchClosures, requestClosures, type RailStatus } from "./lib/railClosures.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
-import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, withoutReturn } from "./lib/garminLink.ts";
-import { RETURN_PARAM as WAHOO_RETURN_PARAM, wahooReturnFrom } from "./lib/wahooLink.ts";
+import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, readGarmin, withoutReturn } from "./lib/garminLink.ts";
+import { RETURN_PARAM as WAHOO_RETURN_PARAM, readWahoo, wahooReturnFrom } from "./lib/wahooLink.ts";
 import { endsOnFoot, layersTurnedOn, presetNamesRide, presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
@@ -27,10 +27,10 @@ import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { forgetPlan, isPlainClick, planToOpen, rememberPlanForSignIn, tabSession } from "./lib/signIn.ts";
 import { STILL_PLANNING_AFTER_MS, announceRoute, stillPlanningSaid } from "./lib/summary.ts";
 import { focusesPlanButton, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
-import { neutralPaletteSearch, MTB_MIN_ZOOM, mtbTrailsOn, setMtbTrails, setRoutableMtb } from "./stressStyle.js";
+import { neutralPaletteSearch, MTB_MIN_ZOOM, mtbTrailsOn, setAccessibility, setMtbTrails, setRoutableMtb } from "./stressStyle.js";
 import { setTopoLines, topoAvailable, useTopoLines } from "./lib/topoLines.ts";
 import { isMtb, mtbChosen, mtbLevelOf } from "./lib/mtbMode.ts";
-import { choose as chooseRideType } from "./lib/rideTypeDialog.ts";
+import { choose as chooseRideType, isCustom } from "./lib/rideTypeDialog.ts";
 import {
   NOVICE_TRANSIT_CHOICES,
   noviceOfferShown,
@@ -140,7 +140,7 @@ import {
   type LocateResult,
 } from "./lib/geolocation.ts";
 import { usePlaceNames } from "./usePlaceNames.ts";
-import { MAX_DETOUR_SEARCH, coordinatesText, fetchPlaces, pickIntoPlan, placeFromSearch, reverseUrl, searchBiasPoint, searchUrl, type Place, type ViewBounds, type PlaceChoice } from "./lib/geocode.ts";
+import { MAX_DETOUR_SEARCH, coordinatesText, fetchPlaces, pickIntoPlan, placeFromSearch, reverseUrl, searchBiasPoint, searchUrl, startBiasPoint, type Place, type ViewBounds, type PlaceChoice } from "./lib/geocode.ts";
 import { HOME_CLEARED, HOME_PICK_CANCELLED, HOME_PICK_LINE, homeAtSpot, homeFromPlace, homeSetSaid, nameWithoutHome } from "./lib/homeSet.ts";
 import {
   FAVORITES_FULL,
@@ -261,7 +261,7 @@ import { ReviewMode } from "./ReviewMode.tsx";
 import type { ListKey } from "./lib/review.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type Home, type MyGo } from "./lib/myGo.ts";
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
-import { nativeShareNavigator } from "./lib/nativeShell.ts";
+import { nativeBridge, nativeShareNavigator } from "./lib/nativeShell.ts";
 import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restRequest, rideLegOf, rideTripOf, rideable as rideableRoute, type RideTrip } from "./lib/rideTrip.ts";
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
@@ -280,6 +280,9 @@ import { LEAD_PARAM, RIDE_PARAM, SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED,
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
 import { BroadcastQrDialog } from "./BroadcastQrDialog.tsx";
+import { BroadcastJoinDialog, type JoinAsk } from "./BroadcastJoinDialog.tsx";
+import { joinActions, joinKey, joinLine, joinShown, joinTitle, keepJoinShown, showJoin, type JoinAction } from "./lib/broadcastJoin.ts";
+import { canSendToGarmin, handGpx } from "./lib/sendToGarmin.ts";
 import { ResumeRideDialog } from "./ResumeRideDialog.tsx";
 import { forgetLeftRide, keepLeftRide, leftRide } from "./lib/rideResume.ts";
 import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
@@ -1083,6 +1086,24 @@ export function App() {
     choice: 0,
   });
   shownNow.current = { answer, riding, choice };
+  // Go's route before the rider changed its ride settings or ride type (P3): the final plan that follows is compared
+  // with it, in the toast ("Re-planned: flatter, 3 min less."), and Go's own "Found a quicker route" is not said for
+  // it. The ride type's name where it changed; the first route of a run of changes is kept; a minute and it lapses.
+  const replanFrom = useRef<{ route: RouteResponse; preset: PresetId; ride: string | null; at: number } | null>(null);
+  const REPLAN_LAPSES_MS = 60_000;
+  const replanned = (plan: Plan, route: RouteResponse): boolean => {
+    const from = replanFrom.current;
+    if (!from || modeRef.current !== "go") return false;
+    if (Date.now() - from.at > REPLAN_LAPSES_MS || plan.preset !== from.preset) {
+      replanFrom.current = null;
+      return false;
+    }
+    if (route.provisional) return true;
+    replanFrom.current = null;
+    const line = replannedSaid(from.route, route, from.ride);
+    setNoticeSaying(line.shown, line.said);
+    return true;
+  };
   const routeSaidNow = useRef("");
   const [refinedHeld, setRefinedHeld] = useState<{ route: RouteResponse; said: string } | null>(null);
   // Go's early start (step 4): a request made before the tap, kept for the tap that makes the same request.
@@ -1170,6 +1191,7 @@ export function App() {
           setRoute(result.route);
           setRoutedPoints(plan.points);
           setRoutedLoop(loopStops(plan.preset, plan.dials.loop));
+          replanned(plan, result.route);
           routedKey.current = keptPlanKey(plan.points, plan.preset, plan.dials, viaIndices(plan.points, VIA_MARKS.isVia));
           setStatus({ kind: "ok" });
           const kept = keptShown.current;
@@ -1207,7 +1229,8 @@ export function App() {
         if (!result.ok || !takesRefined(now.answer, now.riding) || !now.answer) return;
         // A first route not yet said (it stood less than a moment) is not held: the full plan's sentence is the one said.
         const heard = routeSaidNow.current;
-        const line = heard ? betterRouteSaid(now.answer, result.route) : null;
+        // After a change of settings, what the change did (P3), not what the full plan did to Go's first route.
+        const line = replanned(plan, result.route) ? null : heard ? betterRouteSaid(now.answer, result.route) : null;
         if (heard) setRefinedHeld({ route: result.route, said: heard });
         drawnRef.current = drawnRef.current ? { ...drawnRef.current, route: result.route } : drawnRef.current;
         if (drawnRef.current) setDrawn(drawnRef.current);
@@ -1387,12 +1410,18 @@ export function App() {
   useEffect(() => {
     const was = prevView.current;
     prevView.current = view;
+    // P3: Go's Ride sheet closed after a change of ride type or settings shows Go's sheet from its totals, where the
+    // change shows (it stayed scrolled down to the chips, Mass Ride's time off-screen); the focus goes back as ever.
+    const rideKey = JSON.stringify([preset, dials]);
+    if (view === "ride" && was !== "ride") rideAtSheet.current = rideKey;
+    const toTotals = was === "ride" && view !== "ride" && modeRef.current === "go" && rideAtSheet.current !== rideKey;
     const target = focusOnViewChange({ was, view, cause: viewCause.current });
     if (target === null) return;
     if (target.kind === "opener") {
       const opener = backTo.current;
-      if (opener?.isConnected && opener.offsetParent !== null) opener.focus();
-      else plannerHeadingRef.current?.focus();
+      if (opener?.isConnected && opener.offsetParent !== null) opener.focus({ preventScroll: toTotals });
+      else plannerHeadingRef.current?.focus({ preventScroll: toTotals });
+      if (toTotals) scrollPanelToTop();
     } else if (target.kind === "error") errorRef.current?.focus();
     else if (target.kind === "plan") planButtonRef.current?.focus();
     else if (target.kind === "planner") {
@@ -1404,6 +1433,11 @@ export function App() {
       const heading = document.getElementById(`sheet-${target.view}-title`);
       heading?.focus();
       heading?.scrollIntoView?.({ block: "start" });
+      // Go's climb figure opens the Ride sheet at the Hills slider (P3): its settings opened, the slider focused.
+      if (target.view === "ride" && hillsOnOpen.current) {
+        hillsOnOpen.current = false;
+        focusHillsSlider();
+      }
     }
   }, [view]);
 
@@ -1414,6 +1448,9 @@ export function App() {
   const focusPlan = focusesPlanButton(status.kind, panelOpen);
   const viewNow = useRef(view);
   viewNow.current = view;
+  // The ride type and settings as Go's Ride sheet opened (P3, the view effect), and whether it opens at Hills.
+  const rideAtSheet = useRef<string | null>(null);
+  const hillsOnOpen = useRef(false);
   const goSheetNow = useRef(goSheet);
   goSheetNow.current = goSheet;
   const myGoRef = useRef(myGo);
@@ -1630,18 +1667,26 @@ export function App() {
   }, []);
   // Turn accessibility mode on or off, say so, and keep it (lib/accessMode.ts accessModeToggle). From the page's
   // first button, turning it on puts the focus on Map tools (focusTools); turning it off leaves the focus on the
-  // switch pressed, which is always on the page.
+  // switch pressed, which is always on the page. High contrast and Large text during a ride go with it
+  // (accessModeParts): one shared mode, each of the two still a switch of its own in Settings.
   const toggleAccessMode = useCallback(
     (focusTools: boolean) => {
       const step = accessModeToggle(accessMode, focusTools);
       writeAccessMode(step.next);
+      const parts = accessModeParts(step.next);
+      setAccessibility(parts.contrast);
+      setRideText(parts.largeText ? "large" : "normal");
       focusToolsNext.current = step.focusTools;
       focusAtPress.current = document.activeElement;
       setAccessMode(step.next);
       announce(t(step.said));
     },
-    [accessMode, announce],
+    [accessMode, announce, setRideText],
   );
+  // The mode's class on the page's root, for Go's larger small text (styles.css, ACCESS_MODE_CLASS).
+  useEffect(() => {
+    document.documentElement.classList.toggle(ACCESS_MODE_CLASS, accessMode);
+  }, [accessMode]);
   // Map tools tells App when it is on the page (its onShown). That is the same commit as the press once the map
   // is built, or later while the map is still loading; the move waits for it, and is dropped if the rider has
   // moved on in the meantime (the focus is no longer where it was at the press; the a11y review's N5).
@@ -2636,6 +2681,13 @@ export function App() {
     if (id === preset) return;
     choosePreset(id, mtbChosen(preset, id, chooseRideType(id, carries(id) ? "cargo" : null, dials)));
     announceExtra(`${presetSaid(id)}.`);
+    // Go's sheet back to its totals, where the new ride type's time shows (P3; Mass Ride's was off-screen).
+    if (modeRef.current === "go" && viewNow.current === "planner") scrollPanelToTop();
+  };
+  // The Ride sheet's ride types: a pick closes the sheet; closing it scrolls Go's sheet to the totals (the view effect).
+  const pickRideAndClose = (id: PresetId) => {
+    pickRide(id);
+    if (modeRef.current === "go" && viewNow.current === "ride") backToPlanner();
   };
   // Search prefers places near the rider: the location the app already has (`here`, rounded to about 1 km)
   // while it is in the map's view, else the map's centre.
@@ -2646,6 +2698,15 @@ export function App() {
     const view: ViewBounds | undefined = b ? [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()] : undefined;
     return searchBiasPoint(here?.point, centre ? [centre.lng, centre.lat] : undefined, view);
   };
+  // Go's searches (P2): the route's start, the rider's location or the start typed in, is what results are near
+  // and nearest first, whatever the map shows (a rider who searched "grocery" was offered a store 66 minutes away).
+  const goSearchOrigin = (): LonLat | undefined => {
+    const first = pointsRef.current[0];
+    if (first) return first;
+    const start = goStartRef.current;
+    return start.kind === "here" ? start.point : here?.point;
+  };
+  const goSearchBias = (): LonLat | undefined => startBiasPoint(goSearchOrigin()) ?? searchBias();
 
   const removeAt = (index: number) => {
     focusAfterRemove.current = index;
@@ -2907,6 +2968,15 @@ export function App() {
     const said = loopChangeSaid({ preset, dials }, { preset, dials: next }, points.length);
     if (said) announce(said);
     setDials(next);
+    noteReplan(preset, null);
+  };
+  // A change of Go's ride settings or ride type with a route shown: the route to compare the new plan with (P3).
+  const noteReplan = (next: PresetId, ride: string | null) => {
+    const shown = shownNow.current.answer;
+    if (modeRef.current !== "go" || shownNow.current.riding || !shown) return;
+    const from = replanFrom.current;
+    const kept = from && Date.now() - from.at <= REPLAN_LAPSES_MS ? from.route : shown;
+    replanFrom.current = { route: kept, preset: next, ride: ride ?? (from && from.preset === next ? from.ride : null), at: Date.now() };
   };
   // A new ride type moves the sliders to where it starts them (RideTypePicker)
   // and keeps Make it a loop (rideTypeDialog.choose). Mass Ride has no loop, so
@@ -2916,6 +2986,7 @@ export function App() {
     const next = mode === "plan" && points.length === 0 ? planStartDials(id, chosen) : chosen;
     const loopSaid = loopChangeSaid({ preset, dials }, { preset: id, dials: next }, points.length);
     rideTouched.current = true;
+    noteReplan(id, id === preset ? null : presetSaid(id));
     // Mountain Bike and Gravel turn the mountain-bike trails and contour layers on, Mountain Goat the contours
     // and climbs (lib/presets.ts layersTurnedOn; the owner, 2026-10-19), not remembered as the rider's own
     // choice; Mountain Bike's loop is on in `next` (mtbChosen).
@@ -3004,6 +3075,27 @@ export function App() {
     setView(next);
   };
   const openSheet = (item: BarItem, button: HTMLButtonElement) => openView(item.opens, button);
+  // Go's climb figure (P3): the Ride sheet, its settings open, the Hills slider focused and in view; two presses to
+  // a flatter route (the figure, then the slider), where it was four, the last two out of sight.
+  const openHills = (opener: HTMLElement) => {
+    hillsOnOpen.current = true;
+    if (viewNow.current === "ride") {
+      hillsOnOpen.current = false;
+      focusHillsSlider();
+    }
+    openView("ride", opener);
+  };
+  const focusHillsSlider = () => {
+    const sheet = document.getElementById("sheet-ride");
+    const line = sheet?.querySelector<HTMLButtonElement>(".ride-line-button");
+    if (line?.getAttribute("aria-expanded") === "false") line.click();
+    // After the settings open (a render later).
+    requestAnimationFrame(() => {
+      const dial = sheet?.querySelector<HTMLElement>('[data-dial="hills"]');
+      dial?.scrollIntoView?.({ block: "center" });
+      dial?.querySelector<HTMLInputElement>("input:not([disabled])")?.focus({ preventScroll: true });
+    });
+  };
   // Back from Garmin or Wahoo: Settings, where its line says what happened.
   useEffect(() => {
     if (GARMIN_RETURNED !== null || WAHOO_RETURNED !== null) openView("settings", null);
@@ -3490,31 +3582,34 @@ export function App() {
   // Download GPX: an opened file not edited since downloads as it came; otherwise the route on screen.
   // `said` (the GPX sheet's) gets the line saying what was saved, once it is, for the sheet's status region.
   const downloadRoute = (said?: (line: string) => void) => {
+    // In the phone app, where a download does nothing, the file is handed to Android's "Open with" list instead
+    // (lib/sendToGarmin.ts handGpx); the line then says so.
+    const save = (text: string, name: string, line: string) => {
+      const bridge = nativeBridge();
+      if (!bridge) {
+        downloadText(text, name);
+        said?.(line);
+      } else void handGpx(text, name, bridge).then((handed) => said?.(handed ?? line));
+    };
     const verbatim = imported?.verbatim;
     const file = verbatim ? verbatimDownload(verbatim, importEdited, imported?.name) : null;
     if (file && verbatim) {
       const name = fileName();
-      void checkThen(
+      void checkUnlessFollowing(
         "download",
         verbatim.track,
         true,
-        () => {
-          downloadText(file.text, file.fileName);
-          said?.(GPX_SAID_OPENED);
-        },
-        (track) => {
-          downloadText(trackGpx(name, track as NonNullable<ImportedPlan["verbatim"]>["track"]), verbatimFileName(name));
-          said?.(GPX_SAID_TRACK);
-        },
+        () => save(file.text, file.fileName, GPX_SAID_OPENED),
+        (track) => save(trackGpx(name, track as NonNullable<ImportedPlan["verbatim"]>["track"]), verbatimFileName(name), GPX_SAID_TRACK),
       );
       return;
     }
     if (!shown) return;
     const route = shown;
     const at = routedPoints;
-    void checkThen("download", route.geometry.coordinates, false, () => {
-      downloadGpx(route, at, routedLoop, federalRoute);
-      said?.(GPX_SAID_ROUTE);
+    void checkUnlessFollowing("download", route.geometry.coordinates, false, () => {
+      const made = routeGpxFile(route, at, routedLoop, federalRoute);
+      save(made.text, made.fileName, GPX_SAID_ROUTE);
     });
   };
   // Download a FIT or TCX course or a PDF cue sheet (Plan's GPX sheet): the route on screen, checked as Download GPX
@@ -3531,14 +3626,20 @@ export function App() {
     if (!shown) return;
     const route = shown;
     const at = routedPoints;
-    void checkThen("download", route.geometry.coordinates, false, () => void sendCourseToGarmin(route, at, openSavedRoute.current).then(said));
+    void checkUnlessFollowing("download", route.geometry.coordinates, false, () => void sendCourseToGarmin(route, at, openSavedRoute.current).then(said));
   };
   // Send to Wahoo (the GPX sheet, once Wahoo is connected): the route on screen as a FIT course for the Wahoo app.
   const sendToWahooRoute = (said: Said) => {
     if (!shown) return;
     const route = shown;
     const at = routedPoints;
-    void checkThen("download", route.geometry.coordinates, false, () => void sendCourseToWahoo(route, at, openSavedRoute.current).then(said));
+    void checkUnlessFollowing("download", route.geometry.coordinates, false, () => void sendCourseToWahoo(route, at, openSavedRoute.current).then(said));
+  };
+  // GPX, Garmin and Wahoo for a broadcast one follows are not checked for closures: the leader's to weigh, as at Start
+  // (Stephen 2026-10-26), and the join sheet's buttons (BroadcastJoinDialog) come up over the ride itself.
+  const checkUnlessFollowing: typeof checkThen = async (why, line, gpx, proceed, afterGpx, onAsk) => {
+    if (shown && followsBroadcast(shown)) return proceed();
+    return checkThen(why, line, gpx, proceed, afterGpx, onAsk);
   };
   // Start ride: the line about to be ridden, checked first ("Ride it anyway" goes on to the ride).
   // The voice is unlocked first, synchronously inside the press (iOS speaks only in a gesture; after the
@@ -3814,7 +3915,8 @@ export function App() {
   // and a route is the opener's own to change and ride, even a Mass Ride's. `own`: the ride this rider shared, not
   // held to it.
   // `id` and `lead`: a broadcast's shared line and leader key (RideGroup follows the leader; the sharer leads).
-  const [sharedOpen, setSharedOpen] = useState<{ answer: RouteResponse; ride: boolean; own?: boolean; id?: string; lead?: string | null } | null>(null);
+  // `name`: the shared route's, for the join sheet's title (BroadcastJoinDialog).
+  const [sharedOpen, setSharedOpen] = useState<{ answer: RouteResponse; ride: boolean; own?: boolean; id?: string; lead?: string | null; name?: string } | null>(null);
   // The shared ride in a ref too: Broadcast starts the ride from its own press's closure, before the state re-renders.
   const sharedOpenNow = useRef(sharedOpen);
   sharedOpenNow.current = sharedOpen;
@@ -3839,7 +3941,7 @@ export function App() {
         // A broadcast's follower is not asked about closures (Stephen 2026-10-26: "The closure part should be leader
         // only. In general many of these closures aren't always real").
         openSaved(shared, SHARED_OPENED(shared.name), !(SHARED_RIDE && SHARED_LEAD && shared.answer));
-        if (shared.answer) setSharedOpen({ answer: shared.answer, ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD });
+        if (shared.answer) setSharedOpen({ answer: shared.answer, ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD, name: shared.name });
       } else {
         setSharedNote(SHARED_GONE);
         announce(SHARED_GONE);
@@ -4130,6 +4232,47 @@ export function App() {
   // once, when the link is first ready: a ride already going or the Resume question then, and it never starts later.
   // Started without a press, so the voice is unlocked by the first tap after (iOS), unless it is already speaking.
   const autoRode = useRef(false);
+  // Joining a broadcast (lib/broadcastJoin.ts, Stephen 2026-10-28): once its link has started the ride, one big sheet
+  // offers its route as a GPX file, and to Garmin and Wahoo where connected. Once per joined ride, kept on this device;
+  // shown only while that ride goes.
+  const [joinAsk, setJoinAsk] = useState<JoinAsk | null>(null);
+  // Made once the connections are read, shown once the ride is up.
+  const [joinPending, setJoinPending] = useState<{ key: string; ask: JoinAsk } | null>(null);
+  // One popup at a time (the 2026-10-28 audit, P6): from offering the sheet until it is closed (or not shown), the
+  // group's "Show me as a dot?" waits (RideGroup's askHeld), then asks over the ride.
+  const [joinHeld, setJoinHeld] = useState(false);
+  useEffect(() => {
+    if (!riding) {
+      setJoinAsk(null);
+      setJoinHeld(false);
+    }
+    if (!joinPending || !riding) return;
+    setJoinPending(null);
+    const store = browserStore();
+    if (!showJoin({ following: true, started: riding, shownBefore: joinShown(joinPending.key, store, Date.now()), actions: joinPending.ask.actions.length })) {
+      setJoinHeld(false);
+      return;
+    }
+    keepJoinShown(joinPending.key, store, Date.now());
+    setJoinAsk(joinPending.ask);
+  }, [riding, joinPending]);
+  const offerJoin = (key: string, route: RouteResponse, name: string | undefined) => {
+    if (joinShown(key, browserStore(), Date.now())) return;
+    // Connections are asked only of a rider who may have one (not when the server said signed out).
+    const asks = !(meRef.current !== NO_ME && !meRef.current.signed_in);
+    setJoinHeld(true);
+    void Promise.all(asks ? [readGarmin(origin), readWahoo(origin)] : [undefined, undefined])
+      .then(([garmin, wahoo]) => {
+        const actions = joinActions({ canHandFile: canSendToGarmin(), garmin, wahoo });
+        setJoinPending({ key, ask: { title: joinTitle(name), line: joinLine(route), actions } });
+      })
+      .catch(() => setJoinHeld(false));
+  };
+  const joinAction = (action: JoinAction, said: Said) => {
+    if (action === "gpx") downloadRoute(said);
+    else if (action === "garmin") sendToGarminRoute(said);
+    else sendToWahooRoute(said);
+  };
   const sharedFollow = sharedOpen?.ride === true && !!sharedOpen.lead && !sharedOpen.own && shown === sharedOpen.answer && !stale && rideableRoute(shown);
   const roamFollow = roamBroadcast !== null && !roamBroadcast.leading;
   useEffect(() => {
@@ -4144,8 +4287,10 @@ export function App() {
       if (!window.speechSynthesis?.speaking) primeRideVoice(ridePrefsNow.current);
     };
     document.addEventListener("click", unlock, true);
-    if (sharedFollow) startRideNoted(BROADCAST_FOLLOWING);
-    else {
+    if (sharedFollow) {
+      startRideNoted(BROADCAST_FOLLOWING);
+      if (sharedOpen?.id && sharedOpen.lead) offerJoin(joinKey(sharedOpen.id, sharedOpen.lead), sharedOpen.answer, sharedOpen.name);
+    } else {
       startRoam();
       // After "Roaming.", as the ride screen says its start note.
       window.setTimeout(() => roamingNow.current && announce(BROADCAST_FOLLOWING), START_NOTE_MS);
@@ -4980,7 +5125,7 @@ export function App() {
   const chooseAnnounce = (level: AnnounceLevel) => {
     setAnnounceChoice(level);
     writeAnnounceChoice(level);
-    announce(level === "brief" ? "Announcements: brief." : "Announcements: full.");
+    announce(level === "brief" ? "Screen-reader detail: brief." : "Screen-reader detail: full.");
   };
   // A bikeshare ride's station choice (the Points section's, before): under Route, closed, as the mockup has it.
   const stations =
@@ -5003,7 +5148,19 @@ export function App() {
     savedNote: savedNoteShown,
   };
   // Go's ride types: before a route under the place chips, with one under the route card (edit-route redesign).
-  const goRides = <RideChips ids={goRideChips(myGo.ride)} preset={preset} onPick={pickRide} more={(opener) => openView("ride", opener)} label={t("Ride type")} ownHint={OWN_RIDE_HINT} />;
+  // P3: the ride type in use first, pressed, then the rider's own and starred ones, in one row that scrolls sideways.
+  const goRides = (
+    <RideChips
+      ids={goRideChips(myGo.ride, preset, favoriteRides)}
+      preset={preset}
+      onPick={pickRide}
+      more={(opener) => openView("ride", opener)}
+      label={t("Ride type")}
+      ownHint={OWN_RIDE_HINT}
+      own={myGo.ride ?? "default"}
+      changed={isCustom(preset, dials)}
+    />
+  );
   const go = {
     peek: goSheet === "peek",
     full: goSheet === "full" || (!narrow && goSheet !== "peek"),
@@ -5031,11 +5188,14 @@ export function App() {
         />
       ) : null,
     rides: goRides,
+    // The climb figure opens Ride settings at the Hills slider (P3).
+    onClimb: openHills,
     // "Add a stop", under the route card (Stephen 2026-10-18: kept one tap away); only with a route, never riding.
     addStop: goStops ? (
       <GoAddStop
         geoGate={geoGate}
-        searchBias={searchBias}
+        searchBias={goSearchBias}
+        searchOrigin={goSearchOrigin}
         onPick={goAddStop}
         full={points.length >= MAX_POINTS}
         orderShown={orderShown}
@@ -5299,6 +5459,8 @@ export function App() {
           controls={riding || (rideBroadcast !== null && !rideBroadcast.leading && !goMode)}
           // The roles are offered to the ride's leader: one who planned it, or shares it; one following another's link is a Participant.
           leads={!(onShared && !onShared.own)}
+          // The follower's join sheet first (BroadcastJoinDialog), then the dot question: one popup at a time.
+          askHeld={joinHeld || joinPending !== null || joinAsk !== null}
           leaderRoute={rideBroadcast?.leading ? ((riding && rideView ? rideView.route : shown)?.geometry.coordinates as LonLat[] | undefined) : null}
         />
       )}
@@ -5345,6 +5507,10 @@ export function App() {
         }}
       />
       <BroadcastQrDialog ask={qrAsk} onClose={() => setQrAsk(null)} />
+      <BroadcastJoinDialog ask={riding ? joinAsk : null} onAction={joinAction} onClose={() => {
+          setJoinAsk(null);
+          setJoinHeld(false);
+        }} />
       <ClosureDialog ask={closureAsk} onReroute={() => void closureReroute()} onAnyway={closureAnyway} onCancel={closureCancel} />
       <ShareCardDialog
         open={shareCardOpen && shareCardSource !== null && mode !== "go" && !riding}
@@ -5655,7 +5821,8 @@ export function App() {
                   onSize={setGoSheet}
                   pointCount={points.length}
                   geoGate={geoGate}
-                  searchBias={searchBias}
+                  searchBias={goSearchBias}
+                  searchOrigin={goSearchOrigin}
                   onPick={goToPlace}
                   onTopPlace={goEarlyToPlace}
                   onWhereToFocus={goWarmFix}
@@ -5856,7 +6023,8 @@ export function App() {
             {/* Go's Edit route: Plan's points, the one copy in the page while Go shows (Plan's panel holds it otherwise). */}
             <EditRouteSheet nav={sheetNav}>{goMode && view === "points" && sections.points}</EditRouteSheet>
             <RideSheet nav={sheetNav}>
-              <RideGroupChips preset={preset} onPick={pickRide} open={view === "ride"} />
+              {/* A pick closes the sheet (P3: it saved the Close press), back to the route and its totals. */}
+              <RideGroupChips preset={preset} onPick={pickRideAndClose} open={view === "ride"} />
               {/* Go's Ride sheet holds the Ride line and its dials; in Plan they are in the panel (one copy in the page). */}
               {goMode && sections.presets}
               {/* Start from here (the owner, 2026-10-16: "You should be able to make changes then start from the edit

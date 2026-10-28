@@ -126,11 +126,11 @@ You stay responsible for riding safely; the route can be wrong.
   route), under the route's figures or in Directions. The
   browser asks to use your location.
 - The ride starts at once. The cues use your Settings (Riding): who says them, your screen
-  reader, RouteMaker's voice, both, or neither (on screen only), and how much: Full (every turn,
+  reader, App voice, both, or neither (on screen only), and how much: Full (every turn,
   early and again close to it, and just past a turn onto a stretch of a mile or more, how far it
-  goes on: "Continue on Washington and Old Dominion Trail for 2 miles."), Stoker (each turn once ahead and as it happens, busy crossings and
+  goes on: "Continue on Washington and Old Dominion Trail for 2 miles."), Turns only (each turn once ahead and as it happens, busy crossings and
   stops: for the rider behind on a tandem) or Quiet (only arrival). Until you change them,
-  RouteMaker's voice says every turn. Both choices stay on this device; change them during a
+  App voice says every turn. Both choices stay on this device; change them during a
   ride under More (the last side button), then the Settings gear, or in Settings.
 - Under the turn, the ride shows the distance and time to the next stop and to the end, and the clock time you
   should get there ("8 min · 6:42 AM"). The times count the climbs and the waits at junctions still ahead where they
@@ -214,10 +214,12 @@ RouteMaker can be installed like an app: it then opens from your home screen in 
 7. Bike and transit together
 ----------------------------
 
-In Go, the three main buttons are "Default" (your own ride type), "Own Bike + 🚆🚌" and
-"Bikeshare + 🚶🚆🚌". Cargo and plain Bikeshare are under "More ride types", where every ride
-type is grouped under Transportation, Adventure or Group, with a search box over their names and
-descriptions. Plan's "Change" ride type list has the same search and groups. Typing "transit",
+In Go, the ride type buttons are one row that scrolls sideways: the ride type in use first, then
+"Default" (your own ride type), your starred ones, "Own Bike + 🚆🚌" and "Bikeshare + 🚶🚆🚌".
+Cargo and plain Bikeshare are under "Ride type & settings", where every ride type is grouped
+under Common, Transportation, Adventure or Group, with a search box over their names and
+descriptions; picking one closes it. Plan's "Change" ride type list and Settings' "Default ride
+type" have the same groups. Typing "transit",
 "walk", "train" or "bus" finds both transit types. A screen reader says their names in words:
 "Own bike plus train or bus" and "Bikeshare plus walk, train or bus".
 

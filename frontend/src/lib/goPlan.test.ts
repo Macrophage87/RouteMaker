@@ -167,22 +167,32 @@ test("Go's ride types: the rider's own (My Go, Default until set), then Own Bike
   // The rider's own is a transit type: no chip twice, and Default fills the third place.
   assert.deepEqual(goRideChips("bike-transit"), ["bike-transit", "bikeshare-transit", "default"]);
   assert.deepEqual(goRideChips("bikeshare-transit"), ["bikeshare-transit", "bike-transit", "default"]);
-  // App: the chips from My Go's ride, the first described as the rider's own; More opens the Ride sheet with every type.
-  assert.match(appFile, /<RideChips ids=\{goRideChips\(myGo\.ride\)\} preset=\{preset\} onPick=\{pickRide\} more=\{\(opener\) => openView\("ride", opener\)\} label=\{t\("Ride type"\)\} ownHint=\{OWN_RIDE_HINT\} \/>/);
-  assert.match(src("../app/Sheets.tsx"), /aria-describedby=\{ownHint && index === 0 \? "ride-own-hint" : undefined\}/);
-  // More ride types: every type, searchable, in its group (RIDE-TYPE-ORGANISE; lib/rideTypeGroups.test.ts).
-  assert.match(appFile, /<RideGroupChips preset=\{preset\} onPick=\{pickRide\} open=\{view === "ride"\} \/>/);
+  // P3: the ride type in use first, always (Mass Ride picked from the Ride sheet showed no chip), then the rider's
+  // own, the starred ones, and the fixed ones; each once.
+  assert.deepEqual(goRideChips(null, "mass-ride"), ["mass-ride", "default", "bike-transit", "bikeshare-transit"]);
+  assert.deepEqual(goRideChips(null, "default"), ["default", "bike-transit", "bikeshare-transit"]);
+  assert.deepEqual(goRideChips("cargo", "bike-transit", ["gravel", "cargo"]), ["bike-transit", "cargo", "gravel", "bikeshare-transit"]);
+  assert.deepEqual(goRideChips(null, "gravel", ["gravel", "novice"]), ["gravel", "default", "novice", "bike-transit", "bikeshare-transit"]);
+  // App: the chips from the ride in use, My Go's ride (described as the rider's own) and the favorites; Ride type &
+  // settings opens the Ride sheet with every type; the chip in use says when its sliders were moved.
+  assert.match(
+    appFile,
+    /<RideChips\s+ids=\{goRideChips\(myGo\.ride, preset, favoriteRides\)\}\s+preset=\{preset\}\s+onPick=\{pickRide\}\s+more=\{\(opener\) => openView\("ride", opener\)\}\s+label=\{t\("Ride type"\)\}\s+ownHint=\{OWN_RIDE_HINT\}\s+own=\{myGo\.ride \?\? "default"\}\s+changed=\{isCustom\(preset, dials\)\}\s+\/>/,
+  );
+  assert.match(src("../app/Sheets.tsx"), /aria-describedby=\{ownHint && id === ownId \? "ride-own-hint" : undefined\}/);
+  // More ride types: every type, searchable, in its group (RIDE-TYPE-ORGANISE; lib/rideTypeGroups.test.ts); a pick closes it (P3).
+  assert.match(appFile, /<RideGroupChips preset=\{preset\} onPick=\{pickRideAndClose\} open=\{view === "ride"\} \/>/);
   // A pick goes through the ride type dialog's own choice, with Mountain Bike's loop (mtbChosen).
   assert.match(appFile, /choosePreset\(id, mtbChosen\(preset, id, chooseRideType\(id, carries\(id\) \? "cargo" : null, dials\)\)\);/);
   // Toggle buttons with their state, not colour alone.
   assert.match(src("../app/Sheets.tsx"), /className="chip ride-type-chip"\s+aria-pressed=\{preset === id\}/);
 });
 
-test("Go's places are Home, Food, Water and Restroom (Work only in Favorites); Home works signed out", () => {
+test("Go's places are Home, Eat, Water and Restroom (Work only in Favorites); Home works signed out", () => {
   // Signed in, Favorites takes Home's place (lib/favoritePlaces.test.ts), and Work is its second row, not a chip.
   const row = go.slice(go.indexOf('aria-label={t("Places")}'), go.indexOf('aria-label={t("More places")}'));
   const chips = [...row.matchAll(/<Icon name="(\w+)" size=\{18\} \/>\s*\{t\("(\w+)"\)\}\s*<\/button>/g)].map((m) => m[2]);
-  assert.deepEqual(chips.slice(0, 4), ["Home", "Food", "Water", "Restroom"]);
+  assert.deepEqual(chips.slice(0, 4), ["Home", "Eat", "Water", "Restroom"]);
   assert.match(row, /\{FAVORITES_TEXT\}/);
   assert.doesNotMatch(row, /Work/);
   assert.ok("work" in ICON_PATHS, "Work's icon, in the Favorites popout");
@@ -537,4 +547,17 @@ test("go warm look-up: Where to? focused or an early start fired refreshes a loc
   assert.match(go, /<PlaceSearch variant="go"[^\n]*onFocusBox=\{onWhereToFocus\} \/>/);
   const search = readFileSync(new URL("../PlaceSearch.tsx", import.meta.url), "utf8");
   assert.match(search, /onFocus=\{\(event\) => \{\s*onFocusBox\?\.\(\);/);
+});
+
+test("Go's searches lean to the route's start and list places nearest it first, with distances (P2)", () => {
+  // Where to?, the start box and Add a stop each sort by the start; Go's bias is the start, the map's view only without one.
+  assert.match(go, /variant="go"[^\n]*bias=\{searchBias\} origin=\{searchOrigin\}/);
+  assert.match(go, /variant="stop"[^\n]*bias=\{searchBias\} origin=\{searchOrigin\}/);
+  assert.match(go, /variant="start"[\s\S]{0,160}origin=\{searchOrigin\}/);
+  assert.match(appFile, /const goSearchBias = \(\): LonLat \| undefined => startBiasPoint\(goSearchOrigin\(\)\) \?\? searchBias\(\);/);
+  assert.equal(appFile.match(/searchBias=\{goSearchBias\}\s+searchOrigin=\{goSearchOrigin\}/g)?.length, 2);
+  // Plan's boxes sort by the first point.
+  assert.match(src("../app/Planner.tsx"), /origin=\{\(\) => points\[0\]\}/);
+  // The list is the sorted one, and Enter takes its first place.
+  assert.match(src("../PlaceSearch.tsx"), /const places = nearestFirst\(found, start, answered\);/);
 });

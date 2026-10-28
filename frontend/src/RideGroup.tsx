@@ -127,6 +127,8 @@ export interface RideGroupProps {
   controls?: boolean;
   /** This rider leads the ride (planned it, or shares it): the question offers the roles. One who opened another's link is a Participant, changed in Riders. */
   leads?: boolean;
+  /** Another popup is up or on its way (App.tsx: a follower's join sheet): the question waits until it closes. */
+  askHeld?: boolean;
 }
 
 const TICK_MS = 5000;
@@ -135,7 +137,7 @@ function visible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
 }
 
-export function RideGroup({ type, points, line, getMap, here, broadcast = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0, controls = riding, leads = true }: RideGroupProps) {
+export function RideGroup({ type, points, line, getMap, here, broadcast = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0, controls = riding, leads = true, askHeld = false }: RideGroupProps) {
   const leading = broadcast?.leading === true;
   const isBroadcast = broadcast !== null;
   // The leader key a follower reads with (the leader needs none: it does not see its own dot).
@@ -481,7 +483,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   });
 
   // The question, asked once the ride is under way (Start ride or Broadcast pressed), never while planning (P6).
-  const askNow = riding && !asked;
+  const askNow = riding && !asked && !askHeld;
   if (!ride) return null;
   return (
     <div className="ride-group">

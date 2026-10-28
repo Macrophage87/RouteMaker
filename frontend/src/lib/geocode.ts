@@ -11,7 +11,9 @@
  * abandoned fetch does not free that slot any sooner, so every request from
  * this page goes through one `GeoGate`: one in flight, search ahead of names.
  */
-import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./geo.ts";
+import { MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./geo.ts";
+import { formatDistance } from "./format.ts";
+import { t } from "./i18n.ts";
 import { parseRetryAfter } from "./api.ts";
 import { pointName } from "./summary.ts";
 import { namePoints } from "./pointKinds.ts";
@@ -95,6 +97,96 @@ export function searchBiasPoint(
     if (insideCoverage(near)) return near;
   }
   return centre && insideCoverage(centre) ? centre : undefined;
+}
+
+/**
+ * Go's search bias (P2, "Where to? sorted by distance"): the route's start (the rider's location or the start typed
+ * in), rounded as the location is, so a search finds what is near where the ride begins whatever the map shows; none
+ * without a start or outside the coverage, where the caller falls back to `searchBiasPoint`.
+ */
+export function startBiasPoint(start: LonLat | null | undefined): LonLat | undefined {
+  if (!start) return undefined;
+  const round = (v: number) => Number((Math.round(v / BIAS_ROUNDING_DEG) * BIAS_ROUNDING_DEG).toFixed(2));
+  const near: LonLat = [round(start[0]), round(start[1])];
+  return insideCoverage(near) ? near : undefined;
+}
+
+/** Words as a query and a place are compared: lower case, accents off, split at anything not a letter or digit. */
+function searchWords(text: string): string[] {
+  return text
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w !== "");
+}
+
+/**
+ * Whether a place answers the words typed by name: every word of three or more letters begins a word of its name or
+ * label ("safe" finds Safeway). Numbers and short words ("nw", "st") are left out, since a name rarely carries the
+ * house number or the abbreviation the server spells out. A place found another way (a typo, or "grocery", which the
+ * server answers with supermarkets) does not.
+ */
+export function namesQuery(place: Pick<Place, "name" | "label">, query: string): boolean {
+  const typed = searchWords(query).filter((w) => w.length >= 3 && !/^\p{N}+$/u.test(w));
+  const own = searchWords(`${place.name} ${place.label}`);
+  return typed.every((w) => own.some((o) => o.startsWith(w)));
+}
+
+/**
+ * The places found, nearest the route's start first (P2: a rider who searched "grocery" was offered a store 66 minutes
+ * away first): those that answer the words by name (`namesQuery`) ahead of the rest, each group by straight-line
+ * distance, ties in the server's order. An address ("1600 Pennsylvania") keeps the server's order, which weighs the
+ * number and the street; so does a search with no start known.
+ */
+export function nearestFirst(places: readonly Place[], start: LonLat | null | undefined, query: string): Place[] {
+  if (!start || /^\s*\d/.test(query)) return [...places];
+  return places
+    .map((place, i) => ({ place, i, named: namesQuery(place, query), m: haversineM(start, [place.lon, place.lat]) }))
+    .sort((a, b) => Number(b.named) - Number(a.named) || a.m - b.m || a.i - b.i)
+    .map((r) => r.place);
+}
+
+/** How far a place is from the start, as its row says it: "0.7 mi (1.1 km)", straight line. */
+export function placeDistance(place: Pick<Place, "lon" | "lat">, start: LonLat): string {
+  return formatDistance(haversineM(start, [place.lon, place.lat]));
+}
+
+/**
+ * A row's second line (P2): the label without the name it begins with, which the first line already shows, and the
+ * distance: "Dupont Circle, Washington · 0.7 mi (1.1 km)".
+ */
+export function placeRowLine(place: Pick<Place, "name" | "label" | "lon" | "lat">, start: LonLat | null | undefined): string {
+  const area = place.label.startsWith(`${place.name}, `) ? place.label.slice(place.name.length + 2) : place.label === place.name ? "" : place.label;
+  const distance = start ? placeDistance(place, start) : "";
+  return [area, distance].filter((s) => s !== "").join(" · ");
+}
+
+/**
+ * Cities a rider may type that the map does not reach (P2): the search finds only streets named for them ("New York
+ * Avenue"), or nothing, so the box says what RouteMaker covers. The whole query must be the city, with or without
+ * its state, so "New York Ave" is a street search like any other.
+ */
+const CITIES_OUTSIDE = new Set([
+  "new york", "new york city", "nyc", "manhattan", "brooklyn", "philadelphia", "philly", "pittsburgh", "harrisburg",
+  "lancaster", "wilmington", "dover", "newark", "boston", "richmond", "norfolk", "virginia beach", "charlottesville",
+  "roanoke", "raleigh", "charlotte", "atlanta", "chicago", "los angeles", "san francisco", "ocean city",
+]);
+const STATE_WORDS = new Set(["ny", "pa", "va", "de", "nj", "ma", "nc", "ga", "il", "ca", "md", "usa", "us", "virginia", "pennsylvania", "delaware", "massachusetts"]);
+
+export function namesCityOutside(query: string): boolean {
+  const words = searchWords(query);
+  while (words.length > 1 && STATE_WORDS.has(words[words.length - 1])) words.pop();
+  return CITIES_OUTSIDE.has(words.join(" "));
+}
+
+/** What the coverage is, said where a query names a city outside it. */
+export const COVERS_LINE = t("RouteMaker covers DC to Baltimore.");
+
+/** The box's words for a search that found nothing (P2), with the coverage when the query names a city outside it. */
+export function nothingFoundText(query: string): string {
+  const nothing = t("Nothing found. Check the spelling, or try a street address.");
+  return namesCityOutside(query) ? `${nothing} ${COVERS_LINE}` : nothing;
 }
 
 export function searchUrl(query: string, bias?: LonLat, limit: number = SEARCH_RESULTS): string {

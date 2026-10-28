@@ -671,7 +671,7 @@ test("the bottom bar is Plan, Layers, Reports, Save & load and Settings: real bu
 });
 
 test("a sheet: Back is a labelled button, its heading takes the focus, Escape goes back", () => {
-  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Reports", "Review", "Save and load", "Settings", "Nearest", "Find food", "Ride", "Repair stands and bike shops", "Places to see", "Edit route"]);
+  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Reports", "Review", "Save and load", "Settings", "Nearest", "Find a place to eat", "Ride", "Repair stands and bike shops", "Places to see", "Edit route"]);
   // In visible words, not only an arrow, so the name and the label are one (OWNER-DECISIONS 393).
   assert.equal(BACK_LABEL, "Back to planner");
   assert.doesNotMatch(sidebar, /aria-label="Back to the planner"/);
@@ -958,7 +958,8 @@ test("on a desktop the points come first, then the Ride line, then the route; on
 test("App dispatches the focus decision to the right element (the mutation re-check's NIT A)", () => {
   const effect = app.slice(app.indexOf("const target = focusOnViewChange("), app.indexOf("}, [view]);", app.indexOf("const target = focusOnViewChange(")));
   // Back: what opened the sheet, if it is still on screen; else the planner's heading.
-  assert.match(effect, /if \(target\.kind === "opener"\) \{\s*const opener = backTo\.current;\s*if \(opener\?\.isConnected && opener\.offsetParent !== null\) opener\.focus\(\);\s*else plannerHeadingRef\.current\?\.focus\(\);/);
+  // P3: after a change in Go's Ride sheet, without scrolling to it: Go's sheet goes back to its totals.
+  assert.match(effect, /if \(target\.kind === "opener"\) \{\s*const opener = backTo\.current;\s*if \(opener\?\.isConnected && opener\.offsetParent !== null\) opener\.focus\(\{ preventScroll: toTotals \}\);\s*else plannerHeadingRef\.current\?\.focus\(\{ preventScroll: toTotals \}\);\s*if \(toTotals\) scrollPanelToTop\(\);/);
   assert.match(effect, /else if \(target\.kind === "error"\) errorRef\.current\?\.focus\(\);/);
   assert.match(effect, /else if \(target\.kind === "plan"\) planButtonRef\.current\?\.focus\(\);/);
   // A sheet: its heading, by the id SheetFrame gives it.

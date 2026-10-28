@@ -23,7 +23,7 @@ import { CARRYINGS, carries, type Carrying, type Dials } from "./lib/dials.ts";
 import { bikeLabel } from "./lib/bikeshare.ts";
 import { choose, closesDialog, initialCard, isCustom, nextFocus } from "./lib/rideTypeDialog.ts";
 import { mtbChosen } from "./lib/mtbMode.ts";
-import { filterRideGroups, rideTypeCount, RideTypeSearch, withFavorites } from "./lib/rideTypeGroups.ts";
+import { rideTypeCount, rideTypeSections, RideTypeSearch } from "./lib/rideTypeGroups.ts";
 import { FavoriteStar, toggleFromPicker, useFavoriteRides } from "./lib/favoriteRides.ts";
 
 interface Props {
@@ -44,7 +44,8 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
   const [full, setFull] = useState(false);
   // Favorites (Stephen 2026-10-19): starred ride types first, under their own heading (lib/favoriteRides.ts).
   const favorites = useFavoriteRides();
-  const groups = withFavorites(filterRideGroups(query), favorites);
+  // The same groups as Go's Ride sheet and Settings' Default ride type (P3): favorites, Common, then the rest.
+  const groups = rideTypeSections(query, favorites);
   const current = PRESETS.find((p) => p.id === preset);
   const carrying = CARRYINGS.find((c) => c.id === dials.carrying);
   const custom = isCustom(preset, dials);

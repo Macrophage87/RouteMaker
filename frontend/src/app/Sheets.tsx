@@ -11,7 +11,7 @@ import type { RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { PRESETS, presetSaid, type PresetId } from "../lib/presets.ts";
 import { PresetName } from "../lib/presetName.ts";
-import { filterRideGroups, rideSections, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
+import { filterRideGroups, rideSections, rideTypeCount, rideTypeSections, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { RideTypeCards } from "../lib/rideTypeCards.ts";
 import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
 import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForPage, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
@@ -26,7 +26,7 @@ import { setTopoLines, TopoLinesSwitch } from "../lib/topoLines.ts";
 import { stressShowable, terrainLayers, terrainStatus } from "../lib/terrainSection.ts";
 import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
-import { ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
+import { ACCESS_FINE_TUNE, ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { RideSettingsFields } from "../RideMode.tsx";
 import { RIDE_TEXT_HELP, RIDE_TEXT_LABEL, type RideTextSize } from "../lib/rideOutput.ts";
 import type { RidePrefs } from "../lib/rideOutput.ts";
@@ -83,7 +83,7 @@ function LanguageSetting() {
       <SettingSelect<LanguageChoice>
         label={t("Language")}
         value={choice}
-        options={[["", t("Phone's language")] as const, ...LANGUAGES.map((lang) => [lang, LANGUAGE_NAME[lang]] as const)]}
+        options={[["", t("Phone default")] as const, ...LANGUAGES.map((lang) => [lang, LANGUAGE_NAME[lang]] as const)]}
         onChange={(next) => {
           setChoice(next);
           chooseLanguage(next);
@@ -434,11 +434,13 @@ function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean
           </>
         )}
       </div>
-      <SettingRow infoId="settings-go-ride-info" about="Go's ride type">
+      <SettingRow infoId="settings-go-ride-info" about="Default ride type">
+        {/* Named for what it is, and grouped as Go's Ride sheet and Plan's dialog group the ride types (P3). */}
         <SettingSelect
-          label={t("Go's ride type")}
+          label={t("Default ride type")}
           value={myGo.ride ?? "default"}
           options={PRESETS.filter((p) => p.id !== "mass-ride").map((p) => [p.id, presetSaid(p.id)] as const)}
+          groups={rideTypeSections()}
           // The ride types keep their English names in every language, so a screen reader says them as English.
           optionLang={Object.fromEntries(PRESETS.map((p) => [p.id, "en"]))}
           onChange={(ride) => save({ ...myGo, ride: ride === "default" ? null : ride })}
@@ -537,25 +539,6 @@ export function SettingsSheet(props: SettingsSheetProps) {
       <section aria-labelledby="settings-ride-heading" className="settings-group">
         <h3 id="settings-ride-heading">{t("Riding")}</h3>
         <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
-        {/* Large text in a ride (it replaced Big text): here, and on the ride's own button, the same choice. */}
-        <SettingRow infoId="settings-big-text-info" about="large text" info={RIDE_TEXT_HELP} className="big-text-row">
-          <button
-            type="button"
-            role="switch"
-            className="switch"
-            aria-checked={props.rideText.size === "large"}
-            aria-labelledby="settings-big-text-label"
-            aria-describedby="settings-big-text-info"
-            onClick={() => props.rideText.onChange(props.rideText.size === "large" ? "normal" : "large")}
-          >
-            <span id="settings-big-text-label" className="switch-label">
-              {RIDE_TEXT_LABEL}
-            </span>
-            <span className="switch-state" aria-hidden="true">
-              {props.rideText.size === "large" ? t("On") : t("Off")}
-            </span>
-          </button>
-        </SettingRow>
         {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"); set once, so last. */}
         <div className="setting-row weight-row">
           <div className="setting-line">
@@ -566,9 +549,10 @@ export function SettingsSheet(props: SettingsSheetProps) {
       </section>
       <section aria-labelledby="settings-display-heading" className="settings-group">
         <h3 id="settings-display-heading">{t("Display")}</h3>
-        <ContrastRow />
-        {/* Accessibility mode (OWNER-DECISIONS 455) as a switch here too (the mockup), the same state as the page's first button. */}
-        <SettingRow infoId="settings-access-hint" about="accessibility mode" info={t(ACCESS_HELP)} className="a11y-setting">
+        {/* Accessibility mode (OWNER-DECISIONS 455) first, the same state as the page's first button: the one shared mode
+            (the owner: "Accessibility = one shared mode"), which turns High contrast and Large text during a ride on or
+            off with it. Those two follow under it, indented, to set apart. */}
+        <SettingRow infoId="settings-access-hint" about="accessibility mode" info={`${t(ACCESS_HELP)} ${t(ACCESS_FINE_TUNE)}`} className="a11y-setting">
           <button
             type="button"
             role="switch"
@@ -587,10 +571,33 @@ export function SettingsSheet(props: SettingsSheetProps) {
             </span>
           </button>
         </SettingRow>
-        {/* How much screen readers are told (the owner, 2026-10-11 20:23 UTC): Brief or Full; unset, Go is brief. */}
+        <div className="access-parts" role="group" aria-labelledby="settings-access-label">
+          <ContrastRow />
+          {/* Large text in a ride (it replaced Big text): here, and on the ride's own button, the same choice. */}
+          <SettingRow infoId="settings-big-text-info" about="large text" info={RIDE_TEXT_HELP} className="big-text-row">
+            <button
+              type="button"
+              role="switch"
+              className="switch"
+              aria-checked={props.rideText.size === "large"}
+              aria-labelledby="settings-big-text-label"
+              aria-describedby="settings-big-text-info"
+              onClick={() => props.rideText.onChange(props.rideText.size === "large" ? "normal" : "large")}
+            >
+              <span id="settings-big-text-label" className="switch-label">
+                {RIDE_TEXT_LABEL}
+              </span>
+              <span className="switch-state" aria-hidden="true">
+                {props.rideText.size === "large" ? t("On") : t("Off")}
+              </span>
+            </button>
+          </SettingRow>
+        </div>
+        {/* How much screen readers are told (the owner, 2026-10-11 20:23 UTC): Brief or Full; unset, Go is brief. Named
+            Screen-reader detail (it was Announcements), so it is not taken for the ride's How much to say. */}
         <SettingRow
           infoId="settings-announce-info"
-          about="announcements"
+          about="screen-reader detail"
           className="announce-level"
           info={
             <>
@@ -604,7 +611,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
           }
         >
           <SettingSelect
-            label={t("Announcements")}
+            label={t("Screen-reader detail")}
             value={announcements.level}
             options={(["brief", "full"] as const).map((level) => [level, shortLabel(ANNOUNCE_LABEL[level])] as const)}
             onChange={(level) => announcements.choose(level)}
@@ -841,7 +848,12 @@ export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onP
   );
 }
 
-/** Go's quick ride type chips and the More button, each chip a toggle button. */
+/**
+ * Go's quick ride type chips and the More button, each chip a toggle button. P3: one row that scrolls sideways
+ * (styles.css .ride-chips), the ride type in use first and pressed (lib/myGo.ts goRideChips), so it is always in
+ * view; the row goes back to its start when the ride type changes. Where the rider has moved the sliders from the
+ * ride type's start (`changed`), its chip says so: "(changed)" shown, the whole of it heard.
+ */
 export function RideChips({
   ids,
   preset,
@@ -849,6 +861,8 @@ export function RideChips({
   more,
   label,
   ownHint,
+  own,
+  changed = false,
 }: {
   ids: readonly PresetId[];
   preset: PresetId;
@@ -856,28 +870,44 @@ export function RideChips({
   more?: (opener: HTMLElement) => void;
   /** The chips' group name; leave it out where a heading already names them. */
   label?: string;
-  /** Go: the first chip is the rider's own ride type (My Go), described as such. */
+  /** Go: the rider's own ride type (My Go) is described as such; `own` is which chip it is (the first, if left out). */
   ownHint?: string;
+  own?: PresetId;
+  /** The sliders are not where the ride type in use starts them (lib/rideTypeDialog.ts isCustom). */
+  changed?: boolean;
 }) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    rowRef.current?.scrollTo?.({ left: 0 });
+  }, [preset]);
+  const ownId = own ?? ids[0];
   return (
-    <div className="chip-row ride-chips" role={label ? "group" : undefined} aria-label={label}>
-      {ids.map((id, index) => (
+    <div ref={rowRef} className="chip-row ride-chips" role={label ? "group" : undefined} aria-label={label}>
+      {ids.map((id) => (
         <button
           key={id}
           type="button"
           className="chip ride-type-chip"
           aria-pressed={preset === id}
           onClick={() => onPick(id)}
-          aria-describedby={ownHint && index === 0 ? "ride-own-hint" : undefined}
+          aria-describedby={ownHint && id === ownId ? "ride-own-hint" : undefined}
         >
           <Icon name={RIDE_ICON[id] ?? "bike"} size={18} />
           <PresetName id={id} />
+          {changed && preset === id && (
+            <>
+              <span className="ride-changed" aria-hidden="true">
+                {t("(changed)")}
+              </span>
+              <span className="visually-hidden">{t(", settings changed from this ride type's start")}</span>
+            </>
+          )}
         </button>
       ))}
       {more && (
         <button type="button" className="chip ride-more" onClick={(event) => more(event.currentTarget)} aria-describedby="ride-more-hint">
           <Icon name="more" size={18} />
-          {t("More ride types")}
+          {t("Ride type & settings")}
         </button>
       )}
       {more && (

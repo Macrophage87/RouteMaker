@@ -129,6 +129,8 @@ export interface GoRouteControls {
    */
   routeCard?: ReactNode;
   rides?: ReactNode;
+  /** Go's climb figure is a button (P3): it opens Ride settings at the Hills slider. Left out, the figure is text. */
+  onClimb?: (opener: HTMLElement) => void;
   /** Go's "Add a stop" (Go.tsx GoAddStop), or null: under the route card, one tap away (Stephen 2026-10-18). */
   addStop?: ReactNode;
 }
@@ -914,8 +916,21 @@ export function RouteSummary({
               <div className="total-climb">
                 <dt className="visually-hidden">{t("Climb")}</dt>
                 <dd>
-                  <Icon name="mountain" size={14} />
-                  {formatClimb(trip.climb_m)}
+                  {/* Styled as the figure (P3): a press opens the Hills slider, for a flatter (or hillier) route. */}
+                  {go.onClimb ? (
+                    <button type="button" className="go-climb" onClick={(event) => go.onClimb?.(event.currentTarget)} aria-describedby="go-climb-hint">
+                      <Icon name="mountain" size={14} />
+                      {formatClimb(trip.climb_m)}
+                      <span id="go-climb-hint" hidden>
+                        {t("Opens the Hills setting.")}
+                      </span>
+                    </button>
+                  ) : (
+                    <>
+                      <Icon name="mountain" size={14} />
+                      {formatClimb(trip.climb_m)}
+                    </>
+                  )}
                 </dd>
               </div>
             )}

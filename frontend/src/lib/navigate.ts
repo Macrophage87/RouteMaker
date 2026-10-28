@@ -45,7 +45,8 @@ export type Verbosity = "full" | "stoker" | "quiet";
 
 export const VERBOSITY_LABELS: Record<Verbosity, string> = {
   full: t("Full: every turn, early and again close to it"),
-  stoker: t("Stoker: each turn once ahead and as it happens, busy crossings, stops"),
+  // Shown as Turns only (it was Stoker; the stored value keeps the old name), so a first-time rider can tell it apart.
+  stoker: t("Turns only: each turn once ahead and as it happens, busy crossings, stops"),
   quiet: t("Quiet: only arrival; ask Where am I? any time"),
 };
 

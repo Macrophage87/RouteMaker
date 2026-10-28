@@ -16,6 +16,9 @@
   --bg-soft: #f3f4f6;
   --text: #16181d;
   --text-muted: #4b5260; /* 7.4:1 on --bg */
+  /* A box's placeholder ("Where to?", "Add a stop"): lighter than typed text, still 5.5:1 on --bg and 5.0:1 on
+     --bg-soft (WCAG 1.4.3; the browser's own grey was 3.6:1 in the dark theme). stylesAccessibility.test.ts measures it. */
+  --placeholder: #626975;
   --border: #cfd4dc;
   /* The outline of a legend swatch and of the stress bar: a graphic the panel's
      --border (1.49:1 on --bg) does not set apart. 3.97:1 on --bg, 3.60:1 on
@@ -50,6 +53,7 @@
     --bg-soft: #262a32;
     --text: #eef0f3;
     --text-muted: #b9bfca; /* 9.2:1 on --bg */
+    --placeholder: #a3aab5; /* 7.1:1 on --bg, 6.2:1 on --bg-soft */
     --border: #3d434e;
     --swatch-border: #8b93a1; /* 5.4:1 on --bg, 4.65:1 on --bg-soft */
     --accent: #8ab4ff; /* 8.3:1 on --bg */
@@ -903,7 +907,8 @@ button.secondary {
   margin-bottom: 4px;
 }
 
-.place-search input[type="search"] {
+.place-search input[type="search"],
+.detour-search input[type="search"] {
   box-sizing: border-box;
   width: 100%;
   /* 16px and up, or a phone zooms the page in when the box takes the focus. */
@@ -2548,9 +2553,9 @@ dialog.weight-dialog h2 {
   min-height: 44px;
 }
 
-/* A part's default, shown as its placeholder: readable, not the browser's faint grey. */
-.weight-field input::placeholder {
-  color: var(--text-muted);
+/* Every box's placeholder (the weight field's part defaults among them): readable, not the browser's faint grey. */
+::placeholder {
+  color: var(--placeholder);
   opacity: 1;
 }
 
@@ -5939,6 +5944,53 @@ details.fold > summary .icon {
   margin-top: 4px;
 }
 
+/* Go's ride types in one row that scrolls sideways (P3): the ride type in use first, then the rest and Ride type &
+   settings. The row runs to the sheet's edges, so the last chip in view is cut by the edge, which shows there is
+   more to scroll to; each chip keeps its 44 px height and its name on one line. */
+.chip-row.ride-chips {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  margin-inline: calc(-1 * var(--ride-chips-bleed, 16px));
+  padding-inline: var(--ride-chips-bleed, 16px);
+  scroll-padding-inline: var(--ride-chips-bleed, 16px);
+}
+
+.chip-row.ride-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.chip-row.ride-chips .chip {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* "(changed)": the sliders are not where the ride type starts them; muted on a chip, as on a pressed one. */
+.ride-changed {
+  font-weight: 400;
+  opacity: 0.85;
+}
+
+/* Go's climb figure, a button that looks like the figure (P3): a dotted underline says it can be pressed, and its
+   44 px target overlaps the lines above and below rather than spacing them out. */
+.panel .go-climb,
+.go-climb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  margin: -10px 0;
+  padding: 0 2px;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 4px;
+}
+
 /* Ride mode: icons on its buttons, and the 311 button on the right edge at thumb height, inside DC only. */
 .ride-actions button {
   display: inline-flex;
@@ -6146,14 +6198,22 @@ details.fold > summary .icon {
   margin-top: 4px;
 }
 
+/* The shared search box's look (.place-search input), a little narrower inside, so its placeholder shows whole at 390 px. */
 .ride-menu .detour-search input {
   flex: 1;
+  width: auto;
   min-width: 0;
   min-height: 44px;
-  font-size: 1rem;
+  padding-inline: 8px;
+}
+
+/* Empty, Chromium still keeps the clear button's room, which cut the placeholder's last word. */
+.ride-menu .detour-search input:placeholder-shown::-webkit-search-cancel-button {
+  display: none;
 }
 
 .ride-menu .detour-search button {
+  padding-inline: 8px;
   min-height: 44px;
   display: inline-flex;
   align-items: center;
@@ -6421,7 +6481,8 @@ details.fold > summary .icon {
     min-height: 52px;
     padding: 4px;
     border-radius: 14px;
-    font-size: 0.8rem;
+    /* 14 px (P5; it was 12 px): a very large font, or a 320 px phone, wraps a chip to a second row. */
+    font-size: 0.9333rem;
     line-height: 1.1;
     text-align: center;
   }
@@ -6431,19 +6492,13 @@ details.fold > summary .icon {
   }
 
   .go-sheet .ride-chips {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
   }
 
   .panel .go-sheet .ride-chips .chip {
-    justify-content: center;
     gap: 4px;
-    min-width: 0;
-    padding: 2px 6px;
+    padding: 2px 12px;
     font-size: 0.85rem;
-    line-height: 1.15;
-    text-align: center;
   }
 
   .go-sheet .go-start-row {
@@ -6459,6 +6514,20 @@ details.fold > summary .icon {
   .go-sheet .go-change-start {
     flex: none;
   }
+}
+
+/*
+ * Accessibility mode on (lib/accessMode.ts ACCESS_MODE_CLASS, the one shared mode): Go's small text is 15 px at
+ * least. The place chips (14 px), the ride-type chips and the stress line (12.75 px), Settings' section headings
+ * (12.75 px) and the map's scale (10 px) come up to 1rem; the chips wrap where a row no longer fits.
+ */
+:root.access-mode .panel .go-places .place-chip,
+:root.access-mode .panel .go-sheet .go-places:not(.go-more-row) .place-chip,
+:root.access-mode .panel .go-sheet .ride-chips .chip,
+:root.access-mode .stress-key,
+:root.access-mode #sheet-settings :is(.settings-group, .install-offer) h3,
+:root.access-mode .maplibregl-ctrl-scale {
+  font-size: max(1rem, 15px);
 }
 
 /* UI-CLEANUP: Go has no Hide planner toggle (its sheet has a handle); `hidden` must beat the phone rule's display. */
@@ -7855,6 +7924,21 @@ details.fold > summary .icon {
   min-width: 5.5rem;
   text-overflow: ellipsis;
 }
+/* 10.5rem where the names still fit beside it on one line (P5: 9.5rem cut "My screen reader" at 390 px);
+   a narrower phone keeps 9.5rem, so the names do not wrap to three lines. */
+@media (min-width: 380px) {
+  #sheet-settings .setting-row .select-setting select {
+    flex-basis: 10.5rem;
+    width: 10.5rem;
+  }
+}
+/* High contrast and Large text during a ride, under Accessibility mode (P5): indented, set apart by a rule at their
+   start, so they read as parts of the mode a rider can set on their own. */
+#sheet-settings .access-parts {
+  margin: 0 0 4px 12px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+}
 /* Home set: its name and Change on one line. */
 #sheet-settings .home-line .home-now {
   flex: 1 1 auto;
@@ -8522,6 +8606,51 @@ details.fold > summary .icon {
   height: auto;
   margin: 0 auto 12px;
   background: #ffffff;
+}
+
+/*
+ * Joining a broadcast (BroadcastJoinDialog.tsx): a big sheet at the foot of a phone's screen, big buttons one under
+ * the other. Its content fills it, so a tap on the dim backdrop is the only one that lands on the dialog itself.
+ */
+.broadcast-join-dialog {
+  padding: 0;
+  width: min(520px, calc(100vw - 32px));
+  max-width: min(520px, calc(100vw - 32px));
+  margin: auto auto 16px;
+}
+@media (min-width: 700px) {
+  .broadcast-join-dialog {
+    margin: auto;
+  }
+}
+.broadcast-join {
+  padding: 20px 16px 16px;
+}
+.broadcast-join h2 {
+  margin: 0 0 4px;
+  font-size: 1.4rem;
+  line-height: 1.25;
+}
+.broadcast-join-line {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text-muted);
+}
+.broadcast-join-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+.broadcast-join-actions button {
+  min-height: 56px;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+.broadcast-join-said {
+  margin: 12px 0 0;
+}
+.broadcast-join-said:empty {
+  display: none;
 }
 
 .start-ride .broadcast-note,

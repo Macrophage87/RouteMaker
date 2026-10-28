@@ -464,7 +464,7 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.match(group, /keepConsent\(ride, yes \? "yes" : "no", Date\.now\(\), undefined, undefined, leads \? pickedRole : DEFAULT_ROLE\)/);
   // The 2026-10-28 audit (P6): asked as the ride starts, never while planning, as the platform's modal dialog (never a
   // non-modal role="dialog", v0.7.0 end review), so it never stays over the ride's buttons; the dialog's own name says it.
-  assert.match(group, /const askNow = riding && !asked;/);
+  assert.match(group, /const askNow = riding && !asked && !askHeld;/);
   assert.match(group, /<ConsentDialog open=\{askNow\} leads=\{leads\}/);
   assert.match(ask, /<dialog\s+ref=\{dialogRef\}\s+className="ask-dialog ride-consent"\s+data-idle-close/);
   assert.match(ask, /dialog\.showModal\?\.\(\);/);
@@ -478,7 +478,13 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.equal(CONSENT_SHORT, "Only while the app is open. No name; gone in 2 min.");
   assert.match(ask, /<span aria-hidden="true">\{t\(CONSENT_SHORT\)\}<\/span>\s*<span id=\{`\$\{id\}-note`\} className="visually-hidden">\s*\{t\(note\)\}/);
   // The count and Send alert while riding only, by default.
-  assert.match(group, /controls = riding, leads = true \}: RideGroupProps\)/);
+  assert.match(group, /controls = riding, leads = true, askHeld = false \}: RideGroupProps\)/);
+  // One popup at a time: a follower's join sheet (BroadcastJoinDialog) first, from the offer until it closes, then the dot question.
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /askHeld=\{joinHeld \|\| joinPending !== null \|\| joinAsk !== null\}/);
+  assert.match(app, /setJoinHeld\(true\);\s*void Promise\.all/);
+  assert.match(app, /\.catch\(\(\) => setJoinHeld\(false\)\)/);
+  assert.match(app, /onClose=\{\(\) => \{\s*setJoinAsk\(null\);\s*setJoinHeld\(false\);/);
   assert.match(group, /\{controls && \(\s*<div className="ride-group-bar">/);
   // A role change moves the next post up, and the post sends the consent's (new) role.
   assert.match(group, /const changeRole[\s\S]*?keepConsent\(ride, consent\.answer, Date\.now\(\), undefined, undefined, role\)[\s\S]*?share\.current\.lastPost = postSoonAfter\(share\.current\.lastPost\)/);
