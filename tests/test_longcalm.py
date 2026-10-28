@@ -468,7 +468,9 @@ class TestTheHillsLevel:
         monkeypatch.setattr(refine.effort, "effort_equivalent_m", effort_fn)
         monkeypatch.setattr(routing, "_trace", lambda *a, **k: {"shape": "x"})
         monkeypatch.setattr(
-            routing, "pieces_of_trace", lambda trace: [routing.Piece(1, BASE[0], BASE[1], 100.0)]
+            routing,
+            "pieces_of_trace",
+            lambda trace, shape=None: [routing.Piece(1, BASE[0], BASE[1], 100.0)],
         )
         monkeypatch.setattr(
             routing, "decode_polyline6", lambda s: [BASE, (BASE[0] + 0.01, BASE[1])]

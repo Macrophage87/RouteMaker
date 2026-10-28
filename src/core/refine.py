@@ -538,6 +538,11 @@ class Analysis:
     # Each piece's known hazard kinds, in the order of `pieces` (`route_hazards.kinds_of`), as
     # the reading priced them; the answer says them from here (audit S16). None: not read.
     hazard_kinds: list | None = None
+    # Its scenic designations and stress adjustments as the stress query read them, only for
+    # the pieces that have one ({index in `pieces`: ...}, `routing.Classes`), for the answer
+    # (audit S17). None: not read.
+    scenic: dict | None = None
+    adjustments: dict | None = None
 
     @property
     def rated_classes(self) -> list:
@@ -978,11 +983,12 @@ def analyse(
         trace = routing._trace(ctx.variant, ctx.costing, leg.get("shape", ""), deadline, ctx.traces)
         if trace is None:
             return None
-        made = routing.pieces_of_trace(trace)
-        pieces.extend(made)
         shape = routing.decode_polyline6(leg.get("shape", ""))
-        raws.extend(trace_junctions.junctions_of_trace(trace, shape, offset))
-        leg_marks = trace_junctions.edge_midpoints(trace, shape, offset)
+        # Each trace read once a plan, at its start, and shifted here (audit S19).
+        made, read = routing.trace_reading(trace, shape, marks=True)
+        pieces.extend(made)
+        raws.extend(trace_junctions.junctions_along(read, offset))
+        leg_marks = trace_junctions.marks_along(read, offset)
         marks.extend(leg_marks)
         mark_legs.extend([number] * len(leg_marks))
         line.extend(shape[1:] if line else shape)
@@ -1050,6 +1056,8 @@ def analyse(
         real_classes=real_classes if shift or hazard_read else None,
         shift=shift,
         hazard_kinds=kinds,
+        scenic=getattr(real_classes, "scenic", None),
+        adjustments=getattr(real_classes, "adjustments", None),
         junction_delay_s=junction_delay.delay_s(
             raws,
             routing.stop_as_yield,

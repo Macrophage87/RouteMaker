@@ -732,8 +732,8 @@ class TestRollingStressFromTheTrace:
         seen = []
         real = routing.pieces_of_trace
 
-        def spy(trace):
-            made = real(trace)
+        def spy(trace, shape=None):
+            made = real(trace, shape)
             seen.extend(made)
             return made
 
