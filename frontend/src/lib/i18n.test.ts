@@ -4,7 +4,24 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ES } from "../i18n/es.ts";
-import { firstWordAndRest, deviceLanguage, readLanguageChoice, setLanguageForTest, speechLang, t, writeLanguageChoice } from "./i18n.ts";
+import {
+  LANGUAGES,
+  LANGUAGE_NAME,
+  RIGHT_TO_LEFT,
+  deviceLanguage,
+  englishOf,
+  firstWordAndRest,
+  locale,
+  markPageLanguage,
+  readLanguageChoice,
+  rightToLeft,
+  setCatalogForTest,
+  setLanguageForTest,
+  speechLang,
+  t,
+  voiceTags,
+  writeLanguageChoice,
+} from "./i18n.ts";
 import { arrivalSideWords, crossingWords, cueSpoken, endWords, exitWords, ontoWords, stopText, turnWords, type Cue } from "./navigate.ts";
 import { spokenDistance } from "./format.ts";
 import * as navigate from "./navigate.ts";
@@ -53,11 +70,24 @@ test("the language: the rider's choice, else the device's first language the app
   assert.equal(readLanguageChoice(store), "");
   writeLanguageChoice("es", store);
   assert.equal(readLanguageChoice(store), "es");
+  writeLanguageChoice("ti", store);
+  assert.equal(readLanguageChoice(store), "ti");
+  kept.set("routemaker.language", "xx");
+  assert.equal(readLanguageChoice(store), "", "a language the app does not have is no choice");
   writeLanguageChoice("", store);
   assert.equal(readLanguageChoice(store), "");
   assert.equal(deviceLanguage(["es-US", "en-US"]), "es");
-  assert.equal(deviceLanguage(["fr-FR", "es-MX"]), "es");
-  assert.equal(deviceLanguage(["fr-FR"]), "en");
+  assert.equal(deviceLanguage(["fr-FR", "es-MX"]), "fr");
+  assert.equal(deviceLanguage(["de-DE", "es-MX"]), "es");
+  assert.equal(deviceLanguage(["de-DE"]), "en");
+  // DC's languages (the owner, 2026-10-28): Chinese by its region, Cantonese for Hong Kong and Macau; Dari as Farsi.
+  assert.equal(deviceLanguage(["zh-CN"]), "zh");
+  assert.equal(deviceLanguage(["zh-Hans"]), "zh");
+  assert.equal(deviceLanguage(["zh-HK"]), "yue");
+  assert.equal(deviceLanguage(["yue-Hant-HK"]), "yue");
+  assert.equal(deviceLanguage(["prs-AF"]), "fa");
+  assert.equal(deviceLanguage(["am-ET"]), "am");
+  assert.equal(deviceLanguage(["ti-ER"]), "ti");
   assert.equal(deviceLanguage(undefined), "en");
   assert.equal(speechLang("es"), "es-US");
   assert.equal(speechLang("en"), "en-US");
@@ -124,4 +154,47 @@ test("a narrow button's first word and the rest, in either language", () => {
   assert.deepEqual(firstWordAndRest("Save route"), ["Save", " route"]);
   assert.deepEqual(firstWordAndRest(t("Start ride", undefined, "es")), ["Iniciar", " recorrido"]);
   assert.deepEqual(firstWordAndRest("Loop"), ["Loop", ""]);
+});
+
+test("DC's languages: each named in its own words, the right-to-left ones mirrored, each with its voice", () => {
+  assert.equal(LANGUAGES.length, 21);
+  for (const lang of LANGUAGES) {
+    assert.ok(LANGUAGE_NAME[lang], lang);
+    assert.ok(speechLang(lang), lang);
+  }
+  assert.deepEqual([...RIGHT_TO_LEFT].sort(), ["ar", "fa", "ps"]);
+  assert.equal(rightToLeft("ar"), true);
+  assert.equal(rightToLeft("am"), false, "Amharic's script reads left to right");
+  assert.equal(locale("zh"), "zh-Hans-CN");
+  assert.equal(locale("yue"), "yue-Hant-HK");
+  assert.deepEqual(voiceTags("yue"), ["yue-HK", "zh-HK", "yue"]);
+  const doc = { documentElement: { lang: "", dir: "" } } as unknown as Document;
+  setLanguageForTest("fa");
+  try {
+    markPageLanguage(doc);
+    assert.equal(doc.documentElement.dir, "rtl");
+    assert.equal(doc.documentElement.lang, "fa-IR");
+  } finally {
+    setLanguageForTest("en");
+  }
+  markPageLanguage(doc);
+  assert.equal(doc.documentElement.dir, "ltr");
+});
+
+test("every language's catalog keeps the {places} of the English it translates", async () => {
+  for (const lang of LANGUAGES.filter((l) => l !== "en" && l !== "es")) {
+    const { CATALOG } = (await import(`../i18n/${lang}.ts`)) as { CATALOG: Record<string, string> };
+    for (const [english, text] of Object.entries(CATALOG)) assert.deepEqual(places(text), places(english), `${lang}: ${english}`);
+  }
+});
+
+test("a phrase read back to its English, for a phone with no voice in the language", () => {
+  setCatalogForTest("ti", { "Left onto {street}.": "ናብ {street} ጸጋም ተጠወ።", "the path": "እቲ መንገዲ", "Ride started.": "ጉዕዞ ጀሚሩ።" });
+  assert.equal(englishOf("ናብ R Street Northwest ጸጋም ተጠወ።", "ti"), "Left onto R Street Northwest.");
+  // A place's words that are a phrase themselves are read back too; a street's name stays as it is.
+  assert.equal(englishOf("ናብ እቲ መንገዲ ጸጋም ተጠወ።", "ti"), "Left onto the path.");
+  // Sentence by sentence where the whole is not one phrase.
+  assert.equal(englishOf("ጉዕዞ ጀሚሩ። ናብ R Street ጸጋም ተጠወ።", "ti"), "Ride started. Left onto R Street.");
+  assert.equal(englishOf("ዘይፍለጥ ሓረግ።", "ti"), null);
+  assert.equal(englishOf("Ride started.", "en"), "Ride started.");
 });

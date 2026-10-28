@@ -73,8 +73,10 @@ export function shortStreets(text: string): string {
 export function cueParts(text: string): { head: string; rest: string } {
   const streets = shortStreets(text.trim());
   const short = language() === "es" ? shortTurnsEs(streets) : streets;
-  const at = short.indexOf(", ");
-  if (at < 0) return { head: short, rest: "" };
-  const rest = short.slice(at + 2);
+  // The comma as each script writes it: ", ", the Chinese and Japanese "，" and "、", the Arabic "، ".
+  const comma = /, |，|、|، /.exec(short);
+  if (!comma) return { head: short, rest: "" };
+  const at = comma.index;
+  const rest = short.slice(at + comma[0].length).trimStart();
   return { head: short.slice(0, at), rest: rest.charAt(0).toUpperCase() + rest.slice(1) };
 }

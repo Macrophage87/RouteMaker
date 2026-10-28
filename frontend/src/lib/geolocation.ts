@@ -255,7 +255,8 @@ export function locationMatches(query: string): boolean {
   const plain = (text: string) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "");
   const q = plain(query.trim().toLowerCase());
   if (q === "") return true;
-  const phrases = ["your location", "my location", "current location", ...(language() === "es" ? ["su ubicacion", "mi ubicacion", "ubicacion actual"] : [])];
+  const own = language() === "es" ? ["su ubicacion", "mi ubicacion", "ubicacion actual"] : language() !== "en" ? [t("your location"), t("my location"), t("current location")] : [];
+  const phrases = ["your location", "my location", "current location", ...own.map((phrase) => plain(phrase.toLowerCase()))];
   return q.length >= 2 && phrases.some((phrase) => phrase.startsWith(q));
 }
 

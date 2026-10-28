@@ -1448,4 +1448,28 @@ export const ES: Readonly<Record<string, string>> = {
   "{n} stops": "{n} paradas",
   "1 via point": "1 punto de paso",
   "{n} via points": "{n} puntos de paso",
+
+  // ---- Words the other languages' catalogs hold too (lib/navigate.ts wayWordsOther, compassWord; lib/geolocation.ts).
+  // Spanish has its own rules for these (wayWordsEs, COMPASS_ES), so these are here for the phrase list only. ----
+  "the road": "la calle",
+  "the path": "el sendero",
+  "the sidewalk": "la acera",
+  "the service road": "la vía de servicio",
+  "the alley": "el callejón",
+  "the parking aisle": "el pasillo del estacionamiento",
+  "the bike lane on {street}": "el carril bici de {street}",
+  "the protected bike lane on {street}": "el carril bici protegido de {street}",
+  "{way} beside {road}": "{way} junto a {road}",
+  north: "norte",
+  northeast: "noreste",
+  east: "este",
+  southeast: "sureste",
+  south: "sur",
+  southwest: "suroeste",
+  west: "oeste",
+  northwest: "noroeste",
+  "my location": "mi ubicación",
+  "current location": "ubicación actual",
+  "Draft translation, not yet checked by a native speaker.": "Traducción preliminar, aún sin revisar por un hablante nativo.",
+  "Draft translation, not yet checked by a native speaker. Plan stays in English.": "Traducción preliminar, aún sin revisar por un hablante nativo. Plan sigue en inglés.",
 };

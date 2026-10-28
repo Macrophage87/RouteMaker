@@ -357,7 +357,8 @@ class RouteIn(Schema):
         max_length=16,
         description=(
             "The language of the route's sentences (the description list, hazards, work-zone"
-            ' lines, climbs): "en" or "es"; any other is answered in English, so an app that'
+            ' lines, climbs): one of routemaker.lang.LANGUAGES ("en", "es", "fr", "am", "zh", ...);'
+            " one without a catalog yet, or any other, is answered in English, so an app that"
             " knows a language this server does not still gets its route. Street and place"
             " names, agencies' own notices and the closure cards' words are not translated."
         ),

@@ -70,15 +70,22 @@ import { InfoButton, SettingRow, SettingSelect } from "../SettingRow.tsx";
 import { shortLabel } from "../lib/shortLabel.ts";
 import { ANNOUNCE_HINT, ANNOUNCE_LABEL, type AnnounceLevel } from "../lib/announceLevel.ts";
 import type { Status } from "./RoutePanel.tsx";
-import { LANGUAGES, LANGUAGE_NAME, chooseLanguage, readLanguageChoice, t, type LanguageChoice } from "../lib/i18n.ts";
+import { LANGUAGES, LANGUAGE_NAME, chooseLanguage, language, locale, readLanguageChoice, t, type LanguageChoice } from "../lib/i18n.ts";
 
 /** The Language setting's (i) words. Street names and notices from agencies stay as they are written. */
 const LANGUAGE_HINT = "The app's words and the voice. Street names and agency notices stay as written. Changing it reloads the page.";
+/**
+ * Every language but English is a Claude draft (the owner, 2026-10-28): said under the picker, in the language, until
+ * a native speaker has checked it. Spanish covers the whole app; the others Go and Ride, Plan staying in English.
+ */
+const DRAFT_NOTE = "Draft translation, not yet checked by a native speaker. Plan stays in English.";
+const DRAFT_NOTE_ES = "Draft translation, not yet checked by a native speaker.";
 
 /** Settings > Display > Language: the choice is held here too, so a pick that needs no reload still shows. */
 function LanguageSetting() {
   const [choice, setChoice] = useState<LanguageChoice>(() => readLanguageChoice());
   return (
+    <>
     <SettingRow infoId="settings-language-info" about={t("Language")} info={t(LANGUAGE_HINT)}>
       <SettingSelect<LanguageChoice>
         label={t("Language")}
@@ -89,9 +96,11 @@ function LanguageSetting() {
           chooseLanguage(next);
         }}
         describedBy="settings-language-info"
-        optionLang={{ en: "en", es: "es" }}
+        optionLang={Object.fromEntries(LANGUAGES.map((lang) => [lang, locale(lang)]))}
       />
     </SettingRow>
+    {language() !== "en" && <p className="hint">{language() === "es" ? t(DRAFT_NOTE_ES) : t(DRAFT_NOTE)}</p>}
+    </>
   );
 }
 

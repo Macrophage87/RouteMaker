@@ -10,7 +10,7 @@
  */
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
 import type { Verbosity } from "./navigate.ts";
-import { speechLang, t } from "./i18n.ts";
+import { englishOf, language, speechLang, t, voiceTags } from "./i18n.ts";
 
 // ---- The rider's choices, kept on this device -----------------------------------------------------
 
@@ -237,18 +237,47 @@ export interface UtteranceLike {
   text: string;
   lang: string;
   onend: (() => void) | null;
+  voice?: VoiceLike | null;
+}
+
+/** A voice the phone has (SpeechSynthesisVoice): its language tag. */
+export interface VoiceLike {
+  lang: string;
 }
 
 export interface SpeechEnv {
   synth: SpeechApi | undefined;
   utterance: (text: string) => UtteranceLike;
+  /** The phone's voices; empty while the browser is still listing them. */
+  voices?: () => readonly VoiceLike[];
+}
+
+/**
+ * The phone's voice for the language in force: the first tag it is asked by (lib/i18n.ts voiceTags), matched whole,
+ * then by its language alone ("es-MX" for "es"); undefined while the browser has listed none, null if it has none.
+ */
+export function voiceFor(voices: readonly VoiceLike[], tags: readonly string[] = voiceTags()): VoiceLike | null | undefined {
+  if (!voices.length) return undefined;
+  const norm = (tag: string) => tag.toLowerCase().replace(/_/g, "-");
+  for (const tag of tags) {
+    const found = voices.find((v) => norm(v.lang) === norm(tag)) ?? voices.find((v) => norm(v.lang).split("-")[0] === norm(tag));
+    if (found) return found;
+  }
+  return null;
 }
 
 export function browserSpeech(): SpeechEnv {
   const synth = typeof window !== "undefined" && "speechSynthesis" in window ? (window.speechSynthesis as unknown as SpeechApi) : undefined;
   const utterance = (text: string): UtteranceLike =>
     typeof SpeechSynthesisUtterance === "function" ? (new SpeechSynthesisUtterance(text) as unknown as UtteranceLike) : { text, lang: "", onend: null };
-  return { synth, utterance };
+  const voices = (): readonly VoiceLike[] => {
+    try {
+      return synth ? (window.speechSynthesis.getVoices() as readonly VoiceLike[]) : [];
+    } catch {
+      return [];
+    }
+  };
+  return { synth, utterance, voices };
 }
 
 /**
@@ -299,14 +328,23 @@ export class Voice {
   }
 
   private start(text: string): void {
-    const utterance = this.env.utterance(text);
-    utterance.lang = speechLang();
-    utterance.onend = () => {
-      const next = this.waiting;
-      this.waiting = null;
-      if (next) this.start(next);
-    };
+    // A language the phone has no voice for (Amharic, Tigrinya and others on many phones): the screen keeps the
+    // language and the voice speaks the English, rather than an English voice spelling out words it cannot read. A
+    // sentence with no English in the catalog (one of the server's) is left to the screen.
+    const voice = language() === "en" ? undefined : voiceFor(this.env.voices?.() ?? []);
+    const english = voice === null ? englishOf(text) : null;
+    if (voice === null && english === null) return this.next();
+    const utterance = this.env.utterance(english ?? text);
+    utterance.lang = english !== null ? speechLang("en") : speechLang();
+    if (voice) utterance.voice = voice;
+    utterance.onend = () => this.next();
     this.env.synth?.speak(utterance);
+  }
+
+  private next(): void {
+    const next = this.waiting;
+    this.waiting = null;
+    if (next) this.start(next);
   }
 }
 

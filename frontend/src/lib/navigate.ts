@@ -378,6 +378,8 @@ export interface CircleExit {
 export function ordinal(n: number): string {
   // Spanish: "3.ª" (la salida, feminine).
   if (language() === "es") return `${n}.ª`;
+  // The other languages put the number in their own sentence ("Prenez la sortie {nth}", "{nth}番目の出口").
+  if (language() !== "en") return String(n);
   if ([11, 12, 13].includes(n % 100)) return `${n}th`;
   return `${n}${({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th"}`;
 }
@@ -405,7 +407,25 @@ const SERVICE_WAY = /^(?:service road|alley|parking aisle)\b/;
 /** A way as a sentence names it: "the service road beside East-West Highway", a street's own name as it is. */
 export function wayWords(street: string): string {
   if (language() === "es") return wayWordsEs(street);
+  if (language() !== "en") return wayWordsOther(street);
   return COMMON_WAY.test(street) ? `the ${street}` : street;
+}
+
+/** The API's ways by what they are, as each language's catalog words them (the Spanish has its own rules above). */
+function wayWordsOther(street: string): string {
+  if (street === CROSS_UNNAMED) return t("the road");
+  const lane = /^(.+) (protected )?bike lane$/.exec(street);
+  if (lane) return t(lane[2] ? "the protected bike lane on {street}" : "the bike lane on {street}", { street: lane[1] });
+  const kind = /^(path|sidewalk|service road|alley|parking aisle)\b(?: beside (.+))?/.exec(street);
+  if (!kind) return street;
+  const words = {
+    path: t("the path"),
+    sidewalk: t("the sidewalk"),
+    "service road": t("the service road"),
+    alley: t("the alley"),
+    "parking aisle": t("the parking aisle"),
+  }[kind[1] as "path"];
+  return kind[2] ? t("{way} beside {road}", { way: words, road: kind[2] }) : words;
 }
 
 /** The API's names for a way by what it is, in Spanish: "the service road beside X" as "la vía de servicio junto a X". */
@@ -448,7 +468,7 @@ const CROSSING_CONTROL_ALONE: Partial<Record<NonNullable<NonNullable<Description
  */
 export function crossingWords(street: string | null, control: NonNullable<DescriptionEntry["turn"]>["control"] | undefined): string {
   // In Spanish the API's way names ("service road beside ...") are said in Spanish too; English as it was.
-  const named = street && !isUnnamed(street) ? (language() === "es" ? wayWords(street) : street) : null;
+  const named = street && !isUnnamed(street) ? (language() !== "en" ? wayWords(street) : street) : null;
   const sentence = control ? (named ? CROSSING_CONTROL_WORDS : CROSSING_CONTROL_ALONE)[control] : undefined;
   if (sentence) return t(sentence, named ? { street: named } : undefined);
   return named ? t("Busy crossing at {street}.", { street: named }) : t("Busy crossing.");
@@ -1563,6 +1583,8 @@ export function toGo(model: RideModel, progressM: number): ToGo {
 }
 
 const COMPASS = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"];
+/** The compass words in the language in force, written out so the phrase lists find them (lib/i18n.test.ts). */
+const compassSaid = () => [t("north"), t("northeast"), t("east"), t("southeast"), t("south"), t("southwest"), t("west"), t("northwest")];
 const COMPASS_ES = ["norte", "noreste", "este", "sureste", "sur", "suroeste", "oeste", "noroeste"];
 
 /** The compass word for the bearing from a to b: "northeast". */
@@ -1572,7 +1594,9 @@ export function compassWord(a: LonLat, b: LonLat): string {
     Math.cos((a[1] * Math.PI) / 180) * Math.sin((b[1] * Math.PI) / 180) -
     Math.sin((a[1] * Math.PI) / 180) * Math.cos((b[1] * Math.PI) / 180) * Math.cos(((b[0] - a[0]) * Math.PI) / 180);
   const bearing = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-  return (language() === "es" ? COMPASS_ES : COMPASS)[Math.round(bearing / 45) % 8];
+  const at = Math.round(bearing / 45) % 8;
+  if (language() === "es") return COMPASS_ES[at];
+  return language() === "en" ? COMPASS[at] : compassSaid()[at];
 }
 
 /**
@@ -1736,7 +1760,7 @@ export function whereAmI(
   // A named trail is "the" trail, with the marker or without: "On the Capital Crescent Trail."
   // In Spanish a lane named after its street brings its own article ("el carril bici de ..."), so not "el el" (D16).
   const way = isTrail(stretch)
-    ? language() === "es" && / bike lane$/.test(stretch.street)
+    ? language() !== "en" && / bike lane$/.test(stretch.street)
       ? wayWords(stretch.street)
       : t("the {trail}", { trail: stretch.street })
     : (wayRidden(stretch) ?? t("the route"));
