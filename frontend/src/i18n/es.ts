@@ -383,6 +383,8 @@ export const ES: Readonly<Record<string, string>> = {
   "1 e-bike available": "1 bicicleta eléctrica disponible",
   "{n} e-bikes available": "{n} bicicletas eléctricas disponibles",
   "1 classic bike available": "1 bicicleta clásica disponible",
+  "Bikeshare plan: {summary}": "Plan de bicicleta compartida: {summary}",
+  "Availability is unknown.": "La disponibilidad es desconocida.",
   "{n} classic bikes available": "{n} bicicletas clásicas disponibles",
   "1 free slot": "1 espacio libre",
   "{n} free slots": "{n} espacios libres",

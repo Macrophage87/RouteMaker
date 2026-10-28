@@ -186,8 +186,8 @@ export function dockMarkers(plan: BikesharePlan | null): DockMarker[] {
 export function bikeshareSaid(route: Pick<RouteResponse, "bikeshare">): string | null {
   const plan = bikeshareOf(route);
   if (!plan) return null;
-  const unknown = plan.availability === "unknown" ? " Availability is unknown." : "";
-  return `Bikeshare plan: ${plan.summary}${unknown}`;
+  const said = t("Bikeshare plan: {summary}", { summary: plan.summary });
+  return plan.availability === "unknown" ? `${said} ${t("Availability is unknown.")}` : said;
 }
 
 /** The totals, as dt/dd rows: walking, riding, and both. */
