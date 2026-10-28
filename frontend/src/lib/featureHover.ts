@@ -43,9 +43,10 @@ export function trailHoverWords(properties: Record<string, unknown>, way = ""): 
   const level = MTB_LEVEL_OPTIONS.find((option) => option.level === Number(properties.mtb_level));
   // Which scale set it, and both where both are mapped (the owner, 2026-10-28); tiles from before the scales were
   // kept carry neither, and the card says what the level means on either, as before.
-  const scale = level ? (mtbScaleWords(properties.mtb_scale, properties.mtb_imba) ?? MTB_LEVELS.find((l: { level: number }) => l.level === level.level)?.scale) : undefined;
+  const set = mtbScaleWords(properties.mtb_scale, properties.mtb_imba);
+  const scale = level ? (set ?? `rated ${MTB_LEVELS.find((l: { level: number }) => l.level === level.level)?.scale}`) : undefined;
   const title = named || "Mountain-bike trail";
-  const detail = level ? `${level.label}: rated ${scale} in OpenStreetMap` : "Not rated: no difficulty is mapped for this trail";
+  const detail = level ? `${level.label}: ${scale} in OpenStreetMap` : "Not rated: no difficulty is mapped for this trail";
   return { key: `trail|${way}|${title}|${level?.level ?? ""}`, title, detail };
 }
 

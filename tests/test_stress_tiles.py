@@ -1982,21 +1982,32 @@ class TestMtbEveryZoom:
         return live
 
     @staticmethod
-    def put(schema, way, i, mtb, level=None, tags=None) -> None:
+    def put(schema, way, i, mtb, level=None, tags=None, facility="none") -> None:
         lon, lat = CENTRE[0] - 0.001, CENTRE[1] - 0.0015 + i * 0.0003
         with connection.cursor() as cursor:
             cursor.execute(
                 f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
                 "stress_rule, is_trail_class, is_unpaved, mtb_only, mtb_level, trail_tags, "
-                "facility) VALUES (%s, 0, ST_MakeLine(ST_MakePoint(%s, %s), "
-                "ST_MakePoint(%s, %s)), 1, 'x', true, true, %s, %s, %s, 'none')",
-                [way, lon, lat, lon + 0.002, lat, mtb, level, json.dumps(tags) if tags else None],
+                "facility, trail_route, trail_run_m) VALUES (%s, 0, ST_MakeLine(ST_MakePoint(%s, "
+                "%s), ST_MakePoint(%s, %s)), 1, 'x', true, true, %s, %s, %s, %s, 0, 0)",
+                [
+                    way,
+                    lon,
+                    lat,
+                    lon + 0.002,
+                    lat,
+                    mtb,
+                    level,
+                    json.dumps(tags) if tags else None,
+                    facility,
+                ],
             )
 
     @pytest.mark.parametrize("z", [7, 9, 10, 11])
     def test_a_short_mountain_bike_trail_is_kept_zoomed_out(self, client, live, z) -> None:
         self.put(live, 3700, 0, True, 2)
-        self.put(live, 3701, 1, False)
+        # A short ordinary path on no route, which the long-trails rule still leaves out.
+        self.put(live, 3701, 1, False, facility="path")
         layer = decode(client.get(url(*tile_of(*CENTRE, z))).content).get("stress")
         assert layer is not None
         assert [f.properties.get("mtb") for f in layer.features] == [True]

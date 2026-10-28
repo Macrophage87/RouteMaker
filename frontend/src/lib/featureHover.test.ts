@@ -34,10 +34,10 @@ test("a trail's hover card names it, then its difficulty and what that is based 
 
 test("a rated trail's card says which scale set its level, and both where both are mapped (the owner, 2026-10-28)", () => {
   const card = (props: Record<string, unknown>) => trailHoverWords({ mtb: true, ...props }).detail;
-  assert.equal(card({ mtb_level: 2, mtb_scale: "2" }), "Level 2 (blue): rated S2 in OpenStreetMap");
-  assert.equal(card({ mtb_level: 1, mtb_imba: "1" }), "Level 1 (green): rated IMBA 1 in OpenStreetMap");
-  assert.equal(card({ mtb_level: 1, mtb_scale: "1", mtb_imba: "1" }), "Level 1 (green): rated S1 and IMBA 1 (rated on both scales) in OpenStreetMap");
-  assert.equal(card({ mtb_level: 3, mtb_scale: "2", mtb_imba: "3" }), "Level 3 (black): rated IMBA 3 (also rated S2, easier) in OpenStreetMap");
+  assert.equal(card({ mtb_level: 2, mtb_scale: "2" }), "Level 2 (blue): S2 in OpenStreetMap");
+  assert.equal(card({ mtb_level: 1, mtb_imba: "1" }), "Level 1 (green): IMBA 1 in OpenStreetMap");
+  assert.equal(card({ mtb_level: 1, mtb_scale: "1", mtb_imba: "1" }), "Level 1 (green): S1 and IMBA 1 (rated on both scales) in OpenStreetMap");
+  assert.equal(card({ mtb_level: 3, mtb_scale: "2", mtb_imba: "3" }), "Level 3 (black): IMBA 3 (also rated S2, easier) in OpenStreetMap");
   // S4 to S6 are all level 4, as IMBA 4 is: one level, so both set it.
   assert.equal(mtbScaleWords("5", "4"), "S5 and IMBA 4 (rated on both scales)");
   // A range or a plus is read at its higher end, as the rebuild reads it (`singletrack.scale_grade`).
