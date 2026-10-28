@@ -926,6 +926,9 @@ export function App() {
   // A Go destination just picked (v0.7.0, "Faster routing" step 4): its route is asked for at once, not after the
   // debounce that folds a burst of edits into one request.
   const goPickedNow = useRef(false);
+  // Go: a place picked (Where to?, Ride here) moves the focus to the route's heading once it is routed (v0.14.0 end
+  // review: Where to? folds away under a route, and the focus fell to the page).
+  const goFocusRoute = useRef(false);
   // One deliberate press (Plan's Route, Try again, a transit option picked; routing audit S26): its route is asked
   // for at once too. Read and cleared at the top of the route effect, so it never carries over to a later edit (a
   // slider or a pin drag keeps the debounce).
@@ -1495,6 +1498,15 @@ export function App() {
   myGoRef.current = myGo;
   const meRef = useRef(me);
   meRef.current = me;
+  // After the view's own focus (above): a Go place picked leaves the focus on the route's heading when it would
+  // otherwise be lost (on the page, a hidden box, or the planner's hidden heading); anything else focused stays.
+  useEffect(() => {
+    if (!goFocusRoute.current) return;
+    goFocusRoute.current = false;
+    const active = document.activeElement;
+    const lost = !(active instanceof HTMLElement) || active === document.body || active === plannerHeadingRef.current || active.offsetParent === null;
+    if (lost) routeHeadingRef.current?.focus({ preventScroll: true });
+  }, [points]);
   useEffect(() => {
     if (focusPlan && viewNow.current === "planner") planButtonRef.current?.focus();
   }, [focusPlan]);
@@ -2442,6 +2454,7 @@ export function App() {
     const ride = rideRef.current;
     setNotice(null);
     goPickedNow.current = true;
+    goFocusRoute.current = !pressed;
     commit([start, ...vias, dest], ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
     if (located) setFromHere((prior) => [...prior, start]);
     if (pressed) announce(goTapRoutedSaid(name, located, saysExtra(announceLevelNow.current)));
