@@ -2884,7 +2884,8 @@ function showJunctionCard(map: MapLibreMap, item: JunctionItem, takeFocus: boole
   const where = document.createElement("p");
   where.className = "hint";
   where.textContent = `${item.where}. Drag the route away to plan around it.`;
-  body.append(title, reason, cost, where);
+  // A Mass Ride's junction with no major junction of the profile there has no line (lib/intersectionMarkers.ts junctionCorkText).
+  body.append(...(item.costText ? [title, reason, cost, where] : [title, reason, where]));
   const card = new maplibregl.Popup({
     closeButton: true,
     closeOnClick: true,

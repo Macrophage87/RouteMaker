@@ -216,6 +216,11 @@ export const BROADCAST_FOLLOWING = "Following the leader's broadcast. If you hea
 
 /** On a broadcast: shown on or off the route, so the leader and the riders can find each other. */
 export const BROADCAST_CONSENT_NOTE = "Only while the app is open, on or off the route, so the leader and riders can find each other. No name; positions are rounded and gone after 2 minutes.";
+/**
+ * What the question shows, short (the 2026-10-28 audit, P6: asked as Start ride or Broadcast is pressed, over the
+ * ride's first screen); a screen reader is given the full note (CONSENT_NOTE, BROADCAST_CONSENT_NOTE).
+ */
+export const CONSENT_SHORT = "Only while the app is open. No name; gone in 2 min.";
 export const CONSENT_YES = "Yes";
 export const CONSENT_NO = "No";
 

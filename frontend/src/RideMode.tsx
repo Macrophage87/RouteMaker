@@ -2090,7 +2090,8 @@ export function RideMode({
   const togoWords = [togo?.stop, togo?.end]
     .map((t) => (t && t.seconds !== null ? `${formatDuration(t.seconds)}${arrivalClock(clockMs, t.seconds)}`.length : 0))
     .join(",");
-  const cueShown = cueParts(cue ? (cue.rideText ?? cue.text) : "");
+  // A run of signalized crossings has a card of its own (lib/navigate.ts signalsCard); any other cue is split at its first comma.
+  const cueShown = cue?.card ?? cueParts(cue ? (cue.rideText ?? cue.text) : "");
   // A detour row's place ahead on the route or behind the rider, where the rider is on it (detourRowShown).
   const detourSide = (point: LonLat): "ahead" | "behind" | null => {
     if (progress === null || ride.off) return null;
@@ -2520,7 +2521,7 @@ export function RideMode({
               {/* The instruction large, the rest in small print, street words shortened; the whole sentence for screen readers. */}
               <p className="cue-text">
                 <span aria-hidden="true">{cueShown.head.replace(/\.$/, "")}</span>
-                <span className="visually-hidden">{cue.rideText ?? cue.text}</span>
+                <span className="visually-hidden">{cue.card?.said ?? cue.rideText ?? cue.text}</span>
               </p>
               {/* At most one short line, always there (empty too), so the card keeps its height between turns. */}
               <p className="cue-more" aria-hidden="true">

@@ -11,7 +11,8 @@
  * a map card (a stop, a place, a station, a closure, a climb), the road info, and the side menus (Detour, More, the
  * dock, 311, the riders, Alert), so the map then goes back to the rider. Kept open: a menu with words typed or being
  * typed (a Detour search, Alert's Other, its microphone listening), and anything asking (Alert's Send to everyone?, Already
- * done?, a stop's name, the group's question, Resume). Accessibility mode closes nothing on its own: a screen
+ * done?, a stop's name, Resume). The group's question, asked as the ride starts, closes as its No (the 2026-10-28 audit,
+ * P6: it never stays over the ride's buttons). Accessibility mode closes nothing on its own: a screen
  * reader's reading touches nothing. A menu closed with the focus in it hands the focus to its toggle; a map card, to
  * the map.
  */

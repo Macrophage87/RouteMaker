@@ -12,6 +12,7 @@
 import type { ProfileCalm, ProfileClimb, ProfileCrossing, ProfileRange, RouteProfile, RouteResponse, StressSpan } from "./api.ts";
 import { FEET_PER_METRE, METRES_PER_MILE, formatAxisDistance, formatClimb, formatDistance, formatGroupLength } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
+import { t } from "./i18n.ts";
 import {
   NARROWEST_BOTH,
   NARROWEST_FLAT,
@@ -323,25 +324,51 @@ export function labelBox(text: string, x: number, y: number, anchor: "start" | "
 }
 
 /**
- * Where the requirement line's words go (baseline `y`): at the left, the middle or the right, the first
- * that clears the chart's other labels (`taken`: the guides' figures and the narrowest point's), so the
- * two never print over each other; at the left where none does.
+ * Where the requirement line's words go (baseline `y`, just above the line): at the left, the middle or the right,
+ * the first that clears the chart's other labels (`taken`: the guides' figures, the narrowest point's words and its
+ * caret), so none prints over another; then the same three just under the line (the 2026-10-28 audit, P6: "Narrowest
+ * 90" was printed over "100 needed..." where every place above was taken); above at the left where none clears.
  */
-export function needLabelPlace(text: string, y: number, taken: readonly LabelBox[], left: number, right: number): { x: number; anchor: "start" | "middle" | "end" } {
+export function needLabelPlace(text: string, y: number, taken: readonly LabelBox[], left: number, right: number): { x: number; anchor: "start" | "middle" | "end"; y: number } {
   const places = [
     { x: left + 2, anchor: "start" as const },
     { x: (left + right) / 2, anchor: "middle" as const },
     { x: right, anchor: "end" as const },
   ];
-  const clear = (box: LabelBox) => taken.every((t) => Math.abs(t.y - box.y) >= CHART_TYPE + 1 || t.x1 <= box.x0 || t.x0 >= box.x1);
-  return places.find((p) => clear(labelBox(text, p.x, y, p.anchor))) ?? places[0];
+  const clear = (box: LabelBox) => taken.every((t) => Math.abs(t.y - box.y) >= CHART_TYPE + 1 || t.x1 + 2 <= box.x0 || t.x0 >= box.x1 + 2);
+  // Under the line: its baseline a line of type and the line's own width below.
+  const below = y + CHART_TYPE + 4;
+  for (const at of [y, below]) {
+    const found = places.find((p) => clear(labelBox(text, p.x, at, p.anchor)));
+    if (found) return { ...found, y: at };
+  }
+  return { ...places[0], y };
+}
+
+/**
+ * Where each guide's figure goes, right-aligned at `right` above its line (baseline `y - 2`), as many as fit; a figure
+ * whose line runs within a line of type of the one above it (60 and 120 on a tall chart) is moved left of that one,
+ * so the two never print over each other (the 2026-10-28 audit, P6). Each with its swatch's left edge.
+ */
+export function guideLabelPlaces(guides: readonly { at: number }[], y: (riders: number) => number, right: number): { at: number; x: number; y: number; swatchX: number }[] {
+  const out: { at: number; x: number; y: number; swatchX: number }[] = [];
+  // From the top down, so the higher figure keeps the right edge.
+  for (const g of [...guides].sort((a, b) => b.at - a.at)) {
+    const baseline = y(g.at) - 2;
+    const w = String(g.at).length * 6.2;
+    const above = out[out.length - 1];
+    const x = above && Math.abs(baseline - above.y) < CHART_TYPE ? above.swatchX - 6 : right;
+    out.push({ at: g.at, x, y: baseline, swatchX: x - w - 11 });
+  }
+  return out;
 }
 
 /** The riders chart's sentence for the requirement; null where no stretch has a figure. */
 export function needSentence(profile: RouteProfile, need: RideNeed): string | null {
   const below = belowNeed(profile, need);
   if (below.known <= 0) return null;
-  const line = `At ${need.riders.toLocaleString("en-US")} riders, a road needs about ${need.perMin} riders per minute for the group to pass a junction within ${RIDE_HOLD_MINUTES} minutes (the dashed line; the ${RIDE_HOLD_MINUTES}-minute hold is a proposal, not yet confirmed).`;
+  // That the hold is a proposal is said in How these are worked out (HOLD_PROPOSAL), with the rest of the method.
+  const line = `At ${need.riders.toLocaleString("en-US")} riders, a road needs about ${need.perMin} riders per minute for the group to pass a junction within ${RIDE_HOLD_MINUTES} minutes (the dashed line).`;
   if (below.metres <= 0) return `${line} No part of the route with a figure is below it.`;
   const share = Math.round((below.metres / below.known) * 100);
   const all = below.metres >= below.known;
@@ -1866,11 +1893,14 @@ export function corkerSentences(profile: RouteProfile, load: CorkerLoad | null):
     const low = corkersMayBeLow(load) ? `; the count may be low, as ${lowReason(load)}` : "";
     sentences.push(`${capitalise(corkerHeadline(load))} corkers for the ride: the most held at once times ${ROTATION_FACTOR}, as corkers leapfrog to the junctions ahead${low}.`);
   }
-  sentences.push(
-    `Each junction needing corkers takes one for each approach lane of the busy road, or one an approach at a traffic signal, which already holds the cross traffic (${CORKERS_TWO_WAY} approaches, ${CORKERS_ONE_WAY} where the road is one-way; 1 lane where the lanes are not known); it is held from when the group's head reaches it until its tail passes, and a tick marks each one.`,
-  );
   return sentences;
 }
+
+/** How the corkers are counted: said in How these are worked out under the charts (the 2026-10-28 audit, P6), not in the chart's summary. */
+export const CORKER_METHOD = `Each junction needing corkers takes one for each approach lane of the busy road, or one an approach at a traffic signal, which already holds the cross traffic (${CORKERS_TWO_WAY} approaches, ${CORKERS_ONE_WAY} where the road is one-way; 1 lane where the lanes are not known); it is held from when the group's head reaches it until its tail passes, and a tick marks each one.`;
+
+/** The requirement line's hold, as How these are worked out says it (the 2026-10-28 audit, P6: no longer in the chart's summary). */
+export const HOLD_PROPOSAL = `The ${RIDE_HOLD_MINUTES}-minute hold is a proposal, not yet confirmed.`;
 
 /** What the Elevation slider says at a position: "Mile 1.2: elevation 310 ft (94 m), grade 6%." */
 export function elevationReading(profile: RouteProfile, metres: number): string {
@@ -1885,18 +1915,37 @@ export function elevationReading(profile: RouteProfile, metres: number): string 
 /** The riders chart's sentence for a stretch that could not be traced. */
 export const UNTRACED_WIDTH = "Part of the route could not be traced, so its width is not known.";
 
-/** Each of a Mass Ride's three charts' summaries, said before its picture; with a ride size, the riders summary says its requirement (128). */
-export function massSummaries(route: RouteResponse, profile: RouteProfile, load: CorkerLoad | null, rideSize?: number): Record<MassChartKey, string> {
+/** Each of a Mass Ride's three charts' summaries as sentences, in order; with a ride size, the riders summary says its requirement (128). */
+export function massSummarySentences(route: RouteResponse, profile: RouteProfile, load: CorkerLoad | null, rideSize?: number): Record<MassChartKey, string[]> {
   const riders = ridersSentences(route, profile);
   const need = rideNeed(rideSize);
   const needWords = need && riders.length > 0 ? needSentence(profile, need) : null;
   if (needWords) riders.push(needWords);
   return {
     // The riders chart's own summary keeps the untraced stretch, said in summaryText with the intersections.
-    riders: [...(riders.length > 0 ? riders : ["Riders per minute are not known for this route."]), ...((profile.unchecked ?? []).length > 0 ? [UNTRACED_WIDTH] : [])].join(" "),
-    corkers: corkerSentences(profile, load).join(" "),
-    elevation: elevationSentences(route, profile).join(" "),
+    riders: [...(riders.length > 0 ? riders : ["Riders per minute are not known for this route."]), ...((profile.unchecked ?? []).length > 0 ? [UNTRACED_WIDTH] : [])],
+    corkers: corkerSentences(profile, load),
+    elevation: elevationSentences(route, profile),
   };
+}
+
+/** Each of a Mass Ride's three charts' summaries, said before its picture. */
+export function massSummaries(route: RouteResponse, profile: RouteProfile, load: CorkerLoad | null, rideSize?: number): Record<MassChartKey, string> {
+  const parts = massSummarySentences(route, profile, load, rideSize);
+  return { riders: parts.riders.join(" "), corkers: parts.corkers.join(" "), elevation: parts.elevation.join(" ") };
+}
+
+/**
+ * Each chart's summary as Plan shows it (the 2026-10-28 audit, P6): one lead sentence on screen (the narrowest point,
+ * the ride's corkers, the elevation's range), and the rest of the summary after it for a screen reader only, as the
+ * picture is hidden from one. The method is in How these are worked out.
+ */
+export function massLeads(route: RouteResponse, profile: RouteProfile, load: CorkerLoad | null, rideSize?: number): Record<MassChartKey, { lead: string; more: string }> {
+  const parts = massSummarySentences(route, profile, load, rideSize);
+  const split = (sentences: string[], at: number) => ({ lead: sentences[at] ?? "", more: sentences.filter((_, i) => i !== at).join(" ") });
+  // The corkers' lead is the ride's figure ("About 8 corkers for the ride: ...") where there is one.
+  const headline = parts.corkers.findIndex((s) => / corkers for the ride: /.test(s));
+  return { riders: split(parts.riders, 0), corkers: split(parts.corkers, headline >= 0 ? headline : 0), elevation: split(parts.elevation, 0) };
 }
 
 /** Each of a Mass Ride's three sliders' value text at a position. */
@@ -1921,4 +1970,19 @@ export function corkerFigure(route: Pick<RouteResponse, "preset" | "distance_m">
   const low = corkersMayBeLow(load) ? ` (may be low: ${lowReason(load)})` : "";
   if (!load.peak) return { label: "Corkers", text: `${corkersMayBeLow(load) ? "None found" : "None needed"} for ${size}${low}` };
   return { label: "Corkers", text: `${capitalise(corkerHeadline(load))} for ${size}${low}` };
+}
+
+/**
+ * The ride's corkers in Go's one capacity line (lib/massCapacity.ts capacityShortLine): "about 8 corkers for 500
+ * riders", "at least about 8 ..." where the count may be low; null off a Mass Ride or where the load is not known.
+ */
+export function corkerShort(route: Pick<RouteResponse, "preset" | "distance_m">, profile: RouteProfile | null, riders: number): string | null {
+  if (!profile || chartKind(route) !== "mass") return null;
+  const load = corkerLoad(profile, axisLength(route, profile), riders);
+  if (!load) return null;
+  const size = riders.toLocaleString("en-US");
+  if (!load.peak) return corkersMayBeLow(load) ? t("no corkers found for {size} riders", { size }) : t("no corkers needed for {size} riders", { size });
+  return corkersMayBeLow(load)
+    ? t("at least about {count} corkers for {size} riders", { count: load.headline, size })
+    : t("about {count} corkers for {size} riders", { count: load.headline, size });
 }

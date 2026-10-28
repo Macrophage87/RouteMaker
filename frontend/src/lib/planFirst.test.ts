@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import { ViaMarks } from "./pointKinds.ts";
+import { presetNamesRide } from "./presets.ts";
 import {
   RESET_NOTHING,
   ROUTE_NEEDS_POINTS,
@@ -83,6 +84,19 @@ test("an unfinished plan says what to do next, and a loop starts and finishes at
     sentencesText(planSentences([p(-77), p(-77.1)], none, true, () => "Here", words)),
     "Start and finish at Here. Stop at Here. Default ride, balanced, avoids hills.",
   );
+});
+
+test("a ride type already named a ride is not a ride twice: Mass Ride, not Mass Ride ride (the 2026-10-28 audit)", () => {
+  const none = new ViaMarks().isVia;
+  assert.equal(presetNamesRide("mass-ride"), true);
+  assert.equal(presetNamesRide("group-ride"), true);
+  assert.equal(presetNamesRide("default"), false);
+  const mass = planSentences([], none, false, () => undefined, { ride: "Mass Ride", traffic: null, hills: "Easy up to 1%", named: true });
+  assert.equal(sentencesText(mass), "Start: tap the map or search for a place. Mass Ride, easy up to 1%.");
+  // The name is still the ride type's link.
+  assert.deepEqual(mass[mass.length - 1][0], { text: "Mass Ride", target: { kind: "ride" } });
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /named: presetNamesRide\(preset\),/);
 });
 
 test("the Route button: Route, then Update route after a change; unavailable with its reason", () => {

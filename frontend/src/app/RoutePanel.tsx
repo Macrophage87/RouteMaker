@@ -31,7 +31,7 @@ import { AvoidNotice } from "../AvoidNotice.tsx";
 import { avoidItems, avoidNoticeFor } from "../lib/avoidJunctions.ts";
 import { ElevationChart } from "../ElevationChart.tsx";
 import { tripRoute } from "../lib/tripRides.ts";
-import { chartKind, corkerFigure, foldName, usableProfile } from "../lib/profileChart.ts";
+import { chartKind, corkerFigure, corkerShort, foldName, usableProfile } from "../lib/profileChart.ts";
 import { RouteDescription } from "../RouteDescription.tsx";
 import { RIDE_TOO_LONG } from "../lib/navigate.ts";
 import { ridesHidden } from "../lib/nativeShell.ts";
@@ -43,7 +43,7 @@ import { transitOf, transitTime, transitTimeName } from "../lib/transit.ts";
 import { bikeshareOf, routeCredits } from "../lib/bikeshare.ts";
 import { rideSizeOf, type Dials, type Ending } from "../lib/dials.ts";
 import { CAPACITY_FOLD_TITLE, capacitySummary } from "../lib/massCapacity.ts";
-import { CapacityFigures, CapacityStats } from "../lib/massLegend.ts";
+import { CapacityFigures, CapacityShort, CapacityStats } from "../lib/massLegend.ts";
 import { outsideDcNote } from "../lib/dcBoundary.ts";
 import { SaveRoute, type SaveRouteProps } from "../SaveRoute.tsx";
 import { SAVE_ROUTE, SAVE_SHORT } from "../lib/savedRoutes.ts";
@@ -64,7 +64,7 @@ import {
   type ShareKeep,
   type ShareKeepChoice,
 } from "../lib/sharedRoutes.ts";
-import { calmPercent, calmWayShares, calmWaysLabel, quickFigures, stressBarKey, stressBarLabel, stressPlainParts } from "../lib/quickFigures.ts";
+import { calmPercent, calmWayShares, calmWaysLabel, groupRideLine, quickFigures, stressBarKey, stressBarLabel, stressPlainParts } from "../lib/quickFigures.ts";
 import { facilityRows } from "../lib/facilityBar.ts";
 import { junctionItems } from "../lib/intersectionMarkers.ts";
 import type { WaterAlong, WaterStatus } from "../lib/waterRestrooms.ts";
@@ -627,9 +627,10 @@ function RouteAlerts({ route, answer, choice, around, onAround }: { route: Route
  * 2026-10-28: "add paths and protected bike lanes to the chart") a slim strip under the bar marks the route's share on
  * a traffic-free path and on a protected lane, the line under them is plain words ("Mostly calm · 1.1 mi on paths and
  * protected lanes · busy road for 0.2 mi"), and a tap on the bar opens the colour key in Layers. A screen reader still
- * hears every share: the bar's name, and the strip's.
+ * hears every share: the bar's name, and the strip's. `line` takes the key's place, or the plain words', where the ride
+ * type says it its own way (Group Ride, lib/quickFigures.ts groupRideLine; the audit's P6).
  */
-function StressFigure({ segments, go }: { segments: StressSegment[]; go?: { route: RouteResponse; peek: boolean; onKey?: (opener: HTMLButtonElement) => void } }) {
+function StressFigure({ segments, go, line = null }: { segments: StressSegment[]; line?: string | null; go?: { route: RouteResponse; peek: boolean; onKey?: (opener: HTMLButtonElement) => void } }) {
   const keyHintId = useId();
   // One image to a screen reader, named with each share; the line under it says the same in text.
   const bar = (
@@ -653,9 +654,14 @@ function StressFigure({ segments, go }: { segments: StressSegment[]; go?: { rout
           {t("Traffic stress along the route")}
         </figcaption>
         {bar}
-        <p className="stress-key" aria-hidden="true">
-          {stressBarKey(segments)}
-        </p>
+        {line ? (
+          // Said too: the turns are not in the bar's name.
+          <p className="stress-key group-ride-line">{line}</p>
+        ) : (
+          <p className="stress-key" aria-hidden="true">
+            {stressBarKey(segments)}
+          </p>
+        )}
       </figure>
     );
   }
@@ -670,7 +676,7 @@ function StressFigure({ segments, go }: { segments: StressSegment[]; go?: { rout
         ))}
       </div>
     ) : null;
-  const parts = stressPlainParts(go.route);
+  const parts = line ? [line] : stressPlainParts(go.route);
   return (
     <figure className="stress stress-main stress-go" aria-labelledby="stress-figure-caption">
       <figcaption id="stress-figure-caption" className="visually-hidden">
@@ -794,6 +800,8 @@ export function RouteSummary({
   // which option rides instead.
   const noBike = noBikeLine(route);
   const segments = capacity || noBike ? [] : stressSegments(route.stress_m);
+  // Group Ride: quiet roads and its turns, in place of the shares (the 2026-10-28 audit, P6).
+  const groupLine = preset === "group-ride" ? groupRideLine(route) : null;
   const notes = noteLines(route, points, light, mode === "go");
   const pace = paceText(route);
   // A transit trip's rides joined (lib/tripRides.ts): the distance ridden, the climb and the chart are every ride's.
@@ -889,6 +897,8 @@ export function RouteSummary({
   // Go's notes wrap on the sheet, so Info does not say them again; its sources are behind Data sources (the owner's P1).
   const infoBody = (
     <div id={infoId} className="route-info" hidden={!info}>
+      {/* Go's Mass Ride: the four capacity figures, under the one line the sheet shows (P6); Plan shows them as they were. */}
+      {goMode && <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />}
       {bikeshare && <p className="hint">{t("These figures are for the ride between the docks. The walks are above.")}</p>}
       {transit && transit.scheduled && (
         <p className="hint">{t("The distance, climb and stress are for the first ride, the line on the map. The whole trip is in its steps.")}</p>
@@ -1035,8 +1045,8 @@ export function RouteSummary({
             onMissed={transitControls?.onMissed}
           />
         )}
-        {segments.length > 0 && <StressFigure segments={segments} go={{ route, peek: go.peek, onKey: go.onStressKey }} />}
-        {!go.peek && <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />}
+        {segments.length > 0 && <StressFigure segments={segments} line={groupLine} go={{ route, peek: go.peek, onKey: go.onStressKey }} />}
+        {!go.peek && <CapacityShort route={route} corkers={corkerShort(route, profile, rideSize)} />}
         {!go.peek && go.routeCard}
         {!go.peek && go.addStop}
         {!go.peek && go.rides && (

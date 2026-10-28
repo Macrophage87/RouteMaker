@@ -56,6 +56,8 @@ import {
   TRAIL_MARKER_M,
   replanPoints,
   rideModel,
+  cueWords,
+  signalsCard,
   REPLAN_UTURN,
   REPLAN_FOUND,
   REPLAN_REJOIN,
@@ -223,6 +225,36 @@ test("rideModel: a work zone on the route is a hazard cue; the disclaimer line i
   );
   assert.ok(Math.abs(model.cues[0].atM - 600) < 2, `${model.cues[0].atM}`);
   assert.ok(says("stoker", model.cues[0]), "Stoker hears an orange work zone");
+});
+
+test("rideModel: a run of signals is a short card, Corkers on a Mass Ride; the voice keeps the sentence (the 2026-10-28 audit, P6)", () => {
+  const route = lRoute();
+  const sentence =
+    "0.4 to 0.9 mi (0.6 to 1.4 km): 4 crossings with traffic signals (Scott Circle Northwest, M Street Northwest, K Street Northwest, and 1 more), 2 of them heavy-traffic roads (LTS 4) (Very high stress junctions).";
+  const group: DescriptionEntry = {
+    ...stretch(600, 1400, sentence),
+    kind: "junction",
+    tier: null,
+    severity: "red",
+    group: { number: 1, count: 4, lts4: 2, streets: ["Scott Circle Northwest", "M Street Northwest", "K Street Northwest"], more: 1 },
+  };
+  route.description = [...(route.description ?? []).slice(0, 1), group, ...(route.description ?? []).slice(1)];
+  const cue = rideModel(route).cues.find((c) => c.source === "junction")!;
+  assert.deepEqual(cue.card, {
+    head: "4 signals ahead",
+    rest: "Scott Cir, M St, K St +1 · 2 busy",
+    said: "4 crossings with traffic signals (Scott Circle Northwest, M Street Northwest, K Street Northwest, and 1 more), 2 of them heavy-traffic roads (LTS 4; very high stress junctions).",
+  });
+  assert.doesNotMatch(cue.card!.said, /\)\s*\(/, "no two brackets in a row");
+  // The voice is the API's sentence, as before.
+  assert.equal(cueWords(cue, true), "4 crossings with traffic signals (Scott Circle Northwest, M Street Northwest, K Street Northwest, and 1 more), 2 of them heavy-traffic roads.");
+  const mass = rideModel({ ...route, preset: "mass-ride" }).cues.find((c) => c.source === "junction")!;
+  assert.equal(mass.card!.head, "Corkers: 4 signals ahead");
+  // No busy road and none more: the streets alone.
+  assert.equal(signalsCard({ number: 2, count: 2, lts4: 0, streets: ["A Street Southeast", "B Street"], more: 0 }, "2 crossings.", false).rest, "A St, B St");
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(ride, /const cueShown = cue\?\.card \?\? cueParts\(/);
+  assert.match(ride, /<span className="visually-hidden">\{cue\.card\?\.said \?\? cue\.rideText \?\? cue\.text\}<\/span>/);
 });
 
 test("rideModel: a climb in the description is not a cue, and the stretch after it is read against the stretch before", () => {

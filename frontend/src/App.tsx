@@ -20,7 +20,7 @@ import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type L
 import { formatSeconds } from "./lib/format.ts";
 import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, readGarmin, withoutReturn } from "./lib/garminLink.ts";
 import { RETURN_PARAM as WAHOO_RETURN_PARAM, readWahoo, wahooReturnFrom } from "./lib/wahooLink.ts";
-import { endsOnFoot, layersTurnedOn, presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
+import { endsOnFoot, layersTurnedOn, presetNamesRide, presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
@@ -4275,12 +4275,21 @@ export function App() {
   const [joinAsk, setJoinAsk] = useState<JoinAsk | null>(null);
   // Made once the connections are read, shown once the ride is up.
   const [joinPending, setJoinPending] = useState<{ key: string; ask: JoinAsk } | null>(null);
+  // One popup at a time (the 2026-10-28 audit, P6): from offering the sheet until it is closed (or not shown), the
+  // group's "Show me as a dot?" waits (RideGroup's askHeld), then asks over the ride.
+  const [joinHeld, setJoinHeld] = useState(false);
   useEffect(() => {
-    if (!riding) setJoinAsk(null);
+    if (!riding) {
+      setJoinAsk(null);
+      setJoinHeld(false);
+    }
     if (!joinPending || !riding) return;
     setJoinPending(null);
     const store = browserStore();
-    if (!showJoin({ following: true, started: riding, shownBefore: joinShown(joinPending.key, store, Date.now()), actions: joinPending.ask.actions.length })) return;
+    if (!showJoin({ following: true, started: riding, shownBefore: joinShown(joinPending.key, store, Date.now()), actions: joinPending.ask.actions.length })) {
+      setJoinHeld(false);
+      return;
+    }
     keepJoinShown(joinPending.key, store, Date.now());
     setJoinAsk(joinPending.ask);
   }, [riding, joinPending]);
@@ -4288,10 +4297,13 @@ export function App() {
     if (joinShown(key, browserStore(), Date.now())) return;
     // Connections are asked only of a rider who may have one (not when the server said signed out).
     const asks = !(meRef.current !== NO_ME && !meRef.current.signed_in);
-    void Promise.all(asks ? [readGarmin(origin), readWahoo(origin)] : [undefined, undefined]).then(([garmin, wahoo]) => {
-      const actions = joinActions({ canHandFile: canSendToGarmin(), garmin, wahoo });
-      setJoinPending({ key, ask: { title: joinTitle(name), line: joinLine(route), actions } });
-    });
+    setJoinHeld(true);
+    void Promise.all(asks ? [readGarmin(origin), readWahoo(origin)] : [undefined, undefined])
+      .then(([garmin, wahoo]) => {
+        const actions = joinActions({ canHandFile: canSendToGarmin(), garmin, wahoo });
+        setJoinPending({ key, ask: { title: joinTitle(name), line: joinLine(route), actions } });
+      })
+      .catch(() => setJoinHeld(false));
   };
   const joinAction = (action: JoinAction, said: Said) => {
     if (action === "gpx") downloadRoute(said);
@@ -5172,6 +5184,7 @@ export function App() {
         ride: presetSaid(preset),
         traffic: stressMax(preset) > 0 ? stressWords(dials.stress) : null,
         hills: hillsWords(dials.hills, seeksClimbs(preset)),
+        named: presetNamesRide(preset),
       })}
       button={routeNow}
       onRoute={pressRoute}
@@ -5554,6 +5567,8 @@ export function App() {
           broadcast={{ ...roamBroadcast, roam: true }}
           riding={onBike}
           leaderRoute={null}
+          controls={onBike || !goMode}
+          leads={roamBroadcast.leading}
         />
       )}
       {rideGroupLine && (
@@ -5568,6 +5583,12 @@ export function App() {
           onRiders={setRideRiders}
           ridersElsewhere={riding && rideCanBroadcast && rideBroadcast !== null}
           ridersAsk={ridersAsk}
+          // The count and Send alert while riding only (the 2026-10-28 audit, P6), and to a computer watching a broadcast.
+          controls={riding || (rideBroadcast !== null && !rideBroadcast.leading && !goMode)}
+          // The roles are offered to the ride's leader: one who planned it, or shares it; one following another's link is a Participant.
+          leads={!(onShared && !onShared.own)}
+          // The follower's join sheet first (BroadcastJoinDialog), then the dot question: one popup at a time.
+          askHeld={joinHeld || joinPending !== null || joinAsk !== null}
           leaderRoute={rideBroadcast?.leading ? ((riding && rideView ? rideView.route : shown)?.geometry.coordinates as LonLat[] | undefined) : null}
         />
       )}
@@ -5620,7 +5641,10 @@ export function App() {
         }}
       />
       <BroadcastQrDialog ask={qrAsk} onClose={() => setQrAsk(null)} />
-      <BroadcastJoinDialog ask={riding ? joinAsk : null} onAction={joinAction} onClose={() => setJoinAsk(null)} />
+      <BroadcastJoinDialog ask={riding ? joinAsk : null} onAction={joinAction} onClose={() => {
+          setJoinAsk(null);
+          setJoinHeld(false);
+        }} />
       <ClosureDialog ask={closureAsk} onReroute={() => void closureReroute()} onAnyway={closureAnyway} onCancel={closureCancel} />
       <ShareCardDialog
         open={shareCardOpen && shareCardSource !== null && mode !== "go" && !riding}
