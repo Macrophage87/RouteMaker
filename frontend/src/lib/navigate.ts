@@ -26,7 +26,7 @@
  * (`replanPoints`), in a POST body, as planning with "Use my location" already sends (395).
  */
 import { METRES_PER_MILE, formatDistance, formatRoughDistance, spokenDistance } from "./format.ts";
-import { language, t } from "./i18n.ts";
+import { fullStop, language, t } from "./i18n.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { AVOID_PLEA } from "./avoidJunctions.ts";
 import { descriptionEntries } from "./routeDescription.ts";
@@ -524,7 +524,7 @@ export function stretchWords(kind: "busy" | "calmer" | "unpaved", entry: Pick<De
           ? street ? t("Heavy traffic on {street}.", { street }) : t("Heavy traffic.")
           : street ? t("Busy road on {street}.", { street }) : t("Busy road.");
   if (!entry.surface) return lead;
-  return t("{cue}, {surface}.", { cue: lead.replace(/\.$/, ""), surface: partly ? t("partly unpaved") : t("unpaved") });
+  return t("{cue}, {surface}.", { cue: withoutFullStop(lead), surface: partly ? t("partly unpaved") : t("unpaved") });
 }
 
 /**
@@ -1020,8 +1020,8 @@ function thenWords(then: JogTurn, crossing = false): string {
 /** A jog's turns without their streets: "Right, then immediately bear left, then immediately left."; "Cross Redland Road, then left." after a crossing. */
 function jogShortWords(cue: Cue): string {
   const lead = cue.cross ? crossWords(cue.cross) : turnWords(cue.movement!, null, false, cue.exit ?? null);
-  const then = (cue.then ?? []).map((turn, n) => thenWords({ ...turn, street: null, stay: false }, n === 0 && cue.cross !== undefined).replace(/\.$/, ""));
-  return lead.replace(/\.$/, "") + then.join("") + ".";
+  const then = (cue.then ?? []).map((turn, n) => withoutFullStop(thenWords({ ...turn, street: null, stay: false }, n === 0 && cue.cross !== undefined)));
+  return withoutFullStop(lead) + then.join("") + fullStop();
 }
 
 /**
@@ -1043,13 +1043,13 @@ function joinJogs(cues: Cue[]): void {
       jog.push(next);
     }
     if (jog.length < 2) continue;
-    const plain = jog.map((cue) => cue.text.replace(/\.$/, ""));
+    const plain = jog.map((cue) => withoutFullStop(cue.text));
     jog.forEach((cue, j) => {
       if (j > 0) cue.joined = true;
       const after = jog.slice(j + 1);
       if (!after.length) return;
       cue.then = after.map((t) => ({ movement: t.movement!, street: t.street, ...(t.exit ? { exit: t.exit } : {}), ...(t.stay ? { stay: true } : {}), ...(t.toward ? { toward: t.toward } : {}) }));
-      cue.text = plain[j] + cue.then.map((t, n) => thenWords(t, n === 0 && cue.cross !== undefined).replace(/\.$/, "")).join("") + ".";
+      cue.text = plain[j] + cue.then.map((t, n) => withoutFullStop(thenWords(t, n === 0 && cue.cross !== undefined))).join("") + fullStop();
     });
     i += jog.length - 1;
   }
@@ -1221,6 +1221,11 @@ export function startState(): RideState {
 /** How far off the line counts as off route for a fix of this accuracy (plan section 4). */
 export function offThreshold(accuracyM: number): number {
   return Math.min(OFF_MAX_M, Math.max(OFF_MIN_M, OFF_ACCURACY_FACTOR * Math.max(accuracyM, 0)));
+}
+
+/** A sentence without its full stop, as each script writes it: ".", the Chinese and Japanese "。", "।", "።". */
+export function withoutFullStop(text: string): string {
+  return text.replace(/[.。।።]$/u, "");
 }
 
 function lowerFirst(text: string): string {

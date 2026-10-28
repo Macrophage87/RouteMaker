@@ -173,6 +173,11 @@ export function locale(lang: Language = current): string {
   return LOCALE[lang];
 }
 
+/** The language's full stop, to end a sentence the code joins from parts: "。" in Chinese and Japanese, "।" in Hindi and Bengali, "።" in Amharic and Tigrinya. */
+export function fullStop(lang: Language = current): string {
+  return ({ zh: "。", yue: "。", ja: "。", hi: "।", bn: "।", am: "።", ti: "።" } as Partial<Record<Language, string>>)[lang] ?? ".";
+}
+
 /** Whether the language in force is written right to left. */
 export function rightToLeft(lang: Language = current): boolean {
   return RIGHT_TO_LEFT.has(lang);
@@ -205,7 +210,10 @@ export function catalogOf(lang: Language = current): Readonly<Record<string, str
  */
 export function t(english: string, vars?: Readonly<Record<string, string | number>>, lang: Language = current): string {
   const text = CATALOGS[lang]?.[english] ?? english;
-  return vars ? text.replace(/\{(\w+)\}/g, (all, key: string) => (key in vars ? String(vars[key]) : all)) : text;
+  // In a right-to-left sentence a name in Latin letters is isolated (FSI ... PDI), so its own punctuation and
+  // numbers stay with it ("R Street NW." would otherwise show its full stop at the wrong end).
+  const fill = RIGHT_TO_LEFT.has(lang) && text !== english ? (value: string) => `\u2068${value}\u2069` : (value: string) => value;
+  return vars ? text.replace(/\{(\w+)\}/g, (all, key: string) => (key in vars ? fill(String(vars[key])) : all)) : text;
 }
 
 /**
@@ -249,7 +257,10 @@ function reverseOf(lang: Language): Reverse | null {
         if (!found.exact.has(text)) found.exact.set(text, english);
         continue;
       }
-      const body = text.split(/\{\w+\}/).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("(.+?)");
+      const parts = text.split(/\{\w+\}/);
+      // A phrase that is all places ("the {trail}" as "{trail}") would read anything back: it is left out.
+      if (!parts.join("").trim()) continue;
+      const body = parts.map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("(.+?)");
       found.patterns.push({ re: new RegExp(`^${body}$`, "s"), english, names });
     }
     // The longest pattern first: the one with the most fixed words is the likeliest phrase.
@@ -262,18 +273,58 @@ function reverseOf(lang: Language): Reverse | null {
 /** The sentence ends a phrase may carry, in the scripts of the app's languages. */
 const SENTENCE_END = /(?<=[.!?。！？।።؟])\s*/u;
 
+const upperFirst = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
+
+/** A name or a number as it came in: no letters of another script, so nothing to read back. */
+const AS_IT_CAME = /^[\x00-\x7F\u2068\u2069]*$/;
+
+/**
+ * One phrase of the catalog read back, its {places} too where they are phrases themselves; null if it is none. Of the
+ * phrases the words fit, the first whose every place reads back or is a name ("{cue}、{surface}。" fits a Japanese
+ * advance cue too, but its places are no phrases); none, where no phrase reads back whole.
+ */
 function phraseToEnglish(text: string, rev: Reverse, depth: number): string | null {
   const exact = rev.exact.get(text);
   if (exact !== undefined) return exact;
   for (const { re, english, names } of rev.patterns) {
     const m = re.exec(text);
     if (!m) continue;
+    let whole = true;
     const vars: Record<string, string> = {};
-    // A place's own words may be a phrase too ("the path", an ordinal); a name stays as it is.
-    names.forEach((name, i) => (vars[name] = (depth < 2 && phraseToEnglish(m[i + 1], rev, depth + 1)) || m[i + 1]));
-    return english.replace(/\{(\w+)\}/g, (all, key: string) => vars[key] ?? all);
+    names.forEach((name, i) => {
+      const said = m[i + 1];
+      const back = depth < 3 ? toEnglish(said, rev, depth + 1) : null;
+      if (back === null && !AS_IT_CAME.test(said)) whole = false;
+      vars[name] = back ?? said;
+    });
+    if (whole) return english.replace(/\{(\w+)\}/g, (all, key: string) => vars[key] ?? all);
   }
   return null;
+}
+
+/**
+ * Words read back: as one phrase, else sentence by sentence (so a place never swallows the next sentence: "Turn left onto
+ * {street}." must not take "R Street. Busy junction." as its street), each with the capital a joined sentence took off
+ * ("..., then left") put back for the lookup.
+ */
+function toEnglish(text: string, rev: Reverse, depth: number): string | null {
+  const trimmed = text.trim();
+  const exact = rev.exact.get(trimmed);
+  if (exact !== undefined) return exact;
+  const sentences = trimmed.split(SENTENCE_END).filter(Boolean);
+  if (sentences.length > 1) {
+    const english = sentences.map((s) => sentenceToEnglish(s, rev, depth));
+    if (english.every((s) => s !== null)) return english.join(" ");
+  }
+  return sentenceToEnglish(trimmed, rev, depth);
+}
+
+function sentenceToEnglish(text: string, rev: Reverse, depth: number): string | null {
+  const found = phraseToEnglish(text, rev, depth);
+  if (found !== null || !text || text === upperFirst(text)) return found;
+  const capital = phraseToEnglish(upperFirst(text), rev, depth);
+  return capital === null ? null : lowerFirst(capital);
 }
 
 /**
@@ -284,10 +335,5 @@ export function englishOf(text: string, lang: Language = current): string | null
   if (lang === "en") return text;
   const rev = reverseOf(lang);
   if (!rev) return text;
-  const whole = phraseToEnglish(text.trim(), rev, 0);
-  if (whole !== null) return whole;
-  const sentences = text.trim().split(SENTENCE_END).filter(Boolean);
-  if (sentences.length < 2) return null;
-  const english = sentences.map((s) => phraseToEnglish(s, rev, 0));
-  return english.every((s) => s !== null) ? english.join(" ") : null;
+  return toEnglish(text.replace(/[\u2068\u2069]/g, ""), rev, 0);
 }

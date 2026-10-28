@@ -13,7 +13,10 @@ import { language } from "./i18n.ts";
 // words as the course file's (lib/course.ts STREET_WORDS).
 const AFTER_NAME = String.raw`(?<=\b[A-Z0-9][\w'.-]* )`;
 const QUADRANTS = ["Northwest", "Northeast", "Southwest", "Southeast", "NW", "NE", "SW", "SE"];
-const NAME_END = String.raw`(?=[,.;:)]|$| (?:${QUADRANTS.join("|")})\b)`;
+// A name's end in any of the app's languages: punctuation, a bidi isolate (lib/i18n.ts t), or the sentence's own
+// words in another script straight after it, spaced or not ("R Street Northwestに", "R Street Northwest पर").
+const OTHER_SCRIPT = String.raw`\u2069。、，،።፣]|\s?[^\x00-\x7F]`;
+const NAME_END = String.raw`(?=[,.;:)${OTHER_SCRIPT}|$| (?:${QUADRANTS.join("|")})\b)`;
 const TYPES: readonly [string, string][] = [
   ["Avenue", "Ave"],
   ["Street", "St"],
@@ -40,7 +43,7 @@ const SHORT: readonly [RegExp, string][] = [
       ["Southwest", "SW"],
       ["Southeast", "SE"],
     ] as const
-  ).map(([long, short]) => [new RegExp(`${AFTER_NAME}${long}(?=[,.;:)]|$| [a-z])`, "g"), short] as [RegExp, string]),
+  ).map(([long, short]) => [new RegExp(`${AFTER_NAME}${long}(?=[,.;:)${OTHER_SCRIPT}|$| [a-z])`, "g"), short] as [RegExp, string]),
 ];
 
 // Spanish turn words run half again as long as the English (the owner, 2026-10-27: "use shorter words so it all
@@ -73,8 +76,8 @@ export function shortStreets(text: string): string {
 export function cueParts(text: string): { head: string; rest: string } {
   const streets = shortStreets(text.trim());
   const short = language() === "es" ? shortTurnsEs(streets) : streets;
-  // The comma as each script writes it: ", ", the Chinese and Japanese "，" and "、", the Arabic "، ".
-  const comma = /, |，|、|، /.exec(short);
+  // The comma as each script writes it: ", ", the Chinese and Japanese "，" and "、", the Arabic "، ", the Ge'ez "፣ ".
+  const comma = /, |，|、|، |፣ /.exec(short);
   if (!comma) return { head: short, rest: "" };
   const at = comma.index;
   const rest = short.slice(at + comma[0].length).trimStart();

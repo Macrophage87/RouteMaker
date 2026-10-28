@@ -125,6 +125,7 @@ import {
   toGo,
   wayBack,
   whereAmI,
+  withoutFullStop,
   type Cue,
   type RideEvent,
   type RideFix,
@@ -2419,7 +2420,7 @@ export function RideMode({
               </p>
               {/* The instruction large, the rest in small print, street words shortened; the whole sentence for screen readers. */}
               <p className="cue-text">
-                <span aria-hidden="true">{cueShown.head.replace(/\.$/, "")}</span>
+                <span aria-hidden="true">{withoutFullStop(cueShown.head)}</span>
                 <span className="visually-hidden">{cue.rideText ?? cue.text}</span>
               </p>
               {cueShown.rest && (

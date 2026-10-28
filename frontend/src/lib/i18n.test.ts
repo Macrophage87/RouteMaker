@@ -11,6 +11,7 @@ import {
   deviceLanguage,
   englishOf,
   firstWordAndRest,
+  fullStop,
   locale,
   markPageLanguage,
   readLanguageChoice,
@@ -21,6 +22,7 @@ import {
   t,
   voiceTags,
   writeLanguageChoice,
+  type Language,
 } from "./i18n.ts";
 import { arrivalSideWords, crossingWords, cueSpoken, endWords, exitWords, ontoWords, stopText, turnWords, type Cue } from "./navigate.ts";
 import { spokenDistance } from "./format.ts";
@@ -197,4 +199,50 @@ test("a phrase read back to its English, for a phone with no voice in the langua
   assert.equal(englishOf("ጉዕዞ ጀሚሩ። ናብ R Street ጸጋም ተጠወ።", "ti"), "Ride started. Left onto R Street.");
   assert.equal(englishOf("ዘይፍለጥ ሓረግ።", "ti"), null);
   assert.equal(englishOf("Ride started.", "en"), "Ride started.");
+});
+
+/** The phrases Ride's turn sentences are made of: every t("...") in lib/navigate.ts and lib/format.ts. */
+function turnPhrases(): string[] {
+  return ["lib/navigate.ts", "lib/format.ts"].flatMap((name) =>
+    [...readFileSync(join(SRC, name), "utf8").matchAll(/\bt\("((?:[^"\\]|\\.)*)"/g)].map((m) => JSON.parse(`"${m[1]}"`) as string),
+  );
+}
+
+async function catalogOfFile(lang: string): Promise<Record<string, string>> {
+  return ((await import(`../i18n/${lang}.ts`)) as { CATALOG: Record<string, string> }).CATALOG;
+}
+
+test("each of DC's languages has every turn sentence Ride says (the owner, 2026-10-28: Go and Ride)", async () => {
+  const phrases = turnPhrases();
+  assert.ok(phrases.length > 90, `${phrases.length} turn phrases`);
+  for (const lang of LANGUAGES.filter((l) => l !== "en")) {
+    const catalog = lang === "es" ? ES : await catalogOfFile(lang);
+    assert.deepEqual(phrases.filter((p) => !(p in catalog)), [], lang);
+  }
+});
+
+test("turn sentences in other scripts: the stop each writes, names as they are, isolated where the page reads right to left", async () => {
+  const said = async (lang: Language, words: () => string) => {
+    setCatalogForTest(lang, await catalogOfFile(lang));
+    setLanguageForTest(lang);
+    try {
+      return words();
+    } finally {
+      setLanguageForTest("en");
+    }
+  };
+  assert.equal(await said("fr", () => turnWords("right", "path beside East-West Highway")), "Tournez à droite sur le sentier le long de East-West Highway.");
+  assert.equal(await said("ja", () => turnWords("left", "R Street Northwest")), "左折してR Street Northwestに入ります。");
+  assert.equal(await said("zh", () => exitWords({ number: 3, circle: null }, "P Street Northwest")), "在环岛从第3个出口驶出，进入P Street Northwest");
+  // Arabic: the Latin name held apart from the sentence's own direction (FSI ... PDI).
+  assert.equal(await said("ar", () => crossingWords("C Street", "signal")), "تقاطع مزدحم عند ⁨C Street⁩، توجد إشارة مرور.");
+  // Amharic, read back to the English for a phone with no Amharic voice: the advance cue whole.
+  const amharic = await said("am", () => {
+    const cue = { index: 0, kind: "turn", atM: 0, text: turnWords("left", "R Street"), movement: "left", street: "R Street", severity: "red", tier: null, stop: null } as Cue;
+    return cueSpoken(cue, "advance", 150);
+  });
+  assert.equal(amharic, "በ500 ጫማ ውስጥ፣ ወደ ግራ ታጥፈው ወደ R Street ይግቡ። የተጨናነቀ መጋጠሚያ።");
+  assert.equal(englishOf(amharic, "am"), "In 500 feet, Left onto R Street. Busy junction.");
+  assert.equal(fullStop("ja"), "。");
+  assert.equal(fullStop("fr"), ".");
 });
