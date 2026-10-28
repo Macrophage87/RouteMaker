@@ -115,6 +115,9 @@ BEAR_MAX_DEG = 60.0
 # A jog's middle is at least this long: a shorter piece of another street between
 # two turns is a median or a carriageway crossed, not a street ridden.
 JOG_MIN_M = 15.0
+# An unnamed jog's middle (`_unnamed_jog`) is at least this long: a shorter path or
+# alley between two turns is a crosswalk or a corner cut, not a way ridden.
+JOG_UNNAMED_MIN_M = 30.0
 # A leg's first stretch, turned off, is kept from this long (`_first_turn`): a start
 # snapped a few metres onto the cross street is no turn the rider makes.
 FIRST_TURN_MIN_M = 25.0
@@ -603,13 +606,18 @@ def _first_turn(before: _Run | None, run: _Run, after: _Run | None) -> bool:
 
 
 def _jog(before: _Run | None, run: _Run, after: _Run | None) -> bool:
-    """Whether `run` is a jog's middle: a named street, not a roundabout or circle,
+    """Whether `run` is a jog's middle: a named street (an unnamed way by
+    `_unnamed_jog`), not a roundabout or circle,
     at least JOG_MIN_M long, other than both neighbours, entered and left by a turn
     or a bear. Folded away, its two turns would be read as one across it (a right
     then a left as straight on), so it is kept. Back onto the street it left, a
     middle under MATCH_M, or one whose turns cancel (within STRAIGHT_MAX_DEG of
     straight on), is a divided road or an offset crossing, and is folded."""
-    if before is None or after is None or not run.names or run.metres < JOG_MIN_M:
+    if before is None or after is None:
+        return False
+    if not run.names:
+        return _unnamed_jog(before, run, after)
+    if run.metres < JOG_MIN_M:
         return False
     if _circle(run) or _same_street(before, run) or _same_street(run, after):
         return False
@@ -623,6 +631,21 @@ def _jog(before: _Run | None, run: _Run, after: _Run | None) -> bool:
     return (
         _movement_between(before, run) in TURN_WORDS and _movement_between(run, after) in TURN_WORDS
     )
+
+
+def _unnamed_jog(before: _Run, run: _Run, after: _Run) -> bool:
+    """Whether an unnamed `run` is a jog's middle: a path, alley or other service way at
+    least JOG_UNNAMED_MIN_M long, not a roundabout, between two different named streets,
+    entered and left by full turns to opposite sides ("Right onto the alley, then left
+    onto C Street"). Folded away, the right then the left would be read as straight on,
+    "Continue onto C Street", and neither turn said. Not an unnamed road (a slip lane
+    is one), and not a bear either way."""
+    if run.metres < JOG_UNNAMED_MIN_M or not (run.path or run.service) or _circle(run):
+        return False
+    if not before.names or not after.names or _same_street(before, after):
+        return False
+    moves = (_movement_between(before, run), _movement_between(run, after))
+    return moves in (("left", "right"), ("right", "left"))
 
 
 def _absorb_tiny(runs: list[_Run]) -> list[_Run]:

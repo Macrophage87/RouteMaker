@@ -529,6 +529,67 @@ class TestBearsAndJogs:
             ("14th Street Northwest", "right"),
         ]
 
+    @staticmethod
+    def through(middle):
+        """Q St, a short unnamed middle heading south, then C St: what is said of it."""
+        entries = d.describe(
+            [
+                flat(
+                    road("Q Street Northwest", 2, 400, 90, 90),
+                    middle,
+                    road("C Street Northwest", 2, 400, 90, 90),
+                )
+            ]
+        )
+        return [(e["street"], (e["turn"] or {}).get("movement")) for e in entries]
+
+    @pytest.mark.parametrize(
+        "use, facility, said",
+        [
+            ("alley", "none", "alley"),
+            ("service_road", "none", "service road"),
+            ("footway", "path", "path"),
+            ("cycleway", "path", "path"),
+        ],
+    )
+    def test_a_jog_through_a_short_unnamed_alley_or_path_says_both_turns(self, use, facility, said):
+        # Right into a 40 m alley (or path), then left onto C St: two turns, not
+        # "Continue onto C Street".
+        middle = road("", 2, 40, 180, 180, facility=facility, use=use)
+        assert self.through(middle) == [
+            ("Q Street Northwest", None),
+            (said, "right"),
+            ("C Street Northwest", "left"),
+        ]
+
+    def test_the_unnamed_jog_is_worded_as_two_turns(self):
+        entries = d.describe(
+            [
+                flat(
+                    road("Q Street Northwest", 2, 400, 90, 90),
+                    road("", 2, 40, 180, 180, use="alley"),
+                    road("C Street Northwest", 2, 400, 90, 90),
+                )
+            ]
+        )
+        assert entries[1]["text"].split(": ")[1].startswith("Right onto the alley,")
+        assert entries[2]["text"].split(": ")[1].startswith("Left onto C Street Northwest,")
+
+    def test_an_unnamed_middle_under_30_m_is_still_folded(self):
+        middle = road("", 1, 20, 180, 180, facility="path", use="footway")
+        assert self.through(middle) == [
+            ("Q Street Northwest", None),
+            ("C Street Northwest", "straight"),
+        ]
+
+    def test_an_unnamed_jog_of_bears_is_still_folded(self):
+        middle = road("", 2, 40, 130, 130, use="alley")
+        assert self.through(middle)[1:] == [("C Street Northwest", "straight")]
+
+    def test_an_unnamed_middle_back_onto_the_same_street_is_still_folded(self):
+        middle = road("", 1, 40, 180, 180, facility="path", use="footway")
+        assert self.across(middle) == [("Q Street Northwest", None)]
+
     def test_a_circle_is_read_across_as_the_net_turn(self):
         # Mass Ave into Dupont Circle and out on P St: "Left onto P Street", by its
         # name or by the map's roundabout flag.
