@@ -112,7 +112,7 @@ jobs:
       # The reference-route assertions are the quality bar's ground truth, not a
       # smoke test: they are what stops a tuning change from silently redefining
       # what a mass ride is.
-      - run: pytest -v -o console_output_style=classic
+      - run: pytest -q --tb=native -rfE
       - name: Compose stack rules
         run: python scripts/check_compose_limits.py
 
