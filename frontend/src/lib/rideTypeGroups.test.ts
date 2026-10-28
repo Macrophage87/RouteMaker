@@ -16,6 +16,7 @@ import {
   rideTypeCountSaid,
   COMMON_RIDE_TYPES,
   rideSections,
+  rideTypeSections,
 } from "./rideTypeGroups.ts";
 
 const src = (name: string) => readFileSync(new URL(name, import.meta.url), "utf8");
@@ -26,15 +27,15 @@ test("every ride type is in exactly one group", () => {
   assert.deepEqual([...grouped].sort(), PRESETS.map((p) => p.id).sort());
 });
 
-test("the groups are the owner's: Transportation, Adventure (Fast with it), Group", () => {
+test("the groups are the owner's: Transportation (Rebalance Ride with it, P3), Adventure (Fast with it), Group", () => {
   assert.deepEqual(
     RIDE_GROUPS.map((g) => g.label),
     ["Transportation", "Adventure", "Group"],
   );
   const [transport, adventure, group] = RIDE_GROUPS;
-  assert.deepEqual([...transport.ids], ["default", "bike-transit", "bikeshare-transit", "bikeshare", "cargo", "ebike", "novice"]);
-  // Rebalance Ride (REBALANCE-RIDE): Stephen named it an adventure mode.
-  assert.deepEqual([...adventure.ids], ["fast", "trailmaxxing", "mountain-goat", "mountain-bike", "gravel", "rebalance"]);
+  // Rebalance Ride moved from Adventure to Transportation (P3, the owner's approved audit).
+  assert.deepEqual([...transport.ids], ["default", "bike-transit", "bikeshare-transit", "bikeshare", "cargo", "ebike", "novice", "rebalance"]);
+  assert.deepEqual([...adventure.ids], ["fast", "trailmaxxing", "mountain-goat", "mountain-bike", "gravel"]);
   assert.deepEqual([...group.ids], ["group-ride", "mass-ride"]);
 });
 
@@ -138,7 +139,8 @@ test("Go's More ride types and Plan's dialog: the search first, then each group 
   assert.match(sheets, /role=\{label \? "group" : undefined\} aria-label=\{label\}/);
   // Go: the search is cleared whenever the sheet is left (as Plan's dialog on closing).
   assert.match(go, /useEffect\(\(\) => \{\s*if \(!open\) setQuery\(""\);\s*\}, \[open\]\);/);
-  assert.match(src("../App.tsx"), /<RideGroupChips preset=\{preset\} onPick=\{pickRide\} open=\{view === "ride"\} \/>/);
+  // P3: a pick closes the sheet.
+  assert.match(src("../App.tsx"), /<RideGroupChips preset=\{preset\} onPick=\{pickRideAndClose\} open=\{view === "ride"\} \/>/);
   assert.ok(go.indexOf("<RideTypeSearch") < go.indexOf("groups.map"), "the search comes before the groups");
   const plan = src("../RideTypePicker.tsx");
   assert.match(plan, /<RideTypeSearch id="ride-types-search"/);
@@ -157,7 +159,7 @@ test("Go's More ride types and Plan's dialog: the search first, then each group 
 
 test("Go's three main buttons are as the transit lane left them", () => {
   const app = src("../App.tsx");
-  assert.match(app, /<RideChips ids=\{goRideChips\(myGo\.ride\)\}[^>]*more=\{\(opener\) => openView\("ride", opener\)\}/);
+  assert.match(app, /<RideChips\s+ids=\{goRideChips\(myGo\.ride, preset, favoriteRides\)\}[^>]*more=\{\(opener\) => openView\("ride", opener\)\}/);
 });
 
 test("the transit types are found by transit, walk, train or bus, though their names show emoji", () => {
@@ -168,4 +170,53 @@ test("the transit types are found by transit, walk, train or bus, though their n
   }
   assert.ok(found("walk").includes("bikeshare-transit"));
   assert.ok(found("plus walk").includes("bikeshare-transit"));
+});
+
+// ---- P3: one grouping everywhere, the chips, the climb figure -------------------------------------------------
+
+test("P3: one grouping everywhere: Common, Transportation, Adventure, Group (favorites first where starred)", () => {
+  const plain = rideTypeSections();
+  assert.deepEqual(plain.map((g) => g.id), ["common", "transportation", "adventure", "group"]);
+  assert.deepEqual([...plain[0].ids], [...COMMON_RIDE_TYPES]);
+  assert.equal(rideTypeCount(plain), PRESETS.length);
+  const starred = rideTypeSections("", ["gravel"]);
+  assert.deepEqual(starred.map((g) => g.id), ["favorites", "common", "transportation", "adventure", "group"]);
+  assert.ok(!starred.find((g) => g.id === "adventure")?.ids.includes("gravel"));
+  // A search: its matches, without Common.
+  assert.deepEqual(rideTypeSections("mountain").map((g) => [g.id, [...g.ids]]), [["adventure", ["mountain-goat", "mountain-bike"]]]);
+  // Plan's dialog and Settings' Default ride type (option groups) take them.
+  assert.match(src("../RideTypePicker.tsx"), /const groups = rideTypeSections\(query, favorites\);/);
+  const sheets = src("../app/Sheets.tsx");
+  assert.match(sheets, /label=\{t\("Default ride type"\)\}[\s\S]{0,200}groups=\{rideTypeSections\(\)\}/);
+  assert.doesNotMatch(sheets, /Go's ride type"\)/);
+  assert.match(src("../SettingRow.tsx"), /<optgroup key=\{group\.label\} label=\{group\.label\}>/);
+});
+
+test("P3: Go's chips are one sideways row, the one in use first, marked when its sliders moved", () => {
+  const sheets = src("../app/Sheets.tsx");
+  const chips = sheets.slice(sheets.indexOf("export function RideChips("));
+  assert.match(chips, /\{t\("Ride type & settings"\)\}/);
+  assert.doesNotMatch(sheets, /More ride types"\)/);
+  // "(changed)" is shown; the whole of it is heard.
+  assert.match(chips, /<span className="ride-changed" aria-hidden="true">\s*\{t\("\(changed\)"\)\}\s*<\/span>\s*<span className="visually-hidden">\{t\(", settings changed from this ride type's start"\)\}<\/span>/);
+  assert.match(chips, /rowRef\.current\?\.scrollTo\?\.\(\{ left: 0 \}\);\s*\}, \[preset\]\);/);
+  const css = src("../styles.css");
+  assert.match(css, /\.chip-row\.ride-chips \{\s*flex-wrap: nowrap;\s*overflow-x: auto;/);
+  assert.match(css, /\.chip-row\.ride-chips \.chip \{\s*flex: none;\s*white-space: nowrap;/);
+  // No two-column grid of chips on a phone any more.
+  assert.doesNotMatch(css, /\.go-sheet \.ride-chips \{\s*display: grid;/);
+});
+
+test("P3: Go's climb figure is a button to the Hills slider; the Ride sheet closes on a pick and shows the totals", () => {
+  const panel = src("../app/RoutePanel.tsx");
+  assert.match(panel, /<button type="button" className="go-climb" onClick=\{\(event\) => go\.onClimb\?\.\(event\.currentTarget\)\} aria-describedby="go-climb-hint">/);
+  const app = src("../App.tsx");
+  assert.match(app, /onClimb: openHills,/);
+  assert.match(app, /sheet\?\.querySelector<HTMLElement>\('\[data-dial="hills"\]'\)/);
+  assert.match(src("../DialsPanel.tsx"), /label=\{t\("Hills"\)\}\s*dial="hills"/);
+  // A pick in the Ride sheet goes back; a changed ride shows Go's sheet from the top.
+  assert.match(app, /const pickRideAndClose = \(id: PresetId\) => \{\s*pickRide\(id\);\s*if \(modeRef\.current === "go" && viewNow\.current === "ride"\) backToPlanner\(\);/);
+  assert.match(app, /const toTotals = was === "ride" && view !== "ride" && modeRef\.current === "go" && rideAtSheet\.current !== rideKey;/);
+  // Plan's dialog already closes on a pick.
+  assert.match(src("../RideTypePicker.tsx"), /onChoose\(id, mtbChosen\(preset, id, choose\(id, load, dials\)\)\);\s*close\(\);/);
 });

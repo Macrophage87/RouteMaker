@@ -47,6 +47,8 @@ interface Props {
 
 function Slider(props: {
   label: string;
+  /** Names the slider for code that goes to it (Go's climb figure opens Hills, P3). */
+  dial?: string;
   view: SliderView;
   value: number;
   onDraft: (value: number) => void;
@@ -59,7 +61,7 @@ function Slider(props: {
   const { view } = props;
   const [low, middle, high] = view.ends;
   return (
-    <div className="dial">
+    <div className="dial" data-dial={props.dial}>
       <label htmlFor={id} className="dial-label">
         <span id={nameId}>{props.label}</span>
         <span className="dial-now" aria-hidden="true">
@@ -366,6 +368,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
       )}
       <Slider
         label={t("Hills")}
+        dial="hills"
         view={view.hills}
         value={draft.hills}
         onDraft={(hills) => setDraft({ ...draft, hills })}

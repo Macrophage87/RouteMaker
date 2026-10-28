@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { betterRouteSaid, CALMER_BY_M, EarlyStart, EARLY_PER_MINUTE, sameRoute, takesRefined } from "./progressive.ts";
+import { betterRouteSaid, CALMER_BY_M, EarlyStart, EARLY_PER_MINUTE, replannedSaid, sameRoute, takesRefined } from "./progressive.ts";
 import { newPlanId, RouteScheduler, type SchedulerState, type Timers } from "./routeScheduler.ts";
 import { cancelRoute, describeError, requestRoute, routeRequestBody, type RouteResponse, type RouteResult } from "./api.ts";
 import { noviceOfferShown } from "./noviceOffer.ts";
@@ -674,4 +674,40 @@ test("App: Go's controls are unchanged: no new button or field for any of it", (
   // Saved routes behind More (Stephen 2026-10-26: "Add saved routes in the more part of the go tab"): one more, still behind More.
   assert.equal((go.match(/<button/g) ?? []).length, 39, "the same buttons as before, the Home sheet's, the route card's, Go's bar, More's Metro and Saved routes, Plan's Find and Favorites'");
   assert.equal((go.match(/<PlaceSearch/g) ?? []).length, 5, "the same search fields as before, the Home sheet's and Favorites'");
+});
+
+// ---- P3: the toast after a change of Go's ride settings or ride type --------------------------------------------
+
+test("P3: a settings change says what it did against the route before it, not Go's first route", () => {
+  const before = { ...line(A, 900, 300), climb_m: 40 };
+  // Flatter and 3 minutes quicker.
+  assert.deepEqual(replannedSaid(before, { ...line(B, 720, 300), climb_m: 20 }), {
+    shown: "Re-planned: flatter, 3 min less.",
+    said: "Re-planned: flatter, 3 min less.",
+  });
+  // Calmer, the same time: the distance it adds, miles on screen, kilometres too when said.
+  const calmer = { ...line(B, 910, 300 - CALMER_BY_M), climb_m: 40, distance_m: before.distance_m + 480 };
+  assert.deepEqual(replannedSaid(before, calmer), {
+    shown: "Re-planned: calmer, 0.3 mi more.",
+    said: "Re-planned: calmer, 0.3 mi (0.5 km) more.",
+  });
+  // Hillier and busier, a minute longer; a small change of climb is not "hillier".
+  assert.equal(replannedSaid(before, { ...line(B, 960, 300 + CALMER_BY_M), climb_m: 60 }).shown, "Re-planned: hillier, busier, 1 min more.");
+  assert.equal(replannedSaid(before, { ...line(B, 960, 300), climb_m: 44 }).shown, "Re-planned: 1 min more.");
+  // The same line: said so. A new ride type is named.
+  assert.equal(replannedSaid(before, { ...before }).shown, "Re-planned: the same route.");
+  assert.equal(replannedSaid(before, { ...line(B, 1020, 300), climb_m: 40 }, "Mass Ride").shown, "Re-planned for Mass Ride: 2 min more.");
+  assert.equal(replannedSaid(before, { ...line(B, 900, 300), climb_m: 40, distance_m: before.distance_m + 20 }).shown, "Re-planned: about the same time.");
+});
+
+test("P3: App says the re-plan once the final plan comes, in place of Found a quicker route", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  // The route before the change is noted on a change of settings or ride type, in Go with a route and no ride.
+  assert.match(app, /setDials\(next\);\s*noteReplan\(preset, null\);/);
+  assert.match(app, /noteReplan\(id, id === preset \? null : presetSaid\(id\)\);/);
+  assert.match(app, /if \(modeRef\.current !== "go" \|\| shownNow\.current\.riding \|\| !shown\) return;/);
+  // A first route waits for the full plan; the full plan's own line is not said for a change of settings.
+  assert.match(app, /if \(route\.provisional\) return true;/);
+  assert.match(app, /const line = replanned\(plan, result\.route\) \? null : heard \? betterRouteSaid\(now\.answer, result\.route\) : null;/);
+  assert.match(app, /const line = replannedSaid\(from\.route, route, from\.ride\);\s*setNoticeSaying\(line\.shown, line\.said\);/);
 });

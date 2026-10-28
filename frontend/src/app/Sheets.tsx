@@ -11,7 +11,7 @@ import type { RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { PRESETS, presetSaid, type PresetId } from "../lib/presets.ts";
 import { PresetName } from "../lib/presetName.ts";
-import { filterRideGroups, rideSections, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
+import { filterRideGroups, rideSections, rideTypeCount, rideTypeSections, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { RideTypeCards } from "../lib/rideTypeCards.ts";
 import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
 import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForPage, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
@@ -434,11 +434,13 @@ function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean
           </>
         )}
       </div>
-      <SettingRow infoId="settings-go-ride-info" about="Go's ride type">
+      <SettingRow infoId="settings-go-ride-info" about="Default ride type">
+        {/* Named for what it is, and grouped as Go's Ride sheet and Plan's dialog group the ride types (P3). */}
         <SettingSelect
-          label={t("Go's ride type")}
+          label={t("Default ride type")}
           value={myGo.ride ?? "default"}
           options={PRESETS.filter((p) => p.id !== "mass-ride").map((p) => [p.id, presetSaid(p.id)] as const)}
+          groups={rideTypeSections()}
           // The ride types keep their English names in every language, so a screen reader says them as English.
           optionLang={Object.fromEntries(PRESETS.map((p) => [p.id, "en"]))}
           onChange={(ride) => save({ ...myGo, ride: ride === "default" ? null : ride })}
@@ -841,7 +843,12 @@ export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onP
   );
 }
 
-/** Go's quick ride type chips and the More button, each chip a toggle button. */
+/**
+ * Go's quick ride type chips and the More button, each chip a toggle button. P3: one row that scrolls sideways
+ * (styles.css .ride-chips), the ride type in use first and pressed (lib/myGo.ts goRideChips), so it is always in
+ * view; the row goes back to its start when the ride type changes. Where the rider has moved the sliders from the
+ * ride type's start (`changed`), its chip says so: "(changed)" shown, the whole of it heard.
+ */
 export function RideChips({
   ids,
   preset,
@@ -849,6 +856,8 @@ export function RideChips({
   more,
   label,
   ownHint,
+  own,
+  changed = false,
 }: {
   ids: readonly PresetId[];
   preset: PresetId;
@@ -856,28 +865,44 @@ export function RideChips({
   more?: (opener: HTMLElement) => void;
   /** The chips' group name; leave it out where a heading already names them. */
   label?: string;
-  /** Go: the first chip is the rider's own ride type (My Go), described as such. */
+  /** Go: the rider's own ride type (My Go) is described as such; `own` is which chip it is (the first, if left out). */
   ownHint?: string;
+  own?: PresetId;
+  /** The sliders are not where the ride type in use starts them (lib/rideTypeDialog.ts isCustom). */
+  changed?: boolean;
 }) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    rowRef.current?.scrollTo?.({ left: 0 });
+  }, [preset]);
+  const ownId = own ?? ids[0];
   return (
-    <div className="chip-row ride-chips" role={label ? "group" : undefined} aria-label={label}>
-      {ids.map((id, index) => (
+    <div ref={rowRef} className="chip-row ride-chips" role={label ? "group" : undefined} aria-label={label}>
+      {ids.map((id) => (
         <button
           key={id}
           type="button"
           className="chip ride-type-chip"
           aria-pressed={preset === id}
           onClick={() => onPick(id)}
-          aria-describedby={ownHint && index === 0 ? "ride-own-hint" : undefined}
+          aria-describedby={ownHint && id === ownId ? "ride-own-hint" : undefined}
         >
           <Icon name={RIDE_ICON[id] ?? "bike"} size={18} />
           <PresetName id={id} />
+          {changed && preset === id && (
+            <>
+              <span className="ride-changed" aria-hidden="true">
+                {t("(changed)")}
+              </span>
+              <span className="visually-hidden">{t(", settings changed from this ride type's start")}</span>
+            </>
+          )}
         </button>
       ))}
       {more && (
         <button type="button" className="chip ride-more" onClick={(event) => more(event.currentTarget)} aria-describedby="ride-more-hint">
           <Icon name="more" size={18} />
-          {t("More ride types")}
+          {t("Ride type & settings")}
         </button>
       )}
       {more && (
