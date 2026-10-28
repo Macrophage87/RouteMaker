@@ -71,6 +71,7 @@ import {
   setsOffBack,
   UTURN_SAID,
   withUTurn,
+  isStartUTurn,
   sentenceOf,
   snap,
   startState,
@@ -1749,6 +1750,28 @@ test("a U-turn re-route says it plainly: first on the card, said at once, then t
   const { events } = ride(model, "full", 0, 1100, 20);
   assert.equal(events.filter((e) => e.spoken.includes("U-turn")).length, 1);
   assert.ok(events.some((e) => e.spoken === "Left now onto B Street."));
+});
+
+test("a U-turn the directions say (a dead end, audit D31) is a turn cue with its distance, not a re-route's", () => {
+  const route = lRoute();
+  const description = (route.description ?? []).map((e) =>
+    e.street === "B Street" && e.kind === "stretch"
+      ? { ...e, street: "A Street", text: "0.6 to 1.2 mi (1.0 to 2.0 km): Make a U-turn on A Street, low stress (LTS 1).", turn: { movement: "uturn" as const, onto: "A Street", control: null, severity: null } }
+      : e,
+  );
+  const model = rideModel({ ...route, description });
+  const uturn = model.cues.find((c) => c.movement === "uturn");
+  assert.ok(uturn, JSON.stringify(model.cues.map((c) => c.text)));
+  assert.equal(uturn.kind, "turn");
+  assert.equal(uturn.text, "Make a U-turn.");
+  assert.equal(Math.round(uturn.atM), 1000);
+  assert.equal(isStartUTurn(uturn), false);
+  assert.equal(cueSpoken(uturn, "advance", 152.4), "In 500 feet, make a U-turn.");
+  assert.equal(cueSpoken(uturn, "now", 10), "Make a U-turn now.");
+  // Ahead until passed, as any turn; once passed the card moves on (a re-route's U-turn waits PASSED_M).
+  assert.equal(nextAction(model, 900)?.movement, "uturn");
+  assert.notEqual(nextAction(model, 1003)?.movement, "uturn");
+  assert.equal(isStartUTurn(withUTurn(rideModel(lRoute())).cues[0]), true);
 });
 
 // ---- Service roads (the owner, 2026-10-20, on East-West Highway: "When going on a service road, especially next to a major road, say so") ----

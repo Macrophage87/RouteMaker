@@ -272,7 +272,8 @@ export interface DescriptionEntry {
   oneway?: boolean | null;
   turn: {
     /** "bear_left" / "bear_right": a change of street 20 to 60 degrees off straight (describe.SLIGHT_MIN_DEG, BEAR_MAX_DEG). */
-    movement: "left" | "straight" | "right" | "bear_left" | "bear_right" | null;
+    /** "uturn": back the way the route came on the same way, at a dead end (describe.UTURN_DEG, round-3 audit D31). */
+    movement: "left" | "straight" | "right" | "bear_left" | "bear_right" | "uturn" | null;
     onto: string | null;
     control: "signal" | "stop" | "cross_stop" | "all_stop" | "none" | null;
     severity: "orange" | "red" | null;

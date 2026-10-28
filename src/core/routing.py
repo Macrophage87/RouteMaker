@@ -66,6 +66,7 @@ import http.client
 import itertools
 import json
 import logging
+import math
 import time
 import urllib.error
 import urllib.request
@@ -572,6 +573,11 @@ class Piece:
     # Whether another way a bicycle may ride away on meets that node (`_choice_of`); None
     # where `turn` is.
     choice: bool | None = field(default=None, compare=False)
+    # Whether the piece's edge is on the way the edge before was on and the line goes back
+    # there over the points it came in on (`_retraces`): a turnaround on the way itself,
+    # said as a U-turn (`describe.UTURN_DEG`, round-3 audit D31). False on every piece of
+    # an edge but its first.
+    retrace: bool = field(default=False, compare=False)
 
 
 def _heading(value) -> float | None:
@@ -685,7 +691,10 @@ def pieces_of_trace(trace: dict, shape: list | None = None) -> list[Piece]:
         }
         line_in = line_out = turn = None
         choice = None
+        retrace = False
         if before is not None:
+            retrace = bool(way_id) and way_id == int(before.get("way_id") or 0)
+            retrace = retrace and _retraces(shape, begin)
             line_in, line_out, first, last = _line_headings(shape, begin, nodes)
             turn = _line_turn(shape, line_in, line_out, first, last)
             choice = _choice_of(
@@ -718,6 +727,7 @@ def pieces_of_trace(trace: dict, shape: list | None = None) -> list[Piece]:
                     prior=prior,
                     turn=turn,
                     choice=choice,
+                    retrace=retrace,
                 )
             )
             continue
@@ -744,6 +754,7 @@ def pieces_of_trace(trace: dict, shape: list | None = None) -> list[Piece]:
                         bearing=unwrapped,
                         turn=turn,
                         choice=choice,
+                        retrace=retrace,
                     )
                 )
                 fork = None
@@ -751,7 +762,44 @@ def pieces_of_trace(trace: dict, shape: list | None = None) -> list[Piece]:
                 prior = None
                 turn = None
                 choice = None
+                retrace = False
     return _one_turn_per_junction(pieces, along)
+
+
+# How near the line must come back to the points it went out on, at a node, for the turn
+# there to be a retrace (`_retraces`): a dead end's way back is the same points, give or
+# take the router's rounding.
+RETRACE_M = 1.0
+
+
+def _retraces(shape: list, at: int) -> bool:
+    """Whether the route's line, at shape vertex `at`, goes back over the points it came
+    in on: the first vertex on from `at` lies on the last stretch in (within RETRACE_M of
+    it), or the last vertex in lies on the first stretch out (a leg begun part way along
+    the way, short of the node). Only where both stretches have a length."""
+    if not 0 < at < len(shape) - 1:
+        return False
+    node = shape[at]
+    back = next((shape[j] for j in range(at - 1, -1, -1) if shape[j] != node), None)
+    ahead = next((shape[j] for j in range(at + 1, len(shape)) if shape[j] != node), None)
+    if back is None or ahead is None:
+        return False
+    return (
+        _off_stretch_m(ahead, node, back) <= RETRACE_M
+        or _off_stretch_m(back, node, ahead) <= RETRACE_M
+    )
+
+
+def _off_stretch_m(point: tuple, a: tuple, b: tuple) -> float:
+    """How far `point` is from the stretch from `a` to `b` (each lon, lat), in metres, on
+    a flat projection about `a` (a few metres of a node)."""
+    scale = math.cos(math.radians(a[1]))
+    bx, by = (b[0] - a[0]) * scale, b[1] - a[1]
+    px, py = (point[0] - a[0]) * scale, point[1] - a[1]
+    length2 = bx * bx + by * by
+    f = 0.0 if length2 <= 0 else max(0.0, min(1.0, (px * bx + py * by) / length2))
+    near = (a[0] + bx * f / scale, a[1] + by * f)
+    return haversine_lonlat(point, near)
 
 
 def _one_turn_per_junction(pieces: list[Piece], along: list[float]) -> list[Piece]:
@@ -3214,6 +3262,7 @@ def describe_route(
                             turn=pieces[i].turn,
                             choice=bool(pieces[i].choice),
                             oneway=getattr(classes[i], "oneway", None),
+                            retrace=bool(getattr(pieces[i], "retrace", False)),
                         )
                         for i in range(run[0], run[1])
                     ]

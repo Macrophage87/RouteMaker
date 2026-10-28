@@ -162,7 +162,7 @@ function fromRide(cue: Cue): { type: CourseCueType; name: string; priority: numb
   const street = named(cue.street);
   switch (cue.kind) {
     case "turn": {
-      // A re-route's U-turn (Ride only): a left, by its name.
+      // A U-turn (a re-route's, or at a dead end): a left, by its name.
       if (cue.movement === "uturn") return { type: "left", name: "U-turn", priority: 4 };
       // A crossing between two turns (navigate.crossWords): a note that says to cross, by the road's name (the v0.10.1
       // end review: the name alone read as one more street); the turn after it is the device's turn.

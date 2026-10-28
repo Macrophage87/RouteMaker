@@ -48,7 +48,9 @@ The rules:
   and a fork's own way are read from the route's own line over LINE_SPAN_M either
   side of the node, short of the next node (`Atom.turn`), where it was read, not
   from the edges' headings, which a tiny edge at a junction can tilt: a gentle bend
-  is never said as a left (Sligo Creek Trail).
+  is never said as a left (Sligo Creek Trail). A turn of UTURN_DEG or more back over
+  the points the route came in on, on the same way (a dead end), is "Make a U-turn on
+  ..." (round-3 audit D31); a switchback keeps "Left to stay on".
 - A leg boundary is its own entry: a stop ("Stop N", numbered among the stops only) or
   a via point ("Via point at ..."), which the rider rides on through. A stretch never
   spans a stop; at a via point (`through`) the legs are read as one line, so a turn
@@ -176,6 +178,11 @@ TRAIL_USES = frozenset({"cycleway", "footway", "path", "mountain_bike", "bridlew
 # route's own line at the node (`turn_between`; the owner, 2026-10-20, on a ramp up to a
 # bridge by Veirs Mill Road: "This is a right turn up onto a bridge").
 HAIRPIN_DEG = 120.0
+# A turn this sharp along one way, where the line comes back over the points it went out
+# on (`Atom.retrace`, `core.routing._retraces`), is a U-turn: at a dead end, or past a via
+# point on a spur. Said "Make a U-turn on ..." (round-3 audit D31), never "Left to stay
+# on", which is kept for a switchback, a hairpin the way itself makes.
+UTURN_DEG = 178.0
 # A turn along one street this far off straight, at a node another way meets, is said
 # (`_said_turns`): the owner, 2026-10-23, on the Metropolitan Branch Trail, where it
 # turns off onto its side path along a road, "It missed a clear left turn".
@@ -416,6 +423,10 @@ class Atom:
     # Whether the piece's road is one-way (the segment's `road_oneway`); None where the
     # map does not say. A stretch sends its last piece's as `oneway` (round-2 audit D26).
     oneway: bool | None = None
+    # Where the piece begins a traced edge of the way the edge before was on, and the line
+    # goes back over the points it came in on (`core.routing._retraces`): a turnaround on
+    # the way itself. False elsewhere.
+    retrace: bool = False
 
 
 def beside_words(use: str, road: str) -> str | None:
@@ -534,14 +545,22 @@ def _said_turns(atoms: list[Atom]) -> list[Atom]:
     it is said and never folded away: a turnaround (HAIRPIN_DEG or more) onto any way,
     and a turn of more than ALONG_TURN_DEG along one street where another way a bicycle
     may take meets the node (`Atom.choice`; a bend with nothing to choose is no question).
+    A true retrace on the same way (`Atom.retrace`, UTURN_DEG or more) is a "uturn".
     Read from the line (`Atom.turn`), which is kept on only one node of a junction
     (`core.routing._one_turn_per_junction`, by the line's own measure: the atoms' lengths
     are the trace's, which can differ by a fraction of a metre at JUNCTION_M)."""
     out = list(atoms)
     for i, atom in enumerate(atoms):
-        if i == 0 or atom.fork is not None or atom.turn is None or atom.roundabout:
+        if i == 0 or atom.turn is None or atom.roundabout:
             continue
         turn = abs(atom.turn)
+        # Back the way it came, on the same way: a U-turn (UTURN_DEG), whatever else was
+        # read at the node.
+        if turn >= UTURN_DEG and atom.retrace and _same_way(atoms[i - 1], atom):
+            out[i] = replace(atom, fork="uturn")
+            continue
+        if atom.fork is not None:
+            continue
         if turn >= HAIRPIN_DEG or (
             turn > ALONG_TURN_DEG and atom.choice and _same_way(atoms[i - 1], atom)
         ):
@@ -586,6 +605,11 @@ def _same_street(a: _Run, b: _Run) -> bool:
 def _forks(run: _Run) -> bool:
     """Whether `run` begins at a fork (`fork_movement`): its start is a turn to say."""
     return run.first is not None and run.first.fork is not None
+
+
+def _uturn(run: _Run) -> bool:
+    """Whether `run` begins with a U-turn on its way (`_said_turns`)."""
+    return run.first is not None and run.first.fork == "uturn"
 
 
 def _same(a: _Run, b: _Run) -> bool:
@@ -729,11 +753,13 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
                 continue
             # Nor is a tiny one folded into a stretch begun at a fork, which would
             # then begin where the tiny one does; but at a leg's start, with nothing
-            # before it, it is, the fork kept as that stretch's turn.
+            # before it, it is, the fork kept as that stretch's turn. Never into a U-turn,
+            # which a leg's first stretch could not say (round-3 audit D31).
             options = [
                 n
                 for n in (before, after)
-                if n is not None and not (n is after and _forks(n) and before is not None)
+                if n is not None
+                and not (n is after and _forks(n) and (before is not None or _uturn(n)))
             ]
             if run.tier in NEVER_HIDDEN:
                 options = [n for n in options if _rank(n) >= _rank(run)]
@@ -1436,6 +1462,8 @@ def _stretch_sentence(
             lead = exit_words(turn.exit["number"], _in_sentence(street), turn.exit["circle"])
         elif turn.cross is not None:
             lead = t("Cross {road}", road=_crossed_road(turn.cross))
+        elif movement == "uturn":
+            lead = t("Make a U-turn on {street}", street=_in_sentence(street))
         elif movement in TURN_WORDS and turn.stay:
             lead = t(_STAY[movement], street=_in_sentence(street))
         elif movement in TURN_WORDS and toward and turn.toward:
@@ -2032,7 +2060,12 @@ def describe_both(
         # Only where the heading in and the ways out are read at one node: a short
         # stretch of another street folded in between puts them at two.
         one_node = not before.folded_end and not run.folded_start
-        if movement is not None and one_node and before.last is not None and run.first is not None:
+        if (
+            movement not in (None, "uturn")
+            and one_node
+            and before.last is not None
+            and run.first is not None
+        ):
             service = run.first.use in SERVICE_WORDS
             main = None
             # A service road beside a main road the route was not on: where the main road is.
@@ -2054,7 +2087,9 @@ def describe_both(
         if circle is not None and movement is not None:
             exit = {"number": circle["number"], "circle": circle["circle"]}
             shape = circle["shape"]
-        turns[i] = _Turn(movement, event, same and exit is None, shape, exit)
+        # A U-turn is said as one, never "to stay on" the way.
+        stay = same and exit is None and movement != "uturn"
+        turns[i] = _Turn(movement, event, stay, shape, exit)
     for i, turn in turns.items():
         crossed = _crossing(runs, turns, starts, events, i)
         if crossed is not None:
@@ -2073,6 +2108,7 @@ def describe_both(
             and turn.cross is None
             and turn.exit is None
             and not turn.stay
+            and turn.movement != "uturn"
             and not (i - 1 in turns and turns[i - 1].cross is not None)
         ]
         if not candidates:

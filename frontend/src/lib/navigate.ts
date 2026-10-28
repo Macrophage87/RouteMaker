@@ -191,7 +191,13 @@ export type CueKind = "turn" | "onto" | "hazard" | "walk" | "busy" | "calmer" | 
 export type TurnMovement = "left" | "right" | "bear_left" | "bear_right" | "uturn";
 
 function isTurnMovement(movement: string | null | undefined): movement is TurnMovement {
-  return movement === "left" || movement === "right" || movement === "bear_left" || movement === "bear_right";
+  // A U-turn the directions say (at a dead end, round-3 audit D31) is a turn like any other.
+  return movement === "left" || movement === "right" || movement === "bear_left" || movement === "bear_right" || movement === "uturn";
+}
+
+/** A re-route's U-turn (`withUTurn`): at the line's start, behind the rider, so said at once and shown with no distance. */
+export function isStartUTurn(cue: Pick<Cue, "movement" | "atM" | "index"> | null | undefined): boolean {
+  return cue?.movement === "uturn" && cue.atM === 0 && cue.index === 0;
 }
 
 /**
@@ -1510,13 +1516,13 @@ function reassurance(model: RideModel, progressM: number, said: number | undefin
 /**
  * Whether a cue is still ahead of the rider: past its point by less than a metre, or a re-route's U-turn (at the
  * line's start, so never ahead) until the rider is PASSED_M along the new way, turned round (the owner, 2026-10-20:
- * "There's no U turn symbol.").
+ * "There's no U turn symbol."). A U-turn further along (a dead end, D31) is ahead as any turn is.
  */
 function ahead(model: RideModel, cue: Cue, progressM: number): boolean {
   if (cue.atM > progressM + 1) return true;
   // A next cue close to the start takes over halfway to it, as the voice turns to it.
   const then = model.cues[cue.index + 1]?.atM ?? Infinity;
-  return cue.movement === "uturn" && progressM < Math.min(PASSED_M, then / 2);
+  return isStartUTurn(cue) && progressM < Math.min(PASSED_M, then / 2);
 }
 
 /** The next turn, new named way, flagged junction or walk: what the cue card leads with. */
@@ -1741,7 +1747,7 @@ export function whereAmI(
   ];
   const progress = state.progressM;
   const cue = model.cues.find((c) => ahead(model, c, progress) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
-  if (cue?.movement === "uturn") sentences.push(t("Next: {cue}", { cue: lowerFirst(cue.text) }));
+  if (isStartUTurn(cue)) sentences.push(t("Next: {cue}", { cue: lowerFirst((cue as Cue).text) }));
   else if (cue) {
     sentences.push(t("Next, in {distance}: {cue}", { distance: dist(cue.atM - state.progressM), cue: inSentence(cue, cueWords(cue, !metric)) }));
   }

@@ -1381,8 +1381,11 @@ class DescriptionTurnOut(Schema):
     is: the movement, the street turned onto, who has the right of way where
     the junction model read the junction, and its severity where it flagged it."""
 
-    movement: Literal["left", "straight", "right", "bear_left", "bear_right"] | None = Field(
-        description="Null where the router gave no headings and no junction event did."
+    movement: Literal["left", "straight", "right", "bear_left", "bear_right", "uturn"] | None = (
+        Field(
+            description="Null where the router gave no headings and no junction event did. "
+            '"uturn": back the way the route came, on the same way (a dead end).'
+        )
     )
     onto: str | None = Field(description="The street turned onto; null on a junction entry.")
     control: Literal["signal", "stop", "cross_stop", "all_stop", "none"] | None = Field(

@@ -3009,3 +3009,66 @@ class TestViaPointsRiddenThrough:
             said = texts(d.describe(legs, through={1}))
         assert said[1] == "Punto de paso en 0.3 mi (0.5 km)."
         assert said[2].startswith("0.3 a 0.6 mi (0.5 a 1.0 km): Gire a la derecha hacia Georgia")
+
+
+def retraced(atoms, turn=-180.0):
+    """`atoms` with the first beginning back over the points the route came in on, on the
+    same way (`Atom.retrace`), its line turning `turn` degrees there."""
+    return [replace(atoms[0], turn=turn, retrace=True, choice=False), *atoms[1:]]
+
+
+def sligo(metres=600, heading=0):
+    return road("Sligo Creek Trail", 1, metres, heading, heading, "path", "cycleway")
+
+
+class TestUTurns:
+    """Round-3 audit D31: a true retrace on the way itself (a dead end, a via point on a spur)
+    is "Make a U-turn on ...", and is said even right after a via point or a stop; a
+    switchback stays "Left to stay on" (`TestClearTurns`)."""
+
+    def test_a_dead_end_is_a_u_turn(self):
+        entries = d.describe([flat(sligo(), retraced(sligo(600, 180)))])
+        assert entries[1]["text"] == (
+            "0.4 to 0.7 mi (0.6 to 1.2 km): Make a U-turn on Sligo Creek Trail, traffic-free path."
+        )
+        assert entries[1]["turn"]["movement"] == "uturn"
+        assert "stay" not in entries[1]["turn"]
+
+    def test_either_side_of_straight_back_is_one_u_turn(self):
+        entries = d.describe([flat(sligo(), retraced(sligo(600, 180), turn=179.0))])
+        assert entries[1]["turn"]["movement"] == "uturn"
+
+    def test_a_sharp_turn_that_does_not_retrace_is_no_u_turn(self):
+        # A hairpin as sharp, but on other points: the switchback's wording.
+        back = road("A Trail", 1, 300, 180, 180, "path", "cycleway")
+        back = [replace(back[0], turn=-179.0, choice=False), *back[1:]]
+        entries = d.describe([flat(road("A Trail", 1, 600, 0, 0, "path", "cycleway"), back)])
+        assert entries[1]["turn"]["movement"] == "left"
+        assert "Left to stay on A Trail," in entries[1]["text"]
+
+    def test_a_retrace_onto_another_way_is_no_u_turn(self):
+        back = retraced(road("B Trail", 1, 600, 180, 180, "path", "cycleway"))
+        entries = d.describe([flat(sligo(), back)])
+        assert entries[1]["turn"]["movement"] in ("left", "right")
+
+    def test_a_u_turn_40_m_past_a_via_point_is_said(self):
+        legs = [sligo(560), flat(sligo(40), retraced(sligo(600, 180)))]
+        entries = d.describe(legs, through={1})
+        assert [e["turn"]["movement"] for e in entries if e["turn"]] == ["uturn"]
+        vias = [e["text"] for e in entries if e["kind"] == "via"]
+        assert vias == ["Via point at 0.3 mi (0.6 km)."]
+
+    def test_a_u_turn_40_m_past_a_stop_is_said(self):
+        legs = [sligo(560), flat(sligo(40), retraced(sligo(600, 180)))]
+        for entries in d.describe_both(legs):
+            assert [e["turn"]["movement"] for e in entries if e["turn"]] == ["uturn"]
+
+    def test_in_spanish(self):
+        from routemaker.lang import speaking
+
+        with speaking("es"):
+            said = d.describe([flat(sligo(), retraced(sligo(600, 180)))])[1]["text"]
+        assert said == (
+            "0.4 a 0.7 mi (0.6 a 1.2 km): Dé la vuelta en U en Sligo Creek Trail, "
+            "sendero sin tráfico."
+        )
