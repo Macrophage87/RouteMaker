@@ -7600,9 +7600,46 @@ details.fold > summary .icon {
 .closure-card-action {
   margin-top: 8px;
 }
+/* Markers on one spot (P11): one marker with their count, opening them as a list. */
+.closure-count {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+.closure-card-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  max-height: 45vh;
+  overflow-y: auto;
+}
+.closure-card-list li + li {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--swatch-border);
+}
 .closure-notices-heading {
   font-size: 1rem;
   margin: 12px 0 4px;
+}
+/* The park notices' disclosure in the closure dialog (P11): a 44 px target. */
+summary.closure-notices-heading {
+  min-height: 44px;
+  padding: 10px 0;
+  margin: 4px 0 0;
+  box-sizing: border-box;
+  font-weight: 700;
+  cursor: pointer;
 }
 @media (forced-colors: active) {
   .closure-marker {
@@ -7611,6 +7648,10 @@ details.fold > summary .icon {
   .closure-marker:focus-visible {
     outline: 3px solid CanvasText;
     box-shadow: 0 0 0 2px Canvas;
+  }
+  .closure-count {
+    background: CanvasText;
+    color: Canvas;
   }
 }
 /* v0.7.0: Go's More row (Repair, Sights), the map's tap cards in words, and the bikeshare services' swatches. */
@@ -8593,7 +8634,8 @@ details.fold > summary .icon {
   white-space: nowrap;
 }
 
-.go-summary .go-route-rides {
+.go-summary .go-route-rides,
+.go-route > .go-route-rides {
   margin-top: 10px;
 }
 

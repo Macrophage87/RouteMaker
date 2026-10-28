@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_START_SAID, GO_START_UNAVAILABLE, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, GO_WARM_AFTER_MS, goWarmDue, goPickStart, goHereStart, goStartStale, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, GO_WARM_AFTER_MS, goWarmDue, goPickStart, goHereStart, goStartStale, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -221,7 +221,7 @@ test("Go's Where to? is the destination from the rider's location, in one edit, 
   assert.match(goTo, /goPending\.current = \{ dest, name, vias, pressed, said: pressed && action\.kind === "wait" \};\s*if \(action\.kind === "wait"\) \{\s*if \(pressed\) setNoticeSaying\(goDestinationLocating\(name\), goPressLocatingSaid\(name\)\);\s*else setNotice\(goDestinationLocating\(name\)\);/);
   // A look-up's answer settles the destination waiting on it, only while the plan has no start (a start typed during
   // a slow look-up is routed from; no "To X. Current location not available" after it; review after #127).
-  assert.match(goTo, /const settleGoWaiting = \(result: LocateResult, reason = false\) => \{\s*goAwaiting\.current = false;\s*const pending = goPending\.current;\s*if \(!result\.ok \|\| !insideCoverage\(result\.fix\.point\)\) \{\s*setGoStart\(\{ kind: "none" \}\);\s*if \(pending && pointsRef\.current\.length === 0\) \{\s*const why = reason && !result\.ok \? result\.reason : null;\s*const shown = why \? goDestinationNeedsStartBecause\(pending\.name, why\) : goDestinationNeedsStart\(pending\.name\);\s*if \(pending\.pressed\) setNoticeSaying\(shown, why \? goPressNeedsStartBecause\(pending\.name, why\) : goPressNeedsStartSaid\(pending\.name\)\);\s*else setNotice\(shown\);\s*\}\s*return;\s*\}\s*setHere\(result\.fix\);\s*setGoStart\(goHereStart\(result\.fix\.point\)\);\s*clearGoPending\(\);\s*if \(pending && pointsRef\.current\.length === 0\) routeGo\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
+  assert.match(goTo, /const settleGoWaiting = \(result: LocateResult, reason = false\) => \{\s*goAwaiting\.current = false;\s*const pending = goPending\.current;\s*if \(!result\.ok \|\| !insideCoverage\(result\.fix\.point\)\) \{\s*setGoStart\(goStartNone\(result\)\);\s*if \(pending && pointsRef\.current\.length === 0\) \{\s*const why = reason && !result\.ok \? result\.reason : null;\s*const shown = why \? goDestinationNeedsStartBecause\(pending\.name, why\) : goDestinationNeedsStart\(pending\.name\);\s*if \(pending\.pressed\) setNoticeSaying\(shown, why \? goPressNeedsStartBecause\(pending\.name, why\) : goPressNeedsStartSaid\(pending\.name\)\);\s*else setNotice\(shown\);\s*\}\s*return;\s*\}\s*setHere\(result\.fix\);\s*setGoStart\(goHereStart\(result\.fix\.point\)\);\s*clearGoPending\(\);\s*if \(pending && pointsRef\.current\.length === 0\) routeGo\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
   assert.match(goTo, /if \(!insideCoverage\(dest\)\) \{\s*setNotice\(OUTSIDE_NOTICE\);\s*return;/);
   // The opening look-up routes a destination picked while it ran; a start typed in routes one picked before it.
   assert.match(appFile, /if \(pending\) \{\s*clearGoPending\(\);\s*routeGoRef\.current\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
@@ -273,7 +273,7 @@ test("the Avoid notice is one line: the first junction and how many more, with A
 test("Go has one Start ride, the sheet's, last and pinned to its bottom edge at every size (the owner's P1)", () => {
   const whole = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   // The map's bar: Route while the plan has changed, Roam with no destination, and no Start ride on a route ready to ride.
-  assert.match(whole, /const goBig = routingNow\s*\? \{ label: ROUTING_LABEL, start: false, busy: true, onPress: \(\) => \{\} \}\s*: goReady\s*\? null/);
+  assert.match(whole, /const goBig = routingNow\s*\? \{ label: ROUTING_LABEL, start: false, busy: true, onPress: \(\) => \{\} \}\s*: errorRetries\s*\? null\s*: goReady\s*\? null/);
   assert.doesNotMatch(whole, /label: t\("Start ride"\), start: true/);
   // The sheet's: last in Go's summary (after the routes), at peek too; Broadcast (and its hold for a QR code) beside it.
   assert.match(app, /\{\(start \|\| startHint\) && \(\s*<div className="actions start-ride go-start">\s*\{start\}\s*\{startHint\}\s*<\/div>\s*\)\}\s*<\/div>\s*\);\s*\}/);
@@ -368,6 +368,17 @@ test("go start: the line says the location, a typed or tapped start in its place
   assert.equal(goStartLine({ kind: "locating" }, null), "Start: finding your location…");
   assert.equal(goStartLine({ kind: "none" }, null), "Start: none yet; type a start");
   assert.equal(GO_START_UNAVAILABLE, "Current location not available; type a start.");
+  // Blocked (P11): the one line above the start box gives the reason and both ways on.
+  assert.equal(goStartLine({ kind: "none", why: "denied" }, null), "Location off. Type a start, or allow location in site settings.");
+  assert.equal(goStartLine({ kind: "none", why: "denied" }, null), GO_LOCATION_OFF);
+  assert.equal(goStartLine({ kind: "none", why: "outside" }, null), "Start: none yet; type a start");
+  assert.equal(ROAM_LOCATION_OFF, "Roam needs your location. Allow location in site settings.");
+});
+
+test("go start: not available says why, a denial or a fix off the map (P11)", () => {
+  assert.deepEqual(goStartNone({ ok: false, reason: "denied" }), { kind: "none", why: "denied" });
+  assert.deepEqual(goStartNone({ ok: false, reason: "timeout" }), { kind: "none" });
+  assert.deepEqual(goStartNone({ ok: true, fix: { point: [-73.9855, 40.758], accuracyM: 10 } }), { kind: "none", why: "outside" });
 });
 
 test("go start: a destination routes from the plan's first point, else from the location found, else asks", () => {
@@ -489,7 +500,8 @@ test("go start: App asks once when Go opens, says the start politely, and says w
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /if \(!shouldAskGoStart\(\{ mode, asked: goStartAsked\.current, pointCount: pointsRef\.current\.length \}\)\) return;/);
   assert.match(app, /if \(pointsRef\.current\.length > 0\) return;[\s\S]{0,300}?\} else \{\s*\/\/[^\n]*\n\s*flyToInView\(result\.fix\.point, 15\);\s*announce\(GO_START_SAID\);\s*\}/);
-  assert.match(app, /if \(pointsRef\.current\.length === 0\) \{\s*if \(pending\?\.pressed\) setNoticeSaying\(goDestinationNeedsStart\(pending\.name\), goPressNeedsStartSaid\(pending\.name\)\);\s*else setNotice\(pending \? goDestinationNeedsStart\(pending\.name\) : GO_START_UNAVAILABLE\);/);
+  // Not available: said as why (P11): blocked on the start line (said, not shown twice), off the map as that, else "not available".
+  assert.match(app, /const none = goStartNone\(result\);\s*setGoStart\(none\);\s*if \(pointsRef\.current\.length === 0\) \{\s*if \(pending\?\.pressed\) setNoticeSaying\(goDestinationNeedsStart\(pending\.name\), goPressNeedsStartSaid\(pending\.name\)\);\s*else if \(pending\) setNotice\(goDestinationNeedsStart\(pending\.name\)\);[\s\S]{0,300}?else if \(none\.kind === "none" && none\.why === "denied"\) announce\(GO_LOCATION_OFF\);\s*else setNotice\(none\.kind === "none" && none\.why === "outside" \? LOCATION_OUTSIDE : GO_START_UNAVAILABLE\);/);
   // Go offers the routes to choose from at once; Plan keeps its fold.
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /const \[routesOpen, setRoutesOpen\] = useState\(mode === "go"\);/);
@@ -521,7 +533,9 @@ test("announcements: the essentials are always said; only the narration is extra
     assert.ok(app.includes(extra), extra);
   // The start Go found, and when it could not, are essentials.
   assert.match(app, /announce\(GO_START_SAID\)/);
-  assert.match(app, /setNotice\(pending \? goDestinationNeedsStart\(pending\.name\) : GO_START_UNAVAILABLE\)/);
+  assert.match(app, /else if \(pending\) setNotice\(goDestinationNeedsStart\(pending\.name\)\);/);
+  assert.match(app, /announce\(GO_LOCATION_OFF\)/);
+  assert.match(app, /setNotice\(none\.kind === "none" && none\.why === "outside" \? LOCATION_OUTSIDE : GO_START_UNAVAILABLE\)/);
   // Go and Plan both start the ride at once (the owner, 2026-10-24): no first-ride question.
   assert.match(app, /const startRide = \(unlocked = false\) => \{[^}]*beginRide\(ridePrefs, unlocked\);\s*\};/);
   assert.doesNotMatch(app, /setRideAsk|ride-ask/);

@@ -6,7 +6,7 @@
 // the state and the effects; the questions, the errors and Start ride are as they were.
 import { choiceColours } from "../lib/routeChoice.ts";
 import { useId, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
-import type { BikeshareOption, RouteError, RouteResponse } from "../lib/api.ts";
+import { routeErrorShown, type BikeshareOption, type RouteError, type RouteResponse } from "../lib/api.ts";
 import { placeLetter } from "../lib/letteredPlaces.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
@@ -132,6 +132,8 @@ export interface GoRouteControls {
   rides?: ReactNode;
   /** Go's climb figure is a button (P3): it opens Ride settings at the Hills slider. Left out, the figure is text. */
   onClimb?: (opener: HTMLElement) => void;
+  /** The destination's name, for a route error's words ("No route to Safeway…"); null on a loop or with none. */
+  place?: string | null;
   /** Go's "Add a stop" (Go.tsx GoAddStop), or null: under the route card, one tap away (Stephen 2026-10-18). */
   addStop?: ReactNode;
   /** A tap on Go's stress bar: Layers, with the Traffic stress section's colour key open (the owner's P1). */
@@ -213,6 +215,23 @@ function GoBikeOptions({ options }: { options: NonNullable<GoRouteControls["opti
   );
 }
 
+/** A route error: what went wrong and what to do (lib/api.ts routeErrorShown), with one Try again where it can help. */
+function RouteErrorBox({ error, errorRef, retry, goPlace, offline }: { error: RouteError; errorRef: RefObject<HTMLDivElement | null>; retry: () => void; goPlace: string | null; offline: boolean }) {
+  const shown = routeErrorShown(error, goPlace, offline);
+  return (
+    <div ref={errorRef} tabIndex={-1} className={`error error-${error.kind}`} role="alert">
+      <p>
+        {shown.title && <strong>{shown.title}.</strong>} {shown.message}
+      </p>
+      {shown.retry && (
+        <button type="button" onClick={retry}>
+          {t("Try again")}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export interface RouteSectionProps {
   /** A re-plan is under way: the section is aria-busy. */
   stale: boolean;
@@ -268,6 +287,8 @@ export interface RouteSectionProps {
   arriveMs: number | null;
   /** Weather along the route, leaving now (lib/weather.ts), once checked; else null. */
   weather: WeatherReport | null;
+  /** The planner out of reach while the page is offline: the error box says offline, the one message (P11). */
+  offline?: boolean;
 }
 
 /** A transit plan's controls: plan another option, and the departure's milestones and a miss. */
@@ -326,15 +347,16 @@ export function RouteSection(props: RouteSectionProps) {
         </div>
       )}
       {status.kind === "error" && (
-        <div ref={errorRef} tabIndex={-1} className={`error error-${status.error.kind}`} role="alert">
-          <p>
-            <strong>{status.error.title}.</strong> {status.error.message}
+        <RouteErrorBox error={status.error} errorRef={errorRef} retry={retry} goPlace={goMode ? (go.place ?? null) : null} offline={props.offline === true} />
+      )}
+      {/* Go keeps the trip under an error (P11): where to, and the ride types, one tap to try another. */}
+      {status.kind === "error" && goMode && !go.peek && go.routeCard}
+      {status.kind === "error" && goMode && !go.peek && go.rides && (
+        <div className="go-route-rides">
+          <p className="go-rides-label" aria-hidden="true">
+            {t("Ride type")}
           </p>
-          {["router-down", "timed-out", "bikeshare-unavailable", "server", "network", "rate-limited"].includes(status.error.kind) && (
-            <button type="button" onClick={retry}>
-              {t("Try again")}
-            </button>
-          )}
+          {go.rides}
         </div>
       )}
       {!goMode && stations}

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
 import { lightClock, solarDay } from "./lightTimes.ts";
-import { HeadingTrack, ROAM_DETOUR_HELP, ROAM_NEARBY_NAME, aheadRow, aheadSaid, foodNearestPlaces, headingOf, linesOf, mapLines, notARoad, onRoadSaid, roadsAhead, roamLight, roamLink, roamLinkFrom, roamReportPlace, type RoadLine, type RoamMap, type StressLine } from "./roam.ts";
+import { HeadingTrack, OUTSIDE_MAP, ROAM_DETOUR_HELP, ROAM_NEARBY_NAME, aheadRow, aheadSaid, foodNearestPlaces, headingOf, linesOf, mapLines, notARoad, onRoadSaid, roadsAhead, roamLight, roamLink, roamLinkFrom, roamReportPlace, type RoadLine, type RoamMap, type StressLine } from "./roam.ts";
 
 // A small grid near Dupont Circle: metres to degrees, close enough at this latitude.
 const O: LonLat = [-77.04, 38.91];
@@ -317,4 +317,16 @@ test("Detour's rows: each Ride here is described by its row, so the nearest wate
   const roam = readFileSync(new URL("../RoamMode.tsx", import.meta.url), "utf8");
   assert.match(roam, /<span id=\{`\$\{detourId\}-place-\$\{i\}`\}>\{nearbyShort\(item\)\}<\/span>/);
   assert.match(roam, /aria-label=\{t\("Ride here: \{place\}", \{ place: item\.place\.title \}\)\}\s*aria-describedby=\{`\$\{detourId\}-place-\$\{i\}`\}/);
+});
+
+test("Roam outside the map says so, not a road or Start riding; blocked, it ends and Go says why (P11)", async () => {
+  assert.equal(OUTSIDE_MAP, "Outside the map (DC to Baltimore)");
+  const { readFileSync } = await import("node:fs");
+  const roam = readFileSync(new URL("../RoamMode.tsx", import.meta.url), "utf8");
+  assert.match(roam, /\{outside \? OUTSIDE_MAP : roads === null \? NO_ROAD_YET : on \? on\.name : NO_NAMED_ROAD\}/);
+  assert.match(roam, /\{!outside && roads !== null && heading === null && <p className="cue-more">/);
+  assert.match(roam, /if \(reason === "denied" \|\| reason === "insecure" \|\| reason === "unsupported"\) offRef\.current\?\.\(reason\);/);
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /const startRoam = \(\) => \{[\s\S]{0,300}?if \(start\.kind === "none" && start\.why === "denied"\) \{\s*setNotice\(ROAM_LOCATION_OFF\);\s*return;/);
+  assert.match(app, /onLocationOff=\{roamLocationOff\}/);
 });

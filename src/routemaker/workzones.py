@@ -1067,10 +1067,15 @@ def clock_text(moment: datetime) -> str:
     return f"{hour}:{local.minute:02d} {half}" if local.minute else f"{hour} {half}"
 
 
-def date_text(moment: datetime) -> str:
-    """'Oct 20', in the region's time."""
+def date_text(moment: datetime, now: datetime | None = None) -> str:
+    """'Oct 20', in the region's time; 'Aug 31, 2027' when that is not `now`'s year, so a
+    closure through next summer, or a notice posted years ago, does not read as this
+    year's (P11). With no `now`, no year."""
     local = _local(moment)
-    return f"{_MONTHS[local.month - 1]} {local.day}"
+    text = f"{_MONTHS[local.month - 1]} {local.day}"
+    if now is not None and _local(now).year != local.year:
+        return f"{text}, {local.year}"
+    return text
 
 
 def cited_date(moment: datetime) -> str:
@@ -1107,7 +1112,7 @@ def day_text(moment: datetime, now: datetime | None) -> str:
             return "today"
         if (local.date() - today).days == 1:
             return "tomorrow"
-    return f"{_DAYS[local.weekday()]}, {date_text(moment)}"
+    return f"{_DAYS[local.weekday()]}, {date_text(moment, now)}"
 
 
 def when_text(zone: Zone, now: datetime | None, future: bool, possible: bool = False) -> str:
@@ -1138,8 +1143,8 @@ def when_text(zone: Zone, now: datetime | None, future: bool, possible: bool = F
         if start is not None and now is not None and start > now:
             if _local(start).date() == _local(last).date():
                 return f"{verb} {day_text(start, now)}"
-            return f"{verb} from {date_text(start)} through {date_text(last)}"
-        return f"{verb} through {date_text(last)}"
+            return f"{verb} from {date_text(start, now)} through {date_text(last, now)}"
+        return f"{verb} through {date_text(last, now)}"
     if start is not None and _local(start).date() == _local(end).date():
         return f"{verb} {day_text(start, now)} {clock_text(start)} to {clock_text(end)}"
     if start is not None and (end - start).total_seconds() < 36 * 3600:
@@ -1148,21 +1153,22 @@ def when_text(zone: Zone, now: datetime | None, future: bool, possible: bool = F
             f"{day_text(end, now)} {clock_text(end)}"
         )
     if start is not None and now is not None and start > now:
-        return f"{verb} from {date_text(start)} until {date_text(end)}"
-    return f"{verb} until {date_text(end)}"
+        return f"{verb} from {date_text(start, now)} until {date_text(end, now)}"
+    return f"{verb} until {date_text(end, now)}"
 
 
 # The sources the card dates by when they published it.
 DATED_SOURCES = frozenset({"mpd", "alertdc", "ddot_advisory", "purple_line"})
 
 
-def source_text(zone: Zone) -> str:
-    """The source, named as the card names it: "MPD traffic advisory, Oct 15"."""
+def source_text(zone: Zone, now: datetime | None = None) -> str:
+    """The source, named as the card names it: "MPD traffic advisory, Oct 15" (with the
+    year where it is not `now`'s)."""
     name = SOURCES.get(zone.source, zone.source)
     if zone.source == "dc":
         name = "DDOT occupancy permit (TOPS)"
     if zone.published is not None and zone.source in DATED_SOURCES:
-        return f"{name}, {date_text(zone.published)}"
+        return f"{name}, {date_text(zone.published, now)}"
     return name
 
 

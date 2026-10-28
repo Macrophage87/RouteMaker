@@ -193,7 +193,8 @@ export async function requestNearest(
   }
   if (response.ok && looksLikeAnswer(body, places.length)) return { ok: true, answer: body };
   const error = describeError(response.ok ? 500 : response.status, body, response.headers.get("Retry-After"));
-  return { ok: false, message: error.message };
+  // A busy planner says so in its title, its message only what to do (lib/api.ts describeError).
+  return { ok: false, message: error.kind === "timed-out" ? `${error.title}. ${error.message}` : error.message };
 }
 
 export interface Nearby {

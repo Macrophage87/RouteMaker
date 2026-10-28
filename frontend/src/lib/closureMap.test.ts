@@ -24,6 +24,11 @@ import {
   noticeMarkerName,
   parkNoticesOf,
   toggleBypass,
+  atSameSpot,
+  closureListCard,
+  closuresMarkerName,
+  noticeListCard,
+  noticesMarkerName,
   type ClosureItem,
   type ClosureNotice,
 } from "./closureMap.ts";
@@ -118,9 +123,14 @@ test("a marker's name says what it is and what it does to the route", () => {
 
 test("the card: what, the source linked, when, the delay, and Route through anyway or Undo", () => {
   const card = closureCard(item());
-  assert.equal(card.heading, "Road closed");
+  // "Closed" once (P11): the heading says when; no when line.
+  assert.equal(card.heading, "Road closed today 4:30 am to 1:30 pm");
   assert.deepEqual(card.source, { name: "Source: MPD traffic advisory, Sep 4", url: "https://mpdc.dc.gov/node/1845231" });
-  assert.equal(card.when, "Closed today 4:30 am to 1:30 pm");
+  assert.equal(card.when, "");
+  // A blocked lane keeps its own heading and when line.
+  const lane = closureCard(item({ kind: "lane", severity: "amber", when_text: "Bike lane blocked until Oct 20" }));
+  assert.equal(lane.heading, "Bike lane blocked");
+  assert.equal(lane.when, "Bike lane blocked until Oct 20");
   assert.equal(card.effect, "Detour adds about 4 min");
   assert.deepEqual(card.action, { label: ROUTE_THROUGH_LABEL, bypass: true });
   assert.deepEqual(closureCard(item({ bypassed: true, effect: "bypassed" })).action, { label: UNDO_BYPASS_LABEL, bypass: false });
@@ -259,12 +269,40 @@ test("the view's closures are drawn beside the route's, never twice, and permits
 test("a closure with no route has its source linked and no Route through button; construction says so", () => {
   const closed = item({ id: "reviewer-3-0", source: "reviewer", effect: "none", can_bypass: false, effect_text: "Closed to bikes: routes go round it." });
   const card = closureCard(closed);
-  assert.equal(card.heading, "Road closed");
+  assert.equal(card.heading, "Road closed today 4:30 am to 1:30 pm");
   assert.equal(card.source.url, "https://mpdc.dc.gov/node/1845231");
   assert.equal(card.action, null);
+  // "Closed" once (P11): "Road closed until Aug 31, 2027. Routes go round it.", not three times.
+  const long = closureCard(item({ effect: "none", can_bypass: false, title: "Connecticut Ave NW service lanes: closed", when_text: "Closed until Aug 31, 2027", effect_text: "Closed to bikes: routes go round it." }));
+  assert.deepEqual([long.heading, long.what, long.when, long.effect], ["Road closed until Aug 31, 2027", "Connecticut Ave NW service lanes", "", "Routes go round it."]);
+  assert.equal(closureMarkerName(item({ title: "K St NW: closed", effect_text: "Routes go round it." })), "Road closed: K St NW. Routes go round it");
   const works = item({ kind: "penalty", severity: "amber", effect: "none", can_bypass: false, title: "Old Georgetown Rd: construction", effect_text: "Construction: still rideable, with care." });
   assert.equal(closureCard(works).heading, "Construction");
   assert.ok(closureMarkerName(works).startsWith("Construction: Old Georgetown Rd: construction."));
+});
+
+test("markers on one spot are one, with their count, opening them as a list (P11)", () => {
+  const parks = [PARK, { ...PARK, id: "nps-2", title: "Nature Center closed" }, { ...PARK, id: "nps-3", title: "Far one", point: [-77.0, 38.9] as LonLat }];
+  const groups = atSameSpot(parks, (n) => n.point ?? [0, 0]);
+  assert.deepEqual(groups.map((g) => g.map((n) => n.id)), [["nps-1", "nps-2"], ["nps-3"]]);
+  assert.equal(noticesMarkerName(groups[0]), "2 park notices, Rock Creek Park: Beach Drive closed between Broad Branch Road and Joyce Road; Nature Center closed");
+  assert.equal(noticesMarkerName(groups[1]), noticeMarkerName(parks[2]), "one alone is named as before");
+  const list = noticeListCard(groups[0]);
+  assert.equal(list.heading, "2 park notices: Rock Creek Park");
+  assert.deepEqual(list.entries.map((e) => e.what), ["Beach Drive closed between Broad Branch Road and Joyce Road", "Nature Center closed"]);
+  assert.equal(list.entryHeadings, false, "the park's name is said once, in the list's heading");
+  // Closures on exactly one spot likewise; a hair apart they stay two.
+  const closures = [item(), item({ id: "mpd-2", title: "K St NW: closed" }), item({ id: "mpd-3", point: [-77.040001, 38.892] })];
+  const spots = atSameSpot(closures, (c) => c.point);
+  assert.deepEqual(spots.map((g) => g.length), [2, 1]);
+  assert.match(closuresMarkerName(spots[0]), /^2 closures here\. Road closed: Constitution Avenue NW closed, .*\. Road closed: K St NW\. /);
+  const card = closureListCard(spots[0]);
+  assert.equal(card.heading, "2 closures here");
+  assert.equal(card.entries.length, 2);
+  assert.equal(card.entryHeadings, true);
+  const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(map, /for \(const group of atSameSpot\(markerItems\(items\), \(item\) => item\.point\)\)/);
+  assert.match(map, /for \(const group of atSameSpot\(parks, \(notice\) => notice\.point \?\? \[0, 0\]\)\)/);
 });
 
 test("an answer not of the right shape draws nothing", () => {

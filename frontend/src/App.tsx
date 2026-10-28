@@ -11,7 +11,7 @@ import { stationNearSpot } from "./lib/stationLinks.ts";
 import { reorder } from "./lib/pointMover.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
-import { cancelRoute, requestNeighbours, requestRoute, routeRequestBody, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
+import { cancelRoute, requestNeighbours, requestRoute, routeErrorShown, routeRequestBody, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
 import { choiceColour, choiceFeatures } from "./lib/routeChoice.ts";
 import { displacedBy, keptNeighbours, neighbourDials, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
 import { betterRouteSaid, EarlyStart, replannedSaid, takesRefined } from "./lib/progressive.ts";
@@ -233,6 +233,7 @@ import {
   type NearestKind,
 } from "./lib/nearest.ts";
 import { AppStatusBar, useAppStatus } from "./InstallableApp.tsx";
+import { OFFLINE_LAST_ROUTE, OFFLINE_SAID, offlineLine } from "./lib/appWorker.ts";
 import { isStandalone } from "./lib/installOffer.ts";
 import { keepLastRide, keepRoute, keptAnswerFor, sweepKept } from "./lib/offlineKeep.ts";
 import { KEEPING_SAID, keepOffered, keepSaid, keptPlanKey, offlineRouteNotice, routeTitle, type KeptRoute } from "./lib/offlineRoutes.ts";
@@ -258,7 +259,7 @@ import { BACK_LABEL, MENU_TITLE, SHEET_TITLES, backFrom, openOnto, type Opened }
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
-import { GO_START_SAID, GO_START_UNAVAILABLE, GO_PICK_LOOK_MS, goHereStart, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_PICK_LOOK_MS, goHereStart, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { ReviewMode } from "./ReviewMode.tsx";
 import type { ListKey } from "./lib/review.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type Home, type MyGo } from "./lib/myGo.ts";
@@ -593,6 +594,8 @@ export function App() {
   const [routedLoop, setRoutedLoop] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [notice, setNotice] = useState<string | null>(null);
+  // A plan asked for offline while a route was on screen (P11): the route stayed; it is asked for again once online.
+  const [offlineKept, setOfflineKept] = useState(false);
   const [stress, setStress] = useState<StressAvailability>("checking");
   const [stressVisible, setStressVisible] = useState(true);
   const palette = useStressStyle();
@@ -1202,6 +1205,7 @@ export function App() {
           replanned(plan, result.route);
           routedKey.current = keptPlanKey(plan.points, plan.preset, plan.dials, viaIndices(plan.points, VIA_MARKS.isVia));
           setStatus({ kind: "ok" });
+          setOfflineKept(false);
           const kept = keptShown.current;
           const was = keptNotice.current;
           keptNotice.current = kept ? offlineRouteNotice(kept) : null;
@@ -1210,6 +1214,11 @@ export function App() {
         } else if (result.error.kind === "confirm-long") {
           setRoute(null);
           setStatus({ kind: "confirm", error: result.error });
+        } else if (result.error.kind === "network" && !navigator.onLine && shownNow.current.answer && !shownNow.current.riding) {
+          // Offline with a route on screen (P11): a change the planner cannot hear (another ride type) keeps the
+          // working route, said as the last one (offlineLine), and is planned once the connection is back.
+          setStatus({ kind: "ok" });
+          setOfflineKept(true);
         } else {
           setRoute(null);
           setStatus({ kind: "error", error: result.error });
@@ -1410,6 +1419,9 @@ export function App() {
       viewCause.current = status.kind === "confirm" ? "confirm" : "error";
       setView("planner");
     }
+    // Go (P11): an error answering a place just picked takes the focus from Where to?, which would otherwise sit
+    // empty and focused under it, as if the trip were gone (the trip stays shown under the error).
+    if (status.kind === "error" && modeRef.current === "go" && document.activeElement?.closest(".go-search")) errorRef.current?.focus();
   }, [status]);
 
   // Where the focus goes when the view changes (lib/sidebar.ts focusOnViewChange, where every
@@ -1659,7 +1671,16 @@ export function App() {
   }, []);
   // The installable app (WEB-NAV-plan.md section 8): a new version ready, and offline, said through the
   // same region; shown at the top of the planner (InstallableApp.tsx).
-  const appStatus = useAppStatus(riding, announce);
+  // Offline, the line said is the one shown (lib/appWorker.ts offlineLine): the last route, where one is on screen.
+  const routeOnScreen = useRef(false);
+  const appStatus = useAppStatus(riding, announce, () => (routeOnScreen.current ? OFFLINE_LAST_ROUTE : OFFLINE_SAID));
+  // Back online after a plan kept the last route (P11): the plan now on the page is asked for.
+  useEffect(() => {
+    if (appStatus.offline || !offlineKept) return;
+    setOfflineKept(false);
+    sendNow.current = true;
+    setRouteAsk((n) => n + 1);
+  }, [appStatus.offline, offlineKept]);
   // Bumped when a route is kept, so Settings' list reads the store again.
   const [keptVersion, setKeptVersion] = useState(0);
   const [keeping, setKeeping] = useState(false);
@@ -2316,10 +2337,15 @@ export function App() {
       goAwaiting.current = false;
       const pending = goPending.current;
       if (!result.ok || !insideCoverage(result.fix.point)) {
-        setGoStart({ kind: "none" });
+        const none = goStartNone(result);
+        setGoStart(none);
         if (pointsRef.current.length === 0) {
           if (pending?.pressed) setNoticeSaying(goDestinationNeedsStart(pending.name), goPressNeedsStartSaid(pending.name));
-          else setNotice(pending ? goDestinationNeedsStart(pending.name) : GO_START_UNAVAILABLE);
+          else if (pending) setNotice(goDestinationNeedsStart(pending.name));
+          // Blocked, the start line says so with both ways on (GO_LOCATION_OFF), and it is said, not shown again
+          // under the sheet; a fix off the map is said as that, not as "not available" (P11).
+          else if (none.kind === "none" && none.why === "denied") announce(GO_LOCATION_OFF);
+          else setNotice(none.kind === "none" && none.why === "outside" ? LOCATION_OUTSIDE : GO_START_UNAVAILABLE);
         }
         return;
       }
@@ -2521,7 +2547,7 @@ export function App() {
     goAwaiting.current = false;
     const pending = goPending.current;
     if (!result.ok || !insideCoverage(result.fix.point)) {
-      setGoStart({ kind: "none" });
+      setGoStart(goStartNone(result));
       if (pending && pointsRef.current.length === 0) {
         const why = reason && !result.ok ? result.reason : null;
         const shown = why ? goDestinationNeedsStartBecause(pending.name, why) : goDestinationNeedsStart(pending.name);
@@ -4118,6 +4144,12 @@ export function App() {
   };
   // Roam (RoamMode.tsx): Go's one button while Go has no destination. The voice is unlocked inside the press (iOS).
   const startRoam = () => {
+    // The location blocked (Go's look-up said so): Roam would only wait for it, so Go stays and says why (P11).
+    const start = goStartRef.current;
+    if (start.kind === "none" && start.why === "denied") {
+      setNotice(ROAM_LOCATION_OFF);
+      return;
+    }
     startRideGesture(ridePrefs);
     endedRide.current = null;
     setRideEnded(null);
@@ -4169,6 +4201,16 @@ export function App() {
     setRoamRider(null);
     announce(ROAM_ENDED);
     // Back to Go's Menu, the first control of its bar (the Roam button is under it).
+    window.setTimeout(() => document.querySelector<HTMLElement>(".go-menu")?.focus(), 0);
+  };
+  // Roam's watch found the location blocked (or none to be had): back in Go, which says why in one line (P11),
+  // rather than a Roam card looking for the road for ever.
+  const roamLocationOff = (reason: "denied" | "insecure" | "unsupported") => {
+    setRoamBroadcast((b) => (b?.leading ? null : b));
+    setRoaming(false);
+    setRoamRider(null);
+    if (reason === "denied") setGoStart((s) => (s.kind === "here" ? s : { kind: "none", why: "denied" }));
+    setNotice(reason === "denied" ? ROAM_LOCATION_OFF : LOCATE_MESSAGES[reason]);
     window.setTimeout(() => document.querySelector<HTMLElement>(".go-menu")?.focus(), 0);
   };
   // Ride here from Roam's Detour: a route from where the rider is to the place, on Go's ride type and settings, ridden
@@ -4263,6 +4305,9 @@ export function App() {
 
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
+  routeOnScreen.current = shown !== null;
+  // Offline, a planner out of reach is said once, in the error box with its Try again (lib/api.ts routeErrorShown).
+  const offlineError = appStatus.offline && status.kind === "error" && status.error.kind === "network";
   // A broadcast link opened on a phone goes straight into Ride mode, the leader's dot on its map (lib/rideGroup.ts
   // opensIntoRide): a route's broadcast starts its ride as Start's press does (no closure check: the leader's, Stephen
   // 2026-10-26); a Roam broadcast starts Roam. Judged
@@ -5163,16 +5208,20 @@ export function App() {
   // Route while the plan has changed, as Plan's. A route ready to ride has none: Start ride is the sheet's, pinned to
   // its bottom edge at every size (one Start ride per screen, the owner's P1, 2026-10-28).
   const goReady = !!shown && !stale && routedPoints === points && rideableRoute(shown);
+  // An error with its own Try again (lib/api.ts routeErrorShown): the bar's Route would be a second one (P11).
+  const errorRetries = status.kind === "error" && routeErrorShown(status.error, null).retry;
   const goBig = routingNow
     ? { label: ROUTING_LABEL, start: false, busy: true, onPress: () => {} }
-    : goReady
+    : errorRetries
       ? null
-      : points.length >= 2 && routeNow.unavailable === null
-        ? { label: routeNow.label, start: false, busy: false, onPress: pressRoute }
-        : // No destination yet: Roam, a ride with no destination (the owner, 2026-10-22; one control for the feature).
-          points.length === 0 && !isMassRide(preset)
-          ? { label: ROAM_NAME, start: true, busy: false, onPress: startRoam }
-          : null;
+      : goReady
+        ? null
+        : points.length >= 2 && routeNow.unavailable === null
+          ? { label: routeNow.label, start: false, busy: false, onPress: pressRoute }
+          : // No destination yet: Roam, a ride with no destination (the owner, 2026-10-22; one control for the feature).
+            points.length === 0 && !isMassRide(preset)
+            ? { label: ROAM_NAME, start: true, busy: false, onPress: startRoam }
+            : null;
   const goBar =
     mode === "go" && !riding && (goBig !== null || can.undo || can.redo || points.length > 0)
       ? { onUndo: can.undo ? undo : null, onRedo: can.redo ? redo : null, big: goBig, onClear: points.length > 0 ? clearPlan : null }
@@ -5313,6 +5362,7 @@ export function App() {
     rides: goRides,
     // The climb figure opens Ride settings at the Hills slider (P3).
     onClimb: openHills,
+    place: points.length >= 2 && !loopVias ? goPlaceName(namer.name(points[points.length - 1])?.name, points[points.length - 1]) : null,
     // "Add a stop", under the route card (Stephen 2026-10-18: kept one tap away); only with a route, never riding.
     addStop: goStops ? (
       <GoAddStop
@@ -5357,7 +5407,7 @@ export function App() {
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
         narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: { onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote }, startRideRef, rideSize, setDials,
-        waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, arriveMs, weather,
+        waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, arriveMs, weather, offline: offlineError,
       }}
     />
   );
@@ -5894,6 +5944,7 @@ export function App() {
           onView={setRoamRider}
           onDetour={roamDetour}
           onEnd={endRoam}
+          onLocationOff={roamLocationOff}
           onBroadcast={() => broadcastRoam()}
           onBroadcastHold={broadcastRoamQr}
           passingOn={roamBroadcast !== null && !roamBroadcast.leading}
@@ -5959,7 +6010,7 @@ export function App() {
         </header>
         )}
         <div id="panel-body" className="panel-body" hidden={!panelOpen}>
-          <AppStatusBar status={appStatus} />
+          <AppStatusBar status={appStatus} offline={offlineLine({ offline: appStatus.offline, routeShown: shown !== null, errorSaysIt: offlineError })} />
           {homeAsk && (
             <section className="home-offer" aria-labelledby="home-offer-heading">
               <h2 id="home-offer-heading" className="visually-hidden">

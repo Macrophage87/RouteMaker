@@ -2,7 +2,7 @@
 // during a ride), Reload as the only way to skip waiting, and no reload the rider did not ask for.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AppWorker, CHECK_EVERY_MS, SKIP_WAITING, UPDATE_READY, WORKER_URL, updateOffered, type Registration, type WaitingWorker, type WorkerContainer, type WorkerEnv } from "./appWorker.ts";
+import { AppWorker, CHECK_EVERY_MS, OFFLINE_LAST_ROUTE, OFFLINE_SAID, offlineLine, SKIP_WAITING, UPDATE_READY, WORKER_URL, updateOffered, type Registration, type WaitingWorker, type WorkerContainer, type WorkerEnv } from "./appWorker.ts";
 import { SKIP_WAITING as WORKER_SKIP_WAITING } from "../sw/swCore.mjs";
 
 function fakeWorker(state = "installing") {
@@ -147,4 +147,13 @@ test("coming back to the front checks for a new version at most once an hour", a
   worker.check();
   worker.check();
   assert.equal(env.log.filter((l) => l === "update").length, 1);
+});
+
+test("offline: one line, the last route where one is on screen, the Save & load hint only with none (P11)", () => {
+  assert.equal(offlineLine({ offline: false, routeShown: true, errorSaysIt: false }), null);
+  assert.equal(offlineLine({ offline: true, routeShown: true, errorSaysIt: false }), OFFLINE_LAST_ROUTE);
+  assert.equal(OFFLINE_LAST_ROUTE, "Offline: showing your last route.");
+  assert.equal(offlineLine({ offline: true, routeShown: false, errorSaysIt: false }), OFFLINE_SAID);
+  // The route's error box says it (with its Try again): not a second box above it.
+  assert.equal(offlineLine({ offline: true, routeShown: false, errorSaysIt: true }), null);
 });

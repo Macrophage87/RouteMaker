@@ -225,8 +225,9 @@ def notice_when_text(notice: Notice, now: datetime | None, future: bool) -> str:
                 f"{wz.day_text(notice.start, now)} {wz.clock_text(notice.start)} to "
                 f"{wz.day_text(notice.end, now)} {wz.clock_text(notice.end)}"
             )
-        return f"{wz.date_text(notice.start)} to {wz.date_text(notice.end)}"
-    posted = f"Posted {wz.date_text(notice.published)}" if notice.published else "No dates given"
+        return f"{wz.date_text(notice.start, now)} to {wz.date_text(notice.end, now)}"
+    # With the year where it is not this one (P11): a notice posted in 2023 does not read as new.
+    posted = f"Posted {wz.date_text(notice.published, now)}" if notice.published else "No dates given"
     return f"{posted}; it may still apply on your ride day" if future else posted
 
 

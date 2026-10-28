@@ -32,7 +32,7 @@ import { entryText, report311Log } from "./lib/report311Log.ts";
 import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu } from "./lib/ride311.ts";
 import { currentTiers } from "./stressStyle.js";
 import { useStressStyle } from "./useStressStyle.ts";
-import { haversineM, type LonLat } from "./lib/geo.ts";
+import { haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import type { FoodPlace } from "./lib/food.ts";
 import type { Dials } from "./lib/dials.ts";
 import type { PresetId } from "./lib/presets.ts";
@@ -63,6 +63,7 @@ import {
   END_ROAM_NAME,
   NO_NAMED_ROAD,
   NO_ROAD_YET,
+  OUTSIDE_MAP,
   ROAM_DETOUR_HELP,
   ROAM_BROADCAST_NAME,
   ROAM_NAME,
@@ -127,6 +128,7 @@ export function RoamMode({
   onView,
   onDetour,
   onEnd,
+  onLocationOff,
   onBroadcast = null,
   onBroadcastHold = null,
   passingOn = false,
@@ -156,6 +158,8 @@ export function RoamMode({
   /** Ride here: a ride from `here` to the place starts; null, else the words to say why not. */
   onDetour: (here: LonLat, place: NearestPlace) => Promise<string | null>;
   onEnd: () => void;
+  /** The watch stopped for good (the location blocked, or none on this page): Roam ends, and Go says why (P11). */
+  onLocationOff?: (reason: "denied" | "insecure" | "unsupported") => void;
   /** Broadcast (Stephen 2026-10-22): opens the share sheet with a link others follow; answers what to say. Null where
    * this browser has no share sheet. */
   onBroadcast?: (() => Promise<string>) | null;
@@ -173,6 +177,8 @@ export function RoamMode({
   const whereRef = useRef<HTMLButtonElement>(null);
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
+  const offRef = useRef(onLocationOff);
+  offRef.current = onLocationOff;
   const [fix, setFix] = useState<RideFix | null>(null);
   const fixRef = useRef<RideFix | null>(null);
   const [gps, setGps] = useState<string>(WAITING_FOR_GPS);
@@ -216,7 +222,10 @@ export function RoamMode({
         setFix(next);
         setGps("");
       },
-      (reason) => setGps(reason === "timeout" ? WAITING_FOR_GPS : LOCATE_MESSAGES[reason]),
+      (reason) => {
+        if (reason === "denied" || reason === "insecure" || reason === "unsupported") offRef.current?.(reason);
+        setGps(reason === "timeout" ? WAITING_FOR_GPS : LOCATE_MESSAGES[reason]);
+      },
     );
     void wake.hold().then((held) => {
       const note = wake.noteFor(held);
@@ -241,6 +250,12 @@ export function RoamMode({
     const h = track.step(fix.point, fix.headingDeg);
     setHeading(h);
     onView({ point: fix.point, headingDeg: h, accuracyM: fix.accuracyM });
+    // Outside the map (P11): no roads to read; said once, as the card shows it.
+    if (!insideCoverage(fix.point)) {
+      if (saidRoad.current !== OUTSIDE_MAP) say(`${OUTSIDE_MAP}.`);
+      saidRoad.current = OUTSIDE_MAP;
+      return;
+    }
     const was = last.current;
     if (was && fix.at - was.at < AHEAD_EVERY_MS && haversineM(was.point, fix.point) < AHEAD_MOVED_M) return;
     last.current = { at: fix.at, point: fix.point };
@@ -486,6 +501,8 @@ export function RoamMode({
 
   const slideHint = () => answer(t("Slide it to the right to end roam."));
   const on = roads?.on ?? null;
+  // Outside the area the map covers (P11): its own head line, in place of a road and "Start riding".
+  const outside = fix !== null && !insideCoverage(fix.point);
   return (
     <section className={`ride roam${textSize === "large" ? " ride-large" : ""}`} aria-labelledby="ride-heading">
       <LiveRegion said={polite} urgent={false} />
@@ -514,10 +531,10 @@ export function RoamMode({
         <div className="roam-now">
           {/* The road ridden large; its level beside it, in the map's colours and its words. */}
           <p className="cue-text roam-road">
-            {roads === null ? NO_ROAD_YET : on ? on.name : NO_NAMED_ROAD}
-            {on && <TierBadge tier={on.tier} />}
+            {outside ? OUTSIDE_MAP : roads === null ? NO_ROAD_YET : on ? on.name : NO_NAMED_ROAD}
+            {!outside && on && <TierBadge tier={on.tier} />}
           </p>
-          {roads !== null && roads.ahead.length > 0 && (
+          {!outside && roads !== null && roads.ahead.length > 0 && (
             <ol className="roam-ahead" aria-label={t("Roads ahead")}>
               {/* One line each, at most ROADS_AHEAD (the audit's P13): Ride's short street words, the distance, the
                   swatch; the whole of it in words for screen readers. */}
@@ -541,7 +558,7 @@ export function RoamMode({
               })}
             </ol>
           )}
-          {roads !== null && heading === null && <p className="cue-more">{t("Start riding to see the roads ahead.")}</p>}
+          {!outside && roads !== null && heading === null && <p className="cue-more">{t("Start riding to see the roads ahead.")}</p>}
           <WeatherLines report={weatherShown} riding now={Date.now()} onDismiss={() => { setWeatherDismissed((d) => dismissWeather(weatherShown, d)); headingRef.current?.focus({ preventScroll: true }); }} />
           <ScreenSleepNote note={wakeNote} kind={phone} />
         </div>
