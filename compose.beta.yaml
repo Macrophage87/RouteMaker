@@ -287,7 +287,7 @@ services:
         fi
         exec java -Xms512m -Xmx896m -XX:MaxDirectMemorySize=192m -XX:+ExitOnOutOfMemoryError -jar /photon/photon.jar serve \
           -listen-ip 0.0.0.0 -data-dir /photon/data \
-          -max-results 10 -max-reverse-results 1 -query-timeout 3
+          -max-results 10 -max-reverse-results 10 -query-timeout 3
     volumes:
       - type: bind
         source: ${DATA_ROOT}/photon
