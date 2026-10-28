@@ -1458,6 +1458,17 @@ class TestFrontEndAgrees:
         untraced = d.describe([road("A", 1, 500), 800.0, road("C", 1, 500)])[2]
         assert untraced["street"] == d.UNTRACED_STREET
 
+    def test_the_streets_never_one_are_the_front_ends(self):
+        """Round-1 D12: frontend/src/lib/navigate.ts sameSides keeps the same pairs (North and
+        South Capitol Street) as two streets as `_side_change` does."""
+        import re
+
+        match = re.search(
+            r"const NEVER_ONE_STEM = new Set\(\[([^\]]*)\]\);", self.source("lib", "navigate.ts")
+        )
+        assert match, "navigate.ts declares NEVER_ONE_STEM"
+        assert frozenset(re.findall(r'"([^"]*)"', match.group(1))) == d._NEVER_ONE_STEM
+
     def test_the_tiers_are_the_front_ends(self):
         import re
 
@@ -2633,3 +2644,56 @@ class TestFarSideTurns:
         assert "bike lane at a stop sign," in said
         # The crossing is not said again as an entry of its own.
         assert [e["kind"] for e in entries] == ["stretch", "stretch"]
+
+
+class TestOneStreetsTwoSides:
+    """West Pratt Street becomes East Pratt Street, C Street Northwest becomes C Street
+    Northeast, straight on: one street, so no "Continue onto" (round-1 D12). North and
+    South Avenue, and North and South Capitol Street, are two streets."""
+
+    @staticmethod
+    def ride(a, b, events=None, b_tier=2):
+        legs = [flat(road(a, 2, 600, 90, 90), road(b, b_tier, 600, 90, 90))]
+        return d.describe(legs, events)
+
+    @pytest.mark.parametrize(
+        "a, b",
+        [
+            ("West Pratt Street", "East Pratt Street"),
+            ("C Street Northwest", "C Street Northeast"),
+            ("North Charles Street", "South Charles Street"),
+            ("1st Street NW", "1st Street SW"),
+        ],
+    )
+    def test_the_other_side_of_one_street_is_no_turn(self, a, b):
+        entries = self.ride(a, b)
+        assert [(e["street"], e["turn"]) for e in entries] == [(a, None), (b, None)]
+        assert entries[1]["text"].split(": ")[1].startswith(f"Continue on {b},")
+
+    @pytest.mark.parametrize(
+        "a, b",
+        [
+            ("North Avenue", "South Avenue"),
+            ("North Capitol Street", "South Capitol Street"),
+            ("North Carolina Avenue Southeast", "South Carolina Avenue Southeast"),
+            ("Light Street", "Charles Street"),
+        ],
+    )
+    def test_two_streets_are_still_said(self, a, b):
+        entries = self.ride(a, b)
+        assert entries[1]["turn"]["movement"] == "straight"
+        assert entries[1]["text"].split(": ")[1].startswith(f"Continue onto {b},")
+
+    def test_a_turn_onto_the_other_side_is_still_said(self):
+        legs = [
+            flat(road("West Pratt Street", 2, 600, 90, 90), road("East Pratt Street", 2, 600, 0, 0))
+        ]
+        entries = d.describe(legs)
+        assert entries[1]["turn"]["movement"] == "left"
+
+    def test_a_flagged_junction_there_is_still_its_own_entry(self):
+        crossing = event(600, "straight", kind="crossing", names=("charles street",))
+        entries = self.ride("West Pratt Street", "East Pratt Street", [crossing])
+        assert [e["kind"] for e in entries] == ["stretch", "stretch", "junction"]
+        assert entries[1]["turn"] is None
+        assert entries[2]["text"].startswith("At 0.4 mi (0.6 km): Cross Charles Street (LTS 3)")

@@ -94,6 +94,7 @@ from .intersections import (
     crossing_groups,
 )
 from .lang import spanish, t, way_es
+from .streets import street_key
 
 METRES_PER_MILE = 1609.344
 FEET_PER_METRE = 3.28084
@@ -465,6 +466,42 @@ def _one_street(a: frozenset[str], b: frozenset[str]) -> bool:
     real_a = {n for n in a if not _ROUTE_NUMBER.match(n)}
     real_b = {n for n in b if not _ROUTE_NUMBER.match(n)}
     return not real_a or not real_b or bool(real_a & real_b)
+
+
+# A direction prefix and its opposite: "West Pratt Street" becomes "East Pratt Street"
+# straight on (`_side_change`).
+_OPPOSITE_SIDE = {"north": "south", "south": "north", "east": "west", "west": "east"}
+# What follows such a prefix where the two are different streets, not one street's two
+# sides: North and South Capitol Street, and DC's state-named pairs (North and South
+# Carolina Avenue, North and South Dakota Avenue). "North Avenue" is left alone by the
+# two-word rule.
+_NEVER_ONE_STEM = frozenset({"capitol street", "carolina avenue", "dakota avenue"})
+
+
+def _side_change(a: frozenset[str], b: frozenset[str]) -> bool:
+    """Whether two sets of names are one street's two sides: the same but for the quadrant
+    ("C Street Northwest", "C Street Northeast", by `streets.street_key`), or for opposite
+    direction prefixes before at least two more words ("West Pratt Street", "East Pratt
+    Street"). Not North and South Avenue, nor North and South Capitol Street
+    (`_NEVER_ONE_STEM`): two streets."""
+    for x in a:
+        kx = street_key(x)
+        for y in b:
+            ky = street_key(y)
+            if not kx or not ky:
+                continue
+            if kx == ky:
+                return True
+            sx, _, rx = kx.partition(" ")
+            sy, _, ry = ky.partition(" ")
+            if (
+                _OPPOSITE_SIDE.get(sx) == sy
+                and rx == ry
+                and len(rx.split()) >= 2
+                and rx not in _NEVER_ONE_STEM
+            ):
+                return True
+    return False
 
 
 def _same_way(a: Atom, b: Atom) -> bool:
@@ -1790,6 +1827,15 @@ def describe_both(
         and runs[i - 1].leg == run.leg
         and not (runs[i - 1].untraced or run.untraced)
         and not (_same_street(runs[i - 1], run) and not _forks(run))
+        # One street's other side straight on (West to East Pratt Street, C Street
+        # Northwest to Northeast) is no change of street: no "Continue onto" is said. The
+        # boundary stays, so a junction there is still its own entry.
+        and not (
+            not _forks(run)
+            and (run.first is None or id(run.first) not in exits)
+            and _side_change(runs[i - 1].names, run.names)
+            and _movement_between(runs[i - 1], run) == "straight"
+        )
     ]
     matched = _nearest_events(events, runs, starts, changes)
     used: set[int] = set()

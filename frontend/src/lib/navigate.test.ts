@@ -1335,6 +1335,25 @@ test("onto: a name that is the other with more after it is not a new way", () =>
   assert.equal(model.cues.filter((c) => c.kind === "onto").length, 0);
 });
 
+test("onto: one street's other side straight on is not a new way; North and South Avenue or Capitol are", () => {
+  const onto = (a: string, b: string) =>
+    rideModel(
+      straightRoute([
+        stretch(0, 1000, `${a}.`, { street: a }),
+        stretch(1000, 3000, `Continue onto ${b}.`, { street: b, turn: straightOnto(b) }),
+      ]),
+    )
+      .cues.filter((c) => c.kind === "onto")
+      .map((c) => c.text);
+  assert.deepEqual(onto("West Pratt Street", "East Pratt Street"), []);
+  assert.deepEqual(onto("C Street Northwest", "C Street Northeast"), []);
+  assert.deepEqual(onto("1st Street NW", "1st Street SW"), []);
+  assert.deepEqual(onto("North Charles Street", "South Charles Street"), []);
+  assert.deepEqual(onto("North Avenue", "South Avenue"), ["Continue onto South Avenue."]);
+  assert.deepEqual(onto("North Capitol Street", "South Capitol Street"), ["Continue onto South Capitol Street."]);
+  assert.deepEqual(onto("North Carolina Avenue Southeast", "South Carolina Avenue Southeast"), ["Continue onto South Carolina Avenue Southeast."]);
+});
+
 test("onto: a name only from the trail's route relation is never a Continue onto cue", () => {
   const model = rideModel(
     straightRoute([

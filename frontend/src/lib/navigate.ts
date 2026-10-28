@@ -531,12 +531,42 @@ export function ontoWords(street: string): string {
 /** The last named way ridden, and where (description metres) it ended. */
 type LastNamed = { street: string; toM: number } | null;
 
-/** Whether one name is the other with more after it ("X Street NW" and "X Street NW protected bike lane"). */
+/** A DC quadrant at the end of a name, as the server's `streets.street_key` strips it. */
+const QUADRANT_SUFFIX = / (?:northwest|northeast|southwest|southeast|nw|ne|sw|se)$/;
+/** A direction prefix and its opposite: "West Pratt Street" and "East Pratt Street". */
+const OPPOSITE_SIDE: Record<string, string> = { north: "south", south: "north", east: "west", west: "east" };
+/**
+ * What follows such a prefix where the two are different streets (North and South Capitol Street, North
+ * and South Carolina Avenue, North and South Dakota Avenue): the server's describe `_NEVER_ONE_STEM`.
+ */
+const NEVER_ONE_STEM = new Set(["capitol street", "carolina avenue", "dakota avenue"]);
+
+/**
+ * Whether two lower-case names are one street's two sides (the server's describe `_side_change`): the
+ * same but for the quadrant ("C Street Northwest", "C Street Northeast"), or for opposite direction
+ * prefixes before at least two more words ("West Pratt Street", "East Pratt Street"). Never North and
+ * South Avenue, nor North and South Capitol Street.
+ */
+function sameSides(x: string, y: string): boolean {
+  const kx = x.replace(/\s+/g, " ").replace(QUADRANT_SUFFIX, "");
+  const ky = y.replace(/\s+/g, " ").replace(QUADRANT_SUFFIX, "");
+  if (!kx || !ky) return false;
+  if (kx === ky) return true;
+  const [sx, ...restX] = kx.split(" ");
+  const [sy, ...restY] = ky.split(" ");
+  const rx = restX.join(" ");
+  return OPPOSITE_SIDE[sx] === sy && rx === restY.join(" ") && restX.length >= 2 && !NEVER_ONE_STEM.has(rx);
+}
+
+/**
+ * Whether one name is the other with more after it ("X Street NW" and "X Street NW protected bike lane"),
+ * or the two are one street's two sides (`sameSides`: "West Pratt Street" and "East Pratt Street").
+ */
 function sameStem(a: string | null, b: string): boolean {
   if (!a) return false;
   const x = a.trim().toLowerCase();
   const y = b.trim().toLowerCase();
-  return x.startsWith(y) || y.startsWith(x);
+  return x.startsWith(y) || y.startsWith(x) || sameSides(x, y);
 }
 
 /**
