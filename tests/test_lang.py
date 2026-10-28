@@ -104,8 +104,9 @@ def test_english_unless_asked():
     assert lang.t("Continue onto {street}", street="B") == "Continue onto B"
     with lang.speaking("xx"):
         assert lang.language() == "en"
+    # A language the app has but this server has no sentences for yet: wholly English.
     with lang.speaking("am"):
-        assert lang.language() == "am"
+        assert lang.language() == ("am" if lang.catalog("am") else "en")
     with lang.speaking("es"):
         assert lang.t("Continue onto {street}", street="B") == "Continúe por B"
         assert lang.t("not in the list") == "not in the list"
@@ -433,3 +434,7 @@ def test_a_way_by_what_it_is_in_another_language(monkeypatch):
         assert d.ordinal(3) == "3"
     with lang.speaking("en"):
         assert lang.way_said("path") is None
+    # A language with no sentences yet is English throughout: "3rd", never "3" in an English sentence.
+    with lang.speaking("am"):
+        assert lang.language() == "en"
+        assert d.ordinal(3) == "3rd"

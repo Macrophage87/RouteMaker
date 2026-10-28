@@ -53,8 +53,11 @@ def language() -> str:
 
 @contextmanager
 def speaking(lang: str | None) -> Iterator[None]:
-    """The route's words in `lang` within the block; English for anything not in LANGUAGES."""
-    token = _current.set(lang if lang in LANGUAGES else "en")
+    """The route's words in `lang` within the block; English for anything not in LANGUAGES or
+    with no catalog yet."""
+    # A language with no catalog yet is answered wholly in English, never half (an ordinal or a
+    # way's words worded for a sentence that stays English).
+    token = _current.set(lang if lang in LANGUAGES and (lang == "en" or catalog(lang)) else "en")
     try:
         yield
     finally:
