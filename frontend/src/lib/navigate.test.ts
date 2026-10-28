@@ -2079,8 +2079,21 @@ test('R2: the Avoid-rated junction cue says the warning, the name with its capit
   // No name or reason: the warning and the plea, no distance.
   const bare = { ...cue, rideText: avoidWords({ street: null, reason: null }) };
   assert.equal(cueSpoken(bare, "advance", 150), `In 500 feet, avoid-rated junction ahead. ${plea}`);
-  // An older API's entry has no reason: the name alone.
+  // An entry with no text and no reason: the name alone.
   assert.equal(avoidWords({ street: "Main St." }), `Avoid-rated junction ahead. Main St. ${plea}`);
+  // A route saved from an older API (no reason field) keeps its reason, said from the sentence after the first ": ".
+  const older = { ...avoidEntry(600, "St. Paul Street and Colesville Road", "no safe crossing") } as Partial<DescriptionEntry>;
+  delete older.reason;
+  const olderModel = rideModel(straightRoute([stretch(0, 1000, "0.0 to 0.6 mi: A Street, low stress (LTS 1).", { street: "A Street" }), older as DescriptionEntry]));
+  assert.equal(
+    (olderModel.cues.find((c) => c.source === "avoid") as Cue).rideText,
+    `Avoid-rated junction ahead. St. Paul Street and Colesville Road, no safe crossing. ${plea}`,
+  );
+  // An older sentence without the plea, or in the warning-first shape: the warning once, the plea added.
+  assert.equal(avoidWords({ street: "Dupont Circle", text: "At 0.7 mi: Avoid-rated junction ahead: Dupont Circle." }), `Avoid-rated junction ahead. Dupont Circle. ${plea}`);
+  assert.equal(avoidWords({ street: "Main St", text: "At 0.7 mi: Main St and 1st Ave, no gap in fast traffic." }), `Avoid-rated junction ahead. Main St and 1st Ave, no gap in fast traffic. ${plea}`);
+  // The new API's null reason is not an older answer: the fields, never the sentence.
+  assert.equal(avoidWords({ street: "Main St", reason: null, text: "At 0.7 mi: Main St, something else." }), `Avoid-rated junction ahead. Main St. ${plea}`);
   setLanguageForTest("es");
   try {
     const es = rideModel(straightRoute([stretch(0, 1000, "x", { street: "A Street" }), avoidEntry(600, "Colesville Road and Georgia Avenue", "no safe crossing")]));
@@ -2090,6 +2103,11 @@ test('R2: the Avoid-rated junction cue says the warning, the name with its capit
       "En 500 pies, intersección calificada Avoid más adelante. Colesville Road and Georgia Avenue, no safe crossing. Pasar por ella es una muy mala idea. Por favor, reconsidere su ruta.",
     );
     assert.doesNotMatch(said, /\bmi\b/);
+    // An older answer's English plea is said in Spanish.
+    assert.equal(
+      avoidWords({ street: "Main St", text: `Avoid-rated junction ahead at 0.4 mi (0.6 km): Main St and 1st Ave, no safe crossing. ${plea}` }),
+      "Intersección calificada Avoid más adelante. Main St and 1st Ave, no safe crossing. Pasar por ella es una muy mala idea. Por favor, reconsidere su ruta.",
+    );
     assert.doesNotMatch(cueSpoken({ ...bare, rideText: avoidWords({ street: null, reason: null }) }, "advance", 150), /\bmi\b/);
   } finally {
     setLanguageForTest("en");

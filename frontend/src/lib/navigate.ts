@@ -423,12 +423,22 @@ export function crossingWords(street: string | null, control: NonNullable<Descri
  * cut out of the API's sentence (round-2 audit R2: that dropped the warning word, lowered the name's capital and read
  * "0.3 mi" aloud, "mi" as the Spanish word; a name such as "St. Paul" holds ". "). The name and reason keep their words.
  */
-export function avoidWords(entry: Pick<DescriptionEntry, "street"> & Pick<Partial<DescriptionEntry>, "reason">): string {
+export function avoidWords(entry: Pick<DescriptionEntry, "street"> & Pick<Partial<DescriptionEntry>, "reason" | "text">): string {
+  const ahead = t("Avoid-rated junction ahead.");
+  // A saved or shared answer from before the reason field (no `reason` at all; the API now sends null for none) keeps
+  // its reason only in the sentence: say the part after the first ": " (not ". ", so "St. Paul" holds), which keeps the
+  // name's capital, never the "0.3 mi" before it. Its English plea is said in the rider's language.
+  if (entry.reason === undefined && entry.text && entry.text.includes(": ")) {
+    const rest = sentenceOf({ text: entry.text })
+      .replace(/^Avoid-rated junction ahead[^:]*:\s*/, "")
+      .trim();
+    const named = (rest.endsWith(AVOID_PLEA) ? rest.slice(0, -AVOID_PLEA.length) : rest).trim().replace(/\.+$/, "");
+    if (named) return `${ahead} ${named}. ${t(AVOID_PLEA)}`;
+  }
   const said = [entry.street, entry.reason]
     .map((part) => (part ?? "").trim().replace(/\.+$/, ""))
     .filter(Boolean)
     .join(", ");
-  const ahead = t("Avoid-rated junction ahead.");
   return said ? `${ahead} ${said}. ${t(AVOID_PLEA)}` : `${ahead} ${t(AVOID_PLEA)}`;
 }
 
