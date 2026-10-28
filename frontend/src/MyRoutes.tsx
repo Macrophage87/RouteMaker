@@ -9,6 +9,7 @@
  * Delete is). Go's Menu shows the saved routes only.
  */
 import { useEffect, useId, useState } from "react";
+import { t } from "./lib/i18n.ts";
 import { Icon } from "./Icon.tsx";
 import {
   MAX_SAVED,
@@ -106,14 +107,14 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
 
   const full = async (id: number): Promise<SavedRoute | null> => {
     const route = await readRoute(window.location.origin, id);
-    if (!route) announce("That route could not be read; try again shortly.");
+    if (!route) announce(t("That route could not be read; try again shortly."));
     return route;
   };
 
   return (
     <section aria-labelledby={headingId} className="my-routes">
       <h4 id={headingId}>{MY_ROUTES}</h4>
-      {failed && <p className="notice">Your saved routes could not be read; try again shortly.</p>}
+      {failed && <p className="notice">{t("Your saved routes could not be read; try again shortly.")}</p>}
       {routes && routes.length === 0 && !failed && <p className="hint">{NONE_SAVED}</p>}
       {routes && routes.length > 0 && (
         <>
@@ -132,7 +133,7 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
                       const next = name.trim();
                       if (!next) return;
                       void renameRoute(window.location.origin, r.id, next).then((ok) => {
-                        announce(ok ? `Renamed to "${next}".` : "The name was not changed; try again shortly.");
+                        announce(ok ? t("Renamed to \"{next}\".", { next }) : t("The name was not changed; try again shortly."));
                         if (ok) onRenamed(r.id, next);
                         setRenaming(null);
                         setReload((n) => n + 1);
@@ -140,12 +141,12 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
                     }}
                   >
                     <label>
-                      New name
+                      {t("New name")}
                       <input type="text" value={name} maxLength={NAME_MAX} onChange={(e) => setName(e.target.value)} autoFocus />
                     </label>
-                    <button type="submit">Rename</button>
+                    <button type="submit">{t("Rename")}</button>
                     <button type="button" className="secondary" onClick={() => setRenaming(null)}>
-                      Cancel
+                      {t("Cancel")}
                     </button>
                   </form>
                 ) : (
@@ -166,7 +167,7 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
                     <button
                       type="button"
                       className="secondary my-route-more"
-                      aria-label={`More for ${r.name}`}
+                      aria-label={t("More for {name}", { name: r.name })}
                       aria-expanded={more === r.id}
                       aria-controls={`my-route-actions-${r.id}`}
                       onClick={() => {
@@ -175,74 +176,74 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
                         setShowing(null);
                       }}
                     >
-                      More
+                      {t("More")}
                     </button>
                     <span className="my-route-actions" id={`my-route-actions-${r.id}`} hidden={more !== r.id}>
-                      <button type="button" className="secondary icon-button" aria-label={`Export ${r.name} as GPX`} onClick={() => void full(r.id).then((route) => route && onExport(route))}>
+                      <button type="button" className="secondary icon-button" aria-label={t("Export {name} as GPX", { name: r.name })} onClick={() => void full(r.id).then((route) => route && onExport(route))}>
                         <Icon name="download" />
                         <span aria-hidden="true">GPX</span>
                       </button>
                       <button
                         type="button"
                         className="secondary"
-                        aria-label={`Rename ${r.name}`}
+                        aria-label={t("Rename {name}", { name: r.name })}
                         onClick={() => {
                           setName(r.name);
                           setRenaming(r.id);
                         }}
                       >
-                        Rename
+                        {t("Rename")}
                       </button>
                       {versions && (
                         <button
                           type="button"
                           className="secondary"
-                          aria-label={`Versions of ${r.name}`}
+                          aria-label={t("Versions of {name}", { name: r.name })}
                           aria-expanded={showing?.id === r.id}
                           aria-controls={`my-route-versions-${r.id}`}
                           onClick={() => showVersions(r.id)}
                         >
-                          Versions
+                          {t("Versions")}
                         </button>
                       )}
                       <button
                         type="button"
                         className="secondary"
-                        aria-label={deleting === r.id ? `Press again to delete ${r.name}` : `Delete ${r.name}`}
+                        aria-label={deleting === r.id ? t("Press again to delete {name}", { name: r.name }) : t("Delete {name}", { name: r.name })}
                         onClick={() => {
                           if (deleting !== r.id) {
                             setDeleting(r.id);
                             return;
                           }
                           void deleteRoute(window.location.origin, r.id).then((ok) => {
-                            announce(ok ? `Deleted "${r.name}".` : "The route was not deleted; try again shortly.");
+                            announce(ok ? t("Deleted \"{name}\".", { name: r.name }) : t("The route was not deleted; try again shortly."));
                             if (ok) onDeleted(r.id);
                             setDeleting(null);
                             setReload((n) => n + 1);
                           });
                         }}
                       >
-                        {deleting === r.id ? "Delete?" : "Delete"}
+                        {deleting === r.id ? t("Delete?") : t("Delete")}
                       </button>
                     </span>
                     {versions && showing?.id === r.id && (
                       <div id={`my-route-versions-${r.id}`} className="my-route-versions">
                         {/* Reading and a failure are said politely; the list itself is not read out. */}
                         <div role="status" aria-live="polite">
-                          {showing.failed && <p className="notice">The versions could not be read; try again shortly.</p>}
-                          {!showing.failed && showing.list === null && <p className="loading">Reading the versions…</p>}
+                          {showing.failed && <p className="notice">{t("The versions could not be read; try again shortly.")}</p>}
+                          {!showing.failed && showing.list === null && <p className="loading">{t("Reading the versions…")}</p>}
                         </div>
                         {showing.list !== null && (
-                          <ol className="my-route-version-list" aria-label={`Versions of ${r.name}, newest first`}>
+                          <ol className="my-route-version-list" aria-label={t("Versions of {name}, newest first", { name: r.name })}>
                             {showing.list.map((v, i) => (
                               <li key={v.id ?? "latest"}>
                                 <span className="hint">
-                                  {i === 0 ? "Latest: " : ""}
+                                  {i === 0 ? `${t("Latest:")} ` : ""}
                                   {versionDetails(v)}
                                 </span>
                                 {v.id !== null && (
-                                  <button type="button" className="secondary" aria-label={`Restore the version from ${versionDetails(v)}`} onClick={() => restore(r, v)}>
-                                    Restore
+                                  <button type="button" className="secondary" aria-label={t("Restore the version from {when}", { when: versionDetails(v) })} onClick={() => restore(r, v)}>
+                                    {t("Restore")}
                                   </button>
                                 )}
                               </li>
@@ -287,7 +288,7 @@ function SharedLinks({ version, announce, onChange }: { version: number; announc
   return (
     <section aria-labelledby={headingId} className="my-routes">
       <h4 id={headingId}>{SHARED_LINKS}</h4>
-      {failed && <p className="notice">Your shared links could not be read; try again shortly.</p>}
+      {failed && <p className="notice">{t("Your shared links could not be read; try again shortly.")}</p>}
       {links && links.length > 0 && (
         <ul role="list" className="my-routes-list">
           {links.map((l) => (
@@ -302,16 +303,16 @@ function SharedLinks({ version, announce, onChange }: { version: number; announc
                 <button
                   type="button"
                   className="secondary"
-                  aria-label={`${NEW_LINK} for ${l.name}`}
+                  aria-label={t("New link for {name}", { name: l.name })}
                   onClick={() =>
                     void regenerateSharedLink(window.location.origin, l.id).then(async (fresh) => {
                       if (!fresh) {
-                        announce("No new link was made; try again shortly.");
+                        announce(t("No new link was made; try again shortly."));
                         return;
                       }
                       onChange();
                       const copied = await copyText(fresh.link, navigator.clipboard, selectionCopy);
-                      announce(copied ? `New link for "${l.name}" copied; the old link is turned off.` : `New link made for "${l.name}"; the old link is turned off.`);
+                      announce(copied ? t("New link for \"{name}\" copied; the old link is turned off.", { name: l.name }) : t("New link made for \"{name}\"; the old link is turned off.", { name: l.name }));
                       setReload((n) => n + 1);
                     })
                   }
@@ -321,7 +322,7 @@ function SharedLinks({ version, announce, onChange }: { version: number; announc
                 <button
                   type="button"
                   className="secondary"
-                  aria-label={turningOff === l.id ? `Press again to turn off the link for ${l.name}` : `${TURN_OFF} the link for ${l.name}`}
+                  aria-label={turningOff === l.id ? t("Press again to turn off the link for {name}", { name: l.name }) : t("Turn off the link for {name}", { name: l.name })}
                   onClick={() => {
                     if (turningOff !== l.id) {
                       setTurningOff(l.id);
@@ -329,7 +330,7 @@ function SharedLinks({ version, announce, onChange }: { version: number; announc
                     }
                     void revokeSharedLink(window.location.origin, l.id).then((ok) => {
                       if (ok) onChange();
-                      announce(ok ? `The link for "${l.name}" is turned off.` : "The link was not turned off; try again shortly.");
+                      announce(ok ? t("The link for \"{name}\" is turned off.", { name: l.name }) : t("The link was not turned off; try again shortly."));
                       setTurningOff(null);
                       setReload((n) => n + 1);
                     });
