@@ -443,7 +443,7 @@ def test_a_service_road_is_no_dead_end_street_and_no_far_end():
     garage = placed(73, {"highway": "service"}, [(58.0, 5.0), (88.0, 5.0), (88.0, -40.0)])
     assert sw.cut_throughs([street, path, garage]) == {}
     road = placed(73, {"highway": "residential"}, [(58.0, 5.0), (88.0, 5.0), (88.0, -40.0)])
-    assert set(sw.cut_throughs([street, path, road])) == {71}, "the same way as a street is a far end"
+    assert set(sw.cut_throughs([street, path, road])) == {71}, "a street there is a far end"
 
 
 def test_a_street_that_ends_in_a_parking_aisle_is_no_dead_end():
@@ -455,7 +455,9 @@ def test_a_street_that_ends_in_a_parking_aisle_is_no_dead_end():
 def test_a_loop_street_has_no_dead_end():
     """A street drawn as a closed way, its first and last node where the footway leaves."""
     loop = placed(
-        100, {"highway": "residential"}, [(0.0, 0.0), (20.0, 20.0), (40.0, 0.0), (20.0, -20.0), (0.0, 0.0)]
+        100,
+        {"highway": "residential"},
+        [(0.0, 0.0), (20.0, 20.0), (40.0, 0.0), (20.0, -20.0), (0.0, 0.0)],
     )
     ways = [
         loop,
@@ -518,7 +520,8 @@ def test_the_whole_walk_is_at_most_500_ft():
 
 def test_a_path_to_a_door_nearer_the_end_does_not_hide_the_cut_through():
     ways = glenmont()
-    ways[0] = placed(70, {"highway": "residential"}, [(-300.0, 0.0), (0.0, 0.0), (4.0, 0.0), (8.0, 0.0)])
+    street = [(-300.0, 0.0), (0.0, 0.0), (4.0, 0.0), (8.0, 0.0)]
+    ways[0] = placed(70, {"highway": "residential"}, street)
     ways.append(placed(77, FOOTWAY, [(4.0, 0.0), (4.0, -10.0)]))
     assert set(sw.cut_throughs(ways)) == {71}
 
