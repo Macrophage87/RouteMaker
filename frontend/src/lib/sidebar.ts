@@ -35,7 +35,7 @@ export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   nearest: t("Nearest"),
   // Go's Eat chip opens it (P2): restaurants and cafes, not groceries.
   food: t("Find a place to eat"),
-  ride: "Ride",
+  ride: t("Ride"),
   // v0.7.0: Go's Repair (behind More), and Plan's Places to see (Go calls it Sights).
   repair: t("Repair stands and bike shops"),
   places: t("Places to see"),
@@ -219,7 +219,7 @@ export function foldTitle(title: string, count: string | number | null): string 
 }
 
 export function stepsCount(n: number): string {
-  return n === 1 ? "1 step" : `${n} steps`;
+  return n === 1 ? t("1 step") : t("{count} steps", { count: n });
 }
 
 /** The route summary's folds open one at a time (Stephen 2026-10-21, Plan scrolling): their shared details name. */
@@ -237,13 +237,13 @@ export const ROUTE_FOLDS = {
   // on a Mass Ride is "Riders per minute, corker load and elevation" (profileChart.ts foldName), three charts.
   // UI-CLEANUP (the owner's choice 7 of 2026-10-11): renamed "Elevation and climbs", with the climbs on the
   // route listed in it, and closed by default on a computer too.
-  elevation: { title: "Elevation and climbs", open: false },
-  facilities: { title: "Stress and facilities", open: false },
-  directions: { title: "Directions", open: false },
-  junctions: { title: "Junctions to watch", open: false },
+  elevation: { title: t("Elevation and climbs"), open: false },
+  facilities: { title: t("Stress and facilities"), open: false },
+  directions: { title: t("Directions"), open: false },
+  junctions: { title: t("Junctions to watch"), open: false },
   // The mockup's "Other routes", closed like the rest (the route shown is the first; a choice is one press in).
-  choices: { title: "Other routes", open: false },
-  water: { title: "Water and restrooms", open: false },
+  choices: { title: t("Other routes"), open: false },
+  water: { title: t("Water and restrooms"), open: false },
 } as const;
 
 /** Whether the route chart's fold starts open: closed everywhere since UI-CLEANUP (the owner's choice 7; it was open beside the map, OWNER-DECISIONS 322). */

@@ -321,7 +321,8 @@ export function KeptRoutes({
               </p>
               <div className="kept-actions">
                 <button type="button" className="secondary" aria-describedby={`${id}-detail-${index}`} onClick={() => onOpen(route)}>
-                  Open<span className="visually-hidden"> {route.title}</span>
+                  {t("Open")}
+                  <span className="visually-hidden"> {route.title}</span>
                 </button>
                 <button
                   type="button"
@@ -331,7 +332,8 @@ export function KeptRoutes({
                   }}
                   onClick={() => void remove(route, index)}
                 >
-                  Remove<span className="visually-hidden"> {route.title}</span>
+                  {t("Remove")}
+                  <span className="visually-hidden"> {route.title}</span>
                 </button>
               </div>
             </li>

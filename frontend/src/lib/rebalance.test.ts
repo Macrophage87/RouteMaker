@@ -53,7 +53,8 @@ test("the programme's name is in the description and nowhere else in the front e
     }
   };
   walk(root);
-  assert.deepEqual(found, ["lib/presets.ts"]);
+  // The description and its Spanish (i18n/es.ts).
+  assert.deepEqual(found.sort(), ["i18n/es.ts", "lib/presets.ts"]);
   const presets = readFileSync(new URL("./presets.ts", import.meta.url), "utf8");
   assert.equal(presets.split(PROGRAMME).length - 1, 1);
 });

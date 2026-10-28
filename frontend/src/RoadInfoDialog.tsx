@@ -757,7 +757,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
           <p className="road-info-more">
             <a href={more.url} target="_blank" rel="noopener noreferrer">
               {more.label}
-              <span className="visually-hidden"> (opens in a new tab)</span>
+              <span className="visually-hidden"> {t("(opens in a new tab)")}</span>
             </a>
           </p>
         )}
@@ -813,7 +813,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
                       <dt>{row.label}</dt>
                       <dd>
                         {row.value}
-                        {row.source && <span className="road-info-source">Source: {row.source}</span>}
+                        {row.source && <span className="road-info-source">{t("Source: {source}", { source: row.source })}</span>}
                       </dd>
                     </div>
                   ))}
@@ -834,8 +834,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
               </section>
             )}
             <p className="hint road-info-credit">
-              Data: {ready.attribution.join(", ")} and the sources above; traffic stress by RouteMaker's classifier and
-              the owner's ratings.
+              {t("Data: {credits} and the sources above; traffic stress by RouteMaker's classifier and the owner's ratings.", { credits: ready.attribution.join(", ") })}
             </p>
             {/* OWNER-DECISIONS 461: the rider-facing page on how ratings work, in the same tab. */}
             <StressPageLink className="road-info-how" />
@@ -843,7 +842,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
         )}
         {ready && (
           <p className="hint road-info-credit-short">
-            Data: {ready.attribution.join(", ")} and others (see {DETAILS_TEXT}).
+            {t("Data: {credits} and others (see {details}).", { credits: ready.attribution.join(", "), details: DETAILS_TEXT })}
           </p>
         )}
         {request && editing && editableWay !== null && ready && (
@@ -985,7 +984,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
                       logButton.current?.focus();
                     }}
                   >
-                    {k.label}
+                    {t(k.label)}
                   </button>
                 </li>
               ))}

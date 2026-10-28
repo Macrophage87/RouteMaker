@@ -531,7 +531,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
           </button>
         )}
         {(leaderInKey || roleRows.length > 0) && (
-          <ul role="list" className="ride-role-key" aria-label="Roles on this ride">
+          <ul role="list" className="ride-role-key" aria-label={t("Roles on this ride")}>
             {leaderInKey && (
               <li>
                 <LeaderSwatch />
@@ -561,7 +561,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
               say(next ? (isBroadcast ? "You are shown as a dot while the app is open." : "You are shown as a dot while you are near the route.") : SHARE_STOPPED_SAID.off);
             }}
           >
-            <span className="switch-label">Show me as a dot</span>
+            <span className="switch-label">{t("Show me as a dot")}</span>
             <span className="switch-state" aria-hidden="true">
               {shareOn ? t("On") : t("Off")}
             </span>
@@ -579,10 +579,10 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
               <strong>{CONFIRM_QUESTION}</strong> {confirming.label}
             </p>
             <button type="button" onClick={() => void send(confirming)}>
-              Send
+              {t("Send")}
             </button>
             <button type="button" className="secondary" onClick={() => setConfirming(null)}>
-              Cancel
+              {t("Cancel")}
             </button>
           </div>
         ) : otherOpen ? (
@@ -593,7 +593,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
             }}
           >
             <label>
-              What is the issue? (up to {OTHER_MAX} characters)
+              {t("What is the issue? (up to {count} characters)", { count: OTHER_MAX })}
               <input type="text" maxLength={OTHER_MAX} value={otherText} onChange={(e) => setOtherText(e.target.value)} autoFocus />
             </label>
             {canSpeak && (
@@ -602,9 +602,9 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
                 {SPEAK_LABEL}
               </button>
             )}
-            <button type="submit">Send</button>
+            <button type="submit">{t("Send")}</button>
             <button type="button" className="secondary" onClick={() => setOtherOpen(false)}>
-              Cancel
+              {t("Cancel")}
             </button>
           </form>
         ) : (
@@ -620,7 +620,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
         )}
       </div>
       {alerts.length > 0 && (
-        <ul role="list" className="ride-alert-banners" aria-label="Ride alerts">
+        <ul role="list" className="ride-alert-banners" aria-label={t("Ride alerts")}>
           {alerts.map((a) => (
             <li key={a.id} className="ride-alert-banner">
               <Icon name="warn" size={18} />
@@ -632,7 +632,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
               )}
               {a.mine && ride && token && (
                 <button type="button" className="secondary" onClick={() => void clearAlert(origin, ride, token, a.id).then(() => poll())}>
-                  Clear
+                  {t("Clear")}
                 </button>
               )}
             </li>

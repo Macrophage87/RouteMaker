@@ -445,8 +445,6 @@ function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean
           value={myGo.ride ?? "default"}
           options={PRESETS.filter((p) => p.id !== "mass-ride").map((p) => [p.id, presetSaid(p.id)] as const)}
           groups={rideTypeSections()}
-          // The ride types keep their English names in every language, so a screen reader says them as English.
-          optionLang={Object.fromEntries(PRESETS.map((p) => [p.id, "en"]))}
           onChange={(ride) => save({ ...myGo, ride: ride === "default" ? null : ride })}
         />
       </SettingRow>

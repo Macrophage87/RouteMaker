@@ -1,5 +1,6 @@
 import { Icon } from "./Icon.tsx";
 import { alertLine, nwsLinkName, NWS_LINK, RAIN_CREDIT, RAIN_CREDIT_NAME, RAIN_CREDIT_URL, rainLine, WEATHER_DISMISS_NAME, type WeatherReport } from "./lib/weather.ts";
+import { t } from "./lib/i18n.ts";
 
 /**
  * Weather along the route (lib/weather.ts), one line each: the NWS alerts first, each with its link to the NWS's
@@ -53,7 +54,7 @@ export function WeatherLines({
       {onDismiss && (
         <button type="button" className="secondary weather-dismiss" onClick={onDismiss} aria-label={WEATHER_DISMISS_NAME}>
           <Icon name="x" size={26} />
-          Dismiss
+          {t("Dismiss")}
         </button>
       )}
     </div>

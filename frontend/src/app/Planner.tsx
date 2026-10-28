@@ -175,7 +175,7 @@ export function PointsSection(props: PointsSectionProps) {
         <p className="hint">{t("Bike routes for the DC region and Baltimore. No sign-in needed.")}</p>
         {/* The start-up how-to before any point; with points, how to change them (the correctness review's N5). */}
         {points.length > 0 ? <p className="hint">{editingTips(accessMode)}</p> : <p className="hint">{emptyPlanHint(preset, loopVias, accessMode)}</p>}
-        {coverageShown && <p className="hint">Gray areas are outside what RouteMaker covers.</p>}
+        {coverageShown && <p className="hint">{t("Gray areas are outside what RouteMaker covers.")}</p>}
         <p className="hint">{infoHelp(accessMode)}</p>
         <p className="hint">{t(ACCESS_HELP)}</p>
         <button type="button" className="link access-toggle" aria-pressed={accessMode} onClick={() => toggleAccessMode(false)}>
@@ -225,8 +225,7 @@ export function PointsSection(props: PointsSectionProps) {
       {points.length === 1 && <p className={accessMode ? "hint" : "visually-hidden"}>{loneStartHint(preset, loopVias, accessMode)}</p>}
       {usesBikeshare(preset) && (
         <p className="hint">
-          Bikeshare plans, Rebalance Rides too, take a start and an end only: the stations and the walks are chosen for you, unless you choose a
-          station under Route. Remove any stops to plan one.
+          {t("Bikeshare plans, Rebalance Rides too, take a start and an end only: the stations and the walks are chosen for you, unless you choose a station under Route. Remove any stops to plan one.")}
         </p>
       )}
       {/* Mass Ride planning covers DC only for now (OWNER-DECISIONS 418), in words beside the gray map. */}
@@ -402,7 +401,7 @@ function PointBoxes(props: PointBoxesProps) {
                           window.setTimeout(() => removeRefs.current[editing]?.focus(), 0);
                         }}
                       >
-                        Cancel
+                        {t("Cancel")}
                       </button>
                     </div>
                   ),
@@ -414,7 +413,7 @@ function PointBoxes(props: PointBoxesProps) {
       {showAdd && (
         <div className="add-stop-row">
           {/* A full plan: the reason in place of the box, whose pick could add nothing (Best order still works). */}
-          {full ? <p className="hint">The route has as many points as it can take, so no stop can be added.</p> : search("add")}
+          {full ? <p className="hint">{t("The route has as many points as it can take, so no stop can be added.")}</p> : search("add")}
           {/* Best order (OWNER-DECISIONS 449), beside Add a stop (Stephen 2026-10-17), with two or more stops to order;
               aria-disabled while the order is found (the focus stays on it, a press says it is still working),
               with the same label, so the row does not reflow under a finger. */}

@@ -140,7 +140,7 @@ export function noticeParts(text: string): { words: string; url: string | null; 
 
 /** How many steps the list has, for the toggle: "12 steps", "1 step". */
 export function stepCount(entries: readonly DescriptionEntry[]): string {
-  return entries.length === 1 ? "1 step" : `${entries.length} steps`;
+  return entries.length === 1 ? t("1 step") : t("{count} steps", { count: entries.length });
 }
 
 /**

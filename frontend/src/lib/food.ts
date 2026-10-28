@@ -39,7 +39,7 @@
  */
 import { formatDistance, formatDuration, formatExtra, milesFigure } from "./format.ts";
 import type { LonLat } from "./geo.ts";
-import { t } from "./i18n.ts";
+import { language, t } from "./i18n.ts";
 import { hoursText } from "./openingHours.ts";
 
 // "g", a grocery store, is never in the file: the Eat sheet's Grocery chip finds those with the geocoder (lib/grocery.ts).
@@ -393,9 +393,33 @@ export function searchFood(places: readonly FoodPlace[], search: FoodSearch): Fo
 
 // --- Words ---------------------------------------------------------------
 
-/** "Restaurant: seafood, crab", "Ice cream", "Fast food: fried chicken". */
+/**
+ * OpenStreetMap's common cuisine values (https://wiki.openstreetmap.org/wiki/Key:cuisine), as words, "_" read as a
+ * space: each goes through t(), so a Spanish page says "italiano", not OSM's "italian" (the 2026-10-28 audit, P9).
+ */
+export const CUISINE_WORDS: ReadonlySet<string> = new Set([
+  "american", "asian", "bagel", "bakery", "barbecue", "bbq", "breakfast", "brunch", "bubble tea", "burger", "cajun",
+  "caribbean", "chicken", "chinese", "coffee shop", "crab", "cuban", "deli", "dessert", "donut", "ethiopian", "fish",
+  "fish and chips", "french", "fried chicken", "frozen yogurt", "gelato", "german", "greek", "hot dog", "ice cream",
+  "indian", "international", "irish", "italian", "japanese", "juice", "kebab", "korean", "latin american", "lebanese",
+  "mediterranean", "mexican", "middle eastern", "noodle", "peruvian", "pho", "pizza", "ramen", "regional", "salad",
+  "salvadoran", "sandwich", "seafood", "soul food", "spanish", "steak house", "sushi", "tacos", "tea", "tex-mex",
+  "thai", "turkish", "vegan", "vegetarian", "vietnamese", "wings",
+]);
+
+/** One cuisine value in the page's words; on a page in another language, null for a value with no word there. */
+function cuisineWord(value: string): string | null {
+  const english = value.replace(/_/g, " ");
+  if (CUISINE_WORDS.has(english)) return t(english);
+  return language() === "en" ? english : null;
+}
+
+/** "Restaurant: seafood, crab", "Ice cream", "Fast food: fried chicken"; in Spanish, a value with no Spanish word is left out. */
 export function foodKindText(place: FoodPlace): string {
-  const cuisine = place.cuisine.map((c) => c.replace(/_/g, " ")).join(", ");
+  const cuisine = place.cuisine
+    .map(cuisineWord)
+    .filter((word): word is string => word !== null)
+    .join(", ");
   return cuisine ? `${KIND_LABEL[place.kind]}: ${cuisine}` : KIND_LABEL[place.kind];
 }
 

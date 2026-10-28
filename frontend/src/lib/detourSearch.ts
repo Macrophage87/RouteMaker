@@ -42,26 +42,26 @@ export type DetourKind = "water" | "restroom" | "food" | "repair";
 
 /** The menu's buttons, in order, with their icons (lib/iconPaths.ts). */
 export const DETOUR_CHOICES: ReadonlyArray<{ kind: DetourKind; label: string; icon: "water" | "wc" | "food" | "wrench" }> = [
-  { kind: "water", label: "Water", icon: "water" },
-  { kind: "restroom", label: "Restroom", icon: "wc" },
-  { kind: "food", label: "Food", icon: "food" },
-  { kind: "repair", label: "Repair", icon: "wrench" },
+  { kind: "water", label: t("Water"), icon: "water" },
+  { kind: "restroom", label: t("Restroom"), icon: "wc" },
+  { kind: "food", label: t("Food"), icon: "food" },
+  { kind: "repair", label: t("Repair"), icon: "wrench" },
 ];
 
 /** The Detour button's summary (rideStops.detourButtonName lower-cases it). */
 export const DETOUR_SUMMARY = t("Water, restroom, food, repair or search");
 /** The search box's label and its example words. */
-export const DETOUR_SEARCH_LABEL = "Search";
+export const DETOUR_SEARCH_LABEL = t("Search");
 export const DETOUR_SEARCH_HINT = t("Coffee, grocery, address");
-export const DETOUR_SEARCH_BUTTON = "Find";
+export const DETOUR_SEARCH_BUTTON = t("Find");
 
 /** What a found list is headed: "Nearest places to eat", "Nearest matches for “pizza”". */
 export function detourHeading(kind: DetourKind | "search", query = ""): string {
-  if (kind === "water") return "Nearest water";
-  if (kind === "restroom") return "Nearest restrooms";
-  if (kind === "food") return "Nearest places to eat";
-  if (kind === "repair") return "Nearest repair stands and bike shops";
-  return `Nearest matches for “${normalQuery(query)}”`;
+  if (kind === "water") return t("Nearest water");
+  if (kind === "restroom") return t("Nearest restrooms");
+  if (kind === "food") return t("Nearest places to eat");
+  if (kind === "repair") return t("Nearest repair stands and bike shops");
+  return t("Nearest matches for “{query}”", { query: normalQuery(query) });
 }
 
 /**
@@ -195,35 +195,40 @@ export interface DetourOutcome {
 
 export const FOOD_NOT_READY = t("The places to eat are unavailable for now; try again shortly.");
 export const REPAIR_NOT_READY = t("Repair stands and bike shops are unavailable for now; try again shortly.");
-export const SEARCH_TOO_SHORT = `Type at least ${MIN_QUERY_CHARS} letters to search.`;
+export const SEARCH_TOO_SHORT = t("Type at least {count} letters to search.", { count: MIN_QUERY_CHARS });
 
 /** Said as a search starts. */
 export function detourFindingSaid(ask: DetourAsk): string {
   const kind = "kind" in ask ? ask.kind : kindForQuery(ask.query);
   if (kind === "water" || kind === "restroom") return findingSaid(kind);
-  if (kind === "food") return "Finding the nearest places to eat.";
-  if (kind === "repair") return "Finding the nearest repair stands and bike shops.";
-  return `Searching for “${normalQuery("query" in ask ? ask.query : "")}”.`;
+  if (kind === "food") return t("Finding the nearest places to eat.");
+  if (kind === "repair") return t("Finding the nearest repair stands and bike shops.");
+  return t("Searching for “{query}”.", { query: normalQuery("query" in ask ? ask.query : "") });
 }
 
 /** The status line once a list is in: how many, of what, and the list's rows, so a voice says them all. */
 export function detourFoundSaid(kind: "food" | "repair" | "search", items: readonly Nearby[], query = ""): string {
-  const q = `“${normalQuery(query)}”`;
-  const [one, many] =
+  const q = { query: normalQuery(query), count: items.length };
+  const lead =
     kind === "food"
-      ? ["place to eat", "places to eat"]
+      ? items.length === 1
+        ? t("The nearest place to eat by bike.")
+        : t("The {count} nearest places to eat by bike, nearest first.", q)
       : kind === "repair"
-        ? ["repair stand or bike shop", "repair stands and bike shops"]
-        : [`match for ${q}`, `matches for ${q}`];
-  const lead = items.length === 1 ? `The nearest ${one} by bike.` : `The ${items.length} nearest ${many} by bike, nearest first.`;
+        ? items.length === 1
+          ? t("The nearest repair stand or bike shop by bike.")
+          : t("The {count} nearest repair stands and bike shops by bike, nearest first.", q)
+        : items.length === 1
+          ? t("The nearest match for “{query}” by bike.", q)
+          : t("The {count} nearest matches for “{query}” by bike, nearest first.", q);
   return `${lead} ${items.map(nearbyShort).join(" ")}`;
 }
 
 /** Nothing found for a kind, or the box's words. */
 export function detourNoneSaid(kind: DetourKind | "search", query = ""): string {
-  if (kind === "food") return "No places to eat found nearby.";
-  if (kind === "repair") return "No repair stands or bike shops found nearby.";
-  return `Nothing near you matches “${normalQuery(query)}”.`;
+  if (kind === "food") return t("No places to eat found nearby.");
+  if (kind === "repair") return t("No repair stands or bike shops found nearby.");
+  return t("Nothing near you matches “{query}”.", { query: normalQuery(query) });
 }
 
 /** Measured by bike and ranked: the three nearest, or what went wrong. */
@@ -231,7 +236,7 @@ async function rank(deps: DetourDeps, kind: "food" | "repair" | "search", places
   if (places.length === 0) return { said: detourNoneSaid(kind, query) };
   const candidates = nearestInStraightLine(deps.here, places, NEAREST_CANDIDATES);
   const result = await deps.request(deps.here, candidates);
-  if (!result.ok) return { said: `The search failed. ${result.message}` };
+  if (!result.ok) return { said: t("The search failed. {message}", { message: result.message }) };
   const items = rankNearest(candidates, result.answer);
   if (items.length === 0) return { said: detourNoneSaid(kind, query) };
   return { said: detourFoundSaid(kind, items, query), found: { kind, heading: detourHeading(kind, query), items } };
@@ -240,9 +245,9 @@ async function rank(deps: DetourDeps, kind: "food" | "repair" | "search", places
 /** Why the place search gave nothing to use. */
 function geocodeFailed(result: GeoResult): string {
   if (result.ok) return "";
-  if (result.status === 429) return "The place search is busy; try again in a moment.";
-  if (result.status === 0) return "The search did not get through. Check your connection and try again.";
-  return "The place search is unavailable for now; try again shortly.";
+  if (result.status === 429) return t("The place search is busy; try again in a moment.");
+  if (result.status === 0) return t("The search did not get through. Check your connection and try again.");
+  return t("The place search is unavailable for now; try again shortly.");
 }
 
 /** One detour search, start to end. */

@@ -158,7 +158,7 @@ test("the trail page's MORE link: a real link to MORE's own site, or none", asyn
   const dialog = readFileSync(new URL("../RoadInfoDialog.tsx", import.meta.url), "utf8");
   assert.match(
     dialog,
-    /<a href=\{more\.url\} target="_blank" rel="noopener noreferrer">\s+\{more\.label\}\s+<span className="visually-hidden"> \(opens in a new tab\)<\/span>/,
+    /<a href=\{more\.url\} target="_blank" rel="noopener noreferrer">\s+\{more\.label\}\s+<span className="visually-hidden"> \{t\("\(opens in a new tab\)"\)\}<\/span>/,
   );
 });
 

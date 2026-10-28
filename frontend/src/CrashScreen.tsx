@@ -16,7 +16,7 @@ function saidWithDiscord(said: string): ReactNode {
       {said.slice(0, at)}
       <a href={BETA_DISCORD_URL} target="_blank" rel="noopener noreferrer">
         {BETA_DISCORD_TEXT}
-        <span className="visually-hidden"> (opens in a new tab)</span>
+        <span className="visually-hidden"> {t("(opens in a new tab)")}</span>
       </a>
       {said.slice(at + BETA_DISCORD_TEXT.length)}
     </>
@@ -76,23 +76,23 @@ export function CrashScreen({ report }: { report: string }) {
   return (
     <main className="crash-screen">
       <h1 ref={heading} tabIndex={-1}>
-        Something went wrong
+        {t("Something went wrong")}
       </h1>
-      <p>RouteMaker hit an error. Reload to carry on: your route comes back with the page.</p>
+      <p>{t("RouteMaker hit an error. Reload to carry on: your route comes back with the page.")}</p>
       <div className="crash-actions">
         <button type="button" onClick={() => window.location.reload()}>
-          Reload
+          {t("Reload")}
         </button>
         <button type="button" className="secondary" onClick={() => void copy()}>
-          Copy error report
+          {t("Copy error report")}
         </button>
       </div>
       <p className="crash-said" role="status">
         {saidWithDiscord(said)}
       </p>
       <details className="crash-details" ref={details}>
-        <summary>Show the report</summary>
-        <textarea ref={box} readOnly value={report} aria-label="Error report" rows={12} />
+        <summary>{t("Show the report")}</summary>
+        <textarea ref={box} readOnly value={report} aria-label={t("Error report")} rows={12} />
       </details>
     </main>
   );

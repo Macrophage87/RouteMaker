@@ -191,7 +191,7 @@ import { clearCorridor, copyCorridor, keepCorridor } from "./lib/corridorStore.t
 import { lastRideAdopter } from "./lib/offlineKeep.ts";
 import { blockOf, rescueRideFocus, type RideBlock } from "./lib/rideFocus.ts";
 import { REPORT_SENT, report311Enabled, sendReport311, reportPlace, type ReportKind } from "./lib/report311.ts";
-import { entryText, kindLabel, report311Log, type LogEntry } from "./lib/report311Log.ts";
+import { entryText, kindShown, report311Log, type LogEntry } from "./lib/report311Log.ts";
 import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu, ride311Shown } from "./lib/ride311.ts";
 import {
   DOCKED_SHOWN,
@@ -316,7 +316,7 @@ export const SAID_311_MS = 8_000;
 export const NO_PLACE_311 = t("Your place on the route is not known yet, so nothing was logged.");
 /** Said when a problem is logged: "Logged for 311: Pothole." */
 export function loggedSaid(entry: LogEntry): string {
-  return t("Logged for 311: {kind}.", { kind: kindLabel(entry.kind) });
+  return t("Logged for 311: {kind}.", { kind: kindShown(entry.kind) });
 }
 /** Said as the ride ends, by the voice and the page's polite region; the figures are on the summary card. */
 export const RIDE_ENDED_SAID = t("Ride ended.");
@@ -2764,7 +2764,7 @@ export function RideMode({
                       ))}
                     </ol>
                     {(detourList.kind === "water" || detourList.kind === "restroom") && <p className="hint">{WATER_CAUTION}</p>}
-                    {detourList.attribution && <p className="hint">Search: {detourList.attribution.join("; ")}</p>}
+                    {detourList.attribution && <p className="hint">{t("Search: {credits}", { credits: detourList.attribution.join("; ") })}</p>}
                   </div>
                 )}
                 {/* Said once by screen readers; no longer shown under every list (the UI review, 2026-10-28). */}
