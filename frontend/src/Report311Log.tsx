@@ -22,6 +22,7 @@ import {
   entryPoint,
   entryText,
   kindShown,
+  logHint,
   openGroups,
   report311Log,
   useReport311Log,
@@ -29,10 +30,9 @@ import {
   type LogEntry,
 } from "./lib/report311Log.ts";
 import { t } from "./lib/i18n.ts";
+import { looksLikePhone } from "./lib/startOnComputer.ts";
 
 export const LOG_HEADING = t("Your 311 checklist");
-export const LOG_HINT =
-  t("Log a problem with a ride's 311 button, or right-click a road (press and hold on a phone) and choose Log for 311. Copy the report into the site, then check it off. One left unchecked is archived after {days} days.", { days: STALE_DAYS });
 export const LOG_EMPTY = t("Nothing to report yet.");
 
 /** What the checkbox says: the problem and when it was logged, "Pothole, Oct 20, 10:29 AM". */
@@ -129,7 +129,11 @@ export function Report311Log() {
       <h3 id="suggest-311-heading" tabIndex={-1}>
         {LOG_HEADING}
       </h3>
-      <p className="hint">{LOG_HINT}</p>
+      <ul className="hint info-bullets">
+        {logHint(looksLikePhone()).map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
       {groups.length === 0 && <p>{LOG_EMPTY}</p>}
       {groups.map((group) => (
         <div key={group.where ?? "pending"} className="log311-group">

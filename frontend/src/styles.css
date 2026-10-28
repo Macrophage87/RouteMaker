@@ -1280,6 +1280,12 @@ button.secondary {
   overflow-y: auto;
 }
 
+/* Open, Help is over the map's markers (P8: in the dark theme the closure markers, z-index 3 among the map's
+   markers, drew over its text) and its popups (z-index 5); MapLibre's corners are z-index 2. */
+.maplibregl-ctrl-bottom-right:has(.maplibregl-compact-show) {
+  z-index: 6;
+}
+
 .maplibregl-ctrl-attrib .map-info {
   font-size: 13px;
   line-height: 1.4;
@@ -1644,6 +1650,14 @@ dialog.ride-types::backdrop {
 }
 .dial-info p {
   margin: 0 0 6px;
+}
+/* Detail behind an (i), and Plan's Info, as short bullets, one sentence each (P8). */
+.info-bullets {
+  margin: 0 0 6px;
+  padding-left: 18px;
+}
+.info-bullets li + li {
+  margin-top: 2px;
 }
 
 .dial-now {
@@ -2690,6 +2704,11 @@ dialog.weight-dialog h2 {
 
   .app.go-mode:has(.panel.go-half) .beta-chip {
     bottom: calc(var(--go-sheet-h, 56%) + 10px);
+  }
+
+  /* Out of the way while the map's Help is open (P8): on a phone the chip sat over Help's text. */
+  .app:has(.maplibregl-ctrl-attrib.maplibregl-compact-show) .beta-chip {
+    visibility: hidden;
   }
 }
 
@@ -5736,6 +5755,16 @@ details.zoom-notes {
     bottom: var(--go-sheet-h, 56%);
   }
 
+  /* Full height but as tall as its content: on the sheet's top edge too, not floating at 48% (P8, Help). */
+  .app.go-mode:has(.panel.go-full) .maplibregl-ctrl-bottom-right {
+    bottom: var(--go-sheet-h, calc(100% - 64px));
+  }
+
+  /* Open, Help keeps to the space above Go's sheet, below Go's bar and the scales (P8): a taller sheet, a
+     shorter Help, which scrolls. */
+  .app.go-mode .maplibregl-ctrl-attrib.maplibregl-compact-show .map-info-body {
+    max-height: clamp(96px, calc(100vh - var(--go-sheet-h, 34vh) - 230px), 22vh);
+  }
 }
 
 /* Go keeps the panel's h1 (the planner's focus target and the page's heading) out of sight, so its header
