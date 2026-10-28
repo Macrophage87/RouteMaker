@@ -3722,7 +3722,8 @@ def plan(
     A plan that rides a dirt trail a point touches and found others for itself
     (`StrayTrails`) is made again without them, STRAY_ROUNDS times at most, then on the
     ride type's own graph, the dirt trails closed as before. So it is too where leaving them
-    out leaves no route.
+    out leaves no route. A round checks the router's own route for strays before its search
+    (`_early_strays`, audit S12 part 1), so one that strays there starts the next at once.
 
     The rounds share their traces and `/locate` answers (audit S12, part 2): a round
     re-plans the whole search with the strays left out, and most of what it traces and
@@ -4139,6 +4140,21 @@ def _plan(
             lambda trial: _route(variant, trial, deadline)[0],
             lambda: deadline.at - clock(),
         )
+    # This plan's traces, so a route the guards traced is not traced again; `plan`'s, where
+    # it re-plans without stray dirt trails, so a later round does not trace them again.
+    traces = {} if traces is None else traces
+    if (touched_trails or any_dirt) and variant == Variant.OFFROAD.value:
+        # The router's own route is checked for stray dirt trails at once, before the search
+        # and anything started beside it, so a round that strays starts again without them
+        # now instead of after the whole search (audit S12, part 1; the owner, 2026-10-27
+        # 7:52 PM ET: "make the banked changes"). Its traces are the plan's, which the search
+        # and the answer read again, so a route that does not stray is traced once as before.
+        stray = _early_strays(
+            answer.get("trip") or {}, variant, costing, deadline, traces, touched_trails, any_dirt
+        )
+        if stray:
+            raise StrayTrails(tuple(stray), per_point)
+    if zones_plan is not None and not fixed:
         # What each closure did to this route and the time its detour adds (v0.7.0,
         # "Closures on the map"): the card's "Detour adds about 4 min". It changes no
         # route, so it runs beside the rest of the plan (v0.7.0 "Faster routing", step
@@ -4190,9 +4206,6 @@ def _plan(
         brake_grade=preset.brake_grade,
         steep=steep_ride,
     )
-    # This plan's traces, so a route the guards traced is not traced again; `plan`'s, where
-    # it re-plans without stray dirt trails, so a later round does not trace them again.
-    traces = {} if traces is None else traces
     # The detour check's direct route depends on the request alone: where it will surely be
     # asked for, it starts now on the pool, beside the search, as the early alternatives do
     # (audit S23). Not on a first route or the rider's own line (no detour check), nor where
@@ -5236,6 +5249,38 @@ def _plan_ahead_first(
     if timings is not None:
         timings.note("uturn", "ahead first, replanned")
     return plan(points, preset_name, dials=dataclasses.replace(dials, heading=None), **asked)
+
+
+def _early_strays(
+    trip: dict,
+    variant: str,
+    costing: dict,
+    deadline: Deadline,
+    traces: dict,
+    touched_trails: frozenset[int],
+    any_dirt: bool,
+) -> list:
+    """The strips across the stray dirt trails (`trail_touch.stray_rings`) of the router's own
+    route `trip`, read as the answer reads them (`_plan`, audit S12 part 1); none where a leg
+    is drawn or the router cannot trace it now: the answer's own check still runs. A cancel is
+    raised (review of S7)."""
+    legs = trip.get("legs") or []
+    if not legs or any(leg.get("drawn") for leg in legs):
+        return []
+    prefetch_traces(variant, costing, [trip], deadline, traces)
+    pieces: list[Piece] = []
+    for leg in legs:
+        try:
+            trace = _trace(variant, costing, leg.get("shape", ""), deadline, traces)
+        except PlanCancelled:
+            raise
+        except (DeadlineExceeded, RouterUnavailable) as error:
+            logger.info("dirt trails: no early check (%s)", type(error).__name__)
+            return []
+        if trace is not None:
+            pieces.extend(pieces_of_trace(trace))
+    ways = trail_touch.off_road_ways([piece.way_id for piece in pieces])
+    return trail_touch.stray_rings(pieces, ways, touched_trails, any_dirt)
 
 
 def quick_applies(preset_name: str, loop: bool, long_ride: bool, long_calm: bool) -> bool:

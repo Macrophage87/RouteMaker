@@ -139,6 +139,34 @@ class TestThroughTheApi:
         # Across 505 (between the second and third vertices), nowhere near the end.
         assert VERTICES[1][0] < min(lons) and max(lons) < VERTICES[2][0]
 
+    def test_a_stray_on_the_routers_own_route_starts_the_next_round_at_once(
+        self, client, segments, router
+    ) -> None:
+        """Audit S12 part 1 (the owner, 2026-10-27 7:52 PM ET: "make the banked changes"): the
+        router's own route is checked for strays before the search, so the round that strays
+        asks the router for nothing but that route and its trace before planning again."""
+        add_trail(segments, TOUCHED, END_TRAIL)
+        add_trail(segments, STRAY, VERTICES[1:3])
+        asked: list[dict] = []
+
+        def route(payload):
+            asked.append(payload)
+            return stray_route(payload)
+
+        def trace(_payload):
+            left_out = bool(asked[-1].get("exclude_polygons"))
+            return trace_answer(VERTICES, STANDARD_EDGES if left_out else STRAY_EDGES)
+
+        fake = router(FakeRouter({"route": route, "trace_attributes": trace}))
+        body = {**good_body(), "stress": 100}
+        response = post(client, body)
+        assert response.status_code == 200, response.content
+        again = next(
+            i for i, (url, payload) in enumerate(fake.calls) if payload.get("exclude_polygons")
+        )
+        first_round = [url.rsplit("/", 1)[-1] for url, _ in fake.calls[:again]]
+        assert first_round == ["route", "trace_attributes"]
+
     def test_a_dirt_trail_the_plan_keeps_finding_is_planned_without_any(
         self, client, segments, router
     ) -> None:
