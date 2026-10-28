@@ -135,12 +135,13 @@ class TestPlanOnward:
         assert self.ahead_only()["geometry"]["coordinates"][1] == list(EAST[1])
         assert [d.heading for d in asked] == [90.0]
 
-    def test_ahead_only_whose_way_ahead_turns_round_plans_without_the_heading(
-        self, planned
-    ) -> None:
+    def test_ahead_only_whose_way_ahead_turns_round_keeps_it_in_one_plan(self, planned) -> None:
+        # Audit round 2, R1 option (the owner, 2026-10-27 7:52 PM ET: "make the banked
+        # changes"; this replaces the test that planned again without the heading): the route
+        # ahead that still turns round is the answer, and no second plan is made.
         asked = planned(answer(WEST, 2100.0))
-        assert self.ahead_only()["distance_m"] == 2000.0
-        assert [d.heading for d in asked] == [90.0, None]
+        assert self.ahead_only()["distance_m"] == 2100.0
+        assert [d.heading for d in asked] == [90.0]
 
     @pytest.mark.parametrize(
         "error",
@@ -155,6 +156,25 @@ class TestPlanOnward:
         asked = planned(error)
         assert self.ahead_only()["geometry"]["coordinates"][1] == list(WEST[1])
         assert [d.heading for d in asked] == [90.0, None]
+
+    def test_ahead_only_with_both_plans_failing_raises(self, monkeypatch) -> None:
+        def fake_plan(points, preset_name, dials=None, **_):
+            raise routing.NoRoute("no route")
+
+        monkeypatch.setattr(routing, "plan", fake_plan)
+        with pytest.raises(routing.NoRoute):
+            self.ahead_only()
+
+    def test_a_cancel_on_the_second_ahead_only_plan_keeps_no_route(self, monkeypatch) -> None:
+        # The second plan runs only after the first failed; a cancel there still stops it.
+        def fake_plan(points, preset_name, dials=None, **_):
+            if dials.heading is None:
+                raise routing.PlanCancelled("replaced")
+            raise routing.NoRoute("no route")
+
+        monkeypatch.setattr(routing, "plan", fake_plan)
+        with pytest.raises(routing.PlanCancelled):
+            self.ahead_only()
 
     def test_a_cancel_on_the_way_ahead_starts_no_second_plan(self, planned) -> None:
         # A PlanCancelled is a DeadlineExceeded, but the rider has moved on (review of S7).

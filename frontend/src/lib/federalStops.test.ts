@@ -376,7 +376,7 @@ test("the road panel names the federal area at the spot, on a Mass Ride (the key
   assert.match(dialog, /const federalSaid = federal \? stopWarningShort\(federal\) : "";/);
   // The road, a Mass Ride's rider-marked hazard on it (FOLLOWUP-MASSRIDE-MAP part 3), then the federal area.
   assert.match(dialog, /setSaid\(\[infoSaid\(next\), hazard, federalSaidRef\.current\]\.filter\(Boolean\)\.join\(" "\)\);/);
-  assert.match(dialog, /<span className="road-info-label">Federal land:<\/span> \{federalSaid\}\{" "\}\s*<span className="road-info-federal-note">\{FEDERAL_ADVICE\}<\/span>/);
+  assert.match(dialog, /<span className="road-info-label">\{t\("Federal land:"\)\}<\/span> \{federalSaid\}\{" "\}\s*<span className="road-info-federal-note">\{FEDERAL_ADVICE\}<\/span>/);
 });
 
 test("the description component lists the lines under their heading, and copies and downloads them", () => {

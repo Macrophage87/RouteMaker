@@ -5,6 +5,7 @@
  * connection is offered only where the server has Wahoo's keys. Send to Wahoo is shown only once connected, so
  * riders who never connect see no new control.
  */
+import { t } from "./i18n.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
 import { FILES_PLUGIN, FIT_TYPE, canSendToGarmin, toBase64, type SendEnv } from "./sendToGarmin.ts";
 
@@ -13,18 +14,18 @@ export const RETURN_PARAM = "wahoo";
 
 export const WAHOO_LABEL = "Wahoo";
 export const WAHOO_HELP =
-  "Connect your Wahoo account and Send to Wahoo adds routes, with turn cues, to the Wahoo app, which sends them to your ELEMNT. RouteMaker can only send routes: it reads nothing from your Wahoo but your account number.";
-export const DISCONNECT_ASK = "Disconnect Wahoo? The routes already sent stay in your Wahoo app.";
-export const DISCONNECTED = "Wahoo disconnected.";
-export const READ_FAILED = "Your Wahoo connection could not be checked just now.";
-export const SEND_LABEL = "Send to Wahoo";
+  t("Connect your Wahoo account and Send to Wahoo adds routes, with turn cues, to the Wahoo app, which sends them to your ELEMNT. RouteMaker can only send routes: it reads nothing from your Wahoo but your account number.");
+export const DISCONNECT_ASK = t("Disconnect Wahoo? The routes already sent stay in your Wahoo app.");
+export const DISCONNECTED = t("Wahoo disconnected.");
+export const READ_FAILED = t("Your Wahoo connection could not be checked just now.");
+export const SEND_LABEL = t("Send to Wahoo");
 
 /** What the page says when Wahoo sends the rider back. */
 export const RETURNED: Record<string, string> = {
-  connected: "Wahoo connected. Send to Wahoo is now beside Download in the GPX section.",
-  declined: "Wahoo not connected: you did not allow it at Wahoo.",
-  failed: "Wahoo could not be connected. Try again.",
-  signin: "Sign in first, then connect Wahoo.",
+  connected: t("Wahoo connected. Send to Wahoo is now beside Download in the GPX section."),
+  declined: t("Wahoo not connected: you did not allow it at Wahoo."),
+  failed: t("Wahoo could not be connected. Try again."),
+  signin: t("Sign in first, then connect Wahoo."),
 };
 
 export interface WahooState {
@@ -76,20 +77,20 @@ export async function disconnectWahoo(origin: string, post: Fetch = fetch, cooki
 }
 
 /** What Send to Wahoo says. */
-export const ROUTE_ADDED = "Route added to your Wahoo app. It syncs to your ELEMNT.";
-export const ROUTE_UPDATED = "Route updated in your Wahoo app. It syncs to your ELEMNT.";
-export const CONNECTION_ENDED = "Wahoo is no longer connected.";
-export const UNREACHED = "Wahoo could not be reached.";
+export const ROUTE_ADDED = t("Route added to your Wahoo app. It syncs to your ELEMNT.");
+export const ROUTE_UPDATED = t("Route updated in your Wahoo app. It syncs to your ELEMNT.");
+export const CONNECTION_ENDED = t("Wahoo is no longer connected.");
+export const UNREACHED = t("Wahoo could not be reached.");
 /** After the reason: the FIT course is saved instead, for the Wahoo app to open. */
-export const AS_FILE = "The FIT course was saved instead: open it with the Wahoo app.";
-export const SENDING = "Still sending the last route.";
+export const AS_FILE = t("The FIT course was saved instead: open it with the Wahoo app.");
+export const SENDING = t("Still sending the last route.");
 /** The same, in the phone app: a WebView saves no file a page makes, so the file goes to Android's "Open with" list. */
-export const AS_FILE_CHOOSER = "Choose the Wahoo app to open the FIT course instead. Not listed? Install it from Google Play, then send again.";
+export const AS_FILE_CHOOSER = t("Choose the Wahoo app to open the FIT course instead. Not listed? Install it from Google Play, then send again.");
 /** An app from before the plugin took anyApp handed it to Garmin Connect. */
-export const AS_FILE_GARMIN = "The FIT course went to Garmin Connect instead. Update the RouteMaker app to choose the Wahoo app.";
-export const AS_FILE_FAILED = "The FIT course could not be handed on either. Is the Wahoo app installed?";
+export const AS_FILE_GARMIN = t("The FIT course went to Garmin Connect instead. Update the RouteMaker app to choose the Wahoo app.");
+export const AS_FILE_FAILED = t("The FIT course could not be handed on either. Is the Wahoo app installed?");
 /** An app from before the plugin: it can neither save nor hand on a file. */
-export const AS_FILE_NONE = "This version of the RouteMaker app cannot hand on the FIT course. Update it, or send from the website.";
+export const AS_FILE_NONE = t("This version of the RouteMaker app cannot hand on the FIT course. Update it, or send from the website.");
 
 /**
  * Where Wahoo did not take the route: the FIT course for the Wahoo app to open. In a browser it is saved (a download);

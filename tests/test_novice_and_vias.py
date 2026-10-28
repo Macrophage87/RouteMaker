@@ -178,6 +178,38 @@ class TestViaPoints:
         types = [loc["type"] for loc in fake.calls[0][1]["locations"]]
         assert types == ["break", routing.VIA_LOCATION_TYPE, "break"]
 
+    def test_the_description_calls_a_via_point_so_and_numbers_only_stops(
+        self, client, segments, router
+    ) -> None:
+        # Round-3 audit D29: never "Stop 1" for a point ridden through.
+        def trace(payload: dict) -> dict:
+            line = routing.decode_polyline6(payload["encoded_polyline"])
+            return trace_answer(line, [(101, 0, len(line) - 1, 1.0)])
+
+        router(
+            FakeRouter(
+                {
+                    "route": route_answer(
+                        [(VERTICES[0:3], 1.0, [10.0, 20.0]), (VERTICES[2:], 1.2, [20.0, 30.0])]
+                    ),
+                    "trace_attributes": trace,
+                }
+            )
+        )
+        body = post(
+            client, {"points": three_points(), "preset": "default", "via_points": [1]}
+        ).json()
+        boundaries = [e for e in body["description"] if e["kind"] == "via"]
+        assert len(boundaries) == len(body["leg_ends"]) - 1
+        assert [e["via"] for e in boundaries] == [1]
+        assert boundaries[0]["text"].startswith("Via point at ")
+
+    def test_via_boundaries_are_the_middle_vias_where_legs_match_points(self) -> None:
+        assert routing.via_boundaries(4, (2,), 3) == (2,)
+        assert routing.via_boundaries(4, (0, 3, 1), 3) == (1,)
+        # Legs that are not one per gap (a long plan's own legs): none is known to be a via.
+        assert routing.via_boundaries(4, (2,), 5) == ()
+
     def test_without_via_points_every_point_is_a_stop(self, client, segments, router) -> None:
         fake = router(standard_router())
         post(client, {"points": three_points(), "preset": "default"})

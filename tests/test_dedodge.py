@@ -15,6 +15,7 @@ import math
 from pathlib import Path
 
 import pytest
+from approx_points import approx_points
 from test_refine import analysis, context, event
 from test_route_api import encode_polyline6 as reference_encode
 
@@ -685,7 +686,7 @@ class TestEncoding:
             (0.0, 0.0),
             (179.9, -85.5),
         ]
-        assert routing.decode_polyline6(dedodge.encode_polyline6(points)) == pytest.approx(points)
+        assert routing.decode_polyline6(dedodge.encode_polyline6(points)) == approx_points(points)
 
     def test_it_agrees_with_an_independent_encoder(self) -> None:
         points = [(-77.05, 38.9), (-77.04, 38.9), (-77.035, 38.9004), (-77.03, 38.8996)]
@@ -720,7 +721,7 @@ class TestSplicing:
     def test_the_dodge_is_cut_out_and_the_router_s_stretch_put_in(self) -> None:
         new = self.splice()
         got = routing.decode_polyline6(new["shape"])
-        assert got == pytest.approx([self.unit.a, self.unit.b, self.unit.d, self.unit.e])
+        assert got == approx_points([self.unit.a, self.unit.b, self.unit.d, self.unit.e])
 
     def test_the_length_is_the_legs_less_the_dodges_plus_the_stretchs(self) -> None:
         new = self.splice()
@@ -813,7 +814,7 @@ class TestThePass:
         unit, world, trip = one_dodge(monkeypatch, side="3", main="3")
         ctx = ctx_for()
         new, info = dedodge.apply(trip, ctx)
-        assert routing.decode_polyline6(new["legs"][0]["shape"]) == pytest.approx(unit.direct)
+        assert routing.decode_polyline6(new["legs"][0]["shape"]) == approx_points(unit.direct)
         assert (info["found"], info["removed"], info["kept"], info["checked"]) == (1, 1, 0, 1)
         assert info["limited"] is None
         (item,) = info["items"]
@@ -946,7 +947,7 @@ class TestThePass:
             ((unit.side[0][0] + unit.side[1][0]) / 2, (unit.side[0][1] + unit.side[1][1]) / 2),
             ((unit.side[1][0] + unit.side[2][0]) / 2, (unit.side[1][1] + unit.side[2][1]) / 2),
         ]
-        assert excluded == pytest.approx(want, abs=2e-6)
+        assert excluded == approx_points(want, abs=2e-6)
 
     def test_a_short_edge_is_not_excluded_for_its_nodes_sake(self, monkeypatch) -> None:
         graph = Graph()
@@ -1186,7 +1187,7 @@ class TestBounds:
         trip = trip_of(leg_of(route))
         new, info = dedodge.apply(trip, ctx_for())
         assert info["removed"] == 2
-        assert routing.decode_polyline6(new["legs"][0]["shape"]) == pytest.approx(
+        assert routing.decode_polyline6(new["legs"][0]["shape"]) == approx_points(
             [*u1.direct, *u2.direct[1:]]
         )
         want = metres_of([*u1.direct, *u2.direct[1:]]) / 1000.0
@@ -1217,7 +1218,7 @@ class TestBounds:
         trip = trip_of(leg_of(route))
         new, info = dedodge.apply(trip, ctx_for())
         assert [i["action"] for i in info["items"]] == ["kept", "removed"]
-        assert routing.decode_polyline6(new["legs"][0]["shape"]) == pytest.approx(
+        assert routing.decode_polyline6(new["legs"][0]["shape"]) == approx_points(
             [*u1.dodge_route, *u2.direct[1:]]
         )
 
@@ -1234,7 +1235,7 @@ class TestLegs:
         trip = trip_of(first, second)
         new, info = dedodge.apply(trip, ctx_for())
         assert new["legs"][0] is trip["legs"][0]
-        assert routing.decode_polyline6(new["legs"][1]["shape"]) == pytest.approx(unit.direct)
+        assert routing.decode_polyline6(new["legs"][1]["shape"]) == approx_points(unit.direct)
         assert new["summary"]["length"] == pytest.approx(
             first["summary"]["length"] + new["legs"][1]["summary"]["length"]
         )
@@ -1248,8 +1249,8 @@ class TestLegs:
         trip = trip_of(leg_of(u1.dodge_route), leg_of(u2.dodge_route))
         new, info = dedodge.apply(trip, ctx_for())
         assert info["found"] == 2 and info["removed"] == 2
-        assert routing.decode_polyline6(new["legs"][0]["shape"]) == pytest.approx(u1.direct)
-        assert routing.decode_polyline6(new["legs"][1]["shape"]) == pytest.approx(u2.direct)
+        assert routing.decode_polyline6(new["legs"][0]["shape"]) == approx_points(u1.direct)
+        assert routing.decode_polyline6(new["legs"][1]["shape"]) == approx_points(u2.direct)
 
     def test_a_trip_with_no_legs_is_left_alone(self, monkeypatch) -> None:
         World(monkeypatch, Graph())
@@ -1347,7 +1348,7 @@ class TestKonterraDrive:
         assert new["summary"]["length"] * 1000 / MILE == pytest.approx(1.75, abs=0.01)
         # The route now is the one the router gave for the Fast preset: Konterra's own way.
         direct = routing.decode_polyline6(world.data["direct_trace"]["shape"])
-        assert routing.decode_polyline6(new["legs"][0]["shape"]) == pytest.approx(direct, abs=1e-6)
+        assert routing.decode_polyline6(new["legs"][0]["shape"]) == approx_points(direct, abs=1e-6)
 
     def test_what_was_asked_of_the_router(self, monkeypatch) -> None:
         world = Konterra(monkeypatch)

@@ -490,6 +490,7 @@ export function GoSheet({
   searchBias,
   onPick,
   onTopPlace,
+  onWhereToFocus,
   places,
   rides,
   notice,
@@ -506,6 +507,8 @@ export function GoSheet({
   onPick: (place: Place) => void;
   /** The top result of Where to? while the rider looks at it: Go starts routing there early (v0.7.0, "Faster routing"); null with none. */
   onTopPlace?: (place: Place | null) => void;
+  /** Where to? takes the focus: Go warms the location up in the background (routing audit S28). */
+  onWhereToFocus?: () => void;
   places: GoPlaces;
   /** The ride type chips (RideChips), before there is a route; with one, the route holds them. */
   rides: ReactNode;
@@ -586,7 +589,7 @@ export function GoSheet({
             />
           </div>
         )}
-        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place, _choice: PlaceChoice) => onPick(place)} onTopPlace={onTopPlace} />
+        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place, _choice: PlaceChoice) => onPick(place)} onTopPlace={onTopPlace} onFocusBox={onWhereToFocus} />
         <div className="chip-row go-places" role="group" aria-label={t("Places")}>
           {places.signedIn ? (
             // Signed in, Home is the first of the rider's favorites (Stephen 2026-10-26: "just have a favorites replace home").
