@@ -160,21 +160,21 @@ export async function loadWaterRestrooms(
 // --- Words ---------------------------------------------------------------
 
 export const WATER_LABEL: Record<WaterSource, string> = {
-  p: "Drinking water",
-  n: "Untreated water, filter or treat it first",
+  p: t("Drinking water"),
+  n: t("Untreated water, filter or treat it first"),
 };
 export const TOILET_LABEL: Record<ToiletType, string> = {
-  f: "Flush restroom",
-  b: "Portable, pit or composting toilet",
-  u: "Restroom, type not mapped",
+  f: t("Flush restroom"),
+  b: t("Portable, pit or composting toilet"),
+  u: t("Restroom, type not mapped"),
 };
 
 /** What the point is, in a few words: "Flush restroom with drinking water", "Untreated water, filter or treat it first". */
 export function waterKindLabel(p: WaterPoint): string {
   if (!p.toilet) return WATER_LABEL[p.water ?? "p"];
   const base = TOILET_LABEL[p.toilet];
-  if (p.water === "p") return `${base}, with drinking water`;
-  if (p.water === "n") return `${base}, with untreated water`;
+  if (p.water === "p") return t("{base}, with drinking water", { base });
+  if (p.water === "n") return t("{base}, with untreated water", { base });
   return base;
 }
 
@@ -183,14 +183,14 @@ export function waterDetails(p: WaterPoint): string[] {
   const out: string[] = [];
   if (p.operator === "Throne") out.push(THRONE_DETAIL);
   if (p.approximate) out.push(APPROXIMATE_DETAIL);
-  if (p.bottle) out.push("Bottle filler.");
-  if (p.fee === "no") out.push("Free.");
-  if (p.fee === "yes") out.push("Fee to use.");
-  if (p.wheelchair === "yes") out.push("Wheelchair accessible.");
-  if (p.wheelchair === "limited") out.push("Partly wheelchair accessible.");
-  if (p.wheelchair === "no") out.push("Not wheelchair accessible.");
-  if (p.seasonal) out.push(p.seasonal === "yes" ? "Seasonal." : `Seasonal: ${p.seasonal}.`);
-  if (p.hours) out.push(p.hours === "24/7" ? "Open 24/7." : `Hours: ${p.hours}.`);
+  if (p.bottle) out.push(t("Bottle filler."));
+  if (p.fee === "no") out.push(t("Free."));
+  if (p.fee === "yes") out.push(t("Fee to use."));
+  if (p.wheelchair === "yes") out.push(t("Wheelchair accessible."));
+  if (p.wheelchair === "limited") out.push(t("Partly wheelchair accessible."));
+  if (p.wheelchair === "no") out.push(t("Not wheelchair accessible."));
+  if (p.seasonal) out.push(p.seasonal === "yes" ? t("Seasonal.") : t("Seasonal: {when}.", { when: p.seasonal }));
+  if (p.hours) out.push(p.hours === "24/7" ? t("Open 24/7.") : t("Hours: {hours}.", { hours: p.hours }));
   return out;
 }
 
@@ -306,8 +306,8 @@ export const ON_ROUTE_M = 15;
  * "At 4.2 mi (6.8 km): Drinking water, Mile 4 fountain, 200 ft (61 m) off the route. Bottle filler. Free."
  */
 export function waterAlongText(item: WaterAlong): string {
-  const off = item.offM < ON_ROUTE_M ? "on the route" : `${formatDistance(item.offM)} off the route`;
-  return [`At ${formatDistance(item.alongM)}: ${waterTitle(item.point)}, ${off}.`, ...waterDetails(item.point)].join(" ");
+  const off = item.offM < ON_ROUTE_M ? t("on the route") : t("{distance} off the route", { distance: formatDistance(item.offM) });
+  return [t("At {distance}: {place}, {off}.", { distance: formatDistance(item.alongM), place: waterTitle(item.point), off }), ...waterDetails(item.point)].join(" ");
 }
 
 /** The list's count line: "3 along your route: 1 with drinking water, 1 untreated water source, 2 restrooms." */
@@ -316,10 +316,10 @@ export function waterAlongCount(items: readonly WaterAlong[]): string {
   const drinking = n((p) => p.water === "p");
   const untreated = n((p) => p.water === "n");
   const restrooms = n((p) => p.toilet !== undefined);
-  const parts = [`${drinking} with drinking water`];
-  if (untreated > 0) parts.push(`${untreated} untreated water ${untreated === 1 ? "source" : "sources"}`);
-  parts.push(`${restrooms} ${restrooms === 1 ? "restroom" : "restrooms"}`);
-  return `${items.length} along your route: ${parts.join(", ")}.`;
+  const parts = [t("{count} with drinking water", { count: drinking })];
+  if (untreated > 0) parts.push(untreated === 1 ? t("1 untreated water source") : t("{count} untreated water sources", { count: untreated }));
+  parts.push(restrooms === 1 ? t("1 restroom") : t("{count} restrooms", { count: restrooms }));
+  return t("{count} along your route: {parts}.", { count: items.length, parts: parts.join(", ") });
 }
 
 // --- The map's layer -----------------------------------------------------

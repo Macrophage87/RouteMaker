@@ -21,6 +21,7 @@ import { formatRadius } from "./format.ts";
 import { mapToolsWays } from "./accessMode.ts";
 import { applyPlace, choicesFor, type PlaceChoice } from "./geocode.ts";
 import { pointName } from "./summary.ts";
+import { t } from "./i18n.ts";
 
 export interface InfoRow {
   label: string;
@@ -114,7 +115,7 @@ export interface InfoRequest {
 }
 
 /** The trail panel's via button: a via point on the trail, which shapes the route through it (lib/pointKinds.ts). */
-export const TRAIL_VIA_TEXT = "Route through this trail";
+export const TRAIL_VIA_TEXT = t("Route through this trail");
 
 /** The rider's ride type and, in Mountain Bike, the hardest level chosen (null otherwise). */
 export interface TrailRider {
@@ -178,8 +179,8 @@ export type InfoState =
   | { kind: "error"; message: string };
 
 /** The panel's words. */
-export const INFO_TITLE_LOADING = "Looking up the road here";
-export const NO_ROAD = "No road here";
+export const INFO_TITLE_LOADING = t("Looking up the road here");
+export const NO_ROAD = t("No road here");
 /** The panel's title for a way with no name (core/segment_info.py UNNAMED_ROAD_TITLE and
  * UNNAMED_PATH_TITLE, the route description's words capitalised; a Python test ties them). */
 export const UNNAMED_ROAD_TITLE = "Unnamed road";
@@ -191,18 +192,18 @@ export const SNAP_RADIUS_M = 30;
 export const NO_ROAD_HINT = `No road or path within about ${formatRadius(SNAP_RADIUS_M)} of this spot.`;
 export const STREET_VIEW_TEXT = "Street View";
 /** Street View's one-line privacy note, its link's description. */
-export const STREET_VIEW_NOTE = "Opens in a new tab; Google gets this spot only if you follow the link.";
+export const STREET_VIEW_NOTE = t("Opens in a new tab; Google gets this spot only if you follow the link.");
 /** The bottom row's OpenStreetMap editor link (OWNER-DECISIONS 441m). */
-export const OSM_EDIT_TEXT = "Edit in OSM";
+export const OSM_EDIT_TEXT = t("Edit in OSM");
 export const OSM_EDIT_NOTE =
-  "Opens OpenStreetMap's editor for this way. Needs an OpenStreetMap account; don't copy from Google Street View.";
-export const DETAILS_TEXT = "Details and sources";
-export const INFO_BUTTON_LABEL = "Road info at map center";
+  t("Opens OpenStreetMap's editor for this way. Needs an OpenStreetMap account; don't copy from Google Street View.");
+export const DETAILS_TEXT = t("Details and sources");
+export const INFO_BUTTON_LABEL = t("Road info at map center");
 /** The map's small disclosure by its zoom buttons (OWNER-DECISIONS 450) and the two map-center actions it holds. */
-export const MAP_TOOLS_LABEL = "Map tools";
-export const ADD_AT_CENTRE_LABEL = "Add point at map center";
+export const MAP_TOOLS_LABEL = t("Map tools");
+export const ADD_AT_CENTRE_LABEL = t("Add point at map center");
 /** The same button in Go, where the spot is the destination (lib/appMode.ts goTapSetsEnd). */
-export const SET_END_AT_CENTRE_LABEL = "Set destination at map center";
+export const SET_END_AT_CENTRE_LABEL = t("Set destination at map center");
 export const INFO_KEY = "i";
 /**
  * The help for the road panel. The keyboard's way in names Map tools, which is on the page only in
@@ -282,7 +283,7 @@ export function spotActions(count: number, loop: boolean): SpotAction[] {
 }
 
 /** What is said when an end set on a loop turns the loop off. */
-export const LOOP_ENDED_SAID = "End set here. Loop off: the ride ends here.";
+export const LOOP_ENDED_SAID = t("End set here. Loop off: the ride ends here.");
 
 /** The plan after a top-row button, the new point's index, and what the live region says. */
 export function placeAtSpot(

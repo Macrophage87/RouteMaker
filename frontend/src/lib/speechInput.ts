@@ -9,6 +9,7 @@
  * microphone; shown there once the app asks for it and is tried on a device.
  */
 import { nativeBridge } from "./nativeShell.ts";
+import { language, speechLang } from "./i18n.ts";
 
 
 interface Recognition {
@@ -65,7 +66,10 @@ export function listenOnce(
   const Ctor = ctorOf(env);
   if (!Ctor) return null;
   const rec = new Ctor();
-  rec.lang = typeof navigator !== "undefined" && navigator.language ? navigator.language : "en-US";
+  // The browser's own language where it is the app's (en-GB stays en-GB); else the app's: a rider who chose Spanish
+  // on an English phone is heard in Spanish (es-US).
+  const own = typeof navigator !== "undefined" ? navigator.language : "";
+  rec.lang = own && own.toLowerCase().split("-")[0] === language() ? own : speechLang();
   rec.interimResults = true;
   rec.continuous = false;
   rec.maxAlternatives = 1;

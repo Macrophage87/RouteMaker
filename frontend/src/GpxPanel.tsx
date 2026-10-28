@@ -34,9 +34,10 @@ import { cueSheetDocument, cueSheetFileName, cueSheetLine, type CueSheetKind } f
 import { lockCancelledLine, lockPartButton, lockPartLine, lockScreenFileNames, lockScreenLine, lockSharedLine } from "./lib/lockScreen.ts";
 import { renderLockScreens } from "./app/lockScreenRender.ts";
 import { InfoButton } from "./SettingRow.tsx";
+import { t } from "./lib/i18n.ts";
 
 /** The file line shown; the whole of it is behind its (i). */
-export const FILE_PRIVACY_SHORT = "A file you open stays in this browser.";
+export const FILE_PRIVACY_SHORT = t("A file you open stays in this browser.");
 
 export type GpxPanelProps = Props;
 
@@ -155,7 +156,7 @@ const PRINTS = { "pdf-sheet": "sheet", "pdf-strip": "strip" } as const satisfies
 export type FileFormat = CourseFormat | keyof typeof PRINTS | "png-lock";
 
 /** Said where the lock-screen image could not be drawn (the canvas refused it). */
-export const LOCK_IMAGE_FAILED = "Could not make the cue sheet image. Try again, or use the PDF handlebar strip.";
+export const LOCK_IMAGE_FAILED = t("Could not make the cue sheet image. Try again, or use the PDF handlebar strip.");
 
 /** Save the lock-screen images one after another (a browser takes a moment between downloads), then say what was made. */
 /** Lock-screen images not yet saved: a browser saves only one file per press, so each further part waits for one. */
@@ -324,21 +325,21 @@ export async function handCourseToWahoo(route: RouteResponse, routedPoints: LonL
 export type ExportFormat = "gpx" | FileFormat;
 
 /** What a GPX download says once it is saved: the route shown, the opened file as it came, or its track. */
-export const GPX_SAID_ROUTE = "GPX track: the route shown, with its credits.";
-export const GPX_SAID_OPENED = "GPX file: the file you opened, as it came.";
-export const GPX_SAID_TRACK = "GPX track: the opened file's track, rerouted round the closures.";
+export const GPX_SAID_ROUTE = t("GPX track: the route shown, with its credits.");
+export const GPX_SAID_OPENED = t("GPX file: the file you opened, as it came.");
+export const GPX_SAID_TRACK = t("GPX track: the opened file's track, rerouted round the closures.");
 
 const FORMAT_LABELS: Record<ExportFormat, string> = {
-  gpx: "GPX track",
-  fit: "FIT course, with turn cues",
-  tcx: "TCX course, with turn cues",
-  "pdf-sheet": "PDF cue sheet, to print",
-  "pdf-strip": "PDF handlebar strip, to print",
-  "png-lock": "Cue sheet image, for a phone lock screen",
+  gpx: t("GPX track"),
+  fit: t("FIT course, with turn cues"),
+  tcx: t("TCX course, with turn cues"),
+  "pdf-sheet": t("PDF cue sheet, to print"),
+  "pdf-strip": t("PDF handlebar strip, to print"),
+  "png-lock": t("Cue sheet image, for a phone lock screen"),
 };
 
 /** What the button says it downloads. */
-const FORMAT_WORDS: Record<ExportFormat, string> = { gpx: "GPX", fit: "FIT", tcx: "TCX", "pdf-sheet": "PDF", "pdf-strip": "PDF", "png-lock": "image" };
+const FORMAT_WORDS: Record<ExportFormat, string> = { gpx: "GPX", fit: "FIT", tcx: "TCX", "pdf-sheet": "PDF", "pdf-strip": "PDF", "png-lock": t("image") };
 
 const isCourse = (format: ExportFormat): format is CourseFormat => format === "fit" || format === "tcx";
 
@@ -559,12 +560,12 @@ export function GpxPanel(props: Props) {
     <section aria-labelledby="gpx-heading" className="gpx">
       {/* The GPX sheet's own heading names it (App.tsx); this one stays for the section's name. */}
       <h3 id="gpx-heading" className="visually-hidden">
-        Route file
+        {t("Route file")}
       </h3>
       {courses && (
         <div className="gpx-format">
           <label className="select-setting">
-            File type
+            {t("File type")}
             <select value={choice.format} onChange={(event) => choose({ format: event.target.value as ExportFormat })}>
               {(Object.keys(FORMAT_LABELS) as ExportFormat[]).map((format) => (
                 <option key={format} value={format}>
@@ -575,7 +576,7 @@ export function GpxPanel(props: Props) {
           </label>
           {isCourse(choice.format) && (
             <label className="select-setting">
-              Device
+              {t("Device")}
               <select value={choice.profile} onChange={(event) => choose({ profile: event.target.value as DeviceProfileId })}>
                 {DEVICE_PROFILES.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -598,10 +599,10 @@ export function GpxPanel(props: Props) {
           }}
           aria-disabled={reading.kind === "reading" || undefined}
         >
-          Open GPX…
+          {t("Open GPX…")}
         </button>
         <button type="button" onClick={download} disabled={choice.format === "gpx" ? !route && !imported?.verbatim : !route}>
-          {parts ? lockPartButton(parts.next, parts.blobs.length) : `Download ${FORMAT_WORDS[choice.format]}`}
+          {parts ? lockPartButton(parts.next, parts.blobs.length) : t("Download {format}", { format: FORMAT_WORDS[choice.format] })}
         </button>
         {onSendToGarmin && canSendToGarmin() && (
           <button type="button" onClick={() => onSendToGarmin(sayCourse)} disabled={!route}>
@@ -635,10 +636,10 @@ export function GpxPanel(props: Props) {
             {courseSaid.text}
           </p>
         )}
-        {reading.kind === "reading" && <p className="loading">Reading {reading.name}…</p>}
+        {reading.kind === "reading" && <p className="loading">{t("Reading {name}…", { name: reading.name })}</p>}
         {reading.kind === "error" && (
           <p className="notice gpx-error">
-            <strong>Can't open that file.</strong> {reading.message}
+            <strong>{t("Can't open that file.")}</strong> {reading.message}
           </p>
         )}
         {reading.kind === "idle" && imported && (
@@ -652,10 +653,10 @@ export function GpxPanel(props: Props) {
             {fit && ["loading", "waiting", "ok"].includes(planStatus) && (
               <p className="loading gpx-fitting">
                 {fit.phase === "prune"
-                  ? "Checking for points the route loops round to reach…"
+                  ? t("Checking for points the route loops round to reach…")
                   : fit.rounds === 0
-                    ? "Routing the plan along the file's track…"
-                    : `Adding points where the route left the track (round ${fit.rounds} of up to ${REFINE_ROUNDS})…`}
+                    ? t("Routing the plan along the file's track…")
+                    : t("Adding points where the route left the track (round {round} of up to {rounds})…", { round: fit.rounds, rounds: REFINE_ROUNDS })}
               </p>
             )}
             {match && pruned && pruned.count > 0 && samePoints(points, pruned.points) && (
@@ -674,7 +675,7 @@ export function GpxPanel(props: Props) {
       {imported && imported.reference.length >= 2 && (
         <label className="toggle">
           <input ref={trackSwitchRef} type="checkbox" checked={showTrack} onChange={(event) => setShowTrack(event.target.checked)} />
-          Show the file's track on the map
+          {t("Show the file's track on the map")}
         </label>
       )}
       {/* Offered only where the route parts from the file (or once on), so a file that follows cleanly shows nothing more. */}
@@ -701,32 +702,24 @@ export function GpxPanel(props: Props) {
       {/* One line, the rest behind an (i) (the owner, 2026-10-18: "still a wall of text"). */}
       <div className="setting-line gpx-privacy">
         <p className="hint">{FILE_PRIVACY_SHORT}</p>
-        <InfoButton open={privacyOpen} onToggle={() => setPrivacyOpen((was) => !was)} controls="gpx-privacy-info" about="route files" />
+        <InfoButton open={privacyOpen} onToggle={() => setPrivacyOpen((was) => !was)} controls="gpx-privacy-info" about={t("route files")} />
       </div>
       <p className="hint setting-info" id="gpx-privacy-info" hidden={!privacyOpen}>
-        A file you open is read in this browser and never uploaded (unless you save it to your account, or snap it to
-        the map's streets, which sends its line alone). Opened and not
-        edited, the download is that file as it came; otherwise it is the route shown, with its credits: ©
-        OpenStreetMap contributors (ODbL) and the traffic and elevation sources.
+        {t("A file you open is read in this browser and never uploaded (unless you save it to your account, or snap it to the map's streets, which sends its line alone). Opened and not edited, the download is that file as it came; otherwise it is the route shown, with its credits: © OpenStreetMap contributors (ODbL) and the traffic and elevation sources.")}
       </p>
       {(choice.format === "pdf-sheet" || choice.format === "pdf-strip") && (
         <p className="hint">
-          A cue sheet is the route shown with Ride's cues, to print: the sheet on letter paper, the strip at actual size
-          to cut out for the handlebar. Its credits are at the foot of every page.
+          {t("A cue sheet is the route shown with Ride's cues, to print: the sheet on letter paper, the strip at actual size to cut out for the handlebar. Its credits are at the foot of every page.")}
         </p>
       )}
       {choice.format === "png-lock" && (
         <p className="hint">
-          The cue sheet as a picture for your phone's lock screen, with the clock's space at the top left clear. A long
-          route makes more than one, Part 1, Part 2 and on, downloaded one after another. Its credits are along the
-          bottom.
+          {t("The cue sheet as a picture for your phone's lock screen, with the clock's space at the top left clear. A long route makes more than one, Part 1, Part 2 and on, downloaded one after another. Its credits are along the bottom.")}
         </p>
       )}
       {isCourse(choice.format) && (
         <p className="hint">
-          A course is the route shown with Ride's turn cues, fitted to the device. TCX carries the credits in its notes;
-          FIT has no place for them but its name, which has them where the device leaves room: route data ©
-          OpenStreetMap contributors (ODbL).
+          {t("A course is the route shown with Ride's turn cues, fitted to the device. TCX carries the credits in its notes; FIT has no place for them but its name, which has them where the device leaves room: route data © OpenStreetMap contributors (ODbL).")}
         </p>
       )}
     </section>

@@ -98,6 +98,7 @@ import {
   UTURN_START,
   type UTurnState,
   uturnAheadOnly,
+  isStartUTurn,
   uturnStep,
   setsOffBack,
   withUTurn,
@@ -256,10 +257,10 @@ export const END_RIDE_NAME = t("End ride");
 function TimeToGo({ seconds, nowMs }: { seconds: number; nowMs: number }) {
   return (
     <>
-      , <span className="visually-hidden">about </span>
+      , <span className="visually-hidden">{t("about")} </span>
       {formatDuration(seconds)}
       <span aria-hidden="true"> · </span>
-      <span className="visually-hidden">, arriving about </span>
+      <span className="visually-hidden">{t(", arriving about")} </span>
       <span className="ride-arrive">{arrivalClock(nowMs, seconds)}</span>
     </>
   );
@@ -287,7 +288,7 @@ export const RIDE_TOPO_OFFLINE = `${TOPO_LINES_LABEL} need a connection. Try aga
 export const RIDE_SETTINGS_TITLE = t("Ride settings");
 export const RIDE_CHANGE_TITLE = t("Change the route");
 /** Broadcast on the ride screen (Stephen 2026-10-24: "Let people broadcast from a ride"): Plan's and Go's Broadcast, the ride already going. */
-export const RIDE_BROADCAST_NAME = "Broadcast";
+export const RIDE_BROADCAST_NAME = t("Broadcast");
 /** More > Riders: the riders panel, its count now on Broadcast. */
 export const RIDERS_NAME = t("Riders");
 /** What End ride leaves behind (lib/navigate.ts planAfterEnd): the plan from here, or as it was. */
@@ -2040,8 +2041,8 @@ export function RideMode({
     .join(",");
   const cueShown = cueParts(cue ? (cue.rideText ?? cue.text) : "");
   // The distance's metric in brackets a size smaller, so the line stays one line with large text.
-  // A U-turn is now: no distance (it is at the line's start, behind the rider).
-  const distanceWords = cue && progress !== null && cue.movement !== "uturn" ? formatDistance(cue.atM - progress) : "";
+  // A re-route's U-turn is now: no distance (it is at the line's start, behind the rider). One further along has its distance.
+  const distanceWords = cue && progress !== null && !isStartUTurn(cue) ? formatDistance(cue.atM - progress) : "";
   const metricAt = distanceWords.indexOf(" (");
   const distanceShown = metricAt < 0 ? { us: distanceWords, metric: "" } : { us: distanceWords.slice(0, metricAt), metric: distanceWords.slice(metricAt + 1) };
   // Large: the turn's arrow and words as big as the card has room for (the owner, 2026-10-20: "take up as much
@@ -2436,7 +2437,7 @@ export function RideMode({
           <dl className="ride-togo">
             {togo.stop && (
               <div>
-                <dt>To stop {togo.stop.number}</dt>
+                <dt>{t("To stop {number}", { number: togo.stop.number })}</dt>
                 <dd>
                   {formatDistance(togo.stop.metres)}
                   {togo.stop.seconds !== null && <TimeToGo seconds={togo.stop.seconds} nowMs={clockMs} />}
@@ -2504,7 +2505,7 @@ export function RideMode({
               onClick={() => void broadcast()}
               {...broadcastHold}
               aria-describedby={onBroadcastHold ? broadcastHoldId : undefined}
-              aria-label={`${broadcasting ? `${RIDE_BROADCAST_NAME}: on. Share the link again` : passingOn ? `${RIDE_BROADCAST_NAME}: pass on the link to this ride` : `${RIDE_BROADCAST_NAME}: share a link others follow you with`}${riders === null ? "" : `. ${countText(riders)}`}`}
+              aria-label={`${broadcasting ? t("{name}: on. Share the link again", { name: RIDE_BROADCAST_NAME }) : passingOn ? t("{name}: pass on the link to this ride", { name: RIDE_BROADCAST_NAME }) : t("{name}: share a link others follow you with", { name: RIDE_BROADCAST_NAME })}${riders === null ? "" : `. ${countText(riders)}`}`}
               title={RIDE_BROADCAST_NAME}
             >
               <Icon name="broadcast" size={riders === null ? 24 : 20} />

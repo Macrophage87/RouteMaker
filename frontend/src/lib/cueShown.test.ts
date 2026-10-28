@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { cueParts, shortStreets } from "./cueShown.ts";
+import { setLanguageForTest } from "./i18n.ts";
 
 test("street words shortened after a name only", () => {
   assert.equal(shortStreets("Left onto R Street Northwest."), "Left onto R St NW.");
@@ -19,4 +20,23 @@ test("the cue splits at its first comma (the owner's screenshot, 2026-10-19)", (
     rest: "No signal mapped (Higher stress junction), busy road (LTS 3).",
   });
   assert.deepEqual(cueParts("Left onto R Street Northwest."), { head: "Left onto R St NW.", rest: "" });
+});
+
+test("a quadrant before plain words shortens too (the owner's screenshot, 2026-10-27)", () => {
+  assert.equal(shortStreets("Left onto S Street Northeast bike lane."), "Left onto S St NE bike lane.");
+});
+
+test("Spanish turn words shown shorter, the voice's sentence untouched (the owner, 2026-10-27)", () => {
+  setLanguageForTest("es");
+  try {
+    assert.deepEqual(cueParts("Gire a la izquierda hacia S Street Northeast bike lane, luego inmediatamente gire a la derecha hacia S Street Northeast."), {
+      head: "A la izquierda hacia S St NE bike lane",
+      rest: "Luego enseguida a la derecha hacia S St NE.",
+    });
+    assert.equal(cueParts("Gire ligeramente a la derecha ahora.").head, "Leve a la derecha ahora.");
+    assert.equal(cueParts("Dé la vuelta en U.").head, "Vuelta en U.");
+  } finally {
+    setLanguageForTest("en");
+  }
+  assert.equal(cueParts("Gire a la izquierda.").head, "Gire a la izquierda.");
 });
