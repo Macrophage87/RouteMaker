@@ -14,8 +14,9 @@ import { language } from "./i18n.ts";
 const AFTER_NAME = String.raw`(?<=\b[A-Z0-9][\w'.-]* )`;
 const QUADRANTS = ["Northwest", "Northeast", "Southwest", "Southeast", "NW", "NE", "SW", "SE"];
 // A name's end in any of the app's languages: punctuation, a bidi isolate (lib/i18n.ts t), or the sentence's own
-// words in another script straight after it, spaced or not ("R Street Northwestに", "R Street Northwest पर").
-const OTHER_SCRIPT = String.raw`\u2069。、，،።፣]|\s?[^\x00-\x7F]`;
+// words in another script straight after it, spaced, hyphened or not ("R Street Northwestに", "R Street Northwest पर",
+// "R Street Northwest-এ").
+const OTHER_SCRIPT = String.raw`\u2069。、，،።፣]|[\s-]?[^\x00-\x7F]`;
 const NAME_END = String.raw`(?=[,.;:)${OTHER_SCRIPT}|$| (?:${QUADRANTS.join("|")})\b)`;
 const TYPES: readonly [string, string][] = [
   ["Avenue", "Ave"],
@@ -72,10 +73,15 @@ export function shortStreets(text: string): string {
   return SHORT.reduce((out, [long, short]) => out.replace(long, short), text);
 }
 
+// The street's last words kept on one line in the other languages (the owner, 2026-10-28: "make sure ... the words fit
+// properly in the spaces"): a narrow card broke "R St NW" as "R / St NW". English and Spanish wrap as before.
+const SHORT_WORD = new RegExp(String.raw`(?<=[A-Za-z0-9.]) (?=(?:${[...TYPES.map(([, short]) => short), "NW", "NE", "SW", "SE"].join("|")})\b(?! [a-z]))`, "g");
+
 /** The cue split at its first comma: the instruction, then the rest with a capital ("No signal mapped, busy road (LTS 3)."). */
 export function cueParts(text: string): { head: string; rest: string } {
   const streets = shortStreets(text.trim());
-  const short = language() === "es" ? shortTurnsEs(streets) : streets;
+  const lang = language();
+  const short = lang === "es" ? shortTurnsEs(streets) : lang === "en" ? streets : streets.replace(SHORT_WORD, "\u00a0");
   // The comma as each script writes it: ", ", the Chinese and Japanese "，" and "、", the Arabic "، ", the Ge'ez "፣ ".
   const comma = /, |，|、|، |፣ /.exec(short);
   if (!comma) return { head: short, rest: "" };

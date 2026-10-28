@@ -495,7 +495,8 @@ export function SlideToEnd({ onEnd, onTap, name = END_RIDE_NAME }: { onEnd: () =
     return () => window.clearTimeout(timer);
   }, [value]);
   return (
-    <div className="ride-end ride-slide">
+    // Slid left to right in every language: a right-to-left page would turn the range round under its arrows.
+    <div className="ride-end ride-slide" dir="ltr">
       <span className="ride-slide-text" aria-hidden="true">
         {name}
         <span className="ride-slide-arrows">››</span>
@@ -2415,8 +2416,11 @@ export function RideMode({
               <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>
                 {/* Fewer words, larger type (the owner, 2026-10-20); "In" stays for screen readers. */}
                 {distanceShown.us && <span className="visually-hidden">{t("In")} </span>}
-                {distanceShown.us}
-                {distanceShown.metric && <span className="cue-distance-metric"> {distanceShown.metric}</span>}
+                {/* dir="auto": the figure and its metric twin keep their order on a right-to-left page. */}
+                <span dir="auto">
+                  {distanceShown.us}
+                  {distanceShown.metric && <span className="cue-distance-metric"> {distanceShown.metric}</span>}
+                </span>
               </p>
               {/* The instruction large, the rest in small print, street words shortened; the whole sentence for screen readers. */}
               <p className="cue-text">
@@ -2439,7 +2443,7 @@ export function RideMode({
             {togo.stop && (
               <div>
                 <dt>{t("To stop {number}", { number: togo.stop.number })}</dt>
-                <dd>
+                <dd dir="auto">
                   {formatDistance(togo.stop.metres)}
                   {togo.stop.seconds !== null && <TimeToGo seconds={togo.stop.seconds} nowMs={clockMs} />}
                 </dd>
@@ -2447,7 +2451,7 @@ export function RideMode({
             )}
             <div className="ride-togo-end">
               <dt>{t("To the end")}</dt>
-              <dd>
+              <dd dir="auto">
                 {formatDistance(togo.end.metres)}
                 {togo.end.seconds !== null && <TimeToGo seconds={togo.end.seconds} nowMs={clockMs} />}
               </dd>
