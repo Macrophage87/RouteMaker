@@ -33,6 +33,7 @@ import { Icon } from "../Icon.tsx";
 import { PLANNER_EXTRAS, searchLede } from "../lib/sidebar.ts";
 import { settingsSummary, settingsSummarySpoken } from "../lib/rideSummary.ts";
 import { InstallOffer } from "../InstallableApp.tsx";
+import { IosLocationHelp } from "../IosLocationHelp.tsx";
 
 type PlaceNames = ReturnType<typeof usePlaceNames>;
 
@@ -256,6 +257,7 @@ export function PointsSection(props: PointsSectionProps) {
       <p className={notice ? "notice" : "notice notice-empty"} role={noticeLive ? "status" : undefined}>
         {notice ?? ""}
       </p>
+      <IosLocationHelp notice={notice} />
     </section>
   );
 }
