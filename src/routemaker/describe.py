@@ -748,6 +748,51 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
     return runs
 
 
+def _bridge_unnamed(runs: list[_Run], leg_at: float, keep_at: list[float], walks) -> list[_Run]:
+    """One leg's runs with each short unnamed path between two stretches of one named
+    path (a bridge or an underpass on a trail) given that trail's name, and joined with
+    them: not "Continue onto the path", then "Continue onto Capital Crescent Trail"
+    again. Only a path under OVERVIEW_M, entered and left straight on, at the same tier
+    and facility as both sides, with no fork at either end and no flagged junction,
+    far-side crossing (`keep_at`, in the pieces' measure, from `leg_at` at the leg's
+    start) or walk within MATCH_M of it. A service way or an unnamed road is never named
+    so."""
+    changed = False
+    at = leg_at
+    for i, run in enumerate(runs):
+        start, end = at, at + run.metres
+        at = end
+        if i == 0 or i + 1 >= len(runs):
+            continue
+        before, after = runs[i - 1], runs[i + 1]
+        if run.names or run.service is not None or run.untraced or not before.names:
+            continue
+        if not (run.path and before.path and after.path) or run.metres >= OVERVIEW_M:
+            continue
+        if not _same_street(before, after) or _circle(before) or _circle(run):
+            continue
+        if not (run.tier == before.tier == after.tier):
+            continue
+        if not (run.facility == before.facility == after.facility):
+            continue
+        if _forks(run) or _forks(after):
+            continue
+        if _movement_between(before, run) != "straight":
+            continue
+        if _movement_between(run, after) != "straight":
+            continue
+        if any(start - MATCH_M <= m <= end + MATCH_M for m in keep_at):
+            continue
+        if any(w_from <= end + MATCH_M and w_to >= start - MATCH_M for w_from, w_to in walks):
+            continue
+        # The names are the trail's (a frozenset, never shared mutably), the label too: a
+        # name from the trail's route relation alone stays one (`relation_name`).
+        run.names = frozenset(before.names)
+        run.label = before.label
+        changed = True
+    return _coalesce(runs) if changed else runs
+
+
 def tier_words(tier: str, facility: str) -> str:
     """How the stretch's traffic is said: the legend's words, the facility after."""
     if facility == "path":
@@ -1804,9 +1849,14 @@ def describe_both(
             (leg_at + from_at, leg_at + cross_at, leg_at + turn_at, side, leg)
             for from_at, cross_at, turn_at, side in _far_side_turns(content)
         )
+        leg_start = leg_at
         leg_at += sum(atom.metres for atom in content if atom.metres > 0)
         leg_runs = _coalesce(_runs_of(content, leg))
-        runs.extend(_absorb_tiny(leg_runs))
+        # Where an unnamed bridge must not take its trail's name: a flagged junction, a
+        # crossing before a far-side turn, or a walk (`_bridge_unnamed`).
+        keep_at = [e.m for e in events or () if e.flagged]
+        keep_at += [m for f in far_side for m in (f[1], f[2])]
+        runs.extend(_bridge_unnamed(_absorb_tiny(leg_runs), leg_start, keep_at, walks or ()))
     traced = sum(run.metres for run in runs)
     scale = total_m / traced if total_m and total_m > 0 and traced > 0 else 1.0
     events = sorted(events or [], key=lambda e: e.m)

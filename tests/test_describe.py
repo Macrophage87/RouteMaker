@@ -2697,3 +2697,79 @@ class TestOneStreetsTwoSides:
         assert [e["kind"] for e in entries] == ["stretch", "stretch", "junction"]
         assert entries[1]["turn"] is None
         assert entries[2]["text"].startswith("At 0.4 mi (0.6 km): Cross Charles Street (LTS 3)")
+
+
+class TestUnnamedBridgesOnATrail:
+    """Round-1 D11: an unnamed 91-402 m bridge or underpass between two stretches of one
+    trail read "Continue onto the path", then "Continue onto Capital Crescent Trail"."""
+
+    TRAIL = "Capital Crescent Trail"
+
+    @classmethod
+    def legs(cls, metres=150, tier=1, middle=None, after=None):
+        middle = middle or road("", tier, metres, 90, 90, "path", "cycleway")
+        after = after or road(cls.TRAIL, 1, 800, 90, 90, "path", "cycleway")
+        return [flat(road(cls.TRAIL, 1, 800, 90, 90, "path", "cycleway"), middle, after)]
+
+    @pytest.mark.parametrize("metres", [150, 300])
+    def test_a_short_unnamed_bridge_takes_the_trails_name(self, metres):
+        full, short = d.describe_both(self.legs(metres))
+        assert [e["street"] for e in full] == [self.TRAIL]
+        assert [e["street"] for e in short] == [self.TRAIL]
+        assert full[0]["to_m"] == 1600 + metres
+
+    def test_a_name_from_the_trails_relation_stays_one(self):
+        full, _short = d.describe_both(self.legs(), relation_names=frozenset({self.TRAIL.lower()}))
+        assert [(e["street"], e["relation_name"]) for e in full] == [(self.TRAIL, True)]
+
+    def test_a_quarter_mile_or_more_is_still_its_own_stretch(self):
+        full = d.describe(self.legs(500))
+        assert [e["street"] for e in full] == [self.TRAIL, "path", self.TRAIL]
+
+    def test_a_flagged_crossing_on_it_keeps_it_apart(self):
+        crossing = event(870, "straight", kind="crossing")
+        full = d.describe(self.legs(), [crossing])
+        assert [e["street"] for e in full if e["kind"] == "stretch"] == [
+            self.TRAIL,
+            "path",
+            self.TRAIL,
+        ]
+
+    def test_a_walk_on_it_keeps_it_apart(self):
+        full = d.describe(self.legs(), walks=[(850.0, 870.0)])
+        assert [e["street"] for e in full if e["kind"] == "stretch"] == [
+            self.TRAIL,
+            "path",
+            self.TRAIL,
+        ]
+
+    def test_a_fork_onto_it_keeps_it_apart(self):
+        middle = forked(road("", 1, 150, 90, 90, "path", "cycleway"), "bear_right")
+        full = d.describe(self.legs(middle=middle))
+        assert [e["street"] for e in full] == [self.TRAIL, "path", self.TRAIL]
+
+    def test_a_new_tier_on_it_keeps_it_apart(self):
+        full = d.describe(self.legs(tier=2))
+        assert [e["street"] for e in full] == [self.TRAIL, "path", self.TRAIL]
+
+    def test_a_turn_onto_it_keeps_it_apart(self):
+        middle = road("", 1, 150, 180, 180, "path", "cycleway")
+        after = road(self.TRAIL, 1, 800, 180, 180, "path", "cycleway")
+        full = d.describe(self.legs(middle=middle, after=after))
+        assert [e["street"] for e in full] == [self.TRAIL, "path", self.TRAIL]
+
+    def test_an_unnamed_road_or_service_way_is_never_named_so(self):
+        for use in ("road", "service_road"):
+            legs = [
+                flat(
+                    road("Beach Drive", 1, 800, 90, 90),
+                    road("", 1, 150, 90, 90, use=use),
+                    road("Beach Drive", 1, 800, 90, 90),
+                )
+            ]
+            assert len(d.describe(legs)) == 3, use
+
+    def test_another_trail_after_it_is_not_this_one(self):
+        after = road("Rock Creek Trail", 1, 800, 90, 90, "path", "cycleway")
+        full = d.describe(self.legs(after=after))
+        assert [e["street"] for e in full] == [self.TRAIL, "path", "Rock Creek Trail"]
