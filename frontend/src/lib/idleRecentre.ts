@@ -25,10 +25,12 @@ export const IDLE_TOUCH_EVENTS = ["pointerdown", "pointerup", "wheel", "keydown"
 
 /**
  * An open panel during a ride or Roam: a toggle shown expanded within the ride's screen or the group bar, the group's
- * question, or an open dialog.
+ * question, an open dialog, or the map's Help panel shown. MapLibre's compact credits (ours at every width, MapView)
+ * are shown with maplibregl-compact-show; their details element carries `open` while folded to the "i", so `[open]`
+ * there held the map off the rider for good (found 2026-10-28 with a ride's Show on map).
  */
 export const RIDE_PANEL_OPEN =
-  '.ride [aria-expanded="true"], .ride-group [aria-expanded="true"], .ride-consent, dialog[open], .maplibregl-ctrl-attrib[open]';
+  '.ride [aria-expanded="true"], .ride-group [aria-expanded="true"], .ride-consent, dialog[open], .maplibregl-ctrl-attrib.maplibregl-compact-show';
 
 /**
  * The follow camera's zoom at a fix: the ride's own after the screen was left alone (`reset`); kept while following

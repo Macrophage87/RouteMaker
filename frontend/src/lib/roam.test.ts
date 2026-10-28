@@ -315,7 +315,8 @@ test("App: a Roam link opened in a tab already on the app follows it and keeps t
 test("Detour's rows: each Ride here is described by its row, so the nearest water is told apart (review S6)", async () => {
   const { readFileSync } = await import("node:fs");
   const roam = readFileSync(new URL("../RoamMode.tsx", import.meta.url), "utf8");
-  assert.match(roam, /<span id=\{`\$\{detourId\}-place-\$\{i\}`\}>\{nearbyShort\(item\)\}<\/span>/);
+  // The map pin's letter first, shown only: a description leaves out what is aria-hidden.
+  assert.match(roam, /<span id=\{`\$\{detourId\}-place-\$\{i\}`\}>\s*<strong aria-hidden="true">\{placeLetter\(i\)\}\.<\/strong> \{nearbyShort\(item\)\}\s*<\/span>/);
   assert.match(roam, /aria-label=\{t\("Ride here: \{place\}", \{ place: item\.place\.title \}\)\}\s*aria-describedby=\{`\$\{detourId\}-place-\$\{i\}`\}/);
 });
 
