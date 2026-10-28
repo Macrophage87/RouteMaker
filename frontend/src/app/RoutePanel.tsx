@@ -12,7 +12,7 @@ import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
 import { leaveNowArrival } from "../lib/arrival.ts";
 import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
-import { t } from "../lib/i18n.ts";
+import { firstWordAndRest, t } from "../lib/i18n.ts";
 import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, noviceTripShort, type NoviceTrip } from "../lib/noviceOffer.ts";
 import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
 import { lightLine, type LightMark } from "../lib/lightTimes.ts";
@@ -186,7 +186,7 @@ function GoBikeOptions({ options }: { options: NonNullable<GoRouteControls["opti
     <div className="go-bike-options" role="group" aria-labelledby={headingId}>
       <h3 id={headingId} className="go-bike-options-title">
         <Icon name="bikeshare" size={18} />
-        Bikeshare options
+        {t("Bikeshare options")}
       </h3>
       <ul role="list" className="go-bike-option-list">
         {options.list.map((option, index) => {
@@ -292,7 +292,7 @@ export function RouteSection(props: RouteSectionProps) {
         {status.kind === "waiting" && <p className="loading">{announcement}</p>}
       </div>
       {/* Read where it stands, not spoken: it never changes while shown (recheck N-new-2). */}
-      {status.kind === "idle" && points.length < 2 && !goMode && <p className="hint">No route yet.</p>}
+      {status.kind === "idle" && points.length < 2 && !goMode && <p className="hint">{t("No route yet.")}</p>}
       {status.kind === "confirm" && (
         <div
           className="confirm"
@@ -309,13 +309,13 @@ export function RouteSection(props: RouteSectionProps) {
           <p id="confirm-title">
             <strong>{status.error.title}</strong>
           </p>
-          <p id="confirm-text">{status.error.message} Plan it?</p>
+          <p id="confirm-text">{status.error.message}{" "}{t("Plan it?")}</p>
           <div className="actions">
             <button type="button" ref={planButtonRef} onClick={confirmLong}>
-              Plan it
+              {t("Plan it")}
             </button>
             <button type="button" className="secondary" onClick={cancelLong}>
-              Cancel
+              {t("Cancel")}
             </button>
           </div>
         </div>
@@ -327,7 +327,7 @@ export function RouteSection(props: RouteSectionProps) {
           </p>
           {["router-down", "timed-out", "bikeshare-unavailable", "server", "network", "rate-limited"].includes(status.error.kind) && (
             <button type="button" onClick={retry}>
-              Try again
+              {t("Try again")}
             </button>
           )}
         </div>
@@ -616,7 +616,7 @@ function StressFigure({ segments }: { segments: StressSegment[] }) {
   return (
     <figure className="stress stress-main" aria-labelledby="stress-figure-caption">
       <figcaption id="stress-figure-caption" className="visually-hidden">
-        Traffic stress along the route
+        {t("Traffic stress along the route")}
       </figcaption>
       {/* One image to a screen reader, named with each share; the line under it says the same in text. */}
       <div className="stress-bar" role="img" aria-label={stressBarLabel(segments)}>
@@ -627,7 +627,7 @@ function StressFigure({ segments }: { segments: StressSegment[] }) {
               key={s.key}
               className={`stress-seg stress-seg-${s.key}`}
               style={{ width: `${s.fraction * 100}%`, backgroundColor: s.color, ["--seg-accent" as string]: s.casing }}
-              title={`${s.short}: ${s.percent}%`}
+              title={t("{short}: {percent}%", { short: s.short, percent: s.percent })}
             />
           ))}
       </div>
@@ -638,7 +638,7 @@ function StressFigure({ segments }: { segments: StressSegment[] }) {
   );
 }
 
-const climbCount = (n: number) => (n === 1 ? "1 climb" : `${n} climbs`);
+const climbCount = (n: number) => (n === 1 ? t("1 climb") : t("{count} climbs", { count: n }));
 
 /** " · arrive 8:27 AM" after the route's time: when the ride ends if it starts now, as the ride shows it. */
 function ArriveAt({ arriveMs }: { arriveMs: number }) {
@@ -737,7 +737,7 @@ export function RouteSummary({
   const bikeshare = bikeshareOf(route);
   // A transit ride type (lib/transit.ts): the line is the first ride; the trip, its total and its steps are `transit`.
   const transit = transitOf(route);
-  const timeName = transit ? transitTimeName(transit) : "Moving time";
+  const timeName = transit ? transitTimeName(transit) : t("Moving time");
   const timeText = transit ? transitTime(transit) : formatDuration(route.duration_s);
   const timeShown = (
     <>
@@ -752,10 +752,12 @@ export function RouteSummary({
   const rideable = rideableRoute(route);
   const rideAction = rideable ? (
     <button type="button" className="secondary" onClick={ride.onStart}>
-      Start ride
+      {t("Start ride")}
     </button>
   ) : null;
   const goMode = mode === "go";
+  // "Start ride" in Go; Plan shows its first word only ("Start", "Iniciar") and keeps the rest for a screen reader.
+  const [startWord, rideWord] = firstWordAndRest(t("Start ride"));
   // "Elevation and climbs" (the mockup); a Mass Ride's three charts keep their own name.
   const elevationTitle = profile && chartKind(route) === "mass" ? foldName("mass") : ROUTE_FOLDS.elevation.title;
   // Start: the big button (Go), or the first of its row (Plan). In a browser, short rides only; a longer one goes to a bike computer (OD 255). The phone app rides any length.
@@ -763,7 +765,8 @@ export function RouteSummary({
     <>
       <button type="button" className="start-button" ref={ride.startRef} onClick={ride.onStart} aria-describedby="start-ride-hint">
         <Icon name="play" />
-        Start<span className={goMode ? undefined : "visually-hidden"}> ride</span>
+        {startWord}
+        <span className={goMode ? undefined : "visually-hidden"}>{rideWord}</span>
       </button>
       {/* Broadcast (Stephen 2026-10-22: "a small button next to start"): Go's one control for it; the share sheet
           opens, and the ride starts once the link is sent, with the sharer as its leader. */}
@@ -790,7 +793,7 @@ export function RouteSummary({
   const startHint = rideable ? (
     // Plan says it with Start, not under it (Stephen 2026-10-20: "it needs to be simpler, still a wall of text").
     <p id="start-ride-hint" className={goMode ? "hint start-ride-hint" : "visually-hidden start-ride-hint"}>
-      Turn-by-turn directions on this phone, said as you chose.{ridesHidden() ? "" : " Keep the screen on and this page in front."}
+      {t("Turn-by-turn directions on this phone, said as you chose.")}{ridesHidden() ? "" : t(" Keep the screen on and this page in front.")}
     </p>
   ) : !ridesLine(route) ? null : (
     <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>
@@ -812,11 +815,11 @@ export function RouteSummary({
   // What Info holds: the pace, the notes in full, how to reshape the line and the route's sources (the owner's choice 5).
   const infoBody = (
     <div id={infoId} className="route-info" hidden={!info}>
-      {bikeshare && <p className="hint">These figures are for the ride between the docks. The walks are above.</p>}
+      {bikeshare && <p className="hint">{t("These figures are for the ride between the docks. The walks are above.")}</p>}
       {transit && transit.scheduled && (
-        <p className="hint">The distance, climb and stress are for the first ride, the line on the map. The whole trip is in its steps.</p>
+        <p className="hint">{t("The distance, climb and stress are for the first ride, the line on the map. The whole trip is in its steps.")}</p>
       )}
-      {pace && <p className="hint pace">Moving time at {pace}, without stops.</p>}
+      {pace && <p className="hint pace">{t("Moving time at {pace}, without stops.", { pace })}</p>}
       {notes.map((note) => (
         <p key={note.key} className="hint note-full">
           {note.text}
@@ -825,9 +828,9 @@ export function RouteSummary({
       {/* Riders often arrive by a shared link, straight into a route, and a
           phone has no hover to show the handle: say that the line moves. */}
       <p className="hint reshape">
-        {narrow ? "To reshape the route, press and hold the line, then drag it." : "To reshape the route, drag the line."}
+        {narrow ? t("To reshape the route, press and hold the line, then drag it.") : t("To reshape the route, drag the line.")}
       </p>
-      <p className="route-credit">Route data: {routeCredits(route).join("; ")}.</p>
+      <p className="route-credit">{t("Route data: {sources}.", { sources: routeCredits(route).join("; ") })}</p>
     </div>
   );
   const infoButton = (
@@ -856,7 +859,7 @@ export function RouteSummary({
 
   const transitFold = transit ? (
     // The trip, as a fold kept open: the step list is the plan (the owner, 2026-10-12: "a clear step list").
-    <Fold title={`${presetLabel(preset)} trip`} said={`${presetSaid(preset)} trip`} open className="transit-fold" icon="train">
+    <Fold title={t("{ride} trip", { ride: presetLabel(preset) })} said={t("{ride} trip", { ride: presetSaid(preset) })} open className="transit-fold" icon="train">
       <TransitSummary
         plan={transit}
         lineSpans={route.stress_spans}
@@ -886,7 +889,7 @@ export function RouteSummary({
               <dd>{timeShown}</dd>
             </div>
             <div className="stat-distance">
-              <dt className="visually-hidden">{transit ? "Distance ridden" : "Distance"}</dt>
+              <dt className="visually-hidden">{transit ? t("Distance ridden") : t("Distance")}</dt>
               <dd>{formatDistance(trip.distance_m)}</dd>
             </div>
             {go.peek && alertCount > 0 ? (
@@ -981,7 +984,7 @@ export function RouteSummary({
             <dd>{timeShown}</dd>
           </div>
           <div className="stat-distance">
-            <dt className="visually-hidden">{transit ? "Distance ridden" : "Distance"}</dt>
+            <dt className="visually-hidden">{transit ? t("Distance ridden") : t("Distance")}</dt>
             <dd>{formatDistance(trip.distance_m)}</dd>
           </div>
           <div className="total-climb">
@@ -1041,7 +1044,7 @@ export function RouteSummary({
           heading={ROUTE_FOLDS.facilities.title}
           open={ROUTE_FOLDS.facilities.open}
           icon="road"
-          count={calm === null ? null : `${calm}% quiet`}
+          count={calm === null ? null : t("{percent}% quiet", { percent: calm })}
           className="facilities-fold"
           name={ROUTE_FOLD_GROUP}
         >
@@ -1049,7 +1052,7 @@ export function RouteSummary({
           <QuickFigures figures={quickFigures(route)} />
           {segments.length > 0 && (
             <figure className="stress" aria-labelledby="stress-detail-caption">
-              <figcaption id="stress-detail-caption">Traffic stress, stretch by stretch</figcaption>
+              <figcaption id="stress-detail-caption">{t("Traffic stress, stretch by stretch")}</figcaption>
               <ul className="stress-list">
                 {segments.map((s) => (
                   <li key={s.key}>

@@ -28,6 +28,7 @@
  * (`revokeSharedLink`). A turned-off link opens to one plain line (`SHARED_REVOKED`) and plans nothing.
  */
 import type { RouteError, RouteResponse } from "./api.ts";
+import { t } from "./i18n.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { ZONE_RADIUS_M } from "./shareCard.ts";
 import type { Home } from "./myGo.ts";
@@ -44,13 +45,13 @@ export const SHARED_STORE_TIMEOUT_MS = 8000;
 /** How long the page waits for a shared line before planning the link's inputs instead. */
 export const SHARED_READ_TIMEOUT_MS = 8000;
 
-export const SHARED_INPUTS_ONLY = "Exact line not kept: the link plans the route again.";
-export const SHARED_GONE = "Exact line gone: planned again from its points.";
-export const SHARED_OPENED = (name: string) => `Opened "${name}", as it was shared.`;
+export const SHARED_INPUTS_ONLY = t("Exact line not kept: the link plans the route again.");
+export const SHARED_GONE = t("Exact line gone: planned again from its points.");
+export const SHARED_OPENED = (name: string) => t("Opened \"{name}\", as it was shared.", { name });
 /** A link its owner turned off (core.shared_routes.REVOKED): said plainly, with no detail. */
-export const SHARED_REVOKED = "This link was turned off by its owner.";
+export const SHARED_REVOKED = t("This link was turned off by its owner.");
 /** How the page shows it: as a plan's error, in the route's place (never sent again). */
-export const SHARED_REVOKED_ERROR: RouteError = { kind: "no-route", status: 410, title: "Link turned off", message: SHARED_REVOKED, noAutoResend: true };
+export const SHARED_REVOKED_ERROR: RouteError = { kind: "no-route", status: 410, title: t("Link turned off"), message: SHARED_REVOKED, noAutoResend: true };
 /**
  * A link shared as a ride, not only a route (the owner, 2026-10-18: "There should be the option for sharing the route
  * or sharing a ride ... ride is the fixed one with optional location sharing ... route is so people can review or do
@@ -59,17 +60,17 @@ export const SHARED_REVOKED_ERROR: RouteError = { kind: "no-route", status: 410,
  */
 export const RIDE_PARAM = "ride";
 /** What each Share button does, said by the info beside them (the owner: "Make that clear in a tooltip"). */
-export const SHARE_ROUTE_ABOUT = "Share route: others can look it over, change it or ride it on their own.";
+export const SHARE_ROUTE_ABOUT = t("Share route: others can look it over, change it or ride it on their own.");
 /** Broadcast's link went without the leader's key (the page could not make it): nothing starts. */
-export const BROADCAST_NO_LEAD = "The link went without you as its leader, so the ride did not start. Press Start to ride.";
+export const BROADCAST_NO_LEAD = t("The link went without you as its leader, so the ride did not start. Press Start to ride.");
 /** Broadcast's own line when the share sheet failed: Copy link would not start a broadcast, and Go has none on screen. */
-export const BROADCAST_SHARE_FAILED = "Could not open the share sheet, so the ride did not start.";
+export const BROADCAST_SHARE_FAILED = t("Could not open the share sheet, so the ride did not start.");
 /** Broadcast pressed during a ride (Stephen 2026-10-24: "Let people broadcast from a ride"): the ride goes on either way. */
-export const BROADCAST_RIDE_NO_LEAD = "The link went without you as its leader. Press Broadcast to try again.";
-export const BROADCAST_RIDE_FAILED = "Could not open the share sheet. Press Broadcast to try again.";
-export const SHARE_RIDE_WAIT = "Share ride needs the route ready. Try again once it shows.";
+export const BROADCAST_RIDE_NO_LEAD = t("The link went without you as its leader. Press Broadcast to try again.");
+export const BROADCAST_RIDE_FAILED = t("Could not open the share sheet. Press Broadcast to try again.");
+export const SHARE_RIDE_WAIT = t("Share ride needs the route ready. Try again once it shows.");
 export const SHARE_RIDE_ABOUT =
-  "Share ride: you lead. Everyone rides this exact route, never re-routed; those who open it follow your dot and the path you take, and each can choose to show where they are.";
+  t("Share ride: you lead. Everyone rides this exact route, never re-routed; those who open it follow your dot and the path you take, and each can choose to show where they are.");
 /**
  * A ride link's leader (Stephen 2026-10-22: "the ride leader is the person who shared. Opening the link will follow
  * the leader and share the path"): `lead=` carries the leader key (lib/rideGroup.ts leaderKey), which marks the
@@ -114,13 +115,13 @@ export interface ShareKeep {
   deleteAfter: string;
 }
 export const SHARE_KEEP_DEFAULT: ShareKeep = { keep: "year", deleteAfter: "" };
-export const SHARE_KEEP_LABEL = "Keep shared link";
+export const SHARE_KEEP_LABEL = t("Keep shared link");
 export const SHARE_KEEP_OPTIONS: readonly (readonly [ShareKeepChoice, string])[] = [
-  ["year", "1 year after last opened"],
-  ["forever", "Permanently"],
-  ["until", "Until a date"],
+  ["year", t("1 year after last opened")],
+  ["forever", t("Permanently")],
+  ["until", t("Until a date")],
 ];
-export const SHARE_DELETE_AFTER_LABEL = "Delete after";
+export const SHARE_DELETE_AFTER_LABEL = t("Delete after");
 /** The date "Until a date" starts at: a month from today. */
 export const SHARE_UNTIL_DAYS = 30;
 
@@ -293,9 +294,9 @@ export function gpxShareFile(text: string, fileName: string): File | null {
 
 // ---- A signed-in sharer's own links (My routes in Plan) -----------------------------------------
 
-export const SHARED_LINKS = "Shared links";
-export const NEW_LINK = "New link";
-export const TURN_OFF = "Turn off";
+export const SHARED_LINKS = t("Shared links");
+export const NEW_LINK = t("New link");
+export const TURN_OFF = t("Turn off");
 
 /** One of the sharer's links still working (GET /api/me/shared-routes). */
 export interface SharedLink {
@@ -318,9 +319,9 @@ function writeHeaders(cookie: string): Record<string, string> {
 
 /** How long a link is kept, as its row says it. */
 export function keepSaid(link: Pick<SharedLink, "keep" | "delete_after">): string {
-  if (link.keep === "forever") return "kept permanently";
-  if (link.keep === "until" && link.delete_after) return `kept until ${link.delete_after}`;
-  return "kept 1 year after last opened";
+  if (link.keep === "forever") return t("kept permanently");
+  if (link.keep === "until" && link.delete_after) return t("kept until {date}", { date: link.delete_after });
+  return t("kept 1 year after last opened");
 }
 
 export async function listSharedLinks(origin: string, get: Fetch = fetch): Promise<SharedLink[] | null> {
