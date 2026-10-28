@@ -1192,7 +1192,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Elevation and stress along the route": "Altitude et stress le long de l'itinéraire",
   "Riders per minute at {speed}": "Cyclistes par minute à {speed}",
   "Zoom in to see roads and how many riders per minute they carry.": "Zoomez pour voir les routes et combien de cyclistes par minute elles absorbent.",
-  "Marked Avoid: no capacity given": "Marquée À éviter : pas de capacité donnée",
+  "Marked Avoid: no capacity given": "Classée Avoid : pas de capacité donnée",
   "1 rider per minute": "1 cycliste par minute",
   "{count} riders per minute": "{count} cyclistes par minute",
   "No capacity figure for this route": "Pas de chiffre de capacité pour cet itinéraire",
