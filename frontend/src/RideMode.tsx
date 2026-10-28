@@ -83,6 +83,7 @@ import { cueParts } from "./lib/cueShown.ts";
 import { jogArrowPath } from "./lib/jogArrow.ts";
 import { rideLightCorner } from "./lib/lightTimes.ts";
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
+import { IosLocationHelp } from "./IosLocationHelp.tsx";
 import {
   POOR_FIX_M,
   GPS_WEAK_SAID,
@@ -2608,7 +2609,10 @@ export function RideMode({
             </div>
           </div>
         ) : (
-          <p className="cue-text">{gps || "Finding your place on the route."}</p>
+          <>
+            <p className="cue-text">{gps || "Finding your place on the route."}</p>
+            <IosLocationHelp notice={gps} />
+          </>
         )}
         {togo && !ride.arrived && (
           <dl className="ride-togo">
@@ -3070,6 +3074,7 @@ export function RideMode({
           {notesShown && (
             <div className="ride-notes">
               {gps && ride.fix && <p className="hint">{gps}</p>}
+              {ride.fix && <IosLocationHelp notice={gps} />}
               {corridorText && <p className="hint ride-corridor">{corridorText}</p>}
               {weatherShown && <WeatherLines report={weatherShown} riding now={Date.now()} onDismiss={() => { setWeatherDismissed((d) => dismissWeather(weatherShown, d)); headingRef.current?.focus({ preventScroll: true }); }} />}
               <ScreenSleepNote note={wakeNote} kind={phone} />
