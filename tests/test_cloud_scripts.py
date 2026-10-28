@@ -1361,6 +1361,25 @@ def test_on_the_beta_the_swap_is_the_runbooks_new_data_update(fake, beta) -> Non
     assert positions == sorted(positions), calls
     assert " files" in calls and "--replace-db" not in calls
     assert (beta.state / "predraw.log").exists()
+    assert "valhalla-offroad" not in calls and "valhalla-mtb" not in calls
+
+
+def test_on_the_beta_the_swap_starts_the_trail_routers_whose_tiles_are_there(fake, beta) -> None:
+    # A restart never starts a router that is not running: without this the beta planned
+    # Mountain Bike on the standard graph after every map swap.
+    (beta.data / "tiles" / "mtb" / BUILD).mkdir(parents=True, exist_ok=True)
+    (beta.data / "tiles" / "mtb" / "current").symlink_to(BUILD)
+    assert beta.run().returncode == 0
+    (fake.dir / "calls.log").unlink()
+
+    done = beta.run("--swap")
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    calls = fake.calls()
+    restart = "beta-compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
+    start = "beta-compose up -d --force-recreate valhalla-mtb"
+    assert calls.index(restart) < calls.index(start) < calls.index("smoke --local"), calls
+    assert "valhalla-offroad" not in calls
 
 
 def test_on_the_beta_the_swap_waits_for_deployment_to_be_paused(fake, beta) -> None:

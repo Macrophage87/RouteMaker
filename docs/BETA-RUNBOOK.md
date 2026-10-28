@@ -1304,7 +1304,10 @@ scripts/beta/auto-release.sh install                                  # the agen
 scripts/beta/beta-compose.sh up -d valhalla-offroad valhalla-mtb
 ```
 
-From then on the agent recreates and restarts them beside the four, whenever their tiles are on the host.
+From then on the agent starts them on every deploy that builds the api (if they are not running), and recreates and
+restarts them beside the four, whenever their tiles are on the host; a beta map swap (`scripts/cloud/import-result.sh --beta
+--swap`) recreates them onto the new tiles. Before 2026-10-28 neither did, so the beta planned Mountain Bike on the
+standard graph (`mtb.limited` no_mtb_graph) until they were started by hand.
 
 ## Alerts
 

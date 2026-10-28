@@ -172,6 +172,17 @@ if [ "$beta" = 1 ]; then
 	"$bcompose" up -d api worker
 	note "restarting the routers so they serve the new graphs"
 	"$bcompose" restart "${routers[@]}"
+	# The trail routers (Mountain Bike's, Gravel and Mountain Goat's): started, or recreated onto the
+	# new build, whenever their tiles are here. A restart alone never starts one that is not running,
+	# and without them the api plans those rides on the standard graph (`mtb.limited` no_mtb_graph).
+	trail=()
+	for variant in offroad mtb; do
+		[ -L "$data_root/tiles/$variant/current" ] && trail+=("valhalla-$variant")
+	done
+	if [ "${#trail[@]}" -gt 0 ]; then
+		note "starting the trail routers on the new graphs: ${trail[*]}"
+		"$bcompose" up -d --force-recreate "${trail[@]}"
+	fi
 	note "drawing the stress tiles again, in the background: $beta_state/predraw.log"
 	mkdir -p "$beta_state"
 	# shellcheck disable=SC2016 # $1 and $? are the inner shell's

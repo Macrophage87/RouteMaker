@@ -1187,6 +1187,21 @@ def test_a_trail_router_with_its_tiles_restarts_beside_the_four(beta: Beta) -> N
     assert "valhalla-mtb" not in beta.calls()
 
 
+def test_a_trail_router_with_its_tiles_is_started_on_every_deploy(beta: Beta) -> None:
+    # Only a compose or router-setting change named them before: a beta whose trail tiles came
+    # with a map swap planned Mountain Bike on the standard graph release after release.
+    (beta.data / "tiles" / "mtb" / "b1").mkdir(parents=True)
+    (beta.data / "tiles" / "mtb" / "current").symlink_to("b1")
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status()
+    calls = beta.calls()
+    assert "up -d valhalla-mtb" in calls.splitlines()
+    assert "valhalla-offroad" not in calls and _restarts(calls) == []
+    _order(calls, "up -d api worker", "up -d valhalla-mtb", "smoke --local")
+
+
 def test_a_rollback_after_a_router_restart_restarts_the_same_four(beta: Beta) -> None:
     beta.release(
         "v0.2.0",

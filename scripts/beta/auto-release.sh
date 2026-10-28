@@ -647,6 +647,18 @@ deploy() { # tag new-sha gate-file
 		mark services "recreate photon and the routers whose compose settings changed" || return 1
 		step "recreate photon and the routers" bc up -d photon "${running[@]}" </dev/null || return 1
 	fi
+	# A trail router whose tiles are here but which is not running (never started, or stopped) is
+	# started on every deploy: only a compose change recreated them before, so a beta whose trail
+	# tiles arrived with a map swap planned Mountain Bike on the standard graph for releases on end.
+	# `up -d` leaves a running one alone.
+	local -a trail=()
+	local router
+	for router in "${running[@]}"; do
+		case "$router" in valhalla-offroad | valhalla-mtb) trail+=("$router") ;; esac
+	done
+	if [ "${#trail[@]}" -gt 0 ]; then
+		step "start the trail routers if they are not running" bc up -d "${trail[@]}" </dev/null || return 1
+	fi
 	if [ "$(kv routers_restart "$gate_file")" = 1 ]; then
 		mark routers "restart the routers (a valhalla/*.json they read changed)" || return 1
 		step "restart the routers" bc restart "${running[@]}" </dev/null || return 1
