@@ -256,7 +256,7 @@ import { BACK_LABEL, MENU_TITLE, SHEET_TITLES, backFrom, openOnto, type Opened }
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
-import { GO_START_SAID, GO_START_UNAVAILABLE, GO_PICK_LOOK_MS, goHereStart, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, GO_PICK_LOOK_MS, goHereStart, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { ReviewMode } from "./ReviewMode.tsx";
 import type { ListKey } from "./lib/review.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type Home, type MyGo } from "./lib/myGo.ts";
@@ -900,6 +900,10 @@ export function App() {
   // A Go destination just picked (v0.7.0, "Faster routing" step 4): its route is asked for at once, not after the
   // debounce that folds a burst of edits into one request.
   const goPickedNow = useRef(false);
+  // One deliberate press (Plan's Route, Try again, a transit option picked; routing audit S26): its route is asked
+  // for at once too. Read and cleared at the top of the route effect, so it never carries over to a later edit (a
+  // slider or a pin drag keeps the debounce).
+  const sendNow = useRef(false);
   // Nothing waits any more: the destination routed, or dropped (leaving Go).
   const clearGoPending = () => {
     goPending.current = null;
@@ -1327,6 +1331,8 @@ export function App() {
 
   // Route when the plan changes (Go) or the Route button is pressed (Plan).
   useEffect(() => {
+    const now = sendNow.current;
+    sendNow.current = false;
     if (points.length < 2) {
       scheduler.current?.clear();
       setRoute(null);
@@ -1358,7 +1364,7 @@ export function App() {
       // Go shows the first good route at once and swaps in the full plan before Start (v0.7.0, "Faster routing");
       // Plan keeps the full search on its Route button.
       quick: mode === "go" && !riding,
-    }, { now: goPickedNow.current && mode === "go" });
+    }, { now: now || (goPickedNow.current && mode === "go") });
     goPickedNow.current = false;
   }, [points, preset, planDials, confirmedKm, routeAsk, planFirst]);
 
@@ -2347,6 +2353,26 @@ export function App() {
         resolve(null);
       });
     });
+  // Go's warm look-up (routing audit S28; lib/appMode.ts goWarmDue): the Where to? box focused, or an early start
+  // fired, with the location over GO_WARM_AFTER_MS old: looked up again in the background, so the destination's own
+  // look-up (goPickFix) gets the browser's recent fix at once. Nothing waits on it, and it goes around the gate and
+  // `locating`: the locate button does not look busy, and a Use my location press meanwhile is not dropped. The fix
+  // is kept in memory only, as every fix is; it renews the dot and Go's start as goPickFix does.
+  const goWarmAt = useRef<number | null>(null);
+  const goWarmFix = () => {
+    if (modeRef.current !== "go" || pointsRef.current.length > 0) return;
+    const now = Date.now();
+    if (!goWarmDue(goStartRef.current, goWarmAt.current, now)) return;
+    goWarmAt.current = now;
+    void locate(geoEnv).then((result) => {
+      if (!result.ok || !insideCoverage(result.fix.point)) return;
+      if (modeRef.current !== "go" || pointsRef.current.length > 0) return;
+      const was = goStartRef.current;
+      if (was.kind !== "here") return;
+      setHere(result.fix);
+      setGoStart(goHereStart(goPickStart(was.point, result.fix).point));
+    });
+  };
   const goTo = async (dest: LonLat, name: string, pressed = false, vias: LonLat[] = []) => {
     cancelLocateNotice();
     setNotice(null);
@@ -2485,6 +2511,7 @@ export function App() {
       return;
     }
     goEarlyTimer.current = window.setTimeout(() => {
+      goWarmFix();
       const point = placeFromSearch(found, () => undefined, entranceForPlace);
       if (point) goEarly(point);
     }, GO_EARLY_SETTLE_MS);
@@ -2863,8 +2890,9 @@ export function App() {
     // as a tap on its line does: the keyboard reaches the trail panel too.
     setRoadInfo({ point: [lng, lat], origin: "centre", trail: mtbTrailsOn() || routableLevel !== null });
   };
+  // Try again (and a transit departure missed) is one press: sent at once, with no debounce (routing audit S26).
   const retry = () =>
-    scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm), ride: rideRef.current, dialsKey: planKey, pins: stationPins, transitPick });
+    scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm), ride: rideRef.current, dialsKey: planKey, pins: stationPins, transitPick }, { now: true });
   // The Mountain Bike ride type's level (slice 6): the map draws the trails up to it as routable.
   // Every other ride type, and a Mountain Bike ride with trails off, draws them as not for routes.
   const routableLevel = isMtb(preset) && !trailsAreOff(preset, dials) ? mtbLevelOf(dials) : null;
@@ -4814,6 +4842,7 @@ export function App() {
     return () => window.clearInterval(timer);
   }, [routingNow]);
   const pressRoute = () => {
+    sendNow.current = true;
     setRouteAsk((n) => n + 1);
     announce(PLANNING_SAID);
   };
@@ -5019,6 +5048,9 @@ export function App() {
   const transitControls = {
     onPick: (key: string) => {
       const option = transitOf(shown)?.options.find((o) => o.key === key);
+      // A pick is one press: its plan goes at once (routing audit S26). The new pick changes planDials, so the
+      // route effect runs and clears the flag in Go as in Plan.
+      sendNow.current = true;
       setTransitPick({ trip, key });
       // In Plan too a trip picked is planned at once, as Route would (Stephen, 2026-10-21: "I can't even click on
       // the other options": the pick waited for Update route, and the list showed no change).
@@ -5619,6 +5651,7 @@ export function App() {
                   searchBias={searchBias}
                   onPick={goToPlace}
                   onTopPlace={goEarlyToPlace}
+                  onWhereToFocus={goWarmFix}
                   places={{
                     homeReady: myGo.home !== null,
                     home: myGo.home,

@@ -259,6 +259,23 @@ export function goPickStart(prior: [number, number], fix: { point: [number, numb
   return { point: prior, moved: false };
 }
 
+/**
+ * Go's warm look-up (routing audit S28): while the rider is in Where to? (the box takes the focus, or an early start
+ * fires), a location older than this is looked up again quietly, so the destination's own look-up (GO_PICK_LOOK_MS)
+ * gets the browser's recent fix (LOCATE_OPTIONS.maximumAge, 30 s) at once instead of waiting on the GPS. At most one
+ * warm look-up per this long, so a box focused again and again costs no more GPS.
+ */
+export const GO_WARM_AFTER_MS = 20_000;
+
+/** Whether Go's start (the location) is old enough for a warm look-up, and the last one was long enough ago. */
+export function goWarmDue(start: GoStart, lastWarm: number | null, now: number = Date.now()): boolean {
+  if (start.kind !== "here") return false;
+  if (lastWarm !== null && now - lastWarm >= 0 && now - lastWarm < GO_WARM_AFTER_MS) return false;
+  const age = now - start.at;
+  // A clock set back is not trusted, as goStartStale.
+  return age < 0 || age >= GO_WARM_AFTER_MS;
+}
+
 /** Shown and said while a picked destination waits for the location. */
 export function goDestinationLocating(name: string): string {
   return t("To {place}: finding your location for the start…", { place: name });

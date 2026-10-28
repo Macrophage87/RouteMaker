@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { DEBOUNCE_MS, MAX_WAITS, RouteScheduler, type SchedulerState, type Timers } from "./routeScheduler.ts";
 import {
   LONG_RIDE_TIMED_OUT,
@@ -549,4 +550,26 @@ test("Try again after a long ride ran out of time waits its Retry-After out, the
   ctx.scheduler.request(1);
   await ctx.timers.advance(DEBOUNCE_MS);
   assert.equal(ctx.api.calls.length, 3);
+});
+
+test("one deliberate press goes at once: Plan's Route, Try again and a transit pick skip the debounce (routing audit S26)", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  // The flag is read and cleared at the top of the route effect, before any early return, so it never carries
+  // over to a later edit.
+  const effect = app.slice(app.indexOf("// Route when the plan changes (Go) or the Route button is pressed (Plan)."));
+  assert.match(effect, /^[^\n]*\n\s*useEffect\(\(\) => \{\s*const now = sendNow\.current;\s*sendNow\.current = false;\s*if \(points\.length < 2\) \{/);
+  assert.match(effect, /\}, \{ now: now \|\| \(goPickedNow\.current && mode === "go"\) \}\);/);
+  const press = app.slice(app.indexOf("const pressRoute = () => {"), app.indexOf("const cancelRouting"));
+  assert.match(press, /sendNow\.current = true;\s*setRouteAsk\(\(n\) => n \+ 1\);/);
+  const pick = app.slice(app.indexOf("onPick: (key: string) => {"), app.indexOf("onMissed: retry"));
+  assert.match(pick, /sendNow\.current = true;\s*setTransitPick\(\{ trip, key \}\);/);
+  const retry = app.slice(app.indexOf("const retry = () =>"), app.indexOf("const routableLevel"));
+  assert.match(retry, /transitPick \}, \{ now: true \}\);/);
+  // Sliders and pin drags keep the debounce; the long-ride question keeps it too, to fold its two sends into one,
+  // and Go's Add a stop keeps it (a few stops added quickly fold into fewer requests on the beta's two slots).
+  const confirm = app.slice(app.indexOf("const confirmLong = () => {"), app.indexOf("const cancelLong"));
+  assert.doesNotMatch(confirm, /now: true|sendNow/);
+  const addStop = app.slice(app.indexOf("const goAddStopAt = "), app.indexOf("const goAddStop = "));
+  assert.doesNotMatch(addStop, /now: true|sendNow/);
+  assert.equal((app.match(/sendNow\.current = true;/g) ?? []).length, 2, "only Route and the transit pick set it");
 });

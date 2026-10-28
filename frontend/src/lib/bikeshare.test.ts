@@ -22,6 +22,7 @@ import {
   walkFeatures,
 } from "./bikeshare.ts";
 import { announceRoute } from "./summary.ts";
+import { setLanguageForTest } from "./i18n.ts";
 import { PRESETS } from "./presets.ts";
 import { BIKESHARE_HILLS, dialFields, fitDials, offersAssist, offersBike, startDials } from "./dials.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
@@ -254,6 +255,18 @@ test("a bikeshare plan is announced as the plan in plain words", () => {
 
 test("unknown availability is announced", () => {
   assert.match(announceRoute(route(plan({ availability: "unknown" }))), /Availability is unknown\./);
+});
+
+test("the spoken plan is the same English, word for word, and Spanish in Spanish (routing audit D30)", () => {
+  const unknown = route(plan({ availability: "unknown", summary: "Bikeshare, classic bike: about 19 min in all." }));
+  assert.equal(bikeshareSaid(unknown), "Bikeshare plan: Bikeshare, classic bike: about 19 min in all. Availability is unknown.");
+  setLanguageForTest("es");
+  try {
+    const es = route(plan({ availability: "unknown", summary: "Bikeshare, bicicleta clásica: unos 19 min en total." }));
+    assert.equal(bikeshareSaid(es), "Plan de bicicleta compartida: Bikeshare, bicicleta clásica: unos 19 min en total. La disponibilidad es desconocida.");
+  } finally {
+    setLanguageForTest("en");
+  }
 });
 
 test("the figures and the legend are in plain words, US units first", () => {
