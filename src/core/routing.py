@@ -5211,15 +5211,15 @@ def _plan_ahead_first(
 ) -> dict:
     """`plan_onward` after the rider has ridden on past two U-turns (`dials.ahead_only`): the
     route that sets off ahead is planned first, as it is the answer whatever turning round would
-    save, and the plan that ignores the heading is made only where that fails or still turns
-    round (audit S5; the owner approved planning ahead first on 2026-10-27). The second plan
-    runs on the same `started`, so it has what time the first left; the rider is never left
-    without a route: where the second plan fails, the route ahead that turns round is kept
-    (audit R1)."""
+    save (audit S5; the owner approved planning ahead first on 2026-10-27). Where that plan
+    answers, its route is the answer at once, even where it still turns round: it is the way
+    ahead the rider chose by riding past two U-turns, and a second plan would cost beta a whole
+    plan (audit round 2, R1 option; the owner, 2026-10-27 7:52 PM ET: "make the banked
+    changes"). The plan that ignores the heading is made only where the first fails, on the
+    same `started`, so it has what time the first left."""
     timings = timing.current()
     if timings is not None:
         timings.note("uturn", "ahead first")
-    ahead = None
     try:
         ahead = plan(points, preset_name, dials=dials, **asked)
     except PlanCancelled:
@@ -5229,22 +5229,13 @@ def _plan_ahead_first(
     except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded) as error:
         logger.info("a re-route ahead only: no route ahead (%s)", type(error).__name__)
     else:
-        # The router takes the way back where it has no way ahead within its tolerance.
-        if not sets_off_back(ahead, heading):
-            return ahead
-        logger.info("a re-route ahead only: the route ahead turns round")
+        if sets_off_back(ahead, heading):
+            # The router takes the way back where it has no way ahead within its tolerance.
+            logger.info("a re-route ahead only: the route ahead turns round, kept")
+        return ahead
     if timings is not None:
         timings.note("uturn", "ahead first, replanned")
-    try:
-        return plan(points, preset_name, dials=dataclasses.replace(dials, heading=None), **asked)
-    except PlanCancelled:
-        # The rider has moved on: the route ahead is not kept either (review of S7).
-        raise
-    except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded) as error:
-        if ahead is None:
-            raise
-        logger.info("a re-route ahead only: no second plan (%s)", type(error).__name__)
-        return ahead
+    return plan(points, preset_name, dials=dataclasses.replace(dials, heading=None), **asked)
 
 
 def quick_applies(preset_name: str, loop: bool, long_ride: bool, long_calm: bool) -> bool:
