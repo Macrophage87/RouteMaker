@@ -331,7 +331,8 @@ export function PlaceSearch({
 
   return (
     <div className={variant === "go" ? "place-search go-search" : "place-search"}>
-      <label htmlFor={`${id}-input`} className={variant === "go" ? "place-search-label visually-hidden" : "place-search-label"}>
+      {/* Go's Where to? and Add a stop say their names in the box (and Add a stop on the button that opens it). */}
+      <label htmlFor={`${id}-input`} className={variant === "go" || variant === "stop" ? "place-search-label visually-hidden" : "place-search-label"}>
         {t(variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "work" ? "Find your Work" : variant === "favorite" ? "Find a place to save" : variant === "start" ? "Start from" : variant === "stop" || variant === "add" ? "Add a stop" : variant === "from" ? "From" : variant === "to" ? "To" : "Find a place")}
         {current && <span className="place-search-current">{` (now ${current})`}</span>}
       </label>
@@ -488,10 +489,11 @@ export function PlaceSearch({
           ))}
         </fieldset>
       )}
-      {/* Go's hint is said with the box and kept out of sight, so Go's sheet fits one phone screen (the owner, 2026-10-17). */}
-      {/* Go's hint is said with the box and kept out of sight (above); so are Plan's From, To and Add a stop,
-          whose labels say what a pick does (Plan streamline): only the full plan's reason shows. */}
-      <p id={`${id}-hint`} className={variant === "go" ? "visually-hidden go-from" : planBox ? (full && planBox === "add" ? "hint" : "visually-hidden") : "hint"}>
+      {/* Go's hint is said with the box and kept out of sight, so Go's sheet fits one phone screen (the owner, 2026-10-17);
+          so are those of Go's other boxes, whose labels say what a pick does (the owner's P1, 2026-10-28: Add a stop's,
+          the start's, Home's and Favorites'), and Plan's From, To and Add a stop's (Plan streamline): only the full
+          plan's reason shows. */}
+      <p id={`${id}-hint`} className={variant === "go" ? "visually-hidden go-from" : planBox ? (full && planBox === "add" ? "hint" : "visually-hidden") : variant === "plan" ? "hint" : "visually-hidden"}>
         {variant === "plan" ? <>{placeEffectHint(effect, loop)}</> : planBox === "from" && loop ? placeEffectHint("start", true) : SINGLE_HINT[variant]}
         {(!single || planBox === "add") && full && " The route has as many points as it can take, so no stop can be added."}
       </p>

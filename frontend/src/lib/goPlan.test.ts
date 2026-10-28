@@ -260,9 +260,29 @@ test("the Avoid notice is one line: the first junction and how many more, with A
   assert.match(notice, /<span className="visually-hidden">\{sentence\}<\/span>/);
 });
 
-test("a route's notes are one line each with an icon; their full words are in Info (the owner's choice 5)", () => {
+test("Go has one Start ride, the sheet's, last and pinned to its bottom edge at every size (the owner's P1)", () => {
+  const whole = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  // The map's bar: Route while the plan has changed, Roam with no destination, and no Start ride on a route ready to ride.
+  assert.match(whole, /const goBig = routingNow\s*\? \{ label: ROUTING_LABEL, start: false, busy: true, onPress: \(\) => \{\} \}\s*: goReady\s*\? null/);
+  assert.doesNotMatch(whole, /label: t\("Start ride"\), start: true/);
+  // The sheet's: last in Go's summary (after the routes), at peek too; Broadcast (and its hold for a QR code) beside it.
+  assert.match(app, /\{\(start \|\| startHint\) && \(\s*<div className="actions start-ride go-start">\s*\{start\}\s*\{startHint\}\s*<\/div>\s*\)\}\s*<\/div>\s*\);\s*\}/);
+  assert.match(app, /\{!go\.peek && infoButton\}/);
+  assert.match(app, /className="secondary broadcast-button" onClick=\{ride\.onBroadcast\} \{\.\.\.broadcastHold\}/);
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(css, /\.go-summary > \.go-start \{\s*position: sticky;\s*bottom: -10px;/);
+  // How Start works is its description, out of sight, in Go as in Plan.
+  assert.match(app, /<p id="start-ride-hint" className="visually-hidden start-ride-hint">/);
+  // Go's Info: the notes are not said again, the sources behind Data sources.
+  assert.match(app, /<details className="route-credit-fold">\s*<summary>\{t\("Data sources"\)\}<\/summary>\s*\{credit\}/);
+});
+
+test("a route's notes are one line each with an icon; their full words are in Info in Plan, and wrap in Go (the owner's choice 5, P1)", () => {
   assert.match(app, /<li key=\{note\.key\} className=\{`note-line \$\{note\.className\}`\}>\s*<Icon name=\{note\.icon\} size=\{16\} \/>\s*<span className="note-text">\{note\.text\}<\/span>/);
-  assert.match(app, /\{notes\.map\(\(note\) => \(\s*<p key=\{note\.key\} className="hint note-full">/);
+  assert.match(app, /\{!goMode &&\s*notes\.map\(\(note\) => \(\s*<p key=\{note\.key\} className="hint note-full">/);
+  // Go's Info no longer repeats them (the owner's P1, 2026-10-28): on the sheet they wrap, whole.
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(css, /\.go-summary \.note-line \.note-text \{\s*white-space: normal;/);
   // The four quick figures are in Stress and facilities (choice 4); Share as image and Keep for offline behind More
   // (choice 8; Share itself is in the Route file sheet since v0.9.0).
   assert.match(app, /\{\/\* The four quick figures, first in the fold \(the owner's choice 4\)\. \*\/\}\s*<QuickFigures/);

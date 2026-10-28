@@ -146,6 +146,8 @@ export interface LayersSheetProps {
   scenic: { on: boolean; onChange: (on: boolean) => void; status: string } | null;
   /** DC permits (v0.9.1; lib/permitLayer.ts): one switch, off by default; null in Go, which leaves it out. */
   permits: { on: boolean; onChange: (on: boolean) => void } | null;
+  /** Go's stress bar tapped (the owner's P1): each new number opens the Traffic stress section, its colour key. */
+  stressKeyAsk?: number;
 }
 
 export const PLACES_LAYER_TITLE = t("Places to see");
@@ -153,7 +155,7 @@ export const PLACES_LAYER_HINT = t("Museums, gardens, viewpoints and more. Place
 
 /** The Layers sheet: the map's switches, in the mockup's order, each section with its own key. */
 export function LayersSheet(props: LayersSheetProps) {
-  const { nav, massMap, zoom, facilitiesShown, scenicDrawn, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic, permits } = props;
+  const { nav, massMap, zoom, facilitiesShown, scenicDrawn, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic, permits, stressKeyAsk } = props;
   // The Trails and terrain section's layers that can show, and its row's words (lib/terrainSection.ts).
   const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable(stress), topoReady, climbsStatus };
   return (
@@ -174,6 +176,7 @@ export function LayersSheet(props: LayersSheetProps) {
         switchId="show-stress"
         layers={stress === "available" ? [{ key: "stress", label: massMap ? CAPACITY_LEGEND_TITLE : t("Traffic stress"), on: stressVisible }] : []}
         onLayers={(next) => setStressVisible(next.stress)}
+        openAsk={stressKeyAsk}
         status={stress === "checking" ? STRESS_CHECKING : stress === "unavailable" ? STRESS_UNAVAILABLE : ""}
       >
         {/* Not one of the section's layers: shown with or without the stress map, as it also changes the

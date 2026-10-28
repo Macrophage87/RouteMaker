@@ -74,11 +74,14 @@ export function ModeSwitch({
 }
 
 /** Go's bar over the map: Menu, the switch, Layers and Locate, and the destination once there is one. */
-/** Go's bar: Undo and Redo, the big button (Start ride, or Route while the plan has changed), and Clear. */
+/** Go's bar: Undo and Redo, the big button (Route while the plan has changed, or Roam), and Clear. */
 export interface GoBar {
   onUndo: (() => void) | null;
   onRedo: (() => void) | null;
-  /** Start ride on a route ready to ride; Route (or Routing…) otherwise; null when neither applies. */
+  /**
+   * Route (or Routing…) while the plan has changed; Roam with no destination; null otherwise. A route ready to ride
+   * has none: its Start ride is the sheet's alone (one Start ride per screen, the owner's P1).
+   */
   big: { label: string; start: boolean; busy: boolean; onPress: () => void } | null;
   onClear: (() => void) | null;
 }
@@ -419,9 +422,10 @@ export function HomeSetter({
 }
 
 /**
- * Go's "Add a stop" (v0.7.0, "Keep adding stops by search"): one field in the route sheet, under the route card
- * (kept there one tap away, Stephen 2026-10-18); a place picked is a stop where it adds the least distance, routed at once (Undo removes it). Best order sits
- * beside it with two or more stops; it is the field's only company, so Go stays one control per feature.
+ * Go's "Add a stop" (v0.7.0, "Keep adding stops by search"): "+ Add a stop" in the route sheet, under the route card
+ * (kept there one tap away, Stephen 2026-10-18), opens one field; a place picked is a stop where it adds the least
+ * distance, routed at once (Undo removes it). Best order sits beside it with two or more stops; it is the field's only
+ * company, so Go stays one control per feature.
  */
 export function GoAddStop({
   geoGate,
@@ -440,9 +444,34 @@ export function GoAddStop({
   ordering: boolean;
   onBestOrder: () => void;
 }) {
+  // "+ Add a stop" opens the field with the focus in it (the owner's P1, 2026-10-28: the field was always shown); a
+  // place picked, or Escape on the empty box, puts it away with the focus back on the button.
+  const [open, setOpen] = useState(false);
+  const fieldId = useId();
+  const input = useRef<HTMLInputElement>(null);
+  const opener = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (open) input.current?.focus();
+  }, [open]);
+  const close = () => {
+    setOpen(false);
+    opener.current?.focus();
+  };
+  const pickStop = (place: Place) => {
+    onPick(place);
+    close();
+  };
   return (
     <div className="go-add-stop">
-      <PlaceSearch variant="stop" pointCount={2} full={full} gate={geoGate} bias={searchBias} onPick={(place: Place) => onPick(place)} />
+      <button ref={opener} type="button" className="link go-add-stop-open" aria-expanded={open} aria-controls={fieldId} onClick={() => setOpen(!open)}>
+        <Icon name="plus" size={18} />
+        {t("Add a stop")}
+      </button>
+      <div id={fieldId} className="go-add-stop-field" hidden={!open}>
+        {open && (
+          <PlaceSearch variant="stop" pointCount={2} full={full} gate={geoGate} bias={searchBias} inputRef={input} onDismiss={close} onPick={(place: Place) => pickStop(place)} />
+        )}
+      </div>
       {orderShown && (
         <button type="button" className="secondary" onClick={onBestOrder} aria-disabled={ordering ? true : undefined}>
           {BEST_ORDER_LABEL}
@@ -551,13 +580,25 @@ export function GoSheet({
   const startShown = startOpen || startMissing;
   const next = nextSheetSize(size);
   const routeShown = route !== null;
+  // Under a route, Where to? and the place chips fold into one "New destination" row (the owner's P1, 2026-10-28:
+  // they repeated under the route and made the sheet about two screens); a place picked folds them again.
+  const [newOpen, setNewOpen] = useState(false);
+  const newId = useId();
+  const whereShown = !routeShown || newOpen;
+  useEffect(() => {
+    if (!routeShown) setNewOpen(false);
+  }, [routeShown]);
+  const pickWhereTo = (place: Place) => {
+    setNewOpen(false);
+    onPick(place);
+  };
   return (
     <div className={`go-sheet go-${size}`}>
       <button type="button" className="go-handle" onClick={() => onSize(next)} aria-label={t("Sheet: {size}. Make it {next}", { size: SIZE_SAID[size], next: SIZE_SAID[next] })}>
         <span className="go-handle-bar" aria-hidden="true" />
       </button>
       {/* Where to? stays first while there is no route; with one, the route comes first (it is what the rider is
-          looking at), and Where to? follows for a new place. */}
+          looking at), and Where to? follows for a new place, behind New destination. */}
       {routeShown && route}
       <div className="go-where" hidden={routeShown && size === "peek"}>
         {/* The start (the owner, 2026-10-11): the rider's location by default; a typed start replaces it (a press on the map is the destination). */}
@@ -589,7 +630,14 @@ export function GoSheet({
             />
           </div>
         )}
-        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place, _choice: PlaceChoice) => onPick(place)} onTopPlace={onTopPlace} onFocusBox={onWhereToFocus} />
+        {routeShown && (
+          <button type="button" className="secondary go-new-destination" aria-expanded={newOpen} aria-controls={newId} onClick={() => setNewOpen(!newOpen)}>
+            <Icon name="search" size={18} />
+            {t("New destination")}
+          </button>
+        )}
+        <div id={newId} className="go-new-body" hidden={!whereShown}>
+        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place, _choice: PlaceChoice) => pickWhereTo(place)} onTopPlace={onTopPlace} onFocusBox={onWhereToFocus} />
         <div className="chip-row go-places" role="group" aria-label={t("Places")}>
           {places.signedIn ? (
             // Signed in, Home is the first of the rider's favorites (Stephen 2026-10-26: "just have a favorites replace home").
@@ -705,6 +753,7 @@ export function GoSheet({
             {HOME_NOT_SET}
           </p>
         )}
+        </div>
         {!routeShown && rides}
       </div>
       {/* With a route, the ride types are in it, under the route card (edit-route redesign, Stephen 2026-10-18). */}

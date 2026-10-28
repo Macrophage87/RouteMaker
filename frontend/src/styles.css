@@ -5827,10 +5827,6 @@ details.fold > summary .icon {
   font-size: 1.1rem;
 }
 
-.go-summary.peek .go-head .start-button {
-  min-height: 44px;
-}
-
 /* The Menu's pages; the Settings groups. */
 
 .layer-group {
@@ -8458,6 +8454,127 @@ details.fold > summary .icon {
 
 .go-start .broadcast-button {
   min-height: 52px;
+}
+
+/* Go's Start ride and Broadcast, last in the route and pinned to the sheet's bottom edge at half and full height,
+   where a thumb reaches (the owner's P1, 2026-10-28): what scrolls passes under them. Out to the sheet's sides, so
+   nothing shows beside or under them: the scroller's own 10 px at the foot (.panel-scroll) is covered too. */
+.go-summary > .go-start {
+  position: sticky;
+  bottom: -10px;
+  z-index: 2;
+  margin: 8px -14px 0;
+  padding: 8px 14px 18px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+/* Go's stress bar is a button (a tap opens the colour key in Layers): only its bars show, with room to tap. */
+.panel button.stress-key-button {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 6px 0;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* Under Go's stress bar: the route's share on a traffic-free path, then on a protected lane, in the rails' colours
+   (lib/facilityBar.ts), the lane in blocks like posts so it reads without colour; lighter in dark mode, where the
+   rails' own purples are too dark to see. The rest of the strip is the route on neither. A .stress-bar, so it has
+   the bar's border, the accessibility switch's stronger one and its colours in forced colours. */
+.stress-main .stress-bar.calm-ways {
+  --calm-path: #4c1d95; /* 10.9:1 on --bg */
+  --calm-protected: #a21caf; /* 6.3:1 on --bg */
+  height: 8px;
+  margin-top: 4px;
+  background: var(--bg-soft);
+}
+
+@media (prefers-color-scheme: dark) {
+  .stress-main .stress-bar.calm-ways {
+    --calm-path: #b9a3ff; /* 7.8:1 on --bg */
+    --calm-protected: #f08cf7; /* 7.8:1 on --bg */
+  }
+}
+
+.calm-way-path {
+  background-color: var(--calm-path);
+}
+
+.calm-way-protected {
+  background-color: var(--calm-protected);
+  background-image: repeating-linear-gradient(90deg, transparent 0 4px, var(--bg) 4px 6px);
+}
+
+/* Go's plain line under the bars ("Mostly calm · 1.1 mi on paths and protected lanes"): the answer, so in the text's colour. */
+.stress-key.stress-plain {
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+/* An NWS alert rated Severe or Extreme: the error's colours and a red edge (a real border, which forced colours keeps). */
+.weather-lines .weather-alert.weather-severe,
+.weather-lines .weather-alert.weather-extreme {
+  background: var(--error-bg);
+  color: var(--error-text);
+  border-left: 5px solid #dc2626;
+  font-weight: 600;
+}
+
+/* Go's notes wrap: Info no longer says them again in full (the owner's P1). */
+.go-summary .note-line {
+  align-items: flex-start;
+}
+
+.go-summary .note-line .note-text {
+  white-space: normal;
+  overflow: visible;
+}
+
+/* "+ Add a stop" opens its field (the owner's P1); the field under it takes the row. */
+.panel button.go-add-stop-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  font-weight: 600;
+}
+
+.go-add-stop-field {
+  flex: 1 1 100%;
+}
+
+.go-add-stop-field[hidden] {
+  display: none;
+}
+
+/* Under a route, Where to? and the place chips behind one New destination row (the owner's P1). */
+.go-new-destination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px;
+  margin: 4px 0;
+}
+
+.go-new-body[hidden] {
+  display: none;
+}
+
+/* Info's route sources, behind Data sources in Go. */
+.route-credit-fold summary {
+  min-height: 32px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
 }
 
 /* Held for its QR code (lib/broadcastQr.ts): no text selection or the phone's own long-press menu on it. */

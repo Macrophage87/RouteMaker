@@ -1448,4 +1448,21 @@ export const ES: Readonly<Record<string, string>> = {
   "{n} stops": "{n} paradas",
   "1 via point": "1 punto de paso",
   "{n} via points": "{n} puntos de paso",
+
+  // ---- Go's route sheet in plain words (the owner's P1; lib/quickFigures.ts, lib/summary.ts, app/RoutePanel.tsx, app/Go.tsx) ----
+  "All calm": "Todo tranquilo",
+  "Mostly calm": "Mayormente tranquilo",
+  "Some busy roads": "Algunas calles con mucho tráfico",
+  "Mostly busy": "Mayormente con mucho tráfico",
+  "{distance} on paths and protected lanes": "{distance} por senderos y carriles protegidos",
+  "{distance} on paths": "{distance} por senderos",
+  "{distance} on protected lanes": "{distance} por carriles protegidos",
+  "busy road for {distance}": "calle con mucho tráfico durante {distance}",
+  "Traffic-free paths: {distance}, {percent} percent": "Senderos sin tráfico: {distance}, {percent} por ciento",
+  "Protected bike lanes: {distance}, {percent} percent": "Carriles bici protegidos: {distance}, {percent} por ciento",
+  "Shows the color key, in Layers.": "Muestra la leyenda de colores, en Capas.",
+  "{ratio}× as far, to skip {distance} of busy roads.": "{ratio}× más lejos, para evitar {distance} de calles con mucho tráfico.",
+  "{ratio}× as far as the direct route.": "{ratio}× más lejos que la ruta directa.",
+  "Data sources": "Fuentes de datos",
+  "New destination": "Nuevo destino",
 };

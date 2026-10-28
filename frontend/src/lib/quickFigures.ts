@@ -12,6 +12,7 @@ import { formatDistance } from "./format.ts";
 import { junctionCounts } from "./intersectionMarkers.ts";
 import { wholePercents } from "./stressBar.ts";
 import type { RouteResponse } from "./api.ts";
+import { t } from "./i18n.ts";
 
 export interface QuickFigure {
   key: "calm" | "heavy" | "junctions" | "path";
@@ -104,4 +105,78 @@ export function stressBarKey(segments: ReadonlyArray<{ short: string; percent: n
     .filter((s) => s.percent > 0)
     .map((s) => `${s.short}: ${s.percent}%`)
     .join(", ");
+}
+
+/**
+ * The metres on busy roads: LTS 3 and 4, and roads marked legal but best avoided ("busy roads (LTS 3-4)", as the
+ * detour notice and the Traffic help say it).
+ */
+export function busyMetres(stress: RouteResponse["stress_m"] | undefined): number {
+  return metres(stress, "3") + heavyMetres(stress);
+}
+
+/** Less than this of a part is not said (a few metres where a route meets a road). */
+export const PLAIN_MIN_M = 10;
+/** The calm share (calmPercent) at and above which a route is "Mostly calm", and "Some busy roads". */
+export const MOSTLY_CALM_PERCENT = 75;
+export const SOME_BUSY_PERCENT = 40;
+
+/** How calm the route is in two or three words: "All calm", "Mostly calm", "Some busy roads" or "Mostly busy"; null with no stress figures. */
+export function calmWords(stress: RouteResponse["stress_m"] | undefined): string | null {
+  const calm = calmPercent(stress);
+  if (calm === null) return null;
+  if (busyMetres(stress) < PLAIN_MIN_M) return t("All calm");
+  return calm >= MOSTLY_CALM_PERCENT ? t("Mostly calm") : calm >= SOME_BUSY_PERCENT ? t("Some busy roads") : t("Mostly busy");
+}
+
+/** "1.1 mi (1.8 km) on paths and protected lanes", "… on paths", "… on protected lanes"; null with neither. */
+export function calmWaysText(facility: RouteResponse["facility_m"] | undefined): string | null {
+  const path = metres(facility, "path");
+  const lane = metres(facility, "protected");
+  if (path + lane < PLAIN_MIN_M) return null;
+  const distance = formatDistance(path + lane);
+  if (path >= PLAIN_MIN_M && lane >= PLAIN_MIN_M) return t("{distance} on paths and protected lanes", { distance });
+  return path >= lane ? t("{distance} on paths", { distance }) : t("{distance} on protected lanes", { distance });
+}
+
+/**
+ * Go's line under the stress bar (the owner's P1, 2026-10-28), in place of the shares ("LTS 1: 75%, LTS 4: 21%"):
+ * "Mostly calm · 1.1 mi (1.8 km) on paths and protected lanes · busy road for 0.2 mi (0.3 km)", each part left out
+ * where it is nothing. Its parts, shown joined by " · " and said joined by commas; the shares stay the bar's name for
+ * a screen reader (stressBarLabel).
+ */
+export function stressPlainParts(route: Pick<RouteResponse, "stress_m" | "facility_m">): string[] {
+  const busy = busyMetres(route.stress_m);
+  return [
+    calmWords(route.stress_m),
+    calmWaysText(route.facility_m),
+    busy >= PLAIN_MIN_M ? t("busy road for {distance}", { distance: formatDistance(busy) }) : null,
+  ].filter((part): part is string => part !== null);
+}
+
+/** The shares of the route on a traffic-free path and on a protected lane (lib/facilityBar.ts facilityRows), for Go's strip. */
+export function calmWayShares(rows: ReadonlyArray<{ key: string; metres: number; fraction: number; percent: number }>): CalmWayShare[] {
+  return rows
+    .filter((row): row is CalmWayShare => (row.key === "path" || row.key === "protected") && row.metres >= PLAIN_MIN_M)
+    .map(({ key, metres, fraction, percent }) => ({ key, metres, fraction, percent }));
+}
+
+/** One row of the strip under Go's stress bar: a traffic-free path or a protected lane, its share of the route. */
+export interface CalmWayShare {
+  key: "path" | "protected";
+  metres: number;
+  fraction: number;
+  percent: number;
+}
+
+/** The strip's name for a screen reader: "Traffic-free paths: 0.8 mi (1.3 km), 61 percent; protected bike lanes: …". */
+export function calmWaysLabel(rows: readonly CalmWayShare[]): string {
+  return rows
+    .filter((row) => row.metres >= PLAIN_MIN_M)
+    .map((row) =>
+      row.key === "path"
+        ? t("Traffic-free paths: {distance}, {percent} percent", { distance: formatDistance(row.metres), percent: row.percent })
+        : t("Protected bike lanes: {distance}, {percent} percent", { distance: formatDistance(row.metres), percent: row.percent }),
+    )
+    .join("; ");
 }
