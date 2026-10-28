@@ -895,6 +895,13 @@ function M.remap_way(tags, derived)
     out.bicycle = "dismount"
   end
 
+  -- A short dirt link the trail rules closed and the rebuild reopens (`rm:link_walk`,
+  -- routemaker.short_links; the owner, 2026-10-28, "Ride paved/unknown, walk dirt"):
+  -- walked, whatever its own bicycle tag. A closure reason still closes.
+  if derived.link_walk and out.bicycle == nil and not derived.no_bicycle then
+    out.bicycle = "dismount"
+  end
+
   -- A sidewalk ridden as a last resort (`rm:sidewalk`, routemaker.sidewalks; the
   -- owner, 2026-10-20: "Bikes can go on sidewalks, especially in more rural parts",
   -- then "Also sidewalks as last resort"): a sidewalk or crosswalk, or a short footway
