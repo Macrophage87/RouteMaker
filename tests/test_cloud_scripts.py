@@ -1361,6 +1361,8 @@ def test_on_the_beta_the_swap_is_the_runbooks_new_data_update(fake, beta) -> Non
     assert positions == sorted(positions), calls
     assert " files" in calls and "--replace-db" not in calls
     assert (beta.state / "predraw.log").exists()
+    # The settings rows follow the links even with no trail router to start.
+    assert "beta-compose exec -T api ./manage.py sync_upstreams" in calls
     assert "valhalla-offroad" not in calls and "valhalla-mtb" not in calls
 
 
@@ -1378,7 +1380,8 @@ def test_on_the_beta_the_swap_starts_the_trail_routers_whose_tiles_are_there(fak
     calls = fake.calls()
     restart = "beta-compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
     start = "beta-compose up -d --force-recreate valhalla-mtb"
-    assert calls.index(restart) < calls.index(start) < calls.index("smoke --local"), calls
+    sync = "beta-compose exec -T api ./manage.py sync_upstreams"
+    assert calls.index(start) < calls.index(sync) < calls.index("smoke --local"), calls
     assert "valhalla-offroad" not in calls
 
 

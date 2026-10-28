@@ -657,8 +657,15 @@ deploy() { # tag new-sha gate-file
 		case "$router" in valhalla-offroad | valhalla-mtb) trail+=("$router") ;; esac
 	done
 	if [ "${#trail[@]}" -gt 0 ]; then
-		step "start the trail routers if they are not running" bc up -d "${trail[@]}" </dev/null || return 1
+		# Never a reason to roll a release back: without them those rides are planned on the
+		# standard graph, as before.
+		step "start the trail routers if they are not running" bc up -d "${trail[@]}" </dev/null ||
+			say "WARNING: a trail router did not start (see the run log); Mountain Bike, Gravel and Mountain Goat are planned on the standard graph"
 	fi
+	# The settings rows the api serves each variant by, from the tile links (manage.py
+	# sync_upstreams): nothing else on the beta writes them. Idempotent, and a warning only.
+	step "write the routers' settings rows from the tile links" bc exec -T api ./manage.py sync_upstreams </dev/null ||
+		say "WARNING: sync_upstreams failed (see the run log); run it by hand: scripts/beta/beta-compose.sh exec -T api ./manage.py sync_upstreams"
 	if [ "$(kv routers_restart "$gate_file")" = 1 ]; then
 		mark routers "restart the routers (a valhalla/*.json they read changed)" || return 1
 		step "restart the routers" bc restart "${running[@]}" </dev/null || return 1

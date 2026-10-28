@@ -264,6 +264,44 @@ def restore_upstreams(before: Mapping[str, UpstreamState]) -> None:
                 )
 
 
+def sync_upstreams(tiles_dir: Path, upstreams: Mapping[str, str]) -> dict[str, UpstreamState]:
+    """Make every variant's row say what its tile links say, all of them or none.
+
+    For a deployment that installs builds by moving the links itself and never runs
+    `perform_swap` (the beta: `scripts/beta/receive-data.sh files`). Without it the rows
+    there stayed as its first database load from home left them, with no row for a
+    variant promoted later, and the API serves a twin variant (`core.routing._promoted_row`)
+    only once its row exists: Mountain Bike, Gravel and Mountain Goat were planned on the
+    standard graph with both trail routers up (2026-10-28).
+
+    A variant whose `current` is a link gets `build_id` = its target and
+    `previous_build_id` = `previous`'s (or empty); one with no `current` keeps no row.
+    Idempotent: a row that already matches is not written. Returns the rows as they were.
+    """
+    from core.models import ValhallaUpstream
+
+    before = upstream_states(upstreams)
+    with transaction.atomic():
+        for variant in Variant:
+            state = tiles.links(tiles_dir, variant)
+            if state.current is None:
+                ValhallaUpstream.objects.filter(variant=variant.value).delete()
+                continue
+            wanted = {
+                "url": upstreams[variant.value],
+                "build_id": state.current,
+                "previous_build_id": state.previous or "",
+            }
+            row = ValhallaUpstream.objects.filter(variant=variant.value).first()
+            if row is None:
+                ValhallaUpstream.objects.create(variant=variant.value, **wanted)
+            elif any(getattr(row, key) != value for key, value in wanted.items()):
+                for key, value in wanted.items():
+                    setattr(row, key, value)
+                row.save(update_fields=[*wanted, "updated_at"])
+    return before
+
+
 def restore_everything(
     tiles_dir: Path,
     links_before: Mapping[Variant, tiles.TileLinks],

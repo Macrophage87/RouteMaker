@@ -1199,7 +1199,13 @@ def test_a_trail_router_with_its_tiles_is_started_on_every_deploy(beta: Beta) ->
     calls = beta.calls()
     assert "up -d valhalla-mtb" in calls.splitlines()
     assert "valhalla-offroad" not in calls and _restarts(calls) == []
-    _order(calls, "up -d api worker", "up -d valhalla-mtb", "smoke --local")
+    _order(
+        calls,
+        "up -d api worker",
+        "up -d valhalla-mtb",
+        "exec -T api ./manage.py sync_upstreams",
+        "smoke --local",
+    )
 
 
 def test_a_rollback_after_a_router_restart_restarts_the_same_four(beta: Beta) -> None:

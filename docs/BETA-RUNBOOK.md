@@ -789,6 +789,7 @@ for g in standard no-trail ebike weekend; do
   sudo ln -sfn "$(readlink "$RM_DATA/tiles/$g/previous")" "$RM_DATA/tiles/$g/current.new" && sudo mv -T "$RM_DATA/tiles/$g/current.new" "$RM_DATA/tiles/$g/current"
 done
 scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
+scripts/beta/beta-compose.sh exec -T api ./manage.py sync_upstreams   # the settings rows follow the links (a release with the command)
 ```
 
 The trail routers (`valhalla-offroad`, `valhalla-mtb`) are left out of every rollback: the release rolled back to may
@@ -956,8 +957,9 @@ continuous deployment first, as above, and resume it after.
    "Draw the stress tiles"). Run it before telling the testers the update is in.
 4. `scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`
    (a router keeps the old archive mapped until restarted), then the trail routers on their new tiles, from v0.10.1 on
-   (receive-data.sh prints the line): `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb`.
-5. `scripts/beta/smoke-test.sh --local`, then `--public`.
+   (receive-data.sh prints the line): `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb`,
+   then the settings rows from the new links: `scripts/beta/beta-compose.sh exec -T api ./manage.py sync_upstreams`.
+5. `scripts/beta/smoke-test.sh --local --trails`, then `--public`.
 
 **A new release sha** (code changes). The order matters: the database is snapshotted **before**
 anything can run `migrate` (rollback C restores that snapshot), and the app starts once, at the end.
@@ -1304,10 +1306,25 @@ scripts/beta/auto-release.sh install                                  # the agen
 scripts/beta/beta-compose.sh up -d valhalla-offroad valhalla-mtb
 ```
 
-From then on the agent starts them on every deploy that builds the api (if they are not running), and recreates and
-restarts them beside the four, whenever their tiles are on the host; a beta map swap (`scripts/cloud/import-result.sh --beta
---swap`) recreates them onto the new tiles. Before 2026-10-28 neither did, so the beta planned Mountain Bike on the
-standard graph (`mtb.limited` no_mtb_graph) until they were started by hand.
+From then on the agent starts any that is not running on every deploy (a deliberate `stop` of one is undone by
+the next deploy while its tiles are on the host), and recreates and restarts them beside the four whenever a release
+changes compose or a router setting; a beta map swap (`scripts/cloud/import-result.sh --beta --swap`) recreates
+them onto the new tiles.
+
+A running router is not enough. The api serves a variant's graph only once its row in `valhalla_upstream` exists
+(`core.routing._promoted_row`), and the beta never runs a swap, the only other thing that writes those rows. Until
+2026-10-28 it had no `offroad` or `mtb` row at all, so Mountain Bike, Gravel and Mountain Goat were planned on the
+standard graph (`mtb.limited` no_mtb_graph) with both routers up. `manage.py sync_upstreams` writes every row from
+the tile links (`current`, `previous`), in one transaction, and is safe to run again. `receive-data.sh files`
+runs it (or prints it when the api is down), `db` prints it, and the agent and the beta map swap run it. Run it by
+hand after anything else that moves the links, a rollback A included:
+
+```sh
+scripts/beta/beta-compose.sh exec -T api ./manage.py sync_upstreams
+scripts/beta/smoke-test.sh --local --trails     # the Mountain Bike and Gravel checks: each on its own graph
+```
+
+Answers are cached for up to 10 minutes, so check by hand with a route not asked before.
 
 ## Alerts
 

@@ -43,7 +43,8 @@
 #   old build stays as `previous`), stops the api and worker, `db --update-data` (sudo;
 #   after its own safety dump, in one transaction; resets override and junction_override to
 #   home's and empties the beta's stress_edit history, as every data update does), starts
-#   them again (also when the update fails), restarts the four routers, starts the
+#   them again (also when the update fails), restarts the four routers (and starts the trail
+#   routers whose tiles are there, then writes the settings rows: sync_upstreams), starts the
 #   stress-tile pre-draw in the background, and runs the local smoke test, retried while the
 #   app and routers start. Then run smoke-test.sh --public yourself. Rollback is the
 #   runbook's (rollback A for the tiles, the pre-update dump for the database).
@@ -181,8 +182,13 @@ if [ "$beta" = 1 ]; then
 	done
 	if [ "${#trail[@]}" -gt 0 ]; then
 		note "starting the trail routers on the new graphs: ${trail[*]}"
-		"$bcompose" up -d --force-recreate "${trail[@]}"
+		"$bcompose" up -d --force-recreate "${trail[@]}" ||
+			note "WARNING: a trail router did not start; Mountain Bike, Gravel and Mountain Goat stay on the standard graph until: $bcompose up -d --force-recreate ${trail[*]}"
 	fi
+	# The settings rows the api serves each variant by, written from the links `files` moved
+	# (receive-data.sh ran it before the database update; a --replace-db would bring home's back).
+	"$bcompose" exec -T api ./manage.py sync_upstreams </dev/null ||
+		note "WARNING: sync_upstreams failed; run it once the api is up: $bcompose exec -T api ./manage.py sync_upstreams"
 	note "drawing the stress tiles again, in the background: $beta_state/predraw.log"
 	mkdir -p "$beta_state"
 	# shellcheck disable=SC2016 # $1 and $? are the inner shell's
