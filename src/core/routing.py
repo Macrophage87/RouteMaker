@@ -582,14 +582,19 @@ def _heading(value) -> float | None:
 # (`pieces_of_trace`) and its junctions and edge middles (`trace_junctions.read_edges`), read
 # at the leg's start once and shifted for each caller. A plan reads the same trace several
 # times: the hill guards' `_exposure` (the kept trip twice), the calm search's
-# `refine.analyse` (a stress-only reading is never kept as an analysis) and the answer. Keyed
-# by the trace object, which each entry holds (so its id is not reused while the entry is
-# kept). Pieces and junctions are frozen, so the entries' are shared, in new lists; an
-# analysis kept for the plan holds the same pieces, so an entry adds little beside it. At
-# most READING_MEMO_PIECES pieces, the least recently used trace dropped first: about
-# 0.5 KB a piece with its junctions, so a few MB at most beside the plan's own analyses
-# (measured in tests/test_route_api.py, `TestTraceReadOncePerPlan`). `plan` sets it for its
-# own context and clears it as it ends; None outside a plan (nothing remembered).
+# `refine.analyse` (a stress-only reading is never kept as an analysis) and the answer.
+# Keyed by the trace object's id. Each entry holds the trace itself: that keeps the id from
+# being reused, and it also pins the trace (its whole parsed JSON) for as long as the entry
+# lives. The cap counts pieces, not those traces, so `_plan_rounds` empties the memo with the
+# rounds' own traces before the final round, whose traces are new objects no entry can match
+# (review of audit S19). Pieces and junctions are frozen, so the entries' are shared, in new
+# lists; an analysis kept for the plan holds the same pieces, so an entry adds little beside
+# it. At most READING_MEMO_PIECES pieces, the least recently used trace dropped first: about
+# 0.5 KB a piece with its junctions, so a few MB at most beside the plan's own analyses and
+# traces (measured in tests/test_trace_reading.py, `test_the_memo_holds_little_beside_the_
+# plans_own_analyses`, which leaves the traces out as the plan holds them anyway). `plan`
+# sets it for its own context and clears it as it ends; None outside a plan (nothing
+# remembered).
 _reading_memo: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
     "reading_memo", default=None
 )
@@ -3939,6 +3944,13 @@ def _plan_rounds(
     dials = dataclasses.replace(dials, trail_touch=False, trail_strays=())
     traces.clear()
     located.clear()
+    # The earlier rounds' readings too: keyed by trace objects the final round never asks
+    # about, and each entry pins its trace, so keeping them would hold every trace above
+    # through the final round all the same (review of audit S19). The stress memo stays: it is
+    # keyed by the pieces read, which the final round can ask again, and holds no trace.
+    readings = _reading_memo.get()
+    if readings is not None:
+        readings.clear()
     return _plan_round(points, preset_name, long_ride, started, dials, quick, candidates)
 
 

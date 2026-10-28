@@ -415,6 +415,28 @@ class TestRounds:
         assert seen[0]["traces"] == {} and seen[0]["located"] == {}
         assert {r["started"] for r in seen} == {5.0}
 
+    def test_the_earlier_rounds_readings_are_dropped_before_the_final_round(
+        self, monkeypatch
+    ) -> None:
+        """Each reading pins its trace (`routing._reading_memo`); the final round's traces are
+        new objects, so the earlier rounds' readings go with their traces (review of S19)."""
+        held: list[list] = []
+
+        def fake_plan(*args, traces=None, **_):
+            memo = routing._reading_memo.get()
+            held.append([entry.trace for entry in memo.values()])
+            trace = {"shape": "", "units": "kilometers", "edges": []}
+            routing.trace_reading(trace)
+            if traces is not None:
+                traces[("offroad", f"shape{len(held)}", "{}")] = trace
+                raise routing.StrayTrails((self.RING,), (frozenset({TOUCHED}),))
+            return {"round": len(held)}
+
+        monkeypatch.setattr(routing, "_plan", fake_plan)
+        assert routing.plan(self.POINTS, "default") == {"round": routing.STRAY_ROUNDS + 1}
+        assert [len(h) for h in held[:-1]] == list(range(routing.STRAY_ROUNDS))
+        assert held[-1] == [], "the final round starts with no earlier reading"
+
     def test_a_plan_without_strays_is_one_round(self, monkeypatch) -> None:
         seen = self.fake(monkeypatch, strays=0)
         assert routing.plan(self.POINTS, "default") == {"round": 1}
