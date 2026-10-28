@@ -19,10 +19,16 @@ import type { LonLat } from "./geo.ts";
 import { offThreshold, pointAt, snap, type RideModel } from "./navigate.ts";
 import { t } from "./i18n.ts";
 
-/** The ride top row's button's name, for screen readers and as its tooltip. */
-export const ROAD_CLOSED_NAME = t("Road closed ahead");
-/** Its shown words in the ride's top row (the name keeps "ahead"; WCAG 2.5.3, the words start the name). */
-export const ROAD_CLOSED_TEXT = t("Road closed");
+/**
+ * The ride top row's button's name, for screen readers and as its tooltip: its shown words first (WCAG 2.5.3), then
+ * what it is for, since "Go round" alone does not say the road is closed.
+ */
+export const ROAD_CLOSED_NAME = t("Go round: road closed ahead");
+/**
+ * Its shown words in the ride's top row (the UI review, 2026-10-28): what the press does, not a status, since it marks
+ * the road ahead closed and finds a way round, and reports nothing.
+ */
+export const ROAD_CLOSED_TEXT = t("Go round");
 /** Said on the press, while the way round is looked for. */
 export const ROAD_CLOSED_FINDING = t("Road closed. Finding a way round.");
 /** Said where there is no place on the route or heading to tell which road is meant. */

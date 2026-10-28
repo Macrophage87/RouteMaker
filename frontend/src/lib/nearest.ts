@@ -60,6 +60,8 @@ export interface NearestPlace {
   point: LonLat;
   /** What it is, with its name: "Drinking water, Peirce Mill", "Dupont Circle". */
   title: string;
+  /** Its own name alone, where it has one ("Peirce Mill"): a ride's detour rows lead with it. */
+  name?: string;
   /** Short sentences after the title: "Bottle filler.", "Red line." */
   details: string[];
 }
@@ -78,6 +80,7 @@ export function waterPlaces(points: readonly WaterPoint[], kind: "water" | "rest
     kind,
     point: [p.lon, p.lat],
     title: waterTitle(p),
+    ...(p.name ? { name: p.name } : {}),
     details: waterDetails(p),
   }));
 }
@@ -258,6 +261,19 @@ export function nearbyText(item: Nearby): string {
 /** The row shown: the place and how far; its details are one tap away (the owner, 2026-10-18: "a wall of text"). */
 export function nearbyShort(item: Nearby): string {
   return `${item.place.title}: ${howFar(item)}.`;
+}
+
+/**
+ * A ride's detour row as shown (the UI review, 2026-10-28): the place's own name where it has one, how far, and
+ * whether it is ahead on the route or behind: "Peirce Mill · 0.5 mi (0.8 km) ahead". `side` is null where it cannot be
+ * told. Screen readers keep nearbyText's whole line.
+ */
+export function detourRowShown(item: Nearby, side: "ahead" | "behind" | null): string {
+  const place = item.place.name || item.place.title;
+  const distance = formatDistance(item.distanceM);
+  if (side === "ahead") return t("{place} · {distance} ahead", { place, distance });
+  if (side === "behind") return t("{place} · {distance} behind", { place, distance });
+  return `${place} · ${distance}`;
 }
 
 export const STRAIGHT_LINE_NOTE = t("The router's riding distances were not available, so these are by straight-line distance.");

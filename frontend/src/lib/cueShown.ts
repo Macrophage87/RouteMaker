@@ -69,12 +69,42 @@ export function shortStreets(text: string): string {
   return SHORT.reduce((out, [long, short]) => out.replace(long, short), text);
 }
 
-/** The cue split at its first comma: the instruction, then the rest with a capital ("No signal mapped, busy road (LTS 3)."). */
+/** A jog's "then immediately" shown as "then" (in Spanish "luego enseguida" as "luego"): the arrow already draws it close. */
+function shortThen(text: string): string {
+  return text.replace(/\b([Tt])hen immediately /g, "$1hen ").replace(/\b([Ll])uego enseguida /g, "$1uego ");
+}
+
+/** Whether a turn's words name no street: no capitalised word or number after the first ("Right", "Bear left onto the path"). */
+function namesNoStreet(words: string): boolean {
+  return !/\s[A-Z0-9]/.test(words);
+}
+
+/** A part that starts with "then" ("Then left onto Corregidor St NW"). */
+const THEN = /^(?:Then|Luego) /i;
+
+function capital(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/**
+ * The cue split at its first comma: the instruction, then the rest with a capital ("No signal mapped, busy road (LTS 3).").
+ * Where the instruction names no street and a "then" after it does, that turn joins the big line (the UI review,
+ * 2026-10-28: "Right, then right onto Union Station Dr NE"), so the large words always say where to go.
+ */
 export function cueParts(text: string): { head: string; rest: string } {
-  const streets = shortStreets(text.trim());
-  const short = language() === "es" ? shortTurnsEs(streets) : streets;
+  const streets = shortThen(shortStreets(text.trim()));
+  const short = language() === "es" ? shortThen(shortTurnsEs(streets)) : streets;
   const at = short.indexOf(", ");
   if (at < 0) return { head: short, rest: "" };
-  const rest = short.slice(at + 2);
-  return { head: short.slice(0, at), rest: rest.charAt(0).toUpperCase() + rest.slice(1) };
+  let head = short.slice(0, at);
+  let rest = short.slice(at + 2);
+  if (namesNoStreet(head) && THEN.test(rest)) {
+    const next = rest.indexOf(", ");
+    const then = next < 0 ? rest : rest.slice(0, next);
+    if (!namesNoStreet(then)) {
+      head = `${head}, ${then.charAt(0).toLowerCase()}${then.slice(1)}`.replace(/\.$/, "");
+      rest = next < 0 ? "" : rest.slice(next + 2);
+    }
+  }
+  return { head, rest: capital(rest) };
 }

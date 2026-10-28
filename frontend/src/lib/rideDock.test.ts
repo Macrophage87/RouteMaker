@@ -204,7 +204,7 @@ test("RideMode: round side buttons with names; the bottom panel only when it has
   assert.match(ride, /if \(haversineM\(fix\.point, at\) > LEFT_DOCK_M\) restartTime\(\);/);
   // One menu at a time.
   assert.match(ride, /setDetourOpen\(which === "detour"\);\s*setDockOpen\(which === "dock"\);\s*setMenu311\(which === "311"\);/);
-  assert.match(css, /\.ride \.ride-round \{\s*width: 56px;\s*height: 56px;/);
+  assert.match(css, /\.ride \.ride-round \{\s*position: relative;\s*width: 56px;\s*height: 56px;/);
 });
 
 test("following track-up, the rider is held two thirds of the way down the map, and the marker is a little larger (v0.9.0)", () => {

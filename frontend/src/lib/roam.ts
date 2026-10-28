@@ -342,6 +342,7 @@ export function foodNearestPlaces(food: readonly FoodPlace[], at: Date = new Dat
     kind: "water",
     point: [place.lon, place.lat],
     title: place.name || foodKindText(place),
+    ...(place.name ? { name: place.name } : {}),
     // Worked out when read: only the few places listed say their hours, not every place in the area.
     get details() {
       return [place.name ? `${foodKindText(place)}.` : "", place.hours ? foodHoursText(place, at) : ""].filter(Boolean);
