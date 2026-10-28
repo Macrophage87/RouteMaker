@@ -839,7 +839,8 @@ export function RouteSummary({
   const timeText = transit ? transitTime(transit) : formatDuration(route.duration_s);
   const timeShown = (
     <>
-      {timeText}
+      {/* <bdi>: "31 min" keeps its order on a right-to-left page (DC's languages, 2026-10-28). */}
+      <bdi>{timeText}</bdi>
       {arriveMs != null && <ArriveAt arriveMs={arriveMs} />}
     </>
   );
@@ -1017,7 +1018,9 @@ export function RouteSummary({
             {!noBike && (
               <div className="stat-distance">
                 <dt className="visually-hidden">{transit ? t("Distance ridden") : t("Distance")}</dt>
-                <dd>{formatDistance(trip.distance_m)}</dd>
+                <dd>
+                  <bdi>{formatDistance(trip.distance_m)}</bdi>
+                </dd>
               </div>
             )}
             {go.peek && alertCount > 0 ? (
@@ -1036,7 +1039,7 @@ export function RouteSummary({
                   {go.onClimb ? (
                     <button type="button" className="go-climb" onClick={(event) => go.onClimb?.(event.currentTarget)} aria-describedby="go-climb-hint">
                       <Icon name="mountain" size={14} />
-                      {formatClimb(trip.climb_m)}
+                      <bdi>{formatClimb(trip.climb_m)}</bdi>
                       <span id="go-climb-hint" hidden>
                         {t("Opens the Hills setting.")}
                       </span>
@@ -1044,7 +1047,7 @@ export function RouteSummary({
                   ) : (
                     <>
                       <Icon name="mountain" size={14} />
-                      {formatClimb(trip.climb_m)}
+                      <bdi>{formatClimb(trip.climb_m)}</bdi>
                     </>
                   )}
                 </dd>
@@ -1136,20 +1139,22 @@ export function RouteSummary({
             <>
               <div className="stat-distance">
                 <dt className="visually-hidden">{transit ? t("Distance ridden") : t("Distance")}</dt>
-                <dd>{formatDistance(trip.distance_m)}</dd>
+                <dd>
+                  <bdi>{formatDistance(trip.distance_m)}</bdi>
+                </dd>
               </div>
               <div className="total-climb">
                 <dt className="visually-hidden">{t("Climb")}</dt>
                 <dd>
                   <span aria-hidden="true">↑ </span>
-                  {formatClimb(trip.climb_m)}
+                  <bdi>{formatClimb(trip.climb_m)}</bdi>
                 </dd>
               </div>
               <div className="total-descent">
                 <dt className="visually-hidden">{t("Descent")}</dt>
                 <dd>
                   <span aria-hidden="true">↓ </span>
-                  {formatClimb(trip.descent_m)}
+                  <bdi>{formatClimb(trip.descent_m)}</bdi>
                 </dd>
               </div>
             </>

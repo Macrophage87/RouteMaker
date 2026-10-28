@@ -988,4 +988,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "nearest the map's center first": "नक्शे के बीच के सबसे पास पहले",
   " Showing the first {shown}.": " पहली {shown} दिखा रहे हैं।",
   "Showing {shown} of {total}.": "{total} में से {shown} दिखा रहे हैं।",
+  "Help": "मदद",
+  "Help: map info and credits": "मदद: नक्शे की जानकारी और श्रेय",
 };

@@ -988,4 +988,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "nearest the map's center first": "د نقشې منځ ته نږدې لومړی",
   " Showing the first {shown}.": " لومړي {shown} ښودل کېږي.",
   "Showing {shown} of {total}.": "له {total} څخه {shown} ښودل کېږي.",
+  "Help": "مرسته",
+  "Help: map info and credits": "مرسته: د نقشې معلومات او سرچینې",
 };

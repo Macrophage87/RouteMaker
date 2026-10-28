@@ -186,7 +186,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Add a stop": "መዕረፊ ወስኽ",
   "From": "ካብ",
   "to": "ክሳብ",
-  "Edit route": "መንገዲ ኣመሓይሽ",
+  "Edit route": "ኣመሓይሽ",
   "Change start": "መበገሲ ቀይር",
   "New destination": "ሓድሽ መዕለቢ",
   "Places": "ቦታታት",
@@ -988,4 +988,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "nearest the map's center first": "ናብ ማእከል ካርታ ዝቐረበ ቅድም",
   " Showing the first {shown}.": " እቶም ቀዳሞት {shown} ይርኣዩ ኣለዉ።",
   "Showing {shown} of {total}.": "ካብ {total} {shown} ይርኣዩ ኣለዉ።",
+  "Help": "ሓገዝ",
+  "Help: map info and credits": "ሓገዝ፦ ሓበሬታ ካርታን ምስጋናን",
 };

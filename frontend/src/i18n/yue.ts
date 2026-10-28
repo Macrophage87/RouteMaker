@@ -988,4 +988,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "nearest the map's center first": "離地圖中間最近嘅排先",
   " Showing the first {shown}.": " 顯示頭{shown}個。",
   "Showing {shown} of {total}.": "顯示{total}個入面嘅{shown}個。",
+  "Help": "說明",
+  "Help: map info and credits": "說明：地圖資料同鳴謝",
 };

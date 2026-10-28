@@ -528,13 +528,14 @@ export function GoRouteCard({ start, destination, between, onEdit }: { start: st
         <span className="go-route-end">
           <Icon name="play" size={16} />
           <span className="visually-hidden">{t("From")} </span>
-          {start}
+          {/* <bdi>: a name or a point's figures keep their own order on a right-to-left page. */}
+          <bdi>{start}</bdi>
         </span>
         {between && <span className="go-route-stops">{between}</span>}
         <span className="go-route-end go-route-to">
           <Icon name="pin" size={16} />
           <span className="visually-hidden">{t("to")} </span>
-          {destination}
+          <bdi>{destination}</bdi>
         </span>
       </span>
       <span className="go-route-edit">

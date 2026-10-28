@@ -186,7 +186,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Add a stop": "Ajoute yon arè",
   "From": "Soti",
   "to": "rive",
-  "Edit route": "Modifye wout la",
+  "Edit route": "Modifye",
   "Change start": "Chanje depa a",
   "New destination": "Nouvo destinasyon",
   "Places": "Kote",
@@ -988,4 +988,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "nearest the map's center first": "pi pre mitan kat la an premye",
   " Showing the first {shown}.": " N ap montre {shown} premye yo.",
   "Showing {shown} of {total}.": "N ap montre {shown} sou {total}.",
+  "Help": "Èd",
+  "Help: map info and credits": "Èd: enfòmasyon sou kat la ak kredi",
 };

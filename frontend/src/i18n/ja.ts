@@ -186,7 +186,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Add a stop": "立ち寄り先を追加",
   "From": "出発",
   "to": "到着",
-  "Edit route": "ルートを編集",
+  "Edit route": "編集",
   "Change start": "出発地を変更",
   "New destination": "新しい目的地",
   "Places": "スポット",
@@ -988,4 +988,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "nearest the map's center first": "地図の中心に近い順",
   " Showing the first {shown}.": " 最初の{shown}件を表示。",
   "Showing {shown} of {total}.": "{total}件中{shown}件を表示。",
+  "Help": "ヘルプ",
+  "Help: map info and credits": "ヘルプ：地図の情報とクレジット",
 };

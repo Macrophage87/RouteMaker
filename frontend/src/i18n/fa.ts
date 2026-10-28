@@ -192,7 +192,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Places": "مکان‌ها",
   "Eat": "غذا",
   "Water": "آب",
-  "Restroom": "سرویس بهداشتی",
+  "Restroom": "دستشویی",
   "More": "بیشتر",
   "More places": "مکان‌های بیشتر",
   "Metro": "Metro",
@@ -988,4 +988,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "nearest the map's center first": "نزدیک‌ترین به وسط نقشه اول",
   " Showing the first {shown}.": " نمایش {shown} مورد اول.",
   "Showing {shown} of {total}.": "نمایش {shown} از {total}.",
+  "Help": "راهنما",
+  "Help: map info and credits": "راهنما: اطلاعات نقشه و منابع",
 };

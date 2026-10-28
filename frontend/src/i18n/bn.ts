@@ -186,7 +186,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Add a stop": "থামার জায়গা যোগ করুন",
   "From": "থেকে",
   "to": "পর্যন্ত",
-  "Edit route": "রাস্তা সম্পাদনা",
+  "Edit route": "সম্পাদনা",
   "Change start": "শুরু বদলান",
   "New destination": "নতুন গন্তব্য",
   "Places": "জায়গা",
@@ -988,4 +988,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "nearest the map's center first": "মানচিত্রের মাঝখানের কাছেরটি আগে",
   " Showing the first {shown}.": " প্রথম {shown}টি দেখানো হচ্ছে।",
   "Showing {shown} of {total}.": "{total}টির মধ্যে {shown}টি দেখানো হচ্ছে।",
+  "Help": "সাহায্য",
+  "Help: map info and credits": "সাহায্য: মানচিত্রের তথ্য ও কৃতজ্ঞতা",
 };
