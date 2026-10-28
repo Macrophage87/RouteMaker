@@ -3031,9 +3031,13 @@ class TestSeekWiring:
         # Review speed-1: the candidates share most of their junctions.
         asked = []
 
+        def at(lon, lat, radius) -> dict:
+            # An answer that says where it was asked (a node there, its id the radius).
+            return {"nodes": [{"lon": lon, "lat": lat, "node_id": radius}]}
+
         def call(variant, endpoint, payload, deadline):
             asked.append([(p["lon"], p["lat"], p["radius"]) for p in payload["locations"]])
-            return [{"at": (p["lon"], p["lat"], p["radius"])} for p in payload["locations"]]
+            return [at(p["lon"], p["lat"], p["radius"]) for p in payload["locations"]]
 
         monkeypatch.setattr(routing, "_call", call)
         ctx = context()
@@ -3044,9 +3048,9 @@ class TestSeekWiring:
             return {"locations": [{"lon": x, "lat": y, "radius": radius} for x, y in points]}
 
         first = locate(payload((-77.0, 38.9), (-77.1, 38.9)))
-        assert first == [{"at": (-77.0, 38.9, 1)}, {"at": (-77.1, 38.9, 1)}]
+        assert first == [at(-77.0, 38.9, 1), at(-77.1, 38.9, 1)]
         again = locate(payload((-77.1, 38.9), (-77.2, 38.9), (-77.0, 38.9)))
-        assert again == [{"at": (-77.1, 38.9, 1)}, {"at": (-77.2, 38.9, 1)}, first[0]]
+        assert again == [at(-77.1, 38.9, 1), at(-77.2, 38.9, 1), first[0]]
         assert asked[1] == [(-77.2, 38.9, 1)]
         # Only what was asked: another radius is another answer, and nothing new, no call.
         locate(payload((-77.0, 38.9), radius=60))

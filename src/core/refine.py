@@ -894,11 +894,19 @@ def locator(variant: str, deadline: routing.Deadline, located: dict | None = Non
     """`/locate` through the plan's own budgeted router call. With `located` (the
     plan's `Context.located`), a place and radius already answered is not asked again:
     only the others are sent, and the answers come back in the order asked. A short
-    answer from the router ends the list where it ended, as the router's would."""
+    answer from the router ends the list where it ended, as the router's would. Each
+    answer is cut to the fields the junctions read (`junctions.slim_locate`, audit S21) on
+    the thread that asked, before it is kept."""
+
+    def ask(payload: dict) -> list[dict]:
+        answers = routing._call(variant, "locate", payload, deadline)
+        if not isinstance(answers, list):
+            return answers
+        return [junctions.slim_locate(answer) for answer in answers]
 
     def locate(payload: dict) -> list[dict]:
         if located is None:
-            return routing._call(variant, "locate", payload, deadline)
+            return ask(payload)
         keys = [
             (variant, round(p["lon"], 6), round(p["lat"], 6), p.get("radius"))
             for p in payload["locations"]
@@ -906,7 +914,7 @@ def locator(variant: str, deadline: routing.Deadline, located: dict | None = Non
         unseen = [i for i, key in enumerate(keys) if key not in located]
         if unseen:
             asked = {**payload, "locations": [payload["locations"][i] for i in unseen]}
-            answers = routing._call(variant, "locate", asked, deadline)
+            answers = ask(asked)
             for i, answer in zip(unseen, answers, strict=False):
                 located[keys[i]] = answer
         out = []

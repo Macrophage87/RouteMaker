@@ -966,6 +966,112 @@ class TestLiveSideStreets:
         assert junctions.control_of(alone) is not Control.SIGNAL
 
 
+def _as_the_router_sends_it(answer: dict) -> dict:
+    """A cut-down fixture answer made whole again, as a verbose `/locate` sends it: fields
+    the junctions never read at each level, and each shape with a point in its middle."""
+    from core.dedodge import encode_polyline6
+    from core.routing import decode_polyline6
+
+    full = json.loads(json.dumps(answer))
+    full.update({"input_lon": -77.0, "input_lat": 38.9, "radius": 30})
+    for entry in full.get("edges") or []:
+        entry.update({"distance": 4.2, "side_of_street": "left", "outbound_reach": 50})
+        entry["edge"].update({"speed": 40, "surface": "paved_smooth", "lane_count": 2})
+        info = entry["edge_info"]
+        info.update({"bike_network": {"national": False}, "speed_limit": 25, "mean_elevation": 9})
+        (ax, ay), (bx, by) = decode_polyline6(info["shape"])
+        info["shape"] = encode_polyline6([(ax, ay), ((ax + bx) / 2, (ay + by) / 2), (bx, by)])
+    for node in full.get("nodes") or []:
+        node.update({"type": "street_intersection", "elevation": 12.0, "admin_index": 0})
+    return full
+
+
+class TestSlimLocate:
+    """Audit S21: a plan keeps every `/locate` answer it asked for (`refine.locator`, the
+    plan's `Context.located`), so each is cut to the fields the junction model reads."""
+
+    ANSWERS = [c[k] for c in LIVE["cases"] + LIVE["path_cases"] for k in ("at", "around")]
+
+    def test_the_field_list(self) -> None:
+        # Pinned: a field added here is a field every plan keeps for its whole life.
+        assert junctions.LOCATE_EDGE_FIELDS == {
+            "edge_id",
+            "percent_along",
+            "heading",
+            "correlated_lon",
+            "correlated_lat",
+            "edge",
+            "edge_info",
+        }
+        assert junctions.LOCATE_EDGE_EDGE_FIELDS == {
+            "access",
+            "classification",
+            "cycle_lane",
+            "end_node",
+            "forward",
+            "stop_sign",
+            "traffic_signal",
+            "yield_sign",
+        }
+        assert junctions.LOCATE_EDGE_INFO_FIELDS == {"names", "shape", "way_id"}
+        assert junctions.LOCATE_NODE_FIELDS == {"node_id", "lon", "lat", "traffic_signal"}
+
+    def test_every_field_the_junctions_read_is_kept(self) -> None:
+        import re
+
+        source = Path(junctions.__file__).read_text()
+        read = set(re.findall(r'get\("([a-z_]+)"', source))
+        read |= set(re.findall(r'_flag\([a-z]+, "([a-z_]+)"', source))
+        kept = (
+            {"edges", "nodes"}
+            | junctions.LOCATE_EDGE_FIELDS
+            | junctions.LOCATE_EDGE_EDGE_FIELDS
+            | junctions.LOCATE_EDGE_INFO_FIELDS
+            | junctions.LOCATE_NODE_FIELDS
+        )
+        # Read inside a field kept whole: edge_id's and end_node's value, the access's car
+        # and bus, the classification's use and link.
+        inside_kept = {"value", "car", "bus", "use", "link"}
+        assert read - kept - inside_kept == set()
+
+    def test_the_slim_answer_is_the_fixtures_cut(self) -> None:
+        # The fixture was cut by hand to what the junctions read, shapes to their two ends.
+        for answer in self.ANSWERS:
+            assert junctions.slim_locate(_as_the_router_sends_it(answer)) == answer
+
+    @pytest.mark.parametrize("case", LIVE["cases"] + LIVE["path_cases"], ids=lambda c: c["name"])
+    def test_the_junctions_read_the_same_from_the_slim_answer(self, case) -> None:
+        junction = _live_raw(case["raw"])
+        at, around = (_as_the_router_sends_it(case[k]) for k in ("at", "around"))
+        slim_at, slim_around = junctions.slim_locate(at), junctions.slim_locate(around)
+        whole = junctions.node_from_locate(at, junction, around)
+        slim = junctions.node_from_locate(slim_at, junction, slim_around)
+        assert slim == whole
+        assert junctions.control_of(slim) is junctions.control_of(whole)
+        alone = junctions.node_from_locate(slim_at, junction, approaches=False)
+        assert alone == junctions.node_from_locate(at, junction, approaches=False)
+
+    def test_odd_answers_come_through_as_they_came(self) -> None:
+        assert junctions.slim_locate(None) is None
+        assert junctions.slim_locate({}) == {}
+        assert junctions.slim_locate({"edges": None, "x": 1}) == {"edges": None}
+        bad = {"edges": [{"edge_info": {"shape": "?", "way_id": 1}}]}
+        assert junctions.slim_locate(bad) == bad
+
+    @pytest.mark.parametrize("cached", [False, True])
+    def test_the_plans_locator_keeps_the_slim_answer(self, monkeypatch, cached) -> None:
+        from core import refine, routing
+
+        full = _as_the_router_sends_it(LIVE["cases"][0]["at"])
+        monkeypatch.setattr(routing, "_call", lambda variant, endpoint, payload, d: [full])
+        located: dict | None = {} if cached else None
+        locate = refine.locator("standard", routing.Deadline(1e12, 10), located)
+        got = locate({"locations": [{"lon": -77.0, "lat": 38.9, "radius": 1}]})
+        assert got == [LIVE["cases"][0]["at"]]
+        if cached:
+            assert list(located.values()) == got
+
+
 def line(*points) -> str:
     return "LINESTRING(" + ", ".join(f"{lon} {lat}" for lon, lat in points) + ")"
 
