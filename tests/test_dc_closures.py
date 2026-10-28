@@ -308,3 +308,31 @@ class TestRideTime:
         assert wz.effect_text(zone, wz.ROUTED_ROUND, 240) == "Detour adds about 4 min"
         assert wz.effect_text(zone, wz.NO_EFFECT, None) == "No effect on your route"
         assert wz.effect_text(zone, wz.ROUTED_ROUND, 10) == "Detour adds under a minute"
+
+    def test_a_date_in_another_year_says_its_year(self) -> None:
+        # P11: "Closed through Aug 31" for 2027 read as over, and a 2023 notice as new.
+        next_year = self.zone(end=datetime(2027, 8, 31, 16, 0, tzinfo=UTC))
+        assert wz.when_text(next_year, NOW, False) == "Closed until Aug 31, 2027"
+        assert wz.date_text(datetime(2027, 8, 31, 16, 0, tzinfo=UTC), NOW) == "Aug 31, 2027"
+        assert wz.date_text(datetime(2026, 8, 31, 16, 0, tzinfo=UTC), NOW) == "Aug 31"
+        # No `now`, no year (as before).
+        assert wz.date_text(datetime(2027, 8, 31, 16, 0, tzinfo=UTC)) == "Aug 31"
+        # A whole-day source's last day, and a later start, each with its year.
+        reviewer = wz.Zone(
+            "reviewer-1-0", "reviewer", wz.CLOSED, 0, self.LINE, "Trail", None,
+            datetime(2027, 1, 4, 5, 0, tzinfo=UTC), datetime(2027, 1, 9, 5, 0, tzinfo=UTC),
+        )
+        assert wz.when_text(reviewer, NOW, False) == "Closed from Jan 4, 2027 through Jan 8, 2027"
+        # The region's time decides the year: 2 am UTC on Jan 1 is still Dec 31 here.
+        assert wz.date_text(datetime(2026, 1, 1, 2, 0, tzinfo=UTC), NOW) == "Dec 31, 2025"
+
+    def test_a_park_notice_posted_in_another_year_says_its_year(self) -> None:
+        old = dc.Notice("nps-1", "nps", "Trail closed", "", None, "rocr", published=datetime(2023, 11, 8, 15, 0, tzinfo=UTC))
+        assert dc.notice_when_text(old, NOW, False) == "Posted Nov 8, 2023"
+        new = dc.Notice("nps-2", "nps", "Trail closed", "", None, "rocr", published=datetime(2026, 10, 1, 15, 0, tzinfo=UTC))
+        assert dc.notice_when_text(new, NOW, False) == "Posted Oct 1"
+        long = dc.Notice(
+            "nps-3", "nps", "Bridge work", "", None, "rocr",
+            start=datetime(2026, 9, 1, 15, 0, tzinfo=UTC), end=datetime(2027, 3, 1, 15, 0, tzinfo=UTC),
+        )
+        assert dc.notice_when_text(long, NOW, False) == "Sep 1 to Mar 1, 2027"
