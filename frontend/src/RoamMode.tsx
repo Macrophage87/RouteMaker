@@ -20,6 +20,7 @@
  */
 import { BROADCAST_HOLD_HINT } from "./lib/broadcastQr.ts";
 import { t } from "./lib/i18n.ts";
+import { railWord } from "./lib/railWords.ts";
 import { useHold } from "./lib/useHold.ts";
 import { NOTHING_DISMISSED, RIDE_WEATHER_MS, alertKey, alertSaid, alertUrgent, dismissWeather, newAlerts, rainLine, rainSays, rainStage, roamPoints, weatherToShow } from "./lib/weather.ts";
 import { useWeather } from "./useWeather.ts";
@@ -638,7 +639,7 @@ export function RoamMode({
             title={t("Where am I?")}
           >
             <Icon name="locate" size={24} />
-            <span className="ride-word" aria-hidden="true">{t("Locate")}</span>
+            <span className="ride-word" aria-hidden="true">{railWord("Locate")}</span>
           </button>
           {/* Large text on and off, as in a ride, shown pressed while on. */}
           <button
@@ -662,7 +663,7 @@ export function RoamMode({
               title={ROAM_BROADCAST_NAME}
             >
               <Icon name="broadcast" size={24} />
-              <span className="ride-word" aria-hidden="true">{t("Share live")}</span>
+              <span className="ride-word" aria-hidden="true">{railWord("Share live")}</span>
             </button>
           )}
           {onBroadcast && onBroadcastHold && (
@@ -692,7 +693,7 @@ export function RoamMode({
               onClick={() => openMenu(detourOpen ? null : "detour")}
             >
               <Icon name="detour" size={24} />
-              <span className="ride-word" aria-hidden="true">{t("Detour")}</span>
+              <span className="ride-word" aria-hidden="true">{railWord("Detour")}</span>
             </button>
             <div id={detourId} className="ride-menu" role="group" aria-labelledby={`${detourId}-heading`} hidden={!detourOpen}>
               <div className="ride-menu-head">

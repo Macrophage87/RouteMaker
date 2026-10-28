@@ -65,7 +65,7 @@ test("the side buttons' words: under the round buttons where they fit, else 44 p
   assert.match(css, /\.ride \.ride-rail-pill \.ride-round,\s*\.ride \.ride-rail-pill \.ride-311-button \{[^}]*height: 44px;/);
   // Each button's word, its name unchanged; Roam's three too, and no button added to Roam.
   for (const word of ["Locate", "Text", "Share live", "Detour", "Dock", "Skip", "Topo", "Settings"]) {
-    assert.match(ride, new RegExp(`<span className="ride-word" aria-hidden="true">\\{t\\("${word}"\\)\\}</span>`), word);
+    assert.match(ride, new RegExp(`<span className="ride-word" aria-hidden="true">\\{(?:t|railWord)\\("${word}"\\)\\}</span>`), word);
   }
   assert.match(ride, /<span className="ride-word" aria-hidden="true">\{RIDE_SETTINGS_TEXT\}<\/span>/);
   assert.match(ride, /<span className="ride-word" aria-hidden="true">\{EASE_WORD\[which\]\}<\/span>/);
@@ -90,15 +90,17 @@ test("the screen-on note: one line, the steps for the rider's own phone, the who
   assert.equal(phoneKind({ userAgent: "Mozilla/5.0 (X11; Linux x86_64)" }), "other");
   assert.equal(phoneKind(undefined), "other");
   assert.doesNotMatch(WAKE_STEPS.android, /iPhone/);
-  assert.match(WAKE_STEPS.ios, /Auto-Lock, Never/);
-  assert.equal(wakeSaid(WAKE_UNAVAILABLE, "ios"), `${WAKE_UNAVAILABLE} ${WAKE_STEPS.ios}`);
-  assert.equal(wakeSaid(WAKE_LOST, "android"), `${WAKE_LOST} ${WAKE_STEPS.android}`);
+  // The menu names show in bold; the voice and screen readers get them without the marks.
+  assert.match(WAKE_STEPS.ios, /\*\*Auto-Lock\*\*, \*\*Never\*\*/);
+  assert.equal(wakeSaid(WAKE_UNAVAILABLE, "ios"), `${WAKE_UNAVAILABLE} On an iPhone: Settings, Display & Brightness, Auto-Lock, Never.`);
+  assert.equal(wakeSaid(WAKE_LOST, "android"), `${WAKE_LOST} On Android: Settings, Display, Screen timeout, the longest time.`);
   assert.equal(wakeSaid("", "ios"), "");
   // Ride mode and Roam show it the same way.
   assert.match(ride, /<ScreenSleepNote note=\{wakeNote\} kind=\{phone\} \/>/);
   assert.match(roam, /<ScreenSleepNote note=\{wakeNote\} kind=\{phone\} \/>/);
   const note = source("../ScreenSleepNote.tsx");
   assert.match(note, /<span aria-hidden="true">\{WAKE_SHORT\}<\/span>\s*<span className="visually-hidden">\{wakeSaid\(note, kind\)\}<\/span>/);
+  assert.match(note, /<MenuStep text=\{WAKE_STEPS\[kind\]\} \/>/);
   assert.match(note, /aria-expanded=\{open\}\s+aria-controls=\{stepsId\}\s+aria-label=\{t\("How to keep the screen on"\)\}/);
 });
 

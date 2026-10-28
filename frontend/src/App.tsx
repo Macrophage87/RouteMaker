@@ -307,7 +307,7 @@ import { BACK_TO_ROAM, ROAM_BROADCAST_NOT_READY, ROAM_BROADCAST_ON, ROAM_BROADCA
 import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
 import { SaveRoute } from "./SaveRoute.tsx";
-import { firstWordAndRest } from "./lib/i18n.ts";
+import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
 import { BROADCAST_FOLLOWING, broadcastRideId, isRideLink, leadConsent, leaderKey, newToken, opensIntoRide, roamRideId, type RideLinkType } from "./lib/rideGroup.ts";
 
@@ -5888,6 +5888,7 @@ export function App() {
       {planBar && (
         <div
           className="plan-map-bar"
+          {...planLanguageAttributes()}
           role="group"
           aria-label={t("Route and edits")}
           onFocus={() => (barFocused.current = true)}
@@ -6107,6 +6108,7 @@ export function App() {
         tabIndex={-1}
         className={`panel ${panelOpen ? "open" : "closed"}${goMode ? ` go-panel go-${goSheet}` : ""}${planSheet ? ` plan-sheet plan-${planSheetSize}` : ""}${reviewing ? " review-panel" : ""}`}
         aria-label={t("Route planner")}
+        {...(goMode ? {} : planLanguageAttributes())}
         hidden={onBike}
       >
         {planSheet ? (

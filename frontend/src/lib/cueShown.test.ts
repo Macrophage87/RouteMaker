@@ -41,3 +41,19 @@ test("Spanish turn words shown shorter, the voice's sentence untouched (the owne
   }
   assert.equal(cueParts("Gire a la izquierda.").head, "Gire a la izquierda.");
 });
+
+test("in the other languages the street is shortened before a hyphened ending and kept on one line (2026-10-28 fit check)", () => {
+  setLanguageForTest("bn");
+  try {
+    assert.equal(cueParts("বাঁয়ে ঘুরে R Street Northwest-এ যান।").head, "বাঁয়ে ঘুরে R St NW-এ যান।");
+  } finally {
+    setLanguageForTest("hi");
+  }
+  try {
+    assert.equal(cueParts("बाएँ मुड़कर R Street Northwest पर जाएँ।").head, "बाएँ मुड़कर R St NW पर जाएँ।");
+    assert.equal(cueParts("Martin Luther King Jr Avenue Southeast पर जाएँ।").head, "Martin Luther King Jr Ave SE पर जाएँ।");
+  } finally {
+    setLanguageForTest("en");
+  }
+  assert.equal(cueParts("Left onto R Street Northwest.").head, "Left onto R St NW.");
+});

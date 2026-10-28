@@ -13,7 +13,11 @@ import { language } from "./i18n.ts";
 // words as the course file's (lib/course.ts STREET_WORDS).
 const AFTER_NAME = String.raw`(?<=\b[A-Z0-9][\w'.-]* )`;
 const QUADRANTS = ["Northwest", "Northeast", "Southwest", "Southeast", "NW", "NE", "SW", "SE"];
-const NAME_END = String.raw`(?=[,.;:)]|$| (?:${QUADRANTS.join("|")})\b)`;
+// A name's end in any of the app's languages: punctuation, a bidi isolate (lib/i18n.ts t), or the sentence's own
+// words in another script straight after it, spaced, hyphened or not ("R Street Northwestに", "R Street Northwest पर",
+// "R Street Northwest-এ").
+const OTHER_SCRIPT = String.raw`\u2069。、，،።፣]|[\s-]?[^\x00-\x7F]`;
+const NAME_END = String.raw`(?=[,.;:)${OTHER_SCRIPT}|$| (?:${QUADRANTS.join("|")})\b)`;
 const TYPES: readonly [string, string][] = [
   ["Avenue", "Ave"],
   ["Street", "St"],
@@ -40,7 +44,7 @@ const SHORT: readonly [RegExp, string][] = [
       ["Southwest", "SW"],
       ["Southeast", "SE"],
     ] as const
-  ).map(([long, short]) => [new RegExp(`${AFTER_NAME}${long}(?=[,.;:)]|$| [a-z])`, "g"), short] as [RegExp, string]),
+  ).map(([long, short]) => [new RegExp(`${AFTER_NAME}${long}(?=[,.;:)${OTHER_SCRIPT}|$| [a-z])`, "g"), short] as [RegExp, string]),
 ];
 
 // Spanish turn words run half again as long as the English (the owner, 2026-10-27: "use shorter words so it all
@@ -69,6 +73,10 @@ export function shortStreets(text: string): string {
   return SHORT.reduce((out, [long, short]) => out.replace(long, short), text);
 }
 
+// The street's last words kept on one line in the other languages (the owner, 2026-10-28: "make sure ... the words fit
+// properly in the spaces"): a narrow card broke "R St NW" as "R / St NW". English and Spanish wrap as before.
+const SHORT_WORD = new RegExp(String.raw`(?<=[A-Za-z0-9.]) (?=(?:${[...TYPES.map(([, short]) => short), "NW", "NE", "SW", "SE"].join("|")})\b(?! [a-z]))`, "g");
+
 /** A jog's "then immediately" shown as "then" (in Spanish "luego enseguida" as "luego"): the arrow already draws it close. */
 function shortThen(text: string): string {
   return text.replace(/\b([Tt])hen immediately /g, "$1hen ").replace(/\b([Ll])uego enseguida /g, "$1uego ");
@@ -93,11 +101,13 @@ function capital(text: string): string {
  */
 export function cueParts(text: string): { head: string; rest: string } {
   const streets = shortThen(shortStreets(text.trim()));
-  const short = language() === "es" ? shortThen(shortTurnsEs(streets)) : streets;
-  const at = short.indexOf(", ");
-  if (at < 0) return { head: short, rest: "" };
-  let head = short.slice(0, at);
-  let rest = short.slice(at + 2);
+  const lang = language();
+  const short = lang === "es" ? shortThen(shortTurnsEs(streets)) : lang === "en" ? streets : streets.replace(SHORT_WORD, "\u00a0");
+  // The comma as each script writes it: ", ", the Chinese and Japanese "，" and "、", the Arabic "، ", the Ge'ez "፣ ".
+  const comma = /, |，|、|، |፣ /.exec(short);
+  if (!comma) return { head: short, rest: "" };
+  let head = short.slice(0, comma.index);
+  let rest = short.slice(comma.index + comma[0].length).trimStart();
   if (namesNoStreet(head) && THEN.test(rest)) {
     const next = rest.indexOf(", ");
     const then = next < 0 ? rest : rest.slice(0, next);

@@ -7,6 +7,7 @@
 import { useId, useState } from "react";
 import { WAKE_SHORT, WAKE_STEPS, wakeSaid, type PhoneKind } from "./lib/rideOutput.ts";
 import { t } from "./lib/i18n.ts";
+import { MenuStep } from "./MenuStep.tsx";
 
 export function ScreenSleepNote({ note, kind }: { note: string; kind: PhoneKind }) {
   const [open, setOpen] = useState(false);
@@ -29,7 +30,7 @@ export function ScreenSleepNote({ note, kind }: { note: string; kind: PhoneKind 
         </button>
       </p>
       <p id={stepsId} className="wake-steps" hidden={!open}>
-        {WAKE_STEPS[kind]}
+        <MenuStep text={WAKE_STEPS[kind]} />
       </p>
     </div>
   );

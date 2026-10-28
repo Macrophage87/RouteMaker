@@ -9920,3 +9920,21 @@ summary.closure-notices-heading {
 .go-favorites-actions {
   margin-top: 8px;
 }
+
+/* Go's time and its arrival in other languages (DC's languages, 2026-10-28): the arrival wraps under the time as a
+   whole rather than splitting "31 min", and Details keeps its word on one line (Chinese, Japanese and Korean
+   otherwise stacked it a character a line at 320 px). */
+.go-head .stats.totals .total-time dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.go-head .stats.totals {
+  min-width: 0;
+}
+
+.go-head .route-info-button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}

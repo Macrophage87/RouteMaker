@@ -126,6 +126,7 @@ import {
   toGo,
   wayBack,
   whereAmI,
+  withoutFullStop,
   whereAmIShown,
   arrivedShown,
   snap,
@@ -249,6 +250,7 @@ import {
   type RideTrip,
 } from "./lib/rideTrip.ts";
 import { t } from "./lib/i18n.ts";
+import { railWord } from "./lib/railWords.ts";
 import { countText } from "./lib/rideGroup.ts";
 
 /**
@@ -528,7 +530,8 @@ export function SlideToEnd({ onEnd, onTap, name = END_RIDE_NAME }: { onEnd: () =
     return () => window.clearTimeout(timer);
   }, [value]);
   return (
-    <div className="ride-end ride-slide">
+    // Slid left to right in every language: a right-to-left page would turn the range round under its arrows.
+    <div className="ride-end ride-slide" dir="ltr">
       <span className="ride-slide-text" aria-hidden="true">
         {SLIDE_TO_END_LABEL}
         <span className="ride-slide-arrows">››</span>
@@ -2610,12 +2613,15 @@ export function RideMode({
               <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>
                 {/* Fewer words, larger type (the owner, 2026-10-20); "In" stays for screen readers. */}
                 {distanceShown.us && <span className="visually-hidden">{t("In")} </span>}
-                {distanceShown.us}
-                {distanceShown.metric && <span className="cue-distance-metric"> {distanceShown.metric}</span>}
+                {/* dir="auto": the figure and its metric twin keep their order on a right-to-left page. */}
+                <span dir="auto">
+                  {distanceShown.us}
+                  {distanceShown.metric && <span className="cue-distance-metric"> {distanceShown.metric}</span>}
+                </span>
               </p>
               {/* The instruction large, the rest in small print, street words shortened; the whole sentence for screen readers. */}
               <p className="cue-text">
-                <span aria-hidden="true">{cueShown.head.replace(/\.$/, "")}</span>
+                <span aria-hidden="true">{withoutFullStop(cueShown.head)}</span>
                 <span className="visually-hidden">{cue.card?.said ?? cue.rideText ?? cue.text}</span>
               </p>
               {/* At most one short line, always there (empty too), so the card keeps its height between turns. */}
@@ -2636,7 +2642,7 @@ export function RideMode({
             {togo.stop && (
               <div>
                 <dt>{t("To stop {number}", { number: togo.stop.number })}</dt>
-                <dd>
+                <dd dir="auto">
                   {formatDistance(togo.stop.metres)}
                   {togo.stop.seconds !== null && <TimeToGo seconds={togo.stop.seconds} nowMs={clockMs} />}
                 </dd>
@@ -2644,7 +2650,7 @@ export function RideMode({
             )}
             <div className="ride-togo-end">
               <dt>{t("To the end")}</dt>
-              <dd>
+              <dd dir="auto">
                 {formatDistance(togo.end.metres)}
                 {togo.end.seconds !== null && <TimeToGo seconds={togo.end.seconds} nowMs={clockMs} />}
               </dd>
@@ -2683,7 +2689,7 @@ export function RideMode({
             title={t("Where am I?")}
           >
             <Icon name="locate" size={24} />
-            <span className="ride-word" aria-hidden="true">{t("Locate")}</span>
+            <span className="ride-word" aria-hidden="true">{railWord("Locate")}</span>
           </button>
           {/* Large text on and off (the owner, 2026-10-20), shown pressed while on. */}
           <button
@@ -2716,7 +2722,7 @@ export function RideMode({
                   {riders}
                 </span>
               )}
-              <span className="ride-word" aria-hidden="true">{t("Share live")}</span>
+              <span className="ride-word" aria-hidden="true">{railWord("Share live")}</span>
             </button>
           )}
           {onBroadcast && onBroadcastHold && (
@@ -2747,7 +2753,7 @@ export function RideMode({
                 onClick={() => openMenu(detourOpen ? null : "detour")}
               >
                 <Icon name="detour" size={24} />
-                <span className="ride-word" aria-hidden="true">{t("Detour")}</span>
+                <span className="ride-word" aria-hidden="true">{railWord("Detour")}</span>
               </button>
               <div id={detourId} className="ride-menu" role="group" aria-labelledby={`${detourId}-heading`} hidden={!detourOpen}>
                 <div className="ride-menu-head">

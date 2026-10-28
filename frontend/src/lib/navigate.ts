@@ -26,7 +26,7 @@
  * (`replanPoints`), in a POST body, as planning with "Use my location" already sends (395).
  */
 import { METRES_PER_MILE, formatDistance, formatRoughDistance, spokenDistance } from "./format.ts";
-import { language, t } from "./i18n.ts";
+import { fullStop, language, t } from "./i18n.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { AVOID_PLEA } from "./avoidJunctions.ts";
 import { descriptionEntries } from "./routeDescription.ts";
@@ -410,6 +410,8 @@ export interface CircleExit {
 export function ordinal(n: number): string {
   // Spanish: "3.ª" (la salida, feminine).
   if (language() === "es") return `${n}.ª`;
+  // The other languages put the number in their own sentence ("Prenez la sortie {nth}", "{nth}番目の出口").
+  if (language() !== "en") return String(n);
   if ([11, 12, 13].includes(n % 100)) return `${n}th`;
   return `${n}${({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th"}`;
 }
@@ -437,7 +439,25 @@ const SERVICE_WAY = /^(?:service road|alley|parking aisle)\b/;
 /** A way as a sentence names it: "the service road beside East-West Highway", a street's own name as it is. */
 export function wayWords(street: string): string {
   if (language() === "es") return wayWordsEs(street);
+  if (language() !== "en") return wayWordsOther(street);
   return COMMON_WAY.test(street) ? `the ${street}` : street;
+}
+
+/** The API's ways by what they are, as each language's catalog words them (the Spanish has its own rules above). */
+function wayWordsOther(street: string): string {
+  if (street === CROSS_UNNAMED) return t("the road");
+  const lane = /^(.+) (protected )?bike lane$/.exec(street);
+  if (lane) return t(lane[2] ? "the protected bike lane on {street}" : "the bike lane on {street}", { street: lane[1] });
+  const kind = /^(path|sidewalk|service road|alley|parking aisle)\b(?: beside (.+))?/.exec(street);
+  if (!kind) return street;
+  const words = {
+    path: t("the path"),
+    sidewalk: t("the sidewalk"),
+    "service road": t("the service road"),
+    alley: t("the alley"),
+    "parking aisle": t("the parking aisle"),
+  }[kind[1] as "path"];
+  return kind[2] ? t("{way} beside {road}", { way: words, road: kind[2] }) : words;
 }
 
 /** The API's names for a way by what it is, in Spanish: "the service road beside X" as "la vía de servicio junto a X". */
@@ -480,7 +500,7 @@ const CROSSING_CONTROL_ALONE: Partial<Record<NonNullable<NonNullable<Description
  */
 export function crossingWords(street: string | null, control: NonNullable<DescriptionEntry["turn"]>["control"] | undefined): string {
   // In Spanish the API's way names ("service road beside ...") are said in Spanish too; English as it was.
-  const named = street && !isUnnamed(street) ? (language() === "es" ? wayWords(street) : street) : null;
+  const named = street && !isUnnamed(street) ? (language() !== "en" ? wayWords(street) : street) : null;
   const sentence = control ? (named ? CROSSING_CONTROL_WORDS : CROSSING_CONTROL_ALONE)[control] : undefined;
   if (sentence) return t(sentence, named ? { street: named } : undefined);
   return named ? t("Busy crossing at {street}.", { street: named }) : t("Busy crossing.");
@@ -536,7 +556,7 @@ export function stretchWords(kind: "busy" | "calmer" | "unpaved", entry: Pick<De
           ? street ? t("Heavy traffic on {street}.", { street }) : t("Heavy traffic.")
           : street ? t("Busy road on {street}.", { street }) : t("Busy road.");
   if (!entry.surface) return lead;
-  return t("{cue}, {surface}.", { cue: lead.replace(/\.$/, ""), surface: partly ? t("partly unpaved") : t("unpaved") });
+  return t("{cue}, {surface}.", { cue: withoutFullStop(lead), surface: partly ? t("partly unpaved") : t("unpaved") });
 }
 
 /**
@@ -1052,8 +1072,8 @@ function thenWords(then: JogTurn, crossing = false): string {
 /** A jog's turns without their streets: "Right, then immediately bear left, then immediately left."; "Cross Redland Road, then left." after a crossing. */
 function jogShortWords(cue: Cue): string {
   const lead = cue.cross ? crossWords(cue.cross) : turnWords(cue.movement!, null, false, cue.exit ?? null);
-  const then = (cue.then ?? []).map((turn, n) => thenWords({ ...turn, street: null, stay: false }, n === 0 && cue.cross !== undefined).replace(/\.$/, ""));
-  return lead.replace(/\.$/, "") + then.join("") + ".";
+  const then = (cue.then ?? []).map((turn, n) => withoutFullStop(thenWords({ ...turn, street: null, stay: false }, n === 0 && cue.cross !== undefined)));
+  return withoutFullStop(lead) + then.join("") + fullStop();
 }
 
 /**
@@ -1075,13 +1095,13 @@ function joinJogs(cues: Cue[]): void {
       jog.push(next);
     }
     if (jog.length < 2) continue;
-    const plain = jog.map((cue) => cue.text.replace(/\.$/, ""));
+    const plain = jog.map((cue) => withoutFullStop(cue.text));
     jog.forEach((cue, j) => {
       if (j > 0) cue.joined = true;
       const after = jog.slice(j + 1);
       if (!after.length) return;
       cue.then = after.map((t) => ({ movement: t.movement!, street: t.street, ...(t.exit ? { exit: t.exit } : {}), ...(t.stay ? { stay: true } : {}), ...(t.toward ? { toward: t.toward } : {}) }));
-      cue.text = plain[j] + cue.then.map((t, n) => thenWords(t, n === 0 && cue.cross !== undefined).replace(/\.$/, "")).join("") + ".";
+      cue.text = plain[j] + cue.then.map((t, n) => withoutFullStop(thenWords(t, n === 0 && cue.cross !== undefined))).join("") + fullStop();
     });
     i += jog.length - 1;
   }
@@ -1253,6 +1273,11 @@ export function startState(): RideState {
 /** How far off the line counts as off route for a fix of this accuracy (plan section 4). */
 export function offThreshold(accuracyM: number): number {
   return Math.min(OFF_MAX_M, Math.max(OFF_MIN_M, OFF_ACCURACY_FACTOR * Math.max(accuracyM, 0)));
+}
+
+/** A sentence without its full stop, as each script writes it: ".", the Chinese and Japanese "。", "।", "።". */
+export function withoutFullStop(text: string): string {
+  return text.replace(/[.。।።]$/u, "");
 }
 
 function lowerFirst(text: string): string {
@@ -1615,6 +1640,8 @@ export function toGo(model: RideModel, progressM: number): ToGo {
 }
 
 const COMPASS = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"];
+/** The compass words in the language in force, written out so the phrase lists find them (lib/i18n.test.ts). */
+const compassSaid = () => [t("north"), t("northeast"), t("east"), t("southeast"), t("south"), t("southwest"), t("west"), t("northwest")];
 const COMPASS_ES = ["norte", "noreste", "este", "sureste", "sur", "suroeste", "oeste", "noroeste"];
 
 /** The compass word for the bearing from a to b: "northeast". */
@@ -1624,7 +1651,9 @@ export function compassWord(a: LonLat, b: LonLat): string {
     Math.cos((a[1] * Math.PI) / 180) * Math.sin((b[1] * Math.PI) / 180) -
     Math.sin((a[1] * Math.PI) / 180) * Math.cos((b[1] * Math.PI) / 180) * Math.cos(((b[0] - a[0]) * Math.PI) / 180);
   const bearing = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-  return (language() === "es" ? COMPASS_ES : COMPASS)[Math.round(bearing / 45) % 8];
+  const at = Math.round(bearing / 45) % 8;
+  if (language() === "es") return COMPASS_ES[at];
+  return language() === "en" ? COMPASS[at] : compassSaid()[at];
 }
 
 /**
@@ -1788,7 +1817,7 @@ export function whereAmI(
   // A named trail is "the" trail, with the marker or without: "On the Capital Crescent Trail."
   // In Spanish a lane named after its street brings its own article ("el carril bici de ..."), so not "el el" (D16).
   const way = isTrail(stretch)
-    ? language() === "es" && / bike lane$/.test(stretch.street)
+    ? language() !== "en" && / bike lane$/.test(stretch.street)
       ? wayWords(stretch.street)
       : t("the {trail}", { trail: stretch.street })
     : (wayRidden(stretch) ?? t("the route"));
