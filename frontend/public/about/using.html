@@ -307,8 +307,14 @@ the lines on the map and press <strong>Start ride</strong><sup class="cite"><a h
 Tapping the empty box lists the places you picked recently, once there are some. Results come nearest the
 route's start first (a place whose name matches your words before the rest), each with its area and how far it is in a
 straight line: "Dupont Circle, Washington · 0.3 mi (0.5 km)". An address keeps the order the search gives it.</li>
-<li><strong>A tap on the map</strong> opens the road card, whose first button, <strong>Route here</strong>, plans a
-route to that spot in place of any destination before it.</li>
+<li><strong>A tap on the map</strong> opens a card for that spot: <strong>Route here</strong> at the top, which
+plans a route there in place of any destination before it, then the spot's address, its area and how far away it is,
+and a line such as "5 places nearby, shown on the map". A few places within a mile [1.6 km], the nearest of each kind
+first (food, water, restrooms, repair, Metro and places to see), are pins on the map: a named place, such as a restaurant, bike shop, sight
+or station, carries its name, and water, restrooms and repair stands an icon only. A pin opens the place's own card,
+never a route by itself. <strong>List</strong> shows the same places as buttons, for a screen reader or the keyboard,
+with <strong>Road info</strong> under them; pressing and holding the map still opens the road card. The map stays live
+behind the card, so another tap moves it, and Escape or Close closes it.</li>
 <li>With a route on screen, the route comes first and Where to? and the place buttons fold behind <strong>New
 destination</strong>.</li>
 <li><strong>Place buttons:</strong> <strong>Home</strong>, <strong>Eat</strong>,
@@ -721,7 +727,10 @@ Eat sheet's places to eat by cuisine or name ("pizza", "coffee"), and is also se
 for any name, shop or address ("grocery", "bike shop"), with your position rounded to a grid about 0.6 mile [1 km]
 across. The matches from both are measured by bike together and the three nearest are listed. A word for one of the
 buttons ("bathroom", "pump", "lunch") does that button's search instead. Each place it lists leads with its name, how far it is, and whether it is ahead or behind; once you
-have picked a kind, its buttons give way to the kind and <strong>Change</strong>. <strong>Detour here</strong> on a place it lists re-plans the ride through it and on along the rest of the route. With a stop ahead, except on a shared or fixed route, each place it
+have picked a kind, its buttons give way to the kind and <strong>Change</strong>. The places are lettered A, B, C
+in the list and as pins on the map while the menu is open; a row's <strong>Show on map</strong> closes the menu,
+keeping the list, and shows the place with you on the map, and <strong>Where am I?</strong> or 30 seconds left alone
+goes back to following you. Roam's Nearby does the same. <strong>Detour here</strong> on a place it lists re-plans the ride through it and on along the rest of the route. With a stop ahead, except on a shared or fixed route, each place it
 lists has <strong>Instead of stop 2</strong> (with that stop's number) to go there in its place, and a screen reader
 hears the button as Detour with "or change stop 2" at the end; <strong>Skip this stop</strong> is in More.</li>
 <li><strong>Go round</strong> (a screen reader hears "Go round: road closed ahead") plans a way round from where you are: "Road closed. Finding a way
@@ -943,7 +952,9 @@ OpenStreetMap.</li>
 <strong>Water</strong> and <strong>Places to see</strong>. <strong>Eat</strong> has a search box and one sideways row
 of Crab, Coffee, Pizza, Tacos, Ice cream, Farm stands and Grocery, near you; once you move the map, <strong>Search this
 area</strong> looks there instead. Grocery lists the grocery stores nearest the route's start. Where a place's hours
-are known, they read as "Open now · closes 10 PM", here and in the other lists of places.</li>
+are known, they read as "Open now · closes 10 PM", here and in the other lists of places. Each row in Eat and in the
+Water, Restroom and Metro lists has <strong>Show on map</strong>; on a phone it closes the popup and keeps the
+lettered pins, which stay until another sheet opens.</li>
 <li><strong>Repair stands and bike shops</strong> (Go's More, Repair) lists the nearest.</li>
 <li>On towpaths and long trails, <strong>trail mile markers</strong> are shown on the map, in the road
 panel and in Where am I?.</li>

@@ -9,6 +9,7 @@
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../Icon.tsx";
+import { IosLocationHelp } from "../IosLocationHelp.tsx";
 import { PlaceSearch } from "../PlaceSearch.tsx";
 import type { LonLat } from "../lib/geo.ts";
 import type { GeoGate, Place, PlaceChoice } from "../lib/geocode.ts";
@@ -796,6 +797,7 @@ export function GoSheet({
       {/* With a route, the ride types are in it, under the route card (edit-route redesign, Stephen 2026-10-18). */}
       {/* Said by the app's own region (Go has no Points section's status line; App noticeSaidElsewhere). */}
       {notice && <p className="go-notice notice">{notice}</p>}
+      <IosLocationHelp notice={notice} />
     </div>
   );
 }
