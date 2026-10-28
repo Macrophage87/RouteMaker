@@ -13,9 +13,9 @@ answered without the intersection list rather than refused.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
-from .geo import Point, haversine
+from .geo import haversine_lonlat
 from .intersections import Movement, movement_of
 
 # What `core.routing.trace_leg` asks the router for besides the stress join's
@@ -188,7 +188,7 @@ def midpoint_along(
     if begin is None or end is None or begin >= end or end >= len(shape):
         return None
     lengths = [
-        haversine(Point(*a), Point(*b))
+        haversine_lonlat(a, b)
         for a, b in zip(shape[begin:end], shape[begin + 1 : end + 1], strict=True)
     ]
     total = sum(lengths)
@@ -250,13 +250,52 @@ def junctions_of_trace(
     has already gone. A node between two edges of the same way with no other
     road at it is a continuation and is left out, as is a node whose headings
     the router did not give."""
-    shape = trace_shape(trace, shape)
+    return junctions_along(read_edges(trace, shape), offset_m)
+
+
+@dataclass(frozen=True)
+class EdgeReading:
+    """A traced leg's junctions (`junctions_of_trace`) and, where asked, its edges' middles
+    (`edge_midpoints`), read once at the leg's start (audit S19): each edge's metres
+    (`steps`), each junction with the index of its in-edge, and each middle as (its edge's
+    index, lon, lat, the edge's length). `junctions_along` and `marks_along` place them
+    along the route by adding the steps up from the caller's offset, in the order the
+    readings themselves add them, so a reading shifted gives exactly what one read at that
+    offset does. None of it is changed after: a reading may be shared."""
+
+    steps: tuple[float, ...]
+    junctions: tuple[tuple[int, RawJunction], ...]
+    marks: tuple[tuple[int, float, float, float], ...] | None = None
+
+
+def read_edges(
+    trace: dict,
+    shape: list[tuple[float, float]],
+    marks: bool = False,
+    own: list[tuple[float, float]] | None = None,
+) -> EdgeReading:
+    """The leg's `EdgeReading` at offset 0, its edges' middles too with `marks`. `shape` as
+    `junctions_of_trace`'s; `own` the trace's own shape (`trace_shape`), where the caller
+    has decoded it already. Each edge's middle is found once, for its junction's `approach`
+    and its mark both."""
+    shape = own if own is not None and trace.get("shape") else trace_shape(trace, shape)
     edges = trace.get("edges") or []
     to_metres = 1609.344 if trace.get("units") == "miles" else 1000.0
-    junctions: list[RawJunction] = []
-    along = offset_m
+    steps = tuple(float(edge.get("length") or 0.0) * to_metres for edge in edges)
+    middles: dict[int, tuple[float, float] | None] = {}
+
+    def middle(index: int) -> tuple[float, float] | None:
+        if index not in middles:
+            edge = edges[index]
+            middles[index] = midpoint_along(
+                shape, edge.get("begin_shape_index"), edge.get("end_shape_index")
+            )
+        return middles[index]
+
+    junctions: list[tuple[int, RawJunction]] = []
+    along = 0.0
     for index, (here, there) in enumerate(zip(edges, edges[1:], strict=False)):
-        along += float(here.get("length") or 0.0) * to_metres
+        along += steps[index]
         end = here.get("end_shape_index")
         in_heading, out_heading = here.get("end_heading"), there.get("begin_heading")
         if end is None or end >= len(shape) or in_heading is None or out_heading is None:
@@ -278,30 +317,74 @@ def junctions_of_trace(
             continue
         lon, lat = shape[end]
         junctions.append(
-            RawJunction(
-                m=along,
-                lon=lon,
-                lat=lat,
-                in_edge_id=edge_id_of(here),
-                in_way=in_way,
-                out_way=out_way,
-                movement=movement_of(float(in_heading), float(out_heading)),
-                in_use=here.get("use"),
-                out_use=there.get("use"),
-                others=others,
-                in_class=here.get("road_class"),
-                out_class=there.get("road_class"),
-                other_classes=other_classes,
-                approach=midpoint_along(shape, here.get("begin_shape_index"), end),
-                out_edge_id=edge_id_of(there),
-                in_heading=float(in_heading),
-                out_heading=float(out_heading),
-                back_edge_ids=_back_edge_ids(edges, index, to_metres),
-                signal=_signal_at(edges, index, to_metres),
-                other_headings=other_headings,
+            (
+                index,
+                RawJunction(
+                    m=along,
+                    lon=lon,
+                    lat=lat,
+                    in_edge_id=edge_id_of(here),
+                    in_way=in_way,
+                    out_way=out_way,
+                    movement=movement_of(float(in_heading), float(out_heading)),
+                    in_use=here.get("use"),
+                    out_use=there.get("use"),
+                    others=others,
+                    in_class=here.get("road_class"),
+                    out_class=there.get("road_class"),
+                    other_classes=other_classes,
+                    approach=middle(index),
+                    out_edge_id=edge_id_of(there),
+                    in_heading=float(in_heading),
+                    out_heading=float(out_heading),
+                    back_edge_ids=_back_edge_ids(edges, index, to_metres),
+                    signal=_signal_at(edges, index, to_metres),
+                    other_headings=other_headings,
+                ),
             )
         )
-    return junctions
+    found = None
+    if marks:
+        found = []
+        for index, length in enumerate(steps):
+            point = middle(index)
+            if point is not None and length > 0:
+                found.append((index, point[0], point[1], length))
+    return EdgeReading(steps, tuple(junctions), None if found is None else tuple(found))
+
+
+def junctions_along(reading: EdgeReading, offset_m: float = 0.0) -> list[RawJunction]:
+    """`reading`'s junctions at `offset_m` metres along the route: a new list, of the
+    reading's own (unchanged) junctions where the offset is 0."""
+    if offset_m == 0.0:
+        return [raw for _index, raw in reading.junctions]
+    out: list[RawJunction] = []
+    along = offset_m
+    walked = 0
+    for index, raw in reading.junctions:
+        while walked <= index:
+            along += reading.steps[walked]
+            walked += 1
+        out.append(replace(raw, m=along))
+    return out
+
+
+def marks_along(
+    reading: EdgeReading, offset_m: float = 0.0
+) -> list[tuple[float, float, float, float]]:
+    """`reading`'s edge middles at `offset_m` metres along the route, as `edge_midpoints`
+    gives them; the reading must have been read with its marks."""
+    if reading.marks is None:
+        raise ValueError("an edge reading read without its marks")
+    out = []
+    along = offset_m
+    walked = 0
+    for index, lon, lat, length in reading.marks:
+        while walked < index:
+            along += reading.steps[walked]
+            walked += 1
+        out.append((along + length / 2, lon, lat, length))
+    return out
 
 
 def _signal_at(edges: list[dict], index: int, to_metres: float) -> bool:
@@ -346,14 +429,4 @@ def edge_midpoints(
     shape. The calm search excludes busy edges by these points: a piece's
     middle can sit within a metre or two of a node on a short stretch, and an
     exclusion there takes out the cross street as well."""
-    shape = trace_shape(trace, shape)
-    to_metres = 1609.344 if trace.get("units") == "miles" else 1000.0
-    marks = []
-    along = offset_m
-    for edge in trace.get("edges") or []:
-        length = float(edge.get("length") or 0.0) * to_metres
-        point = midpoint_along(shape, edge.get("begin_shape_index"), edge.get("end_shape_index"))
-        if point is not None and length > 0:
-            marks.append((along + length / 2, point[0], point[1], length))
-        along += length
-    return marks
+    return marks_along(read_edges(trace, shape, marks=True), offset_m)

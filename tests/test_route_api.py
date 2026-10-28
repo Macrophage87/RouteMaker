@@ -3056,6 +3056,175 @@ class TestHazardsInTheStressQuery:
 
 
 @db
+class TestScenicAndAdjustmentsInTheStressQuery:
+    """Audit S17: the stress query also reads each piece's scenic designations and stress
+    adjustment, so the answer asks neither nearest-segment search again; the adjustments'
+    totals are rebuilt in Python by their own query's rules, and those queries stay the
+    fallback."""
+
+    PIECES = [
+        routing.Piece(101, -77.045, LAT, 100.0),
+        routing.Piece(202, -77.0375, LAT, 40.0),
+        routing.Piece(202, -77.025, LAT, 25.0),
+        # No segment of its way: left out of the adjustments, as their inner join does.
+        routing.Piece(999, -77.03, LAT, 60.0),
+        routing.Piece(101, -77.045, LAT, 10.5),
+        routing.Piece(202, -77.0375, LAT, 2.25),
+    ]
+
+    @staticmethod
+    def marked(segments) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {segments}.segment SET scenic = ' Rustic Road (Montgomery County) ',"
+                " stress_adjustment_id = 'a-stretch', stress_adjustment_direction = 'up',"
+                " stress_adjustment_category = 'sightlines',"
+                " stress_adjustment_note = 'Off-ramp traffic merges in at a blind corner.',"
+                " stress_adjustment_display = 'route_only',"
+                " car_free_when = ARRAY['weekend'] WHERE osm_way_id = 101"
+            )
+            cursor.execute(
+                f"UPDATE {segments}.segment SET stress_adjustment_id = 'quiet-one'"
+                " WHERE osm_way_id = 202 AND ordinal = 0"
+            )
+            cursor.execute(
+                f"UPDATE {segments}.segment SET scenic = '' WHERE osm_way_id = 202 AND ordinal = 1"
+            )
+        segment_info.forget_columns()
+
+    def test_classify_reads_them_as_their_own_queries_do(self, segments) -> None:
+        from core import route_scenic
+
+        self.marked(segments)
+        # A ride time the road is closed to cars in: rated 1, but the adjustment keeps the
+        # table's own tier, as its query groups by.
+        classes = routing.classify(self.PIECES, "weekend")
+        assert [c[0] for c in classes][:2] == ["1", "1"]
+        designations = routing.scenic_read(classes, self.PIECES)
+        assert designations == route_scenic.designations_of(self.PIECES)
+        assert designations == ["Rustic Road (Montgomery County)", None, None, None] + [
+            "Rustic Road (Montgomery County)",
+            None,
+        ]
+        read = routing.adjustments_read(classes, self.PIECES)
+        assert read == routing.adjustments_used(self.PIECES)
+        assert [(a["adjustment_id"], a["tier"], a["length_m"]) for a in read] == [
+            ("a-stretch", 3, 110.5),
+            ("quiet-one", 1, 42.2),
+        ]
+        # The long text is kept once, not once a piece.
+        assert classes.adjustments[0] is classes.adjustments[4]
+
+    def test_a_table_without_the_columns_reads_none_and_still_classifies(self, segments) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {segments}.segment DROP COLUMN scenic")
+            cursor.execute(f"ALTER TABLE {segments}.segment DROP COLUMN stress_adjustment_note")
+        segment_info.forget_columns()
+        classes = routing.classify(self.PIECES[:3], "weekday_offpeak")
+        assert [c[0] for c in classes] == ["3", "1", "4"]
+        assert classes.scenic is None and classes.adjustments is None
+        assert routing.scenic_read(classes, self.PIECES[:3]) is None
+        assert routing.adjustments_read(classes, self.PIECES[:3]) is None
+        assert routing.adjustments_read(list(classes), self.PIECES[:3]) is None
+
+    @staticmethod
+    def counted(monkeypatch) -> list:
+        from core import route_scenic
+
+        asked: list = []
+        real_scenic = route_scenic.designations_of
+        real_adjustments = routing.adjustments_used
+
+        def designations_of(pieces):
+            asked.append("scenic")
+            return real_scenic(pieces)
+
+        def adjustments_used(pieces):
+            asked.append("adjustments")
+            return real_adjustments(pieces)
+
+        monkeypatch.setattr(route_scenic, "designations_of", designations_of)
+        monkeypatch.setattr(routing, "adjustments_used", adjustments_used)
+        return asked
+
+    def test_the_answer_says_them_without_queries_of_their_own(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        self.marked(segments)
+        router(standard_router())
+        expected = post(client, good_body()).json()
+        asked = self.counted(monkeypatch)
+        router(standard_router())
+        body = post(client, good_body()).json()
+        assert asked == []
+        assert [s["designation"] for s in body["scenic_roads"]] == [
+            "Rustic Road (Montgomery County)"
+        ]
+        assert [a["adjustment_id"] for a in body["stress_adjustments"]] == [
+            "a-stretch",
+            "quiet-one",
+        ]
+        assert body["scenic_roads"] == expected["scenic_roads"]
+        assert body["stress_adjustments"] == expected["stress_adjustments"]
+
+    def test_a_reading_without_them_falls_back_to_their_own_queries(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        self.marked(segments)
+        router(standard_router())
+        expected = post(client, good_body()).json()
+        real = routing._read_stress
+
+        def older(pieces, when, schema):
+            rows, hazards, _side = real(pieces, when, schema)
+            return rows, hazards
+
+        monkeypatch.setattr(routing, "_read_stress", older)
+        asked = self.counted(monkeypatch)
+        router(standard_router())
+        body = post(client, good_body()).json()
+        assert sorted(set(asked)) == ["adjustments", "scenic"]
+        assert body["scenic_roads"] == expected["scenic_roads"]
+        assert body["stress_adjustments"] == expected["stress_adjustments"]
+
+
+@db
+class TestTraceReadOncePerPlan:
+    """Audit S19: a plan cuts each trace into pieces once and finds its junctions once
+    (`routing.trace_reading`); the calm search's reading and the answer share them."""
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            # The calm search's reading, then the answer.
+            {**good_body(), "stress": 100},
+            # The hill guards' readings, then the answer.
+            {**good_body("novice"), "hills": 0},
+            good_body("mass-ride"),
+        ],
+    )
+    def test_each_trace_is_cut_once_and_the_answer_is_the_same(
+        self, client, segments, router, monkeypatch, body
+    ) -> None:
+        router(standard_router())
+        before = post(client, body).json()
+        cut: dict[int, int] = {}
+        real_pieces = routing.pieces_of_trace
+
+        def pieces(trace, *shape):
+            cut[id(trace)] = cut.get(id(trace), 0) + 1
+            return real_pieces(trace, *shape)
+
+        monkeypatch.setattr(routing, "pieces_of_trace", pieces)
+        router(standard_router())
+        after = post(client, body).json()
+        assert cut and set(cut.values()) == {1}, cut
+        assert after.keys() == before.keys()
+        for key in ("stress_m", "stress_spans", "description", "intersections", "road_hazards"):
+            assert after.get(key) == before.get(key), key
+
+
+@db
 class TestStressReadOncePerPlan:
     """Audit S18: a plan reads each trip's stress once (`routing._stress_memo`): the
     trip a hill-avoiding plan keeps is read by `calmer_or_own`, `no_busier_than_middle` and

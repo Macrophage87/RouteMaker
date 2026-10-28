@@ -403,6 +403,9 @@ class Atom:
     # Whether another way a bicycle may ride away on meets that node (not a sidewalk, a
     # driveway or a crosswalk); False elsewhere.
     choice: bool = False
+    # Whether the piece's road is one-way (the segment's `road_oneway`); None where the
+    # map does not say. A stretch sends its last piece's as `oneway` (round-2 audit D26).
+    oneway: bool | None = None
 
 
 def beside_words(use: str, road: str) -> str | None:
@@ -827,6 +830,24 @@ def _lanes_hidden(run: _Run, members: list[_Run] | None = None) -> _Run | None:
     if any(m.tier not in HIGH_STRESS_LANE_TIERS for m in (members or [run])):
         return None
     return replace(run, facility="none")
+
+
+def entry_facility(facility: str) -> str | None:
+    """A stretch's `facility` as an entry sends it: "path", "protected", "lane", or
+    "none" where the map's segments say the way has no bike facility; None where it is
+    not known (no segment matched, an untraced leg, or an overview stretch whose
+    members differ). Ride says "Bike lane ends" only on a known "none" (round-2 audit
+    D28; the owner approved the banked changes 2026-10-27 7:52 PM ET, "make the banked
+    changes"): before, "none" and unknown were both sent as None."""
+    return facility if facility in ("path", "protected", "lane", "none") else None
+
+
+def _oneway_at_end(run: _Run) -> bool | None:
+    """Whether the stretch's road is one-way where it ends (its last piece), None where
+    the map does not say: Ride warns of a destination across the road only on a known
+    two-way road (round-2 audit D26; the owner approved the banked changes 2026-10-27
+    7:52 PM ET, "make the banked changes")."""
+    return run.last.oneway if run.last is not None else None
 
 
 def _miles(metres: float) -> str:
@@ -1607,7 +1628,7 @@ def _group_run(
     merged = _Run(
         metres=sum(m.metres for m in members),
         tier=worst.tier,
-        facility=first.facility if len(facilities) == 1 else "none",
+        facility=first.facility if len(facilities) == 1 else "unknown",
         names=first.names,
         label=first.label,
         first=first.first,
@@ -1838,7 +1859,8 @@ def describe_both(
     description ends there (a trace measures a little differently). Each entry
     is a dict: `kind` ("stretch", "junction" or "via"), `from_m` and `to_m`
     (whole metres), `from_mi` and `to_mi` (miles to a hundredth), `street`,
-    `tier` (1-5 or None), `facility` or None, `turn` (None or a dict), `severity`
+    `tier` (1-5 or None), `facility` (`entry_facility`: "none" known, None not known),
+    `turn` (None or a dict), `severity`
     ("orange", "red" or None), `via` (the point's number, for a "via"), `group` (a
     dict - `number`, `count`, `lts4`, `streets`, `more`, and `crossings`, each
     crossing's `group_crossings` row in the full list and None in the overview -
@@ -2082,7 +2104,8 @@ def describe_both(
                     street=_street_words(run),
                     relation_name=_street_words(run).lower() in relation_names,
                     tier=int(run.tier) if run.tier.isdigit() else None,
-                    facility=None if run.facility in ("unknown", "none") else run.facility,
+                    facility=entry_facility(run.facility),
+                    oneway=_oneway_at_end(run),
                     surface=surface_of(run),
                     text_lanes_hidden=text_lanes_hidden,
                     turn=None
@@ -2201,7 +2224,8 @@ def describe_both(
                     street=_street_words(runs[first]),
                     relation_name=_street_words(runs[first]).lower() in relation_names,
                     tier=int(run.tier) if run.tier.isdigit() else None,
-                    facility=None if run.facility in ("unknown", "none") else run.facility,
+                    facility=entry_facility(run.facility),
+                    oneway=_oneway_at_end(run),
                     surface=surface_of(run),
                     text_lanes_hidden=(
                         _stretch_sentence(hidden, start, end, turn, continues, then, toward)

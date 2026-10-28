@@ -1477,8 +1477,19 @@ class DescriptionEntryOut(Schema):
         " and where a junction's road has no name."
     )
     tier: int | None = Field(description="1-5 on a stretch; null: not rated, or not a stretch.")
-    facility: Literal["path", "protected", "lane"] | None = Field(
-        description='The bike facility, where there is one; "none" and unknown are null.'
+    facility: Literal["path", "protected", "lane", "none"] | None = Field(
+        description=(
+            'The bike facility: "none" where the map says the way has none, null where it'
+            ' is not known (round-2 audit D28: Ride\'s "Bike lane ends" fires on "none" only).'
+        )
+    )
+    oneway: bool | None = Field(
+        default=None,
+        description=(
+            "On a stretch: whether its road is one-way where it ends; null where the map"
+            " does not say (round-2 audit D26: Ride warns of a destination across a known"
+            " two-way road only)."
+        ),
     )
     turn: DescriptionTurnOut | None = Field(
         description="How the stretch is entered, where it begins at a change of street."
