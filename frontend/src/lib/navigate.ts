@@ -1230,10 +1230,16 @@ export function withoutMetric(text: string): string {
 
 /**
  * A cue's words as said: no metric, and no "(LTS 3)" (D14; the owner, 2026-10-15: "LTS is just extra noise, we can
- * see it"), which an API sentence a hazard is still read from can carry. The screen keeps both.
+ * see it"), which an API sentence a hazard is still read from can carry. Nor a group of crossings' severity,
+ * "(Very high stress junctions)", where its count of heavy-traffic roads already says so (audit D33; the owner,
+ * 2026-10-28: yes). A group with no heavy-traffic road (red from LTS 3.5) and a "(Higher stress junctions)" group
+ * keep it: nothing else in them says so. The screen keeps all of them.
  */
 export function spokenText(text: string): string {
-  return withoutMetric(text).replace(/\s\(LTS \d(?: or Avoid)?\)/g, "");
+  const said = withoutMetric(text).replace(/\s\(LTS \d(?: or Avoid)?\)/g, "");
+  return /heavy-traffic road|tráfico pesado/.test(said)
+    ? said.replace(/\s\(Very high stress junctions\)|\s\(intersecciones de estrés muy alto\)/g, "")
+    : said;
 }
 
 /** A cue's words, as shown (`spoken` false: the card's, with the metric) or as said; a walk's distance in the voice's own words. */
