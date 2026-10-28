@@ -17,7 +17,7 @@ import { formatRadius } from "./format.ts";
 import { pointName } from "./summary.ts";
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./geo.ts";
 import { applyPlace, placeEffect, type PlaceChoice, type PlaceEffect } from "./geocode.ts";
-import { t } from "./i18n.ts";
+import { language, t } from "./i18n.ts";
 
 /** A high-accuracy look-up, given 10 seconds, that may reuse a fix up to 30 seconds old. */
 export const LOCATE_OPTIONS = { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 } as const;
@@ -243,7 +243,7 @@ export async function locate(
  * figure (formatRadius), so 15 m is "about 50 ft", not a falsely precise "49 ft".
  */
 export function accuracyText(accuracyM: number): string {
-  return accuracyM > 0 ? `about ${formatRadius(accuracyM)}` : "";
+  return accuracyM > 0 ? t("about {radius}", { radius: formatRadius(accuracyM) }) : "";
 }
 
 /** Coarser than this (about 330 ft), the announcement warns that the point is rough (a laptop's Wi-Fi fix). */
@@ -252,9 +252,11 @@ export const ROUGH_SAID = t("That is rough; search for the exact place if you ca
 
 /** Whether the search box's text asks for the rider's location: empty, or the start of a phrase for it (two letters or more). */
 export function locationMatches(query: string): boolean {
-  const q = query.trim().toLowerCase();
+  const plain = (text: string) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "");
+  const q = plain(query.trim().toLowerCase());
   if (q === "") return true;
-  return q.length >= 2 && ["your location", "my location", "current location", "su ubicación", "mi ubicación", "ubicación actual"].some((phrase) => phrase.startsWith(q));
+  const phrases = ["your location", "my location", "current location", ...(language() === "es" ? ["su ubicacion", "mi ubicacion", "ubicacion actual"] : [])];
+  return q.length >= 2 && phrases.some((phrase) => phrase.startsWith(q));
 }
 
 export const FINDING_LOCATION = t("Finding your location…");
@@ -302,7 +304,7 @@ export function hereEffectLine(effect: PlaceEffect, loop = false): string {
  */
 export function searchStatusWithHere(status: string, here: boolean): string {
   if (!here || status === "") return status;
-  if (/places? found\.$/.test(status)) return status.replace(/\.$/, ", plus Your location.");
+  if (/(places? found|lugar(es)? encontrados?)\.$/.test(status)) return status.replace(/\.$/, t(", plus Your location."));
   return t("{status} Your location is also listed.", { status });
 }
 

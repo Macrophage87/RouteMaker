@@ -112,7 +112,9 @@ export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onAppr
       }
       setPosts((old) => ({ ...old, [key]: r.body }));
       setItems((old) => old?.map((s) => (itemKey(s) === key ? { ...s, status: "sent_to_discord" } : s)) ?? old);
-      setSaid(t("The post for {place} is ready to copy below. The {noun} is marked as sent to Discord.", { place: itemPlace(item), noun: from.noun }));
+      setSaid(from.noun === "report"
+          ? t("The post for {place} is ready to copy below. The report is marked as sent to Discord.", { place: itemPlace(item) })
+          : t("The post for {place} is ready to copy below. The suggestion is marked as sent to Discord.", { place: itemPlace(item) }));
       return;
     }
     const r = await from.review<{ message: string; status: string; generation?: number | null }>(origin, item, action, csrf);

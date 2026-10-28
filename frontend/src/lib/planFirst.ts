@@ -184,17 +184,17 @@ export function changeSummary(before: Compared, after: Compared): string {
   const dm = after.distance_m - before.distance_m;
   if (formatDistanceChange(dm) !== NO_CHANGE) parts.push(`${dm > 0 ? "+" : "−"}${formatDistanceChange(dm)}`);
   const dmin = Math.round((after.duration_s - before.duration_s) / 60);
-  if (dmin !== 0) parts.push(`${dmin > 0 ? "+" : "−"}${Math.abs(dmin)} min`);
+  if (dmin !== 0) parts.push(t("{sign}{minutes} min", { sign: dmin > 0 ? "+" : "−", minutes: Math.abs(dmin) }));
   const dbusy = busyOf(after.stress_m) - busyOf(before.stress_m);
-  if (formatDistanceChange(dbusy) !== NO_CHANGE) parts.push(`${formatDistanceChange(dbusy)} ${dbusy < 0 ? "less" : "more"} on LTS 3 or busier`);
+  if (formatDistanceChange(dbusy) !== NO_CHANGE) parts.push(dbusy < 0 ? t("{distance} less on LTS 3 or busier", { distance: formatDistanceChange(dbusy) }) : t("{distance} more on LTS 3 or busier", { distance: formatDistanceChange(dbusy) }));
   const was = streets(before);
   const now = streets(after);
   const added = longestOnlyIn(now, was);
   const dropped = longestOnlyIn(was, now);
-  if (added && dropped) parts.push(`now uses ${added} instead of ${dropped}`);
-  else if (added) parts.push(`now uses ${added}`);
-  else if (dropped) parts.push(`no longer uses ${dropped}`);
-  if (parts.length === 0) return "The same route as before.";
+  if (added && dropped) parts.push(t("now uses {added} instead of {dropped}", { added, dropped }));
+  else if (added) parts.push(t("now uses {added}", { added }));
+  else if (dropped) parts.push(t("no longer uses {dropped}", { dropped }));
+  if (parts.length === 0) return t("The same route as before.");
   const line = parts.join(", ");
   return `${line[0].toUpperCase()}${line.slice(1)}.`;
 }
@@ -231,7 +231,7 @@ function legsOf(drawn: LeggedRoute, isVia: (p: LonLat) => boolean, nameOf: (p: L
   return ends.map((end, k) => ({
     from: through[k],
     to: through[k + 1],
-    label: `${say(k)} to ${say(k + 1)}`,
+    label: t("{from} to {to}", { from: say(k), to: say(k + 1) }),
     metres: pathLengthM(line.slice(k === 0 ? 0 : ends[k - 1], end + 1)),
   }));
 }
@@ -255,11 +255,11 @@ export function legChanges(
   const lines = now.map((leg) => {
     const match = old.get(key(leg));
     old.delete(key(leg));
-    if (!match) return `${leg.label}: ${formatDistance(leg.metres)}, a new leg.`;
+    if (!match) return t("{leg}: {distance}, a new leg.", { leg: leg.label, distance: formatDistance(leg.metres) });
     const d = leg.metres - match.metres;
-    const change = formatDistanceChange(d) === NO_CHANGE ? "unchanged" : `${d > 0 ? "+" : "−"}${formatDistanceChange(d)}`;
+    const change = formatDistanceChange(d) === NO_CHANGE ? t("unchanged") : `${d > 0 ? "+" : "−"}${formatDistanceChange(d)}`;
     return `${leg.label}: ${formatDistance(leg.metres)}, ${change}.`;
   });
-  for (const leg of old.values()) lines.push(`${leg.label}: no longer ridden (was ${formatDistance(leg.metres)}).`);
+  for (const leg of old.values()) lines.push(t("{leg}: no longer ridden (was {distance}).", { leg: leg.label, distance: formatDistance(leg.metres) }));
   return lines;
 }

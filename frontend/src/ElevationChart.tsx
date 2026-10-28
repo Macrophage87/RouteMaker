@@ -259,9 +259,9 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
               <text className="pc-axis-text" x={2} y={calmLayout.markerY - 6 + CHART_TYPE}>
                 {t("per mi")}
               </text>
-              {calmTicks(calmMax, calmY).map((t) => (
-                <text key={t} className="pc-axis-text" x={LEFT - 3} y={calmY(t) + 4} textAnchor="end">
-                  {t}
+              {calmTicks(calmMax, calmY).map((tick) => (
+                <text key={tick} className="pc-axis-text" x={LEFT - 3} y={calmY(tick) + 4} textAnchor="end">
+                  {tick}
                 </text>
               ))}
               <line className="pc-axis" x1={LEFT} y1={calmLayout.calmBottom} x2={RIGHT} y2={calmLayout.calmBottom} />
@@ -300,7 +300,7 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
                 if (at >= calmMax) return null;
                 // Where both edges are one (0 on the slider: LTS 3 costs nothing extra), only the LTS 4 guide is drawn.
                 if (i === 0 && calm.bands[1] !== undefined && at >= calm.bands[1]) return null;
-                const label = `LTS ${i + 3} from ${calmFigure(at)}`;
+                const label = t("LTS {tier} from {figure}", { tier: i + 3, figure: calmFigure(at) });
                 const textW = label.length * 6.2;
                 const tier = i + 3;
                 const cls = spanClass({ tier, facility: "none" });

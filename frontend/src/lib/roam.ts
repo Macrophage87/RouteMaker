@@ -360,7 +360,7 @@ export function mapLines(map: RoamMap, rider: LonLat, reach = AHEAD_M + 200): { 
 // ---- Broadcast from Roam (Stephen 2026-10-22: "Yes, but have it as a tap within roam") ----------------------------
 
 /** Roam's Broadcast: one tap on the Roam screen opens the share sheet; those who open the link follow the rider. */
-export const ROAM_BROADCAST_NAME = "Broadcast";
+export const ROAM_BROADCAST_NAME = t("Broadcast");
 export const ROAM_BROADCAST_TITLE = t("Follow my ride");
 export const ROAM_BROADCAST_TEXT = t("Follow my ride on RouteMaker: my dot and the way I've ridden, while my app is open.");
 export const ROAM_BROADCAST_ON = t("Broadcasting. Those who open your link see your dot and the way you ride.");
@@ -408,7 +408,7 @@ export function roamLight(nowMs: number, at: LonLat): { shown: string[]; said: s
     .sort((a, b) => a.at - b.at);
   if (events.length === 0) return null;
   const name = (kind: "sunrise" | "sunset") => (kind === "sunrise" ? t("Sunrise") : t("Sunset"));
-  const soon = (t: number) => t - nowMs <= 3_600_000 && t - nowMs >= 30_000;
+  const soon = (at: number) => at - nowMs <= 3_600_000 && at - nowMs >= 30_000;
   const shown = events.map((e) => `${name(e.kind)} ${lightClock(e.at)}${soon(e.at) ? ` (${formatDuration((e.at - nowMs) / 1000)})` : ""}`);
   const said = events.map((e) => {
     const minutes = Math.max(1, Math.round((e.at - nowMs) / 60_000));

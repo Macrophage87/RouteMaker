@@ -26,7 +26,7 @@ test("everywhere a ride type's name shows, it goes through PresetName or the spo
   assert.doesNotMatch(read("../app/Sheets.tsx"), /<option[^>]*aria-label/);
   // Go's ride chip went with the edit-route redesign; Go's chips (Sheets.tsx) and Plan's card name it.
   assert.match(read("../RideTypePicker.tsx"), /<PresetName id=\{preset\} \/>/);
-  assert.match(read("../app/RoutePanel.tsx"), /said=\{`\$\{presetSaid\(preset\)\} trip`\}/);
+  assert.match(read("../app/RoutePanel.tsx"), /said=\{t\("\{ride\} trip", \{ ride: presetSaid\(preset\) \}\)\}/);
   assert.match(read("../RideTypePicker.tsx"), /<PresetName id=\{option\.id\} \/>/);
   assert.match(read("../TransitSummary.tsx"), /<PresetName id=\{preset\} suffix=/);
   for (const file of ["../app/Sheets.tsx", "../app/RoutePanel.tsx", "../RideTypePicker.tsx", "../TransitSummary.tsx"]) {

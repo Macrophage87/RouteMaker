@@ -12,7 +12,7 @@ import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
 import { leaveNowArrival } from "../lib/arrival.ts";
 import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
-import { t } from "../lib/i18n.ts";
+import { firstWordAndRest, t } from "../lib/i18n.ts";
 import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, noviceTripShort, type NoviceTrip } from "../lib/noviceOffer.ts";
 import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
 import { lightLine, type LightMark } from "../lib/lightTimes.ts";
@@ -638,7 +638,7 @@ function StressFigure({ segments }: { segments: StressSegment[] }) {
   );
 }
 
-const climbCount = (n: number) => (n === 1 ? "1 climb" : `${n} climbs`);
+const climbCount = (n: number) => (n === 1 ? t("1 climb") : t("{count} climbs", { count: n }));
 
 /** " · arrive 8:27 AM" after the route's time: when the ride ends if it starts now, as the ride shows it. */
 function ArriveAt({ arriveMs }: { arriveMs: number }) {
@@ -757,8 +757,7 @@ export function RouteSummary({
   ) : null;
   const goMode = mode === "go";
   // "Start ride" in Go; Plan shows its first word only ("Start", "Iniciar") and keeps the rest for a screen reader.
-  const [startWord, ...rideWords] = t("Start ride").split(" ");
-  const rideWord = rideWords.join(" ");
+  const [startWord, rideWord] = firstWordAndRest(t("Start ride"));
   // "Elevation and climbs" (the mockup); a Mass Ride's three charts keep their own name.
   const elevationTitle = profile && chartKind(route) === "mass" ? foldName("mass") : ROUTE_FOLDS.elevation.title;
   // Start: the big button (Go), or the first of its row (Plan). In a browser, short rides only; a longer one goes to a bike computer (OD 255). The phone app rides any length.
@@ -767,7 +766,7 @@ export function RouteSummary({
       <button type="button" className="start-button" ref={ride.startRef} onClick={ride.onStart} aria-describedby="start-ride-hint">
         <Icon name="play" />
         {startWord}
-        <span className={goMode ? undefined : "visually-hidden"}> {rideWord}</span>
+        <span className={goMode ? undefined : "visually-hidden"}>{rideWord}</span>
       </button>
       {/* Broadcast (Stephen 2026-10-22: "a small button next to start"): Go's one control for it; the share sheet
           opens, and the ride starts once the link is sent, with the sharer as its leader. */}
@@ -860,7 +859,7 @@ export function RouteSummary({
 
   const transitFold = transit ? (
     // The trip, as a fold kept open: the step list is the plan (the owner, 2026-10-12: "a clear step list").
-    <Fold title={t("{ride} trip", { ride: presetLabel(preset) })} said={`${presetSaid(preset)} trip`} open className="transit-fold" icon="train">
+    <Fold title={t("{ride} trip", { ride: presetLabel(preset) })} said={t("{ride} trip", { ride: presetSaid(preset) })} open className="transit-fold" icon="train">
       <TransitSummary
         plan={transit}
         lineSpans={route.stress_spans}
@@ -1045,7 +1044,7 @@ export function RouteSummary({
           heading={ROUTE_FOLDS.facilities.title}
           open={ROUTE_FOLDS.facilities.open}
           icon="road"
-          count={calm === null ? null : `${calm}% quiet`}
+          count={calm === null ? null : t("{percent}% quiet", { percent: calm })}
           className="facilities-fold"
           name={ROUTE_FOLD_GROUP}
         >
