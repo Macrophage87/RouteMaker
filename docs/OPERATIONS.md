@@ -6426,13 +6426,19 @@ more, on two ways or more, one a trail or a public street, and that are closed o
 the mountain-bike class, a natural surface, an untagged park path, a footpath for walkers,
 poor visibility, a hiking route, `sac_scale=hiking`, a farm track or a working site
 (`trail_closures.SHORT_LINK_REOPENS`). Their reason is lifted. One with a natural surface,
-bad smoothness, poor visibility, a hiking rating or of the mountain-bike class gets
+bad smoothness, a grade 4 or 5 track, poor visibility, a hiking rating or of the
+mountain-bike class gets
 `rm:link_walk` (the remap writes `bicycle=dismount`, and the route says to walk); the rest
 are ridden. A walked one of the mountain-bike class is still ridden on the off-road and
-Mountain Bike graphs, as before, and stays on the mountain-bike layer. Private, military,
-secured, golf, Zoo, singletrack, CBD, informal and `bicycle=no` ways are never reopened.
+Mountain Bike graphs, as before, and stays on the mountain-bike layer (so a standard
+route may walk a way the default map does not draw); its "walk your bike" note is said on
+every ride type, since the segment table holds one walk flag. Private, military, secured,
+golf, Zoo, singletrack, CBD, informal and `bicycle=no` ways are never reopened, nor a way
+whose own tags close it (`bicycle=no` or private `access` on a working site's or a farm
+track's way, a footway no bicycle tag opens). Reopened links count as bicycle-open for the
+sidewalk links and trailhead aisles that follow.
 The rebuild log's facility line counts them ("short links reopened (N of them walked)").
-On OSM read 2026-10-28 for 12 sample areas it reopens 18 ways, 16 walked (park paths not
+On OSM read 2026-10-28 for 12 sample areas it reopens 17 ways, 15 walked (park paths not
 counted: the sample had no park outlines). Airpark itself sits in a 2,170 ft dirt chain,
 past the bound.
 

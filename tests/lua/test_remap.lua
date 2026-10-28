@@ -1175,6 +1175,9 @@ check("a short dirt link is walked",
 check("but a closure reason still closes it",
   M.remap_way({ highway = "path", surface = "dirt" },
     { link_walk = true, is_trail_class = true, no_bicycle = "natural_surface" }).bicycle == "no")
+check("and bicycle=no is never walked open",
+  M.remap_way({ highway = "path", bicycle = "no", surface = "dirt" },
+    { link_walk = true, is_trail_class = true }).bicycle ~= "dismount")
 
 -- A paved way is not a mountain-bike trail: its rating, which Valhalla's parser
 -- prices as dirt, comes off (the Rock Creek Trail in Montgomery County, way

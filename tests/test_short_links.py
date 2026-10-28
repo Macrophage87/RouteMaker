@@ -144,3 +144,42 @@ def test_the_rebuild_rides_a_park_path():
     assert result.short_links == {2: False}
     assert result.walk_bike == set()
     assert result.short_links_mtb == set()
+
+
+def test_a_working_sites_closure_never_opens_what_its_own_tags_close():
+    for tags in (
+        {"highway": "path", "bicycle": "no", "surface": "dirt"},
+        {"highway": "footway", "access": "private", "surface": "dirt"},
+        {"highway": "track", "access": "private"},
+        {"highway": "footway"},  # upstream closes it by class: the sidewalk rules' own
+    ):
+        assert links(connector(tags), {2: "works"}) == {}, tags
+
+
+def test_a_works_or_track_link_open_by_its_tags_is_ridden():
+    assert links(connector({"highway": "path"}), {2: "works"}) == {2: False}
+    assert links(connector({"highway": "track", "surface": "gravel"}), {2: "track"}) == {2: False}
+    assert links(connector({"highway": "track", "tracktype": "grade5"}), {2: "track"}) == {2: True}
+
+
+def test_a_rough_path_is_walked():
+    tags = {"highway": "path", "smoothness": "very_bad"}
+    assert links(connector(tags), {2: trailaccess.PARK_PATH}) == {2: True}
+
+
+def test_how_a_mapper_split_a_long_way_does_not_matter():
+    # A 400 m dirt trail leaves the link's middle node: one way or four, the group is too
+    # long, so the link stays closed.
+    def ways(pieces):
+        trail = (
+            [
+                placed(20 + i, dict(DIRT), [(i * 100.0, -20.0), ((i + 1) * 100.0, -20.0)])
+                for i in range(pieces)
+            ]
+            if pieces > 1
+            else [placed(20, dict(DIRT), [(0.0, -20.0), (400.0, -20.0)])]
+        )
+        return connector(DIRT, gap=40.0, pieces=2, extra=trail)
+
+    assert links(ways(1)) == {}
+    assert links(ways(4)) == {}

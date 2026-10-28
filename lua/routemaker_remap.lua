@@ -898,7 +898,8 @@ function M.remap_way(tags, derived)
   -- A short dirt link the trail rules closed and the rebuild reopens (`rm:link_walk`,
   -- routemaker.short_links; the owner, 2026-10-28, "Ride paved/unknown, walk dirt"):
   -- walked, whatever its own bicycle tag. A closure reason still closes.
-  if derived.link_walk and out.bicycle == nil and not derived.no_bicycle then
+  if derived.link_walk and out.bicycle == nil and not derived.no_bicycle
+    and tags.bicycle ~= "no" then
     out.bicycle = "dismount"
   end
 

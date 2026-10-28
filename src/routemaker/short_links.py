@@ -15,15 +15,17 @@ park paths are ridden, dirt and mountain-bike-class links are walked.
   passes the mountain-bike class, a natural surface, an untagged park path, a footpath for
   walkers, poor visibility, a hiking route, `sac_scale=hiking` alone, a farm track and a
   working site's walkways) and nothing else closes;
-- are no area, nothing indoors and no `bicycle=dismount` way (those keep their own rule);
-- add up to at most `CHAIN_MAX_M` (about 500 ft) together, each one too, so a link stays a
-  link and a park's whole dirt network stays closed;
+- are no area, nothing indoors and no `bicycle=dismount` way (those keep their own rule),
+  and whose own tags leave them open (no `bicycle=no`, no private `access`);
+- add up to at most `CHAIN_MAX_M` (about 500 ft) together, the group taken whole, so a link
+  stays a link and a park's whole dirt network stays closed;
 - touch bicycle-open ways at two nodes or more, on two ways or more, one of them a trail or
   a public street.
 
 Each way found is ridden or walked by its own tags (`walked`): walked where its surface is
-natural, its smoothness bad, or its closure says it is a faint or rated hiking path (poor
-visibility, `sac_scale`) or of the mountain-bike class; ridden otherwise. Walking a bicycle
+natural, its smoothness bad or its track grade 4 or 5, or its closure says it is a faint or
+rated hiking path (poor visibility, `sac_scale`) or of the mountain-bike class; ridden
+otherwise. Walking a bicycle
 is walking, so a walked link widens nothing a pedestrian may not do.
 
 Pure: `pipeline.trail_closures.add_short_links` calls `links` with the rebuild's ways.
@@ -35,7 +37,7 @@ from collections import defaultdict
 from collections.abc import Collection, Mapping, Sequence
 
 from . import trailaccess
-from .sidewalks import Placed, _length, bicycle_open, is_trail
+from .sidewalks import Placed, _closed_by_its_tags, _length, bicycle_open, is_trail
 
 # The longest a link may be, all its ways together (about 500 ft): the owner's bound for a
 # street-end cut-through (`sidewalks.CUT_THROUGH_M`).
@@ -75,6 +77,10 @@ WALKED_REASONS = frozenset(
 )
 
 
+# A track this rough is walked, as dirt is.
+ROUGH_TRACKTYPE = frozenset({"grade4", "grade5"})
+
+
 def is_candidate(tags: dict[str, str], reason: str | None, reopenable: Collection[str]) -> bool:
     """A way a link may reopen: closed by a reopenable reason alone, and none of the ways
     other rules handle."""
@@ -84,7 +90,13 @@ def is_candidate(tags: dict[str, str], reason: str | None, reopenable: Collectio
         return False
     if tags.get("area") == "yes" or tags.get("indoor") not in (None, "no"):
         return False
-    return not trailaccess.is_dismount(tags)
+    if trailaccess.is_dismount(tags) or tags.get("bicycle") in trailaccess.PRIVATE_BICYCLE:
+        return False
+    # A working site's or a farm track's closure comes before the tag rules, so a way it
+    # closes may also say `bicycle=no` or `access=private` (review of the first draft): its
+    # own tags must leave it open, as the shipped transform reads them, which also leaves out
+    # a footway no bicycle tag opens (the sidewalk rules' own).
+    return bicycle_open(tags) and not _closed_by_its_tags(tags)
 
 
 def walked(tags: dict[str, str], reason: str | None) -> bool:
@@ -93,6 +105,7 @@ def walked(tags: dict[str, str], reason: str | None) -> bool:
         reason in WALKED_REASONS
         or trailaccess.is_natural_surface(tags)
         or tags.get("smoothness") in trailaccess.BAD_SMOOTHNESS
+        or tags.get("tracktype") in ROUGH_TRACKTYPE
     )
 
 
@@ -115,9 +128,10 @@ def links(
     for osm_id, tags, node_ids, coords in ways:
         if osm_id in closed or not is_candidate(tags, reasons.get(osm_id), reopenable):
             continue
-        metres = _length(coords)
-        if metres <= CHAIN_MAX_M and len(node_ids) >= 2:
-            candidates[osm_id] = (tags, node_ids, metres)
+        # Every candidate joins a group whatever its length, so a long way in a dirt network
+        # keeps the whole group closed however a mapper split it (review of the first draft).
+        if len(node_ids) >= 2:
+            candidates[osm_id] = (tags, node_ids, _length(coords))
     if not candidates:
         return {}
     by_node: dict[int, list[int]] = defaultdict(list)
