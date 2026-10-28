@@ -419,6 +419,13 @@ test("the Find food places and the climbs are left out of the precache and liste
   assert.equal(ruleFor(get("/assets/climbs-Cd34.js"), ORIGIN), "precache");
 });
 
+test("a language's catalog (assets/lang-*.js) is lazy: an install does not download all 19 (v0.14.0 review)", () => {
+  const names = ["assets/index-1.js", "assets/lang-am-Gh78.js", "assets/language-9.js"];
+  assert.deepEqual(precacheList(names), ["/assets/index-1.js", "/assets/language-9.js"]);
+  assert.deepEqual(lazyList(names), ["/assets/lang-am-Gh78.js"]);
+  assert.equal(ruleFor(get("/assets/lang-am-Gh78.js"), ORIGIN), "lazy");
+});
+
 test("the federal land, only Mass Ride's, is lazy too; the worker starts once the page has loaded (review fe-perf-6)", () => {
   const names = ["assets/index-1.js", "assets/federal-land-Ef56.json"];
   assert.deepEqual(precacheList(names), ["/assets/index-1.js"]);

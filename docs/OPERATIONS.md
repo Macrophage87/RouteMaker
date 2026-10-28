@@ -4572,7 +4572,8 @@ A kind-of-place search (the Grocery chip, "bike shop"; `core.geocode` TAG_SEARCH
 `/reverse` for the nearest few, and Photon now serves up to 10 (`-max-reverse-results 10` in
 `compose.yaml` and `compose.beta.yaml`; it was 1). The flag is in the container's command, which a
 `restart` does not change: after deploying this release, recreate it once with
-`docker compose up -d photon` (with the beta overlay's files on the beta). Its index is kept (it is
+`docker compose up -d photon` (with the beta overlay's files on the beta; the beta's CD does it itself, since
+`compose_changed` is set for this release). Its index is kept (it is
 on the host, `${DATA_ROOT}/photon`), so it is back once the JVM is up. Until then nothing fails: the search answers with one
 store at most.
 
