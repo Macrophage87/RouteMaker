@@ -195,6 +195,17 @@ test("every language's catalog keeps the {places} of the English it translates",
   }
 });
 
+test("every language bolds the menu names its English bolds, in pairs of marks", async () => {
+  for (const lang of LANGUAGES.filter((l) => l !== "en")) {
+    const catalog = lang === "es" ? ES : ((await import(`../i18n/${lang}.ts`)) as { CATALOG: Record<string, string> }).CATALOG;
+    for (const [english, text] of Object.entries(catalog)) {
+      if (!english.includes("**")) continue;
+      const marks = text.split("**").length - 1;
+      assert.ok(marks > 0 && marks % 2 === 0, `${lang}: ${english}`);
+    }
+  }
+});
+
 test("a phrase read back to its English, for a phone with no voice in the language", () => {
   setCatalogForTest("ti", { "Left onto {street}.": "ናብ {street} ጸጋም ተጠወ።", "the path": "እቲ መንገዲ", "Ride started.": "ጉዕዞ ጀሚሩ።" });
   assert.equal(englishOf("ናብ R Street Northwest ጸጋም ተጠወ።", "ti"), "Left onto R Street Northwest.");

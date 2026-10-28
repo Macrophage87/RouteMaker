@@ -12,6 +12,7 @@ import { browserStore, type KeyValueStore } from "./accessMode.ts";
 import type { Verbosity } from "./navigate.ts";
 import { englishOf, language, speechLang, t, voiceTags } from "./i18n.ts";
 import { isIos } from "./installOffer.ts";
+import { withoutMenuMarks } from "./menuNames.ts";
 
 // ---- The rider's choices, kept on this device -----------------------------------------------------
 
@@ -393,14 +394,14 @@ export function phoneKind(nav: { userAgent: string; platform?: string; maxTouchP
 
 /** How to keep the screen on by hand, for the rider's own phone only (the review: an Android phone was given an iPhone's). */
 export const WAKE_STEPS: Record<PhoneKind, string> = {
-  ios: t("On an iPhone: Settings, Display and Brightness, Auto-Lock, Never."),
-  android: t("On Android: Settings, Display, Screen timeout, the longest time."),
+  ios: t("On an iPhone: **Settings**, **Display & Brightness**, **Auto-Lock**, **Never**."),
+  android: t("On Android: **Settings**, **Display**, **Screen timeout**, the longest time."),
   other: t("In your phone's display settings, set the screen to stay on longer."),
 };
 
 /** The whole note, said and read by screen readers: the sentence, then the phone's steps; none for no note. */
 export function wakeSaid(note: string, kind: PhoneKind): string {
-  return note ? `${note} ${WAKE_STEPS[kind]}` : "";
+  return note ? `${note} ${withoutMenuMarks(WAKE_STEPS[kind])}` : "";
 }
 
 /** How many times a ride asks again for a lock the browser let go in front, before it stops asking. */

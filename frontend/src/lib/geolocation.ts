@@ -112,9 +112,9 @@ export const DENIED_IN_IOS_APP = t("Your location is blocked for this Home Scree
  */
 export const IOS_LOCATION_HELP_TITLE = t("How to turn location on");
 export const IOS_LOCATION_STEPS: readonly string[] = [
-  t("Open the Settings app, then Privacy & Security, then Location Services."),
-  t("Turn Location Services on. Open System Services and turn on In-App Web Browsing."),
-  t("Back in Location Services, open Safari Websites and choose While Using the App."),
+  t("Open the **Settings** app, then **Privacy & Security**, then **Location Services**."),
+  t("Turn **Location Services** on. Open **System Services** and turn on **In-App Web Browsing**."),
+  t("Back in **Location Services**, open **Safari Websites** and choose **While Using the App**."),
   t("Still blocked? Delete this app's icon, open the site in Safari and add it to the Home Screen again."),
 ];
 
