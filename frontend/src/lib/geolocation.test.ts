@@ -8,6 +8,7 @@ import { pickTarget } from "./geocode.ts";
 import {
   DENIED_IN_BROWSER,
   DENIED_IN_IOS_APP,
+  IOS_LOCATION_LAST_RESORT,
   IOS_LOCATION_STEPS,
   FINDING_LOCATION,
   LINK_HAS_LOCATION_POINT,
@@ -814,6 +815,10 @@ test("the Home Screen app's denied notice gets the iPhone Settings steps; no oth
   // The tester's missing step: In-App Web Browsing, under System Services.
   assert.ok(IOS_LOCATION_STEPS.some((step) => /System Services.*In-App Web Browsing/.test(step)));
   assert.ok(IOS_LOCATION_STEPS.length <= 4);
+  // One action per step, so a rider at the bike doesn't lose their place; re-adding the icon comes after, last.
+  for (const step of IOS_LOCATION_STEPS) assert.ok(step.split(". ").length === 1, step);
+  assert.match(IOS_LOCATION_LAST_RESORT, /^Still blocked\?/);
+  assert.ok(ES[IOS_LOCATION_LAST_RESORT]);
   // The Spanish notice and steps exist, and the first-sentence match holds for the Spanish notice too.
   const es = ES[DENIED_IN_IOS_APP];
   assert.ok(es);
