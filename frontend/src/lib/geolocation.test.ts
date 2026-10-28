@@ -5,6 +5,8 @@ import { readFileSync } from "node:fs";
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./geo.ts";
 import { pickTarget } from "./geocode.ts";
 import {
+  DENIED_IN_BROWSER,
+  DENIED_IN_IOS_APP,
   FINDING_LOCATION,
   LINK_HAS_LOCATION_POINT,
   LINK_HAS_LOCATION_START,
@@ -18,6 +20,7 @@ import {
   ROUGH_SAID,
   accuracyRing,
   accuracyText,
+  iosHomeScreenApp,
   approximateHint,
   browserEnv,
   cleanAccuracy,
@@ -777,4 +780,18 @@ test("privacy: the one documented stored path is the sign-in round trip, in sign
   assert.match(signIn, /export const SKIP_SIGN_IN_PLAN_WITH_LOCATION = false;/);
   assert.equal((signIn.match(/\.setItem\(/g) ?? []).length, 1, "one write, in rememberPlan");
   for (const file of ["./planHash.ts", "./gpx.ts"]) assert.doesNotMatch(read(file), /geolocation|locationFrom|fromHere/i);
+});
+
+test("denied in an iPhone Home Screen app names the iPhone's settings, not a browser's site settings", () => {
+  assert.equal(iosHomeScreenApp({ standalone: true }), true);
+  assert.equal(iosHomeScreenApp({ standalone: false }), false);
+  assert.equal(iosHomeScreenApp({}), false);
+  assert.equal(iosHomeScreenApp(undefined), false);
+  // Tests run outside a Home Screen app, so the tab's notice is the one in force.
+  assert.equal(LOCATE_MESSAGES.denied, DENIED_IN_BROWSER);
+  assert.match(DENIED_IN_IOS_APP, /Home Screen app/);
+  assert.match(DENIED_IN_IOS_APP, /Privacy & Security, Location Services, Safari Websites/);
+  assert.doesNotMatch(DENIED_IN_IOS_APP, /browser's site settings/);
+  // Go swaps the closing "search for a place." for "type a start."; both notices end that way.
+  for (const notice of [DENIED_IN_BROWSER, DENIED_IN_IOS_APP]) assert.match(notice, /search for a place\.$/);
 });

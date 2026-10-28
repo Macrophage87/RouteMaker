@@ -3515,6 +3515,34 @@ carries the edge changes they need; **the owner ships them by hand**, as every
 The Content-Security-Policy needs no change: `worker-src 'self'` allows the worker,
 and `manifest-src` falls back to `default-src 'self'`.
 
+### Location in an iPhone Home Screen app
+
+A tester on iOS 26 reported that RouteMaker added to the Home Screen with "Open as
+Web App" never asked for the location and said it was blocked, while the same site in
+a Safari tab could use it. The edge is not the cause: neither nginx nor Caddy sends a
+`Permissions-Policy` header, and the app asks the browser on every press rather than
+trusting the Permissions API's state (which, in a Home Screen app, can say "denied"
+while a look-up succeeds). iOS keeps a Home Screen app's location permission apart
+from Safari's, and on iOS 26 it can refuse without a prompt; other web apps report the
+same ([Apple developer forums](https://developer.apple.com/forums/thread/804381)).
+So in a Home Screen app the denied notice names the iPhone's settings
+(`DENIED_IN_IOS_APP`, frontend/src/lib/geolocation.ts). The steps to give a tester,
+in order, stopping when the location works:
+
+1. **Settings > Privacy & Security > Location Services**: on. Scroll to **Safari
+   Websites** and choose **While Using the App** (with **Precise Location** on).
+2. **Settings > Apps > Safari > Location** (under Settings for Websites): **Ask** or
+   **Allow**, not Deny.
+3. **Add the app again**: press and hold the RouteMaker icon, Remove App, Delete from
+   Home Screen. In Safari, open the site, press the location button and allow it,
+   then Share, Add to Home Screen, with Open as Web App on. Open it and press the
+   location button; iOS should ask now.
+4. **Last resort, resets every app's location choices**: Settings > General > Transfer
+   or Reset iPhone > Reset > Reset Location & Privacy, then open the Home Screen app
+   and allow when asked.
+
+Until it works, the Safari tab works: a tester can plan and ride there.
+
 ## Link previews: the icon when a link is shared (v0.10.1)
 
 A chat app (Discord, Google Messages, iMessage, WhatsApp, Slack) fetches a link to draw its
