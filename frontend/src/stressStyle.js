@@ -1484,7 +1484,7 @@ export function mtbMinZoom(level = routableMtb) {
   return level !== null && level !== undefined ? MTB_MODE_MIN_ZOOM : MTB_MIN_ZOOM;
 }
 
-/** The overview line's paint: its level's colour (an unrated trail's brown), thin, widening a little to z11. */
+/** The overview line's paint: its level's colour (an unrated trail's dark brown), thin, widening a little to z11; wider with the switch. */
 export function mtbOverviewPaint(strong = accessibilityOn()) {
   const [low, high] = strong ? MTB_OVERVIEW.strongWidth : MTB_OVERVIEW.width;
   return {

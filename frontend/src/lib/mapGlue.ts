@@ -246,7 +246,7 @@ export function setStressPalette(
     if (map.getLayer(mtbLevelLayerId(level))) map.setPaintProperty(mtbLevelLayerId(level), "line-width", paint.line["line-width"]);
     if (map.getLayer(mtbLevelCasingLayerId(level))) map.setPaintProperty(mtbLevelCasingLayerId(level), "line-width", paint.casing["line-width"]);
   }
-  // The Mountain Bike ride type's zoomed-out line (2026-10-28): wider, and an unrated trail's brown darker, with the switch.
+  // The Mountain Bike ride type's zoomed-out line (2026-10-28): wider with the accessibility switch.
   if (map.getLayer(MTB_OVERVIEW_LAYER_ID)) {
     for (const [name, value] of Object.entries(mtbOverviewPaint())) map.setPaintProperty(MTB_OVERVIEW_LAYER_ID, name, value);
   }
