@@ -1319,7 +1319,15 @@ park paths.</p>
 <div class="more-body">
 <ul>
 <li><strong>Cues.</strong> The first cue comes about 27 seconds before a turn, the second about 10
-seconds before, and "now" at the turn. Cues say only the turn and the street. Where the path you turn onto starts on the far side of a road you go straight across just before, the
+seconds before, and "now" at the turn. Cues say the turn and the street, and a few things more. A stop gives its side of the street where the
+router knows it: "You have reached stop 2, Union Market. Destination on your left." A destination on the left across a busy
+(LTS 3 or more) two-way road with no bike facility is said early: "In 500 feet, the destination is across Georgia
+Avenue, on your left." A painted or protected bike lane that ends on a street rated LTS 3 or calmer, with no lane
+back within about 500 ft [150 m], is said: "Bike lane ends on Connecticut Avenue Northwest." A turn onto an unnamed
+path that leads to a named one names it: "Right onto the path to Rock Creek Trail". At <strong>Full</strong>, just
+past a turn onto a stretch that runs on for a mile [1.6 km] or more, the ride says how far: "Continue on Washington
+and Old Dominion Trail for 2 miles." A route that turns back on the same way, at a dead end or past a via point on
+a spur, says "Make a U-turn on" the street, in the directions and in the ride. Where the path you turn onto starts on the far side of a road you go straight across just before, the
 cue says the crossing first: "Cross Saint Paul Street, then right onto Saint Paul Street bike lane"; the
 directions also name the crossing's control, such as "at a signal". Turns in quick succession, each within 330 ft [100 m] of the one before, are said together early,
 up to three of them: "Right onto 6th Street, then immediately bear left onto Rhode Island Avenue". Each turn
@@ -1332,7 +1340,8 @@ reader, RouteMaker's voice, both or neither.</li>
 than 160 ft [50 m] are not used.</li>
 <li><strong>Re-routing</strong> plans on from where you are, in the direction you are heading.</li>
 <li><strong>A U-turn you keep riding past.</strong> After two "Make a U-turn" re-routes in a row that you
-ride on past, the third keeps your way: "New route found. Keep going ahead." If there is no way ahead, it
+ride on past, the third is planned in the direction you are heading first, and that route is kept: "New route
+found. Keep going ahead." If even that route turns round, because there is no way ahead, it
 says "No route found ahead. Make a U-turn." once and leaves that route up, then checks quietly about once
 a minute for a way ahead and speaks only if it finds one. Turning round as asked, or
 a re-route without a U-turn, starts the count again.</li>
@@ -1403,7 +1412,7 @@ climbing.</li>
 <p class="next">Next: <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.13.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.13.1. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
