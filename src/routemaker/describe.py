@@ -125,6 +125,11 @@ FIRST_TURN_MIN_M = 25.0
 # The unnamed ways a leg may begin on whose turn off is not said: a driveway or a
 # parking aisle out of a lot.
 FIRST_TURN_IGNORED_USES = frozenset({"driveway", "drive_through", "parking_aisle"})
+# An unnamed path turned onto that leads to a named path (`_toward`) is said with it
+# ("Right onto the path to Rock Creek Trail") from longer than this, the most the app
+# joins two turns as one jog (frontend/src/lib/navigate.ts JOG_M), up to OVERVIEW_M: a
+# shorter one is said with the turn after it, a longer one is a way of its own.
+TOWARD_MIN_M = 100.0
 # A roundabout or circle by its name ("Dupont Circle Northwest"): never a jog's
 # middle; the turn is read across it, as the net movement.
 CIRCLE_NAME = re.compile(r"\b(?:circle|roundabout)\b", re.IGNORECASE)
@@ -1052,6 +1057,10 @@ class _Turn:
     # The junction event where that road is crossed, said with the crossing; None where
     # there is none.
     across_event: object | None = None
+    # A turn onto an unnamed path that leads to a named one (`_toward`): that one's name,
+    # said with the path ("Right onto the path to Rock Creek Trail"), the path itself
+    # still unnamed ("path" on the map, in a report, in "Where am I?").
+    toward: str | None = None
 
 
 def _turn_deg(heading_in: float, heading_out: float) -> float:
@@ -1383,6 +1392,7 @@ def _stretch_sentence(
     turn: _Turn | None,
     same_street_continues: bool,
     then: str = "",
+    toward: bool = True,
 ) -> str:
     street = _street_words(run)
     where = range_words(start_m, end_m)
@@ -1397,6 +1407,9 @@ def _stretch_sentence(
             lead = t("Cross {road}", road=_crossed_road(turn.cross))
         elif movement in TURN_WORDS and turn.stay:
             lead = t(_STAY[movement], street=_in_sentence(street))
+        elif movement in TURN_WORDS and toward and turn.toward:
+            way = t("{way} to {trail}", way=_in_sentence(street), trail=_in_sentence(turn.toward))
+            lead = t(_ONTO[movement], street=way)
         elif movement in TURN_WORDS:
             lead = t(_ONTO[movement], street=_in_sentence(street))
         else:
@@ -1432,6 +1445,31 @@ def _stretch_sentence(
     if surface:
         words = f"{words}, {t(surface)}"
     return f"{where}: {lead}{then}, {words}."
+
+
+def _toward(runs: list[_Run], turns: dict[int, _Turn], i: int) -> str | None:
+    """Where the stretch `runs[i]` is an unnamed path turned onto, longer than TOWARD_MIN_M
+    and under OVERVIEW_M, that ends at a turn (or a new name straight on) onto a named
+    path, another than the way before it: that path's name. At a junction where several
+    paths meet, "Right onto the path" does not say which. None elsewhere, and where the
+    turn is said otherwise (a crossing, a far-side crossing, a circle's exit, a fork along
+    one way)."""
+    run, turn = runs[i], turns[i]
+    if run.names or run.service is not None or run.untraced or not run.path:
+        return None
+    if not TOWARD_MIN_M < run.metres < OVERVIEW_M:
+        return None
+    if turn.movement not in TURN_WORDS or turn.cross or turn.across or turn.exit or turn.stay:
+        return None
+    following = turns.get(i + 1)
+    if following is None or following.movement is None or following.cross is not None:
+        return None
+    after = runs[i + 1]
+    if not after.path or not after.label or _COMMON_WAY.match(after.label):
+        return None
+    if _same_street(runs[i - 1], after):
+        return None
+    return after.label
 
 
 def _capital(text: str) -> str:
@@ -1999,6 +2037,8 @@ def describe_both(
         ):
             used.discard(index)
             turn.event = None
+    for i, turn in turns.items():
+        turn.toward = _toward(runs, turns, i)
 
     entries: list[tuple[tuple[float, int, int], dict]] = []
     shared: list[tuple[tuple[float, int, int], dict]] = []
@@ -2057,6 +2097,7 @@ def describe_both(
                         **({"exit": turn.exit} if turn.exit else {}),
                         **({"cross": turn.cross} if turn.cross else {}),
                         **({"across": turn.across} if turn.across else {}),
+                        **({"toward": turn.toward} if turn.toward else {}),
                     },
                     severity=severity,
                 ),
@@ -2143,6 +2184,9 @@ def describe_both(
         end = (starts[last] + runs[last].metres) * scale
         turn = turns.get(first)
         continues = first > 0 and runs[first - 1].leg == runs[first].leg
+        # The way an unnamed path leads to, said only where the path is an entry of its own:
+        # merged, its ", then ..." names that way.
+        toward = turn is not None and turn.toward is not None and first == last
         severity = None
         if turn is not None and turn.event is not None and turn.event.flagged:
             severity = turn.event.severity
@@ -2153,14 +2197,14 @@ def describe_both(
                     "stretch",
                     start,
                     end,
-                    _stretch_sentence(run, start, end, turn, continues, then),
+                    _stretch_sentence(run, start, end, turn, continues, then, toward),
                     street=_street_words(runs[first]),
                     relation_name=_street_words(runs[first]).lower() in relation_names,
                     tier=int(run.tier) if run.tier.isdigit() else None,
                     facility=None if run.facility in ("unknown", "none") else run.facility,
                     surface=surface_of(run),
                     text_lanes_hidden=(
-                        _stretch_sentence(hidden, start, end, turn, continues, then)
+                        _stretch_sentence(hidden, start, end, turn, continues, then, toward)
                         if hidden
                         else None
                     ),
@@ -2176,6 +2220,7 @@ def describe_both(
                         **({"exit": turn.exit} if turn.exit else {}),
                         **({"cross": turn.cross} if turn.cross else {}),
                         **({"across": turn.across} if turn.across else {}),
+                        **({"toward": turn.toward} if toward else {}),
                     },
                     severity=severity,
                 ),

@@ -2773,3 +2773,77 @@ class TestUnnamedBridgesOnATrail:
         after = road("Rock Creek Trail", 1, 800, 90, 90, "path", "cycleway")
         full = d.describe(self.legs(after=after))
         assert [e["street"] for e in full] == [self.TRAIL, "path", "Rock Creek Trail"]
+
+
+class TestThePathToATrail:
+    """Round-2 D21: "Right onto the path" at a junction where several paths meet does not
+    say which. An unnamed path that leads to another named trail is said with it; the
+    path's own name (`street`, `onto`) stays "path"."""
+
+    @staticmethod
+    def legs(metres=150, after="Rock Creek Trail", before="Capital Crescent Trail"):
+        return [
+            flat(
+                road(before, 1, 1500, 90, 90, "path", "cycleway"),
+                road("", 1, metres, 180, 180, "path", "cycleway"),
+                road(after, 1, 1500, 90, 90, "path", "cycleway"),
+            )
+        ]
+
+    def test_the_turn_onto_the_path_names_the_trail_it_leads_to(self):
+        full, short = d.describe_both(self.legs())
+        turn = full[1]["turn"]
+        assert (full[1]["street"], turn["onto"], turn["toward"]) == (
+            "path",
+            "path",
+            "Rock Creek Trail",
+        )
+        assert (
+            full[1]["text"]
+            .split(": ")[1]
+            .startswith("Right onto the path to Rock Creek Trail, traffic-free.")
+        )
+        assert full[2]["text"].split(": ")[1].startswith("Left onto Rock Creek Trail,")
+        # The overview merges the path into the trail before, whose ", then ..." names it.
+        assert all("toward" not in (e["turn"] or {}) for e in short)
+
+    def test_a_path_of_its_own_in_the_overview_says_it_too(self):
+        legs = [
+            flat(
+                road("Capital Crescent Trail", 1, 1500, 90, 90, "path", "cycleway"),
+                road("", 3, 150, 180, 180, "path", "cycleway"),
+                road("Rock Creek Trail", 1, 1500, 90, 90, "path", "cycleway"),
+            )
+        ]
+        _full, short = d.describe_both(legs)
+        said = [e for e in short if (e["turn"] or {}).get("toward")]
+        assert len(said) == 1 and "Right onto the path to Rock Creek Trail" in said[0]["text"]
+
+    def test_in_spanish(self):
+        from routemaker.lang import speaking
+
+        with speaking("es"):
+            text = d.describe(self.legs())[1]["text"]
+        assert "Gire a la derecha hacia el sendero que lleva a Rock Creek Trail, sin tráfico." in (
+            text
+        )
+
+    @pytest.mark.parametrize("metres", [95, 500])
+    def test_a_path_joined_as_a_jog_or_a_way_of_its_own_is_not(self, metres):
+        entries = d.describe(self.legs(metres))
+        assert all("toward" not in (e["turn"] or {}) for e in entries)
+        assert "path to" not in " ".join(texts(entries))
+
+    def test_back_onto_the_same_trail_is_not(self):
+        entries = d.describe(self.legs(after="Capital Crescent Trail"))
+        assert all("toward" not in (e["turn"] or {}) for e in entries)
+
+    def test_onto_a_street_is_not(self):
+        legs = [
+            flat(
+                road("Capital Crescent Trail", 1, 1500, 90, 90, "path", "cycleway"),
+                road("", 1, 150, 180, 180, "path", "cycleway"),
+                road("River Road", 2, 1500, 90, 90),
+            )
+        ]
+        assert all("toward" not in (e["turn"] or {}) for e in d.describe(legs))
