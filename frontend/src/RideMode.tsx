@@ -250,6 +250,7 @@ import {
   type RideTrip,
 } from "./lib/rideTrip.ts";
 import { t } from "./lib/i18n.ts";
+import { railWord } from "./lib/railWords.ts";
 import { countText } from "./lib/rideGroup.ts";
 
 /**
@@ -2688,7 +2689,7 @@ export function RideMode({
             title={t("Where am I?")}
           >
             <Icon name="locate" size={24} />
-            <span className="ride-word" aria-hidden="true">{t("Locate")}</span>
+            <span className="ride-word" aria-hidden="true">{railWord("Locate")}</span>
           </button>
           {/* Large text on and off (the owner, 2026-10-20), shown pressed while on. */}
           <button
@@ -2721,7 +2722,7 @@ export function RideMode({
                   {riders}
                 </span>
               )}
-              <span className="ride-word" aria-hidden="true">{t("Share live")}</span>
+              <span className="ride-word" aria-hidden="true">{railWord("Share live")}</span>
             </button>
           )}
           {onBroadcast && onBroadcastHold && (
@@ -2752,7 +2753,7 @@ export function RideMode({
                 onClick={() => openMenu(detourOpen ? null : "detour")}
               >
                 <Icon name="detour" size={24} />
-                <span className="ride-word" aria-hidden="true">{t("Detour")}</span>
+                <span className="ride-word" aria-hidden="true">{railWord("Detour")}</span>
               </button>
               <div id={detourId} className="ride-menu" role="group" aria-labelledby={`${detourId}-heading`} hidden={!detourOpen}>
                 <div className="ride-menu-head">

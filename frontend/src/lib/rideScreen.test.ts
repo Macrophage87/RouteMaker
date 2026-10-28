@@ -65,7 +65,7 @@ test("the side buttons' words: under the round buttons where they fit, else 44 p
   assert.match(css, /\.ride \.ride-rail-pill \.ride-round,\s*\.ride \.ride-rail-pill \.ride-311-button \{[^}]*height: 44px;/);
   // Each button's word, its name unchanged; Roam's three too, and no button added to Roam.
   for (const word of ["Locate", "Text", "Share live", "Detour", "Dock", "Skip", "Topo", "Settings"]) {
-    assert.match(ride, new RegExp(`<span className="ride-word" aria-hidden="true">\\{t\\("${word}"\\)\\}</span>`), word);
+    assert.match(ride, new RegExp(`<span className="ride-word" aria-hidden="true">\\{(?:t|railWord)\\("${word}"\\)\\}</span>`), word);
   }
   assert.match(ride, /<span className="ride-word" aria-hidden="true">\{RIDE_SETTINGS_TEXT\}<\/span>/);
   assert.match(ride, /<span className="ride-word" aria-hidden="true">\{EASE_WORD\[which\]\}<\/span>/);
