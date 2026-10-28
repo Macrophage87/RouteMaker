@@ -1647,4 +1647,9 @@ export const ES: Readonly<Record<string, string>> = {
   "{percent}% quiet roads": "{percent}% calles tranquilas",
   "1 turn": "1 giro",
   "{count} turns": "{count} giros",
+  // ---- Off the route, at the top (the owner, 2026-10-28) ----
+  "Reroute": "Recalcular",
+  ": plan again from here": ": planificar de nuevo desde aquí",
+  "Keep going": "Seguir",
+  ": keep the planned route": ": mantener la ruta planificada",
 };

@@ -143,9 +143,9 @@ test("a route everyone shares stays fixed on the ride: off route, the way back, 
   // The way back is said once on leaving it and shown while off; Keep is not offered (it is always kept).
   assert.match(ride, /if \(fixedRef\.current && out\.events\.some\(\(e\) => e\.kind === "off-route"\)\) \{\s*const back = wayBack\(modelRef\.current, out\.state\);\s*if \(back\) announcer\.current\?\.answer\(`\$\{FIXED_SAID\} \$\{wayBackSaid\(back\)\}`\);/);
   assert.match(ride, /\{\(keepPlanned \|\| fixedRef\.current\) && back && \(/);
-  assert.match(ride, /\{!fixedRef\.current && \(\s*<button type="button" className="secondary" onClick=\{keep\}/);
+  assert.match(ride, /\{!fixedRef\.current && \(\s*<button type="button" className="secondary ride-off-button" onClick=\{keep\}/);
   // Re-plan from here stays, the rider's own choice.
-  assert.match(ride, /<button type="button" onClick=\{replanNow\} aria-disabled=\{replanning\}>\s*\{t\("Re-plan from here"\)\}/);
+  assert.match(ride, /<button type="button" className="secondary ride-off-button" onClick=\{replanNow\} aria-disabled=\{replanning\}>\s*<Icon name="routes" size=\{22\} \/>\s*\{t\("Reroute"\)\}/);
 });
 
 test("Share route or Share ride: a ride's link opens fixed, with location sharing offered, on any ride type", async () => {

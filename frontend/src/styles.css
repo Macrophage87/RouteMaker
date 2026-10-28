@@ -4305,10 +4305,30 @@ details.zoom-notes {
   font-weight: 700;
 }
 
+/* Off the route: Reroute and Keep going in a row of their own under the top row, the size of End ride and Go round. */
+.ride-off-actions {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+.ride .ride-off-button {
+  flex: 1 1 0;
+  justify-content: center;
+  min-height: 52px;
+  padding: 6px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
 /* On the narrowest phones (320 px) the two keep one line at a slightly smaller size; the slide's text stays clear of its thumb. */
 @media (max-width: 359px) {
   .ride .ride-road-closed,
-  .ride .ride-end {
+  .ride .ride-end,
+  .ride .ride-off-button {
     font-size: 1rem;
   }
 
@@ -4671,7 +4691,6 @@ details.zoom-notes {
 }
 
 .ride-actions button,
-.ride-off-actions button,
 .ride-notes button,
 .start-ride button {
   min-height: 44px;

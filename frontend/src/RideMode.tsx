@@ -2325,7 +2325,7 @@ export function RideMode({
     setReplanNote("");
   }, [replanNote, offNow, showToast]);
   const notesShown = !!((gps && ride.fix) || paused || wakeNote || (ride.off && replanNote) || corridorText || weatherShown);
-  const sheetShown = notesShown || ride.off || restShown;
+  const sheetShown = notesShown || restShown;
   // The map's scales and credits sit at the bottom of the screen in a ride (the owner, 2026-10-17: "on the bottom
   // of the page in a ride"), just above the bottom panel while it shows (styles.css --ride-sheet-h).
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -2423,6 +2423,25 @@ export function RideMode({
             )}
           </div>
         </div>
+        {/* Off the route, Reroute and Keep going just under End ride and Go round, as big as they are (the owner,
+            2026-10-28: "move the reroute and keep going buttons to the top and make them look like the rest"). */}
+        {ride.off && (
+          <div className="ride-off-actions" ref={blockOff}>
+            <button type="button" className="secondary ride-off-button" onClick={replanNow} aria-disabled={replanning}>
+              <Icon name="routes" size={22} />
+              {t("Reroute")}
+              <span className="visually-hidden">{t(": plan again from here")}</span>
+            </button>
+            {/* A fixed route is always kept: no Keep going to press. */}
+            {!fixedRef.current && (
+              <button type="button" className="secondary ride-off-button" onClick={keep} aria-pressed={keepPlanned}>
+                <Icon name="play" size={22} />
+                {t("Keep going")}
+                <span className="visually-hidden">{t(": keep the planned route")}</span>
+              </button>
+            )}
+          </div>
+        )}
         {/* Where the corner has no room, the light times just under the top row, so they stay in view. */}
         {light && !cornerFits && (
           <p className="ride-light-below" aria-hidden="true">
@@ -2999,19 +3018,6 @@ export function RideMode({
                     {t("Resume")}
                   </button>
                 </p>
-              )}
-            </div>
-          )}
-          {ride.off && (
-            <div className="actions ride-off-actions" ref={blockOff}>
-              <button type="button" onClick={replanNow} aria-disabled={replanning}>
-                {t("Re-plan from here")}
-              </button>
-              {/* A fixed route is always kept: no Keep to press. */}
-              {!fixedRef.current && (
-                <button type="button" className="secondary" onClick={keep} aria-pressed={keepPlanned}>
-                  {t("Keep the planned route")}
-                </button>
               )}
             </div>
           )}
