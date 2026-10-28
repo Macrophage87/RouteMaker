@@ -4,7 +4,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ES } from "../i18n/es.ts";
-import { deviceLanguage, readLanguageChoice, setLanguageForTest, speechLang, t, writeLanguageChoice } from "./i18n.ts";
+import { firstWordAndRest, deviceLanguage, readLanguageChoice, setLanguageForTest, speechLang, t, writeLanguageChoice } from "./i18n.ts";
 import { arrivalSideWords, crossingWords, cueSpoken, endWords, exitWords, ontoWords, stopText, turnWords, type Cue } from "./navigate.ts";
 import { spokenDistance } from "./format.ts";
 import * as navigate from "./navigate.ts";
@@ -69,6 +69,7 @@ test("Spanish turn directions are whole Spanish sentences, the street names as t
     assert.equal(turnWords("left", "R Street Northwest"), "Gire a la izquierda hacia R Street Northwest.");
     assert.equal(turnWords("bear_right", "Paint Branch Trail", true), "Manténgase a la derecha para seguir en Paint Branch Trail.");
     assert.equal(turnWords("right", "unnamed path"), "Gire a la derecha hacia el sendero.");
+    assert.equal(turnWords("right", "path", false, null, "Rock Creek Trail"), "Gire a la derecha hacia el sendero que lleva a Rock Creek Trail.");
     assert.equal(turnWords("right", "service road beside East-West Highway"), "Gire a la derecha hacia la vía de servicio junto a East-West Highway.");
     assert.equal(turnWords("left", null), "Gire a la izquierda.");
     // A bear is a turn, not "keep" (manténgase is only for staying on a way at a fork).
@@ -117,4 +118,10 @@ test("every off-route, re-plan, weak-GPS and back-on-route sentence Ride says ha
   for (const english of Object.values(navigate.VERBOSITY_LABELS)) assert.match(ES[english], /^[^:]+: /, english);
   assert.equal(t("In {distance}", { distance: "0.4 mi (0.6 km)" }, "es"), "En 0.4 mi (0.6 km)");
   assert.equal(t("Then in {distance}", { distance: "0.4 mi (0.6 km)" }, "es"), "Luego en 0.4 mi (0.6 km)");
+});
+
+test("a narrow button's first word and the rest, in either language", () => {
+  assert.deepEqual(firstWordAndRest("Save route"), ["Save", " route"]);
+  assert.deepEqual(firstWordAndRest(t("Start ride", undefined, "es")), ["Iniciar", " recorrido"]);
+  assert.deepEqual(firstWordAndRest("Loop"), ["Loop", ""]);
 });

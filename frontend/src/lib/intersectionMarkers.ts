@@ -10,6 +10,7 @@
  */
 import type { JunctionGroupSummary, JunctionWarning, RouteResponse } from "./api.ts";
 import { formatDistance } from "./format.ts";
+import { t } from "./i18n.ts";
 
 export type Severity = JunctionWarning["severity"];
 
@@ -22,8 +23,8 @@ export type Severity = JunctionWarning["severity"];
 export const SEVERITY_COLOURS: Record<Severity, { fill: string; stroke: string; label: string; short: string }> = {
   // `short` is the list row's word, and says "stress" as the marker and the card
   // do: "Higher" alone was ambiguous to a screen-reader user (a11y review, int-2).
-  orange: { fill: "#f59e0b", stroke: "#7c4a03", label: "Higher stress", short: "Higher stress" },
-  red: { fill: "#dc2626", stroke: "#7f1d1d", label: "Very high stress", short: "Very high stress" },
+  orange: { fill: "#f59e0b", stroke: "#7c4a03", label: t("Higher stress"), short: t("Higher stress") },
+  red: { fill: "#dc2626", stroke: "#7f1d1d", label: t("Very high stress"), short: t("Very high stress") },
 };
 
 /** The icon is this many CSS pixels on a side. */

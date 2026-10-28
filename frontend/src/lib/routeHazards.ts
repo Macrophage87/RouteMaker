@@ -14,6 +14,7 @@ import { createElement as h, type ReactElement } from "react";
 import type { RoadHazardSpan, RouteResponse } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { hexToRgb, rasterise, type Raster, type Rgb } from "./stationIcons.ts";
+import { t } from "./i18n.ts";
 
 export const ROUTE_HAZARD_SOURCE = "route-hazards";
 export const ROUTE_HAZARD_LAYER = "route-hazard-marks";
@@ -121,22 +122,24 @@ export function routeHazardFeatures(route: (Pick<RouteResponse, "geometry" | "di
   return { type: "FeatureCollection" as const, features };
 }
 
-const SHORT: Record<RoadHazardSpan["kinds"][number], string> = { cobbles: "cobblestones", rails: "rails in the road" };
+const SHORT: Record<RoadHazardSpan["kinds"][number], string> = { cobbles: t("cobblestones"), rails: t("rails in the road") };
 
 /** Said with the route (a polite announcement): "This route rides 2 known hazards: rails in the road on H Street ...". */
 export function roadHazardsSaid(route: Partial<Pick<RouteResponse, "road_hazards">>): string | null {
   const found = route.road_hazards ?? [];
   if (found.length === 0) return null;
   const n = found.length;
-  const names = found.map((s) => `${s.kinds.map((k) => SHORT[k]).join(" and ")} on ${s.road}`).join(", ");
-  return `This route rides ${n} known ${n === 1 ? "hazard" : "hazards"}: ${names}. The directions list ${n === 1 ? "it" : "them"}.`;
+  const names = found.map((s) => t("{what} on {road}", { what: s.kinds.map((k) => SHORT[k]).join(t(" and ")), road: s.road })).join(", ");
+  return n === 1
+    ? t("This route rides 1 known hazard: {names}. The directions list it.", { names })
+    : t("This route rides {n} known hazards: {names}. The directions list them.", { n, names });
 }
 
 /** The key's name for the mark, its shape in a hint as the junctions' key says theirs ("Higher stress (triangle)"). */
-export const ROUTE_HAZARD_KEY_NAME = "Road hazard";
-export const ROUTE_HAZARD_KEY_SHAPE = "dark circle";
+export const ROUTE_HAZARD_KEY_NAME = t("Road hazard");
+export const ROUTE_HAZARD_KEY_SHAPE = t("dark circle");
 export const ROUTE_HAZARD_KEY_TEXT =
-  "Cobblestones or rails in the road, marked on a route only. Routes avoid them where they can and the directions name each.";
+  t("Cobblestones or rails in the road, marked on a route only. Routes avoid them where they can and the directions name each.");
 
 /** The mark as a small inline picture: the key's swatch and the directions' symbol. Seen, not heard. */
 export function RouteHazardSwatch({ size = 16 }: { size?: number }): ReactElement {
@@ -158,7 +161,7 @@ export function RouteHazardSwatch({ size = 16 }: { size?: number }): ReactElemen
 export function RouteHazardKey(): ReactElement {
   return h(
     "ul",
-    { className: "route-hazard-key", "aria-label": "Route hazards key" },
+    { className: "route-hazard-key", "aria-label": t("Route hazards key") },
     h(
       "li",
       { key: "hazard" },

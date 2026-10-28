@@ -4,6 +4,7 @@
  * (Garmin's consent is a page); Garmin sends the rider back to `/?garmin=<outcome>`, which `garminReturnFrom` reads
  * once, so Settings can open and say what happened. Offered only where the server has Garmin's keys.
  */
+import { language, t } from "./i18n.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
 
 export const CONNECT_PATH = "/auth/garmin/start";
@@ -11,20 +12,20 @@ export const RETURN_PARAM = "garmin";
 
 export const GARMIN_LABEL = "Garmin";
 export const GARMIN_HELP =
-  "Connect your Garmin account and Send to Garmin adds courses to Garmin Connect directly. RouteMaker can only send courses: it reads nothing from your Garmin but your account number.";
-export const GARMIN_CONNECTED = "Connected";
-export const GARMIN_NOT_CONNECTED = "Not connected";
-export const DISCONNECT_ASK = "Disconnect Garmin? Send to Garmin then hands the file to the Garmin Connect app instead.";
-export const DISCONNECTED = "Garmin disconnected.";
-export const FAILED = "That did not work; try again shortly.";
-export const READ_FAILED = "Your Garmin connection could not be checked just now.";
+  t("Connect your Garmin account and Send to Garmin adds courses to Garmin Connect directly. RouteMaker can only send courses: it reads nothing from your Garmin but your account number.");
+export const GARMIN_CONNECTED = t("Connected");
+export const GARMIN_NOT_CONNECTED = t("Not connected");
+export const DISCONNECT_ASK = t("Disconnect Garmin? Send to Garmin then hands the file to the Garmin Connect app instead.");
+export const DISCONNECTED = t("Garmin disconnected.");
+export const FAILED = t("That did not work; try again shortly.");
+export const READ_FAILED = t("Your Garmin connection could not be checked just now.");
 
 /** What the page says when Garmin sends the rider back. */
 export const RETURNED: Record<string, string> = {
-  connected: "Garmin connected. Send to Garmin now adds courses to Garmin Connect directly.",
-  declined: "Garmin not connected: you did not allow it at Garmin.",
-  failed: "Garmin could not be connected. Try again.",
-  signin: "Sign in first, then connect Garmin.",
+  connected: t("Garmin connected. Send to Garmin now adds courses to Garmin Connect directly."),
+  declined: t("Garmin not connected: you did not allow it at Garmin."),
+  failed: t("Garmin could not be connected. Try again."),
+  signin: t("Sign in first, then connect Garmin."),
 };
 
 export interface GarminState {
@@ -53,7 +54,7 @@ export function garminSummary(state: Pick<GarminState, "connected" | "connected_
   if (!state.connected) return GARMIN_NOT_CONNECTED;
   const when = state.connected_at ? new Date(state.connected_at) : null;
   return when && !Number.isNaN(when.getTime())
-    ? `${GARMIN_CONNECTED} since ${when.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+    ? t("Connected since {date}", { date: when.toLocaleDateString(language() === "es" ? "es-US" : "en-US", { month: "short", day: "numeric" }) })
     : GARMIN_CONNECTED;
 }
 
@@ -89,13 +90,13 @@ export async function disconnectGarmin(origin: string, post: Fetch = fetch, cook
 }
 
 /** What Send to Garmin says when it went through the connection (core.garmin_courses). */
-export const COURSE_ADDED = "Course added to Garmin Connect. It syncs to your Garmin.";
-export const COURSE_UPDATED = "Course updated in Garmin Connect. It syncs to your Garmin.";
-export const CONNECTION_ENDED = "Garmin is no longer connected, so the course went as a file.";
-export const COURSE_FAILED_FILE = "Garmin could not be reached, so the course went as a file.";
+export const COURSE_ADDED = t("Course added to Garmin Connect. It syncs to your Garmin.");
+export const COURSE_UPDATED = t("Course updated in Garmin Connect. It syncs to your Garmin.");
+export const CONNECTION_ENDED = t("Garmin is no longer connected, so the course went as a file.");
+export const COURSE_FAILED_FILE = t("Garmin could not be reached, so the course went as a file.");
 /** After Garmin's own reason (the server's words): the file goes instead. */
-export const AS_FILE = "It went as a file instead.";
-export const SENDING = "Still sending the last course.";
+export const AS_FILE = t("It went as a file instead.");
+export const SENDING = t("Still sending the last course.");
 
 export interface DirectCourse {
   name: string;

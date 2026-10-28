@@ -5,7 +5,8 @@
 import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
 import { DiscordLogo } from "./DiscordLogo.tsx";
 import { Icon } from "./Icon.tsx";
-import { NAME_MAX } from "./lib/savedRoutes.ts";
+import { firstWordAndRest, t } from "./lib/i18n.ts";
+import { NAME_MAX, SAVE_ROUTE } from "./lib/savedRoutes.ts";
 
 /** How long the bar's "Saved" line stays on the map. */
 export const SAID_ON_MAP_MS = 6000;
@@ -73,7 +74,8 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
         {/* On the map bar, "Save" on a phone, where the bar holds Start ride beside it too; the name is the label. */}
         {bar ? (
           <>
-            Save<span className="plan-bar-wide"> route</span>
+            {firstWordAndRest(SAVE_ROUTE)[0]}
+            <span className="plan-bar-wide">{firstWordAndRest(SAVE_ROUTE)[1]}</span>
           </>
         ) : (
           (shown ?? label)
@@ -104,17 +106,17 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
           {onSave ? (
             <>
               <label>
-                Name
+                {t("Name")}
                 <input type="text" value={name} maxLength={NAME_MAX} onChange={(e) => setName(e.target.value)} autoFocus />
               </label>
               <button type="submit" aria-disabled={busy}>
-                Save
+                {t("Save")}
               </button>
             </>
           ) : signIn ? (
             <a className="button save-route-sign-in" href="/auth/login" onClick={signIn} ref={signInRef}>
               <DiscordLogo />
-              Sign in with Discord
+              {t("Sign in with Discord")}
             </a>
           ) : null}
           {onGpx && (
@@ -129,11 +131,11 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
                 })
               }
             >
-              Download GPX
+              {t("Download GPX")}
             </button>
           )}
           <button type="button" className="secondary" onClick={close}>
-            Cancel
+            {t("Cancel")}
           </button>
         </form>
       )}

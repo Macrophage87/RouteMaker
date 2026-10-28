@@ -10,6 +10,7 @@
  * createElement so a test renders it.
  */
 import { createElement as h, useEffect, useId, useRef, useState, type ReactElement, type RefObject } from "react";
+import { t } from "./i18n.ts";
 import {
   BLANK,
   WEIGHT_DIALOG_TITLE,
@@ -38,14 +39,14 @@ export const TOTAL_SAID_DELAY_MS = 700;
 /** The polite total under the worksheet, from what is entered; the defaults with nothing entered. */
 export function totalSaid(sheet: Worksheet, split: Split): string {
   const kg = worksheetKg(sheet, split);
-  if (kg === undefined) return `Total: default, ${formatLbKg(split.riderKg + split.bikeKg + split.cargoKg)}.`;
-  if (kg === null) return "Total: not a number yet.";
-  return `Total: ${formatLbKg(kg)}.`;
+  if (kg === undefined) return t("Total: default, {weight}.", { weight: formatLbKg(split.riderKg + split.bikeKg + split.cargoKg) });
+  if (kg === null) return t("Total: not a number yet.");
+  return t("Total: {weight}.", { weight: formatLbKg(kg) });
 }
 
 // Labelled pounds first and kilograms in brackets (316); the kilograms a typed figure comes to are
 // part of the field's description, so a screen reader hears them too.
-export const WEIGHT_LABELS = { rider: "Rider, lb (kg)", bike: "Bike, lb (kg)", cargo: "Cargo, lb (kg)", total: "Total, lb (kg)" } as const;
+export const WEIGHT_LABELS = { rider: t("Rider, lb (kg)"), bike: t("Bike, lb (kg)"), cargo: t("Cargo, lb (kg)"), total: t("Total, lb (kg)") } as const;
 
 const PARTS = [
   { key: "rider", label: WEIGHT_LABELS.rider, kg: "riderKg" },
@@ -125,17 +126,17 @@ export function weightDialogBody(
     h("p", { key: "d2", id: `${id}-rough` }, WEIGHT_ROUGH),
     props.saved ? h("p", { key: "s", className: "notice", id: `${id}-saved` }, savedNotice(props.saved, now())) : null,
     ...PARTS.map((part) =>
-      field(part.key, part.label, sheet[part.key], `Blank: ${formatLbKg(props.split[part.kg])}.`, String(lbOf(props.split[part.kg])), (text) => set.sheet(editPart(sheet, part.key, text, props.split))),
+      field(part.key, part.label, sheet[part.key], t("Blank: {weight}.", { weight: formatLbKg(props.split[part.kg]) }), String(lbOf(props.split[part.kg])), (text) => set.sheet(editPart(sheet, part.key, text, props.split))),
     ),
-    field("total", WEIGHT_LABELS.total, sheet.total, "Or the total alone.", undefined, (text) => set.sheet(editTotal(text))),
+    field("total", WEIGHT_LABELS.total, sheet.total, t("Or the total alone."), undefined, (text) => set.sheet(editTotal(text))),
     h("p", { key: "sum", className: "weight-total", role: "status", "aria-live": "polite" }, state.said ?? totalSaid(sheet, props.split)),
     h("p", { key: "rule", id: `${id}-rule`, className: refused ? "notice dial-rule" : "dial-rule", "aria-live": "assertive" }, refused),
     h(
       "div",
       { key: "b", className: "actions" },
-      h("button", { type: "button", onClick: save }, "Save"),
-      props.saved ? h("button", { type: "button", className: "secondary", onClick: () => props.onClear() }, "Clear") : null,
-      h("button", { type: "button", className: "secondary", onClick: cancel }, "Cancel"),
+      h("button", { type: "button", onClick: save }, t("Save")),
+      props.saved ? h("button", { type: "button", className: "secondary", onClick: () => props.onClear() }, t("Clear")) : null,
+      h("button", { type: "button", className: "secondary", onClick: cancel }, t("Cancel")),
     ),
   ];
 }
@@ -227,8 +228,8 @@ export function WeightSetting(props: {
     h("p", { className: "weight-line", id: `${id}-line` }, weightLine(props.saved, (props.now ?? Date.now)())),
     h(
       "button",
-      { type: "button", ref: change, className: "secondary", "aria-label": "Change rider and bike weight", "aria-describedby": `${id}-line`, onClick: () => setOpen(true) },
-      "Change",
+      { type: "button", ref: change, className: "secondary", "aria-label": t("Change rider and bike weight"), "aria-describedby": `${id}-line`, onClick: () => setOpen(true) },
+      t("Change"),
     ),
     h(WeightDialog, {
       open,

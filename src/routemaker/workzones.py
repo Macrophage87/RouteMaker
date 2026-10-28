@@ -491,6 +491,39 @@ def _samples(points: list[tuple[float, float]], step: float = 20.0) -> list[tupl
     return out
 
 
+class RouteGrid:
+    """A line of (lon, lat) pairs' segments in a coarse grid of lon/lat cells, so a zone is
+    measured against the few segments near it, not the whole line (core.workzones._RouteIndex,
+    and `along`). Segment i, from point i to i+1, is in every cell its box touches, so a box
+    that overlaps the segment's box shares a cell with it. Built once per line: one int per
+    segment per cell it touches (a few hundred KB for a 100 mi route, freed with the call)."""
+
+    CELL_DEG = 0.01  # about 0.7 mi of longitude here, 0.7 mi of latitude
+
+    def __init__(self, coordinates: Sequence[Sequence[float]]):
+        self.coordinates = coordinates
+        self.cells: dict[tuple[int, int], list[int]] = {}
+        for i, (a, b) in enumerate(zip(coordinates, coordinates[1:], strict=False)):
+            for cell in self._cells(
+                min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1])
+            ):
+                self.cells.setdefault(cell, []).append(i)
+
+    def _cells(self, west: float, south: float, east: float, north: float):
+        size = self.CELL_DEG
+        for x in range(math.floor(west / size), math.floor(east / size) + 1):
+            for y in range(math.floor(south / size), math.floor(north / size) + 1):
+                yield (x, y)
+
+    def segments(self, west: float, south: float, east: float, north: float) -> list[int]:
+        """The indices, in order, of the segments in the cells the box touches: every
+        segment whose box overlaps it, and some that only share a cell with it."""
+        found: set[int] = set()
+        for cell in self._cells(west, south, east, north):
+            found.update(self.cells.get(cell, ()))
+        return sorted(found)
+
+
 @dataclass(frozen=True)
 class Passage:
     """The route passing along a zone, from `from_m` to `to_m` metres along its line."""
@@ -514,6 +547,13 @@ def along(coordinates: Sequence[Sequence[float]], zones: Iterable[Zone]) -> list
     xs = [p[0] for p in route]
     ys = [p[1] for p in route]
     box = (min(xs) - 100, min(ys) - 100, max(xs) + 100, max(ys) + 100)
+    # The route's segments in a grid (audit round 3, S27), built for the first zone near it:
+    # each zone then looks only at the segments in the cells round its box, not the whole
+    # line, and the same box test as before picks the ones it measures against.
+    grid: RouteGrid | None = None
+    # A hair over the box when it is turned back into degrees, so rounding never drops a
+    # segment the box test would keep.
+    slack = 1e-7
     found = []
     for zone in zones:
         points = [_xy(lon, lat, lat0) for lon, lat in zone.line]
@@ -526,9 +566,13 @@ def along(coordinates: Sequence[Sequence[float]], zones: Iterable[Zone]) -> list
         zx = [x for x, _ in points]
         zy = [y for _, y in points]
         near_box = (min(zx) - ALONG_M, min(zy) - ALONG_M, max(zx) + ALONG_M, max(zy) + ALONG_M)
+        if grid is None:
+            grid = RouteGrid(coordinates)
+        west, south = _lonlat(near_box[0], near_box[1], lat0)
+        east, north = _lonlat(near_box[2], near_box[3], lat0)
         nearby = [
             i
-            for i in range(len(route) - 1)
+            for i in grid.segments(west - slack, south - slack, east + slack, north + slack)
             if min(xs[i], xs[i + 1]) <= near_box[2]
             and max(xs[i], xs[i + 1]) >= near_box[0]
             and min(ys[i], ys[i + 1]) <= near_box[3]
