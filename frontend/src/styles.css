@@ -5410,6 +5410,16 @@ details.zoom-notes {
   margin: 6px 0;
 }
 
+/* Under the iPhone Home Screen app's "location blocked" notice (IosLocationHelp.tsx): a details.fold. */
+.ios-location-help > summary {
+  min-height: 44px;
+}
+
+.ios-location-help > ol.fold-body {
+  margin: 0;
+  padding-left: 2.2em;
+}
+
 @media (max-width: 720px) {
   .panel.go-panel.go-peek {
     max-height: 34%;

@@ -3527,18 +3527,23 @@ from Safari's, and on iOS 26 it can refuse without a prompt; other web apps repo
 same ([Apple developer forums](https://developer.apple.com/forums/thread/804381)).
 So in a Home Screen app the denied notice points to iPhone Settings
 (`DENIED_IN_IOS_APP`, frontend/src/lib/geolocation.ts) and stays one line, since the
-ride screen shows it too. The steps to give a tester, in order, stopping when the
-location works:
+ride screen shows it too. A web app cannot open iPhone Settings, so in Go, Plan, Roam and Ride
+a "How to turn location on" fold under the notice (IosLocationHelp.tsx) lists where to
+go. A second tester found the Home Screen app blocked while **In-App Web Browsing**
+(Location Services > System Services, iOS 18.2 and later) was off, though Safari tabs
+worked; it is the first thing to check. The steps to give a tester, in order, stopping
+when the location works:
 
-1. **Add the app again** (the likeliest fix when Safari already works): press and hold
-   the RouteMaker icon, Remove App, Delete from Home Screen. In Safari, open the site,
-   Share, Add to Home Screen, with Open as Web App on. Open it and press the location
-   button; iOS should ask now.
-2. **Settings > Privacy & Security > Location Services**: on. Scroll to **Safari
-   Websites** and choose **While Using the App** (with **Precise Location** on).
-3. **Settings > Apps > Safari > Location** (under Settings for Websites): **Ask** or
+1. **Settings > Privacy & Security > Location Services**: on. Open **System Services**
+   and turn on **In-App Web Browsing**.
+2. Back in Location Services, **Safari Websites**: **While Using the App** (with
+   **Precise Location** on).
+3. **Add the app again**: press and hold the RouteMaker icon, Remove App, Delete from
+   Home Screen. In Safari, open the site, Share, Add to Home Screen, with Open as Web
+   App on. Open it and press the location button; iOS should ask now.
+4. **Settings > Apps > Safari > Location** (under Settings for Websites): **Ask** or
    **Allow**, not Deny.
-4. **Last resort, resets every app's location choices**: Settings > General > Transfer
+5. **Last resort, resets every app's location choices**: Settings > General > Transfer
    or Reset iPhone > Reset > Reset Location & Privacy, then open the Home Screen app
    and allow when asked.
 
