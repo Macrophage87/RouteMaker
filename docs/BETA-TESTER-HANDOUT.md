@@ -39,7 +39,7 @@ routes and keeping your 311 checklist on your other devices.
 - The first thing on the page is a button, "Accessibility mode", a switch that starts off.
   Turn it on to get Map tools by the map's zoom buttons, with "Add point at map center" and
   "Road info at map center". It stays on for this device. The same switch is in "More tips".
-- In Go, a press on the map, the route line included (or "Set destination at map center" in Map tools) makes that spot your destination and says "Destination set: …".
+- In Go, a press on the map, the route line included, opens a card for that spot: its address, the places near it as pins on the map, and "Route here". The press alone never plans a route; "Route here" (or "Set destination at map center" in Map tools) makes that spot your destination and says "Destination set: …".
 - The next thing is a link, "Skip to the route planner". It takes you past the map to the
   planner.
 - The planner is an area (a landmark) called "Route planner"; screen readers may announce it
@@ -126,11 +126,11 @@ You stay responsible for riding safely; the route can be wrong.
   route), under the route's figures or in Directions. The
   browser asks to use your location.
 - The ride starts at once. The cues use your Settings (Riding): who says them, your screen
-  reader, RouteMaker's voice, both, or neither (on screen only), and how much: Full (every turn,
+  reader, App voice, both, or neither (on screen only), and how much: Full (every turn,
   early and again close to it, and just past a turn onto a stretch of a mile or more, how far it
-  goes on: "Continue on Washington and Old Dominion Trail for 2 miles."), Stoker (each turn once ahead and as it happens, busy crossings and
+  goes on: "Continue on Washington and Old Dominion Trail for 2 miles."), Turns only (each turn once ahead and as it happens, busy crossings and
   stops: for the rider behind on a tandem) or Quiet (only arrival). Until you change them,
-  RouteMaker's voice says every turn. Both choices stay on this device; change them during a
+  App voice says every turn. Both choices stay on this device; change them during a
   ride under More (the last side button), then the Settings gear, or in Settings.
 - Under the turn, the ride shows the distance and time to the next stop and to the end, and the clock time you
   should get there ("8 min · 6:42 AM"). The times count the climbs and the waits at junctions still ahead where they
@@ -143,12 +143,14 @@ You stay responsible for riding safely; the route can be wrong.
   you, at the ride's usual zoom. Map cards, road info and the side menus close on their own after
   the same 30 seconds, unless you are typing in one or accessibility mode is on.
 - End ride is a slide: slide it to the right to end the ride, so a bump doesn't end it. Once you
-  have arrived it is a plain button. End ride and Road closed share the top row; Road closed
+  have arrived it is a filled Done button under "Arrived: ..." with the destination's name. End ride and Go round
+  share the top row; Go round (for a road that is closed ahead: it finds a way round and reports nothing)
   always shows its words. Near sunrise or sunset, a small line under them gives the sunrise or
   sunset and civil twilight times and the minutes till each.
-- After End ride you get the ride's summary: distance, moving time, average speed, total time,
-  climbing, an elevation chart and the traffic stress you rode. Done leaves Go empty for your next trip (in Plan the
-  plan stays to adjust); Undo carries on with the same ride. Nothing about the ride is saved.
+- After End ride you get the ride's summary: where you went, how far and how long first, then distance, moving time,
+  average speed, total time and climbing; the elevation chart and the traffic stress you rode are under Details. Done
+  leaves Go empty for your next trip (in Plan the plan stays to adjust); Keep riding carries on with the same ride.
+  Nothing about the ride is saved.
 - Off the route for a few seconds, it says so and finds a new way from where you are. "Keep
   the planned route" says which way the route is instead.
 - At Start ride the map along the route, about 1,000 ft (300 m) either side, is saved on the
@@ -180,8 +182,8 @@ You stay responsible for riding safely; the route can be wrong.
   with your account; outside DC the app asks the server which county's website takes it. Place search, when
   the app already knows where you are and that spot is on the map you are looking at, sends an
   approximate location (about 1 km / 0.6 mi) so nearby places come first.
-- Keep the screen on. If the browser cannot keep it on, Ride mode says so; on an iPhone set
-  Settings, Display and Brightness, Auto-Lock to Never for the ride. In the background for more
+- Keep the screen on. If the browser cannot keep it on, Ride mode and Roam show "Screen may sleep: keep it on.";
+  its How gives your phone's steps (on an iPhone, Settings, Display and Brightness, Auto-Lock to Never for the ride). In the background for more
   than 10 minutes, the ride pauses; press Resume.
 - In a ride the map's street names are larger and shortened ("R St NW") and come before shop names, place names and the water, restroom and repair icons (station names and hazard marks still come first), so far more of the streets near you keep their names (drawn over the route too), and the turn card uses fewer words ("0.2 mi", not "In 0.2 mi") so its type can be larger; a screen reader still hears the whole sentence.
 - The Large text button on the ride's side (the "Aa") puts the next turn as big as it fits on the top half of the screen, with the map below, for bright sun or near sight; press it again for the normal card. "Large text during a ride" in Settings is the same switch. Ending the ride goes back to the planner.
@@ -214,10 +216,12 @@ RouteMaker can be installed like an app: it then opens from your home screen in 
 7. Bike and transit together
 ----------------------------
 
-In Go, the three main buttons are "Default" (your own ride type), "Own Bike + 🚆🚌" and
-"Bikeshare + 🚶🚆🚌". Cargo and plain Bikeshare are under "More ride types", where every ride
-type is grouped under Transportation, Adventure or Group, with a search box over their names and
-descriptions. Plan's "Change" ride type list has the same search and groups. Typing "transit",
+In Go, the ride type buttons are one row that scrolls sideways: the ride type in use first, then
+"Default" (your own ride type), your starred ones, "Own Bike + 🚆🚌" and "Bikeshare + 🚶🚆🚌".
+Cargo and plain Bikeshare are under "Ride type & settings", where every ride type is grouped
+under Common, Transportation, Adventure or Group, with a search box over their names and
+descriptions; picking one closes it. Plan's "Change" ride type list and Settings' "Default ride
+type" have the same groups. Typing "transit",
 "walk", "train" or "bus" finds both transit types. A screen reader says their names in words:
 "Own bike plus train or bus" and "Bikeshare plus walk, train or bus".
 

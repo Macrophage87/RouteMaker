@@ -1,11 +1,11 @@
 /**
  * Go (UI-CLEANUP, the owner's commute view; lib/appMode.ts): the phone's few-steps view, as the approved
- * mockup of 2026-10-11 draws it. Over the map, a top bar (Menu, the Go/Plan switch, Layers, Locate); at the
- * bottom, a sheet with one Where to? box, four place chips (Home, Food, Water, Restroom: the owner's
+ * mockup of 2026-10-11 draws it. Over the map, a top bar (Settings, the Go/Plan switch, Layers, Locate); at the
+ * bottom, a sheet with one Where to? box, four place chips (Home, Eat, Water, Restroom: the owner's
  * choice 3), the commute ride types (choice 10), and once a route is shown its time, stress bar, one alert
- * and Start. Every other control is in the Menu, the Ride sheet or Plan, two presses away at most.
+ * and Start. Every other control is in Settings, the Ride sheet or Plan, two presses away at most.
  *
- * Plan keeps the full panel; its map has Food and Water chips (PlanMapChips), where Go has place chips.
+ * Plan keeps the full panel; its map has Eat, Water and Places to see chips (PlanMapChips), where Go has place chips.
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../Icon.tsx";
@@ -18,7 +18,7 @@ import { HOME_NOT_SET, type Home } from "../lib/myGo.ts";
 import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
 import { CHANGE_HOME_TEXT, CLEAR_HOME_TEXT, HOME_PICK_LINE, PICK_ON_MAP_TEXT, homeClosesSheet, homeName, homeSetKey } from "../lib/homeSet.ts";
 import { FEATURED_ROUTES_LABEL, FEATURED_ROUTES_PATH } from "../lib/featuredRoutes.ts";
-import { SAVED_ROUTES } from "../lib/loadRoute.ts";
+import { LOAD_ROUTE } from "../lib/loadRoute.ts";
 import {
   ADD_FAVORITE_TEXT,
   DONE_EDITING_TEXT,
@@ -43,6 +43,37 @@ export function nextSheetSize(size: GoSheetSize): GoSheetSize {
 }
 
 const SIZE_SAID: Record<GoSheetSize, string> = { peek: t("small"), half: t("half height"), full: t("full height") };
+
+/**
+ * The sheet's handle on a phone: a bar to tap for the next size, peek, half, full, then back to peek. Go's sheet and
+ * Plan's panel share it (P10); `controls` and `expanded` where a size hides part of the sheet (Plan's peek hides
+ * its body, as Hide planner did).
+ */
+export function SheetHandle({
+  size,
+  onSize,
+  controls,
+  expanded,
+}: {
+  size: GoSheetSize;
+  onSize: (next: GoSheetSize) => void;
+  controls?: string;
+  expanded?: boolean;
+}) {
+  const next = nextSheetSize(size);
+  return (
+    <button
+      type="button"
+      className="go-handle"
+      onClick={() => onSize(next)}
+      aria-controls={controls}
+      aria-expanded={expanded}
+      aria-label={t("Sheet: {size}. Make it {next}", { size: SIZE_SAID[size], next: SIZE_SAID[next] })}
+    >
+      <span className="go-handle-bar" aria-hidden="true" />
+    </button>
+  );
+}
 
 /**
  * Go or Plan: two toggle buttons, the pressed one the view in use (the owner's choice 1: either view can switch). For
@@ -74,12 +105,15 @@ export function ModeSwitch({
   );
 }
 
-/** Go's bar over the map: Menu, the switch, Layers and Locate, and the destination once there is one. */
-/** Go's bar: Undo and Redo, the big button (Start ride, or Route while the plan has changed), and Clear. */
+/** Go's bar over the map: Settings, the switch, Layers and Locate, and the destination once there is one. */
+/** Go's bar: Undo and Redo, the big button (Route while the plan has changed, or Roam), and Clear. */
 export interface GoBar {
   onUndo: (() => void) | null;
   onRedo: (() => void) | null;
-  /** Start ride on a route ready to ride; Route (or Routing…) otherwise; null when neither applies. */
+  /**
+   * Route (or Routing…) while the plan has changed; Roam with no destination; null otherwise. A route ready to ride
+   * has none: its Start ride is the sheet's alone (one Start ride per screen, the owner's P1).
+   */
   big: { label: string; start: boolean; busy: boolean; onPress: () => void } | null;
   onClear: (() => void) | null;
 }
@@ -113,8 +147,8 @@ export function GoTopBar({
     <nav className="go-top" aria-label={t("Go")}>
       <div className="go-top-row">
         <button type="button" className="icon-button go-menu" onClick={(event) => onMenu(event.currentTarget)}>
-          <Icon name="menu" />
-          <span className="icon-button-label">{t("Menu")}</span>
+          <Icon name="gear" />
+          <span className="icon-button-label">{t("Settings")}</span>
         </button>
         <ModeSwitch mode={mode} onChange={onMode} modes={modes} />
         <span className="go-top-end">
@@ -420,13 +454,15 @@ export function HomeSetter({
 }
 
 /**
- * Go's "Add a stop" (v0.7.0, "Keep adding stops by search"): one field in the route sheet, under the route card
- * (kept there one tap away, Stephen 2026-10-18); a place picked is a stop where it adds the least distance, routed at once (Undo removes it). Best order sits
- * beside it with two or more stops; it is the field's only company, so Go stays one control per feature.
+ * Go's "Add a stop" (v0.7.0, "Keep adding stops by search"): "+ Add a stop" in the route sheet, under the route card
+ * (kept there one tap away, Stephen 2026-10-18), opens one field; a place picked is a stop where it adds the least
+ * distance, routed at once (Undo removes it). Best order sits beside it with two or more stops; it is the field's only
+ * company, so Go stays one control per feature.
  */
 export function GoAddStop({
   geoGate,
   searchBias,
+  searchOrigin,
   onPick,
   full,
   orderShown,
@@ -435,15 +471,42 @@ export function GoAddStop({
 }: {
   geoGate: GeoGate;
   searchBias: () => LonLat | undefined;
+  /** The route's start: stops found are listed nearest it first, with their distances (P2). */
+  searchOrigin: () => LonLat | undefined;
   onPick: (place: Place) => void;
   full: boolean;
   orderShown: boolean;
   ordering: boolean;
   onBestOrder: () => void;
 }) {
+  // "+ Add a stop" opens the field with the focus in it (the owner's P1, 2026-10-28: the field was always shown); a
+  // place picked, or Escape on the empty box, puts it away with the focus back on the button.
+  const [open, setOpen] = useState(false);
+  const fieldId = useId();
+  const input = useRef<HTMLInputElement>(null);
+  const opener = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (open) input.current?.focus();
+  }, [open]);
+  const close = () => {
+    setOpen(false);
+    opener.current?.focus();
+  };
+  const pickStop = (place: Place) => {
+    onPick(place);
+    close();
+  };
   return (
     <div className="go-add-stop">
-      <PlaceSearch variant="stop" pointCount={2} full={full} gate={geoGate} bias={searchBias} onPick={(place: Place) => onPick(place)} />
+      <button ref={opener} type="button" className="link go-add-stop-open" aria-expanded={open} aria-controls={fieldId} onClick={() => setOpen(!open)}>
+        <Icon name="plus" size={18} />
+        {t("Add a stop")}
+      </button>
+      <div id={fieldId} className="go-add-stop-field" hidden={!open}>
+        {open && (
+          <PlaceSearch variant="stop" pointCount={2} full={full} gate={geoGate} bias={searchBias} origin={searchOrigin} inputRef={input} onDismiss={close} onPick={(place: Place) => pickStop(place)} />
+        )}
+      </div>
       {orderShown && (
         <button type="button" className="secondary" onClick={onBestOrder} aria-disabled={ordering ? true : undefined}>
           {BEST_ORDER_LABEL}
@@ -489,6 +552,7 @@ export function GoSheet({
   pointCount,
   geoGate,
   searchBias,
+  searchOrigin,
   onPick,
   onTopPlace,
   onWhereToFocus,
@@ -505,6 +569,8 @@ export function GoSheet({
   pointCount: number;
   geoGate: GeoGate;
   searchBias: () => LonLat | undefined;
+  /** The route's start (the rider's location or the start typed in): Where to? lists places nearest it first, with their distances (P2). */
+  searchOrigin: () => LonLat | undefined;
   onPick: (place: Place) => void;
   /** The top result of Where to? while the rider looks at it: Go starts routing there early (v0.7.0, "Faster routing"); null with none. */
   onTopPlace?: (place: Place | null) => void;
@@ -547,18 +613,27 @@ export function GoSheet({
   const favoritesId = useId();
   const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
-  // More: one chip at the row's end that shows the rest (Metro, Repair, Sights, Saved routes); later additions go here, not on the row.
+  // More: one chip at the row's end that shows the rest (Metro, Repair, Places to see, Load route); later additions go here, not on the row.
   const [moreOpen, setMoreOpen] = useState(false);
   const startShown = startOpen || startMissing;
-  const next = nextSheetSize(size);
   const routeShown = route !== null;
+  // Under a route, Where to? and the place chips fold into one "New destination" row (the owner's P1, 2026-10-28:
+  // they repeated under the route and made the sheet about two screens); a place picked folds them again.
+  const [newOpen, setNewOpen] = useState(false);
+  const newId = useId();
+  const whereShown = !routeShown || newOpen;
+  useEffect(() => {
+    if (!routeShown) setNewOpen(false);
+  }, [routeShown]);
+  const pickWhereTo = (place: Place) => {
+    setNewOpen(false);
+    onPick(place);
+  };
   return (
     <div className={`go-sheet go-${size}`}>
-      <button type="button" className="go-handle" onClick={() => onSize(next)} aria-label={t("Sheet: {size}. Make it {next}", { size: SIZE_SAID[size], next: SIZE_SAID[next] })}>
-        <span className="go-handle-bar" aria-hidden="true" />
-      </button>
+      <SheetHandle size={size} onSize={onSize} />
       {/* Where to? stays first while there is no route; with one, the route comes first (it is what the rider is
-          looking at), and Where to? follows for a new place. */}
+          looking at), and Where to? follows for a new place, behind New destination. */}
       {routeShown && route}
       <div className="go-where" hidden={routeShown && size === "peek"}>
         {/* The start (the owner, 2026-10-11): the rider's location by default; a typed start replaces it (a press on the map is the destination). */}
@@ -583,6 +658,7 @@ export function GoSheet({
               full={false}
               gate={geoGate}
               bias={searchBias}
+              origin={searchOrigin}
               onPick={(place: Place, _choice: PlaceChoice) => {
                 setStartOpen(false);
                 onStartPick(place);
@@ -590,7 +666,14 @@ export function GoSheet({
             />
           </div>
         )}
-        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place, _choice: PlaceChoice) => onPick(place)} onTopPlace={onTopPlace} onFocusBox={onWhereToFocus} />
+        {routeShown && (
+          <button type="button" className="secondary go-new-destination" aria-expanded={newOpen} aria-controls={newId} onClick={() => setNewOpen(!newOpen)}>
+            <Icon name="search" size={18} />
+            {t("New destination")}
+          </button>
+        )}
+        <div id={newId} className="go-new-body" hidden={!whereShown}>
+        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} origin={searchOrigin} onPick={(place: Place, _choice: PlaceChoice) => pickWhereTo(place)} onTopPlace={onTopPlace} onFocusBox={onWhereToFocus} />
         <div className="chip-row go-places" role="group" aria-label={t("Places")}>
           {places.signedIn ? (
             // Signed in, Home is the first of the rider's favorites (Stephen 2026-10-26: "just have a favorites replace home").
@@ -623,9 +706,10 @@ export function GoSheet({
               {t("Home")}
             </button>
           )}
+          {/* "Eat", not "Food" (P2): the sheet lists restaurants and cafes, and a rider looking for a grocery store tried it first. */}
           <button type="button" className="chip place-chip" onClick={(event) => places.onFood(event.currentTarget)}>
             <Icon name="food" size={18} />
-            {t("Food")}
+            {t("Eat")}
           </button>
           <button type="button" className="chip place-chip" onClick={(event) => places.onWater(event.currentTarget)}>
             <Icon name="water" size={18} />
@@ -649,13 +733,14 @@ export function GoSheet({
             <Icon name="wrench" size={18} />
             {t("Repair")}
           </button>
+          {/* Places to see, as Plan's chip and the layer say it (P12: it was "Sights"). */}
           <button type="button" className="chip place-chip" onClick={(event) => places.onSights(event.currentTarget)}>
             <Icon name="camera" size={18} />
-            {t("Sights")}
+            {t("Places to see")}
           </button>
           <button type="button" className="chip place-chip" aria-haspopup="dialog" onClick={places.onSavedRoutes}>
             <Icon name="routes" size={18} />
-            {SAVED_ROUTES}
+            {LOAD_ROUTE}
           </button>
           {/* Featured routes (the owner, 2026-10-19: "one item behind More"): the posts' list, a page of its own (core/route_posts.py). */}
           <a className="chip place-chip" href={FEATURED_ROUTES_PATH}>
@@ -706,6 +791,7 @@ export function GoSheet({
             {HOME_NOT_SET}
           </p>
         )}
+        </div>
         {!routeShown && rides}
       </div>
       {/* With a route, the ride types are in it, under the route card (edit-route redesign, Stephen 2026-10-18). */}
@@ -756,9 +842,10 @@ export function PlanMapChips({
         {t("Find")}
       </button>
       <div id={rowId} className="map-chips-row" hidden={!open}>
+        {/* "Eat", as Go's chip (P2, P12). */}
         <button type="button" className="chip map-chip" onClick={pick(onFood)}>
           <Icon name="food" size={18} />
-          {t("Food")}
+          {t("Eat")}
         </button>
         <button type="button" className="chip map-chip" onClick={pick(onWater)}>
           <Icon name="water" size={18} />

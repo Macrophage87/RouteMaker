@@ -25,6 +25,11 @@ test("keys: a letter in the list picks it; not while typing, on the map, in a di
   assert.equal(letterKeyIndex({ key: "a", target: { tagName: "INPUT" } }, 3), null, "typing in a field");
   assert.equal(letterKeyIndex({ key: "a", target: { tagName: "TEXTAREA" } }, 3), null);
   assert.equal(letterKeyIndex({ key: "a", target: { tagName: "BUTTON", closest: (s: string) => (s.includes(".map") ? {} : null) } }, 3), null, "the map's keys stay its own");
+  // A dialog's keys are its own; the list's popup sheet (a <dialog class="popup-sheet">) is not such a dialog.
+  const inPopupSheet = { tagName: "H2", closest: (s: string) => (s.split(",").map((x) => x.trim()).includes("dialog") ? {} : null) };
+  assert.equal(letterKeyIndex({ key: "b", target: inPopupSheet }, 3), 1, "in the list's popup sheet");
+  const inDialog = { tagName: "BUTTON", closest: (s: string) => (s.split(",").some((x) => x.trim().startsWith("dialog")) ? {} : null) };
+  assert.equal(letterKeyIndex({ key: "a", target: inDialog }, 3), null, "in another dialog");
   assert.equal(letterKeyIndex({ key: "a", ctrlKey: true, target: button }, 3), null);
   assert.equal(letterKeyIndex({ key: "1", target: button }, 3), null);
   assert.equal(letterKeyIndex({ key: "Enter", target: button }, 3), null);

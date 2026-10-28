@@ -82,7 +82,8 @@ function crossingMinutes(dayMs: number, lat: number, lon: number, zenith: number
 
 /** The region's calendar day a moment falls on, as the UTC midnight of that date. */
 const DATE_FORMAT = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, year: "numeric", month: "numeric", day: "numeric" });
-const CLOCK_FORMAT = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, hour: "numeric", minute: "2-digit" });
+/** The clock as the arrival time shows it (lib/arrival.ts arrivalClock): the device's own, "6:31 PM" or "6:31 p.m.", in the region's time. */
+const CLOCK_FORMAT = new Intl.DateTimeFormat(undefined, { timeZone: ZONE, hour: "numeric", minute: "2-digit" });
 
 function localDay(ms: number): number {
   const parts = Object.fromEntries(
@@ -198,7 +199,7 @@ export function sameLightMarks(a: readonly LightMark[], b: readonly LightMark[])
   return a.length === b.length && a.every((m, i) => key(m) === key(b[i]));
 }
 
-/** A moment as the region's clock: "6:31 PM". */
+/** A moment as the region's clock: "6:31 PM" (the device's own form, as the arrival time). */
 export function lightClock(ms: number): string {
   return CLOCK_FORMAT.format(new Date(ms));
 }

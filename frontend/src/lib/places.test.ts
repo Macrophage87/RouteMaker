@@ -58,7 +58,8 @@ test("along a route: every place, least detour first, with a detour", () => {
   assert.equal(sightHowFar(along[0]), "On your route");
   assert.match(sightHowFar(along[2]), /^\+\d+\.\d mi \(\d+\.\d km\)$/);
   assert.match(sightText(along[2]), /^Rose Garden\. Garden\. \+.* there and back, turning off at .* on your route\.$/);
-  assert.match(sightText(along[0]), /Small Museum\. Museum or gallery\. On your route at .*\. Hours as mapped: Tu-Su 10:00-17:00\.$/);
+  // A Wednesday noon on the region's clock: the hours in words (lib/openingHours.ts), never the raw tag.
+  assert.match(sightText(along[0], new Date("2026-10-14T12:00:00-04:00")), /Small Museum\. Museum or gallery\. On your route at .*\. Open now · closes 5 PM\.$/);
 });
 
 test("the status line says how many, and from where", () => {

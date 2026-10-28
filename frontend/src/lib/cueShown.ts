@@ -77,15 +77,44 @@ export function shortStreets(text: string): string {
 // properly in the spaces"): a narrow card broke "R St NW" as "R / St NW". English and Spanish wrap as before.
 const SHORT_WORD = new RegExp(String.raw`(?<=[A-Za-z0-9.]) (?=(?:${[...TYPES.map(([, short]) => short), "NW", "NE", "SW", "SE"].join("|")})\b(?! [a-z]))`, "g");
 
-/** The cue split at its first comma: the instruction, then the rest with a capital ("No signal mapped, busy road (LTS 3)."). */
+/** A jog's "then immediately" shown as "then" (in Spanish "luego enseguida" as "luego"): the arrow already draws it close. */
+function shortThen(text: string): string {
+  return text.replace(/\b([Tt])hen immediately /g, "$1hen ").replace(/\b([Ll])uego enseguida /g, "$1uego ");
+}
+
+/** Whether a turn's words name no street: no capitalised word or number after the first ("Right", "Bear left onto the path"). */
+function namesNoStreet(words: string): boolean {
+  return !/\s[A-Z0-9]/.test(words);
+}
+
+/** A part that starts with "then" ("Then left onto Corregidor St NW"). */
+const THEN = /^(?:Then|Luego) /i;
+
+function capital(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/**
+ * The cue split at its first comma: the instruction, then the rest with a capital ("No signal mapped, busy road (LTS 3).").
+ * Where the instruction names no street and a "then" after it does, that turn joins the big line (the UI review,
+ * 2026-10-28: "Right, then right onto Union Station Dr NE"), so the large words always say where to go.
+ */
 export function cueParts(text: string): { head: string; rest: string } {
-  const streets = shortStreets(text.trim());
+  const streets = shortThen(shortStreets(text.trim()));
   const lang = language();
-  const short = lang === "es" ? shortTurnsEs(streets) : lang === "en" ? streets : streets.replace(SHORT_WORD, "\u00a0");
+  const short = lang === "es" ? shortThen(shortTurnsEs(streets)) : lang === "en" ? streets : streets.replace(SHORT_WORD, "\u00a0");
   // The comma as each script writes it: ", ", the Chinese and Japanese "，" and "、", the Arabic "، ", the Ge'ez "፣ ".
   const comma = /, |，|、|، |፣ /.exec(short);
   if (!comma) return { head: short, rest: "" };
-  const at = comma.index;
-  const rest = short.slice(at + comma[0].length).trimStart();
-  return { head: short.slice(0, at), rest: rest.charAt(0).toUpperCase() + rest.slice(1) };
+  let head = short.slice(0, comma.index);
+  let rest = short.slice(comma.index + comma[0].length).trimStart();
+  if (namesNoStreet(head) && THEN.test(rest)) {
+    const next = rest.indexOf(", ");
+    const then = next < 0 ? rest : rest.slice(0, next);
+    if (!namesNoStreet(then)) {
+      head = `${head}, ${then.charAt(0).toLowerCase()}${then.slice(1)}`.replace(/\.$/, "");
+      rest = next < 0 ? "" : rest.slice(next + 2);
+    }
+  }
+  return { head, rest: capital(rest) };
 }

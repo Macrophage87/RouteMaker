@@ -434,7 +434,8 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
     # main carriageway ways at least LTS 3), less the 2 Kenilworth Avenue NE rows 445f retired.
     # Plus the Redland Road sidewalk link's 1 access row (the owner, 2026-10-21), and
     # Aspen Street NW's 5 stress rows (the owner, 2026-10-25), and the 3rd Avenue dirt
-    # path's 1 access row (the owner, 2026-10-27), and the Glenmont path's 1 (2026-10-28).
+    # path's 1 access row (the owner, 2026-10-27), and the Glenmont Flack Street path's 1
+    # access row (the owner, 2026-10-28).
     assert (
         sum(len(d["rows"]) for d in documents.values())
         == 1785 + 20 - 5 - 23 + 57 + 40 - 2 + 4 - 431 + 6 + 31 - 2 + 1 + 5 + 1 + 1
@@ -454,8 +455,8 @@ def test_the_override_counts_the_owner_asked_about() -> None:
     # 232 access rows, the Dupont underpass's 10 (decision 416), and the 55 military
     # reopenings (437.6, 437a-c) and Pentagon Connector Road's 25 (438.2), and the
     # crosswalk links' 4 (442), and the Redland Road sidewalk link's 1 (the owner, 2026-10-21),
-    # and the 3rd Avenue dirt path's 1 (the owner, 2026-10-27), and the Glenmont path's 1
-    # (the owner, 2026-10-28).
+    # and the 3rd Avenue dirt path's 1 (the owner, 2026-10-27), and the Glenmont Flack Street
+    # path's 1 (the owner, 2026-10-28).
     assert kinds.count("access") == 232 + 10 + 55 + 25 + 4 + 1 + 1 + 1
     # 1,551 stress rows, decision 282a turned one into three, and Dupont's 10 (416).
     # Less the 5 South Capitol (432) and 23 Veirs Mill (433) rows retired; 433's two
@@ -513,7 +514,8 @@ def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
     found = rematch.load_fingerprints()
     # A retired row carries no fingerprint: it is deleted on load, never re-matched.
     # Plus Aspen Street NW's 5 stress rows (the owner, 2026-10-25), and the 3rd Avenue dirt
-    # path's 1 access row (the owner, 2026-10-27), and the Glenmont path's 1 (2026-10-28).
+    # path's 1 access row (the owner, 2026-10-27), and the Glenmont Flack Street path's 1
+    # (the owner, 2026-10-28).
     assert len(found) == 1785 + 20 + 1 - 5 - 23 + 57 + 40 - 2 - 431 + 6 + 31 - 2 + 1 + 5 + 1 + 1
     assert ("access", 50426889) in found and ("stress", 1562097556) in found
 

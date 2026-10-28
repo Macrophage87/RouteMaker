@@ -974,7 +974,7 @@ def closure_row(
     return {
         "id": zone.zone_id,
         "source": zone.source,
-        "source_name": rules.source_text(zone),
+        "source_name": rules.source_text(zone, now),
         "url": zone.url or rules.SOURCE_LINKS.get(zone.source),
         "kind": zone.kind,
         "severity": "amber" if zone.kind == rules.LANE else "red",
@@ -1015,7 +1015,8 @@ AREA_MAX_LON = 0.4
 AREA_MAX_LAT = 0.3
 
 AREA_EFFECT_TEXT = {
-    rules.CLOSED: "Closed to bikes: routes go round it.",
+    # The card says "Road closed" once, in its heading (P11).
+    rules.CLOSED: "Routes go round it.",
     rules.UNKNOWN: (
         "Every lane closed; the agency does not say whether bicycles can pass. Routes go round it."
     ),
@@ -1358,7 +1359,7 @@ def closures_on(
             "may_still_apply": uncertain,
             "title": zone.title or _title(zone),
             "source_key": zone.source,
-            "source_name": rules.source_text(zone),
+            "source_name": rules.source_text(zone, now),
             "url": zone.url or rules.SOURCE_LINKS.get(zone.source),
             "when_text": rules.when_text(zone, now, future),
             "line": [[round(c[0], 6), round(c[1], 6)] for c in zone.line],

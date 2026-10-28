@@ -27,13 +27,14 @@ test("Rebalance Ride is offered with the owner's exact description, and no numbe
   assert.doesNotMatch(option.description, /\d/);
 });
 
-test("it is an Adventure ride type, and the search finds it by its description", () => {
-  const adventure = RIDE_GROUPS.find((g) => g.id === "adventure");
-  assert.ok(adventure?.ids.includes("rebalance"));
+test("it is a Transportation ride type (P3), and the search finds it by its description", () => {
+  const transportation = RIDE_GROUPS.find((g) => g.id === "transportation");
+  assert.ok(transportation?.ids.includes("rebalance"));
+  assert.ok(!RIDE_GROUPS.find((g) => g.id === "adventure")?.ids.includes("rebalance"));
   for (const query of ["rebalance", "crowded", "reward points"]) {
     assert.deepEqual(
       filterRideGroups(query).map((g) => [g.id, [...g.ids]]),
-      [["adventure", ["rebalance"]]],
+      [["transportation", ["rebalance"]]],
       query,
     );
   }
@@ -52,7 +53,8 @@ test("the programme's name is in the description and nowhere else in the front e
     }
   };
   walk(root);
-  assert.deepEqual(found, ["lib/presets.ts"]);
+  // The description and its Spanish (i18n/es.ts).
+  assert.deepEqual(found.sort(), ["i18n/es.ts", "lib/presets.ts"]);
   const presets = readFileSync(new URL("./presets.ts", import.meta.url), "utf8");
   assert.equal(presets.split(PROGRAMME).length - 1, 1);
 });

@@ -31,7 +31,8 @@ test("Spanish turn words shown shorter, the voice's sentence untouched (the owne
   try {
     assert.deepEqual(cueParts("Gire a la izquierda hacia S Street Northeast bike lane, luego inmediatamente gire a la derecha hacia S Street Northeast."), {
       head: "A la izquierda hacia S St NE bike lane",
-      rest: "Luego enseguida a la derecha hacia S St NE.",
+      // "luego enseguida" shown as "luego" (the UI review, 2026-10-28), as "then immediately" is "then".
+      rest: "Luego a la derecha hacia S St NE.",
     });
     assert.equal(cueParts("Gire ligeramente a la derecha ahora.").head, "Leve a la derecha ahora.");
     assert.equal(cueParts("Dé la vuelta en U.").head, "Vuelta en U.");
