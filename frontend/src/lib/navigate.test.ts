@@ -2305,6 +2305,44 @@ test("D28: 'Bike lane ends' only on a known no-lane that lasts, on the same stre
   }
 });
 
+test("D27: one 'Continue on ... for ...' after a turn, at Full only, measured to the next turn, not a stress change", () => {
+  const wod = "Washington and Old Dominion Trail";
+  const route = (trailM: number, extra: DescriptionEntry[] = []) =>
+    straightRoute([
+      stretch(0, 300, "A Street.", { street: "A Street" }),
+      stretch(300, 300 + trailM, "Right onto the trail.", { street: wod, facility: "path", turn: turning("right", wod) }),
+      ...extra,
+      stretch(300 + trailM + extra.reduce((m, e) => m + (e.to_m - e.from_m), 0), 300 + trailM + extra.reduce((m, e) => m + (e.to_m - e.from_m), 0) + 500, "Left onto B Street.", {
+        street: "B Street",
+        turn: turning("left", "B Street"),
+      }),
+    ]);
+  // 16 km of trail, a busy stretch of the same trail half way: one cue, 60 m past the turn, to the B Street turn.
+  const long = rideModel(route(8000, [stretch(8300, 16300, "x", { street: wod, facility: "path", tier: 3 })]));
+  const full = ride(long, "full", 0, 2000).events.filter((e) => /^Continue/.test(e.spoken));
+  assert.deepEqual(
+    full.map((e) => e.spoken),
+    [`Continue on ${wod} for ${spokenDistance(16300 - 360)}.`],
+  );
+  assert.equal(spokenDistance(16300 - 360), "9.9 miles");
+  assert.equal(full[0].urgent, false);
+  assert.equal(full[0].cue?.kind, "turn");
+  // Stoker and Quiet: none.
+  for (const level of ["stoker", "quiet"] as const) assert.ok(!ride(long, level, 0, 2000).events.some((e) => /^Continue on/.test(e.spoken)));
+  // Under a mile to the next turn: none.
+  assert.ok(!ride(rideModel(route(1500)), "full", 0, 1000).events.some((e) => /^Continue on/.test(e.spoken)));
+  // Started past the window after the turn: none.
+  const late = ride(long, "full", 700, 1500, 5, { ...startState() }).events;
+  assert.ok(!late.some((e) => /^Continue on/.test(e.spoken)));
+  setLanguageForTest("es");
+  try {
+    const es = ride(long, "full", 0, 1000).events.find((e) => /^Siga/.test(e.spoken));
+    assert.equal(es?.spoken, `Siga por ${wod} durante 9.9 millas.`);
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
 test("D22(d): a bear at a fork along one way says 'Keep right now.', the advance cue's verb in Spanish too", () => {
   const fork = (movement: "bear_right" | "bear_left" | "right") =>
     rideModel(

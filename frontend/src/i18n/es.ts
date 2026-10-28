@@ -38,6 +38,9 @@ export const ES: Readonly<Record<string, string>> = {
   "Exit now.": "Salga ahora.",
   "Continue onto {street}.": "Continúe por {street}.",
   "Continue on {street}.": "Siga por {street}.",
+  // Reassurance on a long stretch after a turn (round-2 audit D27).
+  "Continue on {street} for {distance}.": "Siga por {street} durante {distance}.",
+  "Continue for {distance}.": "Siga durante {distance}.",
   "Continue.": "Siga.",
   "not set": "sin fijar",
   "Cross {road}.": "Cruce {road}.",

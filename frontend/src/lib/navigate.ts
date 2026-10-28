@@ -1156,6 +1156,8 @@ export interface RideState {
   rejoin: { count: number; alongM: number } | null;
   /** Arrived at the end. */
   arrived: boolean;
+  /** The turn cue (its index) whose "Continue on ... for ..." was said last (D27); absent before any. */
+  reassured?: number;
 }
 
 export function startState(): RideState {
@@ -1409,7 +1411,51 @@ export function step(
     break;
   }
   next.said = said;
+  const reassure = level === "full" && !events.length && !next.arrived ? reassurance(model, progress, state.reassured) : null;
+  if (reassure) {
+    next.reassured = reassure.cue.index;
+    events.push({ kind: "cue", spoken: reassure.spoken, urgent: false, cue: reassure.cue });
+  }
   return { state: next, events };
+}
+
+/** A turn's reassurance (D27) is said once the rider is this far past the turn... */
+export const REASSURE_AFTER_M = 60;
+/** ...and no farther past it than this (a ride started, or a GPS gap ended, beyond it: none). */
+export const REASSURE_WITHIN_M = 300;
+/** ...where the next turn or change of name is at least this far ahead (a mile). */
+export const REASSURE_MIN_M = METRES_PER_MILE;
+
+/**
+ * Where the way a turn goes onto next turns or changes its name, along the line: the next turn, new name ("onto"), stop
+ * or end cue, or the next stretch with another street name (an unnamed piece counts), whichever is first. A change of
+ * stress or surface on the same street is not one (round-2 audit D27's risk 1).
+ */
+export function nextChangeM(model: RideModel, cue: Cue): number {
+  const after = model.cues.find((c) => c.atM > cue.atM + 1 && (c.kind === "turn" || c.kind === "onto" || c.kind === "stop" || c.kind === "end"));
+  const renamed = model.stretches.find((s) => s.fromM > cue.atM + 1 && !(s.street && cue.street && !isUnnamed(s.street) && sameStem(cue.street, s.street)));
+  return Math.min(after?.atM ?? model.lengthM, renamed?.fromM ?? model.lengthM);
+}
+
+/**
+ * "Continue on Washington and Old Dominion Trail for 2 miles." (round-2 audit D27; the owner approved the banked
+ * changes 2026-10-27 7:52 PM ET, "make the banked changes", which ends the Full level's silence on long straight-on
+ * stretches): once, REASSURE_AFTER_M past a turn, at the Full level only, where the way it went onto runs on for at
+ * least REASSURE_MIN_M before its next turn or change of name. Never with another sentence on the same fix, never
+ * for a crossing, and once per turn (`RideState.reassured`; a re-route's new cues may say it again after a turn).
+ */
+function reassurance(model: RideModel, progressM: number, said: number | undefined): { cue: Cue; spoken: string } | null {
+  let turn: Cue | null = null;
+  for (const c of model.cues) {
+    if (c.atM > progressM - REASSURE_AFTER_M) break;
+    if (c.kind === "turn") turn = c;
+  }
+  if (!turn || turn.index === said || turn.cross || progressM - turn.atM > REASSURE_WITHIN_M) return null;
+  const left = nextChangeM(model, turn) - progressM;
+  if (left < REASSURE_MIN_M) return null;
+  const distance = spokenDistance(left);
+  const street = turn.street && !isUnnamed(turn.street) ? wayWords(turn.street) : null;
+  return { cue: turn, spoken: street ? t("Continue on {street} for {distance}.", { street, distance }) : t("Continue for {distance}.", { distance }) };
 }
 
 // ---- What the screen shows and "Where am I?" says ---------------------------------------------------
