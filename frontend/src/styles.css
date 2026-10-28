@@ -5925,6 +5925,53 @@ details.fold > summary .icon {
   margin-top: 4px;
 }
 
+/* Go's ride types in one row that scrolls sideways (P3): the ride type in use first, then the rest and Ride type &
+   settings. The row runs to the sheet's edges, so the last chip in view is cut by the edge, which shows there is
+   more to scroll to; each chip keeps its 44 px height and its name on one line. */
+.chip-row.ride-chips {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  margin-inline: calc(-1 * var(--ride-chips-bleed, 16px));
+  padding-inline: var(--ride-chips-bleed, 16px);
+  scroll-padding-inline: var(--ride-chips-bleed, 16px);
+}
+
+.chip-row.ride-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.chip-row.ride-chips .chip {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* "(changed)": the sliders are not where the ride type starts them; muted on a chip, as on a pressed one. */
+.ride-changed {
+  font-weight: 400;
+  opacity: 0.85;
+}
+
+/* Go's climb figure, a button that looks like the figure (P3): a dotted underline says it can be pressed, and its
+   44 px target overlaps the lines above and below rather than spacing them out. */
+.panel .go-climb,
+.go-climb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  margin: -10px 0;
+  padding: 0 2px;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 4px;
+}
+
 /* Ride mode: icons on its buttons, and the 311 button on the right edge at thumb height, inside DC only. */
 .ride-actions button {
   display: inline-flex;
@@ -6417,19 +6464,13 @@ details.fold > summary .icon {
   }
 
   .go-sheet .ride-chips {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
   }
 
   .panel .go-sheet .ride-chips .chip {
-    justify-content: center;
     gap: 4px;
-    min-width: 0;
-    padding: 2px 6px;
+    padding: 2px 12px;
     font-size: 0.85rem;
-    line-height: 1.15;
-    text-align: center;
   }
 
   .go-sheet .go-start-row {

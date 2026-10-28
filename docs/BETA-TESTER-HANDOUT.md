@@ -214,10 +214,12 @@ RouteMaker can be installed like an app: it then opens from your home screen in 
 7. Bike and transit together
 ----------------------------
 
-In Go, the three main buttons are "Default" (your own ride type), "Own Bike + 🚆🚌" and
-"Bikeshare + 🚶🚆🚌". Cargo and plain Bikeshare are under "More ride types", where every ride
-type is grouped under Transportation, Adventure or Group, with a search box over their names and
-descriptions. Plan's "Change" ride type list has the same search and groups. Typing "transit",
+In Go, the ride type buttons are one row that scrolls sideways: the ride type in use first, then
+"Default" (your own ride type), your starred ones, "Own Bike + 🚆🚌" and "Bikeshare + 🚶🚆🚌".
+Cargo and plain Bikeshare are under "Ride type & settings", where every ride type is grouped
+under Common, Transportation, Adventure or Group, with a search box over their names and
+descriptions; picking one closes it. Plan's "Change" ride type list and Settings' "Default ride
+type" have the same groups. Typing "transit",
 "walk", "train" or "bus" finds both transit types. A screen reader says their names in words:
 "Own bike plus train or bus" and "Bikeshare plus walk, train or bus".
 
