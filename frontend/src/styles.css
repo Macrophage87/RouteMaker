@@ -3573,6 +3573,23 @@ details.zoom-notes {
   border: 0;
 }
 
+/* The chart's prompt names the arrow keys only where there is a keyboard (P10): on a touch screen, unless
+   accessibility mode is on, it says "Move along the chart" alone. */
+.pc-readout .pc-prompt-touch {
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .app:not(.access-mode) .pc-readout .pc-prompt-keys {
+    display: none;
+  }
+
+  .app:not(.access-mode) .pc-readout .pc-prompt-touch {
+    display: inline;
+  }
+}
+
+.pc-key-fold > summary,
 .pc-table-fold > summary {
   min-height: 44px;
   display: flex;

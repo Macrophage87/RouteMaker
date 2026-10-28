@@ -1235,6 +1235,9 @@ export const ES: Readonly<Record<string, string>> = {
   "Climbs and rolling stress as tables": "Subidas y estrés continuo como tablas",
   "Climbs as a table": "Subidas como tabla",
   "Move along the chart, or use the arrow keys, to read the route at a point.": "Recorra el gráfico, o use las flechas, para leer la ruta en un punto.",
+  "Move along the chart to read the route at a point.": "Recorra el gráfico para leer la ruta en un punto.",
+  // The chart's key behind one line (P10).
+  "Key": "Leyenda",
   "Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift+C go to the next and previous climb.": "Las flechas avanzan por la ruta; Re Pág y Av Pág avanzan más; Inicio y Fin van a los extremos; C y Mayús+C van a la subida siguiente y anterior.",
   "Elevation and rolling stress along the route": "Elevación y estrés continuo a lo largo de la ruta",
   "Elevation and stress along the route": "Elevación y estrés a lo largo de la ruta",
