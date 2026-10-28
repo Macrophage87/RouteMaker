@@ -4147,19 +4147,24 @@ export function App() {
   // offers its route as a GPX file, and to Garmin and Wahoo where connected. Once per joined ride, kept on this device;
   // shown only while that ride goes.
   const [joinAsk, setJoinAsk] = useState<JoinAsk | null>(null);
+  // Made once the connections are read, shown once the ride is up.
+  const [joinPending, setJoinPending] = useState<{ key: string; ask: JoinAsk } | null>(null);
   useEffect(() => {
     if (!riding) setJoinAsk(null);
-  }, [riding]);
-  const offerJoin = (key: string, route: RouteResponse, name: string | undefined) => {
+    if (!joinPending || !riding) return;
+    setJoinPending(null);
     const store = browserStore();
-    if (joinShown(key, store, Date.now())) return;
+    if (!showJoin({ following: true, started: riding, shownBefore: joinShown(joinPending.key, store, Date.now()), actions: joinPending.ask.actions.length })) return;
+    keepJoinShown(joinPending.key, store, Date.now());
+    setJoinAsk(joinPending.ask);
+  }, [riding, joinPending]);
+  const offerJoin = (key: string, route: RouteResponse, name: string | undefined) => {
+    if (joinShown(key, browserStore(), Date.now())) return;
     // Connections are asked only of a rider who may have one (not when the server said signed out).
     const asks = !(meRef.current !== NO_ME && !meRef.current.signed_in);
     void Promise.all(asks ? [readGarmin(origin), readWahoo(origin)] : [undefined, undefined]).then(([garmin, wahoo]) => {
       const actions = joinActions({ canHandFile: canSendToGarmin(), garmin, wahoo });
-      if (!showJoin({ following: true, started: ridingNow.current, shownBefore: joinShown(key, store, Date.now()), actions: actions.length })) return;
-      keepJoinShown(key, store, Date.now());
-      setJoinAsk({ title: joinTitle(name), line: joinLine(route), actions });
+      setJoinPending({ key, ask: { title: joinTitle(name), line: joinLine(route), actions } });
     });
   };
   const joinAction = (action: JoinAction, said: Said) => {
