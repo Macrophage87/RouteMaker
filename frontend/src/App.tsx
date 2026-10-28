@@ -5,7 +5,7 @@ import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
 import { t } from "./lib/i18n.ts";
 import { APP_VERSION, versionShort } from "./lib/appVersion.ts";
-import { ACCESS_LABEL, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
+import { ACCESS_LABEL, ACCESS_MODE_CLASS, accessModeParts, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
 import { placeAtSpot, requestAfterClose, type InfoRequest, type TrailRider } from "./lib/roadInfo.ts";
 import { stationNearSpot } from "./lib/stationLinks.ts";
 import { reorder } from "./lib/pointMover.ts";
@@ -27,7 +27,7 @@ import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { forgetPlan, isPlainClick, planToOpen, rememberPlanForSignIn, tabSession } from "./lib/signIn.ts";
 import { STILL_PLANNING_AFTER_MS, announceRoute, stillPlanningSaid } from "./lib/summary.ts";
 import { focusesPlanButton, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
-import { neutralPaletteSearch, MTB_MIN_ZOOM, mtbTrailsOn, setMtbTrails, setRoutableMtb } from "./stressStyle.js";
+import { neutralPaletteSearch, MTB_MIN_ZOOM, mtbTrailsOn, setAccessibility, setMtbTrails, setRoutableMtb } from "./stressStyle.js";
 import { setTopoLines, topoAvailable, useTopoLines } from "./lib/topoLines.ts";
 import { isMtb, mtbChosen, mtbLevelOf } from "./lib/mtbMode.ts";
 import { choose as chooseRideType, isCustom } from "./lib/rideTypeDialog.ts";
@@ -1664,18 +1664,26 @@ export function App() {
   }, []);
   // Turn accessibility mode on or off, say so, and keep it (lib/accessMode.ts accessModeToggle). From the page's
   // first button, turning it on puts the focus on Map tools (focusTools); turning it off leaves the focus on the
-  // switch pressed, which is always on the page.
+  // switch pressed, which is always on the page. High contrast and Large text during a ride go with it
+  // (accessModeParts): one shared mode, each of the two still a switch of its own in Settings.
   const toggleAccessMode = useCallback(
     (focusTools: boolean) => {
       const step = accessModeToggle(accessMode, focusTools);
       writeAccessMode(step.next);
+      const parts = accessModeParts(step.next);
+      setAccessibility(parts.contrast);
+      setRideText(parts.largeText ? "large" : "normal");
       focusToolsNext.current = step.focusTools;
       focusAtPress.current = document.activeElement;
       setAccessMode(step.next);
       announce(t(step.said));
     },
-    [accessMode, announce],
+    [accessMode, announce, setRideText],
   );
+  // The mode's class on the page's root, for Go's larger small text (styles.css, ACCESS_MODE_CLASS).
+  useEffect(() => {
+    document.documentElement.classList.toggle(ACCESS_MODE_CLASS, accessMode);
+  }, [accessMode]);
   // Map tools tells App when it is on the page (its onShown). That is the same commit as the press once the map
   // is built, or later while the map is still loading; the move waits for it, and is dropped if the rider has
   // moved on in the meantime (the focus is no longer where it was at the press; the a11y review's N5).
@@ -5060,7 +5068,7 @@ export function App() {
   const chooseAnnounce = (level: AnnounceLevel) => {
     setAnnounceChoice(level);
     writeAnnounceChoice(level);
-    announce(level === "brief" ? "Announcements: brief." : "Announcements: full.");
+    announce(level === "brief" ? "Screen-reader detail: brief." : "Screen-reader detail: full.");
   };
   // A bikeshare ride's station choice (the Points section's, before): under Route, closed, as the mockup has it.
   const stations =

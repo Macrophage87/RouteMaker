@@ -18,7 +18,8 @@ export type CueOutput = "screen-reader" | "voice" | "both" | "neither";
 
 export const OUTPUT_LABELS: Record<CueOutput, string> = {
   "screen-reader": t("My screen reader"),
-  voice: t("RouteMaker's voice"),
+  // "App voice" (it was RouteMaker's voice): short enough for Settings' dropdown at 390 px.
+  voice: t("App voice"),
   both: t("Both"),
   neither: t("Neither (on screen only)"),
 };
