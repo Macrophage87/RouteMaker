@@ -54,8 +54,25 @@ jobs:
         # suite's missing-interpreter skips into failures, so an image that lost
         # LuaJIT cannot report green with the Lua suites unrun. The backup test
         # runs a real pg_dump against the service container, which needs a
-        # client of the server's major version.
-        run: sudo apt-get update && sudo apt-get install -y binutils libproj-dev gdal-bin libgeos-dev luajit lua5.4 postgresql-client-16
+        # client of the server's major version. That client comes from the
+        # PostgreSQL project's apt repository, as in docker/api.Dockerfile, at the
+        # major the api image pins: the runner's own Ubuntu carries one client
+        # major only, and ubuntu-latest moving to 26.04 dropped 16.
+        run: |
+          set -eux
+          PG_MAJOR=$(sed -n 's/^ARG PG_MAJOR=//p' docker/api.Dockerfile)
+          test -n "$PG_MAJOR"
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "$VERSION_CODENAME")-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y binutils libproj-dev gdal-bin libgeos-dev luajit lua5.4 "postgresql-client-$PG_MAJOR"
+          # Ahead of /usr/bin, whose pg_wrapper picks the newest client installed,
+          # and the runner image may carry a newer one.
+          echo "/usr/lib/postgresql/$PG_MAJOR/bin" >> "$GITHUB_PATH"
+          "/usr/lib/postgresql/$PG_MAJOR/bin/pg_dump" --version | grep -Eq "[[:space:]]$PG_MAJOR\."
       # docker/requirements.txt first: it is the exact pin both images build
       # from, and requirements-dev.txt alone resolves newer packages
       # (tests/test_native_environment.py fails when it does). Green here is

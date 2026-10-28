@@ -975,6 +975,35 @@ class TestFlowStretches:
         lon, lat = inside_near[0]
         assert mass_tiles.inside_dc(lon, lat)  # about 10 to 13 m out: a border road
 
+    def test_a_point_well_outside_the_district_walks_no_edge(self, monkeypatch):
+        """Audit S20: past the boundary's box (and the tolerance), no ring is walked; the
+        answer is the same as the full test's."""
+        from core import mass_tiles
+        from routemaker import cbd
+
+        walked = []
+        real = cbd.in_polygons
+
+        def counted(point, polygons):
+            walked.append(point)
+            return real(point, polygons)
+
+        monkeypatch.setattr(cbd, "in_polygons", counted)
+        assert not mass_tiles.inside_dc(-76.6122, 39.2904)  # Baltimore
+        assert not mass_tiles.inside_dc(-77.0365, 38.70)  # south of the District
+        assert walked == []
+        assert mass_tiles.inside_dc(-77.0365, 38.8977) and walked  # the White House
+        # Along the box's edge, the quick exit agrees with the full test either side of it.
+        west, south, east, north = mass_tiles._dc_box()
+        pad = mass_tiles.DC_EDGE_TOLERANCE_M / 80_000
+        for lon, lat in (
+            (west - pad * 0.5, (south + north) / 2),
+            (east + pad * 0.5, (south + north) / 2),
+            ((west + east) / 2, north + pad * 0.5),
+            ((west + east) / 2, south - pad * 0.5),
+        ):
+            assert mass_tiles.inside_dc(lon, lat) == _inside_dc_by_every_edge(lon, lat)
+
     def test_with_the_capacity_column_the_width_is_the_segments_own(self):
         """The chart reads the width the capacity map colours by (`mass_usable_width_m`,
         OWNER-DECISIONS 404, 406), never the lanes' estimate, so the two always agree; Avoid
@@ -1411,3 +1440,26 @@ class TestMajorJunctions:
         # Past 45 m nothing is counted twice by name.
         far = junction(150.0, [busy])
         assert m._counted([named], [100.0], far, busy) is False
+
+
+def _inside_dc_by_every_edge(lon: float, lat: float) -> bool:
+    """`mass_tiles.inside_dc` without its box, every edge walked (the reference)."""
+    import math
+
+    from core import mass_tiles
+    from routemaker.cbd import in_polygons
+
+    polygons = mass_tiles._dc_polygons()
+    if in_polygons((lon, lat), polygons):
+        return True
+    kx, ky = 111_320.0 * math.cos(math.radians(lat)), 110_574.0
+    for polygon in polygons:
+        for ring in polygon:
+            for (ax, ay), (bx, by) in zip(ring, ring[1:], strict=False):
+                ux, uy = (bx - ax) * kx, (by - ay) * ky
+                px, py = (lon - ax) * kx, (lat - ay) * ky
+                length2 = ux * ux + uy * uy
+                t = 0.0 if length2 == 0 else max(0.0, min(1.0, (px * ux + py * uy) / length2))
+                if math.hypot(px - t * ux, py - t * uy) <= mass_tiles.DC_EDGE_TOLERANCE_M:
+                    return True
+    return False

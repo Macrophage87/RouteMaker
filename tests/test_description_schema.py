@@ -32,3 +32,18 @@ def test_a_route_with_bears_validates_as_a_response():
     assert {"bear_left", "bear_right"} <= movements
     for entry in entries:
         DescriptionEntryOut.model_validate(entry)
+
+
+def test_the_way_an_unnamed_path_leads_to_reaches_the_response():
+    """D21: the `toward` field is the response's, not dropped by the schema."""
+    legs = [
+        flat(
+            road("Capital Crescent Trail", 1, 1500, 90, 90, "path", "cycleway"),
+            road("", 1, 150, 180, 180, "path", "cycleway"),
+            road("Rock Creek Trail", 1, 1500, 90, 90, "path", "cycleway"),
+        )
+    ]
+    entry = d.describe(legs)[1]
+    out = DescriptionEntryOut.model_validate(entry).model_dump()
+    assert out["turn"]["toward"] == "Rock Creek Trail"
+    assert out["turn"]["onto"] == out["street"] == "path"

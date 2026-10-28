@@ -153,6 +153,24 @@ test("joined: the stops ahead keep their places and take their numbers in the ne
   close(stops[0].atM, 1100);
 });
 
+test("D17 joined: a stop ahead keeps its own side of the street under its new number", () => {
+  const description: DescriptionEntry[] = [
+    stretch(0, 1000, "A Street"),
+    { ...stretch(500, 500, "Stop 1"), kind: "via", via: 1, street: null },
+    stretch(1000, 2000, "B Street", { turn: { movement: "left", onto: "B Street", control: "signal", severity: null } }),
+    { ...stretch(1500, 1500, "Stop 2"), kind: "via", via: 2, street: null },
+  ];
+  const plan = route(planned().geometry.coordinates, description, planned().stress_spans ?? [], { leg_ends: [2, 3, 4], leg_arrival_sides: ["right", "left", null] });
+  assert.deepEqual(rideModel(plan).cues.filter((c) => c.kind === "stop").map((c) => c.text), ["Stop 1. Destination on your right.", "Stop 2. Destination on your left."]);
+  // Stop 2 is the new plan's point 1 (replanKept [2, 3]).
+  const joined = joinRoutes(leg(700), plan, 700, new Map([[2, 1], [3, 2]]));
+  assert.deepEqual(joined.leg_arrival_sides, ["left", null]);
+  const stops = rideModel(joined).cues.filter((c) => c.kind === "stop");
+  assert.deepEqual(stops.map((c) => c.text), ["Stop 1. Destination on your left."]);
+  // An older answer without sides: none.
+  assert.equal(joinRoutes(leg(700), { ...plan, leg_arrival_sides: undefined }, 700, new Map([[2, 1]])).leg_arrival_sides, null);
+});
+
 test("joined at the very end: the way back alone, with its own arrival side", () => {
   const joined = joinRoutes({ ...leg(1000), arrival_side: "left" }, { ...planned(), arrival_side: "right" }, 2000, new Map());
   assert.deepEqual(joined.geometry.coordinates, leg(1000).geometry.coordinates);

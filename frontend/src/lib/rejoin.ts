@@ -205,7 +205,21 @@ export function joinRoutes(leg: RouteResponse, planned: RouteResponse, atM: numb
     avoid_alternate: null,
     closure_through: null,
     arrival_side: ended ? leg.arrival_side : planned.arrival_side,
+    // A stop's side (D17) by its number in the new plan's points, as its description entry is renumbered above.
+    leg_arrival_sides: tail.length ? joinedSides(planned.leg_arrival_sides, kept) : null,
   };
+}
+
+/** The planned route's per-leg sides indexed by the kept points' new numbers; null where it has none. */
+function joinedSides(sides: RouteResponse["leg_arrival_sides"], kept: ReadonlyMap<number, number>): RouteResponse["leg_arrival_sides"] {
+  if (!Array.isArray(sides)) return null;
+  const out: ("left" | "right" | null)[] = [];
+  for (const [old, now] of kept) {
+    if (now < 1) continue;
+    while (out.length < now) out.push(null);
+    out[now - 1] = sides[old - 1] ?? null;
+  }
+  return out;
 }
 
 /** A joined stretch's words where the planned route turned onto it: what Ride mode says of it, with no turn. */

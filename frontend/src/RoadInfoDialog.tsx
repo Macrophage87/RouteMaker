@@ -73,7 +73,7 @@ import { SUGGEST_TEXT, fetchMySuggestion, mySuggestionText, type MySuggestion } 
 import { StreetPhotoView } from "./StreetPhotoView.tsx";
 
 /** The one button that holds the ways to suggest, when there are two or more (UI-CLEANUP). */
-export const SUGGEST_MENU_TEXT = "Suggest a change…";
+export const SUGGEST_MENU_TEXT = t("Suggest a change…");
 import { SuggestJunction } from "./SuggestJunction.tsx";
 import { JUNCTION_SUGGEST_TEXT, findJunction, junctionNote, type JunctionAt, type Shown } from "./lib/junctionSuggest.ts";
 import { AVOID_CARD_HEADING, AVOID_SYMBOL, avoidCardText, type AvoidItem } from "./lib/avoidJunctions.ts";
@@ -88,6 +88,7 @@ import { milePanelRow, type TrailMiles } from "./lib/trailMiles.ts";
 import { LOG_311_TEXT, panelLoggedSaid, panelPlace, report311Log } from "./lib/report311Log.ts";
 import { REPORT_KINDS } from "./lib/report311.ts";
 import { HAZARD_REPORT_TEXT, hazardOnPiece, hazardPanelText, hazardSaid, type HazardCollection } from "./lib/massHazards.ts";
+import { t } from "./lib/i18n.ts";
 
 interface Props {
   /** The spot asked about, or null while the panel is closed. */
@@ -608,7 +609,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
             {infoHeading(state)}
           </h2>
           <button type="button" className="secondary" onClick={close}>
-            Close
+            {t("Close")}
           </button>
         </header>
         <p id={id("where")} className="road-info-kind">
@@ -619,7 +620,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
           {said}
         </p>
         {request && (
-          <ul className="road-info-place" aria-label="Use this spot">
+          <ul className="road-info-place" aria-label={t("Use this spot")}>
             {actions.map((action) => (
               <li key={action.choice}>
                 <button
@@ -683,24 +684,24 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
               ))}
           </p>
         )}
-        {state.kind === "loading" && <p className="road-info-status">Looking up this road…</p>}
+        {state.kind === "loading" && <p className="road-info-status">{t("Looking up this road…")}</p>}
         {state.kind === "error" && <p className="road-info-status">{state.message}</p>}
         {state.kind === "ready" && !state.info.found && <p className="road-info-status">{NO_ROAD_HINT}</p>}
         {federal && (
           // In view whatever the road answer is: a spot in a park may have no road within reach.
           <p className="road-info-federal">
-            <span className="road-info-label">Federal land:</span> {federalSaid}{" "}
+            <span className="road-info-label">{t("Federal land:")}</span> {federalSaid}{" "}
             <span className="road-info-federal-note">{FEDERAL_ADVICE}</span>
           </p>
         )}
         {hazard && (
           // A Mass Ride's rider-marked hazard (325, 326): its level and reason in words, never the rail alone.
           <p className={`road-info-hazard road-info-hazard-${hazard.level}`}>
-            <span className="road-info-label">Rider-marked hazard:</span> {hazardPanelText(hazard)}
+            <span className="road-info-label">{t("Rider-marked hazard:")}</span> {hazardPanelText(hazard)}
           </p>
         )}
         {summary.length > 0 && (
-          <ul className="road-info-summary" aria-label="Summary">
+          <ul className="road-info-summary" aria-label={t("Summary")}>
             {summary.map((row) => (
               <li key={row.id} className={`road-info-line road-info-line-${row.id}`}>
                 <span className="road-info-label">{row.label}:</span>{" "}
@@ -723,7 +724,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
         {ready && trailWay && ready.osm_way_id != null && <TrailProfileView way={ready.osm_way_id} uid={id("trail").replace(/[^A-Za-z0-9_-]/g, "")} />}
         {mySuggestion && mySuggestion.osm_way_id === ready?.osm_way_id && (
           <p className="road-info-mine">
-            <span className="road-info-label">Your suggestion:</span> {mySuggestionText(mySuggestion)}
+            <span className="road-info-label">{t("Your suggestion:")}</span> {mySuggestionText(mySuggestion)}
           </p>
         )}
         {ready && request && (
@@ -741,7 +742,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
         {climb && onShowClimb && (
           <div className="road-info-climb">
             <p id={id("climb")}>
-              <span className="road-info-label">Climb here:</span> {climbNamedLabel(climb)}
+              <span className="road-info-label">{t("Climb here:")}</span> {climbNamedLabel(climb)}
             </p>
             <button
               type="button"
@@ -760,7 +761,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
           <div className="road-info-stations">
             {/* The station's name in view, beside its short links (OWNER-DECISIONS 441q; the a11y review's N2). */}
             <p className="road-info-station-name" id={id("station")}>
-              <span className="road-info-label">Nearby station:</span> {station.name}
+              <span className="road-info-label">{t("Nearby station:")}</span> {station.name}
             </p>
             <ul className="road-info-links" aria-labelledby={id("station")}>
               {links.map((link) => (
@@ -799,7 +800,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
             ))}
             {wayRows(ready).length > 0 && (
               <section className="road-info-section road-info-way" aria-labelledby={id("way")}>
-                <h3 id={id("way")}>The way in the map data</h3>
+                <h3 id={id("way")}>{t("The way in the map data")}</h3>
                 <dl>
                   {wayRows(ready).map((row) => (
                     <div key={row.label} className="road-info-row">
@@ -887,7 +888,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
         )}
         {request && !(editing && editableWay !== null) && !suggestingNow && !reportingNow && !closingNow && !suggestingJunctionNow && (
           <div className="road-info-actions">
-            <ul className="road-info-buttons" aria-label="Actions">
+            <ul className="road-info-buttons" aria-label={t("Actions")}>
               <li>
                 <a
                   className="road-info-button"
@@ -969,7 +970,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
             </ul>
             {logged && <p className="hint road-info-logged">{logged}</p>}
             {suggestCount >= 2 && (
-              <ul id={suggestMenuId} className="road-info-buttons road-info-suggest" aria-label="Suggest a change" hidden={!suggestMenu}>
+              <ul id={suggestMenuId} className="road-info-buttons road-info-suggest" aria-label={t("Suggest a change")} hidden={!suggestMenu}>
                 {suggestItems}
               </ul>
             )}

@@ -160,13 +160,13 @@ export function alertUrgent(alert: WeatherAlert): boolean {
  * you are."; before Start the first point is "at the start".
  */
 export function rainLine(rain: WeatherRain, alongM: readonly number[], riding: boolean): string {
-  const what = rain.heavy ? "Heavy rain" : "Rain";
+  const what = rain.heavy ? t("Heavy rain") : t("Rain");
   const minutes = Math.round(rain.starts_in_s / 300) * 5;
-  const when = rain.starts_in_s < 15 * 60 ? "within 15 min" : `in about ${formatDuration(minutes * 60)}`;
+  const when = rain.starts_in_s < 15 * 60 ? t("within 15 min") : t("in about {time}", { time: formatDuration(minutes * 60) });
   // Within a tenth of a mile of the first point (Roam sends one place at several times): where the rider is.
   const here = (alongM[rain.index] ?? 0) - (alongM[0] ?? 0) < 160;
-  const where = here ? (riding ? "where you are" : "at the start") : `near ${formatMilePost(alongM[rain.index] ?? 0)}`;
-  return `${what} expected ${when}, ${where}.`;
+  const where = here ? (riding ? t("where you are") : t("at the start")) : t("near {mile}", { mile: formatMilePost(alongM[rain.index] ?? 0) });
+  return t("{what} expected {when}, {where}.", { what, when, where });
 }
 
 /** The forecast's credit, beside the rain line (CC BY 4.0), and its accessible name. */

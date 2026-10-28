@@ -6,11 +6,13 @@
  * tests/test_deploy_docs.py keeps in step) changes what riders see, with nothing else to edit. Empty outside a
  * Vite build (the unit tests), where nothing shows.
  */
+import { t } from "./i18n.ts";
+
 export const APP_VERSION: string = import.meta.env?.VITE_APP_VERSION ?? "";
 
 /** The Help panel's line: "RouteMaker version 0.10.1". */
 export function versionSaid(version: string = APP_VERSION): string {
-  return version ? `RouteMaker version ${version}` : "";
+  return version ? t("RouteMaker version {version}", { version }) : "";
 }
 
 /** What a screen reader hears under the heading, which has just said "RouteMaker": "Version 0.10.1". */

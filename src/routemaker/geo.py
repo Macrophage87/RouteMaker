@@ -58,6 +58,27 @@ def bearing(a: Point, b: Point) -> float:
     return math.degrees(math.atan2(y, x)) % 360.0
 
 
+def haversine_lonlat(a: Sequence[float], b: Sequence[float]) -> float:
+    """`haversine` of two (lon, lat) pairs with no `Point` made for them: the same formula
+    in the same order, so the same metres to the last bit (audit S19). For the hot loops
+    over a route's shape."""
+    lat1, lat2 = math.radians(a[1]), math.radians(b[1])
+    dlat = lat2 - lat1
+    dlon = math.radians(b[0] - a[0])
+    h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    return 2 * EARTH_RADIUS_M * math.asin(math.sqrt(min(1.0, h)))
+
+
+def bearing_lonlat(a: Sequence[float], b: Sequence[float]) -> float:
+    """`bearing` of two (lon, lat) pairs with no `Point` made for them, as
+    `haversine_lonlat`."""
+    lat1, lat2 = math.radians(a[1]), math.radians(b[1])
+    dlon = math.radians(b[0] - a[0])
+    y = math.sin(dlon) * math.cos(lat2)
+    x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dlon)
+    return math.degrees(math.atan2(y, x)) % 360.0
+
+
 def bearing_delta(b1: float, b2: float) -> float:
     """Smallest absolute angle between two bearings, in degrees [0, 180]."""
     return abs((b2 - b1 + 180.0) % 360.0 - 180.0)

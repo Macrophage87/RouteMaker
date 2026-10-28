@@ -14,7 +14,7 @@ export const LOAD_ROUTE = t("Load route");
 /** Go's More entry for the same popup (the owner, 2026-10-26: "Add saved routes in the more part of the go tab"). */
 export const SAVED_ROUTES = t("Saved routes");
 export const LOAD_GPX = t("Open GPX file");
-export const LOAD_CLOSE = "Close";
+export const LOAD_CLOSE = t("Close");
 export const LOAD_NONE = t("No saved routes yet. Plan a route and press Save route.");
 export const LOAD_SIGN_IN = t("Sign in to see your saved routes");
 export const LOAD_FAILED = t("Your saved routes could not be read; try again shortly.");

@@ -598,7 +598,7 @@ test("App and PlaceSearch: the box cleared or emptied clears the settle timer an
 });
 
 test("App: a search result is asked for early once it stays the top result; Home at once (routing audit S4)", () => {
-  assert.match(app, /goEarlyTimer\.current = window\.setTimeout\(\(\) => \{\s*const point = placeFromSearch\(found, \(\) => undefined, entranceForPlace\);\s*if \(point\) goEarly\(point\);\s*\}, GO_EARLY_SETTLE_MS\);/);
+  assert.match(app, /goEarlyTimer\.current = window\.setTimeout\(\(\) => \{\s*goWarmFix\(\);\s*const point = placeFromSearch\(found, \(\) => undefined, entranceForPlace\);\s*if \(point\) goEarly\(point\);\s*\}, GO_EARLY_SETTLE_MS\);/);
   assert.match(app, /const GO_EARLY_SETTLE_MS = 400;/);
   // The tap clears it.
   assert.match(app, /const goToPlace = \(found: Place\) => \{\s*window\.clearTimeout\(goEarlyTimer\.current\);/);
@@ -652,7 +652,7 @@ test("App: Go starts routing early, to the top result and to Home, through one e
   assert.match(app, /const early = earlyStart\.current\?\.take\(routeRequestBody\(plan\.points, plan\.preset, asked\)\) \?\? null;/);
   assert.match(app, /allowed: \(\) => modeRef\.current === "go" && !shownNow\.current\.riding && !scheduler\.current\?\.busy\(\)/);
   // A destination picked is asked for at once.
-  assert.match(app, /\}, \{ now: goPickedNow\.current && mode === "go" \}\);/);
+  assert.match(app, /\}, \{ now: now \|\| \(goPickedNow\.current && mode === "go"\) \}\);/);
 });
 
 test("App: Go's controls are unchanged: no new button or field for any of it", () => {
