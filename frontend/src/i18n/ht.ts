@@ -1335,7 +1335,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "To install RouteMaker: ": "Pou enstale RouteMaker:",
   "routes kept for offline": "wout ki kenbe pou san entènèt",
   "Reading the routes kept on this device…": "Ap li wout ki kenbe sou aparèy sa a…",
-  "Sign out": "Dekonekte",
+  "Sign out": "Soti nan kont la",
   "Disconnect": "Dekonekte",
   "Connect {service}": "Konekte {service}",
   "Disconnect {app}": "Dekonekte {app}",
