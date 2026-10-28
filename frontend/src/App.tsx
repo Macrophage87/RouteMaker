@@ -200,7 +200,7 @@ import {
   type FoodResult,
   type FoodScope,
 } from "./lib/food.ts";
-import { FoodFinder } from "./lib/foodFinder.ts";
+import { FoodFinder, foodRowsShown } from "./lib/foodFinder.ts";
 import { GROCERY_HEADING, GROCERY_LOOKING, GROCERY_QUERY, GROCERY_UNAVAILABLE, groceryFoundSaid, groceryResults, isGroceryQuery, type GroceryFrom } from "./lib/grocery.ts";
 // food.json is a committed snapshot, as climbs.json, refreshed with scripts/build_food.py and committed;
 // places.json is a few bytes until scripts/build_places.py fills it. `no-inline`, as climbs.json: an
@@ -4570,7 +4570,8 @@ export function App() {
       foodRecentred.current = false;
       return;
     }
-    if (foodAll && foodAsked) sayFood(foodFoundSaid(foodAsked.query, foodAsked.scope, foodAll.length, Math.min(foodCount, foodAll.length), foodRoute !== null, foodAsked.fromRider));
+    // The rows shown are the page's first few until its Show more (lib/foodFinder.ts foodRowsShown), so that is the count said.
+    if (foodAll && foodAsked) sayFood(foodFoundSaid(foodAsked.query, foodAsked.scope, foodAll.length, foodRowsShown(Math.min(foodCount, foodAll.length), false), foodRoute !== null, foodAsked.fromRider));
     // Said for a new search or a new route, not for Show more (which says its own words).
   }, [foodAll]);
   // A list "near you" is from where the rider is now, not where the app last looked (the owner, 2026-10-18: "I was
@@ -4988,6 +4989,9 @@ export function App() {
         const next = Math.min(foodCount + FOOD_PAGE, foodAll.length);
         setFoodCount(next);
         sayFood(foodMoreSaid(next, foodAll.length));
+      }}
+      onRest={(n) => {
+        if (!grocery && foodAll) sayFood(foodMoreSaid(n, foodAll.length));
       }}
       canAddStop={points.length >= 2}
       onShow={showFood}
