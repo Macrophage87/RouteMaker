@@ -1888,7 +1888,8 @@ dialog.go-spot {
 }
 
 /* The card's pins (app/spotPins.ts): the icon in a dot, a named place's name beside it, 15 px as the map's street
-   names, haloed in the page's background so it reads on any part of the map, in both themes. */
+   names, in a bubble of the page's background (the owner, 2026-10-28: "Put them in bubbles") so it stands apart
+   from the map's own labels, in both themes. */
 .spot-pin {
   position: relative;
   display: flex;
@@ -1946,22 +1947,20 @@ dialog.go-spot {
   left: 38px;
   top: 50%;
   transform: translateY(-50%);
-  max-width: 150px;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   font-family: var(--font);
   font-size: 15px;
   font-weight: 700;
   line-height: 1.2;
   color: var(--text);
-  text-shadow:
-    0 0 2px var(--bg),
-    0 0 2px var(--bg),
-    1px 1px 0 var(--bg),
-    -1px -1px 0 var(--bg),
-    1px -1px 0 var(--bg),
-    -1px 1px 0 var(--bg);
 }
 
 .spot-pin:focus-visible {
@@ -7289,6 +7288,7 @@ details.fold > summary .icon {
 @media (forced-colors: active) {
   /* Go's tapped-spot pins (app/spotPins.ts), as the lettered pins. */
   .spot-pin-dot,
+  .spot-pin-label,
   .spot-here {
     border-color: CanvasText;
     background: Canvas;
