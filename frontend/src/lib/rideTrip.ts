@@ -395,7 +395,12 @@ export function restRequest(rest: RideRest, here: LonLat | null): { points: LonL
   return from ? { points: [from, rest.to], preset: rest.preset } : null;
 }
 
-/** The end of the line said as the plan's finish (the dock, the boarding), in place of the plain arrival. */
+/**
+ * The end of the line said as the plan's finish (the dock, the boarding), in place of the plain arrival. Only the
+ * arrival: the early "The destination is across ..." (D26), said for the same end cue at "advance", stays as it is.
+ */
 export function withFinish(events: RideEvent[], finish: TripWords | null): RideEvent[] {
-  return finish ? events.map((e) => (e.cue?.kind === "end" ? { ...e, spoken: finish.spoken } : e)) : events;
+  return finish
+    ? events.map((e) => (e.cue?.kind === "end" && e.phase === "arrive" ? { ...e, spoken: finish.spoken } : e))
+    : events;
 }
