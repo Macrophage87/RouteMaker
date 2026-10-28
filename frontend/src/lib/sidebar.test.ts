@@ -907,6 +907,17 @@ test("short or zoomed screens: the whole panel scrolls as one, so nothing pinned
   assert.match(app, /panelBodyRef\.current\?\.scrollTo\(\{ top: 0 \}\);\s*panelRef\.current\?\.scrollTo\?\.\(\{ top: 0 \}\);/);
 });
 
+test("elsewhere the panel and its body clip, so focusing a sheet's heading cannot scroll the panel itself", () => {
+  // A hidden box can still be scrolled; Save & load's visually hidden lines reach below the panel, and focusing
+  // its heading scrolled the panel up, its header gone and a band open under the bar (2026-10-27).
+  // hidden stays only as the fallback just before clip, for a browser without it.
+  assert.match(css, /\n\.panel \{[^}]*overflow: hidden;\s*overflow: clip;/);
+  assert.match(css, /\n\.panel-body \{[^}]*overflow: hidden;\s*overflow: clip;/);
+  assert.doesNotMatch(css, /\n\.panel(-body)? \{[^}]*overflow: hidden;(?!\s*overflow: clip;)/);
+  // And the lines are placed against the part that scrolls, not the panel.
+  assert.match(css, /\n\.panel-scroll \{\s*position: relative;/);
+});
+
 test("the beta notice is not in the planner any more: it is a chip on the map (lib/betaBanner.ts)", () => {
   const body = app.indexOf('<div id="panel-body"');
   assert.ok(body > 0);
