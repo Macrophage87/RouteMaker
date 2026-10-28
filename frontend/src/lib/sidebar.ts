@@ -106,6 +106,16 @@ export const PLANNER_EXTRAS = { zoomNotice: false, highContrastShortcut: false }
 /** The line in the Map layers sheet for every ride type but Mass Ride (mockup v3, Layers). */
 export const MASS_RIDE_LAYERS_NOTE = t("Mass Ride has its own layers, such as federal land.");
 
+/**
+ * Reports' line on suggesting a change (P8): the phone's gesture on a phone (`touch`, lib/startOnComputer.ts
+ * looksLikePhone), a computer's right-click on a computer.
+ */
+export function suggestHint(touch: boolean): string {
+  return touch
+    ? t("Press and hold a road, then choose Suggest a change: its traffic stress, a junction, or a Mass Ride hazard. An admin reviews each one before the map changes.")
+    : t("Right-click a road, then choose Suggest a change: its traffic stress, a junction, or a Mass Ride hazard. An admin reviews each one before the map changes.");
+}
+
 /** The Traffic stress section's status line while the stress tiles are checked, or down. */
 export const STRESS_CHECKING = t("Checking the stress map…");
 export const STRESS_UNAVAILABLE = t("Stress map unavailable for now. Routes still give their stress.");

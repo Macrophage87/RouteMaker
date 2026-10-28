@@ -11,7 +11,8 @@ import { LOOP_FIRST_HINT, LOOP_LABEL, canReverse, loopStops } from "./loop.ts";
 import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 import { pointName } from "./summary.ts";
-import { CLICK_KINDS_TIP } from "./pointKinds.ts";
+import { CLICK_KINDS_TIP, CLICK_POINT_TIP, TAP_KINDS_TIP, TAP_POINT_TIP } from "./pointKinds.ts";
+import { t } from "./i18n.ts";
 
 /** A marker's label: its visible text (a stop's number; none for the start and end), its spoken name, and its kind (the pin's style and glyph). */
 export interface PointLabel {
@@ -125,34 +126,52 @@ export function loopChangeSaid(before: LoopRide, after: LoopRide, count: number)
 /** Where to find the toggle, said only where the ride type has one: under the search (OWNER-DECISIONS 388). */
 const TOGGLE_PLACE = "under the search";
 
-/** The hint before any point is placed. */
-export function emptyPlanHint(preset: PresetId, loop: boolean, accessMode = false): string {
-  const first = loop
-    ? "Search for a place, or click the map to set a start, then add stops. The ride comes back to the start."
-    : "Search for a place, or click the map to set a start, then an end. Later clicks add a stop on the nearest leg.";
+/**
+ * The hint before any point is placed, one short line each (P8): how to place the points, in the phone's words
+ * on a phone (`touch`, lib/startOnComputer.ts looksLikePhone), the loop toggle where the ride type has one, then
+ * the editing tips.
+ */
+export function emptyPlanHint(preset: PresetId, loop: boolean, accessMode = false, touch = false): string[] {
+  const first = touch
+    ? loop
+      ? t("Search for a place, or tap the map to set a start, then add stops. The ride comes back to the start.")
+      : t("Search for a place, or tap the map to set a start, then an end. Later taps add a stop on the nearest leg.")
+    : loop
+      ? "Search for a place, or click the map to set a start, then add stops. The ride comes back to the start."
+      : "Search for a place, or click the map to set a start, then an end. Later clicks add a stop on the nearest leg.";
   // The toggle is under the search with or without a start (OWNER-DECISIONS 388, 389).
   const toggle = loop
-    ? ` "${LOOP_LABEL}" is checked, ${TOGGLE_PLACE}; uncheck it for a ride that ends somewhere else.`
+    ? `"${LOOP_LABEL}" is checked, ${TOGGLE_PLACE}; uncheck it for a ride that ends somewhere else.`
     : preset === "mass-ride"
       ? ""
-      : ` To finish back at the start, check "${LOOP_LABEL}" ${TOGGLE_PLACE};` +
-        " then each click after the start is a stop.";
-  return `${first}${toggle} ${editingTips(accessMode)}`;
+      : `To finish back at the start, check "${LOOP_LABEL}" ${TOGGLE_PLACE};` +
+        ` then each ${touch ? "tap" : "click"} after the start is a stop.`;
+  return [first, ...(toggle ? [toggle] : []), ...editingTips(accessMode, touch)];
 }
 
 /**
- * How to change points already placed, from the mouse and the keyboard: the end of the hint before any
- * point, and the whole of "More tips" once there are points (the correctness review's N5: the start-up
- * words read wrong with points placed).
+ * How to change points already placed: the end of the hint before any point, and the whole of Points' Info once
+ * there are points (the correctness review's N5: the start-up words read wrong with points placed). One short
+ * line each (P8: it was one 524-character paragraph), the phone's gestures first on a phone; the keyboard's lines
+ * on a computer, and in accessibility mode on any device.
  */
-export function editingTips(accessMode = false): string {
-  return (
-    "Drag any marker to move it, or drag the route line to pull it through somewhere else" +
-    ` (on a phone, press and hold the line first). ${CLICK_KINDS_TIP} Click a stop for Remove. From the keyboard,` +
-    ` move the map with the arrow keys and ${mapToolsWays(accessMode).addPoint}; Ctrl+Z undoes the` +
-    " last change and Ctrl+Shift+Z redoes it. With two or more stops, Best order puts them in the" +
-    " order that rides best, weighing riding time, traffic stress and hills as the route does."
-  );
+export function editingTips(accessMode = false, touch = false): string[] {
+  const pointer = touch
+    ? [
+        t("Drag a marker to move it."),
+        t("To reshape the route, press and hold the line, then drag it."),
+        TAP_KINDS_TIP,
+        TAP_POINT_TIP,
+      ]
+    : [t("Drag a marker to move it, or drag the route line to reshape the route."), CLICK_KINDS_TIP, CLICK_POINT_TIP];
+  const keys =
+    touch && !accessMode
+      ? []
+      : [
+          t("From the keyboard, the arrow keys move the map; {addPoint}.", { addPoint: mapToolsWays(accessMode).addPoint }),
+          t("Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it."),
+        ];
+  return [...pointer, ...keys, t("With two or more stops, Best order puts them in the order that rides best.")];
 }
 
 /**

@@ -215,16 +215,27 @@ export const INFO_KEY = "i";
 /**
  * The help for the road panel. The keyboard's way in names Map tools, which is on the page only in
  * accessibility mode (455): off, it says to turn the mode on first. INFO_HELP is the mode-on text.
+ * One short line each (P8), the phone's gesture on a phone (`touch`); the keyboard's lines on a computer, and in
+ * accessibility mode on any device.
  */
-export function infoHelp(accessMode: boolean, go = false): string {
+export function infoHelp(accessMode: boolean, go = false, touch = false): string[] {
   const ways = mapToolsWays(accessMode, go);
-  return (
-    "Right-click the map (or press and hold on a phone) for a short summary of the road there (its traffic stress, speed and whether bikes are allowed), buttons to make the spot your start, end or a stop, and Street View and Edit in OSM links; Details and sources has every figure and where it came from. " +
-    `From the keyboard: with the map focused, press I for the road at the center of the map, or ${ways.roadAndAdd}. ` +
-    `With NVDA or JAWS, I reaches the map only in focus mode (in browse mode it moves to the next list item); ${accessMode ? "" : "in accessibility mode, "}${MAP_TOOLS_LABEL} works in either.`
-  );
+  const keys =
+    touch && !accessMode
+      ? []
+      : [
+          `From the keyboard: with the map focused, press I for the road at the center of the map, or ${ways.roadAndAdd}.`,
+          `With NVDA or JAWS, I reaches the map only in focus mode (in browse mode it moves to the next list item); ${accessMode ? "" : "in accessibility mode, "}${MAP_TOOLS_LABEL} works in either.`,
+        ];
+  return [
+    touch
+      ? t("Press and hold the map for the road there: its stress, speed and whether bikes may ride, and buttons to start, end or stop there.")
+      : t("Right-click the map for the road there: its stress, speed and whether bikes may ride, and buttons to start, end or stop there."),
+    t("Street View and Edit in OSM are there too; Details and sources has every figure and where it came from."),
+    ...keys,
+  ];
 }
-export const INFO_HELP = infoHelp(true);
+export const INFO_HELP = infoHelp(true).join(" ");
 /** How long a finger must rest, unmoved, for a long press. */
 export const LONG_PRESS_MS = 600;
 /** How far a finger may drift and still be a long press, not a pan. */

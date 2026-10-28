@@ -44,7 +44,8 @@ import { DocsPageLink, MtbTrailLegend, StressLegend } from "../lib/stressLegend.
 import { GpxPanel, type FileFormat, type GpxPanelProps, type Said } from "../GpxPanel.tsx";
 import type { DeviceProfileId } from "../lib/deviceProfiles.ts";
 import { JunctionLegend, SheetFrame } from "../Sidebar.tsx";
-import { MASS_RIDE_LAYERS_NOTE, MENU_TITLE, SAVE_LOAD, SHEET_TITLES, STRESS_CHECKING, STRESS_UNAVAILABLE, type PanelView } from "../lib/sidebar.ts";
+import { MASS_RIDE_LAYERS_NOTE, MENU_TITLE, SAVE_LOAD, SHEET_TITLES, STRESS_CHECKING, STRESS_UNAVAILABLE, suggestHint, type PanelView } from "../lib/sidebar.ts";
+import { looksLikePhone } from "../lib/startOnComputer.ts";
 import type { ImportedPlan } from "../lib/gpxPlan.ts";
 import type { WaterPrefs, WaterStatus } from "../lib/waterRestrooms.ts";
 import { WaterSection } from "../lib/waterLegend.ts";
@@ -706,7 +707,7 @@ export function SuggestSheet({ nav, roadInfoAtCentre, onReview }: SuggestSheetPr
       <section aria-labelledby="suggest-map-heading" className="settings-group">
         <h3 id="suggest-map-heading">{t("A road or a junction")}</h3>
         <p className="hint">
-          {t("Right-click a road, or press and hold it, then choose Suggest a change: a road's traffic stress, a junction, or a hazard on a Mass Ride. Suggestions go to the map's admins; nothing changes until one of them reviews it.")}
+          {suggestHint(looksLikePhone())}
         </p>
         <button type="button" className="secondary suggest-at-centre" onClick={roadInfoAtCentre}>
           <Icon name="road" />

@@ -287,6 +287,18 @@ export interface LogGroup {
 export const STALE_DAYS = 30;
 const DAY_MS = 86_400_000;
 
+/**
+ * The checklist's how-to in Reports, one short line each (P8): a phone's gesture on a phone (holding a road), a
+ * computer's right-click on a computer (`touch`, lib/startOnComputer.ts looksLikePhone).
+ */
+export function logHint(touch: boolean): string[] {
+  return [
+    touch ? t("Log from a ride's 311 button or by holding a road.") : t("Log from a ride's 311 button or by right-clicking a road."),
+    t("Copy the report into the site, then check it off."),
+    t("One left unchecked is archived after {days} days.", { days: STALE_DAYS }),
+  ];
+}
+
 export function isStale(entry: LogEntry, now = new Date()): boolean {
   return entry.reported === null && now.getTime() - Date.parse(entry.at) > STALE_DAYS * DAY_MS;
 }

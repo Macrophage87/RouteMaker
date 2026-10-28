@@ -34,6 +34,7 @@ import {
 import { RIDE_SIZE_LABEL, panelView, parseTarget, type SliderView } from "./lib/dialsPanel.ts";
 import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
 import { t } from "./lib/i18n.ts";
+import { sentences } from "./lib/sentences.ts";
 
 interface Props {
   preset: PresetId;
@@ -110,11 +111,27 @@ function Slider(props: {
       )}
       {more && (
         <DialInfo id={infoId} open={info}>
-          {view.noteSaid && <p id={saidId}>{view.noteSaid}</p>}
-          {view.how && <p>{view.how}</p>}
+          {view.noteSaid && <Bullets id={saidId} text={view.noteSaid} />}
+          {view.how && <Bullets text={view.how} />}
         </DialInfo>
       )}
     </div>
+  );
+}
+
+/**
+ * A note behind an (i) as short bullets, one sentence each (P8), or one line where it is one sentence. The words
+ * are the note's own; `id` is what a description points at, so a screen reader still hears the note in full.
+ */
+function Bullets({ text, id }: { text: string; id?: string }) {
+  const lines = sentences(text);
+  if (lines.length < 2) return <p id={id}>{text}</p>;
+  return (
+    <ul id={id} className="info-bullets">
+      {lines.map((line) => (
+        <li key={line}>{line}</li>
+      ))}
+    </ul>
   );
 }
 
@@ -207,7 +224,7 @@ function NumberDial(props: {
       </p>
       {props.how && (
         <DialInfo id={infoId} open={info}>
-          <p>{props.how}</p>
+          <Bullets text={props.how} />
         </DialInfo>
       )}
     </div>
@@ -382,7 +399,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
       )}
       {view.assistNote && (
         <p className="hint">
-          {t("Follows e-bike rules and plans at a little more speed. Hills still count: a loaded cargo bike's motor rarely makes a climb easy. With a strong motor, move the hills slider toward Fastest yourself.")}
+          {t("Follows e-bike rules and plans at a little more speed. Hills still count; with a strong motor, move the hills slider toward Fastest yourself.")}
         </p>
       )}
       <Slider
@@ -463,7 +480,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
           <InfoButton open={whenInfo} onToggle={() => setWhenInfo(!whenInfo)} controls={whenInfoId} about="when" />
         </div>
         <DialInfo id={whenInfoId} open={whenInfo}>
-          <p>{WHEN_HOW}</p>
+          <Bullets text={WHEN_HOW} />
         </DialInfo>
       </fieldset>
       {view.target && (
@@ -502,7 +519,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
           {view.trailsOff.hint}
         </p>
         <DialInfo id={trailsOffInfoId} open={trailsOffInfo}>
-          <p>{view.trailsOff.how}</p>
+          <Bullets text={view.trailsOff.how} />
         </DialInfo>
       </div>
       <label className="toggle">

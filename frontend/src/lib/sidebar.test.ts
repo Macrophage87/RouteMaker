@@ -238,7 +238,7 @@ test("the points come first, the how-to is behind Points' Info, Swap and Undo be
   // UI-CLEANUP: behind the Info button in the Points heading's row (the mockup's "Points Swap Loop Edit Info").
   assert.match(
     app,
-    /className="tips-body more-tips" hidden=\{!tips\}>[\s\S]{0,400}\{points\.length > 0 \? <p className="hint">\{editingTips\(accessMode\)\}<\/p> : <p className="hint">\{emptyPlanHint\(preset, loopVias, accessMode\)\}<\/p>\}/,
+    /className="tips-body more-tips" hidden=\{!tips\}>[\s\S]{0,500}<HintLines lines=\{points\.length > 0 \? editingTips\(accessMode, touch\) : emptyPlanHint\(preset, loopVias, accessMode, touch\)\} \/>/,
   );
   assert.match(app, /className="secondary icon-button tips-toggle" aria-expanded=\{tips\} aria-controls=\{tipsId\} onClick=\{\(\) => setTips\(!tips\)\}/);
   // Every existing button is still there: Swap, Undo and Redo in the heading's row, Info last (Plan streamline,
