@@ -3,6 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  TRAIL_HIGHLIGHT_EDGE_LAYER_ID,
   TRAIL_HIGHLIGHT_ENDS_LAYER_ID,
   TRAIL_HIGHLIGHT_GLOW_LAYER_ID,
   TRAIL_HIGHLIGHT_SOURCE_ID,
@@ -10,6 +11,7 @@ import {
   setHoverTrail,
   setPanelTrail,
   trailHighlightData,
+  withTrailHighlight,
 } from "./trailHighlight.ts";
 import { trailHoverChart } from "./featureHover.ts";
 import { MTB_TICKS_LAYER_ID } from "../stressStyle.js";
@@ -46,14 +48,14 @@ test("the lit trail is its line and a dot at each end", () => {
   assert.equal(trailHighlightData([null, [[-77, 39]]]).features.length, 0);
 });
 
-test("the glow goes under the trail's own lines, the ends on top, and both clear when the trail is let go", () => {
+test("the band goes under the trail's own lines, the ends on top, and both clear when the trail is let go", () => {
   const map = stubMap([MTB_TICKS_LAYER_ID, "mtb-trail-label"]);
   const detach = attachTrailHighlight(map);
   try {
     // Nothing lit, nothing added.
     assert.equal(map.data(), undefined);
     setHoverTrail(LINE);
-    assert.deepEqual(map.order, [TRAIL_HIGHLIGHT_GLOW_LAYER_ID, MTB_TICKS_LAYER_ID, "mtb-trail-label", TRAIL_HIGHLIGHT_ENDS_LAYER_ID]);
+    assert.deepEqual(map.order, [TRAIL_HIGHLIGHT_EDGE_LAYER_ID, TRAIL_HIGHLIGHT_GLOW_LAYER_ID, MTB_TICKS_LAYER_ID, "mtb-trail-label", TRAIL_HIGHLIGHT_ENDS_LAYER_ID]);
     assert.equal(map.data()?.features.length, 3);
     // The panel's trail and the one under the mouse together.
     setPanelTrail(OTHER);
@@ -82,5 +84,28 @@ test("a trail's hover card hands the map the way's line from its profile", async
     assert.deepEqual(lit, [LINE]);
   } finally {
     globalThis.fetch = real;
+  }
+});
+
+test("the hover card lights its trail only while it is still the card shown, and lets it go when it hides", () => {
+  const map = stubMap();
+  const detach = attachTrailHighlight(map);
+  const calls: string[] = [];
+  const { card, lightUp } = withTrailHighlight({ show: (w: { key: string }) => calls.push(`show ${w.key}`), hide: () => calls.push("hide") });
+  try {
+    card.show({ key: "a" }, null, null);
+    const late = lightUp("a");
+    card.show({ key: "b" }, null, null);
+    // A's line arrives after B's card: not lit.
+    late(LINE);
+    assert.equal(map.data(), undefined);
+    lightUp("b")(OTHER);
+    assert.equal(map.data()?.features.length, 3);
+    card.hide();
+    assert.equal(map.data()?.features.length, 0);
+    assert.deepEqual(calls, ["show a", "show b", "hide"]);
+  } finally {
+    setHoverTrail(null);
+    detach();
   }
 });

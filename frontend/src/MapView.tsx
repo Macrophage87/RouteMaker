@@ -3,7 +3,7 @@ import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
 import { followZoom } from "./lib/idleRecentre.ts";
 import { createPortal } from "react-dom";
 import { attachFeatureHover } from "./featureHoverCard.ts";
-import { attachTrailHighlight, setHoverTrail } from "./lib/trailHighlight.ts";
+import { attachTrailHighlight, withTrailHighlight } from "./lib/trailHighlight.ts";
 import { climbHoverChart, climbHoverWords, trailHoverChart, trailHoverWords } from "./lib/featureHover.ts";
 import * as maplibregl from "maplibre-gl";
 import type { DataDrivenPropertyValueSpecification, GeoJSONSource, Map as MapLibreMap, Marker, Popup } from "maplibre-gl";
@@ -969,24 +969,8 @@ export function MapView(props: Props) {
     // The climbs' and the trails' hover card (featureHoverCard.ts), as the stations' own.
     // A trail's hover card also lights up the section its profile and rating are of (lib/trailHighlight.ts), until the
     // card goes or moves to another feature.
-    const hoverCard = attachFeatureHover(map);
+    const { card: featureHover, lightUp } = withTrailHighlight(attachFeatureHover(map));
     const detachHighlight = attachTrailHighlight(map);
-    let hoverKey = "";
-    const featureHover: typeof hoverCard = {
-      show: (words, at, chart) => {
-        if (words.key !== hoverKey) setHoverTrail(null);
-        hoverKey = words.key;
-        hoverCard.show(words, at, chart);
-      },
-      hide: () => {
-        hoverKey = "";
-        setHoverTrail(null);
-        hoverCard.hide();
-      },
-    };
-    const lightUp = (key: string) => (line: LonLat[]) => {
-      if (key === hoverKey) setHoverTrail(line);
-    };
     // Mouse only: a tap's compatibility mousemove (after its touch pointerdown) shows no hover card.
     let mousePointer = true;
     const onPointer = (event: PointerEvent) => {

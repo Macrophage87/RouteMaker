@@ -88,6 +88,7 @@ export function TrailProfileView({ way, uid }: { way: number; uid: string }): Re
     const controller = new AbortController();
     setState({ kind: "loading" });
     fetchTrailProfile(way, controller.signal).then((next) => {
+      if (controller.signal.aborted) return;
       setState(next);
       // The section the chart is of, lit up on the map while the panel shows it (lib/trailHighlight.ts).
       setPanelTrail(next.kind === "ready" ? (next.profile.line ?? null) : null);
