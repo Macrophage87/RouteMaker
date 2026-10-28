@@ -244,6 +244,28 @@ class TestNps:
         # An alert with no link of its own links to its park's conditions page.
         assert notices[1].url == "https://www.nps.gov/gwmp/planyourvisit/conditions.htm"
 
+    def test_a_link_with_a_second_address_run_into_it_gives_the_parks_page(self) -> None:
+        alert = {"id": "x1", "parkCode": "rocr", "category": "Park Closure", "title": "Waterside Drive NW Road Closure"}
+        bad = dc.parse_nps({"data": [{**alert, "url": "https://www.nps.govhttos://www.nps.gov/rocr"}]})
+        assert bad[0].url == "https://www.nps.gov/rocr/planyourvisit/conditions.htm"
+        good = dc.parse_nps({"data": [{**alert, "url": "https://www.nps.gov/rocr/learn/news/x.htm"}]})
+        assert good[0].url == "https://www.nps.gov/rocr/learn/news/x.htm"
+
+    @pytest.mark.parametrize(
+        ("url", "ok"),
+        [
+            ("https://www.nps.gov/rocr/planyourvisit/conditions.htm", True),
+            ("https://mpdc.dc.gov/release/%20TRAFFIC-ADVISORY", True),
+            ("https://www.nps.govhttos://www.nps.gov/rocr", False),
+            ("https://www.nps.gov/https://www.nps.gov/rocr", False),
+            ("http://www.nps.gov/rocr", False),
+            ("https://", False),
+            ("www.nps.gov/rocr", False),
+        ],
+    )
+    def test_web_link(self, url, ok) -> None:
+        assert dc.web_link(url) is ok
+
     def test_a_park_notice_is_on_a_route_through_the_park_and_never_a_closure(self) -> None:
         notices = dc.parse_nps(json.loads(text("nps-alerts.json")))
         through_rock_creek = [(-77.05, 38.93), (-77.05, 38.95)]
