@@ -7142,6 +7142,8 @@ details.fold > summary .icon {
     flex: 1 1 auto;
     gap: 2px;
     min-height: 52px;
+    /* 44 px wide at least, even at 320 px (v0.14.0 end review: Eat was 37 px). */
+    min-width: 44px;
     padding: 4px;
     border-radius: 14px;
     /* 14 px (P5; it was 12 px): a very large font, or a 320 px phone, wraps a chip to a second row. */

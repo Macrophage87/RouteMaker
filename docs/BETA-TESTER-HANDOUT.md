@@ -165,7 +165,7 @@ You stay responsible for riding safely; the route can be wrong.
   Street Northwest. GPS 38.91234, -77.03890." One tap logs it; the menu shows all six at once,
   and there is no note to type while riding. Off a ride, right-click a road on the map (press
   and hold on a phone) and choose Log for 311.
-- Your 311 checklist is in Reports (Go's Menu, or Plan's bottom bar; it was called Suggest). It
+- Your 311 checklist is in Reports (Go's Settings, or Plan's bottom bar; it was called Suggest). It
   lists what you logged under the website that takes it (DC 311, MC311, PGC311, Baltimore 311,
   Arlington, Alexandria, VDOT and the rest), each with when you logged it and Copy report. Paste
   the report into the site, then check the entry off and it moves to Archived, with when you
@@ -276,7 +276,7 @@ type" have the same groups. Typing "transit",
 8. Climbs on the map
 --------------------
 
-Turn on "Climbs" in Map layers. The number at a climb's top is its category; the shape around it
+Turn on "Climbs" in Layers, Trails and terrain. The number at a climb's top is its category; the shape around it
 is its steepness: a circle is gentle (under 4%), a square moderate (4 to 7.9%), a diamond steep
 (8% or more). "Show climbs from" hides the smaller ones. Tap a climb's top (in Go, its dashed line
 too) for its card; in Plan a tap on the dashed line adds a point there as before. The card has

@@ -12,7 +12,7 @@
  * the afternoon, nothing is shown ("Then just leave empty"). Times in the region's time, miles first.
  */
 import type { LonLat } from "./geo.ts";
-import { t } from "./i18n.ts";
+import { rightToLeft, t } from "./i18n.ts";
 import { haversineM } from "./geo.ts";
 import { formatDuration, formatMilePost } from "./format.ts";
 import type { When } from "./dials.ts";
@@ -307,7 +307,12 @@ export function rideLightCorner(
   };
   const said = marks.map((m) => `${LIGHT_NAME[m.kind]} ${lightClock(m.at)}${till(m.at) ? t(", in {time}", { time: tillSaid(m.at) }) : ""}`);
   return {
-    shown: marks.map((m) => `${LIGHT_SHORT[m.kind]} ${lightClock(m.at)}${till(m.at) ? ` (${till(m.at)})` : ""}`),
+    // In a right-to-left language the clock and its minutes are isolated (FSI ... PDI), so "6:12 PM (11 min)" keeps
+    // its order (v0.14.0 end review: it showed "PM (11 min) 6:12").
+    shown: marks.map((m) => {
+      const time = `${lightClock(m.at)}${till(m.at) ? ` (${till(m.at)})` : ""}`;
+      return `${LIGHT_SHORT[m.kind]} ${rightToLeft() ? `\u2068${time}\u2069` : time}`;
+    }),
     said: `${said.map((text, i) => (i === 0 ? text : text.charAt(0).toLowerCase() + text.slice(1))).join("; ")}.`,
   };
 }

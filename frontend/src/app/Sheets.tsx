@@ -806,8 +806,9 @@ export function NearestSheet({ nav, children }: { nav: SheetNav; children: React
 
 /** The cuisine chips over Find food (the mockup's Food sheet): each one searches for it. */
 // Farm stands (v0.7.0, the owner 2026-10-14: "Lots of places are selling apples in the fall"), with the apple.
-// Grocery (the owner, 2026-10-28): grocery stores and supermarkets nearest the start, from the geocoder (lib/grocery.ts).
-export const FOOD_CHIPS = ["Crab", "Coffee", "Pizza", "Tacos", "Ice cream", "Farm stands", "Grocery"] as const;
+// Grocery (the owner, 2026-10-28): grocery stores and supermarkets nearest the start, from the geocoder (lib/grocery.ts);
+// first, so it shows without a swipe at 390 px (v0.14.0 end review: the owner's grocery-store example).
+export const FOOD_CHIPS = ["Grocery", "Crab", "Coffee", "Pizza", "Tacos", "Ice cream", "Farm stands"] as const;
 const FOOD_CHIP_ICON: Partial<Record<(typeof FOOD_CHIPS)[number], IconName>> = { "Farm stands": "apple", Grocery: "shop" };
 
 /** The cuisine chips, under Find food's search box: one row that scrolls sideways (the 2026-10-28 audit, P7: results first). */

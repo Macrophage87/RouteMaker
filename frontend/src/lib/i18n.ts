@@ -80,7 +80,8 @@ const VOICE: Record<Language, readonly string[]> = {
 
 /**
  * The catalogs (src/i18n/<language>.ts). Spanish is in the bundle; the others are fetched before the app starts
- * (loadLanguage, main.tsx), so a rider downloads only the one they read. The service worker keeps them all.
+ * (loadLanguage, main.tsx), so a rider downloads only the one they read. The service worker keeps each on first use (swCore.mjs
+ * LAZY_ASSET), and fetches it again across an update for a rider who used it.
  */
 const LOADERS: Partial<Record<Language, () => Promise<Readonly<Record<string, string>>>>> = {
   am: () => import("../i18n/am.ts").then((m) => m.CATALOG),
