@@ -1197,12 +1197,17 @@ def test_a_sweep_past_its_budget_fails_the_job(monkeypatch) -> None:
     assert not ScheduledRun.objects.get(task="membership_sweep").succeeded
 
 
-def backend_count() -> int:
-    """Backends this database is serving, read from the server rather than
-    inferred from Django's own bookkeeping."""
+def backend_alive(pid: int) -> bool:
+    """Whether the server still has this backend, read from the server rather
+    than inferred from Django's own bookkeeping.
+
+    By pid, not by counting the database's backends: a count also moves when
+    some other test's leftover thread opens or drops a connection, which made
+    this check fail now and then on CI.
+    """
     with connection.cursor() as cursor:
-        cursor.execute("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()")
-        return cursor.fetchone()[0]
+        cursor.execute("SELECT 1 FROM pg_stat_activity WHERE pid = %s", [pid])
+        return cursor.fetchone() is not None
 
 
 @pytest.mark.django_db(transaction=True)
@@ -1227,11 +1232,12 @@ def test_an_abandoned_task_gives_its_connection_back(blocked_in) -> None:
     from core.runs import TaskTimedOut, run_with_deadline
 
     opened = threading.Event()
-    before = backend_count()
+    backend: dict[str, int] = {}
 
     def hog() -> None:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT 1")
+            cursor.execute("SELECT pg_backend_pid()")
+            backend["pid"] = cursor.fetchone()[0]
             opened.set()
             if blocked_in == "the database":
                 cursor.execute("SELECT pg_sleep(30)")
@@ -1242,9 +1248,9 @@ def test_an_abandoned_task_gives_its_connection_back(blocked_in) -> None:
     assert opened.is_set(), "the abandoned body really did open a connection"
 
     deadline = time.monotonic() + 10
-    while backend_count() > before and time.monotonic() < deadline:
+    while backend_alive(backend["pid"]) and time.monotonic() < deadline:
         time.sleep(0.1)
-    assert backend_count() <= before, "the abandoned thread is still holding a backend"
+    assert not backend_alive(backend["pid"]), "the abandoned thread is still holding a backend"
 
 
 def finished_thread():
