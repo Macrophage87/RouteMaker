@@ -1218,12 +1218,43 @@ class TestTheLongSearch:
     def test_a_leg_the_time_does_not_reach_keeps_the_routers_route(self, monkeypatch) -> None:
         legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})
         ctx = long_context(ceiling_m=45_000.0)
-        # 13 s from the start, less the 6 s kept for the whole's junctions: 7 s.
-        ctx.deadline = routing.Deadline(routing.clock() + 13.0, 45)
+        # 13.5 s from the start, less the 6 s kept for the whole's junctions: 7.5 s (7 s
+        # before audit round 3, S31, which a last leg now needs a little more than).
+        ctx.deadline = routing.Deadline(routing.clock() + 13.5, 45)
         trip, info = refine.refine_long(whole_trip(), ctx)
         # The worst leg's share is under a round; the last has the whole of what is left.
         assert info["limited"] == "time" and info["long"]["skipped"] == 1
         assert info["long"]["searched"] == 1
+
+    def test_a_leg_whose_share_cannot_finish_a_round_is_not_searched(self, monkeypatch) -> None:
+        # Audit round 3, S31: a leg's rounds have LONG_SEARCH_SHARE of its share, and a round
+        # starts only with REFINE_ROUND_MIN_S left, so a 6.5 s share (4.55 s of rounds) can
+        # change nothing. It is skipped, never read with its junctions, keeps the router's
+        # route, and the next leg has the time.
+        world = legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})
+        shares = []
+        real = refine.refine
+
+        def spy(trip, ctx):
+            shares.append((trip["legs"][0]["shape"], ctx.stop_at - routing.clock()))
+            return real(trip, ctx)
+
+        monkeypatch.setattr(refine, "refine", spy)
+        ctx = long_context(ceiling_m=45_000.0)
+        # 13.7 s to share once the whole's junctions are kept back: L1's 1,800 of 3,800 is
+        # 6.5 s, over the old gate of a round and a second (6 s), under a round of searching.
+        ctx.deadline = routing.Deadline(
+            routing.clock() + refine.LONG_FINAL_RESERVE_S + 6.5 * 3800 / 1800, 45
+        )
+        trip, info = refine.refine_long(whole_trip(), ctx)
+        assert refine.LONG_LEG_MIN_S * refine.LONG_SEARCH_SHARE > refine.REFINE_ROUND_MIN_S
+        assert [name for name, _share in shares] == ["L2"]
+        assert shares[0][1] == pytest.approx(6.5 * 3800 / 1800, abs=0.5)
+        assert ("L1", True) not in world.analysed
+        assert info["long"]["skipped"] == 1 and info["long"]["searched"] == 1
+        assert info["limited"] == "time"
+        (l1,) = [leg for leg in info["long"]["per_leg"] if leg["leg"] == 1]
+        assert l1["searched"] is False and l1["m"] == l1["first_m"]
 
     def test_the_time_is_shared_by_weight(self, monkeypatch) -> None:
         legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})
