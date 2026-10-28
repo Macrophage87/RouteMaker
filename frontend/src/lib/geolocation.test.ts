@@ -7,6 +7,7 @@ import { pickTarget } from "./geocode.ts";
 import {
   DENIED_IN_BROWSER,
   DENIED_IN_IOS_APP,
+  IOS_LOCATION_STEPS,
   FINDING_LOCATION,
   LINK_HAS_LOCATION_POINT,
   LINK_HAS_LOCATION_START,
@@ -22,6 +23,7 @@ import {
   accuracyText,
   deniedNotice,
   iosHomeScreenApp,
+  showsIosLocationHelp,
   approximateHint,
   browserEnv,
   cleanAccuracy,
@@ -798,4 +800,17 @@ test("denied in an iPhone Home Screen app names the iPhone's settings, not a bro
   assert.ok(DENIED_IN_IOS_APP.length <= DENIED_IN_BROWSER.length);
   // Go swaps the closing "search for a place." for "type a start."; both notices end that way.
   for (const notice of [DENIED_IN_BROWSER, DENIED_IN_IOS_APP]) assert.match(notice, /search for a place\.$/);
+});
+
+test("the Home Screen app's denied notice gets the iPhone Settings steps; no other notice does", () => {
+  assert.equal(showsIosLocationHelp(DENIED_IN_IOS_APP), true);
+  // Go's version, with the destination before it and "type a start." at the end.
+  assert.equal(showsIosLocationHelp(`To Union Station. ${DENIED_IN_IOS_APP.replace(/search for a place\.$/, "type a start.")}`), true);
+  assert.equal(showsIosLocationHelp(DENIED_IN_BROWSER), false);
+  assert.equal(showsIosLocationHelp(LOCATE_MESSAGES.timeout), false);
+  assert.equal(showsIosLocationHelp(null), false);
+  assert.equal(showsIosLocationHelp(""), false);
+  // The tester's missing step: In-App Web Browsing, under System Services.
+  assert.ok(IOS_LOCATION_STEPS.some((step) => /System Services.*In-App Web Browsing/.test(step)));
+  assert.ok(IOS_LOCATION_STEPS.length <= 4);
 });
