@@ -91,6 +91,8 @@ export const ES: Readonly<Record<string, string>> = {
   "Walk your bike.": "Camine con su bicicleta.",
   "Destination on your left.": "El destino está a su izquierda.",
   "Destination on your right.": "El destino está a su derecha.",
+  // A destination across a busy road, said early (round-2 audit D26).
+  "In {distance}, the destination is across {street}, on your left.": "En {distance}, el destino está al otro lado de {street}, a su izquierda.",
   "The end of the route.": "El final de la ruta.",
   "You have arrived at the end of the route.": "Ha llegado al final de la ruta.",
   "Stop {number}, {name}.": "Parada {number}, {name}.",

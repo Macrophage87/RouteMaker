@@ -1483,6 +1483,14 @@ class DescriptionEntryOut(Schema):
             ' is not known (round-2 audit D28: Ride\'s "Bike lane ends" fires on "none" only).'
         )
     )
+    oneway: bool | None = Field(
+        default=None,
+        description=(
+            "On a stretch: whether its road is one-way where it ends; null where the map"
+            " does not say (round-2 audit D26: Ride warns of a destination across a known"
+            " two-way road only)."
+        ),
+    )
     turn: DescriptionTurnOut | None = Field(
         description="How the stretch is entered, where it begins at a change of street."
     )

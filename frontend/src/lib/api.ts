@@ -268,6 +268,8 @@ export interface DescriptionEntry {
   tier: number | null;
   /** "none": the map says the way has no bike facility; null: not known (an older API sent null for both; round-2 D28). */
   facility: "path" | "protected" | "lane" | "none" | null;
+  /** On a stretch: whether its road is one-way where it ends; null or absent where not known (round-2 D26). */
+  oneway?: boolean | null;
   turn: {
     /** "bear_left" / "bear_right": a change of street 20 to 60 degrees off straight (describe.SLIGHT_MIN_DEG, BEAR_MAX_DEG). */
     movement: "left" | "straight" | "right" | "bear_left" | "bear_right" | null;

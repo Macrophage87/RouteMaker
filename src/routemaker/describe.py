@@ -403,6 +403,9 @@ class Atom:
     # Whether another way a bicycle may ride away on meets that node (not a sidewalk, a
     # driveway or a crosswalk); False elsewhere.
     choice: bool = False
+    # Whether the piece's road is one-way (the segment's `road_oneway`); None where the
+    # map does not say. A stretch sends its last piece's as `oneway` (round-2 audit D26).
+    oneway: bool | None = None
 
 
 def beside_words(use: str, road: str) -> str | None:
@@ -837,6 +840,14 @@ def entry_facility(facility: str) -> str | None:
     D28; the owner approved the banked changes 2026-10-27 7:52 PM ET, "make the banked
     changes"): before, "none" and unknown were both sent as None."""
     return facility if facility in ("path", "protected", "lane", "none") else None
+
+
+def _oneway_at_end(run: _Run) -> bool | None:
+    """Whether the stretch's road is one-way where it ends (its last piece), None where
+    the map does not say: Ride warns of a destination across the road only on a known
+    two-way road (round-2 audit D26; the owner approved the banked changes 2026-10-27
+    7:52 PM ET, "make the banked changes")."""
+    return run.last.oneway if run.last is not None else None
 
 
 def _miles(metres: float) -> str:
@@ -2094,6 +2105,7 @@ def describe_both(
                     relation_name=_street_words(run).lower() in relation_names,
                     tier=int(run.tier) if run.tier.isdigit() else None,
                     facility=entry_facility(run.facility),
+                    oneway=_oneway_at_end(run),
                     surface=surface_of(run),
                     text_lanes_hidden=text_lanes_hidden,
                     turn=None
@@ -2213,6 +2225,7 @@ def describe_both(
                     relation_name=_street_words(runs[first]).lower() in relation_names,
                     tier=int(run.tier) if run.tier.isdigit() else None,
                     facility=entry_facility(run.facility),
+                    oneway=_oneway_at_end(run),
                     surface=surface_of(run),
                     text_lanes_hidden=(
                         _stretch_sentence(hidden, start, end, turn, continues, then, toward)

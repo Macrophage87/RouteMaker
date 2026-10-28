@@ -150,6 +150,12 @@ export const STOKER_MIN_M = 90;
 export const PASSED_M = 10;
 /** Arrival at a stop or the end: within this of it along the line (and the fix close to it). */
 export const ARRIVE_M = 20;
+/**
+ * A destination across a busy road (round-2 audit D26) is said early only this far past the cue before it (the last
+ * turn), so the two never run together, and not at all closer to the end than FAR_SIDE_LAST_M (about 150 ft).
+ */
+export const FAR_SIDE_GAP_M = 60;
+export const FAR_SIDE_LAST_M = 45;
 /** A first fix this close to the route's start starts at the start (a loop's start is its end too). */
 export const START_M = 50;
 /** Progress never moves back by more than this while on route (GPS jitter at a light). */
@@ -279,6 +285,12 @@ export interface Cue {
   point?: number;
   /** A stop's side of the street, where the router gives it (round-2 audit D17): said after its arrival. */
   side?: "left" | "right";
+  /**
+   * The end's road to cross, where the destination is on the left of a busy two-way road with no bike facility
+   * (round-2 audit D26, `farSideAtEnd`): the API's street, or CROSS_UNNAMED; said early, "In 500 feet, the destination
+   * is across Georgia Avenue, on your left."
+   */
+  farSide?: string;
 }
 
 export interface RideModel {
@@ -761,6 +773,21 @@ function toward(entry: DescriptionEntry): string | null {
   return UNNAMED_PATH_STREET.test((turn.onto ?? entry.street ?? "").trim()) ? turn.toward : null;
 }
 
+/**
+ * The road the rider crosses to reach a destination on its left (round-2 audit D26; the owner approved the banked
+ * changes 2026-10-27 7:52 PM ET, "make the banked changes"): the last stretch's street (CROSS_UNNAMED where it has no
+ * name), where the router puts the destination on the left and that stretch is a busy road (LTS 3 or more) the map
+ * says is two-way (`oneway` false) with no bike facility (`facility` "none"). Null elsewhere, and wherever any of it
+ * is not known: on a one-way road, a left-side lane or a two-way cycletrack the rider may already be on the
+ * destination's side, so "across" could be false.
+ */
+function farSideAtEnd(side: ArrivalSide, entries: readonly DescriptionEntry[]): string | null {
+  if (side !== "left") return null;
+  const last = [...entries].reverse().find((e) => e.kind === "stretch");
+  if (!last || (last.tier ?? 0) < 3 || last.facility !== "none" || last.oneway !== false) return null;
+  return last.street && !isUnnamed(last.street) ? last.street : CROSS_UNNAMED;
+}
+
 /** The ride's model: the line, its measure and its cues, from the route as the API answered it. */
 /** A stop cue's words: "Stop 2." or, named, "Stop 2, Union Market." */
 export function stopText(number: number, name: string | undefined): string {
@@ -872,7 +899,8 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
     }
   }
   joinJogs(cues);
-  cues.push({ index: cues.length, kind: "end", atM: lengthM, text: endWords(route.arrival_side), movement: null, street: null, severity: null, tier: null, stop: null });
+  const farSide = farSideAtEnd(route.arrival_side, entries);
+  cues.push({ index: cues.length, kind: "end", atM: lengthM, text: endWords(route.arrival_side), movement: null, street: null, severity: null, tier: null, stop: null, ...(farSide ? { farSide } : {}) });
   const paceMs = route.distance_m > 0 && route.duration_s > 0 ? route.distance_m / route.duration_s : null;
   const timeline = timelineOf(route.time_marks, lengthM, route.duration_s);
   return { coordinates, along, lengthM, cues, stretches, paceMs, ...(timeline ? { timeline } : {}), ...(vias.length ? { passes } : {}) };
@@ -1215,6 +1243,10 @@ export function cueWords(cue: Pick<Cue, "kind" | "text"> & Pick<Partial<Cue>, "r
  */
 export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = phase === "advance" || phase === "ahead"): string {
   if (cue.kind === "end") {
+    // A destination across a busy road, said early (D26).
+    if (phase === "advance" && cue.farSide) {
+      return t("In {distance}, the destination is across {street}, on your left.", { distance: spokenDistance(distanceM), street: wayWords(cue.farSide) });
+    }
     // The side, where known, is the end cue's own last sentence ("Destination on your right.").
     const side = (["left", "right"] as const).map(arrivalSideWords).find((words) => cue.text.endsWith(words));
     return side ? `${t(ARRIVED_SAID)} ${side}` : t(ARRIVED_SAID);
@@ -1254,9 +1286,11 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
  */
 export function phasesFor(level: Verbosity, cue: Cue, speedMs: number): { phase: Phase; withinM: number }[] {
   if (!says(level, cue)) return [];
-  if (cue.kind === "stop" || cue.kind === "end") return [{ phase: "arrive", withinM: ARRIVE_M }];
   const v = Math.max(speedMs, MIN_SPEED_MS);
   const advance = Math.max(ADVANCE_MIN_M, ADVANCE_S * v);
+  // A destination across a busy road (D26): said early too, at every level that says more than arrival.
+  if (cue.kind === "end" && cue.farSide && level !== "quiet") return [{ phase: "advance", withinM: advance }, { phase: "arrive", withinM: ARRIVE_M }];
+  if (cue.kind === "stop" || cue.kind === "end") return [{ phase: "arrive", withinM: ARRIVE_M }];
   const prepare = Math.max(PREPARE_MIN_M, PREPARE_S * v);
   const ahead = Math.max(STOKER_MIN_M, STOKER_S * v);
   const now = Math.max(NOW_M, NOW_S * v);
@@ -1378,10 +1412,23 @@ export function step(
     if (cue.kind === "end") {
       // The end: along the line within ARRIVE_M of it, and the fix itself near it (a loop's
       // start is its end too, so the line's measure decides, not the distance to the point).
-      if (model.lengthM - progress <= ARRIVE_M) {
-        said[cue.index] = ["arrive"];
+      const left = model.lengthM - progress;
+      if (left <= ARRIVE_M) {
+        said[cue.index] = phases.map((p) => p.phase);
         next.arrived = true;
         events.push({ kind: "cue", spoken: cueSpoken(cue, "arrive", 0), urgent: true, cue, phase: "arrive" });
+      } else if (cue.farSide && !done.includes("advance")) {
+        // A destination across a busy road (D26): said once within its advance distance, but never stacked on the
+        // cue before (the last turn's "now"): only FAR_SIDE_GAP_M past it, and dropped within FAR_SIDE_LAST_M.
+        const early = phases.find((p) => p.phase === "advance");
+        const before = model.cues[cue.index - 1];
+        if (early && left <= early.withinM) {
+          if (left < FAR_SIDE_LAST_M) said[cue.index] = ["advance"];
+          else if (!before || progress - before.atM >= FAR_SIDE_GAP_M) {
+            said[cue.index] = ["advance"];
+            events.push({ kind: "cue", spoken: cueSpoken(cue, "advance", left), urgent: false, cue, phase: "advance" });
+          }
+        }
       }
       break;
     }

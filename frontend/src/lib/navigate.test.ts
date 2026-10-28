@@ -2305,6 +2305,58 @@ test("D28: 'Bike lane ends' only on a known no-lane that lasts, on the same stre
   }
 });
 
+test("D26: a destination on the left of a busy two-way road is said early as a crossing, never stacked on the last turn", () => {
+  const ga = "Georgia Avenue Northwest";
+  const arrive = (lastM: number, extra: Partial<DescriptionEntry> = {}, side: "left" | "right" = "left") =>
+    rideModel({
+      ...straightRoute([
+        stretch(0, 300, "A Street.", { street: "A Street" }),
+        stretch(300, 300 + lastM, "Right onto Georgia Avenue Northwest, busy road (LTS 3).", {
+          street: ga,
+          tier: 3,
+          facility: "none",
+          oneway: false,
+          turn: turning("right", ga),
+          ...extra,
+        }),
+      ]),
+      arrival_side: side,
+    } as RouteResponse);
+  const said = (model: RideModel, level: Verbosity = "full") => ride(model, level, 0, model.lengthM).events.map((e) => e.spoken);
+  const early = (words: string[]) => words.filter((w) => /across/.test(w));
+  const full = said(arrive(400));
+  assert.deepEqual(early(full), ["In 500 feet, the destination is across Georgia Avenue Northwest, on your left."]);
+  // After the turn's "now", before the arrival, which is as it was.
+  assert.ok(full.indexOf(early(full)[0]) > full.indexOf("Right now onto Georgia Avenue Northwest."));
+  assert.equal(full.at(-1), "You have arrived at the end of the route. Destination on your left.");
+  assert.deepEqual(early(said(arrive(400), "stoker")), ["In 500 feet, the destination is across Georgia Avenue Northwest, on your left."]);
+  assert.deepEqual(early(said(arrive(400), "quiet")), []);
+  // A last stretch too short to say it apart from the turn: not said.
+  assert.deepEqual(early(said(arrive(90))), []);
+  // Not said on the right, a calm road, a lane or cycletrack, a one-way road, or where the facility or one-way is not known.
+  for (const [extra, side] of [
+    [{}, "right"],
+    [{ tier: 2 }, "left"],
+    [{ facility: "lane" }, "left"],
+    [{ facility: "protected" }, "left"],
+    [{ oneway: true }, "left"],
+    [{ oneway: null }, "left"],
+    [{ facility: null }, "left"],
+  ] as [Partial<DescriptionEntry>, "left" | "right"][]) {
+    assert.deepEqual(early(said(arrive(400, extra, side))), [], JSON.stringify([extra, side]));
+  }
+  // Unnamed: "the road".
+  const unnamed = arrive(400, { street: "unnamed road", turn: turning("right", "unnamed road") });
+  assert.deepEqual(early(said(unnamed)), ["In 500 feet, the destination is across the road, on your left."]);
+  setLanguageForTest("es");
+  try {
+    assert.ok(said(arrive(400)).includes("En 500 pies, el destino está al otro lado de Georgia Avenue Northwest, a su izquierda."));
+    assert.ok(said(unnamed).includes("En 500 pies, el destino está al otro lado de la calle, a su izquierda."));
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
 test("D27: one 'Continue on ... for ...' after a turn, at Full only, measured to the next turn, not a stress change", () => {
   const wod = "Washington and Old Dominion Trail";
   const route = (trailM: number, extra: DescriptionEntry[] = []) =>
