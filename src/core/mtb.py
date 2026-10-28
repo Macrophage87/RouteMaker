@@ -107,7 +107,7 @@ def _pieces(trip: dict, variant: str, costing: dict, deadline, traces) -> list |
         trace = routing._trace(variant, costing, leg.get("shape", ""), deadline, traces)
         if trace is None:
             return None
-        pieces.extend(routing.pieces_of_trace(trace))
+        pieces.extend(routing.trace_reading(trace)[0])
     return pieces
 
 

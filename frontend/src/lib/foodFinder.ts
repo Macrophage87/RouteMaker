@@ -14,13 +14,14 @@ import { placeLetter } from "./letteredPlaces.ts";
 import { createElement as h, useEffect, useRef, type ReactElement } from "react";
 import { FOOD_DETOUR_NOTE, foodHoursText, foodHowFar, foodKindText, FOOD_PAGE, isFarmFood, type FoodResult, type FoodScope } from "./food.ts";
 import { ICON_PATHS } from "./iconPaths.ts";
+import { t } from "./i18n.ts";
 
-export const FOOD_SUMMARY = "Find food";
+export const FOOD_SUMMARY = t("Find food");
 export const FOOD_HELP =
-  "Search by food (crab, pizza, coffee) or a place's name, or leave it blank for all food. With a route shown, results are sorted by detour; Add as stop puts a place into your plan.";
+  t("Search by food (crab, pizza, coffee) or a place's name, or leave it blank for all food. With a route shown, results are sorted by detour; Add as stop puts a place into your plan.");
 export const FOOD_SCOPE_LABEL: Record<FoodScope, string> = {
-  near: "Near you",
-  view: "In the map view",
+  near: t("Near you"),
+  view: t("In the map view"),
 };
 
 export interface FoodFinderProps {
@@ -69,14 +70,14 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
         "form",
         {
           role: "search",
-          "aria-label": "Find food",
+          "aria-label": t("Find food"),
           className: "food-search",
           onSubmit: (event: { preventDefault(): void }) => {
             event.preventDefault();
             onSearch();
           },
         },
-        h("label", { htmlFor: "food-query", className: "place-search-label" }, "Food or name"),
+        h("label", { htmlFor: "food-query", className: "place-search-label" }, t("Food or name")),
         h(
           "div",
           { className: "place-search-row" },
@@ -89,12 +90,12 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
             "aria-describedby": "food-help",
             onChange: (event: { target: { value: string } }) => onQuery(event.target.value),
           }),
-          h("button", { type: "submit", className: "secondary", "aria-disabled": busy ? true : undefined }, "Search"),
+          h("button", { type: "submit", className: "secondary", "aria-disabled": busy ? true : undefined }, t("Search")),
         ),
         h(
           "fieldset",
           { className: "food-scope" },
-          h("legend", null, "Where"),
+          h("legend", null, t("Where")),
           ...(["near", "view"] as const).map((option) =>
             h(
               "label",
@@ -111,7 +112,7 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
         h(
           "div",
           { className: "nearest-list food-list" },
-          h("h3", { id: "food-list-heading" }, "Places to eat"),
+          h("h3", { id: "food-list-heading" }, t("Places to eat")),
           h(
             "ol",
             // role="list": WebKit drops a list's role once its bullets are styled away.
@@ -147,26 +148,26 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
                   { className: "actions" },
                   h(
                     "button",
-                    { type: "button", className: "secondary", "aria-label": `Show on map: ${r.place.name}, marker ${placeLetter(i)}`, onClick: () => onShow(r) },
-                    "Show on map",
+                    { type: "button", className: "secondary", "aria-label": t("Show on map: {place}, marker {letter}", { place: r.place.name, letter: placeLetter(i) }), onClick: () => onShow(r) },
+                    t("Show on map"),
                   ),
                   onRide &&
                     h(
                       "button",
-                      { type: "button", className: "secondary", "aria-label": `Ride here: ${r.place.name}`, onClick: () => onRide(r) },
-                      "Ride here",
+                      { type: "button", className: "secondary", "aria-label": t("Ride here: {place}", { place: r.place.name }), onClick: () => onRide(r) },
+                      t("Ride here"),
                     ),
                   canAddStop &&
                     h(
                       "button",
-                      { type: "button", className: "secondary", "aria-label": `Add as stop: ${r.place.name}`, onClick: () => onAddStop(r) },
-                      "Add as stop",
+                      { type: "button", className: "secondary", "aria-label": t("Add as stop: {place}", { place: r.place.name }), onClick: () => onAddStop(r) },
+                      t("Add as stop"),
                     ),
                   r.place.website &&
                     h(
                       "a",
-                      { className: "food-web", href: r.place.website, target: "_blank", rel: "noopener noreferrer", "aria-label": `Website: ${r.place.name} (opens in a new tab)` },
-                      "Website",
+                      { className: "food-web", href: r.place.website, target: "_blank", rel: "noopener noreferrer", "aria-label": t("Website: {place} (opens in a new tab)", { place: r.place.name }) },
+                      t("Website"),
                     ),
                 ),
               ),
@@ -183,9 +184,9 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
                   onMore();
                 },
               },
-              `Show ${Math.min(FOOD_PAGE, total - shown)} more`,
+              t("Show {count} more", { count: Math.min(FOOD_PAGE, total - shown) }),
             ),
-          h("p", { className: "hint" }, anyDetour ? FOOD_DETOUR_NOTE : "From OpenStreetMap: check the hours before you count on them. No ratings."),
+          h("p", { className: "hint" }, anyDetour ? FOOD_DETOUR_NOTE : t("From OpenStreetMap: check the hours before you count on them. No ratings.")),
         ),
       h("p", { className: "hint", id: "food-help" }, FOOD_HELP),
     ),

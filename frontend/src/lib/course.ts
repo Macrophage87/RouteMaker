@@ -162,7 +162,7 @@ function fromRide(cue: Cue): { type: CourseCueType; name: string; priority: numb
   const street = named(cue.street);
   switch (cue.kind) {
     case "turn": {
-      // A re-route's U-turn (Ride only): a left, by its name.
+      // A U-turn (a re-route's, or at a dead end): a left, by its name.
       if (cue.movement === "uturn") return { type: "left", name: "U-turn", priority: 4 };
       // A crossing between two turns (navigate.crossWords): a note that says to cross, by the road's name (the v0.10.1
       // end review: the name alone read as one more street); the turn after it is the device's turn.
@@ -187,6 +187,8 @@ function fromRide(cue: Cue): { type: CourseCueType; name: string; priority: numb
       return { type: "note", name: "Calmer", priority: 0 };
     case "unpaved":
       return { type: "note", name: "Unpaved", priority: 0 };
+    case "laneEnds":
+      return { type: "note", name: "Lane ends", priority: 0 };
     case "stop":
       // A named stop (2026-10-24) is named on the unit, as its number is otherwise.
       return { type: "stop", name: cue.stopName ?? `Stop ${cue.stop ?? ""}`.trim(), priority: PROTECTED };

@@ -14,16 +14,17 @@ import { CARRYINGS, WHENS, fitTarget, hillsGradePosition, seeksClimbs, stressMax
 import { formatDistance } from "./format.ts";
 import { presetLabel, presetSaid, type PresetId } from "./presets.ts";
 import { isCustom } from "./rideTypeDialog.ts";
+import { t } from "./i18n.ts";
 
 /** The traffic slider's position in two or three words. */
 export function trafficShort(stress: number): string {
-  if (stress <= 10) return "traffic tolerant";
-  if (stress < 30) return "direct";
-  if (stress <= 50) return "balanced traffic";
-  if (stress < 75) return "quiet streets";
-  if (stress <= 80) return "low stress";
-  if (stress < 95) return "calm";
-  return "calmest";
+  if (stress <= 10) return t("traffic tolerant");
+  if (stress < 30) return t("direct");
+  if (stress <= 50) return t("balanced traffic");
+  if (stress < 75) return t("quiet streets");
+  if (stress <= 80) return t("low stress");
+  if (stress < 95) return t("calm");
+  return t("calmest");
 }
 
 /**
@@ -31,31 +32,31 @@ export function trafficShort(stress: number): string {
  * Mountain Goat's right half, "some extra climbing" or "seeks hills".
  */
 export function hillsShort(hills: number, climbs: boolean): string {
-  if (climbs && hills > 10) return hills < 80 ? "some extra climbing" : "seeks hills";
-  return `hills up to ${hillsGradePosition(hills)}%`;
+  if (climbs && hills > 10) return hills < 80 ? t("some extra climbing") : t("seeks hills");
+  return t("hills up to {grade}%", { grade: hillsGradePosition(hills) });
 }
 
 /** The ride time: "now" for "when I'm planning", else the option's own words, first letter lowered. */
 export function whenShort(when: Dials["when"]): string {
-  if (when === null) return "now";
+  if (when === null) return t("now");
   const label = WHENS.find((option) => option.id === when)?.label;
-  return label ? whenInSentence(label) : "now";
+  return label ? whenInSentence(label) : t("now");
 }
 
 /** The ride type as the summary names it: "Default", "Custom (based on Default)", with its load and assist. */
 export function rideTypeShort(preset: PresetId, dials: Dials, name: (id: PresetId) => string = presetLabel): string {
   const carrying = CARRYINGS.find((c) => c.id === dials.carrying);
   return (
-    (isCustom(preset, dials) ? `Custom (based on ${name(preset)})` : name(preset)) +
+    (isCustom(preset, dials) ? t("Custom (based on {type})", { type: name(preset) }) : name(preset)) +
     (carrying ? `, ${carrying.label.toLowerCase()}` : "") +
-    (dials.assist ? ", electric assist" : "")
+    (dials.assist ? t(", electric assist") : "")
   );
 }
 
 /** A set target distance, miles first: "about 20.0 mi (32.2 km)"; null with none. */
 export function targetShort(metres: Dials["targetDistanceM"]): string | null {
   const target = fitTarget(metres);
-  return target === undefined ? null : `about ${formatDistance(target)}`;
+  return target === undefined ? null : t("about {distance}", { distance: formatDistance(target) });
 }
 
 /** The summary's parts, in order (312's: ride type, traffic and hills, when, target distance, loop, roads only, gravel). */
@@ -64,13 +65,13 @@ export function rideSummaryParts(preset: PresetId, dials: Dials, name: (id: Pres
   const target = targetShort(dials.targetDistanceM);
   return [
     rideTypeShort(preset, dials, name),
-    locked ? "most direct roadway" : trafficShort(dials.stress),
+    locked ? t("most direct roadway") : trafficShort(dials.stress),
     hillsShort(dials.hills, seeksClimbs(preset)),
     whenShort(dials.when),
     ...(target ? [target] : []),
-    ...(dials.loop === true && preset !== "mass-ride" ? ["loop"] : []),
-    ...(dials.trailsOff === true && !trailsOffLocked(preset) ? ["roads only"] : []),
-    ...(dials.avoidGravel === true ? ["avoids gravel"] : []),
+    ...(dials.loop === true && preset !== "mass-ride" ? [t("loop")] : []),
+    ...(dials.trailsOff === true && !trailsOffLocked(preset) ? [t("roads only")] : []),
+    ...(dials.avoidGravel === true ? [t("avoids gravel")] : []),
   ];
 }
 

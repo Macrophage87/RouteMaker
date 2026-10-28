@@ -15,20 +15,21 @@
  * Nothing goes to Garmin or to the server from here: the file is made in this browser and handed to the phone.
  */
 import type { Course } from "./course.ts";
+import { t } from "./i18n.ts";
 import { nativeBridge, type CapacitorBridge } from "./nativeShell.ts";
 
 /** The phone app's plugin (mobile/android/.../FilesPlugin.java). */
 export const FILES_PLUGIN = "RouteMakerFiles";
-export const SEND_LABEL = "Send to Garmin";
+export const SEND_LABEL = t("Send to Garmin");
 export const FIT_TYPE = "application/vnd.ant.fit";
 
-export const SENT_GARMIN = "Sent to Garmin Connect. Save it there and it syncs to your Garmin.";
-export const SENT_CHOOSER = "Choose Garmin Connect. Not listed? Install it from Google Play, then send again.";
-export const SENT_SHARE = "Course shared. Garmin Connect syncs it to your Garmin.";
-export const SEND_CANCELLED = "Not sent.";
-export const SENT_SAVED = "FIT course saved. Open it from your downloads and choose Garmin Connect.";
-export const SENT_SAVED_COMPUTER = "FIT course saved. Import it at connect.garmin.com, under Courses.";
-export const SEND_FAILED = "Could not hand the course on. Is Garmin Connect installed?";
+export const SENT_GARMIN = t("Sent to Garmin Connect. Save it there and it syncs to your Garmin.");
+export const SENT_CHOOSER = t("Choose Garmin Connect. Not listed? Install it from Google Play, then send again.");
+export const SENT_SHARE = t("Course shared. Garmin Connect syncs it to your Garmin.");
+export const SEND_CANCELLED = t("Not sent.");
+export const SENT_SAVED = t("FIT course saved. Open it from your downloads and choose Garmin Connect.");
+export const SENT_SAVED_COMPUTER = t("FIT course saved. Import it at connect.garmin.com, under Courses.");
+export const SEND_FAILED = t("Could not hand the course on. Is Garmin Connect installed?");
 
 /** What sending uses: the phone app's bridge, the browser's share sheet, and a download. */
 export interface SendEnv {

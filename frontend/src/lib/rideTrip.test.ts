@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { BikesharePlan, DescriptionEntry, RouteResponse, TransitPlan, TransitStep } from "./api.ts";
 import type { LonLat } from "./geo.ts";
+import { setLanguageForTest } from "./i18n.ts";
 import { RIDE_MAX_M, pointAt, rideModel, startState, step, type RideEvent, type RideFix, type RideState } from "./navigate.ts";
 import {
   REST_ANYWAY_MS,
@@ -28,6 +29,7 @@ import {
   rideable,
   ridesLine,
   withFinish,
+  withoutSpare,
   type RideTrip,
 } from "./rideTrip.ts";
 
@@ -190,6 +192,22 @@ test("at the drop-off dock the ride says 'Dock at' and the walk to the finish", 
   }
   assert.equal(state.arrived, true);
   assert.equal(said[said.length - 1].spoken, trip.finish!.spoken);
+  // The early "across" sentence (D26) is said as itself, not as the finish: only the arrival takes the dock words.
+  const far = rideModel(BIKESHARE);
+  const end = far.cues[far.cues.length - 1];
+  assert.equal(end.kind, "end");
+  far.cues[far.cues.length - 1] = { ...end, farSide: "Florida Avenue" };
+  let farState = startState();
+  const farSaid: RideEvent[] = [];
+  for (let m = 0; m <= 1000; m += 10) {
+    const out = step(far, farState, fix(pointAt(far, m)), "full");
+    farState = out.state;
+    farSaid.push(...withFinish(out.events, trip.finish));
+  }
+  const ends = farSaid.filter((e) => e.cue?.kind === "end");
+  assert.deepEqual(ends.map((e) => e.phase), ["advance", "arrive"]);
+  assert.match(ends[0].spoken, /the destination is across Florida Avenue, on your left\.$/);
+  assert.equal(ends[1].spoken, trip.finish!.spoken);
   // An e-bike left at the destination ends as a normal finish.
   assert.equal(rideTripOf(line({ bikeshare: { ...SHARE, end: { ...SHARE.end, kind: "outside_dock" }, walk_end: null } }), [])!.finish, null);
 });
@@ -398,4 +416,34 @@ test("a shared ride or Mass Ride stays fixed with walks at its ends; a Bikeshare
   assert.equal(fixedRide(leg, null, true), false);
   const transit = { approach: null, finish: null, departure: null, rest: null } as RideTrip;
   assert.equal(fixedRide({ ...leg, trip: transit }, { ride: true }, false), false);
+});
+
+test("Spanish: the walk, dock and hand-off lines are Spanish, the names as they are, miles first (routing audit D30)", () => {
+  setLanguageForTest("es");
+  try {
+    const trip = rideTripOf(BIKESHARE, [at(0, -400), DESTINATION])!;
+    const words = approachWords(trip.approach!, null);
+    assert.equal(words.shown, "Camine hasta 4th & E St NW, 0.2 mi (0.4 km). 5 bicicletas clásicas disponibles.");
+    assert.equal(words.spoken, "Camine hasta 4th & E St NW, 0.2 millas. 5 bicicletas clásicas disponibles.");
+    assert.equal(trip.approach!.reached, "Ha llegado a 4th & E St NW. Tome una bicicleta y pedalee.");
+    assert.equal(trip.finish!.spoken, "Devuelva la bicicleta en Union Station. Camine 0.2 millas hasta el final.");
+    const free = rideTripOf(line({ bikeshare: { ...SHARE, bike: "ebike", start: { ...SHARE.start, kind: "free_bike" } } as BikesharePlan }), [])!;
+    assert.equal(approachWords(free.approach!, null).shown, "Camine hasta la bicicleta eléctrica estacionada fuera de una estación, 0.2 mi (0.4 km).");
+    assert.equal(free.approach!.reached, "Ha llegado a la bicicleta eléctrica. Tómela y pedalee.");
+    assert.equal(restReadySaid({ alightName: "Federal Triangle" }), "Cerca de Federal Triangle. Recorrer el resto planea el recorrido hasta su destino.");
+    assert.equal(restClosedSaid(["K Street"]), "Cerrado en el camino: K Street. Presione Recorrer el resto otra vez para ir de todos modos.");
+    const walk = (m: number) => ({ geometry: { type: "LineString" as const, coordinates: [at(500, 0), at(500, m)] }, distance_m: m, duration_s: m, to: "" });
+    const walkIn = { preset: "commute", geometry: { type: "LineString", coordinates: [at(0, 0), at(500, 0)] }, walk_in: { start: walk(40), end: walk(90) } } as unknown as RouteResponse;
+    const short = rideTripOf(walkIn, [at(0, -40), at(500, 90)])!;
+    assert.equal(short.finish!.shown, "El recorrido termina aquí. Camine con su bicicleta 300 ft (90 m) hasta su destino.");
+    assert.equal(short.approach!.reached, "Ha llegado al inicio del recorrido. Siga en bicicleta.");
+    assert.equal(approachWords(short.approach!, null).spoken, "Camine hasta el inicio del recorrido, 130 pies.");
+    // The API's Spanish boarding step (src/core/transit.py Leg.words) loses its arrival clause as the English does.
+    assert.equal(
+      withoutSpare("Suba al tren MARC Penn Line, sale 7:00 am según horario desde Union Station MARC: llegada 6:40 am, 20 min de margen; siguiente tren: 8:00 am según horario. Viaje 45 min hasta Baltimore Penn Station."),
+      "Suba al tren MARC Penn Line, sale 7:00 am según horario desde Union Station MARC. Siguiente tren: 8:00 am según horario. Viaje 45 min hasta Baltimore Penn Station.",
+    );
+  } finally {
+    setLanguageForTest("en");
+  }
 });

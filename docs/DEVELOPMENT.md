@@ -3572,10 +3572,12 @@ headings, none of them part of its identity).
 - **Stretches.** Consecutive pieces on one street (a name in common, or both
   unnamed) with one tier and one facility are one stretch. A stretch under 300
   ft is folded into the longer neighbour in its leg, but never an LTS 3, LTS 4
-  or Avoid stretch, and never an untraced one. A stretch never spans a via
-  point: each leg is described on its own and `Stop 1`, `Stop 2` (the points
-  list's own words, item 224) are entries between them ("Stop 1 at 4.7 mi
-  (7.6 km).").
+  or Avoid stretch, and never an untraced one. A stretch never spans a stop:
+  each leg is described on its own and `Stop 1`, `Stop 2` (the points list's own
+  words, item 224) are entries between them ("Stop 1 at 4.7 mi (7.6 km)."). A via
+  point is ridden through: the legs either side of it are read as one line, so a
+  turn at it is said, and its entry is "Via point at 2.1 mi (3.4 km)."; stops are
+  numbered among the stops only (round-3 audit D29, `describe_both`'s `through`).
 - **Turns.** Where the street changes, the entry says how the rider turns into
   it (`left`, `right`, or `Continue onto`), from the previous stretch's last
   heading and this one's first (`routemaker.intersections.movement_of`). If the
@@ -4910,7 +4912,12 @@ puts it, at most two presses away.
   Go from a fresh start looks the location up again too (the owner, 2026-10-19: "update when
   setting a destination too"; `goPickStart`): a fix within `GO_PICK_LOOK_MS` (3 s) more than 25 m
   away is the start; otherwise the start Go had stands (so a rider who has not moved keeps the early
-  route), and a later fix still moves Go's start. A press still looking after 1 s is said with "Finding
+  route), and a later fix still moves Go's start. So that look-up is quick, Go warms the location
+  up while the rider is in Where to? (routing audit S28; `goWarmDue`): when the box takes the focus
+  or an early start fires and the start is over `GO_WARM_AFTER_MS` (20 s) old, it is looked up
+  again in the background, at most once per 20 s, around the gate (the locate button does not look
+  busy) and with nothing waiting on it; the tap's own look-up then gets the browser's recent fix
+  (`maximumAge` 30 s) at once. A press still looking after 1 s is said with "Finding
   your location for the start…", as one waiting for a start is. Found, it is the start, shown on Go's
   start line and said politely ("Start: your current location.") but not yet a point, so the
   link holds no position until a destination is picked; denied, unavailable or timed out, the
