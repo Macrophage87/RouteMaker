@@ -90,6 +90,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from routemaker.geo import Point, haversine
+from routemaker.lang import t
 
 from . import gbfs, presets
 
@@ -165,10 +166,6 @@ def minutes(seconds: float) -> str:
 
 def bike_words(bike: str) -> str:
     return "an e-bike" if bike == presets.BIKE_EBIKE else "a classic bike"
-
-
-def _plural(count: int, one: str, many: str) -> str:
-    return f"{count} {one if count == 1 else many}"
 
 
 # --- Candidates -------------------------------------------------------------------
@@ -716,36 +713,57 @@ def _walk_out(leg: WalkLeg | None, to_name: str) -> dict | None:
 def _start_step(
     pick: Pick, bike: str, walk: WalkLeg, snapshot: gbfs.Snapshot, rebalance: bool = False
 ) -> str:
+    # In the language in force (`routemaker.lang`; routing audit D30); English as it was.
     if pick.kind == "free_bike":
-        return (
-            f"Walk {miles(walk.distance_m)} to an e-bike parked outside a dock, "
-            "and unlock it with the operator's app."
+        return t(
+            "Walk {distance} to an e-bike parked outside a dock, "
+            "and unlock it with the operator's app.",
+            distance=miles(walk.distance_m),
         )
     st = pick.status
-    kind = "e-bike" if bike == presets.BIKE_EBIKE else "classic bike"
-    article = "an" if kind == "e-bike" else "a"
     if st is None:
-        count = "availability unknown"
+        count = t("availability unknown")
     else:
-        count = f"{st.bikes_of(bike)} available"
+        n = st.bikes_of(bike)
+        count = t("1 available") if n == 1 else t("{n} available", n=n)
     lead = (
-        f"Start at the dock at {pick.name}"
+        t("Start at the dock at {place}", place=pick.name)
         if walk.distance_m < AT_DOCK_M
-        else f"Walk {miles(walk.distance_m)} to the dock at {pick.name}"
+        else t(
+            "Walk {distance} to the dock at {place}",
+            distance=miles(walk.distance_m),
+            place=pick.name,
+        )
     )
-    crowded = ", which is crowded" if rebalance else ""
-    return f"{lead}{crowded}, take {article} {kind} ({count})."
+    crowded = t(", which is crowded") if rebalance else ""
+    if bike == presets.BIKE_EBIKE:
+        return t(
+            "{lead}{crowded}, take an e-bike ({count}).", lead=lead, crowded=crowded, count=count
+        )
+    return t(
+        "{lead}{crowded}, take a classic bike ({count}).", lead=lead, crowded=crowded, count=count
+    )
 
 
 def _end_step(pick: Pick, ride_m: float, bike: str, rebalance: bool = False) -> str:
     if pick.kind == "outside_dock":
-        return (
-            f"Ride {miles(ride_m)} to your destination and leave the e-bike there, outside a dock."
+        return t(
+            "Ride {distance} to your destination and leave the e-bike there, outside a dock.",
+            distance=miles(ride_m),
         )
     st = pick.status
-    slots = "availability unknown" if st is None else _plural(st.docks, "free slot", "free slots")
-    needs = ", which needs bikes" if rebalance else ""
-    return f"Ride {miles(ride_m)} to the dock at {pick.name}{needs} ({slots})."
+    if st is None:
+        slots = t("availability unknown")
+    else:
+        slots = t("1 free slot") if st.docks == 1 else t("{n} free slots", n=st.docks)
+    needs = t(", which needs bikes") if rebalance else ""
+    return t(
+        "Ride {distance} to the dock at {place}{needs} ({slots}).",
+        distance=miles(ride_m),
+        place=pick.name,
+        needs=needs,
+        slots=slots,
+    )
 
 
 def plan(
@@ -963,16 +981,17 @@ def plan(
         steps.append(
             {
                 "kind": "walk",
-                "text": (
-                    f"Return the bike, then walk {miles(walk_end.distance_m)} to your destination."
+                "text": t(
+                    "Return the bike, then walk {distance} to your destination.",
+                    distance=miles(walk_end.distance_m),
                 ),
             }
         )
     total_s = walk_s + ride_s
     title = "Rebalance Ride" if rebalance else "Bikeshare"
-    summary = f"{title}, {kind_word}: about {minutes(total_s)} in all. " + " ".join(
-        step["text"] for step in steps
-    )
+    kind_said = t("e-bike") if bike == presets.BIKE_EBIKE else t("classic bike")
+    about = t("about {time} in all", time=minutes(total_s))
+    summary = f"{title}, {kind_said}: {about}. " + " ".join(step["text"] for step in steps)
 
     endings = [
         {
@@ -1177,14 +1196,18 @@ def alternate_block(block: dict, around: dict, direct: WalkLeg | None = None) ->
         notes.append(walk_note)
     out["notes"] = notes
     summary = str(out.get("summary") or "")
+    # The words as the plan wrote them, in the request's language (routing audit D30).
     summary = summary.replace(
-        f"about {minutes(old_total_s)} in all", f"about {minutes(total_s)} in all", 1
+        t("about {time} in all", time=minutes(old_total_s)),
+        t("about {time} in all", time=minutes(total_s)),
+        1,
     )
     for step in out.get("steps") or []:
         if step.get("kind") != "ride":
             continue
         before = step["text"]
-        step["text"] = before.replace(f"Ride {miles(old_ride_m)}", f"Ride {miles(ride_m)}", 1)
+        # The ride step opens with its length, whatever the language: the first one is it.
+        step["text"] = before.replace(miles(old_ride_m), miles(ride_m), 1)
         summary = summary.replace(before, step["text"], 1)
     out["summary"] = summary
     for option in out.get("options") or []:

@@ -16,6 +16,7 @@
  * cards under their group's heading (lib/rideTypeGroups.ts).
  */
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { t } from "./lib/i18n.ts";
 import { PRESETS, presetSaid, type PresetId } from "./lib/presets.ts";
 import { PresetName } from "./lib/presetName.ts";
 import { CARRYINGS, carries, type Carrying, type Dials } from "./lib/dials.ts";
@@ -96,7 +97,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
     <section key="presets" className="ride-type" aria-labelledby="ride-type-heading">
       {/* A label, not a heading: the Ride settings h2 follows it in the outline (the review of the redesign). */}
       <p id="ride-type-heading" className="ride-type-label">
-        Ride type
+        {t("Ride type")}
       </p>
       {/* One button, the ride type and its gist on it, that opens the ride types (edit-route redesign, Stephen
           2026-10-18): it was a line of chips with Edit, then this line's Change, two presses to the list. */}
@@ -119,7 +120,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
               {current?.summary}
             </span>
           </span>
-          <span className="ride-type-change">Change</span>
+          <span className="ride-type-change">{t("Change")}</span>
         </button>
         {current && (
           <span id="ride-type-gist" hidden>
@@ -139,9 +140,9 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
       >
         <div className="ride-types-body">
           <header>
-            <h2 id="ride-types-title">Choose a ride type</h2>
+            <h2 id="ride-types-title">{t("Choose a ride type")}</h2>
             <button type="button" className="secondary" onClick={close}>
-              Close
+              {t("Close")}
             </button>
           </header>
           <p className="hint">

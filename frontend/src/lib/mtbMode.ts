@@ -14,6 +14,7 @@
  */
 import type { PresetId } from "./presets.ts";
 import { formatDistance, formatSpeed } from "./format.ts";
+import { t } from "./i18n.ts";
 
 export const MTB_PRESET: PresetId = "mountain-bike";
 export const MTB_LEVELS = [1, 2, 3, 4] as const;
@@ -29,14 +30,14 @@ export const SINGLETRACK_SPEED_KMH = 10;
 
 /** Each level's colour (the mountain-bike layer's, OWNER-DECISIONS 456) and words: never colour alone. */
 export const MTB_LEVEL_OPTIONS: readonly { level: MtbLevel; label: string; hint: string }[] = [
-  { level: 1, label: "Level 1 (green)", hint: "Easiest trails only: wide, smooth, gentle." },
-  { level: 2, label: "Level 2 (blue)", hint: "Intermediate: roots, rocks and short steep pitches. Unrated trails count here." },
-  { level: 3, label: "Level 3 (black)", hint: "Difficult: technical, steep, with obstacles to ride over." },
-  { level: 4, label: "Level 4 (red)", hint: "Very difficult and above: expert features, drops and exposure." },
+  { level: 1, label: t("Level 1 (green)"), hint: t("Easiest trails only: wide, smooth, gentle.") },
+  { level: 2, label: t("Level 2 (blue)"), hint: t("Intermediate: roots, rocks and short steep pitches. Unrated trails count here.") },
+  { level: 3, label: t("Level 3 (black)"), hint: t("Difficult: technical, steep, with obstacles to ride over.") },
+  { level: 4, label: t("Level 4 (red)"), hint: t("Very difficult and above: expert features, drops and exposure.") },
 ];
 
-export const MTB_LEVEL_LEGEND = "Hardest trail level";
-export const MTB_PREFERRED_LEGEND = "Preferred trail level";
+export const MTB_LEVEL_LEGEND = t("Hardest trail level");
+export const MTB_PREFERRED_LEGEND = t("Preferred trail level");
 
 export function isMtb(preset: PresetId): boolean {
   return preset === MTB_PRESET;

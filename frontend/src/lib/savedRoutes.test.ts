@@ -274,11 +274,11 @@ test("Settings' Account has Sign out under 'Signed in with Discord.': a form POS
   const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
   // Only signed in: the form is in the signed-in branch, under the line.
   const account = sheets.slice(sheets.indexOf("{myGo.signedIn ? ("), sheets.indexOf(") : signInAvailable ? ("));
-  assert.match(account, /Signed in with Discord\.\s*<\/p>\s*<SignOutForm \/>/);
+  assert.match(account, /\{t\("Signed in with Discord\."\)\}\s*<\/p>\s*<SignOutForm \/>/);
   const form = readFileSync(new URL("../SignOut.tsx", import.meta.url), "utf8");
   assert.match(form, /<form method="post" action="\/auth\/logout" className="sign-out">/);
   assert.match(form, /<input type="hidden" name="csrfmiddlewaretoken" value=\{csrfFromCookie\(document\.cookie\) \?\? ""\} \/>/);
-  assert.match(form, /<button type="submit" className="secondary">\s*Sign out\s*<\/button>/);
+  assert.match(form, /<button type="submit" className="secondary">\s*\{t\("Sign out"\)\}\s*<\/button>/);
 });
 
 test("F15. Go's route chips stay one row at 390 px: Save shown short, no icons, never the actions", () => {

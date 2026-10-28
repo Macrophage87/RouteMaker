@@ -15,6 +15,7 @@
  * focus back to Map tools when it closes. The crosshair shows the map's center while open.
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { t } from "./lib/i18n.ts";
 import { ADD_AT_CENTRE_LABEL, INFO_BUTTON_LABEL, MAP_TOOLS_LABEL, SET_END_AT_CENTRE_LABEL } from "./lib/roadInfo.ts";
 import { maxPointsNotice } from "./lib/geolocation.ts";
 
@@ -94,7 +95,7 @@ export function MapTools({ onAddPoint, addDisabled, setsEnd = false, onRoadInfo,
         aria-controls={panelId}
         onClick={() => setOpen((on) => !on)}
       >
-        {MAP_TOOLS_LABEL}
+        {t(MAP_TOOLS_LABEL)}
       </button>
       <div id={panelId} className="map-tools-panel" hidden={!open}>
         {/* aria-disabled, not disabled: it stays in the Tab order with its reason, and a press says the

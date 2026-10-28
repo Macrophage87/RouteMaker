@@ -60,7 +60,7 @@ test("one following passes on the link they opened, by the sheet or the code; th
   assert.match(app, /const followedLink = \(\) => \(SHARED_LINK && sharedOpenNow\.current\?\.lead && !sharedOpenNow\.current\.own && sharedOpenNow\.current\.id === SHARED_ID \? SHARED_LINK : null\);/);
   assert.match(app, /if \(followed\) return setQrAsk\(\{ link: followed, start \}\);/);
   assert.match(app, /if \(roamBroadcast && !roamBroadcast\.leading\) \{\s*const done = await shareLink\(nav, \{ title: ROAM_BROADCAST_TITLE, text: ROAM_BROADCAST_TEXT, url: roamLink\(window\.location\.origin, roamBroadcast\.id, roamBroadcast\.lead\) \}\);/);
-  assert.match(ride, /passingOn \? `\$\{RIDE_BROADCAST_NAME\}: pass on the link to this ride`/);
+  assert.match(ride, /passingOn \? t\("\{name\}: pass on the link to this ride", \{ name: RIDE_BROADCAST_NAME \}\)/);
 });
 
 test("the review's guards: a link turned off, another keeping or a ride ended is not sent again; asked on a computer", () => {
