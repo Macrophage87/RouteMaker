@@ -143,12 +143,14 @@ You stay responsible for riding safely; the route can be wrong.
   you, at the ride's usual zoom. Map cards, road info and the side menus close on their own after
   the same 30 seconds, unless you are typing in one or accessibility mode is on.
 - End ride is a slide: slide it to the right to end the ride, so a bump doesn't end it. Once you
-  have arrived it is a plain button. End ride and Road closed share the top row; Road closed
+  have arrived it is a filled Done button under "Arrived: ..." with the destination's name. End ride and Go round
+  share the top row; Go round (for a road that is closed ahead: it finds a way round and reports nothing)
   always shows its words. Near sunrise or sunset, a small line under them gives the sunrise or
   sunset and civil twilight times and the minutes till each.
-- After End ride you get the ride's summary: distance, moving time, average speed, total time,
-  climbing, an elevation chart and the traffic stress you rode. Done leaves Go empty for your next trip (in Plan the
-  plan stays to adjust); Undo carries on with the same ride. Nothing about the ride is saved.
+- After End ride you get the ride's summary: where you went, how far and how long first, then distance, moving time,
+  average speed, total time and climbing; the elevation chart and the traffic stress you rode are under Details. Done
+  leaves Go empty for your next trip (in Plan the plan stays to adjust); Keep riding carries on with the same ride.
+  Nothing about the ride is saved.
 - Off the route for a few seconds, it says so and finds a new way from where you are. "Keep
   the planned route" says which way the route is instead.
 - At Start ride the map along the route, about 1,000 ft (300 m) either side, is saved on the
@@ -180,8 +182,8 @@ You stay responsible for riding safely; the route can be wrong.
   with your account; outside DC the app asks the server which county's website takes it. Place search, when
   the app already knows where you are and that spot is on the map you are looking at, sends an
   approximate location (about 1 km / 0.6 mi) so nearby places come first.
-- Keep the screen on. If the browser cannot keep it on, Ride mode says so; on an iPhone set
-  Settings, Display and Brightness, Auto-Lock to Never for the ride. In the background for more
+- Keep the screen on. If the browser cannot keep it on, Ride mode and Roam show "Screen may sleep: keep it on.";
+  its How gives your phone's steps (on an iPhone, Settings, Display and Brightness, Auto-Lock to Never for the ride). In the background for more
   than 10 minutes, the ride pauses; press Resume.
 - In a ride the map's street names are larger and shortened ("R St NW") and come before shop names, place names and the water, restroom and repair icons (station names and hazard marks still come first), so far more of the streets near you keep their names (drawn over the route too), and the turn card uses fewer words ("0.2 mi", not "In 0.2 mi") so its type can be larger; a screen reader still hears the whole sentence.
 - The Large text button on the ride's side (the "Aa") puts the next turn as big as it fits on the top half of the screen, with the map below, for bright sun or near sight; press it again for the normal card. "Large text during a ride" in Settings is the same switch. Ending the ride goes back to the planner.
