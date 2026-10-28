@@ -140,7 +140,7 @@ test("the per-leg details: each leg's length and change, new legs, and legs no l
 
 test("an empty plan has Start at current location in Route's place, and From keeps it in its list only", () => {
   const panel = readFileSync(new URL("../app/PlanPanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /export const START_HERE_LABEL = "Start at current location";/);
+  assert.match(panel, /export const START_HERE_LABEL = t\("Start at current location"\);/);
   assert.match(panel, /\{locate \? \([\s\S]{0,400}className="route-button start-here"[\s\S]{0,300}if \(locate\.unavailable === null\) locate\.onLocate\(\);/);
   // Why Route is unavailable is said with it, not shown (Stephen 2026-10-20: simpler).
   assert.match(panel, /<span id=\{routeWhy\} className="visually-hidden">/);
