@@ -20,7 +20,7 @@ import { FOOD_DETOUR_METHOD, FOOD_DETOUR_NOTE, foodHoursText, foodHowFar, foodKi
 import { ICON_PATHS } from "./iconPaths.ts";
 import { t } from "./i18n.ts";
 
-export const FOOD_SUMMARY = t("Find food");
+export const FOOD_SUMMARY = t("Search places to eat");
 /** On screen, short (the audit's P7); FOOD_HELP_MORE goes on for screen readers. */
 export const FOOD_HELP = t("Search a food or a name; blank shows all.");
 export const FOOD_HELP_MORE = t("With a route shown, results are sorted by detour; Add as stop puts a place into your plan.");
@@ -101,7 +101,7 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
         "form",
         {
           role: "search",
-          "aria-label": t("Find food"),
+          "aria-label": FOOD_SUMMARY,
           className: "food-search",
           onSubmit: (event: { preventDefault(): void }) => {
             event.preventDefault();

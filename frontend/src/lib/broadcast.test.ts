@@ -28,7 +28,7 @@ import {
   withoutStart,
 } from "./rideGroup.ts";
 import { BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, rideLinkFrom } from "./sharedRoutes.ts";
-import { BROADCAST_LABEL } from "./share.ts";
+import { BROADCAST_ABOUT, BROADCAST_LABEL } from "./share.ts";
 
 const LINE: LonLat[] = Array.from({ length: 21 }, (_, i) => [-77.04 + i * 0.002, 38.9] as LonLat);
 const KEY = "8a83665f3798727f14f92ad0e6c99fda";
@@ -136,8 +136,10 @@ test("a follower reads with the link's leader key in a header; others send none"
   assert.equal("X-Ride-Leader" in seen[1], false);
 });
 
-test("Broadcast is one small button beside Start, in Plan and Go: the share sheet, then the ride", () => {
-  assert.equal(BROADCAST_LABEL, "Broadcast");
+test("Share live (it was Broadcast) is one small button beside Start, in Plan and Go: the share sheet, then the ride", () => {
+  // P12: "Share live", the words P4 showed on the rail, and "No account needed" in its about text.
+  assert.equal(BROADCAST_LABEL, "Share live");
+  assert.match(BROADCAST_ABOUT, /^Share live: .* No account needed\.$/);
   const panel = read("../app/RoutePanel.tsx");
   const start = panel.slice(panel.indexOf("const start = rideable ? ("), panel.indexOf("const startHint"));
   // Start, then Broadcast in the same element: Go's start row and Plan's actions row both place `start`.

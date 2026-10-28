@@ -256,7 +256,7 @@ import { useSharedLaunch } from "./app/sharedLaunch.ts";
 import { NearestFinder } from "./lib/nearestFinder.ts";
 import { NearbyStations } from "./NearbyStations.tsx";
 import { Fold } from "./Sidebar.tsx";
-import { BACK_LABEL, MENU_TITLE, POPUP_VIEWS, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib/sidebar.ts";
+import { BACK_LABEL, POPUP_VIEWS, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib/sidebar.ts";
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
@@ -291,7 +291,7 @@ import { ResumeRideDialog } from "./ResumeRideDialog.tsx";
 import { forgetLeftRide, keepLeftRide, leftRide } from "./lib/rideResume.ts";
 import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
-import { SAVED_ROUTES, withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
+import { LOAD_ROUTE, withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
 import { askBeforeStart, looksLikePhone, rememberStartAnyway } from "./lib/startOnComputer.ts";
 import { ShareCardDialog, type ShareCardSource } from "./ShareCardDialog.tsx";
 import { usableProfile } from "./lib/profileChart.ts";
@@ -3171,7 +3171,7 @@ export function App() {
     const step = opened.current[opened.current.length - 1];
     // Go's Menu, Layers and chips' sheets close back to the map and its sheet (the mockup's "Menu Close").
     if (!step || viewNow.current !== of || step.from === "planner") return mode === "go" ? GO_CLOSE_LABEL : BACK_LABEL;
-    return t("Back to {title}", { title: step.from === "settings" && mode === "go" ? MENU_TITLE : SHEET_TITLES[step.from as Exclude<PanelView, "planner">] });
+    return t("Back to {title}", { title: SHEET_TITLES[step.from as Exclude<PanelView, "planner">] });
   };
   const sheetNav: SheetNav = { view, back: backToPlanner, backLabel };
   // A popup on a phone (Sidebar.tsx SheetFrame) covers the map: a list's action that shows on the map (Show on map,
@@ -4829,9 +4829,9 @@ export function App() {
       }
     : null;
   const myGoControls = { myGo, signedIn: me.signed_in, save: saveMyGoNow, setHome, said: myGoSaid, geoGate, searchBias };
-  // Go's Menu (the Settings sheet in Go): Plan, Suggest, GPX and an admin's Review, each one step in.
+  // Go's Settings (P12: it was Go's Menu): Reports, Save & load and an admin's Review above the tabs, each one step
+  // in. No Plan: the Go/Plan switch is beside the button.
   const menu = {
-    onPlan: () => changeMode("plan"),
     onSuggest: (opener: HTMLElement) => openView("suggest", opener, true),
     onGpx: (opener: HTMLElement) => openView("gpx", opener, true),
     onReview: canReview ? () => changeMode("review") : null,
@@ -5221,7 +5221,7 @@ export function App() {
   // 2026-10-22: "Load route should have a popup ... Basically let people load a gpx or select their saved routes").
   const barLoad = planFirst && points.length === 0 && !routingNow;
   const planBar = planFirst && (barRoute || barSave || barLoad || can.undo || can.redo || points.length > 0);
-  // Load route's popup, and where it was opened from: Plan's bar (an empty plan) or Go's More (Saved routes).
+  // Load route's popup, and where it was opened from: Plan's bar (an empty plan) or Go's More (its Load route chip).
   const [loadOpen, setLoadOpen] = useState<"plan" | "go" | null>(null);
   // A popup closed by a mode change or a ride (not by its own Close) does not open again on the way back.
   useEffect(() => setLoadOpen(null), [mode, riding]);
@@ -5679,7 +5679,6 @@ export function App() {
       )}
       <LoadRouteDialog
         open={loadOpen === "plan" ? barLoad : loadOpen === "go" && mode === "go" && !riding}
-        title={loadOpen === "go" ? SAVED_ROUTES : undefined}
         onClose={() => setLoadOpen(null)}
         signedIn={me.signed_in}
         signIn={signInFromSave}
@@ -5822,7 +5821,7 @@ export function App() {
           {barLoad && (
             <button type="button" className="secondary plan-bar-route plan-bar-load" aria-haspopup="dialog" onClick={() => setLoadOpen("plan")}>
               <Icon name="file" size={20} />
-              {t("Load route")}
+              {LOAD_ROUTE}
             </button>
           )}
           {/* Start ride beside it (the owner, 2026-10-21: "We might also want to allow for a start route too"), on a

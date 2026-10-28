@@ -174,10 +174,10 @@ export function PointsSection(props: PointsSectionProps) {
               {t("Redo")}
             </button>
           )}
-          {/* The how-to, behind Info (it was "More tips" under the tools). */}
+          {/* The how-to, behind Tips (it was "More tips" under the tools, then "Info": P12). */}
           <button type="button" className="secondary icon-button tips-toggle" aria-expanded={tips} aria-controls={tipsId} onClick={() => setTips(!tips)}>
             <Icon name="info" />
-            <span>{t("Info")}</span>
+            <span>{t("Tips")}</span>
           </button>
         </div>
       </div>

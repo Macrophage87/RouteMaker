@@ -27,6 +27,7 @@ import {
   RIDE_ACTION_SPOKEN,
   ROUTE_FOLDS,
   chartFoldOpen,
+  SAVE_LOAD,
   SHEET_TITLES,
   copyText,
   focusOnViewChange,
@@ -730,19 +731,23 @@ test("the bottom bar is Plan, Layers, Reports, Save & load and Settings: real bu
 });
 
 test("a sheet: Back is a labelled button, its heading takes the focus, Escape goes back", () => {
-  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Reports", "Review", "Save and load", "Settings", "Nearest", "Find a place to eat", "Ride", "Repair stands and bike shops", "Places to see", "Edit route"]);
+  // One name per thing (P12): Save & load as on its buttons, and each place sheet as its chip says it.
+  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Reports", "Review", "Save & load", "Settings", "Nearest", "Eat", "Ride", "Repair", "Places to see", "Edit route"]);
+  assert.equal(SHEET_TITLES.gpx, SAVE_LOAD);
   // In visible words, not only an arrow, so the name and the label are one (OWNER-DECISIONS 393).
   assert.equal(BACK_LABEL, "Back to planner");
   assert.doesNotMatch(sidebar, /aria-label="Back to the planner"/);
-  // A sheet opened from another sheet goes back to it, and says so (Back to Layers, Back to Menu).
+  // A sheet opened from another sheet goes back to it, and says so (Back to Layers, Back to Settings).
   assert.match(sidebar, /<button type="button" className=\{label === POPUP_CLOSE && modal \? "sheet-back popup-close" : "sheet-back"\} onClick=\{onBack\}>[\s\S]*?<\/svg>\s*\)\}\s*\{label\}\s*<\/button>/, "Back goes back (NIT A)");
   assert.match(sidebar, /backLabel = BACK_LABEL,/);
   // A popup on a phone (the owner, 2026-10-28) says Close where the sheet goes back to the planner or the map.
   assert.match(sidebar, /const label = modal \? popupBackLabel\(backLabel\) : backLabel;/);
   assert.equal(popupBackLabel(BACK_LABEL), "Close");
   assert.equal(popupBackLabel("Close"), "Close");
-  assert.equal(popupBackLabel("Back to Menu"), "Back to Menu");
-  assert.match(app, /return t\("Back to \{title\}", \{ title: step\.from === "settings" && mode === "go" \? MENU_TITLE : SHEET_TITLES\[step\.from as Exclude<PanelView, "planner">\] \}\);/);
+  assert.equal(popupBackLabel("Back to Settings"), "Back to Settings");
+  // Go's Settings is Plan's (P12: it was Go's Menu), so a sheet it opened goes Back to Settings in both.
+  assert.match(app, /return t\("Back to \{title\}", \{ title: SHEET_TITLES\[step\.from as Exclude<PanelView, "planner">\] \}\);/);
+  assert.doesNotMatch(app, /MENU_TITLE/);
   assert.match(sidebar, /<h2 id=\{`\$\{id\}-title`\} ref=\{headingRef\} tabIndex=\{-1\}>/);
   assert.match(
     sidebar,
@@ -1084,9 +1089,10 @@ test("the bar's current button: the sheet showing, or one opened from it (Sugges
 
 test("the Settings sheet (384): My Go, Riding, Display and Account, most used first (Settings tidy, 2026-10-19); one state, unique ids", () => {
   const sheet = app.slice(app.indexOf('id="sheet-settings"'), app.indexOf("export interface SuggestSheetProps"));
-  assert.match(sheet, /title=\{go \? MENU_TITLE : SHEET_TITLES\.settings\}\s+open=\{nav\.view === "settings"\}\s+onBack=\{nav\.back\}\s+backLabel=\{nav\.backLabel\("settings"\)\}\s+popup\s+headingRef=\{settingsHeadingRef\}/);
+  // One name in Go and Plan (P12: Go's was "Menu").
+  assert.match(sheet, /title=\{SHEET_TITLES\.settings\}\s+open=\{nav\.view === "settings"\}\s+onBack=\{nav\.back\}\s+backLabel=\{nav\.backLabel\("settings"\)\}\s+popup\s+headingRef=\{settingsHeadingRef\}/);
   // Three tabs (the owner, 2026-10-28: "Settings = display, riding, account"), each a panel that stays in the page.
-  assert.match(sheet, /<SettingsTabs tab=\{tab\} onTab=\{setTab\} label=\{go \? MENU_TITLE : SHEET_TITLES\.settings\} \/>/);
+  assert.match(sheet, /<SettingsTabs tab=\{tab\} onTab=\{setTab\} label=\{SHEET_TITLES\.settings\} \/>/);
   const panels = ["riding", "display", "account"].map((id) => sheet.indexOf(`<div role="tabpanel" id="settings-panel-${id}" aria-labelledby="settings-tab-${id}" className="settings-panel" hidden={tab !== "${id}"}>`));
   assert.ok(panels.every((i) => i > 0), JSON.stringify(panels));
   assert.deepEqual(panels, [...panels].sort((a, b) => a - b));
@@ -1110,8 +1116,13 @@ test("the Settings sheet (384): My Go, Riding, Display and Account, most used fi
   assert.ok(sheet.indexOf("Display") < sheet.indexOf("Sign in with Discord"), "the sign-in note is still there, after the display group");
   assert.match(sheet, /onClick=\{\(e\) => isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)\}/);
   assert.doesNotMatch(app, /sheet-about|aboutHeadingRef|"about"/);
-  // Go's Menu: Plan, Suggest, GPX and an admin's Review above the settings, each a button.
-  assert.match(sheet, /\{go && \(\s*<nav className="menu-pages" aria-label=\{t\("Pages"\)\}>/);
+  // Go's Settings: Reports, Save & load and an admin's Review above the tabs, each a button; no Plan, since the
+  // Go/Plan switch is beside the Settings button (P12).
+  assert.match(sheet, /\{go && \(\s*<nav className="menu-pages" aria-label=\{t\("Pages"\)\}>\s*<button type="button" className="secondary menu-page" onClick=\{\(event\) => menu\.onSuggest\(event\.currentTarget\)\}>/);
+  assert.doesNotMatch(sheet, /menu\.onPlan/);
+  const goTop = src("../app/Go.tsx");
+  assert.match(goTop, /className="icon-button go-menu" onClick=\{\(event\) => onMenu\(event\.currentTarget\)\}>\s*<Icon name="gear" \/>\s*<span className="icon-button-label">\{t\("Settings"\)\}<\/span>/);
+  assert.doesNotMatch(goTop, /t\("Menu"\)/);
   // High contrast is only in Settings now (the mockup's Layers has toggles for the map only).
   const layers = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-gpx"'));
   assert.doesNotMatch(layers, /<AccessibilitySwitch/);

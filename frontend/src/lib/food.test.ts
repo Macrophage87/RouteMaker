@@ -233,9 +233,10 @@ const baseProps: FoodFinderProps = {
 
 test("the panel: a labelled search, then the chips, a status line, collapsed; Search this area once the map moved", () => {
   const html = renderToStaticMarkup(createElement(FoodFinder, { ...baseProps, chips: createElement("div", { className: "food-chips" }) }));
-  assert.match(html, /^<details class="fold food"><summary>Find food<\/summary>/);
-  assert.equal(FOOD_SUMMARY, "Find food");
-  assert.match(html, /<form role="search" aria-label="Find food"/);
+  // The sheet is Eat, as its chip (P12); the search in it is named for what it does.
+  assert.match(html, /^<details class="fold food"><summary>Search places to eat<\/summary>/);
+  assert.equal(FOOD_SUMMARY, "Search places to eat");
+  assert.match(html, /<form role="search" aria-label="Search places to eat"/);
   // The label is kept for screen readers; on screen the box says it (the 2026-10-28 audit, P7: results first).
   assert.match(html, /<label for="food-query" class="visually-hidden">Food or name<\/label>/);
   assert.match(html, /<input id="food-query" type="search" placeholder="Search food or a name"/);

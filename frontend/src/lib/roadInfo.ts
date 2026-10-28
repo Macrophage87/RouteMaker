@@ -367,7 +367,7 @@ export function shownSections(info: SegmentInfo, massRide: boolean): InfoSection
 /** The dialog's heading. */
 export function infoHeading(state: InfoState): string {
   if (state.kind === "loading") return INFO_TITLE_LOADING;
-  if (state.kind === "error") return "Road information";
+  if (state.kind === "error") return t("Road info");
   return state.info.found ? state.info.title : NO_ROAD;
 }
 

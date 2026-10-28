@@ -1,11 +1,11 @@
 /**
  * Go (UI-CLEANUP, the owner's commute view; lib/appMode.ts): the phone's few-steps view, as the approved
- * mockup of 2026-10-11 draws it. Over the map, a top bar (Menu, the Go/Plan switch, Layers, Locate); at the
- * bottom, a sheet with one Where to? box, four place chips (Home, Food, Water, Restroom: the owner's
+ * mockup of 2026-10-11 draws it. Over the map, a top bar (Settings, the Go/Plan switch, Layers, Locate); at the
+ * bottom, a sheet with one Where to? box, four place chips (Home, Eat, Water, Restroom: the owner's
  * choice 3), the commute ride types (choice 10), and once a route is shown its time, stress bar, one alert
- * and Start. Every other control is in the Menu, the Ride sheet or Plan, two presses away at most.
+ * and Start. Every other control is in Settings, the Ride sheet or Plan, two presses away at most.
  *
- * Plan keeps the full panel; its map has Food and Water chips (PlanMapChips), where Go has place chips.
+ * Plan keeps the full panel; its map has Eat, Water and Places to see chips (PlanMapChips), where Go has place chips.
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../Icon.tsx";
@@ -17,7 +17,7 @@ import { HOME_NOT_SET, type Home } from "../lib/myGo.ts";
 import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
 import { CHANGE_HOME_TEXT, CLEAR_HOME_TEXT, HOME_PICK_LINE, PICK_ON_MAP_TEXT, homeClosesSheet, homeName, homeSetKey } from "../lib/homeSet.ts";
 import { FEATURED_ROUTES_LABEL, FEATURED_ROUTES_PATH } from "../lib/featuredRoutes.ts";
-import { SAVED_ROUTES } from "../lib/loadRoute.ts";
+import { LOAD_ROUTE } from "../lib/loadRoute.ts";
 import {
   ADD_FAVORITE_TEXT,
   DONE_EDITING_TEXT,
@@ -104,7 +104,7 @@ export function ModeSwitch({
   );
 }
 
-/** Go's bar over the map: Menu, the switch, Layers and Locate, and the destination once there is one. */
+/** Go's bar over the map: Settings, the switch, Layers and Locate, and the destination once there is one. */
 /** Go's bar: Undo and Redo, the big button (Route while the plan has changed, or Roam), and Clear. */
 export interface GoBar {
   onUndo: (() => void) | null;
@@ -146,8 +146,8 @@ export function GoTopBar({
     <nav className="go-top" aria-label={t("Go")}>
       <div className="go-top-row">
         <button type="button" className="icon-button go-menu" onClick={(event) => onMenu(event.currentTarget)}>
-          <Icon name="menu" />
-          <span className="icon-button-label">{t("Menu")}</span>
+          <Icon name="gear" />
+          <span className="icon-button-label">{t("Settings")}</span>
         </button>
         <ModeSwitch mode={mode} onChange={onMode} modes={modes} />
         <span className="go-top-end">
@@ -612,7 +612,7 @@ export function GoSheet({
   const favoritesId = useId();
   const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
-  // More: one chip at the row's end that shows the rest (Metro, Repair, Sights, Saved routes); later additions go here, not on the row.
+  // More: one chip at the row's end that shows the rest (Metro, Repair, Places to see, Load route); later additions go here, not on the row.
   const [moreOpen, setMoreOpen] = useState(false);
   const startShown = startOpen || startMissing;
   const routeShown = route !== null;
@@ -732,13 +732,14 @@ export function GoSheet({
             <Icon name="wrench" size={18} />
             {t("Repair")}
           </button>
+          {/* Places to see, as Plan's chip and the layer say it (P12: it was "Sights"). */}
           <button type="button" className="chip place-chip" onClick={(event) => places.onSights(event.currentTarget)}>
             <Icon name="camera" size={18} />
-            {t("Sights")}
+            {t("Places to see")}
           </button>
           <button type="button" className="chip place-chip" aria-haspopup="dialog" onClick={places.onSavedRoutes}>
             <Icon name="routes" size={18} />
-            {SAVED_ROUTES}
+            {LOAD_ROUTE}
           </button>
           {/* Featured routes (the owner, 2026-10-19: "one item behind More"): the posts' list, a page of its own (core/route_posts.py). */}
           <a className="chip place-chip" href={FEATURED_ROUTES_PATH}>
@@ -839,9 +840,10 @@ export function PlanMapChips({
         {t("Find")}
       </button>
       <div id={rowId} className="map-chips-row" hidden={!open}>
+        {/* "Eat", as Go's chip (P2, P12). */}
         <button type="button" className="chip map-chip" onClick={pick(onFood)}>
           <Icon name="food" size={18} />
-          {t("Food")}
+          {t("Eat")}
         </button>
         <button type="button" className="chip map-chip" onClick={pick(onWater)}>
           <Icon name="water" size={18} />
