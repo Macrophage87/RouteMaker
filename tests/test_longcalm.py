@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 import threading
+from concurrent.futures import Future
 
 import pytest
 from test_refine import (
@@ -23,7 +24,7 @@ from test_refine import (
     trip_of,
 )
 
-from core import legsplit, presets, refine, routing, trailseek
+from core import legsplit, parallel, presets, refine, routing, trailseek
 from routemaker import intersections as model
 
 FT = model.FEET_PER_METRE
@@ -1169,6 +1170,40 @@ class TestTheLongSearch:
         assert trip is whole and info["limited"] == limited
         # The legs before it are read; none after it.
         assert [a[0] for a in world.analysed if a[0] in ("L0", "L1", "L2")] == ["L0"]
+
+    @pytest.mark.parametrize(
+        ("error", "limited"),
+        [
+            (routing.RouterRefused(400, 171, "no"), "split"),
+            (routing.DeadlineExceeded("late"), "time"),
+        ],
+    )
+    def test_a_legs_failure_cancels_the_legs_not_yet_read(
+        self, monkeypatch, settings, error, limited
+    ) -> None:
+        # Audit R4: the legs after the one that failed, still queued on the pool, are not
+        # asked once the search has given up; the one already read is left alone.
+        settings.ROUTER_PARALLEL_CALLS = 3
+        world = legs_world(monkeypatch)
+        futures: list[Future] = []
+
+        def submit(fn, variant, endpoint, request, deadline):
+            future: Future = Future()
+            leg = world.leg_of(request["locations"][0])
+            if leg == 0:
+                future.set_result(world.call(variant, endpoint, request, deadline))
+            elif leg == 1:
+                future.set_exception(error)
+            futures.append(future)  # the third leg's is still queued
+            return future
+
+        monkeypatch.setattr(parallel, "submit", submit)
+        monkeypatch.setattr(routing, "prefetch_traces", lambda *a, **k: None)
+        whole = whole_trip()
+        trip, info = refine.refine_long(whole, long_context(ceiling_m=45_000.0))
+        assert trip is whole and info["limited"] == limited
+        assert len(futures) == 3
+        assert not futures[0].cancelled() and futures[2].cancelled()
 
     def test_too_little_time_to_start_leaves_the_route(self, monkeypatch) -> None:
         legs_world(monkeypatch)
