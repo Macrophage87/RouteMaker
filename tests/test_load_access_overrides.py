@@ -1241,6 +1241,33 @@ class TestTheThirdAveDirtPathFile:
         assert map_class({"highway": "path", "bicycle": "no"}) is MapClass.BARRED
 
 
+GLENMONT_FLACK_PATH = REPO / "fixtures" / "overrides" / "2026-10-28-owner-glenmont-flack-path.json"
+
+
+class TestTheGlenmontFlackPathFile:
+    """The owner, 2026-10-28: "This path was missed from the Glenmont metro". The paved,
+    lit footway from Flack Street to the Metro garage crosswalk carries no bicycle tag and
+    is neither a sidewalk nor a link, so it stayed closed: opened with bicycle=yes."""
+
+    def test_it_opens_the_one_path(self, admin):
+        from core.models import Override
+
+        actor = str(admin.discord_user_id)
+        dry = load(str(GLENMONT_FLACK_PATH), "--actor", actor)
+        assert dry.count("create: way ") == 1 and "disagrees" not in dry
+        load(str(GLENMONT_FLACK_PATH), "--actor", actor, "--confirm")
+        (row,) = Override.objects.filter(approved=True)
+        assert (row.kind, row.osm_way_id, row.value) == ("access", 656592016, {"bicycle": "yes"})
+
+    def test_its_osm_tags_are_not_a_ridden_sidewalk(self):
+        from routemaker import sidewalks
+
+        tags = {"highway": "footway", "surface": "concrete", "lit": "yes"}
+        assert not sidewalks.rideable(tags)
+        assert sidewalks.is_link_candidate(tags)
+        assert not sidewalks.is_link_candidate({**tags, "bicycle": "yes"})
+
+
 ASPEN_STREET = REPO / "fixtures" / "overrides" / "2026-10-25-owner-aspen-street-nw.json"
 
 
