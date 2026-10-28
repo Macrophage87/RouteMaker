@@ -250,6 +250,19 @@ test("the panel: a fold with three buttons, a status line that is always there, 
   assert.match(renderToStaticMarkup(createElement(NearestFinder, props({ busy: true }))), /aria-disabled="true"/);
 });
 
+test("the list: Show on map first, as Find food's, where the page offers it (the owner, 2026-10-28)", () => {
+  const shown: number[] = [];
+  const html = renderToStaticMarkup(createElement(NearestFinder, props({ list: { kind: "water", items }, onShow: (_item, index) => shown.push(index) })));
+  assert.equal((html.match(/>Show on map</g) ?? []).length, 3);
+  assert.ok(html.includes('aria-label="Show on map: Place a, marker A"'));
+  assert.ok(html.indexOf(">Show on map<") < html.indexOf(">Ride here<"), "before Ride here");
+  assert.ok(!renderToStaticMarkup(createElement(NearestFinder, props({ list: { kind: "water", items } }))).includes("Show on map"), "absent without onShow");
+  // App: a phone's popup closes first, its pins kept (letteredOf), as Food's Show on map.
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /onShow: \(item: Nearby, index: number\) => \{[\s\S]*?if \(!popupShown\("nearest"\)\) return show\(\);\s*setNearestPinsKept\(true\);\s*closePopupThen\(show\);/);
+  assert.match(app, /\(view === "nearest" \|\| \(nearestPinsKept && view === "planner"\)\) && nearestList/);
+});
+
 test("the list: each place in words with Ride here, and Add as stop for water in a planned ride", () => {
   const html = renderToStaticMarkup(createElement(NearestFinder, props({ list: { kind: "water", items }, canAddStop: true })));
   assert.match(html, /<h3 id="nearest-list-heading">Nearest water<\/h3>/);

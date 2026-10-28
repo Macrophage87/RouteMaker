@@ -207,8 +207,10 @@ test("Go's places are Home, Eat, Water and Restroom (Work only in Favorites); Ho
   assert.match(go, /onClick=\{\(event\) => \(places\.homeReady \? places\.onHome\(event\.currentTarget\) : setHomeOpen\(!homeOpen\)\)\}/);
   assert.match(appFile, /if \(!home\) return;[\s\S]*?void goTo\(home\.point, home\.label \|\| "Home"\);/);
   // Water and Restroom search from the rider's location, in their own sheet.
-  assert.match(appFile, /onWater: \(chip\) => \{\s*openView\("nearest", chip\);\s*findNearestHere\("water"\);/);
-  assert.match(appFile, /onRestroom: \(chip\) => \{\s*openView\("nearest", chip\);\s*findNearestHere\("restroom"\);/);
+  assert.match(appFile, /onWater: \(chip\) => openNearest\("water", chip\),/);
+  assert.match(appFile, /onRestroom: \(chip\) => openNearest\("restroom", chip\),/);
+  // The chip opens the sheet and searches from the rider, unless Show on map kept that kind's list (2026-10-28).
+  assert.match(appFile, /const openNearest = \(kind: NearestKind, chip: HTMLElement \| null\) => \{\s*const kept = nearestPinsKept && nearestList\?\.kind === kind;\s*openView\("nearest", chip\);\s*if \(!kept\) findNearestHere\(kind\);/);
 });
 
 test("Go's Where to? is the destination from the rider's location, in one edit, with the loop off; without a location it keeps the destination and asks for a start", () => {

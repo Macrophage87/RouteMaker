@@ -56,12 +56,17 @@ export interface FinderProps {
   canAddStop: boolean;
   onRide: (item: Nearby) => void;
   onAddStop: (item: Nearby) => void;
+  /**
+   * Show on map, as Find food's (the owner, 2026-10-28): the place on the map; from a phone's popup, the popup closes
+   * first so its lettered pins can be pressed, and the chip opens the same list again. Absent: no button.
+   */
+  onShow?: (item: Nearby, index: number) => void;
   /** A fold of its own (the default), or the body alone, in the map's Water sheet (UI-CLEANUP), whose heading names it. */
   folded?: boolean;
 }
 
 export function NearestFinder(props: FinderProps): ReactElement {
-  const { from, fromOptions, onFrom, onFind, busy, status, list, canAddStop, onRide, onAddStop, folded = true } = props;
+  const { from, fromOptions, onFrom, onFind, busy, status, list, canAddStop, onRide, onAddStop, onShow, folded = true } = props;
   // The button last pressed, marked while its search runs (the list, once in, says which it is).
   const [asked, setAsked] = useState<NearestKind | null>(null);
   const chosen = list?.kind ?? (busy ? asked : null);
@@ -135,6 +140,12 @@ export function NearestFinder(props: FinderProps): ReactElement {
                 h(
                   "span",
                   { className: "actions" },
+                  onShow &&
+                    h(
+                      "button",
+                      { type: "button", className: "secondary", "aria-label": t("Show on map: {place}, marker {letter}", { place: item.place.title, letter: placeLetter(index) }), onClick: () => onShow(item, index) },
+                      t("Show on map"),
+                    ),
                   h(
                     "button",
                     { type: "button", className: "secondary", "aria-label": t("Ride here: {place}", { place: item.place.title }), onClick: () => onRide(item) },

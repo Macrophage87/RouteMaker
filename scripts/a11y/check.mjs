@@ -4738,16 +4738,18 @@ async function goPick(p, box, text) {
   await p.close();
 }
 // A spot on the map itself, above Go's sheet and clear of the controls, pressed with the mouse. A tap in Go opens the
-// road card, whose big Route here makes the spot the destination as the tap itself did until 2026-10-28 (cc1fdf86): so
-// the press is the tap and then Route here, from the keyboard. `card` receives what the card was before Route here.
+// spot's card (GoSpotDialog.tsx, 2026-10-28: its address and what's near; before that the road card, cc1fdf86), whose
+// big Route here makes the spot the destination as the tap itself did until 2026-10-28: so the press is the tap and
+// then Route here, from the keyboard. `card` receives what the card was before Route here: its points, Route here's
+// text, whether it has the focus, and its height.
 async function goPressMap(p, card = null) {
   const at = await p.eval(`(() => { const r = document.querySelector('.maplibregl-canvas').getBoundingClientRect(); for (let y = r.top + 160; y < r.top + r.height / 2; y += 20) { const x = r.left + r.width / 2; if (document.elementFromPoint(x, y)?.classList.contains('maplibregl-canvas')) return [x, y]; } return null; })()`);
   if (!at) return at;
   await p.s("Input.dispatchMouseEvent", { type: "mousePressed", x: at[0], y: at[1], button: "left", clickCount: 1 });
   await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: at[0], y: at[1], button: "left", clickCount: 1 });
-  const ROUTE_HERE = "document.querySelector('dialog.road-info[open] .road-info-route-here')";
+  const ROUTE_HERE = "document.querySelector('dialog.go-spot[open] .road-info-route-here')";
   if (!(await p.waitFor(`!!${ROUTE_HERE}`, 5000))) return null;
-  if (card) Object.assign(card, await p.eval(`({ points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length, text: ${ROUTE_HERE}.textContent.trim() })`));
+  if (card) Object.assign(card, await p.eval(`({ points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length, text: ${ROUTE_HERE}.textContent.trim(), focused: document.activeElement === ${ROUTE_HERE}, height: ${ROUTE_HERE}.getBoundingClientRect().height })`));
   await p.eval(`${ROUTE_HERE}.focus(); true`);
   await p.enter();
   return at;
@@ -4761,8 +4763,8 @@ async function goPressMap(p, card = null) {
   const at = await goPressMap(p, card);
   const routed = await p.waitFor("!!document.querySelector('.go-summary .start-button')", 20000);
   const after = await p.eval("({ points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean), said: window.__said.slice(-4), assertive: document.querySelectorAll('[role=alert]:not(:empty)').length })");
-  check("go press: a press on the map in Go opens the road card; its Route here is the destination, routed from the current location at once (two points) and said politely (\"Destination set: …\")",
-    !!at && card.points === 0 && card.text === "Route here" && routed && after.points.length === 2 && after.points[0] === "-77.03650,38.90550" && after.said.some((t) => /Destination set: /.test(t)) && !after.said.some((t) => /Planning a route/.test(t)) && after.assertive === 0, JSON.stringify({ at, after }));
+  check("go press: a press on the map in Go opens the spot's card with Route here focused and at least 44 px tall; its Route here is the destination, routed from the current location at once (two points) and said politely (\"Destination set: …\")",
+    !!at && card.points === 0 && card.text === "Route here" && card.focused === true && card.height >= 44 && routed && after.points.length === 2 && after.points[0] === "-77.03650,38.90550" && after.said.some((t) => /Destination set: /.test(t)) && !after.said.some((t) => /Planning a route/.test(t)) && after.assertive === 0, JSON.stringify({ at, after }));
   await p.close();
 }
 {

@@ -262,7 +262,7 @@ import { Fold } from "./Sidebar.tsx";
 import { BACK_LABEL, POPUP_VIEWS, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib/sidebar.ts";
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
-import { frameAround, rideOpenPadding } from "./lib/detourSearch.ts";
+import { detourShownSaid, frameAround, rideOpenPadding } from "./lib/detourSearch.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
 import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_PICK_LOOK_MS, goHereStart, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { ReviewMode } from "./ReviewMode.tsx";
@@ -2159,6 +2159,9 @@ export function App() {
   const nearestBusyRef = useRef(false);
   const [nearestStatus, setNearestStatus] = useState("");
   const [nearestList, setNearestList] = useState<Found | null>(null);
+  // Show on map from the Water, Restroom or Metro popup on a phone (the owner, 2026-10-28, as Food's): the popup closes
+  // so the map shows, its lettered pins stay until another sheet opens, and the chip opens the same list again.
+  const [nearestPinsKept, setNearestPinsKept] = useState(false);
   // The status line is cleared and set again a moment later, so the same words twice are said twice
   // (as the Points notice is); with the planner out of sight it is said through the app's region.
   const nearestTimer = useRef<number | undefined>(undefined);
@@ -4854,6 +4857,26 @@ export function App() {
     // Plan: the route is planned on the map, so a popup on a phone closes first (closePopupThen).
     onRide: (item: Nearby) => (mode === "go" ? goToLettered(item.place.point, item.place.title) : popupShown("nearest") ? closePopupThen(() => rideToNearest(item)) : rideToNearest(item)),
     onAddStop: addNearestStop,
+    onShow: (item: Nearby, index: number) => {
+      const map = mapRef.current;
+      const show = () => {
+        map?.flyTo({ center: item.place.point, zoom: Math.max(map.getZoom(), 15) });
+        announce(detourShownSaid(item, index));
+      };
+      if (!popupShown("nearest")) return show();
+      setNearestPinsKept(true);
+      closePopupThen(show);
+    },
+  };
+  // Another sheet put the kept pins away; the chip's own sheet shows them as its list does.
+  useEffect(() => {
+    if (view !== "planner" && view !== "nearest") setNearestPinsKept(false);
+  }, [view]);
+  // Go's Water, Restroom and Metro chips: the same list again after Show on map, else a new search from the rider.
+  const openNearest = (kind: NearestKind, chip: HTMLElement | null) => {
+    const kept = nearestPinsKept && nearestList?.kind === kind;
+    openView("nearest", chip);
+    if (!kept) findNearestHere(kind);
   };
   // An instance admin's review (rider suggestions, Mass Ride hazard reports): from Suggest, or Go's Menu. It opens
   // Review, the third view (lib/appMode.ts), on the riders' suggestions.
@@ -4876,7 +4899,7 @@ export function App() {
   // marker, its letter's key, or a row of Go's Repair or Sights) opens the place's card (pickLettered); the lists'
   // own Ride here and Add as stop buttons act at once.
   const letteredOf: "nearest" | "food" | "repair" | "places" | "bikeshare" | null =
-    view === "nearest" && nearestList && nearestList.items.length > 0
+    (view === "nearest" || (nearestPinsKept && view === "planner")) && nearestList && nearestList.items.length > 0
       ? "nearest"
       : (view === "food" || (foodPinsKept && view === "planner")) && foodResults && foodResults.length > 0
         ? "food"
@@ -6180,18 +6203,9 @@ export function App() {
                     onAddFavorite: (found, work) => addFavorite(favoriteFromPlace(found, work)),
                     onRemoveFavorite: removeFavorite,
                     onFood: (chip) => openView("food", chip),
-                    onWater: (chip) => {
-                      openView("nearest", chip);
-                      findNearestHere("water");
-                    },
-                    onRestroom: (chip) => {
-                      openView("nearest", chip);
-                      findNearestHere("restroom");
-                    },
-                    onMetro: (chip) => {
-                      openView("nearest", chip);
-                      findNearestHere("metro");
-                    },
+                    onWater: (chip) => openNearest("water", chip),
+                    onRestroom: (chip) => openNearest("restroom", chip),
+                    onMetro: (chip) => openNearest("metro", chip),
                     onRepair: openRepair,
                     onSights: openPlaces,
                     onSavedRoutes: () => setLoadOpen("go"),

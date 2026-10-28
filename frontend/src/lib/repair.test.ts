@@ -119,7 +119,7 @@ test("Go: Metro, Repair and Places to see sit behind More, with its expanded sta
   assert.doesNotMatch(go, /t\("Sights"\)/);
   // Metro opens Nearest on its Metro list (the same search, count and WMATA badges as Nearest's own Metro button).
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /onMetro: \(chip\) => \{\s*openView\("nearest", chip\);\s*findNearestHere\("metro"\);/);
+  assert.match(app, /onMetro: \(chip\) => openNearest\("metro", chip\),/);
 });
 
 test("F13. a Repair row is named by its place and distance; its details are its description", () => {
