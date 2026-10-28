@@ -263,7 +263,7 @@ def test_a_language_the_server_does_not_word_is_english():
     from core.api import RouteIn
 
     assert RouteIn._known_language("de") == "en"
-    # French is one of Go and Ride's languages, but the server has no catalog for it (only lang_es.py): English.
+    # French is a Go and Ride language with no server catalog (only lang_es.py): English.
     assert RouteIn._known_language("fr") == "en"
     assert RouteIn._known_language("es") == "es"
 
