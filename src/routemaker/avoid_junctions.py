@@ -216,7 +216,10 @@ def ahead_text(junction: AvoidJunction, at_m: float) -> str:
 
 def entries(found: Sequence[Passage], scale: float = 1.0) -> list[dict]:
     """The description's entries for the passes (`routemaker.describe._entry`'s shape,
-    kind "avoid"), at their metres along the route scaled to the router's length."""
+    kind "avoid"), at their metres along the route scaled to the router's length. The
+    junction's name is `street` and its reason `reason`, so Ride words its cue from them
+    ("Avoid-rated junction ahead." then the name and the reason, then the plea) and never
+    cuts them out of `text` (round-2 audit R2: a name such as "St. Paul" holds ". ")."""
     out = []
     for passage in found:
         at = passage.m * scale
@@ -228,6 +231,7 @@ def entries(found: Sequence[Passage], scale: float = 1.0) -> list[dict]:
                 "from_mi": round(at / 1609.344, 2),
                 "to_mi": round(at / 1609.344, 2),
                 "street": passage.junction.name or None,
+                "reason": (passage.junction.reason or "").strip().rstrip(".") or None,
                 "tier": None,
                 "facility": None,
                 "turn": None,

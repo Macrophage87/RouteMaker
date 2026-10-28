@@ -28,6 +28,7 @@
 import { METRES_PER_MILE, formatDistance, formatRoughDistance, spokenDistance } from "./format.ts";
 import { language, t } from "./i18n.ts";
 import { haversineM, type LonLat } from "./geo.ts";
+import { AVOID_PLEA } from "./avoidJunctions.ts";
 import { descriptionEntries } from "./routeDescription.ts";
 import { mileWords, trailMileAt, type TrailMiles } from "./trailMiles.ts";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
@@ -268,6 +269,8 @@ export interface Cue {
    * numbered); the re-plan matches on it.
    */
   point?: number;
+  /** A stop's side of the street, where the router gives it (round-2 audit D17): said after its arrival. */
+  side?: "left" | "right";
 }
 
 export interface RideModel {
@@ -374,6 +377,10 @@ const WAY_ES: readonly [RegExp, string][] = [
   [/^service road\b/, "la vía de servicio"],
   [/^alley\b/, "el callejón"],
   [/^parking aisle\b/, "el pasillo del estacionamiento"],
+  // An unnamed lane named after its street ("9th Street Northwest protected bike lane"), the protected one first
+  // (round-2 audit D16); the same rules as the API's (src/routemaker/lang.py _WAY_ES; a test holds them equal).
+  [/^(.+) protected bike lane$/, "el carril bici protegido de $1"],
+  [/^(.+) bike lane$/, "el carril bici de $1"],
 ];
 
 function wayWordsEs(street: string): string {
@@ -407,6 +414,32 @@ export function crossingWords(street: string | null, control: NonNullable<Descri
   const sentence = control ? (named ? CROSSING_CONTROL_WORDS : CROSSING_CONTROL_ALONE)[control] : undefined;
   if (sentence) return t(sentence, named ? { street: named } : undefined);
   return named ? t("Busy crossing at {street}.", { street: named }) : t("Busy crossing.");
+}
+
+/**
+ * An Avoid-rated junction's line in Ride and on its card (OWNER-DECISIONS 307, 309: "Avoid-rated junction" plus the
+ * reason; the owner, 2026-10-10: "this is a really bad idea, please reconsider"): "Avoid-rated junction ahead.
+ * Colesville Road and Georgia Avenue, no safe crossing. Riding through it ...". Built from the entry's own fields, never
+ * cut out of the API's sentence (round-2 audit R2: that dropped the warning word, lowered the name's capital and read
+ * "0.3 mi" aloud, "mi" as the Spanish word; a name such as "St. Paul" holds ". "). The name and reason keep their words.
+ */
+export function avoidWords(entry: Pick<DescriptionEntry, "street"> & Pick<Partial<DescriptionEntry>, "reason" | "text">): string {
+  const ahead = t("Avoid-rated junction ahead.");
+  // A saved or shared answer from before the reason field (no `reason` at all; the API now sends null for none) keeps
+  // its reason only in the sentence: say the part after the first ": " (not ". ", so "St. Paul" holds), which keeps the
+  // name's capital, never the "0.3 mi" before it. Its English plea is said in the rider's language.
+  if (entry.reason === undefined && entry.text && entry.text.includes(": ")) {
+    const rest = sentenceOf({ text: entry.text })
+      .replace(/^Avoid-rated junction ahead[^:]*:\s*/, "")
+      .trim();
+    const named = (rest.endsWith(AVOID_PLEA) ? rest.slice(0, -AVOID_PLEA.length) : rest).trim().replace(/\.+$/, "");
+    if (named) return `${ahead} ${named}. ${t(AVOID_PLEA)}`;
+  }
+  const said = [entry.street, entry.reason]
+    .map((part) => (part ?? "").trim().replace(/\.+$/, ""))
+    .filter(Boolean)
+    .join(", ");
+  return said ? `${ahead} ${said}. ${t(AVOID_PLEA)}` : `${ahead} ${t(AVOID_PLEA)}`;
 }
 
 /**
@@ -595,6 +628,23 @@ export function stopText(number: number, name: string | undefined): string {
   return name ? t("Stop {number}, {name}.", { number, name }) : t("Stop {number}.", { number });
 }
 
+/**
+ * The side of the street the leg ending at the plan's point `point` ends on (round-2 audit D17; the API's
+ * `leg_arrival_sides`, one per leg): null where unknown, absent, or not one per leg as `leg_ends` says.
+ */
+export function stopSide(route: Pick<RouteResponse, "leg_arrival_sides" | "leg_ends">, point: number | null | undefined): "left" | "right" | null {
+  const sides = route.leg_arrival_sides;
+  if (!Array.isArray(sides) || point == null || point < 1) return null;
+  if (route.leg_ends && route.leg_ends.length !== sides.length) return null;
+  const side = sides[point - 1];
+  return side === "left" || side === "right" ? side : null;
+}
+
+/** A stop's words on the card: "Stop 2, Union Market.", then its side where known ("Destination on your left."). */
+function stopCueText(number: number, name: string | undefined, side: "left" | "right" | null): string {
+  return side ? `${stopText(number, name)} ${arrivalSideWords(side)}` : stopText(number, name);
+}
+
 export function rideModel(route: RouteResponse, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): RideModel {
   const coordinates = route.geometry.coordinates;
   const along = lineAlong(coordinates);
@@ -624,7 +674,8 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
       const point = entry.via;
       const number = point - vias.filter((v) => v < point).length;
       const stopName = names.get(point);
-      cues.push({ index: cues.length, kind, atM: fromM, text: stopText(number, stopName), movement: null, street: entry.turn?.onto ?? entry.street ?? null, severity: entry.severity ?? entry.turn?.severity ?? null, tier: entry.tier, stop: number, point, source: entry.kind, ...(stopName ? { stopName } : {}) });
+      const side = stopSide(route, point);
+      cues.push({ index: cues.length, kind, atM: fromM, text: stopCueText(number, stopName, side), ...(side ? { side } : {}), movement: null, street: entry.turn?.onto ?? entry.street ?? null, severity: entry.severity ?? entry.turn?.severity ?? null, tier: entry.tier, stop: number, point, source: entry.kind, ...(stopName ? { stopName } : {}) });
     } else if (kind !== null) {
       cues.push({
         index: cues.length,
@@ -632,7 +683,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
         atM: fromM,
         text:
           kind === "stop"
-            ? stopText(entry.via ?? cues.filter((c) => c.kind === "stop").length + 1, entry.via != null ? names.get(entry.via) : undefined)
+            ? stopCueText(entry.via ?? cues.filter((c) => c.kind === "stop").length + 1, entry.via != null ? names.get(entry.via) : undefined, stopSide(route, entry.via))
             : kind === "turn" && entry.turn?.cross
               ? crossWords(entry.turn.cross)
               : kind === "turn" && entry.turn?.across
@@ -644,6 +695,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
                 : sentenceOf(entry),
         ...(kind === "hazard" && entry.kind === "junction" && !entry.group ? { rideText: crossingWords(entry.street, entry.turn?.control) } : {}),
         ...(entry.kind === "hazard" ? { rideText: roadHazardWords(entry.text) } : {}),
+        ...(entry.kind === "avoid" ? { rideText: avoidWords(entry) } : {}),
         // A stretch's change and a walk in the app's own words (D14), not the API's sentence, which Plan keeps.
         ...(kind === "busy" || kind === "calmer" || kind === "unpaved" ? { rideText: stretchWords(kind, entry) } : {}),
         ...(kind === "walk" ? { rideText: walkWords(entry.to_m - entry.from_m), walkM: Math.max(0, entry.to_m - entry.from_m) } : {}),
@@ -659,6 +711,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
         tier: entry.tier,
         stop: kind === "stop" ? (entry.via ?? cues.filter((c) => c.kind === "stop").length + 1) : null,
         ...(kind === "stop" && entry.via != null && names.get(entry.via) ? { stopName: names.get(entry.via) } : {}),
+        ...(kind === "stop" && stopSide(route, entry.via) ? { side: stopSide(route, entry.via) as "left" | "right" } : {}),
         source: entry.kind,
       });
     }
@@ -1015,8 +1068,11 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
     const side = (["left", "right"] as const).map(arrivalSideWords).find((words) => cue.text.endsWith(words));
     return side ? `${t(ARRIVED_SAID)} ${side}` : t(ARRIVED_SAID);
   }
-  if (cue.kind === "stop")
-    return cue.stopName ? t("You have reached stop {stop}, {name}.", { stop: cue.stop ?? "", name: cue.stopName }) : t("You have reached stop {stop}.", { stop: cue.stop ?? "" });
+  if (cue.kind === "stop") {
+    const reached = cue.stopName ? t("You have reached stop {stop}, {name}.", { stop: cue.stop ?? "", name: cue.stopName }) : t("You have reached stop {stop}.", { stop: cue.stop ?? "" });
+    // Its side, where the router gives it (round-2 audit D17), in the end cue's words.
+    return cue.side ? `${reached} ${arrivalSideWords(cue.side)}` : reached;
+  }
   if (phase === "now" && cue.movement) {
     // A jog's turns are said one at a time at "now" (the owner, 2026-10-26: "go step by step at the intersection").
     if (cue.cross) return t("Cross {road} now.", { road: wayWords(cue.cross) });
@@ -1420,7 +1476,12 @@ export function whereAmI(
   const place = placeOnRoute(model, state.progressM);
   const stretch = stretchAt(model, state.progressM);
   // A named trail is "the" trail, with the marker or without: "On the Capital Crescent Trail."
-  const way = isTrail(stretch) ? t("the {trail}", { trail: stretch.street }) : (wayRidden(stretch) ?? t("the route"));
+  // In Spanish a lane named after its street brings its own article ("el carril bici de ..."), so not "el el" (D16).
+  const way = isTrail(stretch)
+    ? language() === "es" && / bike lane$/.test(stretch.street)
+      ? wayWords(stretch.street)
+      : t("the {trail}", { trail: stretch.street })
+    : (wayRidden(stretch) ?? t("the route"));
   // Away from a junction on a trail the file knows, its mile marker, posted or computed, in place of the
   // distance from a junction (465: "Navigation cues on those trails can use the same markers").
   const mile =

@@ -317,6 +317,8 @@ class TestSchema:
             "relation_name",
             # v0.8.2: a closure's source and until when, in small print.
             "citation",
+            # Round-2 audit R2: an Avoid-rated junction's reason, beside its name in `street`.
+            "reason",
         }
         # "avoid": an Avoid-rated junction ahead (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307).
         # "workzone": a live work zone on the route (FOLLOWUP-WORKZONES, 341-349).

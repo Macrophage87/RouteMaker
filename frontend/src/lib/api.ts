@@ -319,6 +319,11 @@ export interface DescriptionEntry {
    */
   relation_name?: boolean;
   /**
+   * On an "avoid": why the junction is rated Avoid ("no safe crossing"), as `street` is its name; Ride words its cue
+   * from the two (round-2 audit R2). Absent from an older API.
+   */
+  reason?: string | null;
+  /**
    * On a Mass Ride's entry for a group of signalized crossings (OWNER-DECISIONS 233, 234).
    * `crossings` lists each crossing in the full description (OWNER-DECISIONS 248) and is
    * null in the overview, which keeps one line per group.
@@ -1057,6 +1062,11 @@ export interface RouteResponse {
    * router does not say; absent from an older API.
    */
   arrival_side?: "left" | "right" | null;
+  /**
+   * Which side of the street each leg ends on, one per leg as `leg_ends` (round-2 audit D17): a stop's cue says
+   * "Destination on your left". An entry is null where the router does not say; absent from an older API.
+   */
+  leg_arrival_sides?: ("left" | "right" | null)[] | null;
   /**
    * The route's sections by traffic stress, in route order, meeting end to
    * end from 0; one unknown section for a plan whose joins ran past the
