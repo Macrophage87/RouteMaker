@@ -1464,4 +1464,17 @@ export const ES: Readonly<Record<string, string>> = {
   "{n} stops": "{n} paradas",
   "1 via point": "1 punto de paso",
   "{n} via points": "{n} puntos de paso",
+  // ---- The dials' short lines and their (i) (DialsPanel.tsx, lib/dialsPanel.ts; P10) ----
+  "Calm detour: up to {rate} extra per busy mile avoided.": "Desvío tranquilo: hasta {rate} más por cada milla de vía concurrida evitada.",
+  "Looks for climbs, on routes up to half again as long.": "Busca subidas, en rutas hasta un 50% más largas.",
+  "Climbs only choose between equally calm routes.": "Las subidas solo deciden entre rutas igual de tranquilas.",
+  "Climbs up to this grade cost only their time.": "Las subidas hasta esta pendiente solo cuentan su tiempo.",
+  "Calmest route decides; climbs cost their time.": "Decide la ruta más tranquila; las subidas cuentan su tiempo.",
+  "Grades past this one cost extra.": "Las pendientes mayores que esta cuentan más.",
+  "Sets group length; route unchanged.": "Fija el largo del grupo; la ruta no cambia.",
+  "Sets traffic and hills for this kind of ride.": "Ajusta el tráfico y las cuestas para este tipo de paseo.",
+  "traffic": "tráfico",
+  "hills": "cuestas",
+  "ride size": "tamaño del paseo",
+  "target distance": "distancia objetivo",
 };

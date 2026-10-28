@@ -153,8 +153,12 @@ test("the Ride line is a heading holding a button with aria-expanded, whose word
     html,
     /<span class="ride-line-label">Ride settings<\/span><span class="ride-line-summary" aria-hidden="true"><span class="ride-chip">quiet streets<\/span><span class="ride-chip">now<\/span><\/span><span class="visually-hidden">: quiet streets, now\.<\/span>/,
   );
-  // Shown Adjust or Done, heard Adjust whatever the state: aria-expanded says it (no "Done, expanded": N8).
-  assert.match(html, /<span class="ride-line-action" aria-hidden="true">Adjust<\/span><span class="visually-hidden"> Adjust<\/span>/);
+  // Shown Adjust or Done, heard Adjust whatever the state: aria-expanded says it (no "Done, expanded": N8). Closed,
+  // the word is there once, shown and heard (P10: not "Adjust Adjust"); open, "Done" is shown and "Adjust" heard.
+  assert.match(html, /<span class="ride-line-action"> Adjust<\/span><\/button>/);
+  assert.doesNotMatch(html, /Adjust<\/span><span class="visually-hidden"> Adjust/);
+  const parts = readFileSync(new URL("./sidebarParts.ts", import.meta.url), "utf8");
+  assert.match(parts, /h\("span", \{ key: "shown", className: "ride-line-action", "aria-hidden": "true" \}, rideActionLabel\(open\)\),\s*h\("span", \{ key: "said", className: "visually-hidden" \}, ` \$\{RIDE_ACTION_SPOKEN\}`\),/);
   assert.equal(rideActionLabel(false), "Adjust");
   assert.equal(rideActionLabel(true), "Done");
   assert.equal(RIDE_ACTION_SPOKEN, "Adjust");
