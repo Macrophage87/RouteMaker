@@ -209,7 +209,7 @@ test("ride card: fewer words on screen, the whole of them for screen readers (th
   // One TimeToGo for both to-go times (the next stop and the end, lib/arrival.ts), its "about" and "arriving about" read.
   assert.equal((ride.match(/<span className="visually-hidden">\{t\("about"\)\} <\/span>/g) ?? []).length, 1, "\"about\" before the to-go time stays for screen readers");
   assert.equal((ride.match(/<TimeToGo seconds=/g) ?? []).length, 2, "both to-go times");
-  assert.match(ride, /<span aria-hidden="true">\{cueShown\.head\.replace\(\/\\\.\$\/, ""\)\}<\/span>\s*<span className="visually-hidden">\{cue\.rideText \?\? cue\.text\}<\/span>/, "the full stop goes from the shown head only; the whole sentence is read");
+  assert.match(ride, /<span aria-hidden="true">\{cueShown\.head\.replace\(\/\\\.\$\/, ""\)\}<\/span>\s*<span className="visually-hidden">\{cue\.card\?\.said \?\? cue\.rideText \?\? cue\.text\}<\/span>/, "the full stop goes from the shown head only; the whole sentence is read");
 });
 
 test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a ride\"): a side button, Share ride's link, the ride going on", () => {

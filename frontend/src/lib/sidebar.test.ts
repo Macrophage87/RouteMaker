@@ -10,7 +10,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { hillsWords, startDials, type Dials } from "./dials.ts";
 import { hillsShort, rideSummary, rideSummarySpoken, settingsSummary, settingsSummarySpoken, targetShort, trafficShort, whenShort } from "./rideSummary.ts";
-import { NOT_AVAILABLE, calmPercent, heavyMetres, junctionFigure, quickFigures, stressBarKey, stressBarLabel } from "./quickFigures.ts";
+import { NOT_AVAILABLE, calmPercent, groupRideLine, heavyMetres, turnTotal, junctionFigure, quickFigures, stressBarKey, stressBarLabel } from "./quickFigures.ts";
 import {
   BACK_LABEL,
   BAR_ITEMS,
@@ -1029,4 +1029,15 @@ test("Settings (384): theme follows the system, the planner zoom notice stays of
   assert.equal(PLANNER_EXTRAS.highContrastShortcut, false);
   assert.doesNotMatch(css, /data-theme|\.theme-toggle/, "no theme switch: the panel follows prefers-color-scheme");
   assert.match(css, /@media \(prefers-color-scheme: dark\)/);
+});
+
+test("Group Ride's stress line: quiet roads and the turns the directions give (the 2026-10-28 audit, P6)", () => {
+  const leg = (movement: string | null, kind = "stretch") => ({ kind, from_m: 0, to_m: 1, text: "", turn: movement === null ? null : { movement } }) as never;
+  const route = { description: [leg(null), leg("left"), leg("straight"), leg("bear_right"), leg("right"), leg("left", "junction"), leg("uturn")], stress_m: { "1": 950, "2": 0, "4": 50 } } as never;
+  assert.equal(turnTotal(route), 4, "left, bear right, right and the U-turn; straight on and a junction's own turn are not counted");
+  assert.equal(groupRideLine(route), "Quiet roads · 4 turns");
+  assert.equal(groupRideLine({ description: [leg("left")], stress_m: { "1": 80, "3": 20 } } as never), "80% quiet roads · 1 turn");
+  const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /const groupLine = preset === "group-ride" \? groupRideLine\(route\) : null;/);
+  assert.match(panel, /<StressFigure segments=\{segments\} line=\{groupLine\} \/>/);
 });

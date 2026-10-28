@@ -2,9 +2,10 @@
  * A Mass Ride or Group Ride link in Go (v0.7.0 plan; lib/rideGroup.ts has the rules and their tests): the other
  * riders as anonymous dots with a count, the one question about showing your own dot, and the Alert button.
  *
- * Go stays clean: two controls over the map and nothing else. "23 riders on the route" is a button that says the
- * count and the nearest rider ahead on request (not continuously) and holds the key of the roles on the ride, the
- * "Show me as a dot" switch and the rider's role (asked first in the one question, Participant chosen); Alert
+ * Go stays clean: nothing over the map before the ride, and two controls once it is under way (the 2026-10-28 audit,
+ * P6). "23 riders on the route" is a button that says the count and the nearest rider ahead on request (not
+ * continuously) and holds the key of the roles on the ride, the "Show me as a dot" switch and the rider's role (the
+ * leader is offered it in the one question, asked as Start ride or Broadcast is pressed; Participant chosen); Alert
  * opens the ride type's list. Alerts come as banners with their age in words, kept live, a pin at the sender's
  * spot, a vibration, and an assertive announcement at once (alerts are essentials, said even at Brief).
  *
@@ -36,6 +37,7 @@ import {
   CONSENT_NO,
   CONSENT_NOTE,
   CONSENT_QUESTION,
+  CONSENT_SHORT,
   CONSENT_YES,
   DEFAULT_ROLE,
   FOLLOW_LEADER,
@@ -118,6 +120,13 @@ export interface RideGroupProps {
   ridersElsewhere?: boolean;
   /** Raised to open the riders panel from elsewhere (Ride mode's More > Riders). */
   ridersAsk?: number;
+  /**
+   * The rider count and Send alert shown (the 2026-10-28 audit, P6: during the ride only, so before it they do not
+   * float over the map and its junction cards); App.tsx also shows them to a computer watching a broadcast. Riding, by default.
+   */
+  controls?: boolean;
+  /** This rider leads the ride (planned it, or shares it): the question offers the roles. One who opened another's link is a Participant, changed in Riders. */
+  leads?: boolean;
 }
 
 const TICK_MS = 5000;
@@ -126,7 +135,7 @@ function visible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
 }
 
-export function RideGroup({ type, points, line, getMap, here, broadcast = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0 }: RideGroupProps) {
+export function RideGroup({ type, points, line, getMap, here, broadcast = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0, controls = riding, leads = true }: RideGroupProps) {
   const leading = broadcast?.leading === true;
   const isBroadcast = broadcast !== null;
   // The leader key a follower reads with (the leader needs none: it does not see its own dot).
@@ -193,7 +202,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   const alertPanel = useId();
   const say = (text: string) => setSaid((s) => ({ text, count: s.count + 1 }));
 
-  // The ride, and the rider's answer for it (asked when the link opens).
+  // The ride, and the rider's answer for it (asked as the ride starts: Start ride or Broadcast, the 2026-10-28 audit P6).
   const key = broadcast ? `${broadcast.roam ? "roam" : "broadcast"}|${broadcast.id}` : points.map((p) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`).join(";");
   useEffect(() => {
     let live = true;
@@ -208,9 +217,6 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
       setConsent(kept);
       setAsked(kept !== null);
       setShareOn(kept?.answer === "yes");
-      // The question, said once as it shows (a group, not a dialog: the page around it stays usable). Said
-      // a moment later: the polite region mounts with the ride, and one mounted with its text is often not read.
-      if (kept === null) window.setTimeout(() => live && say(CONSENT_QUESTION), 150);
     });
     return () => {
       live = false;
@@ -221,7 +227,8 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
 
   const answer = (yes: boolean) => {
     if (!ride) return;
-    const kept = keepConsent(ride, yes ? "yes" : "no", Date.now(), undefined, undefined, pickedRole);
+    // One who follows another's link rides as a Participant (the roles are the leader's to offer; Riders changes it).
+    const kept = keepConsent(ride, yes ? "yes" : "no", Date.now(), undefined, undefined, leads ? pickedRole : DEFAULT_ROLE);
     setConsent(kept);
     setAsked(true);
     setShareOn(yes);
@@ -473,38 +480,13 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     openRiders();
   });
 
+  // The question, asked once the ride is under way (Start ride or Broadcast pressed), never while planning (P6).
+  const askNow = riding && !asked;
   if (!ride) return null;
   return (
     <div className="ride-group">
-      {!asked && (
-        <div className="ride-consent" role="group" aria-labelledby="ride-consent-q" aria-describedby="ride-consent-note">
-          <p id="ride-consent-q" className="ride-consent-question">
-            <strong>{CONSENT_QUESTION}</strong>
-          </p>
-          <p id="ride-consent-note" className="hint">
-            {broadcast ? BROADCAST_CONSENT_NOTE : CONSENT_NOTE}
-          </p>
-          {/* Compact here (Go's map stays clear): one labelled list, Participant chosen; the panel has the radio buttons. */}
-          <label className="ride-role-select">
-            {ROLE_QUESTION}{" "}
-            <select value={pickedRole} onChange={(e) => setPickedRole(roleOf(e.target.value))}>
-              {RIDE_ROLES.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="ride-consent-choices">
-            <button type="button" onClick={() => answer(true)}>
-              {CONSENT_YES}
-            </button>
-            <button type="button" className="secondary" onClick={() => answer(false)}>
-              {CONSENT_NO}
-            </button>
-          </div>
-        </div>
-      )}
+      <ConsentDialog open={askNow} leads={leads} note={broadcast ? BROADCAST_CONSENT_NOTE : CONSENT_NOTE} role={pickedRole} onRole={setPickedRole} onAnswer={answer} />
+      {controls && (
       <div className="ride-group-bar">
         {!ridersElsewhere && (
           // The person icon and a number (Stephen 2026-10-27: "just have the person icon and a number"); the words in its name.
@@ -518,6 +500,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
           {ALERT_LABEL}
         </button>
       </div>
+      )}
       <div id={ridersPanel} className="ride-riders-panel" hidden={!ridersOpen}>
         {/* Opened from More > Riders, with no chip to close it: its own Close (the idle timer presses it too). */}
         {ridersElsewhere && (
@@ -663,6 +646,97 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
         {urgent.count % 2 ? " " : ""}
       </p>
     </div>
+  );
+}
+
+/**
+ * The one question, as the ride starts (the 2026-10-28 audit, P6): the platform's modal <dialog>, so it never stays
+ * open over the ride's buttons. Yes and No look alike (neither is pressed for the rider); Close, Escape, a tap
+ * outside it and the ride's 30 s untouched (lib/idleRecentre.ts) are all No. The leader is offered the roles; one who
+ * follows another's link is a Participant, changed in Riders. Shown short; the full note for a screen reader.
+ */
+function ConsentDialog({ open, leads, note, role, onRole, onAnswer }: { open: boolean; leads: boolean; note: string; role: RideRole; onRole: (role: RideRole) => void; onAnswer: (yes: boolean) => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const opener = useRef<Element | null>(null);
+  const id = useId();
+  // Closed by anything but an answer while it is asking (Escape, the backdrop, the idle close): No.
+  const asking = useRef(open);
+  asking.current = open;
+  const pressedBackdrop = useRef(false);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (open && !dialog.open) {
+      opener.current = document.activeElement;
+      dialog.showModal?.();
+    } else if (!open && dialog.open) {
+      dialog.close();
+    }
+    if (!open && opener.current instanceof HTMLElement && opener.current.isConnected) {
+      opener.current.focus({ preventScroll: true });
+      opener.current = null;
+    }
+  }, [open]);
+  return (
+    <dialog
+      ref={dialogRef}
+      className="ask-dialog ride-consent"
+      data-idle-close
+      aria-labelledby={`${id}-q`}
+      aria-describedby={`${id}-note`}
+      onClose={() => {
+        if (asking.current) onAnswer(false);
+      }}
+      onPointerDown={(event) => {
+        pressedBackdrop.current = event.target === dialogRef.current;
+      }}
+      onClick={(event) => {
+        // A tap on the backdrop (the dialog element itself), pressed there too: No.
+        const fromBackdrop = pressedBackdrop.current;
+        pressedBackdrop.current = false;
+        if (event.target === dialogRef.current && fromBackdrop) dialogRef.current?.close();
+      }}
+    >
+      {open && (
+        <>
+          <div className="ride-consent-head">
+            <h2 id={`${id}-q`} className="ride-consent-question">
+              {t(CONSENT_QUESTION)}
+            </h2>
+            <button type="button" className="link icon-button ride-consent-close" aria-label={t("Close: not shown")} onClick={() => dialogRef.current?.close()}>
+              <Icon name="x" size={20} />
+            </button>
+          </div>
+          <p className="hint">
+            <span aria-hidden="true">{t(CONSENT_SHORT)}</span>
+            <span id={`${id}-note`} className="visually-hidden">
+              {t(note)}
+            </span>
+          </p>
+          {/* The leader's only (one labelled list, Participant chosen); the riders panel has the radio buttons. */}
+          {leads && (
+            <label className="ride-role-select">
+              {ROLE_QUESTION}{" "}
+              <select value={role} onChange={(e) => onRole(roleOf(e.target.value))}>
+                {RIDE_ROLES.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <div className="ride-consent-choices">
+            <button type="button" className="secondary" onClick={() => onAnswer(true)}>
+              {t(CONSENT_YES)}
+            </button>
+            <button type="button" className="secondary" onClick={() => onAnswer(false)}>
+              {t(CONSENT_NO)}
+            </button>
+          </div>
+        </>
+      )}
+    </dialog>
   );
 }
 

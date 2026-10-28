@@ -33,6 +33,7 @@ import { descriptionEntries } from "./routeDescription.ts";
 import { mileWords, trailMileAt, type TrailMiles } from "./trailMiles.ts";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import type { JunctionShape } from "./junctionShape.ts";
+import { shortStreets } from "./cueShown.ts";
 
 // ---- Settings ---------------------------------------------------------------------------------
 
@@ -239,6 +240,13 @@ export interface Cue {
    * Street, no signal."); a stretch's change or a walk in the app's own words ("Busy road on R Street Northwest.", D14).
    */
   rideText?: string;
+  /**
+   * Ride's card for a run of signalized crossings, in place of its first-comma split (lib/cueShown.ts cueParts, which
+   * cut the API's sentence inside its list of streets): the big line, "4 signals ahead" ("Corkers: 4 signals ahead" on
+   * a Mass Ride), the small one, "Scott Cir, M St, K St +1 · 2 busy", and the sentence a screen reader is given,
+   * the API's with its two brackets as one (the 2026-10-28 audit, P6). The voice keeps the API's sentence.
+   */
+  card?: { head: string; rest: string; said: string };
   movement: TurnMovement | null;
   /** The street the cue turns onto or is on, as the API names it; null where unnamed. */
   street: string | null;
@@ -532,6 +540,25 @@ export function endWords(side: ArrivalSide): string {
 }
 
 /** "0.4 to 1.2 mi (0.6 to 1.9 km): Left onto ..." without its position: the part after the first ": ". */
+/** A street as the signals card lists it: the street word short and no quadrant, "Scott Circle Northwest" as "Scott Cir". */
+export function cardStreet(name: string): string {
+  return shortStreets(name.trim()).replace(/ (?:NW|NE|SW|SE)$/, "");
+}
+
+/** Two brackets in a row as one: "(LTS 4) (Very high stress junctions)" as "(LTS 4; very high stress junctions)". */
+export function oneBracket(text: string): string {
+  return text.replace(/\) \((\p{L})/gu, (_, first: string) => `; ${first.toLowerCase()}`);
+}
+
+/** Ride's card for a run of signalized crossings (Cue.card): its count, the first streets and how many are busy roads. */
+export function signalsCard(group: NonNullable<DescriptionEntry["group"]>, sentence: string, mass: boolean): { head: string; rest: string; said: string } {
+  const head = mass ? t("Corkers: {count} signals ahead", { count: group.count }) : t("{count} signals ahead", { count: group.count });
+  const names = group.streets.map(cardStreet).filter((n) => n !== "").join(", ");
+  const more = group.more > 0 ? `${names ? " " : ""}+${group.more}` : "";
+  const busy = group.lts4 > 0 ? t("{count} busy", { count: group.lts4 }) : "";
+  return { head, rest: [`${names}${more}`, busy].filter((p) => p !== "").join(" · "), said: oneBracket(sentence) };
+}
+
 export function sentenceOf(entry: Pick<DescriptionEntry, "text">): string {
   const text = entry.text.trim();
   const at = text.indexOf(": ");
@@ -869,6 +896,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
                 ? ontoWords(entry.street as string)
                 : sentenceOf(entry),
         ...(kind === "hazard" && entry.kind === "junction" && !entry.group ? { rideText: crossingWords(entry.street, entry.turn?.control) } : {}),
+        ...(kind === "hazard" && entry.kind === "junction" && entry.group && entry.group.count > 0 ? { card: signalsCard(entry.group, sentenceOf(entry), route.preset === "mass-ride") } : {}),
         ...(entry.kind === "hazard" ? { rideText: roadHazardWords(entry.text) } : {}),
         // A stretch entered straight on at a flagged junction (D25): Ride's words, not the API's sentence.
         ...(kind === "hazard" && entry.kind === "stretch" ? { rideText: flaggedOntoWords(entry, before) } : {}),

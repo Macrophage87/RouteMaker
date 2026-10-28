@@ -9,6 +9,7 @@ import {
   ROAM_ALERT_KINDS,
   CONSENT_KEY,
   CONSENT_QUESTION,
+  CONSENT_SHORT,
   RIDE_ROLES,
   ageWords,
   alertRefusal,
@@ -455,14 +456,30 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
   // In the consent dialog, Participant already chosen; changeable in the riders panel beside the switch.
   assert.match(group, /useState<RideRole>\(DEFAULT_ROLE\)/);
-  // Compact in Go's question: one labelled list, not four rows of radio buttons.
-  const ask = group.slice(group.indexOf('className="ride-consent"'), group.indexOf('className="ride-group-bar"'));
-  assert.match(ask, /<label className="ride-role-select">\s*\{ROLE_QUESTION\}\{" "\}\s*<select value=\{pickedRole\}/);
+  // Compact in the question: one labelled list, not four rows of radio buttons, and the leader's only (P6).
+  const ask = group.slice(group.indexOf("function ConsentDialog("), group.indexOf("function RolePicker("));
+  assert.match(ask, /\{leads && \(\s*<label className="ride-role-select">\s*\{ROLE_QUESTION\}\{" "\}\s*<select value=\{role\}/);
   assert.doesNotMatch(ask, /RolePicker|type="radio"/);
-  // A group, not a non-modal "dialog" (v0.7.0 end review), and the question said once, politely, as it shows.
-  assert.match(group, /<div className="ride-consent" role="group" aria-labelledby="ride-consent-q"/);
+  // A follower answers as a Participant.
+  assert.match(group, /keepConsent\(ride, yes \? "yes" : "no", Date\.now\(\), undefined, undefined, leads \? pickedRole : DEFAULT_ROLE\)/);
+  // The 2026-10-28 audit (P6): asked as the ride starts, never while planning, as the platform's modal dialog (never a
+  // non-modal role="dialog", v0.7.0 end review), so it never stays over the ride's buttons; the dialog's own name says it.
+  assert.match(group, /const askNow = riding && !asked;/);
+  assert.match(group, /<ConsentDialog open=\{askNow\} leads=\{leads\}/);
+  assert.match(ask, /<dialog\s+ref=\{dialogRef\}\s+className="ask-dialog ride-consent"\s+data-idle-close/);
+  assert.match(ask, /dialog\.showModal\?\.\(\);/);
   assert.doesNotMatch(group, /role="dialog"/);
-  assert.match(group, /if \(kept === null\) window\.setTimeout\(\(\) => live && say\(CONSENT_QUESTION\), 150\);/);
+  assert.doesNotMatch(group, /say\(CONSENT_QUESTION\)/);
+  // Close, Escape, the backdrop and the idle close are all No; Yes and No look alike.
+  assert.match(ask, /onClose=\{\(\) => \{\s*if \(asking\.current\) onAnswer\(false\);/);
+  assert.match(ask, /if \(event\.target === dialogRef\.current && fromBackdrop\) dialogRef\.current\?\.close\(\);/);
+  assert.match(ask, /<button type="button" className="secondary" onClick=\{\(\) => onAnswer\(true\)\}>[\s\S]*?<button type="button" className="secondary" onClick=\{\(\) => onAnswer\(false\)\}>/);
+  // Shown short; the whole note for a screen reader.
+  assert.equal(CONSENT_SHORT, "Only while the app is open. No name; gone in 2 min.");
+  assert.match(ask, /<span aria-hidden="true">\{t\(CONSENT_SHORT\)\}<\/span>\s*<span id=\{`\$\{id\}-note`\} className="visually-hidden">\s*\{t\(note\)\}/);
+  // The count and Send alert while riding only, by default.
+  assert.match(group, /controls = riding, leads = true \}: RideGroupProps\)/);
+  assert.match(group, /\{controls && \(\s*<div className="ride-group-bar">/);
   // A role change moves the next post up, and the post sends the consent's (new) role.
   assert.match(group, /const changeRole[\s\S]*?keepConsent\(ride, consent\.answer, Date\.now\(\), undefined, undefined, role\)[\s\S]*?share\.current\.lastPost = postSoonAfter\(share\.current\.lastPost\)/);
   assert.match(group, /\}, \[fix, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading\]\);/);
@@ -561,4 +578,11 @@ test("a broadcast from Roam (no route): straight-line words from you, its own ri
   const id = "0123456789abcdef0123456789abcdef";
   assert.notEqual(await roamRideId(id), await broadcastIdForRoamTest(id));
   assert.match(await roamRideId(id), /^[0-9a-f]{64}$/);
+});
+
+test("App: the count and Send alert while riding (or watching a broadcast on a computer), the roles the leader's (P6)", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /controls=\{riding \|\| \(rideBroadcast !== null && !rideBroadcast\.leading && !goMode\)\}/);
+  assert.match(app, /leads=\{!\(onShared && !onShared\.own\)\}/);
+  assert.match(app, /controls=\{onBike \|\| !goMode\}\s*leads=\{roamBroadcast\.leading\}/);
 });

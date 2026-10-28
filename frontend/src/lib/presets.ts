@@ -204,6 +204,11 @@ export function presetLabel(id: PresetId): string {
   return PRESETS.find((p) => p.id === id)?.label ?? id;
 }
 
+/** Whether the ride type's own name is already a ride's (Mass Ride, Group Ride, Rebalance Ride): "Mass Ride", not "Mass Ride ride". */
+export function presetNamesRide(id: PresetId): boolean {
+  return /\bRide$/.test(PRESETS.find((p) => p.id === id)?.label ?? "");
+}
+
 /** The name in words, for anything said or written as plain text (announcements, shared text, aria-labels). */
 export function presetSaid(id: PresetId): string {
   const option = PRESETS.find((p) => p.id === id);

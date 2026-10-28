@@ -34,6 +34,8 @@ export interface PlanWords {
   traffic: string | null;
   /** The hills slider in words (dials.ts hillsWords), or null. */
   hills: string | null;
+  /** The ride type's name is already a ride's (presets.ts presetNamesRide): "Mass Ride, ...", not "Mass Ride ride, ...". */
+  named?: boolean;
 }
 
 const lower = (text: string) => (text ? text[0].toLowerCase() + text.slice(1) : text);
@@ -78,7 +80,7 @@ export function planSentences(
   // The words around the ride type, in the language's own order ("Default ride", "Recorrido Default").
   const rideLink: Phrase = { text: words.ride, target: { kind: "ride" } };
   const [before, after] = t("{ride} ride").split("{ride}");
-  const ride: Phrase[] = [{ text: before }, rideLink, { text: after }].filter((p) => p === rideLink || p.text !== "");
+  const ride: Phrase[] = words.named ? [rideLink] : [{ text: before }, rideLink, { text: after }].filter((p) => p === rideLink || p.text !== "");
   if (words.traffic) ride.push({ text: ", " }, { text: lower(words.traffic), target: { kind: "traffic" } });
   if (words.hills) ride.push({ text: ", " }, { text: lower(words.hills), target: { kind: "hills" } });
   ride.push({ text: "." });

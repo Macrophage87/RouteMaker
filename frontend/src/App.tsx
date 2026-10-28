@@ -20,7 +20,7 @@ import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type L
 import { formatSeconds } from "./lib/format.ts";
 import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, withoutReturn } from "./lib/garminLink.ts";
 import { RETURN_PARAM as WAHOO_RETURN_PARAM, wahooReturnFrom } from "./lib/wahooLink.ts";
-import { endsOnFoot, layersTurnedOn, presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
+import { endsOnFoot, layersTurnedOn, presetNamesRide, presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
@@ -4931,6 +4931,7 @@ export function App() {
         ride: presetSaid(preset),
         traffic: stressMax(preset) > 0 ? stressWords(dials.stress) : null,
         hills: hillsWords(dials.hills, seeksClimbs(preset)),
+        named: presetNamesRide(preset),
       })}
       button={routeNow}
       onRoute={pressRoute}
@@ -5278,6 +5279,8 @@ export function App() {
           broadcast={{ ...roamBroadcast, roam: true }}
           riding={onBike}
           leaderRoute={null}
+          controls={onBike || !goMode}
+          leads={roamBroadcast.leading}
         />
       )}
       {rideGroupLine && (
@@ -5292,6 +5295,10 @@ export function App() {
           onRiders={setRideRiders}
           ridersElsewhere={riding && rideCanBroadcast && rideBroadcast !== null}
           ridersAsk={ridersAsk}
+          // The count and Send alert while riding only (the 2026-10-28 audit, P6), and to a computer watching a broadcast.
+          controls={riding || (rideBroadcast !== null && !rideBroadcast.leading && !goMode)}
+          // The roles are offered to the ride's leader: one who planned it, or shares it; one following another's link is a Participant.
+          leads={!(onShared && !onShared.own)}
           leaderRoute={rideBroadcast?.leading ? ((riding && rideView ? rideView.route : shown)?.geometry.coordinates as LonLat[] | undefined) : null}
         />
       )}

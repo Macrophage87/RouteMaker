@@ -9,9 +9,29 @@
  * `facility_m`, `intersections`); nothing here asks for more.
  */
 import { formatDistance } from "./format.ts";
+import { t } from "./i18n.ts";
 import { junctionCounts } from "./intersectionMarkers.ts";
 import { wholePercents } from "./stressBar.ts";
 import type { RouteResponse } from "./api.ts";
+
+/** The turns the directions give (left, right, bear and U-turns; not "continue" or straight on at a junction). */
+export function turnTotal(route: Pick<RouteResponse, "description">): number {
+  const turning = new Set(["left", "right", "bear_left", "bear_right", "uturn"]);
+  return (route.description ?? []).filter((entry) => entry.kind === "stretch" && turning.has(entry.turn?.movement ?? "")).length;
+}
+
+/**
+ * Group Ride's line under the stress bar (the 2026-10-28 audit, P6; the ride type plans for quiet roads and fewer
+ * turns): "Quiet roads · 4 turns"; "85% quiet roads · 4 turns" where under 90% of it is LTS 1 or 2. The bar keeps
+ * each share in its name.
+ */
+export function groupRideLine(route: Pick<RouteResponse, "description" | "stress_m">): string {
+  const calm = calmPercent(route.stress_m);
+  const turns = turnTotal(route);
+  const quiet = calm === null ? null : calm >= 90 ? t("Quiet roads") : t("{percent}% quiet roads", { percent: calm });
+  const turnWords = turns === 1 ? t("1 turn") : t("{count} turns", { count: turns });
+  return quiet ? `${quiet} · ${turnWords}` : turnWords;
+}
 
 export interface QuickFigure {
   key: "calm" | "heavy" | "junctions" | "path";
