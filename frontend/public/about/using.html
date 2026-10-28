@@ -310,7 +310,7 @@ straight line: "Dupont Circle, Washington · 0.3 mi (0.5 km)". An address keeps 
 <li><strong>A tap on the map</strong> opens a card for that spot: <strong>Route here</strong> at the top, which
 plans a route there in place of any destination before it, then the spot's address, its area and how far away it is,
 and a line such as "5 places nearby, shown on the map". A few places within a mile [1.6 km], the nearest of each kind
-first (food, water, restrooms, repair, Metro and places to see), are pins on the map: a named place, such as a restaurant, bike shop, sight
+first (food, water, restrooms, repair, Metro and places to see), are pins on the map: a named place, such as a restaurant, bike shop, place to see
 or station, carries its name, and water, restrooms and repair stands an icon only. A pin opens the place's own card,
 never a route by itself. <strong>List</strong> shows the same places as buttons, for a screen reader or the keyboard,
 with <strong>Road info</strong> under them; pressing and holding the map still opens the road card. The map stays live
@@ -415,12 +415,12 @@ on, the next one when it is close, and the spot.</li>
 <li><strong>Share live</strong>, a round button, shares a link others can follow your dot and the way you
 ride with, while your app is open (see <a href="#suggest">ride links</a>). With no share sheet it
 copies the link instead, and says so, or says it could not. To show the link as a QR code,
-hold it, right-click it or press Shift+F10. Following someone's Roam broadcast, it passes on their link.</li>
+hold it, right-click it or press Shift+F10. Following someone's Share live link from Roam, it passes it on.</li>
 <li>The next sunrise and sunset show in the corner, with the minutes left once it is within the
 hour.</li>
 <li><strong>End roam</strong> is slid, like End ride, so a bump does not end it.</li>
 <li>Your position stays on your phone, except when you search Nearby or ride to a place it finds (a typed search also sends your words, with the rounded position, to the place search), for the weather check every 5 minutes (rounded on the server to about 0.7 mi [1.1 km] before anyone else is asked), and while
-you broadcast, when the server keeps it for 2 minutes.</li>
+you share live, when the server keeps it for 2 minutes.</li>
 </ul>
 
 </div></details>
@@ -519,7 +519,7 @@ taps add is below. Up to 25 points in all. Each shows its street or neighborhood
 hollow ring that only shapes the route: it has no number and is never a cue on the ride.
 <strong>Ctrl+click</strong> (Cmd+click on a Mac), or <strong>Add as stop</strong> in the road panel, adds a
 <strong>stop</strong>, a numbered blue pin, and asks for a name, which you can leave blank. Add as stop on a
-food, water, sight or station card names the stop after the place without asking, and a place you pick in
+food, water, station or place-to-see card names the stop after the place without asking, and a place you pick in
 Add a stop is a stop too. A stop's menu has <strong>Name this stop</strong> (<strong>Rename stop</strong> once
 it has one), and the menu of any point between the start and the end turns a via point into a stop or
 back.</li>
@@ -753,7 +753,7 @@ The steps last for this ride only, Plan's sliders stay as they were, and a step 
 leading back to the old line, is undone. With a stop ahead, <strong>Skip this stop</strong> shows a skip mark with the
 stop's number under it. These three are hidden on a shared or fixed route and once you have arrived, and pressing one closes
 the column. <strong>Topo lines</strong> (the contour icon), just before the gear, is always there. It
-turns the map's contour lines on or off, the same switch as Topo lines in Map layers, and says "Topo lines on."
+turns the map's contour lines on or off, the same switch as Topo lines in Layers, Trails and terrain, and says "Topo lines on."
 or "Topo lines off.", and like those it closes the column; a screen reader hears its name and whether it is on. Where the server has no contours it
 says they are not available, and with no signal it says it needs a connection. The <strong>Settings</strong> gear opens the ride's settings under the top row: who says the cues and how
 much, and <strong>Turn the map to my heading</strong>. Until GPS knows which way you are going, which needs you moving, the map turns to
@@ -960,7 +960,7 @@ area</strong> looks there instead. Grocery lists the grocery stores nearest the 
 are known, they read as "Open now · closes 10 PM", here and in the other lists of places. Each row in Eat and in the
 Water, Restroom and Metro lists has <strong>Show on map</strong>; on a phone it closes the popup and keeps the
 lettered pins, which stay until another sheet opens.</li>
-<li><strong>Repair stands and bike shops</strong> (Go's More, Repair) lists the nearest.</li>
+<li><strong>Repair</strong> (in Go's More) lists the nearest repair stands and bike shops.</li>
 <li>On towpaths and long trails, <strong>trail mile markers</strong> are shown on the map, in the road
 panel and in Where am I?.</li>
 </ul>
@@ -1095,13 +1095,13 @@ print; and a <strong>cue sheet image</strong> for a phone's lock screen.</li>
 <li>Choose your bike computer (Any, Garmin Edge, Wahoo ELEMNT or Hammerhead Karoo) so the cues and the
 course fit what it can hold.</li>
 <li><strong>Send to Garmin</strong> sends the course to Garmin Connect. With
-<a href="#settings">Garmin connected in Settings</a> it adds the course to Garmin Connect directly, under the
+<a href="#settings">Garmin connected in Settings, Account</a> it adds the course to Garmin Connect directly, under the
 route's saved name (or its file name when it is not saved), and sending a saved route again updates that course
 instead of adding a copy; your Garmin picks it up at its next sync. Without a connection the course goes as a FIT
 file, as before, and so it does if Garmin turns the course down or cannot be reached: the line under the button
 gives the reason first.</li>
 <li><strong>Send to Wahoo</strong> appears once you are signed in and <a href="#settings">Wahoo is connected
-in Settings</a>. It adds
+in Settings, Account</a>. It adds
 the route to your Wahoo app as a FIT course with turn cues, fitted to a Wahoo ELEMNT, and the app sends it to
 your ELEMNT. Sending a saved route again updates it. If Wahoo turns it down, cannot be reached or is no longer
 connected, the FIT course is saved instead, for the Wahoo app to open, and the line under the button gives the
@@ -1133,14 +1133,22 @@ this device. The app opens in Go on a phone and in Plan on a computer, a shared 
 included; a tab keeps the view it was last in, and pressing Go or Plan counts for that tab only.</li>
 <li><strong>Riding</strong> and <strong>Display:</strong> cues, large text, rider and bike weight, high
 contrast and the rest, on <a href="/about/accessibility.html">Accessibility</a>.</li>
-<li><strong>Language</strong> (Display): <strong>Phone default</strong>, the default, <strong>English</strong>
-or <strong>Español</strong>, kept on this device. It changes the app's words and the voice (Spanish cues are said
+<li><strong>Language</strong> (Display): <strong>Phone default</strong>, the default, or one of 21 languages, each named in its own words:
+English, Spanish (Español), and Amharic, Arabic, Bengali, Cantonese, Farsi, French, Haitian Creole, Hindi, Indonesian,
+Japanese, Korean, Mandarin, Pashto, Portuguese, Russian, Thai, Tigrinya, Turkish and Vietnamese. Kept on this device.
+Every language but English is a first draft, waiting for a native speaker's check. Arabic, Farsi and Pashto are
+written right to left, and the page turns round for them.</li>
+<li><strong>Spanish</strong> covers the whole app. It changes the app's words and the voice (Spanish cues are said
 in US Spanish). The route's own sentences come in Spanish too, in Go and Plan: the <strong>Directions</strong>, hazard
 and work-zone lines, steep grades, climbs, Novice and Nervous walk-your-bike lines and Avoid-rated junction
 notices. Street, trail and place names and agency notices stay as
 written, and miles stay first. Go, Ride, Roam, Settings, the place search, Plan and the route's summary (the elevation chart and
 its key, stress figures, junction lists and the directions' controls), Suggest, My routes and shared links are in
 Spanish. Ride type names and descriptions are in Spanish too; these guides are still in English. Choosing a different language reloads the page.</li>
+<li><strong>The other 19 languages</strong> cover Go, Ride, Roam and Settings; Plan stays in English. The route's
+own sentences from the server, such as the Directions and the hazard lines, stay in English, and where the phone
+has no voice for the language (Amharic or Tigrinya on many phones) the cues are shown in the language and spoken in
+English.</li>
 <li><strong>Install RouteMaker</strong> adds it to your home screen when the browser offers it. When a
 new version is ready, a line says so with Reload; it never interrupts a ride.</li>
 <li><strong>Account:</strong> <strong>Sign in with Discord</strong> keeps My Go, starred ride types and
@@ -1210,7 +1218,7 @@ link they opened, so everyone who joins follows the same leader.</li>
 <li>Everyone who opens the same link is on the same ride, and sees the others as dots, with no names.</li>
 <li>Opening a Share ride or Share live link <strong>follows the leader</strong>: the map moves with the
 leader's dot, which has a wide ring round it. You see it at once, before you answer whether to show
-yourself. On a phone, a link with its leader goes straight into Ride mode, or Roam for a Roam broadcast, with the
+yourself. On a phone, a link with its leader goes straight into Ride mode, or Roam for a link shared live from Roam, with the
 leader's dot on the map from the start, and says "Following the leader live. If you hear no
 directions, tap the screen once." (a phone may keep the voice quiet until the first tap). It doesn't start over
 a ride already going or the question about resuming one. On a computer the link opens so you can watch the
@@ -1257,13 +1265,13 @@ phone's random ride code and its alert counts are forgotten 2 minutes after it l
 
 <ul>
 <li>On first launch it asks for the site's address.</li>
-<li>A tapped link to RouteMaker's map, a ride type or a shared route, broadcast links included, opens the app
+<li>A tapped link to RouteMaker's map, a ride type or a shared route, Share live links included, opens the app
 from the Play Store instead of the browser. The privacy policy, these guides and Featured routes posts still open in
 the browser. Android checks this when the app is installed, so it needs the app's store build from after this
 update.</li>
 <li>RouteMaker links shared to the app open in it. From the app's next update, Share live, Share route and
 Share ride open Android's own share sheet. Android doesn't tell the app when you back out of that sheet, so
-backing out still counts as sent: Share live starts the broadcast, and Share ride makes you its leader.</li>
+backing out still counts as sent: Share live starts sharing, and Share ride makes you its leader.</li>
 <li><strong>Send to Garmin</strong> hands the course to the Garmin Connect app, or adds it to
 Garmin Connect directly once Garmin is connected. Connecting works in the app from its next update; until
 then, connect on the website and the connection works in the app too.</li>
