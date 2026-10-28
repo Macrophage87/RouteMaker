@@ -1706,7 +1706,7 @@ def classified_as(monkeypatch, *readings: dict) -> None:
     pending = iter(readings)
     keys: dict[int, str] = {}
 
-    def pieces(trace):
+    def pieces(trace, shape=None):
         out = []
         for key, metres in next(pending).items():
             keys[len(keys)] = key

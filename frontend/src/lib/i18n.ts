@@ -78,6 +78,15 @@ export function t(english: string, vars?: Readonly<Record<string, string | numbe
   return vars ? text.replace(/\{(\w+)\}/g, (all, key: string) => (key in vars ? String(vars[key]) : all)) : text;
 }
 
+/**
+ * A short label and the rest of it, for a button that shows only its first word on a narrow screen ("Save" and
+ * " route"), in the language in force: "Guardar" and " ruta".
+ */
+export function firstWordAndRest(text: string): [string, string] {
+  const at = text.indexOf(" ");
+  return at < 0 ? [text, ""] : [text.slice(0, at), text.slice(at)];
+}
+
 /** The page's own language, for screen readers and the browser's hyphenation and voice. */
 export function markPageLanguage(doc: Document | undefined = typeof document !== "undefined" ? document : undefined): void {
   if (doc) doc.documentElement.lang = current;
