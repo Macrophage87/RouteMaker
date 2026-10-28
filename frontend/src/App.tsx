@@ -465,6 +465,8 @@ export function App() {
   const [reviewList, setReviewList] = useState<ListKey | undefined>(undefined);
   // Go's sheet on a phone: its smallest (peek: the map gets the screen), half, or all of it.
   const [goSheet, setGoSheet] = useState<"peek" | "half" | "full">("half");
+  // Go's stress bar tapped: a new number opens Layers' Traffic stress section, its colour key (the owner's P1).
+  const [stressKeyAsk, setStressKeyAsk] = useState(0);
   // The rider and bike weight (OWNER-DECISIONS 313-318): kept apart from `dials`, which
   // the link carries, and added only to the request (planDials).
   const weightStore = useRef<WeightStore | null>(null);
@@ -5080,12 +5082,13 @@ export function App() {
   });
   // Go's bar mirrors Plan's (the owner, 2026-10-18: "mirror what plan does in general, but instead of route, we
   // start the ride"): Undo, Redo, the big button and Clear, each while it has something to do. The big button is
-  // Start ride on a route ready to ride, else Route while the plan has changed, as Plan's.
+  // Route while the plan has changed, as Plan's. A route ready to ride has none: Start ride is the sheet's, pinned to
+  // its bottom edge at every size (one Start ride per screen, the owner's P1, 2026-10-28).
   const goReady = !!shown && !stale && routedPoints === points && rideableRoute(shown);
   const goBig = routingNow
     ? { label: ROUTING_LABEL, start: false, busy: true, onPress: () => {} }
     : goReady
-      ? { label: t("Start ride"), start: true, busy: false, onPress: startRideChecked }
+      ? null
       : points.length >= 2 && routeNow.unavailable === null
         ? { label: routeNow.label, start: false, busy: false, onPress: pressRoute }
         : // No destination yet: Roam, a ride with no destination (the owner, 2026-10-22; one control for the feature).
@@ -5229,6 +5232,11 @@ export function App() {
         onBestOrder={() => void bestOrder()}
       />
     ) : null,
+    // A tap on the stress bar (the owner's P1): Layers, its Traffic stress section open on the colour key.
+    onStressKey: (opener: HTMLButtonElement) => {
+      setStressKeyAsk((n) => n + 1);
+      openView("layers", opener);
+    },
   };
   // A transit plan's options (lib/transit.ts): a press plans that one, for this trip; a departure the
   // rider would miss plans again, which takes the next one (lib/departure.ts).
@@ -5914,6 +5922,7 @@ export function App() {
                 // Plan's alone (the brief: "not in Go"); null leaves the section out of Go's Layers.
                 scenic: mode === "go" ? null : { on: scenicOn, onChange: changeScenicOn, status: scenicStatus(scenicOn, stress !== "unavailable", placesData ?? "loading") },
                 permits: mode === "go" ? null : { on: permitsOn, onChange: changePermitsOn },
+                stressKeyAsk,
                 bikeshare: {
                   operators: docksOperators,
                   choices: docksChoices,

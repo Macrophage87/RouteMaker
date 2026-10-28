@@ -10,7 +10,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { hillsWords, startDials, type Dials } from "./dials.ts";
 import { hillsShort, rideSummary, rideSummarySpoken, settingsSummary, settingsSummarySpoken, targetShort, trafficShort, whenShort } from "./rideSummary.ts";
-import { NOT_AVAILABLE, calmPercent, heavyMetres, junctionFigure, quickFigures, stressBarKey, stressBarLabel } from "./quickFigures.ts";
+import { NOT_AVAILABLE, busyMetres, calmPercent, calmWayShares, calmWaysLabel, calmWaysText, calmWords, heavyMetres, junctionFigure, quickFigures, stressBarKey, stressBarLabel, stressPlainParts } from "./quickFigures.ts";
 import {
   BACK_LABEL,
   BAR_ITEMS,
@@ -439,6 +439,54 @@ test("the stress bar is one image with each share in its name, and a line of tex
   assert.match(app, /<figure className="stress stress-main" aria-labelledby="stress-figure-caption">/);
   assert.match(app, /<div className="stress-bar" role="img" aria-label=\{stressBarLabel\(segments\)\}>/);
   assert.match(app, /<p className="stress-key" aria-hidden="true">/);
+});
+
+test("Go's stress line in plain words (the owner's P1): how calm, the paths and protected lanes, the busy road", () => {
+  // The calm share is LTS 1 and 2 (calmPercent); busy is LTS 3, 4 and Avoid, as the detour notice says "busy roads (LTS 3-4)".
+  assert.equal(calmWords({ "1": 900, "2": 100 }), "All calm");
+  assert.equal(calmWords({ "1": 750, "2": 40, "4": 210 }), "Mostly calm", "the audit's route: LTS 1 75%, LTS 2 4%, LTS 4 21%");
+  assert.equal(calmWords({ "1": 500, "3": 500 }), "Some busy roads");
+  assert.equal(calmWords({ "1": 300, "4": 700 }), "Mostly busy");
+  assert.equal(calmWords({}), null);
+  assert.equal(calmWords({ "1": 1000, "3": 5 }), "All calm", "a few metres where the route meets a road are not said");
+  assert.equal(busyMetres({ "2": 100, "3": 10, "4": 20, "5": 5 }), 35);
+  assert.equal(calmWaysText({ path: 1300, protected: 500 }), "1.1 mi (1.8 km) on paths and protected lanes");
+  assert.equal(calmWaysText({ path: 1300 }), "0.8 mi (1.3 km) on paths");
+  assert.equal(calmWaysText({ protected: 805, path: 3 }), "0.5 mi (0.8 km) on protected lanes");
+  assert.equal(calmWaysText({ lane: 900, none: 300 }), null, "a painted lane is neither");
+  assert.equal(calmWaysText(undefined), null);
+  // Each part left out where it is nothing.
+  assert.deepEqual(stressPlainParts({ stress_m: { "1": 1500, "2": 60, "4": 322 }, facility_m: { path: 1300, protected: 500 } }), [
+    "Mostly calm",
+    "1.1 mi (1.8 km) on paths and protected lanes",
+    "busy road for 0.2 mi (0.3 km)",
+  ]);
+  assert.deepEqual(stressPlainParts({ stress_m: { "1": 1000 }, facility_m: { none: 1000 } }), ["All calm"]);
+  assert.deepEqual(stressPlainParts({ stress_m: {}, facility_m: undefined }), []);
+  // The strip under the bar: the path, then the protected lane, as facilityRows has them; read as words.
+  const shares = calmWayShares([
+    { key: "path", metres: 1300, fraction: 0.6, percent: 60 },
+    { key: "protected", metres: 500, fraction: 0.28, percent: 28 },
+    { key: "lane", metres: 200, fraction: 0.1, percent: 10 },
+    { key: "none", metres: 40, fraction: 0.02, percent: 2 },
+  ]);
+  assert.deepEqual(shares.map((s) => s.key), ["path", "protected"]);
+  assert.equal(calmWaysLabel(shares), "Traffic-free paths: 0.8 mi (1.3 km), 60 percent; Protected bike lanes: 0.3 mi (0.5 km), 28 percent");
+  assert.deepEqual(calmWayShares([{ key: "protected", metres: 0, fraction: 0, percent: 0 }]), []);
+});
+
+test("Go's stress figure: the bar and the strip are one button to the colour key; the shares stay the bar's name", () => {
+  assert.match(app, /<figure className="stress stress-main stress-go" aria-labelledby="stress-figure-caption">/);
+  assert.match(app, /<button type="button" className="stress-key-button" aria-describedby=\{keyHintId\} onClick=\{\(event\) => go\.onKey\?\.\(event\.currentTarget\)\}>\s*\{bar\}\s*\{strip\}/);
+  assert.match(app, /<div className="stress-bar calm-ways" role="img" aria-label=\{calmWaysLabel\(ways\)\}>/);
+  // Shown with " · ", said with commas; at peek said only.
+  assert.match(app, /<span aria-hidden="true">\{parts\.join\(" · "\)\}<\/span>\s*<span className="visually-hidden">\{`\$\{parts\.join\(", "\)\}\.`\}<\/span>/);
+  assert.match(app, /<StressFigure segments=\{segments\} go=\{\{ route, peek: go\.peek, onKey: go\.onStressKey \}\} \/>/);
+  // A tap opens Layers, its Traffic stress section open (lib/layerSection.ts openAsk).
+  assert.match(app, /onStressKey: \(opener: HTMLButtonElement\) => \{\s*setStressKeyAsk\(\(n\) => n \+ 1\);\s*openView\("layers", opener\);/);
+  assert.match(app, /openAsk=\{stressKeyAsk\}/);
+  const section = readFileSync(new URL("./layerSection.ts", import.meta.url), "utf8");
+  assert.match(section, /useEffect\(\(\) => \{\s*if \(openAsk > 0\) setOpen\(true\);\s*\}, \[openAsk\]\);/);
 });
 
 test("the route's folds: Elevation and climbs, Stress and facilities, Directions, Junctions to watch, Other routes, Water and restrooms", () => {

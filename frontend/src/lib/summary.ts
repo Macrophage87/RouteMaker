@@ -81,6 +81,26 @@ export function detourView(
 }
 
 /**
+ * Go's detour line (the owner's P1, 2026-10-28): one line at the notice's level, "2.3× as far, to skip 0.8 mi (1.3 km)
+ * of busy roads.", or "2.3× as far as the direct route." where it skips none. Go has no Traffic slider to move, so the
+ * slider's advice is Plan's (detourView). The straight-line notice (no direct route to compare) is said in full.
+ */
+export function detourShort(
+  route: Pick<RouteResponse, "distance_m" | "preset" | "detour" | "dials">,
+  points: readonly LonLat[],
+): DetourView | null {
+  const view = detourView(route, points);
+  const found = route.detour;
+  if (view === null || !found || found.basis !== "direct_route" || route.preset === "mass-ride") return view;
+  const ratio = (found.ratio ?? route.distance_m / Math.max(found.reference_m, 1)).toFixed(1);
+  const text =
+    found.avoided_m && found.avoided_m > 0
+      ? t("{ratio}× as far, to skip {distance} of busy roads.", { ratio, distance: formatDistance(found.avoided_m) })
+      : t("{ratio}× as far as the direct route.", { ratio });
+  return { level: view.level, text };
+}
+
+/**
  * The ratio as the notice says it: to one decimal, or to two where one would
  * read as the very threshold the next sentence says it is beyond ("1.5× ...
  * more than 1.5 times", review r2).

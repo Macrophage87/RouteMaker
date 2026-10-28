@@ -672,7 +672,9 @@ test("App: Go's controls are unchanged: no new button or field for any of it", (
   // (one more tag, never both shown) and its popout's ten buttons (Home, Work and a place, each with its Edit button;
   // the two Set rows; Add a place and Edit) and one search field, none on Go until the chip is tapped.
   // Saved routes behind More (Stephen 2026-10-26: "Add saved routes in the more part of the go tab"): one more, still behind More.
-  assert.equal((go.match(/<button/g) ?? []).length, 39, "the same buttons as before, the Home sheet's, the route card's, Go's bar, More's Metro and Saved routes, Plan's Find and Favorites'");
+  // The owner's P1 (2026-10-28): two more, each folding what was always shown behind one press: "+ Add a stop", which
+  // opens its field, and New destination, under a route, which opens Where to? and the place chips.
+  assert.equal((go.match(/<button/g) ?? []).length, 41, "the same buttons as before, the Home sheet's, the route card's, Go's bar, More's Metro and Saved routes, Plan's Find, Favorites', Add a stop's and New destination");
   assert.equal((go.match(/<PlaceSearch/g) ?? []).length, 5, "the same search fields as before, the Home sheet's and Favorites'");
 });
 

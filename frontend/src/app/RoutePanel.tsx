@@ -18,7 +18,7 @@ import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
 import { lightLine, type LightMark } from "../lib/lightTimes.ts";
 import { weatherSaid, type WeatherReport } from "../lib/weather.ts";
 import { WeatherLines } from "../WeatherLines.tsx";
-import { calmSearchNote, detourView, paceText, stillPlanningSaid, movedPointsNote, noviceWalksNote, walkInNote, walkInShort } from "../lib/summary.ts";
+import { calmSearchNote, detourShort, detourView, paceText, stillPlanningSaid, movedPointsNote, noviceWalksNote, walkInNote, walkInShort } from "../lib/summary.ts";
 import { isCancelKey } from "../lib/sheet.ts";
 import { useStressStyle } from "../useStressStyle.ts";
 import { CandidatePicker } from "../lib/candidatePicker.ts";
@@ -64,7 +64,8 @@ import {
   type ShareKeep,
   type ShareKeepChoice,
 } from "../lib/sharedRoutes.ts";
-import { calmPercent, quickFigures, stressBarKey, stressBarLabel } from "../lib/quickFigures.ts";
+import { calmPercent, calmWayShares, calmWaysLabel, quickFigures, stressBarKey, stressBarLabel, stressPlainParts } from "../lib/quickFigures.ts";
+import { facilityRows } from "../lib/facilityBar.ts";
 import { junctionItems } from "../lib/intersectionMarkers.ts";
 import type { WaterAlong, WaterStatus } from "../lib/waterRestrooms.ts";
 import { WaterAlongList } from "../lib/waterLegend.ts";
@@ -133,6 +134,8 @@ export interface GoRouteControls {
   onClimb?: (opener: HTMLElement) => void;
   /** Go's "Add a stop" (Go.tsx GoAddStop), or null: under the route card, one tap away (Stephen 2026-10-18). */
   addStop?: ReactNode;
+  /** A tap on Go's stress bar: Layers, with the Traffic stress section's colour key open (the owner's P1). */
+  onStressKey?: (opener: HTMLButtonElement) => void;
 }
 
 /**
@@ -557,7 +560,7 @@ interface NoteLine {
   short?: string | null;
 }
 
-function noteLines(route: RouteResponse, points: LonLat[], light: readonly LightMark[] = []): NoteLine[] {
+function noteLines(route: RouteResponse, points: LonLat[], light: readonly LightMark[] = [], goMode = false): NoteLine[] {
   const lines: NoteLine[] = [];
   // A point inside the National Zoo was moved to its bike racks (291(4)): shown here, and said with the route.
   const moved = movedPointsNote(route, points.length);
@@ -572,7 +575,8 @@ function noteLines(route: RouteResponse, points: LonLat[], light: readonly Light
   // live region with the rest of the route's sentence (lib/summary.ts announceRoute).
   const outsideDc = outsideDcNote(route);
   if (outsideDc) lines.push({ key: "outside", className: "notice mass-outside-dc", icon: "warn", text: outsideDc });
-  const detour = detourView(route, points);
+  // Go has no Traffic slider to point to: its line is the short one ("2.3× as far, to skip 0.8 mi of busy roads.").
+  const detour = goMode ? detourShort(route, points) : detourView(route, points);
   if (detour) lines.push({ key: "detour", className: `notice detour detour-${detour.level}`, icon: "warn", text: detour.text });
   const calm = calmSearchNote(route);
   if (calm) lines.push({ key: "calm", className: "hint calm-search", icon: "info", text: calm });
@@ -618,29 +622,83 @@ function RouteAlerts({ route, answer, choice, around, onAround }: { route: Route
   );
 }
 
-/** The stress bar and its key: patterns as well as colours, and the shares in words (312). */
-function StressFigure({ segments }: { segments: StressSegment[] }) {
+/**
+ * The stress bar and its key: patterns as well as colours, and the shares in words (312). In Go (the owner's P1,
+ * 2026-10-28: "add paths and protected bike lanes to the chart") a slim strip under the bar marks the route's share on
+ * a traffic-free path and on a protected lane, the line under them is plain words ("Mostly calm · 1.1 mi on paths and
+ * protected lanes · busy road for 0.2 mi"), and a tap on the bar opens the colour key in Layers. A screen reader still
+ * hears every share: the bar's name, and the strip's.
+ */
+function StressFigure({ segments, go }: { segments: StressSegment[]; go?: { route: RouteResponse; peek: boolean; onKey?: (opener: HTMLButtonElement) => void } }) {
+  const keyHintId = useId();
+  // One image to a screen reader, named with each share; the line under it says the same in text.
+  const bar = (
+    <div className="stress-bar" role="img" aria-label={stressBarLabel(segments)}>
+      {segments
+        .filter((s) => s.fraction > 0)
+        .map((s) => (
+          <span
+            key={s.key}
+            className={`stress-seg stress-seg-${s.key}`}
+            style={{ width: `${s.fraction * 100}%`, backgroundColor: s.color, ["--seg-accent" as string]: s.casing }}
+            title={t("{short}: {percent}%", { short: s.short, percent: s.percent })}
+          />
+        ))}
+    </div>
+  );
+  if (!go) {
+    return (
+      <figure className="stress stress-main" aria-labelledby="stress-figure-caption">
+        <figcaption id="stress-figure-caption" className="visually-hidden">
+          {t("Traffic stress along the route")}
+        </figcaption>
+        {bar}
+        <p className="stress-key" aria-hidden="true">
+          {stressBarKey(segments)}
+        </p>
+      </figure>
+    );
+  }
+  // Painted lanes on busy roads count for neither, so the strip needs no Layers switch (lib/facilityBar.ts).
+  const ways = calmWayShares(facilityRows(go.route.facility_m));
+  const strip =
+    ways.length > 0 ? (
+      // A stress bar's border, and its colours kept in forced colours (styles.css), in the rails' colours.
+      <div className="stress-bar calm-ways" role="img" aria-label={calmWaysLabel(ways)}>
+        {ways.map((way) => (
+          <span key={way.key} className={`stress-seg calm-way calm-way-${way.key}`} style={{ width: `${way.fraction * 100}%` }} />
+        ))}
+      </div>
+    ) : null;
+  const parts = stressPlainParts(go.route);
   return (
-    <figure className="stress stress-main" aria-labelledby="stress-figure-caption">
+    <figure className="stress stress-main stress-go" aria-labelledby="stress-figure-caption">
       <figcaption id="stress-figure-caption" className="visually-hidden">
         {t("Traffic stress along the route")}
       </figcaption>
-      {/* One image to a screen reader, named with each share; the line under it says the same in text. */}
-      <div className="stress-bar" role="img" aria-label={stressBarLabel(segments)}>
-        {segments
-          .filter((s) => s.fraction > 0)
-          .map((s) => (
-            <span
-              key={s.key}
-              className={`stress-seg stress-seg-${s.key}`}
-              style={{ width: `${s.fraction * 100}%`, backgroundColor: s.color, ["--seg-accent" as string]: s.casing }}
-              title={t("{short}: {percent}%", { short: s.short, percent: s.percent })}
-            />
-          ))}
-      </div>
-      <p className="stress-key" aria-hidden="true">
-        {stressBarKey(segments)}
-      </p>
+      {go.onKey ? (
+        <button type="button" className="stress-key-button" aria-describedby={keyHintId} onClick={(event) => go.onKey?.(event.currentTarget)}>
+          {bar}
+          {strip}
+        </button>
+      ) : (
+        <>
+          {bar}
+          {strip}
+        </>
+      )}
+      {go.onKey && (
+        <span id={keyHintId} className="visually-hidden">
+          {t("Shows the color key, in Layers.")}
+        </span>
+      )}
+      {parts.length > 0 && (
+        // At peek (the time, the bars and Start) it is said, not shown: the sheet fits without a scroll.
+        <p className={go.peek ? "stress-key stress-plain visually-hidden" : "stress-key stress-plain"}>
+          <span aria-hidden="true">{parts.join(" · ")}</span>
+          <span className="visually-hidden">{`${parts.join(", ")}.`}</span>
+        </p>
+      )}
     </figure>
   );
 }
@@ -733,7 +791,7 @@ export function RouteSummary({
   // A Mass Ride's panel is about riders per minute, in place of the LTS breakdown (OWNER-DECISIONS 325).
   const capacity = capacitySummary(route.stress_spans);
   const segments = capacity ? [] : stressSegments(route.stress_m);
-  const notes = noteLines(route, points, light);
+  const notes = noteLines(route, points, light, mode === "go");
   const pace = paceText(route);
   // A transit trip's rides joined (lib/tripRides.ts): the distance ridden, the climb and the chart are every ride's.
   const trip = tripRoute(route);
@@ -798,8 +856,9 @@ export function RouteSummary({
     </>
   ) : null;
   const startHint = rideable ? (
-    // Plan says it with Start, not under it (Stephen 2026-10-20: "it needs to be simpler, still a wall of text").
-    <p id="start-ride-hint" className={goMode ? "hint start-ride-hint" : "visually-hidden start-ride-hint"}>
+    // Said with Start, not shown under it: Plan's since Stephen 2026-10-20 ("it needs to be simpler, still a wall of
+    // text"), Go's since the owner's P1 (2026-10-28: it was shown on every route).
+    <p id="start-ride-hint" className="visually-hidden start-ride-hint">
       {t("Turn-by-turn directions on this phone, said as you chose.")}{ridesHidden() ? "" : t(" Keep the screen on and this page in front.")}
     </p>
   ) : !ridesLine(route) ? null : (
@@ -810,8 +869,8 @@ export function RouteSummary({
       <RouteAlerts route={route} answer={answer} choice={choice} around={around} onAround={onAround} />
       <NoviceTransitOffer route={route} preset={preset} onTake={go.onNoviceTransit} trips={go.noviceTrips} />
       {/* Weather along the route (Stephen 2026-10-24): the NWS alerts, each linked to its notice, and rain coming. A
-          notice only: Start never waits for it. */}
-      <WeatherLines report={weather} riding={false} now={Date.now()} />
+          notice only: Start never waits for it. Go shows the alerts under its totals (the owner's P1), and the rain here. */}
+      <WeatherLines report={weather} riding={false} now={Date.now()} part={goMode ? "rain" : "all"} />
       {/* The same in words for a screen reader as it arrives, after the route (the region is always there). */}
       <p className="visually-hidden weather-status" role="status">
         {weatherSaid(weather, Date.now())}
@@ -819,7 +878,9 @@ export function RouteSummary({
     </>
   );
   const alertCount = (avoidNoticeFor(answer, choice) ? 1 : 0) + facilityNoticeCount(route) + (weather?.alerts.length ?? 0);
+  const credit = <p className="route-credit">{t("Route data: {sources}.", { sources: routeCredits(route).join("; ") })}</p>;
   // What Info holds: the pace, the notes in full, how to reshape the line and the route's sources (the owner's choice 5).
+  // Go's notes wrap on the sheet, so Info does not say them again; its sources are behind Data sources (the owner's P1).
   const infoBody = (
     <div id={infoId} className="route-info" hidden={!info}>
       {bikeshare && <p className="hint">{t("These figures are for the ride between the docks. The walks are above.")}</p>}
@@ -827,17 +888,27 @@ export function RouteSummary({
         <p className="hint">{t("The distance, climb and stress are for the first ride, the line on the map. The whole trip is in its steps.")}</p>
       )}
       {pace && <p className="hint pace">{t("Moving time at {pace}, without stops.", { pace })}</p>}
-      {notes.map((note) => (
-        <p key={note.key} className="hint note-full">
-          {note.text}
-        </p>
-      ))}
+      {/* Go's sheet shows a note whole, so Info gives only the ones it shortened (P1 with P14). */}
+      {notes
+        .filter((note) => !goMode || note.short)
+        .map((note) => (
+          <p key={note.key} className="hint note-full">
+            {note.text}
+          </p>
+        ))}
       {/* Riders often arrive by a shared link, straight into a route, and a
           phone has no hover to show the handle: say that the line moves. */}
       <p className="hint reshape">
         {narrow ? t("To reshape the route, press and hold the line, then drag it.") : t("To reshape the route, drag the line.")}
       </p>
-      <p className="route-credit">{t("Route data: {sources}.", { sources: routeCredits(route).join("; ") })}</p>
+      {goMode ? (
+        <details className="route-credit-fold">
+          <summary>{t("Data sources")}</summary>
+          {credit}
+        </details>
+      ) : (
+        credit
+      )}
     </div>
   );
   const infoButton = (
@@ -939,8 +1010,11 @@ export function RouteSummary({
               </div>
             )}
           </dl>
-          {go.peek ? start : infoButton}
+          {!go.peek && infoButton}
         </div>
+        {/* An NWS alert, one line under the totals (the owner's P1: it sat after the ride types), red for Severe or
+            Extreme; its notice behind the link. At peek the totals count it. */}
+        {!go.peek && <WeatherLines report={weather} riding={false} now={Date.now()} part="alerts" />}
         {!go.peek && infoBody}
         {!go.peek && transitFold}
         {/* At peek the trip's panel is folded away, but an infrequent departure's countdown keeps
@@ -953,7 +1027,7 @@ export function RouteSummary({
             onMissed={transitControls?.onMissed}
           />
         )}
-        {segments.length > 0 && <StressFigure segments={segments} />}
+        {segments.length > 0 && <StressFigure segments={segments} go={{ route, peek: go.peek, onKey: go.onStressKey }} />}
         {!go.peek && <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />}
         {!go.peek && go.routeCard}
         {!go.peek && go.addStop}
@@ -969,12 +1043,6 @@ export function RouteSummary({
         {!go.peek && alerts}
         {!go.peek && noteList}
         {!go.peek && actions.savedNote}
-        {!go.peek && (
-          <div className="actions start-ride go-start">
-            {start}
-            {startHint}
-          </div>
-        )}
         {/* The routes and Save; the ride type and Plan in detail moved (edit-route redesign): the ride types sit
             under the route card, and the Go/Plan switch at the top is Plan in detail. */}
         {!go.peek && (picker || actions.save) && (
@@ -990,11 +1058,21 @@ export function RouteSummary({
         )}
         {/* The elevation chart (Stephen 2026-10-13: "on Go, add an elevation chart to the map as well, even if
             relatively flat"), at the full sheet only (review F8: at half it made the sheet more than a screen), under
-            Start and the route's options so it never pushes them down; its key and tables stay in Plan. */}
+            the route's options; its key and tables stay in Plan. */}
         {go.full && profile && chartKind(route) !== "mass" && <ElevationChart route={trip} profile={profile} onScrub={onScrub} compact />}
         {!go.peek && picker && (
           <div id={routesId} className="go-routes" hidden={!routesOpen}>
             {picker}
+          </div>
+        )}
+        {/* Start ride and Broadcast last, pinned to the sheet's bottom edge (sticky, styles.css), where a thumb
+            reaches, at every size: at peek they were beside the totals, and Broadcast was cut off at 390 px. The
+            page's one Start ride (the owner's P1, 2026-10-28: the map's bar had a second), last in the order as it
+            is last on screen. */}
+        {(start || startHint) && (
+          <div className="actions start-ride go-start">
+            {start}
+            {startHint}
           </div>
         )}
       </div>
