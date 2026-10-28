@@ -209,7 +209,11 @@ button.access-link {
   color: var(--text);
   border-radius: 10px;
   box-shadow: var(--shadow);
-  overflow: hidden;
+  /* clip, not hidden: a hidden box can still be scrolled by the browser. A sheet's visually hidden lines are
+     placed against the panel, not .panel-scroll, so they reach far below it, and focusing a sheet's heading
+     scrolled the panel itself: its header went off the top and an empty band opened under the bottom bar
+     (Save & load on a phone, 2026-10-27). */
+  overflow: clip;
   z-index: 2;
 }
 
@@ -253,7 +257,7 @@ button.access-link {
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-  overflow: hidden;
+  overflow: clip;
 }
 
 .panel-scroll {
