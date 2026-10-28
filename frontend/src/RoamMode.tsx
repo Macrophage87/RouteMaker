@@ -710,14 +710,14 @@ export function RoamMode({
                             aria-describedby={`${detourId}-place-${i}`}
                             onClick={() => void rideThere(item)}
                           >
-                            Ride here
+                            {t("Ride here")}
                           </button>
                         </span>
                       </li>
                     ))}
                   </ol>
                   {found.kind === "water" && <p className="hint">{WATER_CAUTION}</p>}
-                    {found.attribution && <p className="hint">Search: {found.attribution.join("; ")}</p>}
+                    {found.attribution && <p className="hint">{t("Search: {credits}", { credits: found.attribution.join("; ") })}</p>}
                 </div>
               )}
               <p className="hint">{ROAM_DETOUR_HELP}</p>

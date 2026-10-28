@@ -48,12 +48,12 @@ function ElevationFigure({ stats }: { stats: RideStats }) {
   const x = (atM: number) => ((atM - from) / length) * W;
   const y = (m: number) => H - 2 - ((m - span.lo) / rise) * (H - 4);
   const line = points.map((p, i) => `${i ? "L" : "M"}${x(p.atM).toFixed(1)},${y(p.m).toFixed(1)}`).join("");
-  const lowest = `Lowest ${formatClimb(span.lo)}`;
-  const highest = `Highest ${formatClimb(span.hi)}`;
+  const lowest = t("Lowest {height}", { height: formatClimb(span.lo) });
+  const highest = t("Highest {height}", { height: formatClimb(span.hi) });
   return (
     <figure className="ride-summary-elevation">
-      <figcaption>Elevation</figcaption>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`Elevation along the ride. ${lowest}. ${highest}.`}>
+      <figcaption>{t("Elevation")}</figcaption>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={t("Elevation along the ride. {lowest}. {highest}.", { lowest, highest })}>
         <path d={`${line}L${W},${H}L0,${H}Z`} className="ride-summary-elevation-area" />
         <path d={line} className="ride-summary-elevation-line" vectorEffect="non-scaling-stroke" />
       </svg>
@@ -177,7 +177,8 @@ export function RideSummaryCard({
             {segments.length > 0 && (
               <figure className="stress ride-summary-stress">
                 <figcaption>
-                  Traffic stress<span className="visually-hidden">, along the route</span>
+                  {t("Traffic stress")}
+                  <span className="visually-hidden">{t(", along the route")}</span>
                 </figcaption>
                 <div className="stress-bar" role="img" aria-label={stressBarLabel(segments)}>
                   {segments

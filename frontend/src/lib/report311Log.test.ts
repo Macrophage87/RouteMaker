@@ -314,7 +314,7 @@ test("the checklist in Reports: a heading per website with its Open link, checkb
   assert.match(view, /report311Log\(\)\.setReported\(entry\.id, checked\);/);
   assert.match(view, /<details className="fold log311-archived">/);
   assert.match(view, /<h3 id="suggest-311-heading" tabIndex=\{-1\}>\s*\{LOG_HEADING\}\s*<\/h3>/);
-  assert.match(view, /\{`Open \$\{group\.site\.site\} \(new tab\)`\}/);
+  assert.match(view, /\{t\("Open \{site\} \(new tab\)", \{ site: group\.site\.site \}\)\}/);
   assert.match(view, /target="_blank" rel="noopener noreferrer"/);
 });
 

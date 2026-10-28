@@ -37,14 +37,14 @@ export function chartKind(route: Pick<RouteResponse, "preset">): ChartKind {
 
 /** The fold's name, and its heading for a screen reader's list. A Mass Ride's fold holds three charts, in the owner's order (2026-10-10). */
 export function foldName(kind: ChartKind): string {
-  return kind === "mass" ? "Riders per minute, corker load and elevation" : "Elevation and stress";
+  return kind === "mass" ? t("Riders per minute, corker load and elevation") : t("Elevation and stress");
 }
 
 /** A Mass Ride's three charts, in the order drawn (the owner, 2026-10-10: "Riders per minute, Corker load, Elevation"), each with its heading and its slider's name. */
 export const MASS_CHARTS = [
-  { key: "riders", heading: "Riders per minute", name: "Riders per minute along the route" },
-  { key: "corkers", heading: "Corker load", name: "Corker load along the route" },
-  { key: "elevation", heading: "Elevation", name: "Elevation along the route" },
+  { key: "riders", heading: t("Riders per minute"), name: t("Riders per minute along the route") },
+  { key: "corkers", heading: t("Corker load"), name: t("Corker load along the route") },
+  { key: "elevation", heading: t("Elevation"), name: t("Elevation along the route") },
 ] as const;
 
 export type MassChartKey = (typeof MASS_CHARTS)[number]["key"];
@@ -1897,10 +1897,10 @@ export function corkerSentences(profile: RouteProfile, load: CorkerLoad | null):
 }
 
 /** How the corkers are counted: said in How these are worked out under the charts (the 2026-10-28 audit, P6), not in the chart's summary. */
-export const CORKER_METHOD = `Each junction needing corkers takes one for each approach lane of the busy road, or one an approach at a traffic signal, which already holds the cross traffic (${CORKERS_TWO_WAY} approaches, ${CORKERS_ONE_WAY} where the road is one-way; 1 lane where the lanes are not known); it is held from when the group's head reaches it until its tail passes, and a tick marks each one.`;
+export const CORKER_METHOD = t("Each junction needing corkers takes one for each approach lane of the busy road, or one an approach at a traffic signal, which already holds the cross traffic ({two} approaches, {one} where the road is one-way; 1 lane where the lanes are not known); it is held from when the group's head reaches it until its tail passes, and a tick marks each one.", { two: CORKERS_TWO_WAY, one: CORKERS_ONE_WAY });
 
 /** The requirement line's hold, as How these are worked out says it (the 2026-10-28 audit, P6: no longer in the chart's summary). */
-export const HOLD_PROPOSAL = `The ${RIDE_HOLD_MINUTES}-minute hold is a proposal, not yet confirmed.`;
+export const HOLD_PROPOSAL = t("The {minutes}-minute hold is a proposal, not yet confirmed.", { minutes: RIDE_HOLD_MINUTES });
 
 /** What the Elevation slider says at a position: "Mile 1.2: elevation 310 ft (94 m), grade 6%." */
 export function elevationReading(profile: RouteProfile, metres: number): string {
@@ -1966,10 +1966,14 @@ export function corkerFigure(route: Pick<RouteResponse, "preset" | "distance_m">
   if (!profile || chartKind(route) !== "mass") return null;
   const load = corkerLoad(profile, axisLength(route, profile), riders);
   if (!load) return null;
-  const size = `${riders.toLocaleString("en-US")} riders`;
-  const low = corkersMayBeLow(load) ? ` (may be low: ${lowReason(load)})` : "";
-  if (!load.peak) return { label: "Corkers", text: `${corkersMayBeLow(load) ? "None found" : "None needed"} for ${size}${low}` };
-  return { label: "Corkers", text: `${capitalise(corkerHeadline(load))} for ${size}${low}` };
+  const size = riders.toLocaleString("en-US");
+  const low = corkersMayBeLow(load)
+    ? t(" (may be low: {reason})", { reason: load.partial ? t("only the higher or very high stress junctions were found") : t("part of the route was not checked for intersections") })
+    : "";
+  const label = t("Corkers");
+  if (!load.peak) return { label, text: corkersMayBeLow(load) ? t("None found for {size} riders{low}", { size, low }) : t("None needed for {size} riders{low}", { size, low }) };
+  const count = load.headline;
+  return { label, text: corkersMayBeLow(load) ? t("At least about {count} for {size} riders{low}", { count, size, low }) : t("About {count} for {size} riders{low}", { count, size, low }) };
 }
 
 /**

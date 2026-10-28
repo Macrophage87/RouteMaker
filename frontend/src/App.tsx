@@ -5842,12 +5842,12 @@ export function App() {
         <div className="map-history">
           {can.undo && (
             <button type="button" data-history="undo" onClick={undo}>
-              Undo
+              {t("Undo")}
             </button>
           )}
           {can.redo && (
             <button type="button" data-history="redo" onClick={redo}>
-              Redo
+              {t("Redo")}
             </button>
           )}
         </div>
@@ -6014,7 +6014,7 @@ export function App() {
           {homeAsk && (
             <section className="home-offer" aria-labelledby="home-offer-heading">
               <h2 id="home-offer-heading" className="visually-hidden">
-                Home on this device
+                {t("Home on this device")}
               </h2>
               <p>{homeAsk.question}</p>
               <div className="actions">
@@ -6248,7 +6248,7 @@ export function App() {
                     }}
                   >
                     <Icon name="play" />
-                    Start ride
+                    {t("Start ride")}
                   </button>
                 </div>
               )}

@@ -216,7 +216,7 @@ test("Alert's choices and Other's Speak, Send and Cancel are ride-sized, with no
   // Every Alert button is inside the panel: its kinds, the confirm, and Other's form.
   const panel = group.slice(group.indexOf('className="ride-alert-panel"'), group.indexOf("{alerts.length > 0 && ("));
   assert.match(panel, /className="secondary ride-speak"/);
-  assert.match(panel, /<button type="submit">Send<\/button>/);
+  assert.match(panel, /<button type="submit">\{t\("Send"\)\}<\/button>/);
   assert.match(panel, /className="ride-alert-kinds"/);
 });
 

@@ -4,7 +4,11 @@
  * The API owns what each preset does (src/core/presets.py, one module); this is
  * only the picker's list and the sentence that explains each one, so a rider
  * does not have to know the vocabulary (PLAN.md, First run).
+ *
+ * The words here are English, the source: what shows goes through t() (presetLabel, presetSaid, presetSummary,
+ * presetDescription), so a Spanish page shows the Spanish; the ids are what is sent and kept.
  */
+import { t } from "./i18n.ts";
 
 /**
  * The ride types that reach a place on foot, with no bike of your own (Stephen 2026-10-19): Bikeshare docks the bike
@@ -201,7 +205,18 @@ export function parsePreset(value: unknown): PresetId {
 
 /** The name as it shows (it may carry emoji: show it with PresetName, which hides them from a screen reader). */
 export function presetLabel(id: PresetId): string {
-  return PRESETS.find((p) => p.id === id)?.label ?? id;
+  const label = PRESETS.find((p) => p.id === id)?.label;
+  return label ? t(label) : id;
+}
+
+/** The gist as it shows, in the page's language. */
+export function presetSummary(option: PresetOption): string {
+  return t(option.summary);
+}
+
+/** What the ride type does, in the page's language. */
+export function presetDescription(option: PresetOption): string {
+  return t(option.description);
 }
 
 /** Whether the ride type's own name is already a ride's (Mass Ride, Group Ride, Rebalance Ride): "Mass Ride", not "Mass Ride ride". */
@@ -212,7 +227,8 @@ export function presetNamesRide(id: PresetId): boolean {
 /** The name in words, for anything said or written as plain text (announcements, shared text, aria-labels). */
 export function presetSaid(id: PresetId): string {
   const option = PRESETS.find((p) => p.id === id);
-  return option?.spoken ?? option?.label ?? id;
+  const said = option?.spoken ?? option?.label;
+  return said ? t(said) : id;
 }
 
 /**

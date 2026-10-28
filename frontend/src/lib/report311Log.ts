@@ -143,6 +143,11 @@ export function kindLabel(kind: ReportKind): string {
   return REPORT_KINDS.find((k) => k.kind === kind)?.label ?? "Something else";
 }
 
+/** The problem as the rider reads it, in the page's language; kindLabel's English stays the report's own words. */
+export function kindShown(kind: ReportKind): string {
+  return t(kindLabel(kind));
+}
+
 function isTime(value: unknown): value is string {
   return typeof value === "string" && value.length <= 40 && !Number.isNaN(Date.parse(value));
 }
@@ -643,5 +648,5 @@ export function panelPlace(title: string | null, point: LonLat): ReportPlace {
 
 /** What the panel says once a problem is logged: "Logged for 311: Pothole on R Street Northeast." */
 export function panelLoggedSaid(entry: LogEntry): string {
-  return `Logged for 311: ${kindLabel(entry.kind)}${entry.place ? ` ${entry.place}` : ""}. It is in your 311 checklist in Reports.`;
+  return t("Logged for 311: {kind}{place}. It is in your 311 checklist in Reports.", { kind: kindShown(entry.kind), place: entry.place ? ` ${entry.place}` : "" });
 }

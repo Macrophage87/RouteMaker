@@ -143,7 +143,7 @@ export function PlacesSheet(props: PlacesSheetProps) {
     <SheetFrame id="sheet-places" title={go ? GO_SIGHTS_TITLE : SHEET_TITLES.places} open={nav.view === "places"} onBack={nav.back} backLabel={nav.backLabel("places")}>
       {!go && (
         <label className="places-filter">
-          Show{" "}
+          {t("Show")}{" "}
           <select value={filter} onChange={(event) => onFilter(event.target.value as PlaceFilter)}>
             <option value="all">{t("All places to see")}</option>
             {CATEGORIES.map((c) => (
@@ -166,16 +166,16 @@ export function PlacesSheet(props: PlacesSheetProps) {
                 {r.place.hours ? ` ${hoursText(r.place.hours, now)}.` : ""}
               </SightRow>
               <span className="actions">
-                <button type="button" className="secondary" aria-label={`Show on map: ${r.place.name}, marker ${placeLetter(i)}`} onClick={() => onShow(r)}>
+                <button type="button" className="secondary" aria-label={t("Show on map: {place}, marker {letter}", { place: r.place.name, letter: placeLetter(i) })} onClick={() => onShow(r)}>
                   {t("Show on map")}
                 </button>
                 {canAddStop && (
-                  <button type="button" className="secondary" aria-label={`Add as stop: ${r.place.name}`} onClick={() => onAddStop(r)}>
+                  <button type="button" className="secondary" aria-label={t("Add as stop: {place}", { place: r.place.name })} onClick={() => onAddStop(r)}>
                     {t("Add as stop")}
                   </button>
                 )}
                 {r.place.website && (
-                  <a className="food-web" href={r.place.website} target="_blank" rel="noopener noreferrer" aria-label={`Website: ${r.place.name} (opens in a new tab)`}>
+                  <a className="food-web" href={r.place.website} target="_blank" rel="noopener noreferrer" aria-label={t("Website: {place} (opens in a new tab)", { place: r.place.name })}>
                     {t("Website")}
                   </a>
                 )}
@@ -186,7 +186,7 @@ export function PlacesSheet(props: PlacesSheetProps) {
       )}
       {!go && items && items.length < total && (
         <button type="button" className="secondary food-more" onClick={onMore}>
-          Show {Math.min(PLACES_PAGE, total - items.length)} more
+          {t("Show {count} more", { count: Math.min(PLACES_PAGE, total - items.length) })}
         </button>
       )}
       {items && items.length > 0 && <p className="hint">{PLACES_NOTE}</p>}

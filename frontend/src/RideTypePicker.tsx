@@ -17,7 +17,7 @@
  */
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { t } from "./lib/i18n.ts";
-import { PRESETS, presetSaid, type PresetId } from "./lib/presets.ts";
+import { PRESETS, presetDescription, presetSaid, presetSummary, type PresetId } from "./lib/presets.ts";
 import { PresetName } from "./lib/presetName.ts";
 import { CARRYINGS, carries, type Carrying, type Dials } from "./lib/dials.ts";
 import { bikeLabel } from "./lib/bikeshare.ts";
@@ -108,24 +108,24 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
             <strong>
               {custom ? (
                 <>
-                  Custom (based on <PresetName id={preset} />)
+                  {t("Custom (based on")} <PresetName id={preset} />)
                 </>
               ) : (
                 <PresetName id={preset} />
               )}
               {carrying ? `, ${carrying.label.toLowerCase()}` : ""}
-              {dials.assist ? ", electric assist" : ""}
+              {dials.assist ? t(", electric assist") : ""}
               {dials.bike ? `, ${bikeLabel(dials.bike).toLowerCase()}` : ""}
             </strong>
             <span className="hint" aria-hidden="true">
-              {current?.summary}
+              {current && presetSummary(current)}
             </span>
           </span>
           <span className="ride-type-change">{t("Change")}</span>
         </button>
         {current && (
           <span id="ride-type-gist" hidden>
-            {current.description}
+            {presetDescription(current)}
           </span>
         )}
       </div>
@@ -149,7 +149,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
           <p className="hint">
             {t("Sets traffic and hills for this kind of ride.")}{" "}
             <button type="button" className="link ride-types-full" aria-pressed={full} onClick={() => setFull(!full)}>
-              What each does
+              {t("What each does")}
             </button>
           </p>
           <RideTypeSearch id="ride-types-search" query={query} onQuery={setQuery} count={rideTypeCount(groups)} />
@@ -175,19 +175,19 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
                         <PresetName id={option.id} />
                       </strong>
                       {full ? (
-                        <span className="hint">{option.description}</span>
+                        <span className="hint">{presetDescription(option)}</span>
                       ) : (
                         <>
                           <span className="hint" aria-hidden="true">
-                            {option.summary}
+                            {presetSummary(option)}
                           </span>
-                          <span className="visually-hidden">{option.description}</span>
+                          <span className="visually-hidden">{presetDescription(option)}</span>
                         </>
                       )}
                     </button>
                     <FavoriteStar id={option.id} on={favorites.includes(option.id)} onToggle={(id) => toggleFromPicker(id, dialogRef.current)} />
                     {carries(option.id) && (
-                      <div className="ride-type-loads" role="group" aria-label={`${presetSaid(option.id)}: cargo or passengers`}>
+                      <div className="ride-type-loads" role="group" aria-label={t("{ride}: cargo or passengers", { ride: presetSaid(option.id) })}>
                         {CARRYINGS.map((load) => (
                           <button
                             key={load.id}
