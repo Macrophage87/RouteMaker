@@ -99,8 +99,8 @@ export function searchStatus(result: GeoResult | null, query: string): string {
       ? t("Search is busy; keep typing or try again in a moment.")
       : t("Place search is not available right now.");
   }
-  if (result.places.length === 0) return `No places found for “${query}” in this map's area.`;
-  return result.places.length === 1 ? "1 place found." : `${result.places.length} places found.`;
+  if (result.places.length === 0) return t("No places found for “{query}” in this map's area.", { query });
+  return result.places.length === 1 ? t("1 place found.") : t("{count} places found.", { count: result.places.length });
 }
 
 export function PlaceSearch({

@@ -9,6 +9,7 @@
  * moves the focus to it; Cancel and Escape close it and the caller returns the focus to its button.
  */
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { t } from "./lib/i18n.ts";
 import { csrfFromCookie, countText } from "./lib/stressEditor.ts";
 import {
   SUGGEST_HEADING,
@@ -61,7 +62,7 @@ export function SuggestChange({ origin, wayId, title, current, point, halfSteps,
     event.preventDefault();
     if (sending || sent) return;
     if (step === current) {
-      fail("step", "Choose a level other than the road's own.");
+      fail("step", t("Choose a level other than the road's own."));
       return;
     }
     const problem = suggestProblem(reason);
@@ -102,9 +103,9 @@ export function SuggestChange({ origin, wayId, title, current, point, halfSteps,
       )}
       {!sent && (
         <form onSubmit={onSubmit} noValidate aria-describedby={error ? id("error") : undefined}>
-          <p className="stress-editor-now">Now: {suggestValueText(current)}.</p>
+          <p className="stress-editor-now">{t("Now:")}{" "}{suggestValueText(current)}.</p>
           <p className="stress-editor-extent">
-            <span className="road-info-label">This road piece:</span> {title}
+            <span className="road-info-label">{t("This road piece:")}</span> {title}
           </p>
           <div className="stress-editor-field">
             <label htmlFor={id("step")}>{SUGGEST_LEVEL_LABEL}</label>
@@ -126,8 +127,7 @@ export function SuggestChange({ origin, wayId, title, current, point, halfSteps,
               </output>
             </div>
             <p id={id("ticks")} className="hint stress-editor-ticks">
-              1 is the calmest, 5 is Avoid. The arrow keys move {halfSteps ? "half a step" : "a whole step"}; Home goes to 1
-              and End to 5.
+              {t("1 is the calmest, 5 is Avoid. The arrow keys move {step}; Home goes to 1 and End to 5.", { step: halfSteps ? t("half a step") : t("a whole step") })}
             </p>
           </div>
           <div className="stress-editor-field">
@@ -148,10 +148,10 @@ export function SuggestChange({ origin, wayId, title, current, point, halfSteps,
           </div>
           <div className="stress-editor-buttons">
             <button type="submit" aria-disabled={sending ? true : undefined}>
-              {sending ? "Sending…" : SUGGEST_SEND}
+              {sending ? t("Sending…") : SUGGEST_SEND}
             </button>
             <button type="button" className="secondary" onClick={onClose}>
-              Cancel
+              {t("Cancel")}
             </button>
           </div>
         </form>
@@ -159,7 +159,7 @@ export function SuggestChange({ origin, wayId, title, current, point, halfSteps,
       {sent && (
         <div className="stress-editor-buttons">
           <button type="button" className="secondary" onClick={onClose}>
-            Done
+            {t("Done")}
           </button>
         </div>
       )}

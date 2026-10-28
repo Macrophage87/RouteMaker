@@ -12,6 +12,7 @@
  * still a junction of its own on the map.
  */
 import { useId, useState } from "react";
+import { t } from "./lib/i18n.ts";
 import type { RouteResponse } from "./lib/api.ts";
 import {
   JUNCTION_HINT,
@@ -62,17 +63,17 @@ function JunctionGroupRow({ group, onSelect }: { group: JunctionGroupItem; onSel
         data-junction-group={group.number}
         aria-expanded={open}
         aria-controls={listId}
-        aria-label={rowName(group.severityText, "Group", group.text)}
+        aria-label={rowName(group.severityText, t("Group"), group.text)}
         onClick={() => setOpen(!open)}
       >
         <span className="junction-icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: warningIconSvg(group.severity, 18) }} />
         <span className="junction-severity">{group.severityText}</span>
         <span className="junction-where">
-          <span aria-hidden="true">{chevron(open)} </span>Group
+          <span aria-hidden="true">{chevron(open)} </span>{t("Group")}
         </span>
         <span className="junction-reason">{group.text}</span>
       </button>
-      <ul id={listId} className="junction-members" aria-label="Crossings in this group, in route order" hidden={!open}>
+      <ul id={listId} className="junction-members" aria-label={t("Crossings in this group, in route order")} hidden={!open}>
         {group.members.map((item) => (
           <li key={item.index}>
             <JunctionButton item={item} onSelect={onSelect} />
@@ -92,7 +93,7 @@ export function AvoidJunctionList({ route }: { route: RouteResponse }) {
   const avoid = avoidItems(route);
   if (avoid.length === 0) return null;
   return (
-    <ul className="junction-list avoid-list" aria-label="Avoid-rated junctions, in route order">
+    <ul className="junction-list avoid-list" aria-label={t("Avoid-rated junctions, in route order")}>
       {avoid.map((item, i) => (
         <li key={`${item.id}-${i}`} className="junction-avoid">
           <span className="avoid-symbol" aria-hidden="true">
@@ -120,7 +121,7 @@ export function IntersectionList({ route, onSelect }: Props) {
       <AvoidJunctionList route={route} />
       {items.length > 0 && (
         <>
-          <ul className="junction-list" aria-label="Stressful junctions, in route order">
+          <ul className="junction-list" aria-label={t("Stressful junctions, in route order")}>
             {rows.map((row) =>
               row.kind === "group" ? (
                 <JunctionGroupRow key={`g${row.group.number}-${row.group.members[0].m}`} group={row.group} onSelect={onSelect} />

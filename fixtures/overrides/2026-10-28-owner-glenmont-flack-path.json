@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "decided": "2026-10-28",
+  "decided_by": "the deployment owner",
+  "status": "Reported by the owner on 2026-10-28. Load with load_access_overrides (dry run first); takes effect on the next rebuild.",
+  "annotations": "One paved, lit path in Glenmont, way 656592016 (290 ft, 88 m), from the east end of Flack Street past the ponds to the crosswalk at the Glenmont Metro West Garage entrance, by Georgia Avenue and Glenallan Avenue. OSM tags it highway=footway, surface=concrete, lit=yes and no bicycle tag, so it was closed to bicycles by its class. It is not a sidewalk, and no bike way dead-ends on it, so the last-resort sidewalk and link rules (routemaker.sidewalks) left it closed, and routes went round by Denley Road and Georgia Avenue. Opened with a bicycle=yes access row, so it is ridden as a path.",
+  "rows": [
+    {
+      "kind": "access",
+      "osm_way_id": 656592016,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "The owner, 2026-10-28, of the path from Flack Street to the Glenmont Metro: \"This path was missed from the Glenmont metro\".",
+      "evidence": "The owner's report, 2026-10-28. OSM, read 2026-10-28: way 656592016 (version 4), highway=footway, surface=concrete, lit=yes, no access or bicycle tag; it joins Flack Street (5987962) to crosswalk 991302747 over the garage entrance road 413505139, then sidewalk 991302746 to the signalised Georgia Avenue crossing 1164218582.",
+      "fingerprint": {
+        "name": null,
+        "highway": "footway",
+        "length_m": 87.6,
+        "line": "-77.056260,39.062583 -77.056168,39.062585 -77.056135,39.062595 -77.056106,39.062609 -77.056041,39.062649 -77.055977,39.062680 -77.055895,39.062711 -77.055824,39.062728 -77.055730,39.062737 -77.055651,39.062737 -77.055570,39.062725 -77.055484,39.062700 -77.055403,39.062666 -77.055331,39.062627"
+      }
+    }
+  ]
+}
