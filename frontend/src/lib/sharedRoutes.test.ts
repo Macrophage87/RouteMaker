@@ -304,5 +304,5 @@ test("the owner's links: listed, turned off and replaced with the CSRF token, in
   assert.match(mine, /if \(turningOff !== l\.id\) \{\s*setTurningOff\(l\.id\);\s*return;/);
   assert.match(mine, /if \(ok\) onChange\(\);/);
   assert.match(mine, /return;\s*\}\s*onChange\(\);\s*const copied/);
-  assert.match(mine, /aria-label=\{`\$\{NEW_LINK\} for \$\{l\.name\}`\}/);
+  assert.match(mine, /aria-label=\{t\("New link for \{name\}", \{ name: l\.name \}\)\}/);
 });

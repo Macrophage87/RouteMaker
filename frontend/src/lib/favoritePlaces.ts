@@ -26,18 +26,18 @@ export interface FavoritePlace {
 /** core.api.FAVORITE_PLACES_MAX. */
 export const FAVORITE_PLACES_MAX = 20;
 
-export const FAVORITES_TEXT = "Favorites";
-export const WORK_TEXT = "Work";
+export const FAVORITES_TEXT = t("Favorites");
+export const WORK_TEXT = t("Work");
 export const SET_HOME_TEXT = t("Set Home");
 export const SET_WORK_TEXT = t("Set Work");
 export const ADD_FAVORITE_TEXT = t("Add a place");
 /** The road panel's "Use this spot" row, beside Set as Home, and the ride summary's for the ride's destination. */
 export const SAVE_SPOT_TEXT = t("Save to Favorites");
 /** The ride summary's line once its destination is a favorite. */
-export const SAVED_TO_FAVORITES = (name: string) => `${name} is in your Favorites.`;
-export const EDIT_FAVORITES_TEXT = "Edit";
-export const DONE_EDITING_TEXT = "Done";
-export const FAVORITES_FULL = `Favorites hold ${FAVORITE_PLACES_MAX} places. Remove one to add another.`;
+export const SAVED_TO_FAVORITES = (name: string) => t("{name} is in your Favorites.", { name });
+export const EDIT_FAVORITES_TEXT = t("Edit");
+export const DONE_EDITING_TEXT = t("Done");
+export const FAVORITES_FULL = t("Favorites hold {max} places. Remove one to add another.", { max: FAVORITE_PLACES_MAX });
 export const FAVORITES_NOT_SAVED = t("Favorites could not be saved. Try again.");
 /** The popout's line while the account's list is read. */
 export const FAVORITES_LOADING = t("Loading your favorites…");
@@ -125,10 +125,10 @@ export function withoutFavorite(places: readonly FavoritePlace[], place: Favorit
 
 /** Said once a place is saved, or removed. */
 export function favoriteSavedSaid(place: FavoritePlace): string {
-  return place.work ? `Work set to ${favoriteName(place)}.` : `${favoriteName(place)} saved to Favorites.`;
+  return place.work ? t("Work set to {name}.", { name: favoriteName(place) }) : t("{name} saved to Favorites.", { name: favoriteName(place) });
 }
 export function favoriteRemovedSaid(place: FavoritePlace): string {
-  return place.work ? "Work cleared." : `${favoriteName(place)} removed from Favorites.`;
+  return place.work ? t("Work cleared.") : t("{name} removed from Favorites.", { name: favoriteName(place) });
 }
 
 type Fetch = typeof fetch;

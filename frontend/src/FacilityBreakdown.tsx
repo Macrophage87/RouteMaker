@@ -4,6 +4,7 @@
  * places it (another lane is changing App.tsx).
  */
 import { useId } from "react";
+import { t } from "./lib/i18n.ts";
 import { formatDistance } from "./lib/format.ts";
 import { avoidMetres, breakdownParts, facilityRows, type BreakdownPart } from "./lib/facilityBar.ts";
 import type { RouteResponse } from "./lib/api.ts";
@@ -42,8 +43,8 @@ export function FacilityBreakdown({ route, part = "all" }: { route: RouteRespons
     <>
       {figures && colours.length > 0 && (
         <figure className="stress route-colours" aria-labelledby={`${id}-colours`}>
-          <figcaption id={`${id}-colours`}>The route on the map, by traffic stress</figcaption>
-          <ul className="stress-list" aria-label="Route color legend">
+          <figcaption id={`${id}-colours`}>{t("The route on the map, by traffic stress")}</figcaption>
+          <ul className="stress-list" aria-label={t("Route color legend")}>
             {colours.map((row) => (
               <li key={row.key}>
                 <svg width="36" height={ROUTE_SWATCH_HEIGHT} aria-hidden="true">
@@ -84,13 +85,12 @@ export function FacilityBreakdown({ route, part = "all" }: { route: RouteRespons
       )}
       {notices && avoid > 0 && (
         <p className="notice avoid" role="note">
-          {formatDistance(avoid)} of this route is on roads marked legal but best avoided, such as expressways and some bridge roadways. The
-          planner uses them only where every other way is much longer.
+          {t("{distance} of this route is on roads marked legal but best avoided, such as expressways and some bridge roadways. The planner uses them only where every other way is much longer.", { distance: formatDistance(avoid) })}
         </p>
       )}
       {figures && rows.length > 0 && (
         <figure className="stress facility" aria-labelledby={`${id}-facility`}>
-          <figcaption id={`${id}-facility`}>Bike facilities along the route</figcaption>
+          <figcaption id={`${id}-facility`}>{t("Bike facilities along the route")}</figcaption>
           <div className="stress-bar" aria-hidden="true">
             {rows
               .filter((r) => r.fraction > 0)
@@ -99,7 +99,7 @@ export function FacilityBreakdown({ route, part = "all" }: { route: RouteRespons
                   key={r.key}
                   className={`stress-seg facility-seg-${r.key}`}
                   style={{ width: `${r.fraction * 100}%`, backgroundColor: r.color }}
-                  title={`${r.label}: ${r.percent}%`}
+                  title={t("{label}: {percent}%", { label: r.label, percent: r.percent })}
                 />
               ))}
           </div>
