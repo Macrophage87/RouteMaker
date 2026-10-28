@@ -4757,7 +4757,7 @@ async function goPressMap(p, card = null) {
 {
   // The owner, 2026-10-12: "When on Go mode, make it so the location you press is the end." A press on the map is the
   // destination, routed from the location at once, and said ("Destination set: …"; Brief, Go's default, says no more).
-  // Since 2026-10-28 (cc1fdf86) the tap opens the road card and its Route here does this: the tap alone routes nothing.
+  // Since 2026-10-28 (cc1fdf86) the tap opens the spot's card (GoSpotDialog) and its Route here does this: the tap alone routes nothing.
   const p = await goWith("granted");
   const card = {};
   const at = await goPressMap(p, card);

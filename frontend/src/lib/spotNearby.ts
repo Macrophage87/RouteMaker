@@ -62,7 +62,7 @@ export const SPOT_MIN = 4;
 export const NEARBY_HEADING = t("Nearby");
 export const FINDING_ADDRESS = t("Finding the address…");
 export const DROPPED_PIN = t("Dropped pin");
-export const NOTHING_NEAR = t("Nothing useful within a mile.");
+export const NOTHING_NEAR = t("Nothing useful within {distance}.", { distance: formatDistance(SPOT_NEAR_M) });
 export const NEARBY_LOADING = t("Looking for places nearby…");
 export const ROAD_INFO_TEXT = t("Road info");
 /** The folded list's button: the same places as the pins, for a screen reader and the keyboard. */
@@ -171,7 +171,7 @@ export function metroSpotPlaces(stations: readonly Station[], closedReason?: (st
   return metroPlaces(stations, closedReason).map((p) => {
     const station = stations.find((s) => s.id === p.id);
     const lines = p.details[0]?.replace(/\.$/, "") ?? "";
-    return fromNearest("metro", { ...p, name: station?.name ?? p.title }, lines ? `Metro: ${lines}` : "Metro", "train", true);
+    return fromNearest("metro", { ...p, name: station?.name ?? p.title }, lines ? t("Metro: {lines}", { lines }) : "Metro", "train", true);
   });
 }
 
@@ -197,6 +197,15 @@ export function spotNearby(from: LonLat, places: readonly SpotPlace[], withinM =
     if (!chosen.includes(p)) chosen.push(p);
   }
   return chosen.sort((a, b) => a.metres - b.metres || a.index - b.index).map(({ place, metres }) => ({ ...place, metres }));
+}
+
+/**
+ * What the pins show of `rows`, as one string: the same while the same places stand in the same order under the same
+ * names, so a refresh that changes nothing a pin shows (the rail poll, every 5 minutes) keeps the pins and the
+ * keyboard's focus on one. "" for none, or while they load.
+ */
+export function spotPinsKey(rows: readonly SpotRow[] | null): string {
+  return (rows ?? []).map((row) => [row.id, row.kind, row.label ?? "", spotRowName(row)].join("\u0001")).join("\u0002");
 }
 
 /** The card's heading and the line under it, from the reverse geocoder's answer. */

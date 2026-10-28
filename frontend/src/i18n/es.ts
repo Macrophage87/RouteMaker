@@ -345,6 +345,20 @@ export const ES: Readonly<Record<string, string>> = {
   "How much to say": "Cuánto decir",
   "Latest cue": "Última indicación",
   "Checking closures…": "Revisando cierres…",
+  // ---- The closure check's dialog (ClosureDialog.tsx, lib/closureCheck.ts; P11) ----
+  "This route goes through 1 closure": "Esta ruta pasa por 1 cierre",
+  "This route goes through {count} closures": "Esta ruta pasa por {count} cierres",
+  "Reroute around them": "Desviar alrededor de ellos",
+  "Reroute around it": "Desviar alrededor de él",
+  "Park notices ({count})": "Avisos de parques ({count})",
+  "Download anyway": "Descargar de todos modos",
+  "Save anyway": "Guardar de todos modos",
+  "Ride it anyway": "Recorrerla de todos modos",
+  "Closures in force now that the file's line runs along. Reroute first, or download it as it is.":
+    "Cierres vigentes ahora por donde pasa la línea del archivo. Desvíe primero, o descárguelo tal como está.",
+  "Closures in force now that this route runs along. Reroute first, or save it as it is.":
+    "Cierres vigentes ahora por donde pasa esta ruta. Desvíe primero, o guárdela tal como está.",
+  "Closures on this route now.": "Cierres en esta ruta ahora.",
   "This ride stays on its route, never re-routed.": "Este recorrido se mantiene en su ruta, nunca se cambia.",
   "Finding a new way from here…": "Buscando un camino nuevo desde aquí…",
   "Re-plan from here": "Volver a planear desde aquí",
@@ -900,6 +914,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Cobblestones or rails in the road, marked on a route only. Routes avoid them where they can and the directions name each.": "Adoquines o rieles en la calle, marcados solo en una ruta. Las rutas los evitan donde pueden y las indicaciones nombran cada uno.",
   "Copy report": "Copiar reporte",
   "Could not copy; select the report's text instead.": "No se pudo copiar; seleccione el texto del reporte.",
+  "Could not copy. Copy it from the report below.": "No se pudo copiar. Cópielo del reporte de abajo.",
   "Default": "Predeterminado",
   "Destination set: {place}.": "Destino fijado: {place}.",
   "Details": "Detalles",
@@ -1601,7 +1616,8 @@ export const ES: Readonly<Record<string, string>> = {
   // ---- Go's tapped-spot card (GoSpotDialog.tsx, lib/spotNearby.ts) ----
   "Finding the address…": "Buscando la dirección…",
   "Dropped pin": "Punto marcado",
-  "Nothing useful within a mile.": "Nada útil a menos de una milla.",
+  "Nothing useful within {distance}.": "Nada útil a menos de {distance}.",
+  "Metro: {lines}": "Metro: {lines}",
   "Looking for places nearby…": "Buscando lugares cercanos…",
   List: "Lista",
   Food: "Comida",

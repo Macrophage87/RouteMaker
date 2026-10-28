@@ -36,13 +36,15 @@ export interface PlanPanelProps {
    * start. `busy` while the location is being found; `unavailable` why this browser cannot find it, or null.
    */
   locate?: { onLocate: () => void; busy: boolean; unavailable: string | null } | null;
+  /** The page's status line (App's announce): Enter while Route is unavailable says why there. */
+  onSay?: (text: string) => void;
 }
 
 /** The button on an empty plan. */
 export const START_HERE_LABEL = t("Start at current location");
 
 export function PlanPanel(props: PlanPanelProps) {
-  const { sentences, button, onRoute, routing, onCancel, change, details, onCloseChange, resetUnavailable, onReset, locate } = props;
+  const { sentences, button, onRoute, routing, onCancel, change, details, onCloseChange, resetUnavailable, onReset, locate, onSay } = props;
   const [detailsOpen, setDetailsOpen] = useState(false);
   const planId = useId();
   const detailsId = useId();
@@ -58,8 +60,13 @@ export function PlanPanel(props: PlanPanelProps) {
     else if (!routing && panelHadFocus.current && document.activeElement === document.body) panelRef.current?.focus();
   }, [routing !== null]);
   const route = () => {
-    if (button.unavailable === null && !routing) onRoute();
+    if (routing) return;
+    // Enter with nothing to route ("The route shown is up to date."): said on the status line, not met with silence.
+    if (button.unavailable === null) onRoute();
+    else onSay?.(button.unavailable);
   };
+  // Why Route is not offered now, said out of sight below, is part of the panel's description too.
+  const whySaid = !!button.unavailable && !locate && !routing;
   // Enter on the panel itself, or Ctrl+Enter (Cmd+Enter) anywhere in it, routes; Enter on a link opens its editor.
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Enter") return;
@@ -74,7 +81,7 @@ export function PlanPanel(props: PlanPanelProps) {
       ref={panelRef}
       className={routing || rowShown || change ? "plan-panel" : "plan-panel plan-panel-quiet"}
       aria-labelledby="plan-panel-heading"
-      aria-describedby={planId}
+      aria-describedby={whySaid ? `${planId} ${routeWhy}` : planId}
       aria-keyshortcuts="Control+Enter Meta+Enter"
       tabIndex={-1}
       onKeyDown={onKeyDown}

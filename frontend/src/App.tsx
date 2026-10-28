@@ -5387,6 +5387,7 @@ export function App() {
           ? { onLocate: () => void useMyLocation("start"), busy: locating, unavailable: locateReady.available ? null : locateReady.reason }
           : null
       }
+      onSay={announce}
     />
   );
   const pointsSection = (

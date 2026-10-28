@@ -293,6 +293,11 @@ test("Ride mode and Roam letter their found places on the map, each row with Sho
   }
   // A ride's pins: while Detour is open, or after Show on map, and only from its list.
   assert.match(ride, /const lettered = detourOpen \|\| detourPinsKept \? detourLetters : null;/);
+  // Kept only until the list changes or another menu opens: no stale row index, no pins left behind.
+  assert.match(ride, /useEffect\(\(\) => \{\s*shownRow\.current = null;\s*setDetourPinsKept\(false\);\s*if \(!detourOpenRef\.current\) setDetourKind\(null\);\s*\}, \[detourList\]\);/);
+  assert.match(ride, /if \(!dockOpen && !menu311 && !moreOpen\) return;\s*shownRow\.current = null;\s*setDetourKind\(null\);\s*setDetourPinsKept\(false\);/);
+  // Where each place falls along the route is worked out per list, not per fix.
+  assert.match(ride, /const detourAlong = useMemo\([\s\S]{0,120}snap\(model, item\.place\.point\)[\s\S]{0,40}\[detourList, model\]\);/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /lettered=\{riding \? \(rideView\?\.lettered \?\? null\) : roaming && roamLettered \? roamLettered\.places : lettered\}/);
   // The follow camera keeps the map while following: the pins are not framed over it.

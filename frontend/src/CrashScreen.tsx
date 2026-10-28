@@ -65,7 +65,7 @@ export function CrashScreen({ report }: { report: string }) {
   useEffect(() => heading.current?.focus(), []);
   const copy = async () => {
     const done = await copyText(report, navigator.clipboard, selectionCopy);
-    setSaid(done ? CRASH_COPIED : "Could not copy. Copy it from the report below.");
+    setSaid(done ? CRASH_COPIED : t("Could not copy. Copy it from the report below."));
     if (!done && details.current) {
       // The report is opened and selected, so the rider can copy it by hand.
       details.current.open = true;
