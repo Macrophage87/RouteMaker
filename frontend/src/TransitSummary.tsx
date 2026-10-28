@@ -25,6 +25,8 @@ import {
   stepIcon,
   stepStressSaid,
   timesFromText,
+  tripCredits,
+  tripNotes,
 } from "./lib/transit.ts";
 import { Icon } from "./Icon.tsx";
 import { DepartureTimer } from "./DepartureTimer.tsx";
@@ -66,6 +68,8 @@ export function TransitSummary({
   onRideRest?: () => void;
 }) {
   const id = useId();
+  // The trip's own lines' notes, each said once (P11; lib/transit.ts tripNotes).
+  const notes = tripNotes(plan);
   return (
     <section className="transit" aria-labelledby={`${id}-heading`}>
       <h3 id={`${id}-heading`}>
@@ -98,7 +102,8 @@ export function TransitSummary({
         <strong>{plan.summary}</strong>
       </p>
       {plan.departure && <DepartureTimer departure={plan.departure} announce={announce} onMissed={onMissed} />}
-      {plan.comparison && <p className={plan.riding_quicker ? "transit-compare notice" : "transit-compare hint"}>{plan.comparison}</p>}
+      {/* Riding the whole way quicker is a plain line, not a warning box (P11): nothing is wrong. */}
+      {plan.comparison && <p className={plan.riding_quicker ? "transit-compare" : "transit-compare hint"}>{plan.comparison}</p>}
       {plan.live && plan.live.warnings.length > 0 && (
         // An elevator out where the bike needs one: a warning, never an avoidance (v0.7.0).
         <ul className="transit-warnings notice" aria-label="Warnings">
@@ -131,14 +136,14 @@ export function TransitSummary({
           </p>
         </div>
       )}
-      {(plan.notes.length > 0 || (plan.live?.alerts.length ?? 0) > 0) && (
+      {(notes.length > 0 || (plan.live?.alerts.length ?? 0) > 0) && (
         <ul className="transit-notes" aria-label="Notes on this plan">
           {(plan.live?.alerts ?? []).map((alert) => (
             <li key={alert} className="hint transit-alert">
               {alert} ({plan.live?.credit}, live)
             </li>
           ))}
-          {plan.notes.map((note) => (
+          {notes.map((note) => (
             <li key={note} className="hint">
               {note}
             </li>
@@ -157,7 +162,7 @@ export function TransitSummary({
           </p>
         </>
       )}
-      {plan.credits.length > 0 && <p className="route-credit">Transit times: {plan.credits.join("; ")}.</p>}
+      {plan.credits.length > 0 && <p className="route-credit">Transit times: {tripCredits(plan).join("; ")}.</p>}
       {plan.live && <p className="route-credit">Live: {plan.live.credit}.</p>}
     </section>
   );
