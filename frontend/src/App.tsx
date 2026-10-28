@@ -28,7 +28,7 @@ import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { forgetPlan, isPlainClick, planToOpen, rememberPlanForSignIn, tabSession } from "./lib/signIn.ts";
 import { STILL_PLANNING_AFTER_MS, announceRoute, stillPlanningSaid } from "./lib/summary.ts";
 import { focusesPlanButton, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
-import { neutralPaletteSearch, MTB_MIN_ZOOM, mtbTrailsOn, setAccessibility, setMtbTrails, setRoutableMtb } from "./stressStyle.js";
+import { neutralPaletteSearch, mtbMinZoom, mtbTrailsOn, setAccessibility, setMtbTrails, setRoutableMtb } from "./stressStyle.js";
 import { setTopoLines, topoAvailable, useTopoLines } from "./lib/topoLines.ts";
 import { isMtb, mtbChosen, mtbLevelOf } from "./lib/mtbMode.ts";
 import { choose as chooseRideType, isCustom } from "./lib/rideTypeDialog.ts";
@@ -6014,7 +6014,7 @@ export function App() {
       )}
       {/* The mountain-bike trails' key on the map (the owner, 2026-10-19), while their layer draws. */}
       {/* Not in Go, which keeps its map clear (the owner: streamline Go); Layers holds the key there. */}
-      {!riding && !goNow && <MtbMapKey drawn={stress === "available" && zoom !== null && zoom >= MTB_MIN_ZOOM} />}
+      {!riding && !goNow && <MtbMapKey drawn={stress === "available" && zoom !== null && zoom >= mtbMinZoom(routableLevel)} />}
       {/* The beta notice: a chip in the map's free bottom-left corner, only in a VITE_BETA=1 build; not in a ride or Roam. */}
       {!onBike && (
         <BetaChip

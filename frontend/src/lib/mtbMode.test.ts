@@ -21,7 +21,8 @@ import {
 import { dialFields, fitDials, startDials } from "./dials.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
 import { PRESETS } from "./presets.ts";
-import { mtbLevelLayerId, routableMtbLevel, setRoutableMtb, stressFilters } from "../stressStyle.js";
+import { MTB_MIN_ZOOM, MTB_MODE_MIN_ZOOM, MTB_OVERVIEW_LAYER_ID, mtbLevelLayerId, mtbMinZoom, mtbOverviewLayers, mtbTrailLayers, routableMtbLevel, setRoutableMtb, stressFilters } from "../stressStyle.js";
+import { STRESS_ZOOMS } from "./mapStyle.ts";
 
 function draws(filter: unknown, id: string, properties: Record<string, unknown>): boolean {
   const compiled = spec.featureFilter(filter as never, `layers[${id}].filter`).filter;
@@ -251,4 +252,37 @@ test("the route says where its trails go easier or harder than preferred", () =>
   assert.ok(old.notes.every((n) => !/preferred/.test(n)));
   // A harder trail past the hardest is still the warning, with the hardest level named.
   assert.match(mtbNotes({ max_level: 1, preferred_level: 1, over_level_m: 400 }).warnings[0], /raise your hardest level/);
+});
+
+test("the trails show at every zoom in Mountain Bike, as one thin line below z12, and from z12 in every other ride type (the owner, 2026-10-28)", () => {
+  // The map's widest zoom, where the tiles carry every mountain-bike trail (core/stress_tiles.py, ZOOMED_OUT_MTB).
+  assert.equal(MTB_MODE_MIN_ZOOM, STRESS_ZOOMS.min);
+  assert.equal(MTB_MIN_ZOOM, STRESS_ZOOMS.quiet);
+  const [overview] = mtbOverviewLayers();
+  assert.equal(overview.id, MTB_OVERVIEW_LAYER_ID);
+  assert.equal(overview.minzoom, MTB_MODE_MIN_ZOOM);
+  assert.equal(overview.maxzoom, MTB_MIN_ZOOM);
+  // No white edge, ticks or dashes zoomed out: one thin solid line.
+  assert.equal(overview.paint["line-dasharray"], undefined);
+  // Every other line of the trail layer still starts at z12.
+  for (const layer of mtbTrailLayers()) assert.equal(layer.minzoom, MTB_MIN_ZOOM);
+  const trail = (level?: number) => ({ mtb: true, tier: 1, unpaved: true, ...(level ? { mtb_level: level } : {}) });
+  const drawsAt = (filter: unknown, zoom: number, properties: Record<string, unknown>) =>
+    spec.featureFilter(filter as never, "f").filter({ zoom } as never, { type: 2, properties, geometry: [] } as never);
+  try {
+    setRoutableMtb(null);
+    assert.equal(mtbMinZoom(), MTB_MIN_ZOOM);
+    assert.equal(drawsAt(stressFilters()[MTB_OVERVIEW_LAYER_ID], 10, trail(1)), false);
+    setRoutableMtb(2);
+    assert.equal(mtbMinZoom(), MTB_MODE_MIN_ZOOM);
+    const filters = stressFilters();
+    for (const level of [undefined, 1, 2, 3, 4]) assert.equal(drawsAt(filters[MTB_OVERVIEW_LAYER_ID], 10, trail(level)), true);
+    assert.equal(drawsAt(filters[MTB_OVERVIEW_LAYER_ID], 10, { tier: 1 }), false);
+    // The routable lines leave a trail within the level to the overview line below z12, and draw it from z12.
+    assert.equal(drawsAt(filters["stress-1"], 10, trail(2)), false);
+    assert.equal(drawsAt(filters["stress-1"], 12, trail(2)), true);
+    assert.equal(drawsAt(filters["stress-1"], 10, { tier: 1 }), true);
+  } finally {
+    setRoutableMtb(null);
+  }
 });

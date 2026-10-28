@@ -5654,6 +5654,13 @@ class TrailProfileOut(Schema):
     end: list[float] | None = Field(
         default=None, description="The way's last point, [lon, lat]: the chart's right end."
     )
+    line: list[list[float]] | None = Field(
+        default=None,
+        description=(
+            "The way's line, [lon, lat] pairs from start to end (thinned to at most 1000"
+            " points): the map lights up the section the chart and the rating are of."
+        ),
+    )
 
 
 @api.get(

@@ -3000,9 +3000,7 @@ def build_handlers(
         beside = facility.beside_separate_roads(
             (way.osm_id, way.tags, way.coordinates) for way in context.ways
         )
-        context.short_paths_hidden = facility.short_paths_to_hide(
-            (way.osm_id, way.tags, way.node_ids, way.coordinates) for way in context.ways
-        )
+        context.short_paths_hidden = set()
         # By their place: the roads inside a military base, many with no access
         # tag of their own (the Pentagon's; OWNER-DECISIONS 88), every way inside
         # a cemetery (98), and a parking lot's own ways (99). Map only, but for
@@ -3167,6 +3165,13 @@ def build_handlers(
         )
         context.short_paths_hidden |= context.cemetery_ways
         context.short_paths_hidden |= restricted_areas.parking_ways(placed, areas["parking"])
+        # Last, so a way hidden by its place neither anchors a short link nor
+        # leaves the rest of a link mapped in pieces drawn as a stub.
+        context.short_paths_hidden |= facility.short_paths_to_hide(
+            (way.osm_id, way.tags, way.node_ids, way.coordinates)
+            for way in context.ways
+            if way.osm_id not in context.short_paths_hidden
+        )
         nobike = trail_closures.closures(
             context.ways,
             routes,
