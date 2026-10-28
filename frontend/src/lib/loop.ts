@@ -69,20 +69,20 @@ export function loopStops(preset: PresetId, loop: boolean | undefined): boolean 
  * What to do first when the loop is checked before any point is placed (OWNER-DECISIONS 389). It is the
  * toggle's visible hint then, and what is said once when the box is checked (pointText.ts).
  */
-export const LOOP_FIRST_HINT = "Place the starting point, then a stop or two along the way.";
+export const LOOP_FIRST_HINT = t("Place the starting point, then a stop or two along the way.");
 
 /** The toggle's hint: what it does now, in the state the points are in. */
 function loopHint(loop: boolean | undefined, implied: boolean, count: number): string {
   if (implied) {
-    return "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.";
+    return t("This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.");
   }
   if (loop === true) {
     return count === 0
       ? LOOP_FIRST_HINT
-      : "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.";
+      : t("Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.");
   }
-  if (count < 2) return "Turn on to finish back at the start. Each point you add is then a stop.";
-  return "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.";
+  if (count < 2) return t("Turn on to finish back at the start. Each point you add is then a stop.");
+  return t("Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.");
 }
 
 /**

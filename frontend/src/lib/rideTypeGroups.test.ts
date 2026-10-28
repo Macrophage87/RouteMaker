@@ -144,7 +144,11 @@ test("Go's More ride types and Plan's dialog: the search first, then each group 
   assert.ok(go.indexOf("<RideTypeSearch") < go.indexOf("groups.map"), "the search comes before the groups");
   const plan = src("../RideTypePicker.tsx");
   assert.match(plan, /<RideTypeSearch id="ride-types-search"/);
-  assert.match(plan, /<section key=\{group\.id\} className="ride-type-group" aria-labelledby=\{`ride-types-\$\{group\.id\}`\}>\s*<h3 id=\{`ride-types-\$\{group\.id\}`\}>\{group\.label\}<\/h3>/);
+  // Each group under its heading; in the popup (the owner, 2026-10-28) the groups after Favorites and Common are
+  // folded, as Go's sheet folds them, the one in use open, its heading then read and the fold's summary shown.
+  assert.match(plan, /<GroupFold key=\{group\.id\} fold=\{folded && !OPEN_GROUPS\.includes\(group\.id\)\} label=\{group\.label\} count=\{group\.ids\.length\} open=\{group\.ids\.includes\(preset\)\}>\s*<section className="ride-type-group" aria-labelledby=\{`ride-types-\$\{group\.id\}`\}>\s*<h3 id=\{`ride-types-\$\{group\.id\}`\} className=\{folded && !OPEN_GROUPS\.includes\(group\.id\) \? "visually-hidden" : undefined\}>\{group\.label\}<\/h3>/);
+  assert.match(plan, /const folded = rideSections\(query, undefined, favorites\)\.folded;/);
+  assert.match(plan, /const OPEN_GROUPS: readonly string\[\] = \["favorites", "common"\];/);
   assert.ok(plan.indexOf("<RideTypeSearch") < plan.indexOf("groups.map((group)"), "the search comes before the groups");
   // The search is cleared as the dialog closes, so the next opening has every type and the one in
   // use takes the focus (cleared on open, the card would not be there yet to focus).

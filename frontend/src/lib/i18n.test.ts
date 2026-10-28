@@ -9,6 +9,11 @@ import { arrivalSideWords, crossingWords, cueSpoken, endWords, exitWords, ontoWo
 import { spokenDistance } from "./format.ts";
 import * as navigate from "./navigate.ts";
 import { OUTPUT_LABELS } from "./rideOutput.ts";
+import { PRESETS, presetLabel, presetSaid } from "./presets.ts";
+import { REPORT_KINDS } from "./report311.ts";
+import { kindLabel, kindShown } from "./report311Log.ts";
+import { CUISINE_WORDS, foodKindText, type FoodPlace } from "./food.ts";
+import { MASS_BANDS } from "../massStyle.js";
 
 const SRC = fileURLToPath(new URL("..", import.meta.url));
 
@@ -124,4 +129,33 @@ test("a narrow button's first word and the rest, in either language", () => {
   assert.deepEqual(firstWordAndRest("Save route"), ["Save", " route"]);
   assert.deepEqual(firstWordAndRest(t("Start ride", undefined, "es")), ["Iniciar", " recorrido"]);
   assert.deepEqual(firstWordAndRest("Loop"), ["Loop", ""]);
+});
+
+test("the words shown from lists (ride types, 311 problems, cuisines, capacity bands) have their Spanish (the 2026-10-28 audit, P9)", () => {
+  const listed = [
+    ...PRESETS.flatMap((p) => [p.label, p.summary, p.description, ...(p.spoken ? [p.spoken] : [])]),
+    ...REPORT_KINDS.map((k) => k.label),
+    ...CUISINE_WORDS,
+    ...MASS_BANDS.flatMap((b: { name: string; short: string }) => [b.name, b.short]),
+  ];
+  assert.deepEqual(listed.filter((english) => !(english in ES)), []);
+});
+
+test("Spanish shows the Spanish, and what is sent or kept stays English (P9)", () => {
+  const place = { id: "n1", lon: -77, lat: 38.9, kind: "r", name: "Alta Strada", cuisine: ["italian", "kosher"] } as FoodPlace;
+  setLanguageForTest("es");
+  try {
+    assert.equal(presetLabel("group-ride"), "Paseo en grupo");
+    assert.equal(presetSaid("bike-transit"), "Bicicleta propia más tren o autobús");
+    // A 311 report's words are DC's, in English; the button the rider presses is in Spanish.
+    assert.equal(kindLabel("pothole"), "Pothole");
+    assert.equal(kindShown("pothole"), "Bache");
+    // OSM's cuisine values in words; one with no Spanish word is left out, not shown raw. (The kind's label is made
+    // at load, in English here.)
+    assert.equal(foodKindText(place), "Restaurant: italiano");
+  } finally {
+    setLanguageForTest("en");
+  }
+  assert.equal(presetLabel("group-ride"), "Group Ride");
+  assert.equal(foodKindText(place), "Restaurant: italian, kosher");
 });

@@ -24,7 +24,7 @@ export const isMassRide = (preset: string | null | undefined): boolean => preset
 
 /** The legend's title: the unit and the speed the figure is for (the approved mock-up's). */
 export const CAPACITY_SPEED = formatSpeedRange(6, 8);
-export const CAPACITY_LEGEND_TITLE = `Riders per minute at ${CAPACITY_SPEED}`;
+export const CAPACITY_LEGEND_TITLE = t("Riders per minute at {speed}", { speed: CAPACITY_SPEED });
 
 /**
  * Where the figures come from, as every data source is credited (OWNER-DECISIONS 301, 306): short
@@ -40,10 +40,10 @@ export const CAPACITY_SOURCE =
   "width for the kind of road. The riders-per-minute model is a working model based on counts of DC Bike Party rides.";
 
 /** The route panel's title for the same figures. */
-export const CAPACITY_FIGURE_TITLE = "Riders per minute along the route";
+export const CAPACITY_FIGURE_TITLE = t("Riders per minute along the route");
 
 /** The route view's fold for the same figures, in place of "Stress and facilities" (OWNER-DECISIONS 312, 325). */
-export const CAPACITY_FOLD_TITLE = "Riders per minute";
+export const CAPACITY_FOLD_TITLE = t("Riders per minute");
 
 /** What the figure is, said once in plain words (the stress legend's LTS_MEANS, for this map). */
 export const CAPACITY_MEANS =
@@ -52,7 +52,7 @@ export const CAPACITY_MEANS =
   "A ride flows at its narrowest point. Trails, protected bike lanes and bike lanes are not drawn here.";
 
 /** Below the map's first zoom: nothing is drawn yet. */
-export const MASS_ZOOM_IN = "Zoom in to see roads and how many riders per minute they carry.";
+export const MASS_ZOOM_IN = t("Zoom in to see roads and how many riders per minute they carry.");
 
 /**
  * What the Mass Ride map draws at the zoom it is at, below its first zoom only (the bands it shows
@@ -120,7 +120,7 @@ export const MASS_ZOOM_HINT =
 /** The legend row for a band: "Under 60: bottleneck". */
 export function bandLegendText(index: number): string {
   const band = MASS_BANDS[index];
-  return `${band.short}: ${band.name}`;
+  return `${t(band.short)}: ${t(band.name)}`;
 }
 
 /**
@@ -128,12 +128,12 @@ export function bandLegendText(index: number): string {
  * key and the chart (accessibility review N3). Not "marked by riders": tier-5 Avoid comes from the
  * owner's overrides and corridors today, and riders' reports are not built (325: "If we've marked it avoid").
  */
-export const AVOID_LEGEND_TEXT = "Marked Avoid: no capacity given";
+export const AVOID_LEGEND_TEXT = t("Marked Avoid: no capacity given");
 
 /** The word for a figure's band: "bottleneck", "tight", "good" or "wide open"; "" for no figure. */
 export function bandName(rpm: number | null | undefined): string {
   const index = bandIndex(rpm ?? null);
-  return index === null ? "" : MASS_BANDS[index].name;
+  return index === null ? "" : t(MASS_BANDS[index].name);
 }
 
 export interface CapacitySummary {
@@ -213,13 +213,13 @@ export function capacitySummary(spans: readonly StressSpan[] | null | undefined)
 
 /** "55 riders per minute": the unit spelled out, one rider singular. */
 export function ridersPerMinute(rpm: number): string {
-  return `${Math.round(rpm)} ${Math.round(rpm) === 1 ? "rider" : "riders"} per minute`;
+  return Math.round(rpm) === 1 ? t("1 rider per minute") : t("{count} riders per minute", { count: Math.round(rpm) });
 }
 
 /** The narrowest point in words: "55 riders per minute (bottleneck), at 0.2 mi (0.3 km)". */
 export function narrowestText(summary: CapacitySummary): string {
-  if (summary.minRpm === null) return "No capacity figure for this route";
-  const at = summary.minAtM !== null && summary.minAtM > 0 ? `, at ${formatDistance(summary.minAtM)} along` : ", at the start";
+  if (summary.minRpm === null) return t("No capacity figure for this route");
+  const at = placeText(summary.minAtM ?? 0);
   return `${ridersPerMinute(summary.minRpm)} (${bandName(summary.minRpm)})${at}`;
 }
 
@@ -229,12 +229,12 @@ export function narrowestText(summary: CapacitySummary): string {
  * profile (the width and the grade, as the chart draws it). Labelled the same way everywhere they are
  * given: the route view's card, the directions' first sentence, the chart's summary and the capacity fold.
  */
-export const NARROWEST_FLAT = "narrowest on the flat";
-export const NARROWEST_HILLS = "narrowest with the hills";
-export const NARROWEST_BOTH = "narrowest on the flat and with the hills";
-export const TYPICAL_FLAT = "typical on the flat";
-export const TYPICAL_HILLS = "typical with the hills";
-export const TYPICAL_BOTH = "typical on the flat and with the hills";
+export const NARROWEST_FLAT = t("narrowest on the flat");
+export const NARROWEST_HILLS = t("narrowest with the hills");
+export const NARROWEST_BOTH = t("narrowest on the flat and with the hills");
+export const TYPICAL_FLAT = t("typical on the flat");
+export const TYPICAL_HILLS = t("typical with the hills");
+export const TYPICAL_BOTH = t("typical on the flat and with the hills");
 
 /** The profile's figures with the hills (the API's `profile.flow`). */
 export type HillsFlow = {
@@ -327,7 +327,7 @@ export function routeCapacityPair(route: Partial<Pick<RouteResponse, "stress_spa
 }
 
 /** ", at the start" or ", at 0.2 mi (0.3 km) along". */
-const placeText = (m: number): string => (m > 0 ? `, at ${formatDistance(m)} along` : ", at the start");
+const placeText = (m: number): string => (m > 0 ? t(", at {distance} along", { distance: formatDistance(m) }) : t(", at the start"));
 
 /** "55 riders per minute (bottleneck)". */
 const figure = (rpm: number): string => `${ridersPerMinute(rpm)} (${bandName(rpm)})`;
@@ -351,7 +351,7 @@ export function narrowestLines(pair: CapacityPair): CapacityLine[] {
     const figures =
       Math.round(flat.rpm) === Math.round(hills.rpm)
         ? figure(flat.rpm)
-        : `${figure(flat.rpm)} on the flat, ${figure(hills.rpm)} with the hills`;
+        : t("{flat} on the flat, {hills} with the hills", { flat: figure(flat.rpm), hills: figure(hills.rpm) });
     return [{ key: "narrowest", label: NARROWEST_BOTH, text: `${figures}${placeText(flat.atM)}` }];
   }
   const lines: CapacityLine[] = [];
@@ -399,15 +399,14 @@ export function capacityShortLine(pair: CapacityPair, corkers: string | null): {
 }
 
 /** The route list's row for the parts outside DC (OWNER-DECISIONS 427). */
-export const OUTSIDE_DC_ROW = "Outside DC: no figures yet";
+export const OUTSIDE_DC_ROW = t("Outside DC: no figures yet");
 
 /**
  * What the panel and the chart say where part of a Mass Ride is outside the District (427): no
  * greying, the words alone; the narrowest point, the typical figure and the bottlenecks are the DC
  * parts' only. The 418a notice stays as well.
  */
-export const OUTSIDE_DC_FIGURES =
-  "Mass Ride figures are not supported outside DC yet, so no riders-per-minute figures are given for the parts of this route outside the District.";
+export const OUTSIDE_DC_FIGURES = t("Mass Ride figures are not supported outside DC yet, so no riders-per-minute figures are given for the parts of this route outside the District.");
 
 /** One band's row in the route's list: its name, share and length. */
 export interface CapacityRow {
@@ -430,7 +429,7 @@ export function capacityRows(summary: CapacitySummary): CapacityRow[] {
     band: i,
   }));
   rows.push({ key: "avoid", text: AVOID_LEGEND_TEXT, percent: summary.percents[4], metres: summary.avoidM, band: null });
-  rows.push({ key: "none", text: "No capacity figure", percent: summary.percents[5], metres: summary.unknownM, band: null });
+  rows.push({ key: "none", text: t("No capacity figure"), percent: summary.percents[5], metres: summary.unknownM, band: null });
   rows.push({ key: "outside", text: OUTSIDE_DC_ROW, percent: summary.percents[6], metres: summary.outsideM, band: null });
   return rows.filter((row) => row.metres > 0);
 }

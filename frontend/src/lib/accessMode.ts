@@ -35,7 +35,7 @@ export const ACCESS_SENTENCE = "For keyboard or screen reader use, turn on acces
  */
 export const ACCESS_SENTENCE_WHERE = ACCESS_SENTENCE.replace(/\.$/, " (the first button on the page, or in Settings).");
 /** The line beside the toggle in Points' Info and Settings: says where else the switch is. */
-export const ACCESS_HELP = `${ACCESS_SENTENCE} It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons, and is kept on this device. It is also the first button on the page.`;
+export const ACCESS_HELP = `${ACCESS_SENTENCE} It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.`;
 /** Settings' extra line under it: the two switches below it, which a rider can set apart. */
 export const ACCESS_FINE_TUNE = "High contrast and Large text during a ride, below, can also be set on their own.";
 

@@ -30,6 +30,7 @@ import {
 import { Icon } from "./Icon.tsx";
 import { DepartureTimer } from "./DepartureTimer.tsx";
 import { RIDE_REST, RIDE_REST_HINT } from "./lib/rideTrip.ts";
+import { t } from "./lib/i18n.ts";
 
 function Swatch({ colour, dash, width }: { colour: string; dash: [number, number]; width: number }) {
   return (
@@ -105,7 +106,7 @@ export function TransitSummary({
       {plan.comparison && <p className={plan.riding_quicker ? "transit-compare" : "transit-compare hint"}>{plan.comparison}</p>}
       {plan.live && plan.live.warnings.length > 0 && (
         // An elevator out where the bike needs one: a warning, never an avoidance (v0.7.0).
-        <ul className="transit-warnings notice" aria-label="Warnings">
+        <ul className="transit-warnings notice" aria-label={t("Warnings")}>
           {plan.live.warnings.map((warning) => (
             <li key={warning}>{warning}</li>
           ))}
@@ -136,10 +137,10 @@ export function TransitSummary({
         </div>
       )}
       {(notes.length > 0 || (plan.live?.alerts.length ?? 0) > 0) && (
-        <ul className="transit-notes" aria-label="Notes on this plan">
+        <ul className="transit-notes" aria-label={t("Notes on this plan")}>
           {(plan.live?.alerts ?? []).map((alert) => (
             <li key={alert} className="hint transit-alert">
-              {alert} ({plan.live?.credit}, live)
+              {alert} {t("({credit}, live)", { credit: plan.live?.credit ?? "" })}
             </li>
           ))}
           {notes.map((note) => (
@@ -152,9 +153,9 @@ export function TransitSummary({
       {plan.scheduled && (
         <>
           <p className="hint transit-legend">
-            <Swatch colour={TRANSIT_COLOUR} dash={TRANSIT_DASH} width={TRANSIT_LINE_WIDTH} /> On the map, a dashed line marked with its
-            system (Metro, MARC, Bus) is the ride on transit, through its stops.{" "}
-            <Swatch colour={WALK_COLOUR} dash={WALK_DASH} width={WALK_LINE_WIDTH} /> A dotted line is a walk. {RIDES_LEGEND}
+            <Swatch colour={TRANSIT_COLOUR} dash={TRANSIT_DASH} width={TRANSIT_LINE_WIDTH} />{" "}
+            {t("On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.")}{" "}
+            <Swatch colour={WALK_COLOUR} dash={WALK_DASH} width={WALK_LINE_WIDTH} /> {t("A dotted line is a walk.")} {RIDES_LEGEND}
           </p>
           <p className="hint transit-scheduled">
             {TRACK_WORK} {timesFromText(plan)} {liveTimesText(plan)}

@@ -15,7 +15,7 @@
  * rider goes on from where they were.
  */
 import { placeLetter } from "./letteredPlaces.ts";
-import { createElement as h, useEffect, useRef, type ReactElement, type ReactNode } from "react";
+import { createElement as h, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { FOOD_DETOUR_METHOD, FOOD_DETOUR_NOTE, foodHoursText, foodHowFar, foodKindText, FOOD_PAGE, isFarmFood, type FoodResult } from "./food.ts";
 import { ICON_PATHS } from "./iconPaths.ts";
 import { t } from "./i18n.ts";
@@ -26,6 +26,17 @@ export const FOOD_HELP = t("Search a food or a name; blank shows all.");
 export const FOOD_HELP_MORE = t("With a route shown, results are sorted by detour; Add as stop puts a place into your plan.");
 export const FOOD_PLACEHOLDER = t("Search food or a name");
 export const FOOD_SEARCH_AREA = t("Search this area");
+
+/**
+ * How many of a page show before its Show more (the owner, 2026-10-28: lists show the nearest few, the rest behind
+ * Show more): what fits one phone screen in the Food popup. The page is still FOOD_PAGE, its letters on the map.
+ */
+export const FOOD_FIRST = 4;
+
+/** How many of the results show: the first few until the rest of the page is asked for, then all found so far. */
+export function foodRowsShown(found: number, rest: boolean): number {
+  return rest ? found : Math.min(found, FOOD_FIRST);
+}
 
 export interface FoodFinderProps {
   query: string;
@@ -63,7 +74,12 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
   const list = useRef<HTMLOListElement | null>(null);
   // After Show more: the index of the first new result, whose first button takes the focus.
   const focusFrom = useRef<number | null>(null);
-  const shown = results?.length ?? 0;
+  const found = results?.length ?? 0;
+  // The rest of the page, behind Show more until asked for; a new search starts at the first few again.
+  const [rest, setRest] = useState(false);
+  const firstId = results?.[0]?.place.id;
+  useEffect(() => setRest(false), [firstId, total]);
+  const shown = foodRowsShown(found, rest);
   useEffect(() => {
     const from = focusFrom.current;
     if (from === null || !list.current) return;
@@ -120,7 +136,7 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
             "ol",
             // role="list": WebKit drops a list's role once its bullets are styled away.
             { role: "list", "aria-labelledby": "food-list-heading", ref: list },
-            ...results.map((r, i) =>
+            ...results.slice(0, shown).map((r, i) =>
               h(
                 "li",
                 { key: r.place.id },
@@ -176,19 +192,33 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
               ),
             ),
           ),
-          shown < total &&
-            h(
-              "button",
-              {
-                type: "button",
-                className: "secondary food-more",
-                onClick: () => {
-                  focusFrom.current = shown;
-                  onMore();
+          // The rest of the page found (its letters already on the map), then the next page.
+          shown < found
+            ? h(
+                "button",
+                {
+                  type: "button",
+                  className: "secondary food-more",
+                  onClick: () => {
+                    focusFrom.current = shown;
+                    setRest(true);
+                  },
                 },
-              },
-              t("Show {count} more", { count: Math.min(FOOD_PAGE, total - shown) }),
-            ),
+                t("Show {count} more", { count: found - shown }),
+              )
+            : shown < total &&
+                h(
+                  "button",
+                  {
+                    type: "button",
+                    className: "secondary food-more",
+                    onClick: () => {
+                      focusFrom.current = shown;
+                      onMore();
+                    },
+                  },
+                  t("Show {count} more", { count: Math.min(FOOD_PAGE, total - shown) }),
+                ),
           anyDetour
             ? h("p", { className: "hint" }, h("span", { "aria-hidden": "true" }, FOOD_DETOUR_NOTE), h("span", { className: "visually-hidden" }, FOOD_DETOUR_METHOD))
             : h("p", { className: "hint" }, t("From OpenStreetMap: check the hours before you count on them. No ratings.")),

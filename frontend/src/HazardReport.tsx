@@ -24,6 +24,7 @@ import {
   type HazardLevel,
   type HazardProps,
 } from "./lib/massHazards.ts";
+import { t } from "./lib/i18n.ts";
 
 interface Props {
   origin: string;
@@ -101,9 +102,9 @@ export function HazardReport({ origin, wayId, title, point, current, onClose }: 
       )}
       {!sent && (
         <form onSubmit={onSubmit} noValidate aria-describedby={error ? id("error") : undefined}>
-          <p className="stress-editor-now">Now: {current ? HAZARD_WORDS[current.level] : "No hazard marked here"}.</p>
+          <p className="stress-editor-now">{t("Now: {hazard}.", { hazard: current ? HAZARD_WORDS[current.level] : t("No hazard marked here") })}</p>
           <p className="stress-editor-extent">
-            <span className="road-info-label">This road piece:</span> {title}
+            <span className="road-info-label">{t("This road piece:")}</span> {title}
           </p>
           <fieldset
             className="stress-editor-field hazard-levels"
@@ -146,7 +147,7 @@ export function HazardReport({ origin, wayId, title, point, current, onClose }: 
               {sending ? "Sending…" : HAZARD_SEND}
             </button>
             <button type="button" className="secondary" onClick={onClose}>
-              Cancel
+              {t("Cancel")}
             </button>
           </div>
         </form>
@@ -154,7 +155,7 @@ export function HazardReport({ origin, wayId, title, point, current, onClose }: 
       {sent && (
         <div className="stress-editor-buttons">
           <button type="button" className="secondary" onClick={onClose}>
-            Done
+            {t("Done")}
           </button>
         </div>
       )}

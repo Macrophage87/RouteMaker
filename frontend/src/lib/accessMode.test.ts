@@ -76,7 +76,7 @@ test("the owner's sentence (455a(4)), with where the switch is outside More tips
   assert.equal(ACCESS_SENTENCE_WHERE, "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).");
   assert.equal(
     ACCESS_HELP,
-    "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons, and is kept on this device. It is also the first button on the page.",
+    "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.",
   );
 });
 
@@ -170,6 +170,7 @@ test("in Go the keyboard's ways name Map tools' button as Go labels it, Set dest
     assert.ok(!w.addPoint.includes(ADD_AT_CENTRE_LABEL) && !w.roadAndAdd.includes(ADD_AT_CENTRE_LABEL));
     assert.ok(mapToolsWays(on).addPoint.includes(ADD_AT_CENTRE_LABEL), "Plan keeps its name");
   }
-  assert.ok(infoHelp(true, true).includes(SET_END_AT_CENTRE_LABEL) && !infoHelp(true, true).includes(ADD_AT_CENTRE_LABEL));
-  assert.equal(infoHelp(true), infoHelp(true, false));
+  const go = infoHelp(true, true).join(" ");
+  assert.ok(go.includes(SET_END_AT_CENTRE_LABEL) && !go.includes(ADD_AT_CENTRE_LABEL));
+  assert.deepEqual(infoHelp(true), infoHelp(true, false));
 });

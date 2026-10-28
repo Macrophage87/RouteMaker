@@ -15,15 +15,15 @@
  * RIDE-TYPE-ORGANISE (Stephen, 2026-10-12): a search box over the cards, and the
  * cards under their group's heading (lib/rideTypeGroups.ts).
  */
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { t } from "./lib/i18n.ts";
-import { PRESETS, presetSaid, type PresetId } from "./lib/presets.ts";
+import { PRESETS, presetDescription, presetSaid, presetSummary, type PresetId } from "./lib/presets.ts";
 import { PresetName } from "./lib/presetName.ts";
 import { CARRYINGS, carries, type Carrying, type Dials } from "./lib/dials.ts";
 import { bikeLabel } from "./lib/bikeshare.ts";
 import { choose, closesDialog, initialCard, isCustom, nextFocus } from "./lib/rideTypeDialog.ts";
 import { mtbChosen } from "./lib/mtbMode.ts";
-import { rideTypeCount, rideTypeSections, RideTypeSearch } from "./lib/rideTypeGroups.ts";
+import { rideSections, rideTypeCount, rideTypeSections, RideTypeSearch } from "./lib/rideTypeGroups.ts";
 import { FavoriteStar, toggleFromPicker, useFavoriteRides } from "./lib/favoriteRides.ts";
 
 interface Props {
@@ -32,7 +32,22 @@ interface Props {
   onChoose: (preset: PresetId, dials: Dials) => void;
 }
 
-const FOCUSABLE = "button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex='-1'])";
+/** The groups shown open in the dialog: the rider's favorites and the common ride types. */
+const OPEN_GROUPS: readonly string[] = ["favorites", "common"];
+
+/** A group of the dialog's ride types, folded under its name and count, or as it is. */
+function GroupFold({ fold, label, count, open, children }: { fold: boolean; label: string; count: number; open: boolean; children: ReactNode }) {
+  if (!fold) return <>{children}</>;
+  return (
+    <details className="fold ride-type-fold" open={open || undefined}>
+      <summary>{`${label} (${count})`}</summary>
+      <div className="fold-body">{children}</div>
+    </details>
+  );
+}
+
+// A fold's summary too, and only what shows: a card in a closed fold cannot take the focus.
+const FOCUSABLE = "button:not([disabled]), [href], input:not([disabled]), summary, [tabindex]:not([tabindex='-1'])";
 
 export function RideTypePicker({ preset, dials, onChoose }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -46,6 +61,9 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
   const favorites = useFavoriteRides();
   // The same groups as Go's Ride sheet and Settings' Default ride type (P3): favorites, Common, then the rest.
   const groups = rideTypeSections(query, favorites);
+  // One screen in the popup (the owner, 2026-10-28), as Go's Ride sheet has it: favorites and Common open, the rest
+  // in their groups, folded (the one in use opens its group); a search shows every match flat.
+  const folded = rideSections(query, undefined, favorites).folded;
   const current = PRESETS.find((p) => p.id === preset);
   const carrying = CARRYINGS.find((c) => c.id === dials.carrying);
   const custom = isCustom(preset, dials);
@@ -85,7 +103,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
       return;
     }
     if (event.key !== "Tab" || !dialogRef.current) return;
-    const items = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
+    const items = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.getClientRects().length > 0);
     const index = items.indexOf(document.activeElement as HTMLElement);
     const next = nextFocus(index, items.length, event.shiftKey);
     if (next >= 0) {
@@ -108,24 +126,24 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
             <strong>
               {custom ? (
                 <>
-                  Custom (based on <PresetName id={preset} />)
+                  {t("Custom (based on")} <PresetName id={preset} />)
                 </>
               ) : (
                 <PresetName id={preset} />
               )}
               {carrying ? `, ${carrying.label.toLowerCase()}` : ""}
-              {dials.assist ? ", electric assist" : ""}
+              {dials.assist ? t(", electric assist") : ""}
               {dials.bike ? `, ${bikeLabel(dials.bike).toLowerCase()}` : ""}
             </strong>
             <span className="hint" aria-hidden="true">
-              {current?.summary}
+              {current && presetSummary(current)}
             </span>
           </span>
           <span className="ride-type-change">{t("Change")}</span>
         </button>
         {current && (
           <span id="ride-type-gist" hidden>
-            {current.description}
+            {presetDescription(current)}
           </span>
         )}
       </div>
@@ -149,13 +167,14 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
           <p className="hint">
             {t("Sets traffic and hills for this kind of ride.")}{" "}
             <button type="button" className="link ride-types-full" aria-pressed={full} onClick={() => setFull(!full)}>
-              What each does
+              {t("What each does")}
             </button>
           </p>
           <RideTypeSearch id="ride-types-search" query={query} onQuery={setQuery} count={rideTypeCount(groups)} />
           {groups.map((group) => (
-            <section key={group.id} className="ride-type-group" aria-labelledby={`ride-types-${group.id}`}>
-              <h3 id={`ride-types-${group.id}`}>{group.label}</h3>
+            <GroupFold key={group.id} fold={folded && !OPEN_GROUPS.includes(group.id)} label={group.label} count={group.ids.length} open={group.ids.includes(preset)}>
+            <section className="ride-type-group" aria-labelledby={`ride-types-${group.id}`}>
+              <h3 id={`ride-types-${group.id}`} className={folded && !OPEN_GROUPS.includes(group.id) ? "visually-hidden" : undefined}>{group.label}</h3>
               <ul className="ride-type-cards">
                 {group.ids.map((id) => PRESETS.find((p) => p.id === id)!).map((option) => (
                   <li
@@ -175,19 +194,19 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
                         <PresetName id={option.id} />
                       </strong>
                       {full ? (
-                        <span className="hint">{option.description}</span>
+                        <span className="hint">{presetDescription(option)}</span>
                       ) : (
                         <>
                           <span className="hint" aria-hidden="true">
-                            {option.summary}
+                            {presetSummary(option)}
                           </span>
-                          <span className="visually-hidden">{option.description}</span>
+                          <span className="visually-hidden">{presetDescription(option)}</span>
                         </>
                       )}
                     </button>
                     <FavoriteStar id={option.id} on={favorites.includes(option.id)} onToggle={(id) => toggleFromPicker(id, dialogRef.current)} />
                     {carries(option.id) && (
-                      <div className="ride-type-loads" role="group" aria-label={`${presetSaid(option.id)}: cargo or passengers`}>
+                      <div className="ride-type-loads" role="group" aria-label={t("{ride}: cargo or passengers", { ride: presetSaid(option.id) })}>
                         {CARRYINGS.map((load) => (
                           <button
                             key={load.id}
@@ -215,6 +234,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
                 ))}
               </ul>
             </section>
+            </GroupFold>
           ))}
         </div>
       </dialog>

@@ -7,6 +7,7 @@ import type { StressAvailability } from "../MapView.tsx";
 import { ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { t } from "../lib/i18n.ts";
 import { infoHelp } from "../lib/roadInfo.ts";
+import { looksLikePhone } from "../lib/startOnComputer.ts";
 import type { RouteResponse } from "../lib/api.ts";
 import { MAX_POINTS, type LonLat } from "../lib/geo.ts";
 import { YOUR_LOCATION } from "../lib/appMode.ts";
@@ -102,8 +103,21 @@ export interface PointsSectionProps {
  * Find food moved to the map's Water and Food chips (their own sheets), and Bikeshare's stations to the
  * route's "Choose a station" fold.
  */
+/** Short hint lines as bullets (P8), in place of one paragraph. */
+function HintLines({ lines }: { lines: readonly string[] }) {
+  return (
+    <ul className="hint info-bullets">
+      {lines.map((line) => (
+        <li key={line}>{line}</li>
+      ))}
+    </ul>
+  );
+}
+
 export function PointsSection(props: PointsSectionProps) {
   const { pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials, dials, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, preset, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, historyHere, undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive, tips, setTips, tipsId } = props;
+  // A finger as the main pointer: the Info's tips say tap and press and hold, not click (P8).
+  const touch = looksLikePhone();
   return (
     <section key="points" aria-labelledby="points-heading" className="points-section">
       <div className="section-head">
@@ -174,9 +188,10 @@ export function PointsSection(props: PointsSectionProps) {
       <div id={tipsId} className="tips-body more-tips" hidden={!tips}>
         <p className="hint">{t("Bike routes for the DC region and Baltimore. No sign-in needed.")}</p>
         {/* The start-up how-to before any point; with points, how to change them (the correctness review's N5). */}
-        {points.length > 0 ? <p className="hint">{editingTips(accessMode)}</p> : <p className="hint">{emptyPlanHint(preset, loopVias, accessMode)}</p>}
-        {coverageShown && <p className="hint">Gray areas are outside what RouteMaker covers.</p>}
-        <p className="hint">{infoHelp(accessMode)}</p>
+        {/* One short line each, the phone's gestures on a phone (P8: it was one 524-character paragraph). */}
+        <HintLines lines={points.length > 0 ? editingTips(accessMode, touch) : emptyPlanHint(preset, loopVias, accessMode, touch)} />
+        {coverageShown && <p className="hint">{t("Gray areas are outside what RouteMaker covers.")}</p>}
+        <HintLines lines={infoHelp(accessMode, false, touch)} />
         <p className="hint">{t(ACCESS_HELP)}</p>
         <button type="button" className="link access-toggle" aria-pressed={accessMode} onClick={() => toggleAccessMode(false)}>
           {t(ACCESS_LABEL)}
@@ -225,8 +240,7 @@ export function PointsSection(props: PointsSectionProps) {
       {points.length === 1 && <p className={accessMode ? "hint" : "visually-hidden"}>{loneStartHint(preset, loopVias, accessMode)}</p>}
       {usesBikeshare(preset) && (
         <p className="hint">
-          Bikeshare plans, Rebalance Rides too, take a start and an end only: the stations and the walks are chosen for you, unless you choose a
-          station under Route. Remove any stops to plan one.
+          {t("Bikeshare plans, Rebalance Rides too, take a start and an end only: the stations and the walks are chosen for you, unless you choose a station under Route. Remove any stops to plan one.")}
         </p>
       )}
       {/* Mass Ride planning covers DC only for now (OWNER-DECISIONS 418), in words beside the gray map. */}
@@ -402,7 +416,7 @@ function PointBoxes(props: PointBoxesProps) {
                           window.setTimeout(() => removeRefs.current[editing]?.focus(), 0);
                         }}
                       >
-                        Cancel
+                        {t("Cancel")}
                       </button>
                     </div>
                   ),
@@ -414,7 +428,7 @@ function PointBoxes(props: PointBoxesProps) {
       {showAdd && (
         <div className="add-stop-row">
           {/* A full plan: the reason in place of the box, whose pick could add nothing (Best order still works). */}
-          {full ? <p className="hint">The route has as many points as it can take, so no stop can be added.</p> : search("add")}
+          {full ? <p className="hint">{t("The route has as many points as it can take, so no stop can be added.")}</p> : search("add")}
           {/* Best order (OWNER-DECISIONS 449), beside Add a stop (Stephen 2026-10-17), with two or more stops to order;
               aria-disabled while the order is found (the focus stays on it, a press says it is still working),
               with the same label, so the row does not reflow under a finger. */}

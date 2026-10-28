@@ -9,7 +9,7 @@
  */
 import { t } from "./i18n.ts";
 import { createElement as h, type ChangeEvent, type ReactElement } from "react";
-import { PRESETS, type PresetId, type PresetOption } from "./presets.ts";
+import { PRESETS, presetDescription, presetSummary, type PresetId, type PresetOption } from "./presets.ts";
 
 export type RideGroupId = "favorites" | "common" | "transportation" | "adventure" | "group";
 
@@ -48,7 +48,9 @@ function fold(text: string): string {
 export function matchesRideType(option: PresetOption, query: string): boolean {
   const words = fold(query).split(/\s+/).filter(Boolean);
   if (words.length === 0) return true;
-  const text = fold(`${option.label} ${option.spoken ?? ""} ${option.keywords ?? ""} ${option.summary} ${option.description}`);
+  // The English words and, on a Spanish page, the shown ones, so either finds it.
+  const shown = `${t(option.label)} ${option.spoken ? t(option.spoken) : ""} ${presetSummary(option)} ${presetDescription(option)}`;
+  const text = fold(`${option.label} ${option.spoken ?? ""} ${option.keywords ?? ""} ${option.summary} ${option.description} ${shown}`);
   return words.every((word) => text.includes(word));
 }
 

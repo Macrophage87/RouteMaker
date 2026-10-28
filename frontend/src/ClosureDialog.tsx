@@ -10,6 +10,7 @@
 import { useEffect, useId, useRef } from "react";
 import type { ClosureNotice } from "./lib/closureMap.ts";
 import { CANCEL_LABEL, anywayLabel, closureHeading, closureLead, parkNoticesSummary, rerouteLabel, type CheckFor, type Closure } from "./lib/closureCheck.ts";
+import { t } from "./lib/i18n.ts";
 
 export interface ClosureAsk {
   why: CheckFor;
@@ -67,10 +68,10 @@ export function ClosureDialog({ ask, onReroute, onAnyway, onCancel }: { ask: Clo
                       {" "}
                       {c.url ? (
                         <a href={c.url} target="_blank" rel="noopener noreferrer">
-                          Source: {c.source_name}
+                          {t("Source: {source}", { source: c.source_name })}
                         </a>
                       ) : (
-                        <>Source: {c.source_name}</>
+                        t("Source: {source}", { source: c.source_name })
                       )}
                       .
                     </>

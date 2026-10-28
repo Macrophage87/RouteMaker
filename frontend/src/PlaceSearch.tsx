@@ -368,7 +368,7 @@ export function PlaceSearch({
       {/* Go's Where to? and Add a stop say their names in the box (and Add a stop on the button that opens it). */}
       <label htmlFor={`${id}-input`} className={variant === "go" || variant === "stop" ? "place-search-label visually-hidden" : "place-search-label"}>
         {t(variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "work" ? "Find your Work" : variant === "favorite" ? "Find a place to save" : variant === "start" ? "Start from" : variant === "stop" || variant === "add" ? "Add a stop" : variant === "from" ? (loop ? "Start and finish (loop)" : "From") : variant === "to" ? "To" : "Find a place")}
-        {current && <span className="place-search-current">{` (now ${current})`}</span>}
+        {current && <span className="place-search-current">{` ${t("(now {place})", { place: current })}`}</span>}
       </label>
       <div className={(locate && !locate.listOnly) || variant === "go" ? "place-search-row" : undefined}>
       {variant === "go" && <Icon name="search" className="search-icon" />}
@@ -504,7 +504,7 @@ export function PlaceSearch({
       {expanded && places.length > 0 && (
         <p className="place-credit">
           {t("Only places in this map's area.")}
-          {result?.ok && result.attribution.length > 0 && <> Search: {result.attribution.join("; ")}</>}
+          {result?.ok && result.attribution.length > 0 && <> {t("Search: {credits}", { credits: result.attribution.join("; ") })}</>}
         </p>
       )}
       {!single && choices.length > 1 && (
