@@ -39,6 +39,10 @@ import {
   rideActionLabel,
   searchLede,
   sheetEscape,
+  popupBackLabel,
+  POPUP_VIEWS,
+  sayInPopup,
+  listenForPopupSay,
   openOnto,
   backFrom,
   stepsCount,
@@ -731,13 +735,18 @@ test("a sheet: Back is a labelled button, its heading takes the focus, Escape go
   assert.equal(BACK_LABEL, "Back to planner");
   assert.doesNotMatch(sidebar, /aria-label="Back to the planner"/);
   // A sheet opened from another sheet goes back to it, and says so (Back to Layers, Back to Menu).
-  assert.match(sidebar, /<button type="button" className="sheet-back" onClick=\{onBack\}>[\s\S]*?<\/svg>\s*\{backLabel\}\s*<\/button>/, "Back goes back (NIT A)");
+  assert.match(sidebar, /<button type="button" className=\{label === POPUP_CLOSE && modal \? "sheet-back popup-close" : "sheet-back"\} onClick=\{onBack\}>[\s\S]*?<\/svg>\s*\)\}\s*\{label\}\s*<\/button>/, "Back goes back (NIT A)");
   assert.match(sidebar, /backLabel = BACK_LABEL,/);
+  // A popup on a phone (the owner, 2026-10-28) says Close where the sheet goes back to the planner or the map.
+  assert.match(sidebar, /const label = modal \? popupBackLabel\(backLabel\) : backLabel;/);
+  assert.equal(popupBackLabel(BACK_LABEL), "Close");
+  assert.equal(popupBackLabel("Close"), "Close");
+  assert.equal(popupBackLabel("Back to Menu"), "Back to Menu");
   assert.match(app, /return t\("Back to \{title\}", \{ title: step\.from === "settings" && mode === "go" \? MENU_TITLE : SHEET_TITLES\[step\.from as Exclude<PanelView, "planner">\] \}\);/);
   assert.match(sidebar, /<h2 id=\{`\$\{id\}-title`\} ref=\{headingRef\} tabIndex=\{-1\}>/);
   assert.match(
     sidebar,
-    /sheetEscape\(\{ key: event\.key, defaultPrevented: event\.defaultPrevented, target: event\.target as HTMLElement, preventDefault: \(\) => event\.preventDefault\(\) \}, onBack\)/,
+    /sheetEscape\(\{ key: event\.key, defaultPrevented: event\.defaultPrevented, target: event\.target as HTMLElement, preventDefault: \(\) => event\.preventDefault\(\) \}, onBack, dialogRef\.current\)/,
   );
   // The error can take the focus (focus() on an element without tabIndex does nothing).
   assert.match(app, /<div ref=\{errorRef\} tabIndex=\{-1\} className=\{`error error-\$\{error\.kind\}`\} role="alert">/);
@@ -828,6 +837,39 @@ test("a sheet's Escape: back, except in a dialog, on the place search, or when a
   assert.deepEqual(run(event("Escape", { prevented: true })), stays, "already handled");
   assert.deepEqual(run(event("Escape", { inDialog: true })), stays, "the weight dialog's own Escape");
   assert.deepEqual(run(event("Escape", { role: "combobox" })), stays, "the place search's list");
+  // A popup sheet is a dialog itself: Escape in it is its own, a nested dialog's is still the nested one's.
+  const sheet = {};
+  const inSheet: Fake = { ...event("Escape"), target: { closest: (s: string) => (s === "dialog" ? sheet : null), getAttribute: () => null } };
+  let back = 0;
+  assert.equal(sheetEscape(inSheet, () => back++, sheet), true);
+  assert.equal(back, 1);
+  assert.equal(sheetEscape(event("Escape", { inDialog: true }), () => back++, sheet), false, "a dialog inside the popup");
+});
+
+test("the popups (the owner, 2026-10-28): which destinations, and the app's words said inside the open one", () => {
+  assert.deepEqual(POPUP_VIEWS, ["settings", "ride", "layers", "gpx", "suggest", "nearest", "food"]);
+  for (const id of ["sheet-settings", "sheet-ride", "sheet-layers", "sheet-gpx", "sheet-suggest", "sheet-nearest", "sheet-food"]) {
+    const at = app.indexOf(`id="${id}"`);
+    assert.ok(at > 0, id);
+    assert.match(app.slice(at, app.indexOf(">\n", at) + 1), /\bpopup\b/, `${id} is a popup`);
+  }
+  for (const id of ["sheet-repair", "sheet-places", "sheet-points"]) {
+    const at = app.indexOf(`id="${id}"`);
+    assert.doesNotMatch(app.slice(at, app.indexOf(">\n", at) + 1), /\bpopup\b/, `${id} stays a sheet`);
+  }
+  // A modal on a phone, the panel's side panel on a computer: the one element, so what it holds keeps its state.
+  assert.match(sidebar, /const modal = popup && narrow;/);
+  assert.match(sidebar, /if \(want === "modal"\) dialog\.showModal\?\.\(\);\s*else if \(want === "panel"\) dialog\.show\?\.\(\);/);
+  assert.match(sidebar, /onCancel=\{\(event\) => event\.preventDefault\(\)\}/);
+  assert.match(css, /dialog\.popup-sheet:modal \{[^}]*max-height: calc\(100dvh - 8px\);/);
+  assert.match(css, /dialog\.popup-sheet:not\(:modal\) \{[^}]*position: static;/);
+  const heard: string[] = [];
+  const stop = listenForPopupSay((text) => heard.push(text));
+  sayInPopup("Link copied.");
+  stop();
+  sayInPopup("Not heard.");
+  assert.deepEqual(heard, ["Link copied."]);
+  assert.match(app, /setSaid\(\(s\) => \(\{ text, count: s\.count \+ 1 \}\)\);\s*sayInPopup\(text\);/);
 });
 
 test("the Layers sheet holds the switches in the mockup's order, each section with its own key (the owner, 2026-10-19)", () => {
@@ -1042,16 +1084,28 @@ test("the bar's current button: the sheet showing, or one opened from it (Sugges
 
 test("the Settings sheet (384): My Go, Riding, Display and Account, most used first (Settings tidy, 2026-10-19); one state, unique ids", () => {
   const sheet = app.slice(app.indexOf('id="sheet-settings"'), app.indexOf("export interface SuggestSheetProps"));
-  assert.match(sheet, /title=\{go \? MENU_TITLE : SHEET_TITLES\.settings\}\s+open=\{nav\.view === "settings"\}\s+onBack=\{nav\.back\}\s+backLabel=\{nav\.backLabel\("settings"\)\}\s+headingRef=\{settingsHeadingRef\}/);
+  assert.match(sheet, /title=\{go \? MENU_TITLE : SHEET_TITLES\.settings\}\s+open=\{nav\.view === "settings"\}\s+onBack=\{nav\.back\}\s+backLabel=\{nav\.backLabel\("settings"\)\}\s+popup\s+headingRef=\{settingsHeadingRef\}/);
+  // Three tabs (the owner, 2026-10-28: "Settings = display, riding, account"), each a panel that stays in the page.
+  assert.match(sheet, /<SettingsTabs tab=\{tab\} onTab=\{setTab\} label=\{go \? MENU_TITLE : SHEET_TITLES\.settings\} \/>/);
+  const panels = ["riding", "display", "account"].map((id) => sheet.indexOf(`<div role="tabpanel" id="settings-panel-${id}" aria-labelledby="settings-tab-${id}" className="settings-panel" hidden={tab !== "${id}"}>`));
+  assert.ok(panels.every((i) => i > 0), JSON.stringify(panels));
+  assert.deepEqual(panels, [...panels].sort((a, b) => a - b));
+  const sheets = src("../app/Sheets.tsx");
+  assert.match(sheets, /export const SETTINGS_TABS = \["riding", "display", "account"\] as const;/);
+  assert.match(sheets, /role="tab"\s+id=\{`settings-tab-\$\{id\}`\}\s+className="settings-tab"\s+aria-selected=\{tab === id\}\s+aria-controls=\{`settings-panel-\$\{id\}`\}\s+tabIndex=\{tab === id \? 0 : -1\}/);
+  assert.match(sheets, /event\.key === "ArrowRight"[\s\S]*?event\.key === "ArrowLeft"[\s\S]*?event\.key === "Home"[\s\S]*?event\.key === "End"/);
+  // Back from Garmin or Wahoo, on Account, where its line says what happened.
+  assert.match(sheets, /useState<SettingsTab>\(\(\) => \(garminReturned \|\| wahooReturned \? "account" : "riding"\)\)/);
   // This device's routes moved to Save and load (the owner, 2026-10-18); the install offer has its own heading.
   assert.doesNotMatch(sheet, /settings-device-heading/);
-  const order = ['<MyGoSection controls={myGo} open={nav.view === "settings"} />', ...["settings-ride-heading", "settings-display-heading", "settings-signin-heading"].map((id) => `<h3 id="${id}">`)].map((at) => sheet.indexOf(at));
+  const order = ['<MyGoSection controls={myGo} open={nav.view === "settings"} />', ...["settings-ride-heading", "settings-display-heading", "settings-signin-heading"].map((id) => `<h3 id="${id}" className="visually-hidden">`), "<InstallOffer", 'id="settings-about-heading"'].map((at) => sheet.indexOf(at));
   assert.ok(order.every((i) => i > 0), JSON.stringify(order));
   assert.match(app, /<section aria-labelledby="settings-my-go-heading" className="settings-group my-go">\s*<div className="setting-line">\s*<h3 id="settings-my-go-heading">\{t\("My Go"\)\}<\/h3>/);
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
-  assert.match(sheet, /<section aria-labelledby="settings-display-heading" className="settings-group">\s*<h3 id="settings-display-heading">\{t\("Display"\)\}<\/h3>/);
+  // Each group keeps its heading for a screen reader's heading list; on screen, its tab names it.
+  assert.match(sheet, /<section aria-labelledby="settings-display-heading" className="settings-group">\s*<h3 id="settings-display-heading" className="visually-hidden">\{t\("Display"\)\}<\/h3>/);
   // The sign-in note has its own heading, so heading navigation does not file it under Display.
-  assert.match(sheet, /<h3 id="settings-signin-heading">\{t\("Account"\)\}<\/h3>/);
+  assert.match(sheet, /<h3 id="settings-signin-heading" className="visually-hidden">\{t\("Account"\)\}<\/h3>/);
   assert.match(sheet, /<AccessibilitySwitch\s+idBase="settings-contrast"\s+on=\{accessibilityOn\(\)\}\s+source=\{accessibilitySource\(\)\}\s+paletteFromAddress=\{paletteSetByAddress\(\)\}\s+onChange=\{\(on\) => setAccessibility\(on\)\}/);
   assert.ok(sheet.indexOf("Display") < sheet.indexOf("Sign in with Discord"), "the sign-in note is still there, after the display group");
   assert.match(sheet, /onClick=\{\(e\) => isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)\}/);

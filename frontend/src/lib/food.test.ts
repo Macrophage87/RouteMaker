@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { LonLat } from "./geo.ts";
 import {
   CIRCUITY,
+  FOOD_PAGE,
   FOOD_SYNONYMS,
   NO_FOOD_DATA,
   ON_ROUTE_M,
@@ -26,7 +27,7 @@ import {
   type FoodPlace,
   type FoodResult,
 } from "./food.ts";
-import { FOOD_SUMMARY, FoodFinder, type FoodFinderProps } from "./foodFinder.ts";
+import { FOOD_FIRST, FOOD_SUMMARY, FoodFinder, foodRowsShown, type FoodFinderProps } from "./foodFinder.ts";
 import { appSource } from "../testSupport/appSource.mjs";
 
 const place = (id: string, name: string, cuisine: string[], lon = -77.0, lat = 38.9, kind: FoodPlace["kind"] = "r"): FoodPlace => ({
@@ -274,6 +275,22 @@ test("the panel's list: lettered as the markers, Show on map, Add as stop, websi
   const none = renderToStaticMarkup(createElement(FoodFinder, { ...baseProps, results, total: 2, canAddStop: false }));
   assert.doesNotMatch(none, /aria-label="Add as stop/);
   assert.doesNotMatch(none, /Show \d+ more/);
+});
+
+test("the list in the Food popup: the first few of the page, the rest of it behind Show more, then the next page (the owner, 2026-10-28)", () => {
+  assert.equal(FOOD_FIRST, 4);
+  assert.equal(FOOD_PAGE, 10, "the owner's page of ten is kept");
+  assert.equal(foodRowsShown(10, false), 4);
+  assert.equal(foodRowsShown(3, false), 3);
+  assert.equal(foodRowsShown(10, true), 10);
+  const results: FoodResult[] = Array.from({ length: 10 }, (_, i) => ({ place: place(`n${i}`, `Place ${i}`, ["crab"]), fromCentreM: 100 * (i + 1) }));
+  const html = renderToStaticMarkup(createElement(FoodFinder, { ...baseProps, results, total: 25 }));
+  assert.equal((html.match(/<li>/g) ?? []).length, 4);
+  assert.match(html, /<strong>D\. Place 3<\/strong>/);
+  assert.doesNotMatch(html, /E\. Place 4/);
+  // The rest of the page first (its letters are already on the map), never a second page before it.
+  assert.match(html, />Show 6 more</);
+  assert.doesNotMatch(html, />Show 10 more</);
 });
 
 
