@@ -537,6 +537,11 @@ class Analysis:
     # Each piece's known hazard kinds, in the order of `pieces` (`route_hazards.kinds_of`), as
     # the reading priced them; the answer says them from here (audit S16). None: not read.
     hazard_kinds: list | None = None
+    # Its scenic designations and stress adjustments as the stress query read them, only for
+    # the pieces that have one ({index in `pieces`: ...}, `routing.Classes`), for the answer
+    # (audit S17). None: not read.
+    scenic: dict | None = None
+    adjustments: dict | None = None
 
     @property
     def rated_classes(self) -> list:
@@ -1049,6 +1054,8 @@ def analyse(
         real_classes=real_classes if shift or hazard_read else None,
         shift=shift,
         hazard_kinds=kinds,
+        scenic=getattr(real_classes, "scenic", None),
+        adjustments=getattr(real_classes, "adjustments", None),
         junction_delay_s=junction_delay.delay_s(
             raws,
             routing.stop_as_yield,
