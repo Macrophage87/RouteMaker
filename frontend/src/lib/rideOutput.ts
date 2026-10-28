@@ -335,7 +335,8 @@ export class Voice {
     // language and the voice speaks the English, rather than an English voice spelling out words it cannot read. A
     // sentence with no English in the catalog (one of the server's) is left to the screen.
     const voice = language() === "en" ? undefined : voiceFor(this.env.voices?.() ?? []);
-    const english = voice === null ? englishOf(text) : null;
+    // Text already in English (the server's sentences) is spoken as it came.
+    const english = voice === null ? (englishOf(text) ?? (/^[\x20-\x7e]*$/.test(text) ? text : null)) : null;
     if (voice === null && english === null) return this.next();
     const utterance = this.env.utterance(english ?? text);
     utterance.lang = english !== null ? speechLang("en") : speechLang();

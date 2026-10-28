@@ -114,7 +114,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "In {distance}": "{distance}先",
   "Then in {distance}": "その後{distance}先",
   "Full: every turn, early and again close to it": "すべて：曲がり角ごとに早めと直前の2回",
-  "Stoker: each turn once ahead and as it happens, busy crossings, stops": "同乗者：曲がり角ごとに手前で1回と曲がる時、交通量の多い交差点、立ち寄り地点",
   "Quiet: only arrival; ask Where am I? any time": "静か：到着のみ。いつでも「現在地は？」で確認できます",
   "My screen reader": "スクリーンリーダー",
   "RouteMaker's voice": "RouteMakerの音声",

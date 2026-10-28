@@ -106,7 +106,8 @@ def test_english_unless_asked():
         assert lang.language() == "en"
     # A language the app has but this server has no sentences for yet: wholly English.
     with lang.speaking("am"):
-        assert lang.language() == ("am" if lang.catalog("am") else "en")
+        assert not lang.catalog("am")
+        assert lang.language() == "en"
     with lang.speaking("es"):
         assert lang.t("Continue onto {street}", street="B") == "Continúe por B"
         assert lang.t("not in the list") == "not in the list"

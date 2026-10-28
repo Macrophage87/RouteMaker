@@ -196,6 +196,16 @@ test("every language's catalog keeps the {places} of the English it translates",
   }
 });
 
+test("a phrase joined to the next keeps the English's edge spaces, except in the languages written without them", async () => {
+  for (const lang of LANGUAGES.filter((l) => !["en", "es", "ja", "zh", "yue"].includes(l))) {
+    const { CATALOG } = (await import(`../i18n/${lang}.ts`)) as { CATALOG: Record<string, string> };
+    for (const [english, text] of Object.entries(CATALOG)) {
+      if (english.endsWith(" ")) assert.ok(text.endsWith(" "), `${lang}: "${english}" ends with a space`);
+      if (english.startsWith(" ")) assert.ok(text.startsWith(" "), `${lang}: "${english}" starts with a space`);
+    }
+  }
+});
+
 test("every language bolds the menu names its English bolds, in pairs of marks", async () => {
   for (const lang of LANGUAGES.filter((l) => l !== "en")) {
     const catalog = lang === "es" ? ES : ((await import(`../i18n/${lang}.ts`)) as { CATALOG: Record<string, string> }).CATALOG;

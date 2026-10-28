@@ -30,4 +30,17 @@ void loadLanguage()
         </CrashBoundary>
       </StrictMode>,
     );
+  })
+  // A part of the app that did not arrive (offline before it was kept, or mid-update): a way back, never a blank page.
+  .catch(() => {
+    const note = document.createElement("p");
+    note.setAttribute("role", "alert");
+    note.style.cssText = "font: 18px system-ui, sans-serif; margin: 24px 16px";
+    note.textContent = "RouteMaker did not finish loading. ";
+    const again = document.createElement("button");
+    again.textContent = "Reload";
+    again.style.cssText = "font: inherit; min-height: 44px; padding: 0 16px";
+    again.addEventListener("click", () => location.reload());
+    note.append(again);
+    root.replaceChildren(note);
   });

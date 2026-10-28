@@ -612,7 +612,7 @@ class RouteIn(Schema):
     @classmethod
     def _known_language(cls, value: str) -> str:
         """A language this server does not word is English, so the cache keeps one answer."""
-        return value if value in lang.LANGUAGES else "en"
+        return value if value in lang.LANGUAGES and (value == "en" or lang.catalog(value)) else "en"
 
     @model_validator(mode="after")
     def dials_fit_the_preset(self):

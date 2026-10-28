@@ -114,7 +114,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "In {distance}": "{distance}后",
   "Then in {distance}": "然后{distance}后",
   "Full: every turn, early and again close to it": "完整：每个转弯都提前提示，靠近时再提示一次",
-  "Stoker: each turn once ahead and as it happens, busy crossings, stops": "后座：每个转弯提前一次、转弯时一次，车流量大的路口，经停点",
   "Quiet: only arrival; ask Where am I? any time": "安静：只提示到达；随时可以问“我在哪？”",
   "My screen reader": "我的读屏软件",
   "RouteMaker's voice": "RouteMaker 语音",
