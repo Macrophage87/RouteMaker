@@ -297,6 +297,7 @@ export function foodNearestPlaces(food: readonly FoodPlace[]): NearestPlace[] {
     kind: "water",
     point: [place.lon, place.lat],
     title: place.name || foodKindText(place),
+    ...(place.name ? { name: place.name } : {}),
     details: [place.name ? `${foodKindText(place)}.` : "", place.hours ? t("Hours as mapped: {hours}.", { hours: place.hours }) : ""].filter(Boolean),
   }));
 }

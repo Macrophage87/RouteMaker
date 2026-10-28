@@ -4370,6 +4370,34 @@ details.zoom-notes {
   font-size: max(16pt, 1.375rem);
 }
 
+/* Keep riding (Undo before): a text link beside a filled Done (the UI review, 2026-10-28). */
+.ride-summary-actions .ride-summary-keep {
+  flex: none;
+  text-decoration: underline;
+}
+
+/* Where, how far and how long, first (the UI review, 2026-10-28). */
+.ride-summary-lead {
+  font-size: max(16pt, 1.375rem);
+  font-weight: 700;
+}
+
+.ride-summary-lead > span + span > span {
+  white-space: nowrap;
+}
+
+/* The elevation chart and the stress behind Details: a full-size target. */
+.ride-summary-details summary {
+  padding: 10px 0;
+  font-size: 16pt;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.ride-summary-details > figure {
+  margin: 8px 0 0;
+}
+
 .cue-next,
 .cue-off {
   display: flex;
@@ -4432,6 +4460,43 @@ details.zoom-notes {
   margin: 2px 0;
 }
 
+/* A steady card (the UI review, 2026-10-28: it changed height between cues and the map and buttons jumped about 75 px):
+   the instruction in a two-line slot, which RideMode shrinks a long street into (not under 16 px, then "…" on its
+   second line); what follows it at most one line, its slot kept when empty. Screen readers have the whole sentence. */
+.ride .cue-next .cue-text {
+  height: 3.75rem;
+  display: flex;
+  align-items: center;
+}
+
+.ride .cue-next .cue-text > [aria-hidden] {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.ride .cue-next .cue-more {
+  min-height: 1.25em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  overflow: hidden;
+}
+
+/* Large text fits the instruction to the card itself (RideMode's --cue-fit): no slot, no clamp. */
+.ride-large .cue-next .cue-text {
+  height: auto;
+  display: block;
+}
+
+.ride-large .cue-next .cue-text > [aria-hidden] {
+  display: inline;
+  overflow: visible;
+}
+
 /* The turns ahead while GPS is weak (RideMode's cue sheet): the next one first, larger and bold. */
 .cue-sheet-list {
   margin: 4px 0;
@@ -4490,6 +4555,48 @@ details.zoom-notes {
 .start-ride button {
   min-height: 44px;
   padding: 8px 14px;
+}
+
+/* The screen-on note (ScreenSleepNote): one line with its How beside it; the phone's steps under it once asked. */
+.wake-note p {
+  margin: 0;
+}
+
+.ride .wake-note .wake-how {
+  min-height: 44px;
+  padding: 0 8px;
+  text-decoration: underline;
+}
+
+.wake-steps[hidden] {
+  display: none;
+}
+
+/* Arrived: Done filled (the UI review, 2026-10-28), the next step rather than a warning. */
+.ride .ride-done {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+/* The ride's settings: the rest of the safety note under "About Ride mode". */
+.ride-safety-more summary {
+  padding: 12px 0;
+  cursor: pointer;
+  color: var(--accent);
+}
+
+/* Detour: the kind picked and Change, where its buttons were. */
+.ride-menu .detour-picked {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 6px 0 0;
+}
+
+.ride-menu .detour-picked button {
+  min-height: 44px;
+  text-decoration: underline;
 }
 
 /*
@@ -5945,8 +6052,9 @@ details.fold > summary .icon {
   pointer-events: none;
 }
 
-/* Short of room (the bottom panel up on a small phone), the buttons wrap into a second column to the left
-   rather than over the cue card. */
+/* One column in its fixed order at every size, Large text too (the UI review, 2026-10-28: it used to wrap into a
+   second column and move 311 and More). Each button's word under it; short of room (lib/railFit.ts), each button a
+   44 px pill with its word beside the icon instead, which takes far less height. */
 .ride-rail {
   position: absolute;
   right: 12px;
@@ -5954,12 +6062,21 @@ details.fold > summary .icon {
   top: 8px;
   display: flex;
   flex-direction: column;
-  flex-wrap: wrap-reverse;
+  flex-wrap: nowrap;
   justify-content: flex-end;
-  align-content: flex-start;
   align-items: center;
-  gap: 10px;
+  gap: 24px;
   pointer-events: none;
+}
+
+/* The words under: the gap holds each one (18 px) and 6 px more; the last one's room at the foot. */
+.ride-rail-under {
+  padding-bottom: 18px;
+}
+
+.ride-rail-pill {
+  align-items: flex-end;
+  gap: 6px;
 }
 
 .ride-rail > * {
@@ -5967,6 +6084,7 @@ details.fold > summary .icon {
 }
 
 .ride .ride-round {
+  position: relative;
   width: 56px;
   height: 56px;
   padding: 0;
@@ -5985,6 +6103,44 @@ details.fold > summary .icon {
   display: none;
 }
 
+/* A side button's word (the UI review, 2026-10-28): under its circle, on the page's own colour so it reads over the
+   map in either theme; a tap on it is a tap on its button. */
+.ride .ride-word {
+  position: absolute;
+  top: calc(100% + 1px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 17px;
+  white-space: nowrap;
+}
+
+/* Short of room, each button a pill: its icon, then its word, 44 px high, right-aligned in the column. */
+.ride .ride-rail-pill .ride-round,
+.ride .ride-rail-pill .ride-311-button {
+  width: auto;
+  min-width: 44px;
+  height: 44px;
+  flex-direction: row;
+  gap: 6px;
+  padding: 0 12px 0 10px;
+  border-radius: 22px;
+}
+
+.ride .ride-rail-pill .ride-word {
+  position: static;
+  transform: none;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font-size: 15px;
+}
+
 .ride .ride-round[aria-expanded="true"],
 .ride .ride-round-alert,
 .ride .ride-round-on {
@@ -5993,18 +6149,24 @@ details.fold > summary .icon {
   border-color: var(--bg);
 }
 
-/* More's bubbles (Stephen 2026-10-26: "just expanded as more bubble buttons"): a row to its left, at its foot, the
-   first nearest; short of room, a second row above. */
+/* More's bubbles (Stephen 2026-10-26: "just expanded as more bubble buttons"), each with its word: a column going up
+   from More, beside the side buttons, the first nearest More (the UI review, 2026-10-28: the row along the foot covered
+   the map's credits and Help). Far enough left that their words clear the rail's. */
 .ride-more-bubbles {
   position: absolute;
-  right: calc(100% + 10px);
+  right: calc(100% + 22px);
   bottom: 0;
   display: flex;
-  flex-direction: row-reverse;
-  flex-wrap: wrap-reverse;
-  gap: 10px;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 24px;
   width: max-content;
-  max-width: calc(100vw - 96px);
+}
+
+.ride-rail-pill .ride-more-bubbles {
+  right: calc(100% + 10px);
+  align-items: flex-end;
+  gap: 6px;
 }
 
 .ride-more-bubbles[hidden] {
@@ -6061,10 +6223,14 @@ details.fold > summary .icon {
   bottom: 0;
 }
 
+/* An answer (Where am I?, a re-plan's outcome) at the map's top across its whole width, over the side buttons, so it is
+   never cut behind them (the UI review, 2026-10-28); its lines as given. */
 .ride-toast {
-  right: 84px;
-  bottom: 16px;
-  max-width: min(18rem, calc(100% - 96px));
+  top: 8px;
+  right: 12px;
+  bottom: auto;
+  left: 12px;
+  z-index: 2;
   padding: 8px 12px;
   background: var(--bg);
   color: var(--text);
@@ -6075,6 +6241,7 @@ details.fold > summary .icon {
 
 .ride-toast p {
   margin: 0;
+  white-space: pre-line;
 }
 
 .ride-menu {
@@ -8634,7 +8801,8 @@ details.fold > summary .icon {
   display: grid;
   gap: 2px;
 }
-.load-route-dialog .closure-choices button {
+.load-route-dialog .closure-choices button,
+.resume-ride-dialog .closure-choices button {
   min-height: 44px;
 }
 

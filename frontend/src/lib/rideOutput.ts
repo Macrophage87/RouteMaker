@@ -11,6 +11,7 @@
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
 import type { Verbosity } from "./navigate.ts";
 import { speechLang, t } from "./i18n.ts";
+import { isIos } from "./installOffer.ts";
 
 // ---- The rider's choices, kept on this device -----------------------------------------------------
 
@@ -330,13 +331,38 @@ export function browserWake(): WakeEnv {
   return { request: wakeLock ? () => wakeLock.request("screen") : undefined, visible: () => typeof document === "undefined" || document.visibilityState === "visible" };
 }
 
-/** What the rider is told when the screen may turn off. */
-export const WAKE_UNAVAILABLE =
-  t("This browser cannot keep the screen on. Keep your screen on yourself for this ride (on an iPhone: Settings, Display and Brightness, Auto-Lock, Never).");
+/** What the rider is told when the screen may turn off; the phone's own steps follow it (wakeSaid). */
+export const WAKE_UNAVAILABLE = t("This browser cannot keep the screen on. Keep your screen on yourself for this ride.");
 
 /** Said instead when the screen was kept on earlier in the ride and the browser stopped (review RIDE-8). */
-export const WAKE_LOST =
-  t("The screen may now turn off: the browser stopped keeping it on. Keep your screen on yourself for this ride (on an iPhone: Settings, Display and Brightness, Auto-Lock, Never).");
+export const WAKE_LOST = t("The screen may now turn off: the browser stopped keeping it on. Keep your screen on yourself for this ride.");
+
+/**
+ * The same note as shown, one line (the UI review, 2026-10-28: the three-line note stayed for the whole ride); the
+ * steps are behind its How (ScreenSleepNote.tsx), and the voice and screen readers keep the whole sentence.
+ */
+export const WAKE_SHORT = t("Screen may sleep: keep it on.");
+
+/** Which phone's steps to give: an iPhone's (an iPad too), Android's, or general words for any other. */
+export type PhoneKind = "ios" | "android" | "other";
+
+export function phoneKind(nav: { userAgent: string; platform?: string; maxTouchPoints?: number } | undefined = globalThis.navigator): PhoneKind {
+  if (!nav) return "other";
+  if (isIos(nav.userAgent, nav.platform ?? "", nav.maxTouchPoints ?? 0)) return "ios";
+  return /Android/.test(nav.userAgent) ? "android" : "other";
+}
+
+/** How to keep the screen on by hand, for the rider's own phone only (the review: an Android phone was given an iPhone's). */
+export const WAKE_STEPS: Record<PhoneKind, string> = {
+  ios: t("On an iPhone: Settings, Display and Brightness, Auto-Lock, Never."),
+  android: t("On Android: Settings, Display, Screen timeout, the longest time."),
+  other: t("In your phone's display settings, set the screen to stay on longer."),
+};
+
+/** The whole note, said and read by screen readers: the sentence, then the phone's steps; none for no note. */
+export function wakeSaid(note: string, kind: PhoneKind): string {
+  return note ? `${note} ${WAKE_STEPS[kind]}` : "";
+}
 
 /** How many times a ride asks again for a lock the browser let go in front, before it stops asking. */
 export const WAKE_REASKS = 3;

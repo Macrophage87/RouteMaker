@@ -34,7 +34,9 @@ import type { WaterPoint } from "./lib/waterRestrooms.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
 import type { RideFix } from "./lib/navigate.ts";
-import { ScreenWake, toScreenReader, type RidePrefs } from "./lib/rideOutput.ts";
+import { ScreenWake, phoneKind, toScreenReader, wakeSaid, type RidePrefs } from "./lib/rideOutput.ts";
+import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
+import { useRailFit } from "./lib/railFit.ts";
 import { WAITING_FOR_GPS, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import { rideGeoEnv, rideWake, speaksAloud } from "./lib/nativeShell.ts";
 import { NO_FIX_YET, STILL_SEARCHING, nearbyShort, requestNearest, type Nearby, type NearestPlace } from "./lib/nearest.ts";
@@ -160,6 +162,11 @@ export function RoamMode({
   const [heading, setHeading] = useState<number | null>(null);
   const [polite, setPolite] = useState({ text: "", count: 0 });
   const [toast, setToast] = useState("");
+  const railRef = useRef<HTMLDivElement>(null);
+  const railFit = useRailFit(railRef);
+  // The screen-on note, as Ride mode's (ScreenSleepNote): one line, the phone's own steps behind its How.
+  const [wakeNote, setWakeNote] = useState("");
+  const phone = useMemo(() => phoneKind(), []);
 
   // Said through the rider's outputs (Settings > Ride mode): the screen reader's region, the voice, or both.
   // `urgent` interrupts the voice (an Extreme or Severe weather warning).
@@ -193,13 +200,17 @@ export function RoamMode({
       },
       (reason) => setGps(reason === "timeout" ? WAITING_FOR_GPS : LOCATE_MESSAGES[reason]),
     );
-    void wake.hold();
+    void wake.hold().then((held) => {
+      const note = wake.noteFor(held);
+      setWakeNote(note);
+      if (note) say(wakeSaid(note, phone));
+    });
     headingRef.current?.focus();
     return () => {
       stop();
       void wake.letGo();
     };
-  }, [env, wake]);
+  }, [env, wake, say, phone]);
 
   // The rider on the map, and the roads ahead worked out again as they move (at most every AHEAD_EVERY_MS).
   const last = useRef<{ at: number; point: LonLat } | null>(null);
@@ -437,6 +448,7 @@ export function RoamMode({
           )}
           {roads !== null && heading === null && <p className="cue-more">{t("Start riding to see the roads ahead.")}</p>}
           <WeatherLines report={weatherShown} riding now={Date.now()} onDismiss={() => { setWeatherDismissed((d) => dismissWeather(weatherShown, d)); headingRef.current?.focus({ preventScroll: true }); }} />
+          <ScreenSleepNote note={wakeNote} kind={phone} />
         </div>
       </div>
       <div className="ride-middle">
@@ -451,7 +463,8 @@ export function RoamMode({
             <p>{toast}</p>
           </div>
         )}
-        <div className="ride-rail" role="group" aria-label={t("Roam buttons")}>
+        {/* Each button's word under it, or beside its icon where the map is short, as Ride mode's (lib/railFit.ts). */}
+        <div ref={railRef} className={`ride-rail ride-rail-${railFit}`} role="group" aria-label={t("Roam buttons")}>
           <button
             type="button"
             ref={whereRef}
@@ -461,6 +474,7 @@ export function RoamMode({
             title={t("Where am I?")}
           >
             <Icon name="locate" size={24} />
+            <span className="ride-word" aria-hidden="true">{t("Locate")}</span>
           </button>
           {onBroadcast && (
             <button
@@ -473,6 +487,7 @@ export function RoamMode({
               title={ROAM_BROADCAST_NAME}
             >
               <Icon name="broadcast" size={24} />
+              <span className="ride-word" aria-hidden="true">{t("Share live")}</span>
             </button>
           )}
           {onBroadcast && onBroadcastHold && (
@@ -502,6 +517,7 @@ export function RoamMode({
               onClick={() => setDetourOpen(!detourOpen)}
             >
               <Icon name="detour" size={24} />
+              <span className="ride-word" aria-hidden="true">{t("Detour")}</span>
             </button>
             <div id={detourId} className="ride-menu" role="group" aria-labelledby={`${detourId}-heading`} hidden={!detourOpen}>
               <div className="ride-menu-head">

@@ -31,7 +31,8 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   const top = ride.slice(ride.indexOf('className={light && cornerFits ? "ride-top"'), ride.indexOf('className={light && cornerFits ? "ride-top"') + 2400);
   assert.match(top, /<h2 id="ride-heading"/);
   // The owner, 2026-10-16 ("add a method of ending navigation"): the visible words are End ride, so its name is too.
-  assert.match(top, /<button type="button" className="danger ride-end" onClick=\{end\}>\s*<Icon name="stop" size=\{22\} \/>\s*\{END_RIDE_NAME\}\s*<\/button>/);
+  // Once arrived it is a filled Done (the UI review, 2026-10-28), still named End ride after its words.
+  assert.match(top, /<button type="button" className="primary ride-end ride-done" onClick=\{end\}>\s*<Icon name="check" size=\{22\} \/>\s*\{RIDE_DONE_TEXT\}\s*<span className="visually-hidden">: \{END_RIDE_NAME\}<\/span>\s*<\/button>/);
   assert.match(ride, /export const END_RIDE_NAME = t\("End ride"\);/);
   // End ride stops the ride at once: the watch, the queued words and the voice, then App's endRide.
   const end = ride.slice(ride.indexOf("  const end = () => {"), ride.indexOf("  const keep = () => {"));
@@ -57,7 +58,12 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   // Plain vh first, for WebViews without dvh (Android 7 and up).
   assert.match(css, /\.ride-summary \{[^}]*max-height: calc\(100vh - 16px\);\s*max-height: calc\(100dvh/);
   assert.match(css, /\.ride-summary-body \{[^}]*min-height: 0;\s*overflow-y: auto;/);
-  assert.match(summary, /<div\s+ref=\{body\}\s+className="ride-summary-body"\s+role=\{scrolls \? "group" : undefined\}\s+aria-labelledby=\{scrolls \? titleId : undefined\}\s+tabIndex=\{scrolls \? 0 : undefined\}\s*>[\s\S]*<\/figure>\s*\)\}\s*<\/div>\s*<div className="ride-summary-actions">/);
+  assert.match(summary, /<div\s+ref=\{body\}\s+className="ride-summary-body"\s+role=\{scrolls \? "group" : undefined\}\s+aria-labelledby=\{scrolls \? titleId : undefined\}\s+tabIndex=\{scrolls \? 0 : undefined\}\s*>[\s\S]*<\/figure>\s*\)\}\s*<\/details>\s*\)\}\s*<\/div>\s*<div className="ride-summary-actions">/);
+  // It leads with where, how far and how long; the chart and stress under Details; Undo a Keep riding link (the UI
+  // review, 2026-10-28), still Undo's press.
+  assert.match(summary, /<p className="ride-summary-lead">\s*\{summaryLead\(stats, endedAt, destination\)/);
+  assert.match(summary, /<details className="ride-summary-details">\s*<summary>\{t\("Details"\)\}<\/summary>\s*<ElevationFigure stats=\{stats\} \/>/);
+  assert.match(summary, /<button type="button" className="link ride-summary-keep" onClick=\{onUndo\}>\s*\{t\("Keep riding"\)\}/);
   // A tab stop only while it scrolls, with no second name the same as the section's.
   assert.match(summary, /setScrolls\(element\.scrollHeight > element\.clientHeight\)/);
   // Done: Go emptied for the next trip, Plan's plan kept (the owner, 2026-10-20).
@@ -135,11 +141,11 @@ test("Ride settings in reach: More at the end of the side buttons opens them jus
   assert.match(top, /if \(event\.key === "Escape"\) \{\s*event\.preventDefault\(\);\s*setSettingsOpen\(false\);\s*settingsBubble\.current\?\.focus\(\);/);
   assert.match(top, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\}/);
   // More: the last side button, a disclosure of its bubbles; the last bubble, Settings, a disclosure of that panel.
-  const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
+  const rail = ride.slice(ride.indexOf("<div ref={railRef} className={`ride-rail"), ride.indexOf("{/* The bottom panel"));
   assert.match(rail, /ref=\{settingsButton\}\s+className="ride-round ride-settings-button"\s+aria-label=\{RIDE_MORE_NAME\}\s+title=\{RIDE_SETTINGS_TEXT\}\s+aria-expanded=\{moreOpen\}\s+aria-controls=\{`\$\{settingsId\}-more`\}/);
   assert.match(rail, /ref=\{settingsBubble\}\s+className="ride-round ride-settings-bubble"\s+aria-label=\{RIDE_SETTINGS_TITLE\}\s+title=\{RIDE_SETTINGS_TITLE\}\s+aria-expanded=\{settingsOpen\}\s+aria-controls=\{`\$\{settingsId\}-settings`\}/);
-  assert.match(rail, /<Icon name="gear" size=\{24\} \/>\s*<\/button>(\s*<\/div>){4}\s*$/);
-  assert.match(ride, /export const RIDE_SETTINGS_TEXT = "More";/);
+  assert.match(rail, /<Icon name="gear" size=\{24\} \/>\s*<span className="ride-word" aria-hidden="true">\{t\("Settings"\)\}<\/span>\s*<\/button>(\s*<\/div>){4}\s*$/);
+  assert.match(ride, /export const RIDE_SETTINGS_TEXT = t\("More"\);/);
   assert.doesNotMatch(rail, /ride-round ride-road-closed/);
   // Opened, it is scrolled into view.
   assert.match(ride, /if \(!settingsOpen\) return;\s*settingsPanel\.current\?\.scrollIntoView\?\.\(\{ block: "nearest" \}\);/);
@@ -181,7 +187,7 @@ test("End ride in Plan keeps the plan and its routes; part way it starts where t
 
 test("End ride is slid until the rider has arrived (the owner, 2026-10-19: \"Add a swipe confirmation on ending the ride unless at the destination\")", () => {
   const top = ride.slice(ride.indexOf('className={light && cornerFits ? "ride-top"'), ride.indexOf("{ride.arrived ? (\n          <>"));
-  assert.match(top, /\{ride\.arrived \? \(\s*<button type="button" className="danger ride-end" onClick=\{end\}>[\s\S]*?\) : \(\s*<SlideToEnd onEnd=\{end\} onTap=\{slideHint\} \/>/);
+  assert.match(top, /\{ride\.arrived \? \(\s*<button type="button" className="primary ride-end ride-done" onClick=\{end\}>[\s\S]*?\) : \(\s*<SlideToEnd onEnd=\{end\} onTap=\{slideHint\} \/>/);
   const slide = ride.slice(ride.indexOf("function SlideToEnd("), ride.indexOf("/** A live region"));
   // A native range, named End ride, so arrows and a screen reader's adjust gestures move it; the end ends the ride.
   assert.match(slide, /type="range"[\s\S]*min=\{0\}\s*max=\{100\}\s*step=\{25\}/);
@@ -213,7 +219,7 @@ test("ride card: fewer words on screen, the whole of them for screen readers (th
 });
 
 test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a ride\"): a side button, Share ride's link, the ride going on", () => {
-  const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
+  const rail = ride.slice(ride.indexOf("<div ref={railRef} className={`ride-rail"), ride.indexOf("{/* The bottom panel"));
   // A round side button as Roam's, on while this rider leads; not once arrived.
   assert.match(rail, /\{onBroadcast && !ride\.arrived && \(\s*<button\s+type="button"\s+className=\{`ride-round broadcast-hold\$\{broadcasting \? " ride-round-on" : ""\}`\}\s+onClick=\{\(\) => void broadcast\(\)\}/);
   assert.match(rail, /<Icon name="broadcast" size=\{riders === null \? 24 : 20\} \/>/);
@@ -244,7 +250,7 @@ test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a r
 
 test("More on the ride screen (Stephen 2026-10-26): the route's changes and Settings as bubbles beside it, none in the settings", () => {
   const panel = ride.slice(ride.indexOf('className="ride-mode-settings"'), ride.indexOf("<RideSettingsFields prefs={prefs}"));
-  const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
+  const rail = ride.slice(ride.indexOf("<div ref={railRef} className={`ride-rail"), ride.indexOf("{/* The bottom panel"));
   const bubbles = rail.slice(rail.indexOf('className="ride-more-bubbles"'));
   // The settings panel holds the settings alone.
   assert.doesNotMatch(panel, /ride-change|ease\(which\)|SKIP_STOP/);
@@ -269,7 +275,7 @@ test("More on the ride screen (Stephen 2026-10-26): the route's changes and Sett
 });
 
 test("Topo lines from More (Stephen 2026-10-26: \"allow topo lines to be toggled on and off during a ride\"): a bubble, icon only, Map layers' own switch", () => {
-  const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
+  const rail = ride.slice(ride.indexOf("<div ref={railRef} className={`ride-rail"), ride.indexOf("{/* The bottom panel"));
   const bubbles = rail.slice(rail.indexOf('className="ride-more-bubbles"'));
   // Always a bubble (it changes the map, not the route): not behind fixed or arrived, before Settings; a toggle with its full name.
   assert.match(bubbles, /className="ride-round ride-topo"\s+onClick=\{\(\) => fromMore\(\(\) => void toggleTopo\(\)\)\}\s+aria-label=\{TOPO_LINES_LABEL\}\s+aria-pressed=\{topoOn\}[\s\S]*?<Icon name="topo"[\s\S]*?ref=\{settingsBubble\}/);

@@ -3254,7 +3254,11 @@ export function App() {
     const note = rideNote.current;
     rideNote.current = "";
     setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, kept, note, n: (before?.n ?? 0) + 1 }));
-    if (kept) keepLeftRide({ route, points: leg.points, loop: leg.loop, preset: leg.preset, dials: rideDialsNow, fixed }, VIA_MARKS, Date.now());
+    if (kept) {
+      // The destination's name kept too, so a Resume after a reload can name the ride (the UI review, 2026-10-28).
+      const destination = leg.loop ? null : (namer.name(leg.points[leg.points.length - 1])?.name ?? null);
+      keepLeftRide({ route, points: leg.points, loop: leg.loop, preset: leg.preset, dials: rideDialsNow, fixed, destination }, VIA_MARKS, Date.now());
+    }
     else forgetLeftRide();
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
     // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
@@ -5322,7 +5326,13 @@ export function App() {
         }}
       />
       <StopNameDialog ask={stopAsk} onDone={stopNamed} onCancel={() => setStopAsk(null)} />
-      <ResumeRideDialog open={leftAsk !== null && !riding && !roaming} onResume={resumeLeft} onNotNow={dropLeft} onLater={() => setLeftAsk(null)} />
+      <ResumeRideDialog
+        open={leftAsk !== null && !riding && !roaming}
+        destination={leftAsk && !leftAsk.loop ? (leftAsk.destination ?? namer.name(leftAsk.points[leftAsk.points.length - 1])?.name ?? null) : null}
+        onResume={resumeLeft}
+        onNotNow={dropLeft}
+        onLater={() => setLeftAsk(null)}
+      />
       <StartOnComputerDialog
         open={computerAsk !== null}
         onBack={() => setComputerAsk(null)}
@@ -5509,6 +5519,7 @@ export function App() {
           endedAt={rideEnded.at}
           note={rideEnded.note}
           favorite={endedFavorite(rideEnded.destination)}
+          destination={rideEnded.destination ? (namer.name(rideEnded.destination)?.name ?? null) : null}
           onUndo={undoEndRide}
           onDone={finishRide}
           onReports={rideEndReports}

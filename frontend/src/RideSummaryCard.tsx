@@ -1,7 +1,9 @@
 /**
  * After End ride (the owner, 2026-10-20: "When ending a ride, perhaps summary stats rather than programming that ride
- * again"): the ride's own figures (lib/rideStats.ts) in one card, with Done and Undo. In Go, Done leaves Go empty for
- * the next trip; in Plan the plan stays to adjust. Undo starts the same ride again, as it did before.
+ * again"): the ride's own figures (lib/rideStats.ts) in one card, with Done and Keep riding. It leads with where, how
+ * far and how long ("Union Station · 2.6 mi (4.2 km) · 22 min"); the elevation and stress are under Details (the UI
+ * review, 2026-10-28). In Go, Done leaves Go empty for the next trip; in Plan the plan stays to adjust. Keep riding (Undo
+ * before) starts the same ride again, as it did before.
  *
  * Not timed: it stays until Done or Undo (WCAG 2.2.1); no Escape, as Done in Go empties the plan. The focus goes to Done; "Ride ended." is said by the
  * page's polite region (App), as a region mounted with its text in it is often not read (review F6).
@@ -10,7 +12,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import { stressBarKey, stressBarLabel } from "./lib/quickFigures.ts";
 import { stressSegments } from "./lib/stressBar.ts";
 import { elevationSpan, summaryRows, type RideStats } from "./lib/rideStats.ts";
-import { METRES_PER_MILE, formatClimb } from "./lib/format.ts";
+import { METRES_PER_MILE, formatClimb, formatDistance, formatDuration } from "./lib/format.ts";
+import { t } from "./lib/i18n.ts";
 import { SAVE_SPOT_TEXT, SAVED_TO_FAVORITES } from "./lib/favoritePlaces.ts";
 import { OPEN_REPORTS, REPORTS_WHERE, openCount, outstandingSaid, useReport311Log } from "./lib/report311Log.ts";
 
@@ -18,14 +21,26 @@ export const RIDE_SUMMARY_TITLE = "Ride ended";
 /** The stress shares are shown once this much was ridden along the route. */
 const STRESS_MIN_M = METRES_PER_MILE / 10;
 
+/** Whether the ride's heights are worth a chart: some heights, along a tenth of a mile or more. */
+function elevationDrawn(stats: RideStats): boolean {
+  const points = stats.elevation;
+  return !!elevationSpan(stats) && points.length > 0 && points[points.length - 1].atM - points[0].atM >= STRESS_MIN_M;
+}
+
+/** The summary's first line: where, how far, how long ("Union Station · 2.6 mi (4.2 km) · 22 min"). */
+export function summaryLead(stats: RideStats, endedAt: number, destination: string | null | undefined): string[] {
+  const movingS = stats.movingMs / 1000;
+  const time = movingS >= 30 ? movingS : Math.max(0, (endedAt - stats.startedAt) / 1000);
+  return [destination ?? "", formatDistance(stats.distanceM), formatDuration(time)].filter(Boolean);
+}
+
 /** The ride's heights as a filled line (the owner, 2026-10-20: "Show elevation too!"), its lowest and highest in words. */
 function ElevationFigure({ stats }: { stats: RideStats }) {
   const span = elevationSpan(stats);
-  if (!span) return null;
+  if (!span || !elevationDrawn(stats)) return null;
   const points = stats.elevation;
   const from = points[0].atM;
   const length = points[points.length - 1].atM - from;
-  if (!(length >= STRESS_MIN_M)) return null;
   // At least 30 ft (about 9 m) of height in the box, so a flat ride is drawn flat, not as noise.
   const rise = Math.max(span.hi - span.lo, 9);
   const W = 300;
@@ -55,6 +70,7 @@ export function RideSummaryCard({
   endedAt,
   note,
   favorite = null,
+  destination = null,
   onDone,
   onUndo,
   onReports,
@@ -68,6 +84,8 @@ export function RideSummaryCard({
    * loop, Home, or signed out. Once saved, the button gives way to a line that says so.
    */
   favorite?: { name: string; saved: boolean; onSave: () => void } | null;
+  /** The ride's destination's name, where the map has one, for the first line; none for a loop. */
+  destination?: string | null;
   onDone: () => void;
   onUndo: () => void;
   /** Closes the summary, as Done does, and opens Reports at the 311 checklist. */
@@ -113,6 +131,15 @@ export function RideSummaryCard({
         aria-labelledby={scrolls ? titleId : undefined}
         tabIndex={scrolls ? 0 : undefined}
       >
+        {/* Each figure kept whole on its line, never split between its number and its unit. */}
+        <p className="ride-summary-lead">
+          {summaryLead(stats, endedAt, destination).map((part, i) => (
+            <span key={part}>
+              {i > 0 && " "}
+              <span>{i > 0 ? `· ${part}` : part}</span>
+            </span>
+          ))}
+        </p>
         {note && <p className="hint">{note}</p>}
         {favorite && (
           <div className="ride-summary-favorite">
@@ -142,35 +169,42 @@ export function RideSummaryCard({
             </div>
           ))}
         </dl>
-        <ElevationFigure stats={stats} />
-        {segments.length > 0 && (
-          <figure className="stress ride-summary-stress">
-            <figcaption>
-              Traffic stress<span className="visually-hidden">, along the route</span>
-            </figcaption>
-            <div className="stress-bar" role="img" aria-label={stressBarLabel(segments)}>
-              {segments
-                .filter((s) => s.fraction > 0)
-                .map((s) => (
-                  <span
-                    key={s.key}
-                    className={`stress-seg stress-seg-${s.key}`}
-                    style={{ width: `${s.fraction * 100}%`, backgroundColor: s.color, ["--seg-accent" as string]: s.casing }}
-                  />
-                ))}
-            </div>
-            <p className="stress-key" aria-hidden="true">
-              {stressBarKey(segments)}
-            </p>
-          </figure>
+        {/* The chart and the stress behind Details (the UI review, 2026-10-28), the figures in view. */}
+        {(segments.length > 0 || elevationDrawn(stats)) && (
+          <details className="ride-summary-details">
+            <summary>{t("Details")}</summary>
+            <ElevationFigure stats={stats} />
+            {segments.length > 0 && (
+              <figure className="stress ride-summary-stress">
+                <figcaption>
+                  Traffic stress<span className="visually-hidden">, along the route</span>
+                </figcaption>
+                <div className="stress-bar" role="img" aria-label={stressBarLabel(segments)}>
+                  {segments
+                    .filter((s) => s.fraction > 0)
+                    .map((s) => (
+                      <span
+                        key={s.key}
+                        className={`stress-seg stress-seg-${s.key}`}
+                        style={{ width: `${s.fraction * 100}%`, backgroundColor: s.color, ["--seg-accent" as string]: s.casing }}
+                      />
+                    ))}
+                </div>
+                <p className="stress-key" aria-hidden="true">
+                  {stressBarKey(segments)}
+                </p>
+              </figure>
+            )}
+          </details>
         )}
       </div>
       <div className="ride-summary-actions">
         <button ref={done} type="button" onClick={onDone}>
-          Done
+          {t("Done")}
         </button>
-        <button type="button" className="secondary" onClick={onUndo}>
-          Undo
+        {/* Undo, as a text link (the UI review, 2026-10-28): the same ride again, from its figures so far. */}
+        <button type="button" className="link ride-summary-keep" onClick={onUndo}>
+          {t("Keep riding")}
         </button>
       </div>
     </section>

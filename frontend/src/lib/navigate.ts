@@ -30,6 +30,7 @@ import { language, t } from "./i18n.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { AVOID_PLEA } from "./avoidJunctions.ts";
 import { descriptionEntries } from "./routeDescription.ts";
+import { cueParts, shortStreets } from "./cueShown.ts";
 import { mileWords, trailMileAt, type TrailMiles } from "./trailMiles.ts";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import type { JunctionShape } from "./junctionShape.ts";
@@ -116,6 +117,24 @@ export interface CueSheetRow {
   index: number;
   distance: string;
   text: string;
+  /** The row as shown, short (the UI review, 2026-10-28): "0.2 mi (0.3 km) · Left · Church St NW"; screen readers get the rest. */
+  shown: string;
+}
+
+/** How many of the list's rows show on the card; the rest are there for screen readers only. */
+export const CUE_SHEET_SHOWN = 3;
+
+/**
+ * A cue's words cut to the turn and the street it ends on: "Left onto Church Street Northwest." as "Left · Church St NW",
+ * a jog's "Bear left onto the path, then left onto Corregidor St NW" as "Bear left · Corregidor St NW".
+ */
+export function cueShort(text: string): string {
+  const head = cueParts(text).head.replace(/\.$/, "");
+  const first = head.search(/ (?:onto|hacia) /);
+  if (first < 0) return head;
+  const turn = head.slice(0, first).split(", ")[0];
+  const last = head.match(/.* (?:onto|hacia) (.+)$/);
+  return `${turn} · ${last ? last[1] : head.slice(first + 1)}`;
 }
 
 /**
@@ -129,7 +148,12 @@ export function cueSheet(model: RideModel, progressM: number): CueSheetRow[] {
     .slice(0, CUE_SHEET_ROWS)
     .map((c, i) => {
       const distance = formatDistance(c.atM - from);
-      const row = { index: c.index, distance: i === 0 ? t("In {distance}", { distance }) : t("Then in {distance}", { distance }), text: c.text };
+      const row = {
+        index: c.index,
+        distance: i === 0 ? t("In {distance}", { distance }) : t("Then in {distance}", { distance }),
+        text: c.text,
+        shown: `${distance} · ${cueShort(c.rideText ?? c.text)}`,
+      };
       from = c.atM;
       return row;
     });
@@ -1765,6 +1789,47 @@ export function whereAmI(
   return sentences.join(" ");
 }
 
+/**
+ * "Where am I?" as shown (the UI review, 2026-10-28: the whole sentence was a six-line box over the map): two short
+ * lines, the street ("N St NW"), then the next cue's distance and street and the arrival clock ("1.0 mi (1.6 km) → New
+ * Jersey Ave NW · 8:06 AM"). The voice and screen readers keep whereAmI's sentence.
+ */
+export function whereAmIShown(
+  model: RideModel,
+  state: RideState,
+  miles: TrailMiles | null = null,
+  arriving: ((seconds: number) => string) | null = null,
+): string[] {
+  if (state.arrived) return [t(ARRIVED_SAID)];
+  if (state.progressM === null) return [t("Finding your place on the route.")];
+  if (state.off) {
+    const back = wayBack(model, state);
+    return back
+      ? [t("Off the planned route."), t("The planned route is {distance} to the {direction}.", { distance: formatDistance(back.metres), direction: back.direction })]
+      : [t("Off the planned route.")];
+  }
+  const progress = state.progressM;
+  const stretch = stretchAt(model, progress);
+  const named = stretch && !isUnnamed(stretch.street) ? shortStreets(stretch.street as string) : null;
+  const mile = named ? trailMileAt(miles, stretch!.street as string, pointAt(model, progress)) : null;
+  const street = named ?? capital(wayRidden(stretch) ?? t("the route"));
+  const lines = [mile ? `${street} · ${mileWords(mile)}` : street];
+  const cue = model.cues.find((c) => ahead(model, c, progress) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
+  const next: string[] = [];
+  if (cue) {
+    // A turn's street, else the named path it leads to, else a jog's next named street; any other cue its short words.
+    const turning = cue.kind === "turn" || cue.kind === "onto";
+    const names = turning ? [cue.toward, cue.street, ...(cue.then ?? []).flatMap((then) => [then.toward, then.street])] : [];
+    const target = names.find((name) => !isUnnamed(name) && !COMMON_WAY.test(name as string));
+    const onto = target ? shortStreets(target) : cueShort(cueWords(cue, false));
+    next.push(isStartUTurn(cue) ? cueShort(cue.text) : `${formatDistance(cue.atM - progress)} → ${onto}`);
+  }
+  const end = toGo(model, progress).end;
+  if (arriving && end.seconds !== null) next.push(arriving(end.seconds));
+  if (next.length) lines.push(next.join(" · "));
+  return lines;
+}
+
 function capital(text: string): string {
   return text ? text[0].toUpperCase() + text.slice(1) : text;
 }
@@ -1934,6 +1999,13 @@ export const UTURN_SAID = "Make a U-turn.";
 export const REPLAN_AHEAD = t("New route found. Keep going ahead.");
 /** The end said on arrival (cueSpoken, whereAmI). */
 const ARRIVED_SAID = "You have arrived at the end of the route.";
+/**
+ * The end as the card shows it (the UI review, 2026-10-28): "Arrived: Union Station", the destination's name where the
+ * map has one, with Done under it; still said as ARRIVED_SAID.
+ */
+export function arrivedShown(place: string | null | undefined): string {
+  return place ? t("Arrived: {place}", { place }) : t("Arrived");
+}
 /**
  * Re-routes in a row that may ask for a U-turn before the next one keeps the rider's way (the owner, 2026-10-20:
  * "give two reroutes and on the third time assume that the user wants to stay on that path").

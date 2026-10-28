@@ -120,6 +120,7 @@ export function repairNearestPlaces(places: readonly RepairPlace[], at: Date): N
     kind: "water" as const,
     point: [p.lon, p.lat] as LonLat,
     title: repairTitle(p),
+    ...(p.name ? { name: p.name } : {}),
     details: repairDetails(p, at),
   }));
 }
@@ -136,6 +137,7 @@ export function searchedPlaces(found: readonly Place[]): NearestPlace[] {
         kind: "water" as const,
         point: [p.lon, p.lat] as LonLat,
         title: p.name,
+        name: p.name,
         details: [`${type}.`, ...(where ? [`${where}.`] : [])],
       };
     });

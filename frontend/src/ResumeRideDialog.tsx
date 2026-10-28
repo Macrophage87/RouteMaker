@@ -4,9 +4,22 @@
  * again at the next load; on close the focus goes back.
  */
 import { useEffect, useId, useRef } from "react";
-import { RESUME_HEADING, RESUME_LEAD, RESUME_NOT_NOW, RESUME_RIDE } from "./lib/rideResume.ts";
+import { RESUME_LEAD, RESUME_NOT_NOW, RESUME_RIDE, resumeHeading } from "./lib/rideResume.ts";
 
-export function ResumeRideDialog({ open, onResume, onNotNow, onLater }: { open: boolean; onResume: () => void; onNotNow: () => void; onLater: () => void }) {
+export function ResumeRideDialog({
+  open,
+  destination = null,
+  onResume,
+  onNotNow,
+  onLater,
+}: {
+  open: boolean;
+  /** The ride's destination's name, where the map has one: the question names the ride. */
+  destination?: string | null;
+  onResume: () => void;
+  onNotNow: () => void;
+  onLater: () => void;
+}) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const resumeRef = useRef<HTMLButtonElement>(null);
   const opener = useRef<Element | null>(null);
@@ -37,7 +50,7 @@ export function ResumeRideDialog({ open, onResume, onNotNow, onLater }: { open: 
     >
       {open && (
         <>
-          <h2 id={headingId}>{RESUME_HEADING}</h2>
+          <h2 id={headingId}>{resumeHeading(destination)}</h2>
           <p id={leadId}>{RESUME_LEAD}</p>
           <div className="closure-choices">
             <button type="button" ref={resumeRef} className="primary" onClick={onResume}>

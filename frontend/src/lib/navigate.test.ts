@@ -9,6 +9,10 @@ import type { LonLat } from "./geo.ts";
 import { spokenDistance } from "./format.ts";
 import { cueParts } from "./cueShown.ts";
 import {
+  CUE_SHEET_SHOWN,
+  arrivedShown,
+  cueShort,
+  whereAmIShown,
   ADVANCE_MIN_M,
   END_FIX_MAX_AGE_MS,
   END_PART_WAY_M,
@@ -2478,4 +2482,29 @@ test("D22(d): a bear at a fork along one way says 'Keep right now.', the advance
   } finally {
     setLanguageForTest("en");
   }
+});
+
+test("the screen's short words (the UI review, 2026-10-28): Where am I? in two lines, the weak-GPS rows, the arrival", () => {
+  const model = rideModel(twoLegs());
+  const { state } = ride(model, "quiet", 0, 400);
+  // The street, then the next cue's distance and street and the arrival clock; the voice's sentence is whereAmI's.
+  assert.deepEqual(whereAmIShown(model, state, null, (s) => `${Math.round(s)} s`), ["A St", "0.4 mi (0.6 km) → B St · 320 s"]);
+  assert.deepEqual(whereAmIShown(model, state), ["A St", "0.4 mi (0.6 km) → B St"]);
+  assert.match(whereAmI(model, state), /^On A Street\. Next, in 0\.4 miles: left onto B Street\./);
+  assert.deepEqual(whereAmIShown(model, { ...state, progressM: null }), ["Finding your place on the route."]);
+  // The weak-GPS list: each row short on screen, its whole sentence kept beside it.
+  const rows = cueSheet(model, 400);
+  assert.equal(rows[0].shown, "0.4 mi (0.6 km) · Stop 1");
+  // The turn is at the stop: nought from the row before.
+  assert.equal(rows[1].shown, "0 ft (0 m) · Left · B St");
+  assert.equal(rows[1].text, "Left onto B Street.");
+  assert.equal(CUE_SHEET_SHOWN, 3);
+  assert.equal(cueShort("Left onto Church Street Northwest."), "Left · Church St NW");
+  assert.equal(cueShort("Right."), "Right");
+  assert.equal(cueShort("Right, then immediately right onto Union Station Drive Northeast."), "Right · Union Station Dr NE");
+  assert.equal(cueShort("Bear left onto the path, then immediately left onto Corregidor Street Northwest, then immediately right onto N Street Northwest."), "Bear left · Corregidor St NW");
+  assert.equal(cueShort("Bear left to stay on Metropolitan Branch Trail."), "Bear left to stay on Metropolitan Branch Trl");
+  // Arrived: the destination's name where the map has one.
+  assert.equal(arrivedShown("Union Station"), "Arrived: Union Station");
+  assert.equal(arrivedShown(null), "Arrived");
 });
