@@ -67,7 +67,12 @@ def designations_of(pieces: list) -> list[str | None]:
     except Exception:  # noqa: BLE001 - a table that fails, or a plan out of time, says none
         logger.warning("the route's scenic roads could not be read", exc_info=True)
         return none
-    return [(str(row[0]).strip() or None) if row[0] else None for row in rows]
+    return [designation_of(row[0]) for row in rows]
+
+
+def designation_of(value) -> str | None:
+    """A piece's scenic column value in words, or None where it has none."""
+    return (str(value).strip() or None) if value else None
 
 
 def along(leg_runs: list, pieces: list, designations: list | None = None) -> list[dict]:

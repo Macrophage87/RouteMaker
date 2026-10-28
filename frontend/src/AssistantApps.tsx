@@ -19,6 +19,7 @@ import {
   readApps,
   type ConnectedApp,
 } from "./lib/assistantApps.ts";
+import { t } from "./lib/i18n.ts";
 
 export function AssistantAppsSetting({ origin = window.location.origin }: { origin?: string }) {
   const [apps, setApps] = useState<ConnectedApp[] | null | undefined>(null);
@@ -67,8 +68,8 @@ export function AssistantAppsSetting({ origin = window.location.origin }: { orig
           {apps.map((app) => (
             <li key={app.id}>
               <span>{appSummary(app)}</span>
-              <button type="button" className="secondary" disabled={busy} aria-label={`Disconnect ${appSummary(app)}`} onClick={() => void disconnect(app)}>
-                Disconnect
+              <button type="button" className="secondary" disabled={busy} aria-label={t("Disconnect {app}", { app: appSummary(app) })} onClick={() => void disconnect(app)}>
+                {t("Disconnect")}
               </button>
             </li>
           ))}

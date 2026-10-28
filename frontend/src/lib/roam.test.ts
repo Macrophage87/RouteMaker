@@ -255,5 +255,5 @@ test("Detour's rows: each Ride here is described by its row, so the nearest wate
   const { readFileSync } = await import("node:fs");
   const roam = readFileSync(new URL("../RoamMode.tsx", import.meta.url), "utf8");
   assert.match(roam, /<span id=\{`\$\{detourId\}-place-\$\{i\}`\}>\{nearbyShort\(item\)\}<\/span>/);
-  assert.match(roam, /aria-label=\{`Ride here: \$\{item\.place\.title\}`\}\s*aria-describedby=\{`\$\{detourId\}-place-\$\{i\}`\}/);
+  assert.match(roam, /aria-label=\{t\("Ride here: \{place\}", \{ place: item\.place\.title \}\)\}\s*aria-describedby=\{`\$\{detourId\}-place-\$\{i\}`\}/);
 });

@@ -10,6 +10,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from approx_points import approx_points
 from django.db import connection
 from test_route_api import encode_polyline6
 
@@ -186,7 +187,7 @@ class TestRoadLine:
         dense.append(B)
         self.ask(monkeypatch, [answer(dense)])
         line = workzones.road_line(A, B, ("MD 97",))
-        assert [tuple(p) for p in line] == pytest.approx(ROAD)
+        assert [tuple(p) for p in line] == approx_points(ROAD)
 
     def test_a_one_way_road_is_asked_the_other_way_and_turned_round(self, monkeypatch) -> None:
         asked = self.ask(

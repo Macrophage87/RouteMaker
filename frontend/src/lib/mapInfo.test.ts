@@ -86,7 +86,7 @@ test("the info panel goes over MapLibre's credits in one body, once, and the cre
 test("the map wraps its credits after collapsing them, behind an i named for the panel", () => {
   const view = src("../MapView.tsx");
   assert.match(view, /customAttribution: MAP_ATTRIBUTION \}\), "bottom-right"\);\s*const credits = [^;]+;\s*collapseCredits\(credits\);[\s\S]{0,300}wrapCredits\(credits\);/);
-  assert.match(view, /"AttributionControl\.ToggleAttribution": "Help: map info and credits"/);
+  assert.match(view, /"AttributionControl\.ToggleAttribution": t\("Help: map info and credits"\)/);
   // A ride starts with the panel closed, so it never covers the rider's dot.
   assert.match(view, /if \(!props\.rideLabels\) return;\s*collapseCredits\(container\.current\?\.querySelector<HTMLElement>\("\.maplibregl-ctrl-attrib"\) \?\? null\);/);
   // A documentation link keeps the plan for the page's "Back to the map", as StressPageLink does.

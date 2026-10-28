@@ -124,7 +124,7 @@ def analysed(
     pieces = [SimpleNamespace(metres=m) for m, _tier in tiers]
     classes = [routing.PieceClass(tier, "none") for _m, tier in tiers]
     monkeypatch.setattr(routing, "_trace", lambda *args: {})
-    monkeypatch.setattr(routing, "pieces_of_trace", lambda trace: pieces)
+    monkeypatch.setattr(routing, "pieces_of_trace", lambda trace, shape=None: pieces)
     monkeypatch.setattr(routing, "classify", lambda *args: classes)
     monkeypatch.setattr(routing, "decode_polyline6", lambda shape: [])
     monkeypatch.setattr(trace_junctions, "junctions_of_trace", lambda *args: [])
