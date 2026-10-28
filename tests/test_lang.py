@@ -26,6 +26,8 @@ WORDED = [
     "core/hillseek.py",
     "core/novice_walks.py",
     "core/workzones.py",
+    "core/transit.py",
+    "core/bikeshare.py",
 ]
 _PLACE = re.compile(r"\{(\w+)\}")
 
@@ -258,3 +260,148 @@ def test_a_language_the_server_does_not_word_is_english():
 
     assert RouteIn._known_language("fr") == "en"
     assert RouteIn._known_language("es") == "es"
+
+
+class TestBikeLaneNames:
+    """Round-2 audit D16: a lane named after its street at the rebuild says its facility
+    in Spanish, the street as it is; English as it was."""
+
+    def test_the_way_name_in_spanish(self):
+        assert (
+            lang.way_es("9th Street Northwest protected bike lane")
+            == "el carril bici protegido de 9th Street Northwest"
+        )
+        assert lang.way_es("Saint Paul Street bike lane") == "el carril bici de Saint Paul Street"
+        assert (
+            lang.way_es("path beside Saint Paul Street") == "el sendero junto a Saint Paul Street"
+        )
+        assert lang.way_es("Saint Paul Street") is None
+
+    def test_a_turn_onto_one(self):
+        with lang.speaking("es"):
+            assert (
+                d._in_sentence("9th Street Northwest protected bike lane")
+                == "el carril bici protegido de 9th Street Northwest"
+            )
+        assert (
+            d._in_sentence("9th Street Northwest protected bike lane")
+            == "9th Street Northwest protected bike lane"
+        )
+
+    def test_the_app_has_the_same_rules(self):
+        """The app's wayWords (frontend/src/lib/navigate.ts WAY_ES) words a way as the API
+        does: each of its rules is one of the API's."""
+        source = (SRC.parent / "frontend/src/lib/navigate.ts").read_text()
+        table = source.split("const WAY_ES", 1)[1].split("];", 1)[0]
+        rules = re.findall(r'\[/(.+?)/, "(.+?)"\]', table)
+        assert len(rules) >= 7
+        api = {(head.pattern, words.replace("\\1", "$1")) for head, words in lang._WAY_ES}
+        for rule in rules:
+            assert rule in api, rule
+
+
+class TestTransitAndBikeshareSteps:
+    """A transit or Bikeshare plan's steps in Spanish (routing audit D30): whole Spanish
+    sentences, the line, stop and dock names as they are, miles first; English as it was."""
+
+    def test_transit_steps(self):
+        from core import transit
+
+        marc = transit.Leg(
+            "rail",
+            2700.0,
+            to="Baltimore Penn Station",
+            wait_s=1200.0,
+            vehicle="the MARC Penn Line",
+            depart=420.0,
+            after=480.0,
+            board_at="Union Station MARC",
+        )
+        metro = transit.Leg(
+            "metro",
+            600.0,
+            to="Federal Triangle",
+            wait_s=240.0,
+            vehicle="the Orange Line",
+            every=8.0,
+        )
+        bus = transit.Leg("bus", 900.0, bike=True, vehicle="bus B10", wait_s=300.0)
+        english = marc.words()
+        assert english == (
+            "Board the MARC Penn Line at 7:00 am scheduled from Union Station MARC: you arrive"
+            " 6:40 am, 20 min spare; next train after that: 8:00 am scheduled. Ride 45 min to"
+            " Baltimore Penn Station."
+        )
+        with lang.speaking("es"):
+            assert marc.words() == (
+                "Suba al tren MARC Penn Line, sale 7:00 am según horario desde Union Station"
+                " MARC: llegada 6:40 am, 20 min de margen; siguiente tren: 8:00 am según horario."
+                " Viaje 45 min hasta Baltimore Penn Station."
+            )
+            assert metro.words() == (
+                "Suba al tren Orange Line (cada 8 min, según horario; unos 4 min de espera);"
+                " viaje 10 min hasta Federal Triangle."
+            )
+            assert bus.words() == (
+                "Ponga su bicicleta en el portabicicletas delantero del autobús B10 (unos 5 min"
+                " de espera, según horario); viaje 15 min."
+            )
+            assert transit.Leg(transit.RIDE, 300.0).words(last=True) == (
+                "Vaya en bicicleta 5 min hasta su destino."
+            )
+            assert transit.Leg(transit.ENTER, 120.0, bike=True).words() == (
+                "Unos 2 min para entrar a la estación, por el ascensor."
+            )
+            assert transit.Leg(transit.TAKE, 300.0, to="4th & E St NW").words() == (
+                "Camine 5 min hasta la estación de bicicletas compartidas 4th & E St NW y tome"
+                " una bicicleta clásica."
+            )
+        assert marc.words() == english
+
+    def test_the_app_takes_out_the_arrival_clause_in_both_languages(self):
+        """The app's withoutSpare (frontend/src/lib/rideTrip.ts) finds the clause the API
+        writes: ": you arrive " in English, ": llegada " in Spanish."""
+        source = (SRC.parent / "frontend/src/lib/rideTrip.ts").read_text()
+        assert "/: (?:you arrive|llegada) [^;]*; (\\w)/" in source
+        assert ES["{head}: you arrive {time}, {spare} min spare; {after}. {ride}."].startswith(
+            "{head}: llegada {time}, "
+        )
+
+    def test_bikeshare_steps(self):
+        from core import bikeshare
+
+        class Status:
+            classic = 5
+            docks = 1
+
+            def bikes_of(self, bike):
+                return self.classic
+
+        start = bikeshare.Pick("dock", "4th & E St NW", 0.0, 0.0, status=Status())
+        end = bikeshare.Pick("dock", "Union Station", 0.0, 0.0, status=Status())
+        walk = bikeshare.WalkLeg([], 400.0, 300.0)
+        english = bikeshare._start_step(start, "classic", walk, None)
+        assert english == (
+            "Walk 0.2 mi (0.4 km) to the dock at 4th & E St NW, take a classic bike (5 available)."
+        )
+        with lang.speaking("es"):
+            assert bikeshare._start_step(start, "classic", walk, None) == (
+                "Camine 0.2 mi (0.4 km) hasta la estación 4th & E St NW, tome una bicicleta"
+                " clásica (5 disponibles)."
+            )
+            ride = bikeshare._end_step(end, 3000.0, "classic")
+            assert ride == (
+                "Vaya en bicicleta 1.9 mi (3.0 km) hasta la estación Union Station"
+                " (1 espacio libre)."
+            )
+            # The way round an Avoid-rated junction rewrites the Spanish ride and summary too.
+            block = {
+                "ride_m": 3000.0, "ride_s": 900.0, "walk_s": 300.0, "total_s": 1200.0,
+                "steps": [{"kind": "ride", "text": ride}],
+                "summary": f"Bikeshare, bicicleta clásica: unos 20 min en total. {ride}",
+                "notes": [],
+            }  # fmt: skip
+            out = bikeshare.alternate_block(block, {"distance_m": 4000.0, "duration_s": 1500.0})
+            assert out["steps"][0]["text"].startswith("Vaya en bicicleta 2.5 mi (4.0 km) hasta")
+            assert out["summary"].startswith("Bikeshare, bicicleta clásica: unos 30 min en total.")
+            assert out["steps"][0]["text"] in out["summary"]

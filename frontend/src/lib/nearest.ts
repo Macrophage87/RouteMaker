@@ -37,9 +37,9 @@ export type NearestKind = "water" | "restroom" | "metro";
 /** The finder's buttons, in order. */
 export const NEAREST_KINDS: ReadonlyArray<{ kind: NearestKind; label: string; noun: string; one: string }> = [
   // Short, under the sheet's "Nearest" heading (the owner, 2026-10-18: "reduce the verbosity").
-  { kind: "water", label: "Water", noun: "water", one: "water" },
-  { kind: "restroom", label: "Restroom", noun: "restrooms", one: "restroom" },
-  { kind: "metro", label: "Metro", noun: "Metro stations", one: "Metro station" },
+  { kind: "water", label: t("Water"), noun: t("water"), one: t("water") },
+  { kind: "restroom", label: t("Restroom"), noun: t("restrooms"), one: t("restroom") },
+  { kind: "metro", label: t("Metro"), noun: t("Metro stations"), one: t("Metro station") },
 ];
 
 /** "restrooms", or with `count` 1, "restroom". */
@@ -180,7 +180,7 @@ export async function requestNearest(
       }),
     });
   } catch {
-    return { ok: false, message: "The search did not get through. Check your connection and try again." };
+    return { ok: false, message: t("The search did not get through. Check your connection and try again.") };
   }
   let body: unknown = null;
   try {
@@ -242,12 +242,12 @@ export function leastDetour(from: LonLat, places: readonly NearestPlace[], route
 export function howFar(item: Nearby): string {
   const d = item.detour;
   if (d) {
-    if (d.extraM === 0 || milesFigure(d.extraM) === "0.0") return `on your route at ${formatDistance(d.alongM)}`;
-    return `${formatExtra(d.extraM)} detour, about ${formatDuration(d.extraS)}, turning off at ${formatDistance(d.alongM)}`;
+    if (d.extraM === 0 || milesFigure(d.extraM) === "0.0") return t("on your route at {at}", { at: formatDistance(d.alongM) });
+    return t("{extra} detour, about {time}, turning off at {at}", { extra: formatExtra(d.extraM), time: formatDuration(d.extraS), at: formatDistance(d.alongM) });
   }
-  if (!item.byBike) return `${formatDistance(item.distanceM)} in a straight line`;
-  const time = item.timeS === null ? "" : `, about ${formatDuration(item.timeS)}`;
-  return `${formatDistance(item.distanceM)} by bike${time}`;
+  if (!item.byBike) return t("{distance} in a straight line", { distance: formatDistance(item.distanceM) });
+  const time = item.timeS === null ? "" : t(", about {time}", { time: formatDuration(item.timeS) });
+  return t("{distance} by bike{time}", { distance: formatDistance(item.distanceM), time });
 }
 
 /** One line of the list: "Drinking water, Peirce Mill: 0.6 mi (1.0 km) by bike, about 4 min. Bottle filler. Free." */
@@ -265,33 +265,35 @@ export const STRAIGHT_LINE_NOTE = t("The router's riding distances were not avai
 /** Where the search was from, in words, for the status line. */
 export type NearestFrom = "location" | "centre" | "start";
 export const FROM_LABEL: Record<NearestFrom, string> = {
-  location: "My location",
-  centre: "The map's center",
-  start: "The start of the plan",
+  location: t("My location"),
+  centre: t("The map's center"),
+  start: t("The start of the plan"),
 };
 const FROM_WORDS: Record<NearestFrom, string> = {
-  location: "your location",
-  centre: "the map's center",
-  start: "the start of the plan",
+  location: t("your location"),
+  centre: t("the map's center"),
+  start: t("the start of the plan"),
 };
 
 /** The status line once the list is in: how many, of what, from where, how measured, and the nearest. */
 export function foundSaid(kind: NearestKind, from: NearestFrom, items: readonly Nearby[]): string {
   const noun = nounOf(kind);
   if (items[0]?.detour)
-    return items.length === 1 ? `The ${nounOf(kind, 1)} with the least detour off your route.` : `The ${items.length} ${noun} with the least detour off your route, least first.`;
-  if (items.length === 0) return `No ${noun} could be reached by bike from ${FROM_WORDS[from]}.`;
-  const how = items[0].byBike ? "by bike" : "in a straight line";
+    return items.length === 1
+      ? t("The {one} with the least detour off your route.", { one: nounOf(kind, 1) })
+      : t("The {count} {noun} with the least detour off your route, least first.", { count: items.length, noun });
+  if (items.length === 0) return t("No {noun} could be reached by bike from {from}.", { noun, from: FROM_WORDS[from] });
+  const how = items[0].byBike ? t("by bike") : t("in a straight line");
   const lead =
     items.length === 1
-      ? `The nearest ${nounOf(kind, 1)} ${how} from ${FROM_WORDS[from]}.`
-      : `The ${items.length} nearest ${noun} ${how} from ${FROM_WORDS[from]}, nearest first.`;
+      ? t("The nearest {one} {how} from {from}.", { one: nounOf(kind, 1), how, from: FROM_WORDS[from] })
+      : t("The {count} nearest {noun} {how} from {from}, nearest first.", { count: items.length, noun, how, from: FROM_WORDS[from] });
   // The nearest is the list's first row, so the line does not say it again.
   return items[0].byBike ? lead : `${lead} ${STRAIGHT_LINE_NOTE}`;
 }
 
-export const findingSaid = (kind: NearestKind): string => `Finding the nearest ${nounOf(kind)}.`;
-export const noneKnownSaid = (kind: NearestKind): string => `No ${nounOf(kind)} on the map to search.`;
+export const findingSaid = (kind: NearestKind): string => t("Finding the nearest {noun}.", { noun: nounOf(kind) });
+export const noneKnownSaid = (kind: NearestKind): string => t("No {noun} on the map to search.", { noun: nounOf(kind) });
 export const WATER_NOT_LOADED = t("Water and restrooms are unavailable for now; try again shortly.");
 export const LOCATION_BUSY = t("Your location is already being found; try again in a moment.");
 export const STILL_SEARCHING = t("Still searching.");
@@ -323,7 +325,7 @@ export function detourPoints(replanned: readonly LonLat[], place: LonLat): LonLa
 }
 
 /** Said when a detour has no room: the route already has as many stops as one can take. */
-export const DETOUR_FULL = `This route already has ${MAX_POINTS} points, so no detour can be added.`;
+export const DETOUR_FULL = t("This route already has {count} points, so no detour can be added.", { count: MAX_POINTS });
 /** Said when Detour here is pressed while a new route is already being found. */
 export const DETOUR_BUSY = t("A new route is already being found; try again in a moment.");
 
@@ -384,9 +386,9 @@ export async function searchNearest(deps: SearchDeps): Promise<SearchOutcome> {
     origin = from === "start" ? deps.start() : deps.centre();
   }
   const withFix = (outcome: SearchOutcome): SearchOutcome => (fix ? { ...outcome, fix } : outcome);
-  if (origin === null) return { said: "There is nowhere to search from yet." };
+  if (origin === null) return { said: t("There is nowhere to search from yet.") };
   if (!deps.inside(origin)) {
-    return withFix({ said: from === "location" ? LOCATION_OUTSIDE : "That spot is outside the area this map covers." });
+    return withFix({ said: from === "location" ? LOCATION_OUTSIDE : t("That spot is outside the area this map covers.") });
   }
   let places: NearestPlace[];
   if (kind === "metro") {
@@ -403,7 +405,7 @@ export async function searchNearest(deps: SearchDeps): Promise<SearchOutcome> {
   }
   const candidates = nearestInStraightLine(origin, places);
   const result = await deps.request(origin, candidates);
-  if (!result.ok) return withFix({ said: `The search failed. ${result.message}` });
+  if (!result.ok) return withFix({ said: t("The search failed. {why}", { why: result.message }) });
   const items = rankNearest(candidates, result.answer);
   return withFix({ said: foundSaid(kind, from, items), found: { kind, items, origin, from } });
 }

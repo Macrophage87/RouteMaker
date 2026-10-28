@@ -11,6 +11,7 @@
  * - whether the plan changed since the route was drawn (planChanged), and why Reset is unavailable.
  */
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
+import { language, t } from "./i18n.ts";
 import { pathLengthM, type LonLat } from "./geo.ts";
 import { formatDistance, formatDistanceChange } from "./format.ts";
 import { namePoints } from "./pointKinds.ts";
@@ -41,7 +42,7 @@ const lower = (text: string) => (text ? text[0].toLowerCase() + text.slice(1) : 
 function linked(items: { name: string; index: number }[]): Phrase[] {
   const out: Phrase[] = [];
   items.forEach((item, i) => {
-    if (i > 0) out.push({ text: ", then " });
+    if (i > 0) out.push({ text: t(", then ") });
     out.push({ text: item.name, target: { kind: "point", index: item.index } });
   });
   return out;
@@ -60,21 +61,23 @@ export function planSentences(
   words: PlanWords,
 ): Phrase[][] {
   const named = namePoints(points, isVia, loop);
-  const nameAt = (i: number) => nameOf(points[i]) ?? "a point on the map";
+  const nameAt = (i: number) => nameOf(points[i]) ?? t("a point on the map");
   const sentences: Phrase[][] = [];
   if (points.length === 0) {
-    sentences.push([{ text: "Start: tap the map or search for a place." }]);
+    sentences.push([{ text: t("Start: tap the map or search for a place.") }]);
   } else {
-    sentences.push([{ text: loop ? "Start and finish at " : "Start at " }, { text: nameAt(0), target: { kind: "point", index: 0 } }, { text: "." }]);
+    sentences.push([{ text: loop ? t("Start and finish at ") : t("Start at ") }, { text: nameAt(0), target: { kind: "point", index: 0 } }, { text: "." }]);
     const stops = named.flatMap((n, index) => (n.role === "stop" ? [{ name: nameAt(index), index }] : []));
     const vias = named.flatMap((n, index) => (n.role === "via" ? [{ name: nameAt(index), index }] : []));
-    if (stops.length) sentences.push([{ text: "Stop at " }, ...linked(stops), { text: "." }]);
-    if (vias.length) sentences.push([{ text: "Pass through " }, ...linked(vias), { text: " (via)." }]);
+    if (stops.length) sentences.push([{ text: t("Stop at ") }, ...linked(stops), { text: "." }]);
+    if (vias.length) sentences.push([{ text: t("Pass through ") }, ...linked(vias), { text: t(" (via).") }]);
     const end = named.findIndex((n) => n.role === "end");
-    if (end >= 0) sentences.push([{ text: "End at " }, { text: nameAt(end), target: { kind: "point", index: end } }, { text: "." }]);
-    else if (!loop) sentences.push([{ text: "End: tap the map or search for a place." }]);
+    if (end >= 0) sentences.push([{ text: t("End at ") }, { text: nameAt(end), target: { kind: "point", index: end } }, { text: "." }]);
+    else if (!loop) sentences.push([{ text: t("End: tap the map or search for a place.") }]);
   }
-  const ride: Phrase[] = [{ text: words.ride, target: { kind: "ride" } }, { text: " ride" }];
+  // Spanish puts the noun first: "Recorrido Default".
+  const rideLink: Phrase = { text: words.ride, target: { kind: "ride" } };
+  const ride: Phrase[] = language() === "es" ? [{ text: "Recorrido " }, rideLink] : [rideLink, { text: " ride" }];
   if (words.traffic) ride.push({ text: ", " }, { text: lower(words.traffic), target: { kind: "traffic" } });
   if (words.hills) ride.push({ text: ", " }, { text: lower(words.hills), target: { kind: "hills" } });
   ride.push({ text: "." });
@@ -101,21 +104,21 @@ export function planChanged<R extends { preset: string }>(drawn: DrawnPlan<R> | 
   return drawn.points !== points || drawn.ride.preset !== preset || drawn.dialsKey !== dialsKey;
 }
 
-export const ROUTE_LABEL = "Route";
-export const UPDATE_LABEL = "Update route";
+export const ROUTE_LABEL = t("Route");
+export const UPDATE_LABEL = t("Update route");
 /** The map bar's big button while routing (its progress is in the plan panel). */
-export const ROUTING_LABEL = "Routing…";
-export const ROUTE_NEEDS_POINTS = "Add a start and an end first.";
+export const ROUTING_LABEL = t("Routing…");
+export const ROUTE_NEEDS_POINTS = t("Add a start and an end first.");
 /** A loop needs a start and one stop (OWNER-DECISIONS 374). */
-export const ROUTE_NEEDS_STOP = "Add a start and a stop first.";
-export const ROUTE_UP_TO_DATE = "The route shown is up to date.";
-export const RESET_LABEL = "Reset";
-export const RESET_NOTHING = "Nothing changed since the route was drawn";
-export const CLEAR_LABEL = "Clear";
-export const PLANNING_SAID = "Planning route";
-export const CANCELLED_SAID = "Routing cancelled. The plan is as you left it.";
-export const RESET_SAID = "Reset to the route as drawn. Undo brings your changes back.";
-export const CLEARED_SAID = "Plan cleared. Undo brings it back.";
+export const ROUTE_NEEDS_STOP = t("Add a start and a stop first.");
+export const ROUTE_UP_TO_DATE = t("The route shown is up to date.");
+export const RESET_LABEL = t("Reset");
+export const RESET_NOTHING = t("Nothing changed since the route was drawn");
+export const CLEAR_LABEL = t("Clear");
+export const PLANNING_SAID = t("Planning route");
+export const CANCELLED_SAID = t("Routing cancelled. The plan is as you left it.");
+export const RESET_SAID = t("Reset to the route as drawn. Undo brings your changes back.");
+export const CLEARED_SAID = t("Plan cleared. Undo brings it back.");
 /** How long Clear waits for its route to go before it gives up handing the focus on (review a11y-1). */
 export const CLEAR_FOCUS_WAIT_MS = 1000;
 
@@ -132,10 +135,10 @@ export function routeButton(state: { points: number; drawn: boolean; changed: bo
  * the planner's usual order paced by the clock, not reports from it (an open question for the owner).
  */
 export function routingStep(elapsedMs: number): string {
-  if (elapsedMs < 1500) return "Finding routes";
-  if (elapsedMs < 4000) return "Checking traffic stress";
-  if (elapsedMs < 9000) return "Ranking";
-  return "Drawing";
+  if (elapsedMs < 1500) return t("Finding routes");
+  if (elapsedMs < 4000) return t("Checking traffic stress");
+  if (elapsedMs < 9000) return t("Ranking");
+  return t("Drawing");
 }
 
 /** "3 s", the seconds elapsed while routing. */

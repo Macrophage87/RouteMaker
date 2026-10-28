@@ -10,13 +10,14 @@
  * not Mass Ride, whose slider is locked.
  */
 import type { NeighbourKind, NeighbourOption, RouteResponse } from "./api.ts";
+import { t } from "./i18n.ts";
 import type { Dials } from "./dials.ts";
 import { formatDistanceChange, formatDuration } from "./format.ts";
 import { isTransit, type PresetId } from "./presets.ts";
 import type { StressKey } from "./stressBar.ts";
 
 /** The calmer option is the trailmaxxed route, the top of the rider's slider (the owner, 2026-10-19; core.presets stress_notches). */
-export const NEIGHBOUR_NAME: Record<NeighbourKind, string> = { direct: "More direct", calmer: "Trailmaxxed" };
+export const NEIGHBOUR_NAME: Record<NeighbourKind, string> = { direct: t("More direct"), calmer: "Trailmaxxed" };
 
 /**
  * Whether Go asks for the options at all: the bike-only ride types with a traffic slider to move, and plain Bikeshare

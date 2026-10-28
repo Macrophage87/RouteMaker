@@ -65,15 +65,15 @@ export const isFarmFood = (kind: FoodKind): boolean => kind === "fs" || kind ===
 export const SEASONAL_HOURS = t("Hours vary by season.");
 
 export const KIND_LABEL: Record<FoodKind, string> = {
-  r: "Restaurant",
-  f: "Fast food",
-  c: "Cafe",
-  i: "Ice cream",
-  p: "Pub",
-  b: "Beer garden",
-  fc: "Food court",
-  fs: "Farm stand",
-  m: "Market",
+  r: t("Restaurant"),
+  f: t("Fast food"),
+  c: t("Cafe"),
+  i: t("Ice cream"),
+  p: t("Pub"),
+  b: t("Beer garden"),
+  fc: t("Food court"),
+  fs: t("Farm stand"),
+  m: t("Market"),
 };
 
 // --- The file ------------------------------------------------------------
@@ -401,10 +401,10 @@ export function foodKindText(place: FoodPlace): string {
  */
 export function foodHowFar(result: FoodResult): string {
   const d = result.detour;
-  if (!d) return `${formatDistance(result.fromCentreM)} ${result.fromRider ? "from you" : "from the map's center"} in a straight line.`;
+  if (!d) return result.fromRider ? t("{distance} from you in a straight line.", { distance: formatDistance(result.fromCentreM) }) : t("{distance} from the map's center in a straight line.", { distance: formatDistance(result.fromCentreM) });
   const at = formatDistance(d.alongM);
-  if (d.extraM === 0 || milesFigure(d.extraM) === "0.0") return `On your route at ${at}.`;
-  return `Detour about ${formatExtra(d.extraM)} and ${formatDuration(d.extraS)} there and back, turning off at ${at} on your route.`;
+  if (d.extraM === 0 || milesFigure(d.extraM) === "0.0") return t("On your route at {at}.", { at });
+  return t("Detour about {extra} and {time} there and back, turning off at {at} on your route.", { extra: formatExtra(d.extraM), time: formatDuration(d.extraS), at });
 }
 
 /** One result in words, as the list shows it and a screen reader reads it. */
@@ -417,7 +417,7 @@ export function foodText(result: FoodResult): string {
 
 /** The hours in words: as mapped, or for a farm stand or market with none, that they vary by season. */
 export function foodHoursText(place: FoodPlace): string {
-  if (place.hours) return `Hours as mapped: ${place.hours}.`;
+  if (place.hours) return t("Hours as mapped: {hours}.", { hours: place.hours });
   return isFarmFood(place.kind) ? SEASONAL_HOURS : "";
 }
 
@@ -425,27 +425,29 @@ export const FOOD_PAGE = 10;
 export const NO_FOOD_DATA = t("No food data yet: the places to eat arrive with the next map data update.");
 export const FOOD_NOT_LOADED = t("The places to eat are unavailable for now; try again shortly.");
 export const FOOD_DETOUR_NOTE =
-  `Detours are estimates: the straight-line distance off your route, there and back, times ${CIRCUITY} for the streets, at your route's average speed. ` +
-  "From OpenStreetMap: check the hours before you count on them. No ratings.";
+  t("Detours are estimates: the straight-line distance off your route, there and back, times {circuity} for the streets, at your route's average speed. From OpenStreetMap: check the hours before you count on them. No ratings.", { circuity: CIRCUITY });
 
 /** The status line after a search: "1,234 places to eat in the whole area" for every place, else what matched. */
 export function foodFoundSaid(query: string, scope: FoodScope, total: number, shown: number, sortedByDetour: boolean, fromRider = false): string {
-  const where = scope === "view" ? "in the map view" : "in the whole area";
+  const where = scope === "view" ? t("in the map view") : t("in the whole area");
   const all = foodTerms(query).all;
   const q = `“${normaliseQuery(query)}”`;
-  if (total === 0)
-    return all
-      ? `No places to eat ${where}.${scope === "view" ? " Try Near you, or move the map." : ""}`
-      : `No places match ${q} ${where}.${scope === "view" ? " Try Near you, or move the map." : ""}`;
+  const tryNear = scope === "view" ? t(" Try Near you, or move the map.") : "";
+  if (total === 0) return (all ? t("No places to eat {where}.", { where }) : t("No places match {q} {where}.", { q, where })) + tryNear;
+  const n = total.toLocaleString("en-US");
   const count = all
-    ? `${total.toLocaleString("en-US")} ${total === 1 ? "place" : "places"} to eat ${where}`
-    : `${total.toLocaleString("en-US")} ${total === 1 ? "place matches" : "places match"} ${q} ${where}`;
-  const order = sortedByDetour ? "least detour first" : fromRider ? "nearest you first" : "nearest the map's center first";
-  const showing = shown < total ? ` Showing the first ${shown}.` : "";
+    ? total === 1
+      ? t("{n} place to eat {where}", { n, where })
+      : t("{n} places to eat {where}", { n, where })
+    : total === 1
+      ? t("{n} place matches {q} {where}", { n, q, where })
+      : t("{n} places match {q} {where}", { n, q, where });
+  const order = sortedByDetour ? t("least detour first") : fromRider ? t("nearest you first") : t("nearest the map's center first");
+  const showing = shown < total ? t(" Showing the first {shown}.", { shown }) : "";
   return `${count}, ${order}.${showing}`;
 }
 
-export const foodMoreSaid = (shown: number, total: number): string => `Showing ${shown} of ${total.toLocaleString("en-US")}.`;
+export const foodMoreSaid = (shown: number, total: number): string => t("Showing {shown} of {total}.", { shown, total: total.toLocaleString("en-US") });
 
 // --- The map's markers -----------------------------------------------------
 
