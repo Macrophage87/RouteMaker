@@ -225,6 +225,20 @@ export function firstWordAndRest(text: string): [string, string] {
   return at < 0 ? [text, ""] : [text.slice(0, at), text.slice(at)];
 }
 
+/**
+ * Whether Plan (and Review) stay in English for this language: Spanish covers the whole app, the other 19 Go and Ride
+ * only (the owner, 2026-10-28: "planning requires nuances that can't be easily done by automatic translation").
+ * Plan's panel and map bar are then marked English and left to right, so a right-to-left page does not mirror them.
+ */
+export function planStaysEnglish(lang: Language = current): boolean {
+  return lang !== "en" && lang !== "es";
+}
+
+/** Plan's English mark (planStaysEnglish), spread onto its containers. */
+export function planLanguageAttributes(lang: Language = current): { lang?: string; dir?: "ltr" } {
+  return planStaysEnglish(lang) ? { lang: "en-US", dir: "ltr" } : {};
+}
+
 /** The page's own language, for screen readers and the browser's hyphenation and voice. */
 export function markPageLanguage(doc: Document | undefined = typeof document !== "undefined" ? document : undefined): void {
   if (!doc) return;

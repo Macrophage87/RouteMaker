@@ -23,6 +23,7 @@ import {
   voiceTags,
   writeLanguageChoice,
   type Language,
+  planLanguageAttributes,
 } from "./i18n.ts";
 import { arrivalSideWords, crossingWords, cueSpoken, endWords, exitWords, ontoWords, stopText, turnWords, type Cue } from "./navigate.ts";
 import { spokenDistance } from "./format.ts";
@@ -290,4 +291,10 @@ test("Spanish shows the Spanish, and what is sent or kept stays English (P9)", (
   }
   assert.equal(presetLabel("group-ride"), "Group Ride");
   assert.equal(foodKindText(place), "Restaurant: italian, kosher");
+});
+
+test("Plan is marked English and left to right for the 19 languages, not for English or Spanish", () => {
+  assert.deepEqual(planLanguageAttributes("en"), {});
+  assert.deepEqual(planLanguageAttributes("es"), {});
+  for (const lang of ["ar", "fa", "ps", "th", "zh"] as const) assert.deepEqual(planLanguageAttributes(lang), { lang: "en-US", dir: "ltr" });
 });
