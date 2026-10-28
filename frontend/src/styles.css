@@ -3789,8 +3789,14 @@ details.zoom-notes {
   flex: 1 1 14em;
 }
 
-.water-along .water-add {
+.water-along .water-add,
+.water-along .water-all {
   min-height: 44px;
+}
+
+/* Show all (the list shows the first three: the 2026-10-28 audit, P7). */
+.water-along .water-all {
+  margin-top: 6px;
 }
 
 .water-popup {
@@ -3956,10 +3962,34 @@ details.zoom-notes {
 }
 
 /* Find the nearest water, restroom or Metro (lib/nearestFinder.ts): the list as the water list's. */
-.nearest fieldset.nearest-from {
-  border: 0;
+/* Where from, one line under the list (the 2026-10-28 audit, P7): "From: My location ▾". */
+.nearest .nearest-from {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+
+.nearest .nearest-from select {
+  min-height: 44px;
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--swatch-border);
+  border-radius: 8px;
+}
+
+/* The kind chosen, in the selected chip's style (its state is aria-pressed, not colour alone: the weight too). */
+.nearest .nearest-kinds button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+.nearest .nearest-status:empty {
   margin: 0;
-  padding: 0;
 }
 
 .nearest .nearest-kinds button,
@@ -4001,17 +4031,36 @@ details.zoom-notes {
   padding: 8px 10px;
 }
 
-.food fieldset.food-scope {
-  border: 0;
-  margin: 8px 0 0;
-  padding: 0;
-}
-
-.food fieldset.food-scope .toggle,
 .food .food-search button,
 .food .food-more,
+.food .food-area,
 .food-list a.food-web {
   min-height: 44px;
+}
+
+/* The cuisine chips: one row under the search box that scrolls sideways (the 2026-10-28 audit, P7: results
+   first), so the list starts on the first screen. */
+.food .food-chips {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  margin: 8px 0 4px;
+  padding-bottom: 2px;
+}
+
+.food .food-chips > .chip {
+  flex: none;
+}
+
+/* Search this area: shown once the rider has moved the map. */
+.food .food-area {
+  margin: 4px 0;
+}
+
+/* With a list shown, the count line is for screen readers (visually-hidden); empty, it takes no room. */
+.food .food-status:empty {
+  margin: 0;
 }
 
 .food-list a.food-web {

@@ -2449,18 +2449,26 @@ export function MapView(props: Props) {
       element.addEventListener("dblclick", (event) => event.stopPropagation());
       return new maplibregl.Marker({ element, anchor: "bottom" }).setLngLat(place.point).addTo(map);
     });
-    // Bring them into view, above a phone's sheet (which covers about the lower half of the map).
+    // Bring them into view in the part of the map the panel does not cover (App's framePadding: above a phone's
+    // sheet as it is now, not a guess at half the map; the 2026-10-28 audit, P7: "pins hide under the sheet"). Room
+    // above each pin's point for the pin itself, and at least 120 px of map between the paddings.
     if (props.lettered.length > 0) {
       const lons = props.lettered.map((place) => place.point[0]);
       const lats = props.lettered.map((place) => place.point[1]);
       const height = map.getContainer().clientHeight;
-      const narrow = map.getContainer().clientWidth < 721;
+      const width = map.getContainer().clientWidth;
+      const frame = callbacks.current.framePadding();
+      // A phone's top bar and Go's Roam button take about the top 115 px; a pin stands 40 px over its point.
+      const top = Math.max(frame.top, width < 721 ? 155 : 80);
+      const bottom = Math.max(40, Math.min(frame.bottom, height - top - 120));
+      const left = Math.max(50, Math.min(frame.left, width - 170));
+      const right = Math.max(50, Math.min(frame.right, width - left - 120));
       map.fitBounds(
         [
           [Math.min(...lons), Math.min(...lats)],
           [Math.max(...lons), Math.max(...lats)],
         ],
-        { padding: { top: 80, left: 50, right: 50, bottom: narrow ? Math.round(height * 0.55) : 60 }, maxZoom: 16, duration: 400 },
+        { padding: { top, left, right, bottom }, maxZoom: 16, duration: 400 },
       );
     }
   }, [props.lettered]);

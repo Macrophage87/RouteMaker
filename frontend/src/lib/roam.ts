@@ -8,7 +8,7 @@
  * Everything here is pure, so a test runs it on made-up roads: the map's features in, the words out.
  */
 import type { FoodPlace } from "./food.ts";
-import { foodKindText } from "./food.ts";
+import { foodHoursText, foodKindText } from "./food.ts";
 import { formatDistance, formatDuration, spokenDistance } from "./format.ts";
 import { lightClock, solarDay } from "./lightTimes.ts";
 import { haversineM, type LonLat } from "./geo.ts";
@@ -290,14 +290,17 @@ export class HeadingTrack {
 }
 
 /** Find food's places as the nearest search's, so Roam's Detour lists food by riding distance as it does water. */
-export function foodNearestPlaces(food: readonly FoodPlace[]): NearestPlace[] {
+export function foodNearestPlaces(food: readonly FoodPlace[], at: Date = new Date()): NearestPlace[] {
   return food.map((place) => ({
     id: place.id,
     // Food rides like water: a stop on the way (lib/nearest.ts stopsOnTheWay). The kind is only a label here.
     kind: "water",
     point: [place.lon, place.lat],
     title: place.name || foodKindText(place),
-    details: [place.name ? `${foodKindText(place)}.` : "", place.hours ? t("Hours as mapped: {hours}.", { hours: place.hours }) : ""].filter(Boolean),
+    // Worked out when read: only the few places listed say their hours, not every place in the area.
+    get details() {
+      return [place.name ? `${foodKindText(place)}.` : "", place.hours ? foodHoursText(place, at) : ""].filter(Boolean);
+    },
   }));
 }
 

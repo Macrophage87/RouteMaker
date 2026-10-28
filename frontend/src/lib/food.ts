@@ -40,6 +40,7 @@
 import { formatDistance, formatDuration, formatExtra, milesFigure } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
+import { hoursText } from "./openingHours.ts";
 
 export type FoodKind = "r" | "f" | "c" | "i" | "p" | "b" | "fc" | "fs" | "m";
 
@@ -408,23 +409,25 @@ export function foodHowFar(result: FoodResult): string {
 }
 
 /** One result in words, as the list shows it and a screen reader reads it. */
-export function foodText(result: FoodResult): string {
+export function foodText(result: FoodResult, at: Date = new Date()): string {
   const parts = [`${result.place.name}. ${foodKindText(result.place)}.`, foodHowFar(result)];
-  const hours = foodHoursText(result.place);
+  const hours = foodHoursText(result.place, at);
   if (hours) parts.push(hours);
   return parts.join(" ");
 }
 
-/** The hours in words: as mapped, or for a farm stand or market with none, that they vary by season. */
-export function foodHoursText(place: FoodPlace): string {
-  if (place.hours) return t("Hours as mapped: {hours}.", { hours: place.hours });
+/** The hours in words at `at` ("Open now · closes 10 PM.": lib/openingHours.ts), or for a farm stand or market with none, that they vary by season. */
+export function foodHoursText(place: FoodPlace, at: Date = new Date()): string {
+  if (place.hours) return `${hoursText(place.hours, at)}.`;
   return isFarmFood(place.kind) ? SEASONAL_HOURS : "";
 }
 
 export const FOOD_PAGE = 10;
 export const NO_FOOD_DATA = t("No food data yet: the places to eat arrive with the next map data update.");
 export const FOOD_NOT_LOADED = t("The places to eat are unavailable for now; try again shortly.");
-export const FOOD_DETOUR_NOTE =
+/** Under a list sorted by detour: short on screen (the 2026-10-28 audit, P7); FOOD_DETOUR_METHOD says how, for screen readers. */
+export const FOOD_DETOUR_NOTE = t("Detours are estimates; check hours (OpenStreetMap).");
+export const FOOD_DETOUR_METHOD =
   t("Detours are estimates: the straight-line distance off your route, there and back, times {circuity} for the streets, at your route's average speed. From OpenStreetMap: check the hours before you count on them. No ratings.", { circuity: CIRCUITY });
 
 /** The status line after a search: "1,234 places to eat in the whole area" for every place, else what matched. */
@@ -432,7 +435,7 @@ export function foodFoundSaid(query: string, scope: FoodScope, total: number, sh
   const where = scope === "view" ? t("in the map view") : t("in the whole area");
   const all = foodTerms(query).all;
   const q = `“${normaliseQuery(query)}”`;
-  const tryNear = scope === "view" ? t(" Try Near you, or move the map.") : "";
+  const tryNear = scope === "view" ? t(" Move the map, then Search this area.") : "";
   if (total === 0) return (all ? t("No places to eat {where}.", { where }) : t("No places match {q} {where}.", { q, where })) + tryNear;
   const n = total.toLocaleString("en-US");
   const count = all

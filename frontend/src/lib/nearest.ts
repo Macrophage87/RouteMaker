@@ -292,7 +292,17 @@ export function foundSaid(kind: NearestKind, from: NearestFrom, items: readonly 
   return items[0].byBike ? lead : `${lead} ${STRAIGHT_LINE_NOTE}`;
 }
 
-export const findingSaid = (kind: NearestKind): string => t("Finding the nearest {noun}.", { noun: nounOf(kind) });
+/**
+ * The status line on screen once the list is in (the 2026-10-28 audit, P7: cut the text around lists): only what the
+ * rows do not say. By bike, nothing (each row says "by bike"); foundSaid stays what a screen reader hears.
+ */
+export function foundShort(items: readonly Nearby[]): string | null {
+  if (items.length === 0) return null;
+  if (items[0].detour) return t("Least detour first.");
+  return items[0].byBike ? "" : t("Straight-line distances (router busy).");
+}
+
+export const findingSaid =(kind: NearestKind): string => t("Finding the nearest {noun}.", { noun: nounOf(kind) });
 export const noneKnownSaid = (kind: NearestKind): string => t("No {noun} on the map to search.", { noun: nounOf(kind) });
 export const WATER_NOT_LOADED = t("Water and restrooms are unavailable for now; try again shortly.");
 export const LOCATION_BUSY = t("Your location is already being found; try again in a moment.");
