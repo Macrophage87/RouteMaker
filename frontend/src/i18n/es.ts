@@ -297,6 +297,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Already done?": "¿Ya terminó?",
   "Manual mode": "Modo manual",
   "Manual mode off. New points are routed.": "Modo manual desactivado. Los puntos nuevos siguen las calles.",
+  "Loop off.": "Circuito desactivado.",
   "Manual mode on. Each point you tap is the new end, joined by a straight line.":
     "Modo manual activado. Cada punto que toque es el nuevo final, unido por una línea recta.",
   "Manual mode: each point you tap is joined by a straight line": "Modo manual: cada punto que toque se une con una línea recta",
@@ -766,6 +767,8 @@ export const ES: Readonly<Record<string, string>> = {
   // Go's and Plan's place search (PlaceSearch.tsx).
   "Type a start": "Escriba un inicio",
   "Search for a start": "Busque un inicio",
+  // Plan's first box while Loop is on (P10): the place picked is the start and the finish, not a destination.
+  "Start and finish (loop)": "Inicio y llegada (circuito)",
   "Search for a destination": "Busque un destino",
   "A place, an address or a street": "Un lugar, una dirección o una calle",
   Start: "Inicio",

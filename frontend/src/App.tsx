@@ -76,6 +76,7 @@ import {
   MANUAL_LABEL,
   MANUAL_OFF_SAID,
   MANUAL_ON_SAID,
+  MANUAL_LOOP_OFF,
   MANUAL_TITLE,
   DRAWN_SAID,
   VIA_POINT_NAME,
@@ -527,6 +528,8 @@ export function App() {
   // ride type, and not with a loop, where the API plans every leg (core/routing.py `_drawn`): the switch is offered on
   // a loop too, now that Plan starts as one, and turning it on there turns the loop off.
   const [manualOn, setManualOn] = useState(false);
+  // Manual mode turned the loop off (P10): its badge says "Loop off." until manual mode goes off.
+  const [manualLoopOff, setManualLoopOff] = useState(false);
   const manualOffered = mode === "plan" && !twoPointsOnly(preset);
   const manual = manualOn && manualOffered && !loopVias;
   // The legs drawn by hand, for the map's dashed lines (lib/planLegs.ts).
@@ -5465,7 +5468,9 @@ export function App() {
                 // On a loop, manual mode turns the loop off: each tap is then the new end, joined by a straight line.
                 if (!manual && loopVias) setDials(withLoop(dials, false));
                 setManualOn(!manual);
-                announce(manual ? MANUAL_OFF_SAID : loopVias ? `${MANUAL_ON_SAID} Loop off.` : MANUAL_ON_SAID);
+                // Shown on the badge too, not only said (P10): the Loop box changed out of sight of the bar.
+                setManualLoopOff(!manual && loopVias);
+                announce(manual ? MANUAL_OFF_SAID : loopVias ? `${MANUAL_ON_SAID} ${MANUAL_LOOP_OFF}` : MANUAL_ON_SAID);
               }}
             >
               <Icon name="draw" size={20} />
@@ -5476,7 +5481,14 @@ export function App() {
               <Icon name="trash" size={20} />
             </button>
           )}
-          {manual && <p className="plan-bar-manual-badge"><span>{MANUAL_BADGE}</span></p>}
+          {manual && (
+            <p className="plan-bar-manual-badge">
+              <span>
+                {MANUAL_BADGE}
+                {manualLoopOff ? `. ${MANUAL_LOOP_OFF}` : ""}
+              </span>
+            </p>
+          )}
         </div>
       )}
       {!riding && !goMode && <PlanMapChips onFood={(chip) => openView("food", chip)} onWater={(chip) => openView("nearest", chip)} onPlaces={openPlaces} />}
