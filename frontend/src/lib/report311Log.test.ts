@@ -248,7 +248,8 @@ test("a save keeps what the server merged in: entries another device logged appe
   await log.signIn();
   server.entries = [entry({ id: "phone", at: "2026-10-20T17:00:00.000Z" })];
   log.add("tree", MOCO_SPOT, NOON);
-  await tick(5);
+  // Waited for, not timed: a fixed 5 ms tick failed on a loaded CI runner (v0.14.0 end review).
+  for (let waited = 0; waited < 2000 && !log.list().some((e) => e.id === "phone"); waited += 5) await tick(5);
   assert.ok(log.list().some((e) => e.id === "phone"));
 });
 
