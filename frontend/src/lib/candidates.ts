@@ -75,7 +75,7 @@ export function statsLine(stats: CandidateStats): string {
   if (stats.lts3M >= SAID_AS_ZERO_M) parts.push(`${formatDistance(stats.lts3M)} of busy roads`);
   if (stats.red > 0) parts.push(count(stats.red, "very high stress junction", "very high stress junctions"));
   if (stats.orange > 0) parts.push(count(stats.orange, "higher stress junction", "higher stress junctions"));
-  if (stats.trailM >= SAID_AS_ZERO_M) parts.push(`${formatDistance(stats.trailM)} on trails and protected lanes`);
+  if (stats.trailM >= SAID_AS_ZERO_M) parts.push(`${formatDistance(stats.trailM)} on paths and protected lanes`);
   if (stats.climbM > 0) parts.push(`climb ${formatClimb(stats.climbM)}`);
   if (stats.effortM !== null) parts.push(`effort equal to ${formatDistance(stats.effortM)} on the flat`);
   return parts.join(", ");

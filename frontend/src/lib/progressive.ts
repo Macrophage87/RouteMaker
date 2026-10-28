@@ -13,6 +13,8 @@
  * of the same request, src/core/route_cache.py).
  */
 import type { RouteResponse, RouteResult } from "./api.ts";
+import { METRES_PER_MILE, formatDistanceChange, formatMilesChange } from "./format.ts";
+import { t } from "./i18n.ts";
 
 /** Busy riding (LTS 3, 4 and Avoid) on a route, metres. */
 function busyM(route: Pick<RouteResponse, "stress_m">): number {
@@ -58,6 +60,50 @@ export function betterRouteSaid(
   if (busyM(full) <= busyM(first) - CALMER_BY_M) return `Found a calmer route${extra}.`;
   if (full.duration_s <= first.duration_s - QUICKER_BY_S) return `Found a quicker route${extra}.`;
   return `Found a better route${extra}.`;
+}
+
+/** Less climbing than this is not "flatter": 20 ft, or a tenth of the climb before, whichever is more. */
+export const FLATTER_BY_M = 6;
+
+type Compared = Pick<RouteResponse, "geometry" | "distance_m" | "duration_s" | "stress_m" | "climb_m">;
+
+/**
+ * The toast after the rider changes Go's ride settings or ride type (P3): what the new plan changed against the route
+ * shown before the change, not against Go's own first route (`betterRouteSaid`, which said "Found a quicker route"
+ * here). Flatter or hillier, calmer or busier where it is, then the time it adds or saves, else the distance:
+ * "Re-planned: flatter, 3 min less." On screen the distance is in miles; said, with its kilometres too. With a new
+ * ride type (`ride`, its name) the line names it: "Re-planned for Mass Ride: 2 min more."
+ */
+export function replannedSaid(before: Compared, after: Compared, ride: string | null = null): { shown: string; said: string } {
+  const head = (change: string) => (ride ? t("Re-planned for {ride}: {change}.", { ride, change }) : t("Re-planned: {change}.", { change }));
+  if (sameRoute(before, after)) {
+    const same = t("the same route");
+    return { shown: head(same), said: head(same) };
+  }
+  const words: string[] = [];
+  const climb = after.climb_m - before.climb_m;
+  const climbBy = Math.max(FLATTER_BY_M, before.climb_m / 10);
+  if (climb <= -climbBy) words.push(t("flatter"));
+  else if (climb >= climbBy) words.push(t("hillier"));
+  const busy = busyM(after) - busyM(before);
+  if (busy <= -CALMER_BY_M) words.push(t("calmer"));
+  else if (busy >= CALMER_BY_M) words.push(t("busier"));
+  const minutes = Math.round((after.duration_s - before.duration_s) / 60);
+  const moved = after.distance_m - before.distance_m;
+  let shownLast = "";
+  let saidLast = "";
+  if (minutes !== 0) {
+    shownLast = minutes > 0 ? t("{minutes} min more", { minutes }) : t("{minutes} min less", { minutes: -minutes });
+    saidLast = shownLast;
+  } else if (Math.abs(moved) >= METRES_PER_MILE / 20) {
+    const more = moved > 0;
+    shownLast = more ? t("{distance} more", { distance: formatMilesChange(moved) }) : t("{distance} less", { distance: formatMilesChange(moved) });
+    saidLast = more ? t("{distance} more", { distance: formatDistanceChange(moved) }) : t("{distance} less", { distance: formatDistanceChange(moved) });
+  } else {
+    shownLast = t("about the same time");
+    saidLast = shownLast;
+  }
+  return { shown: head([...words, shownLast].join(", ")), said: head([...words, saidLast].join(", ")) };
 }
 
 /**

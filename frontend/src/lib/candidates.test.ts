@@ -101,7 +101,7 @@ test("the description has the figures in words, miles first, in plain words, and
   assert.match(rows[0].line, /^0\.3 mi \(0\.4 km\) of heavy-traffic or best-avoided roads, 6\.8 mi \(11\.0 km\) of busy roads/);
   assert.doesNotMatch(rows[0].line, /LTS/, "plain words");
   assert.match(rows[0].line, /1 very high stress junction, 2 higher stress junctions/);
-  assert.match(rows[0].line, /25\.5 mi \(41\.0 km\) on trails and protected lanes/);
+  assert.match(rows[0].line, /25\.5 mi \(41\.0 km\) on paths and protected lanes/);
   assert.match(rows[0].line, /climb 984 ft \(300 m\)/);
   assert.match(rows[0].line, /effort equal to 93\.2 mi \(150\.0 km\) on the flat/);
   // Route 2 has no junctions: nothing is said of them.

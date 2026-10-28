@@ -25,7 +25,7 @@ export function ride311Shown(state: { off: boolean; progressM: number | null }):
 
 /** The line under the menu's heading: where the entry will say (the way ridden, a near cross street, the GPS position). */
 export function menuPlaceLine(place: ReportPlace | null): string {
-  if (!place) return "The entry names your place on the route.";
+  if (!place) return t("The entry names your place on the route.");
   const words = place.words ? `${place.words[0].toUpperCase()}${place.words.slice(1)}, ` : "";
   return `${words}${gpsWords(place.point)}.`;
 }
@@ -89,7 +89,7 @@ export function Ride311Menu({
       "ul",
       { className: "ride-311-kinds", role: "list" },
       REPORT_KINDS.map((k) =>
-        h("li", { key: k.kind }, h("button", { type: "button", className: "ride-311-kind", onClick: () => onPick(k.kind) }, icon(KIND_ICON[k.kind]), k.label)),
+        h("li", { key: k.kind }, h("button", { type: "button", className: "ride-311-kind", onClick: () => onPick(k.kind) }, icon(KIND_ICON[k.kind]), t(k.label))),
       ),
     ),
   );

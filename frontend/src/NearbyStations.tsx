@@ -26,6 +26,7 @@ import {
   type Pins,
   type StationAction,
 } from "./lib/stations.ts";
+import { t } from "./lib/i18n.ts";
 
 type State =
   | { kind: "loading" }
@@ -97,7 +98,7 @@ function StationList({
                 </button>
                 {chosen && (
                   <span className="station-chosen" aria-hidden="true">
-                    Chosen
+                    {t("Chosen")}
                   </span>
                 )}
               </li>
@@ -106,7 +107,7 @@ function StationList({
         </ul>
       )}
       {chosenId && stations.some((s) => s.station_id === chosenId) && (
-        <p className="hint">Press the chosen station again to let the plan choose.</p>
+        <p className="hint">{t("Press the chosen station again to let the plan choose.")}</p>
       )}
       {state.kind === "ready" && stations.length > 0 && (
         <p className="hint">{stationsFreshness(state.answer.availability)}</p>

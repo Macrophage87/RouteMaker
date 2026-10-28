@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PointsList } from "./pointsList.ts";
-import type { PointRow } from "./geocode.ts";
+import { placeArea, type PointRow } from "./geocode.ts";
 import { appSource } from "../testSupport/appSource.mjs";
 
 const ROWS: PointRow[] = [
@@ -21,12 +21,21 @@ function render(rows: readonly PointRow[]): string {
 const cells = (html: string, cls: string) =>
   [...html.matchAll(new RegExp(`<span class="${cls}"[^>]*>([^<]*)</span>`, "g"))].map((m) => m[1]);
 
-test("each row names its point's role, then its place or its coordinates", () => {
+test("each row names its point's role, then its place with its area, or its coordinates", () => {
   const html = render(ROWS);
   assert.deepEqual(cells(html, "point-name"), ["Start", "Stop 1", "End"]);
   assert.deepEqual(cells(html, "place-name"), ["Lincoln Memorial"]);
-  assert.deepEqual(cells(html, "coords"), ["38.8893, -77.0502", "38.9000, -77.0200", "38.8978, -77.0074"]);
+  // A named point shows where it is, not its coordinates (P10); those are in its title.
+  assert.deepEqual(cells(html, "place-area"), ["Washington"]);
+  assert.deepEqual(cells(html, "coords"), ["38.9000, -77.0200", "38.8978, -77.0074"]);
   assert.match(html, /title="Lincoln Memorial, Washington \(38\.8893, -77\.0502\)"/);
+});
+
+test("a point's area is the rest of its label: its street or neighbourhood", () => {
+  assert.equal(placeArea({ name: "Connecticut Avenue Northwest", label: "Connecticut Avenue Northwest, Dupont Circle, Washington" }), "Dupont Circle, Washington");
+  assert.equal(placeArea({ name: "near Capitol Stones", label: "near Capitol Stones, Ward 3, Washington" }), "Ward 3, Washington");
+  assert.equal(placeArea({ name: "Union Market", label: "Union Market" }), "");
+  assert.equal(placeArea({ name: "Home", label: "1309 5th St NE, Washington" }), "1309 5th St NE, Washington");
 });
 
 test("each Remove button says which point it removes", () => {
