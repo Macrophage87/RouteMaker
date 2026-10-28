@@ -552,6 +552,25 @@ test("Try again after a long ride ran out of time waits its Retry-After out, the
   assert.equal(ctx.api.calls.length, 3);
 });
 
+test("a press sent with now goes at once and takes over a slider edit still waiting out its debounce (S26)", async () => {
+  const ctx = setup();
+  ctx.scheduler.request(1); // a slider drag
+  await ctx.timers.advance(DEBOUNCE_MS / 2);
+  assert.equal(ctx.api.calls.length, 0, "the drag waits its debounce");
+  ctx.scheduler.request(2, { now: true }); // Route pressed
+  await flush();
+  assert.equal(ctx.api.calls.length, 1, "the press did not wait");
+  await ctx.timers.advance(DEBOUNCE_MS);
+  assert.equal(ctx.api.calls.length, 1, "the drag's debounce did not send a second request");
+  ctx.api.calls[0].answer(ok);
+  await flush();
+  ctx.scheduler.request(3); // the next drag keeps the debounce
+  await ctx.timers.advance(DEBOUNCE_MS - 1);
+  assert.equal(ctx.api.calls.length, 1, "now did not carry over to the next request");
+  await ctx.timers.advance(1);
+  assert.equal(ctx.api.calls.length, 2);
+});
+
 test("one deliberate press goes at once: Plan's Route, Try again and a transit pick skip the debounce (routing audit S26)", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   // The flag is read and cleared at the top of the route effect, before any early return, so it never carries
