@@ -5,7 +5,7 @@ import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
 import { t } from "./lib/i18n.ts";
 import { APP_VERSION, versionShort } from "./lib/appVersion.ts";
-import { ACCESS_LABEL, ACCESS_MODE_CLASS, accessModeParts, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
+import { ACCESS_LABEL, ACCESS_MODE_CLASS, accessModeParts, accessModeToggle, browserStore, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
 import { placeAtSpot, requestAfterClose, type InfoRequest, type TrailRider } from "./lib/roadInfo.ts";
 import { stationNearSpot } from "./lib/stationLinks.ts";
 import { reorder } from "./lib/pointMover.ts";
@@ -18,8 +18,8 @@ import { betterRouteSaid, EarlyStart, replannedSaid, takesRefined } from "./lib/
 import { RAIL_STATUS_MS, closedReason, matchAlerts, withMetroClosed, matchClosures, requestClosures, type RailStatus } from "./lib/railClosures.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
-import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, withoutReturn } from "./lib/garminLink.ts";
-import { RETURN_PARAM as WAHOO_RETURN_PARAM, wahooReturnFrom } from "./lib/wahooLink.ts";
+import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, readGarmin, withoutReturn } from "./lib/garminLink.ts";
+import { RETURN_PARAM as WAHOO_RETURN_PARAM, readWahoo, wahooReturnFrom } from "./lib/wahooLink.ts";
 import { endsOnFoot, layersTurnedOn, presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
@@ -261,7 +261,7 @@ import { ReviewMode } from "./ReviewMode.tsx";
 import type { ListKey } from "./lib/review.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type Home, type MyGo } from "./lib/myGo.ts";
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
-import { nativeShareNavigator } from "./lib/nativeShell.ts";
+import { nativeBridge, nativeShareNavigator } from "./lib/nativeShell.ts";
 import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restRequest, rideLegOf, rideTripOf, rideable as rideableRoute, type RideTrip } from "./lib/rideTrip.ts";
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
@@ -280,6 +280,9 @@ import { LEAD_PARAM, RIDE_PARAM, SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED,
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
 import { BroadcastQrDialog } from "./BroadcastQrDialog.tsx";
+import { BroadcastJoinDialog, type JoinAsk } from "./BroadcastJoinDialog.tsx";
+import { joinActions, joinKey, joinLine, joinShown, joinTitle, keepJoinShown, showJoin, type JoinAction } from "./lib/broadcastJoin.ts";
+import { canSendToGarmin, handGpx } from "./lib/sendToGarmin.ts";
 import { ResumeRideDialog } from "./ResumeRideDialog.tsx";
 import { forgetLeftRide, keepLeftRide, leftRide } from "./lib/rideResume.ts";
 import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
@@ -3579,31 +3582,34 @@ export function App() {
   // Download GPX: an opened file not edited since downloads as it came; otherwise the route on screen.
   // `said` (the GPX sheet's) gets the line saying what was saved, once it is, for the sheet's status region.
   const downloadRoute = (said?: (line: string) => void) => {
+    // In the phone app, where a download does nothing, the file is handed to Android's "Open with" list instead
+    // (lib/sendToGarmin.ts handGpx); the line then says so.
+    const save = (text: string, name: string, line: string) => {
+      const bridge = nativeBridge();
+      if (!bridge) {
+        downloadText(text, name);
+        said?.(line);
+      } else void handGpx(text, name, bridge).then((handed) => said?.(handed ?? line));
+    };
     const verbatim = imported?.verbatim;
     const file = verbatim ? verbatimDownload(verbatim, importEdited, imported?.name) : null;
     if (file && verbatim) {
       const name = fileName();
-      void checkThen(
+      void checkUnlessFollowing(
         "download",
         verbatim.track,
         true,
-        () => {
-          downloadText(file.text, file.fileName);
-          said?.(GPX_SAID_OPENED);
-        },
-        (track) => {
-          downloadText(trackGpx(name, track as NonNullable<ImportedPlan["verbatim"]>["track"]), verbatimFileName(name));
-          said?.(GPX_SAID_TRACK);
-        },
+        () => save(file.text, file.fileName, GPX_SAID_OPENED),
+        (track) => save(trackGpx(name, track as NonNullable<ImportedPlan["verbatim"]>["track"]), verbatimFileName(name), GPX_SAID_TRACK),
       );
       return;
     }
     if (!shown) return;
     const route = shown;
     const at = routedPoints;
-    void checkThen("download", route.geometry.coordinates, false, () => {
-      downloadGpx(route, at, routedLoop, federalRoute);
-      said?.(GPX_SAID_ROUTE);
+    void checkUnlessFollowing("download", route.geometry.coordinates, false, () => {
+      const made = routeGpxFile(route, at, routedLoop, federalRoute);
+      save(made.text, made.fileName, GPX_SAID_ROUTE);
     });
   };
   // Download a FIT or TCX course or a PDF cue sheet (Plan's GPX sheet): the route on screen, checked as Download GPX
@@ -3620,14 +3626,20 @@ export function App() {
     if (!shown) return;
     const route = shown;
     const at = routedPoints;
-    void checkThen("download", route.geometry.coordinates, false, () => void sendCourseToGarmin(route, at, openSavedRoute.current).then(said));
+    void checkUnlessFollowing("download", route.geometry.coordinates, false, () => void sendCourseToGarmin(route, at, openSavedRoute.current).then(said));
   };
   // Send to Wahoo (the GPX sheet, once Wahoo is connected): the route on screen as a FIT course for the Wahoo app.
   const sendToWahooRoute = (said: Said) => {
     if (!shown) return;
     const route = shown;
     const at = routedPoints;
-    void checkThen("download", route.geometry.coordinates, false, () => void sendCourseToWahoo(route, at, openSavedRoute.current).then(said));
+    void checkUnlessFollowing("download", route.geometry.coordinates, false, () => void sendCourseToWahoo(route, at, openSavedRoute.current).then(said));
+  };
+  // GPX, Garmin and Wahoo for a broadcast one follows are not checked for closures: the leader's to weigh, as at Start
+  // (Stephen 2026-10-26), and the join sheet's buttons (BroadcastJoinDialog) come up over the ride itself.
+  const checkUnlessFollowing: typeof checkThen = async (why, line, gpx, proceed, afterGpx, onAsk) => {
+    if (shown && followsBroadcast(shown)) return proceed();
+    return checkThen(why, line, gpx, proceed, afterGpx, onAsk);
   };
   // Start ride: the line about to be ridden, checked first ("Ride it anyway" goes on to the ride).
   // The voice is unlocked first, synchronously inside the press (iOS speaks only in a gesture; after the
@@ -3903,7 +3915,8 @@ export function App() {
   // and a route is the opener's own to change and ride, even a Mass Ride's. `own`: the ride this rider shared, not
   // held to it.
   // `id` and `lead`: a broadcast's shared line and leader key (RideGroup follows the leader; the sharer leads).
-  const [sharedOpen, setSharedOpen] = useState<{ answer: RouteResponse; ride: boolean; own?: boolean; id?: string; lead?: string | null } | null>(null);
+  // `name`: the shared route's, for the join sheet's title (BroadcastJoinDialog).
+  const [sharedOpen, setSharedOpen] = useState<{ answer: RouteResponse; ride: boolean; own?: boolean; id?: string; lead?: string | null; name?: string } | null>(null);
   // The shared ride in a ref too: Broadcast starts the ride from its own press's closure, before the state re-renders.
   const sharedOpenNow = useRef(sharedOpen);
   sharedOpenNow.current = sharedOpen;
@@ -3928,7 +3941,7 @@ export function App() {
         // A broadcast's follower is not asked about closures (Stephen 2026-10-26: "The closure part should be leader
         // only. In general many of these closures aren't always real").
         openSaved(shared, SHARED_OPENED(shared.name), !(SHARED_RIDE && SHARED_LEAD && shared.answer));
-        if (shared.answer) setSharedOpen({ answer: shared.answer, ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD });
+        if (shared.answer) setSharedOpen({ answer: shared.answer, ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD, name: shared.name });
       } else {
         setSharedNote(SHARED_GONE);
         announce(SHARED_GONE);
@@ -4219,6 +4232,35 @@ export function App() {
   // once, when the link is first ready: a ride already going or the Resume question then, and it never starts later.
   // Started without a press, so the voice is unlocked by the first tap after (iOS), unless it is already speaking.
   const autoRode = useRef(false);
+  // Joining a broadcast (lib/broadcastJoin.ts, Stephen 2026-10-28): once its link has started the ride, one big sheet
+  // offers its route as a GPX file, and to Garmin and Wahoo where connected. Once per joined ride, kept on this device;
+  // shown only while that ride goes.
+  const [joinAsk, setJoinAsk] = useState<JoinAsk | null>(null);
+  // Made once the connections are read, shown once the ride is up.
+  const [joinPending, setJoinPending] = useState<{ key: string; ask: JoinAsk } | null>(null);
+  useEffect(() => {
+    if (!riding) setJoinAsk(null);
+    if (!joinPending || !riding) return;
+    setJoinPending(null);
+    const store = browserStore();
+    if (!showJoin({ following: true, started: riding, shownBefore: joinShown(joinPending.key, store, Date.now()), actions: joinPending.ask.actions.length })) return;
+    keepJoinShown(joinPending.key, store, Date.now());
+    setJoinAsk(joinPending.ask);
+  }, [riding, joinPending]);
+  const offerJoin = (key: string, route: RouteResponse, name: string | undefined) => {
+    if (joinShown(key, browserStore(), Date.now())) return;
+    // Connections are asked only of a rider who may have one (not when the server said signed out).
+    const asks = !(meRef.current !== NO_ME && !meRef.current.signed_in);
+    void Promise.all(asks ? [readGarmin(origin), readWahoo(origin)] : [undefined, undefined]).then(([garmin, wahoo]) => {
+      const actions = joinActions({ canHandFile: canSendToGarmin(), garmin, wahoo });
+      setJoinPending({ key, ask: { title: joinTitle(name), line: joinLine(route), actions } });
+    });
+  };
+  const joinAction = (action: JoinAction, said: Said) => {
+    if (action === "gpx") downloadRoute(said);
+    else if (action === "garmin") sendToGarminRoute(said);
+    else sendToWahooRoute(said);
+  };
   const sharedFollow = sharedOpen?.ride === true && !!sharedOpen.lead && !sharedOpen.own && shown === sharedOpen.answer && !stale && rideableRoute(shown);
   const roamFollow = roamBroadcast !== null && !roamBroadcast.leading;
   useEffect(() => {
@@ -4233,8 +4275,10 @@ export function App() {
       if (!window.speechSynthesis?.speaking) primeRideVoice(ridePrefsNow.current);
     };
     document.addEventListener("click", unlock, true);
-    if (sharedFollow) startRideNoted(BROADCAST_FOLLOWING);
-    else {
+    if (sharedFollow) {
+      startRideNoted(BROADCAST_FOLLOWING);
+      if (sharedOpen?.id && sharedOpen.lead) offerJoin(joinKey(sharedOpen.id, sharedOpen.lead), sharedOpen.answer, sharedOpen.name);
+    } else {
       startRoam();
       // After "Roaming.", as the ride screen says its start note.
       window.setTimeout(() => roamingNow.current && announce(BROADCAST_FOLLOWING), START_NOTE_MS);
@@ -5442,6 +5486,7 @@ export function App() {
         }}
       />
       <BroadcastQrDialog ask={qrAsk} onClose={() => setQrAsk(null)} />
+      <BroadcastJoinDialog ask={riding ? joinAsk : null} onAction={joinAction} onClose={() => setJoinAsk(null)} />
       <ClosureDialog ask={closureAsk} onReroute={() => void closureReroute()} onAnyway={closureAnyway} onCancel={closureCancel} />
       <ShareCardDialog
         open={shareCardOpen && shareCardSource !== null && mode !== "go" && !riding}

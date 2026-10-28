@@ -765,6 +765,15 @@ export const ES: Readonly<Record<string, string>> = {
   "Wahoo disconnected.": "Wahoo desconectado.",
   "Your Wahoo connection could not be checked just now.": "No se pudo revisar su conexión con Wahoo en este momento.",
   "Send to Wahoo": "Enviar a Wahoo",
+  // ---- Joining a broadcast (lib/broadcastJoin.ts, BroadcastJoinDialog.tsx) ----
+  "Joined the ride \"{name}\"": "Se unió al recorrido \"{name}\"",
+  "You joined a ride": "Se unió a un recorrido",
+  "Just ride": "Solo pedalear",
+  "Take the leader's route with you: download it as a GPX file, or send it to your bike computer.":
+    "Lleve la ruta del líder: descárguela como archivo GPX o envíela a su computadora de bicicleta.",
+  "Choose an app to open the GPX file.": "Elija una app para abrir el archivo GPX.",
+  "Could not hand the GPX file on. Is an app that opens GPX files installed?":
+    "No se pudo pasar el archivo GPX. ¿Tiene instalada una app que abra archivos GPX?",
   "Wahoo connected. Send to Wahoo is now beside Download in the GPX section.":
     "Wahoo conectado. Enviar a Wahoo está ahora junto a Descargar en la sección GPX.",
   "Wahoo not connected: you did not allow it at Wahoo.": "Wahoo sin conectar: no lo permitió en Wahoo.",

@@ -296,7 +296,7 @@ test("App judges a followed broadcast once, when ready, and starts its ride with
   assert.match(app, /if \(!shown \|\| followsBroadcast\(shown\)\) return startRide\(false\);/);
   assert.match(app, /return !!open && open\.ride && !!open\.lead && !open\.own && open\.answer === route;/);
   // Started with no press: it says so, and how to wake a phone's quiet voice (the end review's a11y finding).
-  assert.match(app, /if \(sharedFollow\) startRideNoted\(BROADCAST_FOLLOWING\);\n\s+else \{\n\s+startRoam\(\);[^}]*announce\(BROADCAST_FOLLOWING\), START_NOTE_MS\);/);
+  assert.match(app, /if \(sharedFollow\) \{\n\s+startRideNoted\(BROADCAST_FOLLOWING\);\n[^}]*\} else \{\n\s+startRoam\(\);[^}]*announce\(BROADCAST_FOLLOWING\), START_NOTE_MS\);/);
   assert.match(app, /if \(plan\.verbatim && check\) void checkThen\("open", plan\.verbatim\.track, true/);
   assert.match(app, /if \(!ridingNow\.current && !roamingNow\.current\) return;\n\s+document\.removeEventListener\("click", unlock, true\);\n\s+if \(!window\.speechSynthesis\?\.speaking\) primeRideVoice\(ridePrefsNow\.current\);/);
   assert.match(app, /document\.addEventListener\("click", unlock, true\);/);

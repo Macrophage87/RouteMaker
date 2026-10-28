@@ -8561,6 +8561,51 @@ details.fold > summary .icon {
   background: #ffffff;
 }
 
+/*
+ * Joining a broadcast (BroadcastJoinDialog.tsx): a big sheet at the foot of a phone's screen, big buttons one under
+ * the other. Its content fills it, so a tap on the dim backdrop is the only one that lands on the dialog itself.
+ */
+.broadcast-join-dialog {
+  padding: 0;
+  width: min(520px, calc(100vw - 32px));
+  max-width: min(520px, calc(100vw - 32px));
+  margin: auto auto 16px;
+}
+@media (min-width: 700px) {
+  .broadcast-join-dialog {
+    margin: auto;
+  }
+}
+.broadcast-join {
+  padding: 20px 16px 16px;
+}
+.broadcast-join h2 {
+  margin: 0 0 4px;
+  font-size: 1.4rem;
+  line-height: 1.25;
+}
+.broadcast-join-line {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text-muted);
+}
+.broadcast-join-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+.broadcast-join-actions button {
+  min-height: 56px;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+.broadcast-join-said {
+  margin: 12px 0 0;
+}
+.broadcast-join-said:empty {
+  display: none;
+}
+
 .start-ride .broadcast-note,
 .route-actions-row > .broadcast-note {
   flex-basis: 100%;
