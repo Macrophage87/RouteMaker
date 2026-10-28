@@ -741,6 +741,22 @@ def test_a_short_link_mapped_in_pieces_is_kept_when_the_chain_joins_two_trails()
     )
     assert facility_rules.short_paths_to_hide(web) == {100, 101, 102, 103, 110}
     assert facility_rules.SHORT_LINK_PIECES == 3
+    # A spur, or a small loop, off the middle of a split link goes; the link stays.
+    side = [(9, link, [30, 70], _west_east(0, 0, 40)), (12, link, [30, 30], _west_east(0, 0, 40))]
+    assert facility_rules.short_paths_to_hide([*ways, *side]) == {9, 12}
+    branch = [
+        (13, link, [30, 71], _west_east(0, 0, 40)),
+        (14, link, [71, 72], _west_east(0, 0, 40)),
+    ]
+    assert facility_rules.short_paths_to_hide([*ways, *branch]) == {13, 14}
+    # Pieces meeting at a kept trail's node are not one link: each stands alone.
+    at_trail = [
+        ways[0],
+        ways[1],
+        (15, link, [80, 11], _west_east(0, 0, 40)),
+        (16, link, [11, 20], _west_east(0, 0, 40)),
+    ]
+    assert facility_rules.short_paths_to_hide(at_trail) == {15}
 
 
 def test_roads_inside_a_military_base_are_found_and_trails_along_it_are_not() -> None:

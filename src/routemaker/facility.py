@@ -1096,8 +1096,11 @@ def short_paths_to_hide(
     A link mapped in pieces counts as one (the owner, 2026-10-28, of a link from
     Percheron Trail under Airpark Road to Tree Farm Trail, split at its tunnel,
     both pieces hidden: "see why this trail isn't marked, and others like it"):
-    up to SHORT_LINK_PIECES short pieces joined end to end stay when the chain's
-    ends touch two kept trails at two different nodes.
+    short pieces joined where no kept trail meets them form a group. The group's
+    dead ends are trimmed first (a spur to a bench, a loop hanging off the link:
+    hidden, as each would be alone); what is left, up to SHORT_LINK_PIECES
+    pieces, stays when it touches kept trails at two or more different nodes,
+    on one trail or two, as a single way does.
 
     `ways` is (osm id, tags, node ids, [(lon, lat), ...]). A kept trail is a
     trail-class way that is not a candidate and that `map_class` draws (a named
@@ -1140,7 +1143,32 @@ def short_paths_to_hide(
             if not (first in kept_nodes and last in kept_nodes):
                 hidden.add(start)
             continue
-        touching = {node for osm_id in chain for node in short[osm_id] if node in kept_nodes}
-        if len(chain) > SHORT_LINK_PIECES or len(touching) < 2:
-            hidden |= chain
+        link = _trim_dead_ends(chain, short, kept_nodes)
+        hidden |= chain - link
+        touching = {node for osm_id in link for node in short[osm_id] if node in kept_nodes}
+        if len(link) > SHORT_LINK_PIECES or len(touching) < 2:
+            hidden |= link
     return hidden
+
+
+def _trim_dead_ends(
+    chain: set[int], short: dict[int, tuple[int, int]], kept_nodes: set[int]
+) -> set[int]:
+    """`chain` less, over and over, each piece with an end that no kept trail and
+    no other piece left has, and each closed piece: what is left runs between
+    kept trails."""
+    link = set(chain)
+    while True:
+        ends: dict[int, int] = {}
+        for osm_id in link:
+            for node in short[osm_id]:
+                ends[node] = ends.get(node, 0) + 1
+        dead = {
+            osm_id
+            for osm_id in link
+            if short[osm_id][0] == short[osm_id][1]
+            or any(node not in kept_nodes and ends[node] < 2 for node in short[osm_id])
+        }
+        if not dead:
+            return link
+        link -= dead
