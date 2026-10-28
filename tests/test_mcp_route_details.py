@@ -95,6 +95,23 @@ def test_the_roads_are_listed_in_order_with_miles_stress_and_scenic_designation(
     assert roads[4]["worst_lts"] == 3 and roads[4]["miles_lts_3_up"] == 0.3
 
 
+def test_a_known_no_facility_counts_as_street_with_the_unknown_pieces() -> None:
+    # The site sends "none" for a known no-facility (round-2 D28) and None where it is not known:
+    # both are plain street, so 40% lane, 30% none and 30% unknown is a street, not a lane road.
+    answer = answer_of(
+        [
+            stretch("Rhode Island Avenue", 0.0, 0.4, 2, "lane"),
+            stretch("Rhode Island Avenue", 0.4, 0.7, 3, "none"),
+            stretch("Rhode Island Avenue", 0.7, 1.0, 3),
+            stretch("Moore Road", 1.0, 2.0, 2, "none"),
+        ]
+    )
+    roads = mcp.road_list(answer)["roads"]
+    assert [r["road"] for r in roads] == ["Rhode Island Avenue", "Moore Road"]
+    assert "facility" not in roads[0]
+    assert "facility" not in roads[1]
+
+
 def test_a_long_list_groups_each_run_of_short_links_into_one_row() -> None:
     entries, at_mi = [], 0.0
     for block in range(30):

@@ -3039,6 +3039,7 @@ def describe_route(
                             bearing=pieces[i].bearing,
                             turn=pieces[i].turn,
                             choice=bool(pieces[i].choice),
+                            oneway=getattr(classes[i], "oneway", None),
                         )
                         for i in range(run[0], run[1])
                     ]

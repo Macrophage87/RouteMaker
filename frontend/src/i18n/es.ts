@@ -26,6 +26,9 @@ export const ES: Readonly<Record<string, string>> = {
   "Bear right.": "Gire ligeramente a la derecha.",
   "Bear right now onto {street}.": "Gire ligeramente a la derecha ahora hacia {street}.",
   "Bear right now.": "Gire ligeramente a la derecha ahora.",
+  // At a fork along one way, the advance cue's verb (round-2 audit D22(d)).
+  "Keep left now.": "Manténgase a la izquierda ahora.",
+  "Keep right now.": "Manténgase a la derecha ahora.",
   "Make a U-turn.": "Dé la vuelta en U.",
   "Make a U-turn now.": "Dé la vuelta en U ahora.",
   "Take the {nth} exit onto {street} at {circle}": "Tome la {nth} salida hacia {street} en {circle}",
@@ -35,6 +38,9 @@ export const ES: Readonly<Record<string, string>> = {
   "Exit now.": "Salga ahora.",
   "Continue onto {street}.": "Continúe por {street}.",
   "Continue on {street}.": "Siga por {street}.",
+  // Reassurance on a long stretch after a turn (round-2 audit D27).
+  "Continue on {street} for {distance}.": "Siga por {street} durante {distance}.",
+  "Continue for {distance}.": "Siga durante {distance}.",
   "Continue.": "Siga.",
   "not set": "sin fijar",
   "Cross {road}.": "Cruce {road}.",
@@ -54,6 +60,10 @@ export const ES: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Intersección con mucho tráfico, sin semáforo.",
   "Busy crossing.": "Intersección con mucho tráfico.",
   "Busy junction.": "Intersección con mucho tráfico.",
+  // A flagged junction a stretch is entered at straight on (round-2 audit D25), its control as the crossings say it.
+  "Busy junction at a signal.": "Intersección con mucho tráfico, con semáforo.",
+  "Busy junction at a stop sign.": "Intersección con mucho tráfico, con señal de alto.",
+  "Busy junction, no signal.": "Intersección con mucho tráfico, sin semáforo.",
   // An Avoid-rated junction in Ride (round-2 audit R2): the server's words (src/routemaker/lang_es.py).
   "Avoid-rated junction ahead.": "Intersección calificada Avoid más adelante.",
   "Riding through it is a really bad idea. Please reconsider your route.": "Pasar por ella es una muy mala idea. Por favor, reconsidere su ruta.",
@@ -74,10 +84,15 @@ export const ES: Readonly<Record<string, string>> = {
   "{cue}, {surface}.": "{cue}, {surface}.",
   "unpaved": "sin pavimentar",
   "partly unpaved": "parcialmente sin pavimentar",
+  // A bike lane that ends on the same street (round-2 audit D28).
+  "Bike lane ends on {street}.": "Termina el carril bici en {street}.",
+  "Bike lane ends.": "Termina el carril bici.",
   "Walk your bike for {distance}.": "Camine con su bicicleta por {distance}.",
   "Walk your bike.": "Camine con su bicicleta.",
   "Destination on your left.": "El destino está a su izquierda.",
   "Destination on your right.": "El destino está a su derecha.",
+  // A destination across a busy road, said early (round-2 audit D26).
+  "In {distance}, the destination is across {street}, on your left.": "En {distance}, el destino está al otro lado de {street}, a su izquierda.",
   "The end of the route.": "El final de la ruta.",
   "You have arrived at the end of the route.": "Ha llegado al final de la ruta.",
   "Stop {number}, {name}.": "Parada {number}, {name}.",

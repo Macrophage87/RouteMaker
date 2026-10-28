@@ -190,6 +190,22 @@ test("at the drop-off dock the ride says 'Dock at' and the walk to the finish", 
   }
   assert.equal(state.arrived, true);
   assert.equal(said[said.length - 1].spoken, trip.finish!.spoken);
+  // The early "across" sentence (D26) is said as itself, not as the finish: only the arrival takes the dock words.
+  const far = rideModel(BIKESHARE);
+  const end = far.cues[far.cues.length - 1];
+  assert.equal(end.kind, "end");
+  far.cues[far.cues.length - 1] = { ...end, farSide: "Florida Avenue" };
+  let farState = startState();
+  const farSaid: RideEvent[] = [];
+  for (let m = 0; m <= 1000; m += 10) {
+    const out = step(far, farState, fix(pointAt(far, m)), "full");
+    farState = out.state;
+    farSaid.push(...withFinish(out.events, trip.finish));
+  }
+  const ends = farSaid.filter((e) => e.cue?.kind === "end");
+  assert.deepEqual(ends.map((e) => e.phase), ["advance", "arrive"]);
+  assert.match(ends[0].spoken, /the destination is across Florida Avenue, on your left\.$/);
+  assert.equal(ends[1].spoken, trip.finish!.spoken);
   // An e-bike left at the destination ends as a normal finish.
   assert.equal(rideTripOf(line({ bikeshare: { ...SHARE, end: { ...SHARE.end, kind: "outside_dock" }, walk_end: null } }), [])!.finish, null);
 });

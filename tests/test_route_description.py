@@ -57,7 +57,8 @@ class TestInTheAnswer:
         assert [e["kind"] for e in entries] == ["stretch", "junction"]
         stretch, junction = entries
         assert stretch["street"] == "Quiet Street"
-        assert stretch["tier"] == 2 and stretch["facility"] is None
+        # The map says no facility: "none", not unknown (round-2 D28; was None).
+        assert stretch["tier"] == 2 and stretch["facility"] == "none"
         assert stretch["turn"] is None
         assert stretch["text"] == (
             "0.0 to 1.7 mi (0.0 to 2.7 km): Quiet Street, fairly low stress (LTS 2)."
@@ -319,6 +320,8 @@ class TestSchema:
             "citation",
             # Round-2 audit R2: an Avoid-rated junction's reason, beside its name in `street`.
             "reason",
+            # Round-2 audit D26: whether a stretch's road is one-way where it ends.
+            "oneway",
         }
         # "avoid": an Avoid-rated junction ahead (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307).
         # "workzone": a live work zone on the route (FOLLOWUP-WORKZONES, 341-349).
@@ -459,9 +462,26 @@ class TestDescribeRoute:
         assert [e["tier"] for e in overview] == [3, 1]
         assert [e["street"] for e in entries] == ["A St", "B St"]
         assert [e["tier"] for e in entries] == [3, 1]
-        assert [e["facility"] for e in entries] == [None, "path"]
+        assert [e["facility"] for e in entries] == ["none", "path"]  # known, round-2 D28
         assert entries[1]["turn"]["movement"] == "left"
         assert entries[-1]["to_m"] == 1000
+
+    def test_a_stretch_says_whether_its_road_is_one_way_where_it_ends(self):
+        # Round-2 audit D26 (owner-approved 2026-10-27): Ride says "the destination is
+        # across ..." only on a known two-way road; the map's `road_oneway`, else None.
+        classes = [routing.PieceClass("3", "none", oneway=True), routing.PieceClass("3", "none")]
+        entries, overview = routing.describe_route(
+            [(0, 2)], self.pieces(), classes, None, {"length": 1.0}
+        )
+        assert [e["oneway"] for e in entries] == [True, None]
+        assert overview[-1]["oneway"] is None
+        two_way = [routing.PieceClass("3", "none"), routing.PieceClass("3", "none", oneway=False)]
+        entries, _overview = routing.describe_route(
+            [(0, 2)], self.pieces(), two_way, None, {"length": 1.0}
+        )
+        assert entries[-1]["oneway"] is False
+        for entry in entries:
+            api.DescriptionEntryOut.model_validate(entry)
 
     def test_an_unnamed_way_takes_its_street_side_name(self):
         # v0.7.0 "Go riding fixes" item 4: a piece of a way with no name, and a name from

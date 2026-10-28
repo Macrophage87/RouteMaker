@@ -89,6 +89,8 @@ import {
   withoutMetric,
   stretchWords,
   walkWords,
+  flaggedOntoWords,
+  laneEndsWords,
   type Cue,
   type RideEvent,
   type RideFix,
@@ -1653,7 +1655,8 @@ test("a fork along one trail stays 'to stay on' at the turn and inside a jog, ne
   const fork = model.cues[0];
   assert.equal(fork.text, "Bear right to stay on Paint Branch Trail.");
   assert.equal(cueSpoken(fork, "advance", 152.4), `In ${spokenDistance(152.4)}, bear right to stay on Paint Branch Trail.`);
-  assert.equal(cueSpoken(fork, "now", 0), "Bear right now.");
+  // "Keep right now." since round-2 D22(d) (owner-approved 2026-10-27; was "Bear right now.").
+  assert.equal(cueSpoken(fork, "now", 0), "Keep right now.");
   // A stay fork as a jog's later turn: said "to stay on" in the first turn's text, and "now" alone at its own turn.
   const jog = rideModel(
     straightRoute([
@@ -1669,7 +1672,7 @@ test("a fork along one trail stays 'to stay on' at the turn and inside a jog, ne
   const [first, second] = jog.cues;
   assert.equal(first.text, "Right onto Paint Branch Trail, then immediately bear right to stay on Paint Branch Trail.");
   assert.ok(second.joined);
-  assert.equal(cueSpoken(second, "now", 0), "Bear right now.");
+  assert.equal(cueSpoken(second, "now", 0), "Keep right now.");
   // A plain turn keeps its street at "now".
   assert.equal(cueSpoken(first, "now", 0), "Right now onto Paint Branch Trail.");
 });
@@ -2217,6 +2220,201 @@ test('D22: Where am I? in Spanish says "a aproximadamente" before miles, not "a 
     const said = whereAmI(rideModel(route), { ...startState(), progressM: 1500 });
     assert.match(said, /^En el Custis Trail, a aproximadamente 0\.3 millas al \S+ de A Street\./);
     assert.doesNotMatch(said, /a unos/);
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+// ---- Round-2 audit, banked items the owner approved 2026-10-27 7:52 PM ET ("make the banked changes") ----------------
+
+/** A stretch entered straight on at a flagged junction, as the API sends it (describe.py: turn.movement "straight"). */
+function flaggedStraight(from: number, to: number, street: string, control: "signal" | "none" | "stop" | null, tier: number): DescriptionEntry {
+  const words = control === "signal" ? " at a signal" : control === "none" ? ", no signal mapped" : control === "stop" ? " at a stop sign" : "";
+  return stretch(from, to, `x: Continue onto ${street}${words} (Higher stress junction), heavy traffic (LTS ${tier}).`, {
+    street,
+    tier,
+    turn: { movement: "straight", onto: street, control, severity: "orange" },
+    severity: "orange",
+  });
+}
+
+test("D25: a flagged straight-on name change is said in Ride's words, its control kept, no '(Higher stress junction)'", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1000, "0.0 to 0.6 mi: 16th Street Northwest, fairly low stress (LTS 2).", { street: "16th Street Northwest", tier: 2 }),
+      flaggedStraight(1000, 2000, "Georgia Avenue", "signal", 4),
+      flaggedStraight(2000, 3000, "Connecticut Avenue", "none", 4),
+    ]),
+  );
+  const [signal, none] = model.cues.filter((c) => c.kind === "hazard");
+  // Plan's sentence stays the cue's text; Ride shows and says its own.
+  assert.match(signal.text, /Higher stress junction/);
+  assert.equal(signal.rideText, "Continue onto Georgia Avenue. Busy junction at a signal. Heavy traffic.");
+  assert.equal(cueSpoken(signal, "advance", 150), "In 500 feet, continue onto Georgia Avenue. Busy junction at a signal. Heavy traffic.");
+  // Already heavy before: no "Heavy traffic." again.
+  assert.equal(cueSpoken(none, "advance", 150), "In 500 feet, continue onto Connecticut Avenue. Busy junction, no signal.");
+  for (const cue of [signal, none]) assert.doesNotMatch(cueSpoken(cue, "advance", 150), /Higher stress|LTS|\(/);
+  // Unnamed, a stop sign, no control mapped.
+  const before = stretch(0, 1000, "a", { street: "A Street", tier: 1 });
+  assert.equal(flaggedOntoWords(flaggedStraight(1000, 2000, "unnamed road", "stop", 3), before), "Busy junction at a stop sign. Busy road.");
+  assert.equal(flaggedOntoWords(flaggedStraight(1000, 2000, "B Street", null, 1), before), "Continue onto B Street. Busy junction.");
+  setLanguageForTest("es");
+  try {
+    assert.equal(
+      flaggedOntoWords(flaggedStraight(1000, 2000, "Georgia Avenue", "none", 4), before),
+      "Continúe por Georgia Avenue. Intersección con mucho tráfico, sin semáforo. Tráfico pesado.",
+    );
+    assert.equal(flaggedOntoWords(flaggedStraight(1000, 2000, "Georgia Avenue", "signal", 1), before), "Continúe por Georgia Avenue. Intersección con mucho tráfico, con semáforo.");
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+test("D28: 'Bike lane ends' only on a known no-lane that lasts, on the same street, never on LTS 4 or Avoid", () => {
+  const ct = "Connecticut Avenue Northwest";
+  const lane = (from: number, to: number, facility: DescriptionEntry["facility"], tier = 2, street = ct) =>
+    stretch(from, to, `x: Continue on ${street}, fairly low stress (LTS ${tier}).`, { street, tier, facility });
+  const cuesOf = (...rest: DescriptionEntry[]) =>
+    rideModel(straightRoute([stretch(0, 500, "A Street.", { street: "A Street" }), { ...lane(500, 1300, "protected"), turn: turning("right", ct) }, ...rest])).cues;
+  // A protected lane ends, the street goes on with no lane: said, in the app's words, at Full only.
+  const ends = cuesOf(lane(1300, 2100, "none")).find((c) => c.kind === "laneEnds") as Cue;
+  assert.ok(ends);
+  assert.equal(ends.rideText, `Bike lane ends on ${ct}.`);
+  assert.equal(cueSpoken(ends, "advance", 150), `In 500 feet, bike lane ends on ${ct}.`);
+  assert.ok(says("full", ends) && !says("stoker", ends) && !says("quiet", ends));
+  // Not known (null, as an older API sent "none" too): nothing.
+  assert.ok(!cuesOf(lane(1300, 2100, null)).some((c) => c.kind === "laneEnds"));
+  // The lane comes back within LANE_RETURN_M, or a turn comes first: nothing.
+  assert.ok(!cuesOf(lane(1300, 1400, "none"), lane(1400, 2100, "lane")).some((c) => c.kind === "laneEnds"));
+  assert.ok(!cuesOf(lane(1300, 1400, "none"), { ...lane(1400, 2100, "none", 2, "B Street"), turn: turning("left", "B Street") }).some((c) => c.kind === "laneEnds"));
+  // Two no-lane pieces of the same street that together last: said.
+  assert.ok(cuesOf(lane(1300, 1400, "none"), lane(1400, 2100, "none", 1)).some((c) => c.kind === "laneEnds"));
+  // LTS 4 or Avoid, where painted lanes are hidden: never.
+  assert.ok(!cuesOf(lane(1300, 2100, "none", 4)).some((c) => c.kind === "laneEnds"));
+  // The tier rises to a busy road too: the busy cue says the lane ended first.
+  const busy = cuesOf(lane(1300, 2100, "none", 3)).find((c) => c.kind === "busy") as Cue;
+  assert.equal(busy.rideText, `Bike lane ends. Busy road on ${ct}.`);
+  assert.equal(cueSpoken(busy, "advance", 150), `In 500 feet, bike lane ends. Busy road on ${ct}.`);
+  setLanguageForTest("es");
+  try {
+    const es = cuesOf(lane(1300, 2100, "none")).find((c) => c.kind === "laneEnds") as Cue;
+    assert.equal(cueSpoken(es, "advance", 150), `En 500 pies, termina el carril bici en ${ct}.`);
+    assert.equal(laneEndsWords(null), "Termina el carril bici.");
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+test("D26: a destination on the left of a busy two-way road is said early as a crossing, never stacked on the last turn", () => {
+  const ga = "Georgia Avenue Northwest";
+  const arrive = (lastM: number, extra: Partial<DescriptionEntry> = {}, side: "left" | "right" = "left") =>
+    rideModel({
+      ...straightRoute([
+        stretch(0, 300, "A Street.", { street: "A Street" }),
+        stretch(300, 300 + lastM, "Right onto Georgia Avenue Northwest, busy road (LTS 3).", {
+          street: ga,
+          tier: 3,
+          facility: "none",
+          oneway: false,
+          turn: turning("right", ga),
+          ...extra,
+        }),
+      ]),
+      arrival_side: side,
+    } as RouteResponse);
+  const said = (model: RideModel, level: Verbosity = "full") => ride(model, level, 0, model.lengthM).events.map((e) => e.spoken);
+  const early = (words: string[]) => words.filter((w) => /across/.test(w));
+  const full = said(arrive(400));
+  assert.deepEqual(early(full), ["In 500 feet, the destination is across Georgia Avenue Northwest, on your left."]);
+  // After the turn's "now", before the arrival, which is as it was.
+  assert.ok(full.indexOf(early(full)[0]) > full.indexOf("Right now onto Georgia Avenue Northwest."));
+  assert.equal(full.at(-1), "You have arrived at the end of the route. Destination on your left.");
+  assert.deepEqual(early(said(arrive(400), "stoker")), ["In 500 feet, the destination is across Georgia Avenue Northwest, on your left."]);
+  assert.deepEqual(early(said(arrive(400), "quiet")), []);
+  // A last stretch too short to say it apart from the turn: not said.
+  assert.deepEqual(early(said(arrive(90))), []);
+  // Not said on the right, a calm road, a lane or cycletrack, a one-way road, or where the facility or one-way is not known.
+  for (const [extra, side] of [
+    [{}, "right"],
+    [{ tier: 2 }, "left"],
+    [{ facility: "lane" }, "left"],
+    [{ facility: "protected" }, "left"],
+    [{ oneway: true }, "left"],
+    [{ oneway: null }, "left"],
+    [{ facility: null }, "left"],
+  ] as [Partial<DescriptionEntry>, "left" | "right"][]) {
+    assert.deepEqual(early(said(arrive(400, extra, side))), [], JSON.stringify([extra, side]));
+  }
+  // Unnamed: "the road".
+  const unnamed = arrive(400, { street: "unnamed road", turn: turning("right", "unnamed road") });
+  assert.deepEqual(early(said(unnamed)), ["In 500 feet, the destination is across the road, on your left."]);
+  setLanguageForTest("es");
+  try {
+    assert.ok(said(arrive(400)).includes("En 500 pies, el destino está al otro lado de Georgia Avenue Northwest, a su izquierda."));
+    assert.ok(said(unnamed).includes("En 500 pies, el destino está al otro lado de la calle, a su izquierda."));
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+test("D27: one 'Continue on ... for ...' after a turn, at Full only, measured to the next turn, not a stress change", () => {
+  const wod = "Washington and Old Dominion Trail";
+  const route = (trailM: number, extra: DescriptionEntry[] = []) =>
+    straightRoute([
+      stretch(0, 300, "A Street.", { street: "A Street" }),
+      stretch(300, 300 + trailM, "Right onto the trail.", { street: wod, facility: "path", turn: turning("right", wod) }),
+      ...extra,
+      stretch(300 + trailM + extra.reduce((m, e) => m + (e.to_m - e.from_m), 0), 300 + trailM + extra.reduce((m, e) => m + (e.to_m - e.from_m), 0) + 500, "Left onto B Street.", {
+        street: "B Street",
+        turn: turning("left", "B Street"),
+      }),
+    ]);
+  // 16 km of trail, a busy stretch of the same trail half way: one cue, 60 m past the turn, to the B Street turn.
+  const long = rideModel(route(8000, [stretch(8300, 16300, "x", { street: wod, facility: "path", tier: 3 })]));
+  const full = ride(long, "full", 0, 2000).events.filter((e) => /^Continue/.test(e.spoken));
+  assert.deepEqual(
+    full.map((e) => e.spoken),
+    [`Continue on ${wod} for ${spokenDistance(16300 - 360)}.`],
+  );
+  assert.equal(spokenDistance(16300 - 360), "9.9 miles");
+  assert.equal(full[0].urgent, false);
+  assert.equal(full[0].cue?.kind, "turn");
+  // Stoker and Quiet: none.
+  for (const level of ["stoker", "quiet"] as const) assert.ok(!ride(long, level, 0, 2000).events.some((e) => /^Continue on/.test(e.spoken)));
+  // Under a mile to the next turn: none.
+  assert.ok(!ride(rideModel(route(1500)), "full", 0, 1000).events.some((e) => /^Continue on/.test(e.spoken)));
+  // Started past the window after the turn: none.
+  const late = ride(long, "full", 700, 1500, 5, { ...startState() }).events;
+  assert.ok(!late.some((e) => /^Continue on/.test(e.spoken)));
+  setLanguageForTest("es");
+  try {
+    const es = ride(long, "full", 0, 1000).events.find((e) => /^Siga/.test(e.spoken));
+    assert.equal(es?.spoken, `Siga por ${wod} durante 9.9 millas.`);
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+test("D22(d): a bear at a fork along one way says 'Keep right now.', the advance cue's verb in Spanish too", () => {
+  const fork = (movement: "bear_right" | "bear_left" | "right") =>
+    rideModel(
+      straightRoute([
+        stretch(0, 900, "Paint Branch Trail.", { street: "Paint Branch Trail", facility: "path" }),
+        stretch(900, 2200, "x", { street: "Paint Branch Trail", facility: "path", turn: { ...turning(movement, "Paint Branch Trail"), stay: true } }),
+      ]),
+    ).cues[0];
+  assert.equal(cueSpoken(fork("bear_right"), "now", 0), "Keep right now.");
+  assert.equal(cueSpoken(fork("bear_left"), "now", 0), "Keep left now.");
+  // A full turn to stay on the way keeps its own verb; a bear that is no fork keeps "Bear right now onto ...".
+  assert.equal(cueSpoken(fork("right"), "now", 0), "Right now.");
+  const plain = { ...fork("bear_right"), stay: undefined, street: "B Street" };
+  assert.equal(cueSpoken(plain, "now", 0), "Bear right now onto B Street.");
+  setLanguageForTest("es");
+  try {
+    const cue = fork("bear_right");
+    assert.equal(cueSpoken(cue, "advance", 152.4), "En 500 pies, manténgase a la derecha para seguir en Paint Branch Trail.");
+    assert.equal(cueSpoken(cue, "now", 0), "Manténgase a la derecha ahora.");
+    assert.equal(cueSpoken(fork("bear_left"), "now", 0), "Manténgase a la izquierda ahora.");
   } finally {
     setLanguageForTest("en");
   }
