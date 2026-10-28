@@ -3527,18 +3527,23 @@ from Safari's, and on iOS 26 it can refuse without a prompt; other web apps repo
 same ([Apple developer forums](https://developer.apple.com/forums/thread/804381)).
 So in a Home Screen app the denied notice points to iPhone Settings
 (`DENIED_IN_IOS_APP`, frontend/src/lib/geolocation.ts) and stays one line, since the
-ride screen shows it too. The steps to give a tester, in order, stopping when the
-location works:
+ride screen shows it too. A web app cannot open iPhone Settings, so in Go, Plan, Roam and Ride
+a "How to turn location on" fold under the notice (IosLocationHelp.tsx) lists where to
+go. A second tester found the Home Screen app blocked while **In-App Web Browsing**
+(Location Services > System Services, iOS 18.2 and later) was off, though Safari tabs
+worked; it is the first thing to check. The steps to give a tester, in order, stopping
+when the location works:
 
-1. **Add the app again** (the likeliest fix when Safari already works): press and hold
-   the RouteMaker icon, Remove App, Delete from Home Screen. In Safari, open the site,
-   Share, Add to Home Screen, with Open as Web App on. Open it and press the location
-   button; iOS should ask now.
-2. **Settings > Privacy & Security > Location Services**: on. Scroll to **Safari
-   Websites** and choose **While Using the App** (with **Precise Location** on).
-3. **Settings > Apps > Safari > Location** (under Settings for Websites): **Ask** or
+1. **Settings > Privacy & Security > Location Services**: on. Open **System Services**
+   and turn on **In-App Web Browsing**.
+2. Back in Location Services, **Safari Websites**: **While Using the App** (with
+   **Precise Location** on).
+3. **Add the app again**: press and hold the RouteMaker icon, Remove App, Delete from
+   Home Screen. In Safari, open the site, Share, Add to Home Screen, with Open as Web
+   App on. Open it and press the location button; iOS should ask now.
+4. **Settings > Apps > Safari > Location** (under Settings for Websites): **Ask** or
    **Allow**, not Deny.
-4. **Last resort, resets every app's location choices**: Settings > General > Transfer
+5. **Last resort, resets every app's location choices**: Settings > General > Transfer
    or Reset iPhone > Reset > Reset Location & Privacy, then open the Home Screen app
    and allow when asked.
 
@@ -6355,6 +6360,24 @@ reachable only from Windham Lane because its 36 to 64 ft (11 to 20 m) links to G
 Drive, Francis Drive and Huntley Avenue are all mapped `informal=yes`): its `informal`
 closure comes off and it gets `rm:walk_link`, `bicycle=dismount`, as a station's footway
 does, so the route says to walk the bike.
+
+**Street-end cut-throughs (v0.13.2, with the next map update).** The owner reported the
+paved path from the end of Flack Street to the Glenmont Metro (OSM 656592016, 290 ft
+(88 m), `highway=footway` and no bicycle tag): "This path was missed from the Glenmont
+metro". It is no sidewalk, and no bike way dead-ends on it, so neither rule above opened
+it, and routes went round on Georgia Avenue. He chose "Rule: ride them, up to 500 ft".
+`routemaker.sidewalks.cut_throughs` finds each plain `highway=footway` (no sidewalk or
+crosswalk, no bicycle tag, open on foot, not informal, not closed for a reason, paved or of
+unknown surface, and no `sac_scale`, `trail_visibility` or `mtb:scale`, which the trail
+rules never read on a footway upstream already closes) that leaves the dead-end
+stretch of a public street (residential, unclassified, living street, tertiary; never a
+service road, so a parking lot is no dead-end street) for a ridden sidewalk or crosswalk,
+or for another bicycle-open way that is no service road, within 500 ft (150 m) along the
+footways; each footway it opens lies wholly within 500 ft. They are ridden and priced as
+the links are (`rm:sidewalk=yes`, LTS 3). On OSM read 2026-10-28 for Wheaton and Glenmont
+(about 2.5 by 1.8 mi) it opens five footways, 490 ft (150 m) in all. The Glenmont path
+also has its own override (`fixtures/overrides/2026-10-28-owner-glenmont-flack-path.json`),
+which rides it as a path.
 
 **Walkways at rail platforms (v0.13.0, with the next map update).** OSM sometimes tags a
 station's walkways `bicycle=yes`, and an unnamed footway open to bicycles is otherwise a

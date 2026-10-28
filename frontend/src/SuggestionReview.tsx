@@ -24,6 +24,7 @@
  * the button pressed.
  */
 import { useEffect, useId, useRef, useState } from "react";
+import { t } from "./lib/i18n.ts";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import { csrfFromCookie, fetchMe } from "./lib/stressEditor.ts";
 import {
@@ -111,7 +112,9 @@ export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onAppr
       }
       setPosts((old) => ({ ...old, [key]: r.body }));
       setItems((old) => old?.map((s) => (itemKey(s) === key ? { ...s, status: "sent_to_discord" } : s)) ?? old);
-      setSaid(`The post for ${itemPlace(item)} is ready to copy below. The ${from.noun} is marked as sent to Discord.`);
+      setSaid(from.noun === "report"
+          ? t("The post for {place} is ready to copy below. The report is marked as sent to Discord.", { place: itemPlace(item) })
+          : t("The post for {place} is ready to copy below. The suggestion is marked as sent to Discord.", { place: itemPlace(item) }));
       return;
     }
     const r = await from.review<{ message: string; status: string; generation?: number | null }>(origin, item, action, csrf);
@@ -155,7 +158,7 @@ export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onAppr
     const done = await copyText(post.post, navigator.clipboard, selectionCopy);
     // Said again on a second press: the region is cleared first so the same word is spoken again.
     setSaid("");
-    setTimeout(() => setSaid(done ? `${COPIED}. The post for ${itemPlace(item)} is on the clipboard.` : COPY_FAILED), 50);
+    setTimeout(() => setSaid(done ? t("{copied}. The post for {place} is on the clipboard.", { copied: COPIED, place: itemPlace(item) }) : COPY_FAILED), 50);
   };
 
   return (
@@ -186,23 +189,23 @@ export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onAppr
                   {from.line(item)}
                 </h4>
                 <p className="suggestion-status">
-                  {item.status === "sent_to_discord" ? "Sent to Discord; waiting for your decision." : "Waiting for review."}
+                  {item.status === "sent_to_discord" ? t("Sent to Discord; waiting for your decision.") : t("Waiting for review.")}
                 </p>
                 {item.detail && <p className="suggestion-detail">{item.detail}</p>}
                 {item.reviews && talliesLine(item.reviews) && <p className="suggestion-tallies">{talliesLine(item.reviews)}.</p>}
                 <p className="suggestion-reason">
-                  <span className="road-info-label">Rider's reason:</span> {item.reason}
+                  <span className="road-info-label">{t("Rider's reason:")}</span> {item.reason}
                 </p>
                 {item.lat !== null && item.lon !== null && (
                   <p>
                     <a href={mapLink(origin, { lat: item.lat, lon: item.lon })} aria-describedby={head}>
-                      Show on map
+                      {t("Show on map")}
                     </a>
                   </p>
                 )}
                 {item.reviews && from.verdict && (
                   <div className="suggestion-verdict" role="group" aria-labelledby={id(`vq${key}`)}>
-                    <p id={id(`vq${key}`)}>Your review (advice only; Approve now still decides):</p>
+                    <p id={id(`vq${key}`)}>{t("Your review (advice only; Approve now still decides):")}</p>
                     <label htmlFor={id(`vr${key}`)}>{VERDICT_REASON_LABEL}</label>
                     <input
                       id={id(`vr${key}`)}
@@ -225,7 +228,7 @@ export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onAppr
                           aria-disabled={busy !== null ? true : undefined}
                           onClick={() => void judge(item, verdict)}
                         >
-                          {verdict === "agree" ? "Agree" : "Disagree"}
+                          {verdict === "agree" ? t("Agree") : t("Disagree")}
                         </button>
                       ))}
                     </div>
@@ -248,10 +251,10 @@ export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onAppr
                       setFocusNext(id(`w${key}`));
                     }}
                   >
-                    Approve now
+                    {t("Approve now")}
                   </button>
                   <button type="button" className="secondary" aria-describedby={head} aria-disabled={busy !== null ? true : undefined} onClick={() => void act(item, "discord")}>
-                    Send to Discord
+                    {t("Send to Discord")}
                   </button>
                   <button
                     type="button"
@@ -266,7 +269,7 @@ export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onAppr
                       setFocusNext(id(`y${key}`));
                     }}
                   >
-                    Delete
+                    {t("Delete")}
                   </button>
                 </div>
                 {item.warning && warned === key && (
@@ -280,7 +283,7 @@ export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onAppr
                         aria-disabled={busy !== null ? true : undefined}
                         onClick={() => void act(item, "approve")}
                       >
-                        Yes, approve
+                        {t("Yes, approve")}
                       </button>
                       <button
                         type="button"
@@ -290,7 +293,7 @@ export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onAppr
                           setFocusNext(id(`a${key}`));
                         }}
                       >
-                        Don't approve
+                        {t("Don't approve")}
                       </button>
                     </div>
                   </div>
@@ -306,7 +309,7 @@ export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onAppr
                         aria-disabled={busy !== null ? true : undefined}
                         onClick={() => void act(item, "delete")}
                       >
-                        Yes, delete
+                        {t("Yes, delete")}
                       </button>
                       <button
                         type="button"
@@ -316,14 +319,14 @@ export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onAppr
                           setFocusNext(id(`d${key}`));
                         }}
                       >
-                        Keep it
+                        {t("Keep it")}
                       </button>
                     </div>
                   </div>
                 )}
                 {post && (
                   <div className="suggestion-post">
-                    <label htmlFor={id(`p${key}`)}>Post for Discord ({post.characters} of 2,000 characters)</label>
+                    <label htmlFor={id(`p${key}`)}>{t("Post for Discord ({count} of 2,000 characters)", { count: post.characters })}</label>
                     <textarea id={id(`p${key}`)} readOnly rows={12} value={post.post} />
                     <button type="button" aria-describedby={head} onClick={() => void copy(item)}>
                       {COPY_POST}
