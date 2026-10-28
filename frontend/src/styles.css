@@ -1126,6 +1126,15 @@ button.secondary {
   font-size: 0.78rem;
 }
 
+/* A named point's street or neighbourhood (P10), where its coordinates were. */
+.point-place .place-area {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* A Mass Ride point on federal land (lib/federalStops.ts, item 239): its warning on a line of its own
    under the point, with a badge like the marker's so it is not told by colour. In the DOM it comes
    before Remove, so a screen reader reads it with the point. */

@@ -51,6 +51,16 @@ test("the plan reads as sentences: start, stops, via points, end, then the ride"
   ]);
 });
 
+test("a spot named for what is near it is said \"near\", never \"at near\" (P10)", () => {
+  const none = new ViaMarks().isVia;
+  const near = (q: LonLat) => (q[0] === -77 ? "Connecticut Avenue Northwest" : "near Capitol Stones");
+  const text = sentencesText(planSentences([p(-77), p(-76.99)], none, false, near, words));
+  assert.equal(text, "Start at Connecticut Avenue Northwest. End near Capitol Stones. Default ride, balanced, avoids hills.");
+  assert.doesNotMatch(text, /at near/);
+  const loop = sentencesText(planSentences([p(-76.99), p(-77)], none, true, near, words));
+  assert.match(loop, /^Start and finish near Capitol Stones\. Stop at Connecticut Avenue Northwest\./);
+});
+
 test("an unfinished plan says what to do next, and a loop starts and finishes at its start", () => {
   const none = new ViaMarks().isVia;
   assert.equal(sentencesText(planSentences([], none, false, () => undefined, { ride: "Default", traffic: null, hills: null })), "Start: tap the map or search for a place. Default ride.");

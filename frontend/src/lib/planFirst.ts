@@ -48,6 +48,18 @@ function linked(items: { name: string; index: number }[]): Phrase[] {
   return out;
 }
 
+/** A spot named for what is near it (the reverse geocoder's "near Capitol Stones", core/geocode.py). */
+const NEAR = /^near\s+/i;
+
+/**
+ * The words before a place: "End at Silver Spring", but "End near Capitol Stones", never "End at near Capitol
+ * Stones" (P10). `items` are the names after it; the first loses its "near" when the lead says it.
+ */
+function lead(at: string, near: string, items: { name: string; index: number }[]): Phrase[] {
+  if (!items.length || !NEAR.test(items[0].name)) return [{ text: at }, ...linked(items)];
+  return [{ text: near }, ...linked([{ ...items[0], name: items[0].name.replace(NEAR, "") }, ...items.slice(1)])];
+}
+
 /**
  * The plan in sentences: "Start at Union Station. Stop at Eastern Market, then Union Market. Pass through Rock
  * Creek Trail (via). End at Silver Spring. Default ride, balanced, gentler grades." Each name, the ride type and
@@ -66,13 +78,14 @@ export function planSentences(
   if (points.length === 0) {
     sentences.push([{ text: t("Start: tap the map or search for a place.") }]);
   } else {
-    sentences.push([{ text: loop ? t("Start and finish at ") : t("Start at ") }, { text: nameAt(0), target: { kind: "point", index: 0 } }, { text: "." }]);
+    const start = [{ name: nameAt(0), index: 0 }];
+    sentences.push([...(loop ? lead(t("Start and finish at "), t("Start and finish near "), start) : lead(t("Start at "), t("Start near "), start)), { text: "." }]);
     const stops = named.flatMap((n, index) => (n.role === "stop" ? [{ name: nameAt(index), index }] : []));
     const vias = named.flatMap((n, index) => (n.role === "via" ? [{ name: nameAt(index), index }] : []));
-    if (stops.length) sentences.push([{ text: t("Stop at ") }, ...linked(stops), { text: "." }]);
+    if (stops.length) sentences.push([...lead(t("Stop at "), t("Stop near "), stops), { text: "." }]);
     if (vias.length) sentences.push([{ text: t("Pass through ") }, ...linked(vias), { text: t(" (via).") }]);
     const end = named.findIndex((n) => n.role === "end");
-    if (end >= 0) sentences.push([{ text: t("End at ") }, { text: nameAt(end), target: { kind: "point", index: end } }, { text: "." }]);
+    if (end >= 0) sentences.push([...lead(t("End at "), t("End near "), [{ name: nameAt(end), index: end }]), { text: "." }]);
     else if (!loop) sentences.push([{ text: t("End: tap the map or search for a place.") }]);
   }
   // The words around the ride type, in the language's own order ("Default ride", "Recorrido Default").

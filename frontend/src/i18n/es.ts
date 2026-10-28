@@ -1216,6 +1216,11 @@ export const ES: Readonly<Record<string, string>> = {
   "Pass through ": "Pasar por ",
   " (via).": " (vía).",
   "End at ": "Llegada en ",
+  // A spot named for what is near it ("near Capitol Stones"): "End near ...", never "End at near ..." (P10).
+  "Start and finish near ": "Inicio y llegada cerca de ",
+  "Start near ": "Inicio cerca de ",
+  "Stop near ": "Parada cerca de ",
+  "End near ": "Llegada cerca de ",
   "End: tap the map or search for a place.": "Llegada: toque el mapa o busque un lugar.",
   "Red": "Roja",
   "Orange": "Naranja",
