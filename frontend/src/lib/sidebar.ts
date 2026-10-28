@@ -33,7 +33,8 @@ export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   gpx: t("Save and load"),
   settings: t("Settings"),
   nearest: t("Nearest"),
-  food: t("Find food"),
+  // Go's Eat chip opens it (P2): restaurants and cafes, not groceries.
+  food: t("Find a place to eat"),
   ride: "Ride",
   // v0.7.0: Go's Repair (behind More), and Plan's Places to see (Go calls it Sights).
   repair: t("Repair stands and bike shops"),

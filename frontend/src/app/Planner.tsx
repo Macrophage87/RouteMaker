@@ -325,6 +325,8 @@ function PointBoxes(props: PointBoxesProps) {
       full={full}
       gate={geoGate}
       bias={searchBias}
+      // Places found nearest the start first, with their distances (P2); none before there is a start.
+      origin={() => points[0]}
       current={variant === "from" && changing === "from" ? placeName(0) : variant === "to" && changing === "to" ? placeName(points.length - 1) : undefined}
       inputRef={boxRefs[variant]}
       onDismiss={

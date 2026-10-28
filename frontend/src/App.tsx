@@ -140,7 +140,7 @@ import {
   type LocateResult,
 } from "./lib/geolocation.ts";
 import { usePlaceNames } from "./usePlaceNames.ts";
-import { MAX_DETOUR_SEARCH, coordinatesText, fetchPlaces, pickIntoPlan, placeFromSearch, reverseUrl, searchBiasPoint, searchUrl, type Place, type ViewBounds, type PlaceChoice } from "./lib/geocode.ts";
+import { MAX_DETOUR_SEARCH, coordinatesText, fetchPlaces, pickIntoPlan, placeFromSearch, reverseUrl, searchBiasPoint, searchUrl, startBiasPoint, type Place, type ViewBounds, type PlaceChoice } from "./lib/geocode.ts";
 import { HOME_CLEARED, HOME_PICK_CANCELLED, HOME_PICK_LINE, homeAtSpot, homeFromPlace, homeSetSaid, nameWithoutHome } from "./lib/homeSet.ts";
 import {
   FAVORITES_FULL,
@@ -2646,6 +2646,15 @@ export function App() {
     const view: ViewBounds | undefined = b ? [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()] : undefined;
     return searchBiasPoint(here?.point, centre ? [centre.lng, centre.lat] : undefined, view);
   };
+  // Go's searches (P2): the route's start, the rider's location or the start typed in, is what results are near
+  // and nearest first, whatever the map shows (a rider who searched "grocery" was offered a store 66 minutes away).
+  const goSearchOrigin = (): LonLat | undefined => {
+    const first = pointsRef.current[0];
+    if (first) return first;
+    const start = goStartRef.current;
+    return start.kind === "here" ? start.point : here?.point;
+  };
+  const goSearchBias = (): LonLat | undefined => startBiasPoint(goSearchOrigin()) ?? searchBias();
 
   const removeAt = (index: number) => {
     focusAfterRemove.current = index;
@@ -5034,7 +5043,8 @@ export function App() {
     addStop: goStops ? (
       <GoAddStop
         geoGate={geoGate}
-        searchBias={searchBias}
+        searchBias={goSearchBias}
+        searchOrigin={goSearchOrigin}
         onPick={goAddStop}
         full={points.length >= MAX_POINTS}
         orderShown={orderShown}
@@ -5648,7 +5658,8 @@ export function App() {
                   onSize={setGoSheet}
                   pointCount={points.length}
                   geoGate={geoGate}
-                  searchBias={searchBias}
+                  searchBias={goSearchBias}
+                  searchOrigin={goSearchOrigin}
                   onPick={goToPlace}
                   onTopPlace={goEarlyToPlace}
                   onWhereToFocus={goWarmFix}

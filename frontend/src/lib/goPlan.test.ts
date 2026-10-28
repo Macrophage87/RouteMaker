@@ -178,11 +178,11 @@ test("Go's ride types: the rider's own (My Go, Default until set), then Own Bike
   assert.match(src("../app/Sheets.tsx"), /className="chip ride-type-chip"\s+aria-pressed=\{preset === id\}/);
 });
 
-test("Go's places are Home, Food, Water and Restroom (Work only in Favorites); Home works signed out", () => {
+test("Go's places are Home, Eat, Water and Restroom (Work only in Favorites); Home works signed out", () => {
   // Signed in, Favorites takes Home's place (lib/favoritePlaces.test.ts), and Work is its second row, not a chip.
   const row = go.slice(go.indexOf('aria-label={t("Places")}'), go.indexOf('aria-label={t("More places")}'));
   const chips = [...row.matchAll(/<Icon name="(\w+)" size=\{18\} \/>\s*\{t\("(\w+)"\)\}\s*<\/button>/g)].map((m) => m[2]);
-  assert.deepEqual(chips.slice(0, 4), ["Home", "Food", "Water", "Restroom"]);
+  assert.deepEqual(chips.slice(0, 4), ["Home", "Eat", "Water", "Restroom"]);
   assert.match(row, /\{FAVORITES_TEXT\}/);
   assert.doesNotMatch(row, /Work/);
   assert.ok("work" in ICON_PATHS, "Work's icon, in the Favorites popout");
@@ -537,4 +537,17 @@ test("go warm look-up: Where to? focused or an early start fired refreshes a loc
   assert.match(go, /<PlaceSearch variant="go"[^\n]*onFocusBox=\{onWhereToFocus\} \/>/);
   const search = readFileSync(new URL("../PlaceSearch.tsx", import.meta.url), "utf8");
   assert.match(search, /onFocus=\{\(event\) => \{\s*onFocusBox\?\.\(\);/);
+});
+
+test("Go's searches lean to the route's start and list places nearest it first, with distances (P2)", () => {
+  // Where to?, the start box and Add a stop each sort by the start; Go's bias is the start, the map's view only without one.
+  assert.match(go, /variant="go"[^\n]*bias=\{searchBias\} origin=\{searchOrigin\}/);
+  assert.match(go, /variant="stop"[^\n]*bias=\{searchBias\} origin=\{searchOrigin\}/);
+  assert.match(go, /variant="start"[\s\S]{0,160}origin=\{searchOrigin\}/);
+  assert.match(appFile, /const goSearchBias = \(\): LonLat \| undefined => startBiasPoint\(goSearchOrigin\(\)\) \?\? searchBias\(\);/);
+  assert.equal(appFile.match(/searchBias=\{goSearchBias\}\s+searchOrigin=\{goSearchOrigin\}/g)?.length, 2);
+  // Plan's boxes sort by the first point.
+  assert.match(src("../app/Planner.tsx"), /origin=\{\(\) => points\[0\]\}/);
+  // The list is the sorted one, and Enter takes its first place.
+  assert.match(src("../PlaceSearch.tsx"), /const places = nearestFirst\(found, start, answered\);/);
 });

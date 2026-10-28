@@ -426,6 +426,7 @@ export function HomeSetter({
 export function GoAddStop({
   geoGate,
   searchBias,
+  searchOrigin,
   onPick,
   full,
   orderShown,
@@ -434,6 +435,8 @@ export function GoAddStop({
 }: {
   geoGate: GeoGate;
   searchBias: () => LonLat | undefined;
+  /** The route's start: stops found are listed nearest it first, with their distances (P2). */
+  searchOrigin: () => LonLat | undefined;
   onPick: (place: Place) => void;
   full: boolean;
   orderShown: boolean;
@@ -442,7 +445,7 @@ export function GoAddStop({
 }) {
   return (
     <div className="go-add-stop">
-      <PlaceSearch variant="stop" pointCount={2} full={full} gate={geoGate} bias={searchBias} onPick={(place: Place) => onPick(place)} />
+      <PlaceSearch variant="stop" pointCount={2} full={full} gate={geoGate} bias={searchBias} origin={searchOrigin} onPick={(place: Place) => onPick(place)} />
       {orderShown && (
         <button type="button" className="secondary" onClick={onBestOrder} aria-disabled={ordering ? true : undefined}>
           {BEST_ORDER_LABEL}
@@ -488,6 +491,7 @@ export function GoSheet({
   pointCount,
   geoGate,
   searchBias,
+  searchOrigin,
   onPick,
   onTopPlace,
   onWhereToFocus,
@@ -504,6 +508,8 @@ export function GoSheet({
   pointCount: number;
   geoGate: GeoGate;
   searchBias: () => LonLat | undefined;
+  /** The route's start (the rider's location or the start typed in): Where to? lists places nearest it first, with their distances (P2). */
+  searchOrigin: () => LonLat | undefined;
   onPick: (place: Place) => void;
   /** The top result of Where to? while the rider looks at it: Go starts routing there early (v0.7.0, "Faster routing"); null with none. */
   onTopPlace?: (place: Place | null) => void;
@@ -582,6 +588,7 @@ export function GoSheet({
               full={false}
               gate={geoGate}
               bias={searchBias}
+              origin={searchOrigin}
               onPick={(place: Place, _choice: PlaceChoice) => {
                 setStartOpen(false);
                 onStartPick(place);
@@ -589,7 +596,7 @@ export function GoSheet({
             />
           </div>
         )}
-        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place, _choice: PlaceChoice) => onPick(place)} onTopPlace={onTopPlace} onFocusBox={onWhereToFocus} />
+        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} origin={searchOrigin} onPick={(place: Place, _choice: PlaceChoice) => onPick(place)} onTopPlace={onTopPlace} onFocusBox={onWhereToFocus} />
         <div className="chip-row go-places" role="group" aria-label={t("Places")}>
           {places.signedIn ? (
             // Signed in, Home is the first of the rider's favorites (Stephen 2026-10-26: "just have a favorites replace home").
@@ -622,9 +629,10 @@ export function GoSheet({
               {t("Home")}
             </button>
           )}
+          {/* "Eat", not "Food" (P2): the sheet lists restaurants and cafes, and a rider looking for a grocery store tried it first. */}
           <button type="button" className="chip place-chip" onClick={(event) => places.onFood(event.currentTarget)}>
             <Icon name="food" size={18} />
-            {t("Food")}
+            {t("Eat")}
           </button>
           <button type="button" className="chip place-chip" onClick={(event) => places.onWater(event.currentTarget)}>
             <Icon name="water" size={18} />
