@@ -2,7 +2,7 @@
 // metros do now.").
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { climbHoverWords, trailHoverWords } from "./featureHover.ts";
+import { climbHoverWords, mtbScaleWords, trailHoverWords } from "./featureHover.ts";
 import type { Climb } from "./climbs.ts";
 
 const CLIMB: Climb = { id: "c1", category: "3", lengthM: 3380, gainM: 125, gradePct: 4.6, lon: -77.4, lat: 39.6, line: [[-77.41, 39.59], [-77.4, 39.6]], name: "Foxville Road up Catoctin Mountain" };
@@ -30,6 +30,21 @@ test("a trail's hover card names it, then its difficulty and what that is based 
   // The next way of the same trail is a new card, at its own point and with its own profile.
   const loop = { mtb: true, mtb_level: 1, name: "Rosaryville Loop" };
   assert.notEqual(trailHoverWords(loop, "101").key, trailHoverWords(loop, "102").key);
+});
+
+test("a rated trail's card says which scale set its level, and both where both are mapped (the owner, 2026-10-28)", () => {
+  const card = (props: Record<string, unknown>) => trailHoverWords({ mtb: true, ...props }).detail;
+  assert.equal(card({ mtb_level: 2, mtb_scale: "2" }), "Level 2 (blue): rated S2 in OpenStreetMap");
+  assert.equal(card({ mtb_level: 1, mtb_imba: "1" }), "Level 1 (green): rated IMBA 1 in OpenStreetMap");
+  assert.equal(card({ mtb_level: 1, mtb_scale: "1", mtb_imba: "1" }), "Level 1 (green): rated S1 and IMBA 1 (rated on both scales) in OpenStreetMap");
+  assert.equal(card({ mtb_level: 3, mtb_scale: "2", mtb_imba: "3" }), "Level 3 (black): rated IMBA 3 (also rated S2, easier) in OpenStreetMap");
+  // S4 to S6 are all level 4, as IMBA 4 is: one level, so both set it.
+  assert.equal(mtbScaleWords("5", "4"), "S5 and IMBA 4 (rated on both scales)");
+  // A range or a plus is read at its higher end, as the rebuild reads it (`singletrack.scale_grade`).
+  assert.equal(mtbScaleWords("1-2", undefined), "S2");
+  assert.equal(mtbScaleWords("2+", "0"), "S2 (also rated IMBA 0, easier)");
+  assert.equal(mtbScaleWords(undefined, undefined), null);
+  assert.equal(mtbScaleWords("steep", undefined), null);
 });
 
 test("the hover card's profile is asked for once and kept, and none is drawn where there is none", async () => {

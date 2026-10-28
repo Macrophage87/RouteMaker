@@ -125,6 +125,40 @@ def mtb_level(tags: dict[str, str]) -> int | None:
     return min(hardest, MTB_LEVELS[-1]) if hardest >= 1 else None
 
 
+def mtb_scale_words(tags: object) -> str | None:
+    """Which scale set a rated trail's level, in words (the owner, 2026-10-28: "say which
+    rating type triggered the rating and if they are rated on both scales say that"), from
+    its kept `mtb:scale` and `mtb:scale:imba` (`segment.trail_tags`): 'S2', 'IMBA 2', 'S2 and
+    IMBA 2 (rated on both scales)', or, where the two differ, the one that set the level
+    first, 'IMBA 3 (also rated S2, easier)'. None where
+    neither is kept (a table built before the scales were kept), so the caller says both.
+    The front end's copy is `mtbScaleWords` in frontend/src/lib/featureHover.ts."""
+    if not isinstance(tags, dict):
+        return None
+    grades = {}
+    for key in SCALE_KEYS:
+        value = tags.get(key)
+        grade = scale_grade(value, SCALE_TOP[key]) if isinstance(value, str) else None
+        if grade is not None:
+            grades[key] = grade
+    named = {
+        "mtb:scale": f"S{grades.get('mtb:scale')}",
+        "mtb:scale:imba": f"IMBA {grades.get('mtb:scale:imba')}",
+    }
+    if len(grades) == 2:
+        s_level = min(grades["mtb:scale"], MTB_LEVELS[-1])
+        imba_level = min(grades["mtb:scale:imba"], MTB_LEVELS[-1])
+        if s_level == imba_level:
+            return f"{named['mtb:scale']} and {named['mtb:scale:imba']} (rated on both scales)"
+        harder, other = (
+            ("mtb:scale", "mtb:scale:imba")
+            if s_level > imba_level
+            else ("mtb:scale:imba", "mtb:scale")
+        )
+        return f"{named[harder]} (also rated {named[other]}, easier)"
+    return next((named[key] for key in SCALE_KEYS if key in grades), None)
+
+
 # The tags a mountain-bike trail's name is read from, first found wins (the owner,
 # 2026-10-10: "Also, for mountain bikes, try to make sure trail names are added in if they
 # are available."): the way's own name, then the name mountain bikers give it, then its

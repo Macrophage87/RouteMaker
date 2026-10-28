@@ -19,6 +19,8 @@ import {
   BUSY_MIN_TIER,
   stressOverlayLayers,
   mtbTrailPaint,
+  mtbOverviewPaint,
+  MTB_OVERVIEW_LAYER_ID,
   mtbTrailsOn,
   MTB_TRAIL_LAYER_ID,
   MTB_TRAIL_CASING_LAYER_ID,
@@ -243,6 +245,10 @@ export function setStressPalette(
     const paint = mtbLevelPaint(level);
     if (map.getLayer(mtbLevelLayerId(level))) map.setPaintProperty(mtbLevelLayerId(level), "line-width", paint.line["line-width"]);
     if (map.getLayer(mtbLevelCasingLayerId(level))) map.setPaintProperty(mtbLevelCasingLayerId(level), "line-width", paint.casing["line-width"]);
+  }
+  // The Mountain Bike ride type's zoomed-out line (2026-10-28): wider, and an unrated trail's brown darker, with the switch.
+  if (map.getLayer(MTB_OVERVIEW_LAYER_ID)) {
+    for (const [name, value] of Object.entries(mtbOverviewPaint())) map.setPaintProperty(MTB_OVERVIEW_LAYER_ID, name, value);
   }
   // The trail names (2026-10-10): an unrated trail's grey follows its line's with the accessibility switch.
   if (map.getLayer(MTB_LABEL_LAYER_ID)) {

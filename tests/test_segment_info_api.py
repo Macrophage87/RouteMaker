@@ -488,6 +488,46 @@ class TestAnswer:
             " rating closes it"
         )
 
+    @pytest.mark.parametrize(
+        ("tags", "value"),
+        [
+            ({"mtb:scale": "2"}, "Level 2 (blue): S2"),
+            ({"mtb:scale:imba": "2"}, "Level 2 (blue): IMBA 2"),
+            (
+                {"mtb:scale": "2", "mtb:scale:imba": "2"},
+                "Level 2 (blue): S2 and IMBA 2 (rated on both scales)",
+            ),
+            (
+                {"mtb:scale": "1", "mtb:scale:imba": "2"},
+                "Level 2 (blue): IMBA 2 (also rated S1, easier)",
+            ),
+        ],
+    )
+    def test_a_rated_trail_says_which_scale_set_its_level(
+        self, client, segment_schemas, router, tags, value
+    ) -> None:
+        """The owner, 2026-10-28: "say which rating type triggered the rating and if they are
+        rated on both scales say that", from the scales the rebuild keeps (`trail_tags`)."""
+        live, _ = segment_schemas
+        insert(
+            live,
+            126,
+            [SPOT, east(SPOT, 50)],
+            stress_tier=1,
+            is_trail_class=True,
+            is_unpaved=True,
+            bike_access_reason="singletrack",
+            mtb_only=True,
+            mtb_level=2,
+            trail_tags=json.dumps(tags),
+        )
+        router.answers = {"bicycle": [], "pedestrian": [edge(126, "Lake Loop", use="path")]}
+        difficulty = section(get(client).json(), "riding")["Mountain-bike difficulty"]
+        assert difficulty["value"] == value
+        assert difficulty["source"] == segment_info.OSM
+        # The scales say nothing of their own: no line beside the trail's other facts.
+        assert not any("scale" in label.lower() for label in section(get(client).json(), "riding"))
+
     def test_a_levelled_trail_never_says_the_off_road_graph_uses_it(
         self, client, segment_schemas, router
     ) -> None:
