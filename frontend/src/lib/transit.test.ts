@@ -223,7 +223,7 @@ test("the panel's steps are a labelled ordered list, with the total, comparison 
   assert.match(summary, /plan\.riding_quicker \? "transit-compare notice"/);
   // The panel's time is the door-to-door total, named for a screen reader, not the first ride's.
   const panel = src("app/RoutePanel.tsx");
-  assert.match(panel, /const timeName = transit \? transitTimeName\(transit\) : "Moving time";/);
+  assert.match(panel, /const timeName = transit \? transitTimeName\(transit\) : t\("Moving time"\);/);
   assert.match(panel, /\{!go\.peek && transitFold\}/);
   // Start ride on a transit plan follows its first riding leg (lib/rideTrip.ts; rideTrip.test.ts).
   assert.match(panel, /const rideable = rideableRoute\(route\);/);

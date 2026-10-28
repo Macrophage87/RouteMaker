@@ -12,6 +12,7 @@
  * to it; Cancel and Escape close it and the panel returns the focus to its button.
  */
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { t } from "./lib/i18n.ts";
 import { countText, csrfFromCookie } from "./lib/stressEditor.ts";
 import {
   DIRECTION_WORDS,
@@ -114,9 +115,9 @@ export function SuggestJunction({ origin, junction, shown, onClose }: Props) {
       {!sent && (
         <form onSubmit={onSubmit} noValidate aria-describedby={error ? id("error") : undefined}>
           <p className="stress-editor-extent">
-            <span className="road-info-label">This junction:</span> {junction.name}
+            <span className="road-info-label">{t("This junction:")}</span> {junction.name}
           </p>
-          <p className="stress-editor-now">Now: {shown ? SHOWN_WORDS[shown] : "not marked"}.</p>
+          <p className="stress-editor-now">{t("Now:")}{" "}{shown ? SHOWN_WORDS[shown] : t("not marked")}.</p>
           <fieldset
             id={id("level")}
             className="stress-editor-field suggest-junction-group"
@@ -128,7 +129,7 @@ export function SuggestJunction({ origin, junction, shown, onClose }: Props) {
             <legend id={id("level-legend")}>{JUNCTION_LEVEL_LEGEND}</legend>
             <label className="suggest-junction-choice">
               <input type="radio" name={id("level-choice")} checked={level === null} onChange={() => setLevel(null)} />
-              Not sure: only compare with the map
+              {t("Not sure: only compare with the map")}
             </label>
             {JUNCTION_LEVELS.map((choice) => (
               <label key={choice.level} className="suggest-junction-choice">
@@ -148,7 +149,7 @@ export function SuggestJunction({ origin, junction, shown, onClose }: Props) {
             <legend id={id("direction-legend")}>{JUNCTION_DIRECTION_LEGEND}</legend>
             <label className="suggest-junction-choice">
               <input type="radio" name={id("direction-choice")} checked={direction === null} onChange={() => setDirection(null)} />
-              No comparison
+              {t("No comparison")}
             </label>
             {(["more", "less"] as const).map((choice) => (
               <label key={choice} className="suggest-junction-choice">
@@ -175,10 +176,10 @@ export function SuggestJunction({ origin, junction, shown, onClose }: Props) {
           </div>
           <div className="stress-editor-buttons">
             <button type="submit" aria-disabled={sending ? true : undefined}>
-              {sending ? "Sending…" : SUGGEST_SEND}
+              {sending ? t("Sending…") : SUGGEST_SEND}
             </button>
             <button type="button" className="secondary" onClick={onClose}>
-              Cancel
+              {t("Cancel")}
             </button>
           </div>
         </form>
@@ -186,7 +187,7 @@ export function SuggestJunction({ origin, junction, shown, onClose }: Props) {
       {sent && (
         <div className="stress-editor-buttons">
           <button type="button" className="secondary" onClick={onClose}>
-            Done
+            {t("Done")}
           </button>
         </div>
       )}

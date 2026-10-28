@@ -519,3 +519,12 @@ in the database still names it: delete that row in the admin when loading the fi
   basically a bunch of dirt between houses. It might eventually be a bike path but isn't
   now". Closed with a `bicycle=no` access row (so it is not drawn as a bike path either),
   with a fingerprint. Load like the others; takes effect on the next rebuild.
+
+- `2026-10-28-owner-glenmont-flack-path.json`: one paved, lit path in Glenmont, way
+  656592016 (290 ft, 88 m), from the end of Flack Street past the ponds to the crosswalk
+  at the Glenmont Metro West Garage entrance, by Georgia Avenue. OSM tags it
+  `highway=footway` with no bicycle tag, and it is neither a sidewalk nor a link
+  (`routemaker.sidewalks`), so it stayed closed and routes went round by Denley Road and
+  Georgia Avenue. The owner, 2026-10-28: "This path was missed from the Glenmont metro".
+  Opened with a `bicycle=yes` access row, with a fingerprint. Load like the others; takes
+  effect on the next rebuild.
