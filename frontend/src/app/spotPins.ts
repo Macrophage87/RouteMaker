@@ -8,7 +8,7 @@ import { useEffect, useRef } from "react";
 import { Marker, type Map as MapLibreMap } from "maplibre-gl";
 import type { LonLat } from "../lib/geo.ts";
 import { ICON_PATHS, type IconName } from "../lib/iconPaths.ts";
-import { spotRowName, type SpotRow } from "../lib/spotNearby.ts";
+import { spotPinsKey, spotRowName, type SpotRow } from "../lib/spotNearby.ts";
 
 type Padding = { top: number; bottom: number; left: number; right: number };
 
@@ -71,16 +71,26 @@ export function spotPinElement(row: SpotRow, onPress: (keyboard: boolean) => voi
 
 /**
  * The pins while the card is open: `spot` and its `rows` (null while they load). `padding` is the map's part the
- * panel and the card leave clear, for the frame. Gone when the card closes (spot null).
+ * panel and the card leave clear, for the frame. Gone when the card closes (spot null). The pins are made again only
+ * when what they show changes (spotPinsKey), and the map frames each spot once, so a refresh of the rows (the rail
+ * poll) neither drops the keyboard's focus nor moves the map.
  */
 export function useSpotPins(getMap: () => MapLibreMap | null, spot: LonLat | null, rows: readonly SpotRow[] | null, onPick: (index: number, keyboard: boolean) => void, padding: () => Padding) {
   const pick = useRef(onPick);
   pick.current = onPick;
   const pad = useRef(padding);
   pad.current = padding;
+  const latest = useRef(rows);
+  latest.current = rows;
+  const framed = useRef<LonLat | null>(null);
+  const key = spotPinsKey(rows);
   useEffect(() => {
     const map = getMap();
-    if (!map || !spot) return;
+    if (!map || !spot) {
+      framed.current = null;
+      return;
+    }
+    const rows = latest.current;
     const markers: Marker[] = [];
     const here = document.createElement("span");
     here.className = "spot-here";
@@ -89,7 +99,8 @@ export function useSpotPins(getMap: () => MapLibreMap | null, spot: LonLat | nul
     for (const [index, row] of (rows ?? []).entries()) {
       markers.push(new Marker({ element: spotPinElement(row, (keyboard) => pick.current(index, keyboard)), anchor: "center" }).setLngLat(row.point).addTo(map));
     }
-    if (rows && rows.length > 0) {
+    if (rows && rows.length > 0 && framed.current !== spot) {
+      framed.current = spot;
       const points = [spot, ...rows.map((r) => r.point)];
       const lons = points.map((p) => p[0]);
       const lats = points.map((p) => p[1]);
@@ -106,5 +117,5 @@ export function useSpotPins(getMap: () => MapLibreMap | null, spot: LonLat | nul
       );
     }
     return () => markers.forEach((marker) => marker.remove());
-  }, [getMap, spot, rows]);
+  }, [getMap, spot, key]);
 }

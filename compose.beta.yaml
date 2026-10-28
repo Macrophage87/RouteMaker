@@ -277,6 +277,9 @@ services:
     # Java OOM exits (and restarts) rather than limping on. tests/test_beta_overlay.py
     # fails if the two ever differ anywhere else, so a change to the base command
     # cannot silently diverge from this.
+    # -max-reverse-results 10, not 1: a kind-of-place search ("grocery", "bike shop";
+    # core.geocode TAG_SEARCHES) asks /reverse for the nearest few, and 1 capped it to one
+    # store (the owner, 2026-10-28, for the Grocery chip). Naming a point still asks for 1.
     command:
       - sh
       - -c

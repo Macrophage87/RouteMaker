@@ -4923,13 +4923,15 @@ puts it, at most two presses away.
   link holds no position until a destination is picked; denied, unavailable or timed out, the
   start stays empty, the start box opens and "Current location not available; type a start." is
   shown and said politely. A start typed in (Change start, `PlaceSearch variant="start"`), or
-  one placed in Plan, is the plan's first point and replaces the location (a press on the map in Go is the destination). A destination picked
+  one placed in Plan, is the plan's first point and replaces the location (a press on the map in Go opens the spot's card, whose Route here makes it the destination). A destination picked
   before there is a start is never dropped nor made the start (`goPickAction`): while the
   location is still being found it waits ("To …: finding your location for the start…") and is
   routed when the location comes; with no location, it is kept ("To …. Current location not
   available; type a start.") and a start typed in the start box plans the route to it at once. A
-  press on the map in Go, the route line included (a drag of the line still adds a stop; `lineTapIsPoint`), or Map tools' "Set destination at map center", is the destination, routed as a
-  picked one is and said "Destination set: …" (named by `goPlaceName`, the same on the sheet: its coordinates until
+  press on the map in Go, the route line included (a drag of the line still adds a stop; `lineTapIsPoint`), opens
+  the spot's card (`GoSpotDialog.tsx`, lib/spotNearby.ts, the owner 2026-10-28): its address, the places near it as
+  pins on the map, and Route here; the press alone never routes. That Route here, or Map tools' "Set destination at
+  map center" (at once), is the destination, routed as a picked one is and said "Destination set: …" (named by `goPlaceName`, the same on the sheet: its coordinates until
   its place name comes; a press on a water, climb or federal-land card's feature, or one that only closes such a card,
   is the card's alone, `featureCardPress`; `goTapSetsEnd`, the owner 2026-10-12; it replaces #95's tap-as-start). Picking a
   destination with a start plans at once (a location start after its look-up, at most 3 s); Go then shows the routes to choose from open, and the ride types under the
@@ -5017,8 +5019,8 @@ puts it, at most two presses away.
   Change, and Go's ride type), Riding (cues, rider and bike weight), Display (Accessibility mode, with High
   contrast and Large text during a ride indented under it, Screen-reader detail, Language) and Account, most used
   first, one row per setting; on a phone it takes the panel's whole height.
-  Plan's map has Food and Water chips (`PlanMapChips`), which open the Find food and Nearest
-  sheets. `openOnto`/`backFrom` keep the way back through nested sheets; Back returns the
+  Plan's map has Eat, Water and Places to see chips behind one Find chip (`PlanMapChips`),
+  which open the Find food, Nearest and Places to see sheets. `openOnto`/`backFrom` keep the way back through nested sheets; Back returns the
   focus to what opened the sheet, and a sheet's heading takes it on the way in.
 - **Road panel**: two or more ways to suggest (a road's level, a junction, a Mass Ride
   hazard) are one "Suggest a change…" disclosure; one is its own button, as before.

@@ -78,7 +78,10 @@ test("the panel: the plan in words as its description, Route with Enter or Ctrl+
   // Plan streamline (2026-10-17): the sentences are out of sight, the panel's description; the points and the ride
   // chips show the plan.
   assert.match(panel, /<p id=\{planId\} className="visually-hidden plan-sentences">/);
-  assert.match(panel, /aria-describedby=\{planId\}/);
+  // Why Route is unavailable, out of sight, is part of the description; Enter then says it on the page's status line.
+  assert.match(panel, /aria-describedby=\{whySaid \? `\$\{planId\} \$\{routeWhy\}` : planId\}/);
+  assert.match(panel, /if \(button\.unavailable === null\) onRoute\(\);\s*else onSay\?\.\(button\.unavailable\);/);
+  assert.match(app, /onSay=\{announce\}/);
   // One Route (P10): Plan's bar's; the panel has no Route button, and a route up to date shows no row, said out of sight.
   assert.doesNotMatch(panel, /✓ up to date|More: Reset and Clear|aria-keyshortcuts="Control\+Enter Meta\+Enter"\s*onFocus/);
   assert.match(panel, /\{button\.unavailable && !locate && !routing && \(\s*<p id=\{routeWhy\} className="visually-hidden plan-route-state">\s*\{button\.unavailable\}/);

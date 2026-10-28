@@ -1059,6 +1059,14 @@ export function RideMode({
       setSettingsOpen(false);
     }
   };
+  // Another menu opened (the dock's, 311's, More) after a row's Show on map: that is a close too, so Detour starts afresh
+  // and its pins go.
+  useEffect(() => {
+    if (!dockOpen && !menu311 && !moreOpen) return;
+    shownRow.current = null;
+    setDetourKind(null);
+    setDetourPinsKept(false);
+  }, [dockOpen, menu311, moreOpen]);
   // A share bike (lib/rideDock.ts): the undock is taken as reaching the first dock, or the start where there is
   // no walk to it; reaching a dock ridden to with the dock button starts the time again.
   const shareBike = !!trip?.shareBike;
@@ -1159,6 +1167,13 @@ export function RideMode({
   // The detour's own status (below): said like an answer, since the rider asked for it.
   const [detourStatus, setDetourStatus] = useState("");
   const [detourList, setDetourList] = useState<DetourFound | null>(null);
+  // A new list (a new search, a detour or Instead chosen, a re-plan): a kept row's index would point at another place,
+  // so the row and the pins kept after Show on map go; with the menu closed, it starts afresh too.
+  useEffect(() => {
+    shownRow.current = null;
+    setDetourPinsKept(false);
+    if (!detourOpenRef.current) setDetourKind(null);
+  }, [detourList]);
   const [detourQuery, setDetourQuery] = useState("");
   const sayDetour = useCallback((text: string) => {
     setDetourStatus(text);
@@ -2150,11 +2165,13 @@ export function RideMode({
     .join(",");
   // A run of signalized crossings has a card of its own (lib/navigate.ts signalsCard); any other cue is split at its first comma.
   const cueShown = cue?.card ?? cueParts(cue ? (cue.rideText ?? cue.text) : "");
-  // A detour row's place ahead on the route or behind the rider, where the rider is on it (detourRowShown).
-  const detourSide = (point: LonLat): "ahead" | "behind" | null => {
-    if (progress === null || ride.off) return null;
-    const at = snap(model, point);
-    return at ? (at.alongM >= progress ? "ahead" : "behind") : null;
+  // A detour row's place ahead on the route or behind the rider, where the rider is on it (detourRowShown). Where each
+  // place falls along the route is worked out once a list (or route), not each fix; only the rider's side of it moves.
+  const detourAlong = useMemo(() => (detourList?.items ?? []).map((item) => snap(model, item.place.point)?.alongM ?? null), [detourList, model]);
+  const detourSide = (index: number): "ahead" | "behind" | null => {
+    const along = detourAlong[index] ?? null;
+    if (progress === null || ride.off || along === null) return null;
+    return along >= progress ? "ahead" : "behind";
   };
   // The destination's name for "Arrived: ..." (a loop's end is its start: none).
   const destinationName = ride.arrived && !plan.current.loop ? (stopName?.(plan.current.points[plan.current.points.length - 1]) ?? null) : null;
@@ -2816,7 +2833,7 @@ export function RideMode({
                         <li key={item.place.id}>
                           {/* Short on screen (the map pin's letter, the name, how far, ahead or behind), the whole line for screen readers. */}
                           <span aria-hidden="true">
-                            <strong>{placeLetter(i)}.</strong> {detourRowShown(item, detourSide(item.place.point))}
+                            <strong>{placeLetter(i)}.</strong> {detourRowShown(item, detourSide(i))}
                           </span>
                           <span className="visually-hidden">{nearbyText(item)}</span>
                           <span className="actions">

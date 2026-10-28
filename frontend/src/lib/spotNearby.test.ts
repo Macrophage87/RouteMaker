@@ -17,7 +17,9 @@ import {
   spotAwayText,
   spotCountLine,
   spotFarLine,
+  NOTHING_NEAR,
   spotNearby,
+  spotPinsKey,
   spotRowName,
   waterSpotPlaces,
   type SpotPlace,
@@ -69,6 +71,21 @@ test("spot nearby: the card's line, a row's name and the card's distance, miles 
   assert.equal(spotFarLine(322), "0.2 mi (0.3 km) from the spot you tapped.");
   assert.equal(spotAwayText(north(3380), SPOT), "2.1 mi (3.4 km) away", "how far the spot is from the rider");
   assert.equal(spotAwayText(SPOT, null), "", "no location, no distance");
+  assert.equal(NOTHING_NEAR, "Nothing useful within 1.0 mi (1.6 km).", "miles first, metric in brackets");
+});
+
+test("spot pins key: the same rows anew keep the pins; another place, name or order makes them again", () => {
+  const places = [place("cafe", "food", 100), place("tap", "water", 200)];
+  const rows = spotNearby(SPOT, places);
+  // The rail poll makes the rows anew (another array, other words) with nothing a pin shows changed.
+  const again = spotNearby(SPOT, places.map((p) => ({ ...p, words: () => ({ title: "closed", lines: [] }) })));
+  assert.notEqual(again, rows);
+  assert.equal(spotPinsKey(again), spotPinsKey(rows));
+  assert.notEqual(spotPinsKey(spotNearby(SPOT, [places[0], { ...places[1], label: "Tap" }])), spotPinsKey(rows), "a new label");
+  assert.notEqual(spotPinsKey(spotNearby(SPOT, [places[0], place("loo", "restroom", 200)])), spotPinsKey(rows), "another place");
+  assert.notEqual(spotPinsKey(rows.slice().reverse()), spotPinsKey(rows), "another order: a pin's index would point elsewhere");
+  assert.equal(spotPinsKey(null), "");
+  assert.equal(spotPinsKey([]), "");
 });
 
 test("spot nearby: named places are labelled on the map; water, restrooms and repair stands are icons alone", () => {
