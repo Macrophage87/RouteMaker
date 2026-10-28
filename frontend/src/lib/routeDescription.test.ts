@@ -436,6 +436,12 @@ test("a notice's link shows by its site, not as a raw address", () => {
     site: "nps.gov",
   });
   assert.deepEqual(noticeParts("Work zones could not be checked."), { words: "Work zones could not be checked.", url: null, site: null });
+  // A link with a second address run into it is left off, its words kept (P10).
+  assert.deepEqual(noticeParts("Check before you go: Waterside Drive (NPS alerts). https://www.nps.govhttos://www.nps.gov/rocr"), {
+    words: "Check before you go: Waterside Drive (NPS alerts).",
+    url: null,
+    site: null,
+  });
   // The fold lists the steps only, counts them, and puts the notices' one line before step 1.
   assert.match(component, /const steps = fold \? entries\.filter\(\(entry\) => !isRouteNotice\(entry\)\) : entries;/);
   assert.ok(component.indexOf("{noticeBlock}") < component.indexOf('<ol className="description-list">{items}</ol>'));

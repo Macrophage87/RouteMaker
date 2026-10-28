@@ -122,11 +122,14 @@ export function noticesLine(count: number): string {
 
 /**
  * A notice's words and the link at its end apart ("... (NPS alerts). https://www.nps.gov/..."), so the link shows as
- * a link named by its site, not as a raw address. Text with no https link at its end is all words.
+ * a link named by its site, not as a raw address. Text with no https link at its end is all words. A link with a
+ * second address run into it ("https://www.nps.govhttos://...", P10) is left off: the server now gives the park's
+ * page in its place (dc_closures.web_link), and an older answer never shows a broken one.
  */
 export function noticeParts(text: string): { words: string; url: string | null; site: string | null } {
   const match = /\s(https:\/\/\S+)$/.exec(text);
   if (!match) return { words: text, url: null, site: null };
+  if (match[1].slice("https://".length).includes("://")) return { words: text.slice(0, match.index), url: null, site: null };
   try {
     const site = new URL(match[1]).hostname.replace(/^www\./, "");
     return { words: text.slice(0, match.index), url: match[1], site };
