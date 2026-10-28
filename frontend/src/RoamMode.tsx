@@ -33,6 +33,7 @@ import type { PresetId } from "./lib/presets.ts";
 import type { WaterPoint } from "./lib/waterRestrooms.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
+import { IosLocationHelp } from "./IosLocationHelp.tsx";
 import type { RideFix } from "./lib/navigate.ts";
 import { ScreenWake, toScreenReader, type RidePrefs } from "./lib/rideOutput.ts";
 import { WAITING_FOR_GPS, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
@@ -418,6 +419,7 @@ export function RoamMode({
           </div>
         </div>
         {gps && <p className="hint ride-gps">{gps}</p>}
+        <IosLocationHelp notice={gps} />
         <div className="roam-now">
           {/* The road ridden large; its level beside it, in the map's colours and its words. */}
           <p className="cue-text roam-road">

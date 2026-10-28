@@ -8,17 +8,18 @@
 // the server, so it opens unchanged; and where the browser can share files, the sheet also carries the GPX file
 // Download GPX would save (withGpxFile).
 import { formatDistance } from "./format.ts";
+import { t } from "./i18n.ts";
 
 /** The button's visible word and its accessible name (the name holds the word: WCAG 2.5.3). */
-export const SHARE_LABEL = "Share route";
-export const SHARE_NAME = "Share route";
+export const SHARE_LABEL = t("Share route");
+export const SHARE_NAME = t("Share route");
 /** Share ride (lib/sharedRoutes.ts RIDE_PARAM): the same link, ridden fixed, with location sharing offered. */
-export const SHARE_RIDE_LABEL = "Share ride";
+export const SHARE_RIDE_LABEL = t("Share ride");
 /** Beside Start (Stephen 2026-10-22): Share ride's link, led by the sharer, then the ride. */
-export const BROADCAST_LABEL = "Broadcast";
-export const BROADCAST_ABOUT = "Broadcast: send a link and start the ride. You lead: those who open it follow your dot and the path you take.";
-export const SHARE_TITLE = "RouteMaker route";
-export const SHARE_FAILED = "Could not open the share sheet. Use Copy link instead.";
+export const BROADCAST_LABEL = t("Broadcast");
+export const BROADCAST_ABOUT = t("Broadcast: send a link and start the ride. You lead: those who open it follow your dot and the path you take.");
+export const SHARE_TITLE = t("RouteMaker route");
+export const SHARE_FAILED = t("Could not open the share sheet. Use Copy link instead.");
 
 /** What Share hands the sheet. */
 export interface ShareContent {
@@ -45,10 +46,10 @@ export function pickShareNavigator(nav: ShareNavigator | undefined, native: Shar
 }
 
 /** Broadcast where there is no share sheet at all (an older phone app, most computers): the link is copied. */
-export const BROADCAST_COPIED = "Broadcast link copied. Paste it to your riders: they follow you once they open it.";
+export const BROADCAST_COPIED = t("Broadcast link copied. Paste it to your riders: they follow you once they open it.");
 /** The copy failed: beside Plan's and Go's Broadcast (nothing started), and on the ride and Roam screens. */
-export const BROADCAST_COPY_FAILED = "Could not copy the link, so the ride did not start.";
-export const BROADCAST_RIDE_COPY_FAILED = "Could not copy the link. Press Broadcast to try again.";
+export const BROADCAST_COPY_FAILED = t("Could not copy the link, so the ride did not start.");
+export const BROADCAST_RIDE_COPY_FAILED = t("Could not copy the link. Press Broadcast to try again.");
 
 /**
  * Broadcast's stand-in for a share sheet: "sharing" copies the link (`copy`, Copy link's own method). It is called
@@ -81,8 +82,8 @@ export function canShareLink(nav: ShareNavigator | undefined, url: string): bool
  * "Bike route. Ride type: Group Ride."
  */
 export function shareText(distanceM: number | null, rideType: string): string {
-  const what = distanceM === null ? "Bike route" : `${formatDistance(distanceM)} bike route`;
-  return `${what}. Ride type: ${rideType}.`;
+  const what = distanceM === null ? t("Bike route") : t("{distance} bike route", { distance: formatDistance(distanceM) });
+  return t("{what}. Ride type: {type}.", { what, type: rideType });
 }
 
 /** The sheet's content: `url` is Copy link's link, unchanged. */

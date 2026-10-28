@@ -2,11 +2,14 @@
 import { mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { ES } from "../i18n/es.ts";
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./geo.ts";
 import { pickTarget } from "./geocode.ts";
 import {
   DENIED_IN_BROWSER,
   DENIED_IN_IOS_APP,
+  IOS_LOCATION_LAST_RESORT,
+  IOS_LOCATION_STEPS,
   FINDING_LOCATION,
   LINK_HAS_LOCATION_POINT,
   LINK_HAS_LOCATION_START,
@@ -22,6 +25,7 @@ import {
   accuracyText,
   deniedNotice,
   iosHomeScreenApp,
+  showsIosLocationHelp,
   approximateHint,
   browserEnv,
   cleanAccuracy,
@@ -798,4 +802,31 @@ test("denied in an iPhone Home Screen app names the iPhone's settings, not a bro
   assert.ok(DENIED_IN_IOS_APP.length <= DENIED_IN_BROWSER.length);
   // Go swaps the closing "search for a place." for "type a start."; both notices end that way.
   for (const notice of [DENIED_IN_BROWSER, DENIED_IN_IOS_APP]) assert.match(notice, /search for a place\.$/);
+});
+
+test("the Home Screen app's denied notice gets the iPhone Settings steps; no other notice does", () => {
+  assert.equal(showsIosLocationHelp(DENIED_IN_IOS_APP), true);
+  // Go's version, with the destination before it and "type a start." at the end.
+  assert.equal(showsIosLocationHelp(`To Union Station. ${DENIED_IN_IOS_APP.replace(/search for a place\.$/, "type a start.")}`), true);
+  assert.equal(showsIosLocationHelp(DENIED_IN_BROWSER), false);
+  assert.equal(showsIosLocationHelp(LOCATE_MESSAGES.timeout), false);
+  assert.equal(showsIosLocationHelp(null), false);
+  assert.equal(showsIosLocationHelp(""), false);
+  // The tester's missing step: In-App Web Browsing, under System Services.
+  assert.ok(IOS_LOCATION_STEPS.some((step) => /System Services.*In-App Web Browsing/.test(step)));
+  assert.ok(IOS_LOCATION_STEPS.length <= 4);
+  // One action per step, so a rider at the bike doesn't lose their place; re-adding the icon comes after, last.
+  for (const step of IOS_LOCATION_STEPS) assert.ok(step.split(". ").length === 1, step);
+  assert.match(IOS_LOCATION_LAST_RESORT, /^Still blocked\?/);
+  assert.ok(ES[IOS_LOCATION_LAST_RESORT]);
+  // The Spanish notice and steps exist, and the first-sentence match holds for the Spanish notice too.
+  const es = ES[DENIED_IN_IOS_APP];
+  assert.ok(es);
+  const esLead = es.slice(0, es.indexOf(". ") + 1);
+  assert.ok(`A Union Station. ${es.replace(/busque un lugar\.$/, "escriba un inicio.")}`.includes(esLead));
+  for (const step of IOS_LOCATION_STEPS) assert.ok(ES[step], step);
+  // Every screen that shows the location notice carries the fold.
+  for (const file of ["../app/Go.tsx", "../app/Planner.tsx", "../RoamMode.tsx", "../RideMode.tsx"]) {
+    assert.match(readFileSync(new URL(file, import.meta.url), "utf8"), /<IosLocationHelp notice=/, file);
+  }
 });

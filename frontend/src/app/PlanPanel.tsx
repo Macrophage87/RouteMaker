@@ -8,6 +8,7 @@
  * whole. "Up to date" is said on the button itself, and Reset and Clear sit behind one "More" button.
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { t } from "../lib/i18n.ts";
 import { FINDING_LOCATION } from "../lib/geolocation.ts";
 import { CLEAR_LABEL, RESET_LABEL, ROUTE_UP_TO_DATE, type Phrase } from "../lib/planFirst.ts";
 
@@ -38,7 +39,7 @@ export interface PlanPanelProps {
 }
 
 /** The button in Route's place on an empty plan. */
-export const START_HERE_LABEL = "Start at current location";
+export const START_HERE_LABEL = t("Start at current location");
 
 export function PlanPanel(props: PlanPanelProps) {
   const { sentences, button, onRoute, routing, onCancel, change, details, onCloseChange, resetUnavailable, onReset, clearDisabled, onClear, locate } = props;
@@ -72,15 +73,15 @@ export function PlanPanel(props: PlanPanelProps) {
   return (
     <section className="plan-panel" aria-labelledby="plan-panel-heading" tabIndex={-1} onKeyDown={onKeyDown}>
       <h2 id="plan-panel-heading" className="visually-hidden">
-        Your plan
+        {t("Your plan")}
       </h2>
       {/* The plan in words, out of sight: the Route button's description (the points and ride chips show it). */}
       <p id={planId} className="visually-hidden plan-sentences">
         {sentences.map((sentence) => sentence.map((phrase) => phrase.text).join("")).join(" ")}
       </p>
       {routing ? (
-        <div className="plan-routing" role="group" aria-label="Routing">
-          <progress className="planning" aria-label={`Planning route: ${routing.step}`} />
+        <div className="plan-routing" role="group" aria-label={t("Routing")}>
+          <progress className="planning" aria-label={t("Planning route: {step}", { step: routing.step })} />
           <span className="plan-step">
             {routing.step}… <span className="plan-elapsed">{routing.elapsed}</span>
           </span>
@@ -94,7 +95,7 @@ export function PlanPanel(props: PlanPanelProps) {
             }}
             onClick={onCancel}
           >
-            Cancel
+            {t("Cancel")}
           </button>
         </div>
       ) : (
@@ -130,7 +131,7 @@ export function PlanPanel(props: PlanPanelProps) {
               {button.label}
               {upToDate && (
                 <span className="route-state" aria-hidden="true">
-                  {" "}✓ up to date
+                  {" "}{t("✓ up to date")}
                 </span>
               )}
             </button>
@@ -158,7 +159,7 @@ export function PlanPanel(props: PlanPanelProps) {
             className="secondary icon-button plan-more"
             aria-expanded={moreOpen}
             aria-controls={moreId}
-            aria-label="More: Reset and Clear"
+            aria-label={t("More: Reset and Clear")}
             onClick={() => setMoreOpen(!moreOpen)}
           >
             <span aria-hidden="true">⋯</span>
@@ -170,10 +171,10 @@ export function PlanPanel(props: PlanPanelProps) {
           <span>{change}</span>
           {details.length > 0 && (
             <button type="button" className="link" aria-expanded={detailsOpen} aria-controls={detailsId} onClick={() => setDetailsOpen(!detailsOpen)}>
-              Details<span className="visually-hidden"> by leg</span>
+              {t("Details")}<span className="visually-hidden">{" "}{t("by leg")}</span>
             </button>
           )}
-          <button type="button" className="secondary icon-button" aria-label="Close the change summary" onClick={onCloseChange}>
+          <button type="button" className="secondary icon-button" aria-label={t("Close the change summary")} onClick={onCloseChange}>
             ×
           </button>
         </p>
