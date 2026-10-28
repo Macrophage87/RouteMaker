@@ -8172,7 +8172,8 @@ details.fold > summary .icon {
   white-space: nowrap;
 }
 
-.go-summary .go-route-rides {
+.go-summary .go-route-rides,
+.go-route > .go-route-rides {
   margin-top: 10px;
 }
 

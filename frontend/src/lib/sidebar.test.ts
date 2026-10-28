@@ -685,7 +685,7 @@ test("a sheet: Back is a labelled button, its heading takes the focus, Escape go
     /sheetEscape\(\{ key: event\.key, defaultPrevented: event\.defaultPrevented, target: event\.target as HTMLElement, preventDefault: \(\) => event\.preventDefault\(\) \}, onBack\)/,
   );
   // The error can take the focus (focus() on an element without tabIndex does nothing).
-  assert.match(app, /<div ref=\{errorRef\} tabIndex=\{-1\} className=\{`error error-\$\{status\.error\.kind\}`\} role="alert">/);
+  assert.match(app, /<div ref=\{errorRef\} tabIndex=\{-1\} className=\{`error error-\$\{error\.kind\}`\} role="alert">/);
 });
 
 test("where the focus goes on every change of view (mutation SF1)", () => {

@@ -98,7 +98,8 @@ export async function requestStopOrder(
   }
   if (response.ok && looksLikeOrder(body)) return { ok: true, answer: body };
   const error = describeError(response.ok ? 500 : response.status, body, response.headers.get("Retry-After"));
-  return { ok: false, message: `Best order not found. ${error.message}` };
+  // A busy planner says so in its title, its message only what to do (lib/api.ts describeError).
+  return { ok: false, message: `Best order not found. ${error.kind === "timed-out" ? `${error.title}. ` : ""}${error.message}` };
 }
 
 /** How a point is said: its place name, or its coordinates. */

@@ -31,6 +31,8 @@ export const STILL_ROAMING_SAID = t("Still roaming. Use End roam to stop.");
 export const NO_ROAD_YET = t("Looking for the road you're on…");
 /** No named road near: on an unnamed path, or off the map's roads. */
 export const NO_NAMED_ROAD = t("No named road here");
+/** The rider outside the area the map covers (P11): no roads to read, and nothing to start riding for. */
+export const OUTSIDE_MAP = t("Outside the map (DC to Baltimore)");
 /** What Roam's Detour menu offers (the owner: "bathroom food water"). */
 export const ROAM_DETOUR_HELP = t("Detour plans a ride from where you are to that place. End the ride there to go back to roaming.");
 

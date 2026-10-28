@@ -491,7 +491,8 @@ export function PlaceSearch({
       {/* Go's hint is said with the box and kept out of sight, so Go's sheet fits one phone screen (the owner, 2026-10-17). */}
       {/* Go's hint is said with the box and kept out of sight (above); so are Plan's From, To and Add a stop,
           whose labels say what a pick does (Plan streamline): only the full plan's reason shows. */}
-      <p id={`${id}-hint`} className={variant === "go" ? "visually-hidden go-from" : planBox ? (full && planBox === "add" ? "hint" : "visually-hidden") : "hint"}>
+      {/* Go's start box too: the start line above it says why it is open (P11), and its label and placeholder what to type. */}
+      <p id={`${id}-hint`} className={variant === "go" ? "visually-hidden go-from" : variant === "start" ? "visually-hidden" : planBox ? (full && planBox === "add" ? "hint" : "visually-hidden") : "hint"}>
         {variant === "plan" ? <>{placeEffectHint(effect, loop)}</> : planBox === "from" && loop ? placeEffectHint("start", true) : SINGLE_HINT[variant]}
         {(!single || planBox === "add") && full && " The route has as many points as it can take, so no stop can be added."}
       </p>
