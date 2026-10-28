@@ -8,6 +8,9 @@ test_refine; and the plan's own rules (`routing.loop_wanted`, `loop_points`,
 from __future__ import annotations
 
 import dataclasses
+import threading
+import time
+from concurrent.futures import Future, wait
 
 import pytest
 from test_refine import BASE, context
@@ -160,6 +163,13 @@ def readings(**backs) -> dict:
 
 
 class TestMakingALoop:
+    @pytest.fixture(autouse=True)
+    def in_turn(self, settings) -> None:
+        # LoopWorld answers its asks in the order they come: with the ways back asked together
+        # on the pool (audit round 2, S24) that order is the threads', so these tests ask them
+        # in turn. `TestWaysBackTogether` has the pool on.
+        settings.ROUTER_PARALLEL_CALLS = 1
+
     def test_a_way_back_that_shares_little_is_taken_and_the_overlap_reported(
         self, monkeypatch
     ) -> None:
@@ -368,6 +378,163 @@ class TestMakingALoop:
         trip0 = two_leg_trip()
         trip, info = refine.make_loop(trip0, loop_context())
         assert trip is trip0 and info["overlap_pct"] == 20.0
+
+
+class SlowLoopWorld(LoopWorld):
+    """LoopWorld whose every ask takes a moment, counting how many are in flight at once."""
+
+    def __init__(self, monkeypatch, readings: dict, backs: list, delay: float = 0.05) -> None:
+        super().__init__(monkeypatch, readings, backs)
+        self.delay = delay
+        self.lock = threading.Lock()
+        self.flying = 0
+        self.most = 0
+        self.alone: list[bool] = []
+        self.traced: list[str] = []
+        monkeypatch.setattr(routing, "trace_leg", self.trace_leg)
+
+    def trace_leg(self, variant, costing, shape, deadline):
+        # A trace is a router call too: it takes its moment, within the reader's deadline.
+        with self.lock:
+            self.flying += 1
+            self.most = max(self.most, self.flying)
+            self.traced.append(shape)
+        try:
+            time.sleep(max(0.0, min(self.delay, deadline.at - routing.clock())))
+            if routing.clock() >= deadline.at:
+                raise routing.DeadlineExceeded
+            return {"shape": shape}
+        finally:
+            with self.lock:
+                self.flying -= 1
+
+    def analyse(self, trip, ctx, deadline, with_events=True):
+        key = tuple(leg["shape"] for leg in trip["legs"])
+        if key not in self.readings and len(key) == 1:
+            # The way back alone, as the real `analyse` reads it: no junctions without events.
+            self.alone.append(with_events)
+            read = loop_read([], [1])
+            return read if with_events else dataclasses.replace(read, events=None)
+        return self.readings[key]
+
+    def call(self, variant, endpoint, payload, deadline):
+        with self.lock:
+            self.flying += 1
+            self.most = max(self.most, self.flying)
+        try:
+            time.sleep(self.delay)
+            with self.lock:
+                return super().call(variant, endpoint, payload, deadline)
+        finally:
+            with self.lock:
+                self.flying -= 1
+
+
+class TestWaysBackTogether:
+    """Audit round 2, S24: the four ways back are asked together on the pool, as `_wide`
+    asks its routes, and each is read alone without its junctions."""
+
+    def test_the_ways_back_are_asked_together_within_the_pools_bound(
+        self, monkeypatch, settings
+    ) -> None:
+        settings.ROUTER_PARALLEL_CALLS = 3
+        world = SlowLoopWorld(
+            monkeypatch, readings(R1=[1, 2] + list(range(101, 139))), [("R1", 4.2)] * 4
+        )
+        trip, info = refine.make_loop(two_leg_trip(), loop_context())
+        assert [leg["shape"] for leg in trip["legs"]] == ["out", "R1"]
+        assert info["tried"] == 4 and len(world.requests) == 4
+        assert world.most == 3, "asked together, never past the pool's bound"
+
+    def test_a_way_back_read_without_its_junctions_is_still_taken(
+        self, monkeypatch, settings
+    ) -> None:
+        # The gate is that the way back could be read at all: with it still on its junctions
+        # every way back would be passed over and the loop left an out-and-back.
+        settings.ROUTER_PARALLEL_CALLS = 3
+        world = SlowLoopWorld(
+            monkeypatch, readings(R1=[1, 2] + list(range(101, 139))), [("R1", 4.2)] * 4
+        )
+        trip, info = refine.make_loop(two_leg_trip(), loop_context())
+        assert world.alone == [False] * 4
+        assert info["fallback"] is None and [leg["shape"] for leg in trip["legs"]] == ["out", "R1"]
+
+    def test_in_turn_on_a_pool_of_one(self, monkeypatch, settings) -> None:
+        settings.ROUTER_PARALLEL_CALLS = 1
+        world = SlowLoopWorld(
+            monkeypatch, readings(R1=[1, 2] + list(range(101, 139))), [("R1", 4.2)] * 4
+        )
+        _trip, info = refine.make_loop(two_leg_trip(), loop_context())
+        assert info["tried"] == 4 and world.most == 1
+
+    def test_asks_not_read_once_the_time_is_gone_are_cancelled(self, monkeypatch, settings) -> None:
+        # Review of S24: no call is left without a reader, neither an ask nor its trace.
+        settings.ROUTER_PARALLEL_CALLS = 3
+        world = SlowLoopWorld(
+            monkeypatch, readings(R1=[1, 2] + list(range(101, 139))), [("R1", 4.2)] * 4
+        )
+        asked: list = []
+        real = refine._ask_ways_back
+
+        def ask(*args):
+            asking = real(*args)
+            asked.extend(asking)
+            # The time runs out after the asks, while three are running and one is queued:
+            # none is read.
+            ends = time.monotonic() + 5
+            while world.flying < 3 and time.monotonic() < ends:
+                time.sleep(0.001)
+            monkeypatch.setattr(routing, "clock", lambda: 1e12)
+            return asking
+
+        monkeypatch.setattr(refine, "_ask_ways_back", ask)
+        trip0 = two_leg_trip()
+        ctx = loop_context()
+        trip, info = refine.make_loop(trip0, ctx)
+        assert trip is trip0 and info["tried"] == 0 and info["fallback"] == "out_and_back"
+        assert len(asked) == 4 and asked[3].cancelled(), "the one still queued is never sent"
+        assert not any(isinstance(v, Future) for v in ctx.traces.values())
+        wait(asked, timeout=5)
+        assert world.traced == [], "an ask that answers once abandoned goes no further"
+        assert len(world.requests) == 3 and all(f.done() for f in asked)
+        assert not any(isinstance(v, Future) for v in ctx.traces.values())
+
+    def test_a_slow_router_finds_the_loop_on_the_pool_as_in_turn(
+        self, monkeypatch, settings
+    ) -> None:
+        # Review of S24: the answers read as each comes in, one already in hand not held to a
+        # whole round. With every way back waited for and then each gated on a round, a slow
+        # router left the pool's run the out-and-back where asking in turn found the loop.
+        monkeypatch.setattr(refine, "LOOP_BUDGET_S", 1.4)
+        monkeypatch.setattr(refine, "REFINE_ROUND_MIN_S", 0.5)
+        found = {}
+        for pool in (1, 3):
+            settings.ROUTER_PARALLEL_CALLS = pool
+            world = SlowLoopWorld(
+                monkeypatch,
+                readings(R1=[1, 2] + list(range(101, 139))),
+                [("R1", 4.2)] * 4,
+                delay=0.45,
+            )
+            trip, info = refine.make_loop(two_leg_trip(), loop_context())
+            found[pool] = info
+            assert info["fallback"] is None, (pool, info)
+            assert [leg["shape"] for leg in trip["legs"]] == ["out", "R1"]
+            assert world.most <= pool
+        assert found[3]["tried"] >= found[1]["tried"] >= 1
+
+    def test_each_way_back_is_read_with_the_trace_it_brought(self, monkeypatch, settings) -> None:
+        settings.ROUTER_PARALLEL_CALLS = 3
+        world = SlowLoopWorld(
+            monkeypatch,
+            readings(**{f"R{n}": [1, 2] + list(range(101, 139)) for n in (1, 2, 3, 4)}),
+            [("R1", 4.2), ("R2", 4.2), ("R3", 4.2), ("R4", 4.2)],
+        )
+        ctx = loop_context()
+        refine.make_loop(two_leg_trip(), ctx)
+        assert sorted(world.traced) == ["R1", "R2", "R3", "R4"]
+        kept = [v for v in ctx.traces.values() if isinstance(v, dict) and "shape" in v]
+        assert sorted(v["shape"] for v in kept) == ["R1", "R2", "R3", "R4"]
 
 
 # --- The plan's rules -----------------------------------------------------------------

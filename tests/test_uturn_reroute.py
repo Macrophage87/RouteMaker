@@ -135,12 +135,13 @@ class TestPlanOnward:
         assert self.ahead_only()["geometry"]["coordinates"][1] == list(EAST[1])
         assert [d.heading for d in asked] == [90.0]
 
-    def test_ahead_only_whose_way_ahead_turns_round_plans_without_the_heading(
-        self, planned
-    ) -> None:
+    def test_ahead_only_whose_way_ahead_turns_round_keeps_it_in_one_plan(self, planned) -> None:
+        # Audit round 2, R1 option (the owner, 2026-10-27 7:52 PM ET: "make the banked
+        # changes"; this replaces the test that planned again without the heading): the route
+        # ahead that still turns round is the answer, and no second plan is made.
         asked = planned(answer(WEST, 2100.0))
-        assert self.ahead_only()["distance_m"] == 2000.0
-        assert [d.heading for d in asked] == [90.0, None]
+        assert self.ahead_only()["distance_m"] == 2100.0
+        assert [d.heading for d in asked] == [90.0]
 
     @pytest.mark.parametrize(
         "error",
@@ -156,32 +157,6 @@ class TestPlanOnward:
         assert self.ahead_only()["geometry"]["coordinates"][1] == list(WEST[1])
         assert [d.heading for d in asked] == [90.0, None]
 
-    @pytest.mark.parametrize(
-        "error",
-        [
-            routing.NoRoute("no route"),
-            routing.DeadlineExceeded(),
-            routing.RouterUnavailable("down"),
-            routing.TooLong("far"),
-        ],
-    )
-    def test_ahead_only_keeps_the_way_ahead_when_the_second_plan_fails(
-        self, monkeypatch, error
-    ) -> None:
-        # Audit R1: the route ahead turns round, and the plan without the heading then runs out
-        # of time. The rider keeps the route the server already has.
-        asked: list = []
-
-        def fake_plan(points, preset_name, dials=None, **_):
-            asked.append(dials.heading)
-            if dials.heading is None:
-                raise error
-            return answer(WEST, 2100.0)
-
-        monkeypatch.setattr(routing, "plan", fake_plan)
-        assert self.ahead_only()["distance_m"] == 2100.0
-        assert asked == [90.0, None]
-
     def test_ahead_only_with_both_plans_failing_raises(self, monkeypatch) -> None:
         def fake_plan(points, preset_name, dials=None, **_):
             raise routing.NoRoute("no route")
@@ -191,10 +166,11 @@ class TestPlanOnward:
             self.ahead_only()
 
     def test_a_cancel_on_the_second_ahead_only_plan_keeps_no_route(self, monkeypatch) -> None:
+        # The second plan runs only after the first failed; a cancel there still stops it.
         def fake_plan(points, preset_name, dials=None, **_):
             if dials.heading is None:
                 raise routing.PlanCancelled("replaced")
-            return answer(WEST, 2100.0)
+            raise routing.NoRoute("no route")
 
         monkeypatch.setattr(routing, "plan", fake_plan)
         with pytest.raises(routing.PlanCancelled):

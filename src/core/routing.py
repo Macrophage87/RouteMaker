@@ -3722,7 +3722,8 @@ def plan(
     A plan that rides a dirt trail a point touches and found others for itself
     (`StrayTrails`) is made again without them, STRAY_ROUNDS times at most, then on the
     ride type's own graph, the dirt trails closed as before. So it is too where leaving them
-    out leaves no route.
+    out leaves no route. A round checks the router's own route for strays before its search
+    (`_early_strays`, audit S12 part 1), so one that strays there starts the next at once.
 
     The rounds share their traces and `/locate` answers (audit S12, part 2): a round
     re-plans the whole search with the strays left out, and most of what it traces and
@@ -4139,6 +4140,21 @@ def _plan(
             lambda trial: _route(variant, trial, deadline)[0],
             lambda: deadline.at - clock(),
         )
+    # This plan's traces, so a route the guards traced is not traced again; `plan`'s, where
+    # it re-plans without stray dirt trails, so a later round does not trace them again.
+    traces = {} if traces is None else traces
+    if (touched_trails or any_dirt) and variant == Variant.OFFROAD.value:
+        # The router's own route is checked for stray dirt trails at once, before the search
+        # and anything started beside it, so a round that strays starts again without them
+        # now instead of after the whole search (audit S12, part 1; the owner, 2026-10-27
+        # 7:52 PM ET: "make the banked changes"). Its traces are the plan's, which the search
+        # and the answer read again, so a route that does not stray is traced once as before.
+        stray = _early_strays(
+            answer.get("trip") or {}, variant, costing, deadline, traces, touched_trails, any_dirt
+        )
+        if stray:
+            raise StrayTrails(tuple(stray), per_point)
+    if zones_plan is not None and not fixed:
         # What each closure did to this route and the time its detour adds (v0.7.0,
         # "Closures on the map"): the card's "Detour adds about 4 min". It changes no
         # route, so it runs beside the rest of the plan (v0.7.0 "Faster routing", step
@@ -4190,9 +4206,6 @@ def _plan(
         brake_grade=preset.brake_grade,
         steep=steep_ride,
     )
-    # This plan's traces, so a route the guards traced is not traced again; `plan`'s, where
-    # it re-plans without stray dirt trails, so a later round does not trace them again.
-    traces = {} if traces is None else traces
     # The detour check's direct route depends on the request alone: where it will surely be
     # asked for, it starts now on the pool, beside the search, as the early alternatives do
     # (audit S23). Not on a first route or the rider's own line (no detour check), nor where
@@ -5211,15 +5224,15 @@ def _plan_ahead_first(
 ) -> dict:
     """`plan_onward` after the rider has ridden on past two U-turns (`dials.ahead_only`): the
     route that sets off ahead is planned first, as it is the answer whatever turning round would
-    save, and the plan that ignores the heading is made only where that fails or still turns
-    round (audit S5; the owner approved planning ahead first on 2026-10-27). The second plan
-    runs on the same `started`, so it has what time the first left; the rider is never left
-    without a route: where the second plan fails, the route ahead that turns round is kept
-    (audit R1)."""
+    save (audit S5; the owner approved planning ahead first on 2026-10-27). Where that plan
+    answers, its route is the answer at once, even where it still turns round: it is the way
+    ahead the rider chose by riding past two U-turns, and a second plan would cost beta a whole
+    plan (audit round 2, R1 option; the owner, 2026-10-27 7:52 PM ET: "make the banked
+    changes"). The plan that ignores the heading is made only where the first fails, on the
+    same `started`, so it has what time the first left."""
     timings = timing.current()
     if timings is not None:
         timings.note("uturn", "ahead first")
-    ahead = None
     try:
         ahead = plan(points, preset_name, dials=dials, **asked)
     except PlanCancelled:
@@ -5229,22 +5242,45 @@ def _plan_ahead_first(
     except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded) as error:
         logger.info("a re-route ahead only: no route ahead (%s)", type(error).__name__)
     else:
-        # The router takes the way back where it has no way ahead within its tolerance.
-        if not sets_off_back(ahead, heading):
-            return ahead
-        logger.info("a re-route ahead only: the route ahead turns round")
+        if sets_off_back(ahead, heading):
+            # The router takes the way back where it has no way ahead within its tolerance.
+            logger.info("a re-route ahead only: the route ahead turns round, kept")
+        return ahead
     if timings is not None:
         timings.note("uturn", "ahead first, replanned")
-    try:
-        return plan(points, preset_name, dials=dataclasses.replace(dials, heading=None), **asked)
-    except PlanCancelled:
-        # The rider has moved on: the route ahead is not kept either (review of S7).
-        raise
-    except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded) as error:
-        if ahead is None:
+    return plan(points, preset_name, dials=dataclasses.replace(dials, heading=None), **asked)
+
+
+def _early_strays(
+    trip: dict,
+    variant: str,
+    costing: dict,
+    deadline: Deadline,
+    traces: dict,
+    touched_trails: frozenset[int],
+    any_dirt: bool,
+) -> list:
+    """The strips across the stray dirt trails (`trail_touch.stray_rings`) of the router's own
+    route `trip`, read as the answer reads them (`_plan`, audit S12 part 1); none where a leg
+    is drawn or the router cannot trace it now: the answer's own check still runs. A cancel is
+    raised (review of S7)."""
+    legs = trip.get("legs") or []
+    if not legs or any(leg.get("drawn") for leg in legs):
+        return []
+    prefetch_traces(variant, costing, [trip], deadline, traces)
+    pieces: list[Piece] = []
+    for leg in legs:
+        try:
+            trace = _trace(variant, costing, leg.get("shape", ""), deadline, traces)
+        except PlanCancelled:
             raise
-        logger.info("a re-route ahead only: no second plan (%s)", type(error).__name__)
-        return ahead
+        except (DeadlineExceeded, RouterUnavailable) as error:
+            logger.info("dirt trails: no early check (%s)", type(error).__name__)
+            return []
+        if trace is not None:
+            pieces.extend(pieces_of_trace(trace))
+    ways = trail_touch.off_road_ways([piece.way_id for piece in pieces])
+    return trail_touch.stray_rings(pieces, ways, touched_trails, any_dirt)
 
 
 def quick_applies(preset_name: str, loop: bool, long_ride: bool, long_calm: bool) -> bool:
