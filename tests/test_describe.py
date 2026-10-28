@@ -529,6 +529,67 @@ class TestBearsAndJogs:
             ("14th Street Northwest", "right"),
         ]
 
+    @staticmethod
+    def through(middle):
+        """Q St, a short unnamed middle heading south, then C St: what is said of it."""
+        entries = d.describe(
+            [
+                flat(
+                    road("Q Street Northwest", 2, 400, 90, 90),
+                    middle,
+                    road("C Street Northwest", 2, 400, 90, 90),
+                )
+            ]
+        )
+        return [(e["street"], (e["turn"] or {}).get("movement")) for e in entries]
+
+    @pytest.mark.parametrize(
+        "use, facility, said",
+        [
+            ("alley", "none", "alley"),
+            ("service_road", "none", "service road"),
+            ("footway", "path", "path"),
+            ("cycleway", "path", "path"),
+        ],
+    )
+    def test_a_jog_through_a_short_unnamed_alley_or_path_says_both_turns(self, use, facility, said):
+        # Right into a 40 m alley (or path), then left onto C St: two turns, not
+        # "Continue onto C Street".
+        middle = road("", 2, 40, 180, 180, facility=facility, use=use)
+        assert self.through(middle) == [
+            ("Q Street Northwest", None),
+            (said, "right"),
+            ("C Street Northwest", "left"),
+        ]
+
+    def test_the_unnamed_jog_is_worded_as_two_turns(self):
+        entries = d.describe(
+            [
+                flat(
+                    road("Q Street Northwest", 2, 400, 90, 90),
+                    road("", 2, 40, 180, 180, use="alley"),
+                    road("C Street Northwest", 2, 400, 90, 90),
+                )
+            ]
+        )
+        assert entries[1]["text"].split(": ")[1].startswith("Right onto the alley,")
+        assert entries[2]["text"].split(": ")[1].startswith("Left onto C Street Northwest,")
+
+    def test_an_unnamed_middle_under_30_m_is_still_folded(self):
+        middle = road("", 1, 20, 180, 180, facility="path", use="footway")
+        assert self.through(middle) == [
+            ("Q Street Northwest", None),
+            ("C Street Northwest", "straight"),
+        ]
+
+    def test_an_unnamed_jog_of_bears_is_still_folded(self):
+        middle = road("", 2, 40, 130, 130, use="alley")
+        assert self.through(middle)[1:] == [("C Street Northwest", "straight")]
+
+    def test_an_unnamed_middle_back_onto_the_same_street_is_still_folded(self):
+        middle = road("", 1, 40, 180, 180, facility="path", use="footway")
+        assert self.across(middle) == [("Q Street Northwest", None)]
+
     def test_a_circle_is_read_across_as_the_net_turn(self):
         # Mass Ave into Dupont Circle and out on P St: "Left onto P Street", by its
         # name or by the map's roundabout flag.
@@ -1396,6 +1457,17 @@ class TestFrontEndAgrees:
         assert d.describe([road("", 1, 500, use="cycleway")])[0]["street"] == d.UNNAMED_PATH
         untraced = d.describe([road("A", 1, 500), 800.0, road("C", 1, 500)])[2]
         assert untraced["street"] == d.UNTRACED_STREET
+
+    def test_the_streets_never_one_are_the_front_ends(self):
+        """Round-1 D12: frontend/src/lib/navigate.ts sameSides keeps the same pairs (North and
+        South Capitol Street) as two streets as `_side_change` does."""
+        import re
+
+        match = re.search(
+            r"const NEVER_ONE_STEM = new Set\(\[([^\]]*)\]\);", self.source("lib", "navigate.ts")
+        )
+        assert match, "navigate.ts declares NEVER_ONE_STEM"
+        assert frozenset(re.findall(r'"([^"]*)"', match.group(1))) == d._NEVER_ONE_STEM
 
     def test_the_tiers_are_the_front_ends(self):
         import re
@@ -2572,3 +2644,206 @@ class TestFarSideTurns:
         assert "bike lane at a stop sign," in said
         # The crossing is not said again as an entry of its own.
         assert [e["kind"] for e in entries] == ["stretch", "stretch"]
+
+
+class TestOneStreetsTwoSides:
+    """West Pratt Street becomes East Pratt Street, C Street Northwest becomes C Street
+    Northeast, straight on: one street, so no "Continue onto" (round-1 D12). North and
+    South Avenue, and North and South Capitol Street, are two streets."""
+
+    @staticmethod
+    def ride(a, b, events=None, b_tier=2):
+        legs = [flat(road(a, 2, 600, 90, 90), road(b, b_tier, 600, 90, 90))]
+        return d.describe(legs, events)
+
+    @pytest.mark.parametrize(
+        "a, b",
+        [
+            ("West Pratt Street", "East Pratt Street"),
+            ("C Street Northwest", "C Street Northeast"),
+            ("North Charles Street", "South Charles Street"),
+            ("1st Street NW", "1st Street SW"),
+        ],
+    )
+    def test_the_other_side_of_one_street_is_no_turn(self, a, b):
+        entries = self.ride(a, b)
+        assert [(e["street"], e["turn"]) for e in entries] == [(a, None), (b, None)]
+        assert entries[1]["text"].split(": ")[1].startswith(f"Continue on {b},")
+
+    @pytest.mark.parametrize(
+        "a, b",
+        [
+            ("North Avenue", "South Avenue"),
+            ("North Capitol Street", "South Capitol Street"),
+            ("North Carolina Avenue Southeast", "South Carolina Avenue Southeast"),
+            ("Light Street", "Charles Street"),
+        ],
+    )
+    def test_two_streets_are_still_said(self, a, b):
+        entries = self.ride(a, b)
+        assert entries[1]["turn"]["movement"] == "straight"
+        assert entries[1]["text"].split(": ")[1].startswith(f"Continue onto {b},")
+
+    def test_a_turn_onto_the_other_side_is_still_said(self):
+        legs = [
+            flat(road("West Pratt Street", 2, 600, 90, 90), road("East Pratt Street", 2, 600, 0, 0))
+        ]
+        entries = d.describe(legs)
+        assert entries[1]["turn"]["movement"] == "left"
+
+    def test_a_flagged_junction_there_is_still_its_own_entry(self):
+        crossing = event(600, "straight", kind="crossing", names=("charles street",))
+        entries = self.ride("West Pratt Street", "East Pratt Street", [crossing])
+        assert [e["kind"] for e in entries] == ["stretch", "stretch", "junction"]
+        assert entries[1]["turn"] is None
+        assert entries[2]["text"].startswith("At 0.4 mi (0.6 km): Cross Charles Street (LTS 3)")
+
+
+class TestUnnamedBridgesOnATrail:
+    """Round-1 D11: an unnamed 91-402 m bridge or underpass between two stretches of one
+    trail read "Continue onto the path", then "Continue onto Capital Crescent Trail"."""
+
+    TRAIL = "Capital Crescent Trail"
+
+    @classmethod
+    def legs(cls, metres=150, tier=1, middle=None, after=None):
+        middle = middle or road("", tier, metres, 90, 90, "path", "cycleway")
+        after = after or road(cls.TRAIL, 1, 800, 90, 90, "path", "cycleway")
+        return [flat(road(cls.TRAIL, 1, 800, 90, 90, "path", "cycleway"), middle, after)]
+
+    @pytest.mark.parametrize("metres", [150, 300])
+    def test_a_short_unnamed_bridge_takes_the_trails_name(self, metres):
+        full, short = d.describe_both(self.legs(metres))
+        assert [e["street"] for e in full] == [self.TRAIL]
+        assert [e["street"] for e in short] == [self.TRAIL]
+        assert full[0]["to_m"] == 1600 + metres
+
+    def test_a_name_from_the_trails_relation_stays_one(self):
+        full, _short = d.describe_both(self.legs(), relation_names=frozenset({self.TRAIL.lower()}))
+        assert [(e["street"], e["relation_name"]) for e in full] == [(self.TRAIL, True)]
+
+    def test_a_quarter_mile_or_more_is_still_its_own_stretch(self):
+        full = d.describe(self.legs(500))
+        assert [e["street"] for e in full] == [self.TRAIL, "path", self.TRAIL]
+
+    def test_a_flagged_crossing_on_it_keeps_it_apart(self):
+        crossing = event(870, "straight", kind="crossing")
+        full = d.describe(self.legs(), [crossing])
+        assert [e["street"] for e in full if e["kind"] == "stretch"] == [
+            self.TRAIL,
+            "path",
+            self.TRAIL,
+        ]
+
+    def test_a_walk_on_it_keeps_it_apart(self):
+        full = d.describe(self.legs(), walks=[(850.0, 870.0)])
+        assert [e["street"] for e in full if e["kind"] == "stretch"] == [
+            self.TRAIL,
+            "path",
+            self.TRAIL,
+        ]
+
+    def test_a_fork_onto_it_keeps_it_apart(self):
+        middle = forked(road("", 1, 150, 90, 90, "path", "cycleway"), "bear_right")
+        full = d.describe(self.legs(middle=middle))
+        assert [e["street"] for e in full] == [self.TRAIL, "path", self.TRAIL]
+
+    def test_a_new_tier_on_it_keeps_it_apart(self):
+        full = d.describe(self.legs(tier=2))
+        assert [e["street"] for e in full] == [self.TRAIL, "path", self.TRAIL]
+
+    def test_a_turn_onto_it_keeps_it_apart(self):
+        middle = road("", 1, 150, 180, 180, "path", "cycleway")
+        after = road(self.TRAIL, 1, 800, 180, 180, "path", "cycleway")
+        full = d.describe(self.legs(middle=middle, after=after))
+        assert [e["street"] for e in full] == [self.TRAIL, "path", self.TRAIL]
+
+    def test_an_unnamed_road_or_service_way_is_never_named_so(self):
+        for use in ("road", "service_road"):
+            legs = [
+                flat(
+                    road("Beach Drive", 1, 800, 90, 90),
+                    road("", 1, 150, 90, 90, use=use),
+                    road("Beach Drive", 1, 800, 90, 90),
+                )
+            ]
+            assert len(d.describe(legs)) == 3, use
+
+    def test_another_trail_after_it_is_not_this_one(self):
+        after = road("Rock Creek Trail", 1, 800, 90, 90, "path", "cycleway")
+        full = d.describe(self.legs(after=after))
+        assert [e["street"] for e in full] == [self.TRAIL, "path", "Rock Creek Trail"]
+
+
+class TestThePathToATrail:
+    """Round-2 D21: "Right onto the path" at a junction where several paths meet does not
+    say which. An unnamed path that leads to another named trail is said with it; the
+    path's own name (`street`, `onto`) stays "path"."""
+
+    @staticmethod
+    def legs(metres=150, after="Rock Creek Trail", before="Capital Crescent Trail"):
+        return [
+            flat(
+                road(before, 1, 1500, 90, 90, "path", "cycleway"),
+                road("", 1, metres, 180, 180, "path", "cycleway"),
+                road(after, 1, 1500, 90, 90, "path", "cycleway"),
+            )
+        ]
+
+    def test_the_turn_onto_the_path_names_the_trail_it_leads_to(self):
+        full, short = d.describe_both(self.legs())
+        turn = full[1]["turn"]
+        assert (full[1]["street"], turn["onto"], turn["toward"]) == (
+            "path",
+            "path",
+            "Rock Creek Trail",
+        )
+        assert (
+            full[1]["text"]
+            .split(": ")[1]
+            .startswith("Right onto the path to Rock Creek Trail, traffic-free.")
+        )
+        assert full[2]["text"].split(": ")[1].startswith("Left onto Rock Creek Trail,")
+        # The overview merges the path into the trail before, whose ", then ..." names it.
+        assert all("toward" not in (e["turn"] or {}) for e in short)
+
+    def test_a_path_of_its_own_in_the_overview_says_it_too(self):
+        legs = [
+            flat(
+                road("Capital Crescent Trail", 1, 1500, 90, 90, "path", "cycleway"),
+                road("", 3, 150, 180, 180, "path", "cycleway"),
+                road("Rock Creek Trail", 1, 1500, 90, 90, "path", "cycleway"),
+            )
+        ]
+        _full, short = d.describe_both(legs)
+        said = [e for e in short if (e["turn"] or {}).get("toward")]
+        assert len(said) == 1 and "Right onto the path to Rock Creek Trail" in said[0]["text"]
+
+    def test_in_spanish(self):
+        from routemaker.lang import speaking
+
+        with speaking("es"):
+            text = d.describe(self.legs())[1]["text"]
+        assert "Gire a la derecha hacia el sendero que lleva a Rock Creek Trail, sin tráfico." in (
+            text
+        )
+
+    @pytest.mark.parametrize("metres", [95, 500])
+    def test_a_path_joined_as_a_jog_or_a_way_of_its_own_is_not(self, metres):
+        entries = d.describe(self.legs(metres))
+        assert all("toward" not in (e["turn"] or {}) for e in entries)
+        assert "path to" not in " ".join(texts(entries))
+
+    def test_back_onto_the_same_trail_is_not(self):
+        entries = d.describe(self.legs(after="Capital Crescent Trail"))
+        assert all("toward" not in (e["turn"] or {}) for e in entries)
+
+    def test_onto_a_street_is_not(self):
+        legs = [
+            flat(
+                road("Capital Crescent Trail", 1, 1500, 90, 90, "path", "cycleway"),
+                road("", 1, 150, 180, 180, "path", "cycleway"),
+                road("River Road", 2, 1500, 90, 90),
+            )
+        ]
+        assert all("toward" not in (e["turn"] or {}) for e in d.describe(legs))

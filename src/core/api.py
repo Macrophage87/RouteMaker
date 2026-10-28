@@ -1406,6 +1406,14 @@ class DescriptionTurnOut(Schema):
         default=None,
         description='Off a circle: "Take the 3rd exit onto ... at Dupont Circle Northwest".',
     )
+    toward: str | None = Field(
+        default=None,
+        description=(
+            "On a turn onto an unnamed path that leads to a named one (`describe._toward`):"
+            ' that one\'s name, said with the path ("Right onto the path to Rock Creek Trail");'
+            " `onto` stays the path's own. Null elsewhere."
+        ),
+    )
 
 
 class DescriptionCrossingOut(Schema):

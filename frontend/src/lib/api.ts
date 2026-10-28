@@ -293,6 +293,11 @@ export interface DescriptionEntry {
      * road, said before the turn ("Cross Saint Paul Street, then right onto ...").
      */
     across?: string | null;
+    /**
+     * A turn onto an unnamed path that leads to a named one (describe._toward, round-2 D21): that one's name, said with
+     * the path ("Right onto the path to Rock Creek Trail"). `onto` stays "path". Null elsewhere; absent from older APIs.
+     */
+    toward?: string | null;
   } | null;
   severity?: "orange" | "red" | "avoid" | null;
   via?: number | null;

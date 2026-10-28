@@ -1336,6 +1336,25 @@ test("onto: a name that is the other with more after it is not a new way", () =>
   assert.equal(model.cues.filter((c) => c.kind === "onto").length, 0);
 });
 
+test("onto: one street's other side straight on is not a new way; North and South Avenue or Capitol are", () => {
+  const onto = (a: string, b: string) =>
+    rideModel(
+      straightRoute([
+        stretch(0, 1000, `${a}.`, { street: a }),
+        stretch(1000, 3000, `Continue onto ${b}.`, { street: b, turn: straightOnto(b) }),
+      ]),
+    )
+      .cues.filter((c) => c.kind === "onto")
+      .map((c) => c.text);
+  assert.deepEqual(onto("West Pratt Street", "East Pratt Street"), []);
+  assert.deepEqual(onto("C Street Northwest", "C Street Northeast"), []);
+  assert.deepEqual(onto("1st Street NW", "1st Street SW"), []);
+  assert.deepEqual(onto("North Charles Street", "South Charles Street"), []);
+  assert.deepEqual(onto("North Avenue", "South Avenue"), ["Continue onto South Avenue."]);
+  assert.deepEqual(onto("North Capitol Street", "South Capitol Street"), ["Continue onto South Capitol Street."]);
+  assert.deepEqual(onto("North Carolina Avenue Southeast", "South Carolina Avenue Southeast"), ["Continue onto South Carolina Avenue Southeast."]);
+});
+
 test("onto: a name only from the trail's route relation is never a Continue onto cue", () => {
   const model = rideModel(
     straightRoute([
@@ -1353,6 +1372,28 @@ test("onto: a name only from the trail's route relation is never a Continue onto
 
 /** A turn entry's `turn`, for the bear and jog cues (the owner, 2026-10-16, on Q Street NW: "complex turns which aren't announced"). */
 const turning = (movement: "left" | "right" | "bear_left" | "bear_right", street: string) => ({ movement, onto: street, control: null, severity: null });
+
+test("toward: a turn onto an unnamed path says the trail it leads to; the path stays unnamed", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1500, "Capital Crescent Trail.", { street: "Capital Crescent Trail", facility: "path" }),
+      stretch(1500, 1650, "Right onto the path to Rock Creek Trail.", { street: "path", facility: "path", turn: { ...turning("right", "path"), toward: "Rock Creek Trail" } }),
+      stretch(1650, 3000, "Left onto Rock Creek Trail.", { street: "Rock Creek Trail", facility: "path", turn: turning("left", "Rock Creek Trail") }),
+    ]),
+  );
+  const [onto, next] = model.cues;
+  assert.equal(onto.text, "Right onto the path to Rock Creek Trail.");
+  assert.equal(onto.street, "path");
+  assert.equal(onto.toward, "Rock Creek Trail");
+  assert.equal(cueSpoken(onto, "now", 0), "Right now onto the path to Rock Creek Trail.");
+  assert.equal(next.text, "Left onto Rock Creek Trail.");
+  assert.equal(model.stretches[1].street, "path");
+  // An older API's turn, with no `toward`: as before.
+  assert.equal(turnWords("right", "path"), "Right onto the path.");
+  assert.equal(turnWords("right", "path", false, null, "Rock Creek Trail"), "Right onto the path to Rock Creek Trail.");
+  // Only a path with no name is said so.
+  assert.equal(turnWords("right", "Bridge Path", false, null, "Rock Creek Trail"), "Right onto Bridge Path.");
+});
 
 test("bear: a bear right off Q Street onto a diagonal is a turn cue, said at Full and Stoker, not Quiet", () => {
   const model = rideModel(

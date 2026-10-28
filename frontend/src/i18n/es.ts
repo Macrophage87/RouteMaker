@@ -39,6 +39,8 @@ export const ES: Readonly<Record<string, string>> = {
   "not set": "sin fijar",
   "Cross {road}.": "Cruce {road}.",
   "Cross {road}, then {turn}": "Cruce {road}, luego {turn}",
+  // An unnamed path said with the named one it leads to (navigate.ts pathWords, describe._toward).
+  "{way} to {trail}": "{way} que lleva a {trail}",
   "Cross {road} now.": "Cruce {road} ahora.",
   "Cross {road} now, then {turn}": "Cruce {road} ahora, luego {turn}",
   ", then {turn}": ", luego {turn}",
