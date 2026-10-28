@@ -629,7 +629,13 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
   // as Use my location's does, and to the map's camera.
   // A fourth (the owner, 2026-10-18, food "near you" with a stale location): the place lists' fresh look-up, through
   // the same gate, whose fix stays on the device for their nearest-first order, Go's start and the dot.
-  assert.equal((app.match(/locate\(/g) ?? []).length, 4, "four look-up paths");
+  // A fifth (routing audit S28): Go's warm look-up while the rider is in Where to?, quiet and around the gate on
+  // purpose (the locate button does not look busy, and a Use my location press meanwhile is not dropped), whose fix
+  // goes to the dot and Go's start only, as the destination's own look-up's does.
+  assert.equal((app.match(/locate\(/g) ?? []).length, 5, "five look-up paths");
+  const warm = body(app, "const goWarmFix", "const goTo");
+  assert.match(warm, /void locate\(geoEnv\)\.then\(/);
+  assert.doesNotMatch(warm, LEAKS);
   const fresh = body(app, "const freshHere", "const foodSeq");
   assert.match(fresh, /const press = gate\.begin\(\);[\s\S]*await locate\(geoEnv\);\s*if \(!gate\.finish\(press\)\) return null;/);
   // A Go destination waiting on the gate is settled by this answer too (the review of PR #208).

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_START_SAID, GO_START_UNAVAILABLE, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, goPickStart, goHereStart, goStartStale, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, GO_WARM_AFTER_MS, goWarmDue, goPickStart, goHereStart, goStartStale, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -505,4 +505,36 @@ test("go pick: a destination set in Go routes from a fresh fix once the rider ha
   const fix = app.slice(app.indexOf("const goPickFix"), app.indexOf("const goTo = async"));
   assert.match(fix, /window\.setTimeout\(\(\) => resolve\(null\), GO_PICK_LOOK_MS\)/);
   assert.match(fix, /if \(result && goWaitingRef\.current\(\)\) \{\s*goSettleRef\.current\(result\);/);
+  // The tap still looks the location up for its destination (above); a warm look-up made while the rider was in
+  // Where to? only makes that look-up quick (routing audit S28). The tap never waits on the warm one.
+  assert.doesNotMatch(goTo, /goWarm/);
+});
+
+test("go warm look-up: Where to? focused or an early start fired refreshes a location over 20 s old, quietly (routing audit S28)", () => {
+  assert.equal(GO_WARM_AFTER_MS, 20_000);
+  const found = 1_000_000;
+  const here = goHereStart([-77.07, 38.905], found);
+  assert.equal(goWarmDue(here, null, found + 5_000), false, "a fix 5 s old is fresh enough");
+  assert.equal(goWarmDue(here, null, found + GO_WARM_AFTER_MS), true);
+  assert.equal(goWarmDue(here, null, found + 90_000), true);
+  assert.equal(goWarmDue(here, null, found + 5 * 60_000), true, "a stale start is warmed too");
+  assert.equal(goWarmDue(here, found + 25_000, found + 30_000), false, "one warm look-up per 20 s, however often the box is focused");
+  assert.equal(goWarmDue(here, found + 25_000, found + 45_000), true);
+  assert.equal(goWarmDue(here, null, found - 1), true, "a clock set back is not trusted");
+  for (const start of [{ kind: "idle" }, { kind: "locating" }, { kind: "none" }] as const) {
+    assert.equal(goWarmDue(start, null, found), false, `no warm look-up with no location (${start.kind}): it would ask for permission`);
+  }
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const warm = app.slice(app.indexOf("const goWarmFix = () => {"), app.indexOf("const goTo = async"));
+  assert.match(warm, /if \(!goWarmDue\(goStartRef\.current, goWarmAt\.current, now\)\) return;\s*goWarmAt\.current = now;\s*void locate\(geoEnv\)\.then\(/);
+  // Around the gate and `locating`: the locate button does not look busy and a Use my location press is not dropped.
+  assert.doesNotMatch(warm, /gate\.|setLocating|locateForGo|announce/);
+  assert.match(warm, /setGoStart\(goHereStart\(goPickStart\(was\.point, result\.fix\)\.point\)\)/);
+  const early = app.slice(app.indexOf("const goEarlyToPlace = "), app.indexOf("const goAddStopAt = "));
+  assert.match(early, /goEarlyTimer\.current = window\.setTimeout\(\(\) => \{\s*goWarmFix\(\);/);
+  assert.match(app, /onTopPlace=\{goEarlyToPlace\}\s*onWhereToFocus=\{goWarmFix\}/);
+  const go = readFileSync(new URL("../app/Go.tsx", import.meta.url), "utf8");
+  assert.match(go, /<PlaceSearch variant="go"[^\n]*onFocusBox=\{onWhereToFocus\} \/>/);
+  const search = readFileSync(new URL("../PlaceSearch.tsx", import.meta.url), "utf8");
+  assert.match(search, /onFocus=\{\(event\) => \{\s*onFocusBox\?\.\(\);/);
 });

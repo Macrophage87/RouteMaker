@@ -598,7 +598,7 @@ test("App and PlaceSearch: the box cleared or emptied clears the settle timer an
 });
 
 test("App: a search result is asked for early once it stays the top result; Home at once (routing audit S4)", () => {
-  assert.match(app, /goEarlyTimer\.current = window\.setTimeout\(\(\) => \{\s*const point = placeFromSearch\(found, \(\) => undefined, entranceForPlace\);\s*if \(point\) goEarly\(point\);\s*\}, GO_EARLY_SETTLE_MS\);/);
+  assert.match(app, /goEarlyTimer\.current = window\.setTimeout\(\(\) => \{\s*goWarmFix\(\);\s*const point = placeFromSearch\(found, \(\) => undefined, entranceForPlace\);\s*if \(point\) goEarly\(point\);\s*\}, GO_EARLY_SETTLE_MS\);/);
   assert.match(app, /const GO_EARLY_SETTLE_MS = 400;/);
   // The tap clears it.
   assert.match(app, /const goToPlace = \(found: Place\) => \{\s*window\.clearTimeout\(goEarlyTimer\.current\);/);

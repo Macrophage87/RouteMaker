@@ -4910,7 +4910,12 @@ puts it, at most two presses away.
   Go from a fresh start looks the location up again too (the owner, 2026-10-19: "update when
   setting a destination too"; `goPickStart`): a fix within `GO_PICK_LOOK_MS` (3 s) more than 25 m
   away is the start; otherwise the start Go had stands (so a rider who has not moved keeps the early
-  route), and a later fix still moves Go's start. A press still looking after 1 s is said with "Finding
+  route), and a later fix still moves Go's start. So that look-up is quick, Go warms the location
+  up while the rider is in Where to? (routing audit S28; `goWarmDue`): when the box takes the focus
+  or an early start fires and the start is over `GO_WARM_AFTER_MS` (20 s) old, it is looked up
+  again in the background, at most once per 20 s, around the gate (the locate button does not look
+  busy) and with nothing waiting on it; the tap's own look-up then gets the browser's recent fix
+  (`maximumAge` 30 s) at once. A press still looking after 1 s is said with "Finding
   your location for the start…", as one waiting for a start is. Found, it is the start, shown on Go's
   start line and said politely ("Start: your current location.") but not yet a point, so the
   link holds no position until a destination is picked; denied, unavailable or timed out, the

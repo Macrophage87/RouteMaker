@@ -256,7 +256,7 @@ import { BACK_LABEL, MENU_TITLE, SHEET_TITLES, backFrom, openOnto, type Opened }
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
-import { GO_START_SAID, GO_START_UNAVAILABLE, GO_PICK_LOOK_MS, goHereStart, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, GO_PICK_LOOK_MS, goHereStart, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { ReviewMode } from "./ReviewMode.tsx";
 import type { ListKey } from "./lib/review.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type Home, type MyGo } from "./lib/myGo.ts";
@@ -2353,6 +2353,26 @@ export function App() {
         resolve(null);
       });
     });
+  // Go's warm look-up (routing audit S28; lib/appMode.ts goWarmDue): the Where to? box focused, or an early start
+  // fired, with the location over GO_WARM_AFTER_MS old: looked up again in the background, so the destination's own
+  // look-up (goPickFix) gets the browser's recent fix at once. Nothing waits on it, and it goes around the gate and
+  // `locating`: the locate button does not look busy, and a Use my location press meanwhile is not dropped. The fix
+  // is kept in memory only, as every fix is; it renews the dot and Go's start as goPickFix does.
+  const goWarmAt = useRef<number | null>(null);
+  const goWarmFix = () => {
+    if (modeRef.current !== "go" || pointsRef.current.length > 0) return;
+    const now = Date.now();
+    if (!goWarmDue(goStartRef.current, goWarmAt.current, now)) return;
+    goWarmAt.current = now;
+    void locate(geoEnv).then((result) => {
+      if (!result.ok || !insideCoverage(result.fix.point)) return;
+      if (modeRef.current !== "go" || pointsRef.current.length > 0) return;
+      const was = goStartRef.current;
+      if (was.kind !== "here") return;
+      setHere(result.fix);
+      setGoStart(goHereStart(goPickStart(was.point, result.fix).point));
+    });
+  };
   const goTo = async (dest: LonLat, name: string, pressed = false, vias: LonLat[] = []) => {
     cancelLocateNotice();
     setNotice(null);
@@ -2491,6 +2511,7 @@ export function App() {
       return;
     }
     goEarlyTimer.current = window.setTimeout(() => {
+      goWarmFix();
       const point = placeFromSearch(found, () => undefined, entranceForPlace);
       if (point) goEarly(point);
     }, GO_EARLY_SETTLE_MS);
@@ -5630,6 +5651,7 @@ export function App() {
                   searchBias={searchBias}
                   onPick={goToPlace}
                   onTopPlace={goEarlyToPlace}
+                  onWhereToFocus={goWarmFix}
                   places={{
                     homeReady: myGo.home !== null,
                     home: myGo.home,
