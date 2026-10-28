@@ -93,6 +93,15 @@ async function openSheet(p, label = "Layers") {
 }
 
 /**
+ * Shows one of Settings' tabs (955ba2b8: Riding, with My Go first; Display; Account, with the app and About), as a
+ * rider's press on it does. Settings opens on Riding.
+ */
+async function settingsTab(p, tab) {
+  await p.eval(`document.querySelector('#sheet-settings #settings-tab-${tab}')?.click(); true`);
+  await sleep(150);
+}
+
+/**
  * Opens one Layers section (lib/layerSection.ts; the owner, 2026-10-12): each is a row, its name, one switch for
  * the section and a disclosure, closed to begin with; the layers' own switches are inside. With no id, all.
  */
@@ -1140,6 +1149,8 @@ for (const mobile of [false, true]) {
   check("settings: the bottom bar is Plan, Layers, Reports, Save & load, Settings (UI-CLEANUP, the owner's choice 6; GPX renamed Export in 5efab18a, Files in v0.8.2, then Save & load in v0.9.0)", JSON.stringify(bar) === JSON.stringify(["Plan", "Layers", "Reports", "Save & load", "Settings"]), JSON.stringify(bar));
   await openSheet(p, "Settings");
   check("settings: opening it puts the focus on its heading, \"Settings\"", (await p.eval("document.activeElement?.textContent")) === "Settings" && (await p.eval("document.activeElement?.tagName")) === "H2", await focused(p));
+  // High contrast is in the Display tab.
+  await settingsTab(p, "display");
   const inSettings = await axNode(p, "#settings-contrast-switch");
   // UI-CLEANUP: High contrast is in Settings only (no copy in Layers, which is the map's switches).
   const inLayers = await p.eval("document.querySelectorAll('#sheet-layers [role=switch][id$=-switch]').length && [...document.querySelectorAll('#sheet-layers [role=switch]')].filter((s) => /High contrast/.test(document.getElementById(s.getAttribute('aria-labelledby') ?? '')?.textContent ?? s.textContent)).length");
@@ -1348,6 +1359,10 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   const first = await handle();
   check("toggle: the phone sheet's handle says its size and the next, with aria-expanded and aria-controls", first.name === "Sheet: half height. Make it full height" && first.expanded === "true" && first.controls === "panel-body" && !first.hidden, JSON.stringify(first));
   await openSheet(p, "Save & load");
+  // Save & load is a popup on a phone since 955ba2b8 (the page behind it, the handle too, inert): its Close first, as
+  // a rider must before the handle can be reached.
+  await p.escape();
+  await sleep(150);
   await toPeek();
   const hidden = await handle();
   await press();
@@ -1362,18 +1377,26 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await sleep(300);
   const after = await p.eval("({ top: document.querySelector('.panel-scroll').scrollTop, focus: document.activeElement?.tagName })");
   check("plan: pressed on a scrolled planner it scrolls to the top and focuses the heading", before > 0 && after.top === 0 && after.focus === "H1", JSON.stringify({ before, after }));
-  // From a scrolled sheet: Plan shows the planner at its top (the Layers sections open, so it scrolls).
-  await openSheet(p, "Map layers");
-  await openSection(p);
-  await p.eval("document.querySelector('.panel-scroll').scrollTop = 200; true");
-  await sleep(100);
-  const sheetTop = await p.eval("document.querySelector('.panel-scroll').scrollTop");
-  await p.eval("document.querySelector('#bar-plan').click(); true");
-  await sleep(300);
-  const planned = await p.eval("({ top: document.querySelector('.panel-scroll').scrollTop, planner: !document.querySelector('.planner-view').hidden, focus: document.activeElement?.tagName })");
-  check("plan: pressed on a scrolled sheet it shows the planner at its top and focuses the heading", sheetTop > 0 && planned.top === 0 && planned.planner && planned.focus === "H1", JSON.stringify({ sheetTop, planned }));
-  // The planner shown again from Layers, its keys open, too.
+  // From a scrolled sheet: Plan shows the planner at its top (the Layers sections open, so it scrolls). Layers is a
+  // popup on a phone since 955ba2b8, Plan behind it inert; in the side panel, where Plan can be pressed beside it, on
+  // a computer.
+  {
+    const w = await open({ ride: false });
+    await openSheet(w, "Map layers");
+    await openSection(w);
+    await w.eval("document.querySelector('.panel-scroll').scrollTop = 200; true");
+    await sleep(100);
+    const sheetTop = await w.eval("document.querySelector('.panel-scroll').scrollTop");
+    await w.eval("document.querySelector('#bar-plan').click(); true");
+    await sleep(300);
+    const planned = await w.eval("({ top: document.querySelector('.panel-scroll').scrollTop, planner: !document.querySelector('.planner-view').hidden, focus: document.activeElement?.tagName })");
+    check("plan: pressed on a scrolled sheet it shows the planner at its top and focuses the heading", sheetTop > 0 && planned.top === 0 && planned.planner && planned.focus === "H1", JSON.stringify({ sheetTop, planned }));
+    await w.close();
+  }
+  // The planner shown again from Layers, its keys open, too (the popup closed first, as above).
   await openSheet(p, "Legend");
+  await p.escape();
+  await sleep(150);
   await toPeek();
   await press();
   await sleep(100);
@@ -2220,10 +2243,11 @@ async function saidInDialog(p, text) {
   const tipsOff = await p.eval("(() => { const t = document.querySelector('.tips-toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click(); return [...document.querySelectorAll('.tips-body .hint')].map((h) => h.textContent).join(' | '); })()");
   check("accessibility mode: with it off, the help says to turn it on before Map tools, and the keys still work (I, arrows)",
     /press I for the road at the center of the map, or turn on accessibility mode and open Map tools/.test(tipsOff) &&
-      /move the map with the arrow keys and turn on accessibility mode, then use "Add point at map center" in Map tools/.test(tipsOff) &&
+      // P8's help: one short line each.
+      /the arrow keys move the map; turn on accessibility mode, then use "Add point at map center" in Map tools/.test(tipsOff) &&
       /in accessibility mode, Map tools works in either\./.test(tipsOff) &&
       // P5: one mode, which turns on high contrast and large ride text with Map tools.
-      /For keyboard or screen reader use, turn on accessibility mode\. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons, and is kept on this device\. It is also the first button on the page\./.test(tipsOff) &&
+      /For keyboard or screen reader use, turn on accessibility mode\. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page\./.test(tipsOff) &&
       (tipsOff.match(/first button on the page/g) ?? []).length === 1, tipsOff.slice(0, 1400));
   await p.eval("document.querySelector('.access-link').focus(); true");
   await p.enter();
@@ -2336,10 +2360,18 @@ async function saidInDialog(p, text) {
   check("road panel: Add as stop asks the stop's name (Name this stop, the box focused), then puts the spot in the plan as a stop, says so, closes, and gives the focus back",
     named?.role === "dialog" && named?.name === "Name this stop" && askName.focus === "Name (optional)" && askName.pins === top.pins &&
       placed.closed && placed.pins === top.pins + 1 && /^Stop \d set here\.$/.test(placed.said) && placed.focus === "Map tools", JSON.stringify({ named, askName, placed }));
-  const tip = await p.eval("(() => { const t = document.querySelector('.tips-toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click(); return [...document.querySelectorAll('.tips-body .hint')].map((h) => h.textContent).join(' | '); })()");
+  const TIPS = "(() => { const t = document.querySelector('.tips-toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click(); return [...document.querySelectorAll('.tips-body .hint')].map((h) => h.textContent).join(' | '); })()";
+  const tip = await p.eval(TIPS);
+  // P8: the touch line is shown on a phone, in the mouse line's place, so it is read on a phone page.
+  const phone = await open({ width: 375, height: 812, mobile: true, ride: false });
+  await sleep(300);
+  const touchTip = await phone.eval(TIPS);
+  await phone.close();
   check("road panel: the help says how to reach it by mouse, by touch and by keyboard (I and Map tools, and browse mode), and where the details are",
-    /Right-click the map \(or press and hold on a phone\) for a short summary/.test(tip) && /Details and sources/.test(tip) && /press I for the road at the center/.test(tip) &&
-      /open Map tools \(by the map's zoom buttons\) for Road info at map center and Add point at map center/.test(tip) && /With NVDA or JAWS, I reaches the map only in focus mode/.test(tip), tip.slice(0, 600));
+    /Right-click the map for the road there: its stress, speed and whether bikes may ride, and buttons to start, end or stop there\./.test(tip) &&
+      /Press and hold the map for the road there: its stress, speed and whether bikes may ride, and buttons to start, end or stop there\./.test(touchTip) &&
+      /Details and sources/.test(tip) && /Details and sources/.test(touchTip) && /press I for the road at the center/.test(tip) &&
+      /open Map tools \(by the map's zoom buttons\) for Road info at map center and Add point at map center/.test(tip) && /With NVDA or JAWS, I reaches the map only in focus mode/.test(tip), JSON.stringify({ tip: tip.slice(0, 900), touchTip: touchTip.slice(0, 600) }));
   // An unavailable top-row button (the a11y review's T1): on an empty plan Set as end gives its reason as its
   // description, and pressing it neither closes the panel nor adds a point.
   // Clear moved from the point tools to the plan panel (9b1f3b70, "Plan mode: write the plan first, then route"), then
@@ -3083,20 +3115,24 @@ const levelSlider = `${EDITOR} input[type=range]`;
   // More (the gear, the owner, 2026-10-18; More 2026-10-24; bubbles 2026-10-26: "Have many of those options just expanded
   // as more bubble buttons, not in settings"): a row of round bubbles to its left, Less traffic and Fewer hills (each a
   // symbol named in full, 48 px or more), Topo lines (2026-10-26, a toggle, off) and Settings, the last opening the
-  // settings under the top row, the focus in them.
+  // settings under the top row, the focus in them. P4 (71411716): each has its word (Calmer, Flatter, Topo, Settings), a
+  // column going up beside the rail; where the words do not fit under round buttons (here, 320 x 700) the rail and its
+  // bubbles are 44 px pills with the word beside the icon (lib/railFit.ts).
   const bubbles = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-button'); const row = document.getElementById(g.getAttribute('aria-controls')); const m = g.getBoundingClientRect();
-    const list = [...row.querySelectorAll('button')].filter((b) => b.getClientRects().length > 0).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label'), pressed: b.getAttribute('aria-pressed'), w: Math.round(r.width), h: Math.round(r.height), round: parseFloat(getComputedStyle(b).borderRadius) >= r.width / 2 - 1, left: r.right <= m.left + 1, onScreen: r.left >= 0 && r.top >= 0 }; });
-    return { expanded: g.getAttribute('aria-expanded'), shown: !row.hidden, panelShown: !document.querySelector('.ride-mode-settings').hidden, list }; })()`);
-  check("ride: More (Stephen 2026-10-26) opens round bubbles to its left: Less traffic, Fewer hills, Topo lines (a toggle, off) and Ride settings, each 48 px or more and on screen; the settings stay closed",
-    bubbles.expanded === "true" && bubbles.shown && !bubbles.panelShown && JSON.stringify(bubbles.list.map((x) => x.name)) === JSON.stringify(["Less traffic: plan again from here", "Fewer hills: plan again from here", "Topo lines", "Ride settings"]) && bubbles.list.find((x) => x.name === "Topo lines")?.pressed === "false" && bubbles.list.every((x) => x.round && x.w >= 48 && x.h >= 48 && x.left && x.onScreen), JSON.stringify(bubbles));
+    const pill = !!document.querySelector('.ride .ride-rail-pill');
+    const list = [...row.querySelectorAll('button')].filter((b) => b.getClientRects().length > 0).map((b) => { const r = b.getBoundingClientRect(); const word = b.querySelector('.ride-word'); return { name: b.getAttribute('aria-label'), pressed: b.getAttribute('aria-pressed'), w: Math.round(r.width), h: Math.round(r.height), round: parseFloat(getComputedStyle(b).borderRadius) >= r.width / 2 - 1, word: word && word.getClientRects().length ? word.textContent : null, left: r.right <= m.left + 1, onScreen: r.left >= 0 && r.top >= 0 }; });
+    return { expanded: g.getAttribute('aria-expanded'), shown: !row.hidden, panelShown: !document.querySelector('.ride-mode-settings').hidden, pill, list }; })()`);
+  check("ride: More (Stephen 2026-10-26) opens bubbles to its left, each with its word: Less traffic, Fewer hills, Topo lines (a toggle, off) and Ride settings, each round and 48 px or more (44 px pills where the words do not fit) and on screen; the settings stay closed",
+    bubbles.expanded === "true" && bubbles.shown && !bubbles.panelShown && JSON.stringify(bubbles.list.map((x) => x.name)) === JSON.stringify(["Less traffic: plan again from here", "Fewer hills: plan again from here", "Topo lines", "Ride settings"]) && bubbles.list.find((x) => x.name === "Topo lines")?.pressed === "false" &&
+      JSON.stringify(bubbles.list.map((x) => x.word)) === JSON.stringify(["Calmer", "Flatter", "Topo", "Settings"]) && bubbles.list.every((x) => (bubbles.pill ? x.w >= 44 && x.h >= 44 : x.round && x.w >= 48 && x.h >= 48) && x.left && x.onScreen), JSON.stringify(bubbles));
   await p.shot(`${SHOTS}/ride_more_320.png`);
   await p.eval("document.querySelector('.ride .ride-settings-bubble').click(); true");
   await sleep(200);
-  // At 320 px the top row is End ride and Road closed's icon (still named in full), on one line.
+  // At 320 px the top row is End ride and Go round (with its words since 7c0c4e60, named in full), on one line.
   const gear = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-bubble'); const panel = document.querySelector('.ride-mode-settings'); const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect();
     return { expanded: g.getAttribute('aria-expanded'), shown: !panel.hidden, focusIn: panel.contains(document.activeElement), change: panel.querySelectorAll('.ride-change, .ride-ease').length, width: innerWidth, name: c.getAttribute('aria-label'), oneLine: Math.abs(a.top - b.top) <= 2, w: Math.round(a.width), h: Math.round(a.height) }; })()`);
-  check("ride: the Settings bubble opens the ride's settings alone (no route changes in them), with the focus in them; at 320 px Road closed is its icon, named in full, beside End ride",
-    gear.expanded === "true" && gear.shown && gear.focusIn && gear.change === 0 && gear.width <= 379 && gear.name === "Road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
+  check("ride: the Settings bubble opens the ride's settings alone (no route changes in them), with the focus in them; at 320 px Go round, named in full, is beside End ride",
+    gear.expanded === "true" && gear.shown && gear.focusIn && gear.change === 0 && gear.width <= 379 && gear.name === "Go round: road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
   // More again closes the bubbles and the settings.
   await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
   await sleep(200);
@@ -3922,7 +3958,8 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   const input = await axNode(p, "#food-query");
   check("food: the search is a search landmark named Find food, its box named Food or name", form?.role === "search" && form?.name === "Find food" && input?.name === "Food or name", JSON.stringify({ form, input }));
   // The owner, 2026-10-18: "when searching for food, all food should be shown up": opening the sheet lists it all, untyped.
-  const allShown = await p.waitFor("document.querySelectorAll('.food-list li').length === 10 && /^12 places to eat in the whole area/.test(document.querySelector('.food-status')?.textContent ?? '')", 8000);
+  // The first 4 of the page of 10 show, the rest behind Show more (955ba2b8, lib/foodFinder.ts FOOD_FIRST).
+  const allShown = await p.waitFor("document.querySelectorAll('.food-list li').length === 4 && /^12 places to eat in the whole area/.test(document.querySelector('.food-status')?.textContent ?? '')", 8000);
   // Near you is the search's own scope (P7: the Near you / In the map view radios went); Search this area shows only once the map has moved.
   check("food: opening the Food sheet lists all food near you with nothing typed, Near you chosen", allShown && (await p.eval("!document.querySelector('.food-area')")), await p.eval("document.querySelector('.food-status')?.textContent ?? ''"));
   await p.eval("document.getElementById('food-query').focus(); true");
@@ -3934,21 +3971,26 @@ const JUNCTION_BUTTON = "Suggest a junction change";
     items: document.querySelectorAll('.food-list ol[role=list] > li').length,
     first: document.querySelector('.food-list li')?.textContent ?? '',
   }))()`);
-  check("food: Enter searches; a polite status says how many match, where, the order and how many are shown", listed.status === "12 places match “crab” in the whole area, least detour first. Showing the first 10." && listed.items === 10, JSON.stringify(listed));
+  check("food: Enter searches; a polite status says how many match, where, the order and how many are shown", listed.status === "12 places match “crab” in the whole area, least detour first. Showing the first 4." && listed.items === 4, JSON.stringify(listed));
   check("food: each result says its detour off the route, miles first with metric in brackets, and where to turn off", /^A\. Crab place \d+ Restaurant: seafood, crab\. (Detour about \+[\d.]+ mi \([\d.]+ km\) and \d+ min there and back, turning off at|On your route at) [\d.,]+ (mi|ft) \([\d.,]+ (km|m)\)/.test(listed.first), listed.first);
   const sizes = await p.eval(`(() => [...document.querySelectorAll('.food button, .food-list a.food-web, .food-area')].map((e) => Math.round(e.getBoundingClientRect().height)))()`);
-  check("food: every button, link and choice in the panel is at least 44 px tall", sizes.length >= 32 && sizes.every((h) => h >= 44), JSON.stringify(sizes));
-  // Show more: the focus goes to the first new result, and the count is said.
-  await p.eval("document.querySelector('.food-more').focus(); true");
-  await p.enter();
-  await sleep(600);
-  const more = await p.eval(`(() => ({
-    items: document.querySelectorAll('.food-list li').length,
-    focus: document.activeElement === document.querySelectorAll('.food-list li')[10]?.querySelector('button'),
-    status: document.querySelector('.food-status')?.textContent ?? '',
-    moreGone: !document.querySelector('.food-more'),
-  }))()`);
-  check("food: Show more lists the rest, moves the focus to the first new result and says the count", more.items === 12 && more.focus && more.status === "Showing 12 of 12." && more.moreGone, JSON.stringify(more));
+  // Each shown row's Show on map, Add as stop and website, then the search's own buttons and the chips.
+  check("food: every button, link and choice in the panel is at least 44 px tall", sizes.length >= 3 * listed.items + 2 && sizes.every((h) => h >= 44), JSON.stringify(sizes));
+  // Show more: the focus goes to the first new result, and the count is said; first the rest of the page, then the next.
+  const showMore = async (first) => {
+    await p.eval("document.querySelector('.food-more').focus(); true");
+    await p.enter();
+    await sleep(600);
+    return p.eval(`(() => ({
+      items: document.querySelectorAll('.food-list li').length,
+      focus: document.activeElement === document.querySelectorAll('.food-list li')[${first}]?.querySelector('button'),
+      status: document.querySelector('.food-status')?.textContent ?? '',
+      moreGone: !document.querySelector('.food-more'),
+    }))()`);
+  };
+  const page = await showMore(4);
+  const more = await showMore(10);
+  check("food: Show more lists the rest, moves the focus to the first new result and says the count", page.items === 10 && page.focus && page.status === "Showing 10 of 12." && !page.moreGone && more.items === 12 && more.focus && more.status === "Showing 12 of 12." && more.moreGone, JSON.stringify({ page, more }));
   // Tab from a result's Show on map reaches its Add as stop, then its website link.
   await p.eval("document.querySelector('.food-list li button').focus(); true");
   await p.tab();
@@ -3991,6 +4033,8 @@ const JUNCTION_BUTTON = "Suggest a junction change";
     window.dispatchEvent(e); return e.defaultPrevented; })()`);
   await sleep(200);
   await openSheet(p, "Settings");
+  // In the Account tab, with the app and About (955ba2b8).
+  await settingsTab(p, "account");
   const offer = await p.eval(`(() => { const s = document.querySelector('#sheet-settings .install-offer'); const b = s?.querySelector('button.install-app'); const r = b?.getBoundingClientRect();
     return { heading: s?.querySelector('h3')?.textContent, labelled: s?.getAttribute('aria-labelledby') === s?.querySelector('h3')?.id, name: b?.textContent, tag: b?.tagName, type: b?.type, h: r?.height ?? 0, why: s?.querySelector('.hint')?.textContent ?? '' }; })()`);
   check("install: Settings offers \"Install RouteMaker\", a real button 44 px tall, in a section named by its heading \"Install the app\", with why in words",
@@ -5142,6 +5186,8 @@ const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-s
   const p = await bare();
   await p.eval("document.querySelector('.go-menu').click(); true");
   await sleep(400);
+  // In the Display tab (955ba2b8).
+  await settingsTab(p, "display");
   const group = await p.eval("(() => { const r = document.querySelector('#sheet-settings .announce-level'); const sel = r?.querySelector('select'); const sr = sel?.getBoundingClientRect(); return r ? { label: sel.closest('label').querySelector('.setting-name').textContent, options: [...sel.options].map((o) => o.textContent), value: sel.value, h: Math.round(sr.height), info: r.querySelector('.info-tip')?.getAttribute('aria-expanded'), infoShown: !r.querySelector('.setting-info').hidden } : null; })()");
   const selAx = await axNode(p, "#sheet-settings .announce-level select");
   const tipAx = await axNode(p, "#sheet-settings .announce-level .info-tip");
@@ -5157,7 +5203,13 @@ const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-s
     tipAx?.name === "About screen-reader detail" && group?.info === "false" && !group.infoShown && /^Brief: the route, guidance and errors/.test(selAx?.description ?? "") && selAx?.name === "Screen-reader detail", JSON.stringify({ tipAx, selAx }));
   check("announcements: pressing the (i) shows the explanation under the line and says it is expanded",
     opened.expanded === "true" && opened.shown && /Full: also what the app is doing/.test(opened.text), JSON.stringify(opened));
-  const sizes = await p.eval("[...document.querySelectorAll('#sheet-settings .info-tip, #sheet-settings .setting-row select')].filter((e) => e.offsetParent).map((e) => { const r = e.getBoundingClientRect(); return [e.tagName, Math.round(r.width), Math.round(r.height)]; })");
+  // Every tab's: each shown in turn.
+  const sizes = [];
+  for (const tab of ["riding", "display", "account"]) {
+    await settingsTab(p, tab);
+    sizes.push(...(await p.eval("[...document.querySelectorAll('#sheet-settings .info-tip, #sheet-settings .setting-row select')].filter((e) => e.offsetParent).map((e) => { const r = e.getBoundingClientRect(); return [e.tagName, Math.round(r.width), Math.round(r.height)]; })")));
+  }
+  await settingsTab(p, "riding");
   check("settings: every (i) button and every picker in Settings is at least 44 px tall (the owner's 44 px rule), and each (i) 44 px wide",
     sizes.length >= 6 && sizes.every(([tag, w, h]) => h >= 44 && (tag === "SELECT" || w >= 44)), JSON.stringify(sizes));
   const ride = await p.eval("(() => { const sel = [...document.querySelectorAll('#sheet-settings .setting-row select')]; const pick = (name) => sel.find((s) => s.closest('label').querySelector('.setting-name').textContent === name); const out = pick('Say cues with'); const lvl = pick('How much to say'); return { out: out && [...out.options].map((o) => o.textContent), lvl: lvl && [...lvl.options].map((o) => o.textContent) }; })()");
@@ -5169,6 +5221,7 @@ const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-s
     ride.out?.length === 4 && JSON.stringify(ride.lvl) === JSON.stringify(["Full", "Turns only", "Quiet"]) && /"verbosity":"quiet"/.test(rideKept ?? "") && /"chosen":true/.test(rideKept ?? ""), JSON.stringify({ ride, rideKept }));
   // Large text in a ride (the owner, 2026-10-20; it replaced Big text): a switch, the same choice as the ride's button; under
   // Display's Accessibility mode since P5 (one mode, its parts under it), no longer in Riding.
+  await settingsTab(p, "display");
   const bigBefore = await p.eval("(() => { const b = document.querySelector('#sheet-settings .big-text-row [role=switch]'); return b && { checked: b.getAttribute('aria-checked'), name: b.querySelector('.switch-label')?.textContent, h: b.getBoundingClientRect().height, group: b.closest('section')?.querySelector('h3')?.textContent }; })()");
   await p.eval("document.querySelector('#sheet-settings .big-text-row [role=switch]').click(); true");
   await sleep(200);
