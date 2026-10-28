@@ -1,13 +1,17 @@
 // Accessibility mode's logic (OWNER-DECISIONS 455; lib/accessMode.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { ADD_AT_CENTRE_LABEL, SET_END_AT_CENTRE_LABEL, infoHelp } from "./roadInfo.ts";
 import {
+  ACCESS_FINE_TUNE,
   ACCESS_HELP,
+  ACCESS_MODE_CLASS,
   ACCESS_MODE_KEY,
   ACCESS_LABEL,
   ACCESS_SENTENCE,
   ACCESS_SENTENCE_WHERE,
+  accessModeParts,
   accessModeSaid,
   accessModeToggle,
   browserStore,
@@ -55,8 +59,9 @@ test("writing works without storage: it reports false and does not throw", () =>
 test("the switch's name is constant (aria-pressed carries the state); the announcement says where it went", () => {
   assert.equal(ACCESS_LABEL, "Accessibility mode");
   // The whole text: its second half is the only place a screen reader learns where Map tools went (mutation U18).
-  assert.equal(accessModeSaid(true), "Accessibility mode on. Map tools is by the map's zoom buttons.");
-  assert.equal(accessModeSaid(false), "Accessibility mode off. Map tools is hidden.");
+  // It also names the two switches that went with it (P5: one shared mode).
+  assert.equal(accessModeSaid(true), "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.");
+  assert.equal(accessModeSaid(false), "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.");
 });
 
 test("a press: only the first button turning it on moves the focus to Map tools (455a(2)), and it says the new state", () => {
@@ -71,8 +76,40 @@ test("the owner's sentence (455a(4)), with where the switch is outside More tips
   assert.equal(ACCESS_SENTENCE_WHERE, "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).");
   assert.equal(
     ACCESS_HELP,
-    "For keyboard or screen reader use, turn on accessibility mode. It adds Map tools by the map's zoom buttons and is kept on this device. It is also the first button on the page.",
+    "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons, and is kept on this device. It is also the first button on the page.",
   );
+});
+
+test("one shared mode (P5): a press sets High contrast and Large text during a ride the same way", () => {
+  assert.deepEqual(accessModeParts(true), { contrast: true, largeText: true });
+  assert.deepEqual(accessModeParts(false), { contrast: false, largeText: false });
+  assert.equal(ACCESS_MODE_CLASS, "access-mode");
+  assert.match(ACCESS_FINE_TUNE, /High contrast and Large text during a ride/);
+});
+
+const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
+
+test("every way in to the mode (the page's first button, Points' Info, Settings) goes through the one toggle that sets the parts", () => {
+  const toggle = app.slice(app.indexOf("const toggleAccessMode = useCallback("), app.indexOf("const toolsShown"));
+  assert.match(toggle, /accessModeParts\(step\.next\)/);
+  assert.match(toggle, /setAccessibility\(parts\.contrast\)/);
+  assert.match(toggle, /setRideText\(parts\.largeText \? "large" : "normal"\)/);
+  // The parts' own switches call their own setters only, so changing one leaves the mode and the other alone.
+  assert.match(sheets, /onChange=\{\(on\) => setAccessibility\(on\)\}/);
+  assert.match(sheets, /onClick=\{\(\) => props\.rideText\.onChange\(/);
+  assert.match(app, /className="access-link" aria-pressed=\{accessMode\} onClick=\{\(\) => toggleAccessMode\(true\)\}/);
+});
+
+test("Settings > Display: Accessibility mode first, High contrast and Large text under it; Riding no longer has Large text", () => {
+  const riding = sheets.slice(sheets.indexOf('id="settings-ride-heading"'), sheets.indexOf('id="settings-display-heading"'));
+  assert.equal(riding.includes("settings-big-text-label"), false);
+  const display = sheets.slice(sheets.indexOf('id="settings-display-heading"'));
+  const main = display.indexOf('id="settings-access-switch"');
+  const parts = display.indexOf('className="access-parts"');
+  assert.ok(main > 0 && parts > main, "the mode's switch, then its parts");
+  const group = display.slice(parts, display.indexOf("</div>", display.indexOf("settings-big-text-label")));
+  assert.ok(group.indexOf("<ContrastRow />") > 0 && group.indexOf("settings-big-text-label") > group.indexOf("<ContrastRow />"));
 });
 
 /** Runs `body` with globalThis.localStorage replaced by `descriptor`, then puts the original back. */

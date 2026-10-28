@@ -52,7 +52,7 @@ export const DETOUR_CHOICES: ReadonlyArray<{ kind: DetourKind; label: string; ic
 export const DETOUR_SUMMARY = t("Water, restroom, food, repair or search");
 /** The search box's label and its example words. */
 export const DETOUR_SEARCH_LABEL = "Search";
-export const DETOUR_SEARCH_HINT = t("Coffee, grocery, an address");
+export const DETOUR_SEARCH_HINT = t("Coffee, grocery, address");
 export const DETOUR_SEARCH_BUTTON = "Find";
 
 /** What a found list is headed: "Nearest places to eat", "Nearest matches for “pizza”". */

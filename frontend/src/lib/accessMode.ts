@@ -1,6 +1,9 @@
 /**
  * Accessibility mode (OWNER-DECISIONS 455, replacing 450's always-visible Map tools): off
- * unless a rider turned it on, remembered on this device. On, "Map tools" (MapTools.tsx) is
+ * unless a rider turned it on, remembered on this device. It is the one shared mode (the owner:
+ * "Accessibility = one shared mode with screen-reader tweaks"): turning it on or off sets High
+ * contrast and Large text during a ride with it (accessModeParts), which stay as switches of their
+ * own under it in Settings, so a rider can set either one apart afterwards. On, "Map tools" (MapTools.tsx) is
  * by the map's zoom buttons, with Add point at map center and Road info at map center, for
  * riders on a keyboard or a screen reader. A switch (a button with aria-pressed), the page's
  * first stop and hidden until it has the focus, turns it on or off; the same switch is in Settings, Display and
@@ -12,15 +15,18 @@
  */
 
 /**
- * Where the choice is kept: "on" or "off", and only "on" means on. Unrelated to the High contrast
- * switch, whose key is the older `routemaker.accessibility` (lib/accessibilitySwitch.ts, stressStyle.js).
+ * Where the choice is kept: "on" or "off", and only "on" means on. High contrast keeps its own, older key,
+ * `routemaker.accessibility` (lib/accessibilitySwitch.ts, stressStyle.js), and Large text its own
+ * (lib/rideOutput.ts BIG_TEXT_KEY): a rider who turned only one of them on keeps it, with the mode off.
  */
 export const ACCESS_MODE_KEY = "routemaker.accessMode";
 
 /** The control's name in both states (a switch: the state is aria-pressed, not the name). */
 export const ACCESS_LABEL = "Accessibility mode";
-export const ACCESS_ON_SAID = "Accessibility mode on. Map tools is by the map's zoom buttons.";
-export const ACCESS_OFF_SAID = "Accessibility mode off. Map tools is hidden.";
+export const ACCESS_ON_SAID = "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.";
+export const ACCESS_OFF_SAID = "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.";
+/** The class on the page's root while the mode is on: Go's small text is drawn larger (styles.css). */
+export const ACCESS_MODE_CLASS = "access-mode";
 /** The owner's sentence for turning the mode on (OWNER-DECISIONS 455a(4)). */
 export const ACCESS_SENTENCE = "For keyboard or screen reader use, turn on accessibility mode.";
 /**
@@ -29,7 +35,17 @@ export const ACCESS_SENTENCE = "For keyboard or screen reader use, turn on acces
  */
 export const ACCESS_SENTENCE_WHERE = ACCESS_SENTENCE.replace(/\.$/, " (the first button on the page, or in Settings).");
 /** The line beside the toggle in Points' Info and Settings: says where else the switch is. */
-export const ACCESS_HELP = `${ACCESS_SENTENCE} It adds Map tools by the map's zoom buttons and is kept on this device. It is also the first button on the page.`;
+export const ACCESS_HELP = `${ACCESS_SENTENCE} It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons, and is kept on this device. It is also the first button on the page.`;
+/** Settings' extra line under it: the two switches below it, which a rider can set apart. */
+export const ACCESS_FINE_TUNE = "High contrast and Large text during a ride, below, can also be set on their own.";
+
+/**
+ * What one press of the mode's switch sets with it: High contrast and Large text during a ride go the same way
+ * (on sets both on, off sets both off). Changing either of those switches leaves the mode and the other alone.
+ */
+export function accessModeParts(on: boolean): { contrast: boolean; largeText: boolean } {
+  return { contrast: on, largeText: on };
+}
 
 /** What a screen reader hears after a press, with the state it went to. */
 export function accessModeSaid(on: boolean): string {

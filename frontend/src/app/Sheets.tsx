@@ -26,7 +26,7 @@ import { setTopoLines, TopoLinesSwitch } from "../lib/topoLines.ts";
 import { stressShowable, terrainLayers, terrainStatus } from "../lib/terrainSection.ts";
 import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
-import { ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
+import { ACCESS_FINE_TUNE, ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { RideSettingsFields } from "../RideMode.tsx";
 import { RIDE_TEXT_HELP, RIDE_TEXT_LABEL, type RideTextSize } from "../lib/rideOutput.ts";
 import type { RidePrefs } from "../lib/rideOutput.ts";
@@ -83,7 +83,7 @@ function LanguageSetting() {
       <SettingSelect<LanguageChoice>
         label={t("Language")}
         value={choice}
-        options={[["", t("Phone's language")] as const, ...LANGUAGES.map((lang) => [lang, LANGUAGE_NAME[lang]] as const)]}
+        options={[["", t("Phone default")] as const, ...LANGUAGES.map((lang) => [lang, LANGUAGE_NAME[lang]] as const)]}
         onChange={(next) => {
           setChoice(next);
           chooseLanguage(next);
@@ -537,25 +537,6 @@ export function SettingsSheet(props: SettingsSheetProps) {
       <section aria-labelledby="settings-ride-heading" className="settings-group">
         <h3 id="settings-ride-heading">{t("Riding")}</h3>
         <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
-        {/* Large text in a ride (it replaced Big text): here, and on the ride's own button, the same choice. */}
-        <SettingRow infoId="settings-big-text-info" about="large text" info={RIDE_TEXT_HELP} className="big-text-row">
-          <button
-            type="button"
-            role="switch"
-            className="switch"
-            aria-checked={props.rideText.size === "large"}
-            aria-labelledby="settings-big-text-label"
-            aria-describedby="settings-big-text-info"
-            onClick={() => props.rideText.onChange(props.rideText.size === "large" ? "normal" : "large")}
-          >
-            <span id="settings-big-text-label" className="switch-label">
-              {RIDE_TEXT_LABEL}
-            </span>
-            <span className="switch-state" aria-hidden="true">
-              {props.rideText.size === "large" ? t("On") : t("Off")}
-            </span>
-          </button>
-        </SettingRow>
         {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"); set once, so last. */}
         <div className="setting-row weight-row">
           <div className="setting-line">
@@ -566,9 +547,10 @@ export function SettingsSheet(props: SettingsSheetProps) {
       </section>
       <section aria-labelledby="settings-display-heading" className="settings-group">
         <h3 id="settings-display-heading">{t("Display")}</h3>
-        <ContrastRow />
-        {/* Accessibility mode (OWNER-DECISIONS 455) as a switch here too (the mockup), the same state as the page's first button. */}
-        <SettingRow infoId="settings-access-hint" about="accessibility mode" info={t(ACCESS_HELP)} className="a11y-setting">
+        {/* Accessibility mode (OWNER-DECISIONS 455) first, the same state as the page's first button: the one shared mode
+            (the owner: "Accessibility = one shared mode"), which turns High contrast and Large text during a ride on or
+            off with it. Those two follow under it, indented, to set apart. */}
+        <SettingRow infoId="settings-access-hint" about="accessibility mode" info={`${t(ACCESS_HELP)} ${t(ACCESS_FINE_TUNE)}`} className="a11y-setting">
           <button
             type="button"
             role="switch"
@@ -587,10 +569,33 @@ export function SettingsSheet(props: SettingsSheetProps) {
             </span>
           </button>
         </SettingRow>
-        {/* How much screen readers are told (the owner, 2026-10-11 20:23 UTC): Brief or Full; unset, Go is brief. */}
+        <div className="access-parts" role="group" aria-labelledby="settings-access-label">
+          <ContrastRow />
+          {/* Large text in a ride (it replaced Big text): here, and on the ride's own button, the same choice. */}
+          <SettingRow infoId="settings-big-text-info" about="large text" info={RIDE_TEXT_HELP} className="big-text-row">
+            <button
+              type="button"
+              role="switch"
+              className="switch"
+              aria-checked={props.rideText.size === "large"}
+              aria-labelledby="settings-big-text-label"
+              aria-describedby="settings-big-text-info"
+              onClick={() => props.rideText.onChange(props.rideText.size === "large" ? "normal" : "large")}
+            >
+              <span id="settings-big-text-label" className="switch-label">
+                {RIDE_TEXT_LABEL}
+              </span>
+              <span className="switch-state" aria-hidden="true">
+                {props.rideText.size === "large" ? t("On") : t("Off")}
+              </span>
+            </button>
+          </SettingRow>
+        </div>
+        {/* How much screen readers are told (the owner, 2026-10-11 20:23 UTC): Brief or Full; unset, Go is brief. Named
+            Screen-reader detail (it was Announcements), so it is not taken for the ride's How much to say. */}
         <SettingRow
           infoId="settings-announce-info"
-          about="announcements"
+          about="screen-reader detail"
           className="announce-level"
           info={
             <>
@@ -604,7 +609,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
           }
         >
           <SettingSelect
-            label={t("Announcements")}
+            label={t("Screen-reader detail")}
             value={announcements.level}
             options={(["brief", "full"] as const).map((level) => [level, shortLabel(ANNOUNCE_LABEL[level])] as const)}
             onChange={(level) => announcements.choose(level)}

@@ -125,11 +125,11 @@ export const ES: Readonly<Record<string, string>> = {
   "Then in {distance}": "Luego en {distance}",
   // A level's name before its colon is the picker's short label (lib/shortLabel.ts): keep the colon.
   "Full: every turn, early and again close to it": "Completo: cada giro, con anticipación y otra vez cerca de él",
-  "Stoker: each turn once ahead and as it happens, busy crossings, stops":
-    "Copiloto: cada giro una vez antes y al momento, cruces con mucho tráfico, paradas",
+  "Turns only: each turn once ahead and as it happens, busy crossings, stops":
+    "Solo giros: cada giro una vez antes y al momento, cruces con mucho tráfico, paradas",
   "Quiet: only arrival; ask Where am I? any time": "Silencio: solo la llegada; pregunte ¿Dónde estoy? en cualquier momento",
   "My screen reader": "Lector de pantalla",
-  "RouteMaker's voice": "Voz de la app",
+  "App voice": "Voz de la app",
   Both: "Ambos",
   "Neither (on screen only)": "Solo en pantalla",
   "Off the planned route. The route is {distance} to the {direction}.": "Fuera de la ruta planeada. La ruta está a {distance} al {direction}.",
@@ -201,7 +201,7 @@ export const ES: Readonly<Record<string, string>> = {
   "to": "hasta",
   "Start: your current location.": "Inicio: su ubicación actual.",
   "Your location": "Su ubicación",
-  "Coffee, grocery, an address": "Café, supermercado, una dirección",
+  "Coffee, grocery, address": "Café, súper, dirección",
   "Water, restroom, food, repair or search": "Agua, baño, comida, reparación o buscar",
   "Quick searches": "Búsquedas rápidas",
   "Set Home": "Fijar casa",
@@ -445,9 +445,9 @@ export const ES: Readonly<Record<string, string>> = {
   "Every ride type and setting.": "Todos los tipos de recorrido y ajustes.",
   Riding: "Recorrido",
   Display: "Pantalla",
-  Announcements: "Anuncios",
+  "Screen-reader detail": "Detalle del lector",
   Language: "Idioma",
-  "Phone's language": "Idioma del teléfono",
+  "Phone default": "Del teléfono",
   "Riding speed": "Velocidad",
   "Ride type's speed": "Según el tipo",
   "Your usual pace on the flat, for ride times and arrival. Hills and junction waits still count. Saved to your account when signed in.":
@@ -649,8 +649,10 @@ export const ES: Readonly<Record<string, string>> = {
   "Brief: the route, guidance and errors": "Breve: la ruta, las indicaciones y los errores",
   "Full: also what the app is doing": "Completo: también lo que hace la aplicación",
   "Accessibility mode": "Modo de accesibilidad",
-  "For keyboard or screen reader use, turn on accessibility mode. It adds Map tools by the map's zoom buttons and is kept on this device. It is also the first button on the page.":
-    "Para usar el teclado o un lector de pantalla, active el modo de accesibilidad. Agrega Herramientas del mapa junto a los botones de zoom y se guarda en este dispositivo. También es el primer botón de la página.",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons, and is kept on this device. It is also the first button on the page.":
+    "Para usar el teclado o un lector de pantalla, active el modo de accesibilidad. Activa el alto contraste, el texto grande durante el recorrido y Herramientas del mapa junto a los botones de zoom, y se guarda en este dispositivo. También es el primer botón de la página.",
+  "High contrast and Large text during a ride, below, can also be set on their own.":
+    "El alto contraste y el texto grande durante el recorrido, más abajo, también se pueden cambiar por separado.",
   Points: "Puntos",
   "Map tools": "Herramientas del mapa",
   "Make it a loop": "Convertir en circuito",
@@ -664,8 +666,10 @@ export const ES: Readonly<Record<string, string>> = {
   "1 alert": "1 alerta",
   "{count} alerts": "{count} alertas",
   "{count} routes": "{count} rutas",
-  "Accessibility mode on. Map tools is by the map's zoom buttons.": "Modo de accesibilidad activado. Herramientas del mapa está junto a los botones de zoom.",
-  "Accessibility mode off. Map tools is hidden.": "Modo de accesibilidad desactivado. Herramientas del mapa está oculto.",
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.":
+    "Modo de accesibilidad activado: alto contraste, texto grande durante el recorrido y Herramientas del mapa junto a los botones de zoom.",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.":
+    "Modo de accesibilidad desactivado: el alto contraste y el texto grande están desactivados, y Herramientas del mapa está oculto.",
   // ---- Fitting the phone (the owner, 2026-10-27: "use shorter words so it all fits") ----
   // Ride's light corner and the route's light marks (lib/lightTimes.ts).
   "Civil twilight begins": "Comienza el crepúsculo civil",
