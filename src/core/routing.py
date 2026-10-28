@@ -1503,9 +1503,24 @@ def _adjustment_entry(adjustment_id, tier, direction, category, note, display, m
     }
 
 
+# The map snap `trace_leg` falls back to looks this far from each point for an edge (audit
+# round 3, S29): the leg's shape is the router's own, so it lies on the graph, and Valhalla's
+# default 50 m only made each match slower. A snap refused at this radius is asked again at the
+# default, so no leg's stress is lost to it. GPX matching (core.map_match, core.follow) keeps
+# its own 50 m: a rider's track is not on the graph.
+TRACE_SNAP_RADIUS_M = 10
+# The matches `trace_leg` asks for, in turn: (shape_match, trace_options or None).
+TRACE_MATCHES: tuple[tuple[str, dict | None], ...] = (
+    ("edge_walk", None),
+    ("map_snap", {"search_radius": TRACE_SNAP_RADIUS_M}),
+    ("map_snap", None),
+)
+
+
 def trace_leg(variant: str, costing: dict, shape: str, deadline: Deadline) -> dict | None:
-    """The leg's edges, by edge walk and then by map snap; None if neither works."""
-    for match in ("edge_walk", "map_snap"):
+    """The leg's edges, by edge walk, then by a close map snap, then by a plain one; None if
+    none works."""
+    for match, options in TRACE_MATCHES:
         payload = {
             "encoded_polyline": shape,
             "shape_match": match,
@@ -1527,10 +1542,18 @@ def trace_leg(variant: str, costing: dict, shape: str, deadline: Deadline) -> di
                 "action": "include",
             },
         }
+        if options is not None:
+            payload["trace_options"] = options
         try:
             return _call(variant, "trace_attributes", payload, deadline)
         except RouterRefused as refusal:
-            logger.info("trace_attributes %s refused on %s: %s", match, variant, refusal)
+            logger.info(
+                "trace_attributes %s%s refused on %s: %s",
+                match,
+                "" if options is None else f" {options}",
+                variant,
+                refusal,
+            )
     return None
 
 
@@ -3768,6 +3791,10 @@ WALKWAY_USES = frozenset(
 MAIN_ROAD_CLASSES = frozenset(
     {"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified"}
 )
+# How far from the walk's line its map-snap fallback may look for an edge: the walk is the
+# router's own line, so it lies on the graph, and a small radius keeps it from snapping a
+# carriageway walk onto a separately mapped sidewalk beside it, or the other way round.
+WALK_SNAP_RADIUS_M = 10
 
 
 def walk_roadside_m(line: list, deadline: Deadline) -> float | None:
@@ -3788,14 +3815,25 @@ def walk_roadside_m(line: list, deadline: Deadline) -> float | None:
         },
         "units": "kilometers",
     }
-    try:
-        answer = _call(
-            Variant.STANDARD.value,
-            "trace_attributes",
-            payload,
-            Deadline(deadline.at, min(deadline.per_call_s, WALK_IN_CALL_S)),
-        )
-    except (RouterRefused, DeadlineExceeded, RouterUnavailable):
+    # By edge walk, and where that is refused by map snap held to WALK_SNAP_RADIUS_M, as
+    # `trace_leg` falls back (audit round 3, R6): without it a walk the edge walk could not
+    # follow was quietly not offered. Both are held to the walk check's own deadline.
+    answer = None
+    snap = {"shape_match": "map_snap", "trace_options": {"search_radius": WALK_SNAP_RADIUS_M}}
+    for extra in ({}, snap):
+        try:
+            answer = _call(
+                Variant.STANDARD.value,
+                "trace_attributes",
+                {**payload, **extra},
+                Deadline(deadline.at, min(deadline.per_call_s, WALK_IN_CALL_S)),
+            )
+            break
+        except RouterRefused as refusal:
+            logger.info("walk trace %s refused: %s", extra.get("shape_match", "edge_walk"), refusal)
+        except (DeadlineExceeded, RouterUnavailable):
+            return None
+    if answer is None:
         return None
     edges = answer.get("edges") or []
     if not edges:

@@ -5902,7 +5902,7 @@ the credit's extra reads (a join over the traced pieces) no longer apply.
   at the top of the stress slider: the stress-order search, a long calm plan and the target ran, and
   no climb search among the router's alternatives was asked (item 298(3)). `candidates` is null where there is one route.
 - **Knobs** (all in code, none needs a restart beyond a deploy): `legsplit.LEG_TARGET_SPAN_M` (12 km),
-  `legsplit.CLEAR_M`, `refine.LONG_MIN_START_S` (12 s), `LONG_LEG_MIN_S` (6 s), `LONG_SEARCH_SHARE` (0.7),
+  `legsplit.CLEAR_M`, `refine.LONG_MIN_START_S` (12 s), `LONG_LEG_MIN_S` (about 7.2 s: a round's 5 s over `LONG_SEARCH_SHARE`, plus 0.1), `LONG_SEARCH_SHARE` (0.7),
   `MAXCALM_STEPS` (15, 50, 50 m), `refine.ALT_MAX`, `ALT_OVERLAP`, `ALT_DIFFERENT_M`, `ALT_TOP_BAND_M`,
   `ALT_SECOND_BAND_M`, `LOOP_OVERLAP_OK`, `LOOP_OUT_AND_BACK`, `LOOP_THINNING`, `LOOP_BUDGET_S`,
   `routing.FIT_STRESS_LADDER`, `FIT_BISECT_STEPS`, `presets.DEFAULT_CEILING_RATIO` (1.6),

@@ -505,6 +505,10 @@ class TestWaysBackTogether:
         # Review of S24: the answers read as each comes in, one already in hand not held to a
         # whole round. With every way back waited for and then each gated on a round, a slow
         # router left the pool's run the out-and-back where asking in turn found the loop.
+        # Audit round 3, R5: the runs are compared by the loop each found, not by how many
+        # ways back each read. The pool's answers all land at about the same moment, so
+        # whether a second is read before the round gate falls on a few milliseconds: the
+        # count was the machine's timing, not the product's.
         monkeypatch.setattr(refine, "LOOP_BUDGET_S", 1.4)
         monkeypatch.setattr(refine, "REFINE_ROUND_MIN_S", 0.5)
         found = {}
@@ -517,11 +521,15 @@ class TestWaysBackTogether:
                 delay=0.45,
             )
             trip, info = refine.make_loop(two_leg_trip(), loop_context())
-            found[pool] = info
             assert info["fallback"] is None, (pool, info)
-            assert [leg["shape"] for leg in trip["legs"]] == ["out", "R1"]
+            assert info["tried"] >= 1, (pool, info)
             assert world.most <= pool
-        assert found[3]["tried"] >= found[1]["tried"] >= 1
+            found[pool] = (
+                [leg["shape"] for leg in trip["legs"]],
+                {key: info[key] for key in ("excluded", "shared_m", "return_m", "overlap_pct")},
+            )
+        assert found[1][0] == ["out", "R1"]
+        assert found[3] == found[1], "the pool finds the loop asking in turn finds"
 
     def test_each_way_back_is_read_with_the_trace_it_brought(self, monkeypatch, settings) -> None:
         settings.ROUTER_PARALLEL_CALLS = 3

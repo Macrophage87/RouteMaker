@@ -770,19 +770,56 @@ class TestStressBreakdown:
             )
         )
         stress = post(client, good_body()).json()["stress_m"]
-        matches = [p["shape_match"] for url, p in fake.calls if url.endswith("trace_attributes")]
-        assert matches == ["edge_walk", "map_snap"]
+        matches = [
+            (p["shape_match"], p.get("trace_options"))
+            for url, p in fake.calls
+            if url.endswith("trace_attributes")
+        ]
+        # Audit round 3, S29: the map snap looks 10 m round the router's own line, not 50.
+        assert matches == [("edge_walk", None), ("map_snap", {"search_radius": 10})]
+        assert stress == pytest.approx(STANDARD_EXPECTED, abs=0.2)
+
+    def test_a_close_map_snap_refused_is_asked_again_plainly(
+        self, client, segments, router
+    ) -> None:
+        # Audit round 3, S29: a leg the 10 m snap cannot match keeps its stress by the
+        # router's default radius, as before.
+        fake = router(
+            FakeRouter(
+                {
+                    "route": route_answer([(VERTICES, 2.2, [1.0])]),
+                    "trace_attributes": [
+                        routing.RouterRefused(400, 443, "no edge walk"),
+                        routing.RouterRefused(400, 444, "no match within 10 m"),
+                        trace_answer(VERTICES, STANDARD_EDGES),
+                    ],
+                }
+            )
+        )
+        stress = post(client, good_body()).json()["stress_m"]
+        matches = [
+            (p["shape_match"], p.get("trace_options"))
+            for url, p in fake.calls
+            if url.endswith("trace_attributes")
+        ]
+        assert matches == [
+            ("edge_walk", None),
+            ("map_snap", {"search_radius": 10}),
+            ("map_snap", None),
+        ]
         assert stress == pytest.approx(STANDARD_EXPECTED, abs=0.2)
 
     def test_a_leg_that_cannot_be_traced_is_unknown_not_guessed(
         self, client, segments, router
     ) -> None:
+        # Audit round 3, S29: three refusals now, the close map snap and the plain one.
         router(
             FakeRouter(
                 {
                     "route": route_answer([(VERTICES, 2.2, [1.0])]),
                     "trace_attributes": [
                         routing.RouterRefused(400, 443, "no"),
+                        routing.RouterRefused(400, 444, "no"),
                         routing.RouterRefused(400, 444, "no"),
                     ],
                 }
@@ -2877,12 +2914,11 @@ def test_every_failed_leg_adds_its_length(client, segments, router) -> None:
                 "route": route_answer(
                     [(legs[0], 0.9, [1.0]), (legs[1], 0.4, [1.0]), (legs[2], 0.6, [1.0])]
                 ),
+                # Each failed leg is refused three times (audit round 3, S29): its edge
+                # walk, its close map snap and its plain map snap.
                 "trace_attributes": [
                     trace_answer(legs[0], [(101, 0, 1, 0.9)]),
-                    routing.RouterRefused(400, 443, "no"),
-                    routing.RouterRefused(400, 443, "no"),
-                    routing.RouterRefused(400, 443, "no"),
-                    routing.RouterRefused(400, 443, "no"),
+                    *[routing.RouterRefused(400, 443, "no")] * 6,
                 ],
             }
         )
