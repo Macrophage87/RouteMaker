@@ -116,6 +116,14 @@ export const ROUTE_UP_TO_DATE = t("The route shown is up to date.");
 export const RESET_LABEL = t("Reset");
 export const RESET_NOTHING = t("Nothing changed since the route was drawn");
 export const CLEAR_LABEL = t("Clear");
+
+/**
+ * The plan panel's row (app/PlanPanel.tsx): while routing, on an empty plan, or with the plan changed. A route up to
+ * date shows none (Plan on a phone, P10: "Route ✓ up to date" said the obvious); the panel says it out of sight.
+ */
+export function planRowShown(state: { routing: boolean; locate: boolean; unavailable: string | null }): boolean {
+  return state.routing || state.locate || state.unavailable !== ROUTE_UP_TO_DATE;
+}
 export const PLANNING_SAID = t("Planning route");
 export const CANCELLED_SAID = t("Routing cancelled. The plan is as you left it.");
 export const RESET_SAID = t("Reset to the route as drawn. Undo brings your changes back.");

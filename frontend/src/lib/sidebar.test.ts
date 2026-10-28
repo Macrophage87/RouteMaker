@@ -238,13 +238,16 @@ test("the points come first, the how-to is behind Points' Info, Swap and Undo be
   );
   assert.match(app, /className="secondary icon-button tips-toggle" aria-expanded=\{tips\} aria-controls=\{tipsId\} onClick=\{\(\) => setTips\(!tips\)\}/);
   // Every existing button is still there: Swap, Undo and Redo in the heading's row, Info last (Plan streamline,
-  // 2026-10-17); Reset and Clear behind the plan panel's More. Add point at map center is in Map tools (450).
+  // 2026-10-17), where Plan's bar is not (P10: the bar holds them in Plan, one set per layout); Reset in the plan
+  // panel, Clear the bar's trash. Add point at map center is in Map tools (450).
   const row = ["swap-points", 'data-history="undo"', 'data-history="redo"', "tips-toggle"].map((t) => app.indexOf(t));
   assert.ok(row.every((i) => i > 0));
   assert.deepEqual(row, [...row].sort((a, b) => a - b));
+  assert.match(app, /\{historyHere && \(\s*<button type="button" className="secondary icon-button" data-history="undo"/);
+  assert.match(src("../App.tsx"), /historyHere: !narrow && !planFirst,/);
   const panel = src("../app/PlanPanel.tsx");
-  assert.ok(panel.indexOf('className="actions plan-reset-clear" hidden={!moreOpen}') > panel.indexOf('aria-label="More: Reset and Clear"'));
-  assert.ok(panel.indexOf("{RESET_LABEL}") < panel.indexOf("{CLEAR_LABEL}"));
+  assert.ok(panel.includes("{RESET_LABEL}"));
+  assert.ok(!panel.includes("{CLEAR_LABEL}"));
   assert.doesNotMatch(app, /className="actions point-add"|ref=\{addRef\}/);
   assert.match(app, /accessMode && !onBike \? \(\s*<MapTools\s+toggleRef=\{toolsToggleRef\}\s+onAddPoint=\{addAtCentre\}/);
   assert.equal(

@@ -247,7 +247,7 @@ import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, ShareControls, type Status } from "./app/RoutePanel.tsx";
 import { REPORTS_WHERE, openCount, outstandingSaid, report311Log } from "./lib/report311Log.ts";
 import { EditRouteSheet, FoodSheet, GpxSheet, LayersSheet, NearestSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
-import { GoAddStop, GoRouteCard, GoSheet, GoTopBar, ModeSwitch, PlanMapChips } from "./app/Go.tsx";
+import { GoAddStop, GoRouteCard, GoSheet, GoTopBar, ModeSwitch, PlanMapChips, SheetHandle, type GoSheetSize } from "./app/Go.tsx";
 import { useSharedLaunch } from "./app/sharedLaunch.ts";
 import { NearestFinder } from "./lib/nearestFinder.ts";
 import { NearbyStations } from "./NearbyStations.tsx";
@@ -802,6 +802,8 @@ export function App() {
   const massHazards = massMap ? hazards : null;
   const [zoom, setZoom] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
+  // Plan's sheet on a phone, while open (P10): half or full; closed is its peek.
+  const [planSize, setPlanSize] = useState<"half" | "full">("half");
   // Which view the panel body shows: the planner, or one of the bottom bar's sheets (Map layers, GPX,
   // Settings). The planner stays in the page, hidden,
   // so nothing it holds is lost (OWNER-DECISIONS 312).
@@ -4876,8 +4878,8 @@ export function App() {
   // the map ... Update route or start route. don't show if there's nothing to change. Also put the undo and clear there
   // as well, smaller"): the Route button big while there is something to route (or it is routing), Undo, Redo and
   // Clear small beside it while each has something to do. A focus left on a button of the bar that went (the
-  // big one after routing, Clear after clearing) moves to the panel's Route button where it shows, else the map
-  // (never to Clear, where a second Enter would clear the plan).
+  // big one after routing, Clear after clearing) moves to the plan panel where it shows, else the map (never to
+  // Clear, where a second Enter would clear the plan). The bar's Route is the only one (P10: the panel's went).
   const barRoute = planFirst && (routingNow || routeNow.unavailable === null);
   // Once the route is up to date and chosen, the big button saves it (the owner, 2026-10-21: "plan should offer an
   // option to save the route in the same button location as the update route ... Basically once an option was
@@ -4903,7 +4905,7 @@ export function App() {
     barFocused.current = false;
     // Update route gone for Save route in its place: the focus stays in that place, so the new name is read.
     const save = document.querySelector<HTMLElement>(".plan-map-bar .save-route-open");
-    const route = document.querySelector<HTMLElement>(".plan-panel .route-button");
+    const route = document.querySelector<HTMLElement>(".plan-panel");
     (save ?? (route?.offsetParent ? route : document.querySelector<HTMLElement>(".maplibregl-canvas")))?.focus();
   });
   // Go's bar mirrors Plan's (the owner, 2026-10-18: "mirror what plan does in general, but instead of route, we
@@ -4945,8 +4947,6 @@ export function App() {
       }}
       resetUnavailable={planEdited ? null : RESET_NOTHING}
       onReset={resetPlan}
-      clearDisabled={points.length === 0}
-      onClear={clearPlan}
       locate={
         points.length === 0
           ? { onLocate: () => void useMyLocation("start"), busy: locating, unavailable: locateReady.available ? null : locateReady.reason }
@@ -4961,12 +4961,29 @@ export function App() {
         searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials,
         dials, accessMode, namer, located: fromHere, removeAt, reorderPoint, pointWarnings, removeRefs, preset, stationChoice, chooseStation,
         federalPlanner,
-        pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, narrow,
+        pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, historyHere: !narrow && !planFirst,
         undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive: mode !== "go", tips, setTips, tipsId,
       }}
     />
   );
   const goMode = mode === "go";
+  // Plan on a phone (P10): the panel is a sheet with Go's handle and sizes. Its peek is the planner hidden (Hide
+  // planner's place: the handle row only); half and full are Go's. A computer keeps the panel as it was.
+  const planSheet = !goMode && narrow;
+  const planSheetSize: GoSheetSize = panelOpen ? planSize : "peek";
+  const sizePlanSheet = (next: GoSheetSize) => {
+    if (next === "peek") {
+      setPanelOpen(false);
+      return;
+    }
+    setPlanSize(next);
+    if (!panelOpen) {
+      setPanelOpen(true);
+      // As Show planner did: the planner shows, even if a sheet was open when it was hidden (OWNER-DECISIONS 392);
+      // the focus stays on the handle.
+      showPlanner(false);
+    }
+  };
   // Review (lib/appMode.ts): the panel holds the queues and the map their roads; the plan stays as it was, unshown.
   const reviewing = mode === "review" && canReview;
   // Go's routes to choose from, all on the map in their colours, a press on one choosing it (lib/routeChoice.ts; the
@@ -5390,12 +5407,12 @@ export function App() {
           }}
         >
           {can.undo && (
-            <button type="button" className="secondary plan-bar-small" data-history="undo" onClick={undo} aria-label={t("Undo")} title={t("Undo")}>
+            <button type="button" className="secondary plan-bar-small" data-history="undo" onClick={undo} aria-label={t("Undo")} title={t("Undo")} aria-keyshortcuts="Control+Z Meta+Z">
               <Icon name="undo" size={20} />
             </button>
           )}
           {can.redo && (
-            <button type="button" className="secondary plan-bar-small" data-history="redo" onClick={redo} aria-label={t("Redo")} title={t("Redo")}>
+            <button type="button" className="secondary plan-bar-small" data-history="redo" onClick={redo} aria-label={t("Redo")} title={t("Redo")} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y">
               <Icon name="redo" size={20} />
             </button>
           )}
@@ -5581,10 +5598,21 @@ export function App() {
         ref={panelRef}
         id="route-planner"
         tabIndex={-1}
-        className={`panel ${panelOpen ? "open" : "closed"}${goMode ? ` go-panel go-${goSheet}` : ""}${reviewing ? " review-panel" : ""}`}
+        className={`panel ${panelOpen ? "open" : "closed"}${goMode ? ` go-panel go-${goSheet}` : ""}${planSheet ? ` plan-sheet plan-${planSheetSize}` : ""}${reviewing ? " review-panel" : ""}`}
         aria-label={t("Route planner")}
         hidden={onBike}
       >
+        {planSheet ? (
+          // Plan on a phone (P10): Go's handle, with the switch beside it, in place of the name, the version (in Settings,
+          // About, and Help) and Hide planner (the handle's peek, which hides the planner as it did).
+          <header className="panel-header plan-handle-row">
+            <h1 ref={plannerHeadingRef} tabIndex={-1} className="visually-hidden">
+              {PLANNER_TITLE}
+            </h1>
+            <SheetHandle size={planSheetSize} onSize={sizePlanSheet} controls="panel-body" expanded={panelOpen} />
+            <ModeSwitch mode={mode} onChange={changeMode} className="panel-mode" modes={switchModes(canReview)} />
+          </header>
+        ) : (
         <header className="panel-header">
           {/* The version under the heading, not in it (lib/appVersion.ts): beside it, a phone's header overflowed. */}
           <div className="panel-title">
@@ -5622,6 +5650,7 @@ export function App() {
             </button>
           </div>
         </header>
+        )}
         <div id="panel-body" className="panel-body" hidden={!panelOpen}>
           <AppStatusBar status={appStatus} />
           {homeAsk && (

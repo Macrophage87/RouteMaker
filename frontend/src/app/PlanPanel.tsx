@@ -1,20 +1,22 @@
 /**
- * Plan mode's plan panel (v0.7.0, "Plan mode: write the plan first, then route"; lib/planFirst.ts): the Route
- * button (Enter or Ctrl+Enter from the panel), which becomes a progress bar with its step, the seconds and Cancel
- * while routing; the one-line summary of what an update changed; and Reset and Clear behind "More".
+ * Plan mode's plan panel (v0.7.0, "Plan mode: write the plan first, then route"; lib/planFirst.ts): the progress bar
+ * with its step, the seconds and Cancel while routing; the one-line summary of what an update changed; and Reset.
  *
  * Plan streamline (Stephen 2026-10-17): the plan in plain sentences is no longer shown, since the points and the
- * ride chips above say the same; it is the Route button's description, so a screen reader still hears the plan
- * whole. "Up to date" is said on the button itself, and Reset and Clear sit behind one "More" button.
+ * ride chips above say the same; it is the panel's description, so a screen reader still hears the plan whole.
+ *
+ * One of each control (Plan on a phone, P10): Route is Plan's bar's at the top of the map (the owner, 2026-10-17),
+ * no longer here too; Enter or Ctrl+Enter from the panel still routes. Clear is the bar's trash, so Reset is the
+ * panel's one button, shown with the plan changed; a route up to date shows no row, and says so out of sight.
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { t } from "../lib/i18n.ts";
 import { FINDING_LOCATION } from "../lib/geolocation.ts";
-import { CLEAR_LABEL, RESET_LABEL, ROUTE_UP_TO_DATE, type Phrase } from "../lib/planFirst.ts";
+import { RESET_LABEL, planRowShown, type Phrase } from "../lib/planFirst.ts";
 
 export interface PlanPanelProps {
   sentences: Phrase[][];
-  /** The Route button's label, and why it does nothing now (null: it routes). */
+  /** The Route button's label, and why it does nothing now (null: it routes). The button is Plan's bar's. */
   button: { label: string; unavailable: string | null };
   onRoute: () => void;
   /** While routing: the step in words and the seconds elapsed; null otherwise. */
@@ -28,37 +30,32 @@ export interface PlanPanelProps {
   /** Why Reset does nothing now (null: it resets). */
   resetUnavailable: string | null;
   onReset: () => void;
-  clearDisabled: boolean;
-  onClear: () => void;
   /**
-   * With no point yet, Route's place holds "Start at current location" (Stephen 2026-10-20: "where it currently has
+   * With no point yet, the panel holds "Start at current location" (Stephen 2026-10-20: "where it currently has
    * route, have a button that says start at current location when no route has started"); null once there is a
    * start. `busy` while the location is being found; `unavailable` why this browser cannot find it, or null.
    */
   locate?: { onLocate: () => void; busy: boolean; unavailable: string | null } | null;
 }
 
-/** The button in Route's place on an empty plan. */
+/** The button on an empty plan. */
 export const START_HERE_LABEL = t("Start at current location");
 
 export function PlanPanel(props: PlanPanelProps) {
-  const { sentences, button, onRoute, routing, onCancel, change, details, onCloseChange, resetUnavailable, onReset, clearDisabled, onClear, locate } = props;
+  const { sentences, button, onRoute, routing, onCancel, change, details, onCloseChange, resetUnavailable, onReset, locate } = props;
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreId = useId();
   const planId = useId();
-  const upToDate = button.unavailable === ROUTE_UP_TO_DATE;
   const detailsId = useId();
   const routeWhy = useId();
   const resetWhy = useId();
   const busyId = useId();
-  const routeRef = useRef<HTMLButtonElement | null>(null);
   const cancelRef = useRef<HTMLButtonElement | null>(null);
-  const routeHadFocus = useRef(false);
-  // The Route button becomes the progress bar and Cancel while routing: the focus goes with it, and back.
+  const panelRef = useRef<HTMLElement | null>(null);
+  // Routing started from the panel (Enter): the focus goes to Cancel, and back to the panel when it ends.
+  const panelHadFocus = useRef(false);
   useEffect(() => {
-    if (routing && routeHadFocus.current) cancelRef.current?.focus();
-    else if (!routing && cancelRef.current === null && routeHadFocus.current) routeRef.current?.focus();
+    if (routing && panelHadFocus.current) cancelRef.current?.focus();
+    else if (!routing && panelHadFocus.current && document.activeElement === document.body) panelRef.current?.focus();
   }, [routing !== null]);
   const route = () => {
     if (button.unavailable === null && !routing) onRoute();
@@ -68,39 +65,49 @@ export function PlanPanel(props: PlanPanelProps) {
     if (event.key !== "Enter") return;
     if (!(event.ctrlKey || event.metaKey) && event.target !== event.currentTarget) return;
     event.preventDefault();
+    panelHadFocus.current = true;
     route();
   };
+  const rowShown = planRowShown({ routing: routing !== null, locate: !!locate, unavailable: button.unavailable });
   return (
-    <section className="plan-panel" aria-labelledby="plan-panel-heading" tabIndex={-1} onKeyDown={onKeyDown}>
+    <section
+      ref={panelRef}
+      className={routing || rowShown || change ? "plan-panel" : "plan-panel plan-panel-quiet"}
+      aria-labelledby="plan-panel-heading"
+      aria-describedby={planId}
+      aria-keyshortcuts="Control+Enter Meta+Enter"
+      tabIndex={-1}
+      onKeyDown={onKeyDown}
+      onBlur={(event) => {
+        if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) panelHadFocus.current = false;
+      }}
+    >
       <h2 id="plan-panel-heading" className="visually-hidden">
         {t("Your plan")}
       </h2>
-      {/* The plan in words, out of sight: the Route button's description (the points and ride chips show it). */}
+      {/* The plan in words, out of sight: the panel's description (the points and ride chips show it). */}
       <p id={planId} className="visually-hidden plan-sentences">
         {sentences.map((sentence) => sentence.map((phrase) => phrase.text).join("")).join(" ")}
       </p>
+      {/* Why Route is not offered now ("The route shown is up to date."), said, not shown: the bar has no Route then. */}
+      {button.unavailable && !locate && !routing && (
+        <p id={routeWhy} className="visually-hidden plan-route-state">
+          {button.unavailable}
+        </p>
+      )}
       {routing ? (
         <div className="plan-routing" role="group" aria-label={t("Routing")}>
           <progress className="planning" aria-label={t("Planning route: {step}", { step: routing.step })} />
           <span className="plan-step">
             {routing.step}… <span className="plan-elapsed">{routing.elapsed}</span>
           </span>
-          <button
-            type="button"
-            ref={cancelRef}
-            className="secondary"
-            onBlur={(event) => {
-              // The rider moved on: the focus is not brought back to Route when the routing ends.
-              if (event.relatedTarget) routeHadFocus.current = false;
-            }}
-            onClick={onCancel}
-          >
+          <button type="button" ref={cancelRef} className="secondary" onClick={onCancel}>
             {t("Cancel")}
           </button>
         </div>
-      ) : (
+      ) : rowShown ? (
         <div className="plan-route">
-          {locate ? (
+          {locate && (
             // aria-disabled, not disabled, as Use my location is (PlaceSearch.tsx): it stays in the Tab order with its
             // reason as its description; a press while finding starts no second look-up, and is answered again.
             <button
@@ -114,27 +121,6 @@ export function PlanPanel(props: PlanPanelProps) {
             >
               {START_HERE_LABEL}
             </button>
-          ) : (
-            <button
-              type="button"
-              ref={routeRef}
-              className="route-button"
-              aria-disabled={button.unavailable ? true : undefined}
-              aria-describedby={button.unavailable ? `${routeWhy} ${planId}` : planId}
-              aria-keyshortcuts="Control+Enter Meta+Enter"
-              onFocus={() => (routeHadFocus.current = true)}
-              onBlur={(event) => {
-                if (event.relatedTarget) routeHadFocus.current = false;
-              }}
-              onClick={route}
-            >
-              {button.label}
-              {upToDate && (
-                <span className="route-state" aria-hidden="true">
-                  {" "}{t("✓ up to date")}
-                </span>
-              )}
-            </button>
           )}
           {locate?.busy && (
             <span id={busyId} className="visually-hidden">
@@ -146,26 +132,28 @@ export function PlanPanel(props: PlanPanelProps) {
               {locate.unavailable}
             </span>
           )}
-          {button.unavailable && !locate && (
-            // Said with the button, not shown: the points above show what is missing (Stephen 2026-10-20: "it needs to
-            // be simpler, still a wall of text").
-            <span id={routeWhy} className="visually-hidden">
-              {button.unavailable}
+          {/* Reset, the panel's one button (Clear is the bar's trash). aria-disabled with its reason, never removed. */}
+          {!locate && (
+            <button
+              type="button"
+              className="secondary plan-reset"
+              aria-disabled={resetUnavailable ? true : undefined}
+              aria-describedby={resetUnavailable ? resetWhy : undefined}
+              title={resetUnavailable ?? undefined}
+              onClick={() => {
+                if (!resetUnavailable) onReset();
+              }}
+            >
+              {RESET_LABEL}
+            </button>
+          )}
+          {resetUnavailable && !locate && (
+            <span id={resetWhy} className="visually-hidden">
+              {resetUnavailable}
             </span>
           )}
-          {/* Reset and Clear, behind one button (Plan streamline). */}
-          <button
-            type="button"
-            className="secondary icon-button plan-more"
-            aria-expanded={moreOpen}
-            aria-controls={moreId}
-            aria-label={t("More: Reset and Clear")}
-            onClick={() => setMoreOpen(!moreOpen)}
-          >
-            <span aria-hidden="true">⋯</span>
-          </button>
         </div>
-      )}
+      ) : null}
       {change && (
         <p className="plan-change">
           <span>{change}</span>
@@ -186,36 +174,6 @@ export function PlanPanel(props: PlanPanelProps) {
           ))}
         </ul>
       )}
-      <div id={moreId} className="actions plan-reset-clear" hidden={!moreOpen}>
-        <button
-          type="button"
-          className="secondary"
-          aria-disabled={resetUnavailable ? true : undefined}
-          aria-describedby={resetUnavailable ? resetWhy : undefined}
-          title={resetUnavailable ?? undefined}
-          onClick={() => {
-            if (!resetUnavailable) onReset();
-          }}
-        >
-          {RESET_LABEL}
-        </button>
-        {/* aria-disabled, not disabled: after a press empties the plan the button keeps the focus (review a11y-1). */}
-        <button
-          type="button"
-          className="secondary"
-          aria-disabled={clearDisabled || undefined}
-          onClick={() => {
-            if (!clearDisabled) onClear();
-          }}
-        >
-          {CLEAR_LABEL}
-        </button>
-        {resetUnavailable && (
-          <span id={resetWhy} className="visually-hidden">
-            {resetUnavailable}
-          </span>
-        )}
-      </div>
     </section>
   );
 }

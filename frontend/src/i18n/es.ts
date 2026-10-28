@@ -1325,8 +1325,6 @@ export const ES: Readonly<Record<string, string>> = {
   "Start at current location": "Iniciar en su ubicación actual",
   "Your plan": "Su plan",
   "Planning route: {step}": "Planeando la ruta: {step}",
-  "✓ up to date": "✓ al día",
-  "More: Reset and Clear": "Más: Restablecer y Borrar",
   "by leg": "por tramo",
   "Close the change summary": "Cerrar el resumen de cambios",
   "Bikeshare options": "Opciones de bicicleta compartida",

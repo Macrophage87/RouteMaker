@@ -76,7 +76,8 @@ export interface PointsSectionProps {
   bestOrder: () => Promise<void>;
   orderFocused: RefObject<boolean>;
   ordering: boolean;
-  narrow: boolean;
+  /** Undo and Redo here: on a computer with no Plan's bar (which holds them in Plan: one set per layout, P10). */
+  historyHere: boolean;
   undo: () => void;
   can: { undo: boolean; redo: boolean };
   redo: () => void;
@@ -102,7 +103,7 @@ export interface PointsSectionProps {
  * route's "Choose a station" fold.
  */
 export function PointsSection(props: PointsSectionProps) {
-  const { pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials, dials, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, preset, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, narrow, undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive, tips, setTips, tipsId } = props;
+  const { pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials, dials, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, preset, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, historyHere, undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive, tips, setTips, tipsId } = props;
   return (
     <section key="points" aria-labelledby="points-heading" className="points-section">
       <div className="section-head">
@@ -146,14 +147,15 @@ export function PointsSection(props: PointsSectionProps) {
             </label>
           )}
           {/* No "Edit points" any more (v0.7.0): with a route the search and the point tools stay in view, and the
-              plan panel holds Route, Reset and Clear, and says the plan in words to a screen reader. */}
-          {/* Undo and Redo, beside Swap and Loop (Plan streamline, Stephen 2026-10-17); a phone has Undo in its notices. */}
-          {!narrow && (
+              plan panel holds Reset, and says the plan in words to a screen reader. */}
+          {/* Undo and Redo, beside Swap and Loop (Plan streamline, Stephen 2026-10-17), where Plan's bar is not: in Plan
+              the bar at the top of the map holds them on every layout, so there is one set (P10). */}
+          {historyHere && (
             <button type="button" className="secondary icon-button" data-history="undo" onClick={undo} disabled={!can.undo} aria-keyshortcuts="Control+Z Meta+Z">
               {t("Undo")}
             </button>
           )}
-          {!narrow && can.redo && (
+          {historyHere && can.redo && (
             <button type="button" className="secondary icon-button" data-history="redo" onClick={redo} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y">
               {t("Redo")}
             </button>

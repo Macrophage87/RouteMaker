@@ -953,6 +953,12 @@ button.secondary {
   margin: 0;
 }
 
+/* A route up to date (P10): nothing of the panel shows, so it takes no room (its words are still read). */
+.plan-panel.plan-panel-quiet {
+  padding: 0;
+  border: 0;
+}
+
 .plan-sentences {
   margin: 0;
   line-height: 1.6;
@@ -966,8 +972,7 @@ button.secondary {
 
 .plan-route,
 .plan-routing,
-.plan-change,
-.plan-reset-clear {
+.plan-change {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -993,7 +998,11 @@ button.secondary {
   font-variant-numeric: tabular-nums;
 }
 
-.plan-reset-clear button[aria-disabled="true"] {
+.plan-reset {
+  min-height: 44px;
+}
+
+.plan-reset[aria-disabled="true"] {
   opacity: 0.6;
 }
 
@@ -5381,6 +5390,45 @@ details.zoom-notes {
   background: var(--swatch-border);
 }
 
+/* Plan on a phone (P10): Go's handle and sizes. The handle row is the handle across the sheet's top with the Go/Plan
+   switch on its right; the peek is the planner hidden (the handle row only), half and full are Go's heights. */
+@media (max-width: 720px) {
+  .panel.plan-sheet .plan-handle-row {
+    position: relative;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    min-height: 52px;
+    padding: 4px 10px;
+  }
+
+  .panel.plan-sheet .plan-handle-row .go-handle {
+    position: absolute;
+    inset: 0;
+    min-height: 0;
+    margin: 0;
+  }
+
+  .panel.plan-sheet .plan-handle-row .mode-switch {
+    position: relative;
+  }
+
+  .panel.plan-sheet.plan-half {
+    max-height: 56%;
+  }
+
+  .panel.plan-sheet.plan-full {
+    max-height: calc(100% - 64px);
+  }
+
+  .app:has(.panel.plan-sheet.plan-half) .maplibregl-ctrl-bottom-right {
+    bottom: 56%;
+  }
+
+  .app:has(.panel.plan-sheet.plan-half) .beta-chip {
+    bottom: calc(56% + 10px);
+  }
+}
+
 .go-search .place-search-row {
   position: relative;
 }
@@ -7530,28 +7578,8 @@ details.fold > summary .icon {
   min-height: 44px;
 }
 
-.route-state {
-  font-weight: 400;
-}
-
-.route-button[aria-disabled="true"]:has(.route-state) {
-  opacity: 1;
-  background: var(--bg-soft);
-  color: var(--accent);
-  border: 1px solid var(--border);
-}
-
 .plan-route .route-button {
   flex: 1 1 auto;
-}
-
-.plan-more {
-  min-width: 44px;
-  min-height: 44px;
-}
-
-.plan-reset-clear[hidden] {
-  display: none;
 }
 
 /* Plan's route totals on one line (Plan streamline, Stephen 2026-10-17): time, distance, climb and descent. */

@@ -44,6 +44,37 @@ export function nextSheetSize(size: GoSheetSize): GoSheetSize {
 const SIZE_SAID: Record<GoSheetSize, string> = { peek: t("small"), half: t("half height"), full: t("full height") };
 
 /**
+ * The sheet's handle on a phone: a bar to tap for the next size, peek, half, full, then back to peek. Go's sheet and
+ * Plan's panel share it (P10); `controls` and `expanded` where a size hides part of the sheet (Plan's peek hides
+ * its body, as Hide planner did).
+ */
+export function SheetHandle({
+  size,
+  onSize,
+  controls,
+  expanded,
+}: {
+  size: GoSheetSize;
+  onSize: (next: GoSheetSize) => void;
+  controls?: string;
+  expanded?: boolean;
+}) {
+  const next = nextSheetSize(size);
+  return (
+    <button
+      type="button"
+      className="go-handle"
+      onClick={() => onSize(next)}
+      aria-controls={controls}
+      aria-expanded={expanded}
+      aria-label={t("Sheet: {size}. Make it {next}", { size: SIZE_SAID[size], next: SIZE_SAID[next] })}
+    >
+      <span className="go-handle-bar" aria-hidden="true" />
+    </button>
+  );
+}
+
+/**
  * Go or Plan: two toggle buttons, the pressed one the view in use (the owner's choice 1: either view can switch). For
  * someone who may review, both switches (Go's bar and the panel's) have a third, Review (lib/appMode.ts switchModes).
  */
@@ -549,13 +580,10 @@ export function GoSheet({
   // More: one chip at the row's end that shows the rest (Metro, Repair, Sights, Saved routes); later additions go here, not on the row.
   const [moreOpen, setMoreOpen] = useState(false);
   const startShown = startOpen || startMissing;
-  const next = nextSheetSize(size);
   const routeShown = route !== null;
   return (
     <div className={`go-sheet go-${size}`}>
-      <button type="button" className="go-handle" onClick={() => onSize(next)} aria-label={t("Sheet: {size}. Make it {next}", { size: SIZE_SAID[size], next: SIZE_SAID[next] })}>
-        <span className="go-handle-bar" aria-hidden="true" />
-      </button>
+      <SheetHandle size={size} onSize={onSize} />
       {/* Where to? stays first while there is no route; with one, the route comes first (it is what the rider is
           looking at), and Where to? follows for a new place. */}
       {routeShown && route}

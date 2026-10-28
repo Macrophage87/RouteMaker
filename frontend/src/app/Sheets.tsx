@@ -70,6 +70,7 @@ import { InfoButton, SettingRow, SettingSelect } from "../SettingRow.tsx";
 import { shortLabel } from "../lib/shortLabel.ts";
 import { ANNOUNCE_HINT, ANNOUNCE_LABEL, type AnnounceLevel } from "../lib/announceLevel.ts";
 import type { Status } from "./RoutePanel.tsx";
+import { APP_VERSION, versionSaid } from "../lib/appVersion.ts";
 import { LANGUAGES, LANGUAGE_NAME, chooseLanguage, readLanguageChoice, t, type LanguageChoice } from "../lib/i18n.ts";
 
 /** The Language setting's (i) words. Street names and notices from agencies stay as they are written. */
@@ -666,6 +667,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
             </a>
           </p>
         </div>
+        {/* The version (lib/appVersion.ts): here and in the map's Help, since Plan's phone sheet has no title row (P10). */}
+        {APP_VERSION && <p className="hint settings-version">{versionSaid()}</p>}
       </section>
     </SheetFrame>
   );
