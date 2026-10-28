@@ -227,7 +227,9 @@ def notice_when_text(notice: Notice, now: datetime | None, future: bool) -> str:
             )
         return f"{wz.date_text(notice.start, now)} to {wz.date_text(notice.end, now)}"
     # With the year where it is not this one (P11): a notice posted in 2023 does not read as new.
-    posted = f"Posted {wz.date_text(notice.published, now)}" if notice.published else "No dates given"
+    posted = (
+        f"Posted {wz.date_text(notice.published, now)}" if notice.published else "No dates given"
+    )
     return f"{posted}; it may still apply on your ride day" if future else posted
 
 
@@ -1313,7 +1315,8 @@ def segment_zone(advisory: Advisory, index: int, segment: Segment, line) -> wz.Z
 # --- NPS alerts -----------------------------------------------------------------------
 
 NPS_PARKS = ("rocr", "nama", "gwmp", "choh", "anac")
-# A link's host: dotted names of letters, digits and hyphens, nothing else (no port, no second scheme).
+# A link's host: dotted names of letters, digits and hyphens, nothing else (no port, no
+# second scheme).
 _HOST = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}")
 
 
@@ -1326,7 +1329,11 @@ def web_link(url: str) -> bool:
     except ValueError:
         return False
     host = parts.netloc.lower()
-    return parts.scheme == "https" and _HOST.fullmatch(host) is not None and "://" not in url[len("https://") :]
+    return (
+        parts.scheme == "https"
+        and _HOST.fullmatch(host) is not None
+        and "://" not in url[len("https://") :]
+    )
 
 
 # The alert categories that can close the way (NPS: Danger, Caution, Information, Park
