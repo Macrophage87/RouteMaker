@@ -1781,6 +1781,207 @@ dialog.road-info::backdrop {
   border-radius: 8px;
 }
 
+/* Go's tapped-spot card (GoSpotDialog.tsx; the owner, 2026-10-28): the road card's look, but not modal, so the map
+   and its pins stay live above it. A sheet from the bottom on a phone (the road card's media rule); on a computer
+   it sits at the map's top right, clear of the pins it frames. */
+dialog.go-spot {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  height: fit-content;
+}
+
+@media (min-width: 721px) {
+  dialog.go-spot {
+    width: min(380px, calc(100vw - 32px));
+    margin: 72px 16px auto auto;
+  }
+}
+
+.go-spot-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* Close alone at the top right, then Route here, then the address (the mockup shown to the owner). */
+.go-spot-top {
+  display: flex;
+  justify-content: flex-end;
+  margin: -6px -8px -4px 0;
+}
+
+.road-info-body .go-spot-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.road-info-body h2.go-spot-heading {
+  margin: 10px 0 0;
+  font-size: 1.35rem;
+}
+
+.go-spot-sub {
+  overflow-wrap: anywhere;
+}
+
+.go-spot-count {
+  margin: 0;
+}
+
+.go-spot-list-button,
+.go-spot-road {
+  flex: none;
+  min-height: 44px;
+  padding: 4px 16px;
+  font-weight: 700;
+}
+
+.go-spot-list {
+  margin-top: 6px;
+}
+
+.go-spot-list .go-spot-road {
+  margin-top: 6px;
+  font-weight: 400;
+}
+
+.go-spot-nearby {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.go-spot-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 4px 8px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+}
+
+.go-spot-row-kind,
+.go-spot-row-far {
+  color: var(--text-muted);
+}
+
+.go-spot-row-far {
+  flex: none;
+}
+
+/* The card's pins (app/spotPins.ts): the icon in a dot, a named place's name beside it, 15 px as the map's street
+   names, haloed in the page's background so it reads on any part of the map, in both themes. */
+.spot-pin {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+
+.spot-pin-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: #1e3a8a;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+/* Each kind its colour as well as its icon (never the colour alone); white on each is 4.5:1 or more. */
+.spot-pin-food .spot-pin-dot {
+  background: #c2410c;
+}
+
+.spot-pin-water .spot-pin-dot {
+  background: #1d4ed8;
+}
+
+.spot-pin-restroom .spot-pin-dot {
+  background: #374151;
+}
+
+.spot-pin-repair .spot-pin-dot {
+  background: #92400e;
+}
+
+.spot-pin-metro .spot-pin-dot {
+  background: #111827;
+}
+
+.spot-pin-sight .spot-pin-dot {
+  background: #15803d;
+}
+
+.spot-pin-label {
+  position: absolute;
+  left: 38px;
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text);
+  text-shadow:
+    0 0 2px var(--bg),
+    0 0 2px var(--bg),
+    1px 1px 0 var(--bg),
+    -1px -1px 0 var(--bg),
+    1px -1px 0 var(--bg),
+    -1px 1px 0 var(--bg);
+}
+
+.spot-pin:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 50%;
+}
+
+/* The tapped spot itself: a small pin, not a control. */
+.spot-here {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border: 3px solid #ffffff;
+  border-radius: 50% 50% 50% 0;
+  background: #b91c1c;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  transform: rotate(-45deg);
+  pointer-events: none;
+}
+
 /* The top row (OWNER-DECISIONS 441n): real buttons, compact, wrapping on a phone. */
 .road-info-place {
   list-style: none;
@@ -7071,6 +7272,15 @@ details.fold > summary .icon {
 }
 
 @media (forced-colors: active) {
+  /* Go's tapped-spot pins (app/spotPins.ts), as the lettered pins. */
+  .spot-pin-dot,
+  .spot-here {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    forced-color-adjust: none;
+  }
+
   .lettered-pin,
   .place-letter {
     border-color: CanvasText;

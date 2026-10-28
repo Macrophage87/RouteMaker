@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
+import { GoSpotDialog, type SpotRequest } from "./GoSpotDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
 import { t } from "./lib/i18n.ts";
 import { APP_VERSION, versionShort } from "./lib/appVersion.ts";
@@ -141,7 +142,7 @@ import {
   type LocateResult,
 } from "./lib/geolocation.ts";
 import { usePlaceNames } from "./usePlaceNames.ts";
-import { MAX_DETOUR_SEARCH, coordinatesText, fetchPlaces, pickIntoPlan, placeFromSearch, reverseUrl, searchBiasPoint, searchUrl, startBiasPoint, type Place, type ViewBounds, type PlaceChoice } from "./lib/geocode.ts";
+import { MAX_DETOUR_SEARCH, coordinatesText, fetchPlaces, nameSender, pickIntoPlan, placeFromSearch, reverseUrl, searchBiasPoint, searchUrl, startBiasPoint, type Place, type ViewBounds, type PlaceChoice } from "./lib/geocode.ts";
 import { HOME_CLEARED, HOME_PICK_CANCELLED, HOME_PICK_LINE, homeAtSpot, homeFromPlace, homeSetSaid, nameWithoutHome } from "./lib/homeSet.ts";
 import {
   FAVORITES_FULL,
@@ -219,6 +220,8 @@ import { FoodOverlay, PlacesOverlay, PlacesSheet, RepairSheet, RepairStandsOverl
 import { closeStopCard, openStopCard, setStopCardFrame } from "./app/mapOverlay.ts";
 import { ADD_AS_STOP, ROUTE_HERE, type StopActionFor, type StopCardWords } from "./lib/stopCard.ts";
 import { foodWords, nearbyWords, repairWords, sightWords } from "./lib/stopWords.ts";
+import { foodSpotPlaces, metroSpotPlaces, repairSpotPlaces, sightSpotPlaces, spotFarLine, spotNearby, waterSpotPlaces } from "./lib/spotNearby.ts";
+import { useSpotPins } from "./app/spotPins.ts";
 import { ScenicOverlay } from "./app/ScenicOverlay.tsx";
 import { readScenicLayer, saveScenicLayer, scenicShown, scenicStatus } from "./lib/scenicLayer.ts";
 import {
@@ -863,6 +866,13 @@ export function App() {
     (closed: InfoRequest | null) => setRoadInfo((current) => requestAfterClose(current, closed)),
     [],
   );
+  // Go's card for a tapped spot (GoSpotDialog.tsx; Stephen, 2026-10-28: "show the address and what's near"), or null.
+  const [goSpot, setGoSpot] = useState<SpotRequest | null>(null);
+  const closeGoSpot = useCallback(() => {
+    setGoSpot(null);
+    // A nearby place's card opened from it goes with it, as its pins do.
+    closeStopCard();
+  }, []);
   // The map is where the focus goes when the road panel's opener cannot take it back (a long press).
   const mapFocus = useCallback(() => mapRef.current?.getCanvas() ?? null, []);
   // Map tools (OWNER-DECISIONS 450) shows the crosshair while it is open.
@@ -1919,9 +1929,11 @@ export function App() {
     announce(index > 0 && VIA_MARKS.isDrawn(point) ? `${said} ${DRAWN_SAID}` : said);
   }, [commit, announce, loopVias]); // namer is the page's one, kept for the page (usePlaceNames)
 
-  // A tap on the map (MapView's onMapClick). In Go it opens the road card, whose big Route here routes to the spot as
-  // the tap itself did until 2026-10-28 (the owner: "Put the route here as a big button on top of the card"): a
-  // stray tap no longer plans a ride. The Home pick's tap, Plan's taps and Map tools' button go to `place` as before.
+  // A tap on the map (MapView's onMapClick). In Go it opens the spot's card (GoSpotDialog.tsx: its address, the big
+  // Route here, and what's near; Stephen, 2026-10-28: "on a click instead of showing the road, show the address and
+  // what's near"), whose Route here routes to the spot as the tap itself did until 2026-10-28: a stray tap no longer
+  // plans a ride. Its Road info, a long press and a right-click open the road card. The Home pick's tap, Plan's taps
+  // and Map tools' button go to `place` as before.
   const tapMap = useCallback((point: LonLat) => {
     if (goTapSetsEnd(modeRef.current) && !homePickRef.current) {
       cancelLocateNotice();
@@ -1929,7 +1941,7 @@ export function App() {
         setNotice(OUTSIDE_NOTICE);
         return;
       }
-      setRoadInfo({ point, origin: "spot" });
+      setGoSpot({ point });
       return;
     }
     place(point);
@@ -4312,14 +4324,16 @@ export function App() {
   // The map frames a route in the part the panel does not cover.
   const framePadding = useCallback((): Frame => {
     const panel = panelRef.current?.getBoundingClientRect();
+    // Go's tapped-spot card (GoSpotDialog.tsx), while open: its pins and a stop's card are kept clear of it too.
+    const spotCard = document.querySelector<HTMLElement>("dialog.go-spot[open]")?.getBoundingClientRect();
     if (window.matchMedia(NARROW).matches) {
       // The attribution sits above the sheet on a phone; leave room for it too.
-      return { top: 40, left: 30, right: 30, bottom: (panel?.height ?? 0) + 90 };
+      return { top: 40, left: 30, right: 30, bottom: Math.max(panel?.height ?? 0, (spotCard?.height ?? 0) - 50) + 90 };
     }
     // On a wide screen the route is a card on the map's right (styles.css, Plan on a wide screen): clear of it too.
     const out = panelRef.current?.querySelector<HTMLElement>(".planner-view:not([hidden]) > .route-section");
     const card = out && getComputedStyle(out).position === "fixed" ? out.getBoundingClientRect() : null;
-    const right = card && card.width > 0 ? window.innerWidth - card.left + 40 : 60;
+    const right = Math.max(card && card.width > 0 ? window.innerWidth - card.left + 40 : 60, spotCard && spotCard.width > 0 ? window.innerWidth - spotCard.left + 40 : 0);
     return { top: 60, bottom: 60, right, left: (panel?.right ?? 0) + 40 };
   }, []);
 
@@ -4970,6 +4984,47 @@ export function App() {
   };
   const pickLetteredRef = useRef(pickLettered);
   pickLetteredRef.current = pickLettered;
+  // Go's tapped-spot card (GoSpotDialog.tsx; Stephen, 2026-10-28: "show the address and what's near", "Let them show
+  // all on the map so you can select them", "For restaurants and the like, label them"): the places the map already
+  // has, loaded the first time a card opens, the nearest few as labelled pins (app/spotPins.ts) while it is open.
+  const spotOpen = goSpot !== null && mode === "go" && !onBike;
+  const [spotFood, setSpotFood] = useState<FoodPlace[] | "unavailable" | null>(null);
+  useEffect(() => {
+    if (!spotOpen) return;
+    void ensureWater();
+    void ensureRepair();
+    ensurePlaces();
+    if (spotFood === null || spotFood === "unavailable") void ensureFood().then((data) => setSpotFood(data ?? "unavailable"));
+  }, [spotOpen, goSpot]); // eslint-disable-line react-hooks/exhaustive-deps
+  const spotSources = useMemo(
+    () => [
+      ...(waterData ? waterSpotPlaces(waterData) : []),
+      ...(Array.isArray(spotFood) ? foodSpotPlaces(spotFood) : []),
+      ...(Array.isArray(repairData) ? repairSpotPlaces(repairData) : []),
+      ...(Array.isArray(placesData) ? sightSpotPlaces(placesData) : []),
+      ...metroSpotPlaces(RAIL_STATIONS, railClosedReason),
+    ],
+    [waterData, spotFood, repairData, placesData, railClosedReason],
+  );
+  // Each source in, or failed (a failed one is left out rather than holding the list).
+  const spotReady = (waterData !== null || waterStatus === "unavailable") && spotFood !== null && repairData !== null && placesData !== null;
+  const spotRows = useMemo(() => (spotOpen && goSpot && spotReady ? spotNearby(goSpot.point, spotSources) : null), [spotOpen, goSpot, spotReady, spotSources]);
+  // A pin or a row of the folded list: the place's card (lib/stopCard.ts), never a route by itself; the spot's card
+  // stays open under it. Its Route here plans the route, which closes the spot's card (below).
+  const pickSpot = (index: number, focus: boolean) => {
+    const row = spotRows?.[index];
+    const map = mapRef.current;
+    if (!row || !map) return;
+    const words = row.words(spotFarLine(row.metres), new Date());
+    openStopCard(map, row.point, words, stopActionFor(row.point, words.title), focus);
+  };
+  useSpotPins(getMap, spotOpen && goSpot ? goSpot.point : null, spotRows, pickSpot, framePadding);
+  const spotLookup = useMemo(() => nameSender(geoGate), [geoGate]);
+  // The card closes when a route is planned, Go is left or a ride starts, and when the road card opens over it.
+  useEffect(() => setGoSpot(null), [points, mode, onBike]);
+  useEffect(() => {
+    if (roadInfo) setGoSpot(null);
+  }, [roadInfo]);
   // A letter's key picks that option while its list's sheet is open (not while typing, nor on the map).
   useEffect(() => {
     if (!lettered) return;
@@ -5754,6 +5809,18 @@ export function App() {
         keepKey={JSON.stringify(keepFields(shareKeep))}
         makeLink={shareCardLink}
         onClose={() => setShareCardOpen(false)}
+      />
+      <GoSpotDialog
+        request={spotOpen ? goSpot : null}
+        lookup={spotLookup}
+        fallbackName={(point) => namer.name(point)?.name}
+        here={spotOpen ? lastHere() : null}
+        rows={spotRows}
+        onRouteHere={goRouteHere}
+        onPick={(index) => pickSpot(index, true)}
+        onRoadInfo={(point) => setRoadInfo({ point, origin: "spot" })}
+        onClose={closeGoSpot}
+        fallbackFocus={mapFocus}
       />
       <RoadInfoDialog
         request={roadInfo}
