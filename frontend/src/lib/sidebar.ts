@@ -90,6 +90,53 @@ export function barCurrent(item: Pick<BarItem, "id">, view: PanelView): boolean 
 /** The sheets' Back button, in words, not only an arrow (OWNER-DECISIONS 393). */
 export const BACK_LABEL = t("Back to planner");
 
+/**
+ * The destinations that open as a popup on a phone (the owner, 2026-10-28: "Have some of the destinations open as a
+ * popup, which is easier to work with than scroll, or a side panel"): one screen high at most, a title and Close,
+ * over the map; on a computer the same sheet is the panel's side panel, as before. Repair, Sights and Edit route
+ * stay sheets in the panel.
+ */
+export const POPUP_VIEWS: readonly PanelView[] = ["settings", "ride", "layers", "gpx", "suggest", "nearest", "food"];
+
+/** A popup's way out to the map: Close, or Back to Menu where the Menu opened it. */
+export const POPUP_CLOSE = t("Close");
+
+export function popupBackLabel(backLabel: string): string {
+  return backLabel === BACK_LABEL ? POPUP_CLOSE : backLabel;
+}
+
+/** What a popup's Tab can land on (Sidebar.tsx keeps those with a tab stop that show). */
+export const POPUP_FOCUSABLE = "a[href], button, input, select, textarea, summary, [tabindex]";
+
+/**
+ * Where Tab goes at a popup's ends: from the last control to the first, Shift+Tab from the first to the last, and
+ * from outside them (the heading) to the first or last; null leaves it to the browser.
+ */
+export function popupTabWrap(index: number, count: number, backwards: boolean): number | null {
+  if (count === 0) return null;
+  if (index < 0) return backwards ? count - 1 : 0;
+  if (!backwards && index === count - 1) return 0;
+  if (backwards && index === 0) return count - 1;
+  return null;
+}
+
+// What the app says (App.tsx announce) is said again inside an open popup: a modal dialog makes the page behind it
+// inert, and the app's live region there is not read.
+const sayListeners = new Set<(text: string) => void>();
+
+/** Passes the app's last words to the popup open now, if any. */
+export function sayInPopup(text: string): void {
+  for (const listener of sayListeners) listener(text);
+}
+
+/** The open popup's own live region listens here; the function returned stops it. */
+export function listenForPopupSay(listener: (text: string) => void): () => void {
+  sayListeners.add(listener);
+  return () => {
+    sayListeners.delete(listener);
+  };
+}
+
 /** The bottom bar's landmark name: the pages of the panel it switches between. */
 export const BAR_NAME = t("Panel pages");
 
@@ -322,12 +369,14 @@ export interface SheetKeyEvent {
 /**
  * A sheet's Escape: back to the planner, unless it was already handled, or it
  * came from a nested dialog (the weight dialog) or the place search's list,
- * whose own Escape it is. True when it went back.
+ * whose own Escape it is. A popup sheet is a dialog itself (`sheet`): its own
+ * Escape is the sheet's. True when it went back.
  */
-export function sheetEscape(event: SheetKeyEvent, onBack: () => void): boolean {
+export function sheetEscape(event: SheetKeyEvent, onBack: () => void, sheet: unknown = null): boolean {
   if (event.key !== "Escape" || event.defaultPrevented) return false;
   const target = event.target;
-  if (target && (target.closest("dialog") || target.getAttribute("role") === "combobox")) return false;
+  const dialog = target?.closest("dialog") ?? null;
+  if (target && ((dialog !== null && dialog !== sheet) || target.getAttribute("role") === "combobox")) return false;
   event.preventDefault();
   onBack();
   return true;

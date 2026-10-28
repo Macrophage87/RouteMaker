@@ -1692,14 +1692,18 @@ dialog.ride-types::backdrop {
   margin-bottom: 4px;
 }
 
+/* On a phone, the popups' shape (dialog.popup-sheet): at the bottom, one screen high at most, as tall as it needs. */
 @media (max-width: 720px) {
   dialog.ride-types {
+    box-sizing: border-box;
     width: 100vw;
     max-width: 100vw;
-    height: 100dvh;
-    max-height: 100dvh;
-    margin: 0;
-    border-radius: 0;
+    max-height: calc(100vh - 8px);
+    max-height: calc(100dvh - 8px);
+    margin: auto 0 0;
+    border-bottom: 0;
+    border-radius: 14px 14px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 
@@ -3122,6 +3126,69 @@ details.zoom-notes {
   background: transparent;
   color: var(--text);
   border-color: var(--swatch-border);
+}
+
+/*
+ * A popup sheet (Sidebar.tsx SheetFrame; the owner, 2026-10-28): on a computer it is shown in the panel, laid out
+ * as any sheet, the dialog's own box undone. On a phone it is a modal popup, one screen high at most, at the
+ * bottom of the screen over the dimmed map, its title and Close kept at the top; it scrolls inside only when what
+ * it holds is taller than the screen.
+ */
+dialog.popup-sheet:not(:modal) {
+  position: static;
+  inset: auto;
+  width: auto;
+  max-width: none;
+  height: auto;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+dialog.popup-sheet:modal {
+  box-sizing: border-box;
+  inset: auto 0 0;
+  width: min(100%, 560px);
+  max-width: 100%;
+  max-height: calc(100vh - 8px);
+  max-height: calc(100dvh - 8px);
+  margin: 0 auto;
+  padding: 0 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-top: 64px;
+}
+
+dialog.popup-sheet::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+/* The popup's header: the title first, Close at its end, as the app's other popups have them. */
+dialog.popup-sheet:modal > .sheet-header {
+  flex-wrap: nowrap;
+  margin: 0 0 4px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+dialog.popup-sheet:modal > .sheet-header h2 {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+dialog.popup-sheet:modal > .sheet-header .popup-close {
+  order: 1;
+  flex: none;
 }
 
 /* The panel's own scrolling on a phone: the sheet is half the screen, so the pinned parts stay slim. */
@@ -8188,6 +8255,39 @@ summary.closure-notices-heading {
 }
 #sheet-settings .setting-row {
   margin-bottom: 4px;
+}
+/* Settings' tabs (the owner, 2026-10-28): three equal buttons in one row, the one shown underlined and bold, so it
+   is told by more than colour; long words (Spanish, large text) wrap within their tab rather than widen the row. */
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 4px 0 8px;
+  border-bottom: 1px solid var(--border);
+}
+.panel .settings-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 4px 6px;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 6px 6px 0 0;
+  overflow-wrap: anywhere;
+}
+.panel .settings-tab[aria-selected="true"] {
+  color: var(--accent);
+  font-weight: 700;
+  border-bottom-color: currentColor;
+}
+.settings-panel[hidden] {
+  display: none;
+}
+@media (forced-colors: active) {
+  .panel .settings-tab[aria-selected="true"] {
+    border-bottom-color: Highlight;
+  }
 }
 #sheet-settings .weight-row .setting-line {
   flex-wrap: nowrap;

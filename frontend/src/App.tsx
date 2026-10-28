@@ -169,6 +169,7 @@ import {
   linkToCopy,
   noticeSaidElsewhere,
   rescueCompactFocus,
+  sayInPopup,
   selectionCopy,
   type BarItem,
   type PanelView,
@@ -255,7 +256,7 @@ import { useSharedLaunch } from "./app/sharedLaunch.ts";
 import { NearestFinder } from "./lib/nearestFinder.ts";
 import { NearbyStations } from "./NearbyStations.tsx";
 import { Fold } from "./Sidebar.tsx";
-import { BACK_LABEL, MENU_TITLE, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib/sidebar.ts";
+import { BACK_LABEL, MENU_TITLE, POPUP_VIEWS, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib/sidebar.ts";
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
@@ -1498,7 +1499,11 @@ export function App() {
   const pointsRef = useRef(points);
   pointsRef.current = points;
 
-  const announce = useCallback((text: string) => setSaid((s) => ({ text, count: s.count + 1 })), []);
+  // Said again in a popup open on a phone (Sidebar.tsx SheetFrame), where the page behind it, this region too, is inert.
+  const announce = useCallback((text: string) => {
+    setSaid((s) => ({ text, count: s.count + 1 }));
+    sayInPopup(text);
+  }, []);
   // Extra narration (lib/announceLevel.ts): said only at Full; Brief, Go's default, keeps to the essentials.
   const announceLevelNow = useRef<AnnounceLevel>("full");
   const announceExtra = useCallback((text: string) => {
@@ -3169,6 +3174,13 @@ export function App() {
     return t("Back to {title}", { title: step.from === "settings" && mode === "go" ? MENU_TITLE : SHEET_TITLES[step.from as Exclude<PanelView, "planner">] });
   };
   const sheetNav: SheetNav = { view, back: backToPlanner, backLabel };
+  // A popup on a phone (Sidebar.tsx SheetFrame) covers the map: a list's action that shows on the map (Show on map,
+  // Plan's Ride here) closes it first, and is done and said once the page behind is live again.
+  const popupShown = (of: PanelView) => narrow && viewNow.current === of && POPUP_VIEWS.includes(of);
+  const closePopupThen = (then: () => void) => {
+    backToPlanner();
+    requestAnimationFrame(() => then());
+  };
 
   // Go and Plan (lib/appMode.ts): the switch changes the view, keeps the route, and is remembered for this tab
   // only; the next visit opens by screen size (the owner, 2026-10-22).
@@ -4514,6 +4526,11 @@ export function App() {
   const [foodScope, setFoodScope] = useState<FoodScope>("near");
   // The rider moved the map since the list was found: Search this area is offered.
   const [foodMoved, setFoodMoved] = useState(false);
+  // Show on map from the Food popup on a phone (the owner, 2026-10-28): the popup closes so the map shows, and its
+  // lettered pins stay on the map until another sheet opens; the Eat chip then opens the same list again, with
+  // Search this area once the rider has moved the map.
+  const [foodPinsKept, setFoodPinsKept] = useState(false);
+  const foodListKept = useRef(false);
   const [foodAsked, setFoodAsked] = useState<{ query: string; scope: FoodScope; bounds: Bounds | null; centre: LonLat; fromRider: boolean } | null>(null);
   const [foodPlaces, setFoodPlaces] = useState<FoodPlace[] | null>(null);
   const [foodCount, setFoodCount] = useState(FOOD_PAGE);
@@ -4666,7 +4683,14 @@ export function App() {
   // for food, all food should be shown up"), so a hungry rider needs no typing; each opening is from where the
   // rider is then. Each opening is near the rider again; the map's view is Search this area's, once the map is moved.
   useEffect(() => {
+    if (view !== "planner") setFoodPinsKept(false);
+    if (view !== "planner" && view !== "food") foodListKept.current = false;
     if (!(view === "food" && panelOpen)) return;
+    // Back from Show on map: the same list, as it was.
+    if (foodListKept.current) {
+      foodListKept.current = false;
+      return;
+    }
     setFoodScope("near");
     setFoodMoved(false);
     if (!foodQuery.trim()) void searchFoodNow("", "near");
@@ -4678,7 +4702,7 @@ export function App() {
   // button), never for the app's own framing of the list.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !(view === "food" && panelOpen)) return;
+    if (!map || !((view === "food" && panelOpen) || foodPinsKept)) return;
     const onMove = (event: { originalEvent?: unknown }) => {
       if (event.originalEvent) setFoodMoved(true);
     };
@@ -4686,7 +4710,7 @@ export function App() {
     return () => {
       map.off("movestart", onMove);
     };
-  }, [view, panelOpen]);
+  }, [view, panelOpen, foodPinsKept]);
   const searchFoodArea = () => {
     setFoodScope("view");
     void searchFoodNow(undefined, "view");
@@ -4694,8 +4718,14 @@ export function App() {
   const showFood = (result: FoodResult) => {
     const map = mapRef.current;
     const n = foodResults?.indexOf(result) ?? -1;
-    map?.flyTo({ center: [result.place.lon, result.place.lat], zoom: Math.max(map.getZoom(), 15) });
-    announce(`Showing ${result.place.name} on the map${n >= 0 ? `, marker ${placeLetter(n)}` : ""}.`);
+    const show = () => {
+      map?.flyTo({ center: [result.place.lon, result.place.lat], zoom: Math.max(map.getZoom(), 15) });
+      announce(`Showing ${result.place.name} on the map${n >= 0 ? `, marker ${placeLetter(n)}` : ""}.`);
+    };
+    if (!popupShown("food")) return show();
+    foodListKept.current = true;
+    setFoodPinsKept(true);
+    closePopupThen(show);
   };
   const addFoodStop = (result: FoodResult) => {
     const point: LonLat = [result.place.lon, result.place.lat];
@@ -4785,7 +4815,8 @@ export function App() {
     status: nearestStatus,
     list: nearestList,
     canAddStop: points.length >= 2,
-    onRide: (item: Nearby) => (mode === "go" ? goToLettered(item.place.point, item.place.title) : rideToNearest(item)),
+    // Plan: the route is planned on the map, so a popup on a phone closes first (closePopupThen).
+    onRide: (item: Nearby) => (mode === "go" ? goToLettered(item.place.point, item.place.title) : popupShown("nearest") ? closePopupThen(() => rideToNearest(item)) : rideToNearest(item)),
     onAddStop: addNearestStop,
   };
   // An instance admin's review (rider suggestions, Mass Ride hazard reports): from Suggest, or Go's Menu. It opens
@@ -4811,7 +4842,7 @@ export function App() {
   const letteredOf: "nearest" | "food" | "repair" | "places" | "bikeshare" | null =
     view === "nearest" && nearestList && nearestList.items.length > 0
       ? "nearest"
-      : view === "food" && foodResults && foodResults.length > 0
+      : (view === "food" || (foodPinsKept && view === "planner")) && foodResults && foodResults.length > 0
         ? "food"
         : view === "repair" && repairList && repairList.items.length > 0
           ? "repair"
