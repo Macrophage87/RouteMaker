@@ -54,6 +54,8 @@ export interface FoodFinderProps {
   /** How many matched in all. */
   total: number;
   onMore: () => void;
+  /** The rest of the page shown (its Show more): how many rows show now, for the status line to say. */
+  onRest?: (shown: number) => void;
   /** Whether there is a plan to add a stop to. */
   canAddStop: boolean;
   onShow: (result: FoodResult) => void;
@@ -69,7 +71,7 @@ export interface FoodFinderProps {
 }
 
 export function FoodFinder(props: FoodFinderProps): ReactElement {
-  const { query, onQuery, onSearch, onSearchArea, areaMoved = false, chips, busy, status, results, total, onMore, canAddStop, onShow, onAddStop, onRide, folded = true, heading = t("Places to eat") } = props;
+  const { query, onQuery, onSearch, onSearchArea, areaMoved = false, chips, busy, status, results, total, onMore, onRest, canAddStop, onShow, onAddStop, onRide, folded = true, heading = t("Places to eat") } = props;
   const at = props.at ?? new Date();
   const list = useRef<HTMLOListElement | null>(null);
   // After Show more: the index of the first new result, whose first button takes the focus.
@@ -202,6 +204,7 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
                   onClick: () => {
                     focusFrom.current = shown;
                     setRest(true);
+                    onRest?.(found);
                   },
                 },
                 t("Show {count} more", { count: found - shown }),

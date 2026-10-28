@@ -4621,6 +4621,18 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 
   .ride .ride-slide-text {
     padding-left: 46px;
+    padding-right: 4px;
+  }
+
+  /* "Slide to end" (P14) is longer than "End ride" was: its arrows (only drawn: the words and the thumb say it) and a
+     little padding go, so the row stays one line beside Go round. */
+  .ride .ride-slide-arrows {
+    display: none;
+  }
+
+  .ride .ride-road-closed {
+    padding-left: 8px;
+    padding-right: 8px;
   }
 }
 
@@ -5945,11 +5957,12 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
     max-height: calc(100% - 64px);
   }
 
-  .app:has(.panel.plan-sheet.plan-half) .maplibregl-ctrl-bottom-right {
+  /* Not during a ride: the panel is hidden then, but keeps its size's class, and this would outrank the ride's corner. */
+  .app:not(.riding):has(.panel.plan-sheet.plan-half) .maplibregl-ctrl-bottom-right {
     bottom: 56%;
   }
 
-  .app:has(.panel.plan-sheet.plan-half) .beta-chip {
+  .app:not(.riding):has(.panel.plan-sheet.plan-half) .beta-chip {
     bottom: calc(56% + 10px);
   }
 }
@@ -8425,6 +8438,8 @@ summary.closure-notices-heading {
   width: 44px;
   height: 44px;
   min-height: 44px;
+  /* Never squeezed by a long name and its choices on a narrow phone (Screen-reader detail's row at 390 px). */
+  flex-shrink: 0;
   padding: 0;
   margin-left: auto;
   border: 0;
