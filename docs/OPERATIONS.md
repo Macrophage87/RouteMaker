@@ -3525,18 +3525,19 @@ trusting the Permissions API's state (which, in a Home Screen app, can say "deni
 while a look-up succeeds). iOS keeps a Home Screen app's location permission apart
 from Safari's, and on iOS 26 it can refuse without a prompt; other web apps report the
 same ([Apple developer forums](https://developer.apple.com/forums/thread/804381)).
-So in a Home Screen app the denied notice names the iPhone's settings
-(`DENIED_IN_IOS_APP`, frontend/src/lib/geolocation.ts). The steps to give a tester,
-in order, stopping when the location works:
+So in a Home Screen app the denied notice points to iPhone Settings
+(`DENIED_IN_IOS_APP`, frontend/src/lib/geolocation.ts) and stays one line, since the
+ride screen shows it too. The steps to give a tester, in order, stopping when the
+location works:
 
-1. **Settings > Privacy & Security > Location Services**: on. Scroll to **Safari
+1. **Add the app again** (the likeliest fix when Safari already works): press and hold
+   the RouteMaker icon, Remove App, Delete from Home Screen. In Safari, open the site,
+   Share, Add to Home Screen, with Open as Web App on. Open it and press the location
+   button; iOS should ask now.
+2. **Settings > Privacy & Security > Location Services**: on. Scroll to **Safari
    Websites** and choose **While Using the App** (with **Precise Location** on).
-2. **Settings > Apps > Safari > Location** (under Settings for Websites): **Ask** or
+3. **Settings > Apps > Safari > Location** (under Settings for Websites): **Ask** or
    **Allow**, not Deny.
-3. **Add the app again**: press and hold the RouteMaker icon, Remove App, Delete from
-   Home Screen. In Safari, open the site, press the location button and allow it,
-   then Share, Add to Home Screen, with Open as Web App on. Open it and press the
-   location button; iOS should ask now.
 4. **Last resort, resets every app's location choices**: Settings > General > Transfer
    or Reset iPhone > Reset > Reset Location & Privacy, then open the Home Screen app
    and allow when asked.

@@ -20,6 +20,7 @@ import {
   ROUGH_SAID,
   accuracyRing,
   accuracyText,
+  deniedNotice,
   iosHomeScreenApp,
   approximateHint,
   browserEnv,
@@ -787,11 +788,14 @@ test("denied in an iPhone Home Screen app names the iPhone's settings, not a bro
   assert.equal(iosHomeScreenApp({ standalone: false }), false);
   assert.equal(iosHomeScreenApp({}), false);
   assert.equal(iosHomeScreenApp(undefined), false);
+  assert.equal(deniedNotice({ standalone: true }), DENIED_IN_IOS_APP);
+  assert.equal(deniedNotice({}), DENIED_IN_BROWSER);
   // Tests run outside a Home Screen app, so the tab's notice is the one in force.
   assert.equal(LOCATE_MESSAGES.denied, DENIED_IN_BROWSER);
-  assert.match(DENIED_IN_IOS_APP, /Home Screen app/);
-  assert.match(DENIED_IN_IOS_APP, /Privacy & Security, Location Services, Safari Websites/);
+  assert.match(DENIED_IN_IOS_APP, /Home Screen app.*iPhone Settings/);
   assert.doesNotMatch(DENIED_IN_IOS_APP, /browser's site settings/);
+  // Short enough for the ride screen's notice.
+  assert.ok(DENIED_IN_IOS_APP.length <= DENIED_IN_BROWSER.length);
   // Go swaps the closing "search for a place." for "type a start."; both notices end that way.
   for (const notice of [DENIED_IN_BROWSER, DENIED_IN_IOS_APP]) assert.match(notice, /search for a place\.$/);
 });

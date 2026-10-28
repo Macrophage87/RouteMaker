@@ -103,11 +103,15 @@ export function iosHomeScreenApp(nav: unknown = typeof navigator !== "undefined"
 /** The denied notice in a browser tab. */
 export const DENIED_IN_BROWSER = "Your location is blocked for this site. Allow location in the browser's site settings, or search for a place.";
 /** The denied notice in an iPhone Home Screen app (see iosHomeScreenApp); the tester steps are in docs/OPERATIONS.md. */
-export const DENIED_IN_IOS_APP =
-  "Your location is blocked for this Home Screen app. In iPhone Settings, open Privacy & Security, Location Services, Safari Websites and choose While Using the App. If that does not help, delete the icon and add it again from Safari. Or search for a place.";
+export const DENIED_IN_IOS_APP = "Your location is blocked for this Home Screen app. Check Location in iPhone Settings, or search for a place.";
+
+/** The denied notice for where the page runs (isStandalone in installOffer.ts also counts Android's installed app, which has site settings). */
+export function deniedNotice(nav: unknown = typeof navigator !== "undefined" ? navigator : undefined): string {
+  return iosHomeScreenApp(nav) ? DENIED_IN_IOS_APP : DENIED_IN_BROWSER;
+}
 
 export const LOCATE_MESSAGES: Record<LocateFailure, string> = {
-  denied: iosHomeScreenApp() ? DENIED_IN_IOS_APP : DENIED_IN_BROWSER,
+  denied: deniedNotice(),
   unavailable: "Your location could not be found right now. Try again, or search for a place.",
   timeout: "Finding your location took too long. Try again, or search for a place.",
   unsupported: "This browser cannot share your location. Search for a place instead.",
