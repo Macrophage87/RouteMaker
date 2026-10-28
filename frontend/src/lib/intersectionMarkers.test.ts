@@ -313,7 +313,7 @@ test("a row's name is one string with no stray spaces, the visible words first",
   const list = readFileSync(new URL("../IntersectionList.tsx", import.meta.url), "utf8");
   // Every row, member and group is named by it; no hidden separators left to space.
   assert.match(list, /aria-label=\{rowName\(item\.severityText, item\.where, item\.reason, item\.costText\)\}/);
-  assert.match(list, /aria-label=\{rowName\(group\.severityText, "Group", group\.text\)\}/);
+  assert.match(list, /aria-label=\{rowName\(group\.severityText, t\("Group"\), group\.text\)\}/);
   assert.doesNotMatch(list, /visually-hidden/);
 });
 

@@ -10,6 +10,7 @@
  * honeypot field stays empty for a person (it is out of the tab order and the accessibility tree).
  */
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { t } from "./lib/i18n.ts";
 import { csrfFromCookie, countText } from "./lib/stressEditor.ts";
 import {
   QUICK_NOTE,
@@ -84,7 +85,7 @@ export function SuggestQuick({ origin, wayId, title, current, point, halfSteps, 
       return;
     }
     if (!ticket) {
-      fail(null, "Nothing was sent. Try again shortly.");
+      fail(null, t("Nothing was sent. Try again shortly."));
       return;
     }
     setError(null);
@@ -123,7 +124,7 @@ export function SuggestQuick({ origin, wayId, title, current, point, halfSteps, 
       {!sent && (
         <form onSubmit={onSubmit} noValidate aria-describedby={error ? id("error") : undefined}>
           <p className="stress-editor-extent">
-            <span className="road-info-label">This road:</span> {title}. Now: {quickValueText(current)}.
+            <span className="road-info-label">{t("This road:")}</span> {title}. {t("Now:")} {quickValueText(current)}.
           </p>
           <div className="stress-editor-field">
             <label htmlFor={id("step")}>{SUGGEST_LEVEL_LABEL}</label>
@@ -173,16 +174,16 @@ export function SuggestQuick({ origin, wayId, title, current, point, halfSteps, 
           )}
           {/* A honeypot: a person never sees or fills it. */}
           <div className="visually-hidden" aria-hidden="true">
-            <label htmlFor={id("website")}>Website</label>
+            <label htmlFor={id("website")}>{t("Website")}</label>
             <input id={id("website")} name="website" type="text" tabIndex={-1} autoComplete="off" value={website} onChange={(event) => setWebsite(event.target.value)} />
           </div>
           <p className="hint">{QUICK_NOTE}</p>
           <div className="stress-editor-buttons">
             <button type="submit" aria-disabled={sending || !ticket ? true : undefined}>
-              {sending ? "Sending…" : SUGGEST_SEND}
+              {sending ? t("Sending…") : SUGGEST_SEND}
             </button>
             <button type="button" className="secondary" onClick={onClose}>
-              Cancel
+              {t("Cancel")}
             </button>
           </div>
         </form>
@@ -190,7 +191,7 @@ export function SuggestQuick({ origin, wayId, title, current, point, halfSteps, 
       {sent && (
         <div className="stress-editor-buttons">
           <button type="button" className="secondary" onClick={onClose}>
-            Done
+            {t("Done")}
           </button>
         </div>
       )}
