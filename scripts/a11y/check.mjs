@@ -2901,7 +2901,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const ax311 = await axNode(p, ".ride-311-button");
   check("ride 311 button: a round button of about 60 px at the right edge, in the lower half (thumb height), named Log for 311 with its visible 311, closed",
     !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 96 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Log for 311" &&
-      JSON.stringify(rail.map((x) => x.name).filter((n) => !/^Broadcast/.test(n))) === JSON.stringify(["Where am I?", "Large text", "Detour: water, restroom, food, repair or search", "Log for 311", "More: change the route or the map, and ride settings"]) && rail.every((x) => x.round && x.w >= 44),
+      JSON.stringify(rail.map((x) => x.name).filter((n) => !/^Share live/.test(n))) === JSON.stringify(["Where am I?", "Large text", "Detour: water, restroom, food, repair or search", "Log for 311", "More: change the route or the map, and ride settings"]) && rail.every((x) => x.round && x.w >= 44),
     JSON.stringify({ b311, ax311, rail }));
   // The top row (the owner, 2026-10-19: "switch end ride and road closed"): End ride, then Road closed ahead with its
   // words (2026-10-20), one line.
@@ -3118,7 +3118,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await sleep(500);
   const reports = await p.eval("({ summary: !!document.querySelector('.ride-summary'), sheet: !!document.querySelector('#sheet-suggest') && getComputedStyle(document.querySelector('#sheet-suggest')).display !== 'none', focus: document.activeElement?.id, list: !!document.querySelector('#sheet-suggest .log311-group'), first: document.querySelector('#sheet-suggest section')?.getAttribute('aria-labelledby') })");
   check("ride: with a problem still to report, the summary says how many and where Reports is, and Open Reports (44 px) opens Reports at the 311 checklist, its heading focused",
-    /^1 problem still to report to 311\. Reports is in Go's Menu and Plan's bottom bar\.$/.test(owed.line ?? "") && owed.button === "Open Reports" && owed.tall >= 44 &&
+    /^1 problem still to report to 311\. Reports is in Go's Settings and Plan's bottom bar\.$/.test(owed.line ?? "") && owed.button === "Open Reports" && owed.tall >= 44 &&
     !reports.summary && reports.sheet && reports.focus === "sheet-suggest-title" && reports.list && reports.first === "suggest-311-heading", JSON.stringify({ owed, reports }));
   await p.close();
 }
@@ -3884,7 +3884,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await sleep(200);
   const form = await axNode(p, "form.food-search");
   const input = await axNode(p, "#food-query");
-  check("food: the search is a search landmark named Find food, its box named Food or name", form?.role === "search" && form?.name === "Find food" && input?.name === "Food or name", JSON.stringify({ form, input }));
+  check("food: the search is a search landmark named Search places to eat, its box named Food or name", form?.role === "search" && form?.name === "Search places to eat" && input?.name === "Food or name", JSON.stringify({ form, input }));
   // The owner, 2026-10-18: "when searching for food, all food should be shown up": opening the sheet lists it all, untyped.
   const allShown = await p.waitFor("document.querySelectorAll('.food-list li').length === 10 && /^12 places to eat in the whole area/.test(document.querySelector('.food-status')?.textContent ?? '')", 8000);
   check("food: opening the Food sheet lists all food near you with nothing typed, Near you chosen", allShown && (await p.eval("document.querySelector('.food-scope input[value=near]').checked")), await p.eval("document.querySelector('.food-status')?.textContent ?? ''"));
@@ -4523,18 +4523,18 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
       small: [...document.querySelectorAll('.go-top button, .go-sheet button, .go-sheet input')].filter((e) => e.getClientRects().length && (e.getBoundingClientRect().height < 44 || e.getBoundingClientRect().width < 44)).map((e) => e.className + ':' + e.textContent.trim()),
       scroll: document.documentElement.scrollWidth > innerWidth }; })()`);
   // With no destination, the bar under them holds Roam (a ride with no destination; the owner, 2026-10-22).
-  check("go: a phone with no link opens in Go: Menu, the Go/Plan switch (Go pressed), Layers and Locate over the map, Roam under them, and no bottom bar",
-    go.mode === "Go" && go.top && !go.bar && JSON.stringify(go.topButtons) === JSON.stringify(["Menu", "Go", "Plan", "Layers", "Locate", "Roam"]), JSON.stringify(go));
+  check("go: a phone with no link opens in Go: Settings, the Go/Plan switch (Go pressed), Layers and Locate over the map, Roam under them, and no bottom bar",
+    go.mode === "Go" && go.top && !go.bar && JSON.stringify(go.topButtons) === JSON.stringify(["Settings", "Go", "Plan", "Layers", "Locate", "Roam"]), JSON.stringify(go));
   // The owner, 2026-10-12: the rider's own ride type first (My Go; Default until set), then the two transit types.
   // More, with Repair and Sights behind it, follow the four since 2b38bf1c ("Go: Repair and Sights behind More"),
   // and Metro first behind it since Stephen 2026-10-19 ("Metro stops should be on the list in more").
 // Featured routes joined them last in v0.12.1 (#456); Saved routes before it (Stephen 2026-10-26).
-  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), then More with Metro, Repair, Sights, Saved routes and Featured routes, and the ride types Default, Own Bike + 🚆🚌, Bikeshare + 🚶🚆🚌 and More ride types",
-    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom", "More", "Metro", "Repair", "Sights", "Saved routes", "Featured routes"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus", "More ride types"]), JSON.stringify(go));
-  // More > Saved routes (Stephen 2026-10-26): Load route's popup, named Saved routes; Escape gives the focus back.
+  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), then More with Metro, Repair, Places to see, Load route and Featured routes, and the ride types Default, Own Bike + 🚆🚌, Bikeshare + 🚶🚆🚌 and More ride types",
+    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom", "More", "Metro", "Repair", "Places to see", "Load route", "Featured routes"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus", "More ride types"]), JSON.stringify(go));
+  // More > Load route (Stephen 2026-10-26; P12: it was Saved routes): Load route's popup, one title; Escape gives the focus back.
   await p.eval("document.querySelector('.go-sheet .go-more').click(); true");
   await sleep(200);
-  await p.eval("[...document.querySelectorAll('.go-more-row .place-chip')].find((c) => c.textContent.trim() === 'Saved routes').focus(); true");
+  await p.eval("[...document.querySelectorAll('.go-more-row .place-chip')].find((c) => c.textContent.trim() === 'Load route').focus(); true");
   await p.enter();
   await sleep(500);
   const savedPopup = await p.eval("(() => { const d = document.querySelector('.load-route-dialog'); return { open: !!d?.open, heading: d?.querySelector('h2')?.textContent.trim(), gpx: !!d?.querySelector('.load-route-gpx') }; })()");
@@ -4543,8 +4543,8 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   await sleep(300);
   const savedBack = await p.eval("({ closed: !document.querySelector('.load-route-dialog').open, focus: document.activeElement?.textContent.trim() })");
   await p.eval("document.querySelector('.go-sheet .go-more').click(); true");
-  check("go: More > Saved routes opens Load route's popup named Saved routes (with Open GPX file); Escape closes it to the chip",
-    savedPopup.open && savedPopup.heading === "Saved routes" && savedPopup.gpx && savedNamed?.role === "dialog" && savedNamed?.name === "Saved routes" && savedBack.closed && savedBack.focus === "Saved routes",
+  check("go: More > Load route opens Load route's popup named Load route (with Open GPX file); Escape closes it to the chip",
+    savedPopup.open && savedPopup.heading === "Load route" && savedPopup.gpx && savedNamed?.role === "dialog" && savedNamed?.name === "Load route" && savedBack.closed && savedBack.focus === "Load route",
     JSON.stringify({ savedPopup, savedNamed: [savedNamed?.role, savedNamed?.name], savedBack }));
   const own = await axNode(p, ".go-sheet .ride-chips .ride-type-chip");
   check("go: the first ride type is described as the rider's own, set in Settings", own?.name === "Default" && /^Your ride type\. Change it in Settings, under My Go\.$/.test(own?.description ?? ""), JSON.stringify(own));
@@ -4575,11 +4575,11 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   await p.eval("[...document.querySelectorAll('.mode-switch .mode-button')].find((x) => x.textContent === 'Go' && x.getClientRects().length).click(); true");
   await sleep(500);
   check("go: the choice is remembered across a reload, and Go comes back with the switch", kept === "Plan" && (await p.eval(modeNow)) === "Go", JSON.stringify({ kept }));
-  // Every control within two presses: Go's Menu holds Plan, Suggest and GPX above the settings.
+  // Every control within two presses: Go's Settings holds Reports and Save & load above the tabs (P12: no Plan, the switch is beside it).
   await p.eval("document.querySelector('.go-menu').click(); true");
   await sleep(400);
   const menu = await p.eval("({ shown: !document.getElementById('sheet-settings').hidden, pages: [...document.querySelectorAll('#sheet-settings .menu-page')].map((x) => x.textContent.trim()), back: document.querySelector('#sheet-settings .sheet-back')?.textContent.trim() })");
-  check("go: Menu opens the Settings sheet as Go's menu, with Plan, Reports and Save & load first, and a Close button", menu.shown && ["Plan", "Reports", "Save & load"].every((x) => menu.pages.includes(x)) && menu.back === "Close", JSON.stringify(menu));
+  check("go: Settings opens the Settings sheet, with Reports and Save & load first (no Plan), and a Close button", menu.shown && ["Reports", "Save & load"].every((x) => menu.pages.includes(x)) && !menu.pages.includes("Plan") && menu.back === "Close", JSON.stringify(menu));
   await p.eval("document.querySelector('#sheet-settings .sheet-back').click(); true");
   await sleep(300);
   await p.eval("document.querySelector('.go-sheet .ride-more').click(); true");
@@ -5083,7 +5083,7 @@ async function goPressMap(p) {
   await p.close();
 }
 /** My Go's ride type picker set to Cargo Bike, as a rider's pick fires it. */
-const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-settings .my-go select')].find((x) => x.closest('label').querySelector('.setting-name').textContent === \"Go's ride type\"); s.value = 'cargo'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()";
+const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-settings .my-go select')].find((x) => x.closest('label').querySelector('.setting-name').textContent === \"Default ride type\"); s.value = 'cargo'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()";
 {
   // Announcements (Settings > Display): Brief in Go unless chosen; Full is kept on this device.
   const p = await bare();
@@ -5131,7 +5131,7 @@ const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-s
   const q = await bare({ width: 1280, height: 900, mobile: false });
   const wide = await q.eval(`({ mode: ${modeNow}, top: !!document.querySelector('nav.go-top'), chips: [...document.querySelectorAll('.map-chips .map-chip')].map((x) => x.textContent.trim()) })`);
   // Places to see joined Plan's map chips in 2b38bf1c ("Go: Repair and Sights behind More; Plan: Places to see").
-  check("go: a shared link opens in Go on a phone, and a wide screen opens in Plan, with Food, Water and Places to see chips on the map (behind Find)", linked === "Go" && wide.mode === "Plan" && !wide.top && JSON.stringify(wide.chips) === JSON.stringify(["Find", "Food", "Water", "Places to see"]), JSON.stringify({ linked, wide }));
+  check("go: a shared link opens in Go on a phone, and a wide screen opens in Plan, with Eat, Water and Places to see chips on the map (behind Find)", linked === "Go" && wide.mode === "Plan" && !wide.top && JSON.stringify(wide.chips) === JSON.stringify(["Find", "Eat", "Water", "Places to see"]), JSON.stringify({ linked, wide }));
   // Folded behind Find (the owner, 2026-10-21: "It's more room"): Find opens the row, Escape folds it back to Find,
   // and a choice opens its sheet and folds the row.
   const fold = "(() => { const t = document.querySelector('.map-chips-toggle'); const r = document.getElementById(t.getAttribute('aria-controls')); return { expanded: t.getAttribute('aria-expanded'), hidden: r.hidden }; })()";
@@ -5148,7 +5148,7 @@ const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-s
   await q.eval("[...document.querySelectorAll('.map-chips-row .map-chip')].find((c) => c.textContent.trim() === 'Water').click(); true");
   await sleep(400);
   const chose = { ...(await q.eval(fold)), sheet: await q.eval("(() => { const s = document.getElementById('sheet-nearest'); return !!s && !s.hidden; })()") };
-  check("plan: Food, Water and Places to see fold behind Find (collapsed); Find opens them, Escape folds them back to Find, and Water opens its sheet and folds them",
+  check("plan: Eat, Water and Places to see fold behind Find (collapsed); Find opens them, Escape folds them back to Find, and Water opens its sheet and folds them",
     closed.expanded === "false" && closed.hidden && opened.expanded === "true" && !opened.hidden && escaped.hidden && escaped.focus && chose.hidden && chose.sheet,
     JSON.stringify({ closed, opened, escaped, chose }));
   await q.close();
@@ -5342,7 +5342,7 @@ const failed = results.filter((r) => !r.ok);
 // Plan's Start ride no longer asks first (2026-10-24) takes one away.
 // Ride's More bubbles (#515, 2026-10-26) turn one check into three: two more.
 // Favorite places (2026-10-26) add two: the popout, and Edit's Remove.
-// Go's More > Saved routes (2026-10-26) adds one.
+// Go's More > Load route (2026-10-26; it was Saved routes) adds one.
 const EXPECTED = 689;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);

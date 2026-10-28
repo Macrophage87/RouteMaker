@@ -338,7 +338,7 @@ export function outstandingSaid(n: number): string {
   return `${n} ${n === 1 ? "problem" : "problems"} still to report to 311.`;
 }
 /** Where Reports is, said under that line. */
-export const REPORTS_WHERE = t("Reports is in Go's Menu and Plan's bottom bar.");
+export const REPORTS_WHERE = t("Reports is in Go's Settings and Plan's bottom bar.");
 export const OPEN_REPORTS = t("Open Reports");
 
 export function archived(entries: LogEntry[], now = new Date()): LogEntry[] {

@@ -212,7 +212,7 @@ export function opensIntoRide(at: { phone: boolean; onBike: boolean; resumeAsked
 
 /** Said once a followed broadcast has started the ride or Roam on its own (opensIntoRide): no press started it, so a
  * phone may keep the voice quiet until the first tap. */
-export const BROADCAST_FOLLOWING = t("Following the leader's broadcast. If you hear no directions, tap the screen once.");
+export const BROADCAST_FOLLOWING = t("Following the leader live. If you hear no directions, tap the screen once.");
 
 /** On a broadcast: shown on or off the route, so the leader and the riders can find each other. */
 export const BROADCAST_CONSENT_NOTE = "Only while the app is open, on or off the route, so the leader and riders can find each other. No name; positions are rounded and gone after 2 minutes.";

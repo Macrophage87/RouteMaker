@@ -44,7 +44,8 @@ export type DetourKind = "water" | "restroom" | "food" | "repair";
 export const DETOUR_CHOICES: ReadonlyArray<{ kind: DetourKind; label: string; icon: "water" | "wc" | "food" | "wrench" }> = [
   { kind: "water", label: t("Water"), icon: "water" },
   { kind: "restroom", label: t("Restroom"), icon: "wc" },
-  { kind: "food", label: t("Food"), icon: "food" },
+  // "Eat", as the map's chips say it (P12).
+  { kind: "food", label: t("Eat"), icon: "food" },
   { kind: "repair", label: t("Repair"), icon: "wrench" },
 ];
 

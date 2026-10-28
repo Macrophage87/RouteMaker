@@ -305,7 +305,8 @@ export const RIDE_TOPO_OFFLINE = `${TOPO_LINES_LABEL} need a connection. Try aga
 export const RIDE_SETTINGS_TITLE = t("Ride settings");
 export const RIDE_CHANGE_TITLE = t("Change the route");
 /** Broadcast on the ride screen (Stephen 2026-10-24: "Let people broadcast from a ride"): Plan's and Go's Broadcast, the ride already going. */
-export const RIDE_BROADCAST_NAME = t("Broadcast");
+/** The name starts with the word shown under the button (P12, WCAG 2.5.3). */
+export const RIDE_BROADCAST_NAME = t("Share live");
 /** More > Riders: the riders panel, its count now on Broadcast. */
 export const RIDERS_NAME = t("Riders");
 /** What End ride leaves behind (lib/navigate.ts planAfterEnd): the plan from here, or as it was. */

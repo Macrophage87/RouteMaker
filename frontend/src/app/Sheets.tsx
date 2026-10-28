@@ -45,7 +45,7 @@ import { DocsPageLink, MtbTrailLegend, StressLegend } from "../lib/stressLegend.
 import { GpxPanel, type FileFormat, type GpxPanelProps, type Said } from "../GpxPanel.tsx";
 import type { DeviceProfileId } from "../lib/deviceProfiles.ts";
 import { JunctionLegend, SheetFrame } from "../Sidebar.tsx";
-import { MASS_RIDE_LAYERS_NOTE, MENU_TITLE, SAVE_LOAD, SHEET_TITLES, STRESS_CHECKING, STRESS_UNAVAILABLE, suggestHint, type PanelView } from "../lib/sidebar.ts";
+import { MASS_RIDE_LAYERS_NOTE, SAVE_LOAD, SHEET_TITLES, STRESS_CHECKING, STRESS_UNAVAILABLE, suggestHint, type PanelView } from "../lib/sidebar.ts";
 import { looksLikePhone } from "../lib/startOnComputer.ts";
 import type { ImportedPlan } from "../lib/gpxPlan.ts";
 import type { WaterPrefs, WaterStatus } from "../lib/waterRestrooms.ts";
@@ -323,7 +323,7 @@ export function GpxSheet(props: GpxSheetProps) {
   const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, fileInput, onOpenFailed, onPick, refineImported, getMap, downloadRoute, downloadCourse, sendToGarmin, sendToWahoo, match, shareControls, routes } = props;
   return (
     <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")} popup>
-      {/* Save and Share first, then your routes to load (in Go, the way to start a saved route), then the files. */}
+      {/* Save and Share first, then My routes to load (in Go, the way to start a saved route), then the files. */}
       {shareControls}
       {routes}
       <GpxPanel
@@ -482,7 +482,7 @@ export interface SettingsSheetProps {
   mode: AppMode;
   /** Whether this server can sign anyone in (GET /api/me's sign_in): the sign-in line is shown only then. */
   signInAvailable: boolean;
-  menu: { onPlan: () => void; onSuggest: (opener: HTMLElement) => void; onGpx: (opener: HTMLElement) => void; onReview: ((opener: HTMLElement) => void) | null };
+  menu: { onSuggest: (opener: HTMLElement) => void; onGpx: (opener: HTMLElement) => void; onReview: ((opener: HTMLElement) => void) | null };
 }
 
 /** High contrast, as the Map layers sheet has it, with its explanation behind an (i). */
@@ -561,7 +561,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
   return (
     <SheetFrame
       id="sheet-settings"
-      title={go ? MENU_TITLE : SHEET_TITLES.settings}
+      title={SHEET_TITLES.settings}
       open={nav.view === "settings"}
       onBack={nav.back}
       backLabel={nav.backLabel("settings")}
@@ -570,10 +570,6 @@ export function SettingsSheet(props: SettingsSheetProps) {
     >
       {go && (
         <nav className="menu-pages" aria-label={t("Pages")}>
-          <button type="button" className="secondary menu-page" onClick={menu.onPlan}>
-            <Icon name="list" />
-            {t("Plan")}
-          </button>
           <button type="button" className="secondary menu-page" onClick={(event) => menu.onSuggest(event.currentTarget)}>
             <Icon name="flag" />
             {t("Reports")}
@@ -592,7 +588,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
       )}
       {/* Three tabs, each about one screen (the owner, 2026-10-28: "A lot of destinations require endless scrolling"):
           Riding (My Go with Home, then the ride's voice and weight), Display, and Account with the app and About. */}
-      <SettingsTabs tab={tab} onTab={setTab} label={go ? MENU_TITLE : SHEET_TITLES.settings} />
+      <SettingsTabs tab={tab} onTab={setTab} label={SHEET_TITLES.settings} />
       <div role="tabpanel" id="settings-panel-riding" aria-labelledby="settings-tab-riding" className="settings-panel" hidden={tab !== "riding"}>
       {/* Most used first (Settings tidy, Stephen 2026-10-19): My Go with Home, then Riding. */}
       <MyGoSection controls={myGo} open={nav.view === "settings"} />
@@ -724,7 +720,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
         </section>
       )}
       {/* The installable app (WEB-NAV-plan.md section 8, P4), under its own heading when the browser offers it. The
-          routes saved and kept for offline are in Save and load (YourRoutes.tsx; the owner, 2026-10-18). */}
+          routes saved and kept for offline are in Save & load (YourRoutes.tsx; the owner, 2026-10-18). */}
       <InstallOffer idBase="settings-install" onSay={announce} />
       {/* The documentation (the owner, 2026-10-19): one link, last, under its own heading. */}
       <section aria-labelledby="settings-about-heading" className="settings-group">
@@ -819,7 +815,7 @@ export function FoodChips({ onChip }: { onChip: (food: string) => void }) {
   );
 }
 
-/** The map's Food chip: Find food (the panel that was a fold in Points), its cuisine chips (FoodChips) under its search box. */
+/** The map's Eat chip: the food search (the panel that was a fold in Points), its cuisine chips (FoodChips) under its search box. */
 export function FoodSheet({ nav, children }: { nav: SheetNav; children: ReactNode }) {
   return (
     <SheetFrame id="sheet-food" title={SHEET_TITLES.food} open={nav.view === "food"} onBack={nav.back} backLabel={nav.backLabel("food")} popup>

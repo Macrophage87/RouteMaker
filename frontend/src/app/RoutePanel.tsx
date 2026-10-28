@@ -952,7 +952,8 @@ export function RouteSummary({
   const infoButton = (
     <button type="button" className="link icon-button info-button route-info-button" aria-expanded={info} aria-controls={infoId} onClick={() => setInfo(!info)}>
       <Icon name="info" />
-      <span>{t("Info")}</span>
+      {/* "Details", not "Info" (P12): Info also meant Plan's tips and the road panel. */}
+      <span>{t("Details")}</span>
     </button>
   );
   const noteList =
