@@ -9,6 +9,7 @@ import type { Dials } from "./dials.ts";
 import { twoPointsOnly, type PresetId } from "./presets.ts";
 import { formatDistance } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
+import { t } from "./i18n.ts";
 
 /** A ride ends where it starts within this (metres): `core.routing.LOOP_SAME_M`, held equal by tests/test_plan_constants.py. */
 export const LOOP_SAME_M = 50;
@@ -114,6 +115,15 @@ export function withLoop(dials: Dials, on: boolean): Dials {
   if (on) next.loop = true;
   else delete next.loop;
   return next;
+}
+
+/**
+ * A loop's way back as the route's note line shows it, where the whole sentence runs past a phone's line (the audit's
+ * P14: "…so this loop retu…"); null where loopNote's own words are shown. The whole sentence stays for screen readers
+ * and Info.
+ */
+export function loopNoteShort(route: Pick<RouteResponse, "loop">): string | null {
+  return route.loop?.fallback === "out_and_back" ? t("Loop returns the same way: no other fit.") : null;
 }
 
 /** What the route summary says of a loop's way back, or null where the route is not a loop. */

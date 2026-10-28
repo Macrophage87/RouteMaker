@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
 import { lightClock, solarDay } from "./lightTimes.ts";
-import { HeadingTrack, aheadSaid, foodNearestPlaces, headingOf, linesOf, mapLines, onRoadSaid, roadsAhead, roamLight, roamLink, roamLinkFrom, type RoadLine, type RoamMap, type StressLine } from "./roam.ts";
+import { HeadingTrack, ROAM_DETOUR_HELP, ROAM_NEARBY_NAME, aheadRow, aheadSaid, foodNearestPlaces, headingOf, linesOf, mapLines, notARoad, onRoadSaid, roadsAhead, roamLight, roamLink, roamLinkFrom, roamReportPlace, type RoadLine, type RoamMap, type StressLine } from "./roam.ts";
 
 // A small grid near Dupont Circle: metres to degrees, close enough at this latitude.
 const O: LonLat = [-77.04, 38.91];
@@ -140,6 +140,66 @@ test("the map's own tiles: named roads from the base map, levels from the stress
   // No map sources yet (the map still loading): nothing, and nothing asked.
   const bare = mapLines({ getSource: () => undefined, querySourceFeatures: () => { throw new Error("asked"); } }, at(0, 0));
   assert.deepEqual(bare, { roads: [], stress: [] });
+});
+
+test("rail and tunnels are no road ahead (the audit's P14: \"Washington Metro - Green and Yellow Line\" was listed)", () => {
+  const line = { type: "LineString", coordinates: [at(-50, 20), at(50, 20)] };
+  const map: RoamMap = {
+    getSource: (id) => (id === "protomaps" ? {} : undefined),
+    querySourceFeatures: () => [
+      { geometry: line, properties: { name: "Washington Metro - Green and Yellow Line", kind: "rail", kind_detail: "subway" } },
+      { geometry: line, properties: { name: "MARC Penn Line", kind: "other", kind_detail: "rail" } },
+      { geometry: line, properties: { name: "Third Street Tunnel", kind: "highway", is_tunnel: true } },
+      { geometry: line, properties: { name: "R Street Northwest", kind: "minor_road" } },
+    ],
+  };
+  assert.deepEqual(
+    mapLines(map, at(0, 0)).roads.map((r) => r.name),
+    ["R Street Northwest"],
+  );
+  assert.equal(notARoad({ kind: "minor_road", is_bridge: true }), false, "a bridge is still a road");
+  assert.equal(notARoad(null), false);
+});
+
+test("a road ahead is one line: Ride's short street words, the distance, its metric apart; the whole of it said", () => {
+  assert.deepEqual(aheadRow({ name: "13th Street Northwest", tier: 4, distanceM: 200 }), {
+    name: "13th St NW",
+    us: "0.1 mi",
+    metric: "(0.2 km)",
+    said: "13th Street Northwest, 0.1 mi (0.2 km), LTS 4",
+  });
+  assert.equal(aheadRow({ name: "Rock Creek Trail", tier: null, distanceM: 200 }).said, "Rock Creek Trail, 0.1 mi (0.2 km)");
+});
+
+test("Roam's 311 place: the road ridden, the next road ahead when close, and the GPS point", () => {
+  const point = at(0, 0);
+  const roads = { on: { name: "14th St NW", tier: 3 }, ahead: [{ name: "U St NW", tier: 3, distanceM: 40 }] };
+  assert.deepEqual(roamReportPlace(point, roads), { words: "on 14th St NW near U St NW", point });
+  assert.equal(roamReportPlace(point, { ...roads, ahead: [{ name: "V St NW", tier: 2, distanceM: 200 }] }).words, "on 14th St NW");
+  assert.equal(roamReportPlace(point, { on: null, ahead: [] }).words, null);
+  assert.equal(roamReportPlace(point, null).words, null);
+});
+
+test("Roam matches Ride (the audit's P13): Large text, 311 one tap, Nearby, the swatch alone on screen", async () => {
+  const { readFileSync } = await import("node:fs");
+  const roam = readFileSync(new URL("../RoamMode.tsx", import.meta.url), "utf8");
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  // Large text: Ride's button and choice, the card as Ride's in Large text.
+  assert.match(roam, /className="ride-round ride-text-size"\s*onClick=\{cycleText\}\s*aria-pressed=\{textSize === "large"\}\s*aria-label=\{RIDE_TEXT_BUTTON\}/);
+  assert.match(roam, /className=\{`ride roam\$\{textSize === "large" \? " ride-large" : ""\}`\}/);
+  assert.match(app, /<RoamMode[\s\S]*?textSize=\{rideText\}\s*onTextSize=\{setRideText\}/);
+  // 311: Ride's button and menu; a pick logs it at once with the road ridden.
+  assert.match(roam, /className="ride-311-button"\s*aria-label=\{RIDE_311_NAME\}/);
+  assert.match(roam, /<Ride311Menu[\s\S]*?onPick=\{pick311\}/);
+  assert.match(roam, /const place = roamReportPlace\(here, roads\);\s*const entry = report311Log\(\)\.add\(kind, place\);/);
+  // Nearby, not Detour: Roam has no route to detour from.
+  assert.equal(ROAM_NEARBY_NAME, "Nearby");
+  assert.equal(ROAM_DETOUR_HELP, "Nearby rides you there; end it to roam again.");
+  assert.match(roam, /aria-label=\{t\("Nearby: \{summary\}", \{ summary: DETOUR_SUMMARY\.toLowerCase\(\) \}\)\}\s*title=\{ROAM_NEARBY_NAME\}/);
+  assert.doesNotMatch(roam, /title=\{t\("Detour"\)\}/);
+  // The level's words for screen readers only; a road ahead's row says the whole of it once.
+  assert.match(roam, /\{!hidden && <span className="visually-hidden">, \{words\}<\/span>\}/);
+  assert.match(roam, /<span className="visually-hidden">\{row\.said\}<\/span>\s*<span className="roam-ahead-name" aria-hidden="true">\{row\.name\}<\/span>/);
 });
 
 test("a road that ends just short of the one ridden (a T junction mapped 2 m off) is met; a path alongside is not", () => {

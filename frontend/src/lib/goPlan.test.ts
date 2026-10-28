@@ -271,7 +271,13 @@ test("the Avoid notice is one line: the first junction and how many more, with A
 });
 
 test("a route's notes are one line each with an icon; their full words are in Info (the owner's choice 5)", () => {
-  assert.match(app, /<li key=\{note\.key\} className=\{`note-line \$\{note\.className\}`\}>\s*<Icon name=\{note\.icon\} size=\{16\} \/>\s*<span className="note-text">\{note\.text\}<\/span>/);
+  assert.match(app, /<li key=\{note\.key\} className=\{`note-line \$\{note\.className\}\$\{note\.short \? " note-wrap" : ""\}`\}>\s*<Icon name=\{note\.icon\} size=\{16\} \/>/);
+  assert.match(app, /: \(\s*<span className="note-text">\{note\.text\}<\/span>\s*\)\}/);
+  // A note too long for a phone's line shows its short words, wrapping, never cut (the audit's P14); the whole
+  // sentence stays for screen readers.
+  assert.match(app, /\{note\.short \? \(\s*<>\s*<span className="note-text" aria-hidden="true">\s*\{note\.short\}\s*<\/span>\s*<span className="visually-hidden">\{note\.text\}<\/span>/);
+  assert.match(app, /icon: "pin", text: walkIn, short: walkInShort\(route\) \}/);
+  assert.match(app, /icon: "loop", text: loop, short: loopNoteShort\(route\) \}/);
   assert.match(app, /\{notes\.map\(\(note\) => \(\s*<p key=\{note\.key\} className="hint note-full">/);
   // The four quick figures are in Stress and facilities (choice 4); Share as image and Keep for offline behind More
   // (choice 8; Share itself is in the Route file sheet since v0.9.0).

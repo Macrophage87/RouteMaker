@@ -51,6 +51,17 @@ test("the plan reads as sentences: start, stops, via points, end, then the ride"
   ]);
 });
 
+test("a ride type named as a ride already is not called a ride twice (the audit's P14: \"Mass Ride ride\")", () => {
+  const none = new ViaMarks().isVia;
+  for (const ride of ["Mass Ride", "Group Ride", "Rebalance Ride"]) {
+    const sentences = planSentences([], none, false, () => undefined, { ride, traffic: null, hills: null });
+    assert.equal(sentencesText(sentences), `Start: tap the map or search for a place. ${ride}.`);
+    // The ride type is still the link to its choice.
+    assert.deepEqual(sentences[1][0], { text: ride, target: { kind: "ride" } });
+  }
+  assert.match(sentencesText(planSentences([], none, false, () => undefined, { ride: "Gravel", traffic: null, hills: null })), /Gravel ride\.$/);
+});
+
 test("an unfinished plan says what to do next, and a loop starts and finishes at its start", () => {
   const none = new ViaMarks().isVia;
   assert.equal(sentencesText(planSentences([], none, false, () => undefined, { ride: "Default", traffic: null, hills: null })), "Start: tap the map or search for a place. Default ride.");

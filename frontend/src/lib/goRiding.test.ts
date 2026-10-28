@@ -62,7 +62,10 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   assert.match(summary, /setScrolls\(element\.scrollHeight > element\.clientHeight\)/);
   // Done: Go emptied for the next trip, Plan's plan kept (the owner, 2026-10-20).
   const finish = app.slice(app.indexOf("const finishRide = () => {"), app.indexOf("  // Roam (RoamMode.tsx)"));
-  assert.match(finish, /endedRide\.current = null;\s*setRideEnded\(null\);\s*if \(mode === "go" && pointsRef\.current\.length > 0\) clearPlan\(\);\s*else backToRideOpener\(\);/);
+  assert.match(finish, /endedRide\.current = null;\s*setRideEnded\(null\);\s*if \(mode === "go" && pointsRef\.current\.length > 0\) \{\s*clearPlan\(\);[\s\S]*?\} else backToRideOpener\(\);/);
+  // Not Where to? opened on the last places (the audit's P14): the clear's focus to the search dropped, the box let go,
+  // the focus on Go's big button (Roam) once it shows.
+  assert.match(finish, /clearPlan\(\);[\s\S]*?focusAfterRemove\.current = null;\s*if \(document\.activeElement instanceof HTMLElement && document\.activeElement\.closest\("\.go-search"\)\) document\.activeElement\.blur\(\);\s*window\.requestAnimationFrame\(\(\) => document\.querySelector<HTMLElement>\("\.go-bar-start"\)\?\.focus\(\)\);/);
   // Undo carries on from the ended ride's figures; a new Start begins from nought.
   assert.match(app, /setResumeStats\(ended\.stats\);\s*setRideStart\(ended\.start\);/);
   assert.match(app, /setResumeStats\(null\);\s*setRideStart\(\(before\) =>/);
@@ -187,16 +190,22 @@ test("End ride is slid until the rider has arrived (the owner, 2026-10-19: \"Add
   assert.match(slide, /type="range"[\s\S]*min=\{0\}\s*max=\{100\}\s*step=\{25\}/);
   // Named End ride unless told otherwise (Roam's is End roam: RoamMode.tsx).
   assert.match(slide, /function SlideToEnd\(\{ onEnd, onTap, name = END_RIDE_NAME \}/);
-  assert.match(slide, /aria-label=\{name\}/);
+  assert.match(slide, /aria-label=\{t\("\{name\}: slide to end", \{ name \}\)\}/);
+  // The words on it say what to do (the audit's P14): "Slide to end ››", whatever it ends.
+  assert.match(slide, /<span className="ride-slide-text" aria-hidden="true">\s*\{SLIDE_TO_END_LABEL\}\s*<span className="ride-slide-arrows">››<\/span>/);
+  assert.match(ride, /export const SLIDE_TO_END_LABEL = t\("Slide to end"\);/);
   assert.match(slide, /if \(next >= 100\) onEnd\(\);/);
-  // A tap that jumps it past half way springs back and says how; let go short of the end, it springs back.
-  assert.match(slide, /if \(!byKey && next - last\.current > 50\) \{\s*back\(\);\s*onTap\(\);\s*return;/);
+  // A tap that jumps it half way or more (a tap in the middle jumps it to 50) springs back and says how.
+  assert.match(slide, /if \(!byKey && next - last\.current >= 50\) \{\s*back\(\);\s*told\.current = true;\s*onTap\(\);\s*return;/);
   // Only the range's own keys count as a step (review: a stray key let the next tap through); a pointer clears it.
   assert.match(slide, /key\.current = SLIDE_KEYS\.has\(event\.key\);/);
   assert.match(slide, /onPointerDown=\{\(\) => \{\s*key\.current = false;/);
   // Left part way by a screen reader's adjust gestures (no blur), it goes back.
   assert.match(slide, /window\.setTimeout\(back, SLIDE_BACK_MS\)/);
-  assert.match(slide, /onPointerUp=\{\(\) => \{\s*if \(last\.current < 100\) back\(\);/);
+  // Let go short of the end by a finger or a mouse (a tap on the thumb, or short of half way), it springs back and
+  // says how, once for the press.
+  assert.match(slide, /onPointerUp=\{\(\) => \{\s*if \(last\.current >= 100\) return;\s*back\(\);\s*if \(!told\.current\) onTap\(\);\s*told\.current = true;/);
+  assert.match(slide, /onPointerDown=\{\(\) => \{\s*key\.current = false;\s*told\.current = false;/);
   assert.match(ride, /const slideHint = \(\) => \{\s*showToast\(SLIDE_TO_END_HINT\);\s*announcer\.current\?\.answer\(SLIDE_TO_END_HINT\);/);
   // The light times take the corner inside the heading, which stays Ride mode for screen readers; the times said in words after it.
   assert.match(top, /className=\{light \? "ride-heading ride-light" : "ride-heading"\}>\s*\{light \? \(\s*<>\s*<span className="visually-hidden">\{t\("Ride mode"\)\}<\/span>\s*<span className="ride-light-lines" aria-hidden="true">/);

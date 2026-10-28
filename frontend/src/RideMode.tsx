@@ -273,7 +273,9 @@ const SLIDE_KEYS = new Set(["ArrowRight", "ArrowUp", "ArrowLeft", "ArrowDown", "
 /** End ride's slide left part way goes back after this long. */
 const SLIDE_BACK_MS = 4_000;
 /** Said and shown when End ride is tapped rather than slid. */
-export const SLIDE_TO_END_HINT = t("Slide End ride to the right to end the ride.");
+export const SLIDE_TO_END_HINT = t("Slide it to the right to end the ride.");
+/** The words on End ride's slide (and End roam's): what to do, its name for screen readers keeping what it ends. */
+export const SLIDE_TO_END_LABEL = t("Slide to end");
 /**
  * The last side button opens these, under the top row (the owner, 2026-10-16: "the buttons to change the settings seem
  * hidden"; a gear in the rack since v0.9.0): since 2026-10-24 More, the route's changes above the settings (Stephen:
@@ -475,13 +477,18 @@ const ROAD_EDGES = "M4 26 H44 M4 40 H44";
 /**
  * End ride as a slide (the owner, 2026-10-19), so a bump while riding does not end it: a range from 0 to
  * 100 in quarters, the ride ended when it reaches the end. A native range, so the keyboard's arrows and a
- * screen reader's adjust gestures move it too. A tap on the track that jumps it more than half way is a
- * tap, not a slide: it springs back and says how. Let go short of the end, or left part way, it springs back.
+ * screen reader's adjust gestures move it too. A tap on the track that jumps it half way or more is a tap,
+ * not a slide: it springs back and says how. Let go short of the end, or left part way, it springs back; let go
+ * by a finger or a mouse, it says how too, so a tap anywhere on it (the thumb, or the track short of half way) is
+ * answered (the audit's P14: a tap in the middle did nothing). The words on it say what to do, "Slide to end ››";
+ * its name keeps what it ends ("End ride: slide to end").
  */
 export function SlideToEnd({ onEnd, onTap, name = END_RIDE_NAME }: { onEnd: () => void; onTap: () => void; name?: string }) {
   const [value, setValue] = useState(0);
   const last = useRef(0);
   const key = useRef(false);
+  // Said already for this press (a jump), so letting go does not say it again.
+  const told = useRef(false);
   const back = () => {
     key.current = false;
     last.current = 0;
@@ -496,7 +503,7 @@ export function SlideToEnd({ onEnd, onTap, name = END_RIDE_NAME }: { onEnd: () =
   return (
     <div className="ride-end ride-slide">
       <span className="ride-slide-text" aria-hidden="true">
-        {name}
+        {SLIDE_TO_END_LABEL}
         <span className="ride-slide-arrows">››</span>
       </span>
       <input
@@ -506,7 +513,7 @@ export function SlideToEnd({ onEnd, onTap, name = END_RIDE_NAME }: { onEnd: () =
         max={100}
         step={25}
         value={value}
-        aria-label={name}
+        aria-label={t("{name}: slide to end", { name })}
         aria-valuetext={value === 0 ? SLIDE_TO_END : `${value}%`}
         onKeyDown={(event) => {
           // Only the keys that move a range count as a step, so a stray key never lets a tap through.
@@ -514,13 +521,15 @@ export function SlideToEnd({ onEnd, onTap, name = END_RIDE_NAME }: { onEnd: () =
         }}
         onPointerDown={() => {
           key.current = false;
+          told.current = false;
         }}
         onChange={(event) => {
           const next = Number(event.currentTarget.value);
           const byKey = key.current;
           key.current = false;
-          if (!byKey && next - last.current > 50) {
+          if (!byKey && next - last.current >= 50) {
             back();
+            told.current = true;
             onTap();
             return;
           }
@@ -529,7 +538,10 @@ export function SlideToEnd({ onEnd, onTap, name = END_RIDE_NAME }: { onEnd: () =
           if (next >= 100) onEnd();
         }}
         onPointerUp={() => {
-          if (last.current < 100) back();
+          if (last.current >= 100) return;
+          back();
+          if (!told.current) onTap();
+          told.current = true;
         }}
         onPointerCancel={back}
         onBlur={() => {

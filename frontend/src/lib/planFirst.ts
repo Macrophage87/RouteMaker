@@ -77,7 +77,9 @@ export function planSentences(
   }
   // The words around the ride type, in the language's own order ("Default ride", "Recorrido Default").
   const rideLink: Phrase = { text: words.ride, target: { kind: "ride" } };
-  const [before, after] = t("{ride} ride").split("{ride}");
+  // A ride type named as a ride already (Group Ride, Mass Ride, Rebalance Ride) stands alone: never "Mass Ride ride"
+  // (the audit's P14).
+  const [before, after] = /\bride$/i.test(words.ride.trim()) ? ["", ""] : t("{ride} ride").split("{ride}");
   const ride: Phrase[] = [{ text: before }, rideLink, { text: after }].filter((p) => p === rideLink || p.text !== "");
   if (words.traffic) ride.push({ text: ", " }, { text: lower(words.traffic), target: { kind: "traffic" } });
   if (words.hills) ride.push({ text: ", " }, { text: lower(words.hills), target: { kind: "hills" } });

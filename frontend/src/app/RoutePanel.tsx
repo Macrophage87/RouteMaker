@@ -18,12 +18,12 @@ import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
 import { lightLine, type LightMark } from "../lib/lightTimes.ts";
 import { weatherSaid, type WeatherReport } from "../lib/weather.ts";
 import { WeatherLines } from "../WeatherLines.tsx";
-import { calmSearchNote, detourView, paceText, stillPlanningSaid, movedPointsNote, noviceWalksNote, walkInNote } from "../lib/summary.ts";
+import { calmSearchNote, detourView, paceText, stillPlanningSaid, movedPointsNote, noviceWalksNote, walkInNote, walkInShort } from "../lib/summary.ts";
 import { isCancelKey } from "../lib/sheet.ts";
 import { useStressStyle } from "../useStressStyle.ts";
 import { CandidatePicker } from "../lib/candidatePicker.ts";
 import { candidateRows } from "../lib/candidates.ts";
-import { loopNote } from "../lib/loop.ts";
+import { loopNote, loopNoteShort } from "../lib/loop.ts";
 import { mtbNotes } from "../lib/mtbMode.ts";
 import { FacilityBreakdown } from "../FacilityBreakdown.tsx";
 import { IntersectionList } from "../IntersectionList.tsx";
@@ -550,6 +550,11 @@ interface NoteLine {
   className: string;
   icon: IconName;
   text: string;
+  /**
+   * Shown in the text's place where the whole sentence runs past a phone's line (the audit's P14), and allowed to wrap
+   * rather than be cut: the text stays for screen readers, and in full in Info.
+   */
+  short?: string | null;
 }
 
 function noteLines(route: RouteResponse, points: LonLat[], light: readonly LightMark[] = []): NoteLine[] {
@@ -559,7 +564,7 @@ function noteLines(route: RouteResponse, points: LonLat[], light: readonly Light
   if (moved) lines.push({ key: "moved", className: "notice moved-points", icon: "pin", text: moved });
   // The ride stops short of a point, and the rider walks the bike the rest (the API's `walk_in`).
   const walkIn = walkInNote(route);
-  if (walkIn) lines.push({ key: "walk-in", className: "notice walk-in", icon: "pin", text: walkIn });
+  if (walkIn) lines.push({ key: "walk-in", className: "notice walk-in", icon: "pin", text: walkIn, short: walkInShort(route) });
   // Novice and Nervous walk the bike past a short busy stretch on the sidewalk (v0.11.0; the API's `novice.walks`).
   const pastBusy = noviceWalksNote(route);
   if (pastBusy) lines.push({ key: "novice-walks", className: "notice walk-in", icon: "pin", text: pastBusy });
@@ -572,7 +577,7 @@ function noteLines(route: RouteResponse, points: LonLat[], light: readonly Light
   const calm = calmSearchNote(route);
   if (calm) lines.push({ key: "calm", className: "hint calm-search", icon: "info", text: calm });
   const loop = loopNote(route);
-  if (loop) lines.push({ key: "loop", className: "hint loop-note", icon: "loop", text: loop });
+  if (loop) lines.push({ key: "loop", className: "hint loop-note", icon: "loop", text: loop, short: loopNoteShort(route) });
   // Mountain Bike (slice 6): what the trail rules could not hold, said first, then how much is trail.
   const mtb = mtbNotes(route.mtb);
   for (const text of mtb.warnings) lines.push({ key: `mtb-${text}`, className: "notice mtb-warning", icon: "warn", text });
@@ -845,9 +850,18 @@ export function RouteSummary({
     notes.length > 0 ? (
       <ul className="note-lines" role="list">
         {notes.map((note) => (
-          <li key={note.key} className={`note-line ${note.className}`}>
+          <li key={note.key} className={`note-line ${note.className}${note.short ? " note-wrap" : ""}`}>
             <Icon name={note.icon} size={16} />
-            <span className="note-text">{note.text}</span>
+            {note.short ? (
+              <>
+                <span className="note-text" aria-hidden="true">
+                  {note.short}
+                </span>
+                <span className="visually-hidden">{note.text}</span>
+              </>
+            ) : (
+              <span className="note-text">{note.text}</span>
+            )}
           </li>
         ))}
       </ul>

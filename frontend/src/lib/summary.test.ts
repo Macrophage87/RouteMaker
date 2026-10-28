@@ -359,6 +359,11 @@ test("a ride that stops short of the destination says to walk the bike the rest 
   assert.match(walkInNote(both) ?? "", /^Walk your bike .* to where the ride starts\. Walk your bike the last/);
   assert.equal(walkInNote({ walk_in: null } as never), null);
   assert.equal(walkInNote({} as never), null);
+  // The note line's short words (the audit's P14: the sentence was cut at "to your destin…").
+  const { walkInShort } = await import("./summary.ts");
+  assert.equal(walkInShort(route), "Walk the last 300 ft (90 m)");
+  assert.equal(walkInShort(both), "Walk 130 ft (40 m) to the start · Walk the last 300 ft (90 m)");
+  assert.equal(walkInShort({ walk_in: null } as never), null);
 });
 
 test("a Novice route says the busy stretches it walks past on the sidewalk, and draws them (v0.11.0; the owner, 2026-10-21)", async () => {

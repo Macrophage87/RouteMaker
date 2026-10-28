@@ -9,11 +9,13 @@
  */
 import type { FoodPlace } from "./food.ts";
 import { foodKindText } from "./food.ts";
+import { shortStreets } from "./cueShown.ts";
 import { formatDistance, formatDuration, spokenDistance } from "./format.ts";
 import { lightClock, solarDay } from "./lightTimes.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { BASEMAP_SOURCE_ID, STRESS_SOURCE_ID } from "./mapStyle.ts";
 import type { NearestPlace } from "./nearest.ts";
+import { placeWords, type ReportPlace } from "./report311.ts";
 import { STRESS_TILE_LAYER } from "../stressStyle.js";
 import { tierWords } from "./profileChart.ts";
 import { t } from "./i18n.ts";
@@ -31,8 +33,25 @@ export const STILL_ROAMING_SAID = t("Still roaming. Use End roam to stop.");
 export const NO_ROAD_YET = t("Looking for the road you're on…");
 /** No named road near: on an unnamed path, or off the map's roads. */
 export const NO_NAMED_ROAD = t("No named road here");
-/** What Roam's Detour menu offers (the owner: "bathroom food water"). */
-export const ROAM_DETOUR_HELP = t("Detour plans a ride from where you are to that place. End the ride there to go back to roaming.");
+/**
+ * Roam's Nearby button and menu (the owner: "bathroom food water"): named Nearby, not Detour, since Roam has no route to
+ * detour from (the audit's P13, approved 2026-10-28); its results say Ride here.
+ */
+export const ROAM_NEARBY_NAME = t("Nearby");
+export const ROAM_DETOUR_HELP = t("Nearby rides you there; end it to roam again.");
+
+/**
+ * The base map's lines that are no road to ride onto (the audit's P14: "Washington Metro - Green and Yellow Line" was
+ * listed as a road ahead): rail of every kind, by its own `kind` or a rail `kind_detail`, and tunnels, which pass under
+ * the roads they cross.
+ */
+const RAIL_DETAILS = new Set(["rail", "subway", "light_rail", "tram", "monorail", "narrow_gauge", "funicular", "miniature", "preserved", "disused"]);
+export function notARoad(properties: Record<string, unknown> | null | undefined): boolean {
+  const p = properties ?? {};
+  if (p.kind === "rail" || typeof p.railway === "string") return true;
+  if (typeof p.kind_detail === "string" && RAIL_DETAILS.has(p.kind_detail)) return true;
+  return p.is_tunnel === true || p.is_tunnel === "true" || p.tunnel === "yes";
+}
 
 /** One line of the map: a named road (the base map's) or a stress line (the stress tiles'), each as lon/lat lines. */
 export interface RoadLine {
@@ -250,6 +269,32 @@ export function onRoadSaid(on: RoadNow | null): string {
 /** One road ahead, as shown under the card's road: the distance, US units first. */
 export const aheadShown = (road: RoadAhead): string => formatDistance(road.distanceM);
 
+/**
+ * One road ahead on one line of the card (the audit's P13): the street words as Ride's card shortens them, then the
+ * distance, its metric apart so the card can show it smaller ("13th St NW", "0.1 mi", "(0.2 km)"). Shown only: `said`
+ * is the whole of it in words for screen readers ("13th Street Northwest, 0.1 mi (0.2 km), LTS 4").
+ */
+export function aheadRow(road: RoadAhead): { name: string; us: string; metric: string; said: string } {
+  const far = aheadShown(road);
+  const at = far.indexOf(" (");
+  return {
+    name: shortStreets(road.name),
+    us: at < 0 ? far : far.slice(0, at),
+    metric: at < 0 ? "" : far.slice(at + 1),
+    said: [road.name, far, roamTier(road.tier)].filter(Boolean).join(", "),
+  };
+}
+
+/** Said when a 311 pick in Roam comes before the first GPS fix. */
+export const ROAM_NO_PLACE_311 = t("Your position is not known yet, so nothing was logged.");
+/** How near the next road ahead is to be named in a 311 entry from Roam ("on 14th St NW near U St NW"). */
+export const ROAM_PLACE_NEAR_M = 60;
+/** Where a 311 entry from Roam says the rider is: the road ridden, the next road ahead when close, and the GPS point. */
+export function roamReportPlace(point: LonLat, roads: RoadsAhead | null): ReportPlace {
+  const next = roads?.ahead[0];
+  return { words: placeWords(roads?.on?.name ?? null, next && next.distanceM <= ROAM_PLACE_NEAR_M ? next.name : null), point };
+}
+
 /** The roads ahead, as said: "Ahead: Calvert Street in 300 feet, LTS 3; Ontario Road in 0.2 miles." */
 export function aheadSaid(ahead: readonly RoadAhead[]): string {
   if (ahead.length === 0) return "";
@@ -338,7 +383,7 @@ export function mapLines(map: RoamMap, rider: LonLat, reach = AHEAD_M + 200): { 
   if (map.getSource(BASEMAP_SOURCE_ID)) {
     for (const f of map.querySourceFeatures(BASEMAP_SOURCE_ID, { sourceLayer: "roads" })) {
       const name = roadName(f.properties);
-      if (!name) continue;
+      if (!name || notARoad(f.properties)) continue;
       const lines = linesOf(f.geometry);
       if (near(lines)) roads.push({ name, lines });
     }
