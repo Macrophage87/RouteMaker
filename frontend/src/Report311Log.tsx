@@ -28,11 +28,12 @@ import {
   whenWords,
   type LogEntry,
 } from "./lib/report311Log.ts";
+import { t } from "./lib/i18n.ts";
 
-export const LOG_HEADING = "Your 311 checklist";
+export const LOG_HEADING = t("Your 311 checklist");
 export const LOG_HINT =
-  `Log a problem with a ride's 311 button, or right-click a road (press and hold on a phone) and choose Log for 311. Copy the report into the site, then check it off. One left unchecked is archived after ${STALE_DAYS} days.`;
-export const LOG_EMPTY = "Nothing to report yet.";
+  t("Log a problem with a ride's 311 button, or right-click a road (press and hold on a phone) and choose Log for 311. Copy the report into the site, then check it off. One left unchecked is archived after {days} days.", { days: STALE_DAYS });
+export const LOG_EMPTY = t("Nothing to report yet.");
 
 /** What the checkbox says: the problem and when it was logged, "Pothole, Oct 20, 10:29 AM". */
 export function entryLabel(entry: LogEntry): string {
@@ -60,7 +61,7 @@ function Entry({ entry, onCopy, onCheck }: { entry: LogEntry; onCopy: (entry: Lo
       </p>
       {!done && (
         <button type="button" className="secondary log311-copy" aria-describedby={`${id}-place`} onClick={() => onCopy(entry)}>
-          Copy report
+          {t("Copy report")}
         </button>
       )}
     </li>
@@ -98,7 +99,7 @@ export function Report311Log() {
   const copy = async (entry: LogEntry) => {
     const done = await copyText(entryText(entry), navigator.clipboard, selectionCopy);
     setCopied("");
-    window.setTimeout(() => setCopied(done ? `${kindLabel(entry.kind)} report copied.` : "Could not copy; select the report's text instead."), 150);
+    window.setTimeout(() => setCopied(done ? t("{kind} report copied.", { kind: kindLabel(entry.kind) }) : t("Could not copy; select the report's text instead.")), 150);
   };
   // One time for both lists, so an entry at the 30-day mark is in exactly one of them.
   const now = new Date();

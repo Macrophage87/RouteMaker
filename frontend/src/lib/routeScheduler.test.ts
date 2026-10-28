@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { DEBOUNCE_MS, MAX_WAITS, RouteScheduler, type SchedulerState, type Timers } from "./routeScheduler.ts";
 import {
   LONG_RIDE_TIMED_OUT,
@@ -549,4 +550,45 @@ test("Try again after a long ride ran out of time waits its Retry-After out, the
   ctx.scheduler.request(1);
   await ctx.timers.advance(DEBOUNCE_MS);
   assert.equal(ctx.api.calls.length, 3);
+});
+
+test("a press sent with now goes at once and takes over a slider edit still waiting out its debounce (S26)", async () => {
+  const ctx = setup();
+  ctx.scheduler.request(1); // a slider drag
+  await ctx.timers.advance(DEBOUNCE_MS / 2);
+  assert.equal(ctx.api.calls.length, 0, "the drag waits its debounce");
+  ctx.scheduler.request(2, { now: true }); // Route pressed
+  await flush();
+  assert.equal(ctx.api.calls.length, 1, "the press did not wait");
+  await ctx.timers.advance(DEBOUNCE_MS);
+  assert.equal(ctx.api.calls.length, 1, "the drag's debounce did not send a second request");
+  ctx.api.calls[0].answer(ok);
+  await flush();
+  ctx.scheduler.request(3); // the next drag keeps the debounce
+  await ctx.timers.advance(DEBOUNCE_MS - 1);
+  assert.equal(ctx.api.calls.length, 1, "now did not carry over to the next request");
+  await ctx.timers.advance(1);
+  assert.equal(ctx.api.calls.length, 2);
+});
+
+test("one deliberate press goes at once: Plan's Route, Try again and a transit pick skip the debounce (routing audit S26)", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  // The flag is read and cleared at the top of the route effect, before any early return, so it never carries
+  // over to a later edit.
+  const effect = app.slice(app.indexOf("// Route when the plan changes (Go) or the Route button is pressed (Plan)."));
+  assert.match(effect, /^[^\n]*\n\s*useEffect\(\(\) => \{\s*const now = sendNow\.current;\s*sendNow\.current = false;\s*if \(points\.length < 2\) \{/);
+  assert.match(effect, /\}, \{ now: now \|\| \(goPickedNow\.current && mode === "go"\) \}\);/);
+  const press = app.slice(app.indexOf("const pressRoute = () => {"), app.indexOf("const cancelRouting"));
+  assert.match(press, /sendNow\.current = true;\s*setRouteAsk\(\(n\) => n \+ 1\);/);
+  const pick = app.slice(app.indexOf("onPick: (key: string) => {"), app.indexOf("onMissed: retry"));
+  assert.match(pick, /sendNow\.current = true;\s*setTransitPick\(\{ trip, key \}\);/);
+  const retry = app.slice(app.indexOf("const retry = () =>"), app.indexOf("const routableLevel"));
+  assert.match(retry, /transitPick \}, \{ now: true \}\);/);
+  // Sliders and pin drags keep the debounce; the long-ride question keeps it too, to fold its two sends into one,
+  // and Go's Add a stop keeps it (a few stops added quickly fold into fewer requests on the beta's two slots).
+  const confirm = app.slice(app.indexOf("const confirmLong = () => {"), app.indexOf("const cancelLong"));
+  assert.doesNotMatch(confirm, /now: true|sendNow/);
+  const addStop = app.slice(app.indexOf("const goAddStopAt = "), app.indexOf("const goAddStop = "));
+  assert.doesNotMatch(addStop, /now: true|sendNow/);
+  assert.equal((app.match(/sendNow\.current = true;/g) ?? []).length, 2, "only Route and the transit pick set it");
 });

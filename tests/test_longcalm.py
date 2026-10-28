@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 import threading
+from concurrent.futures import Future
 
 import pytest
 from test_refine import (
@@ -23,7 +24,7 @@ from test_refine import (
     trip_of,
 )
 
-from core import legsplit, presets, refine, routing, trailseek
+from core import legsplit, parallel, presets, refine, routing, trailseek
 from routemaker import intersections as model
 
 FT = model.FEET_PER_METRE
@@ -467,7 +468,9 @@ class TestTheHillsLevel:
         monkeypatch.setattr(refine.effort, "effort_equivalent_m", effort_fn)
         monkeypatch.setattr(routing, "_trace", lambda *a, **k: {"shape": "x"})
         monkeypatch.setattr(
-            routing, "pieces_of_trace", lambda trace: [routing.Piece(1, BASE[0], BASE[1], 100.0)]
+            routing,
+            "pieces_of_trace",
+            lambda trace, shape=None: [routing.Piece(1, BASE[0], BASE[1], 100.0)],
         )
         monkeypatch.setattr(
             routing, "decode_polyline6", lambda s: [BASE, (BASE[0] + 0.01, BASE[1])]
@@ -1170,6 +1173,40 @@ class TestTheLongSearch:
         # The legs before it are read; none after it.
         assert [a[0] for a in world.analysed if a[0] in ("L0", "L1", "L2")] == ["L0"]
 
+    @pytest.mark.parametrize(
+        ("error", "limited"),
+        [
+            (routing.RouterRefused(400, 171, "no"), "split"),
+            (routing.DeadlineExceeded("late"), "time"),
+        ],
+    )
+    def test_a_legs_failure_cancels_the_legs_not_yet_read(
+        self, monkeypatch, settings, error, limited
+    ) -> None:
+        # Audit R4: the legs after the one that failed, still queued on the pool, are not
+        # asked once the search has given up; the one already read is left alone.
+        settings.ROUTER_PARALLEL_CALLS = 3
+        world = legs_world(monkeypatch)
+        futures: list[Future] = []
+
+        def submit(fn, variant, endpoint, request, deadline):
+            future: Future = Future()
+            leg = world.leg_of(request["locations"][0])
+            if leg == 0:
+                future.set_result(world.call(variant, endpoint, request, deadline))
+            elif leg == 1:
+                future.set_exception(error)
+            futures.append(future)  # the third leg's is still queued
+            return future
+
+        monkeypatch.setattr(parallel, "submit", submit)
+        monkeypatch.setattr(routing, "prefetch_traces", lambda *a, **k: None)
+        whole = whole_trip()
+        trip, info = refine.refine_long(whole, long_context(ceiling_m=45_000.0))
+        assert trip is whole and info["limited"] == limited
+        assert len(futures) == 3
+        assert not futures[0].cancelled() and futures[2].cancelled()
+
     def test_too_little_time_to_start_leaves_the_route(self, monkeypatch) -> None:
         legs_world(monkeypatch)
         ctx = long_context(ceiling_m=45_000.0)
@@ -1181,12 +1218,43 @@ class TestTheLongSearch:
     def test_a_leg_the_time_does_not_reach_keeps_the_routers_route(self, monkeypatch) -> None:
         legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})
         ctx = long_context(ceiling_m=45_000.0)
-        # 13 s from the start, less the 6 s kept for the whole's junctions: 7 s.
-        ctx.deadline = routing.Deadline(routing.clock() + 13.0, 45)
+        # 13.5 s from the start, less the 6 s kept for the whole's junctions: 7.5 s (7 s
+        # before audit round 3, S31, which a last leg now needs a little more than).
+        ctx.deadline = routing.Deadline(routing.clock() + 13.5, 45)
         trip, info = refine.refine_long(whole_trip(), ctx)
         # The worst leg's share is under a round; the last has the whole of what is left.
         assert info["limited"] == "time" and info["long"]["skipped"] == 1
         assert info["long"]["searched"] == 1
+
+    def test_a_leg_whose_share_cannot_finish_a_round_is_not_searched(self, monkeypatch) -> None:
+        # Audit round 3, S31: a leg's rounds have LONG_SEARCH_SHARE of its share, and a round
+        # starts only with REFINE_ROUND_MIN_S left, so a 6.5 s share (4.55 s of rounds) can
+        # change nothing. It is skipped, never read with its junctions, keeps the router's
+        # route, and the next leg has the time.
+        world = legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})
+        shares = []
+        real = refine.refine
+
+        def spy(trip, ctx):
+            shares.append((trip["legs"][0]["shape"], ctx.stop_at - routing.clock()))
+            return real(trip, ctx)
+
+        monkeypatch.setattr(refine, "refine", spy)
+        ctx = long_context(ceiling_m=45_000.0)
+        # 13.7 s to share once the whole's junctions are kept back: L1's 1,800 of 3,800 is
+        # 6.5 s, over the old gate of a round and a second (6 s), under a round of searching.
+        ctx.deadline = routing.Deadline(
+            routing.clock() + refine.LONG_FINAL_RESERVE_S + 6.5 * 3800 / 1800, 45
+        )
+        trip, info = refine.refine_long(whole_trip(), ctx)
+        assert refine.LONG_LEG_MIN_S * refine.LONG_SEARCH_SHARE > refine.REFINE_ROUND_MIN_S
+        assert [name for name, _share in shares] == ["L2"]
+        assert shares[0][1] == pytest.approx(6.5 * 3800 / 1800, abs=0.5)
+        assert ("L1", True) not in world.analysed
+        assert info["long"]["skipped"] == 1 and info["long"]["searched"] == 1
+        assert info["limited"] == "time"
+        (l1,) = [leg for leg in info["long"]["per_leg"] if leg["leg"] == 1]
+        assert l1["searched"] is False and l1["m"] == l1["first_m"]
 
     def test_the_time_is_shared_by_weight(self, monkeypatch) -> None:
         legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})

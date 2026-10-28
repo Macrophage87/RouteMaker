@@ -179,9 +179,9 @@ test("App puts the ride type's button first and every dial behind the Ride setti
     return i;
   };
   const order = [
-    'label="Traffic"',
-    'label="Hills"',
-    "<legend>When</legend>",
+    'label={t("Traffic")}',
+    'label={t("Hills")}',
+    '<legend>{t("When")}</legend>',
     "{view.target && (",
     "Avoid gravel",
   ].map(at);
@@ -484,7 +484,7 @@ test("the route's folds: Elevation and climbs, Stress and facilities, Directions
   for (const key of ["facilities", "junctions", "choices", "water"] as const) {
     assert.match(app, new RegExp(`heading=\\{ROUTE_FOLDS\\.${key}\\.title\\}\\s+open=\\{ROUTE_FOLDS\\.${key}\\.open\\}`), key);
   }
-  assert.match(app, /<h3 className="visually-hidden">Totals<\/h3>\s*<dl className="stats totals">/);
+  assert.match(app, /<h3 className="visually-hidden">\{t\("Totals"\)\}<\/h3>\s*<dl className="stats totals">/);
   // The notices are one line (a count, listed behind it: the owner's choice 5); the figures are folded,
   // the four quick figures first (choice 4).
   assert.match(app, /<FacilityBreakdown route=\{route\} part="notices" \/>/);
@@ -579,7 +579,7 @@ test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANU
   assert.doesNotMatch(app, /\{\/\* Pinned under/);
   const summary = app.slice(app.indexOf("export function RouteSummary"));
   assert.ok(summary.indexOf("<StressFigure") < summary.indexOf("<RouteActions {...actions} start={start} />"));
-  assert.match(app, /<div className="route-actions-row">\s*\{start\}\s*<button type="button" className="secondary icon-button gpx-download" onClick=\{\(\) => downloadRoute\(\)\} aria-label="Download GPX">/);
+  assert.match(app, /<div className="route-actions-row">\s*\{start\}\s*<button type="button" className="secondary icon-button gpx-download" onClick=\{\(\) => downloadRoute\(\)\} aria-label=\{t\("Download GPX"\)\}>/);
   assert.match(app, /<span role="status" className="visually-hidden link-spoken">\s*\{linkSpoken\}/);
   // The spoken confirmation carries the location note (OWNER-DECISIONS 395), and the button is described by it.
   assert.equal(linkSpokenFor(true, ""), COPY_LINK_DONE);
@@ -590,7 +590,7 @@ test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANU
   assert.equal(linkSpokenFor(false, "This link includes your location as the start."), COPY_LINK_FAILED);
   assert.match(app, /if \(press === linkPresses\.current\) setLinkSpoken\(linkSpokenFor\(done, note\)\);/);
   // "Link" shown, "Copy link" heard: the visible word is in the name (label in name).
-  assert.match(app, /onClick=\{copyLink\} aria-label=\{COPY_LINK\} aria-describedby=\{linkNote \? "link-note" : undefined\}>\s*<Icon name="link" \/>\s*<span aria-hidden="true">Link<\/span>/);
+  assert.match(app, /onClick=\{copyLink\} aria-label=\{COPY_LINK\} aria-describedby=\{linkNote \? "link-note" : undefined\}>\s*<Icon name="link" \/>\s*<span aria-hidden="true">\{t\("Link"\)\}<\/span>/);
   assert.match(app, /<p id="link-note" className="hint link-note">/);
   // More holds Share and Keep for offline, a disclosure.
   assert.match(app, /className="secondary icon-button route-more" aria-expanded=\{more\} aria-controls=\{moreId\}/);
@@ -678,7 +678,7 @@ test("a sheet: Back is a labelled button, its heading takes the focus, Escape go
   // A sheet opened from another sheet goes back to it, and says so (Back to Layers, Back to Menu).
   assert.match(sidebar, /<button type="button" className="sheet-back" onClick=\{onBack\}>[\s\S]*?<\/svg>\s*\{backLabel\}\s*<\/button>/, "Back goes back (NIT A)");
   assert.match(sidebar, /backLabel = BACK_LABEL,/);
-  assert.match(app, /return `Back to \$\{step\.from === "settings" && mode === "go" \? "Menu" : SHEET_TITLES\[step\.from as Exclude<PanelView, "planner">\]\}`;/);
+  assert.match(app, /return t\("Back to \{title\}", \{ title: step\.from === "settings" && mode === "go" \? MENU_TITLE : SHEET_TITLES\[step\.from as Exclude<PanelView, "planner">\] \}\);/);
   assert.match(sidebar, /<h2 id=\{`\$\{id\}-title`\} ref=\{headingRef\} tabIndex=\{-1\}>/);
   assert.match(
     sidebar,
@@ -724,7 +724,7 @@ test("where the focus goes on every change of view (mutation SF1)", () => {
   assert.match(app, /const showPlanner = \(focusHeading = true\) => \{\s*viewCause\.current = focusHeading \? "planButton" : "panelToggle";[\s\S]*?if \(viewNow\.current === "planner"\) \{\s*if \(focusHeading\) \{\s*plannerHeadingRef\.current\?\.focus\(\);\s*panelBodyRef\.current\?\.scrollTo\?\.\(\{ top: 0 \}\);\s*\}\s*\} else setView\("planner"\);/);
   // The phone header's toggle: "Show planner" always shows the planner, even if a sheet was open when it was hidden,
   // and leaves the focus on the toggle (showPlanner(false)); the heading focus is the Plan button's.
-  assert.match(app, /\{panelOpen \? "Hide planner" : "Show planner"\}/);
+  assert.match(app, /\{panelOpen \? t\("Hide planner"\) : t\("Show planner"\)\}/);
   assert.match(app, /if \(panelOpen\) setPanelOpen\(false\);\s*else \{\s*setPanelOpen\(true\);[\s\S]*?showPlanner\(false\);/);
   assert.match(app, /target\.kind === "planner"\) \{[^}]*plannerHeadingRef\.current\?\.focus\(\);/);
   // In Go the heading is out of sight but still the planner's focus target and heading.
@@ -905,6 +905,17 @@ test("short or zoomed screens: the whole panel scrolls as one, so nothing pinned
   assert.doesNotMatch(css, /\.panel-footer/, "the old footer's rules are gone with it");
   // The scroll to the top reaches whichever scrolls.
   assert.match(app, /panelBodyRef\.current\?\.scrollTo\(\{ top: 0 \}\);\s*panelRef\.current\?\.scrollTo\?\.\(\{ top: 0 \}\);/);
+});
+
+test("elsewhere the panel and its body clip, so focusing a sheet's heading cannot scroll the panel itself", () => {
+  // A hidden box can still be scrolled; Save & load's visually hidden lines reach below the panel, and focusing
+  // its heading scrolled the panel up, its header gone and a band open under the bar (2026-10-27).
+  // hidden stays only as the fallback just before clip, for a browser without it.
+  assert.match(css, /\n\.panel \{[^}]*overflow: hidden;\s*overflow: clip;/);
+  assert.match(css, /\n\.panel-body \{[^}]*overflow: hidden;\s*overflow: clip;/);
+  assert.doesNotMatch(css, /\n\.panel(-body)? \{[^}]*overflow: hidden;(?!\s*overflow: clip;)/);
+  // And the lines are placed against the part that scrolls, not the panel.
+  assert.match(css, /\n\.panel-scroll \{\s*position: relative;/);
 });
 
 test("the beta notice is not in the planner any more: it is a chip on the map (lib/betaBanner.ts)", () => {
