@@ -5420,6 +5420,10 @@ details.zoom-notes {
   padding-left: 2.2em;
 }
 
+.ios-location-help > p.fold-body {
+  margin: 0;
+}
+
 @media (max-width: 720px) {
   .panel.go-panel.go-peek {
     max-height: 34%;
