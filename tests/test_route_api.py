@@ -3170,6 +3170,24 @@ class TestMassRideCapacitySections:
         # The trace's last piece matches no segment: unknown, with no figure.
         assert [(s["tier"], s["rpm"]) for s in spans] == [(3, 50), (1, 250), (4, 250), (None, None)]
 
+    def test_a_mass_ride_checks_the_district_once_a_piece(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        # Audit S20: the sections and the flow chart read one check of each piece.
+        checked = []
+        real = routing._outside_dc
+
+        def outside(piece):
+            checked.append(piece)
+            return real(piece)
+
+        monkeypatch.setattr(routing, "_outside_dc", outside)
+        self.capacities(segments, {101: 50, 202: 250})
+        router(standard_router())
+        body = post(client, good_body("mass-ride")).json()
+        assert body["stress_spans"] and checked
+        assert len(checked) == len({id(piece) for piece in checked}), "each piece once"
+
     def test_another_ride_type_carries_none(self, client, segments, router) -> None:
         self.capacities(segments, {101: 50, 202: 250})
         router(standard_router())

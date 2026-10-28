@@ -2523,7 +2523,11 @@ def _outside_dc(piece) -> bool:
 
 
 def _flow_stretches(
-    leg_runs: list, pieces: list[Piece], classes: list, capacity: bool = False
+    leg_runs: list,
+    pieces: list[Piece],
+    classes: list,
+    capacity: bool = False,
+    outside: list[bool] | None = None,
 ) -> list[tuple[float, float | None, str | None]]:
     """(metres, physical usable width, note) along the route in the order ridden, as the
     stress sections are cut (`stress_spans`): the width a Mass Ride's group has, None with
@@ -2535,15 +2539,16 @@ def _flow_stretches(
     direction, parked cars out, DC's Roadway Block first; OWNER-DECISIONS 404, 406), so the
     chart and the map always agree; a piece on no segment has none. Without the column (a
     table built before the rebuild bundle) it is `routemaker.flow.usable_width_m`'s
-    estimate from the classifier's lanes."""
+    estimate from the classifier's lanes. `outside`: each piece's `_outside_dc`, where the
+    caller has already read it (audit S20)."""
     out: list[tuple[float, float | None, str | None]] = []
     for run in leg_runs:
         if isinstance(run, tuple):
             for i in range(run[0], run[1]):
                 klass = classes[i]
                 avoid = flow.is_avoid(klass[0])
-                outside = _outside_dc(pieces[i])
-                if avoid or outside:
+                beyond = outside[i] if outside is not None else _outside_dc(pieces[i])
+                if avoid or beyond:
                     width = None
                 elif capacity:
                     width = getattr(klass, "width_m", None)
@@ -2554,7 +2559,7 @@ def _flow_stretches(
                         getattr(klass, "lanes", None),
                         getattr(klass, "oneway", None),
                     )
-                note = STRETCH_AVOID if avoid else STRETCH_OUTSIDE_DC if outside else None
+                note = STRETCH_AVOID if avoid else STRETCH_OUTSIDE_DC if beyond else None
                 out.append((pieces[i].metres, width, note))
         else:
             out.append((run, None, STRETCH_UNTRACED))
@@ -4523,6 +4528,11 @@ def _plan(
             for key, metres in traced_facility.items():
                 facility[key] += metres
             used_adjustments = adjustments_used(pieces)
+        # Each piece outside the District or not, read once for the sections and the flow
+        # chart both (audit S20); a Mass Ride's only.
+        outside_dc = (
+            [_outside_dc(piece) for piece in pieces] if preset_name == "mass-ride" else None
+        )
         stretches: list[tuple] = []
         for run in leg_runs:
             if isinstance(run, tuple):
@@ -4532,7 +4542,7 @@ def _plan(
                         *classes[i],
                         getattr(classes[i], "unpaved", None),
                         getattr(classes[i], "rpm", None),
-                        preset_name == "mass-ride" and _outside_dc(pieces[i]),
+                        outside_dc is not None and outside_dc[i],
                         getattr(classes[i], "half", False),
                         getattr(classes[i], "rough", None),
                     )
@@ -4564,7 +4574,9 @@ def _plan(
         profile = route_profile(
             legs,
             spans,
-            (lambda: _flow_stretches(leg_runs, pieces, classes, capacity)) if mass_ride else None,
+            (lambda: _flow_stretches(leg_runs, pieces, classes, capacity, outside_dc))
+            if mass_ride
+            else None,
             majors if mass_ride else None,
             majors_complete,
             None
