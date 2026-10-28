@@ -94,6 +94,7 @@ from .intersections import (
     crossing_groups,
 )
 from .lang import spanish, t, way_es
+from .streets import street_key
 
 METRES_PER_MILE = 1609.344
 FEET_PER_METRE = 3.28084
@@ -115,12 +116,20 @@ BEAR_MAX_DEG = 60.0
 # A jog's middle is at least this long: a shorter piece of another street between
 # two turns is a median or a carriageway crossed, not a street ridden.
 JOG_MIN_M = 15.0
+# An unnamed jog's middle (`_unnamed_jog`) is at least this long: a shorter path or
+# alley between two turns is a crosswalk or a corner cut, not a way ridden.
+JOG_UNNAMED_MIN_M = 30.0
 # A leg's first stretch, turned off, is kept from this long (`_first_turn`): a start
 # snapped a few metres onto the cross street is no turn the rider makes.
 FIRST_TURN_MIN_M = 25.0
 # The unnamed ways a leg may begin on whose turn off is not said: a driveway or a
 # parking aisle out of a lot.
 FIRST_TURN_IGNORED_USES = frozenset({"driveway", "drive_through", "parking_aisle"})
+# An unnamed path turned onto that leads to a named path (`_toward`) is said with it
+# ("Right onto the path to Rock Creek Trail") from longer than this, the most the app
+# joins two turns as one jog (frontend/src/lib/navigate.ts JOG_M), up to OVERVIEW_M: a
+# shorter one is said with the turn after it, a longer one is a way of its own.
+TOWARD_MIN_M = 100.0
 # A roundabout or circle by its name ("Dupont Circle Northwest"): never a jog's
 # middle; the turn is read across it, as the net movement.
 CIRCLE_NAME = re.compile(r"\b(?:circle|roundabout)\b", re.IGNORECASE)
@@ -464,6 +473,42 @@ def _one_street(a: frozenset[str], b: frozenset[str]) -> bool:
     return not real_a or not real_b or bool(real_a & real_b)
 
 
+# A direction prefix and its opposite: "West Pratt Street" becomes "East Pratt Street"
+# straight on (`_side_change`).
+_OPPOSITE_SIDE = {"north": "south", "south": "north", "east": "west", "west": "east"}
+# What follows such a prefix where the two are different streets, not one street's two
+# sides: North and South Capitol Street, and DC's state-named pairs (North and South
+# Carolina Avenue, North and South Dakota Avenue). "North Avenue" is left alone by the
+# two-word rule.
+_NEVER_ONE_STEM = frozenset({"capitol street", "carolina avenue", "dakota avenue"})
+
+
+def _side_change(a: frozenset[str], b: frozenset[str]) -> bool:
+    """Whether two sets of names are one street's two sides: the same but for the quadrant
+    ("C Street Northwest", "C Street Northeast", by `streets.street_key`), or for opposite
+    direction prefixes before at least two more words ("West Pratt Street", "East Pratt
+    Street"). Not North and South Avenue, nor North and South Capitol Street
+    (`_NEVER_ONE_STEM`): two streets."""
+    for x in a:
+        kx = street_key(x)
+        for y in b:
+            ky = street_key(y)
+            if not kx or not ky:
+                continue
+            if kx == ky:
+                return True
+            sx, _, rx = kx.partition(" ")
+            sy, _, ry = ky.partition(" ")
+            if (
+                _OPPOSITE_SIDE.get(sx) == sy
+                and rx == ry
+                and len(rx.split()) >= 2
+                and rx not in _NEVER_ONE_STEM
+            ):
+                return True
+    return False
+
+
 def _same_way(a: Atom, b: Atom) -> bool:
     """Whether two pieces are one street, as `_same_street` reads two stretches."""
     if not a.names and not b.names:
@@ -603,13 +648,18 @@ def _first_turn(before: _Run | None, run: _Run, after: _Run | None) -> bool:
 
 
 def _jog(before: _Run | None, run: _Run, after: _Run | None) -> bool:
-    """Whether `run` is a jog's middle: a named street, not a roundabout or circle,
+    """Whether `run` is a jog's middle: a named street (an unnamed way by
+    `_unnamed_jog`), not a roundabout or circle,
     at least JOG_MIN_M long, other than both neighbours, entered and left by a turn
     or a bear. Folded away, its two turns would be read as one across it (a right
     then a left as straight on), so it is kept. Back onto the street it left, a
     middle under MATCH_M, or one whose turns cancel (within STRAIGHT_MAX_DEG of
     straight on), is a divided road or an offset crossing, and is folded."""
-    if before is None or after is None or not run.names or run.metres < JOG_MIN_M:
+    if before is None or after is None:
+        return False
+    if not run.names:
+        return _unnamed_jog(before, run, after)
+    if run.metres < JOG_MIN_M:
         return False
     if _circle(run) or _same_street(before, run) or _same_street(run, after):
         return False
@@ -623,6 +673,21 @@ def _jog(before: _Run | None, run: _Run, after: _Run | None) -> bool:
     return (
         _movement_between(before, run) in TURN_WORDS and _movement_between(run, after) in TURN_WORDS
     )
+
+
+def _unnamed_jog(before: _Run, run: _Run, after: _Run) -> bool:
+    """Whether an unnamed `run` is a jog's middle: a path, alley or other service way at
+    least JOG_UNNAMED_MIN_M long, not a roundabout, between two different named streets,
+    entered and left by full turns to opposite sides ("Right onto the alley, then left
+    onto C Street"). Folded away, the right then the left would be read as straight on,
+    "Continue onto C Street", and neither turn said. Not an unnamed road (a slip lane
+    is one), and not a bear either way."""
+    if run.metres < JOG_UNNAMED_MIN_M or not (run.path or run.service) or _circle(run):
+        return False
+    if not before.names or not after.names or _same_street(before, after):
+        return False
+    moves = (_movement_between(before, run), _movement_between(run, after))
+    return moves in (("left", "right"), ("right", "left"))
 
 
 def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
@@ -686,6 +751,51 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
             changed = True
         runs = coalesced
     return runs
+
+
+def _bridge_unnamed(runs: list[_Run], leg_at: float, keep_at: list[float], walks) -> list[_Run]:
+    """One leg's runs with each short unnamed path between two stretches of one named
+    path (a bridge or an underpass on a trail) given that trail's name, and joined with
+    them: not "Continue onto the path", then "Continue onto Capital Crescent Trail"
+    again. Only a path under OVERVIEW_M, entered and left straight on, at the same tier
+    and facility as both sides, with no fork at either end and no flagged junction,
+    far-side crossing (`keep_at`, in the pieces' measure, from `leg_at` at the leg's
+    start) or walk within MATCH_M of it. A service way or an unnamed road is never named
+    so."""
+    changed = False
+    at = leg_at
+    for i, run in enumerate(runs):
+        start, end = at, at + run.metres
+        at = end
+        if i == 0 or i + 1 >= len(runs):
+            continue
+        before, after = runs[i - 1], runs[i + 1]
+        if run.names or run.service is not None or run.untraced or not before.names:
+            continue
+        if not (run.path and before.path and after.path) or run.metres >= OVERVIEW_M:
+            continue
+        if not _same_street(before, after) or _circle(before) or _circle(run):
+            continue
+        if not (run.tier == before.tier == after.tier):
+            continue
+        if not (run.facility == before.facility == after.facility):
+            continue
+        if _forks(run) or _forks(after):
+            continue
+        if _movement_between(before, run) != "straight":
+            continue
+        if _movement_between(run, after) != "straight":
+            continue
+        if any(start - MATCH_M <= m <= end + MATCH_M for m in keep_at):
+            continue
+        if any(w_from <= end + MATCH_M and w_to >= start - MATCH_M for w_from, w_to in walks):
+            continue
+        # The names are the trail's (a frozenset, never shared mutably), the label too: a
+        # name from the trail's route relation alone stays one (`relation_name`).
+        run.names = frozenset(before.names)
+        run.label = before.label
+        changed = True
+    return _coalesce(runs) if changed else runs
 
 
 def tier_words(tier: str, facility: str) -> str:
@@ -947,6 +1057,10 @@ class _Turn:
     # The junction event where that road is crossed, said with the crossing; None where
     # there is none.
     across_event: object | None = None
+    # A turn onto an unnamed path that leads to a named one (`_toward`): that one's name,
+    # said with the path ("Right onto the path to Rock Creek Trail"), the path itself
+    # still unnamed ("path" on the map, in a report, in "Where am I?").
+    toward: str | None = None
 
 
 def _turn_deg(heading_in: float, heading_out: float) -> float:
@@ -1278,6 +1392,7 @@ def _stretch_sentence(
     turn: _Turn | None,
     same_street_continues: bool,
     then: str = "",
+    toward: bool = True,
 ) -> str:
     street = _street_words(run)
     where = range_words(start_m, end_m)
@@ -1292,6 +1407,9 @@ def _stretch_sentence(
             lead = t("Cross {road}", road=_crossed_road(turn.cross))
         elif movement in TURN_WORDS and turn.stay:
             lead = t(_STAY[movement], street=_in_sentence(street))
+        elif movement in TURN_WORDS and toward and turn.toward:
+            way = t("{way} to {trail}", way=_in_sentence(street), trail=_in_sentence(turn.toward))
+            lead = t(_ONTO[movement], street=way)
         elif movement in TURN_WORDS:
             lead = t(_ONTO[movement], street=_in_sentence(street))
         else:
@@ -1327,6 +1445,31 @@ def _stretch_sentence(
     if surface:
         words = f"{words}, {t(surface)}"
     return f"{where}: {lead}{then}, {words}."
+
+
+def _toward(runs: list[_Run], turns: dict[int, _Turn], i: int) -> str | None:
+    """Where the stretch `runs[i]` is an unnamed path turned onto, longer than TOWARD_MIN_M
+    and under OVERVIEW_M, that ends at a turn (or a new name straight on) onto a named
+    path, another than the way before it: that path's name. At a junction where several
+    paths meet, "Right onto the path" does not say which. None elsewhere, and where the
+    turn is said otherwise (a crossing, a far-side crossing, a circle's exit, a fork along
+    one way)."""
+    run, turn = runs[i], turns[i]
+    if run.names or run.service is not None or run.untraced or not run.path:
+        return None
+    if not TOWARD_MIN_M < run.metres < OVERVIEW_M:
+        return None
+    if turn.movement not in TURN_WORDS or turn.cross or turn.across or turn.exit or turn.stay:
+        return None
+    following = turns.get(i + 1)
+    if following is None or following.movement is None or following.cross is not None:
+        return None
+    after = runs[i + 1]
+    if not after.path or not after.label or _COMMON_WAY.match(after.label):
+        return None
+    if _same_street(runs[i - 1], after):
+        return None
+    return after.label
 
 
 def _capital(text: str) -> str:
@@ -1744,9 +1887,14 @@ def describe_both(
             (leg_at + from_at, leg_at + cross_at, leg_at + turn_at, side, leg)
             for from_at, cross_at, turn_at, side in _far_side_turns(content)
         )
+        leg_start = leg_at
         leg_at += sum(atom.metres for atom in content if atom.metres > 0)
         leg_runs = _coalesce(_runs_of(content, leg))
-        runs.extend(_absorb_tiny(leg_runs))
+        # Where an unnamed bridge must not take its trail's name: a flagged junction, a
+        # crossing before a far-side turn, or a walk (`_bridge_unnamed`).
+        keep_at = [e.m for e in events or () if e.flagged]
+        keep_at += [m for f in far_side for m in (f[1], f[2])]
+        runs.extend(_bridge_unnamed(_absorb_tiny(leg_runs), leg_start, keep_at, walks or ()))
     traced = sum(run.metres for run in runs)
     scale = total_m / traced if total_m and total_m > 0 and traced > 0 else 1.0
     events = sorted(events or [], key=lambda e: e.m)
@@ -1767,6 +1915,15 @@ def describe_both(
         and runs[i - 1].leg == run.leg
         and not (runs[i - 1].untraced or run.untraced)
         and not (_same_street(runs[i - 1], run) and not _forks(run))
+        # One street's other side straight on (West to East Pratt Street, C Street
+        # Northwest to Northeast) is no change of street: no "Continue onto" is said. The
+        # boundary stays, so a junction there is still its own entry.
+        and not (
+            not _forks(run)
+            and (run.first is None or id(run.first) not in exits)
+            and _side_change(runs[i - 1].names, run.names)
+            and _movement_between(runs[i - 1], run) == "straight"
+        )
     ]
     matched = _nearest_events(events, runs, starts, changes)
     used: set[int] = set()
@@ -1880,6 +2037,8 @@ def describe_both(
         ):
             used.discard(index)
             turn.event = None
+    for i, turn in turns.items():
+        turn.toward = _toward(runs, turns, i)
 
     entries: list[tuple[tuple[float, int, int], dict]] = []
     shared: list[tuple[tuple[float, int, int], dict]] = []
@@ -1938,6 +2097,7 @@ def describe_both(
                         **({"exit": turn.exit} if turn.exit else {}),
                         **({"cross": turn.cross} if turn.cross else {}),
                         **({"across": turn.across} if turn.across else {}),
+                        **({"toward": turn.toward} if turn.toward else {}),
                     },
                     severity=severity,
                 ),
@@ -2024,6 +2184,9 @@ def describe_both(
         end = (starts[last] + runs[last].metres) * scale
         turn = turns.get(first)
         continues = first > 0 and runs[first - 1].leg == runs[first].leg
+        # The way an unnamed path leads to, said only where the path is an entry of its own:
+        # merged, its ", then ..." names that way.
+        toward = turn is not None and turn.toward is not None and first == last
         severity = None
         if turn is not None and turn.event is not None and turn.event.flagged:
             severity = turn.event.severity
@@ -2034,14 +2197,14 @@ def describe_both(
                     "stretch",
                     start,
                     end,
-                    _stretch_sentence(run, start, end, turn, continues, then),
+                    _stretch_sentence(run, start, end, turn, continues, then, toward),
                     street=_street_words(runs[first]),
                     relation_name=_street_words(runs[first]).lower() in relation_names,
                     tier=int(run.tier) if run.tier.isdigit() else None,
                     facility=None if run.facility in ("unknown", "none") else run.facility,
                     surface=surface_of(run),
                     text_lanes_hidden=(
-                        _stretch_sentence(hidden, start, end, turn, continues, then)
+                        _stretch_sentence(hidden, start, end, turn, continues, then, toward)
                         if hidden
                         else None
                     ),
@@ -2057,6 +2220,7 @@ def describe_both(
                         **({"exit": turn.exit} if turn.exit else {}),
                         **({"cross": turn.cross} if turn.cross else {}),
                         **({"across": turn.across} if turn.across else {}),
+                        **({"toward": turn.toward} if toward else {}),
                     },
                     severity=severity,
                 ),

@@ -58,8 +58,10 @@ from __future__ import annotations
 
 import bisect
 import contextvars
+import copy
 import dataclasses
 import functools
+import hashlib
 import http.client
 import itertools
 import json
@@ -67,6 +69,7 @@ import logging
 import time
 import urllib.error
 import urllib.request
+from array import array
 from collections.abc import Callable, Iterator
 from concurrent.futures import FIRST_EXCEPTION, Future
 from concurrent.futures import wait as wait_futures
@@ -79,6 +82,7 @@ from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
 
 from pipeline.schema import (
+    HAZARD_COLUMN,
     MASS_WIDTH_COLUMN,
     ROUGH_COLUMN,
     SIDEPATH_NAME_COLUMN,
@@ -864,7 +868,7 @@ def _behind_of(kept: list[tuple[dict, float]]) -> tuple | None:
 # coloured sections (`stress_spans`) keep their order.
 _STRESS_JOIN = """
 SELECT {tier}, {facility}, seg.is_unpaved, seg.road_lanes,
-       seg.road_oneway{capacity_out}{half_out}{rough_out}
+       seg.road_oneway{capacity_out}{half_out}{rough_out}{hazard_out}
 FROM unnest(%s::bigint[], %s::float8[], %s::float8[])
      WITH ORDINALITY AS p(way_id, lon, lat, ordinality)
 LEFT JOIN LATERAL (
@@ -992,22 +996,90 @@ class PieceClass(tuple):
         )
 
 
+class Classes(list):
+    """`classify`'s answer: a list of `PieceClass`, with each piece's hazard kinds beside
+    it (`hazards`, as `route_hazards.kinds_of` reads them), read in the same query rather than
+    a second one over the same pieces (audit S16); None where the live table has no hazard
+    column. Beside the classes, not on them: `refine.shift_classes` and `hazard_priced`
+    make new ones."""
+
+    hazards: list[tuple[str, ...]] | None = None
+
+
+def hazards_read(classes, pieces: list) -> list[tuple[str, ...]] | None:
+    """The hazard kinds `classify` read beside `classes` for `pieces`, or None where it read
+    none (a table without the column, or classes not from `classify`)."""
+    kinds = getattr(classes, "hazards", None)
+    return kinds if kinds is not None and len(kinds) == len(pieces) else None
+
+
+# The plan's memo of its stress readings (`classify`, audit S18): a hill-avoiding plan reads
+# the trip it keeps two or three times (`calmer_or_own`, `no_busier_than_middle`, then the
+# calm search's `refine.analyse`), each the same nearest-segment search with the same answer.
+# Keyed by the live table's name, the ride time and a digest of the pieces' ways and points;
+# each entry the readings as plain rows, each row kept once (the rows repeat: a few hundred
+# distinct in a long route), and the hazard kinds beside: about 16 bytes a piece, so under
+# 1 MB at STRESS_MEMO_TRIPS long routes. Only a reading that finished is kept. `plan` sets it
+# for its own context and clears it as it ends; None outside a plan (nothing remembered).
+_stress_memo: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "stress_memo", default=None
+)
+# The most readings remembered, the least recently used dropped first.
+STRESS_MEMO_TRIPS = 8
+
+
+def _stress_key(schema: str, when: str, pieces: list[Piece]) -> tuple:
+    digest = hashlib.blake2b(digest_size=16)
+    digest.update(array("q", [p.way_id for p in pieces]).tobytes())
+    digest.update(array("d", [p.lon for p in pieces]).tobytes())
+    digest.update(array("d", [p.lat for p in pieces]).tobytes())
+    return (schema, when, len(pieces), digest.digest())
+
+
 def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list[tuple[str, str]]:
     """Each piece's stress key ("1".."5" or "unknown") and facility key
     ("path", "protected", "lane", "none" or "unknown"), in the pieces' order,
     for a ride at `when`, each a `PieceClass` that also carries the segment's
     surface. With `roadway_only` (a ride that takes the roadway: Mass Ride,
     not every ride on the no-trail variant), bicycle lanes of either class are
-    "none"; a road closed to cars is still a path."""
+    "none"; a road closed to cars is still a path. A `Classes`, with the
+    pieces' hazard kinds beside. Read once a plan (`_stress_memo`); each call is
+    given classes of its own."""
     if not pieces:
-        return []
+        return Classes()
     # The schema name comes from settings and is validated the way every DDL
     # that names it is; an identifier cannot be a query parameter.
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    memo = _stress_memo.get()
+    key = _stress_key(schema, when, pieces) if memo is not None else None
+    found = memo.pop(key, None) if memo is not None else None
+    if found is None:
+        found = _read_stress(pieces, when, schema)
+    if memo is not None:
+        memo[key] = found  # the most recently used last
+        while len(memo) > STRESS_MEMO_TRIPS:
+            memo.pop(next(iter(memo)))
+    rows, hazards = found
+    classes = Classes()
+    for tier, kind, *rest in rows:
+        # After the lookup, so a Mass Ride and any other plan share one reading.
+        if roadway_only and kind in ROADWAY_ONLY_AS_NONE:
+            kind = "none"
+        classes.append(PieceClass(tier, kind, *rest))
+    if hazards is not None:
+        classes.hazards = list(hazards)
+    return classes
+
+
+def _read_stress(pieces: list[Piece], when: str, schema: str) -> tuple[list[tuple], list | None]:
+    """`classify`'s reading of the segment table: a row a piece (the `PieceClass` arguments,
+    before the roadway-only lanes are made "none"), and the hazard kinds (None where the
+    table has no hazard column)."""
     with_facility = _has_facility_columns(schema)
     with_capacity = _has_capacity_column(schema)
     with_half = _has_half_column(schema)
     with_rough = segment_info.has_columns(schema, ROUGH_COLUMN)
+    with_hazard = segment_info.has_columns(schema, HAZARD_COLUMN)
     query = _STRESS_JOIN.format(
         schema=schema,
         tier=_TIER_AT if with_facility else "seg.stress_tier",
@@ -1015,7 +1087,8 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
         columns=("s.facility, s.car_free_when" if with_facility else "NULL AS facility")
         + (f", s.{MASS_WIDTH_COLUMN}" if with_capacity else "")
         + (f", s.{STRESS_HALF_COLUMN}" if with_half else "")
-        + (f", s.{ROUGH_COLUMN}" if with_rough else ""),
+        + (f", s.{ROUGH_COLUMN}" if with_rough else "")
+        + (f", s.{HAZARD_COLUMN}" if with_hazard else ""),
         traits=(
             "s.road_lanes, s.road_oneway"
             if _has_trait_columns(schema)
@@ -1032,10 +1105,13 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
             else f", seg.{STRESS_HALF_COLUMN}"
         ),
         rough_out=f", seg.{ROUGH_COLUMN}" if with_rough else "",
+        hazard_out=f", seg.{HAZARD_COLUMN}" if with_hazard else "",
     )
     arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
     whens = ([when, when] + ([when] if with_half else [])) if with_facility else []
-    classes = []
+    rows: list[tuple] = []
+    seen: dict[tuple, tuple] = {}
+    hazard_values = []
     with plan_cursor() as cursor:
         cursor.execute(query, whens + arrays)
         for row in cursor.fetchall():
@@ -1043,28 +1119,27 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
             unpaved = row[2] if len(row) > 2 and isinstance(row[2], bool) else None
             lanes = row[3] if len(row) > 3 and isinstance(row[3], int) else None
             oneway = row[4] if len(row) > 4 and isinstance(row[4], bool) else None
-            # After the five fixed columns: the capacity, the half step and the surface's
-            # roughness, each where the table has it, in that order.
+            # After the five fixed columns: the capacity, the half step, the surface's
+            # roughness and the hazards, each where the table has it, in that order.
             extra = list(row[5:])
             width = extra.pop(0) if with_capacity else None
             half = extra.pop(0) is True if with_half else False
             rough = extra.pop(0) if with_rough else None
             rough = rough if isinstance(rough, bool) else None
-            if roadway_only and kind in ROADWAY_ONLY_AS_NONE:
-                kind = "none"
-            classes.append(
-                PieceClass(
-                    str(tier) if tier in (1, 2, 3, 4, 5) else "unknown",
-                    kind if kind in FACILITY_KEYS else "unknown",
-                    unpaved,
-                    lanes,
-                    oneway,
-                    None if width is None else float(width),
-                    half,
-                    rough,
-                )
+            if with_hazard:
+                hazard_values.append(extra.pop(0))
+            read = (
+                str(tier) if tier in (1, 2, 3, 4, 5) else "unknown",
+                kind if kind in FACILITY_KEYS else "unknown",
+                unpaved,
+                lanes,
+                oneway,
+                None if width is None else float(width),
+                half,
+                rough,
             )
-    return classes
+            rows.append(seen.setdefault(read, read))
+    return rows, route_hazards.decoded(hazard_values) if with_hazard else None
 
 
 def breakdown(
@@ -2449,7 +2524,11 @@ def _outside_dc(piece) -> bool:
 
 
 def _flow_stretches(
-    leg_runs: list, pieces: list[Piece], classes: list, capacity: bool = False
+    leg_runs: list,
+    pieces: list[Piece],
+    classes: list,
+    capacity: bool = False,
+    outside: list[bool] | None = None,
 ) -> list[tuple[float, float | None, str | None]]:
     """(metres, physical usable width, note) along the route in the order ridden, as the
     stress sections are cut (`stress_spans`): the width a Mass Ride's group has, None with
@@ -2461,15 +2540,16 @@ def _flow_stretches(
     direction, parked cars out, DC's Roadway Block first; OWNER-DECISIONS 404, 406), so the
     chart and the map always agree; a piece on no segment has none. Without the column (a
     table built before the rebuild bundle) it is `routemaker.flow.usable_width_m`'s
-    estimate from the classifier's lanes."""
+    estimate from the classifier's lanes. `outside`: each piece's `_outside_dc`, where the
+    caller has already read it (audit S20)."""
     out: list[tuple[float, float | None, str | None]] = []
     for run in leg_runs:
         if isinstance(run, tuple):
             for i in range(run[0], run[1]):
                 klass = classes[i]
                 avoid = flow.is_avoid(klass[0])
-                outside = _outside_dc(pieces[i])
-                if avoid or outside:
+                beyond = outside[i] if outside is not None else _outside_dc(pieces[i])
+                if avoid or beyond:
                     width = None
                 elif capacity:
                     width = getattr(klass, "width_m", None)
@@ -2480,7 +2560,7 @@ def _flow_stretches(
                         getattr(klass, "lanes", None),
                         getattr(klass, "oneway", None),
                     )
-                note = STRETCH_AVOID if avoid else STRETCH_OUTSIDE_DC if outside else None
+                note = STRETCH_AVOID if avoid else STRETCH_OUTSIDE_DC if beyond else None
                 out.append((pieces[i].metres, width, note))
         else:
             out.append((run, None, STRETCH_UNTRACED))
@@ -2824,6 +2904,18 @@ def arrival_side_of(trip: dict) -> str | None:
         return None
 
 
+def leg_arrival_side(leg: dict) -> str | None:
+    """Which side of the street a leg's end is on, from its own destination maneuver
+    (round-2 audit D17: every rider point is a break, so every leg ends with one); None
+    where the router says no side (a stop on the line itself, a drawn leg, a leg without
+    maneuvers)."""
+    try:
+        maneuvers = leg.get("maneuvers") or []
+        return _DESTINATION_SIDES.get(maneuvers[-1].get("type")) if maneuvers else None
+    except (AttributeError, IndexError, TypeError):
+        return None
+
+
 # A trail relation names an unnamed way only where its named run is longer than this
 # (a quarter mile).
 RELATION_NAME_MIN_RUN_M = 1609.344 / 4
@@ -3047,6 +3139,76 @@ def _intersection_groups(events: list) -> list[dict]:
 # comparison, which traces it as well, wants this much more.
 DETOUR_PROBE_MIN_S = 4
 DETOUR_AVOIDED_MIN_S = 7
+# The least time left for the probe to be asked early, beside the search (`_ask_direct_early`,
+# audit S23): the busy-road comparison's and the calm search's trace reserve on top, so a
+# plan short of time never gives a router slot to it that the search needs.
+EARLY_DIRECT_MIN_S = DETOUR_AVOIDED_MIN_S + 6
+
+
+def _direct_request(
+    request: dict, preset_name: str, dials: tuple
+) -> tuple[dict, dict, tuple[str, str]]:
+    """The detour check's ask for the most direct legal route (`_detour`): its costing, the
+    request, and the key it is remembered by in a plan's traces (OWNER-DECISIONS 265)."""
+    _stress_dial, assist, avoid_gravel = dials
+    direct_costing = _same_pace(
+        presets.costing(preset_name, 0, 0, assist=assist, avoid_gravel=avoid_gravel), request
+    )
+    direct_request = {
+        key: value
+        for key, value in request.items()
+        if key not in ("alternates", "exclude_locations")
+    } | {"costing_options": direct_costing}
+    return (
+        direct_costing,
+        direct_request,
+        ("direct-route", json.dumps(direct_request, sort_keys=True)),
+    )
+
+
+def _beyond_allowance(route_m: float, straight_m: float) -> bool:
+    """Whether a route of `route_m` is past the detour warning's allowance of the straight
+    line, where the direct route is asked for (`_detour`)."""
+    return straight_m > 0 and route_m > max(
+        straight_m * detour_rules.SILENT_RATIO, straight_m + detour_rules.SILENT_EXTRA_M
+    )
+
+
+def _ask_direct_early(
+    first_m: float,
+    straight_m: float,
+    request: dict,
+    variant: str,
+    preset_name: str,
+    dials: tuple,
+    deadline: Deadline,
+    traces: dict,
+) -> dict[tuple[str, str], Future]:
+    """The detour check's direct route started on the pool now, beside the search, where
+    its answer will almost surely be wanted (audit S23, round 1's S6 without the
+    neighbours): above Default (where `_detour` asks for it), never on a Mass Ride, where
+    the router's first route (`first_m`) is already past the allowance (a calmer route is
+    longer still), with EARLY_DIRECT_MIN_S to spare, on the pool only. {its key: the
+    future}, for `_detour` to read; empty where not asked."""
+    if (
+        preset_name == "mass-ride"
+        or not parallel.enabled()
+        or dials[0] <= presets.STRESS_DEFAULT_AT
+        or not _beyond_allowance(first_m, straight_m)
+        or deadline.at - clock() < EARLY_DIRECT_MIN_S
+    ):
+        return {}
+    _costing, direct_request, direct_key = _direct_request(request, preset_name, dials)
+    if direct_key in traces:
+        return {}
+    future = parallel.submit(
+        _call,
+        variant,
+        "route",
+        copy.deepcopy(direct_request),
+        Deadline(deadline.at, min(deadline.per_call_s, ALTERNATES_TIMEOUT_S)),
+    )
+    return {direct_key: future}
 
 
 def _detour(
@@ -3060,6 +3222,7 @@ def _detour(
     when: str,
     deadline: Deadline,
     traces: dict,
+    early: dict | None = None,
 ) -> dict | None:
     """How much longer the route is than the most direct legal one, for the
     answer's warning (OWNER-DECISIONS 164; `routemaker.detour`).
@@ -3069,12 +3232,12 @@ def _detour(
     Otherwise the router is asked for the most direct route (the traffic
     tolerant end, the hills detent); where it cannot be had in time, or on a
     Mass Ride, which is the direct route by design, the straight line is the
-    reference and only a route twice as long says so."""
-    if straight_m <= 0 or route_m <= max(
-        straight_m * detour_rules.SILENT_RATIO, straight_m + detour_rules.SILENT_EXTRA_M
-    ):
+    reference and only a route twice as long says so. `early`: the direct route
+    already asked for (`_ask_direct_early`), by its key, read where the key is this
+    request's; a fresh ask where it is not."""
+    if not _beyond_allowance(route_m, straight_m):
         return None
-    stress_dial, assist, avoid_gravel = dials
+    stress_dial = dials[0]
     # At or below Default the rider asked for no calm detour, and the route
     # cannot be more than the straight line's ratio longer than the direct one
     # (1.5 times at most, a note): the second route is asked for from just above
@@ -3087,25 +3250,22 @@ def _detour(
         and asked_for_calm
         and deadline.at - clock() >= DETOUR_PROBE_MIN_S
     ):
-        direct_costing = _same_pace(
-            presets.costing(preset_name, 0, 0, assist=assist, avoid_gravel=avoid_gravel), request
-        )
-        direct_request = {
-            key: value
-            for key, value in request.items()
-            if key not in ("alternates", "exclude_locations")
-        } | {"costing_options": direct_costing}
+        direct_costing, direct_request, direct_key = _direct_request(request, preset_name, dials)
         # Asked once for a plan and its candidate routes (OWNER-DECISIONS 265).
-        direct_key = ("direct-route", json.dumps(direct_request, sort_keys=True))
+        asked = (early or {}).pop(direct_key, None)
         if direct_key in traces:
             direct, direct_m = traces[direct_key]
         else:
             try:
-                answer = _call(
-                    variant,
-                    "route",
-                    direct_request,
-                    Deadline(deadline.at, min(deadline.per_call_s, ALTERNATES_TIMEOUT_S)),
+                answer = (
+                    await_future(asked)
+                    if asked is not None and not asked.cancelled()
+                    else _call(
+                        variant,
+                        "route",
+                        direct_request,
+                        Deadline(deadline.at, min(deadline.per_call_s, ALTERNATES_TIMEOUT_S)),
+                    )
                 )
                 direct = answer.get("trip") or {}
                 direct_m = float((direct.get("summary") or {}).get("length", 0.0)) * 1000.0
@@ -3572,6 +3732,26 @@ def plan(
     ride type's own graph, which asks other questions and so would only hold them longer
     on the 512M worker.
     """
+    # Its stress readings, for its own context only (audit S18), dropped as it ends: a pool
+    # task still running after it holds a copy of the context, never the readings.
+    memo: dict = {}
+    _stress_memo.set(memo)
+    try:
+        return _plan_rounds(points, preset_name, long_ride, started, dials, quick, candidates)
+    finally:
+        memo.clear()
+
+
+def _plan_rounds(
+    points: list[list[float]],
+    preset_name: str,
+    long_ride: bool,
+    started: float | None,
+    dials: Dials | None,
+    quick: bool,
+    candidates: bool,
+) -> dict:
+    """`plan`'s rounds."""
     if started is None:
         started = clock()
     dials = dials or Dials()
@@ -4013,6 +4193,25 @@ def _plan(
     # This plan's traces, so a route the guards traced is not traced again; `plan`'s, where
     # it re-plans without stray dirt trails, so a later round does not trace them again.
     traces = {} if traces is None else traces
+    # The detour check's direct route depends on the request alone: where it will surely be
+    # asked for, it starts now on the pool, beside the search, as the early alternatives do
+    # (audit S23). Not on a first route or the rider's own line (no detour check), nor where
+    # the target fitting will ask with another request. One not read is cancelled however
+    # the plan ends (`_plan_round`; one already running ends at its own deadline).
+    early_direct: dict[tuple[str, str], Future] = {}
+    if not (quick or fixed or (maxcalm and target_m is not None)):
+        early_direct = _ask_direct_early(
+            _trip_length_m(trips[0]),
+            sum(haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)),
+            request,
+            variant,
+            preset_name,
+            (stress_dial, assist, avoid_gravel),
+            deadline,
+            traces,
+        )
+        if early is not None:
+            early.extend(early_direct.values())
     # The hill seek (FOLLOWUP-HILL-SEEK, 205): routes through the climbs near the line
     # join the router's own, where the climb search runs at all; without the climbs
     # file it asks nothing and the search is the router's alternatives alone, as before.
@@ -4335,6 +4534,9 @@ def _plan(
         # shared, so leg k runs from leg_ends[k - 1] (or 0) to leg_ends[k]. The
         # front end reads which leg a point on the line belongs to from these.
         leg_ends: list[int] = []
+        # The side of the street each leg ends on (`leg_arrival_side`), one per leg as
+        # `leg_ends`: a stop's side for its cue (round-2 audit D17).
+        leg_sides: list[str | None] = []
         # Where each leg begins along the traced length: the stops (and the start,
         # which no crossing lies before), which a Mass Ride's crossing group never
         # spans (OWNER-DECISIONS 247).
@@ -4346,6 +4548,7 @@ def _plan(
             shape = decode_polyline6(leg.get("shape", ""))
             coordinates.extend(shape[1:] if coordinates else shape)
             leg_ends.append(len(coordinates) - 1)
+            leg_sides.append(leg_arrival_side(leg))
             elevations.extend(leg.get("elevation") or [])
             try:
                 # A leg the rider drew follows no road: it is not traced, and its stress is
@@ -4395,6 +4598,7 @@ def _plan(
                 ends = list(itertools.accumulate(groups))
                 first = [e - g for e, g in zip(ends, groups, strict=True)]
                 leg_ends = [leg_ends[e - 1] for e in ends]
+                leg_sides = [leg_sides[e - 1] for e in ends]
                 stops_m = [stops_m[f] for f in first]
                 leg_runs = [
                     _joined_runs(leg_runs[f:e], pieces) for f, e in zip(first, ends, strict=True)
@@ -4406,6 +4610,7 @@ def _plan(
         # past it (correctness review, 2026-09-28: one request took 49 s).
         over_budget = traced_at >= started + budget_s
         effort_m = None
+        hazard_kinds = None
         if over_budget:
             untraced = sum(piece.metres for piece in pieces)
             stress["unknown"] += untraced
@@ -4416,17 +4621,23 @@ def _plan(
         else:
             analysed = refine_context.analyses.get(tuple(leg.get("shape", "") for leg in legs))
             effort_m = round(analysed.effort_m, 1) if analysed is not None else None
-            classes = (
-                analysed.rated_classes
-                if analysed is not None and len(analysed.pieces) == len(pieces)
-                else classify(pieces, when, roadway_only=lanes_as_roadway)
-            )
+            if analysed is not None and len(analysed.pieces) == len(pieces):
+                classes = analysed.rated_classes
+                hazard_kinds = analysed.hazard_kinds
+            else:
+                classes = classify(pieces, when, roadway_only=lanes_as_roadway)
+                hazard_kinds = hazards_read(classes, pieces)
             traced_stress, traced_facility = totals(zip(pieces, classes, strict=True))
             for key, metres in traced_stress.items():
                 stress[key] += metres
             for key, metres in traced_facility.items():
                 facility[key] += metres
             used_adjustments = adjustments_used(pieces)
+        # Each piece outside the District or not, read once for the sections and the flow
+        # chart both (audit S20); a Mass Ride's only.
+        outside_dc = (
+            [_outside_dc(piece) for piece in pieces] if preset_name == "mass-ride" else None
+        )
         stretches: list[tuple] = []
         for run in leg_runs:
             if isinstance(run, tuple):
@@ -4436,7 +4647,7 @@ def _plan(
                         *classes[i],
                         getattr(classes[i], "unpaved", None),
                         getattr(classes[i], "rpm", None),
-                        preset_name == "mass-ride" and _outside_dc(pieces[i]),
+                        outside_dc is not None and outside_dc[i],
                         getattr(classes[i], "half", False),
                         getattr(classes[i], "rough", None),
                     )
@@ -4468,7 +4679,9 @@ def _plan(
         profile = route_profile(
             legs,
             spans,
-            (lambda: _flow_stretches(leg_runs, pieces, classes, capacity)) if mass_ride else None,
+            (lambda: _flow_stretches(leg_runs, pieces, classes, capacity, outside_dc))
+            if mass_ride
+            else None,
             majors if mass_ride else None,
             majors_complete,
             None
@@ -4507,7 +4720,8 @@ def _plan(
         described_overview = avoid_rules.with_entries(described_overview, avoid_found, avoid_scale)
         # The known hazards it rides (v0.10.0, `core.route_hazards`): said in place in the
         # directions and drawn as symbols on the route only.
-        hazards_ridden = route_hazards.along(leg_runs, pieces)
+        # Their kinds as the stress query read them (audit S16), else read here.
+        hazards_ridden = route_hazards.along(leg_runs, pieces, hazard_kinds)
         described_full = route_hazards.with_entries(described_full, hazards_ridden)
         described_overview = route_hazards.with_entries(described_overview, hazards_ridden)
         # Its rustic roads, byways and named bike routes (v0.12.3): for the connector's road list.
@@ -4644,6 +4858,7 @@ def _plan(
                 when=when,
                 deadline=deadline,
                 traces=traces,
+                early=early_direct,
             )
         )
         # The time its junctions cost the rider, which the router's own time leaves out
@@ -4737,6 +4952,7 @@ def _plan(
             "attribution": list(ATTRIBUTION),
             "leg_ends": leg_ends,
             "arrival_side": arrival_side_of(trip),
+            "leg_arrival_sides": leg_sides,
             "intersections": None if events is None else _intersection_rows(events),
             "intersection_groups": None if events is None else _intersection_groups(events),
             "junctions_debug": (
@@ -4998,10 +5214,12 @@ def _plan_ahead_first(
     save, and the plan that ignores the heading is made only where that fails or still turns
     round (audit S5; the owner approved planning ahead first on 2026-10-27). The second plan
     runs on the same `started`, so it has what time the first left; the rider is never left
-    without a route."""
+    without a route: where the second plan fails, the route ahead that turns round is kept
+    (audit R1)."""
     timings = timing.current()
     if timings is not None:
         timings.note("uturn", "ahead first")
+    ahead = None
     try:
         ahead = plan(points, preset_name, dials=dials, **asked)
     except PlanCancelled:
@@ -5017,7 +5235,16 @@ def _plan_ahead_first(
         logger.info("a re-route ahead only: the route ahead turns round")
     if timings is not None:
         timings.note("uturn", "ahead first, replanned")
-    return plan(points, preset_name, dials=dataclasses.replace(dials, heading=None), **asked)
+    try:
+        return plan(points, preset_name, dials=dataclasses.replace(dials, heading=None), **asked)
+    except PlanCancelled:
+        # The rider has moved on: the route ahead is not kept either (review of S7).
+        raise
+    except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded) as error:
+        if ahead is None:
+            raise
+        logger.info("a re-route ahead only: no second plan (%s)", type(error).__name__)
+        return ahead
 
 
 def quick_applies(preset_name: str, loop: bool, long_ride: bool, long_calm: bool) -> bool:

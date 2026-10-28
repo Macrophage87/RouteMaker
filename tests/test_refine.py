@@ -3031,9 +3031,13 @@ class TestSeekWiring:
         # Review speed-1: the candidates share most of their junctions.
         asked = []
 
+        def at(lon, lat, radius) -> dict:
+            # An answer that says where it was asked (a node there, its id the radius).
+            return {"nodes": [{"lon": lon, "lat": lat, "node_id": radius}]}
+
         def call(variant, endpoint, payload, deadline):
             asked.append([(p["lon"], p["lat"], p["radius"]) for p in payload["locations"]])
-            return [{"at": (p["lon"], p["lat"], p["radius"])} for p in payload["locations"]]
+            return [at(p["lon"], p["lat"], p["radius"]) for p in payload["locations"]]
 
         monkeypatch.setattr(routing, "_call", call)
         ctx = context()
@@ -3044,9 +3048,9 @@ class TestSeekWiring:
             return {"locations": [{"lon": x, "lat": y, "radius": radius} for x, y in points]}
 
         first = locate(payload((-77.0, 38.9), (-77.1, 38.9)))
-        assert first == [{"at": (-77.0, 38.9, 1)}, {"at": (-77.1, 38.9, 1)}]
+        assert first == [at(-77.0, 38.9, 1), at(-77.1, 38.9, 1)]
         again = locate(payload((-77.1, 38.9), (-77.2, 38.9), (-77.0, 38.9)))
-        assert again == [{"at": (-77.1, 38.9, 1)}, {"at": (-77.2, 38.9, 1)}, first[0]]
+        assert again == [at(-77.1, 38.9, 1), at(-77.2, 38.9, 1), first[0]]
         assert asked[1] == [(-77.2, 38.9, 1)]
         # Only what was asked: another radius is another answer, and nothing new, no call.
         locate(payload((-77.0, 38.9), radius=60))
@@ -3195,6 +3199,32 @@ class TestStressAverseWeights:
         assert refine.analyse(trip, standard, standard.deadline).exposure_m == 600.0
         averse = averse_context()
         assert refine.analyse(trip, averse, averse.deadline).exposure_m == 2500.0
+
+    def test_the_reading_prices_the_hazards_the_stress_query_read(self, monkeypatch) -> None:
+        # Audit S16: the kinds come with the classes; no second query for them.
+        classes = routing.Classes([("1", "none"), ("2", "none")])
+        classes.hazards = [(), ("rails",)]
+        pieces = [routing.Piece(1, BASE[0] + i * 1e-4, BASE[1], 100.0) for i in range(2)]
+        monkeypatch.setattr(routing, "_trace", lambda *a, **k: {"shape": "x"})
+        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace: pieces)
+        monkeypatch.setattr(
+            routing, "decode_polyline6", lambda s: [BASE, (BASE[0] + 0.01, BASE[1])]
+        )
+        monkeypatch.setattr(routing, "classify", lambda p, when, roadway_only=False: classes)
+
+        def no_query(pieces):
+            raise AssertionError("the hazards were read again")
+
+        monkeypatch.setattr(refine.route_hazards, "kinds_of", no_query)
+        monkeypatch.setattr(refine.trace_junctions, "junctions_of_trace", lambda *a: [])
+        monkeypatch.setattr(refine.trace_junctions, "edge_midpoints", lambda *a: [])
+        monkeypatch.setattr(refine, "events_of_raws", lambda raws, ctx, deadline: [])
+        trip = {"legs": [{"shape": "x"}], "summary": {"length": 0.2, "time": 50.0, "cost": 1.0}}
+        ctx = context()
+        read = refine.analyse(trip, ctx, ctx.deadline)
+        assert read.hazard_kinds == [(), ("rails",)]
+        assert [c[0] for c in read.classes] == ["1", "4"]
+        assert [c[0] for c in read.rated_classes] == ["1", "2"]
 
     def test_the_seek_weighs_the_busy_road_it_replaces_by_them(self) -> None:
         a = analysis("a", "1345")

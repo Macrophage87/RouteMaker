@@ -69,6 +69,7 @@ test("Spanish turn directions are whole Spanish sentences, the street names as t
     assert.equal(turnWords("left", "R Street Northwest"), "Gire a la izquierda hacia R Street Northwest.");
     assert.equal(turnWords("bear_right", "Paint Branch Trail", true), "Manténgase a la derecha para seguir en Paint Branch Trail.");
     assert.equal(turnWords("right", "unnamed path"), "Gire a la derecha hacia el sendero.");
+    assert.equal(turnWords("right", "path", false, null, "Rock Creek Trail"), "Gire a la derecha hacia el sendero que lleva a Rock Creek Trail.");
     assert.equal(turnWords("right", "service road beside East-West Highway"), "Gire a la derecha hacia la vía de servicio junto a East-West Highway.");
     assert.equal(turnWords("left", null), "Gire a la izquierda.");
     // A bear is a turn, not "keep" (manténgase is only for staying on a way at a fork).

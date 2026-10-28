@@ -37,6 +37,7 @@ import {
   compassWord,
   crossingWords,
   crossArrow,
+  avoidWords,
   cueSpoken,
   exitWords,
   ordinal,
@@ -1335,6 +1336,25 @@ test("onto: a name that is the other with more after it is not a new way", () =>
   assert.equal(model.cues.filter((c) => c.kind === "onto").length, 0);
 });
 
+test("onto: one street's other side straight on is not a new way; North and South Avenue or Capitol are", () => {
+  const onto = (a: string, b: string) =>
+    rideModel(
+      straightRoute([
+        stretch(0, 1000, `${a}.`, { street: a }),
+        stretch(1000, 3000, `Continue onto ${b}.`, { street: b, turn: straightOnto(b) }),
+      ]),
+    )
+      .cues.filter((c) => c.kind === "onto")
+      .map((c) => c.text);
+  assert.deepEqual(onto("West Pratt Street", "East Pratt Street"), []);
+  assert.deepEqual(onto("C Street Northwest", "C Street Northeast"), []);
+  assert.deepEqual(onto("1st Street NW", "1st Street SW"), []);
+  assert.deepEqual(onto("North Charles Street", "South Charles Street"), []);
+  assert.deepEqual(onto("North Avenue", "South Avenue"), ["Continue onto South Avenue."]);
+  assert.deepEqual(onto("North Capitol Street", "South Capitol Street"), ["Continue onto South Capitol Street."]);
+  assert.deepEqual(onto("North Carolina Avenue Southeast", "South Carolina Avenue Southeast"), ["Continue onto South Carolina Avenue Southeast."]);
+});
+
 test("onto: a name only from the trail's route relation is never a Continue onto cue", () => {
   const model = rideModel(
     straightRoute([
@@ -1352,6 +1372,28 @@ test("onto: a name only from the trail's route relation is never a Continue onto
 
 /** A turn entry's `turn`, for the bear and jog cues (the owner, 2026-10-16, on Q Street NW: "complex turns which aren't announced"). */
 const turning = (movement: "left" | "right" | "bear_left" | "bear_right", street: string) => ({ movement, onto: street, control: null, severity: null });
+
+test("toward: a turn onto an unnamed path says the trail it leads to; the path stays unnamed", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1500, "Capital Crescent Trail.", { street: "Capital Crescent Trail", facility: "path" }),
+      stretch(1500, 1650, "Right onto the path to Rock Creek Trail.", { street: "path", facility: "path", turn: { ...turning("right", "path"), toward: "Rock Creek Trail" } }),
+      stretch(1650, 3000, "Left onto Rock Creek Trail.", { street: "Rock Creek Trail", facility: "path", turn: turning("left", "Rock Creek Trail") }),
+    ]),
+  );
+  const [onto, next] = model.cues;
+  assert.equal(onto.text, "Right onto the path to Rock Creek Trail.");
+  assert.equal(onto.street, "path");
+  assert.equal(onto.toward, "Rock Creek Trail");
+  assert.equal(cueSpoken(onto, "now", 0), "Right now onto the path to Rock Creek Trail.");
+  assert.equal(next.text, "Left onto Rock Creek Trail.");
+  assert.equal(model.stretches[1].street, "path");
+  // An older API's turn, with no `toward`: as before.
+  assert.equal(turnWords("right", "path"), "Right onto the path.");
+  assert.equal(turnWords("right", "path", false, null, "Rock Creek Trail"), "Right onto the path to Rock Creek Trail.");
+  // Only a path with no name is said so.
+  assert.equal(turnWords("right", "Bridge Path", false, null, "Rock Creek Trail"), "Right onto Bridge Path.");
+});
 
 test("bear: a bear right off Q Street onto a diagonal is a turn cue, said at Full and Stoker, not Quiet", () => {
   const model = rideModel(
@@ -2039,8 +2081,142 @@ test("D14: in Spanish the stretch and walk cues are whole Spanish sentences", ()
   setLanguageForTest("es");
   try {
     assert.equal(stretchWords("busy", { street: "Georgia Avenue", tier: 3, surface: null }), "Calle con mucho tráfico en Georgia Avenue.");
-    assert.equal(stretchWords("busy", { street: "Georgia Avenue", tier: 4, surface: "unpaved" }), "Tráfico intenso en Georgia Avenue, sin pavimentar.");
+    assert.equal(stretchWords("busy", { street: "Georgia Avenue", tier: 4, surface: "unpaved" }), "Tráfico pesado en Georgia Avenue, sin pavimentar.");
+    // The same names as Plan's (src/routemaker/lang_es.py): "pesado", and "Avoid" as the rating's name (D22).
+    assert.equal(stretchWords("busy", { street: "Georgia Avenue", tier: 5, surface: null }), "Calle calificada Avoid en Georgia Avenue.");
     assert.equal(walkWords(37, true), "Camine con su bicicleta por 120 pies.");
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+/** An Avoid-rated junction's entry as the API sends it (src/routemaker/avoid_junctions.py entries). */
+function avoidEntry(atM: number, street: string | null, reason: string | null): DescriptionEntry {
+  const where = `${(atM / 1609.344).toFixed(1)} mi (${(atM / 1000).toFixed(1)} km)`;
+  const said = [street, reason].filter(Boolean).join(", ");
+  return {
+    ...stretch(atM, atM, `Avoid-rated junction ahead at ${where}${said ? `: ${said}` : ""}. Riding through it is a really bad idea. Please reconsider your route.`),
+    kind: "avoid",
+    street,
+    reason,
+    tier: null,
+    severity: "avoid",
+  };
+}
+
+test('R2: the Avoid-rated junction cue says the warning, the name with its capitals and the reason, never "mi"', () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1000, "0.0 to 0.6 mi: A Street, low stress (LTS 1).", { street: "A Street" }),
+      avoidEntry(600, "St. Paul Street and Colesville Road", "no safe crossing"),
+    ]),
+  );
+  const cue = model.cues.find((c) => c.source === "avoid") as Cue;
+  const plea = "Riding through it is a really bad idea. Please reconsider your route.";
+  // The card.
+  assert.equal(cue.rideText, `Avoid-rated junction ahead. St. Paul Street and Colesville Road, no safe crossing. ${plea}`);
+  assert.equal(cueSpoken(cue, "advance", 150), `In 500 feet, avoid-rated junction ahead. St. Paul Street and Colesville Road, no safe crossing. ${plea}`);
+  assert.match(whereAmI(model, { ...startState(), progressM: 500 }), /: avoid-rated junction ahead\. St\. Paul Street and Colesville Road, no safe crossing\./);
+  // No name or reason: the warning and the plea, no distance.
+  const bare = { ...cue, rideText: avoidWords({ street: null, reason: null }) };
+  assert.equal(cueSpoken(bare, "advance", 150), `In 500 feet, avoid-rated junction ahead. ${plea}`);
+  // An entry with no text and no reason: the name alone.
+  assert.equal(avoidWords({ street: "Main St." }), `Avoid-rated junction ahead. Main St. ${plea}`);
+  // A route saved from an older API (no reason field) keeps its reason, said from the sentence after the first ": ".
+  const older = { ...avoidEntry(600, "St. Paul Street and Colesville Road", "no safe crossing") } as Partial<DescriptionEntry>;
+  delete older.reason;
+  const olderModel = rideModel(straightRoute([stretch(0, 1000, "0.0 to 0.6 mi: A Street, low stress (LTS 1).", { street: "A Street" }), older as DescriptionEntry]));
+  assert.equal(
+    (olderModel.cues.find((c) => c.source === "avoid") as Cue).rideText,
+    `Avoid-rated junction ahead. St. Paul Street and Colesville Road, no safe crossing. ${plea}`,
+  );
+  // An older sentence without the plea, or in the warning-first shape: the warning once, the plea added.
+  assert.equal(avoidWords({ street: "Dupont Circle", text: "At 0.7 mi: Avoid-rated junction ahead: Dupont Circle." }), `Avoid-rated junction ahead. Dupont Circle. ${plea}`);
+  assert.equal(avoidWords({ street: "Main St", text: "At 0.7 mi: Main St and 1st Ave, no gap in fast traffic." }), `Avoid-rated junction ahead. Main St and 1st Ave, no gap in fast traffic. ${plea}`);
+  // The new API's null reason is not an older answer: the fields, never the sentence.
+  assert.equal(avoidWords({ street: "Main St", reason: null, text: "At 0.7 mi: Main St, something else." }), `Avoid-rated junction ahead. Main St. ${plea}`);
+  setLanguageForTest("es");
+  try {
+    const es = rideModel(straightRoute([stretch(0, 1000, "x", { street: "A Street" }), avoidEntry(600, "Colesville Road and Georgia Avenue", "no safe crossing")]));
+    const said = cueSpoken(es.cues.find((c) => c.source === "avoid") as Cue, "advance", 150);
+    assert.equal(
+      said,
+      "En 500 pies, intersección calificada Avoid más adelante. Colesville Road and Georgia Avenue, no safe crossing. Pasar por ella es una muy mala idea. Por favor, reconsidere su ruta.",
+    );
+    assert.doesNotMatch(said, /\bmi\b/);
+    // An older answer's English plea is said in Spanish.
+    assert.equal(
+      avoidWords({ street: "Main St", text: `Avoid-rated junction ahead at 0.4 mi (0.6 km): Main St and 1st Ave, no safe crossing. ${plea}` }),
+      "Intersección calificada Avoid más adelante. Main St and 1st Ave, no safe crossing. Pasar por ella es una muy mala idea. Por favor, reconsidere su ruta.",
+    );
+    assert.doesNotMatch(cueSpoken({ ...bare, rideText: avoidWords({ street: null, reason: null }) }, "advance", 150), /\bmi\b/);
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+test("D16: in Spanish a lane named after its street says its facility in Spanish, the street as it is; English as it was", () => {
+  const lane = "9th Street Northwest protected bike lane";
+  const route = straightRoute([
+    stretch(0, 1000, "0.0 to 0.6 mi: A Street, low stress (LTS 1).", { street: "A Street" }),
+    stretch(1000, 3000, "x", { street: lane, facility: "path", turn: straightOnto(lane) }),
+  ]);
+  assert.equal(turnWords("right", lane), `Right onto ${lane}.`);
+  assert.match(whereAmI(rideModel(route), { ...startState(), progressM: 1500 }), /^On the 9th Street Northwest protected bike lane[,.]/);
+  setLanguageForTest("es");
+  try {
+    assert.equal(turnWords("right", lane), "Gire a la derecha hacia el carril bici protegido de 9th Street Northwest.");
+    assert.equal(wayWords("Saint Paul Street bike lane"), "el carril bici de Saint Paul Street");
+    assert.equal(wayWords("path beside Saint Paul Street"), "el sendero junto a Saint Paul Street");
+    // Where am I? on it: its own article, not "el el".
+    const said = whereAmI(rideModel(route), { ...startState(), progressM: 1500 });
+    assert.match(said, /^En el carril bici protegido de 9th Street Northwest[,.]/);
+    assert.doesNotMatch(said, /el el/);
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+test("D17: a stop says which side of the street it is on, where the router gives it, in the end cue's words", () => {
+  const sided = { ...twoLegs(), leg_arrival_sides: ["left", "right"] } as RouteResponse;
+  const model = rideModel(sided);
+  const stop = model.cues.find((c) => c.kind === "stop") as Cue;
+  assert.equal(stop.side, "left");
+  assert.equal(stop.text, "Stop 1. Destination on your left.");
+  const { events } = ride(model, "quiet", 0, 2000);
+  assert.deepEqual(
+    events.map((e) => e.spoken),
+    ["You have reached stop 1. Destination on your left.", "You have arrived at the end of the route."],
+  );
+  // Named, numbered among stops past a via point (the plan's point 2 is stop 1).
+  const withVia = { ...twoLegs(), leg_ends: [1, 2, 4], leg_arrival_sides: [null, "right", null] } as RouteResponse;
+  withVia.description = (withVia.description ?? []).map((e) => (e.kind === "via" ? { ...e, via: 2 } : e));
+  const named = rideModel(withVia, [1], new Map([[2, "Union Market"]])).cues.find((c) => c.kind === "stop") as Cue;
+  assert.equal(cueSpoken(named, "arrive", 0), "You have reached stop 1, Union Market. Destination on your right.");
+  // Unknown, absent, or not one per leg: the cue as it was.
+  for (const sides of [[null, "left"], undefined, ["left"]]) {
+    const plain = rideModel({ ...twoLegs(), leg_arrival_sides: sides } as RouteResponse).cues.find((c) => c.kind === "stop") as Cue;
+    assert.equal(plain.text, "Stop 1.");
+    assert.equal(cueSpoken(plain, "arrive", 0), "You have reached stop 1.");
+  }
+  setLanguageForTest("es");
+  try {
+    assert.equal(cueSpoken(stop, "arrive", 0), "Ha llegado a la parada 1. El destino está a su izquierda.");
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+test('D22: Where am I? in Spanish says "a aproximadamente" before miles, not "a unos 0.3 millas"', () => {
+  const route = straightRoute([
+    stretch(0, 1000, "0.0 to 0.6 mi: A Street, low stress (LTS 1).", { street: "A Street" }),
+    stretch(1000, 3000, "x", { street: "Custis Trail", facility: "path", turn: straightOnto("Custis Trail") }),
+  ]);
+  setLanguageForTest("es");
+  try {
+    const said = whereAmI(rideModel(route), { ...startState(), progressM: 1500 });
+    assert.match(said, /^En el Custis Trail, a aproximadamente 0\.3 millas al \S+ de A Street\./);
+    assert.doesNotMatch(said, /a unos/);
   } finally {
     setLanguageForTest("en");
   }

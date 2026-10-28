@@ -534,6 +534,9 @@ class Analysis:
     # (`routemaker.junction_delay`, the owner, 2026-10-20: "Both", the time shown and the
     # route chosen): priced in `score` as that much quiet riding.
     junction_delay_s: float = 0.0
+    # Each piece's known hazard kinds, in the order of `pieces` (`route_hazards.kinds_of`), as
+    # the reading priced them; the answer says them from here (audit S16). None: not read.
+    hazard_kinds: list | None = None
 
     @property
     def rated_classes(self) -> list:
@@ -891,11 +894,19 @@ def locator(variant: str, deadline: routing.Deadline, located: dict | None = Non
     """`/locate` through the plan's own budgeted router call. With `located` (the
     plan's `Context.located`), a place and radius already answered is not asked again:
     only the others are sent, and the answers come back in the order asked. A short
-    answer from the router ends the list where it ended, as the router's would."""
+    answer from the router ends the list where it ended, as the router's would. Each
+    answer is cut to the fields the junctions read (`junctions.slim_locate`, audit S21) on
+    the thread that asked, before it is kept."""
+
+    def ask(payload: dict) -> list[dict]:
+        answers = routing._call(variant, "locate", payload, deadline)
+        if not isinstance(answers, list):
+            return answers
+        return [junctions.slim_locate(answer) for answer in answers]
 
     def locate(payload: dict) -> list[dict]:
         if located is None:
-            return routing._call(variant, "locate", payload, deadline)
+            return ask(payload)
         keys = [
             (variant, round(p["lon"], 6), round(p["lat"], 6), p.get("radius"))
             for p in payload["locations"]
@@ -903,7 +914,7 @@ def locator(variant: str, deadline: routing.Deadline, located: dict | None = Non
         unseen = [i for i, key in enumerate(keys) if key not in located]
         if unseen:
             asked = {**payload, "locations": [payload["locations"][i] for i in unseen]}
-            answers = routing._call(variant, "locate", asked, deadline)
+            answers = ask(asked)
             for i, answer in zip(unseen, answers, strict=False):
                 located[keys[i]] = answer
         out = []
@@ -982,7 +993,11 @@ def analyse(
     classes = shift_classes(real_classes, shift)
     # A known hazard ridden is searched as the graph prices it, LTS 4 (v0.10.0); the rider
     # is still shown its own rating (`rated_classes`).
-    priced = hazard_priced(classes, route_hazards.kinds_of(pieces))
+    # The kinds as the stress query read them (audit S16), else in a query of their own.
+    kinds = routing.hazards_read(real_classes, pieces)
+    if kinds is None:
+        kinds = route_hazards.kinds_of(pieces)
+    priced = hazard_priced(classes, kinds)
     hazard_read = priced is not classes
     classes = priced
     avoid_passages = avoid_model.passages(line, ctx.avoid) if ctx.avoid else []
@@ -1033,6 +1048,7 @@ def analyse(
         rated_lts2_m=stress_totals(*rated_metres(pieces, classes))["lts2_m"],
         real_classes=real_classes if shift or hazard_read else None,
         shift=shift,
+        hazard_kinds=kinds,
         junction_delay_s=junction_delay.delay_s(
             raws,
             routing.stop_as_yield,
@@ -3168,28 +3184,37 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
             routing.Deadline(hard_stop, ctx.deadline.per_call_s),
             ctx.traces,
         )
-    for number, request in enumerate(leg_requests):
-        try:
-            if asking is not None:
-                answer = routing.await_future(asking[number])
-            else:
-                answer = routing._call(ctx.variant, "route", request, route_deadline)
-            leg_trip = answer.get("trip") or {}
-            read = None
-            if leg_trip.get("legs"):
-                read = analyse(
-                    leg_trip, ctx, routing.Deadline(hard_stop, ctx.deadline.per_call_s), False
-                )
-        except routing.RouterRefused:
-            read = None
-        except (routing.DeadlineExceeded, routing.RouterUnavailable):
-            info["limited"] = "time"
-            return trip, info
-        if read is None:
-            info["limited"] = "split"
-            return trip, info
-        firsts.append(leg_trip)
-        reads.append(read)
+    try:
+        for number, request in enumerate(leg_requests):
+            try:
+                if asking is not None:
+                    answer = routing.await_future(asking[number])
+                else:
+                    answer = routing._call(ctx.variant, "route", request, route_deadline)
+                leg_trip = answer.get("trip") or {}
+                read = None
+                if leg_trip.get("legs"):
+                    read = analyse(
+                        leg_trip, ctx, routing.Deadline(hard_stop, ctx.deadline.per_call_s), False
+                    )
+            except routing.RouterRefused:
+                read = None
+            except (routing.DeadlineExceeded, routing.RouterUnavailable):
+                info["limited"] = "time"
+                return trip, info
+            if read is None:
+                info["limited"] = "split"
+                return trip, info
+            firsts.append(leg_trip)
+            reads.append(read)
+    finally:
+        if asking is not None:
+            # A leg that failed ends the search: the legs after it, not yet read, are not
+            # asked for (those still queued on the pool are cancelled; one already running
+            # ends at its own deadline, never waited for), so they do not hold the router's
+            # slots after the plan has answered (audit R4).
+            for future in asking[len(firsts) + 1 :]:
+                future.cancel()
     results = list(firsts)
     finals = list(reads)
     infos: list[dict | None] = [None] * len(legs)

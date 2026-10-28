@@ -31,6 +31,9 @@ ES: dict[str, str] = {
     " and {count} more": " y {count} más",
     " and 1 more turn": " y 1 giro más",
     " and {count} more turns": " y {count} giros más",
+    # An unnamed path said with the named one it leads to (describe._toward): "the path
+    # to Rock Creek Trail".
+    "{way} to {trail}": "{way} que lleva a {trail}",
     "Continue onto {street}": "Continúe por {street}",
     "Continue on {street}": "Siga por {street}",
     "Cross {road}": "Cruce {road}",

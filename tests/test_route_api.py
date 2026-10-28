@@ -29,7 +29,7 @@ from django.utils import timezone
 from test_ratelimit import in_one_window
 
 from core import junctions as core_junctions
-from core import presets, refine, routing, segment_info
+from core import presets, refine, route_hazards, routing, segment_info
 from routemaker import calm, flow
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
@@ -70,6 +70,8 @@ CONTRACT_KEYS = {
     "leg_ends",
     # Additive, v0.7.0 "Go riding fixes" item 5: the destination's side of the street.
     "arrival_side",
+    # Additive, round-2 audit D17: each leg's end's side of the street, for a stop's cue.
+    "leg_arrival_sides",
     # Additive, FOLLOWUP-ROUTE-COLOURS (OWNER-DECISIONS item 81).
     "stress_spans",
     # Additive, FOLLOWUP-ELEVATION-CHART (OWNER-DECISIONS 322, 323, 328, 333): the elevation
@@ -689,6 +691,31 @@ class TestAnswer:
         assert ends[-1] == len(coordinates) - 1
         for end, leg in zip(ends, legs, strict=True):
             assert coordinates[end] == list(leg[-1])
+
+    def test_each_leg_says_its_ends_side_of_the_street(self, client, segments, router) -> None:
+        """Round-2 audit D17: every rider point is a break, so every leg ends with its own
+        destination maneuver; its side goes out one per leg as `leg_ends`, null where the
+        router says none (type 4)."""
+        legs = [VERTICES[:2], VERTICES[1:4], VERTICES[3:]]
+        answer = route_answer([(leg, 1.0, [1.0]) for leg in legs])
+        for leg, last in zip(answer["trip"]["legs"], (6, 4, 5), strict=True):
+            leg["maneuvers"] = [{"type": 1}, {"type": last}]
+        router(
+            FakeRouter(
+                {
+                    "route": answer,
+                    "trace_attributes": [trace_answer(leg, [(101, 0, 1, 1.0)]) for leg in legs],
+                }
+            )
+        )
+        body = {"points": [list(VERTICES[i]) for i in (0, 1, 3, 4)], "preset": "default"}
+        answer = post(client, body).json()
+        assert answer["leg_arrival_sides"] == ["left", None, "right"]
+        assert len(answer["leg_arrival_sides"]) == len(answer["leg_ends"])
+        assert answer["arrival_side"] == "right"
+        assert routing.leg_arrival_side({"maneuvers": [{"type": 4}]}) is None
+        assert routing.leg_arrival_side({}) is None
+        assert routing.leg_arrival_side({"maneuvers": "nonsense"}) is None
 
     def test_a_one_leg_route_ends_its_leg_at_the_last_vertex(
         self, client, segments, router
@@ -2964,6 +2991,189 @@ class TestSurfaceOfPieces:
 
 
 @db
+class TestHazardsInTheStressQuery:
+    """Audit S16: the stress query reads each piece's hazard kinds beside its class, so
+    neither the calm search's reading nor the answer asks the same nearest-segment search
+    again only for them."""
+
+    PIECES = [
+        routing.Piece(101, -77.045, LAT, 100.0),
+        routing.Piece(202, -77.0375, LAT, 100.0),
+        routing.Piece(202, -77.025, LAT, 100.0),
+    ]
+
+    @staticmethod
+    def rails_on_the_last(segments) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {segments}.segment SET hazard = 'rails' "
+                "WHERE osm_way_id = 202 AND ordinal = 1"
+            )
+        segment_info.forget_columns()
+
+    def test_classify_reads_the_kinds_as_their_own_query_does(self, segments) -> None:
+        self.rails_on_the_last(segments)
+        classes = routing.classify(self.PIECES, "weekday_offpeak")
+        assert classes.hazards == [(), (), ("rails",)]
+        assert classes.hazards == route_hazards.kinds_of(self.PIECES)
+        assert [c[0] for c in classes] == ["3", "1", "4"]
+        assert routing.hazards_read(classes, self.PIECES) == classes.hazards
+        assert routing.hazards_read(list(classes), self.PIECES) is None
+
+    def test_a_table_without_the_column_reads_none_and_still_classifies(self, segments) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {segments}.segment DROP COLUMN hazard")
+        segment_info.forget_columns()
+        classes = routing.classify(self.PIECES, "weekday_offpeak")
+        assert classes.hazards is None and [c[0] for c in classes] == ["3", "1", "4"]
+
+    def test_a_bad_value_loses_the_hazards_never_the_reading(self, segments, monkeypatch) -> None:
+        self.rails_on_the_last(segments)
+
+        def broken(value):
+            raise ValueError("bad hazard")
+
+        monkeypatch.setattr(route_hazards.hazards, "decode", broken)
+        classes = routing.classify(self.PIECES, "weekday_offpeak")
+        assert classes.hazards == [(), (), ()] and [c[0] for c in classes] == ["3", "1", "4"]
+
+    def test_the_answer_says_the_hazard_without_a_query_of_its_own(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        self.rails_on_the_last(segments)
+        asked = []
+        real = route_hazards.kinds_of
+
+        def kinds_of(pieces):
+            asked.append(len(pieces))
+            return real(pieces)
+
+        monkeypatch.setattr(route_hazards, "kinds_of", kinds_of)
+        router(standard_router())
+        found = post(client, good_body()).json()["road_hazards"]
+        assert [h["kinds"] for h in found] == [["rails"]]
+        assert asked == []
+
+
+@db
+class TestStressReadOncePerPlan:
+    """Audit S18: a plan reads each trip's stress once (`routing._stress_memo`): the
+    trip a hill-avoiding plan keeps is read by `calmer_or_own`, `no_busier_than_middle` and
+    the calm search's reading, each the same search with the same answer."""
+
+    PIECES = TestHazardsInTheStressQuery.PIECES
+
+    @staticmethod
+    def counted(monkeypatch) -> list:
+        reads: list = []
+        real = routing._read_stress
+
+        def read(pieces, when, schema):
+            reads.append(when)
+            return real(pieces, when, schema)
+
+        monkeypatch.setattr(routing, "_read_stress", read)
+        return reads
+
+    @staticmethod
+    def in_a_plan(fn):
+        """`fn()` with a plan's memo, as `routing.plan` sets it."""
+        import contextvars
+
+        def run():
+            routing._stress_memo.set({})
+            return fn()
+
+        return contextvars.copy_context().run(run)
+
+    def test_a_trip_is_read_once_and_each_reader_gets_its_own_classes(
+        self, segments, monkeypatch
+    ) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {segments}.segment SET facility = 'lane' WHERE osm_way_id = 101"
+            )
+            cursor.execute(f"UPDATE {segments}.segment SET hazard = 'rails' WHERE osm_way_id = 202")
+        segment_info.forget_columns()
+        reads = self.counted(monkeypatch)
+        outside = routing.classify(self.PIECES, "weekday_offpeak")
+
+        def twice():
+            first = routing.classify(self.PIECES, "weekday_offpeak")
+            again = routing.classify(self.PIECES, "weekday_offpeak")
+            # The lanes-as-roadway remap is made after the lookup: one reading serves both.
+            roadway = routing.classify(self.PIECES, "weekday_offpeak", roadway_only=True)
+            return first, again, roadway
+
+        first, again, roadway = self.in_a_plan(twice)
+        assert reads == ["weekday_offpeak", "weekday_offpeak"], "once outside, once in the plan"
+        assert first == again == outside and first is not again
+        assert [c.unpaved for c in first] == [c.unpaved for c in outside]
+        assert first.hazards == again.hazards == outside.hazards == [(), ("rails",), ("rails",)]
+        assert first.hazards is not again.hazards
+        assert [c[1] for c in first] == ["lane", "none", "none"]
+        assert [c[1] for c in roadway] == ["none", "none", "none"]
+
+    def test_another_ride_time_or_other_pieces_is_read_again(self, segments, monkeypatch) -> None:
+        reads = self.counted(monkeypatch)
+
+        def each():
+            routing.classify(self.PIECES, "weekday_offpeak")
+            routing.classify(self.PIECES, "weekend")
+            routing.classify(self.PIECES[:2], "weekday_offpeak")
+            moved = [routing.Piece(101, -77.046, LAT, 100.0), *self.PIECES[1:]]
+            routing.classify(moved, "weekday_offpeak")
+
+        self.in_a_plan(each)
+        assert len(reads) == 4
+
+    def test_a_reading_cut_short_is_not_remembered(self, segments, monkeypatch) -> None:
+        reads = self.counted(monkeypatch)
+        real = routing._read_stress
+
+        def late_once(pieces, when, schema):
+            if len(reads) == 0:
+                reads.append("late")
+                raise routing.DeadlineExceeded("a segment table read ran past 10 ms")
+            return real(pieces, when, schema)
+
+        monkeypatch.setattr(routing, "_read_stress", late_once)
+
+        def twice():
+            with pytest.raises(routing.DeadlineExceeded):
+                routing.classify(self.PIECES, "weekday_offpeak")
+            return routing.classify(self.PIECES, "weekday_offpeak")
+
+        assert [c[0] for c in self.in_a_plan(twice)] == ["3", "1", "4"]
+        assert reads == ["late", "weekday_offpeak"]
+
+    def test_outside_a_plan_nothing_is_remembered(self, segments, monkeypatch) -> None:
+        reads = self.counted(monkeypatch)
+        routing.classify(self.PIECES, "weekday_offpeak")
+        routing.classify(self.PIECES, "weekday_offpeak")
+        assert len(reads) == 2 and routing._stress_memo.get() is None
+
+    def test_the_memo_keeps_the_most_recent_and_is_dropped_as_the_plan_ends(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(routing, "_read_stress", lambda pieces, when, schema: ([], None))
+        seen = []
+
+        def rounds(*args):
+            for i in range(routing.STRESS_MEMO_TRIPS + 2):
+                routing.classify([routing.Piece(i, -77.0, LAT, 10.0)], "weekday_offpeak")
+            memo = routing._stress_memo.get()
+            seen.append((memo, len(memo)))
+            return {"ok": True}
+
+        monkeypatch.setattr(routing, "_plan_rounds", rounds)
+        assert routing.plan([[-77.0, LAT], [-77.01, LAT]], "default") == {"ok": True}
+        ((memo, size),) = seen
+        assert size == routing.STRESS_MEMO_TRIPS and memo == {}
+        assert routing._stress_memo.get() is None
+
+
+@db
 class TestMassRideCapacitySections:
     """The Mass Ride's route line is coloured by carrying capacity, riders a minute
     (OWNER-DECISIONS 325-327, 387): the API's sections carry `rpm` from the segment
@@ -2986,6 +3196,24 @@ class TestMassRideCapacitySections:
         spans = post(client, good_body("mass-ride")).json()["stress_spans"]
         # The trace's last piece matches no segment: unknown, with no figure.
         assert [(s["tier"], s["rpm"]) for s in spans] == [(3, 50), (1, 250), (4, 250), (None, None)]
+
+    def test_a_mass_ride_checks_the_district_once_a_piece(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        # Audit S20: the sections and the flow chart read one check of each piece.
+        checked = []
+        real = routing._outside_dc
+
+        def outside(piece):
+            checked.append(piece)
+            return real(piece)
+
+        monkeypatch.setattr(routing, "_outside_dc", outside)
+        self.capacities(segments, {101: 50, 202: 250})
+        router(standard_router())
+        body = post(client, good_body("mass-ride")).json()
+        assert body["stress_spans"] and checked
+        assert len(checked) == len({id(piece) for piece in checked}), "each piece once"
 
     def test_another_ride_type_carries_none(self, client, segments, router) -> None:
         self.capacities(segments, {101: 50, 202: 250})

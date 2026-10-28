@@ -258,3 +258,41 @@ def test_a_language_the_server_does_not_word_is_english():
 
     assert RouteIn._known_language("fr") == "en"
     assert RouteIn._known_language("es") == "es"
+
+
+class TestBikeLaneNames:
+    """Round-2 audit D16: a lane named after its street at the rebuild says its facility
+    in Spanish, the street as it is; English as it was."""
+
+    def test_the_way_name_in_spanish(self):
+        assert (
+            lang.way_es("9th Street Northwest protected bike lane")
+            == "el carril bici protegido de 9th Street Northwest"
+        )
+        assert lang.way_es("Saint Paul Street bike lane") == "el carril bici de Saint Paul Street"
+        assert (
+            lang.way_es("path beside Saint Paul Street") == "el sendero junto a Saint Paul Street"
+        )
+        assert lang.way_es("Saint Paul Street") is None
+
+    def test_a_turn_onto_one(self):
+        with lang.speaking("es"):
+            assert (
+                d._in_sentence("9th Street Northwest protected bike lane")
+                == "el carril bici protegido de 9th Street Northwest"
+            )
+        assert (
+            d._in_sentence("9th Street Northwest protected bike lane")
+            == "9th Street Northwest protected bike lane"
+        )
+
+    def test_the_app_has_the_same_rules(self):
+        """The app's wayWords (frontend/src/lib/navigate.ts WAY_ES) words a way as the API
+        does: each of its rules is one of the API's."""
+        source = (SRC.parent / "frontend/src/lib/navigate.ts").read_text()
+        table = source.split("const WAY_ES", 1)[1].split("];", 1)[0]
+        rules = re.findall(r'\[/(.+?)/, "(.+?)"\]', table)
+        assert len(rules) >= 7
+        api = {(head.pattern, words.replace("\\1", "$1")) for head, words in lang._WAY_ES}
+        for rule in rules:
+            assert rule in api, rule

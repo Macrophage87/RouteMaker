@@ -144,6 +144,14 @@ class TestWords:
         assert model.with_entries(None, [model.Passage(junction(), 1.0)]) is None
         assert model.with_entries(description, []) is description
 
+    def test_its_entry_carries_the_name_and_the_reason_as_fields(self) -> None:
+        """Round-2 audit R2: Ride words the cue from the fields, never by cutting `text`."""
+        [entry] = model.entries([model.Passage(junction(reason="no gap in fast traffic."), 500.0)])
+        assert entry["street"] == "Main St and 1st Ave"
+        assert entry["reason"] == "no gap in fast traffic"
+        [bare] = model.entries([model.Passage(junction(name="", reason=" "), 500.0)])
+        assert bare["street"] is None and bare["reason"] is None
+
 
 # --- The search's score ---------------------------------------------------------------
 

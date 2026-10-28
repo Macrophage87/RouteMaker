@@ -39,6 +39,8 @@ export const ES: Readonly<Record<string, string>> = {
   "not set": "sin fijar",
   "Cross {road}.": "Cruce {road}.",
   "Cross {road}, then {turn}": "Cruce {road}, luego {turn}",
+  // An unnamed path said with the named one it leads to (navigate.ts pathWords, describe._toward).
+  "{way} to {trail}": "{way} que lleva a {trail}",
   "Cross {road} now.": "Cruce {road} ahora.",
   "Cross {road} now, then {turn}": "Cruce {road} ahora, luego {turn}",
   ", then {turn}": ", luego {turn}",
@@ -52,13 +54,17 @@ export const ES: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Intersección con mucho tráfico, sin semáforo.",
   "Busy crossing.": "Intersección con mucho tráfico.",
   "Busy junction.": "Intersección con mucho tráfico.",
-  // A stretch's change and a walk in Ride (routing audit D14).
+  // An Avoid-rated junction in Ride (round-2 audit R2): the server's words (src/routemaker/lang_es.py).
+  "Avoid-rated junction ahead.": "Intersección calificada Avoid más adelante.",
+  "Riding through it is a really bad idea. Please reconsider your route.": "Pasar por ella es una muy mala idea. Por favor, reconsidere su ruta.",
+  // A stretch's change and a walk in Ride (routing audit D14), the tiers named as Plan names them
+  // (src/routemaker/lang_es.py: "tráfico pesado", and "Avoid" kept as the rating's name; round-2 audit D22).
   "Busy road on {street}.": "Calle con mucho tráfico en {street}.",
   "Busy road.": "Calle con mucho tráfico.",
-  "Heavy traffic on {street}.": "Tráfico intenso en {street}.",
-  "Heavy traffic.": "Tráfico intenso.",
-  "Avoid-rated road on {street}.": "Calle calificada como Evitar en {street}.",
-  "Avoid-rated road.": "Calle calificada como Evitar.",
+  "Heavy traffic on {street}.": "Tráfico pesado en {street}.",
+  "Heavy traffic.": "Tráfico pesado.",
+  "Avoid-rated road on {street}.": "Calle calificada Avoid en {street}.",
+  "Avoid-rated road.": "Calle calificada Avoid.",
   "Calmer riding on {street}.": "Recorrido más tranquilo en {street}.",
   "Calmer riding.": "Recorrido más tranquilo.",
   "Unpaved surface on {street}.": "Superficie sin pavimentar en {street}.",
@@ -119,7 +125,7 @@ export const ES: Readonly<Record<string, string>> = {
   "an unnamed road": "una calle sin nombre",
   "On {way}.": "En {way}.",
   "On {way}, at {mile}.": "En {way}, en {mile}.",
-  "On {way}, about {distance} {direction} of {street}.": "En {way}, a unos {distance} al {direction} de {street}.",
+  "On {way}, about {distance} {direction} of {street}.": "En {way}, a aproximadamente {distance} al {direction} de {street}.",
   "about mile {mile}": "cerca de la milla {mile}",
   "mile marker {mile}": "el marcador de la milla {mile}",
   "near mile marker {mile}": "cerca del marcador de la milla {mile}",
