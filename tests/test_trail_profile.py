@@ -38,3 +38,14 @@ def test_noise_on_a_flat_trail_is_no_climbing() -> None:
     heights = [10.0 + (1.5 if i % 2 else 0.0) for i in range(20)]
     body = trailprofile.body_of(7, at, heights, 30)
     assert body["gain_m"] == 0.0 and body["loss_m"] == 0.0
+
+
+def test_the_line_is_kept_whole_or_thinned_with_both_ends() -> None:
+    """The map lights up the way the chart is of (the owner, 2026-10-28: "highlight that
+    trail so you know where the elevation profile and rating begins and ends")."""
+    short = [(-77.0, 38.9), (-77.0000004, 38.9001234567)]
+    assert trailprofile.line_out(short) == [[-77.0, 38.9], [-77.0, 38.900123]]
+    long = [(-77.0, 38.9 + i * 1e-5) for i in range(2501)]
+    thinned = trailprofile.line_out(long)
+    assert len(thinned) <= trailprofile.MAX_LINE_POINTS
+    assert thinned[0] == [-77.0, 38.9] and thinned[-1] == [-77.0, round(38.9 + 2500e-5, 6)]
