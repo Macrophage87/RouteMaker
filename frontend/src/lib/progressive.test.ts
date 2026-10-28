@@ -652,7 +652,7 @@ test("App: Go starts routing early, to the top result and to Home, through one e
   assert.match(app, /const early = earlyStart\.current\?\.take\(routeRequestBody\(plan\.points, plan\.preset, asked\)\) \?\? null;/);
   assert.match(app, /allowed: \(\) => modeRef\.current === "go" && !shownNow\.current\.riding && !scheduler\.current\?\.busy\(\)/);
   // A destination picked is asked for at once.
-  assert.match(app, /\}, \{ now: goPickedNow\.current && mode === "go" \}\);/);
+  assert.match(app, /\}, \{ now: now \|\| \(goPickedNow\.current && mode === "go"\) \}\);/);
 });
 
 test("App: Go's controls are unchanged: no new button or field for any of it", () => {

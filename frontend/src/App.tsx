@@ -900,6 +900,10 @@ export function App() {
   // A Go destination just picked (v0.7.0, "Faster routing" step 4): its route is asked for at once, not after the
   // debounce that folds a burst of edits into one request.
   const goPickedNow = useRef(false);
+  // One deliberate press (Plan's Route, Try again, a transit option picked; routing audit S26): its route is asked
+  // for at once too. Read and cleared at the top of the route effect, so it never carries over to a later edit (a
+  // slider or a pin drag keeps the debounce).
+  const sendNow = useRef(false);
   // Nothing waits any more: the destination routed, or dropped (leaving Go).
   const clearGoPending = () => {
     goPending.current = null;
@@ -1327,6 +1331,8 @@ export function App() {
 
   // Route when the plan changes (Go) or the Route button is pressed (Plan).
   useEffect(() => {
+    const now = sendNow.current;
+    sendNow.current = false;
     if (points.length < 2) {
       scheduler.current?.clear();
       setRoute(null);
@@ -1358,7 +1364,7 @@ export function App() {
       // Go shows the first good route at once and swaps in the full plan before Start (v0.7.0, "Faster routing");
       // Plan keeps the full search on its Route button.
       quick: mode === "go" && !riding,
-    }, { now: goPickedNow.current && mode === "go" });
+    }, { now: now || (goPickedNow.current && mode === "go") });
     goPickedNow.current = false;
   }, [points, preset, planDials, confirmedKm, routeAsk, planFirst]);
 
@@ -2863,8 +2869,9 @@ export function App() {
     // as a tap on its line does: the keyboard reaches the trail panel too.
     setRoadInfo({ point: [lng, lat], origin: "centre", trail: mtbTrailsOn() || routableLevel !== null });
   };
+  // Try again (and a transit departure missed) is one press: sent at once, with no debounce (routing audit S26).
   const retry = () =>
-    scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm), ride: rideRef.current, dialsKey: planKey, pins: stationPins, transitPick });
+    scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm), ride: rideRef.current, dialsKey: planKey, pins: stationPins, transitPick }, { now: true });
   // The Mountain Bike ride type's level (slice 6): the map draws the trails up to it as routable.
   // Every other ride type, and a Mountain Bike ride with trails off, draws them as not for routes.
   const routableLevel = isMtb(preset) && !trailsAreOff(preset, dials) ? mtbLevelOf(dials) : null;
@@ -4814,6 +4821,7 @@ export function App() {
     return () => window.clearInterval(timer);
   }, [routingNow]);
   const pressRoute = () => {
+    sendNow.current = true;
     setRouteAsk((n) => n + 1);
     announce(PLANNING_SAID);
   };
@@ -5019,6 +5027,9 @@ export function App() {
   const transitControls = {
     onPick: (key: string) => {
       const option = transitOf(shown)?.options.find((o) => o.key === key);
+      // A pick is one press: its plan goes at once (routing audit S26). The new pick changes planDials, so the
+      // route effect runs and clears the flag in Go as in Plan.
+      sendNow.current = true;
       setTransitPick({ trip, key });
       // In Plan too a trip picked is planned at once, as Route would (Stephen, 2026-10-21: "I can't even click on
       // the other options": the pick waited for Update route, and the list showed no change).
