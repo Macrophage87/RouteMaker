@@ -1201,9 +1201,9 @@ def backend_alive(pid: int) -> bool:
     """Whether the server still has this backend, read from the server rather
     than inferred from Django's own bookkeeping.
 
-    By pid, not by counting the database's backends: a count also moves when
-    some other test's leftover thread opens or drops a connection, which made
-    this check fail now and then on CI.
+    By pid, not by counting the database's backends: another test's leftover
+    thread opening a connection made a count fail now and then on CI, and one
+    dropping a connection could hide a real leak.
     """
     with connection.cursor() as cursor:
         cursor.execute("SELECT 1 FROM pg_stat_activity WHERE pid = %s", [pid])
