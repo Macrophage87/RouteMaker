@@ -51,7 +51,16 @@ count them as the router prices them, not as a quiet trail.
   close (`trailaccess.INFORMAL`), so its one way in was Windham Lane and routes passed it
   by. Walking a bicycle is walking, so this widens nothing a pedestrian may not do.
 
-Neither opens a footway something closes for a reason (`closed`: the CBD's sidewalks, a
+- `cut_throughs`: a plain footway (`highway=footway`, no sidewalk, no bicycle tag, paved
+  or of unknown surface, no hiking-trail marks) leaving a street's dead
+  end for a ridden sidewalk or crosswalk, or another bicycle-open way that is no service
+  road, within `CUT_THROUGH_M` (about 500 ft), ridden and priced as a link. The owner,
+  2026-10-28, of the paved path from the end of Flack Street to the Glenmont Metro (OSM
+  656592016, 290 ft, `highway=footway` and no bicycle tag): "This path was missed from
+  the Glenmont metro", then chose "Rule: ride them, up to 500 ft". The street must be a
+  public one (`STREET_HIGHWAY`): a parking lot is not a dead-end street.
+
+None opens a footway something closes for a reason (`closed`: the CBD's sidewalks, a
 military or secured area, the Zoo, an agency prohibition). Mass Ride's graph rides none of
 them (`pipeline.run`).
 
@@ -63,10 +72,10 @@ from __future__ import annotations
 import heapq
 import math
 from collections import defaultdict
-from collections.abc import Sequence, Set
+from collections.abc import Callable, Sequence, Set
 
+from . import surfaces, trailaccess
 from . import tags as osm_tags
-from . import trailaccess
 from .facility import _angle_between, _bearing, _point_segment_m, _samples, _xy
 
 # What a link, or a sidewalk beside a 4.5 or Avoid road, is rated: LTS 3, as the graph
@@ -94,6 +103,12 @@ WAY_MAX_M = 300.0
 # The longest informal connector a link may open, walked (about 160 ft): the whole way,
 # not just the part the gap uses, lies within the gap.
 INFORMAL_WAY_MAX_M = GAP_M
+# The longest walk a street-end cut-through may take (about 500 ft), along the footways it
+# opens, each of which is wholly within it (`cut_throughs`).
+CUT_THROUGH_M = 150.0
+# How many footways off one dead-end stretch a cut-through is looked for from, nearest the
+# end first (a short path to a door may leave nearer the end than the cut-through does).
+STRETCH_FOOTWAYS = 4
 
 LINK_HIGHWAY = frozenset({"footway", "pedestrian"})
 INFORMAL_HIGHWAY = frozenset({"footway", "path"})
@@ -121,6 +136,13 @@ OPEN_ROAD_HIGHWAY = frozenset(
     }
 )
 MOTORWAY_HIGHWAY = frozenset({"motorway", "motorway_link"})
+# Tags that mark a footway as a hiking trail, which a cut-through never opens.
+TRAIL_MARKS = ("sac_scale", "trail_visibility", "mtb:scale", "mtb:scale:imba")
+# The streets a cut-through leaves from: public streets, never a service road (a parking
+# lot or a driveway that meets the street through a footway is no cut-through).
+STREET_HIGHWAY = frozenset(
+    {"residential", "unclassified", "living_street", "tertiary", "tertiary_link", "road"}
+)
 GRANTING_BICYCLE = trailaccess.UPSTREAM_BICYCLE_OPEN - trailaccess.PRIVATE_BICYCLE
 CLOSING_ACCESS = trailaccess.UPSTREAM_ACCESS_CLOSED | trailaccess.PRIVATE_ACCESS
 CLOSING_FOOT = frozenset({"no", "private", "use_sidepath"})
@@ -181,6 +203,20 @@ def is_informal_connector(tags: dict[str, str]) -> bool:
     return not _closed_by_its_tags(tags)
 
 
+def is_cut_through_candidate(tags: dict[str, str]) -> bool:
+    """A footway `cut_throughs` may open: a link candidate that is no sidewalk or crosswalk,
+    paved or of unknown surface, and with nothing marking it a hiking trail. Upstream closes
+    a footway before the trail rules read its surface or difficulty
+    (`trailaccess.verdict`), so they are read here."""
+    if tags.get("highway") != "footway" or tags.get("footway") in SIDEWALK_KINDS:
+        return False
+    if any(key in tags for key in TRAIL_MARKS):
+        return False
+    if tags.get("surface") is not None and not surfaces.is_paved(tags):
+        return False
+    return is_link_candidate(tags)
+
+
 def takes_part(tags: dict[str, str]) -> bool:
     """A way `links` may open: its coordinates are read."""
     return is_link_candidate(tags) or is_informal_connector(tags)
@@ -208,8 +244,9 @@ def rideable(tags: dict[str, str]) -> bool:
 
 
 def rides(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> set[int]:
-    """Every footway ridden: the rideable sidewalks and crosswalks and the links."""
-    found = set(links(ways, closed))
+    """Every footway ridden: the rideable sidewalks and crosswalks, the links and the
+    cut-throughs."""
+    found = set(links(ways, closed)) | set(cut_throughs(ways, closed))
     found.update(
         osm_id for osm_id, tags, _nodes, _coords in ways if osm_id not in closed and rideable(tags)
     )
@@ -382,6 +419,127 @@ def _shortest_gap(
         for neighbour, step, way in adjacent.get(node, ()):
             total = metres + step
             if total <= gap_m and total < best.get(neighbour, math.inf):
+                best[neighbour] = total
+                previous[neighbour] = (node, way)
+                heapq.heappush(queue, (total, neighbour))
+    return None
+
+
+def cut_throughs(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> dict[int, float]:
+    """The footways to open as street-end cut-throughs, each with the shortest walk (in
+    metres) of a cut-through it is part of. `ways` as `links` takes them.
+
+    A cut-through leaves a street's dead-end stretch (`STREET_HIGHWAY`; the stretch from
+    the street's end that no other bicycle-open way reaches) along plain footways
+    (`is_cut_through_candidate`), to a node
+    a ridden sidewalk or crosswalk (`rideable`) or another bicycle-open way that is no
+    service road reaches, within CUT_THROUGH_M; each footway it opens lies wholly within
+    CUT_THROUGH_M. The owner, 2026-10-28, of the paved path from the end of Flack Street
+    to the Glenmont Metro (OSM 656592016, 290 ft): "This path was missed from the Glenmont
+    metro", then chose "Rule: ride them, up to 500 ft"."""
+    adjacent: dict[int, list[tuple[int, float, int]]] = defaultdict(list)
+    lengths: dict[int, float] = {}
+    rideable_at: set[int] = set()
+    for osm_id, tags, node_ids, coords in ways:
+        if osm_id in closed or len(node_ids) < 2:
+            continue
+        if rideable(tags):
+            rideable_at.update(node_ids)
+            continue
+        if not is_cut_through_candidate(tags):
+            continue
+        lengths[osm_id] = _length(coords)
+        if lengths[osm_id] > CUT_THROUGH_M:
+            continue
+        for i in range(len(node_ids) - 1):
+            a, b = coords[i], coords[i + 1]
+            if a is None or b is None:
+                continue
+            step = _metres(a, b)
+            adjacent[node_ids[i]].append((node_ids[i + 1], step, osm_id))
+            adjacent[node_ids[i + 1]].append((node_ids[i], step, osm_id))
+    if not adjacent:
+        return {}
+
+    # Each street end's stretch up to each of the first STRETCH_FOOTWAYS nodes a plain
+    # footway reaches: (street, that node, the stretch's nodes). A loop has no end.
+    stretches: list[tuple[int, int, list[int]]] = []
+    for osm_id, tags, node_ids, _coords in ways:
+        if (
+            osm_id in closed
+            or len(node_ids) < 2
+            or node_ids[0] == node_ids[-1]
+            or tags.get("highway") not in STREET_HIGHWAY
+            or not bicycle_open(tags)
+        ):
+            continue
+        for order in (node_ids, node_ids[::-1]):
+            tried = 0
+            for i, node in enumerate(order):
+                if node in adjacent:
+                    stretches.append((osm_id, node, list(order[: i + 1])))
+                    tried += 1
+                    if tried == STRETCH_FOOTWAYS:
+                        break
+    if not stretches:
+        return {}
+
+    # The bicycle-open ways at the stretches' nodes and at the nodes the footways reach.
+    asked = set(adjacent).union(*(set(nodes) for _street, _node, nodes in stretches))
+    open_at: dict[int, set[int]] = defaultdict(set)
+    service_at: dict[int, set[int]] = defaultdict(set)
+    for osm_id, tags, node_ids, _coords in ways:
+        if osm_id in closed or len(node_ids) < 2 or not bicycle_open(tags):
+            continue
+        service = tags.get("highway") == "service"
+        for node in set(node_ids) & asked:
+            (service_at if service else open_at)[node].add(osm_id)
+
+    found: dict[int, float] = {}
+    for street, start, nodes in stretches:
+        if any(
+            (open_at.get(node, set()) | service_at.get(node, set())) - {street} for node in nodes
+        ):
+            continue  # another bicycle-open way reaches the stretch: no dead end
+
+        def arrived(node: int, street: int = street) -> bool:
+            return node in rideable_at or bool(open_at.get(node, set()) - {street})
+
+        walk = _shortest_walk(start, arrived, adjacent)
+        if walk is None:
+            continue
+        metres, used = walk
+        for way in used:
+            found[way] = min(metres, found.get(way, metres))
+    return found
+
+
+def _shortest_walk(
+    start: int,
+    arrived: Callable[[int], bool],
+    adjacent: dict[int, list[tuple[int, float, int]]],
+    walk_m: float = CUT_THROUGH_M,
+) -> tuple[float, list[int]] | None:
+    """The shortest way along `adjacent`'s footways from `start` to a node `arrived`
+    accepts, within `walk_m`: (metres, the footways used)."""
+    best = {start: 0.0}
+    previous: dict[int, tuple[int, int]] = {}
+    queue = [(0.0, start)]
+    while queue:
+        metres, node = heapq.heappop(queue)
+        if metres > best.get(node, math.inf):
+            continue
+        if node != start and arrived(node):
+            used: list[int] = []
+            at = node
+            while at != start:
+                at, way = previous[at]
+                if way not in used:
+                    used.append(way)
+            return metres, used
+        for neighbour, step, way in adjacent.get(node, ()):
+            total = metres + step
+            if total <= walk_m and total < best.get(neighbour, math.inf):
                 best[neighbour] = total
                 previous[neighbour] = (node, way)
                 heapq.heappush(queue, (total, neighbour))
