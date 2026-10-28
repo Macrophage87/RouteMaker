@@ -145,8 +145,8 @@ test("the section is a labelled heading, a disclosure button and an ordered list
   assert.match(component, /aria-expanded=\{open\}/);
   assert.match(component, /aria-controls=\{listId\}/);
   assert.match(component, /<ol id=\{listId\}[^>]*hidden=\{!open\}/);
-  assert.match(component, /onClick=\{onCopy\}>\s*Copy description/);
-  assert.match(component, /onClick=\{onDownload\}>\s*Download as text/);
+  assert.match(component, /onClick=\{onCopy\}>\s*\{t\("Copy description"\)\}/);
+  assert.match(component, /onClick=\{onDownload\}>\s*\{t\("Download as text"\)\}/);
 });
 
 test("nothing is announced on a route change: no live region but the copy reply", () => {
@@ -352,7 +352,7 @@ test("the list has no scroll box of its own: the panel scrolls, by keyboard in e
 
 test("Full detail: no leading space in its name, and a 24 px target", () => {
   assert.doesNotMatch(component, /\/> Full detail/);
-  assert.match(component, /\/>\s*\n\s*Full detail/);
+  assert.match(component, /\/>\s*\n\s*\{t\("Full detail"\)\}/);
   assert.match(block(".description-view"), /min-height:\s*24px/);
 });
 
@@ -411,6 +411,6 @@ test("the text and the GPX list a group's crossings under it, numbered within it
 });
 
 test("in the page a group's crossings are a nested, named ordered list", () => {
-  assert.match(component, /<ol className="description-crossings" aria-label="Crossings in this group, in route order">/);
+  assert.match(component, /<ol className="description-crossings" aria-label=\{t\("Crossings in this group, in route order"\)\}>/);
   assert.match(component, /crossingsOf\(entry\)/);
 });

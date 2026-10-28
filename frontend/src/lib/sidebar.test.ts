@@ -940,7 +940,7 @@ test("the skip link and its target stay: #route-planner is the aside, and every 
   assert.doesNotMatch(app.slice(region, app.indexOf("<aside")), /No route yet/);
   const shownCopy = app.slice(app.indexOf('<div className="status-shown"'));
   assert.doesNotMatch(shownCopy.slice(0, shownCopy.indexOf("</div>")), /No route yet/);
-  assert.match(app, /\{status\.kind === "idle" && points\.length < 2 && !goMode && <p className="hint">No route yet\.<\/p>\}/);
+  assert.match(app, /\{status\.kind === "idle" && points\.length < 2 && !goMode && <p className="hint">\{t\("No route yet\."\)\}<\/p>\}/);
   assert.equal((app.match(/aria-live="polite" className="status-line/g) ?? []).length, 1);
   assert.match(app, /\{said\.text\}/);
   assert.match(app, /const said = kindSaid\(next, index, VIA_MARKS\.isVia, loopVias, "added"\);/);
