@@ -428,13 +428,14 @@ def test_a_way_by_what_it_is_in_another_language(monkeypatch):
     fake = {"the path": "le sentier", "{way} beside {road}": "{way} le long de {road}"}
     monkeypatch.setattr(lang, "catalog", lambda code: fake if code == "fr" else {})
     with lang.speaking("fr"):
-        assert lang.way_said("path beside East-West Highway") == "le sentier le long de East-West Highway"
+        said = lang.way_said("path beside East-West Highway")
+        assert said == "le sentier le long de East-West Highway"
         assert lang.way_said("path") == "le sentier"
         assert lang.way_said("R Street Northwest") is None
         assert d.ordinal(3) == "3"
     with lang.speaking("en"):
         assert lang.way_said("path") is None
-    # A language with no sentences yet is English throughout: "3rd", never "3" in an English sentence.
+    # A language with no sentences yet is English throughout: "3rd", never a bare "3".
     with lang.speaking("am"):
         assert lang.language() == "en"
         assert d.ordinal(3) == "3rd"

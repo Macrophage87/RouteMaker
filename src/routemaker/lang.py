@@ -43,6 +43,7 @@ def catalog(lang: str) -> dict[str, str]:
         return {}
     return dict(module.CATALOG)
 
+
 _current: contextvars.ContextVar[str] = contextvars.ContextVar("route_language", default="en")
 
 
