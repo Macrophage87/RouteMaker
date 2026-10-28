@@ -214,7 +214,7 @@ test("a group row is a disclosure button over a list of its crossings", () => {
   assert.match(group, /hidden=\{!open\}/);
   assert.doesNotMatch(group, /aria-live|role="status"|role="alert"/, "opening it announces nothing");
   assert.doesNotMatch(group, /\.focus\(\)/, "the focus stays on the button");
-  assert.match(group, /aria-label="Crossings in this group, in route order"/);
+  assert.match(group, /aria-label=\{t\("Crossings in this group, in route order"\)\}/);
 });
 
 test("a group's chevron is a shape the screen reader does not say, and its row names its severity in words", () => {

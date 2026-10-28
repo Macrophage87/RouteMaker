@@ -18,6 +18,7 @@
  *   the editor (not the panel) and the caller returns the focus to the "Change LTS" button.
  */
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { t } from "./lib/i18n.ts";
 import {
   CATEGORY_LABEL,
   DISPLAY_LABEL,
@@ -195,7 +196,7 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
     setExtent("stretch");
     if (say) setStretch({ kind: "loading" });
     const found = await fetchStretch(origin, wayId).catch(
-      (): StretchLoad => ({ kind: "error", message: "The stretch could not be found just now." }),
+      (): StretchLoad => ({ kind: "error", message: t("The stretch could not be found just now.") }),
     );
     if (ask !== stretchAsk.current) return;
     setStretch(found);
@@ -235,12 +236,12 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
       <h3 id={id("title")} ref={headingRef} tabIndex={-1}>
         {EDITOR_HEADING}
       </h3>
-      {load.kind === "loading" && <p className="stress-editor-status">Loading the road's level…</p>}
+      {load.kind === "loading" && <p className="stress-editor-status">{t("Loading the road's level…")}</p>}
       {load.kind === "error" && (
         <>
           <p role="alert">{load.message}</p>
           <button type="button" className="secondary" onClick={onClose}>
-            Close
+            {t("Close")}
           </button>
         </>
       )}
@@ -282,7 +283,7 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
             </fieldset>
           ) : (
             <p className="stress-editor-extent">
-              <span className="road-info-label">This road piece:</span> {title}
+              <span className="road-info-label">{t("This road piece:")}</span> {title}
             </p>
           )}
           <div className="stress-editor-field">
@@ -345,7 +346,7 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
               onChange={(event) => setReason(event.target.value)}
             />
             <p id={id("reason-count")} className="hint">
-              Required. {countText(reason, state.reason_max)}.
+              {t("Required.")}{" "}{countText(reason, state.reason_max)}.
             </p>
           </div>
           <div className="stress-editor-field">
@@ -380,15 +381,15 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
           )}
           <div className="stress-editor-buttons">
             <button type="submit" aria-disabled={saving ? true : undefined}>
-              {saving ? "Saving…" : "Save"}
+              {saving ? t("Saving…") : t("Save")}
             </button>
             {canUndo && undoFor !== null && (
               <button type="button" className="secondary" onClick={onUndo} aria-disabled={saving ? true : undefined}>
-                Undo the last change
+                {t("Undo the last change")}
               </button>
             )}
             <button type="button" className="secondary" onClick={onClose}>
-              {saved ? "Done" : "Cancel"}
+              {saved ? t("Done") : t("Cancel")}
             </button>
           </div>
         </form>
