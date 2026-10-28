@@ -48,9 +48,14 @@ The rules:
   and a fork's own way are read from the route's own line over LINE_SPAN_M either
   side of the node, short of the next node (`Atom.turn`), where it was read, not
   from the edges' headings, which a tiny edge at a junction can tilt: a gentle bend
-  is never said as a left (Sligo Creek Trail).
-- A leg boundary (a via point, named "Stop N") is its own entry, and a stretch
-  never spans it.
+  is never said as a left (Sligo Creek Trail). A turn of UTURN_DEG or more back over
+  the points the route came in on, on the same way (a dead end), is "Make a U-turn on
+  ..." (round-3 audit D31); a switchback keeps "Left to stay on".
+- A leg boundary is its own entry: a stop ("Stop N", numbered among the stops only) or
+  a via point ("Via point at ..."), which the rider rides on through. A stretch never
+  spans a stop; at a via point (`through`) the legs are read as one line, so a turn
+  there, or a short stretch either side of it, is read as anywhere else (round-3 audit
+  D29), and the via point's entry is where it is along that line.
 - A turn names the street it turns onto and, where the junction model has read
   the junction, its control ("at a signal") and, where it flagged it, its
   severity ("Higher stress junction" / "Very high stress junction"). Where the
@@ -83,7 +88,9 @@ The rules:
 
 from __future__ import annotations
 
+import bisect
 import re
+from collections.abc import Collection
 from dataclasses import dataclass, replace
 
 from .intersections import (
@@ -116,6 +123,11 @@ BEAR_MAX_DEG = 60.0
 # A jog's middle is at least this long: a shorter piece of another street between
 # two turns is a median or a carriageway crossed, not a street ridden.
 JOG_MIN_M = 15.0
+# A walk that begins this near where another entry begins begins there (`_walk_at`): the
+# walk's start and a stretch's are added up in different groupings (`core.routing.
+# walk_spans`), so one that starts at a turn can land a hair either side of the turn's
+# stretch (round-3 audit D32).
+WALK_TIE_M = 0.01
 # An unnamed jog's middle (`_unnamed_jog`) is at least this long: a shorter path or
 # alley between two turns is a crosswalk or a corner cut, not a way ridden.
 JOG_UNNAMED_MIN_M = 30.0
@@ -166,6 +178,11 @@ TRAIL_USES = frozenset({"cycleway", "footway", "path", "mountain_bike", "bridlew
 # route's own line at the node (`turn_between`; the owner, 2026-10-20, on a ramp up to a
 # bridge by Veirs Mill Road: "This is a right turn up onto a bridge").
 HAIRPIN_DEG = 120.0
+# A turn this sharp along one way, where the line comes back over the points it went out
+# on (`Atom.retrace`, `core.routing._retraces`), is a U-turn: at a dead end, or past a via
+# point on a spur. Said "Make a U-turn on ..." (round-3 audit D31), never "Left to stay
+# on", which is kept for a switchback, a hairpin the way itself makes.
+UTURN_DEG = 178.0
 # A turn along one street this far off straight, at a node another way meets, is said
 # (`_said_turns`): the owner, 2026-10-23, on the Metropolitan Branch Trail, where it
 # turns off onto its side path along a road, "It missed a clear left turn".
@@ -406,6 +423,10 @@ class Atom:
     # Whether the piece's road is one-way (the segment's `road_oneway`); None where the
     # map does not say. A stretch sends its last piece's as `oneway` (round-2 audit D26).
     oneway: bool | None = None
+    # Where the piece begins a traced edge of the way the edge before was on, and the line
+    # goes back over the points it came in on (`core.routing._retraces`): a turnaround on
+    # the way itself. False elsewhere.
+    retrace: bool = False
 
 
 def beside_words(use: str, road: str) -> str | None:
@@ -524,14 +545,22 @@ def _said_turns(atoms: list[Atom]) -> list[Atom]:
     it is said and never folded away: a turnaround (HAIRPIN_DEG or more) onto any way,
     and a turn of more than ALONG_TURN_DEG along one street where another way a bicycle
     may take meets the node (`Atom.choice`; a bend with nothing to choose is no question).
+    A true retrace on the same way (`Atom.retrace`, UTURN_DEG or more) is a "uturn".
     Read from the line (`Atom.turn`), which is kept on only one node of a junction
     (`core.routing._one_turn_per_junction`, by the line's own measure: the atoms' lengths
     are the trace's, which can differ by a fraction of a metre at JUNCTION_M)."""
     out = list(atoms)
     for i, atom in enumerate(atoms):
-        if i == 0 or atom.fork is not None or atom.turn is None or atom.roundabout:
+        if i == 0 or atom.turn is None or atom.roundabout:
             continue
         turn = abs(atom.turn)
+        # Back the way it came, on the same way: a U-turn (UTURN_DEG), whatever else was
+        # read at the node.
+        if turn >= UTURN_DEG and atom.retrace and _same_way(atoms[i - 1], atom):
+            out[i] = replace(atom, fork="uturn")
+            continue
+        if atom.fork is not None:
+            continue
         if turn >= HAIRPIN_DEG or (
             turn > ALONG_TURN_DEG and atom.choice and _same_way(atoms[i - 1], atom)
         ):
@@ -576,6 +605,11 @@ def _same_street(a: _Run, b: _Run) -> bool:
 def _forks(run: _Run) -> bool:
     """Whether `run` begins at a fork (`fork_movement`): its start is a turn to say."""
     return run.first is not None and run.first.fork is not None
+
+
+def _uturn(run: _Run) -> bool:
+    """Whether `run` begins with a U-turn on its way (`_said_turns`)."""
+    return run.first is not None and run.first.fork == "uturn"
 
 
 def _same(a: _Run, b: _Run) -> bool:
@@ -719,11 +753,13 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
                 continue
             # Nor is a tiny one folded into a stretch begun at a fork, which would
             # then begin where the tiny one does; but at a leg's start, with nothing
-            # before it, it is, the fork kept as that stretch's turn.
+            # before it, it is, the fork kept as that stretch's turn. Never into a U-turn,
+            # which a leg's first stretch could not say (round-3 audit D31).
             options = [
                 n
                 for n in (before, after)
-                if n is not None and not (n is after and _forks(n) and before is not None)
+                if n is not None
+                and not (n is after and _forks(n) and (before is not None or _uturn(n)))
             ]
             if run.tier in NEVER_HIDDEN:
                 options = [n for n in options if _rank(n) >= _rank(run)]
@@ -1426,6 +1462,8 @@ def _stretch_sentence(
             lead = exit_words(turn.exit["number"], _in_sentence(street), turn.exit["circle"])
         elif turn.cross is not None:
             lead = t("Cross {road}", road=_crossed_road(turn.cross))
+        elif movement == "uturn":
+            lead = t("Make a U-turn on {street}", street=_in_sentence(street))
         elif movement in TURN_WORDS and turn.stay:
             lead = t(_STAY[movement], street=_in_sentence(street))
         elif movement in TURN_WORDS and toward and turn.toward:
@@ -1826,9 +1864,46 @@ def describe(
     events: list | None = None,
     total_m: float | None = None,
     walks: list[tuple[float, float]] | None = None,
+    through: Collection[int] = (),
 ) -> list[dict]:
     """The route's full description (see `describe_both`)."""
-    return describe_both(legs, events, total_m, walks)[0]
+    return describe_both(legs, events, total_m, walks, through=through)[0]
+
+
+def _sections(
+    legs: list[list[Atom] | float], through: Collection[int]
+) -> list[tuple[int, list[Atom] | float, list[tuple[int, float]]]]:
+    """The legs read as lines between stops: each (its first leg's number, its atoms or
+    an untraced leg's metres, and its via points within, each (the point's number, its
+    metres from the section's start in the pieces' measure)). A leg after a via point
+    (`through`) joins the one before where both were traced: the rider rides straight
+    through, so a turn at the point is a turn like any other (round-3 audit D29). The
+    joined leg's bearings run on from the one before's (`Atom.bearing`, unwrapped along
+    each leg's own trace), so a hairpin across the point reads on the side it turns."""
+    out: list[tuple[int, list[Atom] | float, list[tuple[int, float]]]] = []
+    for leg, content in enumerate(legs):
+        previous = out[-1][1] if out else None
+        if (
+            leg in through
+            and isinstance(content, list)
+            and isinstance(previous, list)
+            and previous
+            and content
+        ):
+            first_leg, atoms, inner = out[-1]
+            at = sum(atom.metres for atom in atoms if atom.metres > 0)
+            last = next((a.bearing for a in reversed(atoms) if a.bearing is not None), None)
+            start = next((a.bearing for a in content if a.bearing is not None), None)
+            if last is not None and start is not None:
+                shift = last + _turn_deg(last, start) - start
+                content = [
+                    replace(a, bearing=a.bearing + shift) if a.bearing is not None else a
+                    for a in content
+                ]
+            out[-1] = (first_leg, atoms + content, [*inner, (leg, at)])
+        else:
+            out.append((leg, content, []))
+    return out
 
 
 def walk_sentence(start_m: float, end_m: float) -> str:
@@ -1849,6 +1924,7 @@ def describe_both(
     total_m: float | None = None,
     walks: list[tuple[float, float]] | None = None,
     relation_names: frozenset[str] = frozenset(),
+    through: Collection[int] = (),
 ) -> tuple[list[dict], list[dict]]:
     """The route's full description and its overview, each in route order.
 
@@ -1874,7 +1950,12 @@ def describe_both(
     module's rules); its stops and junction entries are the full ones.
     `relation_names` (lower case) are names taken from a trail's route relation
     alone (`RelationName`): a stretch of one has `relation_name` true.
+    `through` are the leg boundaries that are via points, each by the number of the leg
+    it begins (the plan's point there): their legs are read as one line (`_sections`),
+    their entries say "Via point at ...", and the stops are numbered among themselves.
+    Each boundary keeps its one "via" entry, in order, `via` its point's number.
     """
+    through = frozenset(through)
     runs: list[_Run] = []
     # The ways off circles, by the atom the way off begins with (`_circle_exits`).
     exits: dict[int, dict] = {}
@@ -1882,7 +1963,13 @@ def describe_both(
     # is crossed, where the route turns, the side, the leg), in the pieces' measure.
     far_side: list[tuple[float, float, float, str, int]] = []
     leg_at = 0.0
-    for leg, content in enumerate(legs):
+    sections = _sections(legs, through)
+    # The via points within a section: (its point's number, where, in the pieces' measure).
+    inner_vias: list[tuple[int, float]] = []
+    # Each section's first leg's number: the point a section boundary is at.
+    first_legs = [first for first, _content, _inner in sections]
+    for leg, (_first, content, inner) in enumerate(sections):
+        inner_vias.extend((point, leg_at + at) for point, at in inner)
         if isinstance(content, (int, float)):
             if content > 0:
                 leg_at += float(content)
@@ -1973,7 +2060,12 @@ def describe_both(
         # Only where the heading in and the ways out are read at one node: a short
         # stretch of another street folded in between puts them at two.
         one_node = not before.folded_end and not run.folded_start
-        if movement is not None and one_node and before.last is not None and run.first is not None:
+        if (
+            movement not in (None, "uturn")
+            and one_node
+            and before.last is not None
+            and run.first is not None
+        ):
             service = run.first.use in SERVICE_WORDS
             main = None
             # A service road beside a main road the route was not on: where the main road is.
@@ -1995,7 +2087,9 @@ def describe_both(
         if circle is not None and movement is not None:
             exit = {"number": circle["number"], "circle": circle["circle"]}
             shape = circle["shape"]
-        turns[i] = _Turn(movement, event, same and exit is None, shape, exit)
+        # A U-turn is said as one, never "to stay on" the way.
+        stay = same and exit is None and movement != "uturn"
+        turns[i] = _Turn(movement, event, stay, shape, exit)
     for i, turn in turns.items():
         crossed = _crossing(runs, turns, starts, events, i)
         if crossed is not None:
@@ -2014,6 +2108,7 @@ def describe_both(
             and turn.cross is None
             and turn.exit is None
             and not turn.stay
+            and turn.movement != "uturn"
             and not (i - 1 in turns and turns[i - 1].cross is not None)
         ]
         if not candidates:
@@ -2062,25 +2157,13 @@ def describe_both(
     for i, turn in turns.items():
         turn.toward = _toward(runs, turns, i)
 
-    entries: list[tuple[tuple[float, int, int], dict]] = []
-    shared: list[tuple[tuple[float, int, int], dict]] = []
+    entries: list[tuple[tuple[float, float, int], dict]] = []
+    shared: list[tuple[tuple[float, float, int], dict]] = []
     for i, run in enumerate(runs):
         start, end = starts[i] * scale, (starts[i] + run.metres) * scale
-        if i == 0 or runs[i - 1].leg != run.leg:
-            if i > 0:
-                number = run.leg
-                shared.append(
-                    (
-                        (start, 0, i),
-                        _entry(
-                            "via",
-                            start,
-                            start,
-                            t("Stop {number} at {where}.", number=number, where=point_words(start)),
-                            via=number,
-                        ),
-                    )
-                )
+        if i > 0 and runs[i - 1].leg != run.leg:
+            point = first_legs[run.leg]
+            shared.append(((start, 0, i), _point_entry(point, start, through)))
         turn = turns.get(i)
         # A stretch that follows another of its leg without a turn is the same street
         # at a new tier or facility.
@@ -2126,19 +2209,27 @@ def describe_both(
                 ),
             )
         )
+    for point, at in inner_vias:
+        at_m = at * scale
+        shared.append(((at_m, 0, -point), _point_entry(point, at_m, through)))
+    # A walk is listed, and so cued, before a stretch that begins where it does (kind order
+    # 0.5: after a stop there, before the stretch and its turn), as `core.novice_walks.
+    # with_entries` puts a Novice walk (round-3 audit D32): said after the turn's "now", the
+    # warning would come a few feet before the walk.
+    begins = sorted([start * scale for start in starts] + [at * scale for _p, at in inner_vias])
     for number, (walk_from, walk_to) in enumerate(sorted(walks or ())):
         from_at, to_at = walk_from * scale, walk_to * scale
         shared.append(
             (
-                (from_at, 3, number),
+                (_walk_at(from_at, begins), 0.5, number),
                 _entry("walk", from_at, to_at, walk_sentence(from_at, to_at)),
             )
         )
     by_group = {g.number: g for g in crossing_groups(events)}
     said: set[int] = set()
     # A group's entry in each list: the full one with its crossings (item 248).
-    full_only: list[tuple[tuple[float, int, int], dict]] = []
-    short_only: list[tuple[tuple[float, int, int], dict]] = []
+    full_only: list[tuple[tuple[float, float, int], dict]] = []
+    short_only: list[tuple[tuple[float, float, int], dict]] = []
     for index, event in enumerate(events):
         if index in used or not event.flagged:
             continue
@@ -2199,7 +2290,7 @@ def describe_both(
                 ),
             )
         )
-    overview: list[tuple[tuple[float, int, int], dict]] = []
+    overview: list[tuple[tuple[float, float, int], dict]] = []
     for first, last in _overview_groups(runs, turns):
         run, then = _group_run(runs, [first, last], turns)
         hidden = _lanes_hidden(run, runs[first : last + 1])
@@ -2253,6 +2344,30 @@ def describe_both(
     full = sorted(entries + shared + full_only, key=lambda pair: pair[0])
     short = sorted(overview + shared + short_only, key=lambda pair: pair[0])
     return [e for _k, e in full], [e for _k, e in short]
+
+
+def _point_entry(point: int, at_m: float, through: frozenset[int]) -> dict:
+    """The entry for the rider's point `point` (a leg boundary) at `at_m`: "Via point at
+    0.3 mi (0.5 km)." where it is one of `through`, else "Stop N at ...", N its number
+    among the stops alone, as the map and Ride number them. `via` is the point's own
+    number either way, which Ride lines the route up by."""
+    where = point_words(at_m)
+    if point in through:
+        text = t("Via point at {where}.", where=where)
+    else:
+        number = point - sum(1 for v in through if v < point)
+        text = t("Stop {number} at {where}.", number=number, where=where)
+    return _entry("via", at_m, at_m, text, via=point)
+
+
+def _walk_at(at: float, begins: list[float]) -> float:
+    """Where a walk from `at` sorts: the nearest place another entry begins (`begins`,
+    sorted) within WALK_TIE_M of it, else `at`. Only the walk's own key is moved, so no
+    other entries' order changes."""
+    k = bisect.bisect_left(begins, at)
+    near = [begins[j] for j in (k - 1, k) if 0 <= j < len(begins)]
+    near = [b for b in near if abs(b - at) <= WALK_TIE_M]
+    return min(near, key=lambda b: abs(b - at)) if near else at
 
 
 def _entry(kind: str, start: float, end: float, text: str, **fields) -> dict:

@@ -18,6 +18,9 @@ ES: dict[str, str] = {
     "Right to stay on {street}": "Gire a la derecha para seguir en {street}",
     "Bear left to stay on {street}": "Manténgase a la izquierda para seguir en {street}",
     "Bear right to stay on {street}": "Manténgase a la derecha para seguir en {street}",
+    # A turnaround on the way itself (describe.UTURN_DEG), as the app says it ("Dé la vuelta
+    # en U.").
+    "Make a U-turn on {street}": "Dé la vuelta en U en {street}",
     ", then left onto {street}": ", luego gire a la izquierda hacia {street}",
     ", then right onto {street}": ", luego gire a la derecha hacia {street}",
     ", then bear left onto {street}": ", luego gire ligeramente a la izquierda hacia {street}",
@@ -91,6 +94,7 @@ ES: dict[str, str] = {
     ),
     # ---- Stops and walks ----
     "Stop {number} at {where}.": "Parada {number} en {where}.",
+    "Via point at {where}.": "Punto de paso en {where}.",
     "At {where}: walk your bike here, for {ft} ft ({m} m).": (
         "En {where}: camine con su bicicleta aquí, por {ft} ft ({m} m)."
     ),

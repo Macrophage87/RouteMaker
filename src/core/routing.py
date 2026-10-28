@@ -66,6 +66,7 @@ import http.client
 import itertools
 import json
 import logging
+import math
 import time
 import urllib.error
 import urllib.request
@@ -572,6 +573,11 @@ class Piece:
     # Whether another way a bicycle may ride away on meets that node (`_choice_of`); None
     # where `turn` is.
     choice: bool | None = field(default=None, compare=False)
+    # Whether the piece's edge is on the way the edge before was on and the line goes back
+    # there over the points it came in on (`_retraces`): a turnaround on the way itself,
+    # said as a U-turn (`describe.UTURN_DEG`, round-3 audit D31). False on every piece of
+    # an edge but its first.
+    retrace: bool = field(default=False, compare=False)
 
 
 def _heading(value) -> float | None:
@@ -685,7 +691,10 @@ def pieces_of_trace(trace: dict, shape: list | None = None) -> list[Piece]:
         }
         line_in = line_out = turn = None
         choice = None
+        retrace = False
         if before is not None:
+            retrace = bool(way_id) and way_id == int(before.get("way_id") or 0)
+            retrace = retrace and _retraces(shape, begin)
             line_in, line_out, first, last = _line_headings(shape, begin, nodes)
             turn = _line_turn(shape, line_in, line_out, first, last)
             choice = _choice_of(
@@ -718,6 +727,7 @@ def pieces_of_trace(trace: dict, shape: list | None = None) -> list[Piece]:
                     prior=prior,
                     turn=turn,
                     choice=choice,
+                    retrace=retrace,
                 )
             )
             continue
@@ -744,6 +754,7 @@ def pieces_of_trace(trace: dict, shape: list | None = None) -> list[Piece]:
                         bearing=unwrapped,
                         turn=turn,
                         choice=choice,
+                        retrace=retrace,
                     )
                 )
                 fork = None
@@ -751,7 +762,44 @@ def pieces_of_trace(trace: dict, shape: list | None = None) -> list[Piece]:
                 prior = None
                 turn = None
                 choice = None
+                retrace = False
     return _one_turn_per_junction(pieces, along)
+
+
+# How near the line must come back to the points it went out on, at a node, for the turn
+# there to be a retrace (`_retraces`): a dead end's way back is the same points, give or
+# take the router's rounding.
+RETRACE_M = 1.0
+
+
+def _retraces(shape: list, at: int) -> bool:
+    """Whether the route's line, at shape vertex `at`, goes back over the points it came
+    in on: the first vertex on from `at` lies on the last stretch in (within RETRACE_M of
+    it), or the last vertex in lies on the first stretch out (a leg begun part way along
+    the way, short of the node). Only where both stretches have a length."""
+    if not 0 < at < len(shape) - 1:
+        return False
+    node = shape[at]
+    back = next((shape[j] for j in range(at - 1, -1, -1) if shape[j] != node), None)
+    ahead = next((shape[j] for j in range(at + 1, len(shape)) if shape[j] != node), None)
+    if back is None or ahead is None:
+        return False
+    return (
+        _off_stretch_m(ahead, node, back) <= RETRACE_M
+        or _off_stretch_m(back, node, ahead) <= RETRACE_M
+    )
+
+
+def _off_stretch_m(point: tuple, a: tuple, b: tuple) -> float:
+    """How far `point` is from the stretch from `a` to `b` (each lon, lat), in metres, on
+    a flat projection about `a` (a few metres of a node)."""
+    scale = math.cos(math.radians(a[1]))
+    bx, by = (b[0] - a[0]) * scale, b[1] - a[1]
+    px, py = (point[0] - a[0]) * scale, point[1] - a[1]
+    length2 = bx * bx + by * by
+    f = 0.0 if length2 <= 0 else max(0.0, min(1.0, (px * bx + py * by) / length2))
+    near = (a[0] + bx * f / scale, a[1] + by * f)
+    return haversine_lonlat(point, near)
 
 
 def _one_turn_per_junction(pieces: list[Piece], along: list[float]) -> list[Piece]:
@@ -1685,8 +1733,9 @@ def _same_pace(options: dict, request: dict) -> dict:
 # Valhalla's "through" (no forced stop, no U-turn). "break_through" is the same at the
 # point itself (no U-turn) but keeps the leg there, so the answer keeps one leg per point
 # and every per-leg figure (`leg_ends`, the calm search's legs, the stop list's distances)
-# lines up with the rider's points as before; the page does not announce, number or list
-# a via point, so nothing reads it as a stop.
+# lines up with the rider's points as before; the page does not announce or number a via
+# point, and the description lists it as "Via point at ..." and reads the turn at it as
+# any other (`via_boundaries`, round-3 audit D29), so nothing reads it as a stop.
 VIA_LOCATION_TYPE = "break_through"
 
 
@@ -1696,6 +1745,16 @@ def location_type(index: int, count: int, vias: tuple[int, ...]) -> str:
     if 0 < index < count - 1 and index in vias:
         return VIA_LOCATION_TYPE
     return "break"
+
+
+def via_boundaries(count: int, vias, legs: int) -> tuple[int, ...]:
+    """The leg boundaries the route rides through at a via point, for the description
+    (`describe_route`), each by the number of the leg it begins: the rider's point there,
+    one of `vias` (`location_type`). Empty where the answer's legs are not one per gap
+    between the `count` points, as then a boundary is not known to be a point's."""
+    if legs != count - 1:
+        return ()
+    return tuple(sorted(i for i in set(vias or ()) if 0 < i < count - 1))
 
 
 # Novice and Nervous (v0.7.0 plan): real LTS 3 or worse along the bike route past this
@@ -3183,6 +3242,7 @@ def describe_route(
     summary: dict,
     walks: list[tuple[float, float]] | None = None,
     side_names: dict[int, str] | None = None,
+    through: tuple[int, ...] = (),
 ) -> tuple[list[dict], list[dict]] | None:
     """The route as words, in full and as an overview (`routemaker.describe`,
     OWNER-DECISIONS 220 and 226): built
@@ -3190,8 +3250,10 @@ def describe_route(
     call. `side_names` (`sidepath_names_of`) names a piece of a way with no name of
     its own after the street it runs alongside ("9th Street Northwest protected bike
     lane"), or after its trail's route relation (a `describe.RelationName`): a stretch
-    named only so is flagged `relation_name`. None where it could not be built: the
-    route is answered all the same."""
+    named only so is flagged `relation_name`. `through` are the leg boundaries that are
+    via points, by the number of the leg each begins (`via_boundaries`): the description
+    reads a turn there as anywhere else and numbers the stops among themselves (round-3
+    audit D29). None where it could not be built: the route is answered all the same."""
     side_names = side_names or {}
     try:
         # A relation's name that no way of the route carries itself: only that is "by relation".
@@ -3223,6 +3285,7 @@ def describe_route(
                             turn=pieces[i].turn,
                             choice=bool(pieces[i].choice),
                             oneway=getattr(classes[i], "oneway", None),
+                            retrace=bool(getattr(pieces[i], "retrace", False)),
                         )
                         for i in range(run[0], run[1])
                     ]
@@ -3230,7 +3293,9 @@ def describe_route(
             else:
                 legs.append(run)
         length = float(summary.get("length", 0.0)) * 1000.0
-        return describe.describe_both(legs, events, length or None, walks, by_relation)
+        return describe.describe_both(
+            legs, events, length or None, walks, by_relation, through=through
+        )
     except Exception:  # noqa: BLE001 - a route is answered without its description
         logger.warning("the route description could not be built", exc_info=True)
         return None
@@ -4941,6 +5006,7 @@ def _plan(
             trip.get("summary") or {},
             walks,
             _way_names_of(pieces),
+            via_boundaries(len(points), dials.vias, len(leg_runs)),
         )
         described_full, described_overview = described if described else (None, None)
         # The Avoid-rated junctions it passes (307, 335), at their distance along the

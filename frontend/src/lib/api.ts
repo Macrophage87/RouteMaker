@@ -247,7 +247,7 @@ export interface HillClimb {
 /**
  * One entry of the route's description (core.api.DescriptionEntryOut;
  * OWNER-DECISIONS 220): a stretch of one street at one stress tier, a
- * junction that is not a turn, or a stop (a via point, "Stop 1"). `text` is the one plain
+ * junction that is not a turn, or a leg boundary (`via`: "Stop 1 at ..." or "Via point at ..."). `text` is the one plain
  * sentence to read aloud, US units first.
  */
 export interface DescriptionEntry {
@@ -272,7 +272,8 @@ export interface DescriptionEntry {
   oneway?: boolean | null;
   turn: {
     /** "bear_left" / "bear_right": a change of street 20 to 60 degrees off straight (describe.SLIGHT_MIN_DEG, BEAR_MAX_DEG). */
-    movement: "left" | "straight" | "right" | "bear_left" | "bear_right" | null;
+    /** "uturn": back the way the route came on the same way, at a dead end (describe.UTURN_DEG, round-3 audit D31). */
+    movement: "left" | "straight" | "right" | "bear_left" | "bear_right" | "uturn" | null;
     onto: string | null;
     control: "signal" | "stop" | "cross_stop" | "all_stop" | "none" | null;
     severity: "orange" | "red" | null;
