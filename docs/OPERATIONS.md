@@ -4566,7 +4566,7 @@ What the strip changes besides access, so it is not mistaken for a fault:
   (`bicycle:forward=yes`, `oneway:bicycle=no`, `cycleway=opposite*`) reopens a
   direction. The NO-BIKE-PATHS rules get that for free by using the same mark.
 
-## The Grocery chip needs photon recreated once (v0.13.2)
+## The Grocery chip needs photon recreated once (v0.14.0)
 
 A kind-of-place search (the Grocery chip, "bike shop"; `core.geocode` TAG_SEARCHES) asks Photon's
 `/reverse` for the nearest few, and Photon now serves up to 10 (`-max-reverse-results 10` in
