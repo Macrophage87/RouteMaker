@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import bisect
 import contextvars
+import copy
 import dataclasses
 import functools
 import hashlib
@@ -3126,6 +3127,76 @@ def _intersection_groups(events: list) -> list[dict]:
 # comparison, which traces it as well, wants this much more.
 DETOUR_PROBE_MIN_S = 4
 DETOUR_AVOIDED_MIN_S = 7
+# The least time left for the probe to be asked early, beside the search (`_ask_direct_early`,
+# audit S23): the busy-road comparison's and the calm search's trace reserve on top, so a
+# plan short of time never gives a router slot to it that the search needs.
+EARLY_DIRECT_MIN_S = DETOUR_AVOIDED_MIN_S + 6
+
+
+def _direct_request(
+    request: dict, preset_name: str, dials: tuple
+) -> tuple[dict, dict, tuple[str, str]]:
+    """The detour check's ask for the most direct legal route (`_detour`): its costing, the
+    request, and the key it is remembered by in a plan's traces (OWNER-DECISIONS 265)."""
+    _stress_dial, assist, avoid_gravel = dials
+    direct_costing = _same_pace(
+        presets.costing(preset_name, 0, 0, assist=assist, avoid_gravel=avoid_gravel), request
+    )
+    direct_request = {
+        key: value
+        for key, value in request.items()
+        if key not in ("alternates", "exclude_locations")
+    } | {"costing_options": direct_costing}
+    return (
+        direct_costing,
+        direct_request,
+        ("direct-route", json.dumps(direct_request, sort_keys=True)),
+    )
+
+
+def _beyond_allowance(route_m: float, straight_m: float) -> bool:
+    """Whether a route of `route_m` is past the detour warning's allowance of the straight
+    line, where the direct route is asked for (`_detour`)."""
+    return straight_m > 0 and route_m > max(
+        straight_m * detour_rules.SILENT_RATIO, straight_m + detour_rules.SILENT_EXTRA_M
+    )
+
+
+def _ask_direct_early(
+    first_m: float,
+    straight_m: float,
+    request: dict,
+    variant: str,
+    preset_name: str,
+    dials: tuple,
+    deadline: Deadline,
+    traces: dict,
+) -> dict[tuple[str, str], Future]:
+    """The detour check's direct route started on the pool now, beside the search, where
+    its answer will almost surely be wanted (audit S23, round 1's S6 without the
+    neighbours): above Default (where `_detour` asks for it), never on a Mass Ride, where
+    the router's first route (`first_m`) is already past the allowance (a calmer route is
+    longer still), with EARLY_DIRECT_MIN_S to spare, on the pool only. {its key: the
+    future}, for `_detour` to read; empty where not asked."""
+    if (
+        preset_name == "mass-ride"
+        or not parallel.enabled()
+        or dials[0] <= presets.STRESS_DEFAULT_AT
+        or not _beyond_allowance(first_m, straight_m)
+        or deadline.at - clock() < EARLY_DIRECT_MIN_S
+    ):
+        return {}
+    _costing, direct_request, direct_key = _direct_request(request, preset_name, dials)
+    if direct_key in traces:
+        return {}
+    future = parallel.submit(
+        _call,
+        variant,
+        "route",
+        copy.deepcopy(direct_request),
+        Deadline(deadline.at, min(deadline.per_call_s, ALTERNATES_TIMEOUT_S)),
+    )
+    return {direct_key: future}
 
 
 def _detour(
@@ -3139,6 +3210,7 @@ def _detour(
     when: str,
     deadline: Deadline,
     traces: dict,
+    early: dict | None = None,
 ) -> dict | None:
     """How much longer the route is than the most direct legal one, for the
     answer's warning (OWNER-DECISIONS 164; `routemaker.detour`).
@@ -3148,12 +3220,12 @@ def _detour(
     Otherwise the router is asked for the most direct route (the traffic
     tolerant end, the hills detent); where it cannot be had in time, or on a
     Mass Ride, which is the direct route by design, the straight line is the
-    reference and only a route twice as long says so."""
-    if straight_m <= 0 or route_m <= max(
-        straight_m * detour_rules.SILENT_RATIO, straight_m + detour_rules.SILENT_EXTRA_M
-    ):
+    reference and only a route twice as long says so. `early`: the direct route
+    already asked for (`_ask_direct_early`), by its key, read where the key is this
+    request's; a fresh ask where it is not."""
+    if not _beyond_allowance(route_m, straight_m):
         return None
-    stress_dial, assist, avoid_gravel = dials
+    stress_dial = dials[0]
     # At or below Default the rider asked for no calm detour, and the route
     # cannot be more than the straight line's ratio longer than the direct one
     # (1.5 times at most, a note): the second route is asked for from just above
@@ -3166,25 +3238,22 @@ def _detour(
         and asked_for_calm
         and deadline.at - clock() >= DETOUR_PROBE_MIN_S
     ):
-        direct_costing = _same_pace(
-            presets.costing(preset_name, 0, 0, assist=assist, avoid_gravel=avoid_gravel), request
-        )
-        direct_request = {
-            key: value
-            for key, value in request.items()
-            if key not in ("alternates", "exclude_locations")
-        } | {"costing_options": direct_costing}
+        direct_costing, direct_request, direct_key = _direct_request(request, preset_name, dials)
         # Asked once for a plan and its candidate routes (OWNER-DECISIONS 265).
-        direct_key = ("direct-route", json.dumps(direct_request, sort_keys=True))
+        asked = (early or {}).pop(direct_key, None)
         if direct_key in traces:
             direct, direct_m = traces[direct_key]
         else:
             try:
-                answer = _call(
-                    variant,
-                    "route",
-                    direct_request,
-                    Deadline(deadline.at, min(deadline.per_call_s, ALTERNATES_TIMEOUT_S)),
+                answer = (
+                    await_future(asked)
+                    if asked is not None and not asked.cancelled()
+                    else _call(
+                        variant,
+                        "route",
+                        direct_request,
+                        Deadline(deadline.at, min(deadline.per_call_s, ALTERNATES_TIMEOUT_S)),
+                    )
                 )
                 direct = answer.get("trip") or {}
                 direct_m = float((direct.get("summary") or {}).get("length", 0.0)) * 1000.0
@@ -4112,6 +4181,25 @@ def _plan(
     # This plan's traces, so a route the guards traced is not traced again; `plan`'s, where
     # it re-plans without stray dirt trails, so a later round does not trace them again.
     traces = {} if traces is None else traces
+    # The detour check's direct route depends on the request alone: where it will surely be
+    # asked for, it starts now on the pool, beside the search, as the early alternatives do
+    # (audit S23). Not on a first route or the rider's own line (no detour check), nor where
+    # the target fitting will ask with another request. One not read is cancelled however
+    # the plan ends (`_plan_round`; one already running ends at its own deadline).
+    early_direct: dict[tuple[str, str], Future] = {}
+    if not (quick or fixed or (maxcalm and target_m is not None)):
+        early_direct = _ask_direct_early(
+            _trip_length_m(trips[0]),
+            sum(haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)),
+            request,
+            variant,
+            preset_name,
+            (stress_dial, assist, avoid_gravel),
+            deadline,
+            traces,
+        )
+        if early is not None:
+            early.extend(early_direct.values())
     # The hill seek (FOLLOWUP-HILL-SEEK, 205): routes through the climbs near the line
     # join the router's own, where the climb search runs at all; without the climbs
     # file it asks nothing and the search is the router's alternatives alone, as before.
@@ -4753,6 +4841,7 @@ def _plan(
                 when=when,
                 deadline=deadline,
                 traces=traces,
+                early=early_direct,
             )
         )
         # The time its junctions cost the rider, which the router's own time leaves out
