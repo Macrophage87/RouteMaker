@@ -89,6 +89,7 @@ import {
   withoutMetric,
   stretchWords,
   walkWords,
+  flaggedOntoWords,
   type Cue,
   type RideEvent,
   type RideFix,
@@ -2217,6 +2218,51 @@ test('D22: Where am I? in Spanish says "a aproximadamente" before miles, not "a 
     const said = whereAmI(rideModel(route), { ...startState(), progressM: 1500 });
     assert.match(said, /^En el Custis Trail, a aproximadamente 0\.3 millas al \S+ de A Street\./);
     assert.doesNotMatch(said, /a unos/);
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+// ---- Round-2 audit, banked items the owner approved 2026-10-27 7:52 PM ET ("make the banked changes") ----------------
+
+/** A stretch entered straight on at a flagged junction, as the API sends it (describe.py: turn.movement "straight"). */
+function flaggedStraight(from: number, to: number, street: string, control: "signal" | "none" | "stop" | null, tier: number): DescriptionEntry {
+  const words = control === "signal" ? " at a signal" : control === "none" ? ", no signal mapped" : control === "stop" ? " at a stop sign" : "";
+  return stretch(from, to, `x: Continue onto ${street}${words} (Higher stress junction), heavy traffic (LTS ${tier}).`, {
+    street,
+    tier,
+    turn: { movement: "straight", onto: street, control, severity: "orange" },
+    severity: "orange",
+  });
+}
+
+test("D25: a flagged straight-on name change is said in Ride's words, its control kept, no '(Higher stress junction)'", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1000, "0.0 to 0.6 mi: 16th Street Northwest, fairly low stress (LTS 2).", { street: "16th Street Northwest", tier: 2 }),
+      flaggedStraight(1000, 2000, "Georgia Avenue", "signal", 4),
+      flaggedStraight(2000, 3000, "Connecticut Avenue", "none", 4),
+    ]),
+  );
+  const [signal, none] = model.cues.filter((c) => c.kind === "hazard");
+  // Plan's sentence stays the cue's text; Ride shows and says its own.
+  assert.match(signal.text, /Higher stress junction/);
+  assert.equal(signal.rideText, "Continue onto Georgia Avenue. Busy junction at a signal. Heavy traffic.");
+  assert.equal(cueSpoken(signal, "advance", 150), "In 500 feet, continue onto Georgia Avenue. Busy junction at a signal. Heavy traffic.");
+  // Already heavy before: no "Heavy traffic." again.
+  assert.equal(cueSpoken(none, "advance", 150), "In 500 feet, continue onto Connecticut Avenue. Busy junction, no signal.");
+  for (const cue of [signal, none]) assert.doesNotMatch(cueSpoken(cue, "advance", 150), /Higher stress|LTS|\(/);
+  // Unnamed, a stop sign, no control mapped.
+  const before = stretch(0, 1000, "a", { street: "A Street", tier: 1 });
+  assert.equal(flaggedOntoWords(flaggedStraight(1000, 2000, "unnamed road", "stop", 3), before), "Busy junction at a stop sign. Busy road.");
+  assert.equal(flaggedOntoWords(flaggedStraight(1000, 2000, "B Street", null, 1), before), "Continue onto B Street. Busy junction.");
+  setLanguageForTest("es");
+  try {
+    assert.equal(
+      flaggedOntoWords(flaggedStraight(1000, 2000, "Georgia Avenue", "none", 4), before),
+      "Continúe por Georgia Avenue. Intersección con mucho tráfico, sin semáforo. Tráfico pesado.",
+    );
+    assert.equal(flaggedOntoWords(flaggedStraight(1000, 2000, "Georgia Avenue", "signal", 1), before), "Continúe por Georgia Avenue. Intersección con mucho tráfico, con semáforo.");
   } finally {
     setLanguageForTest("en");
   }

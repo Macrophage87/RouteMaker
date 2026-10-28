@@ -661,13 +661,54 @@ function cueKindOf(entry: DescriptionEntry, before: DescriptionEntry | null, las
   if (entry.turn?.severity) return "hazard";
   // The first stretch is where the ride starts: nothing to warn of ahead of it.
   if (before === null) return null;
+  const change = stretchChange(entry, before);
+  if (change) return change;
+  if (isOnto(entry, before, lastNamed)) return "onto";
+  return null;
+}
+
+/**
+ * A stretch's change from the one before, as a cue says it: onto a busy road (LTS 3 or more, and busier than
+ * before), onto an unpaved surface, or back to calmer riding (LTS 1-2 after 3 or more); null for none.
+ */
+function stretchChange(entry: DescriptionEntry, before: DescriptionEntry | null): "busy" | "unpaved" | "calmer" | null {
+  if (before === null) return null;
   const tier = entry.tier ?? 0;
   const was = before.kind === "stretch" ? (before.tier ?? 0) : 0;
   if (tier >= 3 && tier > was) return "busy";
   if (entry.surface && !(before.kind === "stretch" && before.surface)) return "unpaved";
   if (was >= 3 && tier > 0 && tier <= 2) return "calmer";
-  if (isOnto(entry, before, lastNamed)) return "onto";
   return null;
+}
+
+/**
+ * The junction a flagged straight-on stretch is entered at, in Ride's words, with its control where the
+ * rider uses it ("at a signal", "no signal"): never the API's "(Higher stress junction)".
+ */
+function flaggedJunctionWords(control: NonNullable<DescriptionEntry["turn"]>["control"] | undefined): string {
+  if (control === "signal") return t("Busy junction at a signal.");
+  if (control === "stop" || control === "all_stop") return t("Busy junction at a stop sign.");
+  if (control === "none") return t("Busy junction, no signal.");
+  return t("Busy junction.");
+}
+
+/**
+ * A stretch entered straight on at a flagged junction, as Ride says and shows it (round-2 audit D25; the owner
+ * approved the banked changes 2026-10-27 7:52 PM ET, "make the banked changes"): "Continue onto Georgia Avenue.
+ * Busy junction, no signal. Heavy traffic.", in the app's own words as D14's turns and changes are; the control
+ * kept (riders use "at a signal" and "no signal"), the stretch's change after it only where there is one (the
+ * busy, unpaved and calmer rules), and "Continue onto" only for a named way. Plan keeps the API's sentence.
+ */
+export function flaggedOntoWords(entry: DescriptionEntry, before: DescriptionEntry | null): string {
+  const street = entry.turn?.onto ?? entry.street;
+  const change = stretchChange(entry, before);
+  return [
+    street && !isUnnamed(street) ? ontoWords(street) : null,
+    flaggedJunctionWords(entry.turn?.control),
+    change ? stretchWords(change, { ...entry, street: null }) : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /**
@@ -753,6 +794,8 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
                 : sentenceOf(entry),
         ...(kind === "hazard" && entry.kind === "junction" && !entry.group ? { rideText: crossingWords(entry.street, entry.turn?.control) } : {}),
         ...(entry.kind === "hazard" ? { rideText: roadHazardWords(entry.text) } : {}),
+        // A stretch entered straight on at a flagged junction (D25): Ride's words, not the API's sentence.
+        ...(kind === "hazard" && entry.kind === "stretch" ? { rideText: flaggedOntoWords(entry, before) } : {}),
         ...(entry.kind === "avoid" ? { rideText: avoidWords(entry) } : {}),
         // A stretch's change and a walk in the app's own words (D14), not the API's sentence, which Plan keeps.
         ...(kind === "busy" || kind === "calmer" || kind === "unpaved" ? { rideText: stretchWords(kind, entry) } : {}),
