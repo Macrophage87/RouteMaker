@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
-from .geo import Point, haversine
+from .geo import haversine_lonlat
 from .intersections import Movement, movement_of
 
 # What `core.routing.trace_leg` asks the router for besides the stress join's
@@ -188,7 +188,7 @@ def midpoint_along(
     if begin is None or end is None or begin >= end or end >= len(shape):
         return None
     lengths = [
-        haversine(Point(*a), Point(*b))
+        haversine_lonlat(a, b)
         for a, b in zip(shape[begin:end], shape[begin + 1 : end + 1], strict=True)
     ]
     total = sum(lengths)

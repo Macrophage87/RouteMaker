@@ -115,7 +115,14 @@ from routemaker import (
 from routemaker import detour as detour_rules
 from routemaker import profile as profile_rules
 from routemaker.facility import FACILITIES
-from routemaker.geo import Point, bearing, bearing_delta, haversine
+from routemaker.geo import (
+    Point,
+    bearing,
+    bearing_delta,
+    bearing_lonlat,
+    haversine,
+    haversine_lonlat,
+)
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
@@ -688,7 +695,7 @@ def pieces_of_trace(trace: dict, shape: list | None = None) -> list[Piece]:
         kept.append((edge, length))
         stretches = []
         for a, b in zip(shape[begin:end], shape[begin + 1 : end + 1], strict=True):
-            stretches.append((a, b, haversine(Point(*a), Point(*b))))
+            stretches.append((a, b, haversine_lonlat(a, b)))
         ground = sum(s[2] for s in stretches)
         if ground <= 0:
             # A degenerate edge: all its length on its first vertex.
@@ -713,7 +720,7 @@ def pieces_of_trace(trace: dict, shape: list | None = None) -> list[Piece]:
             if d > 0:
                 along.append(walked)
                 walked += d
-                compass = bearing(Point(*a), Point(*b))
+                compass = bearing_lonlat(a, b)
                 unwrapped = (
                     compass
                     if unwrapped is None
@@ -787,7 +794,7 @@ def _line_point(shape: list, at: int, step: int, nodes: frozenset[int]) -> tuple
         if j != at and j in nodes and gone >= describe.JUNCTION_M:
             return here, j
         nxt = shape[j + step]
-        d = haversine(Point(*here), Point(*nxt))
+        d = haversine_lonlat(here, nxt)
         if d > 0 and gone + d >= describe.LINE_SPAN_M:
             f = (describe.LINE_SPAN_M - gone) / d
             return (here[0] + (nxt[0] - here[0]) * f, here[1] + (nxt[1] - here[1]) * f), j + step
@@ -805,12 +812,12 @@ def _line_headings(shape: list, at: int, nodes: frozenset[int]) -> tuple:
     owner, 2026-10-23, on Sligo Creek Trail: "Left to stay on" a gentle bend)."""
     if not 0 <= at < len(shape):
         return None, None, at, at
-    node = Point(*shape[at])
+    node = shape[at]
     back, first = _line_point(shape, at, -1, nodes)
     ahead, last = _line_point(shape, at, 1, nodes)
     return (
-        bearing(Point(*back), node) if back is not None else None,
-        bearing(node, Point(*ahead)) if ahead is not None else None,
+        bearing_lonlat(back, node) if back is not None else None,
+        bearing_lonlat(node, ahead) if ahead is not None else None,
         first,
         last,
     )
@@ -831,9 +838,9 @@ def _line_turn(
     wound = 0.0
     previous = None
     for a, b in zip(shape[first:last], shape[first + 1 : last + 1], strict=True):
-        if haversine(Point(*a), Point(*b)) <= 0:
+        if haversine_lonlat(a, b) <= 0:
             continue
-        compass = bearing(Point(*a), Point(*b))
+        compass = bearing_lonlat(a, b)
         if previous is not None:
             wound += (compass - previous + 540.0) % 360.0 - 180.0
         previous = compass

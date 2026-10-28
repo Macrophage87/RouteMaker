@@ -275,3 +275,78 @@ def test_the_memo_holds_little_beside_the_plans_own_analyses(capsys) -> None:
     # The answer shares the analysed pieces rather than cutting its own: no more at the peak
     # than a megabyte or two over the reading without, and well under the worker's headroom.
     assert with_peak <= without_peak + 2 * 2**20
+
+
+def test_the_lonlat_distance_and_bearing_are_the_points_to_the_bit() -> None:
+    """The follow-on (audit S19): the hot loops measure (lon, lat) pairs with no `Point` made
+    for them, by the same formula in the same order."""
+    import random
+
+    from routemaker.geo import Point, bearing, bearing_lonlat, haversine, haversine_lonlat
+
+    rng = random.Random(19)
+    pairs = [
+        ((-77.0, 38.9), (-77.0, 38.9)),
+        ((0.0, 0.0), (180.0, 0.0)),
+        ((0.0, 89.9), (1.0, -89.9)),
+    ]
+    for _ in range(20000):
+        a = (rng.uniform(-77.6, -76.4), rng.uniform(38.6, 39.5))
+        b = (a[0] + rng.uniform(-0.01, 0.01), a[1] + rng.uniform(-0.01, 0.01))
+        pairs.append((a, b))
+    for a, b in pairs:
+        assert haversine_lonlat(a, b) == haversine(Point(*a), Point(*b))
+        assert bearing_lonlat(a, b) == bearing(Point(*a), Point(*b))
+
+
+def hairpin_trace() -> dict:
+    """Out east and straight back, a few metres to the side: `_line_turn`'s winding sum."""
+    out = [(-77.0 + i * 0.0001, 38.9) for i in range(20)]
+    back = [(-77.0 + i * 0.0001, 38.90003) for i in range(19, -1, -1)]
+    points = out + back
+    edges = []
+    for k, begin in enumerate(range(0, len(points) - 1, 4)):
+        end = min(begin + 4, len(points) - 1)
+        edges.append(
+            {
+                "way_id": 7 + k,
+                "length": 0.04,
+                "begin_shape_index": begin,
+                "end_shape_index": end,
+                "begin_heading": 90,
+                "end_heading": 90 if end < 20 else 270,
+            }
+        )
+    return {"shape": encode(points), "units": "kilometers", "edges": edges}
+
+
+def test_the_pieces_are_the_same_as_with_points(monkeypatch) -> None:
+    import dataclasses
+    import json
+    from pathlib import Path
+
+    from routemaker import geo
+
+    konterra = json.loads((Path(__file__).parent / "data" / "dedodge_konterra.json").read_text())
+    traces = [long_trace(3000), hairpin_trace(), konterra["trace"]]
+    new = [routing.pieces_of_trace(trace) for trace in traces]
+    new_middles = [trace_junctions.edge_midpoints(trace, []) for trace in traces]
+    monkeypatch.setattr(
+        routing, "haversine_lonlat", lambda a, b: geo.haversine(geo.Point(*a), geo.Point(*b))
+    )
+    monkeypatch.setattr(
+        routing, "bearing_lonlat", lambda a, b: geo.bearing(geo.Point(*a), geo.Point(*b))
+    )
+    monkeypatch.setattr(
+        trace_junctions,
+        "haversine_lonlat",
+        lambda a, b: geo.haversine(geo.Point(*a), geo.Point(*b)),
+    )
+    old = [routing.pieces_of_trace(trace) for trace in traces]
+    old_middles = [trace_junctions.edge_midpoints(trace, []) for trace in traces]
+    # Every field, the ones a piece's equality leaves out too (its bearing and turn).
+    assert [[dataclasses.astuple(p) for p in pieces] for pieces in new] == [
+        [dataclasses.astuple(p) for p in pieces] for pieces in old
+    ]
+    assert new_middles == old_middles
+    assert any(abs(p.turn or 0.0) > 150 for p in new[1]), "the hairpin is read"
