@@ -1378,10 +1378,13 @@ def test_on_the_beta_the_swap_starts_the_trail_routers_whose_tiles_are_there(fak
 
     assert done.returncode == 0, done.stdout + done.stderr
     calls = fake.calls()
-    restart = "beta-compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
+    restart = (
+        "beta-compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
+    )
     start = "beta-compose up -d --force-recreate valhalla-mtb"
     sync = "beta-compose exec -T api ./manage.py sync_upstreams"
-    assert calls.index(start) < calls.index(sync) < calls.index("smoke --local"), calls
+    positions = [calls.index(step) for step in (restart, start, sync, "smoke --local")]
+    assert positions == sorted(positions), calls
     assert "valhalla-offroad" not in calls
 
 
