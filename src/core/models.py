@@ -258,6 +258,32 @@ class Override(models.Model):
         return f"{self.kind} on way {self.osm_way_id}"
 
 
+class _Standing:
+    """One of a user's guild-standing sets, resolved on first read.
+
+    `auth_backend.defer_standing` marks a user whose standing a request may
+    need. Most requests never read it - a map tile, a bikeshare poll, a route
+    plan - so the three queries behind it run only when `is_staff`, a permission
+    check or a guild-scoped view first asks. `attach_standing` then stores all
+    three sets on the instance, where they shadow this descriptor for the rest
+    of the request. An unmarked user reads as having no attribute at all, as
+    before, so every `getattr(user, "_admin_guild_ids", ...)` default holds.
+    """
+
+    def __set_name__(self, owner, name: str) -> None:
+        self.name = name
+
+    def __get__(self, user, owner=None):
+        if user is None:
+            return self
+        if not user.__dict__.get("_standing_deferred"):
+            raise AttributeError(self.name)
+        from .auth_backend import attach_standing
+
+        attach_standing(user)
+        return user.__dict__[self.name]
+
+
 class User(AbstractBaseUser):
     """A Discord identity, and nothing that could become a second credential.
 
@@ -289,6 +315,10 @@ class User(AbstractBaseUser):
     # Deliberately not a plain flag anyone may clear. See `check_last_instance_admin`.
 
     USERNAME_FIELD = "discord_user_id"
+
+    _admin_guild_ids = _Standing()
+    _reviewer_guild_ids = _Standing()
+    _member_guild_ids = _Standing()
 
     class Meta:
         db_table = "app_user"

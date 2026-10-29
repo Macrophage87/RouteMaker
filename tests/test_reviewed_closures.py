@@ -163,15 +163,16 @@ class TestEntering:
         assert refused.json()["error"] == "Only a RouteMaker reviewer can review closures."
 
     def test_a_guild_reviewer_may_not_write_only_an_instance_admin(self, live, monkeypatch) -> None:
-        from core import middleware
+        from core import auth_backend
 
-        real = middleware.attach_standing
+        real = auth_backend.attach_standing
 
         def as_guild_reviewer(user, now=None):
             real(user, now)
             user._reviewer_guild_ids = frozenset({1234})
 
-        monkeypatch.setattr(middleware, "attach_standing", as_guild_reviewer)
+        # Standing is resolved on first read (`models._Standing`), through this name.
+        monkeypatch.setattr(auth_backend, "attach_standing", as_guild_reviewer)
         closure = reviewed_closures.create(make_user(), [WAY], "Works")
         report = send(step=3, reasons=("closed",))
         client, csrf = reviewer_client(make_user(admin=False))
