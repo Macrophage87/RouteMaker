@@ -6684,6 +6684,16 @@ destination-only (`rm:destination_only`; `bicycle=destination` and
 `access=destination`). A trip point inside the Zoo is moved to the racks and the
 answer's `moved_points` says so.
 
+**A stop or the end on a road not open to the public.** Such roads stay routable as a
+destination (the owner, 2026-10-29). Where a leg finishes on a way whose
+`segment.bike_access_reason` is `private` (an `access` or `vehicle` of no, private, permit,
+restricted or military, or `bicycle=private`), `military`, `secured` or `track`
+(`core.routing.NOT_PUBLIC_REASONS`), the answer's `point_notes` carries the owner's words for
+that point: "This end point is not typically open to the public, make sure you're authorized to
+go here." (Spanish in `routemaker/lang_es.py`, for a native speaker's review). The start never
+gets one, and neither does a road the route only passes along. The page shows and says it as it
+does the moved points ("End: ...", `movedPointsNote` in `frontend/src/lib/summary.ts`).
+
 **Display.** A trail-class way routing does not open to bicycles is
 `map_class='barred'` and not drawn; the mountain-bike class stays `road` with the
 tile property `mtb` (and `rough`), facility `none`, and since 456 so does rated singletrack that
