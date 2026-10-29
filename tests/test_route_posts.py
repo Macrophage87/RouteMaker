@@ -116,6 +116,30 @@ def make_post(author: User | None = None, **changes) -> RoutePost:
 # ---- Seasons ----
 
 
+@db
+def test_each_view_reads_only_the_heavy_fields_it_serves() -> None:
+    """A photo or an upload reads neither the post's link picture nor the shared route; the page
+    and the GPX read the route but not its stored GPX or picture; the list no pictures."""
+    post = make_post()
+    RoutePost.objects.filter(pk=post.pk).update(thumbnail=b"jpeg", thumbnail_key="k")
+
+    bare = route_posts._post(post.slug)
+    assert "thumbnail" in bare.get_deferred_fields()
+    assert not RoutePost.route.is_cached(bare)
+
+    page = route_posts._post(post.slug, route=True)
+    assert RoutePost.route.is_cached(page)
+    assert {"gpx", "preview_png"} <= page.route.get_deferred_fields()
+    assert "line" not in page.route.get_deferred_fields()
+    assert "thumbnail" in page.get_deferred_fields()
+
+    assert bytes(route_posts._post(post.slug, thumbnail=True).thumbnail) == b"jpeg"
+
+    shown, _later = route_posts.listed(timezone.localdate())
+    assert [p.pk for p in shown] == [post.pk]
+    assert "thumbnail" in shown[0].get_deferred_fields()
+
+
 def season(start: str, end: str) -> RoutePost:
     return RoutePost(season_start=start, season_end=end)
 

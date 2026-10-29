@@ -6428,7 +6428,8 @@ def saved_routes_list(request):
     return _private(
         JsonResponse(
             {
-                "routes": [_route_summary(r) for r in rows.defer("line", "answer")],
+                # The summary reads none of the heavy fields; a route's GPX alone may be 4 MB.
+                "routes": [_route_summary(r) for r in rows.defer("line", "answer", "gpx")],
                 "max": SavedRoute.MAX_PER_ACCOUNT,
             }
         )

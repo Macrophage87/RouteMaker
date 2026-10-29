@@ -588,7 +588,11 @@ def listed(today: date):
     """The published posts, in season first, then by weight and date; and those out of season."""
     from .models import RoutePost
 
-    posts = list(RoutePost.objects.filter(status=RoutePost.Status.PUBLISHED, route__isnull=False))
+    posts = list(
+        RoutePost.objects.filter(status=RoutePost.Status.PUBLISHED, route__isnull=False).defer(
+            "thumbnail"
+        )
+    )
     shown = [p for p in posts if in_season(p, today) is not False]
     shown.sort(key=lambda p: not in_season(p, today))  # stable: the model's order otherwise
     return shown, [p for p in posts if in_season(p, today) is False]
@@ -978,10 +982,18 @@ def post_html(request, post) -> str:
 # ---- Views ----
 
 
-def _post(slug: str):
+def _post(slug: str, *, route: bool = False, thumbnail: bool = False):
+    """The post at `slug`, with only what the view reads: its shared route (never that route's
+    GPX or picture) when `route`, and its own link picture (up to 1 MB) when `thumbnail`. A photo
+    or an upload needs neither, and used to load both for every photo on a page."""
     from .models import RoutePost
 
-    return RoutePost.objects.select_related("route").filter(slug=slug).first()
+    rows = RoutePost.objects.filter(slug=slug)
+    if route:
+        rows = rows.select_related("route").defer("route__gpx", "route__preview_png")
+    if not thumbnail:
+        rows = rows.defer("thumbnail")
+    return rows.first()
 
 
 @require_safe
@@ -1030,7 +1042,7 @@ def page(request, slug: str):
     """GET /routes/<slug>: the post."""
     from .models import RoutePost
 
-    post = _post(slug)
+    post = _post(slug, route=True)
     if post is not None and post.status == RoutePost.Status.WITHDRAWN:
         return _plain(410, WITHDRAWN)
     if post is None or not visible(post, request):
@@ -1086,7 +1098,7 @@ def line_gpx(title: str, line) -> str:
 @ratelimit.rate_limited(ratelimit.SHARE_PREVIEWS)
 def gpx(request, slug: str):
     """GET /routes/<slug>/route.gpx: the exact route as a file."""
-    post = _post(slug)
+    post = _post(slug, route=True)
     if post is None or not visible(post, request):
         return HttpResponse(status=404)
     response = HttpResponse(gpx_text(post), content_type="application/gpx+xml")
@@ -1101,7 +1113,7 @@ def gpx(request, slug: str):
 @ratelimit.rate_limited(ratelimit.SHARE_PREVIEWS)
 def thumbnail(request, slug: str):
     """GET /routes/<slug>/thumbnail.jpg: the link picture an admin made."""
-    post = _post(slug)
+    post = _post(slug, thumbnail=True)
     if post is None or not visible(post, request) or not post.thumbnail:
         return HttpResponse(status=404)
     response = HttpResponse(bytes(post.thumbnail), content_type=THUMBNAIL_TYPE)
