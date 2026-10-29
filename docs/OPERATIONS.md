@@ -3574,14 +3574,18 @@ archive and both tarballs sit in `basemap/.work` until the swap.
 It has to run as the directory's owner, uid 10001 after `prepare_data_root.sh`,
 and that uid has no account on the host and usually cannot read the checkout
 (a home directory is `750`). So it runs in a container as 10001, with only the
-script and the one directory mounted, and `DATA_ROOT` spelled out rather than
+script and its two directories mounted (`basemap` and the kept copy's
+`backups/basemap`, below), and `DATA_ROOT` spelled out rather than
 read from `.env`, which holds every secret the stack has. The image is
 `curlimages/curl`, pinned by digest, which carries curl, tar, sha256sum and cut;
-no sudo is needed, only the docker group. From the repository root:
+no sudo is needed, only the docker group. Both directories must exist first
+(`prepare_data_root.sh` makes them; Docker would make a missing one as root).
+From the repository root:
 
 ```sh
 docker run --rm -u 10001:10001 -e DATA_ROOT=<DATA_ROOT> \
   -v <DATA_ROOT>/basemap:<DATA_ROOT>/basemap \
+  -v <DATA_ROOT>/backups/basemap:<DATA_ROOT>/backups/basemap \
   -v "$PWD/scripts/fetch_basemap.sh:/fetch_basemap.sh:ro" \
   --entrypoint sh \
   docker.io/curlimages/curl@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777 \
@@ -3593,6 +3597,22 @@ Run as shown on the development host on 2026-09-26: the first run downloaded
 made earlier the same day from the same build; the second printed "is
 current" and fetched nothing.
 
+**Our own copy of the region** (the owner, 2026-10-29). After a good region is
+in place, the script keeps a copy of `region.pmtiles` and its stamp in
+`<DATA_ROOT>/backups/basemap/` (`BASEMAP_KEEP_DIR` names another directory),
+about 300 MB more on the data volume, replaced only when the installed region
+changes. A run that needs exactly the region the copy holds installs it from
+there and makes no request, so a lost or wiped `basemap/` comes back without
+Protomaps. A run that finds the copy missing makes one from the installed
+region, with no request. The copy is written under a temporary name and its
+stamp last, so one cut short is never used. With the default directory missing
+or not writable (a host not yet re-prepared, or the command run without its
+mount), the run notes that no copy is kept and carries on; a `BASEMAP_KEEP_DIR`
+named explicitly must exist. The copy is on the same volume as the base map, so
+it covers an expired Protomaps day, not a lost volume: the EBS snapshot (or
+whatever copies `backups/` off the host) covers that. There is no monthly
+refresh job (the owner, 2026-10-29); the refresh below stays by hand.
+
 ### Refresh
 
 PLAN says monthly, by the worker. That job does not exist yet; until it does the
@@ -3602,9 +3622,9 @@ it, so the repository says what is being served. Until the pin is bumped, a
 plain re-run treats the newer archive as stale and goes back to the pinned day.
 build.protomaps.com keeps daily builds for a limited time only, so an old pin
 becomes a 404. A plain run (no `--build`) then does not fail: it keeps a region
-already installed over the same box, and otherwise installs the newest day
-published in the last 30, so a fresh host, `local-up.sh` or a disaster rebuild
-still gets a base map. Either way it prints a `reminder:` to bump the pin, and it
+already installed over the same box, then installs our kept copy over the same
+box, and otherwise installs the newest day published in the last 30, so a fresh
+host, `local-up.sh` or a disaster rebuild still gets a base map. Either way it prints a `reminder:` to bump the pin, and it
 prints one on every run once the pin is more than 45 days old, which is the cue
 for the refresh above. A day named with `--build` that is gone still fails. Caddy reads
 the files per request, so nothing is restarted: the next request gets the new
@@ -4927,7 +4947,12 @@ docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhal
 docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
 ```
 
-Nothing in the rebuild does this. The symptom of a missed restart is a
+Nothing in the rebuild does this. On the beta a host-side hook does it
+(`scripts/beta/restart-routers.sh`, docs/BETA-RUNBOOK.md, "The routers after a
+map swap"; the owner, 2026-10-29): a user timer restarts each running router
+that started before its variant's `current` link last changed, once the link
+has been still for 5 minutes. Elsewhere the restart is by hand, as above. The
+symptom of a missed restart is a
 deployment whose routes disagree with its own segment table, which reads like a
 conflation bug, so `check_operations` checks for it: an hour after a
 `valhalla_upstream` row changed, it asks each router's `/status` for the
@@ -6658,6 +6683,16 @@ NW entrance to the bike racks (OSM node 9827008403), seven whole ways, written
 destination-only (`rm:destination_only`; `bicycle=destination` and
 `access=destination`). A trip point inside the Zoo is moved to the racks and the
 answer's `moved_points` says so.
+
+**A stop or the end on a road not open to the public.** Such roads stay routable as a
+destination (the owner, 2026-10-29). Where a leg finishes on a way whose
+`segment.bike_access_reason` is `private` (an `access` or `vehicle` of no, private, permit,
+restricted or military, or `bicycle=private`), `military`, `secured` or `track`
+(`core.routing.NOT_PUBLIC_REASONS`), the answer's `point_notes` carries the owner's words for
+that point: "This end point is not typically open to the public, make sure you're authorized to
+go here." (Spanish in `routemaker/lang_es.py`, for a native speaker's review). The start never
+gets one, and neither does a road the route only passes along. The page shows and says it as it
+does the moved points ("End: ...", `movedPointsNote` in `frontend/src/lib/summary.ts`).
 
 **Display.** A trail-class way routing does not open to bicycles is
 `map_class='barred'` and not drawn; the mountain-bike class stays `road` with the

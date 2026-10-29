@@ -377,3 +377,92 @@ def test_no_alerts_webhook_still_counts_as_done_for_the_owners_channel(box: Box)
     """post_to's "not sent" is the release channel's to see; the owner's checks behave as before."""
     done = box.run("note", "deployed v0.9.0")
     assert done.returncode == 0
+
+
+# --- the off-host uptime check (alert.sh heartbeat; Healthchecks.io, the owner 2026-10-29) ---
+
+PING = "https://hc-ping.example/0b1c2d3e-placeholder"
+STUB_HEALTH_CURL = """#!/bin/sh
+# the api's /healthz answers from $STUB_DIR/healthz (absent: refused); a ping records its config
+for a in "$@"; do
+  case "$a" in *placeholder*) echo LEAKED >> "$STUB_DIR/leaks" ;; esac
+  case "$a" in
+    */healthz) echo "$*" >> "$STUB_DIR/health-calls"
+      [ -f "$STUB_DIR/healthz" ] || exit 7
+      cat "$STUB_DIR/healthz"; exit 0 ;;
+  esac
+done
+cat >> "$STUB_DIR/pings"
+printf '%s' "${STUB_CODE:-200}"
+"""
+
+
+def heartbeat_box(box: Box, env_lines: str) -> None:
+    (box.tmp / "hc-curl").write_text(STUB_HEALTH_CURL)
+    (box.tmp / "hc-curl").chmod(0o755)
+    (box.tmp / ".env").write_text(env_lines)
+
+
+def pings(box: Box) -> str:
+    path = box.tmp / "pings"
+    return path.read_text() if path.exists() else ""
+
+
+def beat(box: Box) -> subprocess.CompletedProcess:
+    done = box.run("heartbeat", CURL=str(box.tmp / "hc-curl"))
+    assert done.returncode == 0, done.stderr
+    return done
+
+
+def test_the_heartbeat_pings_while_the_api_is_healthy(box: Box) -> None:
+    heartbeat_box(
+        box, f"RM_BETA_HOST=beta.example\nBETA_API_PORT=8099\nHEALTHCHECK_PING_URL='{PING}'\n"
+    )
+    (box.tmp / "healthz").write_text("ok\n")
+    done = beat(box)
+    assert pings(box) == f'url = "{PING}"\n', done.stdout
+    calls = (box.tmp / "health-calls").read_text()
+    assert "http://127.0.0.1:8099/healthz" in calls and "Host: beta.example" in calls
+    assert not (box.tmp / "leaks").exists(), "the ping address reached curl's command line"
+
+
+@pytest.mark.parametrize("answer", [None, "degraded\n"])
+def test_the_heartbeat_stays_silent_while_the_api_is_down(box: Box, answer: str | None) -> None:
+    heartbeat_box(box, f"RM_BETA_HOST=beta.example\nHEALTHCHECK_PING_URL={PING}\n")
+    if answer is not None:
+        (box.tmp / "healthz").write_text(answer)
+    done = beat(box)
+    assert pings(box) == ""
+    assert "not pinged" in done.stdout
+
+
+def test_without_a_ping_address_the_heartbeat_does_nothing(box: Box) -> None:
+    heartbeat_box(
+        box, "RM_BETA_HOST=beta.example\n#HEALTHCHECK_PING_URL=https://hc-ping.example/x\n"
+    )
+    (box.tmp / "healthz").write_text("ok\n")
+    done = beat(box)
+    assert pings(box) == "" and not (box.tmp / "health-calls").exists()
+    assert "no HEALTHCHECK_PING_URL" in done.stdout
+
+
+def test_a_ping_address_that_is_not_plain_https_is_not_used(box: Box) -> None:
+    heartbeat_box(box, "RM_BETA_HOST=beta.example\nHEALTHCHECK_PING_URL=http://hc-ping.example/x\n")
+    (box.tmp / "healthz").write_text("ok\n")
+    done = beat(box)
+    assert pings(box) == ""
+    assert "not a plain https://" in done.stderr
+
+
+def test_install_writes_the_heartbeat_timer_beside_the_checks(box: Box) -> None:
+    if os.geteuid() == 0:
+        pytest.skip("install refuses root")
+    config = box.tmp / "config"
+    done = box.run("install", "--no-enable", XDG_CONFIG_HOME=str(config))
+    assert done.returncode == 0, done.stderr
+    units = config / "systemd" / "user"
+    timer = (units / "routemaker-beta-heartbeat.timer").read_text()
+    assert "OnUnitActiveSec=5min" in timer
+    assert 'alert.sh" heartbeat' in (units / "routemaker-beta-heartbeat.service").read_text()
+    assert (units / "routemaker-beta-alert.timer").exists()
+    assert "no HEALTHCHECK_PING_URL" in done.stdout

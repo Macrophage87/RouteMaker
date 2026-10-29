@@ -387,6 +387,12 @@ ES: dict[str, str] = {
     "A street elevator is out at {station}: use another one.": (
         "Un ascensor de la calle está fuera de servicio en {station}: use otro."
     ),
+    # A stop or the end on a road not open to the public (core.routing.NOT_PUBLIC_NOTE; the
+    # owner's words, 2026-10-29). Drafted for a native speaker's review.
+    "This end point is not typically open to the public, make sure you're authorized to go here.": (
+        "Este punto final normalmente no está abierto al público; asegúrese de tener"
+        " autorización para ir aquí."
+    ),
     "{first} and {last}": "{first} y {last}",
     "{station} is closed (WMATA): every trip here takes a bike through it.": (
         "{station} está cerrada (WMATA): todos los viajes aquí llevan la bicicleta por ella."
