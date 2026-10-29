@@ -1,17 +1,18 @@
 // The panel's sheets (moved out of App.tsx in UI-CLEANUP step 4, docs/DEVELOPMENT.md "The App.tsx split"),
 // arranged as the approved UI mockup of 2026-10-11 has them (reports/v0.5.0/ui-mockup.html): Layers is its
 // switches, each section with its own key (the owner, 2026-10-19); Suggest is the one way
-// in to the suggest tools, and Review is an admin's; Settings is My Go, Riding, Display and Account; and the
+// in to the suggest tools, and Review is an admin's; Settings is three tabs, Riding (My Go first), Display and
+// Account (the owner, 2026-10-28); and the
 // map's Water and Food chips open the nearest finder and Find food. In Go, Settings is the Menu, with Plan,
 // Suggest, GPX and Review above it. App.tsx keeps the state and the effects.
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { StressAvailability } from "../MapView.tsx";
 import type { RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { PRESETS, presetSaid, type PresetId } from "../lib/presets.ts";
 import { PresetName } from "../lib/presetName.ts";
-import { filterRideGroups, rideSections, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
+import { filterRideGroups, rideSections, rideTypeCount, rideTypeSections, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { RideTypeCards } from "../lib/rideTypeCards.ts";
 import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
 import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForPage, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
@@ -26,7 +27,7 @@ import { setTopoLines, TopoLinesSwitch } from "../lib/topoLines.ts";
 import { stressShowable, terrainLayers, terrainStatus } from "../lib/terrainSection.ts";
 import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
-import { ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
+import { ACCESS_FINE_TUNE, ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { RideSettingsFields } from "../RideMode.tsx";
 import { RIDE_TEXT_HELP, RIDE_TEXT_LABEL, type RideTextSize } from "../lib/rideOutput.ts";
 import type { RidePrefs } from "../lib/rideOutput.ts";
@@ -44,7 +45,8 @@ import { DocsPageLink, MtbTrailLegend, StressLegend } from "../lib/stressLegend.
 import { GpxPanel, type FileFormat, type GpxPanelProps, type Said } from "../GpxPanel.tsx";
 import type { DeviceProfileId } from "../lib/deviceProfiles.ts";
 import { JunctionLegend, SheetFrame } from "../Sidebar.tsx";
-import { MASS_RIDE_LAYERS_NOTE, MENU_TITLE, SAVE_LOAD, SHEET_TITLES, STRESS_CHECKING, STRESS_UNAVAILABLE, type PanelView } from "../lib/sidebar.ts";
+import { MASS_RIDE_LAYERS_NOTE, SAVE_LOAD, SHEET_TITLES, STRESS_CHECKING, STRESS_UNAVAILABLE, suggestHint, type PanelView } from "../lib/sidebar.ts";
+import { looksLikePhone } from "../lib/startOnComputer.ts";
 import type { ImportedPlan } from "../lib/gpxPlan.ts";
 import type { WaterPrefs, WaterStatus } from "../lib/waterRestrooms.ts";
 import { WaterSection } from "../lib/waterLegend.ts";
@@ -70,28 +72,38 @@ import { InfoButton, SettingRow, SettingSelect } from "../SettingRow.tsx";
 import { shortLabel } from "../lib/shortLabel.ts";
 import { ANNOUNCE_HINT, ANNOUNCE_LABEL, type AnnounceLevel } from "../lib/announceLevel.ts";
 import type { Status } from "./RoutePanel.tsx";
-import { LANGUAGES, LANGUAGE_NAME, chooseLanguage, readLanguageChoice, t, type LanguageChoice } from "../lib/i18n.ts";
+import { APP_VERSION, versionSaid } from "../lib/appVersion.ts";
+import { LANGUAGES, LANGUAGE_NAME, chooseLanguage, language, locale, readLanguageChoice, t, type LanguageChoice } from "../lib/i18n.ts";
 
 /** The Language setting's (i) words. Street names and notices from agencies stay as they are written. */
 const LANGUAGE_HINT = "The app's words and the voice. Street names and agency notices stay as written. Changing it reloads the page.";
+/**
+ * Every language but English is a Claude draft (the owner, 2026-10-28): said under the picker, in the language, until
+ * a native speaker has checked it. Spanish covers the whole app; the others Go and Ride, Plan staying in English.
+ */
+const DRAFT_NOTE = "Draft translation, not yet checked by a native speaker. Plan stays in English.";
+const DRAFT_NOTE_ES = "Draft translation, not yet checked by a native speaker.";
 
 /** Settings > Display > Language: the choice is held here too, so a pick that needs no reload still shows. */
 function LanguageSetting() {
   const [choice, setChoice] = useState<LanguageChoice>(() => readLanguageChoice());
   return (
+    <>
     <SettingRow infoId="settings-language-info" about={t("Language")} info={t(LANGUAGE_HINT)}>
       <SettingSelect<LanguageChoice>
         label={t("Language")}
         value={choice}
-        options={[["", t("Phone's language")] as const, ...LANGUAGES.map((lang) => [lang, LANGUAGE_NAME[lang]] as const)]}
+        options={[["", t("Phone default")] as const, ...LANGUAGES.map((lang) => [lang, LANGUAGE_NAME[lang]] as const)]}
         onChange={(next) => {
           setChoice(next);
           chooseLanguage(next);
         }}
         describedBy="settings-language-info"
-        optionLang={{ en: "en", es: "es" }}
+        optionLang={Object.fromEntries(LANGUAGES.map((lang) => [lang, locale(lang)]))}
       />
     </SettingRow>
+    {language() !== "en" && <p className="hint">{language() === "es" ? t(DRAFT_NOTE_ES) : t(DRAFT_NOTE)}</p>}
+    </>
   );
 }
 
@@ -146,6 +158,8 @@ export interface LayersSheetProps {
   scenic: { on: boolean; onChange: (on: boolean) => void; status: string } | null;
   /** DC permits (v0.9.1; lib/permitLayer.ts): one switch, off by default; null in Go, which leaves it out. */
   permits: { on: boolean; onChange: (on: boolean) => void } | null;
+  /** Go's stress bar tapped (the owner's P1): each new number opens the Traffic stress section, its colour key. */
+  stressKeyAsk?: number;
 }
 
 export const PLACES_LAYER_TITLE = t("Places to see");
@@ -153,7 +167,7 @@ export const PLACES_LAYER_HINT = t("Museums, gardens, viewpoints and more. Place
 
 /** The Layers sheet: the map's switches, in the mockup's order, each section with its own key. */
 export function LayersSheet(props: LayersSheetProps) {
-  const { nav, massMap, zoom, facilitiesShown, scenicDrawn, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic, permits } = props;
+  const { nav, massMap, zoom, facilitiesShown, scenicDrawn, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic, permits, stressKeyAsk } = props;
   // The Trails and terrain section's layers that can show, and its row's words (lib/terrainSection.ts).
   const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable(stress), topoReady, climbsStatus };
   return (
@@ -163,6 +177,7 @@ export function LayersSheet(props: LayersSheetProps) {
       open={nav.view === "layers"}
       onBack={nav.back}
       backLabel={nav.backLabel("layers")}
+      popup
     >
       {/* The mockup's order: the stress map, lanes on busy roads, federal land (Mass Ride's alone), water and
           restrooms, Metro and MARC, then trails and terrain. High contrast is in Settings. Each section is one
@@ -174,6 +189,7 @@ export function LayersSheet(props: LayersSheetProps) {
         switchId="show-stress"
         layers={stress === "available" ? [{ key: "stress", label: massMap ? CAPACITY_LEGEND_TITLE : t("Traffic stress"), on: stressVisible }] : []}
         onLayers={(next) => setStressVisible(next.stress)}
+        openAsk={stressKeyAsk}
         status={stress === "checking" ? STRESS_CHECKING : stress === "unavailable" ? STRESS_UNAVAILABLE : ""}
       >
         {/* Not one of the section's layers: shown with or without the stress map, as it also changes the
@@ -315,8 +331,8 @@ export interface GpxSheetProps {
 export function GpxSheet(props: GpxSheetProps) {
   const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, fileInput, onOpenFailed, onPick, refineImported, getMap, downloadRoute, downloadCourse, sendToGarmin, sendToWahoo, match, shareControls, routes } = props;
   return (
-    <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")}>
-      {/* Save and Share first, then your routes to load (in Go, the way to start a saved route), then the files. */}
+    <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")} popup>
+      {/* Save and Share first, then My routes to load (in Go, the way to start a saved route), then the files. */}
       {shareControls}
       {routes}
       <GpxPanel
@@ -434,13 +450,13 @@ function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean
           </>
         )}
       </div>
-      <SettingRow infoId="settings-go-ride-info" about="Go's ride type">
+      <SettingRow infoId="settings-go-ride-info" about="Default ride type">
+        {/* Named for what it is, and grouped as Go's Ride sheet and Plan's dialog group the ride types (P3). */}
         <SettingSelect
-          label={t("Go's ride type")}
+          label={t("Default ride type")}
           value={myGo.ride ?? "default"}
           options={PRESETS.filter((p) => p.id !== "mass-ride").map((p) => [p.id, presetSaid(p.id)] as const)}
-          // The ride types keep their English names in every language, so a screen reader says them as English.
-          optionLang={Object.fromEntries(PRESETS.map((p) => [p.id, "en"]))}
+          groups={rideTypeSections()}
           onChange={(ride) => save({ ...myGo, ride: ride === "default" ? null : ride })}
         />
       </SettingRow>
@@ -475,7 +491,7 @@ export interface SettingsSheetProps {
   mode: AppMode;
   /** Whether this server can sign anyone in (GET /api/me's sign_in): the sign-in line is shown only then. */
   signInAvailable: boolean;
-  menu: { onPlan: () => void; onSuggest: (opener: HTMLElement) => void; onGpx: (opener: HTMLElement) => void; onReview: ((opener: HTMLElement) => void) | null };
+  menu: { onSuggest: (opener: HTMLElement) => void; onGpx: (opener: HTMLElement) => void; onReview: ((opener: HTMLElement) => void) | null };
 }
 
 /** High contrast, as the Map layers sheet has it, with its explanation behind an (i). */
@@ -496,25 +512,73 @@ function ContrastRow() {
   );
 }
 
-/** The Settings sheet (Go's Menu): My Go, Riding, Display and Account, most used first. */
+/** Settings' tabs (the owner, 2026-10-28: "Settings = display, riding, account"; routes stay in Save & load). */
+export const SETTINGS_TABS = ["riding", "display", "account"] as const;
+export type SettingsTab = (typeof SETTINGS_TABS)[number];
+const SETTINGS_TAB_LABEL: Record<SettingsTab, string> = { riding: t("Riding"), display: t("Display"), account: t("Account") };
+
+/**
+ * The tab row: a tablist of three, the one shown selected (its underline and weight, not colour alone). The arrow
+ * keys, Home and End move between them and show the one they reach; Tab goes on into the tab shown.
+ */
+function SettingsTabs({ tab, onTab, label }: { tab: SettingsTab; onTab: (tab: SettingsTab) => void; label: string }) {
+  const row = useRef<HTMLDivElement>(null);
+  const move = (next: SettingsTab) => {
+    onTab(next);
+    row.current?.querySelector<HTMLButtonElement>(`#settings-tab-${next}`)?.focus();
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const at = SETTINGS_TABS.indexOf(tab);
+    const to =
+      event.key === "ArrowRight" ? (at + 1) % SETTINGS_TABS.length
+      : event.key === "ArrowLeft" ? (at + SETTINGS_TABS.length - 1) % SETTINGS_TABS.length
+      : event.key === "Home" ? 0
+      : event.key === "End" ? SETTINGS_TABS.length - 1
+      : null;
+    if (to === null) return;
+    event.preventDefault();
+    move(SETTINGS_TABS[to]);
+  };
+  return (
+    <div ref={row} role="tablist" aria-label={label} className="settings-tabs" onKeyDown={onKeyDown}>
+      {SETTINGS_TABS.map((id) => (
+        <button
+          key={id}
+          type="button"
+          role="tab"
+          id={`settings-tab-${id}`}
+          className="settings-tab"
+          aria-selected={tab === id}
+          aria-controls={`settings-panel-${id}`}
+          tabIndex={tab === id ? 0 : -1}
+          onClick={() => onTab(id)}
+        >
+          {SETTINGS_TAB_LABEL[id]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The Settings sheet (Go's Menu): Riding (My Go first), Display and Account, each a tab, most used first. */
 export function SettingsSheet(props: SettingsSheetProps) {
   const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements, signInAvailable, garminReturned, wahooReturned } = props;
   const go = mode === "go";
+  // Back from Garmin or Wahoo, Settings opens on Account, where its line says what happened; otherwise on Riding,
+  // and then on the tab last shown.
+  const [tab, setTab] = useState<SettingsTab>(() => (garminReturned || wahooReturned ? "account" : "riding"));
   return (
     <SheetFrame
       id="sheet-settings"
-      title={go ? MENU_TITLE : SHEET_TITLES.settings}
+      title={SHEET_TITLES.settings}
       open={nav.view === "settings"}
       onBack={nav.back}
       backLabel={nav.backLabel("settings")}
+      popup
       headingRef={settingsHeadingRef}
     >
       {go && (
         <nav className="menu-pages" aria-label={t("Pages")}>
-          <button type="button" className="secondary menu-page" onClick={menu.onPlan}>
-            <Icon name="list" />
-            {t("Plan")}
-          </button>
           <button type="button" className="secondary menu-page" onClick={(event) => menu.onSuggest(event.currentTarget)}>
             <Icon name="flag" />
             {t("Reports")}
@@ -531,31 +595,16 @@ export function SettingsSheet(props: SettingsSheetProps) {
           )}
         </nav>
       )}
-      {/* Most used first (Settings tidy, Stephen 2026-10-19): My Go with Home, then Riding, Display and Account. */}
+      {/* Three tabs, each about one screen (the owner, 2026-10-28: "A lot of destinations require endless scrolling"):
+          Riding (My Go with Home, then the ride's voice and weight), Display, and Account with the app and About. */}
+      <SettingsTabs tab={tab} onTab={setTab} label={SHEET_TITLES.settings} />
+      <div role="tabpanel" id="settings-panel-riding" aria-labelledby="settings-tab-riding" className="settings-panel" hidden={tab !== "riding"}>
+      {/* Most used first (Settings tidy, Stephen 2026-10-19): My Go with Home, then Riding. */}
       <MyGoSection controls={myGo} open={nav.view === "settings"} />
-      {/* Ride mode's choices (WEB-NAV-plan.md section 3): kept on this device. */}
+      {/* Ride mode's choices (WEB-NAV-plan.md section 3): kept on this device. Its tab names it on screen. */}
       <section aria-labelledby="settings-ride-heading" className="settings-group">
-        <h3 id="settings-ride-heading">{t("Riding")}</h3>
+        <h3 id="settings-ride-heading" className="visually-hidden">{t("Riding")}</h3>
         <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
-        {/* Large text in a ride (it replaced Big text): here, and on the ride's own button, the same choice. */}
-        <SettingRow infoId="settings-big-text-info" about="large text" info={RIDE_TEXT_HELP} className="big-text-row">
-          <button
-            type="button"
-            role="switch"
-            className="switch"
-            aria-checked={props.rideText.size === "large"}
-            aria-labelledby="settings-big-text-label"
-            aria-describedby="settings-big-text-info"
-            onClick={() => props.rideText.onChange(props.rideText.size === "large" ? "normal" : "large")}
-          >
-            <span id="settings-big-text-label" className="switch-label">
-              {RIDE_TEXT_LABEL}
-            </span>
-            <span className="switch-state" aria-hidden="true">
-              {props.rideText.size === "large" ? t("On") : t("Off")}
-            </span>
-          </button>
-        </SettingRow>
         {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"); set once, so last. */}
         <div className="setting-row weight-row">
           <div className="setting-line">
@@ -564,11 +613,14 @@ export function SettingsSheet(props: SettingsSheetProps) {
           </div>
         </div>
       </section>
+      </div>
+      <div role="tabpanel" id="settings-panel-display" aria-labelledby="settings-tab-display" className="settings-panel" hidden={tab !== "display"}>
       <section aria-labelledby="settings-display-heading" className="settings-group">
-        <h3 id="settings-display-heading">{t("Display")}</h3>
-        <ContrastRow />
-        {/* Accessibility mode (OWNER-DECISIONS 455) as a switch here too (the mockup), the same state as the page's first button. */}
-        <SettingRow infoId="settings-access-hint" about="accessibility mode" info={t(ACCESS_HELP)} className="a11y-setting">
+        <h3 id="settings-display-heading" className="visually-hidden">{t("Display")}</h3>
+        {/* Accessibility mode (OWNER-DECISIONS 455) first, the same state as the page's first button: the one shared mode
+            (the owner: "Accessibility = one shared mode"), which turns High contrast and Large text during a ride on or
+            off with it. Those two follow under it, indented, to set apart. */}
+        <SettingRow infoId="settings-access-hint" about="accessibility mode" info={`${t(ACCESS_HELP)} ${t(ACCESS_FINE_TUNE)}`} className="a11y-setting">
           <button
             type="button"
             role="switch"
@@ -587,10 +639,33 @@ export function SettingsSheet(props: SettingsSheetProps) {
             </span>
           </button>
         </SettingRow>
-        {/* How much screen readers are told (the owner, 2026-10-11 20:23 UTC): Brief or Full; unset, Go is brief. */}
+        <div className="access-parts" role="group" aria-labelledby="settings-access-label">
+          <ContrastRow />
+          {/* Large text in a ride (it replaced Big text): here, and on the ride's own button, the same choice. */}
+          <SettingRow infoId="settings-big-text-info" about="large text" info={RIDE_TEXT_HELP} className="big-text-row">
+            <button
+              type="button"
+              role="switch"
+              className="switch"
+              aria-checked={props.rideText.size === "large"}
+              aria-labelledby="settings-big-text-label"
+              aria-describedby="settings-big-text-info"
+              onClick={() => props.rideText.onChange(props.rideText.size === "large" ? "normal" : "large")}
+            >
+              <span id="settings-big-text-label" className="switch-label">
+                {RIDE_TEXT_LABEL}
+              </span>
+              <span className="switch-state" aria-hidden="true">
+                {props.rideText.size === "large" ? t("On") : t("Off")}
+              </span>
+            </button>
+          </SettingRow>
+        </div>
+        {/* How much screen readers are told (the owner, 2026-10-11 20:23 UTC): Brief or Full; unset, Go is brief. Named
+            Screen-reader detail (it was Announcements), so it is not taken for the ride's How much to say. */}
         <SettingRow
           infoId="settings-announce-info"
-          about="announcements"
+          about="screen-reader detail"
           className="announce-level"
           info={
             <>
@@ -604,7 +679,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
           }
         >
           <SettingSelect
-            label={t("Announcements")}
+            label={t("Screen-reader detail")}
             value={announcements.level}
             options={(["brief", "full"] as const).map((level) => [level, shortLabel(ANNOUNCE_LABEL[level])] as const)}
             onChange={(level) => announcements.choose(level)}
@@ -614,13 +689,13 @@ export function SettingsSheet(props: SettingsSheetProps) {
         {/* The app's language (the owner, 2026-10-27: "compatible with multiple languages"): unset, the phone's own. */}
         <LanguageSetting />
       </section>
-      {/* The installable app (WEB-NAV-plan.md section 8, P4), under its own heading when the browser offers it. The
-          routes saved and kept for offline are in Save and load (YourRoutes.tsx; the owner, 2026-10-18). */}
-      <InstallOffer idBase="settings-install" onSay={announce} />
-      {/* Account: never an empty heading (signed out on a server that cannot sign anyone in, it has nothing to hold). */}
+      </div>
+      <div role="tabpanel" id="settings-panel-account" aria-labelledby="settings-tab-account" className="settings-panel" hidden={tab !== "account"}>
+      {/* Account: never an empty heading (signed out on a server that cannot sign anyone in, it has nothing to hold).
+          Its tab names it on screen; the installable app and About follow it in the tab. */}
       {(myGo.signedIn || signInAvailable) && (
         <section aria-labelledby="settings-signin-heading" className="settings-group">
-          <h3 id="settings-signin-heading">{t("Account")}</h3>
+          <h3 id="settings-signin-heading" className="visually-hidden">{t("Account")}</h3>
           {myGo.signedIn ? (
             <div className="account-line">
               <p className="hint signed-in">
@@ -653,6 +728,9 @@ export function SettingsSheet(props: SettingsSheetProps) {
           )}
         </section>
       )}
+      {/* The installable app (WEB-NAV-plan.md section 8, P4), under its own heading when the browser offers it. The
+          routes saved and kept for offline are in Save & load (YourRoutes.tsx; the owner, 2026-10-18). */}
+      <InstallOffer idBase="settings-install" onSay={announce} />
       {/* The documentation (the owner, 2026-10-19): one link, last, under its own heading. */}
       <section aria-labelledby="settings-about-heading" className="settings-group">
         <h3 id="settings-about-heading">{t("About")}</h3>
@@ -666,7 +744,10 @@ export function SettingsSheet(props: SettingsSheetProps) {
             </a>
           </p>
         </div>
+        {/* The version (lib/appVersion.ts): here and in the map's Help, since Plan's phone sheet has no title row (P10). */}
+        {APP_VERSION && <p className="hint settings-version">{versionSaid()}</p>}
       </section>
+      </div>
     </SheetFrame>
   );
 }
@@ -687,13 +768,13 @@ export interface SuggestSheetProps {
  */
 export function SuggestSheet({ nav, roadInfoAtCentre, onReview }: SuggestSheetProps) {
   return (
-    <SheetFrame id="sheet-suggest" title={SHEET_TITLES.suggest} open={nav.view === "suggest"} onBack={nav.back} backLabel={nav.backLabel("suggest")}>
+    <SheetFrame id="sheet-suggest" title={SHEET_TITLES.suggest} open={nav.view === "suggest"} onBack={nav.back} backLabel={nav.backLabel("suggest")} popup>
       {/* The 311 checklist first: the sheet is Reports (Stephen, 2026-10-21), and the ride summary's Open Reports lands here. */}
       <Report311Log />
       <section aria-labelledby="suggest-map-heading" className="settings-group">
         <h3 id="suggest-map-heading">{t("A road or a junction")}</h3>
         <p className="hint">
-          {t("Right-click a road, or press and hold it, then choose Suggest a change: a road's traffic stress, a junction, or a hazard on a Mass Ride. Suggestions go to the map's admins; nothing changes until one of them reviews it.")}
+          {suggestHint(looksLikePhone())}
         </p>
         <button type="button" className="secondary suggest-at-centre" onClick={roadInfoAtCentre}>
           <Icon name="road" />
@@ -717,7 +798,7 @@ export function SuggestSheet({ nav, roadInfoAtCentre, onReview }: SuggestSheetPr
 /** The map's Water chip: the nearest water, restroom or Metro station (the finder that was a fold in Points). */
 export function NearestSheet({ nav, children }: { nav: SheetNav; children: ReactNode }) {
   return (
-    <SheetFrame id="sheet-nearest" title={SHEET_TITLES.nearest} open={nav.view === "nearest"} onBack={nav.back} backLabel={nav.backLabel("nearest")}>
+    <SheetFrame id="sheet-nearest" title={SHEET_TITLES.nearest} open={nav.view === "nearest"} onBack={nav.back} backLabel={nav.backLabel("nearest")} popup>
       {children}
     </SheetFrame>
   );
@@ -725,20 +806,29 @@ export function NearestSheet({ nav, children }: { nav: SheetNav; children: React
 
 /** The cuisine chips over Find food (the mockup's Food sheet): each one searches for it. */
 // Farm stands (v0.7.0, the owner 2026-10-14: "Lots of places are selling apples in the fall"), with the apple.
-export const FOOD_CHIPS = ["Crab", "Coffee", "Pizza", "Tacos", "Ice cream", "Farm stands"] as const;
+// Grocery (the owner, 2026-10-28): grocery stores and supermarkets nearest the start, from the geocoder (lib/grocery.ts);
+// first, so it shows without a swipe at 390 px (v0.14.0 end review: the owner's grocery-store example).
+export const FOOD_CHIPS = ["Grocery", "Crab", "Coffee", "Pizza", "Tacos", "Ice cream", "Farm stands"] as const;
+const FOOD_CHIP_ICON: Partial<Record<(typeof FOOD_CHIPS)[number], IconName>> = { "Farm stands": "apple", Grocery: "shop" };
 
-/** The map's Food chip: Find food (the panel that was a fold in Points), with the mockup's cuisine chips over it. */
-export function FoodSheet({ nav, onChip, children }: { nav: SheetNav; onChip: (food: string) => void; children: ReactNode }) {
+/** The cuisine chips, under Find food's search box: one row that scrolls sideways (the 2026-10-28 audit, P7: results first). */
+export function FoodChips({ onChip }: { onChip: (food: string) => void }) {
   return (
-    <SheetFrame id="sheet-food" title={SHEET_TITLES.food} open={nav.view === "food"} onBack={nav.back} backLabel={nav.backLabel("food")}>
-      <div className="chip-row food-chips" role="group" aria-label={t("Quick searches")}>
-        {FOOD_CHIPS.map((food) => (
-          <button key={food} type="button" className="chip" onClick={() => onChip(food.toLowerCase())}>
-            <Icon name={food === "Farm stands" ? "apple" : "food"} size={16} />
-            {t(food)}
-          </button>
-        ))}
-      </div>
+    <div className="chip-row food-chips" role="group" aria-label={t("Quick searches")}>
+      {FOOD_CHIPS.map((food) => (
+        <button key={food} type="button" className="chip" onClick={() => onChip(food.toLowerCase())}>
+          <Icon name={FOOD_CHIP_ICON[food] ?? "food"} size={16} />
+          {t(food)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The map's Eat chip: the food search (the panel that was a fold in Points), its cuisine chips (FoodChips) under its search box. */
+export function FoodSheet({ nav, children }: { nav: SheetNav; children: ReactNode }) {
+  return (
+    <SheetFrame id="sheet-food" title={SHEET_TITLES.food} open={nav.view === "food"} onBack={nav.back} backLabel={nav.backLabel("food")} popup>
       {children}
     </SheetFrame>
   );
@@ -756,7 +846,7 @@ export function EditRouteSheet({ nav, children }: { nav: SheetNav; children: Rea
 /** Go's Ride sheet: every ride type as a chip and every dial (the Ride line's controls, which Plan keeps in the panel). */
 export function RideSheet({ nav, children }: { nav: SheetNav; children: ReactNode }) {
   return (
-    <SheetFrame id="sheet-ride" title={SHEET_TITLES.ride} open={nav.view === "ride"} onBack={nav.back} backLabel={nav.backLabel("ride")}>
+    <SheetFrame id="sheet-ride" title={SHEET_TITLES.ride} open={nav.view === "ride"} onBack={nav.back} backLabel={nav.backLabel("ride")} popup>
       {children}
     </SheetFrame>
   );
@@ -841,7 +931,12 @@ export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onP
   );
 }
 
-/** Go's quick ride type chips and the More button, each chip a toggle button. */
+/**
+ * Go's quick ride type chips and the More button, each chip a toggle button. P3: one row that scrolls sideways
+ * (styles.css .ride-chips), the ride type in use first and pressed (lib/myGo.ts goRideChips), so it is always in
+ * view; the row goes back to its start when the ride type changes. Where the rider has moved the sliders from the
+ * ride type's start (`changed`), its chip says so: "(changed)" shown, the whole of it heard.
+ */
 export function RideChips({
   ids,
   preset,
@@ -849,6 +944,8 @@ export function RideChips({
   more,
   label,
   ownHint,
+  own,
+  changed = false,
 }: {
   ids: readonly PresetId[];
   preset: PresetId;
@@ -856,28 +953,44 @@ export function RideChips({
   more?: (opener: HTMLElement) => void;
   /** The chips' group name; leave it out where a heading already names them. */
   label?: string;
-  /** Go: the first chip is the rider's own ride type (My Go), described as such. */
+  /** Go: the rider's own ride type (My Go) is described as such; `own` is which chip it is (the first, if left out). */
   ownHint?: string;
+  own?: PresetId;
+  /** The sliders are not where the ride type in use starts them (lib/rideTypeDialog.ts isCustom). */
+  changed?: boolean;
 }) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    rowRef.current?.scrollTo?.({ left: 0 });
+  }, [preset]);
+  const ownId = own ?? ids[0];
   return (
-    <div className="chip-row ride-chips" role={label ? "group" : undefined} aria-label={label}>
-      {ids.map((id, index) => (
+    <div ref={rowRef} className="chip-row ride-chips" role={label ? "group" : undefined} aria-label={label}>
+      {ids.map((id) => (
         <button
           key={id}
           type="button"
           className="chip ride-type-chip"
           aria-pressed={preset === id}
           onClick={() => onPick(id)}
-          aria-describedby={ownHint && index === 0 ? "ride-own-hint" : undefined}
+          aria-describedby={ownHint && id === ownId ? "ride-own-hint" : undefined}
         >
           <Icon name={RIDE_ICON[id] ?? "bike"} size={18} />
           <PresetName id={id} />
+          {changed && preset === id && (
+            <>
+              <span className="ride-changed" aria-hidden="true">
+                {t("(changed)")}
+              </span>
+              <span className="visually-hidden">{t(", settings changed from this ride type's start")}</span>
+            </>
+          )}
         </button>
       ))}
       {more && (
         <button type="button" className="chip ride-more" onClick={(event) => more(event.currentTarget)} aria-describedby="ride-more-hint">
           <Icon name="more" size={18} />
-          {t("More ride types")}
+          {t("Ride type & settings")}
         </button>
       )}
       {more && (

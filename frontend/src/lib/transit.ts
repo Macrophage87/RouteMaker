@@ -43,8 +43,36 @@ export const STEPS_LABEL = "Steps, in order";
 export const OPTIONS_LABEL = "Trips, best first, counting busy roads";
 /** The legend's words for the rides: each is coloured by traffic stress, as the route is. */
 export const RIDES_LEGEND = "Every ride is coloured by traffic stress, as on the route, and a thin solid line is a ride whose streets could not be read in time.";
-/** Said under every transit plan: the timetables carry only the closures an agency published in them. */
-export const TRACK_WORK = "Scheduled service; check for track work.";
+/**
+ * Said under every transit plan: the timetables carry only the closures an agency published in them. The API's own
+ * note (core/transit.py SCHEDULED_WORDS), said here once, not also in the notes (P11).
+ */
+export const TRACK_WORK = "Scheduled service: check for track work and service alerts before you go.";
+
+/** The API's notes the times paragraph says itself (TRACK_WORK, liveTimesText): core/transit.py SCHEDULED_WORDS, LIVE_WORDS. */
+const SAID_IN_TIMES = [/^Scheduled service: check for track work/, /^Departures marked live are WMATA's predictions/];
+/** A line's service note (core/transit.py _idle): "VRE Manassas Line: no service at this time." */
+const LINE_NOTE = /^(.+?): no (?:weekend |holiday )?(?:service|bikes on board)\b/;
+
+/**
+ * The plan's notes as the panel lists them (P11): a line's service note only for a line the trip takes (no "VRE
+ * Manassas Line" on a Red Line trip; with no transit leg, riding the whole way, each still says why), and the
+ * scheduled-service and live-times words once, in the times paragraph under a scheduled plan.
+ */
+export function tripNotes(plan: Pick<TransitPlan, "notes" | "steps" | "scheduled">): string[] {
+  const used = [...new Set(plan.steps.flatMap((step) => step.lines ?? []).filter(Boolean))];
+  const names = used.map((line) => new RegExp(`(^|\\W)${line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\W|$)`, "i"));
+  return plan.notes.filter((note) => {
+    if (plan.scheduled && SAID_IN_TIMES.some((words) => words.test(note))) return false;
+    const line = LINE_NOTE.exec(note);
+    return !line || names.length === 0 || names.some((name) => name.test(line[1]));
+  });
+}
+
+/** The schedules' sources, each once ("WMATA GTFS (scheduled times)" came twice, once per leg). */
+export function tripCredits(plan: Pick<TransitPlan, "credits">): string[] {
+  return [...new Set(plan.credits)];
+}
 
 /** The credit Metro's typical timetable carries (core/transitdata/metro-typical.json): no counted departures. */
 const TYPICAL_CREDIT = /\(typical service\)/;

@@ -114,6 +114,13 @@ export interface InfoRequest {
   trail?: boolean;
 }
 
+/**
+ * Go's road card (the owner, 2026-10-28: "Put the route here as a big button on top of the card"): a map tap in Go
+ * opens the card, and this button routes to the spot as the tap did before (App's goTo, the destination in place
+ * of any before it). Two taps where it was one, so a stray tap never plans a ride.
+ */
+export const ROUTE_HERE_TEXT = t("Route here");
+
 /** The trail panel's via button: a via point on the trail, which shapes the route through it (lib/pointKinds.ts). */
 export const TRAIL_VIA_TEXT = t("Route through this trail");
 
@@ -208,16 +215,27 @@ export const INFO_KEY = "i";
 /**
  * The help for the road panel. The keyboard's way in names Map tools, which is on the page only in
  * accessibility mode (455): off, it says to turn the mode on first. INFO_HELP is the mode-on text.
+ * One short line each (P8), the phone's gesture on a phone (`touch`); the keyboard's lines on a computer, and in
+ * accessibility mode on any device.
  */
-export function infoHelp(accessMode: boolean, go = false): string {
+export function infoHelp(accessMode: boolean, go = false, touch = false): string[] {
   const ways = mapToolsWays(accessMode, go);
-  return (
-    "Right-click the map (or press and hold on a phone) for a short summary of the road there (its traffic stress, speed and whether bikes are allowed), buttons to make the spot your start, end or a stop, and Street View and Edit in OSM links; Details and sources has every figure and where it came from. " +
-    `From the keyboard: with the map focused, press I for the road at the center of the map, or ${ways.roadAndAdd}. ` +
-    `With NVDA or JAWS, I reaches the map only in focus mode (in browse mode it moves to the next list item); ${accessMode ? "" : "in accessibility mode, "}${MAP_TOOLS_LABEL} works in either.`
-  );
+  const keys =
+    touch && !accessMode
+      ? []
+      : [
+          `From the keyboard: with the map focused, press I for the road at the center of the map, or ${ways.roadAndAdd}.`,
+          `With NVDA or JAWS, I reaches the map only in focus mode (in browse mode it moves to the next list item); ${accessMode ? "" : "in accessibility mode, "}${MAP_TOOLS_LABEL} works in either.`,
+        ];
+  return [
+    touch
+      ? t("Press and hold the map for the road there: its stress, speed and whether bikes may ride, and buttons to start, end or stop there.")
+      : t("Right-click the map for the road there: its stress, speed and whether bikes may ride, and buttons to start, end or stop there."),
+    t("Street View and Edit in OSM are there too; Details and sources has every figure and where it came from."),
+    ...keys,
+  ];
 }
-export const INFO_HELP = infoHelp(true);
+export const INFO_HELP = infoHelp(true).join(" ");
 /** How long a finger must rest, unmoved, for a long press. */
 export const LONG_PRESS_MS = 600;
 /** How far a finger may drift and still be a long press, not a pan. */
@@ -266,8 +284,11 @@ export const SPOT_ACTION_TEXT: Record<PlaceChoice, string> = {
  * The top row for a plan of `count` points: Set as start, Set as end, Add as stop, each
  * available as the search's Start / Destination / Stop choice is (`choicesFor`), else
  * with the reason it is not. In a loop Set as end is there too: it ends the ride there (placeAtSpot).
+ * `startKnown`: Go, whose start is the rider's location before the plan has a point (the owner, 2026-10-28):
+ * the row is as for a plan with its start, so Set as end is open (routed from the location, App's goTo).
  */
-export function spotActions(count: number, loop: boolean): SpotAction[] {
+export function spotActions(points: number, loop: boolean, startKnown = false): SpotAction[] {
+  const count = points === 0 && startKnown ? 1 : points;
   const full = count >= MAX_POINTS;
   // In a loop, Set as end ends the ride there and turns the loop off (Stephen 2026-10-20: "allow an end to be set,
   // stopping the loop"); it adds a point, so not on a full plan.
@@ -346,7 +367,7 @@ export function shownSections(info: SegmentInfo, massRide: boolean): InfoSection
 /** The dialog's heading. */
 export function infoHeading(state: InfoState): string {
   if (state.kind === "loading") return INFO_TITLE_LOADING;
-  if (state.kind === "error") return "Road information";
+  if (state.kind === "error") return t("Road info");
   return state.info.found ? state.info.title : NO_ROAD;
 }
 

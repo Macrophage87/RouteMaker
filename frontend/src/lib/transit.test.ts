@@ -26,6 +26,8 @@ import {
   transitTime,
   transitTimeName,
   withTransitOption,
+  tripCredits,
+  tripNotes,
 } from "./transit.ts";
 
 const SRC = new URL("../", import.meta.url);
@@ -151,7 +153,7 @@ test("the options are lettered, best first, with riding the whole way among them
   assert.match(summary, /<ol className="transit-options" aria-label=\{OPTIONS_LABEL\}>/);
   assert.match(summary, /aria-pressed=\{option\.chosen\}/);
   assert.match(summary, /\{TRACK_WORK\}/);
-  assert.equal(TRACK_WORK, "Scheduled service; check for track work.");
+  assert.equal(TRACK_WORK, "Scheduled service: check for track work and service alerts before you go.");
 });
 
 test("TB-13: the times are said as published timetables, Metro's typical service, or both, from the plan's credits", () => {
@@ -220,7 +222,7 @@ test("the panel's steps are a labelled ordered list, with the total, comparison 
   assert.equal(STEPS_LABEL, "Steps, in order");
   assert.match(summary, /<ol className="transit-steps" aria-label=\{STEPS_LABEL\}>/);
   assert.match(summary, /<h3 id=\{`\$\{id\}-heading`\}>\n\s*<PresetName id=\{preset\} suffix=\{`: \$\{plan\.summary\.replace/);
-  assert.match(summary, /plan\.riding_quicker \? "transit-compare notice"/);
+  assert.match(summary, /plan\.riding_quicker \? "transit-compare" : "transit-compare hint"/, "riding quicker is a plain line, not a warning box (P11)");
   // The panel's time is the door-to-door total, named for a screen reader, not the first ride's.
   const panel = src("app/RoutePanel.tsx");
   assert.match(panel, /const timeName = transit \? transitTimeName\(transit\) : t\("Moving time"\);/);
@@ -270,4 +272,25 @@ test("the total's name says live where a departure is WMATA's prediction", () =>
   assert.equal(transitTimeName({ scheduled: true, live_times: false }), "Door-to-door time, scheduled");
   assert.equal(transitTimeName({ scheduled: true }), "Door-to-door time, scheduled");
   assert.equal(transitTimeName({ scheduled: false }), "Door-to-door time");
+});
+
+test("the notes say only the trip's own lines, and the times words once (P11)", () => {
+  const step = (lines: string[]) => ({ lines }) as unknown as TransitPlan["steps"][number];
+  const notes = [
+    "VRE Manassas Line: no service at this time.",
+    "MARC Penn Line: no bikes on board this train.",
+    "Red: no weekend service.",
+    "Scheduled service: check for track work and service alerts before you go.",
+    "Departures marked live are WMATA's predictions; the time on board is scheduled.",
+    "Bikes ride free off peak.",
+  ];
+  const red = { notes, scheduled: true, steps: [step([]), step(["Red"]), step([])] };
+  assert.deepEqual(tripNotes(red), ["Red: no weekend service.", "Bikes ride free off peak."]);
+  // Riding the whole way (no transit leg): every line's note still says why it is not on the plan.
+  const ride = { notes: notes.slice(0, 3), scheduled: false, steps: [step([])] };
+  assert.deepEqual(tripNotes(ride), notes.slice(0, 3));
+  assert.deepEqual(tripCredits({ credits: ["WMATA GTFS (scheduled times)", "MARC GTFS", "WMATA GTFS (scheduled times)"] }), [
+    "WMATA GTFS (scheduled times)",
+    "MARC GTFS",
+  ]);
 });
