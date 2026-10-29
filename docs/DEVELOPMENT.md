@@ -6037,7 +6037,8 @@ end). On a shorter ride it could change nothing, so it is left out rather than s
 standing reason under every short ride's tools; More tips says when it appears (`editingTips`). If
 it leaves while it has the focus (an undo or a removal takes a stop away), the focus goes to Reverse
 beside it. A press sends the ride as a route request would (points, preset and dials, with the riding
-speed and the closure choices, `closureFields`; not the weight, which the order does not use) to
+speed and the closure choices, `closureFields`; not the weight, which the order does not use, nor
+Go round's closed roads, `blocked_lines`, which only a ride's re-plans carry and a ride has no Best order) to
 `POST /api/stop-order`
 (`core.api.stop_order`, the route request's body, its rate and in-flight limits). While the order is
 found the button keeps its label and is `aria-disabled`, "Finding the best order for the stops." is
