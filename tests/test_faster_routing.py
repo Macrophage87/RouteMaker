@@ -849,3 +849,21 @@ class TestCachesSetting:
         # An item stored with pymemcache's pickle flag (1) by anything else is a miss.
         assert serde.deserialize("k", pickle.dumps({"a": 1}), 1) is None
         assert serde.deserialize("k", b"answer", 0) == b"answer"
+
+
+def test_an_expired_answer_is_swept_even_when_nobody_asks_again(settings, monkeypatch) -> None:
+    # A quiet worker keeps no route, and its start, past its 2 minutes (core.weather's sweep).
+    settings.ROUTE_CACHE_TTL_S = route_cache.TTL_S
+    monkeypatch.setattr(route_cache, "_shared", lambda: None)
+    now = [1000.0]
+    timers: list = []
+    monkeypatch.setattr(route_cache, "_clock", lambda: now[0])
+    monkeypatch.setattr(route_cache, "_later", lambda delay, run: timers.append((delay, run)))
+    monkeypatch.setattr(route_cache, "_sweep_due", False)
+    route_cache.clear()
+    route_cache.put("a", {"provisional": False})
+    route_cache.put("b", {"provisional": False}, 30)
+    assert len(timers) == 1 and timers[0][0] == route_cache.TTL_S
+    now[0] += route_cache.TTL_S
+    timers.pop()[1]()
+    assert route_cache.size() == 0 and not timers

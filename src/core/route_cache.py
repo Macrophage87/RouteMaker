@@ -116,6 +116,36 @@ def _drop_expired(now: float) -> None:
         del _entries[slot]
 
 
+def _later(delay: float, run: Callable[[], None]) -> None:
+    timer = threading.Timer(delay, run)
+    timer.daemon = True
+    timer.start()
+
+
+# A sweep is due: one at a time, so a busy worker starts no pile of timers.
+_sweep_due = False
+
+
+def _sweep() -> None:
+    """Forget what has expired even when no read or push comes, so a quiet worker keeps no
+    route, and its start, past its 2 minutes (as core.weather and core.ride_presence sweep)."""
+    global _sweep_due
+    with _lock:
+        _sweep_due = False
+        now = _clock()
+        _drop_expired(now)
+        if _entries:
+            _schedule(max(0.0, min(e.expires for e in _entries.values()) - now))
+
+
+def _schedule(delay: float) -> None:
+    """A sweep in `delay` seconds, unless one is due (called with `_lock` held)."""
+    global _sweep_due
+    if not _sweep_due:
+        _sweep_due = True
+        _later(delay, _sweep)
+
+
 def clear() -> None:
     """Forget every answer (the tests; an operator's shell): the shared cache's too."""
     with _lock:
@@ -255,6 +285,7 @@ def put(key: str, body: dict, valid_s: float = TTL_S) -> None:
         now = _clock()
         _drop_expired(now)
         _entries[(key, kind)] = _Entry(body, now + ttl)
+        _schedule(ttl)
         _entries.move_to_end((key, kind))
         if kind == FULL:
             # The full plan supersedes its first route.
