@@ -24,6 +24,7 @@ a message naming `RM_BETA_HOST` when it is missing; on a server set up before v0
 | `~/routemaker-beta-state` | Mode 700: the before/after copies of `nginx -T` and the other sites' status codes | `rm -rf` it |
 | `~/routemaker-beta-passwords.txt` | Mode 600: the testers' passwords, for the owner to read and hand out | the owner deletes it (`shred -u`) |
 | `~/routemaker-beta-state/cd`, `~/.config/systemd/user/routemaker-beta-cd.*` | Only once continuous deployment is installed ("Continuous deployment", below): the release agent, its state, logs and pre-release snapshots, and its user timer | `auto-release.sh uninstall`, then `rm -rf` the `cd` directory |
+| `~/routemaker-beta-state/cd/bin/restart-routers.sh`, `~/.config/systemd/user/routemaker-beta-routers.*` | Only once the router hook is installed ("The routers after a map swap", below): the script and its user timer | `restart-routers.sh uninstall`, then `rm` the script |
 | `~/routemaker-beta-state/alert-webhook`, `~/routemaker-beta-state/release-webhook`, `~/routemaker-beta-state/alerts`, `~/.config/systemd/user/routemaker-beta-alert.*` | Only once alerts are installed ("Alerts", below): the Discord webhook addresses (mode 600), what was last posted, and the check timer | `alert.sh uninstall`, then `rm` the webhook files and the `alerts` directory |
 
 Every RouteMaker path above is created only after a check that it **does not exist yet**; if one
@@ -1366,6 +1367,31 @@ scripts/beta/smoke-test.sh --local --trails     # the Mountain Bike and Gravel c
 
 A route planned on the standard graph instead is never kept in the answer cache, so a check right after the sync
 sees the fix at once.
+
+### The routers after a map swap
+
+A router reads its tiles only when it starts, so after `$RM_DATA/tiles/<variant>/current` moves (a data ship, a
+rollback A, a beta map swap) it serves the old graph until it is restarted. `scripts/beta/restart-routers.sh`
+(the owner, 2026-10-29) does that restart by itself: a user timer runs `restart-routers.sh check` every 2 minutes,
+and it restarts, one at a time, each **running** router (the four, and each trail router whose `current` is on
+this host) that started before its variant's `current` link last changed, once the link has been still for 5
+minutes (`RM_ROUTER_SETTLE_S`, in seconds, in vars.sh). It starts no router that is stopped, and does nothing while
+a deploy pass holds the agent's lock. The restart steps above still work as written; a router restarted by hand
+is simply already current. `check_operations` stays the backstop: a router still on an older build an hour after
+the swap is reported, and the alerts post it.
+
+Install (once, as the beta's login user; no sudo):
+
+```sh
+. "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
+"$RM_SRC/scripts/beta/restart-routers.sh" install    # copies it into $RM_STATE/cd/bin and enables the 2-minute timer
+"$RM_STATE/cd/bin/restart-routers.sh" check          # one pass now: prints nothing when every router is current
+```
+
+Day to day: `journalctl --user -u routemaker-beta-routers --since today` shows each restart. A failed restart
+fails the unit (`systemctl --user status routemaker-beta-routers`) and is tried again on the next pass.
+`restart-routers.sh uninstall` stops it. A release that changes the script needs `install` run again.
 
 ## Alerts
 
