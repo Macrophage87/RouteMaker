@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "Detou: {summary}",
   "Already done?": "Deja fèt?",
   "Ticked stops are skipped. Untick one to go back to it.": "Arè ki make yo sote. Retire mak la sou youn pou retounen ladan l.",
+  "Riding on with the stops as marked.": "N ap kontinye ak arè yo jan yo make a.",
   "Resume your ride?": "Kontinye woulib ou?",
   "Resume your ride to {place}?": "Kontinye woulib ou pou {place}?",
   "The app closed during a ride. Resume picks it up from where you are.": "Aplikasyon an te fèmen pandan yon woulib. Kontinye pran l kote ou ye a.",

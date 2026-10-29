@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "兜路：{summary}",
   "Already done?": "已經去咗？",
   "Ticked stops are skipped. Untick one to go back to it.": "剔咗嘅中途站會略過。取消剔就可以返去。",
+  "Riding on with the stops as marked.": "按已剔選嘅途經點繼續踩。",
   "Resume your ride?": "繼續踩車？",
   "Resume your ride to {place}?": "繼續去{place}嘅踩車？",
   "The app closed during a ride. Resume picks it up from where you are.": "踩車途中App閂咗。繼續會由你所在位置接住踩。",

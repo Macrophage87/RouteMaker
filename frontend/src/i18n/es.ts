@@ -291,6 +291,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Still finding the best order.": "Aún buscando el mejor orden.",
   "Skip this stop": "Saltar esta parada",
   "Ticked stops are skipped. Untick one to go back to it.": "Las paradas marcadas se saltan. Desmarque una para volver a ella.",
+  "Riding on with the stops as marked.": "Se sigue con las paradas tal como están marcadas.",
   "Already done?": "¿Ya terminó?",
   "Manual mode": "Modo manual",
   "Manual mode off. New points are routed.": "Modo manual desactivado. Los puntos nuevos siguen las calles.",

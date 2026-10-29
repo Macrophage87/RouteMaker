@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "들르기: {summary}",
   "Already done?": "이미 다녀왔나요?",
   "Ticked stops are skipped. Untick one to go back to it.": "체크한 경유지는 건너뜁니다. 다시 가려면 체크를 해제하세요.",
+  "Riding on with the stops as marked.": "표시된 정류지 그대로 계속 달립니다.",
   "Resume your ride?": "라이드를 재개할까요?",
   "Resume your ride to {place}?": "{place}까지 라이드를 재개할까요?",
   "The app closed during a ride. Resume picks it up from where you are.": "라이드 중에 앱이 닫혔습니다. 재개하면 현재 위치에서 이어집니다.",
