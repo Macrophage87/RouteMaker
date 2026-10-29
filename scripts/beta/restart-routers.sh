@@ -55,10 +55,20 @@ load_vars() {
 bc() { "${RM_ROUTER_COMPOSE:-$RM_SRC/scripts/beta/beta-compose.sh}" --profile offroad "$@"; }
 
 cmd_check() {
-	local router variant link changed now cid started started_s restarted=0 failed=0
+	local router variant link changed now cid started started_s journal restarted=0 failed=0
 	if [ -f "$cd_dir/lock" ]; then
 		exec 9<"$cd_dir/lock"
 		flock -n 9 || { echo "restart-routers: a deploy pass is running; skipped"; return 0; }
+	fi
+	# A swap the journal says is unfinished (pipeline.promotion's swap-journal.json, its state not
+	# yet "swapped", or a journal that cannot be read) has moved some links but not the live
+	# tables: restarting onto those tiles would serve them against the old segments. The repair by
+	# hand (docs/OPERATIONS.md, the swap journal) comes first; the routers stay on the build they
+	# started on.
+	journal="$RM_DATA/tiles/swap-journal.json"
+	if [ -e "$journal" ] && ! grep -Eq '"state"[[:space:]]*:[[:space:]]*"swapped"' "$journal" 2>/dev/null; then
+		echo "restart-routers: $journal says a map swap is unfinished; no router restarted until it is repaired"
+		return 0
 	fi
 	now=$(date +%s)
 	for router in $ROUTERS $TRAIL_ROUTERS; do

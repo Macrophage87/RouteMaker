@@ -243,6 +243,29 @@ def test_a_wider_alternative_wins_where_the_routers_own_is_too_narrow_for_the_ri
     assert info["routes_weighed"][1]["capacity_s"] == 0
 
 
+def test_a_stretch_outside_dc_is_measured_not_priced():
+    assert mass_route.OUTSIDE_DC_NOTE == routing.STRETCH_OUTSIDE_DC
+    out = mass_route.price([road(1000, None, routing.STRETCH_OUTSIDE_DC)], 500)
+    assert out.outside_m == 1000 and out.total_s == 0
+    assert mass_route.price([road(1000, None, routing.STRETCH_UNTRACED)], 500).outside_m == 0
+
+
+def test_a_route_that_stays_in_dc_wins_whatever_its_price(stretches_of):
+    # The owner, 2026-10-29: "Don't leave DC on a mass ride." The router's own route crosses into
+    # Maryland; the alternative stays in DC on a street far too narrow for 1500 riders, and wins.
+    stretches_of["out"] = [road(1500, 400), road(1500, None, routing.STRETCH_OUTSIDE_DC)]
+    stretches_of["in"] = [road(3000, 60)]
+    chosen, info = choose([trip(1000, "out"), trip(1400, "in")], riders=1500)
+    assert chosen == 1
+    assert [row["outside_dc_m"] for row in info["routes_weighed"]] == [1500, 0]
+
+
+def test_a_few_metres_over_the_line_decide_nothing(stretches_of):
+    stretches_of["own"] = [road(2000, 400), road(20, None, routing.STRETCH_OUTSIDE_DC)]
+    stretches_of["narrow"] = [road(2000, 60)]
+    assert choose([trip(1000, "own"), trip(1000, "narrow")], riders=1500)[0] == 0
+
+
 def test_the_ride_size_decides_the_same_two_routes(stretches_of):
     stretches_of["own"] = [road(2000, 60)]
     stretches_of["wide"] = [road(2200, 200)]
@@ -362,6 +385,68 @@ class TestTheAnswer:
 
         monkeypatch.setattr(routing, "_transport", PlanRouter(detour_cost=600.0))
         return lambda preset, **extra: plan(Client(), {**body_for(preset), **extra}).json()
+
+    def test_the_api_chooses_the_wider_alternative_for_a_big_ride_only(
+        self, monkeypatch, segment_schemas
+    ):
+        """Through the planner, not the choice alone: the router offers its own route (too
+        narrow for 1500 riders) and a wider alternative; the plan rides the wider one for 1500
+        and keeps the router's own for 200 (the v0.15.0 end review: nothing tested the plan)."""
+        from django.test import Client
+        from test_avoid_junctions import DETOUR, body_for, trace_for
+        from test_route_api import VERTICES, route_answer
+        from test_route_api import post as plan
+
+        own_shape = route_answer([(VERTICES, 2.2, [])])["trip"]["legs"][0]["shape"]
+
+        def router(url, payload, timeout):
+            endpoint = url.rsplit("/", 1)[1]
+            if endpoint == "trace_attributes":
+                return trace_for(payload)
+            if endpoint == "locate":
+                return []
+            answer = route_answer([(VERTICES, 2.2, [])])
+            answer["trip"]["summary"]["cost"] = 500.0
+            if "alternates" in payload:
+                wide = route_answer([(DETOUR, 2.4, [])])["trip"]
+                wide["summary"]["cost"] = 560.0
+                answer["alternates"] = [{"trip": wide}]
+            return answer
+
+        def stretches(variant, costing, one, when, deadline, traces=None, names=False):
+            narrow = one["legs"][0]["shape"] == own_shape
+            return [road(2200, 60 if narrow else 400)]
+
+        monkeypatch.setattr(routing, "_transport", router)
+        monkeypatch.setattr(routing, "capacity_stretches", stretches)
+        big = plan(Client(), {**body_for("mass-ride"), "ride_size": 1500}).json()
+        small = plan(Client(), {**body_for("mass-ride"), "ride_size": 200}).json()
+        assert big["mass_capacity"]["choice"]["chosen"] == 1, big["mass_capacity"]
+        assert small["mass_capacity"]["choice"]["chosen"] == 0, small["mass_capacity"]
+        assert big["geometry"] != small["geometry"]
+
+    def test_a_mass_ride_with_a_point_outside_dc_is_refused_and_says_why(self, planned):
+        # The owner, 2026-10-29: "Don't leave DC on a mass ride", then: refuse points outside DC.
+        from test_avoid_junctions import body_for
+
+        inside = body_for("mass-ride")["points"]
+        arlington = [-77.0910, 38.8800]
+        refused = planned("mass-ride", points=[inside[0], arlington])
+        assert refused.get("code") == "mass_ride_outside_dc", refused
+        assert refused["error"] == routing.MASS_RIDE_OUTSIDE_DC
+        assert (
+            planned("default", points=[inside[0], arlington]).get("code") != "mass_ride_outside_dc"
+        )
+        assert "mass_capacity" in planned("mass-ride")
+
+    def test_a_ride_replan_just_over_the_line_still_routes_back(self, planned):
+        # The v0.15.0 review: a re-plan starts at the rider, who may be a few metres into
+        # Maryland; refusing it would leave the ride no way back into DC.
+        from test_avoid_junctions import body_for
+
+        inside = body_for("mass-ride")["points"]
+        over = planned("mass-ride", points=[[-77.0910, 38.8800], inside[-1]], ride_replan=True)
+        assert over.get("code") != "mass_ride_outside_dc", over
 
     def test_a_mass_ride_says_its_capacity_for_the_ride_size_and_no_other_does(self, planned):
         body = planned("mass-ride")["mass_capacity"]

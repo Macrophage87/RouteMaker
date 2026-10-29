@@ -105,6 +105,25 @@ def test_a_router_started_before_its_map_moved_is_restarted(host: Host) -> None:
     assert host.restarted() == ["valhalla-standard"]
 
 
+@pytest.mark.parametrize(
+    ("journal", "restarted"),
+    [
+        ('{"format": 1, "state": "swapping", "build_id": "b2"}', []),
+        ("{not json", []),
+        ('{"format": 1, "state": "swapped", "build_id": "b2"}', ["valhalla-standard"]),
+    ],
+)
+def test_an_unfinished_swap_restarts_no_router(host: Host, journal: str, restarted) -> None:
+    """A rebuild killed mid-swap has moved links but not the live tables: the routers stay on
+    the consistent build they started on until the swap is repaired (the v0.15.0 end review)."""
+    host.tiles("standard", moved_ago=600)
+    host.router("valhalla-standard", started_ago=7200)
+    (host.data / "tiles" / "swap-journal.json").write_text(journal)
+    done = host.run("check")
+    assert done.returncode == 0, done.stderr
+    assert host.restarted() == restarted
+
+
 def test_a_router_started_after_its_map_moved_is_left_alone(host: Host) -> None:
     host.tiles("standard", moved_ago=7200)
     host.router("valhalla-standard", started_ago=600)

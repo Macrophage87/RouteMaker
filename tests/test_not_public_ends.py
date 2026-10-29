@@ -9,6 +9,8 @@ the last one ending at the route's end."""
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 from django.db import connection
 from test_route_api import (  # noqa: F401 (fixtures)
@@ -61,6 +63,27 @@ class TestThroughTheApi:
         assert response.json()["point_notes"] == [
             {"index": 1, "reason": "not_public", "note": NOTE}
         ]
+
+    def test_a_failed_read_still_answers_the_route_without_the_note(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        # The end note is read after the route is traced: a timed-out or failed read must not
+        # cost the rider the finished route (the v0.15.0 end review).
+        mark(segments, 303, VERTICES[3:], "private")
+        router(standard_router())
+
+        real = routing.segment_info.has_columns
+
+        def fail_for_the_end_note(schema, *columns):
+            # Only the end note's own read fails: the caller is not_public_ends.
+            if sys._getframe(1).f_code.co_name == "not_public_ends":
+                raise routing.DeadlineExceeded("the plan's time ran out")
+            return real(schema, *columns)
+
+        monkeypatch.setattr(routing.segment_info, "has_columns", fail_for_the_end_note)
+        response = post(client, good_body())
+        assert response.status_code == 200, response.content
+        assert response.json()["point_notes"] == []
 
     def test_a_road_only_passed_along_says_nothing(self, client, segments, router) -> None:
         mark(segments, 202, VERTICES[1:4], "private")

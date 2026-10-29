@@ -2194,6 +2194,30 @@ def _named(stretches: list[tuple], leg_runs: list, pieces: list[Piece]) -> list[
     return [(*stretch, name) for stretch, name in zip(stretches, names, strict=True)]
 
 
+# The app says it in the rider's language from the answer's `code` (frontend/src/lib/api.ts).
+MASS_RIDE_OUTSIDE_DC = (
+    "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end"
+    " must be in the District. To ride outside DC, switch to Group Ride with trails off."
+)
+
+
+def mass_ride_outside_dc(preset: str | None, points) -> str | None:
+    """The refusal of a Mass Ride with a start, stop or end outside the District, else None
+    (the owner, 2026-10-29: "Don't leave DC on a mass ride. The laws in other jurisdictions are
+    too different for us to accommodate a multi-jurisdiction mass ride.", then chose to refuse
+    its points outside DC). A route between points in DC that still crosses the line plans,
+    with the app's leaves-DC note; `choose_by_capacity` prefers one that stays in."""
+    from .mass_tiles import inside_dc
+
+    if preset != "mass-ride" or all(inside_dc(lon, lat) for lon, lat in points):
+        return None
+    return MASS_RIDE_OUTSIDE_DC
+
+
+# Mass Ride's out-of-DC measure is rounded to this before it decides (`choose_by_capacity`).
+OUTSIDE_DC_STEP_M = 50.0
+
+
 def choose_by_capacity(
     trips: list[dict],
     hill_part: Callable[[dict], float],
@@ -2205,15 +2229,16 @@ def choose_by_capacity(
     traces: dict | None = None,
 ) -> tuple[int, dict | None]:
     """A Mass Ride's choice among the router's routes by road capacity (PLAN "Mass Ride map
-    and mode", items 120-123, 128; `routemaker.mass_route`): the index of the trip whose router
-    cost plus its climbing (`hill_part`) plus its capacity price for a group of `riders` is
-    least, and what was weighed. The router's own route is kept unless another saves more than
-    HILLS_EPS_S. Busier roads are not held against an alternative: a Mass Ride is corked and
-    judged by what a road carries, not its LTS (OWNER-DECISIONS 125, 325). Where the router's
-    own route cannot be read in time, (0, None): the caller chooses as before; an alternative
-    that cannot be read is passed over."""
+    and mode", items 120-123, 128; `routemaker.mass_route`): the index of the trip that leaves
+    DC least (the owner, 2026-10-29), then whose router cost plus its climbing (`hill_part`)
+    plus its capacity price for a group of `riders` is least, and what was weighed. The
+    router's own route is kept unless another saves more than HILLS_EPS_S. Busier roads are
+    not held against an alternative: a Mass Ride is corked and judged by what a road carries,
+    not its LTS (OWNER-DECISIONS 125, 325). Where the router's own route cannot be read in
+    time, (0, None): the caller chooses as before; an alternative that cannot be read is
+    passed over."""
     prefetch_traces(variant, costing, trips, deadline, traces)
-    best, best_score = 0, None
+    best, best_score, best_outside = 0, None, 0
     weighed: list[dict] = []
     for index, trip in enumerate(trips):
         try:
@@ -2229,17 +2254,26 @@ def choose_by_capacity(
             continue
         priced = mass_route.price(stretches, riders)
         score = _router_cost(trip) + hill_part(trip) + priced.total_s
+        # Out of DC least first, whatever the price (the owner, 2026-10-29: "Don't leave DC on a
+        # mass ride"); to the nearest OUTSIDE_DC_STEP_M, so a few metres traced over the line
+        # by a bridge's end decide nothing.
+        outside = round(priced.outside_m / OUTSIDE_DC_STEP_M)
         weighed.append(
             {
                 "route": index,
                 "capacity_s": round(priced.total_s, 1),
                 "narrow_s": round(priced.narrow_s, 1),
+                "outside_dc_m": round(priced.outside_m),
                 "transitions": priced.transitions,
                 "below_need_m": round(priced.below_need_m),
             }
         )
-        if best_score is None or score < best_score - HILLS_EPS_S:
-            best, best_score = index, score
+        if (
+            best_score is None
+            or outside < best_outside
+            or (outside == best_outside and score < best_score - HILLS_EPS_S)
+        ):
+            best, best_score, best_outside = index, score, outside
     return best, {"riders": riders, "routes_weighed": weighed, "chosen": best}
 
 
@@ -3931,15 +3965,19 @@ def not_public_ends(pieces: list[Piece], leg_runs: list, count: int) -> list[dic
     if not ends:
         return []
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
-    if not segment_info.has_columns(schema, "bike_access_reason"):
+    try:
+        if not segment_info.has_columns(schema, "bike_access_reason"):
+            return []
+        with plan_cursor() as cursor:
+            cursor.execute(
+                f"SELECT DISTINCT osm_way_id FROM {schema}.segment "
+                "WHERE osm_way_id = ANY(%s) AND bike_access_reason = ANY(%s)",
+                [sorted(set(ends.values())), list(NOT_PUBLIC_REASONS)],
+            )
+            closed = {int(row[0]) for row in cursor.fetchall()}
+    except Exception:  # noqa: BLE001 - a route is answered without its end notes
+        logger.warning("the not-public end roads could not be read", exc_info=True)
         return []
-    with plan_cursor() as cursor:
-        cursor.execute(
-            f"SELECT DISTINCT osm_way_id FROM {schema}.segment "
-            "WHERE osm_way_id = ANY(%s) AND bike_access_reason = ANY(%s)",
-            [sorted(set(ends.values())), list(NOT_PUBLIC_REASONS)],
-        )
-        closed = {int(row[0]) for row in cursor.fetchall()}
     return [
         {"index": index, "reason": "not_public", "note": t(NOT_PUBLIC_NOTE)}
         for index, way in sorted(ends.items())

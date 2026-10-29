@@ -5,6 +5,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   LONG_RIDE_TIMED_OUT,
+  MASS_OUTSIDE_DC_CODE,
+  MASS_OUTSIDE_DC_SAID,
   RETRY_AFTER_CAP_S,
   describeError,
   parseRetryAfter,
@@ -442,4 +444,23 @@ test("Bikeshare's kept loop is not sent either: its API refuses one, and the swi
   await requestRoute(points, "bikeshare", { fetchImpl: impl, dials });
   assert.equal(bodies[0].loop, undefined);
   assert.equal(bodies[0].bike, "classic");
+});
+
+test("a Mass Ride refused outside DC says why and offers no Try again", () => {
+  const refused = describeError(400, { error: "Mass Ride is calibrated to road data that is only available inside DC.", code: MASS_OUTSIDE_DC_CODE }, null);
+  assert.equal(refused.kind, "mass-outside-dc");
+  assert.equal(refused.message, MASS_OUTSIDE_DC_SAID);
+  assert.match(refused.message, /only available inside DC/);
+  assert.equal(routeErrorShown(refused, "Safeway").retry, false);
+  // Without the code, a 400 is still a plain bad input.
+  assert.equal(describeError(400, { error: "Mass Ride is calibrated to road data that is only available inside DC." }, null).kind, "bad-input");
+});
+
+test("the refusal's one button switches to Group Ride with trails off, and only on that refusal", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const panel = await readFile(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
+  const app = await readFile(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(panel, /error\.kind === "mass-outside-dc" && \(\s*<button type="button" onClick=\{onGroupRide\}>\s*\{t\(GROUP_RIDE_NO_TRAILS\)\}/);
+  assert.match(panel, /onGroupRide=\{go\.onGroupRideNoTrails\}/);
+  assert.match(app, /onGroupRideNoTrails: \(\) => \{\s*choosePreset\("group-ride", \{ \.\.\.chooseRideType\("group-ride", null, dials\), trailsOff: true \}\);/);
 });
