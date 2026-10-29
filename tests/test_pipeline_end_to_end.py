@@ -3249,12 +3249,20 @@ def test_the_write_probe_leaves_nothing_behind(workspace, states, monkeypatch) -
     source, root = workspace
     monkeypatch.setattr(settings, "TILES_DIR", root / "tiles")
     two_rebuilds(source, root)
-    before = {path: sorted(path.iterdir()) for path in (root / "tiles").iterdir()}
+
+    def held(tiles: Path) -> dict:
+        # The tiles directory itself also holds files (the swap journal), not only the
+        # variants' directories.
+        return {
+            path: sorted(path.iterdir()) if path.is_dir() else path.read_bytes()
+            for path in tiles.iterdir()
+        }
+
+    before = held(root / "tiles")
 
     call_command("rollback_rebuild", stdout=StringIO())
 
-    after = {path: sorted(path.iterdir()) for path in (root / "tiles").iterdir()}
-    assert after == before
+    assert held(root / "tiles") == before
 
 
 def test_the_rollback_command_is_dry_until_it_is_confirmed(workspace, states, monkeypatch) -> None:

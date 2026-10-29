@@ -514,7 +514,7 @@ def test_every_bind_the_beta_runs_refuses_to_create_a_missing_source(offroad: bo
                 volume,
             )
     counts = {name: len(volumes) for name, volumes in binds.items() if volumes}
-    expected = {"api": 3, "worker": 2, "postgis": 1, "photon": 1}
+    expected = {"api": 3, "worker": 3, "postgis": 1, "photon": 1}
     expected.update({f"valhalla-{g}": 4 for g in ("standard", "no-trail", "ebike", "weekend")})
     if offroad:
         expected["valhalla-offroad"] = 4

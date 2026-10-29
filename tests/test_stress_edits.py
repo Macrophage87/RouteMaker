@@ -731,12 +731,16 @@ class TestPromotion:
         _live, staging = segment_schemas
         make_segment(staging, WAY, 3)
         edit(live, make_user(), 4)
-        monkeypatch.setattr(promotion.tiles, "links", lambda *a, **k: None)
+        # No links and no settings rows, as on a first rebuild: the swap journal it now
+        # writes first needs both as perform_swap reads them.
+        monkeypatch.setattr(
+            promotion.tiles, "links", lambda *a, **k: promotion.tiles.TileLinks(None, None)
+        )
         monkeypatch.setattr(promotion.tiles, "promote", lambda *a, **k: None)
-        monkeypatch.setattr(promotion, "upstream_states", lambda *a, **k: {})
         monkeypatch.setattr(promotion, "repoint_upstreams", lambda *a, **k: None)
+        upstreams = {variant.value: f"http://{variant.value}:8002" for variant in promotion.Variant}
         outcome = promotion.perform_swap(
-            tmp_path, "b1", {}, overrides_read_at=timezone.now() - timedelta(minutes=5)
+            tmp_path, "b1", upstreams, overrides_read_at=timezone.now() - timedelta(minutes=5)
         )
         assert outcome.edits_reapplied == 1
         assert live_row(live)["stress_tier"] == 4
