@@ -185,7 +185,7 @@ test("App: 'Planning...' is shown but not said, and the route is said once it se
   assert.match(live, /\{status\.kind === "loading" && slow && <p>\{stillPlanningSaid\(preset, dials\)\}<\/p>\}/);
   assert.match(app, /const slow = useLongerThan\(status\.kind === "loading", STILL_PLANNING_AFTER_MS\)/);
   assert.match(live, /routeSaid/);
-  assert.match(app, /useSettled\(status\.kind === "ok" \? announcement : "", ANNOUNCE_SETTLE_MS\)/);
+  assert.match(app, /useSettled\(status\.kind === "ok" && !gpxFitting \? announcement : "", ANNOUNCE_SETTLE_MS\)/);
   // Go's More direct and Calmer (lib/neighbours.ts) join the choice later: a choice is read among them, an arrival from the answer.
   assert.match(app, /announceRoute\(route, routedPoints, chosen \? announceHow\(picked, choice, true\) : announceHow\(answer, choice, false\)\)/);
 });
@@ -339,4 +339,16 @@ test("Map tools' Add point, with the plan full, stays in the Tab order with its 
   assert.match(mapTools, /<span id=\{`\$\{panelId\}-full`\} className="visually-hidden">\s*\{maxPointsNotice\(\)\}/);
   const add = app.slice(app.indexOf("const addAtCentre = () => {"), app.indexOf("place([lng, lat]);"));
   assert.match(add, /if \(!goTapSetsEnd\(mode\) && pointsRef\.current\.length >= MAX_POINTS\) \{\s*announce\(maxPointsNotice\(\)\);\s*return;/);
+});
+
+test("the 2026-10-29 a11y review: 44 px disclosures and toggles, and the charts' small text enlarged in accessibility mode", () => {
+  const rule = (selector: string) => {
+    const at = css.indexOf(`\n${selector} {`);
+    assert.ok(at >= 0, selector);
+    return css.slice(at, css.indexOf("}", at));
+  };
+  for (const selector of [".road-info-details > summary", ".route-credit-fold summary", ".review-map-toggle"]) assert.match(rule(selector), /min-height: 44px;/, selector);
+  // Padded, not flex, so a summary keeps its disclosure triangle.
+  for (const selector of [".road-info-details > summary", ".route-credit-fold summary"]) assert.doesNotMatch(rule(selector), /display: flex/, selector);
+  assert.match(css, /:root\.access-mode \.maplibregl-ctrl-scale,\s*:root\.access-mode :is\(\.pc-table, \.pc-legend, \.pc-tiers, \.pc-keys, \.pc-source\) \{\s*font-size: max\(1rem, 15px\);/);
 });

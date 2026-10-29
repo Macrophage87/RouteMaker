@@ -635,19 +635,28 @@ def test_a_reader_that_lets_go_costs_the_swap_an_attempt_rather_than_the_rebuild
 
     live, _staging = segment_schemas
     holder = second_connection()
+    locked = threading.Event()
     released = threading.Event()
 
     def hold_briefly() -> None:
-        with holder.cursor() as cursor:
-            cursor.execute("BEGIN")
-            cursor.execute(f"LOCK TABLE {live}.segment IN ACCESS SHARE MODE")
-        time.sleep(0.6)
-        holder.rollback()
-        released.set()
+        try:
+            with holder.cursor() as cursor:
+                cursor.execute("BEGIN")
+                cursor.execute(f"LOCK TABLE {live}.segment IN ACCESS SHARE MODE")
+            locked.set()
+            time.sleep(0.6)
+        finally:
+            holder.rollback()
+            released.set()
 
     thread = threading.Thread(target=hold_briefly)
     thread.start()
-    time.sleep(0.1)  # let the reader take its lock first
+    # The reader holds its lock before the swap starts, however slow the runner: a fixed sleep
+    # here let a busy runner start the swap first, which then won on attempt 1.
+    if not locked.wait(timeout=10):
+        thread.join()
+        holder.close()
+        pytest.fail("the reader never took its lock")
     try:
         with connection.cursor() as cursor:
             cursor.execute("SET statement_timeout = '3s'")

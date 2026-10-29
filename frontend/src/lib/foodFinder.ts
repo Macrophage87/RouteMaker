@@ -173,17 +173,18 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
                 h(
                   "span",
                   { className: "actions" },
+                  // Go's one main action first and filled, the rest plain after it (the 2026-10-29 review).
+                  onRide &&
+                    h(
+                      "button",
+                      { type: "button", className: "ride-here", "aria-label": t("Ride here: {place}", { place: r.place.name }), onClick: () => onRide(r) },
+                      t("Ride here"),
+                    ),
                   h(
                     "button",
                     { type: "button", className: "secondary", "aria-label": t("Show on map: {place}, marker {letter}", { place: r.place.name, letter: placeLetter(i) }), onClick: () => onShow(r) },
                     t("Show on map"),
                   ),
-                  onRide &&
-                    h(
-                      "button",
-                      { type: "button", className: "secondary", "aria-label": t("Ride here: {place}", { place: r.place.name }), onClick: () => onRide(r) },
-                      t("Ride here"),
-                    ),
                   canAddStop &&
                     h(
                       "button",

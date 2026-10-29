@@ -26,7 +26,7 @@ from routemaker.stress import (
     MOTORWAY_AVOID_RULE,
     Stress,
     classify,
-    painted_lane_two_way_multilane,
+    painted_lane_multilane,
 )
 from routemaker.tags import lanes_per_direction, maxspeed_in_mph_words, parse_lanes
 
@@ -60,23 +60,50 @@ class TestAPaintedLaneOnAWideTwoWayStreet:
         assert classify(one_way).tier < Stress.LTS3
         assert classify(one_way, divided=True).tier is Stress.LTS3
 
+    def test_a_wide_one_way_holds_the_floor_too(self) -> None:
+        """Review 2026-10-29: a three-lane one-way is LTS 3 in mixed traffic (the wide
+        one-way floor), and was LTS 1 with a painted lane. Measured before this."""
+        road = {
+            "highway": "secondary",
+            "oneway": "yes",
+            "lanes": "3",
+            "maxspeed": "25 mph",
+            "parking:both": "no",
+        }
+        assert classify(road).rule.endswith("wide one-way floor")
+        lane = {**road, "cycleway:right": "lane", "cycleway:right:width": "2.0"}
+        result = classify(lane)
+        assert result.tier is Stress.LTS3
+        assert result.rule.startswith("bike lane")
+        assert result.rule.endswith("wide one-way floor")
+        assert "a wide one-way road, so rated at least this" in segment_info.rule_words(result.rule)
+        # Four lanes at 30 mph: LTS 4 bare and busy, LTS 3 with the lane (was LTS 2).
+        busy = {**lane, "lanes": "4", "maxspeed": "30 mph"}
+        assert classify(busy, aadt=20_000).tier is Stress.LTS3
+        # A rideable shoulder is held at the lane's floor.
+        shoulder = {**road, "shoulder": "right", "shoulder:width": "2.4"}
+        assert classify(shoulder).tier is Stress.LTS3
+
     def test_a_track_is_still_separation(self) -> None:
         assert classify({**SIX_LANE, "cycleway:both": "track"}).tier is Stress.LTS1
 
     def test_the_predicate(self) -> None:
-        assert painted_lane_two_way_multilane({**SIX_LANE, **LANE})
-        assert not painted_lane_two_way_multilane(SIX_LANE)
-        assert not painted_lane_two_way_multilane({**SIX_LANE, "cycleway:both": "track"})
-        assert not painted_lane_two_way_multilane({**SIX_LANE, "lanes": "2", **LANE})
-        assert not painted_lane_two_way_multilane({**SIX_LANE, "oneway": "yes", **LANE})
-        assert painted_lane_two_way_multilane({**SIX_LANE, "oneway": "yes", **LANE}, divided=True)
+        assert painted_lane_multilane({**SIX_LANE, **LANE})
+        assert not painted_lane_multilane(SIX_LANE)
+        assert not painted_lane_multilane({**SIX_LANE, "cycleway:both": "track"})
+        assert not painted_lane_multilane({**SIX_LANE, "lanes": "2", **LANE})
+        # A one-way of three lanes or more holds the floor too (review 2026-10-29); two do not.
+        assert painted_lane_multilane({**SIX_LANE, "oneway": "yes", **LANE})
+        assert painted_lane_multilane({**SIX_LANE, "lanes": "3", "oneway": "yes", **LANE})
+        assert not painted_lane_multilane({**SIX_LANE, "lanes": "2", "oneway": "yes", **LANE})
+        assert painted_lane_multilane({**SIX_LANE, "oneway": "yes", **LANE}, divided=True)
         # The classifier's count wins over the tags' (the rebuild passes `rated.lanes`,
         # which may come from an agency's block data).
         untagged = {key: v for key, v in {**SIX_LANE, **LANE}.items() if key != "lanes"}
-        assert not painted_lane_two_way_multilane(untagged)
-        assert painted_lane_two_way_multilane(untagged, lanes=2)
-        assert not painted_lane_two_way_multilane({**SIX_LANE, **LANE}, lanes=1)
-        assert not painted_lane_two_way_multilane({"highway": "cycleway", "lanes": "4", **LANE})
+        assert not painted_lane_multilane(untagged)
+        assert painted_lane_multilane(untagged, lanes=2)
+        assert not painted_lane_multilane({**SIX_LANE, **LANE}, lanes=1)
+        assert not painted_lane_multilane({"highway": "cycleway", "lanes": "4", **LANE})
 
     def test_an_agency_still_wins_and_the_rural_floor_stays(self) -> None:
         formula = classify({**SIX_LANE, **LANE})

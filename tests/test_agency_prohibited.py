@@ -123,6 +123,84 @@ def test_the_panel_words_the_ban_as_a_ban_not_avoid():
     assert "Avoid" not in values["MDOT SHA rates it"]
 
 
+# -- A ban sets no level (review 2026-10-29) ------------------------------------------------------
+
+RURAL_PRIMARY = {"highway": "primary", "maxspeed": "40 mph"}
+
+
+def test_a_ban_alone_leaves_the_formulas_tier():
+    """Measured before this: LTS 5, "agency rating: MDOT SHA LTS 5". A way the closure leaves
+    open (a bridge the crossings fixture opens, an owner's override) was rated Avoid by it."""
+    from routemaker.stress import classify
+
+    formula = classify(RURAL_PRIMARY, urban=False)
+    assert formula.tier is Stress.LTS4
+    result = agency_lts.apply(formula, [AgencyRating("mdot-sha", 5)])
+    assert result.tier is Stress.LTS4 and not result.half
+    assert result.rule == formula.rule
+    # Kept for the road panel and for the closure.
+    assert result.agency_ratings == (AgencyRating("mdot-sha", 5),)
+    assert agency_ratings.prohibited_ways({1: result.agency_ratings}) == {1}
+
+
+def test_a_ban_is_never_the_chosen_level():
+    assert agency_lts.chosen([AgencyRating("mdot-sha", 5)]) is None
+    assert agency_lts.chosen([AgencyRating("mdot-sha", 4)]).level == 4
+    pick = agency_lts.chosen([AgencyRating("mdot-sha", 5), AgencyRating("moco", 2)])
+    assert pick.agency == "moco"
+
+
+def test_a_banned_way_left_open_takes_the_next_rating():
+    from routemaker.stress import StressResult
+
+    formula = StressResult(Stress.LTS4, "mixed traffic, 35 mph or above")
+    assert (
+        agency_lts.apply(formula, [AgencyRating("mdot-sha", 5), AgencyRating("moco", 3)]).tier
+        is Stress.LTS3
+    )
+    # Its own formula Avoid (a bike-legal motorway) is not lowered by it either.
+    avoid = StressResult(Stress.AVOID, "legal but avoid: a motorway open to bicycles")
+    assert agency_lts.apply(avoid, [AgencyRating("mdot-sha", 5)]).tier is Stress.AVOID
+
+
+def test_the_bridge_and_the_reopened_road_are_rated_by_the_formula():
+    """The two ways `prohibited_closures` leaves open on a road, at the formula's tier."""
+    from routemaker.stress import classify
+
+    rated = {1: (AgencyRating("mdot-sha", 5),), 2: (AgencyRating("mdot-sha", 5),)}
+    ways = [_way(1, **RURAL_PRIMARY), _way(2, bicycle="yes", **RURAL_PRIMARY)]
+    added, rows = _close(ways, rated, reopened={2})
+    added_bridge, _ = agency_ratings.prohibited_closures(
+        ways[:1], agency_ratings.prohibited_ways(rated), {}, set(), bridge_legal={1}
+    )
+    assert added == {1: PROHIBITED_NO_BICYCLE} and added_bridge == {}
+    assert [r.outcome for r in rows if r.way_id == 2] == [agency_ratings.NOT_CLOSED_OVERRIDE]
+    for way in ways:
+        formula = classify(way.tags, urban=False)
+        assert agency_lts.apply(formula, rated[way.osm_id]).tier is formula.tier
+
+
+def test_the_panel_says_the_formula_is_used_beside_a_ban():
+    import json
+
+    from core import segment_info
+
+    held = {
+        "formula": 4,
+        "agencies": [{"agency": "mdot-sha", "name": "MDOT SHA", "level": 5}],
+        "used": agency_lts.FORMULA_USED,
+    }
+    rows = segment_info.rating_rows({"stress_ratings": json.dumps(held)})
+    values = {r["label"]: r["value"] for r in rows}
+    assert values["MDOT SHA rates it"] == segment_info.PROHIBITED_LEVEL_WORDS
+    assert "used" not in values["MDOT SHA rates it"]
+    assert "not a stress level" in values["Used"]
+    # A rating set aside for a newer facility keeps its own words.
+    ddot = {**held, "agencies": [{"agency": "ddot", "name": "DDOT", "level": 4}]}
+    aside = segment_info.rating_rows({"stress_ratings": json.dumps(ddot)})
+    assert "predates the bike facility" in {r["label"]: r["value"] for r in aside}["Used"]
+
+
 def test_an_owner_access_override_reopens_it():
     added, rows = _close(
         [_way(1, bicycle="yes")], {1: (AgencyRating("mdot-sha", 5),)}, reopened={1}

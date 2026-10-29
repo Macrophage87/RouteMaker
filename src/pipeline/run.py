@@ -67,8 +67,9 @@ from routemaker.stress import (
     classify,
     inferred_unpaved,
     is_rough,
-    painted_lane_two_way_multilane,
+    painted_lane_multilane,
     rural_floor,
+    rural_floor_applies,
     winding,
 )
 
@@ -961,6 +962,9 @@ class RebuildContext:
     # `agency_lts.PROHIBITING_LEVELS`), closed in `classify_facilities` unless a path or
     # an owner's access override (`agency_ratings.prohibited_closures`).
     agency_prohibited: set[int] = field(default_factory=set)
+    # Those of them the closure left open and listed (a path or track, a bridge, an owner's
+    # override; `agency_ratings.prohibited_closures`), for VALIDATE_SEGMENTS.
+    agency_prohibited_open: set[int] = field(default_factory=set)
     # The ways an approved access override wrote a bicycle key on (APPLY_OVERRIDES):
     # inside a military area, only these reopen by evidence (OWNER-DECISIONS 330, 437).
     bicycle_override_ways: frozenset[int] = frozenset()
@@ -1828,6 +1832,54 @@ def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
     return read
 
 
+def _own_avoid_kept(stress) -> bool:
+    """A way at Avoid that our own rules (the formula, before any agency's level or row) put
+    at Avoid: an agency's 5 read as 4.5 does not lower it (`agency_lts.apply`,
+    `overrides.stress_adjustment`)."""
+    if stress is None or stress.tier is not Stress.AVOID:
+        return False
+    own = getattr(stress, "formula_tier", None)
+    if own is None:
+        adjustment = getattr(stress, "adjustment", None)
+        own = getattr(adjustment, "computed_tier", None) if adjustment is not None else None
+    return own is not None and int(own) == int(Stress.AVOID)
+
+
+def assert_rating_rules(context: RebuildContext) -> None:
+    """The owner's rating rules hold over the whole built table (review 2026-10-29;
+    `pipeline.lts_sentinels`): the rural floor, Montgomery's 5 as 4.5 (Avoid where our own
+    formula says Avoid), and MDOT SHA's bans closed or listed. Read from the staging schema,
+    so what is checked is what would be promoted; a rural candidate is dropped where its tags
+    exempt it from the floor."""
+    schema = context.staging_schema
+    by_id = context.ways_by_id or {way.osm_id: way for way in context.ways}
+    rural = []
+    for way_id in lts_sentinels.rural_lts1_ways(schema):
+        way = by_id.get(way_id)
+        tags = context.class_tags_by_way.get(way_id, way.tags if way is not None else {})
+        if rural_floor_applies(tags, urban=False):
+            rural.append(way_id)
+    # A `moco-lts5-*` row keeps Avoid where our own rules already said Avoid
+    # (`overrides.stress_adjustment`'s `own_avoid`), as `agency_lts.apply` does for the layer.
+    county_five = [
+        way_id
+        for way_id in lts_sentinels.county_five_ways(schema)
+        if not _own_avoid_kept(context.stress_by_way.get(way_id))
+    ]
+    open_bans = [
+        way_id
+        for way_id in lts_sentinels.open_ban_ways(schema)
+        if way_id not in context.agency_prohibited_open
+    ]
+    found = lts_sentinels.rating_rule_problems(rural, county_five, open_bans)
+    if found:
+        raise ValidationFailed("; ".join(found))
+    logger.info(
+        "rating rules hold: no rural road at LTS 1, every Montgomery 5 at 4.5, every MDOT SHA "
+        "ban closed or listed"
+    )
+
+
 def assert_mass_capacity(
     summary, min_share: float | None = None, median_range: Sequence[float] | None = None
 ) -> None:
@@ -2485,15 +2537,18 @@ def build_handlers(
             current = context.stress_by_way.get(way_id)
             if current is None or way_id in laned:
                 continue
-            tags = tags_of[way_id]
+            # The tags the formula read (the District's street layer's lane included), so
+            # the set-aside and the formula agree about what the road has.
+            tags = context.class_tags_by_way.get(way_id, tags_of[way_id])
+            mapped = facility.facility(tags)
             result = rural_floor(
                 agency_lts.apply(
                     current,
                     ratings,
-                    facility_mapped=facility.facility(tags) is not facility.Facility.NONE,
-                    painted_lane=facility.facility(tags) is facility.Facility.LANE,
+                    facility_mapped=mapped is not facility.Facility.NONE,
+                    painted_lane=mapped is facility.Facility.LANE,
                 ),
-                context.class_tags_by_way.get(way_id, tags),
+                tags,
                 urban=way_id in reference.urban_way_ids,
             )
             changed += result.tier != current.tier or result.half != current.half
@@ -2671,7 +2726,7 @@ def build_handlers(
         for way in context.ways:
             rated = context.stress_by_way.get(way.osm_id)
             # The lanes the classifier read (None where it assumed one).
-            if rated is None or not painted_lane_two_way_multilane(
+            if rated is None or not painted_lane_multilane(
                 context.class_tags_by_way.get(way.osm_id, way.tags),
                 divided=way.osm_id in divided_ways,
                 lanes=rated.lanes,
@@ -3239,6 +3294,11 @@ def build_handlers(
             },
         )
         nobike.reasons.update(prohibited)
+        context.agency_prohibited_open = {
+            row.way_id
+            for row in prohibited_rows
+            if row.outcome not in agency_ratings.CLOSED_OUTCOMES
+        }
         logger.info(
             "agency prohibitions: %d ways closed to bicycles, %d listed for review",
             len(prohibited),
@@ -4219,6 +4279,7 @@ def build_handlers(
                 _setting("REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE"),
             )
             failures.check(assert_owner_stretches, context, _setting("REBUILD_SENTINEL_STRETCHES"))
+            failures.check(assert_rating_rules, context)
             failures.check(
                 assert_military_closures,
                 context,
@@ -4381,6 +4442,7 @@ def build_handlers(
                 context.build_id,
                 context.upstreams,
                 overrides_read_at=context.overrides_read_at,
+                job_id=context.job_id,
             )
         except promotion.SwapUndoIncomplete:
             raise
