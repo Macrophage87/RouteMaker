@@ -83,6 +83,7 @@ from pydantic import (
     model_validator,
 )
 
+from config.access_log import logged_path
 from routemaker import effort, lang, ridetime
 from routemaker.geo import Point, haversine
 
@@ -2989,7 +2990,7 @@ def unexpected(request, exc: Exception):
     documented posture of a local stack on :80 - renders the full debug page:
     SQL, paths and settings, to anyone who can make a request fail.
     """
-    logger.exception("unhandled error in %s %s", request.method, request.path)
+    logger.exception("unhandled error in %s %s", request.method, logged_path(request.path))
     if request.path.startswith(GEOCODE_PATHS):
         return _error(500, "Something went wrong looking up the place.")
     if request.path.startswith(STRESS_EDIT_PATHS):

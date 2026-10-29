@@ -80,7 +80,20 @@ server {
 # BEGIN stage:full
 # The path only, never the query string ($uri, not $request or $request_uri), no Referer, and
 # no client address or tester name ($remote_addr, $remote_user): none of them is needed here.
-log_format rmbeta_noquery '[$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent $request_time';
+# And not all of the path: a live ride's or a shared route's link id, an assistant's GPX token
+# and a map tile's z/x/y (which follows the rider's map to a few blocks) are logged as their
+# route's shape, as the api's own access log does (src/config/access_log.py; the first regex
+# that matches wins, and tests/test_server_logs.py holds the two lists equal).
+map $uri $rmbeta_logpath {
+    default $uri;
+    "~^/api/rides/[^/]+/alerts/[^/]+(?<rmbeta_lp_rest>.*)$" /api/rides/:id/alerts/:id$rmbeta_lp_rest;
+    "~^/api/rides/[^/]+(?<rmbeta_lp_rest>.*)$" /api/rides/:id$rmbeta_lp_rest;
+    "~^/api/(?<rmbeta_lp_me>me/)?shared-routes/[^/]+(?<rmbeta_lp_rest>.*)$" /api/${rmbeta_lp_me}shared-routes/:id$rmbeta_lp_rest;
+    "~^/s/[^/]+(?<rmbeta_lp_rest>.*)$" /s/:id$rmbeta_lp_rest;
+    "~^/mcp/gpx/.*$" /mcp/gpx/:token;
+    "~^/tiles/(?<rmbeta_lp_kind>[^/]+)/.*$" /tiles/$rmbeta_lp_kind/:zxy;
+}
+log_format rmbeta_noquery '[$time_local] "$request_method $rmbeta_logpath $server_protocol" $status $body_bytes_sent $request_time';
 
 upstream rmbeta_api {
     server 127.0.0.1:@API_PORT@;
@@ -292,6 +305,8 @@ server {
     # favicon below are outside the password too; they are the repository's own files.
     location ~ ^/s/[^/]+(/preview\.png)?$ {
         auth_basic off;
+        # An upstream error line records the whole path, the link's id included, and the client.
+        error_log /var/log/nginx/rmbeta-error.log crit;
         proxy_pass http://rmbeta_api;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
@@ -583,6 +598,9 @@ server {
     # 47 s (gunicorn kills a worker at 60 s), so the timeouts here are longer than
     # that, so the api's own answer reaches the browser rather than nginx's 504.
     location / {
+        # As /api/ above: an upstream error line records the request and the client, and these
+        # paths carry the map's tile z/x/y and an assistant's GPX token.
+        error_log /var/log/nginx/rmbeta-error.log crit;
         proxy_pass http://rmbeta_api;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
