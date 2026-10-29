@@ -51,7 +51,7 @@ class TestPage:
     ) -> None:
         # rideResume.ts RESUME_MAX_MS; a followed ride's link and key are kept with it (#727).
         _, body, _ = get(client)
-        assert "until End ride or 12 hours" in body
+        assert "until End ride or Not now; after 12 hours it is no longer offered" in body
         resume = (ROOT / "frontend/src/lib/rideResume.ts").read_text()
         assert "RESUME_MAX_MS = 12 * 60 * 60_000" in resume
 
