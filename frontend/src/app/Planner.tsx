@@ -239,11 +239,8 @@ export function PointsSection(props: PointsSectionProps) {
       {/* What to do after the start, said where it plans and not shown (as the empty plan's line): the Points list and
           the map show it. In accessibility mode it shows, with its Map tools way in. */}
       {points.length === 1 && <p className={accessMode ? "hint" : "visually-hidden"}>{loneStartHint(preset, loopVias, accessMode)}</p>}
-      {usesBikeshare(preset) && (
-        <p className="hint">
-          {t("Bikeshare plans, Rebalance Rides too, take a start and an end only: the stations and the walks are chosen for you, unless you choose a station under Route. Remove any stops to plan one.")}
-        </p>
-      )}
+      {/* Only when there is something to fix: a stop between the start and the end (the 2026-10-29 review). */}
+      {usesBikeshare(preset) && points.length > 2 && <p className="hint">{t("Bikeshare and Rebalance Rides take a start and an end only: remove the stops.")}</p>}
       {/* Mass Ride planning covers DC only for now (OWNER-DECISIONS 418), in words beside the gray map. */}
       {isMassRide(preset) && <p className="hint mass-dc-only">{MASS_DC_ONLY}</p>}
       {federalPlanner}
