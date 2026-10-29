@@ -279,6 +279,7 @@ else
   say "base map: fetching (about 300 MB)"
   run "$DOCKER" run --rm --quiet -u 10001:10001 -e "DATA_ROOT=$DATA_ROOT" \
     -v "$DATA_ROOT/basemap:$DATA_ROOT/basemap" \
+    -v "$DATA_ROOT/backups/basemap:$DATA_ROOT/backups/basemap" \
     -v "$REPO_DIR/scripts/fetch_basemap.sh:/fetch_basemap.sh:ro" \
     --entrypoint sh "$CURL_IMAGE" /fetch_basemap.sh
 fi
