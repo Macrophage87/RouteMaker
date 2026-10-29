@@ -29,8 +29,12 @@ export const RIDE_LINK_TYPES: readonly PresetId[] = ["mass-ride", "group-ride"];
 export type RideLinkType = "mass-ride" | "group-ride";
 
 /** A plan link that is a ride: a Mass Ride or Group Ride with a route. */
+export function isRideLinkType(preset: PresetId): preset is RideLinkType {
+  return preset === "mass-ride" || preset === "group-ride";
+}
+
 export function isRideLink(preset: PresetId, points: readonly LonLat[]): preset is RideLinkType {
-  return (preset === "mass-ride" || preset === "group-ride") && points.length >= 2;
+  return isRideLinkType(preset) && points.length >= 2;
 }
 
 /** What the ride's digest is made from: the ride type and the points as the link writes them. */

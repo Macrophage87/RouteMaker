@@ -315,7 +315,7 @@ import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOpera
 import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { BROADCAST_FOLLOWING, forgetAnsweredHere, isRideLink, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, type RideLinkType } from "./lib/rideGroup.ts";
+import { BROADCAST_FOLLOWING, forgetAnsweredHere, isRideLink, isRideLinkType, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -1345,10 +1345,11 @@ export function App() {
     if (search !== null) window.history.replaceState(null, "", `${window.location.pathname}${search}${window.location.hash}`);
   }, []);
 
-  // A Group Ride's secret (lib/rideSeal.ts; Stephen 2026-10-29): its link carries it, so the ride is sealed end to end.
-  // A page started afresh has one; a page opened from a link has the link's, or none (a link without one, such as an
-  // older one or a ride post's, is a ride by its points, so all who open it are still on one ride). Picking Group Ride
-  // here makes one where there is none.
+  // A Group or Mass Ride's secret (lib/rideSeal.ts; Stephen 2026-10-29, Mass Ride too: "Mass rides should be encrypted
+  // too."): its link carries it, so the ride is sealed end to end. A page started afresh has one; a page opened from a
+  // link has the link's, or none (a link without one, such as an older one or a ride post's, is a ride by its points, so
+  // all who open it are still on one ride). Picking Group or Mass Ride here makes one where there is none, and moving
+  // from one to the other makes a new one: they are different rides.
   // The page itself is opening a plan of the rider's own (a saved or kept route), told apart from a link pasted in.
   const ownHashOpen = useRef(false);
   const [groupSecret, setGroupSecret] = useState<string | null>(() => PLAN_SECRET ?? (PLAN_LINK ? null : newRideSecret()));
@@ -1356,8 +1357,11 @@ export function App() {
   const groupSecretOwn = useRef(PLAN_SECRET === null);
   const presetBefore = useRef(preset);
   useEffect(() => {
-    if (preset === "group-ride" && presetBefore.current !== "group-ride") setGroupSecret((s) => {
-        if (s !== null) return s;
+    const was = presetBefore.current;
+    if (isRideLinkType(preset) && was !== preset)
+      setGroupSecret((s) => {
+        // Kept: a link's own (opened here) on its own ride type, or the page's moving into a ride type afresh.
+        if (s !== null && (!isRideLinkType(was) || !groupSecretOwn.current)) return s;
         groupSecretOwn.current = true;
         return newRideSecret();
       });
@@ -1366,7 +1370,7 @@ export function App() {
   // Keep the link in step with the plan, without adding history entries. Exactly encodePlan's
   // fragment, which never holds the weight (313); Copy link builds the same one (linkToCopy).
   useEffect(() => {
-    const hash = withSecret(encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia)), preset === "group-ride" ? groupSecret : null);
+    const hash = withSecret(encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia)), isRideLinkType(preset) ? groupSecret : null);
     writtenHash.current = hash;
     window.history.replaceState(null, "", hash);
     // "Link copied." was about the link before this change (the correctness review's N4).
@@ -3376,7 +3380,7 @@ export function App() {
   // Share's link: the plan's inputs, and the exact line's id with that line sent (once per line and keeping).
   // Share as image's QR code makes its link here too.
   const sharedLinkNow = () => {
-    let link = withSecret(linkToCopy(window.location, points, preset, dials, viaIndices(points, VIA_MARKS.isVia)), preset === "group-ride" ? groupSecret : null);
+    let link = withSecret(linkToCopy(window.location, points, preset, dials, viaIndices(points, VIA_MARKS.isVia)), isRideLinkType(preset) ? groupSecret : null);
     const exact = shareExact();
     let kept: Promise<boolean> | null = null;
     if (exact) {
@@ -5904,7 +5908,7 @@ export function App() {
               here={riderHere}
               broadcast={rideBroadcast}
               home={myGo.home?.point ?? null}
-              secret={rideGroupType === "group-ride" && !onShared ? groupSecret : null}
+              secret={rideGroupType !== null && !onShared ? groupSecret : null}
               riding={riding}
               onRiders={setRideRiders}
               ridersElsewhere={riding && rideCanBroadcast && rideBroadcast !== null}

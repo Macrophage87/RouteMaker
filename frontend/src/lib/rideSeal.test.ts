@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { LonLat } from "./geo.ts";
-import { readRide, rideOf, sendAlert, sendPath, sendPosition } from "./rideGroup.ts";
+import { isRideLinkType, readRide, rideOf, sendAlert, sendPath, sendPosition } from "./rideGroup.ts";
 import { roamLink, roamLinkFrom } from "./roam.ts";
 import {
   gridded,
@@ -47,6 +47,23 @@ test("the secret rides in the fragment only, replacing any the link had, and is 
   assert.equal(secretFrom(new URL(link).hash), s);
   assert.equal(secretFrom("#k=short"), null);
   assert.equal(secretFrom(""), null);
+});
+
+test("a Mass Ride link with a secret is sealed end to end, as a Group Ride's is", async () => {
+  const points: LonLat[] = [
+    [-77.0365, 38.8977],
+    [-77.0091, 38.8899],
+  ];
+  const secret = newRideSecret();
+  const mass = await rideOf({ type: "mass-ride", points, secret });
+  assert.ok(mass.seal, "sealed");
+  assert.equal(mass.id, mass.seal.ride, "known to the server only by the id the secret gives");
+  const plain = await rideOf({ type: "mass-ride", points });
+  assert.equal(plain.seal, null, "no secret: by its points, as before");
+  assert.notEqual(plain.id, mass.id);
+  assert.equal(isRideLinkType("mass-ride"), true);
+  assert.equal(isRideLinkType("group-ride"), true);
+  assert.equal(isRideLinkType("commute"), false);
 });
 
 test("a ride link without a leader of its own carries no secret", () => {
@@ -230,10 +247,13 @@ test("the page puts each ride's secret in its links: Share ride, Broadcast, Roam
   assert.match(app, /setGroupSecret\(own \? newRideSecret\(\) : secretFrom\(window\.location\.hash\)\);/);
   assert.match(app, /roamLink\(window\.location\.origin, id, lead\.key, lead\.secret\)/);
   assert.match(app, /roamLink\(window\.location\.origin, roamBroadcast\.id, roamBroadcast\.lead, roamBroadcast\.secret\)/);
-  assert.match(app, /withSecret\(encodePlan\([^\n]*preset === "group-ride" \? groupSecret : null\)/);
-  assert.match(app, /withSecret\(linkToCopy\([^\n]*preset === "group-ride" \? groupSecret : null\)/);
+  assert.match(app, /withSecret\(encodePlan\([^\n]*isRideLinkType\(preset\) \? groupSecret : null\)/);
+  assert.match(app, /withSecret\(linkToCopy\([^\n]*isRideLinkType\(preset\) \? groupSecret : null\)/);
   // The leader's answer is kept under the sealed ride's id, the one its page reads.
   assert.match(app, /leadConsent\(\(await rideOf\(\{ broadcast: \{ id: sharedId \}, secret: lead\.secret \}\)\)\.id, lead\.token\)/);
-  // A Mass Ride is never given one.
-  assert.match(app, /secret=\{rideGroupType === "group-ride" && !onShared \? groupSecret : null\}/);
+  // A Group or Mass Ride plan carries the page's secret (Stephen 2026-10-29: "Mass rides should be encrypted too."),
+  // and moving from one to the other makes a new one, so they are never the same ride.
+  assert.match(app, /secret=\{rideGroupType !== null && !onShared \? groupSecret : null\}/);
+  assert.match(app, /if \(isRideLinkType\(preset\) && was !== preset\)/);
+  assert.match(app, /if \(s !== null && \(!isRideLinkType\(was\) \|\| !groupSecretOwn\.current\)\) return s;/);
 });

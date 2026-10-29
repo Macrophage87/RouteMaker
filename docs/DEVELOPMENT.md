@@ -8589,9 +8589,10 @@ age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
   server still sees the ride id, tokens, addresses, timing and counts, and it marks the leader's dot and each
   dot's age; those are not sealed.
 - **Which rides.** A broadcast's secret is made with the leader's token (`App.tsx` `Lead`) and goes in every link
-  for that ride, including those followers pass on. A Group Ride plan's secret (`groupSecret`) is made when a
-  page starts afresh or the rider picks Group Ride, kept in the address bar (on Group Ride only) and in Copy link
-  and Share. A link without one (a Mass Ride, an older link, a ride post the server wrote) is the ride by its
+  for that ride, including those followers pass on. A Group or Mass Ride plan's secret (`groupSecret`; Mass Ride too,
+  Stephen 2026-10-29: "Mass rides should be encrypted too.") is made when a page starts afresh or the rider picks
+  either ride type, made again when moving from one to the other, and kept in the address bar (on those two only)
+  and in Copy link and Share. A link without one (an older link, a ride post the server wrote) is the ride by its
   points in plain numbers, as before, so everyone who opens the same link is still on one ride. A sealed ride's
   page leaves out anything that does not open, plain dots included: for a short while after a release, a page
   still on the older build joins a link's ride by its points and does not meet those on the sealed ride. A Group
