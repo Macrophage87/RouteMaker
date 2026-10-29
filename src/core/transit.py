@@ -806,9 +806,11 @@ def with_typical_metro(schedule: Schedule, path: Path = TYPICAL_PATH) -> Schedul
     )
 
 
-# Fewer days of timetable than this left: a warning in the log, and an alert from
-# `manage.py check_operations` (docs/OPERATIONS.md, "Transit schedule": refresh within 45 days).
-STALE_DAYS = 7
+# Fewer days of timetable than this left: a warning in the log, an alert from
+# `manage.py check_operations` and a line on the admin operations page (docs/OPERATIONS.md,
+# "Transit schedule": refresh within 45 days). Three weeks, because the refresh is by hand on the
+# home PC and a feed's end can fall on a holiday week (the 2026-10-29 review).
+STALE_DAYS = 21
 _warned_on: date | None = None
 
 
