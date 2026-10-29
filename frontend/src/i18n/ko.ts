@@ -1720,4 +1720,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{noun} on this route": "이 경로의 {noun}",
   "{ride} planned: {summary}": "{ride} 계획됨: {summary}",
   "{station}, closed: {reason}": "{station}, 폐쇄: {reason}",
+  "{time} more": "{time} 더 걸림",
+  "{time} less": "{time} 단축",
+  "GPS is weak: road names paused.": "GPS 약함: 도로 이름 일시 중지.",
 };

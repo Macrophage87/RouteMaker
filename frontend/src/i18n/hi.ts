@@ -1720,4 +1720,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{noun} on this route": "इस मार्ग पर {noun}",
   "{ride} planned: {summary}": "{ride} की योजना बनी: {summary}",
   "{station}, closed: {reason}": "{station}, बंद: {reason}",
+  "{time} more": "{time} ज़्यादा",
+  "{time} less": "{time} कम",
+  "GPS is weak: road names paused.": "GPS कमज़ोर है: सड़कों के नाम रुके हुए हैं।",
 };

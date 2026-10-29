@@ -1720,4 +1720,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{noun} on this route": "{noun} در این مسیر",
   "{ride} planned: {summary}": "{ride} برنامه‌ریزی شد: {summary}",
   "{station}, closed: {reason}": "{station}، بسته: {reason}",
+  "{time} more": "{time} بیشتر",
+  "{time} less": "{time} کمتر",
+  "GPS is weak: road names paused.": "GPS ضعیف است: نام خیابان‌ها متوقف شده است.",
 };

@@ -1720,4 +1720,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{noun} on this route": "Bu rotada {noun}",
   "{ride} planned: {summary}": "{ride} planlandı: {summary}",
   "{station}, closed: {reason}": "{station}, kapalı: {reason}",
+  "{time} more": "{time} daha fazla",
+  "{time} less": "{time} daha az",
+  "GPS is weak: road names paused.": "GPS zayıf: yol adları duraklatıldı.",
 };
