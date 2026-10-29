@@ -307,8 +307,9 @@ the lines on the map and press <strong>Start ride</strong><sup class="cite"><a h
 Tapping the empty box lists the places you picked recently, once there are some. Results come nearest the
 route's start first (a place whose name matches your words before the rest), each with its area and how far it is in a
 straight line: "Dupont Circle, Washington · 0.3 mi (0.5 km)". An address keeps the order the search gives it.</li>
-<li><strong>A tap on the map</strong> opens a card for that spot: <strong>Route here</strong> at the top, which
-plans a route there in place of any destination before it, then the spot's address, its area and how far away it is,
+<li><strong>A tap on the map</strong> opens a card for that spot, marked by a big red pin: <strong>Ride here</strong> at the top, which
+plans a route there in place of any destination before it, then the spot's address (the nearest house number
+within 130 ft [40 m], else the street), its area and how far away it is,
 and a line such as "5 places nearby, shown on the map". A few places within a mile [1.6 km], the nearest of each kind
 first (food, water, restrooms, repair, Metro and places to see), are pins on the map: a named place, such as a restaurant, bike shop, place to see
 or station, carries its name, and water, restrooms and repair stands an icon only. A pin opens the place's own card,
@@ -341,7 +342,7 @@ Trailmaxxed is planned at the top of the traffic slider and is shown only when i
 250 ft [80 m] off busy riding. Press a line, or its row, to choose it; your own setting doesn't
 change.</li>
 <li><strong>Arrival time:</strong> beside the route's time, Go's route sheet and Plan's totals give when
-you would arrive if you left now, such as "1 h 48 min · arrive 8:27 AM" (in your device's 12- or 24-hour clock), kept up to date each minute. A screen
+you would arrive if you left now, such as "1 h 48 min · arrive 8:27 AM" (in the app's language, with your device's 12- or 24-hour clock when the device is set to that language), kept up to date each minute. A screen
 reader hears "arriving about 8:27 AM if you leave now". It isn't shown for a transit or bikeshare trip, on Mass
 Ride, or when the <strong>When</strong> chosen isn't the time it is now, such as Weekend on a Tuesday
 (<strong>Now</strong> always is).</li>
@@ -351,7 +352,9 @@ route rides, such as "Mostly calm · 1.1 mi on paths and protected lanes · busy
 stress levels and a slim strip for its traffic-free paths and protected lanes; pressing them opens Layers at the
 Traffic stress key, and a screen reader hears every level's share. A National Weather Service alert is one line under
 the totals, red for a Severe or Extreme one. <strong>Details</strong> has the rest, with the sources behind
-<strong>Data sources</strong>.</li>
+<strong>Data sources</strong>. The time, distance and stress bar come first, before any Bikeshare stations; Go's
+Bikeshare fold and its routes list start closed (the routes chip opens it), so the half sheet fits one phone screen.
+Clear says "Route cleared".</li>
 <li><strong>Transit offer:</strong> on Novice and Nervous, when the only way through is a busy road,
 <strong>Own bike + transit</strong> and <strong>Bikeshare + transit</strong> appear beside the route,
 each naming the busy stretch it avoids.</li>
@@ -700,8 +703,8 @@ three of them: "Right onto 6th Street, then immediately bear left onto Rhode Isl
 draws them as one arrow, except through a U-turn or a traffic circle (which keeps its ring) or where the turns
 wind back on themselves. Each turn still gets its own "now", said once you are past the turn before.</li>
 <li><strong>To go</strong>: under the turn, a line gives the distance and time to the next stop, if
-there is one, and to the end, and the clock time you should get there, in the usual clock for your phone's
-language and region (6:42 AM or 18:42): "To stop 2: 1.2 mi (1.9 km), 8 min · 6:42 AM". A screen reader
+there is one, and to the end, and the clock time you should get there, in the app's language, with your phone's own 12- or 24-hour
+clock when the phone is set to that language (6:42 AM or 18:42): "To stop 2: 1.2 mi (1.9 km), 8 min · 6:42 AM". A screen reader
 hears "To stop 2, 1.2 mi (1.9 km), about 8 min, arriving about 6:42 AM". With Large text, To the end may
 give way on a crowded screen; a screen reader still reads it. The times start from the route's own time
 (<a href="/about/routing.html#route-time">How a route's time is worked out</a>), taken where it falls along
@@ -793,9 +796,8 @@ and <strong>Keep going</strong> appear just under End ride and Go round, as big 
 one (another line from the routes to choose from, or Go's More direct or Trailmaxxed), it first looks for a way back to that route ahead and
 shows (and, by your voice setting, says) "New route found. It rejoins your
 route ahead."; only with no way back does it plan again to the end. Whenever the ride plans again (off the route,
-Reroute, Go round, Less traffic, Fewer hills or a Detour), it keeps every stop still ahead but treats via
-points as guides: one less than half a mile [800 m] ahead is dropped, so you are never sent back to touch
-it. If the next point ahead is a via point and reaching it would take more than about 5 minutes longer than the
+Reroute, Go round, Less traffic, Fewer hills or a Detour), it keeps every stop and every via point still ahead; a via point you
+rode past beside the line counts as passed, so you are never sent back to touch it. If the next point ahead is a via point and reaching it would take more than about 5 minutes longer than the
 planned route would have from where you are (past a closed road, say), it is left out too and the ride shows (and,
 by your voice setting, says) "Skipping via point. New route found." Only that one via point is ever left out this
 way, never a later one or a stop, and not on a Detour, Less traffic, Fewer hills or when you start again part
@@ -956,10 +958,12 @@ OpenStreetMap.</li>
 <li>Plan's map has a <strong>Find</strong> button that opens <strong>Eat</strong>,
 <strong>Water</strong> and <strong>Places to see</strong>. <strong>Eat</strong> has a search box and one sideways row
 of Crab, Coffee, Pizza, Tacos, Ice cream, Farm stands and Grocery, near you; once you move the map, <strong>Search this
-area</strong> looks there instead. Grocery lists the grocery stores nearest the route's start. Where a place's hours
+area</strong> looks there instead. Grocery lists the grocery stores nearest the route's start, small grocers and greengrocers
+included, and the search box understands "grocery near me" and Spanish, such as "supermercado". Where a place's hours
 are known, they read as "Open now · closes 10 PM", here and in the other lists of places. Each row in Eat and in the
 Water, Restroom and Metro lists has <strong>Show on map</strong>; on a phone it closes the popup and keeps the
-lettered pins, which stay until another sheet opens.</li>
+lettered pins, which stay until another sheet opens. In Eat, Water, Repair and Places to see, each row's first
+button is a filled <strong>Ride here</strong>, then <strong>Show on map</strong>, which opens the place's card.</li>
 <li><strong>Repair</strong> (in Go's More) lists the nearest repair stands and bike shops.</li>
 <li>On towpaths and long trails, <strong>trail mile markers</strong> are shown on the map, in the road
 panel and in Where am I?.</li>
@@ -1078,8 +1082,10 @@ route</strong>: others can look it over, change it, or ride it their own way. <s
 ride</strong>: everyone rides this exact route, never re-routed, and each can choose to show where
 they are (see <a href="#suggest">ride links</a>). Share route and Share ride show where your device has a
 share sheet, as on phones, and in the Android app from its next update; Copy link is always there.</li>
-<li><strong>Keep shared link</strong>: 1 year after last opened, Permanently, or Until a date. Shared
-links are listed in Save &amp; load, where you can turn one off.</li>
+<li><strong>Keep shared link</strong>: 1 year after last opened, Permanently, or Until a date;
+Permanently and Until a date need you to be signed in. Shared links are listed in Save &amp; load, where you
+can turn one off. The site makes up to 500 signed-out links a day in all, and an account keeps up to 500
+working links: turn some off to share more.</li>
 <li><strong>Share as image</strong> draws the route as a picture: Square 1080 × 1080, Portrait 1080 ×
 1350, Story 1080 × 1920 or Landscape 1200 × 630, with a QR code if you want one.</li>
 <li>A shared link shows a preview in text messages, Discord and other chat apps: the route's line
@@ -1136,6 +1142,8 @@ contrast and the rest, on <a href="/about/accessibility.html">Accessibility</a>.
 <li><strong>Language</strong> (Display): <strong>Phone default</strong>, the default, or one of 21 languages, each named in its own words:
 English, Spanish (Español), and Amharic, Arabic, Bengali, Cantonese, Farsi, French, Haitian Creole, Hindi, Indonesian,
 Japanese, Korean, Mandarin, Pashto, Portuguese, Russian, Thai, Tigrinya, Turkish and Vietnamese. Kept on this device.
+With Phone default, a phone set to any of them opens Go and Ride in that language, drafts included; a language you
+choose here wins. Dates and times, such as when a route was saved, follow the app's language.
 Every language but English is a first draft, waiting for a native speaker's check. Arabic, Farsi and Pashto are
 written right to left, and the page turns round for them.</li>
 <li><strong>Spanish</strong> covers the whole app. It changes the app's words and the voice (Spanish cues are said
@@ -1152,7 +1160,9 @@ English.</li>
 <li><strong>Install RouteMaker</strong> adds it to your home screen when the browser offers it. When a
 new version is ready, a line says so with Reload; it never interrupts a ride.</li>
 <li><strong>Account:</strong> <strong>Sign in with Discord</strong> keeps My Go, starred ride types and
-saved routes with your account. <strong>Delete account</strong> says what is deleted and what is kept,
+saved routes with your account. <strong>Sign out</strong> ends this session, and <strong>Sign out
+everywhere</strong> ends every session of your account, this one too, and disconnects your AI assistant apps,
+after asking once. <strong>Delete account</strong> says what is deleted and what is kept,
 and asks once.</li>
 <li><strong>Account &gt; AI assistants</strong> lists the assistant apps you connected, each with
 Disconnect, and links to <a href="/about/assistants.html">AI assistants</a> for how to connect one.</li>
@@ -1242,7 +1252,9 @@ as a dot</strong> and, if you lead, your role:
 [400 m] of the route. On a Share ride or Share live link, while you ride, it is shown on or off the
 route, so the leader and riders who get separated can find each other. It stops when you turn it off
 (tap the riders count, or on a ride with Share live, More, then Riders), close the app, are off the route for 10 minutes (not counted while you ride a
-Share ride or Share live link), or 12 hours after the start.</li>
+Share ride or Share live link), or 12 hours after the start. Meetups and regroups stay on show: your dot
+is held back only after more than an hour within 330 ft [100 m] of one spot, or while you are within 490 ft
+[150 m] of your saved Home, and is sent again as soon as you move on.</li>
 <li><strong>Send alert</strong>, a large yellow button shown while you ride (and on a computer watching the
 ride), sends one tap to everyone on the link with your location. A Group Ride has
 Rider off the back; Crash; Mechanical or flat, stopping; Wrong turn; Lost, separated from the group;
@@ -1252,6 +1264,13 @@ and Other. Crash and Medical ask first and offer to call 911.</li>
 <li>In Send alert, Other, on the website where your browser supports it (it does not work in the Android app),
 <strong>Speak</strong> fills the box from what you say; check it, then tap Send. It needs a connection: your browser's maker (such as Google for Chrome or
 Apple for Safari) turns the recording into text.</li>
+<li>Share ride, Share live (Roam's too), Group Ride and Mass Ride links shared from the app are end-to-end
+encrypted. The link carries a secret after the #, which browsers never send to a server. Each phone
+locks its dot, its alerts and the leader's path with a key made from that secret (AES-256-GCM), so the
+server passes on sealed text it cannot read, and it refuses a position that is not sealed. Every ride link
+carries a secret, a Featured route post's Group or Mass Ride link and a link an AI assistant planned included;
+the server keeps the secret for those two, so it can read those rides. A link without a secret, such as an
+old one, gets a new one when opened, so it starts a ride of its own. The full method is on the <a href="/about/architecture.html#apps">architecture page</a>.</li>
 <li>The server keeps dots, the leader's route and path, and alerts in memory only, for 2 minutes. A
 phone's random ride code and its alert counts are forgotten 2 minutes after it last checked in.</li>
 <li>Planning a Mass Ride: <a href="/about/mass-ride.html">Mass Ride</a>.</li>
@@ -1293,7 +1312,7 @@ from the app's next update.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.14.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.15.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

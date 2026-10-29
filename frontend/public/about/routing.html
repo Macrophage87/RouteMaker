@@ -548,7 +548,7 @@ way round is as bad. Not on Mass Ride, and not on paths. See
 price of more busy road.</li>
 <li><strong>Hills</strong>, by the Hills slider (see <a href="#hills">Hills</a>), and <strong>surface</strong>, by the ride type: rough DC
 pavement<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup> costs a little more, and each ride type has its own view of gravel and trails.</li>
-<li><strong>Turns</strong>: each change of street costs time, 5 seconds on Default and 30 on Group Ride.</li>
+<li><strong>Turns</strong>: each change of street costs time, 5 seconds on most ride types and 30 on Group Ride, Mass Ride and Fast.</li>
 <li><strong>Stops and signals</strong>: the time a rider loses at each junction they give way at or wait
 at, counted as that much quiet riding: see <a href="#junction-time">Time lost at junctions</a>.</li>
 <li><strong>Closures</strong>: see <a href="#closures">Closures</a>.</li>
@@ -1247,6 +1247,14 @@ Quarries, landfills and the service roads of industrial sites close the same way
 do an airport's airfield roads; public streets and the trails past them stay open. On a golf
 course the cart paths, walkways and drives close; public streets and their sidewalks,
 numbered roads, bike routes and named trails through the course stay open.</p>
+<p>Some roads are open to bikes only at certain times, such as a highway open to bikes on weekend days.
+From the next map rebuild, a route uses such a road only inside its window, at the ride time you chose
+(When: Now, a weekday or the weekend). A window tied to dawn or dusk is read as a fixed time that falls inside
+it on every day of the year. A grant whose time the router cannot read, such as "when wet", stays closed, as
+does one that applies only on public holidays.</p>
+<p>A stop or the end can be on a road not open to the public: private, military, restricted, permit-only or of
+unknown access. Where a leg ends on such a road, the route says so with the moved points: "This end point
+is not typically open to the public, make sure you're authorized to go here."</p>
 <h3>Walk in</h3>
 <p>The National Mall's rules have riders walk their bikes through the memorials and along the Tidal
 Basin walks, bar bikes from the steps, colonnades and chambers of the DC War Memorial, the Lincoln and
@@ -1350,7 +1358,7 @@ a minute for a way ahead and speaks only if it finds one. Turning round as asked
 a re-route without a U-turn, starts the count again.</li>
 <li><strong>Stops.</strong> Tapping a stop for food, water, repair or a place to see, or a lettered stop, opens a card
 with what is there, whether it is open now (where its mapped hours can be read), how far it is or the
-detour, and a Website link when one is mapped. A tap never changes the route: only Route here or Add as
+detour, and a Website link when one is mapped. A tap never changes the route: only Ride here or Add as
 stop does. Stops come from OpenStreetMap, so check a repair stand works before you count on it.</li>
 <li id="weather"><strong>Weather.</strong> With a route on screen (checked again every 10 minutes), and
 as a ride starts and every 5 minutes during it, the app sends points along the line still to ride, at least 5 mi
@@ -1415,7 +1423,7 @@ climbing.</li>
 <p class="next">Next: <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.14.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.15.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
