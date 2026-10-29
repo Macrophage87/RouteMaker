@@ -580,7 +580,6 @@ export const ES: Readonly<Record<string, string>> = {
   "Share live is not ready yet; try again in a moment.": "En vivo aún no está listo; inténtelo de nuevo en un momento.",
   // ---- A broadcast's riders and alerts (lib/rideGroup.ts, RideMode.tsx) ----
   "Send alert": "Enviar alerta",
-  "Sends your location with the alert": "Envía su ubicación con la alerta",
   // Draft, to be checked by a native speaker (2026-10-29).
   "Sends your spot to everyone on this ride.": "Envía su ubicación a todos en este recorrido.",
   "Send to everyone on this ride?": "¿Enviar a todos en este recorrido?",
@@ -1692,10 +1691,10 @@ export const ES: Readonly<Record<string, string>> = {
   // ---- Mass Ride and Group Ride (the 2026-10-28 audit, P6) ----
   "Show me as a dot to others on this ride?": "¿Mostrarme como un punto a los demás en este recorrido?",
   "Only while the app is open. No name; gone in 2 min.": "Solo con la app abierta. Sin nombre; se borra en 2 min.",
-  "Only while the app is open and you are within a quarter mile (400 m) of the route. No name; positions are rounded and gone after 2 minutes.":
-    "Solo mientras la app está abierta y usted está a menos de un cuarto de milla (400 m) de la ruta. Sin nombre; las posiciones se redondean y se borran a los 2 minutos.",
-  "Only while the app is open, on or off the route, so the leader and riders can find each other. No name; positions are rounded and gone after 2 minutes.":
-    "Solo mientras la app está abierta, en la ruta o fuera de ella, para que el guía y los ciclistas se encuentren. Sin nombre; las posiciones se redondean y se borran a los 2 minutos.",
+  "Only while the app is open and you are within a quarter mile (400 m) of the route. No name; positions are encrypted and gone after 2 minutes.":
+    "Solo mientras la app está abierta y usted está a menos de un cuarto de milla (400 m) de la ruta. Sin nombre; las posiciones van cifradas y se borran a los 2 minutos.",
+  "Only while the app is open, on or off the route, so the leader and riders can find each other. No name; positions are encrypted and gone after 2 minutes.":
+    "Solo mientras la app está abierta, en la ruta o fuera de ella, para que el guía y los ciclistas se encuentren. Sin nombre; las posiciones van cifradas y se borran a los 2 minutos.",
   "Yes": "Sí",
   "No": "No",
   "Close: not shown": "Cerrar: no mostrarme",
@@ -1933,6 +1932,8 @@ export const ES: Readonly<Record<string, string>> = {
   "Corker": "Cortador",
   "Riding as": "Voy como",
   "Following the leader live. If you hear no directions, tap the screen once.": "Siguiendo al guía en vivo. Si no oye indicaciones, toque la pantalla una vez.",
+  // Draft, to be checked by a native speaker (2026-10-29), as are the dot question's "cifradas" notes.
+  "This link is missing its ride key. Ask the leader to send it again.": "A este enlace le falta la clave del recorrido. Pida al guía que se lo envíe de nuevo.",
   "Follow the leader": "Seguir al guía",
   "Following the ride leader on the map.": "Siguiendo al guía del recorrido en el mapa.",
   "Stopped following the ride leader. Turn on Follow the leader to follow again.": "Dejó de seguir al guía del recorrido. Active Seguir al guía para seguirlo de nuevo.",

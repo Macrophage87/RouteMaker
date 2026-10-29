@@ -196,7 +196,7 @@ export function leadConsent(ride: string, token: string, now = Date.now(), store
 }
 
 export const CONSENT_QUESTION = "Show me as a dot to others on this ride?";
-export const CONSENT_NOTE = `Only while the app is open and you are within ${QUARTER_MILE} of the route. No name; positions are rounded and gone after 2 minutes.`;
+export const CONSENT_NOTE = `Only while the app is open and you are within ${QUARTER_MILE} of the route. No name; positions are encrypted and gone after 2 minutes.`;
 /**
  * Whether a broadcast link one follows, once ready (its route shown, or a Roam broadcast's leader named), goes straight
  * into Ride mode (Stephen 2026-10-26: "Opening the broadcast mode should enter ride mode with the leader's dot shown"):
@@ -211,8 +211,20 @@ export function opensIntoRide(at: { phone: boolean; onBike: boolean; resumeAsked
  * phone may keep the voice quiet until the first tap. */
 export const BROADCAST_FOLLOWING = t("Following the leader live. If you hear no directions, tap the screen once.");
 
+/**
+ * A broadcast link one follows that came without its ride key (`k=`: an old v0.14 link, or one a chat app cut short):
+ * every read and send is sealed with that key (lib/rideSeal.ts), so the leader is never seen. Said in place of
+ * BROADCAST_FOLLOWING and the join sheet's title, and no dot question is asked (2026-10-29 end review).
+ */
+export const BROADCAST_NO_KEY = t("This link is missing its ride key. Ask the leader to send it again.");
+
+/** Following someone else's broadcast from a link without its ride key (BROADCAST_NO_KEY). The leader's own page has the key it made. */
+export function followsWithoutKey(broadcast: { leading: boolean; secret?: string | null } | null | undefined): boolean {
+  return !!broadcast && !broadcast.leading && !broadcast.secret;
+}
+
 /** On a broadcast: shown on or off the route, so the leader and the riders can find each other. */
-export const BROADCAST_CONSENT_NOTE = "Only while the app is open, on or off the route, so the leader and riders can find each other. No name; positions are rounded and gone after 2 minutes.";
+export const BROADCAST_CONSENT_NOTE = "Only while the app is open, on or off the route, so the leader and riders can find each other. No name; positions are encrypted and gone after 2 minutes.";
 /**
  * What the question shows, short (the 2026-10-28 audit, P6: asked as Start ride or Broadcast is pressed, over the
  * ride's first screen); a screen reader is given the full note (CONSENT_NOTE, BROADCAST_CONSENT_NOTE).
@@ -663,21 +675,11 @@ export const ROAM_ALERT_KINDS: readonly AlertKind[] = ["lost", "wait", "mechanic
 
 /** Stephen 2026-10-27: "make the alert (call it send alert) a larger button". */
 export const ALERT_LABEL = t("Send alert");
-export const ALERT_NOTE = t("Sends your location with the alert");
 /**
- * An alert needs its spot, so it always carries it, sealed, to everyone on the ride, even from a rider not shown as a
- * dot. So the rider is told before sending (2026-10-29).
+ * The alert panel's line, seen and heard alike (the Alert button's description too): an alert needs its spot, so it
+ * always carries it, sealed, to everyone on the ride, even from a rider not shown as a dot (2026-10-29).
  */
 export const ALERT_SPOT_NOTE = t("Sends your spot to everyone on this ride.");
-
-/**
- * The alert panel's line. Seen: ALERT_SPOT_NOTE where it adds something (the ride's key not made yet, and the rider
- * not shown as a dot, so the alert is the first time their spot goes out), else the usual short ALERT_NOTE. Heard (a screen reader, and the
- * Alert button's description): ALERT_SPOT_NOTE always, true on every ride.
- */
-export function alertNote(sealed: boolean, shownAsDot: boolean): { seen: string; heard: string } {
-  return { seen: !sealed && !shownAsDot ? ALERT_SPOT_NOTE : `${ALERT_NOTE}.`, heard: ALERT_SPOT_NOTE };
-}
 export const CONFIRM_QUESTION = t("Send to everyone on this ride?");
 export const OTHER_MAX = 80;
 export const ALERT_EVERY_MS = 60_000;

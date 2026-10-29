@@ -315,7 +315,7 @@ import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOpera
 import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { BROADCAST_FOLLOWING, forgetAnsweredHere, isRideLink, isRideLinkType, presetSecret, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, type RideLinkType } from "./lib/rideGroup.ts";
+import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, followsWithoutKey, forgetAnsweredHere, isRideLink, isRideLinkType, presetSecret, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -4501,7 +4501,7 @@ export function App() {
     keepJoinShown(joinPending.key, store, Date.now());
     setJoinAsk(joinPending.ask);
   }, [riding, joinPending]);
-  const offerJoin = (key: string, route: RouteResponse, name: string | undefined) => {
+  const offerJoin = (key: string, route: RouteResponse, name: string | undefined, keyless = false) => {
     if (joinShown(key, browserStore(), Date.now())) return;
     // Connections are asked only of a rider who may have one (not when the server said signed out).
     const asks = !(meRef.current !== NO_ME && !meRef.current.signed_in);
@@ -4509,7 +4509,8 @@ export function App() {
     void Promise.all(asks ? [readGarmin(origin), readWahoo(origin)] : [undefined, undefined])
       .then(([garmin, wahoo]) => {
         const actions = joinActions({ canHandFile: canSendToGarmin(), garmin, wahoo });
-        setJoinPending({ key, ask: { title: joinTitle(name), line: joinLine(route), actions } });
+        // A link without its ride key is not a joined ride: the sheet says so where it would say Joined.
+        setJoinPending({ key, ask: { title: keyless ? BROADCAST_NO_KEY : joinTitle(name), line: joinLine(route), actions } });
       })
       .catch(() => setJoinHeld(false));
   };
@@ -4524,7 +4525,16 @@ export function App() {
     const ready = sharedFollow || roamFollow;
     if (!ready || autoRode.current) return;
     autoRode.current = true;
-    if (!opensIntoRide({ phone: looksLikePhone(), onBike, resumeAsked: leftAsk !== null })) return;
+    // A link without its ride key (an old v0.14 link, or one a chat app cut short) never shows the leader: said in
+    // place of Following the leader live, and RideGroup asks no dot question (lib/rideGroup.ts followsWithoutKey).
+    const keyless = followsWithoutKey(sharedFollow ? (sharedOpen ? { leading: false, secret: sharedOpen.secret } : null) : roamBroadcast);
+    if (!opensIntoRide({ phone: looksLikePhone(), onBike, resumeAsked: leftAsk !== null })) {
+      if (keyless) {
+        setSharedNote(BROADCAST_NO_KEY);
+        announce(BROADCAST_NO_KEY);
+      }
+      return;
+    }
     // Kept until a click while riding or roaming unlocks it.
     const unlock = () => {
       if (!ridingNow.current && !roamingNow.current) return;
@@ -4533,12 +4543,12 @@ export function App() {
     };
     document.addEventListener("click", unlock, true);
     if (sharedFollow) {
-      startRideNoted(BROADCAST_FOLLOWING);
-      if (sharedOpen?.id && sharedOpen.lead) offerJoin(joinKey(sharedOpen.id, sharedOpen.lead), sharedOpen.answer, sharedOpen.name);
+      startRideNoted(keyless ? BROADCAST_NO_KEY : BROADCAST_FOLLOWING);
+      if (sharedOpen?.id && sharedOpen.lead) offerJoin(joinKey(sharedOpen.id, sharedOpen.lead), sharedOpen.answer, sharedOpen.name, keyless);
     } else {
       startRoam();
       // After "Roaming.", as the ride screen says its start note.
-      window.setTimeout(() => roamingNow.current && announce(BROADCAST_FOLLOWING), START_NOTE_MS);
+      window.setTimeout(() => roamingNow.current && announce(keyless ? BROADCAST_NO_KEY : BROADCAST_FOLLOWING), START_NOTE_MS);
     }
   }, [sharedFollow, roamFollow]);
   // Light times on the route (lib/lightTimes.ts): near dawn or dusk, where the rider will be at each, leaving now.
