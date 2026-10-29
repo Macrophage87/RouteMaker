@@ -1337,6 +1337,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "routes kept for offline": "د آفلاین لپاره ساتل شوې لارې",
   "Reading the routes kept on this device…": "په دې وسیله کې ساتل شوې لارې لوستل کېږي…",
   "Sign out": "وتل",
+  // Sign out everywhere (SignOut.tsx, 2026-10-29): a new draft, for the native speaker's check.
+  "Sign out everywhere": "له هر ځایه وتل",
+  "Sign out on every device, this one too, and disconnect your AI assistant apps?":
+    "له ټولو وسیلو، د دې یوې په ګډون، وځئ او د AI مرستیال اپونه مو بېل کړئ؟",
   "Disconnect": "بېلول",
   "Connect {service}": "{service} نښلول",
   "Disconnect {app}": "{app} بېلول",
