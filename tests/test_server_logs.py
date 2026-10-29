@@ -11,6 +11,7 @@ days or months, so it must not hold a route's points, a link's id or the map a r
 from __future__ import annotations
 
 import datetime
+import logging
 import re
 import shutil
 from pathlib import Path
@@ -230,3 +231,73 @@ def test_the_rendered_beta_puts_only_the_api_beside_the_answer_cache() -> None:
     joined = {name for name, s in services.items() if "routecache" in (s.get("networks") or {})}
     assert joined == {"api", "memcached"}
     assert set(services["memcached"]["networks"]) == {"routecache"}
+
+
+# --- Django's own log lines -------------------------------------------------------------
+
+
+def test_django_request_lines_are_written_through_the_path_filter(settings) -> None:
+    assert settings.LOGGING["loggers"]["django.request"]["filters"] == ["logged_path"]
+    assert settings.LOGGING["filters"]["logged_path"]["()"] == "config.access_log.PathFilter"
+
+
+@pytest.mark.django_db
+def test_a_not_found_link_is_logged_without_its_id(client, caplog) -> None:
+    """Django logs every 4xx and 5xx answer with its path ("Not Found: /api/shared-routes/<id>")."""
+    with caplog.at_level(logging.WARNING, logger="django.request"):
+        for path in (
+            f"/s/{SHARE}/preview.png",
+            f"/api/shared-routes/{SHARE}",
+            f"/api/rides/{RIDE}/nothing-here",
+            "/tiles/mass/99/1/2.pbf",
+        ):
+            assert client.get(path).status_code >= 400, path
+    lines = [r.getMessage() for r in caplog.records if r.name == "django.request"]
+    assert lines, "django.request logged nothing for four 4xx answers"
+    for line in lines:
+        assert not any(secret in line for secret in (RIDE, SHARE, "/99/1/2")), line
+
+
+def test_the_path_filter_rewrites_only_path_arguments() -> None:
+    record = logging.LogRecord(
+        "django.request", logging.WARNING, __file__, 1, "%s: %s", ("Gone", f"/s/{SHARE}"), None
+    )
+    assert access_log.PathFilter().filter(record)
+    assert record.getMessage() == "Gone: /s/:id"
+
+
+def test_an_unhandled_error_is_logged_without_the_links_id(caplog) -> None:
+    from core import api
+
+    class Request:
+        method = "GET"
+        path = f"/api/rides/{RIDE}/here"
+
+    with caplog.at_level(logging.ERROR, logger="core.api"):
+        api.unexpected(Request(), RuntimeError("boom"))
+    (line,) = [r.getMessage() for r in caplog.records if r.name == "core.api"]
+    assert line == "unhandled error in GET /api/rides/:id/here", line
+
+
+def test_an_access_line_has_no_request_header_or_environ_atoms() -> None:
+    pytest.importorskip("gunicorn.glogging")
+    from gunicorn.config import Config
+
+    class Response:
+        status = "404 Not Found"
+        sent = 0
+        headers = [("Content-Type", "text/html")]
+
+    class Request:
+        headers = [("REFERER", f"https://example.org/s/{SHARE}"), ("HOST", "example.org")]
+
+    environ = {
+        "REQUEST_METHOD": "GET",
+        "PATH_INFO": f"/s/{SHARE}",
+        "RAW_URI": f"/s/{SHARE}",
+        "SERVER_PROTOCOL": "HTTP/1.1",
+    }
+    logger = access_log.Logger(Config())
+    atoms = logger.atoms(Response(), Request(), environ, datetime.timedelta(0))
+    assert not [k for k in atoms if k.endswith(("}i", "}e"))], sorted(atoms)
+    assert SHARE not in repr(atoms)

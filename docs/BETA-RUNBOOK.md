@@ -1009,6 +1009,10 @@ anything can run `migrate` (rollback C restores that snapshot), and the app star
    `scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`
    (the same line as rollback A), with `valhalla-offroad valhalla-mtb` added once their tiles are on the host.
    Check with `git diff --stat <old sha>..<new sha> -- valhalla lua`.
+   **v0.15.0 only:** postgis's command (its log settings) and memcached's network change, so recreate those two
+   first, `scripts/beta/beta-compose.sh up -d postgis memcached`, wait until `beta-compose.sh ps` shows postgis
+   healthy and memcached up (the Postgres restart takes the api's database away for a few seconds), and only then
+   run this step's `up -d api worker`.
 9. **Only if `git diff --stat <old sha>..<new sha> -- deploy/beta` lists the nginx template** (owner steps, because
    they use sudo): re-render it into `$RM_STATE`, see the change against the installed file, install it over the site
    file, then `sudo nginx -t && sudo nginx -s reload`, and run the `curl` check from step 9c:

@@ -12,7 +12,9 @@ itself and would say where someone is or let a reader open their link later:
 each logged as its route's shape (`/api/rides/:id/here`, `/tiles/stress/:zxy`), so the method,
 status and timing of every request are still there to read. The beta's nginx logs the same paths
 the same way (deploy/beta/nginx-routemaker.conf.template, `$rmbeta_logpath`), and
-tests/test_server_logs.py holds the two lists equal.
+tests/test_server_logs.py holds the two lists equal. Django's own `django.request` lines (a 404
+or a 500 with its path) go through `PathFilter`, and the api's unhandled-error line through
+`logged_path`.
 """
 
 from __future__ import annotations
@@ -59,10 +61,25 @@ class Logger(_GunicornLogger):
         path = logged_path(environ.get("PATH_INFO"))
         atoms["U"] = path
         # Not in the format, and kept out in case it is ever put back: the request line and
-        # the query string (RAW_URI holds both), the Referer, and the raw environ.
+        # the query string (RAW_URI holds both), the Referer, the request's headers (`{referer}i`,
+        # `{host}i`, ...) and the raw environ.
         atoms["r"] = f"{environ.get('REQUEST_METHOD')} {path} {environ.get('SERVER_PROTOCOL')}"
         atoms["q"] = "-"
         atoms["f"] = "-"
-        for key in [k for k in atoms if k.endswith("}e")]:
+        for key in [k for k in atoms if k.endswith(("}i", "}e"))]:
             del atoms[key]
         return atoms
+
+
+class PathFilter:
+    """A logging filter for `django.request`, which logs every 4xx and 5xx answer as
+    "Not Found: <path>" and "Internal Server Error: <path>": each argument that is a path is
+    written through `logged_path`, as the access logs write it (settings.LOGGING)."""
+
+    def filter(self, record) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                logged_path(arg) if isinstance(arg, str) and arg.startswith("/") else arg
+                for arg in record.args
+            )
+        return True
