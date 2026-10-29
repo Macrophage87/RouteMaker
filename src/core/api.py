@@ -4804,6 +4804,12 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         stress=body.stress,
         hills=body.hills,
         when=body.when,
+        # The closures and the roads the rider marked closed, left out as the plan leaves
+        # them out, and the rider's own speed, as the plan times its route.
+        closure_bypass=tuple(body.closure_bypass),
+        closures_now=body.closures_now,
+        blocked=_blocked(body),
+        cycling_speed_kmh=presets.rider_speed(body.preset, body.cycling_speed_kmh),
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
@@ -4964,6 +4970,11 @@ def nearest_places(request, body: NearestIn, response: HttpResponse):
         stress=body.stress,
         hills=body.hills,
         when=body.when,
+        # As Best order's (`stop_order`): the plan's closures, blocked roads and speed.
+        closure_bypass=tuple(body.closure_bypass),
+        closures_now=body.closures_now,
+        blocked=_blocked(body),
+        cycling_speed_kmh=presets.rider_speed(body.preset, body.cycling_speed_kmh),
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
