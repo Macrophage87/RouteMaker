@@ -102,7 +102,7 @@ test("the page's link, its saved routes and its kept routes: names in the first 
   const saved = src("./savedRoutes.ts");
   assert.equal(saved.match(/hash: encodePlan\(points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\)/g)?.length, 2);
   assert.match(src("./planHash.ts"), /names: ReadonlyMap<number, string> = stopNames\(points, VIA_MARKS\.nameOf, VIA_MARKS\.isVia, dials\?\.loop === true\)/);
-  assert.match(src("./offlineRoutes.ts"), /encodePlan\(points, preset, sent, vias, undefined, new Map\(\)\)/);
+  assert.match(src("./offlineRoutes.ts"), /encodePlan\(points, preset, dials, vias, undefined, new Map\(\)\)/);
   const app = src("../App.tsx");
   assert.match(app, /VIA_MARKS\.nameAt\(initialPlan\.points, initialPlan\.names\)/);
 });

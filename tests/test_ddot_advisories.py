@@ -58,6 +58,36 @@ class TestTheFile:
         assert (block.first_day, block.last_day) == (date(2026, 8, 31), date(2026, 11, 3))
 
 
+class TestTheReminders:
+    """Audit 2026-10-29: a closure on a guessed last day dropped out silently, and a file never
+    looked old. `scripts/ddot_advisories.py watch` prints these."""
+
+    def test_a_guessed_last_day_within_30_days_is_a_reminder(self) -> None:
+        nb = BY_ID["connave-1600-nb"]  # "about eight weeks", through 2026-11-03
+        assert nb.end_estimated
+        assert advisories.reminders("DDOT", [nb], "2026-10-25", date(2026, 10, 1)) == []
+        (line,) = advisories.reminders("DDOT", [nb], "2026-10-25", date(2026, 10, 5))
+        assert "2026-11-03 by estimate" in line
+        # Gone once it is past, and never for a last day the release gives.
+        assert advisories.reminders("DDOT", [nb], "2026-10-25", date(2026, 11, 4)) == []
+        firm = advisories.Closure(**{**nb.__dict__, "end_estimated": False})
+        assert advisories.reminders("DDOT", [firm], "2026-10-25", date(2026, 10, 5)) == []
+
+    def test_a_file_not_updated_in_45_days_is_stale(self) -> None:
+        assert not advisories.stale("2026-10-25", date(2026, 12, 9))
+        assert advisories.stale("2026-10-25", date(2026, 12, 10))
+        assert advisories.stale("", date(2026, 10, 25))
+        (line,) = advisories.reminders("DDOT", [], "2026-10-25", date(2026, 12, 10))
+        assert "not updated since 2026-10-25" in line
+
+    def test_a_stale_file_says_so_in_its_small_print(self) -> None:
+        from core import workzones
+
+        assert workzones.stale_note(advisories.SOURCE) == (
+            " This source was last read more than 45 days ago."
+        )
+
+
 class TestZones:
     def test_in_force_until_the_end_of_the_last_day_then_gone(self) -> None:
         ids = {z.zone_id for z in real(local(2026, 11, 3, 23, 59))}

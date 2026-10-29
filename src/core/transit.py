@@ -552,7 +552,8 @@ _loaded: tuple[Path, float, Schedule] | None = None
 def load(path: Path, day: date | None = None) -> Schedule:
     """The schedule at `path`, read again when the file changes, with Metro on its typical
     timetable where the file has no WMATA rail GTFS (`with_typical_metro`). With no file
-    installed, or one whose window does not reach `day` (default today: it has run out, say),
+    installed, or one whose window does not reach `day` (the GTFS service day, `moment_of`, so
+    a night's owl trips after midnight stay on it; default today: it has run out, say),
     Metro's typical timetable alone, from the day before `day`: it needs no refresh, so Metro
     stays while the other systems wait for the file to be rebuilt (`schedule_alert` says so)."""
     day = day or datetime.now(ZONE).date()
@@ -806,9 +807,11 @@ def with_typical_metro(schedule: Schedule, path: Path = TYPICAL_PATH) -> Schedul
     )
 
 
-# Fewer days of timetable than this left: a warning in the log, and an alert from
-# `manage.py check_operations` (docs/OPERATIONS.md, "Transit schedule": refresh within 45 days).
-STALE_DAYS = 7
+# Fewer days of timetable than this left: a warning in the log, an alert from
+# `manage.py check_operations` and a line on the admin operations page (docs/OPERATIONS.md,
+# "Transit schedule": refresh within 45 days). Three weeks, because the refresh is by hand on the
+# home PC and a feed's end can fall on a holiday week (the 2026-10-29 review).
+STALE_DAYS = 21
 _warned_on: date | None = None
 
 

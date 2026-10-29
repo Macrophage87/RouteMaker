@@ -18,7 +18,7 @@ import type { NearbyStationsAnswer, StationAction } from "./stations.ts";
 import { language, t } from "./i18n.ts";
 import { OFFLINE_SAID } from "./appWorker.ts";
 import type { WithClosures } from "./closureMap.ts";
-import { dialFields, type Bike, type Carrying, type Dials, type Ending, type When } from "./dials.ts";
+import { closureFields, dialFields, type Bike, type Carrying, type Dials, type Ending, type When } from "./dials.ts";
 
 /**
  * One coloured section of the route, in whole metres along its traced length
@@ -1440,10 +1440,8 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
       ? dialFields(preset === "mass-ride" || twoPointsOnly(preset) ? { ...options.dials, loop: false } : options.dials)
       : {}),
     ...(options.confirmLong ? { confirm_long: true } : {}),
-    // "Route through anyway" (v0.7.0, lib/closureMap.ts): this plan's only, in the request, never in a link.
-    ...(options.dials?.closureBypass?.length ? { closure_bypass: options.dials.closureBypass } : {}),
-    // Go and a ride: only the closures known to be on, not DDOT's permits (lib/dials.ts closuresNow).
-    ...(options.dials?.closuresNow ? { closures_now: true } : {}),
+    // "Route through anyway" and Go's closures in force (lib/dials.ts closureFields).
+    ...(options.dials ? closureFields(options.dials) : {}),
     // The via points (v0.7.0, "Via points vs stops"): passed without a stop. Never on a two-point ride type.
     ...(options.vias?.length && !twoPointsOnly(preset) ? { via_points: [...options.vias] } : {}),
     // The first good route at once (v0.7.0, "Faster routing"); the API answers the full plan where it cannot.
