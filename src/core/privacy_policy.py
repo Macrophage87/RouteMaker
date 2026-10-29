@@ -258,8 +258,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "Your weight is taken out.",
                 "When a route starts, ends or stops at your Home, the preview a chat app shows "
                 "leaves out the part near it.",
-                "A link is kept a year after it was last opened, unless you choose to keep it "
-                "permanently or until a date.",
+                "A link is kept a year after it was last opened, unless, signed in, you choose "
+                "to keep it permanently or until a date.",
                 "A link you turn off loses its route and only says it was turned off.",
             ]
         ),
