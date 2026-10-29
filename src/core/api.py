@@ -7013,6 +7013,10 @@ def shared_route_add(request):
     now = timezone.now()
     _purge_shared(now)
     keep = body.get("keep", "year")
+    owner = request.user if signed_in(request) else None
+    problem = shared_routes.quota_problem(owner, keep, now)
+    if problem:
+        return _stress_error(problem[0], problem[1], field=problem[2])
     delete_after = (
         shared_routes.delete_after_of(body.get("delete_after"), timezone.localdate(now))
         if keep == "until"
@@ -7036,7 +7040,7 @@ def shared_route_add(request):
                 keep=keep,
                 delete_after=delete_after,
                 # Signed in, the owner, so only they can turn the link off (nothing else of them).
-                owner=request.user if signed_in(request) else None,
+                owner=owner,
                 # Missing (a page from before previews) is no image: it never said where Home is.
                 preview_image=body.get("preview_image", False),
             )

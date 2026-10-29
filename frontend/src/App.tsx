@@ -3324,10 +3324,12 @@ export function App() {
     const exact = shareExact();
     let kept: Promise<boolean> | null = null;
     if (exact) {
-      const keep = JSON.stringify(keepFields(shareKeep));
+      // Permanently and Until a date are a signed-in owner's (core.shared_routes.OWNER_KEEPS); signed out, the year.
+      const keepChoice = me.signed_in ? shareKeep : SHARE_KEEP_DEFAULT;
+      const keep = JSON.stringify(keepFields(keepChoice));
       const before = sharedLine.current?.of === exact.of && sharedLine.current.keep === keep ? sharedLine.current : null;
       const id = before?.id ?? newSharedId();
-      const body = before ? null : sharedBody(id, exact.save, shareKeep, previewImageOk(exact.save.line, exact.save.inputs.points, myGo.home, me.signed_in));
+      const body = before ? null : sharedBody(id, exact.save, keepChoice, previewImageOk(exact.save.line, exact.save.inputs.points, myGo.home, me.signed_in));
       if (before || body) {
         link = withSharedId(link, id);
         kept = before?.kept ?? storeShared(origin, body!.json);
@@ -6358,7 +6360,7 @@ export function App() {
                       ready={!!shown}
                       shareRoute={(ride) => void shareRoute(ride)}
                       shareKeep={shareKeep}
-                      onShareKeep={mode === "plan" ? setShareKeep : null}
+                      onShareKeep={mode === "plan" && me.signed_in ? setShareKeep : null}
                       shareSaid={shareSaid}
                       linkNote={linkNote}
                     />

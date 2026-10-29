@@ -2045,10 +2045,16 @@ phone whose share sheet takes files, the GPX file Download GPX would give goes w
   shared as the plan's inputs only, and the page says so in one line; such a link, or one whose
   line has gone, plans the route again as links always did, and says so.
 - **Kept a year after it was last opened** by default, then deleted at the next share or open.
-  In Plan the sharer may pick, beside Share, to keep it permanently or until a date (the owner,
-  2026-10-16: "For the 1 year deletion, make this the default. For other users, we can offer
-  "keep permanently" and "delete after <date>""): columns `keep` and `delete_after`; a route kept
-  until a date is deleted the day after it, opened or not. In the nightly
+  In Plan a signed-in sharer may pick, beside Share, to keep it permanently or until a date (the
+  owner, 2026-10-16: "For the 1 year deletion, make this the default. For other users, we can
+  offer "keep permanently" and "delete after <date>""): columns `keep` and `delete_after`; a route
+  kept until a date is deleted the day after it, opened or not. Signed out, a link is always kept
+  the default year (403 otherwise), since nobody could turn it off.
+- **Limits on links kept** (`core.shared_routes.quota_problem`): `SIGNED_OUT_PER_DAY` (500)
+  signed-out links in the last day for the whole deployment (then 503 until the day rolls on;
+  Share still gives the inputs-only link), and `LIVE_PER_OWNER` (500) working links per account
+  (then 409: turn some off in My routes).
+- In the nightly
   backups (a restored database keeps shared links working); never in the beta's data shipment
   (`scripts/beta/ship-data.sh`).
 
