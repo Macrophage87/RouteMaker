@@ -8,9 +8,8 @@
  * request carries `lang` (lib/api.ts routeRequestBody, the server's routemaker.lang).
  *
  * The language is read once, when the page loads: the rider's choice (Settings > Display > Language,
- * kept on this device like accessibility mode), else the device's own where it is English or Spanish
- * (startLanguage). Choosing another reloads the page, so the many labels the code builds once at load
- * (module constants) follow it too.
+ * kept on this device like accessibility mode), else the device's own (startLanguage). Choosing another
+ * reloads the page, so the many labels the code builds once at load (module constants) follow it too.
  */
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
 
@@ -139,29 +138,22 @@ function fromTag(tag: string): Language | null {
   return isLanguage(base) ? base : null;
 }
 
-/** The languages a page opens in from the device's alone: English and Spanish, the two the whole app is in. */
-export const FROM_DEVICE: ReadonlySet<Language> = new Set<Language>(["en", "es"]);
-
-/** The device's language, where it is one the app has (or one of `among`): the first of the browser's that is; else English. */
-export function deviceLanguage(
-  preferred: readonly string[] | undefined = typeof navigator !== "undefined" ? navigator.languages : undefined,
-  among?: ReadonlySet<Language>,
-): Language {
+/** The device's language, where it is one the app has: the first of the browser's that is; else English. */
+export function deviceLanguage(preferred: readonly string[] | undefined = typeof navigator !== "undefined" ? navigator.languages : undefined): Language {
   for (const tag of preferred ?? []) {
     const lang = fromTag(tag);
-    if (lang && (!among || among.has(lang))) return lang;
+    if (lang) return lang;
   }
   return "en";
 }
 
 /**
- * The language a page opens in: the rider's choice, else the device's first that is English or Spanish, else English.
- * The 19 draft languages, not yet checked by a native speaker, are used only once the rider picks one in Settings
- * (the 2026-10-29 review: a French phone opened straight into the draft, turn cues included).
+ * The language a page opens in: the rider's choice, else the device's, drafts included, so a phone in one of DC's
+ * languages opens Go and Ride in it with no Settings step (the owner, 2026-10-29: "It should show it when they open it
+ * ... It's best to make things easy"). Plan stays in English for the drafts (planStaysEnglish).
  */
-export function startLanguage(choice: LanguageChoice = readLanguageChoice(), device: Language = deviceLanguage(undefined, FROM_DEVICE)): Language {
-  if (choice) return choice;
-  return FROM_DEVICE.has(device) ? device : "en";
+export function startLanguage(choice: LanguageChoice = readLanguageChoice(), device: Language = deviceLanguage()): Language {
+  return choice || device;
 }
 
 let current: Language = startLanguage();
