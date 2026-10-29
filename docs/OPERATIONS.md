@@ -225,6 +225,30 @@ pruned, whatever its age, and neither is a job a `procrastinate_periodic_defers`
 row still points at — that reference is how the scheduler knows it has already
 fired for a tick.
 
+## What the server logs keep (v0.15.0)
+
+A log is kept for days to months (compose's json-file driver, 10 MB x 5 a container; the
+host's logrotate for nginx), so none of them holds a place a rider was, a route's points or a
+link someone could open later (Stephen 2026-10-29: nothing that could identify a person's
+location stays on the server for more than 2 minutes, except what the rider saves on purpose).
+
+| Log | What it keeps | What it leaves out |
+| --- | --- | --- |
+| PostgreSQL (`docker compose logs postgis`) | the error and its SQLSTATE | the statement (`log_min_error_statement=panic`), its DETAIL, HINT, QUERY and CONTEXT (`log_error_verbosity=terse`); no statement or duration is logged (`log_statement=none`, `log_min_duration_statement=-1`) |
+| gunicorn (`docker compose logs api`) | time, method, path, status, bytes, duration, user agent | the query string, the Referer, the client; link ids, the GPX token and tile z/x/y (`config.access_log.Logger`) |
+| beta nginx (`rmbeta-access.log`) | time, method, path, status, bytes, duration | the same (`$rmbeta_logpath`); upstream errors for `/api/`, `/s/` and `location /` go to `rmbeta-error.log` at `crit` only |
+| home Caddy | Caddy's own messages and error entries (the error, status, duration) | there is no access log; an error entry's URI, client address and headers are filtered out |
+
+A path is logged as its route's shape: `/api/rides/:id/here`, `/api/rides/:id/alerts/:id/clear`,
+`/api/shared-routes/:id`, `/api/me/shared-routes/:id/revoke`, `/s/:id`, `/s/:id/preview.png`,
+`/mcp/gpx/:token`, `/tiles/stress/:zxy`, `/tiles/mass/:zxy`. To find one request, read it by its
+time and status. tests/test_server_logs.py holds nginx's map and gunicorn's list equal.
+
+Each takes effect only when its service is recreated or reloaded: the postgis container (its
+command), the api (the entrypoint), the beta's nginx (re-rendered with
+scripts/beta/render-nginx.sh, `nginx -t`, reload) and home's caddy ("Applying a Caddyfile
+change", below). Lines written before that stay until the log rotates out.
+
 ## The public routing API: its limits, and clearing a client
 
 `POST /api/route` plans a route for anyone, signed in or not (the owner's
@@ -461,7 +485,9 @@ band, grep `route timing` from the api's log.
   api's workers share it, so a repeat is a hit whichever worker serves it (audit
   S14; the owner signed off a ~16 MB memcached on beta on 2026-10-27).
   compose.beta.yaml runs one (`memcached`, `-m 16`, capped at 24M) and sets the
-  variable itself; compose.yaml leaves it empty. There an answer is stored
+  variable itself; compose.yaml leaves it empty. memcached has no sign-in, so it is on a network
+  of its own, `routecache` (internal), that only the api joins (v0.15.0): no other container on
+  the stack can read the answers. There an answer is stored
   pickled and compressed (zlib level 1), one past
   memcached's 1 MB item limit is not sent, and a memcached that is down, full
   or slow is a miss, never an error: the plan is made (the client gives up

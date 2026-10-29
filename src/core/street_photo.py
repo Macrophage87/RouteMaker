@@ -17,7 +17,11 @@ and the panel says nothing of one.
 
 What Mapillary is sent: a box about 200 ft (60 m) across around the point on the road (never the
 rider's own position, and nothing of the rider). The answer is kept in this process's memory for
-`CACHE_S`, so the same road asked again asks Mapillary once. Only photos inside the covered area
+`KEEP_S` (2 minutes), so the same road asked again soon asks Mapillary once; it is keyed by the
+spot asked about, so a sweep drops it at that age even when nothing else is asked (Stephen
+2026-10-29: nothing that could identify a person's location stays on the server for more than
+2 minutes). A photo's signed file URL is kept by its image id for `CACHE_S`: an image id is not
+where anyone was. Only photos inside the covered area
 (`settings.COVERAGE_BBOX`) are looked up or served, and neither fetch follows a redirect, so
 every request goes to the host it names.
 
@@ -69,6 +73,7 @@ LIMIT = 100
 TIMEOUT_S = 4.0
 MAX_BYTES = 2_000_000
 CACHE_S = 3600.0  # Mapillary's image URLs are signed for a while; an hour stays inside it
+KEEP_S = 120.0  # an answer keyed by the spot asked about, as core.weather keeps its cells
 CACHE_SIZE = 2000
 IMAGE_CACHE_SIZE = 64  # image files held in memory, the most recently shown
 IMAGE_PATH = "/api/street-photo/image/{id}"
@@ -259,8 +264,14 @@ def road_bearing(way_id: int, lon: float, lat: float) -> float | None:
     return None if row is None or row[0] is None else float(row[0])
 
 
+def _daemon_timer(delay: float, run: Callable[[], None]) -> None:
+    timer = threading.Timer(delay, run)
+    timer.daemon = True
+    timer.start()
+
+
 class StreetPhoto:
-    """Looks a road's photo up, and remembers the answer for `CACHE_S`."""
+    """Looks a road's photo up, and remembers the answer for `KEEP_S`."""
 
     def __init__(
         self,
@@ -268,8 +279,13 @@ class StreetPhoto:
         clock: Callable[[], float] = time.monotonic,
         bearing: Callable[[int, float, float], float | None] = road_bearing,
         fetch_image: Fetch = image_get,
+        later: Callable[[float, Callable[[], None]], None] | None = None,
     ) -> None:
         self._fetch = fetch
+        # Runs a function after a delay: a sweep that drops an answer once it is `KEEP_S` old
+        # even when no other spot is asked about (core.weather's sweep, the same way).
+        self._later = later or _daemon_timer
+        self._sweep_due = False
         self._fetch_image = fetch_image
         # A photo id -> (when, Mapillary's signed URL), shown here or looked up again (`_resolve`).
         self._sources: OrderedDict[str, tuple[float, str]] = OrderedDict()
@@ -279,6 +295,26 @@ class StreetPhoto:
         self._lock = threading.Lock()
         self._cache: OrderedDict[tuple, tuple[float, dict]] = OrderedDict()
         self.lookups = 0
+
+    def _sweep(self) -> None:
+        with self._lock:
+            self._sweep_due = False
+            now = self._clock()
+            self._prune(now)
+            if self._cache:
+                # Next when the oldest left turns `KEEP_S` old, so none outlives it.
+                oldest = min(at for at, _ in self._cache.values())
+                self._schedule(max(0.0, oldest + KEEP_S - now))
+
+    def _schedule(self, delay: float = KEEP_S) -> None:
+        """A sweep in `delay` seconds, unless one is due (called with the lock held)."""
+        if not self._sweep_due:
+            self._sweep_due = True
+            self._later(delay, self._sweep)
+
+    def _prune(self, now: float) -> None:
+        for key in [k for k, (at, _) in self._cache.items() if now - at >= KEEP_S]:
+            del self._cache[key]
 
     def photo(self, lon: float, lat: float, way_id: int | None) -> dict | None:
         """The photo, `NONE` where there is none, or None where none can be looked up (no
@@ -290,8 +326,9 @@ class StreetPhoto:
         key = (way_id, round(lon, 4), round(lat, 4))
         now = self._clock()
         with self._lock:
+            self._prune(now)
             held = self._cache.get(key)
-            if held is not None and now - held[0] < CACHE_S:
+            if held is not None:
                 self._cache.move_to_end(key)
                 return held[1]
         bearing = self._bearing(way_id, lon, lat) if way_id is not None else None
@@ -320,6 +357,7 @@ class StreetPhoto:
             self._cache[key] = (now, found)
             while len(self._cache) > CACHE_SIZE:
                 self._cache.popitem(last=False)
+            self._schedule()
         return found
 
     def _resolve(self, image_id: str) -> str | None:
