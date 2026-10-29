@@ -26,6 +26,7 @@ from routemaker import (
     aisle_links,
     cbd,
     facility,
+    short_links,
     sidewalks,
     singletrack,
     station_links,
@@ -156,6 +157,12 @@ class TrailClosures:
     # parking aisles where a trail ends, routed as plain service roads
     # (`routemaker.aisle_links`; the owner, 2026-10-26)
     aisle_links: set[int] = field(default_factory=set)
+    # short links the trail rules close, reopened (`routemaker.short_links`; the owner,
+    # 2026-10-28): way id -> walked (True) or ridden (False); their reasons are lifted
+    short_links: dict[int, bool] = field(default_factory=dict)
+    # those of them the off-road and Mountain Bike graphs already rode (the mountain-bike
+    # class): walked on the standard graphs alone
+    short_links_mtb: set[int] = field(default_factory=set)
     # rated singletrack that nothing but the rating closes: the map draws it on the
     # mountain-bike trail layer, in its level's colour (OWNER-DECISIONS 456; `drawn_singletrack`)
     drawn_singletrack: set[int] = field(default_factory=set)
@@ -304,6 +311,58 @@ def closures(
         elif osm_id in kept:
             result.walk_bike.add(osm_id)
     return result
+
+
+# The closures a short link lifts (`routemaker.short_links`; the owner, 2026-10-28, "Ride
+# paved/unknown, walk dirt"): what the tag rules say of a trail's surface, rating or kind,
+# and a farm track's or a working site's place. Never a private way, a military or secured
+# area, a golf course, the Zoo, singletrack, the CBD's sidewalks, an escalator, a long
+# dismount chain, an informal path (`sidewalks` walks short ones) or an agency prohibition.
+SHORT_LINK_REOPENS = frozenset(
+    {
+        trailaccess.MTB,
+        trailaccess.NATURAL_SURFACE,
+        trailaccess.PARK_PATH,
+        trailaccess.FOOT_DESIGNATED,
+        trailaccess.TRAIL_VISIBILITY,
+        trailaccess.HIKING_ROUTE,
+        trailaccess.SAC_SCALE,
+        TRACK_NO_BICYCLE,
+        WORKS_NO_BICYCLE,
+    }
+)
+
+
+def add_short_links(result: TrailClosures, ways: Iterable[Way]) -> None:
+    """Reopen the short links the trail rules close (`routemaker.short_links`), once every
+    closure is in `result.reasons`, the agency prohibitions included, and before the
+    sidewalk links, which may then lead on through them. A walked one is in `walk_bike`."""
+    ways = list(ways)
+    found = short_links.links(
+        [
+            (
+                way.osm_id,
+                way.tags,
+                way.node_ids,
+                node_coordinates(way)
+                if short_links.is_candidate(
+                    way.tags, result.reasons.get(way.osm_id), SHORT_LINK_REOPENS
+                )
+                else (),
+            )
+            for way in ways
+        ],
+        result.reasons,
+        SHORT_LINK_REOPENS,
+        closed=result.destination_only,
+    )
+    for osm_id, walk in found.items():
+        reason = result.reasons.pop(osm_id)
+        if walk:
+            result.walk_bike.add(osm_id)
+            if reason in OFFROAD_KEEPS:
+                result.short_links_mtb.add(osm_id)
+    result.short_links = found
 
 
 def add_sidewalk_rides(result: TrailClosures, ways: Iterable[Way]) -> None:

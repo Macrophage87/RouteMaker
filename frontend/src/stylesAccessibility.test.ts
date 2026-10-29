@@ -169,3 +169,43 @@ test("the swatches' borders are the text colour with the class on", () => {
   assert.match(swatch?.declarations ?? "", /border-color:\s*var\(--text\)/);
   assert.ok(rules(css).some((r) => r.selectors.includes(".a11y .stress-bar")));
 });
+
+test("every box's placeholder is one token, at least 4.5:1 on the panel and its soft fill in both themes (P5)", () => {
+  const placeholderRules = rules(css).filter((r) => r.selectors.some((s) => s.endsWith("::placeholder")));
+  assert.deepEqual(placeholderRules.map((r) => r.selectors), [["::placeholder"]], "one rule, for every box");
+  assert.match(placeholderRules[0].declarations, /color:\s*var\(--placeholder\)/);
+  assert.match(placeholderRules[0].declarations, /opacity:\s*1/, "Firefox's own placeholder opacity would dim it");
+  const plainLight = rules(css).find((r) => r.selectors.includes(":root"));
+  const plainDark = rules(mediaBody(css, "(prefers-color-scheme: dark)") ?? "").find((r) => r.selectors.includes(":root"));
+  assert.ok(plainLight && plainDark);
+  for (const theme of [plainLight, plainDark]) {
+    const bg = property(theme.declarations, "--bg");
+    const placeholder = property(theme.declarations, "--placeholder");
+    for (const fill of ["--bg", "--bg-soft"]) assert.ok(contrastRatio(placeholder, property(theme.declarations, fill)) >= 4.5, `${placeholder} on ${fill}`);
+    // Lighter than typed text, so a placeholder is not taken for an answer.
+    assert.ok(contrastRatio(placeholder, bg) < contrastRatio(property(theme.declarations, "--text"), bg));
+  }
+});
+
+test("the ride's Detour search box has the shared search box's look, not the browser's grey (P5)", () => {
+  const shared = rules(css).find((r) => r.selectors.includes('.place-search input[type="search"]'));
+  assert.ok(shared?.selectors.includes('.detour-search input[type="search"]'));
+  assert.match(shared?.declarations ?? "", /background:\s*var\(--bg\)/);
+  assert.match(shared?.declarations ?? "", /color:\s*var\(--text\)/);
+});
+
+test("accessibility mode's class brings Go's small text to 15 px (P5)", () => {
+  const big = rules(css).find((r) => r.selectors.includes(":root.access-mode .maplibregl-ctrl-scale"));
+  assert.ok(big, "the access-mode rule");
+  // Joined again: the Settings heading's :is(...) has a comma of its own.
+  const selectors = big.selectors.join(", ");
+  for (const selector of [
+    ":root.access-mode .panel .go-sheet .go-places:not(.go-more-row) .place-chip",
+    ":root.access-mode .panel .go-sheet .ride-chips .chip",
+    ":root.access-mode .stress-key",
+    ":root.access-mode #sheet-settings :is(.settings-group, .install-offer) h3",
+  ]) {
+    assert.ok(selectors.includes(selector), selector);
+  }
+  assert.match(big.declarations, /font-size:\s*max\(1rem, 15px\)/);
+});

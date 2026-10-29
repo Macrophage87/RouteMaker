@@ -41,7 +41,7 @@ export function insteadSaid(place: string, stop: RideStopMark): string {
 
 /** The Detour button's name: what it offers, the next stop's options too while one is ahead. */
 export function detourButtonName(summary: string, stop: RideStopMark | null): string {
-  return stop ? `Detour: ${summary.toLowerCase()}, or change stop ${stop.number}` : `Detour: ${summary.toLowerCase()}`;
+  return stop ? t("Detour: {summary}, or change stop {number}", { summary: summary.toLowerCase(), number: stop.number }) : t("Detour: {summary}", { summary: summary.toLowerCase() });
 }
 
 /** The re-plan's points without the stop at `skip` (its index in the plan): the rider's place stays first. */

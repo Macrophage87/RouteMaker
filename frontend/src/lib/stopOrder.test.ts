@@ -211,7 +211,7 @@ test("a refusal or a lost connection is a sentence to say", async () => {
   const busy = await requestStopOrder([S, A, B, E], "default", dials, async () =>
     new Response(JSON.stringify({ error: "busy" }), { status: 503, headers: { "Retry-After": "5" } }),
   );
-  assert.ok(!busy.ok && /^Best order not found\. The planner is busy/.test(busy.message));
+  assert.ok(!busy.ok && /^Best order not found\. Planner busy\. Try again in 5 seconds\./.test(busy.message));
   const lost = await requestStopOrder([S, A, B, E], "default", dials, async () => {
     throw new Error("offline");
   });

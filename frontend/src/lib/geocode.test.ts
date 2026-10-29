@@ -3,6 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  COVERS_LINE,
   GeoGate,
   MAX_QUERY_CHARS,
   MIN_QUERY_CHARS,
@@ -27,6 +28,13 @@ import {
   nameSender,
   placeFromSearch,
   searchBiasPoint,
+  startBiasPoint,
+  namesCityOutside,
+  namesQuery,
+  nearestFirst,
+  nothingFoundText,
+  placeDistance,
+  placeRowLine,
   type ViewBounds,
   searchSender,
   searchView,
@@ -870,4 +878,98 @@ test("a picked station goes to its bike entrance and keeps the station's name", 
   // An entrance outside the map is not used; the station's own point is.
   const outside: LonLat = [COVERAGE_BBOX[2] + 0.5, PLACE.lat];
   assert.deepEqual(placeFromSearch(station, remember, () => outside), [PLACE.lon, PLACE.lat]);
+});
+
+// --- nearest the start first, with the distance (P2) ------------------------------
+
+const SCOTT_CIRCLE: LonLat = [-77.0365, 38.9077];
+const at = (name: string, area: string, lon: number, lat: number, extra: Partial<Place> = {}): Place => ({
+  name,
+  label: `${name}, ${area}`,
+  lon,
+  lat,
+  kind: "house",
+  osm_key: "shop",
+  osm_value: "supermarket",
+  ...extra,
+});
+
+test("places found are listed nearest the start first; with no start, in the server's order", () => {
+  const petworth = at("Safeway", "Ward 4, Petworth", -77.0254, 38.9406);
+  const dupont = at("Safeway", "Dupont Circle, Washington", -77.0416, 38.9105);
+  const southwest = at("Safeway", "Ward 6, Southwest Waterfront", -77.0175, 38.8787);
+  const server = [petworth, southwest, dupont];
+  assert.deepEqual(nearestFirst(server, SCOTT_CIRCLE, "Safeway"), [dupont, southwest, petworth]);
+  assert.deepEqual(nearestFirst(server, undefined, "Safeway"), server);
+  assert.deepEqual(nearestFirst(server, null, "Safeway"), server);
+  // A new list: the server's is not reordered in place.
+  assert.deepEqual(server, [petworth, southwest, dupont]);
+});
+
+test("the places that answer the words by name come first, then the rest, each nearest first", () => {
+  // "Safeway" typed: a fuzzy match near the start does not jump ahead of the Safeways.
+  const safeKleen = at("Safety-Kleen", "Ward 2, Washington", -77.037, 38.908, { osm_value: "car_repair" });
+  const far = at("Safeway", "Ward 4, Petworth", -77.0254, 38.9406);
+  const near = at("Safeway", "Dupont Circle, Washington", -77.0416, 38.9105);
+  assert.deepEqual(nearestFirst([safeKleen, far, near], SCOTT_CIRCLE, "safeway"), [near, far, safeKleen]);
+  // "grocery", which the server answers with supermarkets by tag: none is named for it, so all go by distance.
+  const giant = at("Giant", "Ward 1, Columbia Heights", -77.032, 38.928);
+  assert.deepEqual(nearestFirst([giant, near], SCOTT_CIRCLE, "grocery"), [near, giant]);
+  // The same, named: Grocery Outlets by distance (the test rider's first result was one 66 minutes away).
+  const fallsChurch = at("Grocery Outlet", "Winter Hill, Falls Church", -77.17, 38.88);
+  const silverSpring = at("Grocery Outlet", "Rock Creek Shopping Center, Silver Spring", -77.05, 38.99);
+  const westminster = at("Grocery Outlet", "Carroll Meadows, Westminster", -77.0, 39.57);
+  assert.deepEqual(nearestFirst([fallsChurch, westminster, silverSpring], SCOTT_CIRCLE, "grocery"), [silverSpring, fallsChurch, westminster]);
+});
+
+test("an address keeps the server's order, which weighs the number and the street", () => {
+  const whiteHouse = at("White House", "Ward 2, Washington", -77.0365, 38.8977, { osm_key: "office", osm_value: "government" });
+  const apartments = at("1600 Pennsylvania Ave SE Apartments", "Ward 6, Barney Circle", -76.98, 38.88, { osm_key: "building", osm_value: "apartments" });
+  assert.deepEqual(nearestFirst([whiteHouse, apartments], [-76.98, 38.881], "1600 pennsylvania"), [whiteHouse, apartments]);
+});
+
+test("a name answers the words when each word of three letters or more begins one of its words", () => {
+  const place = { name: "Café Saint-Ex", label: "Café Saint-Ex, Logan Circle, Washington" };
+  assert.ok(namesQuery(place, "cafe saint"));
+  assert.ok(namesQuery(place, "SAINT EX"), "a two-letter word is left out");
+  assert.ok(namesQuery(place, "logan"), "the label counts");
+  assert.ok(namesQuery(place, "1400 14th st nw cafe") === false, "14th is a word of its own");
+  assert.ok(namesQuery(place, "1400 st nw cafe"), "numbers and short words are left out");
+  assert.ok(!namesQuery(place, "saint pizza"));
+  assert.ok(!namesQuery({ name: "Safeway", label: "Safeway, Dupont Circle, Washington" }, "grocery"));
+});
+
+test("a result's row says the area and the distance from the start, miles first", () => {
+  const dupont = at("Safeway", "Dupont Circle, Washington", -77.0416, 38.9105);
+  assert.equal(placeDistance(dupont, SCOTT_CIRCLE), "0.3 mi (0.5 km)");
+  assert.equal(placeRowLine(dupont, SCOTT_CIRCLE), "Dupont Circle, Washington · 0.3 mi (0.5 km)");
+  // With no start, the area alone; the name is on the line above, so it is not said twice.
+  assert.equal(placeRowLine(dupont, undefined), "Dupont Circle, Washington");
+  // A label that does not begin with the name stays whole; one that is the name leaves the distance alone.
+  assert.equal(placeRowLine({ ...dupont, label: "Dupont Circle, Washington" }, undefined), "Dupont Circle, Washington");
+  assert.equal(placeRowLine({ ...dupont, label: "Safeway" }, SCOTT_CIRCLE), "0.3 mi (0.5 km)");
+  assert.equal(placeRowLine({ ...dupont, label: "Safeway" }, undefined), "");
+  // Under a tenth of a mile, feet.
+  assert.equal(placeDistance({ lon: SCOTT_CIRCLE[0], lat: SCOTT_CIRCLE[1] + 0.0005 }, SCOTT_CIRCLE), "180 ft (56 m)");
+  assert.equal(placeDistance({ lon: -77.17, lat: 38.88 }, SCOTT_CIRCLE), "7.4 mi (12.0 km)");
+});
+
+test("Go's search leans to the start, rounded as the location is; none outside the map", () => {
+  assert.deepEqual(startBiasPoint([-77.03652, 38.90771]), [-77.04, 38.91]);
+  assert.equal(startBiasPoint(undefined), undefined);
+  assert.equal(startBiasPoint(null), undefined);
+  assert.equal(startBiasPoint([-74.006, 40.7128]), undefined);
+});
+
+test("nothing found says what to try, and the coverage when the query is a city outside it", () => {
+  assert.equal(nothingFoundText("Safwey Dupnt"), "Nothing found. Check the spelling, or try a street address.");
+  for (const city of ["New York", "new york, ny", "NYC", "Philadelphia", "Philadelphia PA", "Richmond, VA", "  richmond  "]) {
+    assert.ok(namesCityOutside(city), city);
+    assert.equal(nothingFoundText(city), "Nothing found. Check the spelling, or try a street address. RouteMaker covers DC to Baltimore.");
+  }
+  // A street named for a city is a search like any other; so are the cities the map does cover.
+  for (const query of ["New York Ave", "Philadelphia Row", "Richmond Highway", "Baltimore", "Washington", "Annapolis", "va"]) {
+    assert.ok(!namesCityOutside(query), query);
+  }
+  assert.equal(COVERS_LINE, "RouteMaker covers DC to Baltimore.");
 });

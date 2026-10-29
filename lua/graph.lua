@@ -97,6 +97,7 @@ local function derived_from(kv)
   if kv["rm:walk_link"] then derived.walk_link = kv["rm:walk_link"] == "yes" end
   if kv["rm:platform_walk"] then derived.platform_walk = kv["rm:platform_walk"] == "yes" end
   if kv["rm:aisle_link"] then derived.aisle_link = kv["rm:aisle_link"] == "yes" end
+  if kv["rm:link_walk"] then derived.link_walk = kv["rm:link_walk"] == "yes" end
   if kv["rm:sidewalk"] and kv["rm:sidewalk"] ~= "no" then derived.sidewalk = kv["rm:sidewalk"] end
   if kv["rm:hazard"] then derived.hazard = kv["rm:hazard"] == "yes" end
   return derived

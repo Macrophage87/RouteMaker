@@ -12,8 +12,8 @@ import { useEffect, useId, useState } from "react";
 import { t } from "./lib/i18n.ts";
 import { Icon } from "./Icon.tsx";
 import {
+  ACCOUNT_ROUTES,
   MAX_SAVED,
-  MY_ROUTES,
   NAME_MAX,
   NONE_SAVED,
   RESTORED_SAID,
@@ -113,7 +113,7 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
 
   return (
     <section aria-labelledby={headingId} className="my-routes">
-      <h4 id={headingId}>{MY_ROUTES}</h4>
+      <h4 id={headingId}>{ACCOUNT_ROUTES}</h4>
       {failed && <p className="notice">{t("Your saved routes could not be read; try again shortly.")}</p>}
       {routes && routes.length === 0 && !failed && <p className="hint">{NONE_SAVED}</p>}
       {routes && routes.length > 0 && (
