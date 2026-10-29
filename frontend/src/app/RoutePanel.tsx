@@ -6,7 +6,7 @@
 // the state and the effects; the questions, the errors and Start ride are as they were.
 import { choiceColours } from "../lib/routeChoice.ts";
 import { useId, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
-import { routeErrorShown, type BikeshareOption, type RouteError, type RouteResponse } from "../lib/api.ts";
+import { GROUP_RIDE_NO_TRAILS, routeErrorShown, type BikeshareOption, type RouteError, type RouteResponse } from "../lib/api.ts";
 import { placeLetter } from "../lib/letteredPlaces.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
@@ -111,6 +111,8 @@ export interface RouteActionsProps {
 
 /** Go's few extra controls on the route: its route card, its ride types and the Routes chip. */
 export interface GoRouteControls {
+  /** A Mass Ride refused outside DC (the error box's one action): the same points as Group Ride with trails off. */
+  onGroupRideNoTrails: () => void;
   /** The sheet is at its smallest (peek): the route's time, Start and the stress bar only. */
   peek: boolean;
   /** The sheet is at full height (or the page is wide, with no sheet): the elevation chart shows (review F8). */
@@ -216,7 +218,7 @@ function GoBikeOptions({ options }: { options: NonNullable<GoRouteControls["opti
 }
 
 /** A route error: what went wrong and what to do (lib/api.ts routeErrorShown), with one Try again where it can help. */
-function RouteErrorBox({ error, errorRef, retry, goPlace, offline }: { error: RouteError; errorRef: RefObject<HTMLDivElement | null>; retry: () => void; goPlace: string | null; offline: boolean }) {
+function RouteErrorBox({ error, errorRef, retry, goPlace, offline, onGroupRide }: { error: RouteError; errorRef: RefObject<HTMLDivElement | null>; retry: () => void; goPlace: string | null; offline: boolean; onGroupRide: () => void }) {
   const shown = routeErrorShown(error, goPlace, offline);
   const titleId = useId();
   // The words are the alert, said once as they come; the box that takes the focus (App: from Go's Where to?, or back
@@ -235,6 +237,11 @@ function RouteErrorBox({ error, errorRef, retry, goPlace, offline }: { error: Ro
       {shown.retry && (
         <button type="button" onClick={retry}>
           {t("Try again")}
+        </button>
+      )}
+      {error.kind === "mass-outside-dc" && (
+        <button type="button" onClick={onGroupRide}>
+          {t(GROUP_RIDE_NO_TRAILS)}
         </button>
       )}
     </div>
@@ -356,7 +363,7 @@ export function RouteSection(props: RouteSectionProps) {
         </div>
       )}
       {status.kind === "error" && (
-        <RouteErrorBox error={status.error} errorRef={errorRef} retry={retry} goPlace={goMode ? (go.place ?? null) : null} offline={props.offline === true} />
+        <RouteErrorBox error={status.error} errorRef={errorRef} retry={retry} goPlace={goMode ? (go.place ?? null) : null} offline={props.offline === true} onGroupRide={go.onGroupRideNoTrails} />
       )}
       {/* Go keeps the trip under an error (P11): where to, and the ride types, one tap to try another. */}
       {status.kind === "error" && goMode && !go.peek && go.routeCard}

@@ -5612,6 +5612,10 @@ export function App() {
       announce(noviceTransitSaid(label));
     },
     noviceTrips: noviceTripsShown,
+    onGroupRideNoTrails: () => {
+      choosePreset("group-ride", { ...chooseRideType("group-ride", null, dials), trailsOff: true });
+      announceExtra(`${presetSaid("group-ride")}.`);
+    },
     // The route card (edit-route redesign, Stephen 2026-10-18): the start and the destination, and Edit route, which
     // opens Plan's points in a sheet; with a route and never during a ride.
     routeCard:

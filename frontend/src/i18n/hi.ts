@@ -1761,4 +1761,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Start: {note}": "शुरुआत: {note}",
   "Stop {number}: {note}": "पड़ाव {number}: {note}",
   "End: {note}": "मंज़िल: {note}",
+  "Mass Ride stays in DC": "Mass Ride DC में ही रहती है",
+  "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.": "Mass Ride ऐसे सड़क डेटा पर आधारित है जो सिर्फ़ DC के अंदर उपलब्ध है, इसलिए इसकी शुरुआत, पड़ाव और मंज़िल डिस्ट्रिक्ट में होने चाहिए। DC से बाहर जाने के लिए, बिना ट्रेल वाली Group Ride पर जाएँ।",
+  "Switch to Group Ride, trails off": "बिना ट्रेल वाली Group Ride पर जाएँ",
 };

@@ -1386,8 +1386,12 @@ own `_flow_stretches`: each piece's usable width, Avoid, untraced, outside DC) i
   are not changes.
 
 `core.routing.choose_by_capacity` reads every one of the router's routes that way (traced as the
-answer traces them) and keeps the one whose router cost plus climbing plus capacity price is
-least, the router's own unless another saves more than 5 s. Busier roads are not held against a
+answer traces them) and keeps the one that leaves DC least (to the nearest 50 m; the owner,
+2026-10-29: "Don't leave DC on a mass ride. The laws in other jurisdictions are too different for
+us to accommodate a multi-jurisdiction mass ride."), then the one whose router cost plus climbing
+plus capacity price is least, the router's own unless another saves more than 5 s. A Mass Ride
+with a start, stop or end outside DC is refused (`core.routing.mass_ride_outside_dc`, a 400 with
+`code` `mass_ride_outside_dc`). Busier roads are not held against a
 Mass Ride's choice (the LTS checks `calmer_or_own` and `no_busier_than_middle` are skipped once
 it has run): a corked ride is judged by what a road carries (325). Where the router's own route
 cannot be read in time, the choice is made as before. The router gives alternatives only between

@@ -1761,4 +1761,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Start: {note}": "መበገሲ፦ {note}",
   "Stop {number}: {note}": "መዕረፊ {number}፦ {note}",
   "End: {note}": "መወዳእታ፦ {note}",
+  "Mass Ride stays in DC": "Mass Ride ኣብ DC ይተርፍ",
+  "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.": "Mass Ride ኣብ ውሽጢ DC ጥራይ ብዝርከብ ሓበሬታ መገዲ እዩ ተዓቂኑ፤ ስለዚ መበገሲኡ፣ መዕረፊታቱን መወዳእታኡን ኣብ ውሽጢ ዲስትሪክት ክኾኑ ኣለዎም። ካብ DC ወጻኢ ንምዝዋር፣ ናብ Group Ride ብዘይ መገዲ እግሪ ቀይሩ።",
+  "Switch to Group Ride, trails off": "ናብ Group Ride ብዘይ መገዲ እግሪ ቀይሩ",
 };

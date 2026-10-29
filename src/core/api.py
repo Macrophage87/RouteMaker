@@ -204,6 +204,13 @@ class ErrorOut(Schema):
     error: str
 
 
+class RouteRefusalOut(ErrorOut):
+    """A 400 from POST /api/route; `code` names a refusal the app words itself
+    (`mass_ride_outside_dc`)."""
+
+    code: str
+
+
 Coordinate = Annotated[float, Field(allow_inf_nan=False)]
 LonLat = Annotated[list[Coordinate], Field(min_length=2, max_length=2)]
 PresetName = Literal[tuple(presets.PRESETS)]  # type: ignore[valid-type]
@@ -3135,7 +3142,7 @@ def _replacing_wait_s(request) -> float:
     "/route",
     response={
         200: RouteOut,
-        400: ErrorOut,
+        400: RouteRefusalOut | ErrorOut,
         409: ConfirmLongOut | CancelledOut,
         422: ErrorOut,
         429: ErrorOut,
@@ -3231,6 +3238,9 @@ def _waited_s(request) -> float:
 
 
 def _route_answer(request, body: RouteIn, response: HttpResponse):
+    refused = routing.mass_ride_outside_dc(body.preset, body.points)
+    if refused is not None:
+        return Status(400, {"error": refused, "code": "mass_ride_outside_dc"})
     # A loop is as long as its way back too.
     loop = routing.loop_wanted(body.points, body.loop, body.preset)
     span = span_m(routing.loop_points(body.points, loop))

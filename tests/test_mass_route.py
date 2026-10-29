@@ -425,6 +425,20 @@ class TestTheAnswer:
         assert small["mass_capacity"]["choice"]["chosen"] == 0, small["mass_capacity"]
         assert big["geometry"] != small["geometry"]
 
+    def test_a_mass_ride_with_a_point_outside_dc_is_refused_and_says_why(self, planned):
+        # The owner, 2026-10-29: "Don't leave DC on a mass ride", then: refuse points outside DC.
+        from test_avoid_junctions import body_for
+
+        inside = body_for("mass-ride")["points"]
+        arlington = [-77.0910, 38.8800]
+        refused = planned("mass-ride", points=[inside[0], arlington])
+        assert refused.get("code") == "mass_ride_outside_dc", refused
+        assert refused["error"] == routing.MASS_RIDE_OUTSIDE_DC
+        assert (
+            planned("default", points=[inside[0], arlington]).get("code") != "mass_ride_outside_dc"
+        )
+        assert "mass_capacity" in planned("mass-ride")
+
     def test_a_mass_ride_says_its_capacity_for_the_ride_size_and_no_other_does(self, planned):
         body = planned("mass-ride")["mass_capacity"]
         assert body["riders"] == 500 and body["need_riders_per_min"] == 100

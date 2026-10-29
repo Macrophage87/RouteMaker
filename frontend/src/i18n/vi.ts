@@ -1761,4 +1761,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Start: {note}": "Xuất phát: {note}",
   "Stop {number}: {note}": "Điểm dừng {number}: {note}",
   "End: {note}": "Điểm cuối: {note}",
+  "Mass Ride stays in DC": "Mass Ride chỉ trong DC",
+  "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.": "Mass Ride được hiệu chỉnh theo dữ liệu đường chỉ có trong DC, nên điểm xuất phát, các điểm dừng và điểm đến phải nằm trong Đặc khu. Để đạp ra ngoài DC, hãy chuyển sang Group Ride không đi đường mòn.",
+  "Switch to Group Ride, trails off": "Chuyển sang Group Ride không đường mòn",
 };

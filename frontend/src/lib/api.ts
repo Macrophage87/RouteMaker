@@ -1116,6 +1116,7 @@ export type ErrorKind =
   | "router-down"
   | "timed-out"
   | "bikeshare-unavailable"
+  | "mass-outside-dc"
   | "server"
   | "network";
 
@@ -1262,6 +1263,13 @@ function wait(retryAfterS: number | undefined, fallback: string): string {
   return retryAfterS <= 1 ? t("Try again in a moment.") : t("Try again in {seconds} seconds.", { seconds: retryAfterS });
 }
 
+/** core.routing.mass_ride_outside_dc's refusal: a Mass Ride's start, stop or end outside DC. */
+export const MASS_OUTSIDE_DC_CODE = "mass_ride_outside_dc";
+export const MASS_OUTSIDE_DC_SAID =
+  "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.";
+/** Its one action (RouteErrorBox). */
+export const GROUP_RIDE_NO_TRAILS = "Switch to Group Ride, trails off";
+
 export function describeError(status: number, body: unknown, retryAfter: string | null): RouteError {
   const said = serverSentence(body);
   const parsed = parseRetryAfter(retryAfter);
@@ -1275,6 +1283,12 @@ export function describeError(status: number, body: unknown, retryAfter: string 
       // The API's own words: the ceiling is its to set, and it says what it is.
       message: asSentence(withoutValidatorPrefix(said)),
     };
+  }
+  const refusal = body && typeof body === "object" ? (body as { code?: unknown }).code : undefined;
+  if (status === 400 && refusal === MASS_OUTSIDE_DC_CODE) {
+    // The owner, 2026-10-29: "Don't leave DC on a mass ride", then: "Offer to switch to a no trail group ride if they
+    // want to go outside DC. Mostly focus on the fact that it's calibrated to data that's only available inside DC."
+    return { ...base, kind: "mass-outside-dc", title: t("Mass Ride stays in DC"), message: t(MASS_OUTSIDE_DC_SAID) };
   }
   if (status === 400) {
     const [message, ownStep] = inputRefusal(said);

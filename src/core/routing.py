@@ -2194,6 +2194,26 @@ def _named(stretches: list[tuple], leg_runs: list, pieces: list[Piece]) -> list[
     return [(*stretch, name) for stretch, name in zip(stretches, names, strict=True)]
 
 
+# The app says it in the rider's language from the answer's `code` (frontend/src/lib/api.ts).
+MASS_RIDE_OUTSIDE_DC = (
+    "Mass Ride is calibrated to road data that is only available inside DC, so its start, stops"
+    " and end must be in the District. To ride outside DC, use Group Ride with trails off."
+)
+
+
+def mass_ride_outside_dc(preset: str | None, points) -> str | None:
+    """The refusal of a Mass Ride with a start, stop or end outside the District, else None
+    (the owner, 2026-10-29: "Don't leave DC on a mass ride. The laws in other jurisdictions are
+    too different for us to accommodate a multi-jurisdiction mass ride.", then chose to refuse
+    its points outside DC). A route between points in DC that still crosses the line plans,
+    with the app's leaves-DC note; `choose_by_capacity` prefers one that stays in."""
+    from .mass_tiles import inside_dc
+
+    if preset != "mass-ride" or all(inside_dc(lon, lat) for lon, lat in points):
+        return None
+    return MASS_RIDE_OUTSIDE_DC
+
+
 # Mass Ride's out-of-DC measure is rounded to this before it decides (`choose_by_capacity`).
 OUTSIDE_DC_STEP_M = 50.0
 
@@ -2209,13 +2229,14 @@ def choose_by_capacity(
     traces: dict | None = None,
 ) -> tuple[int, dict | None]:
     """A Mass Ride's choice among the router's routes by road capacity (PLAN "Mass Ride map
-    and mode", items 120-123, 128; `routemaker.mass_route`): the index of the trip whose router
-    cost plus its climbing (`hill_part`) plus its capacity price for a group of `riders` is
-    least, and what was weighed. The router's own route is kept unless another saves more than
-    HILLS_EPS_S. Busier roads are not held against an alternative: a Mass Ride is corked and
-    judged by what a road carries, not its LTS (OWNER-DECISIONS 125, 325). Where the router's
-    own route cannot be read in time, (0, None): the caller chooses as before; an alternative
-    that cannot be read is passed over."""
+    and mode", items 120-123, 128; `routemaker.mass_route`): the index of the trip that leaves
+    DC least (the owner, 2026-10-29), then whose router cost plus its climbing (`hill_part`)
+    plus its capacity price for a group of `riders` is least, and what was weighed. The
+    router's own route is kept unless another saves more than HILLS_EPS_S. Busier roads are
+    not held against an alternative: a Mass Ride is corked and judged by what a road carries,
+    not its LTS (OWNER-DECISIONS 125, 325). Where the router's own route cannot be read in
+    time, (0, None): the caller chooses as before; an alternative that cannot be read is
+    passed over."""
     prefetch_traces(variant, costing, trips, deadline, traces)
     best, best_score, best_outside = 0, None, 0
     weighed: list[dict] = []
