@@ -4725,6 +4725,29 @@ car-free roads come from the motor-vehicle conditionals
 (`routemaker.facility.car_free_when`), which this function does not read. `tests/test_lua_remap.py` checks it through `lua/graph.lua` on every
 variant and every one-way spelling.
 
+**The router applies the time window** (FOLLOWUP-CONDITIONAL-ACCESS, the owner,
+2026-10-29). The static grant above opens the way; Valhalla's C++ parser then reads
+the undirected `bicycle:conditional` as a timed restriction, so the edge is open
+only inside the window at the request's `date_time` (every plan sends the ride
+time's representative moment: Saturday 9:00 for a weekend ride, Tuesday 8:00 or
+12:00 for a weekday one). The parser drops a rule with a sun event in it,
+reads only `yes`, `designated`, `private` and `delivery` as grants (`permissive`
+reads as a denial), and reads one rule set. So for an undirected grant
+`remap_conditional_access` writes `bicycle:conditional` again as one `yes @ (...)`
+of the granting branches, each sun event a fixed time that keeps inside the real
+window every day of the year here (`SUN_LATEST` for a start, `SUN_EARLIEST` for an
+end: dawn 07:15, dusk 17:10, so Pulaski Highway reads `yes @ (Sa-Su 07:15-17:10;
+PH 07:15-17:10)`). A grant whose condition cannot be so written (`wet`, a window
+between sun events across midnight) is not opened at all, as unclear access is
+closed; nor is one on holidays alone (`PH dawn-dusk`), since the parser drops a rule
+that starts with a holiday and a grant with no rule left would reach it as open at
+every hour. A bare grant with no condition opens the way unconditionally, as before.
+A request with no `date_time` (map matching, the stop-order matrix) leaves timed
+restrictions unchecked, so there the way reads open at every hour, as before. A directional conditional (`bicycle:forward:conditional`), which the parser
+does not read, is still resolved statically. A Saturday 9:00 plan should ride Pulaski
+Highway with the traffic and a Tuesday plan should not (not yet checked on built tiles). The fixed times are a
+conservative approximation, short of the real window in summer.
+
 **Measured** on the 2026-09-25 clipped region extract
 (`scripts/contraflow_census.py`, read-only; 137,518 non-trail one-way ways):
 192 ways and 15.97 miles (25.70 km) have contraflow on the standard reading
