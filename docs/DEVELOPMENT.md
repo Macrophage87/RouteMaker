@@ -5058,6 +5058,12 @@ and its header). What the panel shows is in `app/`, moved out unchanged:
   Climbs layer's "Show climbs from") goes inside, under that layer's switch; long help goes by
   the legend in the Legend sheet, not in Layers.
 - `app/hooks.ts`: `useNarrow` (and `NARROW`), `useLongerThan`, `useSettled`.
+- `app/LiveMap.tsx`: `LiveMap`, the map with the rider's position and the elevation chart's
+  scrub point read from their own stores (`lib/liveValue.ts`), and `LiveRiderPoint`, the
+  same for a ride group's dot. A GPS fix (about once a second) or a scrub re-renders the map
+  alone, not App and the hidden planner. App keeps a ride's slower parts (the route, the
+  stops, Detour's letters) in `rideView` and re-renders only when they change
+  (`lib/rideViewKept.ts`). Unlike the pass-throughs above, these two read their stores.
 
 Each component is a pass-through: it takes its props under the names App gives them, keeps
 no state and calls no hook (`RouteSummary` keeps its own `useStressStyle()`), and App renders
@@ -8636,8 +8642,10 @@ and place names, agency notices and anything sent to the server or kept on the d
 written. Miles come first in every language.
 
 - Catalogs: `frontend/src/i18n/<language>.ts`, one object from the English phrase to its
-  translation. Spanish (`es.ts`) is in the bundle. The others are fetched before the app starts
-  (`loadLanguage`, called from main.tsx), and the service worker keeps the one a rider uses.
+  translation. Each, Spanish's (`es.ts`) included, is a file of its own fetched before the app
+  starts (`loadLanguage`, called from main.tsx and the Featured post page's `post/main.ts`), so
+  an English reader downloads none. The service worker precaches Spanish's and keeps any other
+  the first time a rider uses it.
 - The language a page opens in (`startLanguage`): the rider's choice (Settings > Display >
   Language, kept on this device), else the phone's language if it is English or Spanish, else
   English. Since v0.15.0 the 19 draft languages are used only once a rider picks one
