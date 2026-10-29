@@ -416,6 +416,14 @@ def test_stops_that_are_not_timepoints_are_interpolated_not_dropped() -> None:
     assert len(light) == 1 and len(light[0]["stops"]) == 5
 
 
+def test_the_build_starts_yesterday_in_washington_whatever_the_hosts_zone() -> None:
+    # 9 pm Eastern is already the next day in UTC: still yesterday's date in Washington.
+    from datetime import UTC
+
+    assert build.default_start(datetime(2026, 10, 30, 1, 0, tzinfo=UTC)) == date(2026, 10, 28)
+    assert build.default_start(at(2026, 10, 29, 0, 30)) == date(2026, 10, 28)
+
+
 def test_a_schedule_about_to_run_out_is_logged_and_alerted(tmp_path, caplog) -> None:
     path = tmp_path / "transit-schedule.json"
     path.write_text(built(date(2026, 9, 28))[0])
@@ -1619,6 +1627,9 @@ def test_a_system_whose_feed_ends_inside_the_window_is_left_out_after_it_not_clo
 
     before = transit.load(path, date(2026, 10, 20))
     assert "marc" in [s.id for s in before.systems] and before.note == ""
+    # 1:30 am on the 21st is still the 20th's service day: that night's trains stay planned.
+    owl = transit.load(path, transit.moment_of(at(2026, 10, 21, 1, 30)).service_day)
+    assert "marc" in [s.id for s in owl.systems] and owl.note == ""
     after = transit.load(path, date(2026, 10, 21))
     assert "marc" not in [s.id for s in after.systems]
     assert "wmata-rail" in [s.id for s in after.systems], "the others are still planned"
@@ -1638,7 +1649,9 @@ def test_a_system_whose_feed_ends_inside_the_window_is_left_out_after_it_not_clo
     assert "MARC's timetable ran out on 2026-10-20" in transit.schedule_alert(
         path, date(2026, 10, 25)
     )
-    assert transit.schedule_alert(path, date(2026, 10, 1)) is None
+    # Three weeks ahead the alert starts; before that, nothing.
+    assert "20 day(s) left" in transit.schedule_alert(path, date(2026, 10, 1))
+    assert transit.schedule_alert(path, date(2026, 9, 30)) is None
 
 
 def test_a_metro_gtfs_that_ends_early_gives_way_to_the_typical_timetable(tmp_path) -> None:

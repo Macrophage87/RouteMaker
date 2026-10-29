@@ -1137,3 +1137,4 @@ def test_bicycle_link_service_matches_the_remap() -> None:
     assert table("BICYCLE_LINK_SERVICES") == set(facility_rules.HIDDEN_SERVICE)
     assert table("BICYCLE_LINK_GRANTS") == set(facility_rules.BICYCLE_LINK_GRANTS)
     assert table("PERMISSIVE_ACCESS") == set(facility_rules.PERMISSIVE_ACCESS)
+    assert table("USE_SIDEPATH_CLOSING_ACCESS") == set(facility_rules.USE_SIDEPATH_CLOSING_ACCESS)
