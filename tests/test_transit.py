@@ -604,6 +604,26 @@ def test_dc_to_baltimore_takes_marc_with_the_bike(schedule) -> None:
     assert "Light RailLink: no bikes on board at this time." not in out["notes"]
 
 
+def test_a_spanish_plan_says_its_panel_in_spanish(schedule) -> None:
+    """The 2026-10-29 review: the summary, the option rows and the comparison too, not only
+    the steps. The notes the app says itself (SCHEDULED_WORDS) stay as the app looks for them."""
+    from routemaker import lang
+
+    with lang.speaking("es"):
+        plan = plan_bike(schedule, NOMA, BALTIMORE, at(2026, 9, 30, 6, 20))
+        out = transit.block(plan, schedule)
+    assert out["summary"].startswith("Unos ") and "de puerta a puerta" in out["summary"]
+    rows = [o["label"] for o in out["options"]]
+    assert "En bicicleta todo el camino" in rows
+    assert any("MARC hasta " in row for row in rows)
+    assert out["comparison"] is None or "todo el camino" in out["comparison"]
+    assert transit.SCHEDULED_WORDS in out["notes"]
+    # English is as it was.
+    english = transit.block(plan_bike(schedule, NOMA, BALTIMORE, at(2026, 9, 30, 6, 20)), schedule)
+    assert "Ride the whole way" in [o["label"] for o in english["options"]]
+    assert english["summary"].endswith("min door to door, scheduled.")
+
+
 def test_the_light_rail_takes_a_bike_at_rush_hour_and_outside_it(schedule) -> None:
     light_rail = next(
         p for p in schedule.patterns if schedule.systems[p.system].name == "Light RailLink"
@@ -1569,6 +1589,11 @@ def test_an_expired_schedule_keeps_metro_on_its_typical_timetable(tmp_path) -> N
     before = transit.load(path, date(2026, 9, 1))
     assert [s.id for s in before.systems] == ["wmata-rail"]
     assert "cover September 28 to November 11, 2026." in before.note
+    # The note is worded when read: the same cached schedule says it in Spanish to a Spanish plan.
+    from routemaker import lang
+
+    with lang.speaking("es"):
+        assert "cubren del 28 de septiembre al 11 de noviembre de 2026." in before.note
     # The operator is still told to rebuild it.
     assert "ran out on 2026-11-11" in transit.schedule_alert(path, after_end)
     # Within its window, the file itself.
