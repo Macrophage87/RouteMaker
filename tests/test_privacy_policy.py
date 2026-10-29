@@ -174,7 +174,9 @@ class TestPage:
             "24 hours",  # signed_out_suggestions: SignedOutSend
             "about 30 hours",  # ratelimit.RETENTION and the sweep
             "the last seven kept",  # procrastinate.BACKUP_KEEP
-            "none older than a week",  # procrastinate.BACKUP_MAX_AGE
+            "leaves them within a week",  # procrastinate.BACKUP_MAX_AGE
+            "with the next one that succeeds",  # retention.prune_backups keeps the newest
+            "before an update are kept on the server for at most a week",  # prune_snapshots
             "one a night, encrypted",  # procrastinate.perform_backup, through age
             "30 days unused, or after 90 days",  # revocation's idle and absolute lifetimes
             "Two cookies",  # the session and CSRF cookies

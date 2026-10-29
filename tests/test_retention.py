@@ -24,6 +24,7 @@ from pipeline.retention import (
     KEEP_BUILDS,
     prune_backups,
     prune_builds,
+    prune_snapshots,
     prune_tile_builds,
     unique_build_id,
 )
@@ -305,6 +306,40 @@ def test_a_dump_past_its_age_is_pruned_even_when_the_count_would_keep_it(tmp_pat
 
     assert [path.name for path in removed] == names[:2]
     assert sorted(entry.name for entry in tmp_path.iterdir()) == names[2:]
+
+
+def test_the_newest_dump_is_never_pruned_for_its_age(tmp_path, caplog) -> None:
+    """After a run of failed nights the newest dump is the only backup there is. It stays,
+    and the prune says loudly that nothing newer has succeeded."""
+    now = datetime(2026, 10, 29, 7, 30, tzinfo=UTC)
+    names = ["routemaker-20261018T070000Z.dump.age", "routemaker-20261019T070000Z.dump.age"]
+    for name in names:
+        (tmp_path / name).write_bytes(b"dump")
+
+    with caplog.at_level("WARNING", logger="pipeline.retention"):
+        removed = prune_backups(tmp_path, keep=7, max_age=timedelta(days=6, hours=12), now=now)
+
+    assert [path.name for path in removed] == names[:1]
+    assert (tmp_path / names[-1]).exists()
+    assert any(
+        record.levelname == "WARNING" and names[-1] in record.getMessage()
+        for record in caplog.records
+    )
+
+
+def test_pre_update_dumps_older_than_the_cap_go_newest_included(tmp_path) -> None:
+    """The plain safety dumps receive-data.sh takes before an update, held to the nightly
+    dumps' age between updates. Other files in the folder are not touched."""
+    now = datetime(2026, 10, 29, 7, 30, tzinfo=UTC)
+    aged = ["pre-release-20261020T010000Z.dump", "pre-rollback-20261022T070000Z.dump"]
+    kept = ["pre-update-20261028T070000Z.dump", "routemaker-20261001T070000Z.dump.age", "x.dump"]
+    for name in [*aged, *kept]:
+        (tmp_path / name).write_bytes(b"dump")
+
+    removed = prune_snapshots(tmp_path, timedelta(days=6, hours=12), now=now)
+
+    assert [path.name for path in removed] == aged
+    assert sorted(entry.name for entry in tmp_path.iterdir()) == sorted(kept)
 
 
 def test_plain_dumps_go_once_an_encrypted_one_is_in_place(tmp_path) -> None:

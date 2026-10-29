@@ -1761,9 +1761,16 @@ def test_the_runbooks_restore_is_clean_into_an_empty_database_and_fails_into_a_f
             assert made.returncode == 0, made.stderr.decode()
 
     def restore(dump: Path, name: str) -> subprocess.CompletedProcess:
-        # Decrypted first, with the private key, as the runbook does on the owner's computer.
-        with decrypted(dump, backup_key_pair[0]).open("rb") as archive:
-            return run("pg_restore", "--no-owner", "-d", name, stdin=archive)
+        # Through a pipe, as the runbook does it: `age --decrypt` with the private key on the
+        # owner's computer, straight into pg_restore, with no plain copy on disk.
+        decrypt = subprocess.Popen(
+            ["age", "--decrypt", "--identity", str(backup_key_pair[0]), str(dump)],
+            stdout=subprocess.PIPE,
+        )
+        restored = run("pg_restore", "--no-owner", "-d", name, stdin=decrypt.stdout)
+        decrypt.stdout.close()
+        assert decrypt.wait() == 0, "age could not decrypt the dump"
+        return restored
 
     monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "app")
     app_dump = perform_backup()
@@ -1954,6 +1961,83 @@ def test_a_recipients_file_put_in_place_after_the_worker_started_is_used_that_ni
         perform_backup()
     recipients.parent.mkdir()
     recipients.write_text(backup_key_pair[1].read_text())
+
+    destination = perform_backup()
+
+    assert left_behind(tmp_path / "backups") == [destination.name]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_age_that_fails_partway_leaves_nothing_on_the_volume(monkeypatch, tmp_path) -> None:
+    """`age` writes its header, takes some of the archive and exits 1 (a full volume, say).
+    The night fails and nothing is left: no part file, and no dump under the final name."""
+    import subprocess as sp
+
+    from config.procrastinate import perform_backup
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_age = fake_bin / "age"
+    fake_age.write_text(
+        "#!/bin/sh\n"
+        "printf 'age-encryption.org/v1\\n'\n"
+        "head -c 4096 >/dev/null\n"
+        "echo 'age: error: no space left on device' >&2\n"
+        "exit 1\n"
+    )
+    fake_age.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
+
+    with pytest.raises(sp.CalledProcessError) as failed:
+        perform_backup()
+
+    assert failed.value.cmd == ["age"]
+    assert left_behind(tmp_path / "backups") == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_listing_that_exits_non_zero_fails_the_night(monkeypatch, tmp_path) -> None:
+    """The table of contents is the proof the dump is what was asked for; without it the
+    night is a failure, and the encrypted archive it could not vouch for is removed."""
+    import subprocess as sp
+
+    from core.models import ScheduledRun
+
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
+    monkeypatch.setattr("config.procrastinate.LIST_ARCHIVE", ("sh", "-c", "cat >/dev/null; exit 1"))
+
+    with pytest.raises(sp.CalledProcessError):
+        app.tasks["nightly_backup"].func(timestamp=0)
+
+    assert not ScheduledRun.objects.get(task="nightly_backup").succeeded
+    assert left_behind(tmp_path / "backups") == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_budget_timer_that_fires_after_every_process_exited_is_not_a_timeout(
+    monkeypatch, tmp_path
+) -> None:
+    """The timer can go off in the moment between the last process exiting and its being
+    cancelled. Nothing is left to kill then, and the finished dump is kept, not reported
+    as killed. Simulated by a timer whose cancel is where it fires."""
+    import threading
+
+    from config.procrastinate import perform_backup
+
+    class LateTimer:
+        def __init__(self, interval, function):
+            self.function = function
+            self.daemon = True
+
+        def start(self):
+            pass
+
+        def cancel(self):
+            self.function()
+
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
+    monkeypatch.setattr(threading, "Timer", LateTimer)
 
     destination = perform_backup()
 

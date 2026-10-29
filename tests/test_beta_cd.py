@@ -1315,13 +1315,14 @@ def test_receive_data_keeps_the_newest_safety_dumps_of_each_kind(tmp_path: Path)
     backups.mkdir(parents=True)
     old = []
     for i in range(4):
-        dump = backups / f"pre-update-2026010{i}T000000Z.dump"
+        # Named hours ago, so that the count is what drops them and not their age.
+        dump = backups / f"pre-update-{_utc_stamp(hours_ago=10 - i)}.dump"
         dump.write_text("old")
-        os.utime(dump, (time.time() - (10 - i) * 86400,) * 2)
+        os.utime(dump, (time.time() - (10 - i) * 3600,) * 2)
         old.append(dump)
-    other = backups / "pre-restore-20260101T000000Z.dump"
+    other = backups / f"pre-restore-{_utc_stamp(hours_ago=30)}.dump"
     other.write_text("old")
-    os.utime(other, (time.time() - 30 * 86400,) * 2)
+    os.utime(other, (time.time() - 30 * 3600,) * 2)
     env_file = tmp_path / ".env"
     env_file.write_text(f"COMPOSE_PROJECT_NAME=routemaker-beta\nDATA_ROOT={tmp_path / 'data'}\n")
     env = {
@@ -1344,6 +1345,51 @@ def test_receive_data_keeps_the_newest_safety_dumps_of_each_kind(tmp_path: Path)
     # The new one and the two newest before it stay; other kinds are not touched.
     assert [d.exists() for d in old] == [False, False, True, True]
     assert other.exists()
+
+
+def _utc_stamp(hours_ago: float) -> str:
+    return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(time.time() - hours_ago * 3600))
+
+
+@needs_git
+def test_receive_data_drops_safety_dumps_older_than_six_and_a_half_days(tmp_path: Path) -> None:
+    """They stay plain, for an on-server rollback, so they are kept no longer than the
+    encrypted nightly dumps: of any label, by the instant in the name, whatever the count."""
+    repo = tmp_path / "repo"
+    (repo / "scripts" / "beta").mkdir(parents=True)
+    (repo / "scripts" / "beta" / "beta-compose.sh").write_text(STUB_COMPOSE)
+    (repo / "scripts" / "beta" / "beta-compose.sh").chmod(0o755)
+    backups = tmp_path / "data" / "backups"
+    backups.mkdir(parents=True)
+    aged = [
+        backups / f"pre-update-{_utc_stamp(hours_ago=160)}.dump",
+        backups / f"pre-rollback-{_utc_stamp(hours_ago=24 * 9)}.dump",
+    ]
+    recent = backups / f"pre-rollback-{_utc_stamp(hours_ago=150)}.dump"
+    nightly = backups / "routemaker-20260101T070000Z.dump.age"
+    for dump in [*aged, recent, nightly]:
+        dump.write_text("old")
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"COMPOSE_PROJECT_NAME=routemaker-beta\nDATA_ROOT={tmp_path / 'data'}\n")
+    env = {
+        **os.environ,
+        "RECEIVE_DATA_REPO": str(repo),
+        "STUB_LOG": str(tmp_path / "calls.log"),
+        "STUB_RUNNING": "postgis",
+    }
+    done = subprocess.run(
+        ["bash", str(BETA / "receive-data.sh"), "--env-file", str(env_file)]
+        + ["snapshot-db", "--label", "update"],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    assert Path(done.stdout.strip()).exists(), "the one just written stays"
+    assert [dump.exists() for dump in aged] == [False, False]
+    assert recent.exists(), "under six and a half days old"
+    assert nightly.exists(), "the nightly dumps are the worker's to prune"
 
 
 # --- the runbook ---
@@ -1945,10 +1991,30 @@ def test_prune_drops_a_half_written_dump(beta: Beta) -> None:
     backups = beta.cd / "backups"
     backups.mkdir(parents=True, exist_ok=True)
     (backups / "pre-release-20261009T000000Z.dump.part").write_text("partial")
+    (backups / "routemaker-20261009T000000Z.dump.age.part").write_text("partial")
     beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
     done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
     assert "deployed: v0.2.0" in beta.status(), done.stdout
     assert not list(backups.glob("*.part"))
+
+
+def test_every_pass_drops_pre_update_dumps_older_than_six_and_a_half_days(beta: Beta) -> None:
+    """Plain, for the rollback here, so kept no longer than the nightly dumps: on every
+    pass, with or without a release, except the one a stopped pass's rollback will need."""
+    backups = beta.cd / "backups"
+    backups.mkdir(parents=True, exist_ok=True)
+    aged = backups / "pre-release-20261001T000000Z.dump"
+    needed = backups / "pre-rollback-20261002T000000Z.dump"
+    recent = backups / "pre-release-20261003T000000Z.dump"
+    for dump, days in ((aged, 7), (needed, 8), (recent, 6)):
+        dump.write_text("dump")
+        os.utime(dump, (time.time() - days * 86400,) * 2)
+    (beta.cd / "run-snapshot").write_text(f"{needed}\n")
+
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+
+    assert not aged.exists(), done.stdout + done.stderr
+    assert needed.exists() and recent.exists()
 
 
 def test_the_handout_and_runbook_say_what_a_deploy_looks_like() -> None:

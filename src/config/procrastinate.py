@@ -160,7 +160,9 @@ BACKUP_KEEP = 7
 # core.account_deletion.KEPT). The count alone does not keep that promise, because a night
 # whose dump fails prunes nothing to make room, so a week of failed dumps kept the old ones
 # for as long as the failures lasted. Six and a half days rather than seven so that a run
-# that starts late one night and on time a week later still drops the week-old dump.
+# that starts late one night and on time a week later still drops the week-old dump. The
+# newest dump is kept whatever its age (pipeline.retention.prune_backups), and the plain
+# pre-update dumps in the same folder are held to the same age (prune_snapshots).
 BACKUP_MAX_AGE = timedelta(days=6, hours=12)
 
 
@@ -852,7 +854,9 @@ def nightly_backup(timestamp: int) -> None:
     path too, but with nothing new written it has one fewer dump to count, so a
     failed night keeps the oldest dump it would otherwise have dropped - unless
     that dump is past `BACKUP_MAX_AGE`, which goes either way, because deleted
-    accounts are promised to leave the backups within a week.
+    accounts are promised to leave the backups within a week. The newest dump is
+    the exception: it is never removed for its age, since after a run of failed
+    nights it is the only backup left.
     """
     from django.conf import settings
 
@@ -871,6 +875,7 @@ def nightly_backup(timestamp: int) -> None:
             pruned_dumps = retention.prune_backups(
                 settings.BACKUP_DIR, keep=BACKUP_KEEP, max_age=BACKUP_MAX_AGE
             )
+            pruned_snapshots = retention.prune_snapshots(settings.BACKUP_DIR, BACKUP_MAX_AGE)
             pruned_runs = prune_run_rows()
             pruned_jobs = prune_job_rows()
             # Rows that are otherwise dropped only when someone shares, opens or sends
@@ -879,6 +884,7 @@ def nightly_backup(timestamp: int) -> None:
             pruned_sends = signed_out_suggestions.prune()
         run.detail = (
             f"{destination}; pruned {len(pruned_dumps)} old dumps, "
+            f"{len(pruned_snapshots)} pre-update dumps, "
             f"{pruned_runs} run rows, {pruned_jobs} finished job rows, "
             f"{pruned_shared} shared routes, {pruned_sends} signed-out send rows"
         )
@@ -1239,6 +1245,7 @@ def perform_backup(now=None, timeout_s: float | None = None) -> Path:
         # The rename is the last thing that happens, so the ordinary name exists
         # only for an archive that was written whole and verified.
         part.replace(destination)
+        _fsync_directory(destination.parent)
     except BaseException:
         # Every failure path, including the ones nothing here anticipates: what
         # must not survive is a partial or rejected archive under a name the
@@ -1268,8 +1275,12 @@ def _dump_encrypted(
     processes: list[subprocess.Popen] = []
 
     def kill_all() -> None:
-        killed.set()
-        for process in processes:
+        # Only a process still running is a timeout: the timer can fire in the moment
+        # after the last one exited, and a finished dump is not a killed one.
+        running = [process for process in processes if process.poll() is None]
+        if running:
+            killed.set()
+        for process in running:
             process.kill()
 
     listing: list[bytes] = []
@@ -1314,6 +1325,8 @@ def _dump_encrypted(
                 stage["now"] = name
                 process.wait()
             reader.join()
+            # On the disk before the rename makes it the dump a restore trusts.
+            os.fsync(sink.fileno())
         except BrokenPipeError:
             # age went away mid-stream (a key it refused, a full volume). Its own exit
             # status says why; the other two are stopped rather than left writing.
@@ -1333,6 +1346,15 @@ def _dump_encrypted(
         if process.returncode != 0:
             raise subprocess.CalledProcessError(process.returncode or 1, [name])
     return b"".join(listing).decode("utf-8", errors="replace")
+
+
+def _fsync_directory(directory: Path) -> None:
+    """Make a rename in `directory` durable."""
+    descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _remaining(deadline: float, what: str) -> float:

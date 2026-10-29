@@ -271,7 +271,8 @@ declining every week with "grow the volume" as the only remedy.
 | What | Kept | Where |
 | --- | --- | --- |
 | Dated tile build directories | Whatever `current` and `previous` point at, plus the build of the run that is in progress | `pipeline.retention.prune_builds`, run by the rebuild task before the disk gate and again on its way out |
-| Database dumps | 7 (`BACKUP_KEEP`), and none older than 6½ days (`BACKUP_MAX_AGE`), so deleted accounts leave them within the week the privacy page promises; plain `.dump` files from before encryption go once a newer `.dump.age` exists | `pipeline.retention.prune_backups`, run by the backup task every night, whether or not that night's dump succeeded |
+| Database dumps | 7 (`BACKUP_KEEP`), and none older than 6½ days (`BACKUP_MAX_AGE`) except the newest, so deleted accounts leave them within the week the privacy page promises; plain `.dump` files from before encryption go once a newer `.dump.age` exists | `pipeline.retention.prune_backups`, run by the backup task every night, whether or not that night's dump succeeded |
+| Pre-update dumps (`pre-<label>-<UTC instant>.dump`, plain) | 3 of each label (`RECEIVE_DATA_KEEP`, `RM_CD_KEEP`), and none older than 6½ days, newest included | `scripts/beta/receive-data.sh` when it takes one; `pipeline.retention.prune_snapshots` nightly in `<DATA_ROOT>/backups`; `scripts/beta/auto-release.sh` on every pass in its own folder |
 | `scheduled_run` rows | 30 days, plus the newest row and the newest successful row per task | `core.runs.prune_run_rows`, run nightly |
 | Finished `procrastinate_jobs` and their events | 30 days | `core.runs.prune_job_rows`, run nightly |
 | `rate_limit_window` rows (keyed client addresses) | 1 day idle, so at most about 30 hours | `core.ratelimit.purge_expired`, run by the six-hourly membership sweep |
@@ -2512,6 +2513,60 @@ owner's key. The plain archive exists only in the pipes between `pg_dump`, `age`
   dump would be refused.
 - **Plain dumps from before encryption** are removed by the first night's pruning after an
   encrypted dump exists.
+- **The pre-update dumps stay plain.** `scripts/beta/receive-data.sh` (`snapshot-db`, and the
+  `pre-rollback` dump `restore-dump` takes) and `scripts/beta/auto-release.sh` (its
+  `pre-release` dump) write `pre-<label>-<UTC instant>.dump` before they change the database,
+  and a rollback restores one on the server, which has no private key. So they are not
+  encrypted; instead they are kept at most 6½ days, the newest included, as well as by count.
+  The only one spared is the dump a rollback is about to restore (the one a stopped
+  `auto-release.sh` pass names in `run-snapshot`, or the one `restore-dump` is putting back):
+  a rollback undoes an update within hours, and a database put back a week later would undo
+  a week of riders' changes anyway.
+
+### Setting up the key (the owner, once)
+
+On the owner's computer, with [age](https://age-encryption.org) installed. Make the key pair,
+either as a plain file:
+
+```sh
+age-keygen -o routemaker-backup-key.txt
+```
+
+```sh
+age-keygen -y routemaker-backup-key.txt > age-recipients.txt
+```
+
+or, better, protected with a passphrase (age asks for it twice; it asks again at every
+decryption):
+
+```sh
+age-keygen 2> age-keygen-public.txt | age --passphrase > routemaker-backup-key.age
+```
+
+```sh
+sed -n 's/^Public key: //p' age-keygen-public.txt > age-recipients.txt
+```
+
+Keep the key file on the owner's computer and in a second safe place of the owner's: **a lost
+private key is every backup lost**, and nothing on the server can recover it. Then copy only
+`age-recipients.txt` (one `age1...` line, safe to share) to the server, where `<server>` is how
+the owner reaches the host over ssh:
+
+```sh
+scp age-recipients.txt <server>:age-recipients.txt
+```
+
+On the server, put it where the worker reads it, owned by the containers' uid:
+
+```sh
+sudo install -o 10001 -g 10001 -m 0644 age-recipients.txt <DATA_ROOT>/backups/age-recipients.txt
+```
+
+And, in the checkout, once the release with encryption is deployed, the dry run:
+
+```sh
+docker compose exec -T worker ./manage.py check_backup_encryption
+```
 
 **A file under that name is a dump that was written whole and verified.** It is
 written as `routemaker-<UTC instant>.dump.age.part` and renamed only once the
@@ -2524,12 +2579,14 @@ carrying the very rows the exclusion exists to keep off the disk. A stray
 `.part` file is safe to delete; nothing reads one and the pruning ignores them.
 
 **How long they are kept.** The newest seven (`BACKUP_KEEP`), and none older than six and a
-half days (`BACKUP_MAX_AGE`), whatever the count. The privacy page and the delete-account page
-promise that deleted data leaves the backups within a week; the count alone kept that only
-while every night succeeded, because a failed night prunes nothing to make room. The half day
-covers a run that starts late one night and on time a week later. So a week of failed dumps
-leaves no dumps at all, and the 26-hour `nightly_backup` alert is what has to be answered
-before that.
+half days (`BACKUP_MAX_AGE`), whatever the count, **except the newest**. The privacy page and
+the delete-account page promise that deleted data leaves the backups within a week, or, if
+backups fail for longer, with the next one that succeeds; the count alone kept that only while
+every night succeeded, because a failed night prunes nothing to make room. The half day covers
+a run that starts late one night and on time a week later. The newest dump is never removed
+for its age: after a week of failed nights it is the only backup there is, so it stays, and
+every night the worker logs a warning naming it, until a dump succeeds. The 26-hour
+`nightly_backup` alert is what has to be answered before that.
 
 Local only, and that is the gap to close next: the plan's S3 upload with SSE-KMS
 and 30-day remote retention is **not built**, so today every copy of the database
@@ -2546,14 +2603,16 @@ get right afterwards. The dump is encrypted and the server cannot open it, so th
 decryption happens on the owner's computer, which holds the private key
 (`routemaker-backup-key.txt` here), and the plain archive is streamed to the
 server over ssh and straight into `pg_restore`: it is not written to disk on
-either side. `<server>` is how the owner reaches the host over ssh, and
-`<checkout>` the folder `compose.yaml` is in.
+either side. `<server>` is how the owner reaches the host over ssh,
+`<DATA_ROOT>` is DATA_ROOT from `.env`, and `<checkout>` the folder `compose.yaml` is in. With
+the passphrase-protected key, use `routemaker-backup-key.age` where the commands say
+`routemaker-backup-key.txt`; age asks for the passphrase.
 
 First, on the owner's computer, fetch the dump (it is useless to anyone without the key, so
 it can travel like any other file):
 
 ```sh
-scp "<server>:/srv/routemaker/data/backups/routemaker-<instant>.dump.age" .
+scp "<server>:<DATA_ROOT>/backups/routemaker-<instant>.dump.age" .
 ```
 
 Then on the server:
@@ -5682,12 +5741,9 @@ Refresh it about once a year: the classes are for drawing, not routing, and chan
   restoring the volume is the host's own procedure.
 - The operations page is at `<DJANGO_ADMIN_PATH>core/scheduledrun/`; it is not
   linked from anywhere public and the admin path is not advertised.
-- **Put the backups' public key in place** ("Backups"): make an age key pair on the
-  owner's computer (`age-keygen -o routemaker-backup-key.txt`), keep that file there and
-  in the owner's own safe copy, and copy only its public line (`age-keygen -y
-  routemaker-backup-key.txt`) to `<DATA_ROOT>/backups/age-recipients.txt`, owned by uid
-  10001. Then `docker compose exec -T worker ./manage.py check_backup_encryption`. Without
-  it every nightly dump is refused. A lost private key is every backup lost.
+- **Put the backups' public key in place** before deploying the release that encrypts
+  them: "Backups", "Setting up the key". Without it every nightly dump is refused. A lost
+  private key is every backup lost.
 
 ## Build ids
 

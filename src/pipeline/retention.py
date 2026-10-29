@@ -190,7 +190,10 @@ def prune_backups(
     Two more rules, both about what a dump holds rather than about space. A dump
     whose instant is more than `max_age` before `now` goes whatever the count,
     because deleted accounts are promised to leave the backups within a week and
-    a run of failed nights would otherwise keep the old ones. And a plain `.dump`
+    a run of failed nights would otherwise keep the old ones - except the newest,
+    which is never removed for its age: after a run of failed nights it is the
+    only backup there is, so it stays, with a warning, until a newer one is
+    written. And a plain `.dump`
     older than the newest encrypted `.dump.age` goes as soon as that one exists:
     the plain ones are what the encryption replaced.
 
@@ -207,9 +210,18 @@ def prune_backups(
         key=lambda entry: entry.name,
     )
     doomed = set(dumps[: max(len(dumps) - max(keep, 0), 0)])
-    if max_age is not None:
+    if max_age is not None and dumps:
         cutoff = (now or datetime.now(UTC)) - max_age
-        doomed.update(dump for dump in dumps if _dump_instant(dump.name) < cutoff)
+        # Never the newest: with every recent night failed it is the only backup there is.
+        doomed.update(dump for dump in dumps[:-1] if _dump_instant(dump.name) < cutoff)
+        if _dump_instant(dumps[-1].name) < cutoff:
+            logger.warning(
+                "the newest dump in %s, %s, is older than %s: no backup has succeeded since; "
+                "it is kept until one does",
+                directory,
+                dumps[-1].name,
+                max_age,
+            )
     encrypted = [dump for dump in dumps if dump.name.endswith(".age")]
     if encrypted:
         newest_encrypted = _dump_instant(encrypted[-1].name)
@@ -224,6 +236,40 @@ def prune_backups(
     if removed:
         logger.info("pruned %d old dumps from %s", len(removed), directory)
     _prune_dump_parts(directory, kept=[dump for dump in dumps if dump not in doomed])
+    return removed
+
+
+# The safety dumps scripts/beta/receive-data.sh takes before it changes the database
+# (`pre-<label>-<utc>.dump`, in DATA_ROOT/backups unless it is given a folder of its own).
+SNAPSHOT_NAME = re.compile(r"^pre-[A-Za-z0-9._-]+-(\d{8}T\d{6}Z)\.dump$")
+
+
+def prune_snapshots(
+    backup_dir: Path | str, max_age: timedelta, now: datetime | None = None
+) -> list[Path]:
+    """Remove the pre-update safety dumps older than `max_age`, by the instant in the name.
+
+    They stay plain, because an on-server rollback restores them and the server has no
+    private key, so they are kept no longer than the encrypted nightly dumps: the privacy
+    page promises at most a week. The script that writes them also prunes by count; this
+    is the nightly sweep that holds the age when no update has run for a while. The newest
+    is not spared: a rollback restores the snapshot of the update it is undoing, within
+    hours, and a database put back a week later would undo a week of riders' changes.
+    """
+    directory = Path(backup_dir)
+    if not directory.is_dir():
+        return []
+    cutoff = (now or datetime.now(UTC)) - max_age
+    removed = []
+    for entry in sorted(directory.iterdir(), key=lambda entry: entry.name):
+        match = SNAPSHOT_NAME.match(entry.name)
+        if match is None or not entry.is_file():
+            continue
+        if datetime.strptime(match.group(1), BUILD_ID_FORMAT).replace(tzinfo=UTC) < cutoff:
+            entry.unlink()
+            removed.append(entry)
+    if removed:
+        logger.info("pruned %d old pre-update dumps from %s", len(removed), directory)
     return removed
 
 

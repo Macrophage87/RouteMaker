@@ -377,10 +377,11 @@ SECTIONS: list[tuple[str, str]] = [
                 "Group and Mass Ride positions, alerts and a leader's path: 2 minutes. Nothing "
                 "about a ride is kept longer.",
                 "Shared links: as above.",
-                "Database backups: one a night, encrypted, the last seven kept and none older "
-                "than a week, so deleted data can stay in them for up to a week. Sign-ins, "
-                "request limits, the Discord role list and Garmin and Wahoo connections are left "
-                "out of them.",
+                "Database backups: one a night, encrypted, the last seven kept, so deleted data "
+                "leaves them within a week, or, if backups fail for longer, with the next one "
+                "that succeeds. Copies taken before an update are kept on the server for at most "
+                "a week. Sign-ins, request limits, the Discord role list and Garmin and Wahoo "
+                "connections are left out of them.",
                 "Suggestions already decided stay as the map’s history, with nothing linking "
                 "them to you once your account is deleted.",
                 "A note that an account was deleted, and when, under an account number.",
