@@ -24,12 +24,13 @@ const store = (name: string, lon: number, lat: number, id: number, value = "supe
 });
 
 test("the chip's words, and the same words typed, are a grocery search; food words are not", () => {
-  for (const q of ["grocery", "Groceries", " grocery store ", "Supermarket", "supermercado"]) assert.ok(isGroceryQuery(q), q);
+  for (const q of ["grocery", "Groceries", " grocery store ", "Supermarket", "supermercado", "grocery near me", "supermercados cerca de mí"]) assert.ok(isGroceryQuery(q), q);
   for (const q of ["", "crab", "farm stands", "market", "grocery outlet bakery"]) assert.ok(!isGroceryQuery(q), q);
-  // One of the server's tag searches (src/core/geocode.py TAG_SEARCHES): shop=supermarket near the bias point.
+  // One of the server's tag searches (src/core/geocode.py TAG_SEARCHES): supermarkets and small grocers near the bias point.
   assert.equal(GROCERY_QUERY, "supermarket");
   const tags = readFileSync(new URL("../../../src/core/geocode.py", import.meta.url), "utf8");
-  assert.match(tags, /phrase: "shop:supermarket"[\s\S]*?"supermarket",/);
+  assert.match(tags, /GROCERY_TAGS = \("shop:supermarket", "shop:grocery", "shop:greengrocer"\)/);
+  assert.match(tags, /phrase: GROCERY_TAGS[\s\S]*?"supermarket",/);
 });
 
 test("the stores are listed nearest the start first, as food rows with their distance and no hours", () => {
