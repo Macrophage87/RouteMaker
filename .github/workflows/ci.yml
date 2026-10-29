@@ -9,9 +9,17 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same pull request replaces the run still going. Never on main: the beta's
+# release agent reads a cancelled `test` as red (scripts/beta/cd_logic.py, ci_verdict).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Far above a normal run; a hung test fails here instead of holding a runner for six hours.
+    timeout-minutes: 60
 
     # The swap tests exercise ACCESS EXCLUSIVE locking, schema renames and
     # spatial predicates. None of that exists in a substitute engine, so CI runs
@@ -42,9 +50,19 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
+          # pip's download cache only: the install below still resolves from these files.
+          cache: pip
+          cache-dependency-path: |
+            docker/requirements.txt
+            requirements-dev.txt
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
+          # npm's download cache only; `npm ci` still installs exactly the lockfiles.
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            mobile/package-lock.json
       - name: Install native dependencies
         # GDAL/PROJ for GeoDjango. LuaJIT for the tag transform: Valhalla 3.5.1
         # requires it (pkg_check_modules(LuaJIT REQUIRED)), and its graph.lua
@@ -99,8 +117,19 @@ jobs:
         run: |
           docker pull --quiet "$(scripts/beta/frontend-build.sh --print-image)"
           scripts/beta/frontend-build.sh "$PWD" "$PWD/frontend/node_modules" "$RUNNER_TEMP/beta-dist"
-      - run: ruff check src tests
-      - run: ruff format --check src tests
+      # The phone app's own tests pin parts of the front end it depends on (Ride mode's hidden-ride
+      # pause, the native bridge's markers), and android.yml runs only when mobile/ changes. Node
+      # only: no Gradle, no build.
+      - name: Phone app tests
+        working-directory: mobile
+        run: npm ci && npm test
+      - run: ruff check src tests scripts mcp
+      - run: ruff format --check src tests scripts mcp
+      # A model change with no migration: `migrate --check` at release only sees unapplied ones.
+      - name: Models and migrations agree
+        env:
+          DJANGO_SETTINGS_MODULE: config.test_settings
+        run: PYTHONPATH=src django-admin makemigrations --check --dry-run
       # The Caddy image compose.yaml names (with its digest), for tests/test_frontend_edge.py,
       # which fails under CI when it is missing rather than skipping.
       - name: Caddy image for the edge tests
@@ -112,7 +141,11 @@ jobs:
       # The reference-route assertions are the quality bar's ground truth, not a
       # smoke test: they are what stops a tuning change from silently redefining
       # what a mass ride is.
-      - run: pytest -q
+      # PYTHONFAULTHANDLER dumps every thread's stack on a native crash, including one during
+      # interpreter shutdown; faulthandler_timeout dumps them for a test stuck 10 minutes.
+      - run: pytest -q -o faulthandler_timeout=600 --durations=30
+        env:
+          PYTHONFAULTHANDLER: "1"
       - name: Compose stack rules
         run: python scripts/check_compose_limits.py
 
@@ -120,11 +153,14 @@ jobs:
   # no network), beside the tests rather than after them. Its screenshots are kept when it fails.
   a11y:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - name: Front end dependencies
         working-directory: frontend
         run: npm ci

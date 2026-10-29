@@ -235,6 +235,12 @@ caused by a Django the stack does not run.
 In that case `tests/test_native_environment.py` also fails, naming each pin the
 interpreter does not have; it does not run first, so read its failure before
 the others. CI installs the same two files.
+pytest, pytest-django and ruff are pinned exactly in `requirements-dev.txt`
+(no image carries them), so a new ruff rule or format style arrives as a
+Dependabot pull request, not as a red main. CI lints and format-checks
+`src tests scripts mcp`, runs `makemigrations --check` (a model change with no
+migration fails it) and the phone app's Node tests (`mobile/`, which pin parts of
+the front end), and cancels a pull request's older run when a newer push lands.
 
 Then the database and the suite, from the checkout:
 
