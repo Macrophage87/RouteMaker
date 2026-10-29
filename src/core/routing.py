@@ -472,17 +472,25 @@ def _own_context(fn):
     return run
 
 
+def _skipped_for_time() -> None:
+    """A check left out because too little of the budget was left for it: counted as a
+    failed router call, so the plan answered without it is not kept in the answer cache
+    (`core.route_cache.keepable`)."""
+    timing.record_call(0.0, True)
+
+
 def _call(variant: str, endpoint: str, payload: dict, deadline: Deadline) -> dict:
     """One router call inside the request's budget."""
-    remaining = deadline.at - clock()
-    if remaining <= 0:
-        raise DeadlineExceeded(f"no time left for {endpoint}")
     url = f"{settings.VALHALLA_UPSTREAMS[variant]}/{endpoint}"
     began = timing.now()
     failed = True
     try:
-        # Inside the try: a cancelled plan's call counts as failed, so its answer is
-        # never kept in the answer cache (`core.route_cache.keepable`).
+        # Inside the try: a cancelled plan's call, and one skipped for want of time,
+        # count as failed, so the answer is never kept in the answer cache
+        # (`core.route_cache.keepable`).
+        remaining = deadline.at - clock()
+        if remaining <= 0:
+            raise DeadlineExceeded(f"no time left for {endpoint}")
         check_cancel()
         answer = _transport(url, payload, min(deadline.per_call_s, remaining))
         failed = False
@@ -2298,6 +2306,7 @@ def no_busier_than_middle(
     if variant in TWIN_VARIANTS:
         limit = min(limit, WEEKEND_TIMEOUT_S)
     if limit < MIDDLE_MIN_S:
+        _skipped_for_time()
         return trip, False
     middle_request = {key: value for key, value in request.items() if key != "alternates"} | {
         "costing_options": middle_costing
@@ -3494,11 +3503,11 @@ def _detour(
     asked_for_calm = stress_dial > presets.STRESS_DEFAULT_AT or route_m >= (
         detour_rules.STRONG_RATIO * straight_m
     )
-    if (
-        preset_name != "mass-ride"
-        and asked_for_calm
-        and deadline.at - clock() >= DETOUR_PROBE_MIN_S
-    ):
+    probe = preset_name != "mass-ride" and asked_for_calm
+    if probe and deadline.at - clock() < DETOUR_PROBE_MIN_S:
+        _skipped_for_time()
+        probe = False
+    if probe:
         direct_costing, direct_request, direct_key = _direct_request(request, preset_name, dials)
         # Asked once for a plan and its candidate routes (OWNER-DECISIONS 265).
         asked = (early or {}).pop(direct_key, None)
