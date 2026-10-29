@@ -69,3 +69,31 @@ def test_the_readme_keeps_the_rows_of_feeds_not_fetched_this_time(tmp_path, monk
     readme = (tmp_path / "README.md").read_text()
     assert vre in readme and "`marc-gtfs.zip`" in readme
     assert readme.index("marc-gtfs") < readme.index("vre-gtfs"), "in systems.json's order"
+
+
+def test_a_refused_request_says_its_status_and_is_not_asked_again(monkeypatch) -> None:
+    import urllib.error
+
+    import pytest
+
+    asked, slept = [], []
+
+    def refuse(code):
+        def opened(request, timeout):
+            asked.append(request.full_url)
+            raise urllib.error.HTTPError(request.full_url, code, "no", {}, None)
+
+        return opened
+
+    monkeypatch.setattr(fetch_gtfs.time, "sleep", slept.append)
+    monkeypatch.setattr(fetch_gtfs.urllib.request, "urlopen", refuse(401))
+    with pytest.raises(RuntimeError, match=r"HTTP 401$"):
+        fetch_gtfs.fetch("https://example.test/feed.zip", {})
+    assert len(asked) == 1 and slept == []
+
+    # A server error is worth asking again, and still says its status.
+    asked.clear()
+    monkeypatch.setattr(fetch_gtfs.urllib.request, "urlopen", refuse(503))
+    with pytest.raises(RuntimeError, match=r"HTTP 503$"):
+        fetch_gtfs.fetch("https://example.test/feed.zip", {})
+    assert len(asked) == fetch_gtfs.RETRIES and slept == [5, 10]
