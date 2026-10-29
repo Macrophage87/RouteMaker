@@ -8647,10 +8647,11 @@ written. Miles come first in every language.
   an English reader downloads none. The service worker precaches Spanish's and keeps any other
   the first time a rider uses it.
 - The language a page opens in (`startLanguage`): the rider's choice (Settings > Display >
-  Language, kept on this device), else the phone's language if it is English or Spanish, else
-  English. Since v0.15.0 the 19 draft languages are used only once a rider picks one
-  (`FROM_DEVICE`). Choosing a language reloads the page, because many labels are module
-  constants built once at load.
+  Language, kept on this device), else the phone's first language the app has, drafts included,
+  else English. A phone in one of the 19 draft languages opens Go and Ride in it with no Settings
+  step (the owner, 2026-10-29: "It should show it when they open it ... It's best to make things
+  easy"); Plan stays in English. Choosing a language reloads the page, because many labels are
+  module constants built once at load.
 - Right to left (Arabic, Farsi, Pashto): `markPageLanguage` sets the page's `lang` and `dir`, and
   `planLanguageAttributes` marks Plan's containers English and left to right, so they are not
   mirrored. Turn sentences keep left and right as written. A test checks that no catalog swaps
@@ -8678,8 +8679,6 @@ speaker has not checked yet, and each file's header says so. To hand one over, s
 reviewer the catalog file. The keys are the English and must not change, and the values are
 theirs to correct. Keep each `{place}` (the test checks them) and the bold marks the English
 has. Turn sentences matter most. Once a reviewer has checked a catalog, say so in its header.
-Whether a checked language may then open from the phone's own language (`FROM_DEVICE`) is the
-owner's call.
 
 ## Share live: the leader's live ride (v0.12.0-v0.15.0)
 
