@@ -9,10 +9,11 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same pull request replaces the run still going. Never on main: the beta's
-# release agent reads a cancelled `test` as red (scripts/beta/cd_logic.py, ci_verdict).
+# A newer push to the same pull request replaces the run still going. Never on a branch push: the
+# beta's release agent reads a cancelled `test` as red (scripts/beta/cd_logic.py, ci_verdict), and
+# a shared group would also drop a queued push run, so each push run gets a group of its own.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
