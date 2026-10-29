@@ -195,6 +195,13 @@ services:
         target: /data/tiles
         read_only: true
         bind: { create_host_path: false }
+      # The base map, for the link preview's picture drawn when the link is made
+      # (config.procrastinate.draw_share_preview), as the api reads it.
+      - type: bind
+        source: ${DATA_ROOT}/basemap
+        target: /data/basemap
+        read_only: true
+        bind: { create_host_path: false }
     memswap_limit: 512M
     deploy:
       resources:
