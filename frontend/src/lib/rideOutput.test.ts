@@ -128,6 +128,24 @@ test("Announcer: one polite sentence per 8 s; a newer one replaces the one waiti
   assert.equal(said.length, 2);
 });
 
+test("Announcer: a cue held back is built afresh as it is said, and dropped once it has passed (review RIDE-4)", () => {
+  const { a, said, advance } = announcer();
+  let left = 300;
+  a.say("first", false);
+  a.say("In 1,000 feet, left.", false, false, () => (left > 0 ? `In ${left} feet, left.` : null));
+  left = 150;
+  advance(POLITE_GAP_MS);
+  assert.deepEqual(said.map((s) => s.text), ["first", "In 150 feet, left."]);
+  // Passed by the time it would be said: nothing.
+  a.say("In 500 feet, right.", false, false, () => null);
+  advance(POLITE_GAP_MS);
+  assert.equal(said.length, 2);
+  // Said at once (no wait): as it was made.
+  advance(POLITE_GAP_MS);
+  a.say("In 400 feet, right.", false, false, () => "never asked");
+  assert.equal(said[2].text, "In 400 feet, right.");
+});
+
 test("Announcer: urgent goes at once and drops the waiting polite one", () => {
   const { a, said, advance } = announcer();
   a.say("advance", false);

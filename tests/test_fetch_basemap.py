@@ -22,6 +22,7 @@ import re
 import stat
 import subprocess
 import tarfile
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -92,6 +93,9 @@ out=""; url=""
 while [ $# -gt 0 ]; do
     case "$1" in -o) out="$2"; shift ;; http*) url="$1" ;; esac
     shift
+done
+for gone in ${FAKE_CURL_GONE:-}; do
+    case "$url" in *"build.protomaps.com/$gone.pmtiles") exit 22 ;; esac
 done
 [ -z "$out" ] && exit 0
 case "$url" in
@@ -377,3 +381,58 @@ def test_a_target_it_cannot_write_is_refused(host) -> None:
     assert refused.returncode == 2
     assert str(host.basemap) in refused.stderr
     assert host.curl_calls() == ""
+
+
+def day(days_ago: int) -> str:
+    return (datetime.now(UTC) - timedelta(days=days_ago)).strftime("%Y%m%d")
+
+
+def extracted_from(host) -> str:
+    return next(
+        line.split()[1] for line in host.pmtiles_log.read_text().splitlines()
+        if line.startswith("extract")
+    )  # fmt: skip
+
+
+def test_a_pinned_build_that_is_gone_falls_back_to_the_newest_day(host) -> None:
+    """A fresh host after the pinned day expired (review 2026-10-29): the newest
+    day still published is used, and the run says to bump the pin."""
+    result = host.run(FAKE_CURL_GONE=f"{BUILD} {day(1)}")
+    assert result.returncode == 0, result.stderr
+    assert extracted_from(host) == f"https://build.protomaps.com/{day(2)}.pmtiles"
+    assert f"build={day(2)} bbox={BBOX}" in (host.basemap / ".region.source").read_text()
+    assert "reminder:" in result.stderr and "PROTOMAPS_BUILD" in result.stderr
+
+
+def test_an_installed_region_is_kept_when_the_pin_is_gone(host) -> None:
+    """No 300 MB download on every run once the pin has expired: the region the
+    fallback installed stays until the pin is bumped."""
+    host.run(FAKE_CURL_GONE=f"{BUILD} {day(1)}")
+    before = host.snapshot()
+    again = host.run(FAKE_CURL_GONE=f"{BUILD} {day(1)}")
+    assert again.returncode == 0, again.stderr
+    assert "go-pmtiles" not in host.curl_calls(), host.curl_calls()
+    assert host.snapshot() == before
+    assert "keeping the installed region" in again.stderr
+    assert f"is current: build={day(2)} bbox={BBOX}" in again.stdout
+
+
+def test_a_build_named_on_the_command_line_does_not_fall_back(host) -> None:
+    result = host.run("--build", "20260101", FAKE_CURL_GONE="20260101")
+    assert result.returncode == 1
+    assert "name a newer build" in result.stderr
+    assert not (host.basemap / "region.pmtiles").exists()
+
+
+def test_an_old_pin_is_reminded_about(host) -> None:
+    host.repin("PROTOMAPS_BUILD", day(60))
+    result = host.run()
+    assert result.returncode == 0, result.stderr
+    assert "over 45 days old" in result.stderr
+
+
+def test_a_recent_pin_is_not(host) -> None:
+    host.repin("PROTOMAPS_BUILD", day(3))
+    result = host.run()
+    assert result.returncode == 0, result.stderr
+    assert "reminder:" not in result.stderr

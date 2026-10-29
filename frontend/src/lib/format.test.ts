@@ -108,7 +108,8 @@ test("nothing in the app writes a unit but this module", async () => {
         if (name !== "rail-data" && name !== "licences" && name !== "i18n") walk(path);
         continue;
       }
-      if (!/\.(ts|tsx)$/.test(name) || /\.test\./.test(name) || name === "format.ts") continue;
+      // spokenFigures.ts is this module's figures in words for a screen reader, US units first as here.
+      if (!/\.(ts|tsx)$/.test(name) || /\.test\./.test(name) || name === "format.ts" || name === "spokenFigures.ts") continue;
       readFileSync(path, "utf8").split("\n").forEach((line, i) => {
         const code = line
           .replace(/\/\/.*$/, "")
