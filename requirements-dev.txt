@@ -1,5 +1,5 @@
 # Pinned loosely here and exactly in the image build; see Operations in the plan.
-django>=5.0
+django>=5.2.18
 django-ninja
 psycopg2-binary
 # Psycopg 3, which core.runs imports directly (docker/requirements.txt says why).
