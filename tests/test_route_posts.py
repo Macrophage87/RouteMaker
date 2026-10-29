@@ -170,7 +170,8 @@ def test_the_route_is_copied_owned_by_no_one_kept_for_good_and_without_weight() 
     post = make_post()
     row = post.route
     assert row.owner_id is None and row.keep == "forever" and row.preview_image
-    assert row.line == LINE and row.inputs == INPUTS
+    key = post.stats[route_posts.RIDE_KEY]
+    assert row.line == LINE and row.inputs == {**INPUTS, "hash": f"{INPUTS['hash']}&k={key}"}
     assert row.answer["dials"]["system_weight_kg"] is None and row.answer["effort_m"] is None
     assert row.answer["candidates"] is None
     assert post.stats["distance_m"] == 3218.7 and post.stats["preset"] == "group-ride"
@@ -546,6 +547,182 @@ def test_open_in_routemaker_opens_the_route_kept_before_with_no_plan_link() -> N
     # A route that opened already is left as it was.
     again = SharedRoute.objects.get(pk=plain.route_id)
     assert (again.inputs, again.gpx) == (kept.inputs, kept.gpx) and again.gpx == ""
+
+
+# ---- Ride keys (the owner, 2026-10-29: "All rides should have a key.") ----
+
+# frontend/src/lib/rideSeal.ts: a new key is 16 bytes, 22 characters (the owner, 2026-10-29).
+KEY_RE = re.compile(r"^[A-Za-z0-9_-]{22}$")
+NOT_A_RIDE = {
+    **INPUTS,
+    "preset": "default",
+    "hash": INPUTS["hash"].replace("group-ride", "default"),
+}
+
+
+def _fragment_key(link: str) -> str | None:
+    from urllib.parse import parse_qs
+
+    values = parse_qs(link.split("#", 1)[1]).get("k") if "#" in link else None
+    return values[0] if values else None
+
+
+def _not_a_ride(author: User, slug: str) -> RoutePost:
+    post = RoutePost(slug=slug, title="Not a ride", abstract="x", author=author)
+    answer = {**ANSWER, "preset": "default"}
+    route_posts.freeze(post, saved_route(author, inputs=NOT_A_RIDE, answer=answer))
+    post.save()
+    return post
+
+
+def test_the_ride_link_types_and_keys_are_the_front_ends() -> None:
+    group = (REPO / "frontend/src/lib/rideGroup.ts").read_text()
+    assert 'return preset === "mass-ride" || preset === "group-ride";' in group
+    assert set(route_posts.RIDE_LINK_TYPES) == {"mass-ride", "group-ride"}
+    keys = {route_posts.new_ride_key() for _ in range(20)}
+    assert len(keys) == 20 and all(KEY_RE.match(k) for k in keys)
+    assert (
+        len(base64.urlsafe_b64decode(next(iter(keys)) + "==")) == route_posts.RIDE_KEY_BYTES == 16
+    )
+    # An older link's 43-character key is still a key; anything else is not.
+    assert route_posts.RIDE_KEY_RE.fullmatch("A" * 43) and route_posts.RIDE_KEY_RE.fullmatch(
+        "A" * 22
+    )
+    assert not route_posts.RIDE_KEY_RE.fullmatch("A" * 30)
+
+
+@db
+@pytest.mark.parametrize("preset", ["group-ride", "mass-ride"])
+def test_a_ride_posts_link_carries_a_ride_key(preset) -> None:
+    author = make_user(is_instance_admin=True)
+    inputs = {**INPUTS, "preset": preset, "hash": INPUTS["hash"].replace("group-ride", preset)}
+    post = RoutePost(
+        slug=f"ride-{preset}",
+        title="A ride",
+        abstract="x",
+        author=author,
+        status=RoutePost.Status.PUBLISHED,
+        published_at=timezone.now(),
+    )
+    route_posts.freeze(post, saved_route(author, inputs=inputs))
+    post.save()
+    key = post.stats[route_posts.RIDE_KEY]
+    assert KEY_RE.match(key)
+    assert _fragment_key(route_posts.open_link(post)) == key
+    assert route_posts.open_link(post).endswith(f"&k={key}&route={post.route_id}")
+    # The page's Open in RouteMaker button carries it too.
+    page = Client().get(f"/routes/{post.slug}").content.decode()
+    assert f"k={key}" in page
+
+
+@db
+def test_a_ride_post_made_from_a_route_with_no_plan_link_carries_a_ride_key() -> None:
+    hash_ = route_posts.plan_hash(INPUTS, LINE, ANSWER, "K" * 43)
+    assert hash_.endswith("&preset=group-ride&k=" + "K" * 43)
+    assert "k=" not in route_posts.plan_hash(NOT_A_RIDE, LINE, {}, "K" * 43)
+    admin = make_user(is_instance_admin=True)
+    inputs = {k: v for k, v in INPUTS.items() if k != "hash"}
+    route = {"source": "plan", "line": LINE, "distance_m": 3218.7, "inputs": inputs}
+    post, problem = route_posts.write_draft(
+        admin, {"title": "Ride", "slug": "ride", "abstract": "x"}, {**route, "answer": ANSWER}
+    )
+    assert problem is None
+    assert _fragment_key(route_posts.open_link(post)) == post.stats[route_posts.RIDE_KEY]
+
+
+@db
+def test_a_ride_post_keeps_the_same_key_when_its_route_changes() -> None:
+    post = make_post()
+    key = post.stats[route_posts.RIDE_KEY]
+    first_route = post.route_id
+    # The admin picks another saved route: a new copy, the same key.
+    other = saved_route(post.author, inputs={**INPUTS, "points": [list(START), LINE[30][:2]]})
+    route_posts.freeze(post, other)
+    post.save()
+    post.refresh_from_db()
+    assert post.route_id != first_route
+    assert post.stats[route_posts.RIDE_KEY] == key
+    assert _fragment_key(route_posts.open_link(post)) == key
+    # Rendered again, the link is the same.
+    assert route_posts.open_link(post) == route_posts.open_link(RoutePost.objects.get(pk=post.pk))
+    # An assistant sending the draft again keeps it too.
+    admin = make_user(is_instance_admin=True)
+    route = {"source": "plan", "line": LINE, "distance_m": 3218.7, "inputs": INPUTS}
+    fields = {"title": "Ride", "slug": "ride-again", "abstract": "x"}
+    made, _ = route_posts.write_draft(admin, fields, {**route, "answer": ANSWER})
+    sent = made.stats[route_posts.RIDE_KEY]
+    again, problem = route_posts.write_draft(
+        admin, {**fields, "replace": True}, {**route, "answer": ANSWER, "line": LINE[:40]}
+    )
+    assert problem is None and again.stats[route_posts.RIDE_KEY] == sent
+    assert _fragment_key(route_posts.open_link(again)) == sent
+
+
+@db
+def test_a_ride_post_that_changes_ride_type_is_another_ride() -> None:
+    """Group Ride to Mass Ride is another ride with its own key, as the app's presetSecret and
+    the assistant's revise_route make it; back to a plain ride type, no key."""
+    post = make_post()
+    group = post.stats[route_posts.RIDE_KEY]
+    assert post.stats["preset"] == "group-ride"
+    mass_inputs = {**INPUTS, "preset": "mass-ride", "hash": INPUTS["hash"].replace("group", "mass")}
+    route_posts.freeze(post, saved_route(post.author, inputs=mass_inputs))
+    post.save()
+    mass = post.stats[route_posts.RIDE_KEY]
+    assert KEY_RE.match(mass) and mass != group
+    assert _fragment_key(route_posts.open_link(post)) == mass
+    # The same ride type again keeps the Mass Ride's key.
+    route_posts.freeze(post, saved_route(post.author, inputs=mass_inputs))
+    assert post.stats[route_posts.RIDE_KEY] == mass
+    # Not a ride: no key kept, and none in the link.
+    answer = {**ANSWER, "preset": "default"}
+    route_posts.freeze(post, saved_route(post.author, inputs=NOT_A_RIDE, answer=answer))
+    post.save()
+    assert route_posts.RIDE_KEY not in post.stats and "k=" not in route_posts.open_link(post)
+
+
+@db
+def test_a_ride_post_never_carries_the_saved_routes_own_key() -> None:
+    author = make_user(is_instance_admin=True)
+    own = "R" * 43
+    inputs = {**INPUTS, "hash": f"{INPUTS['hash']}&k={own}"}
+    post = RoutePost(slug="ride-own", title="A ride", abstract="x", author=author)
+    route_posts.freeze(post, saved_route(author, inputs=inputs))
+    assert post.stats[route_posts.RIDE_KEY] != own
+    assert route_posts.open_link(post).count("k=") == 1
+    assert _fragment_key(route_posts.open_link(post)) == post.stats[route_posts.RIDE_KEY]
+
+
+@db
+def test_a_post_that_is_not_a_ride_has_no_ride_key() -> None:
+    post = _not_a_ride(make_user(is_instance_admin=True), "not-a-ride")
+    assert route_posts.RIDE_KEY not in post.stats
+    assert "k=" not in route_posts.open_link(post)
+
+
+@db
+def test_ride_posts_kept_before_get_their_keys() -> None:
+    from django.apps import apps
+
+    ride = make_post()
+    # As kept before: no key in the link or the stats.
+    SharedRoute.objects.filter(pk=ride.route_id).update(inputs=INPUTS)
+    RoutePost.objects.filter(pk=ride.pk).update(
+        stats={k: v for k, v in ride.stats.items() if k != route_posts.RIDE_KEY}
+    )
+    plain = _not_a_ride(make_user(is_instance_admin=True), "plain")
+    step = importlib.import_module("core.migrations.0053_route_post_ride_keys")
+    step.give_keys(apps, None)
+    ride = RoutePost.objects.select_related("route").get(pk=ride.pk)
+    key = ride.stats[route_posts.RIDE_KEY]
+    assert KEY_RE.match(key) and _fragment_key(route_posts.open_link(ride)) == key
+    # Run again: the key stays.
+    step.give_keys(apps, None)
+    ride = RoutePost.objects.select_related("route").get(pk=ride.pk)
+    assert ride.stats[route_posts.RIDE_KEY] == key
+    assert route_posts.open_link(ride).count("k=") == 1
+    plain = RoutePost.objects.select_related("route").get(pk=plain.pk)
+    assert route_posts.RIDE_KEY not in plain.stats and "k=" not in route_posts.open_link(plain)
 
 
 @db

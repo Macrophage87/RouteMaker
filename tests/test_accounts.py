@@ -157,6 +157,8 @@ class TestSettings:
             [],
             {"home": {"lon": -77.0, "lat": 38.9}},
             {"v": 1, "plan": "#p=-77.0,38.9;-77.1,38.8&preset=default"},
+            {"v": 1, "plan": "#q=nmm2OwmttHqrFtwB&preset=default"},
+            {"v": 1, "plan": "preset=default&q=nmm2OwmttHqrFtwB"},
             {"v": 1, "sections": {"a": {"b": {"c": {"d": 1}}}}},
             {"v": 1, "weight": {"total_kg": 80}},
             {"v": 1, "weight": 80},

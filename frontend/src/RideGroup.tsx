@@ -96,14 +96,12 @@ import {
   type RideRole,
   type ShownDot,
 } from "./lib/rideGroup.ts";
-import type { RideSeal } from "./lib/rideSeal.ts";
+import { newRideSecret, type RideSeal } from "./lib/rideSeal.ts";
 import { browserRideEnv, watchRide } from "./lib/rideWatch.ts";
 import { LISTENING_SAID, SPEAK_LABEL, listenOnce, speechSupported } from "./lib/speechInput.ts";
 
 export interface RideGroupProps {
   type: RideLinkType;
-  /** The link's points: the ride's identity. */
-  points: readonly LonLat[];
   /** The route's line, for "near the route" and "behind you". */
   line: readonly LonLat[];
   getMap: () => MapLibreMap | null;
@@ -111,12 +109,12 @@ export interface RideGroupProps {
   here: LonLat | null;
   /**
    * A broadcast ride: the shared line's id, the link's leader key, and whether this page is the sharer's (who leads).
-   * Null: a Mass Ride or Group Ride by its points, as before.
+   * Null: a Mass Ride or Group Ride.
    */
   broadcast?: { id: string; lead: string | null; leading: boolean; roam?: boolean; secret?: string | null } | null;
   /**
-   * A Group Ride link's secret (lib/rideSeal.ts), when the link carries one: the ride is sealed end to end, named by the
-   * secret rather than its points. A broadcast's is its own (`broadcast.secret`).
+   * A Group or Mass Ride link's secret (lib/rideSeal.ts): the ride is sealed end to end and named by it. A broadcast's
+   * is its own (`broadcast.secret`). With none (an older link), the page rides under a new secret of its own.
    */
   secret?: string | null;
   /** This page is riding (Ride mode follows the rider, so the map does not follow the leader). */
@@ -148,16 +146,19 @@ function visible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
 }
 
-export function RideGroup({ type, points, line, getMap, here, broadcast = null, secret = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0, controls = riding, leads = true, askHeld = false, home = null }: RideGroupProps) {
+export function RideGroup({ type, line, getMap, here, broadcast = null, secret = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0, controls = riding, leads = true, askHeld = false, home = null }: RideGroupProps) {
   const leading = broadcast?.leading === true;
   const isBroadcast = broadcast !== null;
   // The leader key a follower reads with (the leader needs none: it does not see its own dot).
   const followKey = broadcast && !leading ? broadcast.lead : null;
   const origin = window.location.origin;
   const [ride, setRide] = useState<string | null>(null);
-  // Sealed end to end (lib/rideSeal.ts): the key every read and send goes through; null for a ride in plain numbers.
+  // Sealed end to end (lib/rideSeal.ts): the key every read and send goes through; null only until it is made, and
+  // nothing is read or sent until then (Stephen 2026-10-29: "All rides should have a key.").
   const [seal, setSeal] = useState<RideSeal | null>(null);
-  const rideSecret = broadcast ? (broadcast.secret ?? null) : secret;
+  // A link without a secret (an older one) is a new ride of this page's own, under a secret made here.
+  const [ownSecret] = useState(newRideSecret);
+  const rideSecret = (broadcast ? broadcast.secret : secret) ?? ownSecret;
   const [consent, setConsent] = useState<RideConsent | null>(null);
   const [asked, setAsked] = useState(false);
   // The role picked in the question, before it is answered: Participant, so one tap answers.
@@ -222,15 +223,11 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   const say = (text: string) => setSaid((s) => ({ text, count: s.count + 1 }));
 
   // The ride, and the rider's answer for it (asked as the ride starts: Start ride or Broadcast, the 2026-10-28 audit P6).
-  const key = rideSecret
-    ? `sealed|${rideSecret}`
-    : broadcast
-      ? `${broadcast.roam ? "roam" : "broadcast"}|${broadcast.id}`
-      : points.map((p) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`).join(";");
   useEffect(() => {
     let live = true;
-    void rideOf({ type, points, broadcast, secret: rideSecret }).then(({ id, seal: sealed }) => {
-      if (!live) return;
+    void rideOf(rideSecret).then((on) => {
+      if (!live || !on) return;
+      const { id, seal: sealed } = on;
       setRide(id);
       setSeal(sealed);
       // The sharer leads: sharing is what they pressed (App.tsx keeps the answer as it shares; kept here too).
@@ -249,9 +246,9 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     return () => {
       live = false;
     };
-    // The points' text is the ride's identity; the array itself changes on every render upstream.
+    // The secret is the ride's identity; the type and the broadcast object (made anew upstream) are not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, key, leading]);
+  }, [type, rideSecret, leading]);
 
   const answer = (yes: boolean) => {
     if (!ride) return;

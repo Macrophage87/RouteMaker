@@ -92,7 +92,7 @@ export function planSetting(preset: PresetId, dials: Dials): string {
 
 /** The ride type and dials a settings value holds, or null when it holds none. */
 export function planFromSetting(plan: string | undefined): { preset: PresetId; dials: Dials } | null {
-  if (typeof plan !== "string" || !/[#&]preset=/.test(plan) || /[#&]p=/.test(plan)) return null;
+  if (typeof plan !== "string" || !/[#&]preset=/.test(plan) || /(^|[#&])[pq]=/.test(plan)) return null;
   const decoded = decodePlan(plan);
   return { preset: decoded.preset, dials: decoded.dials };
 }

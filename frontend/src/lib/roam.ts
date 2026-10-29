@@ -20,6 +20,10 @@ import { STRESS_TILE_LAYER } from "../stressStyle.js";
 import { tierWords } from "./profileChart.ts";
 import { t } from "./i18n.ts";
 import { secretFrom, withSecret } from "./rideSeal.ts";
+import { leadKeyOfMark, leadMark } from "./linkCode.ts";
+
+/** The fragment key of a broadcast link's leader mark (lib/sharedRoutes.ts LEAD_PARAM). */
+const LEAD_PARAM = "lead";
 
 /** The big button's name in Go with no destination, the card's heading, and its end. */
 export const ROAM_NAME = "Roam";
@@ -425,17 +429,23 @@ export const ROAM_BROADCAST_NOT_READY = t("Share live is not ready yet; try agai
 export const ROAM_PARAM = "roam";
 const HEX32 = /^[0-9a-f]{32}$/;
 
-/** A Roam broadcast's link: the page's own address, its fragment naming the ride and its leader, nothing else. */
+/**
+ * A Roam broadcast's link: the page's own address, its fragment naming the ride and its leader, nothing else. The
+ * leader key (32 hex digits) goes in its short form, 22 characters (lib/linkCode.ts leadMark, 2026-10-29).
+ */
 export function roamLink(origin: string, id: string, lead: string, secret: string | null = null): string {
-  return withSecret(`${origin}/#${ROAM_PARAM}=${id}&lead=${lead}`, secret);
+  return withSecret(`${origin}/#${ROAM_PARAM}=${id}&${LEAD_PARAM}=${leadMark(lead) ?? lead}`, secret);
 }
 
-/** The ride a Roam broadcast link names, its leader key and its secret (null in an older link), or null for any other address. */
+/**
+ * The ride a Roam broadcast link names, its leader key (32 hex digits, from either form of the mark) and its secret
+ * (null in an older link), or null for any other address.
+ */
 export function roamLinkFrom(hash: string): { id: string; lead: string; secret: string | null } | null {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   const id = params.get(ROAM_PARAM);
-  const lead = params.get("lead");
-  return id && lead && HEX32.test(id) && HEX32.test(lead) ? { id, lead, secret: secretFrom(hash) } : null;
+  const lead = leadKeyOfMark(params.get(LEAD_PARAM));
+  return id && lead && HEX32.test(id) ? { id, lead, secret: secretFrom(hash) } : null;
 }
 
 // ---- Sunrise and sunset (Stephen 2026-10-22: "Also add sunrise and sunset") -------------------------------------

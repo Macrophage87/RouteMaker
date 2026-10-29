@@ -43,6 +43,7 @@ reader is read or kept: the list is the same for everyone.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import itertools
 import json
@@ -230,12 +231,19 @@ def freeze_route(post, *, source, line, distance_m, inputs, answer, planned=None
     # the answer): an older saved route's dials may still carry it.
     if isinstance(inputs.get("dials"), dict):
         inputs["dials"] = {k: v for k, v in inputs["dials"].items() if "weight" not in k.lower()}
+    preset = str(inputs.get("preset") or answer.get("preset") or "")
+    # A Group or Mass Ride post's link carries the post's own ride key (the owner, 2026-10-29:
+    # "All rides should have a key."), the same one each time the route changes while the ride
+    # type stays; never a key the saved route's own link carried.
+    key = post_ride_key(post, preset)
     # Open in RouteMaker opens the copy as the app opens any shared link (frontend/src/App.tsx
     # openSaved): a plan from its link (`hash`), a followed line from its file. An assistant's
     # followed line came with neither, and the app opened empty (the owner, 2026-10-25: "It just
     # opens RouteMaker"). The file is written from the line, never a rider's own file.
     if not isinstance(inputs.get("hash"), str):
-        inputs["hash"] = plan_hash(inputs, line, answer)
+        inputs["hash"] = plan_hash(inputs, line, answer, key)
+    else:
+        inputs["hash"] = with_ride_key(inputs["hash"], key)
     row = SharedRoute.objects.create(
         id=secrets.token_hex(16),
         name=post.title[:120],
@@ -252,17 +260,65 @@ def freeze_route(post, *, source, line, distance_m, inputs, answer, planned=None
         preview_image=True,
     )
     post.route = row
-    preset = str(inputs.get("preset") or answer.get("preset") or "")
     post.stats = stats_of(answer, preset, timezone.localdate(planned or now))
+    if key:
+        post.stats[RIDE_KEY] = key
     # A new route is a new map: the old link picture no longer shows it.
     post.thumbnail, post.thumbnail_key = None, ""
     first = line[0]
     post.start_lon, post.start_lat = float(first[0]), float(first[1])
 
 
-def plan_hash(inputs: dict, line, answer: dict) -> str:
+# The ride types whose link is a live ride (frontend/src/lib/rideGroup.ts `isRideLinkType`).
+RIDE_LINK_TYPES = ("mass-ride", "group-ride")
+# Where a post keeps its ride key, in `stats` (frontend/src/lib/rideSeal.ts; the owner,
+# 2026-10-29: 16 random bytes, 22 base64url characters, the fragment's `k=`; an older link's 32
+# bytes, 43 characters, still open).
+RIDE_KEY = "ride_key"
+RIDE_KEY_PARAM = "k"
+RIDE_KEY_BYTES = 16
+RIDE_KEY_RE = re.compile(r"[A-Za-z0-9_-]{22}|[A-Za-z0-9_-]{43}")
+
+
+def new_ride_key() -> str:
+    """A ride's secret as rideSeal.ts `newRideSecret` makes one: 16 random bytes, base64url
+    without padding."""
+    return (
+        base64.urlsafe_b64encode(secrets.token_bytes(RIDE_KEY_BYTES)).rstrip(b"=").decode("ascii")
+    )
+
+
+def post_ride_key(post, preset: str) -> str | None:
+    """The ride key for the post's route of ride type `preset`: the one kept in its `stats` while
+    the post stays that ride type; a new one when it has none, or when it changes between Group
+    Ride and Mass Ride (another ride, as the app's `presetSecret` and the assistant's
+    revise_route make it); none for a ride type whose link is not a live ride."""
+    if preset not in RIDE_LINK_TYPES:
+        return None
+    stats = post.stats if isinstance(post.stats, dict) else {}
+    key = stats.get(RIDE_KEY)
+    was = stats.get("preset")
+    if isinstance(key, str) and RIDE_KEY_RE.fullmatch(key) and (not was or was == preset):
+        return key
+    return new_ride_key()
+
+
+def with_ride_key(fragment: str, key: str | None) -> str:
+    """The link fragment with `key` as its `k=` (rideSeal.ts `withSecret`), replacing any it had;
+    None takes it out."""
+    lead = "#" if fragment.startswith("#") else ""
+    params = [
+        p for p in fragment.lstrip("#").split("&") if p and not p.startswith(f"{RIDE_KEY_PARAM}=")
+    ]
+    if key:
+        params.append(f"{RIDE_KEY_PARAM}={key}")
+    return lead + "&".join(params)
+
+
+def plan_hash(inputs: dict, line, answer: dict, ride_key: str | None = None) -> str:
     """The plan link a route kept without one opens on (frontend/src/lib/planHash.ts
-    `encodePlan`): its points, or the line's two ends, and its ride type."""
+    `encodePlan`): its points, or the line's two ends, and its ride type; a Group or Mass Ride's
+    with its `ride_key` (`k=`)."""
     points = [
         p for p in (inputs.get("points") or []) if isinstance(p, list | tuple) and len(p) >= 2
     ]
@@ -270,7 +326,9 @@ def plan_hash(inputs: dict, line, answer: dict) -> str:
         points = [line[0], line[-1]]
     hash_ = "p=" + ";".join(f"{float(p[0]):.5f},{float(p[1]):.5f}" for p in points)
     preset = str(inputs.get("preset") or answer.get("preset") or "")
-    return f"{hash_}&preset={preset}" if preset else hash_
+    if preset:
+        hash_ = f"{hash_}&preset={preset}"
+    return with_ride_key(hash_, ride_key if preset in RIDE_LINK_TYPES else None)
 
 
 # ---- Drafts sent by an assistant ----
