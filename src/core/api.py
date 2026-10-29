@@ -7327,28 +7327,30 @@ def report311_status(request):
     return response
 
 
-@api.get("/report311/where", summary="Which 311 website takes a problem at a point")
+@api.post("/report311/where", summary="Which 311 website takes a problem at a point")
 @decorate_view(
     ratelimit.in_flight_limited(ratelimit.GEOCODE_IN_FLIGHT, ratelimit.name_slots),
     ratelimit.rate_limited(ratelimit.REVERSE),
     ratelimit.rate_limited(ratelimit.REVERSE_BURST),
     same_site_only,
+    json_body_only,
     errors_as_json,
 )
-def report311_where(request, params: Query[ReverseIn]):
+def report311_where(request, body: ReverseIn):
     """The 311 log's site for an entry (core.report_log.where): an id the page knows, or null
-    where the point is in no jurisdiction the log names. The point is not kept."""
+    where the point is in no jurisdiction the log names. The point is not kept, and comes in the
+    body, so no request line in a log names it."""
     from . import report_log
 
     try:
-        found = report_log.where(params.lat, params.lon, lang=params.lang)
+        found = report_log.where(body.lat, body.lon, lang=body.lang)
     except geocode.Unavailable as unavailable:
         logger.warning("311 log: the geocoder did not answer: %s", unavailable)
         out = JsonResponse({"error": GEOCODER_DOWN}, status=502)
         out["Cache-Control"] = "no-store"
         return out
     out = JsonResponse({"where": found})
-    out["Cache-Control"] = "private, max-age=86400"
+    out["Cache-Control"] = "no-store"
     return out
 
 

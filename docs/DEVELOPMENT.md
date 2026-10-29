@@ -4476,12 +4476,15 @@ near the map centre (`/api/geocode?...&lat=..&lon=..`). What keeps it out of the
   Caddy keeps no access log).
 - **Beta nginx** (deploy/beta/nginx-routemaker.conf.template): the access log is
   `rmbeta_noquery`, the path only, with no query string, Referer, client address or tester name.
-  `/api/reverse` and `/api/geocode` log errors at `crit` only, to their own file (a review addition,
-  not asked for by name: owner to confirm, and the same for dropping the client address and tester name), because an
-  upstream error line (a 502 while the api restarts, a 504) records the whole request. Every other
-  path's upstream errors still reach the host's error log; none of them has a location in a query.
-  tests/test_beta_overlay.py pins the format, both servers' access log, and that every
-  `/api/...?` path in the front end is one of the two.
+  The paths the front end sends a point in a query string to (`/api/reverse`, `/api/geocode` and
+  the others the template's `crit` location names) log errors at `crit` only, to their own file (a
+  review addition, not asked for by name: owner to confirm, and the same for dropping the client
+  address and tester name), because an upstream error line (a 502 while the api restarts, a 504)
+  records the whole request. Every other path's upstream errors still reach the host's error log;
+  none of them has a location in a query (the 311 log's website lookup, `/api/report311/where`,
+  takes its point in a POST body for that reason). tests/test_beta_overlay.py pins the format,
+  both servers' access log, and that every `/api/...?` path in the front end, digits and
+  underscores included, is one of them.
 - **Tile paths** (`/tiles/stress/{z}/{x}/{y}.pbf`) are logged by nginx and gunicorn and show the
   area viewed, to about a mile [2 km] at zoom 14. That is true of any map pan and is
   not a position fix.
@@ -4490,7 +4493,9 @@ Open: Photon's own request logging is unverified (`docker logs photon` after one
 stack; a log4j override if queries show). Whether Valhalla logs a request on an error path (no
 suitable edges, say) is unverified, and so is the app's own log of Valhalla's refusal text (src/core/routing.py logs it
 when a router refuses a route request or a trace_attributes call); `"do_not_track": true` in the route request would be belt and
-braces. A `Permissions-Policy: geolocation=(self)` header at the edge is a separate deploy change.
+braces. The app's pages carry `Permissions-Policy: geolocation=(self), camera=(), microphone=(),
+payment=(), usb=()` (the Caddyfile, and the beta's nginx template the same,
+tests/test_beta_overlay.py), so only the site itself, never a frame, can ask for location.
 
 ## Contraflow on the no-trail graph
 
