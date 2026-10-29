@@ -79,7 +79,9 @@ PAINTED_LANE_USED = "painted lane"
 # roadway agency" (its LTS methodology; `scripts/install_agency_lts.py`). So any such
 # rating closes the way to bicycles whichever agency's level the map uses
 # (`pipeline.agency_ratings.prohibited_closures`); DDOT's 5 stays Avoid, and Montgomery's
-# is our 4.5 (`READ_AS`).
+# is our 4.5 (`READ_AS`). Being no level, it never sets the way's tier (`chosen`): a way the
+# closure leaves open (a bridge the crossings fixture opens, an owner's access override)
+# takes the next agency's level or the formula's, not Avoid (review 2026-10-29).
 PROHIBITING_LEVELS: dict[str, float] = {"mdot-sha": 5.0}
 # The way's `rm:no_bicycle` reason, and the road panel's code for it
 # (`core.segment_info.ACCESS_WORDS`).
@@ -237,8 +239,10 @@ def set_aside(rule: str | None) -> frozenset[str]:
 def chosen(ratings: Iterable[AgencyRating]) -> AgencyRating | None:
     """The rating the map uses: the most local agency's. Two agencies at the same
     rank on one way (two counties meeting at a line) take the higher level, the
-    stress-averse reading."""
-    ranked = sorted(ratings, key=lambda r: (r.rank, -map_level(r.agency, r.level)))
+    stress-averse reading. A ban (`PROHIBITING_LEVELS`) is access, not a level, and
+    is never chosen."""
+    levels = [r for r in ratings if prohibiting((r,)) is None]
+    ranked = sorted(levels, key=lambda r: (r.rank, -map_level(r.agency, r.level)))
     return ranked[0] if ranked else None
 
 
@@ -257,7 +261,8 @@ def apply(
     bike path or lane on the way) an agency in SUPERSEDED_WHERE_FACILITY rating it above the
     formula is not used; with
     `painted_lane` too, a set-aside level above PAINTED_LANE_LEVEL raises a calmer formula tier
-    to PAINTED_LANE_LEVEL."""
+    to PAINTED_LANE_LEVEL. A ban (`PROHIBITING_LEVELS`) is recorded but sets no tier;
+    `pipeline.agency_ratings` closes the way instead."""
     ratings = tuple(ratings)
     formula_level = int(result.tier) + (0.5 if getattr(result, "half", False) else 0)
     # Set aside only where the old layer rates the way above the formula: a lane built since
@@ -274,12 +279,13 @@ def apply(
     ]
     # Each set-aside rating's reason, appended to the rule: the road panel reads it back
     # (`set_aside`) to tell which rating was used.
-    reasons = sorted({SUPERSEDED_WHERE_FACILITY[r.agency] for r in ratings if r not in usable})
+    aside = [r for r in ratings if r not in usable]
+    reasons = sorted({SUPERSEDED_WHERE_FACILITY[r.agency] for r in aside})
     pick = chosen(usable)
     if pick is None:
         if not ratings:
             return result
-        set_aside_level = max(map_level(r.agency, r.level) for r in ratings)
+        set_aside_level = max((map_level(r.agency, r.level) for r in aside), default=0)
         if painted_lane and set_aside_level > PAINTED_LANE_LEVEL > formula_level:
             tier, half = tier_of(PAINTED_LANE_LEVEL)
             return replace(

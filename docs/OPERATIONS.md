@@ -5291,6 +5291,17 @@ matching slip onto a side street is likeliest). Check it, and reopen with an acc
 override in Review if it is wrong (a `bicycle=yes` row, in force from the next rebuild).
 A build where MDOT's 5 records are installed but close no way logs a warning. DDOT's 5
 stays Avoid; Montgomery's is LTS 4.5 (except where our formula already says Avoid).
+MDOT's 5 never sets a road's level (review 2026-10-29): a way left open (the bridge, the
+reopened road) takes Montgomery's level where it rates the road, else the formula's, not
+Avoid, and the road panel says the formula is used because the 5 is about access.
+
+VALIDATE_SEGMENTS also checks the rating rules over the whole built table
+(`pipeline.run.assert_rating_rules`; review 2026-10-29) and refuses the build, naming up to
+10 way ids, where: a rural road open to cars is LTS 1 with no override row (the rural
+floor); a road Montgomery rates 5 is at any level but 4.5; or a road MDOT SHA bans is still
+drawn with no access reason and is not listed as left open in `agency-prohibited.csv`.
+A refusal means a rating step ran out of order or did not run; look at the way in the
+build's reports before retrying.
 
 DDOT's level field is not recorded in this repository: the script prints `ddot: level read
 from <field>`, and where the layer has none of the expected fields it stops and lists the
