@@ -329,6 +329,7 @@ server {
         add_header Strict-Transport-Security "max-age=86400" always;
         add_header Referrer-Policy "same-origin" always;
         add_header X-Content-Type-Options "nosniff" always;
+        add_header Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=(), usb=()" always;
         add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
         add_header Cache-Control "no-cache" always;
     }
@@ -339,6 +340,7 @@ server {
         add_header Strict-Transport-Security "max-age=86400" always;
         add_header Referrer-Policy "same-origin" always;
         add_header X-Content-Type-Options "nosniff" always;
+        add_header Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=(), usb=()" always;
         add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
         add_header Cache-Control "no-cache" always;
     }
@@ -362,6 +364,7 @@ server {
         add_header Strict-Transport-Security "max-age=86400" always;
         add_header Referrer-Policy "same-origin" always;
         add_header X-Content-Type-Options "nosniff" always;
+        add_header Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=(), usb=()" always;
         add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
         add_header Cache-Control "no-cache" always;
     }

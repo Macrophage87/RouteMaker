@@ -1,9 +1,11 @@
 """The 311 log (core.report_log; Stephen, 2026-10-20): the account's copy (GET and POST
-/api/me/report311-log), its checks, and which 311 website takes a point (GET
+/api/me/report311-log), its checks, and which 311 website takes a point (POST
 /api/report311/where): DC from its own boundary, elsewhere the county or city Photon names.
 """
 
 from __future__ import annotations
+
+import json
 
 import pytest
 from test_accounts import addr, send, signed_in
@@ -134,6 +136,15 @@ class TestWhichSite:
             assert f'"{site}"' in page or f"{site}:" in page, site
 
 
+def where(client, lat: float, lon: float):
+    return client.post(
+        "/api/report311/where",
+        data=json.dumps({"lat": lat, "lon": lon}),
+        content_type="application/json",
+        **addr(),
+    )
+
+
 @db
 class TestWhereEndpoint:
     def test_an_id_and_nothing_kept(self, client, monkeypatch) -> None:
@@ -142,20 +153,22 @@ class TestWhereEndpoint:
             "area",
             lambda lat, lon, lang: {"state": "Virginia", "county": "Arlington County", "city": ""},
         )
-        r = client.get("/api/report311/where?lat=38.88&lon=-77.1", **addr())
+        r = where(client, 38.88, -77.1)
         assert r.status_code == 200 and r.json() == {"where": "arlington"}
-        r = client.get("/api/report311/where?lat=38.9126&lon=-77.00709", **addr())
+        r = where(client, 38.9126, -77.00709)
         assert r.json() == {"where": "dc"}
+        # The point is never in the URL, where a server log would keep it.
+        assert client.get("/api/report311/where?lat=38.88&lon=-77.1", **addr()).status_code == 405
 
     def test_outside_the_map_is_refused(self, client) -> None:
-        assert client.get("/api/report311/where?lat=40.7&lon=-74.0", **addr()).status_code == 400
+        assert where(client, 40.7, -74.0).status_code == 400
 
     def test_photon_down(self, client, monkeypatch) -> None:
         def down(*_args, **_kwargs):
             raise geocode.Unavailable("down")
 
         monkeypatch.setattr(geocode, "area", down)
-        r = client.get("/api/report311/where?lat=38.98&lon=-77.09", **addr())
+        r = where(client, 38.98, -77.09)
         assert r.status_code == 502
 
 

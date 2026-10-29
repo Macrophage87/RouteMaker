@@ -4560,8 +4560,9 @@ near the map centre (`/api/geocode?...&lat=..&lon=..`). What keeps it out of the
   upstream error line (a 502 while the api restarts, a 504) records the whole request; the whole prefix
   is covered (v0.15.0), so a new endpoint with a place in it needs no template change. Every other
   path's upstream errors still reach the host's error log; none of them has a location in a query.
-  tests/test_beta_overlay.py pins the format, both servers' access log, and that every
-  `/api/...?` path in the front end is one of the two.
+  The 311 log's website lookup (`/api/report311/where`) takes its point in a POST body, so no
+  request line carries it. tests/test_beta_overlay.py pins the format, both servers' access log,
+  and that every `/api/...?` path in the front end, digits and underscores included, is covered.
 - **Tile paths** (`/tiles/stress/{z}/{x}/{y}.pbf`) are logged by nginx and gunicorn and show the
   area viewed, to about a mile [2 km] at zoom 14. That is true of any map pan and is
   not a position fix.
@@ -4570,7 +4571,9 @@ Open: Photon's own request logging is unverified (`docker logs photon` after one
 stack; a log4j override if queries show). Whether Valhalla logs a request on an error path (no
 suitable edges, say) is unverified, and so is the app's own log of Valhalla's refusal text (src/core/routing.py logs it
 when a router refuses a route request or a trace_attributes call); `"do_not_track": true` in the route request would be belt and
-braces. A `Permissions-Policy: geolocation=(self)` header at the edge is a separate deploy change.
+braces. The app's pages carry `Permissions-Policy: geolocation=(self), camera=(), microphone=(),
+payment=(), usb=()` (the Caddyfile, and the beta's nginx template the same,
+tests/test_beta_overlay.py), so only the site itself, never a frame, can ask for location.
 
 ## Contraflow on the no-trail graph
 

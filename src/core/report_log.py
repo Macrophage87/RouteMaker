@@ -16,10 +16,11 @@ Two pieces live here:
   account (core.models.Report311Log, GET and POST /api/me/report311-log), and `merge_logs`, which
   folds a device's copy into the account's by entry, so a device with an old copy cannot drop
   entries another device logged. Signed out, the log stays on the device.
-- `where`: which jurisdiction's 311 takes a point (GET /api/report311/where): DC from its own
-  boundary (core/geodata/dc-boundary.geojson, the one the map draws), elsewhere the county or
-  independent city from the self-hosted Photon's answer for the point (OpenStreetMap's
-  administrative boundaries). The point is not kept, and the answer is only an id.
+- `where`: which jurisdiction's 311 takes a point (POST /api/report311/where, the point in the
+  body, never the URL): DC from its own boundary (core/geodata/dc-boundary.geojson, the one the
+  map draws), elsewhere the county or independent city from the self-hosted Photon's answer for
+  the point (OpenStreetMap's administrative boundaries). The point is not kept, and the answer is
+  only an id.
 """
 
 from __future__ import annotations

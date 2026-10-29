@@ -22,7 +22,7 @@
  * something removed; past MAX_ENTRIES the oldest archived entries go first.
  *
  * Which website: inside DC from DC's boundary, here on the phone (lib/dcBoundary.ts); elsewhere the server
- * names the county or city (GET /api/report311/where; core.report_log). An entry logged with no signal
+ * names the county or city (POST /api/report311/where; core.report_log). An entry logged with no signal
  * waits with no website and is looked up when the log is next opened online.
  */
 import { useSyncExternalStore } from "react";
@@ -440,11 +440,17 @@ export async function saveAccountLog(origin: string, entries: LogEntry[], post: 
   }
 }
 
-/** GET /api/report311/where: the website's id ("none" where the log names none), or undefined when it could not be asked. */
-export async function lookUpWhere(origin: string, point: LonLat, get: Fetch = fetch): Promise<WhereId | undefined> {
+/**
+ * POST /api/report311/where: the website's id ("none" where the log names none), or undefined when it could not be
+ * asked. The point goes in the body, never the URL, so no request line in a server log carries it.
+ */
+export async function lookUpWhere(origin: string, point: LonLat, send: Fetch = fetch): Promise<WhereId | undefined> {
   try {
-    const query = new URLSearchParams({ lat: point[1].toFixed(5), lon: point[0].toFixed(5) });
-    const response = await get(`${origin}/api/report311/where?${query}`, { headers: { Accept: "application/json" } });
+    const response = await send(`${origin}/api/report311/where`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ lat: Number(point[1].toFixed(5)), lon: Number(point[0].toFixed(5)) }),
+    });
     if (!response.ok) return undefined;
     const body = (await response.json()) as { where?: unknown };
     if (body.where === null) return "none";

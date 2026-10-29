@@ -22,9 +22,11 @@ comes from:
   ConnectorGrant and ConnectorDraft (core.connector).
 - Shared links: core.shared_routes (keeping, no weight, owner only) and core.share_preview (Home
   left out of the preview).
-- Suggestions: core.suggestions, core.junction_suggestions, core.mass_hazards (the spot dropped,
-  the account for the admin only), core.suggestion_post (the Discord poll names nobody),
-  core.signed_out_suggestions (a salted daily hash, 24 hours); 311: core.report_log and core.dc311.
+- Suggestions: core.suggestions (the tap snapped onto the road), core.junction_suggestions (the
+  junction), core.mass_hazards (the spot dropped, the account for the admin only),
+  core.suggestion_post (the Discord poll names nobody), core.signed_out_suggestions (a salted
+  daily hash, 24 hours); 311: core.report_log and core.dc311. Recent places:
+  frontend/src/lib/recentPlaces.ts (RECENT_PLACES_DAYS).
 - What the browser and the server contact: the Content-Security-Policy (Caddyfile, `connect-src
   'self'`), core.street_photo, core.gbfs, core.wmata_live, core.closure_sources, core.dc311,
   core.weather (points rounded to 0.01 degree, answers 2 minutes in memory).
@@ -269,8 +271,9 @@ SECTIONS: list[tuple[str, str]] = [
         _ul(
             [
                 "A suggestion for a road or junction, or a Mass Ride hazard, keeps the road, your "
-                "level and your reason. The spot you tapped is not kept. Signed in, your account "
-                "is kept with it for the site’s admin only.",
+                "level and your reason. A road suggestion also keeps the point on the road nearest "
+                "where you tapped; a junction suggestion keeps the junction; a Mass Ride hazard "
+                "keeps no spot. Signed in, your account is kept with it for the site’s admin only.",
                 "The admin may post a suggestion as a poll on Discord. The poll names nobody.",
                 "Signed out, a suggestion keeps no account. To limit sends, your device is counted "
                 "by a one-way code made from your internet address and the day, deleted after 24 "
@@ -338,8 +341,9 @@ SECTIONS: list[tuple[str, str]] = [
         )
         + _p(
             "Your browser or the app keeps your settings, Home, weight, offline routes and 311 log "
-            "until you clear its storage. The Android app also keeps the site address. It has no "
-            "analytics or crash reporting, and its data is left out of phone backups."
+            "until you clear its storage, and the last few places you picked in search for 30 "
+            "days after each was last picked. The Android app also keeps the site address. It "
+            "has no analytics or crash reporting, and its data is left out of phone backups."
         ),
     ),
     (

@@ -779,8 +779,9 @@ def test_every_api_path_logs_errors_at_crit_only_with_the_api_proxy_settings() -
     sources = [
         f.read_text() for f in (REPO / "frontend" / "src").rglob("*.ts*") if ".test." not in f.name
     ]
-    # Nested paths too (privacy-6): /api/junction-suggestions/at?lat=.. was missed by [a-z-]+.
-    queried = {m for text in sources for m in re.findall(r"[`\"'}](/api/[a-z/-]+)\?", text)}
+    # Nested paths too (privacy-6): /api/junction-suggestions/at?lat=.. was missed by [a-z-]+,
+    # and digits and underscores too (/api/report311/where?lat=.. was missed by [a-z/-]+).
+    queried = {m for text in sources for m in re.findall(r"[`\"'}](/api/[a-z0-9/_-]+)\?", text)}
     assert queried == {
         "/api/reverse",
         "/api/geocode",
@@ -801,7 +802,7 @@ def test_every_api_path_logs_errors_at_crit_only_with_the_api_proxy_settings() -
     }, queried
     # The local connector (mcp/routemaker_mcp.py) sends a rider's point in the query too.
     mcp = (REPO / "mcp" / "routemaker_mcp.py").read_text()
-    mcp_queried = set(re.findall(r"[\"'](/api/[a-z/-]+)\?", mcp))
+    mcp_queried = set(re.findall(r"[\"'](/api/[a-z0-9/_-]+)\?", mcp))
     assert {"/api/scenic-roads", "/api/climbs-near"} <= mcp_queried, mcp_queried
     # Every one of them, a road's own path (Review's card), the bodies' paths and any new one
     # land in a location that logs only `crit`.
@@ -1054,6 +1055,15 @@ def test_the_content_security_policy_is_the_caddyfiles_verbatim() -> None:
     assert (
         f'add_header Content-Security-Policy "{caddy_csp}" always;' in dict(locations(full))["= /"]
     )
+
+
+def test_the_pages_carry_the_caddyfiles_permissions_policy() -> None:
+    """privacy-7: location for the site itself only, and nothing the app never asks for."""
+    caddy = re.search(r'header Permissions-Policy "([^"]+)"', CADDYFILE).group(1)
+    assert "geolocation=(self)" in caddy and "camera=()" in caddy and "microphone=()" in caddy
+    by_path = dict(locations(stage("full")))
+    for path in ("= /", "= /index.html", ABOUT_LOCATION):
+        assert f'add_header Permissions-Policy "{caddy}" always;' in by_path[path], path
 
 
 def test_the_stress_page_and_its_short_paths_are_served_as_the_caddyfile_serves_them() -> None:
