@@ -17,6 +17,9 @@ public class MainActivity extends BridgeActivity {
     /** The site's "Latest cue" notification (frontend/src/lib/nativeShell.ts CUE_NOTICE_ID). */
     static final int CUE_NOTICE_ID = 8080;
 
+    /** Whether the page on screen is the site's (handToPage gives a link only to it). */
+    private SiteWebViewClient siteClient;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         // A cue left on the shade by a ride the app did not end (killed, or swiped away): never stale.
@@ -52,6 +55,7 @@ public class MainActivity extends BridgeActivity {
             return;
         }
         SiteWebViewClient client = new SiteWebViewClient(bridge, this, address);
+        siteClient = client;
         bridge.setWebViewClient(client);
         // Same UI turn as the bridge's first load, so before any page commits: bridge calls from the site only.
         GuardedBridge.install(bridge, client);
@@ -63,13 +67,31 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        openShared(intent);
+        handToPage(intent);
     }
 
     /** A link shared to the app (SetupActivity, SharedLink): already checked to be on the kept site. */
     private void openShared(Intent intent) {
         String link = intent == null ? null : intent.getStringExtra(SetupActivity.EXTRA_LINK);
         if (link != null && bridge != null) bridge.getWebView().loadUrl(link);
+    }
+
+    /**
+     * A link while the app is already open: handed to the page (frontend/src/lib/rideLinks.ts), which opens it at
+     * once, or during a ride or Roam asks first, so a link tapped mid-ride never ends the ride unasked. A page that
+     * does not take it (an older site) gets the link opened here, as before; so does any page that is not the site's.
+     */
+    private void handToPage(Intent intent) {
+        String link = intent == null ? null : intent.getStringExtra(SetupActivity.EXTRA_LINK);
+        if (link == null || bridge == null) return;
+        if (siteClient == null || !siteClient.topLevelIsSite()) {
+            openShared(intent);
+            return;
+        }
+        String quoted = JSONObject.quote(link);
+        String script = "(function(){var e=new CustomEvent('routemaker:open-link',{detail:" + quoted
+                + ",cancelable:true});if(window.dispatchEvent(e))location.assign(" + quoted + ");})();";
+        bridge.getWebView().evaluateJavascript(script, null);
     }
 
     @Override

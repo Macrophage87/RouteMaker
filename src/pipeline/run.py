@@ -67,7 +67,7 @@ from routemaker.stress import (
     classify,
     inferred_unpaved,
     is_rough,
-    painted_lane_two_way_multilane,
+    painted_lane_multilane,
     rural_floor,
     winding,
 )
@@ -2635,7 +2635,7 @@ def build_handlers(
         for way in context.ways:
             rated = context.stress_by_way.get(way.osm_id)
             # The lanes the classifier read (None where it assumed one).
-            if rated is None or not painted_lane_two_way_multilane(
+            if rated is None or not painted_lane_multilane(
                 context.class_tags_by_way.get(way.osm_id, way.tags),
                 divided=way.osm_id in divided_ways,
                 lanes=rated.lanes,

@@ -62,6 +62,8 @@ interface Props {
   onPick?: () => void;
   /** Replace the plan's points with a closer fit to the opened track. */
   onRefine: (points: LonLat[]) => void;
+  /** Told when fitting the plan to an opened track starts and ends, so the page says the fitted route once (a11y-5). */
+  onFitting?: (fitting: boolean) => void;
   getMap: () => MapLibreMap | null;
   /** A Mass Ride's federal-land lines, for the file's description (lib/federalStops.ts, item 239). */
   federal?: readonly string[];
@@ -372,7 +374,7 @@ type Reading = { kind: "idle" } | { kind: "reading"; name: string } | { kind: "e
  * route on screen (gpx.ts). Nothing is sent or saved.
  */
 export function GpxPanel(props: Props) {
-  const { route, routedPoints, points, planStatus, imported, onImport, fileInput, onOpenFailed, onPick, onRefine, getMap, onDownload, onDownloadCourse, onSendToGarmin, onSendToWahoo, loop = false, federal = [] } = props;
+  const { route, routedPoints, points, planStatus, imported, onImport, fileInput, onOpenFailed, onPick, onRefine, onFitting, getMap, onDownload, onDownloadCourse, onSendToGarmin, onSendToWahoo, loop = false, federal = [] } = props;
   // Send to Wahoo is shown only to a rider who connected Wahoo (Settings > Account): nobody else sees a new control.
   const [wahooOn, setWahooOn] = useState(false);
   const wahooOffered = onSendToWahoo !== undefined;
@@ -450,6 +452,12 @@ export function GpxPanel(props: Props) {
     setFit(next);
     onRefine(next.points);
   }, [fit, imported, points, planStatus, route, routedPoints, onRefine]);
+  const fitting = fit !== null;
+  useEffect(() => {
+    onFitting?.(fitting);
+    // Gone mid-fit: the page is not left holding the route's sentence back.
+    return () => onFitting?.(false);
+  }, [fitting, onFitting]);
 
   // The file's own line, faint, under the route.
   const reference = imported && showTrack && imported.reference.length >= 2 ? imported.reference : null;
@@ -650,15 +658,6 @@ export function GpxPanel(props: Props) {
                 {sentence}
               </p>
             ))}
-            {fit && ["loading", "waiting", "ok"].includes(planStatus) && (
-              <p className="loading gpx-fitting">
-                {fit.phase === "prune"
-                  ? t("Checking for points the route loops round to reach…")
-                  : fit.rounds === 0
-                    ? t("Routing the plan along the file's track…")
-                    : t("Adding points where the route left the track (round {round} of up to {rounds})…", { round: fit.rounds, rounds: REFINE_ROUNDS })}
-              </p>
-            )}
             {match && pruned && pruned.count > 0 && samePoints(points, pruned.points) && (
               <p className="hint gpx-pruned">{prunedNotice(pruned.count)}</p>
             )}
@@ -672,6 +671,17 @@ export function GpxPanel(props: Props) {
           </div>
         )}
       </div>
+      {/* Fitting's progress, shown but out of the status region: each round is not read out, only the route it ends
+          with (App holds the route's sentence back while it runs; the a11y review's a11y-5). */}
+      {reading.kind === "idle" && imported && fit && ["loading", "waiting", "ok"].includes(planStatus) && (
+        <p className="loading gpx-fitting">
+          {fit.phase === "prune"
+            ? t("Checking for points the route loops round to reach…")
+            : fit.rounds === 0
+              ? t("Routing the plan along the file's track…")
+              : t("Adding points where the route left the track (round {round} of up to {rounds})…", { round: fit.rounds, rounds: REFINE_ROUNDS })}
+        </p>
+      )}
       {imported && imported.reference.length >= 2 && (
         <label className="toggle">
           <input ref={trackSwitchRef} type="checkbox" checked={showTrack} onChange={(event) => setShowTrack(event.target.checked)} />

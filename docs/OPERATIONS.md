@@ -291,8 +291,8 @@ get those 429s and 503s too. Its map read has 2 s (`scenic_near.TIMEOUT_MS`), pa
 answer is 503 "took too long; try a smaller area"; the roads' names then come from the router's
 locate, up to 6 s more (`scenic_near.LOCATE_TIMEOUT_S`; on failure the roads come back
 unnamed), so one search can hold the names slot for about 8 s. The climbs search reads the climbs file in memory, and answers 503 when the server has
-none. The radius defaults to 5 mi (8 km), at most 15 mi (24 km). Their queries hold a point, so
-the beta's nginx logs their errors at `crit` only.
+none. The radius defaults to 5 mi (8 km), at most 15 mi (24 km). Their queries hold a point; the
+beta's nginx logs errors on every `/api/` path at `crit` only.
 
 The content type is checked before the count on purpose: a page on any site
 can make a visitor's browser send a `text/plain` or form POST here without a
@@ -2296,7 +2296,7 @@ minute, 4 a second at most); the train positions are one shared reading every 20
 (row `wmata-trains`). Worst case with Metro's reading: about 36,000 calls a day and 9 a second,
 under WMATA's 50,000 and 10 (docs/SOURCES.md). The log says `wmata bus: ...`, `wmata trains: ...`
 or `wmata budget: ...` (never the key, never a stop or route) when a call fails. The new path's
-query holds a place, so nginx logs it at `crit` only, as `/api/transit/station-times`. To check
+query holds a place; the beta's nginx logs every `/api/` path's errors at `crit` only. To check
 it is working: plan Own Bike + 🚆🚌 to a trip with a Metrobus step; the step says "Live: bus ...". With no key, or WMATA not answering for
 about three minutes, everything is the timetable's and says "scheduled". An elevator out where a
 rider takes their bike is a warning on the plan and the station card, never an avoidance. To check
@@ -6124,8 +6124,8 @@ grep -o 'assets/[^"]*' ~/rmdata/frontend-index-$L.html     # the live script and
 git rev-parse HEAD > ~/rmdata/t9-head-pre-rel.txt
 ```
 
-The api build looks up its base image (`python:3.11-slim-bookworm`) on Docker Hub when that tag is
-not in the local store, and that network use needs the owner's approval for the deploy, as
+The api build looks up its base image (`python:3.11-slim-bookworm`, pinned by digest in
+`docker/api.Dockerfile`) on Docker Hub when that digest is not in the local store, and that network use needs the owner's approval for the deploy, as
 OWNER-DECISIONS 253 gave the last one.
 
 Steps 1 to 4 are:
