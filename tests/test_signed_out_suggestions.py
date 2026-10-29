@@ -180,6 +180,26 @@ class TestReview:
         send(address="203.0.113.2", step=2)
         assert [s.agree for s in suggestions.open_suggestions()] == [2, 2]
 
+    def test_hidden_signed_out_sends_do_not_fill_the_window(
+        self, live, settings, monkeypatch
+    ) -> None:
+        """Under a raised minimum, old lone signed-out sends never show, so they must not use up
+        the rows read before grouping and keep a newer signed-in suggestion out of the queue."""
+        settings.SUGGEST_SIGNED_OUT_MIN_AGREE = 2
+        monkeypatch.setattr(suggestions, "OPEN_READ", 2)
+        send(address="203.0.113.1", step=2)
+        send(address="203.0.113.2", way=OTHER_ROAD, step=3)
+        rider = StressSuggestion.objects.create(
+            suggester=make_user(),
+            osm_way_id=OTHER_ROAD + 1,
+            lat=38.9,
+            lon=-77.0,
+            current_tier=3,
+            tier=2,
+            reason="Quiet in the mornings.",
+        )
+        assert [s.pk for s in suggestions.open_suggestions()] == [rider.pk]
+
     def test_an_admin_approves_a_signed_out_suggestion_as_any_other(self, live) -> None:
         found = send(step=2)
         approved, _result = suggestions.approve(make_user(), found.pk)
