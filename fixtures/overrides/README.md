@@ -142,8 +142,7 @@ place (audited as a change); a different tier is a conflict to resolve in the
 admin. A stress row typed into the admin as `{"tier": n}` still sets the tier,
 as a hidden adjustment named `way-<id>`.
 
-- `2026-09-27-owner-stress.json`: the owner's curated tiers - US 340's William
-  L. Wilson Freeway, the Benning Road and Frederick Douglass bridge roadways,
+- `2026-09-27-owner-stress.json`: the owner's curated tiers - the Benning Road and Frederick Douglass bridge roadways,
   and Pennsylvania Avenue SE eastbound from the DC 295 off-ramp merge east of
   the Sousa Bridge to Fairlawn Avenue SE ("Looking at it, there's a highway
   offramp with a blind corner. It's a level 5 road afterwards.") and westbound
@@ -151,7 +150,8 @@ as a hidden adjustment named `way-<id>`.
   2026-09-28), at 5; the
   11th Street local span and its south landing (the owner's "Steer to the
   path", whose separate penalty was retired for this tier), and the Sousa
-  Bridge roadway, at 4. The owner approved loading it on 2026-09-27 ("Yes, load
+  Bridge roadway, at 4; and US 340's William L. Wilson Freeway at 4.5 (Avoid
+  until 2026-10-29: "Make it 4.5"; the file retires the old row). The owner approved loading it on 2026-09-27 ("Yes, load
   it"); docs/OPERATIONS.md, "A deploy that changes the crossings fixture or
   loads access overrides", gives the order. Its categories and notes were
   proposed here and approved by the owner the same day for `route_only`
@@ -339,6 +339,13 @@ files.
   Since 2026-10-14 the 5 Darnestown Road rows (`moco-lts5-darnestown-road`,
   3.57 mi [5.75 km]) are under `retire` too, for the owner's LTS 4 (the file
   below), and the file holds 381 ways, 39.1 mi.
+  Since 2026-10-29 (review of 2026-10-29) all 381 are under `retire` and the file
+  loads none: the rebuild reads Montgomery's layer itself (`agency-lts.json`,
+  since v0.7.0), where the county's 5 is our 4.5 just as these rows were, and a
+  snapshot row, applied at owner rank, kept a road at 4.5 after the county rated
+  it lower. Loading the file deletes them. The credit stays: the live layer is
+  Montgomery Planning's data too. The owner saw the diff first
+  (reports/review-2026-10-29/moco-retirement-diff.md, outside the repository).
 - `2026-10-14-owner-darnestown-road.json` (v0.7.0): Darnestown Road's five
   ways the county rates LTS 5 (5970658, 3.02 mi from the MD 109 junction at
   Beallsville; 697630700, 222928109, 92183771 and 92183773, 0.55 mi west of

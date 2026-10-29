@@ -66,6 +66,7 @@ SW = "src/lib/highStressLanesSwitch.ts"
 RD = "src/lib/routeDescription.ts"
 FG = "src/lib/federalLegend.ts"
 FD = "src/lib/federalLand.ts"
+LS = "src/lib/layerSection.ts"
 WT = "src/lib/weight.ts"
 WD = "src/lib/weightDialog.ts"
 PH = "src/lib/planHash.ts"
@@ -188,8 +189,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "row says Higher alone",
         IM,
-        'label: "Higher stress", short: "Higher stress"',
-        'label: "Higher stress", short: "Higher"',
+        'label: t("Higher stress"), short: t("Higher stress")',
+        'label: t("Higher stress"), short: t("Higher")',
         MARKERS,
     ),
     # (The release review's stale_fe.py: long-calm appended the target and the loop note, and
@@ -197,36 +198,36 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "announcement drops the reds",
         SU,
-        "[figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route), others]",
-        "[figures, detourSaid(route, points), targetSaid(route), loopNote(route), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), others]",
         SUMMARY,
     ),
     (
         "announcement drops the detour",
         SU,
-        "[figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route), others]",
-        "[figures, redJunctionsSaid(route), targetSaid(route), loopNote(route), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), others]",
         SUMMARY,
     ),
     (
         "announcement drops the target",
         SU,
-        "[figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route), others]",
-        "[figures, detourSaid(route, points), redJunctionsSaid(route), loopNote(route), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), loopNote(route), mtbSaid(route.mtb), others]",
         SUMMARY + TARGET,
     ),
     (
         "announcement drops the loop note",
         SU,
-        "[figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route), others]",
-        "[figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), mtbSaid(route.mtb), others]",
         SUMMARY + LOOP,
     ),
     (
         "announcement drops the other routes",
         SU,
-        "[figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route), others]",
-        "[figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route)]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb)]",
         SUMMARY + CANDS,
     ),
     (
@@ -236,13 +237,25 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         '.filter((junction) => junction.severity !== "red")',
         SUMMARY,
     ),
-    ("one junction plural", SU, '${red === 1 ? "junction" : "junctions"}', "junctions", SUMMARY),
-    ("strong said as a warning", SU, 'strong: "Strong warning"', 'strong: "Warning"', SUMMARY),
+    (
+        "one junction plural",
+        SU,
+        '  return red === 1 ? t("1 very high stress junction.") : t(',
+        "  return t(",
+        SUMMARY,
+    ),
+    (
+        "strong said as a warning",
+        SU,
+        'strong: t("Strong warning")',
+        'strong: t("Warning")',
+        SUMMARY,
+    ),
     (
         "ratio to one decimal always",
         SU,
-        "${tier}: ${ratioText(ratio, found.level)} times",
-        "${tier}: ${ratio.toFixed(1)} times",
+        "ratio: ratioText(ratio, found.level), extra",
+        "ratio: ratio.toFixed(1), extra",
         SUMMARY,
     ),
     (
@@ -255,8 +268,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "calm note one long sentence",
         DPL,
-        '(LTS 3) avoided. ` +\n    "Twice that for a heavy-traffic road (LTS 4). Three times',
-        '(LTS 3) avoided, ` +\n    "twice that for a heavy-traffic road (LTS 4), and three times',
+        "(LTS 3) avoided. Twice that for a heavy-traffic road (LTS 4). Three times",
+        "(LTS 3) avoided, twice that for a heavy-traffic road (LTS 4), and three times",
         DIALS,
     ),
     # --- settling ------------------------------------------------------------
@@ -291,8 +304,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "Planning said again",
         APP,
-        '      {status.kind === "loading" && <p className="loading">{announcement}</p>}\n      {status.kind === "loading" && <progress className="planning" aria-label="Planning the route" />}\n      <div role="status" aria-live="polite" className="status-line">\n',
-        '      {status.kind === "loading" && <progress className="planning" aria-label="Planning the route" />}\n      <div role="status" aria-live="polite" className="status-line">\n      {status.kind === "loading" && <p className="loading">{announcement}</p>}\n',
+        '        {status.kind === "loading" && slow && <p>{stillPlanningSaid(preset, dials)}</p>}\n',
+        '        {status.kind === "loading" && <p>{announcement}</p>}\n        {status.kind === "loading" && slow && <p>{stillPlanningSaid(preset, dials)}</p>}\n',
         FIXES,
     ),
     # --- the release's a11y review (SF1-SF6, N1-N10) and spec NITs -----------
@@ -320,8 +333,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "a choice said as planned",
         SU,
-        '  const head = how.chosen ? `Route ${how.chosen.rank} of ${how.chosen.of} chosen: ` : "Route planned: ";',
-        '  const head = "Route planned: ";',
+        '  const head = how.chosen\n    ? how.chosen.name\n      ? t("{name} route chosen: ", { name: how.chosen.name })\n      : t("Route {rank} of {of} chosen: ", { rank: how.chosen.rank, of: how.chosen.of })\n    : t("Route planned: ");',
+        '  const head = t("Route planned: ");',
         SUMMARY + CANDS,
     ),
     (
@@ -377,23 +390,23 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "hint mentions a target never set",
         CA,
-        "  const first = target\n",
-        "  const first = true\n",
+        '    : target\n      ? "Each is about as calm as the first, and no further',
+        '    : true\n      ? "Each is about as calm as the first, and no further',
         CANDS,
     ),
     (
         "the target rule loses its kilometres",
         DPL,
-        "    rule: `Enter ${milesRange(TARGET_MIN_MILES, TARGET_MAX_MILES, TARGET_MIN_M, TARGET_MAX_M)}, or leave it empty.`,",
-        "    rule: `Enter ${TARGET_MIN_MILES} to ${TARGET_MAX_MILES}, or leave it empty.`,",
+        "{ range: milesRange(TARGET_MIN_MILES, TARGET_MAX_MILES, TARGET_MIN_M, TARGET_MAX_M) }",
+        "{ range: `${TARGET_MIN_MILES} to ${TARGET_MAX_MILES}` }",
         TARGET,
     ),
     # --- the rider and bike weight, private (OWNER-DECISIONS 313-318) -------
     (
         "the labels lose their kilograms (316)",
         WD,
-        'rider: "Rider, lb (kg)", bike: "Bike, lb (kg)"',
-        'rider: "Rider (pounds)", bike: "Bike, lb (kg)"',
+        'rider: t("Rider, lb (kg)")',
+        'rider: t("Rider (pounds)")',
         WEIGHT,
     ),
     # --- 337, 338: everyone's total, the nearer limit outside the range --------
@@ -478,18 +491,18 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "the line shows the number",
         WT,
-        "  return `Rider and bike weight: ${setAgo(weight.setAt, now)}`;",
-        "  return `Rider and bike weight: ${weight.totalKg} kg, ${setAgo(weight.setAt, now)}`;",
+        '  return t("Rider and bike weight: {ago}", { ago: setAgo(weight.setAt, now) });',
+        '  return t("Rider and bike weight: {kg} kg, {ago}", { kg: weight.totalKg, ago: setAgo(weight.setAt, now) });',
         WEIGHT,
     ),
     (
         "the line: 1 days ago",
         WT,
-        '`set ${days} ${days === 1 ? "day" : "days"} ago`',
-        "`set ${days} days ago`",
+        'return days === 1 ? t("set 1 day ago") : t("set {days} days ago"',
+        'return t("set {days} days ago"',
         WEIGHT,
     ),
-    ("the line: never today", WT, '  return days === 0 ? "set today" : ', "  return ", WEIGHT),
+    ("the line: never today", WT, '  if (days === 0) return t("set today");\n', "", WEIGHT),
     (
         "the line: a loadout's name not said",
         WT,
@@ -612,8 +625,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "calm note with the order again",
         DPL,
-        '    return "Calmest: finds the least stressful route towards your target distance, within a set limit. The route summary says how much longer it is.";',
-        "    return `Calmest: finds the least stressful route towards your target distance, within a set limit. The route summary says how much longer it is. ${CALM_HOW}`;",
+        '    return t("Calmest: finds the least stressful route towards your target distance, within a set limit. The route summary says how much longer it is.");',
+        '    return `${t("Calmest: finds the least stressful route towards your target distance, within a set limit. The route summary says how much longer it is.")} ${CALM_HOW}`;',
         DIALS,
     ),
     (
@@ -661,8 +674,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "seek note: calm_first unsaid",
         SU,
-        '    case "calm_first":\n',
-        '    case "calm_first_never":\n',
+        '    case "calm_first":\n      return "At this Traffic setting, looking for climbs',
+        '    case "calm_first_never":\n      return "At this Traffic setting, looking for climbs',
         SUMMARY,
     ),
     (
@@ -689,8 +702,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "lanes switch says LTS 4 and Avoid",
         SW,
-        '"Painted lanes on heavy-traffic (LTS 4) and best-avoided roads are hidden on the map and in the route.',
-        '"Painted lanes on LTS 4 and Avoid roads are hidden on the map and in the route.',
+        't("Painted lanes on heavy-traffic (LTS 4) and best-avoided roads, on the map and in the route.")',
+        't("Painted lanes on LTS 4 and Avoid roads, on the map and in the route.")',
         LANES,
     ),
     (
@@ -709,9 +722,9 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ),
     (
         "federal status inserted with its text",
-        FG,
-        '    h("p", { className: "hint federal-status", role: "status" }, federalStatusText(on, status)),',
-        '    federalStatusText(on, status) && h("p", { className: "hint federal-status", role: "status" }, federalStatusText(on, status)),',
+        LS,
+        'status !== undefined && h("p", { className: "hint layer-section-status", role: "status" }, said),',
+        'status !== undefined && said && h("p", { className: "hint layer-section-status", role: "status" }, said),',
         FEDERAL,
     ),
     (
@@ -763,13 +776,25 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "note not the description",
         DP,
-        "aria-describedby={view.note ? noteId : undefined}",
+        "        aria-describedby={view.noteSaid ? saidId : view.note ? noteId : undefined}\n",
         "",
         FIXES,
     ),
     # --- the card in MapView ---------------------------------------------------
-    ("MapLibre takes the focus", MV, "focusAfterOpen: false,", "focusAfterOpen: true,", FIXES),
-    ("card has no role", MV, 'element.setAttribute("role", "dialog");', "", FIXES),
+    (
+        "MapLibre takes the focus",
+        MV,
+        "    // Taken below, if at all, once the card has its name.\n    focusAfterOpen: false,",
+        "    // Taken below, if at all, once the card has its name.\n    focusAfterOpen: true,",
+        FIXES,
+    ),
+    (
+        "card has no role",
+        MV,
+        '  element.setAttribute("role", "dialog");\n  element.setAttribute("aria-label", cardName(item));',
+        '  element.setAttribute("aria-label", cardName(item));',
+        FIXES,
+    ),
     (
         "marker title back",
         MV,
@@ -779,7 +804,13 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ),
     # --- the rings -----------------------------------------------------------
     ("map ring amber", CSS, "--map-focus: #111827;", "--map-focus: #fbbf24;", FIXES),
-    ("no inner ring", CSS, "  box-shadow: 0 0 0 2px var(--map-focus-inner);\n}", "}", FIXES),
+    (
+        "no inner ring",
+        CSS,
+        ".maplibregl-ctrl-attrib-button:focus-visible {\n  outline: 3px solid var(--map-focus);\n  outline-offset: 2px;\n  box-shadow: 0 0 0 2px var(--map-focus-inner);\n}",
+        ".maplibregl-ctrl-attrib-button:focus-visible {\n  outline: 3px solid var(--map-focus);\n  outline-offset: 2px;\n}",
+        FIXES,
+    ),
     (
         "markers on --focus",
         CSS,
@@ -787,7 +818,13 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         ".maplibregl-marker:focus-visible,",
         FIXES,
     ),
-    ("forced single ring", CSS, "    box-shadow: 0 0 0 2px Canvas;\n", "", STYLES),
+    (
+        "forced single ring",
+        CSS,
+        "  .avoid-marker:focus-visible {\n    outline: 3px solid CanvasText;\n    outline-offset: 2px;\n    box-shadow: 0 0 0 2px Canvas;\n",
+        "  .avoid-marker:focus-visible {\n    outline: 3px solid CanvasText;\n    outline-offset: 2px;\n",
+        STYLES,
+    ),
     (
         "forced Highlight ring",
         CSS,

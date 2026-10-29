@@ -34,9 +34,21 @@
 # and cut; the pinned pmtiles binary needs x86_64 Linux.
 #
 # `--build YYYYMMDD` overrides PROTOMAPS_BUILD for one run. build.protomaps.com
-# keeps daily builds for a limited time only, so a pin older than that is a 404
-# and the refresh is to name a newer day. `--print-stamps` prints what the
-# stamps of a finished run with these pins would hold, and exits.
+# keeps daily builds for a limited time only, so a pin older than that is a 404.
+# Without --build, a pinned day that is gone does not fail the run: a region
+# already installed over BBOX is kept, then our own kept copy (below) over BBOX,
+# and otherwise the newest day available in the last FALLBACK_DAYS is used; each
+# way it says to bump the pin. A pin older than REFRESH_AFTER_DAYS is reminded
+# about on every run. `--print-stamps` prints what the stamps of a finished run
+# with these pins would hold, and exits.
+#
+# Our own copy (the owner, 2026-10-29): after a good region is in place, a copy
+# of it and its stamp is kept in BASEMAP_KEEP_DIR, by default
+# ${DATA_ROOT}/backups/basemap, so a rebuild of the directory never depends on
+# Protomaps still publishing the day. A region whose stamp the copy matches is
+# installed from the copy with no download. Left at the default, a keep
+# directory that is missing or not writable only skips the copy, with a note;
+# named in BASEMAP_KEEP_DIR, it is an error.
 #
 # Nothing here touches the running stack: Caddy reads the files on each
 # request, so a replaced region.pmtiles is served on the next one. The files
@@ -56,6 +68,10 @@ ASSETS_SHA256="57e40e8c512bd8042d0a3a251f19d0d1c8523ad963c666c3c6643bada4dc92d0"
 ASSETS_URL="https://github.com/protomaps/basemaps-assets/archive/${ASSETS_COMMIT}.tar.gz"
 
 PROTOMAPS_BUILD="20260926"
+# How far back to look for a build when the pin is gone, and how old a pin gets
+# before every run says to refresh it.
+FALLBACK_DAYS=30
+REFRESH_AFTER_DAYS=45
 # settings.COVERAGE_BBOX, west,south,east,north; tests/test_basemap.py holds
 # the two equal.
 BBOX="-78.05,38.2,-76.02,39.72"
@@ -66,11 +82,13 @@ usage() {
 }
 
 print_stamps=""
+explicit_build=""
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--build)
 			[ $# -ge 2 ] || usage
 			PROTOMAPS_BUILD="$2"
+			explicit_build=1
 			shift 2
 			;;
 		--print-stamps)
@@ -107,6 +125,25 @@ target="$DATA_ROOT/basemap"
 }
 [ -w "$target" ] || { echo "cannot write $target; run this as its owner" >&2; exit 2; }
 
+keep="${BASEMAP_KEEP_DIR:-$DATA_ROOT/backups/basemap}"
+case "$keep" in
+	/?*) ;;
+	*) echo "BASEMAP_KEEP_DIR must be an absolute path, not '$keep'" >&2; exit 2 ;;
+esac
+if [ ! -d "$keep" ] || [ ! -w "$keep" ]; then
+	if [ -n "${BASEMAP_KEEP_DIR:-}" ]; then
+		echo "cannot write BASEMAP_KEEP_DIR $keep; create it, owned by this user" >&2
+		exit 2
+	fi
+	echo "note: $keep is missing or not writable, so no copy of the region is kept" >&2
+	keep=""
+fi
+# The kept copy's stamp, or nothing when there is no whole copy.
+kept_stamp=""
+if [ -n "$keep" ] && [ -f "$keep/region.pmtiles" ]; then
+	kept_stamp=$(cat "$keep/.region.source" 2>/dev/null || true)
+fi
+
 # Inside the target, so every move into place is a rename on one filesystem.
 # The Caddyfile serves only region.pmtiles, fonts/ and sprites/, so neither
 # this directory nor the stamps are ever reachable from outside. Removed first,
@@ -128,12 +165,95 @@ current() {
 	return 0
 }
 
+# The day `$1` days before today, YYYYMMDD, or nothing where `date` cannot say
+# (GNU and busybox date both take -d @<epoch>).
+days_ago() {
+	date -u -d "@$(( $(date -u +%s) - $1 * 86400 ))" +%Y%m%d 2>/dev/null || true
+}
+build_url() {
+	echo "https://build.protomaps.com/$1.pmtiles"
+}
+available() {
+	curl -fsSI "$(build_url "$1")" >/dev/null 2>&1
+}
+remind() {
+	echo "reminder: $1; bump PROTOMAPS_BUILD in scripts/fetch_basemap.sh to a recent day" >&2
+	echo "(docs/OPERATIONS.md, \"The base map\")" >&2
+}
+
+cutoff=$(days_ago "$REFRESH_AFTER_DAYS")
+if [ -z "$explicit_build" ] && [ -n "$cutoff" ] && [ "$PROTOMAPS_BUILD" -lt "$cutoff" ]; then
+	remind "the pinned Protomaps build $PROTOMAPS_BUILD is over $REFRESH_AFTER_DAYS days old"
+fi
+
 need_region=1
 need_assets=1
 current .region.source "$REGION_STAMP" region.pmtiles && need_region=""
 current .assets.source "$ASSETS_STAMP" fonts sprites sprites/README.md && need_assets=""
 
+# Our kept copy of exactly this region: installed from there, with no request.
+from_keep=""
+if [ -n "$need_region" ] && [ -n "$kept_stamp" ] && [ "$kept_stamp" = "$REGION_STAMP" ]; then
+	from_keep=1
+fi
+
+# A pinned day that build.protomaps.com no longer has. Named with --build it is
+# the operator's own choice and fails below as before; the pin itself falls back,
+# so a fresh host or a disaster rebuild is not stopped by a stale day: first to
+# the installed region, then to our kept copy, then to a recent day.
+if [ -n "$need_region" ] && [ -z "$from_keep" ] && [ -z "$explicit_build" ] && ! available "$PROTOMAPS_BUILD"; then
+	installed=$(cat "$target/.region.source" 2>/dev/null || true)
+	if [ -e "$target/region.pmtiles" ] && [ "${installed##* }" = "bbox=$BBOX" ]; then
+		remind "the pinned build $PROTOMAPS_BUILD is gone; keeping the installed region ($installed)"
+		REGION_STAMP="$installed"
+		need_region=""
+	elif [ "${kept_stamp##* }" = "bbox=$BBOX" ]; then
+		remind "the pinned build $PROTOMAPS_BUILD is gone; installing the kept copy ($kept_stamp)"
+		REGION_STAMP="$kept_stamp"
+		from_keep=1
+	else
+		n=1
+		found=""
+		while [ "$n" -le "$FALLBACK_DAYS" ]; do
+			day=$(days_ago "$n")
+			[ -n "$day" ] || break
+			if available "$day"; then
+				found="$day"
+				break
+			fi
+			n=$((n + 1))
+		done
+		if [ -n "$found" ]; then
+			remind "the pinned build $PROTOMAPS_BUILD is gone; using $found instead"
+			PROTOMAPS_BUILD="$found"
+			REGION_STAMP="build=$PROTOMAPS_BUILD bbox=$BBOX"
+		fi
+	fi
+fi
+
+# Copy the installed region into the keep directory when the copy there is not
+# of it. The stamp goes first and comes back last, so a copy cut short is never
+# taken for a whole one. A failed copy is a note, never a failed run: the region
+# itself is in place.
+keep_copy() {
+	[ -n "$keep" ] && [ -f "$target/region.pmtiles" ] || return 0
+	installed=$(cat "$target/.region.source" 2>/dev/null || true)
+	[ -n "$installed" ] && [ "$installed" != "$kept_stamp" ] || return 0
+	rm -f "$keep/.region.source" "$keep/.region.pmtiles.part"
+	if cp "$target/region.pmtiles" "$keep/.region.pmtiles.part" &&
+		mv "$keep/.region.pmtiles.part" "$keep/region.pmtiles" &&
+		printf '%s\n' "$installed" > "$keep/.region.source"; then
+		kept_stamp="$installed"
+		echo "kept a copy of the region in $keep: $installed"
+	else
+		rm -f "$keep/.region.pmtiles.part" "$keep/.region.source"
+		kept_stamp=""
+		echo "note: could not keep a copy of the region in $keep" >&2
+	fi
+}
+
 if [ -z "$need_region" ] && [ -z "$need_assets" ]; then
+	keep_copy
 	echo "$target is current: $REGION_STAMP; $ASSETS_STAMP"
 	exit 0
 fi
@@ -162,7 +282,11 @@ if [ -n "$need_assets" ]; then
 	mv "$work/assets/README.md" "$work/assets/sprites/README.md"
 fi
 
-if [ -n "$need_region" ]; then
+if [ -n "$from_keep" ]; then
+	# Verified with `pmtiles verify` when it was first extracted.
+	echo "installing the region from the kept copy in $keep: $REGION_STAMP"
+	cp "$keep/region.pmtiles" "$work/region.pmtiles"
+elif [ -n "$need_region" ]; then
 	case "$(uname -s)-$(uname -m)" in
 		Linux-x86_64) ;;
 		*) echo "the pinned pmtiles binary is Linux x86_64; this is $(uname -s)-$(uname -m)" >&2; exit 2 ;;
@@ -170,7 +294,7 @@ if [ -n "$need_region" ]; then
 	echo "fetching go-pmtiles $PMTILES_VERSION"
 	fetch_checked "$PMTILES_URL" "$PMTILES_SHA256" "$work/pmtiles.tar.gz"
 	tar -xzf "$work/pmtiles.tar.gz" -C "$work" pmtiles
-	source_url="https://build.protomaps.com/$PROTOMAPS_BUILD.pmtiles"
+	source_url=$(build_url "$PROTOMAPS_BUILD")
 	curl -fsSI "$source_url" >/dev/null || {
 		echo "$source_url is not available; build.protomaps.com keeps recent days only," >&2
 		echo "so name a newer build with --build YYYYMMDD" >&2
@@ -196,5 +320,6 @@ if [ -n "$need_region" ]; then
 	printf '%s\n' "$REGION_STAMP" > "$target/.region.source"
 fi
 chmod a+r "$target"/.region.source "$target"/.assets.source 2>/dev/null || true
+keep_copy
 
 echo "basemap in $target: $REGION_STAMP; $ASSETS_STAMP"

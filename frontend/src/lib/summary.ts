@@ -14,13 +14,13 @@ import { steepGradesSaid } from "./steepGrades.ts";
 import {
   formatClimb,
   formatDistance,
-  formatDuration,
   formatExtra,
   formatRoughDistance,
   formatSpeed,
   AVOID_MAX_SPAN_M,
   SEEK_MAX_SPAN_M,
 } from "./format.ts";
+import { formatClimbSpoken, formatDistanceSpoken, formatDurationSpoken } from "./spokenFigures.ts";
 
 /**
  * The pace the moving time assumes, derived from the answer itself (distance
@@ -291,7 +291,8 @@ export function announceRoute(route: RouteResponse, points: readonly LonLat[] = 
   }
   const figures =
     head +
-    t("{distance}, {time} moving time, climb {climb}.", { distance: formatDistance(route.distance_m), time: formatDuration(route.duration_s), climb: formatClimb(route.climb_m) });
+    // The units in words (the a11y review's a11y-6): "mi", "h" and a bare "m" were read as letters or as minutes.
+    t("{distance}, {time} moving time, climb {climb}.", { distance: formatDistanceSpoken(route.distance_m), time: formatDurationSpoken(route.duration_s), climb: formatClimbSpoken(route.climb_m) });
   const others = !how.chosen && how.others ? othersSaid(how.others) : null;
   // A Mass Ride's rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3, 325: "announced"), after the junctions.
   return [figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), others]
@@ -305,11 +306,21 @@ export function announceRoute(route: RouteResponse, points: readonly LonLat[] = 
  * where the rider put it. Shown in the route view and said with the route (REBUILD-BUNDLE spec review S4).
  * "End: This point is inside the National Zoo, ... The route goes to the racks." Null where none moved.
  */
-export function movedPointsNote(route: Pick<RouteResponse, "moved_points">, count = 0): string | null {
-  const moved = route.moved_points ?? [];
-  if (moved.length === 0) return null;
-  const n = Math.max(count, ...moved.map((m) => m.index + 1));
-  return moved.map((m) => `${pointName(m.index, n)}: ${m.note}`).join(" ");
+export function movedPointsNote(route: Pick<RouteResponse, "moved_points" | "point_notes">, count = 0): string | null {
+  // With them, the notes on a stop or the end (the API's `point_notes`; the owner, 2026-10-29): "End: This end point
+  // is not typically open to the public, make sure you're authorized to go here." In point order.
+  const noted = [...(route.moved_points ?? []), ...(route.point_notes ?? [])].sort((a, b) => a.index - b.index);
+  if (noted.length === 0) return null;
+  const n = Math.max(count, ...noted.map((m) => m.index + 1));
+  return noted.map((m) => pointNoted(m.index, n, m.note)).join(" ");
+}
+
+/** "End: <note>", "Stop 2: <note>", "Start: <note>", in the app's language (the v0.15.0 end review). */
+export function pointNoted(index: number, count: number, note: string): string {
+  const name = pointName(index, count);
+  if (name === "Start") return t("Start: {note}", { note });
+  if (name === "End") return t("End: {note}", { note });
+  return t("Stop {number}: {note}", { number: index, note });
 }
 
 /**

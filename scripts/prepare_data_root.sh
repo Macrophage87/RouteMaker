@@ -108,7 +108,9 @@ esac
 # this list stops covering them, so a mount added to the stack cannot be
 # forgotten here. scripts/local-up.sh reads this block too (one directory per
 # line, between the DIRECTORIES=" line and a closing " line) to tell whether
-# this needs running: keep that shape.
+# this needs running: keep that shape. `backups/basemap` is no compose mount:
+# scripts/fetch_basemap.sh keeps its copy of the region there, bound into the
+# container it runs in, which would make it root's if it did not exist.
 DIRECTORIES="
 caddy
 static
@@ -117,6 +119,7 @@ frontend
 postgres
 photon
 backups
+backups/basemap
 elevation
 tiles
 tiles/standard

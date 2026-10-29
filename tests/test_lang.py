@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from core import route_hazards, workzones
+from core import route_hazards, routing, workzones
 from routemaker import avoid_junctions, hazards, lang, steep_grades
 from routemaker import describe as d
 from routemaker.intersections import Control, Event, Movement
@@ -28,6 +28,8 @@ WORDED = [
     "core/workzones.py",
     "core/transit.py",
     "core/bikeshare.py",
+    "core/transit_live.py",
+    "core/wmata_live.py",
 ]
 _PLACE = re.compile(r"\{(\w+)\}")
 
@@ -75,6 +77,7 @@ def built_keys() -> set[str]:
     keys |= {w.split(": ", 1)[1] for w in hazards.WORDS.values()}
     keys |= set(steep_grades._STEEP_WORDS.values())
     keys |= {f"{avoid_junctions.NOUN} ahead at {{where}}", avoid_junctions.PLEA}
+    keys.add(routing.NOT_PUBLIC_NOTE)
     return keys
 
 

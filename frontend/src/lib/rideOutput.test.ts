@@ -128,6 +128,24 @@ test("Announcer: one polite sentence per 8 s; a newer one replaces the one waiti
   assert.equal(said.length, 2);
 });
 
+test("Announcer: a cue held back is built afresh as it is said, and dropped once it has passed (review RIDE-4)", () => {
+  const { a, said, advance } = announcer();
+  let left = 300;
+  a.say("first", false);
+  a.say("In 1,000 feet, left.", false, false, () => (left > 0 ? `In ${left} feet, left.` : null));
+  left = 150;
+  advance(POLITE_GAP_MS);
+  assert.deepEqual(said.map((s) => s.text), ["first", "In 150 feet, left."]);
+  // Passed by the time it would be said: nothing.
+  a.say("In 500 feet, right.", false, false, () => null);
+  advance(POLITE_GAP_MS);
+  assert.equal(said.length, 2);
+  // Said at once (no wait): as it was made.
+  advance(POLITE_GAP_MS);
+  a.say("In 400 feet, right.", false, false, () => "never asked");
+  assert.equal(said[2].text, "In 400 feet, right.");
+});
+
 test("Announcer: urgent goes at once and drops the waiting polite one", () => {
   const { a, said, advance } = announcer();
   a.say("advance", false);
@@ -414,6 +432,36 @@ test("Voice: a language the phone has no voice for speaks the English; the scree
     // The browser still listing its voices: the language's own words, its tag asked for.
     new Voice({ synth, utterance, voices: () => [] }).speak("ጉዞ ተጀምሯል።", true);
     assert.deepEqual([spoken[2].text, spoken[2].lang], ["ጉዞ ተጀምሯል።", "am-ET"]);
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+test("Voice: the server's English sentences in a language it does not word are said in the English voice", () => {
+  setCatalogForTest("fr", { "Left onto {street}.": "Tournez à gauche sur {street}.", "Ride started.": "Trajet commencé." });
+  setLanguageForTest("fr");
+  try {
+    const spoken: UtteranceLike[] = [];
+    const synth = { speak: (u: UtteranceLike) => void spoken.push(u), cancel: () => {}, speaking: false };
+    const utterance = (text: string): UtteranceLike => ({ text, lang: "", onend: null });
+    const voices = () => [{ lang: "en-US" }, { lang: "fr-FR" }];
+    // A road hazard as the server words it: English, in the English voice, not the French one.
+    new Voice({ synth, utterance, voices }).speak("Rails cross the road ahead.", true);
+    assert.deepEqual([spoken[0].text, spoken[0].lang, spoken[0].voice], ["Rails cross the road ahead.", "en-US", undefined]);
+    // The app's own French, in the French voice; an ASCII phrase that reads back to the catalog too.
+    new Voice({ synth, utterance, voices }).speak("Tournez à gauche sur R Street.", true);
+    new Voice({ synth, utterance, voices }).speak("Trajet commencé.", true);
+    assert.deepEqual([spoken[1].lang, spoken[1].voice?.lang, spoken[2].lang], ["fr-FR", "fr-FR", "fr-FR"]);
+  } finally {
+    setLanguageForTest("en");
+  }
+  // Spanish: the server words it, so ASCII Spanish stays with the Spanish voice.
+  setLanguageForTest("es");
+  try {
+    const spoken: UtteranceLike[] = [];
+    const synth = { speak: (u: UtteranceLike) => void spoken.push(u), cancel: () => {}, speaking: false };
+    new Voice({ synth, utterance: (text) => ({ text, lang: "", onend: null }), voices: () => [{ lang: "en-US" }, { lang: "es-US" }] }).speak("Rieles cruzan la calle adelante.", true);
+    assert.deepEqual([spoken[0].lang, spoken[0].voice?.lang], ["es-US", "es-US"]);
   } finally {
     setLanguageForTest("en");
   }

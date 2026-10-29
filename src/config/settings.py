@@ -174,6 +174,13 @@ REBUILD_REFERENCE_DIR = DATA_ROOT / "reference"
 # a deploy that changed the fixture changes nothing until it is reinstalled.
 REBUILD_CROSSINGS_FIXTURE = BASE_DIR / "fixtures" / "crossings" / "potomac-anacostia.json"
 BACKUP_DIR = DATA_ROOT / "backups"
+# The public half of the owner's age key pair: every nightly dump is encrypted to the
+# recipients in this file, and the private half never comes to the server, so the server can
+# write a dump but never read one (docs/OPERATIONS.md, "Backups"). In the backups folder by
+# default because that is the one folder the worker mounts. Missing, the dump is refused.
+BACKUP_AGE_RECIPIENTS = Path(
+    os.environ.get("BACKUP_AGE_RECIPIENTS") or BACKUP_DIR / "age-recipients.txt"
+)
 # Tiles: one directory per variant, a dated build directory under each, and a
 # `current` symlink that the serving container mounts. Inside the rebuild
 # container DATA_ROOT is /data, so these are the paths the generated Valhalla
@@ -325,7 +332,7 @@ ROUTING_CONCURRENCY = routing_concurrency(os.environ.get("WEB_CONCURRENCY"))
 # worker's memory (core.route_cache; 0 turns the cache off). The router sees at most
 # ROUTER_PARALLEL_CALLS + 1 calls per slot: the pool's threads and the request's own.
 ROUTER_PARALLEL_CALLS = max(1, int(os.environ.get("ROUTER_PARALLEL_CALLS", "3")))
-ROUTE_CACHE_TTL_S = max(0, int(os.environ.get("ROUTE_CACHE_TTL_S", "600")))
+ROUTE_CACHE_TTL_S = max(0, int(os.environ.get("ROUTE_CACHE_TTL_S", "120")))
 # The answer cache shared by the api's workers (audit S14; the owner signed off a ~16 MB
 # memcached on beta on 2026-10-27): memcached's host:port, which compose.beta.yaml sets to
 # its `memcached` service. Unset or empty, each worker keeps its own answers in its memory,
@@ -541,6 +548,12 @@ WEEKLY_REBUILD_PAUSED = env_true(os.environ.get("WEEKLY_REBUILD_PAUSED"))
 # where the file was never installed and no road carried an agency's rating. 1 or
 # true builds without them anyway, with a warning, every way on the formula's tier.
 REBUILD_ALLOW_NO_AGENCY_LTS = env_true(os.environ.get("REBUILD_ALLOW_NO_AGENCY_LTS"))
+
+# The rebuild refuses a REBUILD_REFERENCE_DIR/volume.json with fewer traffic counts
+# in longitude and latitude than this: an empty or misprojected file used to load and
+# leave every road uncounted. The 2026-10-11 install had 53,756 (MDOT SHA, VDOT and
+# DDOT together); 0 turns the check off.
+REBUILD_VOLUME_MIN_ROWS = int(os.environ.get("REBUILD_VOLUME_MIN_ROWS") or "10000")
 
 # Build validation reads two known edges back out of the tiles. The steep edge
 # proves elevation was baked; the derived edge proves the derived tags reached
@@ -815,6 +828,9 @@ LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {"plain": {"format": "{asctime} {levelname} {name} {message}", "style": "{"}},
+    # A link's id and a map tile's z/x/y are written as the access logs write them
+    # (config.access_log): Django logs each 4xx and 5xx answer's path under django.request.
+    "filters": {"logged_path": {"()": "config.access_log.PathFilter"}},
     "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
     "root": {"handlers": ["console"], "level": "WARNING"},
     "loggers": {
@@ -823,6 +839,8 @@ LOGGING = {
         # Named at the package, so `config.procrastinate` and anything else this
         # package logs from are covered by one entry.
         "config": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        # No handler of its own: it still reaches the root's, at WARNING.
+        "django.request": {"filters": ["logged_path"]},
     },
 }
 
@@ -986,8 +1004,8 @@ SESSION_COOKIE_AGE = 90 * 24 * 60 * 60
 # login that set it, which is exactly `created_at + ABSOLUTE_SESSION_LIFETIME`.
 #
 # Nothing is lost by it: the idle clock is `core.Session.last_seen_at`, which
-# SessionEpochMiddleware writes on every request already, so the idle rule is
-# enforced per request whatever Django's session store does.
+# SessionEpochMiddleware keeps within a few minutes of the latest request, so the
+# idle rule is enforced per request whatever Django's session store does.
 SESSION_SAVE_EVERY_REQUEST = False
 CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SAMESITE = "Lax"

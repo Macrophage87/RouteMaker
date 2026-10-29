@@ -83,6 +83,7 @@ from pydantic import (
     model_validator,
 )
 
+from config.access_log import logged_path
 from routemaker import effort, lang, ridetime
 from routemaker.geo import Point, haversine
 
@@ -201,6 +202,13 @@ api = NinjaAPI(
 
 class ErrorOut(Schema):
     error: str
+
+
+class RouteRefusalOut(ErrorOut):
+    """A 400 from POST /api/route; `code` names a refusal the app words itself
+    (`mass_ride_outside_dc`)."""
+
+    code: str
 
 
 Coordinate = Annotated[float, Field(allow_inf_nan=False)]
@@ -439,6 +447,18 @@ class RouteIn(Schema):
             " away a little more, and further away as an unpaved path (never more)."
             " Never above `mtb_level`: a higher one is held to it (`mtb.preferred_level` says"
             " what was used). Absent: 2, or `mtb_level` where that is lower."
+        ),
+    )
+    ride_size: StrictInt | None = Field(
+        default=None,
+        ge=100,
+        le=2000,
+        description=(
+            "Mass Ride only (PLAN items 128, 129): the anticipated ride size, riders. The route"
+            " choice prices roads that carry fewer riders a minute than this size needs (riders"
+            " / 5, a 5-minute hold at a junction) and every big change in capacity"
+            " (`mass_capacity` says how the route fares). Ignored on other ride types. Absent:"
+            " 500."
         ),
     )
     bike: BikeName | None = Field(
@@ -1558,6 +1578,15 @@ class MovedPointOut(Schema):
     note: str = Field(description="One plain sentence to show the rider.")
 
 
+class PointNoteOut(Schema):
+    """A note on a trip point the route ends a leg at (the owner, 2026-10-29): a stop or the
+    end on a road not open to the public, which stays routable as a destination."""
+
+    index: int = Field(description="The point's place in `points`, from 0 (never the start).")
+    reason: Literal["not_public"]
+    note: str = Field(description="One plain sentence to show the rider.")
+
+
 class ProfileClimbOut(Schema):
     """One sustained climb of the profile, for the chart's climbs table
     (OWNER-DECISIONS 322; on a Mass Ride also 328(c): the capacity it costs)."""
@@ -2031,6 +2060,54 @@ class SteepGradeOut(Schema):
     text: str = Field(description="One plain sentence, US units first with the metric once.")
 
 
+class MassNarrowOut(Schema):
+    """A stretch of a Mass Ride below what its ride size needs, in whole metres along the route."""
+
+    from_m: int
+    to_m: int
+    street: str | None
+    riders_per_min: int = Field(description="What it carries on the level; 0 where marked Avoid.")
+    avoid: bool
+
+
+class MassCorkerJunctionOut(Schema):
+    m: int
+    street: str | None
+    corkers: int
+
+
+class MassCorkersOut(Schema):
+    """The corkers a group of the ride size holds at once (PLAN item 139; the Corker load chart)."""
+
+    headline: int = Field(description="About this many corkers for the ride: the most at once x 2.")
+    at_least: bool = Field(description="True where the junction list may be incomplete.")
+    most_at_once: int
+    most_at_once_m: int | None
+    junctions_held_then: int
+    rotation_factor: int
+    junctions: list[MassCorkerJunctionOut]
+
+
+class MassCapacityOut(Schema):
+    """A Mass Ride's road capacity against its ride size and the corkers it needs
+    (`routemaker.mass_route`), for the page and assistants to improve the route on."""
+
+    riders: int
+    need_riders_per_min: int
+    hold_minutes: int
+    narrowest_riders_per_min: int | None
+    narrowest_m: int | None
+    below_need_m: int
+    capacity_changes: int
+    capacity_price_s: float
+    narrow_stretches: list[MassNarrowOut]
+    corkers: MassCorkersOut | None
+    choice: dict | None = Field(
+        default=None,
+        description="How the router's routes were weighed by capacity, where they were.",
+    )
+
+
 class ScenicSpanOut(Schema):
     """A stretch of the route with a scenic designation (v0.12.3; `core.route_scenic`), in
     whole metres along the traced route as `stress_spans` are measured."""
@@ -2318,6 +2395,7 @@ class RouteBody(Schema):
     # without a second request and the merged sentences are worded in one place.
     description_overview: list[DescriptionEntryOut] | None = None
     moved_points: list[MovedPointOut] = Field(default_factory=list)
+    point_notes: list[PointNoteOut] = Field(default_factory=list)
     walk_in: WalkInOut | None = None
     # The Avoid-rated junctions it passes, in route order (FOLLOWUP-ISECT-AVOID, 307-310),
     # and the notice the panel shows first and announces (335). Additive: empty and null
@@ -2333,6 +2411,9 @@ class RouteBody(Schema):
     # A Mass Ride's rider-marked hazards it passes, in riding order (FOLLOWUP-MASSRIDE-MAP
     # part 3, 325). Additive: null on every other ride type, empty where it passes none.
     mass_hazards: list[MassHazardSpanOut] | None = None
+    # A Mass Ride's road capacity for its ride size and its corkers. Additive: null on every
+    # other ride type.
+    mass_capacity: MassCapacityOut | None = None
     # The known hazards it rides (v0.10.0; cobbles, rails), in riding order. Additive: empty
     # where it rides none or the table predates them.
     road_hazards: list[RoadHazardSpanOut] | None = None
@@ -2926,7 +3007,7 @@ def unexpected(request, exc: Exception):
     documented posture of a local stack on :80 - renders the full debug page:
     SQL, paths and settings, to anyone who can make a request fail.
     """
-    logger.exception("unhandled error in %s %s", request.method, request.path)
+    logger.exception("unhandled error in %s %s", request.method, logged_path(request.path))
     if request.path.startswith(GEOCODE_PATHS):
         return _error(500, "Something went wrong looking up the place.")
     if request.path.startswith(STRESS_EDIT_PATHS):
@@ -3061,7 +3142,7 @@ def _replacing_wait_s(request) -> float:
     "/route",
     response={
         200: RouteOut,
-        400: ErrorOut,
+        400: RouteRefusalOut | ErrorOut,
         409: ConfirmLongOut | CancelledOut,
         422: ErrorOut,
         429: ErrorOut,
@@ -3157,6 +3238,11 @@ def _waited_s(request) -> float:
 
 
 def _route_answer(request, body: RouteIn, response: HttpResponse):
+    # Never during a ride: its re-plan starts where the rider is, which may be just over the line,
+    # and refusing it would leave the ride no way back into DC.
+    refused = None if body.ride_replan else routing.mass_ride_outside_dc(body.preset, body.points)
+    if refused is not None:
+        return Status(400, {"error": refused, "code": "mass_ride_outside_dc"})
     # A loop is as long as its way back too.
     loop = routing.loop_wanted(body.points, body.loop, body.preset)
     span = span_m(routing.loop_points(body.points, loop))
@@ -3803,7 +3889,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     when = body.depart_at or timezone.now()
     if when.tzinfo is None:
         when = when.replace(tzinfo=ridetime.ZONE)
-    schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, when.astimezone(ridetime.ZONE).date())
+    # The service day, not the calendar date: owl trips after midnight are the day before's.
+    schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(when).service_day)
     # The docks first, and the candidates' clock after them (TB-8): a slow feed read must not
     # spend the candidates' budget. Feeds that cannot be read are no docks, with a note, not a
     # refusal (TB-2): the trip walks at both ends.
@@ -4235,9 +4322,7 @@ def transit_closures(request, params: Query[ClosuresIn], response: HttpResponse)
     if when.tzinfo is None:
         when = when.replace(tzinfo=ridetime.ZONE)
     try:
-        schedule = transit.load(
-            settings.TRANSIT_SCHEDULE_PATH, when.astimezone(ridetime.ZONE).date()
-        )
+        schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(when).service_day)
     except transit.Unavailable:
         return _transit_refusal(
             "Transit times are not available on this server right now.", "transit_unavailable", 503
@@ -4398,9 +4483,7 @@ def transit_station_times(request, params: Query[StationTimesIn], response: Http
     if when.tzinfo is None:
         when = when.replace(tzinfo=ridetime.ZONE)
     try:
-        schedule = transit.load(
-            settings.TRANSIT_SCHEDULE_PATH, when.astimezone(ridetime.ZONE).date()
-        )
+        schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(when).service_day)
     except transit.Unavailable:
         return _transit_refusal(
             "Transit times are not available on this server right now.", "transit_unavailable", 503
@@ -4478,7 +4561,7 @@ def transit_next_vehicle(request, params: Query[NextVehicleIn], response: HttpRe
         )
         return {"vehicle": transit_live.vehicle_out("train", found)}
     try:
-        today = timezone.now().astimezone(ridetime.ZONE).date()
+        today = transit.moment_of(timezone.now()).service_day
         schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, today)
     except transit.Unavailable:
         schedule = None
@@ -4595,6 +4678,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         debug_junctions=body.debug_junctions,
         mtb_level=body.mtb_level,
         mtb_preferred=body.mtb_preferred,
+        ride_size=body.ride_size if body.preset == "mass-ride" else None,
         vias=tuple(body.via_points),
         follow=_follow_line(body),
         follow_exact=body.follow_exact,
@@ -4619,6 +4703,7 @@ def _follow_line(body: RouteIn) -> tuple[tuple[float, float], ...] | None:
         return None
 
 
+@route_cache.reads_approvals_once
 def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_calm: bool) -> dict:
     """The plan's answer, from the short-term cache where an identical request was
     answered within its life (`core.route_cache`, v0.7.0 "Faster routing" step 5), else
@@ -4803,6 +4888,12 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         stress=body.stress,
         hills=body.hills,
         when=body.when,
+        # The closures and the roads the rider marked closed, left out as the plan leaves
+        # them out, and the rider's own speed, as the plan times its route.
+        closure_bypass=tuple(body.closure_bypass),
+        closures_now=body.closures_now,
+        blocked=_blocked(body),
+        cycling_speed_kmh=presets.rider_speed(body.preset, body.cycling_speed_kmh),
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
@@ -4963,6 +5054,11 @@ def nearest_places(request, body: NearestIn, response: HttpResponse):
         stress=body.stress,
         hills=body.hills,
         when=body.when,
+        # As Best order's (`stop_order`): the plan's closures, blocked roads and speed.
+        closure_bypass=tuple(body.closure_bypass),
+        closures_now=body.closures_now,
+        blocked=_blocked(body),
+        cycling_speed_kmh=presets.rider_speed(body.preset, body.cycling_speed_kmh),
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
@@ -5082,6 +5178,13 @@ class ReverseIn(Schema):
         return self
 
 
+class PlaceNameIn(ReverseIn):
+    address: bool = Field(
+        default=False,
+        description="Name the point by its house number and street when one is near.",
+    )
+
+
 class PlaceOut(Schema):
     name: str = Field(description="A short name: the place, the street or trail, or 'near X'.")
     label: str = Field(description="One line naming it with its neighbourhood or town.")
@@ -5090,7 +5193,8 @@ class PlaceOut(Schema):
     kind: str = Field(
         description=(
             "Search: Photon's layer (house, street, city, district, other, ...). Names for a"
-            " point: 'street' or 'trail' when named from the route network, 'near' when not."
+            " point: 'street' or 'trail' when named from the route network, 'near' when not,"
+            " 'address' when asked for the street address and a house number is near."
         )
     )
     osm_type: Literal["N", "W", "R"] | None = Field(
@@ -5178,9 +5282,9 @@ def geocode_search(request, params: Query[GeocodeIn], response: HttpResponse):
     same_site_only,
     errors_as_json,
 )
-def geocode_reverse(request, params: Query[ReverseIn], response: HttpResponse):
+def geocode_reverse(request, params: Query[PlaceNameIn], response: HttpResponse):
     try:
-        found = geocode.reverse(params.lat, params.lon, lang=params.lang)
+        found = geocode.reverse(params.lat, params.lon, lang=params.lang, address=params.address)
     except geocode.Unavailable as unavailable:
         logger.warning("place name: neither the router nor the geocoder answered: %s", unavailable)
         return Status(502, {"error": GEOCODER_DOWN})
@@ -5930,13 +6034,18 @@ class MyGoOut(Schema):
     home: HomeOut | None
 
 
+SIGNED_OUT = "You are signed out. Sign in, then try again."
+
+
 def signed_in_only(view):
-    """A session of an account in standing, or 401: My Go is the rider's own."""
+    """A session of an account in standing, or 401: what these keep is the rider's own."""
 
     @wraps(view)
     def wrapped(request, *args, **kwargs):
         if not signed_in(request):
-            return _stress_error(401, "Sign in to keep My Go with your account.", code="signed_out")
+            # One sentence for every guarded endpoint (saved routes, settings, the 311 log,
+            # places, shared links, Garmin, Wahoo, My Go): My routes shows it as written.
+            return _stress_error(401, SIGNED_OUT, code="signed_out")
         return view(request, *args, **kwargs)
 
     return wrapped
@@ -6241,9 +6350,13 @@ def _report_log_owner(user) -> str:
 
 
 def _report_log_out(row, user) -> dict:
+    from . import report_log
+
     return {
-        "entries": row.entries if row is not None else None,
-        "updated_at": row.updated_at.isoformat() if row is not None else None,
+        # Each day served as noon in Washington (report_log.served), so a page of the release
+        # before shows the right day.
+        "entries": report_log.served(row.entries) if row is not None else None,
+        "updated_at": row.updated_at.isoformat() if row is not None and row.updated_at else None,
         "owner": _report_log_owner(user),
     }
 
@@ -6258,10 +6371,18 @@ def _report_log_out(row, user) -> dict:
 def report311_log_read(request):
     from django.middleware.csrf import get_token
 
+    from . import report_log
     from .models import Report311Log
 
     get_token(request)
     row = Report311Log.objects.filter(user=request.user).first()
+    if row is not None:
+        # A save by the api of the release before (during a deploy, or after a rollback) kept
+        # times: cut to days here, as the next save would.
+        cut = [report_log.dated(e) for e in row.entries or []]
+        if cut != row.entries:
+            Report311Log.objects.filter(pk=row.pk, entries=row.entries).update(entries=cut)
+            row.entries = cut
     return _private(JsonResponse(_report_log_out(row, request.user)))
 
 
@@ -6294,6 +6415,7 @@ def report311_log_save(request):
         Report311Log.objects.get_or_create(user=request.user, defaults={"entries": []})
         row = Report311Log.objects.select_for_update().get(user=request.user)
         row.entries = report_log.merge_logs(row.entries or [], entries)
+        row.updated_at = report_log.today()
         row.save(update_fields=["entries", "updated_at"])
     return _private(JsonResponse(_report_log_out(row, request.user)))
 
@@ -6347,7 +6469,8 @@ def saved_routes_list(request):
     return _private(
         JsonResponse(
             {
-                "routes": [_route_summary(r) for r in rows.defer("line", "answer")],
+                # The summary reads none of the heavy fields; a route's GPX alone may be 4 MB.
+                "routes": [_route_summary(r) for r in rows.defer("line", "answer", "gpx")],
                 "max": SavedRoute.MAX_PER_ACCOUNT,
             }
         )
@@ -6674,6 +6797,7 @@ def connected_apps_read(request):
 def connected_app_delete(request, grant_id: int):
     from .models import ConnectorGrant
 
+    # The app's drafts, their links and GPX links go with its grant (ConnectorDraft.grant).
     ConnectorGrant.objects.filter(user=request.user, pk=grant_id).delete()
     return _private(JsonResponse({"apps": _connected_apps(request.user)}))
 
@@ -7013,6 +7137,10 @@ def shared_route_add(request):
     now = timezone.now()
     _purge_shared(now)
     keep = body.get("keep", "year")
+    owner = request.user if signed_in(request) else None
+    problem = shared_routes.quota_problem(owner, keep, now)
+    if problem:
+        return _stress_error(problem[0], problem[1], field=problem[2])
     delete_after = (
         shared_routes.delete_after_of(body.get("delete_after"), timezone.localdate(now))
         if keep == "until"
@@ -7036,7 +7164,7 @@ def shared_route_add(request):
                 keep=keep,
                 delete_after=delete_after,
                 # Signed in, the owner, so only they can turn the link off (nothing else of them).
-                owner=request.user if signed_in(request) else None,
+                owner=owner,
                 # Missing (a page from before previews) is no image: it never said where Home is.
                 preview_image=body.get("preview_image", False),
             )
@@ -7046,6 +7174,8 @@ def shared_route_add(request):
     except IntegrityError:
         # Ids are 128 random bits: a taken one is a resend, never another rider's to replace.
         return _stress_error(409, "That link's route is already kept.", code="taken")
+    # Its preview image drawn now by the worker, not on a chat app's first fetch.
+    share_preview.draw_later(row)
     response = JsonResponse({"id": row.pk}, status=201)
     response["Cache-Control"] = "no-store"
     return response
@@ -7184,13 +7314,14 @@ def my_shared_route_revoke(request, route_id: str):
 def my_shared_route_regenerate(request, route_id: str):
     from django.utils import timezone
 
-    from . import shared_routes
+    from . import share_preview, shared_routes
 
     now = timezone.now()
     row = _owned_shared(request, route_id)
     if row is None or shared_routes.expired(row, now):
         return _stress_error(404, SHARED_NOT_YOURS, code="not_found")
     fresh = shared_routes.regenerate(row, now)
+    share_preview.draw_later(fresh)
     return _private(JsonResponse(_shared_summary(request, fresh), status=201))
 
 
@@ -7304,9 +7435,20 @@ def weather_check(request):
 
 
 # Ride mode's 311 (v0.7.0 "Go riding fixes" item 3; core.dc311): whether the server sends a
-# report to DC 311 itself (only with DC311_API_KEY set), and the sending. Off, the page opens
-# the phone's text app to 311 instead. The position and the words go to DC only, never a log.
+# report to DC 311 itself (only with DC311_API_KEY set), and the sending. Off, the problem stays
+# in the 311 log for the rider to send. The position and the words go to DC only, never a log.
 REPORT_311_BODY_MAX_BYTES = 2048
+
+
+def _report311_who(request) -> str:
+    """The signed-in rider as a 311 ticket and the per-account count name them: a keyed digest."""
+    return ratelimit.client_key(f"user:{request.user.pk}")
+
+
+def _report311_refused(status: int, message: str, code: str):
+    out = JsonResponse({"error": message, "code": code}, status=status)
+    out["Cache-Control"] = "no-store"
+    return out
 
 
 @api.get("/report311", summary="Whether Ride mode's 311 reports are sent to DC from here")
@@ -7318,37 +7460,42 @@ REPORT_311_BODY_MAX_BYTES = 2048
 def report311_status(request):
     from . import dc311
 
-    on = dc311.enabled()
-    # On, the answer carries a short-lived signed ticket that a send must bring back.
+    # On for a signed-in rider (signed out, the problem stays in the 311 log): the answer carries
+    # a short-lived ticket, signed for this account, that a send must bring back.
+    on = dc311.enabled() and signed_in(request)
     response = JsonResponse(
-        {"enabled": True, "ticket": dc311.ticket()} if on else {"enabled": False}
+        {"enabled": True, "ticket": dc311.ticket(_report311_who(request))}
+        if on
+        else {"enabled": False}
     )
     response["Cache-Control"] = "no-store"
     return response
 
 
-@api.get("/report311/where", summary="Which 311 website takes a problem at a point")
+@api.post("/report311/where", summary="Which 311 website takes a problem at a point")
 @decorate_view(
     ratelimit.in_flight_limited(ratelimit.GEOCODE_IN_FLIGHT, ratelimit.name_slots),
     ratelimit.rate_limited(ratelimit.REVERSE),
     ratelimit.rate_limited(ratelimit.REVERSE_BURST),
     same_site_only,
+    json_body_only,
     errors_as_json,
 )
-def report311_where(request, params: Query[ReverseIn]):
+def report311_where(request, body: ReverseIn):
     """The 311 log's site for an entry (core.report_log.where): an id the page knows, or null
-    where the point is in no jurisdiction the log names. The point is not kept."""
+    where the point is in no jurisdiction the log names. The point is not kept, and comes in the
+    body, so no request line in a log names it."""
     from . import report_log
 
     try:
-        found = report_log.where(params.lat, params.lon, lang=params.lang)
+        found = report_log.where(body.lat, body.lon, lang=body.lang)
     except geocode.Unavailable as unavailable:
         logger.warning("311 log: the geocoder did not answer: %s", unavailable)
         out = JsonResponse({"error": GEOCODER_DOWN}, status=502)
         out["Cache-Control"] = "no-store"
         return out
     out = JsonResponse({"where": found})
-    out["Cache-Control"] = "private, max-age=86400"
+    out["Cache-Control"] = "no-store"
     return out
 
 
@@ -7374,23 +7521,22 @@ def report311_send(request):
     if not isinstance(description, str) or len(description) > dc311.DESCRIPTION_MAX:
         return _error(400, f"description is text of at most {dc311.DESCRIPTION_MAX} characters.")
     if dc311.enabled():
-        if not dc311.ticket_ok(body.get("ticket")):
-            out = JsonResponse(
-                {"error": "Ask the server again, then send the report.", "code": "no_ticket"},
-                status=403,
+        if not signed_in(request):
+            return _report311_refused(401, "Sign in to send reports from here.", "signed_out")
+        who = _report311_who(request)
+        if not dc311.ticket_ok(body.get("ticket"), who):
+            return _report311_refused(
+                403, "Ask the server again, then send the report.", "no_ticket"
             )
-            out["Cache-Control"] = "no-store"
-            return out
+        if not ratelimit.hit(ratelimit.REPORT_311_ACCOUNT, who).allowed:
+            return _report311_refused(
+                429, "You have sent this hour's reports from here; text 311 instead.", "busy"
+            )
         everyone = ratelimit.Limit(
             scope=dc311.GLOBAL_SCOPE, requests=dc311.HOURLY_MAX, window_s=3600
         )
         if not ratelimit.hit(everyone, "all").allowed:
-            out = JsonResponse(
-                {"error": "DC 311 reports from here are paused for now.", "code": "busy"},
-                status=429,
-            )
-            out["Cache-Control"] = "no-store"
-            return out
+            return _report311_refused(429, "DC 311 reports from here are paused for now.", "busy")
     try:
         ident = dc311.send(kind, float(lat), float(lon), description)
     except dc311.NotSent as refused:
@@ -7403,15 +7549,17 @@ def report311_send(request):
 
 
 # Mass Ride and Group Ride links: the other riders as dots, and alerts (v0.7.0 plan;
-# core.ride_presence). No sign-in: a ride is the digest of the link's plan and a rider a random
-# per-ride token. Positions are in POST bodies only, kept in memory for 2 minutes, never logged.
+# core.ride_presence). No sign-in: a ride is an id derived from the link's key and a rider a
+# random per-ride token. Dots, paths and alerts come sealed by the phones, in POST bodies only,
+# kept in memory for 2 minutes, never logged; a post in plain numbers is refused.
 # The fine limits are per token, in memory; the database counts only a generous ceiling per
 # address (a whole ride's phones can share one carrier address) and per ride, by keyed digest.
 
 
 def ride_writes_limited(view):
-    """Count a write against its ride (ratelimit.RIDE_WRITES), keyed by a digest of the ride id;
-    a path that is not a ride id is left to the view's 404 uncounted."""
+    """Count a write against its ride (ride_presence.count_write, in the ride's own state, so the
+    count is gone with the ride); a path that is not a ride id is left to the view's 404
+    uncounted."""
 
     @wraps(view)
     def wrapped(request, *args, **kwargs):
@@ -7419,11 +7567,13 @@ def ride_writes_limited(view):
 
         ride_id = str(kwargs.get("ride_id", ""))
         if ride_presence.RIDE_ID.match(ride_id):
-            limit = ratelimit.RIDE_WRITES
-            decision = ratelimit.hit(limit, ratelimit.client_key(f"ride:{ride_id}"))
-            if not decision.allowed:
+            try:
+                wait = ride_presence.count_write(ride_id)
+            except ride_presence.Refused as refused:
+                return _stress_error(refused.status, refused.message)
+            if wait:
                 out = _stress_error(429, "This ride is busy; try again shortly.")
-                out["Retry-After"] = str(decision.retry_after_s)
+                out["Retry-After"] = str(wait)
                 return out
         return view(request, *args, **kwargs)
 
@@ -7470,7 +7620,7 @@ def ride_read(request, ride_id: str):
     return _ride_call(request, lambda rp: rp.read(ride_id, token, leader=leader))
 
 
-@api.post("/rides/{ride_id}/here", summary="Show this rider as a dot (rounded to 20 m) for 2 min")
+@api.post("/rides/{ride_id}/here", summary="Show this rider's sealed dot for 2 min")
 @decorate_view(*RIDE_WRITE_GUARDS)
 def ride_here(request, ride_id: str):
     body, refusal = _ride_body(request)
@@ -7478,15 +7628,13 @@ def ride_here(request, ride_id: str):
         return refusal
     return _ride_call(
         request,
-        lambda rp: rp.post_position(
-            ride_id, body.get("token", ""), body.get("lon"), body.get("lat"), body.get("role")
-        ),
+        lambda rp: rp.post_position(ride_id, body.get("token", ""), body.get("sealed")),
     )
 
 
 @api.post(
     "/rides/{ride_id}/path",
-    summary="A broadcast leader's route and ridden path, kept in memory for 2 min",
+    summary="A broadcast leader's sealed route and ridden path, kept in memory for 2 min",
 )
 @decorate_view(*RIDE_WRITE_GUARDS)
 def ride_path(request, ride_id: str):
@@ -7499,9 +7647,7 @@ def ride_path(request, ride_id: str):
         return refusal
     return _ride_call(
         request,
-        lambda rp: rp.post_path(
-            ride_id, body.get("token", ""), body.get("route"), body.get("trail")
-        ),
+        lambda rp: rp.post_path(ride_id, body.get("token", ""), body.get("sealed")),
     )
 
 
@@ -7514,7 +7660,7 @@ def ride_leave(request, ride_id: str):
     return _ride_call(request, lambda rp: rp.leave(ride_id, body.get("token", "")))
 
 
-@api.post("/rides/{ride_id}/alerts", summary="Send an alert to everyone on the ride link")
+@api.post("/rides/{ride_id}/alerts", summary="Send a sealed alert to everyone on the ride link")
 @decorate_view(*RIDE_WRITE_GUARDS)
 def ride_alert(request, ride_id: str):
     body, refusal = _ride_body(request)
@@ -7522,15 +7668,7 @@ def ride_alert(request, ride_id: str):
         return refusal
     return _ride_call(
         request,
-        lambda rp: rp.send_alert(
-            ride_id,
-            body.get("token", ""),
-            str(body.get("ride_type", "")),
-            str(body.get("kind", "")),
-            str(body.get("text", "") or ""),
-            body.get("lon"),
-            body.get("lat"),
-        ),
+        lambda rp: rp.send_alert(ride_id, body.get("token", ""), body.get("sealed")),
     )
 
 

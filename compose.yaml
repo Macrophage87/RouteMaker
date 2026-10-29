@@ -68,6 +68,14 @@ x-logging: &logging
       max-size: "10m"
       max-file: "5"
 
+# The images built here (api, worker, migrate: docker/api.Dockerfile; rebuild:
+# docker/pipeline.Dockerfile) run as uid 10001 and need no Linux capability, so they get
+# none, and nothing in them may gain privileges by exec (a setuid binary, file
+# capabilities). The third-party images keep Docker's defaults.
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
 # Everything `config/settings.py` reads from the environment that is not a
 # secret and that every Django process needs the same value of. The four
 # services that import Django settings - api, worker, migrate and rebuild - all
@@ -139,7 +147,7 @@ services:
         limits: { memory: 256M, cpus: "0.5" }
 
   api:
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardened]
     image: ghcr.io/macrophage87/routemaker-api:${TAG}
     build:
       context: .
@@ -247,7 +255,7 @@ services:
       # flight on its pool (1: one at a time), and how long a finished answer is kept in a
       # worker's memory (0: not kept).
       ROUTER_PARALLEL_CALLS: ${ROUTER_PARALLEL_CALLS:-3}
-      ROUTE_CACHE_TTL_S: ${ROUTE_CACHE_TTL_S:-600}
+      ROUTE_CACHE_TTL_S: ${ROUTE_CACHE_TTL_S:-120}
       # A memcached the workers share their answers through (host:port; audit S14). Empty
       # here: this stack runs none (its limits already reach the 32 GB host's at the swap
       # peak), so each worker keeps its own. compose.beta.yaml sets it to its own memcached.
@@ -338,7 +346,7 @@ services:
   # belongs to the rebuild service, which is the container with the Valhalla
   # binaries and the data mounts.
   worker:
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardened]
     image: ghcr.io/macrophage87/routemaker-api:${TAG}
     build:
       context: .
@@ -361,6 +369,9 @@ services:
       # directory inside the image - and wrote every dump to container storage
       # that the next restart discards.
       DATA_ROOT: /data
+      # The public-key file each nightly dump is encrypted to (docs/OPERATIONS.md, "Encrypted to
+      # a public key only"); set it in the environment file to move it.
+      BACKUP_AGE_RECIPIENTS: ${BACKUP_AGE_RECIPIENTS:-/data/backups/age-recipients.txt}
       # The owner's SmarterRoads key for VDOT's work-zone feed (FOLLOWUP-WORKZONES,
       # 346: "the key stays server-side only"). This service alone reads the feeds;
       # empty, Virginia's work zones are off and nothing is asked of VDOT.
@@ -387,6 +398,9 @@ services:
       # being recreated. Without the bind the check measured this container's
       # writable layer and reported room the rebuild does not have.
       - ${DATA_ROOT}/tiles:/data/tiles:ro
+      # The base map, read by the link preview's picture, which this service draws when a link
+      # is made (config.procrastinate.draw_share_preview, core.preview_basemap) as the api does.
+      - ${DATA_ROOT}/basemap:/data/basemap:ro
     # The same sixty seconds, for the same reason, as the `rebuild` service
     # below: on SIGTERM Procrastinate cancels its side tasks and then calls
     # `unregister_worker`, which is a database round trip, and compose's
@@ -416,7 +430,7 @@ services:
   # Django integration ships its schema as migrations, so this one step both
   # creates the schema on a fresh box and upgrades it on an existing one.
   migrate:
-    <<: *logging
+    <<: [*logging, *hardened]
     image: ghcr.io/macrophage87/routemaker-api:${TAG}
     build:
       context: .
@@ -465,6 +479,25 @@ services:
       POSTGRES_DB: ${PGDATABASE:-routemaker}
       POSTGRES_USER: ${PGUSER:-routemaker}
       POSTGRES_PASSWORD: ${PGPASSWORD}
+    # What PostgreSQL writes to its log when a statement fails: the error, and nothing of the
+    # statement. By default it adds the statement's text (STATEMENT:), and psycopg2 fills the
+    # parameters into that text, so a route plan that ran out of time logged the route's points
+    # and a refused write to the saved Home logged the Home; the row's values come in DETAIL.
+    # log_min_error_statement=panic leaves STATEMENT out of every error, log_error_verbosity=terse
+    # leaves out DETAIL, HINT, QUERY and CONTEXT, and the other two keep any statement or its
+    # duration from being logged. The error line itself (its message and SQLSTATE) stays.
+    # compose.beta.yaml's command repeats these four; tests/test_server_logs.py checks both.
+    # The image's entrypoint passes a command that starts with `postgres` straight through.
+    command:
+      - postgres
+      - -c
+      - log_min_error_statement=panic
+      - -c
+      - log_error_verbosity=terse
+      - -c
+      - log_statement=none
+      - -c
+      - log_min_duration_statement=-1
     # What `migrate` waits for, and the `-h 127.0.0.1` is the whole of it.
     #
     # `pg_isready` with no host probes the unix socket, which is exactly what
@@ -834,7 +867,7 @@ services:
   # out of the way for the plan's swap-time arithmetic to hold - see
   # scripts/check_compose_limits.py, which asserts both figures.
   rebuild:
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardened]
     image: ghcr.io/macrophage87/routemaker-pipeline:${TAG}
     build:
       context: .
@@ -884,6 +917,9 @@ services:
       # ratings in reference/agency-lts.json (pipeline.agency_ratings). Empty,
       # the default: such a rebuild is refused.
       REBUILD_ALLOW_NO_AGENCY_LTS: ${REBUILD_ALLOW_NO_AGENCY_LTS:-}
+      # The fewest traffic counts reference/volume.json may hold before the
+      # rebuild refuses it (pipeline.run.check_volume_rows). Empty: 10000; 0: off.
+      REBUILD_VOLUME_MIN_ROWS: ${REBUILD_VOLUME_MIN_ROWS:-}
       # The source extract the rebuild produces for itself (docs/OPERATIONS.md,
       # "The source extract"). All four are optional overrides of the defaults
       # in settings: a mirror, the freshness limit, a forced refresh, and a

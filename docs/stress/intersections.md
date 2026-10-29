@@ -239,25 +239,25 @@ where a busy road meets there (`:572-576`).
   `:719-745`). The cost is still the model's.
 - **Red is also the avoidance trigger.** RouteMaker's search plans again around the
   approaches to junctions whose cost, after the time of day, is red or more
-  (`REFINE_MIN_EVENT_FT = RED_MIN_FT`, `src/core/refine.py:111`; used at
-  `src/core/refine.py:740-752`). It does not do this on Mass Ride.
+  (`REFINE_MIN_EVENT_FT = RED_MIN_FT`, `src/core/refine.py`; used in
+  `refine.crossing_targets`). It does not do this on Mass Ride.
 - **The debug list.** `debug_junctions: true` on a route request adds `junctions_debug`
-  to the answer (`src/core/api.py:230-237`, `:1111-1112`): every junction event, flagged
+  to the answer (`RouteIn.debug_junctions`, `src/core/api.py`): every junction event, flagged
   or not, with its cost in feet and calm miles, severity, ride-time factor and whether the
-  speed was assumed (`JunctionDebugOut`, `src/core/api.py:531-554`;
-  `src/core/routing.py:1703-1729`). It holds only facts about the route.
+  speed was assumed (`JunctionDebugOut`, `src/core/api.py`;
+  `routing._junction_debug_rows`, `src/core/routing.py`). It holds only facts about the route.
 
 ## 8. The preset's weight
 
 How much of a junction's cost counts depends on the traffic-stress slider: 0.25 at 0,
 rising in a straight line to 1.0 at 70 (Default) and staying at 1.0 above that
-(`intersection_weight`, `src/core/refine.py:214-219`; `INTERSECTION_WEIGHT_AT_ZERO`,
-`src/core/refine.py:148`; `STRESS_DEFAULT_AT = 70`, `src/core/presets.py:232`). Mass
+(`intersection_weight`, `INTERSECTION_WEIGHT_AT_ZERO`, `src/core/refine.py`;
+`STRESS_DEFAULT_AT = 70`, `src/core/presets.py`). Mass
 Ride's routing charges no junction cost, because the calm search that adds it does not
 run for Mass Ride ([routing-costs.md](routing-costs.md)). The rolling stress chart
 ([stress-number.md](stress-number.md) section 4) uses the same weight, for every junction
 the model charges for, flagged or not (`src/routemaker/calm.py:153-161`, `:219-230`;
-the weight is passed in at `src/core/routing.py:2522`). At the top of the slider it
+the weight is passed in as `refine.intersection_weight(stress_dial)`, `src/core/routing.py`). At the top of the slider it
 counts the worth rule's exchange instead (red 5 x 2 x the cost, orange 5 x 1, unflagged
 0; 10 in place of 5 with a target). Mass Ride has no rolling stress chart.
 

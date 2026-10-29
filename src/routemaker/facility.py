@@ -511,7 +511,7 @@ def map_class(tags: dict[str, str]) -> MapClass:
     `bicycle_link_service`), and a road or path the public may not enter
     (`access` or `vehicle` of no, private, military, restricted, permit), a
     bicycle or foot tag reopening it. Neither is drawn (OWNER-DECISIONS 89).
-    "Legal but avoid" (US 340, `bicycle=use_sidepath`) is a road a bicycle may
+    "Legal but avoid" (an urban expressway, `bicycle=use_sidepath`) is a road a bicycle may
     use, and keeps its tier."""
     highway = tags.get("highway")
     if highway in NOT_A_WAY_HIGHWAY or tags.get("indoor", "no") != "no":
@@ -928,6 +928,12 @@ def side_street_names(
 USE_SIDEPATH_M = 30.0
 
 
+# The `access` / `vehicle` values over which `bicycle=use_sidepath` opens nothing: no public
+# access, and upstream's own closing values, over which it would read `use_sidepath` as a
+# grant (the remap's `USE_SIDEPATH_CLOSING_ACCESS`, held equal by tests/test_facility.py).
+USE_SIDEPATH_CLOSING_ACCESS = NO_PUBLIC_ACCESS | ACCESS_CLOSES
+
+
 def is_use_sidepath_road(tags: dict[str, str]) -> bool:
     """A road (not a trail-class way) tagged `bicycle=use_sidepath` that nothing else
     closes: not a motorway or `motorroad=yes`, and no `access` or `vehicle` keeping the
@@ -939,7 +945,7 @@ def is_use_sidepath_road(tags: dict[str, str]) -> bool:
         and highway not in TRAIL_CLASS_HIGHWAY
         and highway not in BARRED_HIGHWAY
         and tags.get("motorroad") != "yes"
-        and not any(tags.get(key) in NO_PUBLIC_ACCESS for key in ("access", "vehicle"))
+        and not any(tags.get(key) in USE_SIDEPATH_CLOSING_ACCESS for key in ("access", "vehicle"))
     )
 
 

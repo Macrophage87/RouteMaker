@@ -2,8 +2,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
-import { t } from "./i18n.ts";
+import { loadLanguage, t } from "./i18n.ts";
 import {
+  ANSWERED_HERE_KEY,
+  DWELL_M,
+  DWELL_PAUSE_MS,
+  HOME_PAUSE_M,
+  answeredHere,
+  forgetAnsweredHere,
+  dotHeldBack,
+  markAnsweredHere,
+  nextDwell,
   ALERT_LABEL,
   ALERT_KINDS,
   ROAM_ALERT_KINDS,
@@ -15,8 +24,6 @@ import {
   alertRefusal,
   alertText,
   awayWords,
-  roamRideId,
-  broadcastRideId as broadcastIdForRoamTest,
   consentFor,
   countText,
   riderTotal,
@@ -32,7 +39,7 @@ import {
   postSoonAfter,
   project,
   readRide,
-  rideId,
+  rideOf,
   ridersSaid,
   roleKey,
   roleOf,
@@ -43,6 +50,7 @@ import {
   type RideAlert,
   type RideRole,
 } from "./rideGroup.ts";
+import { newRideSecret, openValue, rideSeal, sealValue } from "./rideSeal.ts";
 import {
   ALERT,
   DOT,
@@ -67,6 +75,9 @@ import { baseSurfaces } from "../testSupport/baseSurfaces.ts";
 import { VISIONS, deltaE2000, simulate } from "../testSupport/colourVision.ts";
 import { readFileSync } from "node:fs";
 
+// Spanish's catalog is fetched on choosing it (lib/i18n.ts loadLanguage), as the app does before it starts.
+await loadLanguage("es");
+
 // An east-west route about 3.4 km long.
 const LINE: LonLat[] = Array.from({ length: 21 }, (_, i) => [-77.04 + i * 0.002, 38.9] as LonLat);
 
@@ -88,10 +99,11 @@ test("only a Mass Ride or Group Ride link with a route is a ride", () => {
 });
 
 test("everyone on the same link is on the same ride; another link is another", async () => {
-  const a = await rideId("mass-ride", LINE.slice(0, 3));
+  const secret = newRideSecret();
+  const a = (await rideOf(secret))!.id;
   assert.match(a, /^[0-9a-f]{64}$/);
-  assert.equal(await rideId("mass-ride", LINE.slice(0, 3).map(([x, y]) => [x + 0.000001, y] as LonLat)), a);
-  assert.notEqual(await rideId("group-ride", LINE.slice(0, 3)), a);
+  assert.equal((await rideOf(secret))!.id, a);
+  assert.notEqual((await rideOf(newRideSecret()))!.id, a);
   assert.match(newToken(), /^[0-9a-f]{32}$/);
   assert.notEqual(newToken(), newToken());
 });
@@ -189,6 +201,53 @@ test("sharing stops when turned off, after 10 minutes off the route, or 12 hours
   assert.equal(shareStop({ ...base, lastNearAt: 12 * 3600_000 - 1 }, 12 * 3600_000), "ride-over");
 });
 
+test("a dot is shown at the meetup and through a regroup stop, and held back after an hour in one spot", () => {
+  const dupont: LonLat = [-77.0434, 38.9096];
+  let dwell = nextDwell(null, dupont, 0);
+  // Waiting at the meetup for 50 minutes, drifting a few metres: shown the whole time.
+  const drift: LonLat = [dupont[0] + 0.0003, dupont[1]];
+  dwell = nextDwell(dwell, drift, 50 * 60_000);
+  assert.equal(dwell.since, 0, "a few metres is the same stay");
+  assert.equal(dotHeldBack(dwell, drift, 50 * 60_000, null), false);
+  assert.equal(dotHeldBack(dwell, drift, DWELL_PAUSE_MS, null), false, "an hour is fine");
+  assert.equal(dotHeldBack(dwell, drift, DWELL_PAUSE_MS + 1, null), true, "over an hour in one spot is held back");
+  // Moving on starts a new stay, and the dot is sent again.
+  const onTheRoad: LonLat = [dupont[0] + (DWELL_M * 3) / (111_195 * Math.cos((dupont[1] * Math.PI) / 180)), dupont[1]];
+  dwell = nextDwell(dwell, onTheRoad, DWELL_PAUSE_MS + 60_000);
+  assert.equal(dwell.since, DWELL_PAUSE_MS + 60_000);
+  assert.equal(dotHeldBack(dwell, onTheRoad, DWELL_PAUSE_MS + 60_000, null), false);
+});
+
+test("a dot is held back at the rider's saved Home, but not at a start elsewhere", () => {
+  const home: LonLat = [-77.02, 38.92];
+  const nearHome: LonLat = [-77.021, 38.92];
+  const kx = 111_195 * Math.cos((38.92 * Math.PI) / 180);
+  const pastHome: LonLat = [-77.02 - (HOME_PAUSE_M + 20) / kx, 38.92];
+  assert.equal(dotHeldBack(nextDwell(null, home, 0), home, 0, home), true);
+  assert.equal(dotHeldBack(nextDwell(null, nearHome, 0), nearHome, 0, home), true);
+  assert.equal(dotHeldBack(nextDwell(null, pastHome, 0), pastHome, 0, home), false);
+  assert.equal(dotHeldBack(nextDwell(null, home, 0), home, 0, null), false, "no saved Home, nothing held back at the start");
+});
+
+test("a Yes counts only in the tab it was given in: opening the link again elsewhere asks again", () => {
+  const box = new Map<string, string>();
+  const store = { getItem: (k: string) => box.get(k) ?? null, setItem: (k: string, v: string) => void box.set(k, v) };
+  assert.equal(answeredHere("ride-a", store), false);
+  markAnsweredHere("ride-a", true, store);
+  assert.equal(answeredHere("ride-a", store), true);
+  assert.equal(answeredHere("ride-b", store), false);
+  // The ride ended: the next ride on the page asks again.
+  markAnsweredHere("ride-a", false, store);
+  assert.equal(answeredHere("ride-a", store), false);
+  // A ride ended with its page already gone (Plan): App forgets them all.
+  markAnsweredHere("ride-b", true, store);
+  forgetAnsweredHere(store);
+  assert.equal(answeredHere("ride-b", store), false);
+  // Anything else under the key is no answer.
+  box.set(ANSWERED_HERE_KEY, "{not json");
+  assert.equal(answeredHere("ride-a", store), false);
+});
+
 test("the alert lists are the plan's, and Medical emergency or crash and Crash ask first", () => {
   assert.deepEqual(
     ALERT_KINDS["mass-ride"].map((k) => k.label),
@@ -218,6 +277,91 @@ test("Alert's choices and Other's Speak, Send and Cancel are ride-sized, with no
   assert.match(panel, /className="secondary ride-speak"/);
   assert.match(panel, /<button type="submit">\{t\("Send"\)\}<\/button>/);
   assert.match(panel, /className="ride-alert-kinds"/);
+});
+
+test("the alert panel says the spot goes to everyone on the ride, seen and heard alike, before the rider sends", async () => {
+  const mod = await import("./rideGroup.ts");
+  assert.equal(mod.ALERT_SPOT_NOTE, "Sends your spot to everyone on this ride.");
+  // One line for everyone: no shorter seen line that a screen reader does not hear.
+  assert.equal("alertNote" in mod, false);
+  assert.equal("ALERT_NOTE" in mod, false);
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  assert.match(group, /<p id=\{`\$\{alertPanel\}-note`\} className="hint">\s*\{ALERT_SPOT_NOTE\}\s*<\/p>/);
+  // The Alert button's description is that same line.
+  assert.match(group, /aria-describedby=\{`\$\{alertPanel\}-note`\}/);
+  assert.doesNotMatch(group, /note\.seen|note\.heard/);
+});
+
+test("the dot question's full note says positions are encrypted, not rounded (every ride sealed, sent exact)", async () => {
+  const { CONSENT_NOTE, BROADCAST_CONSENT_NOTE } = await import("./rideGroup.ts");
+  for (const note of [CONSENT_NOTE, BROADCAST_CONSENT_NOTE]) {
+    assert.match(note, /No name; positions are encrypted and gone after 2 minutes\.$/);
+    assert.doesNotMatch(note, /rounded/);
+  }
+  // Each of DC's languages has both notes as written (they go through t() when shown, as a variable, so the catalogs'
+  // own test does not see them); none keeps the old rounded wording's key.
+  for (const lang of ["es", "am", "ar", "bn", "yue", "fa", "fr", "ht", "hi", "id", "ja", "ko", "zh", "ps", "pt", "ru", "th", "ti", "tr", "vi"]) {
+    const catalog = readFileSync(new URL(`../i18n/${lang}.ts`, import.meta.url), "utf8");
+    for (const note of [CONSENT_NOTE, BROADCAST_CONSENT_NOTE]) assert.ok(catalog.includes(JSON.stringify(note)), `${lang}: ${note}`);
+    assert.doesNotMatch(catalog, /positions are rounded/, lang);
+  }
+  assert.match(t(CONSENT_NOTE, undefined, "es"), /cifradas/);
+  assert.match(t(BROADCAST_CONSENT_NOTE, undefined, "es"), /cifradas/);
+});
+
+test("a followed ride link without its key says so and asks for no dot", async () => {
+  const { BROADCAST_NO_KEY, followsWithoutKey } = await import("./rideGroup.ts");
+  assert.equal(BROADCAST_NO_KEY, "This link is missing its ride key. Ask the leader to send it again.");
+  // A follower of a broadcast or Roam link with no k=: an old v0.14 link, or one a chat app cut short.
+  assert.equal(followsWithoutKey({ leading: false, secret: null }), true);
+  assert.equal(followsWithoutKey({ leading: false }), true);
+  assert.equal(followsWithoutKey({ leading: false, secret: "" }), true);
+  // The leader's own page, a follower with the key, and a Group or Mass Ride plan link (no broadcast) are not.
+  assert.equal(followsWithoutKey({ leading: true, secret: null }), false);
+  assert.equal(followsWithoutKey({ leading: false, secret: "a".repeat(43) }), false);
+  assert.equal(followsWithoutKey(null), false);
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  // No ride of its own is made for it, so there is no dot question and nothing is read or sent.
+  assert.match(group, /const keyless = followsWithoutKey\(broadcast\);/);
+  // A keyed follow turned keyless (a pasted link) keeps nothing of the ride it was: no stale ride, key, answer or dots.
+  assert.match(
+    group,
+    /useEffect\(\(\) => \{\s*if \(keyless\) \{\s*\/\/[^\n]*\n\s*setRide\(null\);\s*setSeal\(null\);\s*setConsent\(null\);\s*setAsked\(false\);\s*setShareOn\(false\);\s*setRead\(\{ dots: \[\], alerts: \[\] \}\);\s*return;\s*\}\s*let live = true;\s*void rideOf\(rideSecret\)/,
+  );
+  // No ride, so no Send alert; Call 911 stays reachable where Send alert sits, a ride-sized link (56 px, past the 44 px floor).
+  const none = group.slice(group.indexOf("if (!ride) {"), group.indexOf("<ConsentDialog open={askNow}"));
+  assert.match(none, /if \(!keyless \|\| !controls\) return null;/);
+  assert.match(none, /<div className="ride-group">\s*<div className="ride-group-bar">\s*<a className="chip ride-alert-button" href=\{CALL_911_HREF\}>\s*<Icon name="warn" size=\{18\} \/>\s*\{CALL_911\}\s*<\/a>\s*<\/div>\s*<\/div>/);
+  assert.doesNotMatch(none, /ALERT_LABEL|<button/);
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(css, /\.ride-group-bar \.ride-alert-button \{\s*min-height: 56px;/);
+  assert.match(css, /a\.chip \{\s*text-decoration: none;\s*\}/);
+  // A plan link without one still rides under a new key of its own.
+  assert.match(group, /const rideSecret = \(broadcast \? broadcast\.secret : secret\) \?\? ownSecret;/);
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  // Said in place of Following the leader live, on a shared route's ride and in Roam alike, and as the join sheet's title.
+  assert.match(app, /startRideNoted\(keyless \? BROADCAST_NO_KEY : BROADCAST_FOLLOWING\);/);
+  assert.match(app, /announce\(keyless \? BROADCAST_NO_KEY : BROADCAST_FOLLOWING\)/);
+  // No join sheet for it: it would say the same, and mark the ride's sheet shown, so the leader's link sent again with
+  // its key would open without one.
+  assert.match(app, /if \(!keyless && sharedOpen\?\.id && sharedOpen\.lead\) offerJoin\(joinKey\(sharedOpen\.id, sharedOpen\.lead\), sharedOpen\.answer, sharedOpen\.name\);/);
+  assert.match(app, /const offerJoin = \(key: string, route: RouteResponse, name: string \| undefined\) => \{/);
+  assert.match(app, /title: joinTitle\(name\), line: joinLine\(route\)/);
+  assert.doesNotMatch(app, /keyless \? BROADCAST_NO_KEY : joinTitle/);
+  // Never passed on: Ride mode's Broadcast is not offered, Go's says the link is missing its key, and Roam's is not offered.
+  assert.match(app, /const passesOn =\s*onShared !== null && !onShared\.own && !!onShared\.lead && SHARED_LINK !== null && onShared\.id === SHARED_ID && !followsWithoutKey\(\{ leading: false, secret: onShared\.secret \}\);/);
+  assert.match(app, /const followedNoKey = \(\) => followedLink\(\) !== null && followsWithoutKey\(\{ leading: false, secret: sharedOpenNow\.current\?\.secret \}\);/);
+  for (const name of ["broadcastRide", "broadcastQr"]) {
+    assert.match(app, new RegExp(String.raw`const ${name} = \(\) => \{\s*if \(followedNoKey\(\)\) \{\s*setBroadcastNote\(\(n\) => \(\{ text: BROADCAST_NO_KEY, count: n\.count \+ 1 \}\)\);\s*return;`), name);
+  }
+  for (const name of ["broadcastFromRide", "broadcastQrFromRide"]) {
+    assert.match(app, new RegExp(String.raw`const ${name} = async \(\): Promise<string> => \{\s*if \(followedNoKey\(\)\) return BROADCAST_NO_KEY;`), name);
+  }
+  assert.match(app, /const roamKeyless = followsWithoutKey\(roamBroadcast\);/);
+  assert.match(app, /if \(roamBroadcast && !roamBroadcast\.leading\) \{\s*\/\/[^\n]*\n\s*if \(roamKeyless\) return BROADCAST_NO_KEY;\s*const done = await shareLink/);
+  assert.match(app, /onBroadcast=\{roamKeyless \? null : \(\) => broadcastRoam\(\)\}\s*onBroadcastHold=\{roamKeyless \? null : broadcastRoamQr\}/);
+  // Where the link does not open into Ride mode (a computer watching), shown as the plan's note and said politely.
+  assert.match(app, /if \(keyless\) \{\s*setSharedNote\(BROADCAST_NO_KEY\);\s*announce\(BROADCAST_NO_KEY\);\s*\}/);
 });
 
 test("one alert a minute and ten a ride per device", () => {
@@ -255,17 +399,19 @@ test("an alert says what, where along the route and how long ago, live", () => {
 test("the API sends the token in a header and positions only in bodies", async () => {
   let url = "";
   let init: RequestInit | undefined;
+  const seal = (await rideSeal(newRideSecret()))!;
+  const dot = await sealValue(seal, "dot", { lon: -77, lat: 38.9, role: "participant" });
   const fake = (async (u: string, i?: RequestInit) => {
     url = u;
     init = i;
-    return new Response(JSON.stringify({ dots: [{ lon: 1, lat: 2, age_s: 3 }], alerts: [] }), { status: 200 });
+    return new Response(JSON.stringify({ dots: [{ sealed: dot, age_s: 3 }], alerts: [] }), { status: 200 });
   }) as unknown as typeof fetch;
-  const read = await readRide("https://x.test", "f".repeat(64), "1".repeat(32), fake);
+  const read = await readRide("https://x.test", seal.ride, "1".repeat(32), fake, null, seal);
   assert.equal(read?.dots.length, 1);
   assert.doesNotMatch(url, /\?/);
   assert.equal((init?.headers as Record<string, string>)["X-Ride-Token"], "1".repeat(32));
   const refused = (async () => new Response(JSON.stringify({ error: "One alert a minute; try again shortly." }), { status: 429 })) as unknown as typeof fetch;
-  const sent = await sendAlert("https://x.test", "f".repeat(64), "1".repeat(32), "group-ride", "crash", "", [-77, 38.9], refused);
+  const sent = await sendAlert("https://x.test", seal.ride, "1".repeat(32), "group-ride", "crash", "", [-77, 38.9], refused, seal);
   assert.deepEqual(sent, { ok: false, message: "One alert a minute; try again shortly." });
 });
 
@@ -407,18 +553,18 @@ test("the role is asked with the answer, Participant unless chosen, kept for the
   assert.equal(shownDots(LINE, [{ lon: -77.03, lat: 38.9, age_s: 1 }])[0].role, "participant");
 });
 
-test("the role travels with the position, in the body", async () => {
-  const bodies: unknown[] = [];
+test("the role travels with the position, sealed in the body", async () => {
+  const seal = (await rideSeal(newRideSecret()))!;
+  const bodies: { token: string; sealed: string }[] = [];
   const fake = (async (_u: string, i?: RequestInit) => {
     bodies.push(JSON.parse(String(i?.body)));
     return new Response("{}", { status: 200 });
   }) as unknown as typeof fetch;
-  await sendPosition("https://x.test", "f".repeat(64), "1".repeat(32), [-77, 38.9], "corker", fake);
-  await sendPosition("https://x.test", "f".repeat(64), "1".repeat(32), [-77, 38.9], undefined, fake);
-  assert.deepEqual(bodies, [
-    { token: "1".repeat(32), lon: -77, lat: 38.9, role: "corker" },
-    { token: "1".repeat(32), lon: -77, lat: 38.9, role: "participant" },
-  ]);
+  await sendPosition("https://x.test", seal.ride, "1".repeat(32), [-77, 38.9], "corker", fake, seal);
+  await sendPosition("https://x.test", seal.ride, "1".repeat(32), [-77, 38.9], undefined, fake, seal);
+  assert.deepEqual(bodies.map((b) => Object.keys(b).sort()), [["sealed", "token"], ["sealed", "token"]]);
+  assert.deepEqual(await openValue(seal, "dot", bodies[0].sealed), { lon: -77, lat: 38.9, role: "corker" });
+  assert.deepEqual(await openValue(seal, "dot", bodies[1].sealed), { lon: -77, lat: 38.9, role: "participant" });
 });
 
 test("a dot is named by its role and where it is along the route, US units first", () => {
@@ -478,7 +624,7 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.equal(CONSENT_SHORT, "Only while the app is open. No name; gone in 2 min.");
   assert.match(ask, /<span aria-hidden="true">\{t\(CONSENT_SHORT\)\}<\/span>\s*<span id=\{`\$\{id\}-note`\} className="visually-hidden">\s*\{t\(note\)\}/);
   // The count and Send alert while riding only, by default.
-  assert.match(group, /controls = riding, leads = true, askHeld = false \}: RideGroupProps\)/);
+  assert.match(group, /controls = riding, leads = true, askHeld = false, home = null \}: RideGroupProps\)/);
   // One popup at a time: a follower's join sheet (BroadcastJoinDialog) first, from the offer until it closes, then the dot question.
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /askHeld=\{joinHeld \|\| joinPending !== null \|\| joinAsk !== null\}/);
@@ -488,9 +634,21 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.match(group, /\{controls && \(\s*<div className="ride-group-bar">/);
   // A role change moves the next post up, and the post sends the consent's (new) role.
   assert.match(group, /const changeRole[\s\S]*?keepConsent\(ride, consent\.answer, Date\.now\(\), undefined, undefined, role\)[\s\S]*?share\.current\.lastPost = postSoonAfter\(share\.current\.lastPost\)/);
-  assert.match(group, /\}, \[fix, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading\]\);/);
+  assert.match(group, /\}, \[fix, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home\]\);/);
+  // Held back (an hour in one spot, or at Home): the dot goes at once, and none is sent until the rider moves on.
+  assert.match(group, /const held = dotHeldBack\(dwell\.current, fix, t, home\);/);
+  assert.match(group, /if \(held\) void leaveRide\(origin, ride, token\);/);
+  assert.match(group, /if \(near && !held && t - share\.current\.lastPost >= POST_EVERY_MS\)/);
+  // A kept Yes from another tab is asked again; a ride that ends stops the dot and asks again next ride.
+  assert.match(group, /const askAgain = !leading && kept\?\.answer === "yes" && !answeredHere\(id\);/);
+  assert.match(group, /setShareOn\(kept\?\.answer === "yes" && !askAgain\);/);
+  assert.match(group, /if \(!shareOn\) return;\s*setShareOn\(false\);/);
+  assert.match(group, /markAnsweredHere\(ride, yes\);\s*\/\/[^\n]*\n\s*dwell\.current = null;/);
+  // Held back, the leader's path is neither grown nor sent.
+  assert.match(group, /if \(leading && near && !held\) setOwnTrail/);
+  assert.match(group, /!token \|\| heldBack\.current\) return;/);
   assert.match(group, /<\/button>\s*\)\}\s*\{consent && <RolePicker name="ride-role" value=\{consent\.role\} onChange=\{changeRole\} \/>\}\s*<\/div>/);
-  assert.match(group, /sendPosition\(origin, ride, token, fix, consent\.role\)/);
+  assert.match(group, /sendPosition\(origin, ride, token, fix, consent\.role, fetch, seal\)/);
   // Go's bar keeps its two buttons.
   const bar = group.slice(group.indexOf('className="ride-group-bar"'), group.indexOf("id={ridersPanel}"));
   assert.equal((bar.match(/<button/g) ?? []).length, 2);
@@ -552,16 +710,17 @@ test("review: a role change posts as soon as the server takes a position, with t
   const store = new Memory();
   keepConsent("r9", "yes", 0, store);
   const kept = keepConsent("r9", "yes", 1, store, undefined, "corker");
-  const bodies: { role?: string }[] = [];
+  const seal = (await rideSeal(newRideSecret()))!;
+  const bodies: { sealed?: string }[] = [];
   const fake = (async (_u: string, i?: RequestInit) => {
     bodies.push(JSON.parse(String(i?.body)));
     return new Response("{}", { status: 200 });
   }) as unknown as typeof fetch;
-  await sendPosition("https://x.test", "f".repeat(64), kept.token, [-77, 38.9], consentFor("r9", 2, store)!.role, fake);
-  assert.equal(bodies[0].role, "corker");
+  await sendPosition("https://x.test", seal.ride, kept.token, [-77, 38.9], consentFor("r9", 2, store)!.role, fake, seal);
+  assert.equal(((await openValue(seal, "dot", bodies[0].sealed)) as { role?: string }).role, "corker");
 });
 
-test("a broadcast from Roam (no route): straight-line words from you, its own ride id", async () => {
+test("a broadcast from Roam (no route): straight-line words from you", async () => {
   const me: LonLat = [-77.04, 38.91];
   const near: LonLat = [-77.0401, 38.9101];
   const far: LonLat = [-77.04, 38.92];
@@ -580,10 +739,6 @@ test("a broadcast from Roam (no route): straight-line words from you, its own ri
   ];
   const said = ridersSaid(dots, null, { here: me });
   assert.match(said, /^2 riders\. .*away, seen .*\. Nearest rider beside you, seen /);
-  // Not the id of a shared line's broadcast with the same random id.
-  const id = "0123456789abcdef0123456789abcdef";
-  assert.notEqual(await roamRideId(id), await broadcastIdForRoamTest(id));
-  assert.match(await roamRideId(id), /^[0-9a-f]{64}$/);
 });
 
 test("App: the count and Send alert while riding (or watching a broadcast on a computer), the roles the leader's (P6)", () => {

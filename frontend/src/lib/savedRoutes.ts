@@ -12,7 +12,7 @@
  * link it shares (lib/sharedRoutes.ts).
  */
 import type { RouteResponse } from "./api.ts";
-import { t } from "./i18n.ts";
+import { locale, t } from "./i18n.ts";
 import type { Dials } from "./dials.ts";
 import { formatDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
@@ -159,7 +159,7 @@ export function countLine(n: number, max = MAX_SAVED): string {
 /** A row's details: "4.7 mi (7.6 km) · Saved Oct 15, 2026" (US units first). */
 export function rowDetails(route: Pick<SavedSummary, "distance_m" | "created_at" | "source">): string {
   const date = new Date(route.created_at);
-  const when = Number.isNaN(date.getTime()) ? "" : ` · Saved ${date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+  const when = Number.isNaN(date.getTime()) ? "" : ` · ${t("Saved {date}", { date: date.toLocaleDateString(locale(), { month: "short", day: "numeric", year: "numeric" }) })}`;
   return `${formatDistance(route.distance_m)}${route.source === "gpx" ? " · GPX file" : ""}${when}`;
 }
 
@@ -193,7 +193,7 @@ export interface SavedVersion {
 
 function dateText(iso: string): string {
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString(locale(), { month: "short", day: "numeric", year: "numeric" });
 }
 
 /** A version's line: "Oct 15, 2026 · 4.7 mi (7.6 km) · Stop added" (US units first). */

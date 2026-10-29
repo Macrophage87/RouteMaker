@@ -37,9 +37,12 @@ routes and keeping your 311 checklist on your other devices.
 --------------------------------------------
 
 - The first thing on the page is a button, "Accessibility mode", a switch that starts off.
-  Turn it on to get Map tools by the map's zoom buttons, with "Add point at map center" and
-  "Road info at map center". It stays on for this device. The same switch is in "More tips".
-- In Go, a press on the map, the route line included, opens a card for that spot: its address, the places near it as pins on the map, and "Route here". The press alone never plans a route; "Route here" (or "Set destination at map center" in Map tools) makes that spot your destination and says "Destination set: …".
+  Turning it on turns on three things together: Map tools by the map's zoom buttons (with "Add
+  point at map center" and "Road info at map center"), High contrast, and Large text during a
+  ride. It stays on for this device. The same switch is in Settings, Display, where High
+  contrast and Large text also have switches of their own, so you can turn either one off
+  again.
+- In Go, a press on the map, the route line included, opens a card for that spot: its address, the places near it as pins on the map, and "Ride here". The press alone never plans a route; "Ride here" (or "Set destination at map center" in Map tools) makes that spot your destination and says "Destination set: …".
 - The next thing is a link, "Skip to the route planner". It takes you past the map to the
   planner.
 - The planner is an area (a landmark) called "Route planner"; screen readers may announce it
@@ -71,7 +74,7 @@ routes and keeping your 311 checklist on your other devices.
   dashed for legs you drew. Drag a line to add a via point in that leg. Drawn legs stay dashed on the route.
 - To delete your account: Settings, Account, Delete account. The page says what is deleted and
   what is kept, and asks you to tick one box first.
-- The "High contrast" switch is on the "Settings" page (the last button in the same bar). It
+- High contrast (Accessibility mode turns it on, or use its own switch in Settings, Display)
   makes the lines bolder and the borders and text stronger, and changes the stress colors to
   ones that do not rely on red and green.
 - With the Climbs layer on (Layers), "Road info at map center" on a climb says "Climb here"
@@ -181,7 +184,7 @@ You stay responsible for riding safely; the route can be wrong.
   planning), and never kept. A problem you log for 311 keeps it, on your phone and, signed in,
   with your account; outside DC the app asks the server which county's website takes it. Place search, when
   the app already knows where you are and that spot is on the map you are looking at, sends an
-  approximate location (about 1 km / 0.6 mi) so nearby places come first.
+  approximate location (about 0.6 mi [1 km]) so nearby places come first.
 - Keep the screen on. If the browser cannot keep it on, Ride mode and Roam show "Screen may sleep: keep it on.";
   its How gives your phone's steps (on an iPhone, Settings, Display and Brightness, Auto-Lock to Never for the ride). In the background for more
   than 10 minutes, the ride pauses; press Resume.
@@ -196,7 +199,7 @@ RouteMaker can be installed like an app: it then opens from your home screen in 
 (the phone's clock and battery stay in view), and it opens even with no signal.
 
 - Android, and Chrome or Edge on a computer: press "Install RouteMaker" on the Settings page
-  (also under "More tips"), then confirm in the browser's own box. If there is no such button,
+  (also under Tips), then confirm in the browser's own box. If there is no such button,
   the browser's menu has "Install app" or "Add to Home screen".
 - iPhone or iPad: press Share, then Add to Home Screen. Safari, Chrome and the other browsers
   there all have it. The Settings page says the same.
@@ -283,3 +286,25 @@ too) for its card; in Plan a tap on the dashed line adds a point there as before
 its length, gain, average and steepest grade and an elevation profile. "Ride this climb" puts it
 in your route: in Plan its bottom and top become your next stops before the destination; in Go
 the route goes to its top by way of its bottom.
+
+9. Newer things to try
+----------------------
+
+- Language: Settings, Display, Language. English and Spanish cover the whole app; 19 more of
+  DC's languages cover Go and Ride (Plan stays in English). They are first drafts, not yet
+  checked by native speakers. A phone set to one opens Go and Ride in it; pick another there. Tell us
+  about any wording that is wrong.
+- Riding speed: in Settings, from 8 to 30 mph (13 to 48 km/h), if you ride faster or slower than
+  the ride type assumes. Times and arrival clocks follow it. Mass Ride and the share bikes keep
+  their own pace.
+- Favorites (signed in): Go's Home button becomes Favorites, with Home and Work first and then
+  your other places. One tap rides there. They are kept with your account only.
+- Share live (it was called Broadcast): beside Start ride. Send the link and start riding.
+  Whoever opens it sees your dot and the path you take, and can download your route as a GPX
+  file or, if they connected one, send it to Garmin or Wahoo. Following needs no account. The
+  live positions are sealed on the phones, and the server keeps them for 2 minutes at most.
+- Share route: anyone can share a link, and it is kept a year after it was last opened. Keep
+  shared link "Permanently" or "Until a date" needs you to be signed in, so that you can turn
+  the link off later.
+- In Go's place lists (Eat, Water, Repair, Places to see), each row has one main "Ride here"
+  button.

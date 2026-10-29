@@ -105,10 +105,10 @@ import logging
 import math
 import re
 from bisect import bisect_left
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
-from functools import lru_cache
+from functools import lru_cache, partial
 from pathlib import Path
 from typing import Protocol
 
@@ -199,17 +199,52 @@ METRO_SYSTEM = "wmata-rail"
 TYPICAL_PATH = Path(__file__).resolve().parent / "transitdata" / "metro-typical.json"
 
 
+def _month(number: int) -> str:
+    months = (
+        t("January"), t("February"), t("March"), t("April"), t("May"), t("June"),
+        t("July"), t("August"), t("September"), t("October"), t("November"), t("December"),
+    )  # fmt: skip
+    return months[number - 1]
+
+
+def day_said(day: date) -> str:
+    """A date as a note says it, in the language in force: "July 4"."""
+    return t("{month} {number}", month=_month(day.month), number=day.day)
+
+
+def ended_words(system: str, last_day: date) -> str:
+    """A system left out after its own timetable's end (`_without`)."""
+    return t(
+        "{system} is not planned for this date: its installed timetable ends {day}, {year}.",
+        system=system,
+        day=day_said(last_day),
+        year=last_day.year,
+    )
+
+
+def beyond_words(start: date, last_day: date) -> str:
+    """Metro's typical timetable alone, past the installed file (`_typical_beyond`)."""
+    return t(
+        "Only Metro is planned: the other timetables installed cover {first} to {last}, {year}.",
+        first=day_said(start),
+        last=day_said(last_day),
+        year=last_day.year,
+    )
+
+
 def blackout_words(day: date) -> str:
     """The plain note on a blackout date: "Bikes aren't allowed on Metro today (July 4)."."""
-    return f"Bikes aren't allowed on Metro today ({day:%B} {day.day})."
+    return t("Bikes aren't allowed on Metro today ({day}).", day=day_said(day))
 
 
+# The holiday note in English (`holiday_words` says it in the language in force). Metro on its
+# typical timetable has no holiday timetable: a holiday runs the typical file's `holiday` day
+# type (Sunday), and the note says that instead.
 HOLIDAY_WORDS = (
     "Today is a federal holiday: each system's holiday timetable is used, as it publishes it."
 )
-# Metro on its typical timetable has no holiday timetable: a holiday runs the typical file's
-# `holiday` day type (Sunday), and the note says that instead (`holiday_words`).
-TYPICAL_HOLIDAY_WORDS = "Today is a federal holiday: Metro is planned on its {day} timetable."
+# Said in English whatever the language: the app finds these two among the notes by their words
+# and says them itself, translated (frontend/src/lib/transit.ts SAID_IN_TIMES).
 SCHEDULED_WORDS = "Scheduled service: check for track work and service alerts before you go."
 # Every transit time a rider sees says where it is from, in one word (the owner, 2026-10-12:
 # "Make it clear whether it's a schedule or live."): "8:12 am scheduled", "every 8 min,
@@ -223,6 +258,15 @@ NO_TRANSIT_WORDS = (
     "No Metro, train or bus is scheduled between these places at this time: riding the whole"
     " way is the plan."
 )
+
+
+def no_transit_words() -> str:
+    """`NO_TRANSIT_WORDS` in the language in force."""
+    return t(
+        "No Metro, train or bus is scheduled between these places at this time: riding the whole"
+        " way is the plan."
+    )
+
 
 # The kinds of step. A transit step's mode is its system's (`TRANSIT_MODES`).
 RIDE = "ride"  # your own bike
@@ -361,8 +405,9 @@ class Schedule:
     days: int
     source: dict = field(default_factory=dict)
     # Said with every plan from it: Metro's typical timetable standing in for an installed file
-    # that does not reach the date (`load`).
-    note: str = ""
+    # that does not reach the date (`load`), or the systems left out (`_without`). Each phrase
+    # with its places, worded when read (`note`): the schedule is cached across requests.
+    said: tuple[Callable[[], str], ...] = ()
 
     def __post_init__(self) -> None:
         self.at_stop: dict[int, list[tuple[int, int]]] = {}
@@ -379,6 +424,11 @@ class Schedule:
 
     def covers(self, day: date) -> bool:
         return 0 <= (day - self.start).days < self.days
+
+    @property
+    def note(self) -> str:
+        """`said`, in the language in force; "" for none."""
+        return " ".join(words() for words in self.said)
 
     @property
     def first_end(self) -> tuple[date, System | None]:
@@ -552,7 +602,8 @@ _loaded: tuple[Path, float, Schedule] | None = None
 def load(path: Path, day: date | None = None) -> Schedule:
     """The schedule at `path`, read again when the file changes, with Metro on its typical
     timetable where the file has no WMATA rail GTFS (`with_typical_metro`). With no file
-    installed, or one whose window does not reach `day` (default today: it has run out, say),
+    installed, or one whose window does not reach `day` (the GTFS service day, `moment_of`, so
+    a night's owl trips after midnight stay on it; default today: it has run out, say),
     Metro's typical timetable alone, from the day before `day`: it needs no refresh, so Metro
     stays while the other systems wait for the file to be rebuilt (`schedule_alert` says so)."""
     day = day or datetime.now(ZONE).date()
@@ -601,11 +652,7 @@ def _without(schedule: Schedule, ended: frozenset[str]) -> Schedule:
     )
     if METRO_SYSTEM in ended:
         trimmed = with_typical_metro(trimmed)
-    trimmed.note = " ".join(
-        f"{s.name} is not planned for this date: its installed timetable ends"
-        f" {s.last_day:%B} {s.last_day.day}, {s.last_day.year}."
-        for s in gone
-    )
+    trimmed.said = tuple(partial(ended_words, s.name, s.last_day) for s in gone)
     if len(_trimmed) > 16:
         _trimmed.clear()
     _trimmed[key] = (schedule, trimmed)
@@ -618,10 +665,7 @@ def _typical_beyond(day: date, start: date, last_day: date) -> Schedule:
     first day or after its last), saying so."""
     return replace(
         typical_only(day),
-        note=(
-            "Only Metro is planned: the other timetables installed cover"
-            f" {start:%B} {start.day} to {last_day:%B} {last_day.day}, {last_day.year}."
-        ),
+        said=(partial(beyond_words, start, last_day),),
     )
 
 
@@ -806,9 +850,11 @@ def with_typical_metro(schedule: Schedule, path: Path = TYPICAL_PATH) -> Schedul
     )
 
 
-# Fewer days of timetable than this left: a warning in the log, and an alert from
-# `manage.py check_operations` (docs/OPERATIONS.md, "Transit schedule": refresh within 45 days).
-STALE_DAYS = 7
+# Fewer days of timetable than this left: a warning in the log, an alert from
+# `manage.py check_operations` and a line on the admin operations page (docs/OPERATIONS.md,
+# "Transit schedule": refresh within 45 days). Three weeks, because the refresh is by hand on the
+# home PC and a feed's end can fall on a holiday week (the 2026-10-29 review).
+STALE_DAYS = 21
 _warned_on: date | None = None
 
 
@@ -2342,8 +2388,11 @@ def _window_note(schedule: Schedule, moment: Moment) -> list[str]:
     if schedule.covers(moment.service_day):
         return []
     return [
-        f"The timetables installed run {schedule.start:%B} {schedule.start.day} to"
-        f" {schedule.last_day:%B} {schedule.last_day.day}: no transit is planned for this date."
+        t(
+            "The timetables installed run {first} to {last}: no transit is planned for this date.",
+            first=day_said(schedule.start),
+            last=day_said(schedule.last_day),
+        )
     ]
 
 
@@ -2457,13 +2506,24 @@ def plan_bike(
             }
             hops = _hops(day, moments, hop_starts, hop_ends, speed_kmh)
         if not found and not hops:
-            where = "the start" if not near_start else "the destination"
-            notes.append(
-                NO_TRANSIT_WORDS
-                if near_start and near_end
-                else f"No station that takes a bike is within {miles(BIKE_TO_STATION_M)} of"
-                f" {where}: riding the whole way is the plan."
-            )
+            if near_start and near_end:
+                notes.append(no_transit_words())
+            elif not near_start:
+                notes.append(
+                    t(
+                        "No station that takes a bike is within {distance} of the start: riding"
+                        " the whole way is the plan.",
+                        distance=miles(BIKE_TO_STATION_M),
+                    )
+                )
+            else:
+                notes.append(
+                    t(
+                        "No station that takes a bike is within {distance} of the destination:"
+                        " riding the whole way is the plan.",
+                        distance=miles(BIKE_TO_STATION_M),
+                    )
+                )
         notes += _idle(day, near_start + more_start + near_end + more_end)
     if schedule.note:
         notes.append(schedule.note)
@@ -2522,7 +2582,9 @@ def plan_bikeshare(
     found: list[Option] = []
     notes = _window_note(schedule, moment)
     if snapshot.status is None:
-        notes.append("Bike and dock availability is unknown right now: the nearest docks are used.")
+        notes.append(
+            t("Bike and dock availability is unknown right now: the nearest docks are used.")
+        )
     # Bikeshare directly there first, so its ride has the router before anything else.
     direct = _share_direct(start, end, services, snapshot)
     near_start, more_start = _candidates(schedule, start, False, BIKE_TO_STATION_M, WALK_TO_STOP_M)
@@ -2557,7 +2619,7 @@ def plan_bikeshare(
                     hop_ends[s.index] = shared
             hops = _hops(day, moments, hop_starts, hop_ends, BIKESHARE_SPEED_KMH)
         if not found and not hops:
-            notes.append(NO_TRANSIT_WORDS)
+            notes.append(no_transit_words())
         notes += _idle(day, near_start + more_start + near_end + more_end)
     if schedule.note:
         notes.append(schedule.note)
@@ -2719,18 +2781,26 @@ def _retimed(minute: float, legs: list[Leg]) -> tuple[list[Leg] | None, list[str
                     continue
                 if not catchable or catchable[0] - arrive > MAX_WAIT_MIN:
                     notes.append(
-                        f"You would miss the {clock(missed, leg.service_day)} {leg.source}"
-                        f" ({leg.vehicle})"
-                        " and no later one"
-                        " leaves within the hour: that trip is left out."
+                        t(
+                            "You would miss the {time} {source} ({vehicle}) and no later one"
+                            " leaves within the hour: that trip is left out.",
+                            time=clock(missed, leg.service_day),
+                            source=leg._source_said(),
+                            vehicle=leg._vehicle_said(),
+                        )
                     )
                     return None, notes
                 rest = tuple(t for t in leg.later if t > catchable[0])
                 leg = replace(leg, depart=catchable[0], after=rest[0] if rest else None, later=rest)
                 notes.append(
-                    f"You would miss the {clock(missed, leg.service_day)} {leg.source}"
-                    f" ({leg.vehicle}): planned on the {clock(leg.depart, leg.service_day)}"
-                    f" {leg.source} instead."
+                    t(
+                        "You would miss the {time} {source} ({vehicle}): planned on the {next}"
+                        " {source} instead.",
+                        time=clock(missed, leg.service_day),
+                        source=leg._source_said(),
+                        vehicle=leg._vehicle_said(),
+                        next=clock(leg.depart, leg.service_day),
+                    )
                 )
             leg = replace(leg, wait_s=max(0.0, (leg.depart - arrive) * 60.0))
         out.append(leg)
@@ -2785,22 +2855,28 @@ def departure(plan: Plan) -> dict | None:
 def label(option: Option, mode: str) -> str:
     """The option in a few words: how it starts, its transit legs, how it ends."""
     if option.direct:
-        return "Ride the whole way" if mode == presets.BIKE_TRANSIT else "Bikeshare the whole way"
+        if mode == presets.BIKE_TRANSIT:
+            return t("Ride the whole way")
+        return t("Bikeshare the whole way")
     if option.walk:
-        return "Walk the whole way"
-    ends = {RIDE: "ride", TAKE: "bikeshare", SHARE: "bikeshare", WALK: "walk"}
-    parts = [ends.get(option.legs[0].mode, "walk")]
+        return t("Walk the whole way")
+    walk = t("walk")
+    ends = {RIDE: t("ride"), TAKE: t("bikeshare"), SHARE: t("bikeshare"), WALK: walk}
+    parts = [ends.get(option.legs[0].mode, walk)]
     for leg in option.legs:
         if not leg.transit:
             continue
-        routes = " or ".join(leg.lines)
+        lines = " or ".join(leg.lines)
+        routes = lines.replace(" or ", t(" or "))
         if leg.mode == BUS:
-            parts.append(f"bus {routes} to {leg.to}")
-        elif routes.lower() in leg.system.lower():
-            parts.append(f"{leg.system} to {leg.to}")
+            parts.append(t("bus {routes} to {place}", routes=routes, place=leg.to))
+        elif lines.lower() in leg.system.lower():
+            parts.append(t("{system} to {place}", system=leg.system, place=leg.to))
         else:
-            parts.append(f"{leg.system} to {leg.to} ({routes})")
-    parts.append(ends.get(option.legs[-1].mode, "walk"))
+            parts.append(
+                t("{system} to {place} ({routes})", system=leg.system, place=leg.to, routes=routes)
+            )
+    parts.append(ends.get(option.legs[-1].mode, walk))
     words = ", ".join(parts)
     return words[0].upper() + words[1:]
 
@@ -2852,18 +2928,26 @@ def holiday_words(option: Option, schedule: Schedule | None) -> str:
     typical = {s.name for s in schedule.systems if s.typical} if schedule is not None else set()
     used = {leg.system for leg in option.legs if leg.transit}
     if not used & typical:
-        return HOLIDAY_WORDS
-    day = TYPICAL_HOLIDAY_WORDS.format(day=_typical_doc()["holiday"].capitalize())
+        return t(
+            "Today is a federal holiday: each system's holiday timetable is used, as it publishes"
+            " it."
+        )
+    kind = _typical_doc()["holiday"]
+    day = {"sunday": t("Sunday"), "saturday": t("Saturday")}.get(kind, kind.capitalize())
     if used <= typical:
-        return day
-    return f"{day[:-1]}; the others, their holiday timetables."
+        return t("Today is a federal holiday: Metro is planned on its {day} timetable.", day=day)
+    return t(
+        "Today is a federal holiday: Metro is planned on its {day} timetable; the others, their"
+        " holiday timetables.",
+        day=day,
+    )
 
 
 def _notes(plan: Plan, rules: dict[str, str]) -> list[str]:
     legs = plan.legs
     notes = list(plan.notes)
     if plan.asked is not None:
-        notes.insert(0, "The trip chosen is no longer scheduled: the quickest is shown.")
+        notes.insert(0, t("The trip chosen is no longer scheduled: the quickest is shown."))
     for leg in legs:
         rule = rules.get(leg.system)
         if leg.transit and leg.bike and rule:
@@ -2886,7 +2970,7 @@ def _notes(plan: Plan, rules: dict[str, str]) -> list[str]:
 
 
 def far_dock_words(dock: str) -> str:
-    return f"Bikes at {dock} are counted now; check on arrival."
+    return t("Bikes at {dock} are counted now; check on arrival.", dock=dock)
 
 
 def block(plan: Plan, schedule: Schedule | None = None) -> dict:
@@ -2921,16 +3005,17 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
     total_min = minutes(total)
     live_times = any(leg.transit and leg.live for leg in option.legs)
     share = plan.mode == presets.BIKESHARE_TRANSIT
-    whole = "Riding a bikeshare bike" if share else "Riding"
-    if option.direct:
-        how = "by bikeshare" if share else "riding the whole way"
-        summary = f"About {total_min} min door to door, {how}."
+    whole = t("Riding a bikeshare bike") if share else t("Riding")
+    if option.direct and share:
+        summary = t("About {m} min door to door, by bikeshare.", m=total_min)
+    elif option.direct:
+        summary = t("About {m} min door to door, riding the whole way.", m=total_min)
     elif option.walk:
-        summary = f"About {total_min} min door to door, walking."
+        summary = t("About {m} min door to door, walking.", m=total_min)
     elif live_times:
-        summary = f"About {total_min} min door to door, with live departures."
+        summary = t("About {m} min door to door, with live departures.", m=total_min)
     else:
-        summary = f"About {total_min} min door to door, scheduled."
+        summary = t("About {m} min door to door, scheduled.", m=total_min)
     used = list(dict.fromkeys(leg.system for leg in option.legs if leg.transit))
     notes = _notes(plan, rules)
     out = {
@@ -2984,26 +3069,34 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
         best_min = minutes(best)
         out["riding_quicker"] = total <= best
         if total <= best:
-            out["comparison"] = (
-                f"{whole} the whole way is quickest: the quickest transit trip is about"
-                f" {best_min} min."
+            out["comparison"] = t(
+                "{how} the whole way is quickest: the quickest transit trip is about {m} min.",
+                how=whole,
+                m=best_min,
             )
         else:
-            out["comparison"] = (
-                f"{whole} the whole way: about {total_min} min. Transit could save about"
-                f" {max(1, total_min - best_min)} min."
+            out["comparison"] = t(
+                "{how} the whole way: about {m} min. Transit could save about {saved} min.",
+                how=whole,
+                m=total_min,
+                saved=max(1, total_min - best_min),
             )
     elif option.scheduled and plan.bike_only_s is not None:
         bike_min = minutes(plan.bike_only_s)
         if plan.bike_only_s <= total:
             out["riding_quicker"] = True
-            out["comparison"] = (
-                f"{whole} the whole way is quicker: about {bike_min} min, against about"
-                f" {total_min} min with transit."
+            out["comparison"] = t(
+                "{how} the whole way is quicker: about {m} min, against about {transit} min with"
+                " transit.",
+                how=whole,
+                m=bike_min,
+                transit=total_min,
             )
         else:
-            out["comparison"] = (
-                f"{whole} the whole way: about {bike_min} min. Transit saves about"
-                f" {max(1, bike_min - total_min)} min."
+            out["comparison"] = t(
+                "{how} the whole way: about {m} min. Transit saves about {saved} min.",
+                how=whole,
+                m=bike_min,
+                saved=max(1, bike_min - total_min),
             )
     return out

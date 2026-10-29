@@ -8,7 +8,14 @@
  * screenshot, 2026-10-20), so the report no longer goes by text. A problem is logged instead, everywhere
  * the map covers: from a ride's 311 button (lib/ride311.ts), or from the road panel's Log for 311 (a
  * right-click, or a long press on a phone). Each entry keeps what it is, where (the road's name and the
- * GPS position), when, an optional note, the 311 website that takes it, and when it was reported.
+ * GPS position), the day, an optional note, the 311 website that takes it, and the day it was reported.
+ *
+ * The day, never the time of day (Stephen, 2026-10-29: the log keeps the date, not the time of day; the exact
+ * spot stays, because crews need it to find the pothole): `at`, `changed` and `reported` are days in Washington's
+ * time ("2026-10-20", dayOf), and an id is random, with no time in it. A copy kept before (full times, and ids that
+ * began with the time they were made) is cut to that as it is read (parseEntry), here and on the server
+ * (core/report_log.py dated, migration 0052). Two changes to one entry on the same day are told apart by `rev`,
+ * a count of its changes.
  *
  * The log's list (Report311Log.tsx, in Reports) is a checklist by website: each site's open entries
  * under its name, with "Copy and open" for each; checking an entry archives it (Archived, folded).
@@ -22,7 +29,7 @@
  * something removed; past MAX_ENTRIES the oldest archived entries go first.
  *
  * Which website: inside DC from DC's boundary, here on the phone (lib/dcBoundary.ts); elsewhere the server
- * names the county or city (GET /api/report311/where; core.report_log). An entry logged with no signal
+ * names the county or city (POST /api/report311/where; core.report_log). An entry logged with no signal
  * waits with no website and is looked up when the log is next opened online.
  */
 import { useSyncExternalStore } from "react";
@@ -126,13 +133,15 @@ export interface LogEntry {
   /** The place words ("on R Street Northeast near 4th Street Northeast"), or null with none. */
   place: string | null;
   note: string;
-  /** When it was logged (ISO). */
+  /** The day it was logged ("2026-10-20", Washington's time). */
   at: string;
-  /** When it last changed (ISO): the newer of two copies wins a merge. */
+  /** The day it last changed: the newer of two copies wins a merge, and on one day the one with the higher `rev`. */
   changed: string;
+  /** How many times it has changed (a check-off, a note), so two copies changed on one day are told apart. */
+  rev: number;
   /** Its website, or null until looked up. */
   where: WhereId | null;
-  /** When it was checked off, archiving it (ISO), or null while it is still to report. */
+  /** The day it was checked off, archiving it, or null while it is still to report. */
   reported: string | null;
 }
 
@@ -152,6 +161,27 @@ function isTime(value: unknown): value is string {
   return typeof value === "string" && value.length <= 40 && !Number.isNaN(Date.parse(value));
 }
 
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const DAY_PARTS = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+
+/** The log's day for a moment: its date in Washington ("2026-10-20"), as the server's core/report_log.py today. */
+export function today(now = new Date()): string {
+  const part = (type: string) => DAY_PARTS.formatToParts(now).find((p) => p.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+/** A day as the server serves it: noon in Washington, with its offset (core/report_log.py served). */
+const SERVED_DAY = /^(\d{4}-\d{2}-\d{2})T12:00:00[+-]\d{2}:\d{2}$/;
+
+/** The day of a kept time ("2026-10-20"); a day stays as it is, and a served one is its day (core/report_log.py day_of). */
+export function dayOf(value: string): string {
+  if (DAY.test(value)) return value;
+  return SERVED_DAY.exec(value)?.[1] ?? today(new Date(value));
+}
+
+/** An id as this page made them before 2026-10-29 (the time it was made, base 36, then a random part): its random part. */
+const TIMED_ID = /^[0-9a-z]{8}-([0-9a-z]{1,8})$/;
+
 /** One entry as kept, or null when it is not one (an old or damaged copy). */
 export function parseEntry(raw: unknown): LogEntry | null {
   if (!raw || typeof raw !== "object") return null;
@@ -161,16 +191,17 @@ export function parseEntry(raw: unknown): LogEntry | null {
   if (typeof e.lat !== "number" || typeof e.lon !== "number" || !Number.isFinite(e.lat) || !Number.isFinite(e.lon)) return null;
   if (!isTime(e.at)) return null;
   return {
-    id: e.id,
+    id: TIMED_ID.exec(e.id)?.[1] ?? e.id,
     kind: e.kind as ReportKind,
     lat: e.lat,
     lon: e.lon,
     place: typeof e.place === "string" ? e.place.slice(0, 200) : null,
     note: typeof e.note === "string" ? e.note.slice(0, NOTE_MAX) : "",
-    at: e.at,
-    changed: isTime(e.changed) ? e.changed : e.at,
+    at: dayOf(e.at),
+    changed: dayOf(isTime(e.changed) ? e.changed : e.at),
+    rev: typeof e.rev === "number" && Number.isInteger(e.rev) && e.rev >= 0 ? e.rev : 0,
     where: typeof e.where === "string" && WHERE_IDS.has(e.where) ? (e.where as WhereId) : null,
-    reported: isTime(e.reported) ? e.reported : null,
+    reported: isTime(e.reported) ? dayOf(e.reported) : null,
   };
 }
 
@@ -208,12 +239,20 @@ export function capLog(entries: LogEntry[]): LogEntry[] {
   return entries.filter((e) => !drop.has(e.id));
 }
 
-/** The account's log and this device's, merged by entry: one in both keeps whichever changed last. Newest first. */
+/** Whether `x` wins over `y`: a later day, or on one day more changes; a tie goes to a reported copy, so a check-off is never lost. */
+function newer(x: LogEntry, y: LogEntry): boolean {
+  const days = Date.parse(x.changed) - Date.parse(y.changed);
+  if (days !== 0) return days > 0;
+  if (x.rev !== y.rev) return x.rev > y.rev;
+  return x.reported !== null && y.reported === null;
+}
+
+/** The account's log and this device's, merged by entry: one in both keeps whichever changed last (a tie the first, unless only the second is reported). Newest first. */
 export function mergeLogs(a: LogEntry[], b: LogEntry[]): LogEntry[] {
   const byId = new Map<string, LogEntry>();
   for (const entry of [...a, ...b]) {
     const had = byId.get(entry.id);
-    const won = !had || Date.parse(entry.changed) > Date.parse(had.changed) ? entry : had;
+    const won = !had || newer(entry, had) ? entry : had;
     // A website looked up on one copy is kept whichever copy wins (a lookup is not a change).
     byId.set(entry.id, won.where === null && had ? { ...won, where: (won === entry ? had : entry).where } : won);
   }
@@ -224,16 +263,17 @@ export function sameLog(a: LogEntry[], b: LogEntry[]): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function newId(now: Date): string {
-  const random = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10);
-  return `${now.getTime().toString(36)}-${random}`;
+/** A random id, with no time in it: 16 hex characters. */
+function newId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+  return Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
 }
 
-/** A new entry at `point`: inside DC its website is known at once; elsewhere it waits for the lookup. */
+/** A new entry at `point`, on today's day: inside DC its website is known at once; elsewhere it waits for the lookup. */
 export function newEntry(kind: ReportKind, place: ReportPlace, now = new Date()): LogEntry {
-  const at = now.toISOString();
+  const at = today(now);
   return {
-    id: newId(now),
+    id: newId(),
     kind,
     lat: Number(place.point[1].toFixed(5)),
     lon: Number(place.point[0].toFixed(5)),
@@ -241,6 +281,7 @@ export function newEntry(kind: ReportKind, place: ReportPlace, now = new Date())
     note: "",
     at,
     changed: at,
+    rev: 0,
     where: inDc(place.point) ? "dc" : null,
     reported: null,
   };
@@ -256,9 +297,8 @@ export function jurisdictionOf(entry: LogEntry): Jurisdiction | null {
 }
 
 /**
- * The report to paste into the site: what, where (the words, the area, the GPS position), when, and the
- * note. "Pothole. Location: on R Street Northeast, Washington, DC. GPS 38.91260, -77.00709. Seen Oct 20,
- * 10:29 AM."
+ * The report to paste into the site: what, where (the words, the area, the GPS position), the day, and the
+ * note. "Pothole. Location: on R Street Northeast, Washington, DC. GPS 38.91260, -77.00709. Seen Oct 20."
  */
 export function entryText(entry: LogEntry): string {
   const area = jurisdictionOf(entry);
@@ -269,11 +309,12 @@ export function entryText(entry: LogEntry): string {
   return `${kindLabel(entry.kind)}. Location: ${where ? `${where}. ` : ""}${gpsWords(entryPoint(entry))}. ${seen}${note ? ` ${/[.!?]$/.test(note) ? note : `${note}.`}` : ""}`;
 }
 
-const WHEN = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+// A day is read as midnight UTC (Date.parse of "2026-10-20"), so it is said in UTC, which keeps it the same day.
+const WHEN = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric" });
 
-/** "Oct 20, 10:29 AM", in the region's own time. */
-export function whenWords(iso: string): string {
-  const at = new Date(iso);
+/** A kept day as the log says it: "Oct 20" (no time of day). */
+export function whenWords(day: string): string {
+  const at = new Date(dayOf(day));
   return Number.isNaN(at.getTime()) ? "" : WHEN.format(at);
 }
 
@@ -304,8 +345,9 @@ export function logHint(touch: boolean): string[] {
   ];
 }
 
+/** Open more than STALE_DAYS whole days: counted in days, from the day it was logged to today. */
 export function isStale(entry: LogEntry, now = new Date()): boolean {
-  return entry.reported === null && now.getTime() - Date.parse(entry.at) > STALE_DAYS * DAY_MS;
+  return entry.reported === null && Date.parse(today(now)) - Date.parse(entry.at) > STALE_DAYS * DAY_MS;
 }
 
 /** When an entry went to Archived: when it was reported, or when it went stale. */
@@ -389,6 +431,28 @@ export function readAccountLog(store: Store | null = local()): AccountLog | null
   }
 }
 
+/**
+ * This device's copies written back as they are read (days, no times, ids with no time in them), where a copy kept
+ * before still holds a time: so the time goes from the device as the page opens, not at the next change. The
+ * signed-out copy only while it is the one shown (`own`): signed in, it waits for the sign-in, which moves it.
+ */
+function tidyStored(store: Store | null, copy: AccountLog | null, own: boolean): void {
+  try {
+    const mine = own ? store?.getItem(LOG_KEY) : null;
+    if (mine) {
+      const read = JSON.stringify(readLog(store));
+      if (read !== mine) store?.setItem(LOG_KEY, read);
+    }
+    const account = store?.getItem(ACCOUNT_LOG_KEY);
+    if (account && copy) {
+      const read = JSON.stringify({ owner: copy.owner, entries: copy.entries, ...(copy.waiting ? { waiting: true } : {}) });
+      if (read !== account) store?.setItem(ACCOUNT_LOG_KEY, read);
+    }
+  } catch {
+    // Refused: the copies are cut as they are read all the same.
+  }
+}
+
 export function isDirty(store: Store | null = local()): boolean {
   try {
     return store?.getItem(LOG_DIRTY_KEY) === "1";
@@ -440,11 +504,17 @@ export async function saveAccountLog(origin: string, entries: LogEntry[], post: 
   }
 }
 
-/** GET /api/report311/where: the website's id ("none" where the log names none), or undefined when it could not be asked. */
-export async function lookUpWhere(origin: string, point: LonLat, get: Fetch = fetch): Promise<WhereId | undefined> {
+/**
+ * POST /api/report311/where: the website's id ("none" where the log names none), or undefined when it could not be
+ * asked. The point goes in the body, never the URL, so no request line in a server log carries it.
+ */
+export async function lookUpWhere(origin: string, point: LonLat, send: Fetch = fetch): Promise<WhereId | undefined> {
   try {
-    const query = new URLSearchParams({ lat: point[1].toFixed(5), lon: point[0].toFixed(5) });
-    const response = await get(`${origin}/api/report311/where?${query}`, { headers: { Accept: "application/json" } });
+    const response = await send(`${origin}/api/report311/where`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ lat: Number(point[1].toFixed(5)), lon: Number(point[0].toFixed(5)) }),
+    });
     if (!response.ok) return undefined;
     const body = (await response.json()) as { where?: unknown };
     if (body.where === null) return "none";
@@ -491,6 +561,7 @@ export class Report311LogStore {
     const shown = copy && !copy.waiting ? copy : null;
     this.owner = shown?.owner ?? null;
     this.entries = shown ? shown.entries : readLog(store);
+    tidyStored(store, copy, this.owner === null);
   }
 
   list = (): LogEntry[] => this.entries;
@@ -561,12 +632,12 @@ export class Report311LogStore {
 
   private change(id: string, patch: Partial<LogEntry>, now = new Date()): void {
     if (!this.entries.some((e) => e.id === id)) return;
-    this.write(this.entries.map((e) => (e.id === id ? { ...e, ...patch, changed: now.toISOString() } : e)));
+    this.write(this.entries.map((e) => (e.id === id ? { ...e, ...patch, changed: today(now), rev: e.rev + 1 } : e)));
   }
 
-  /** Checked off (archived), or back on the checklist. */
+  /** Checked off (archived) on today's day, or back on the checklist. */
   setReported(id: string, reported: boolean, now = new Date()): void {
-    this.change(id, { reported: reported ? now.toISOString() : null }, now);
+    this.change(id, { reported: reported ? today(now) : null }, now);
   }
 
   setNote(id: string, note: string, now = new Date()): void {

@@ -18,7 +18,7 @@ import type { NearbyStationsAnswer, StationAction } from "./stations.ts";
 import { language, t } from "./i18n.ts";
 import { OFFLINE_SAID } from "./appWorker.ts";
 import type { WithClosures } from "./closureMap.ts";
-import { dialFields, type Bike, type Carrying, type Dials, type Ending, type When } from "./dials.ts";
+import { closureFields, dialFields, type Bike, type Carrying, type Dials, type Ending, type When } from "./dials.ts";
 
 /**
  * One coloured section of the route, in whole metres along its traced length
@@ -962,6 +962,11 @@ export interface RouteResponse {
   /** Trip points the planner moved: one inside the National Zoo goes to its bike racks. */
   moved_points?: { index: number; asked: LonLat; routed: LonLat; reason: "zoo_racks"; note: string }[];
   /**
+   * Notes on a stop or the end (core.api.PointNoteOut; the owner, 2026-10-29): one on a road not open to the public,
+   * which the route still goes to. Shown and said as the moved points are (lib/summary.ts movedPointsNote).
+   */
+  point_notes?: { index: number; reason: "not_public"; note: string }[];
+  /**
    * The walks at the route's ends where the ride stops short of the point asked (core.api.WalkInOut; the owner,
    * 2026-10-17: a stop at a memorial a bike is walked through). Null or absent where the ride reaches both.
    */
@@ -1111,6 +1116,7 @@ export type ErrorKind =
   | "router-down"
   | "timed-out"
   | "bikeshare-unavailable"
+  | "mass-outside-dc"
   | "server"
   | "network";
 
@@ -1221,18 +1227,21 @@ function withoutValidatorPrefix(said: string): string {
  * field path and "Value error," ("points: Value error, point 1 is outside the
  * area this map covers"), which is for a developer.
  */
-/** How friendlyInput's refusals that name no step of their own begin. */
-const COULD_NOT_USE = "The planner could not use these points";
-
 export function friendlyInput(said: string | undefined): string {
-  if (!said) return "The planner could not use these points.";
+  return inputRefusal(said)[0];
+}
+
+/** friendlyInput's sentence, and whether it names a step of its own (a refusal that does not gets one added). */
+function inputRefusal(said: string | undefined): [string, boolean] {
+  if (!said) return [t("The planner could not use these points."), false];
   if (/outside the area/i.test(said)) {
-    return "One of the points is outside the area this map covers. Move it back inside.";
+    return [t("One of the points is outside the area this map covers. Move it back inside."), true];
   }
-  if (/at least 2|too short|min_length/i.test(said)) return "Set a start and an end first.";
-  if (/at most|too long|max_length/i.test(said)) return "That is more points than one route can take.";
+  if (/at least 2|too short|min_length/i.test(said)) return [t("Set a start and an end first."), true];
+  if (/at most|too long|max_length/i.test(said)) return [t("That is more points than one route can take."), true];
+  // The validator's own reason stays as the API words it.
   const reason = withoutValidatorPrefix(said.split(";")[0]);
-  return reason ? `The planner could not use these points: ${reason}.` : "The planner could not use these points.";
+  return [reason ? t("The planner could not use these points: {reason}.", { reason }) : t("The planner could not use these points."), false];
 }
 
 /**
@@ -1251,8 +1260,14 @@ function asSentence(said: string): string {
 
 function wait(retryAfterS: number | undefined, fallback: string): string {
   if (retryAfterS === undefined) return fallback;
-  return retryAfterS <= 1 ? "Try again in a moment." : `Try again in ${retryAfterS} seconds.`;
+  return retryAfterS <= 1 ? t("Try again in a moment.") : t("Try again in {seconds} seconds.", { seconds: retryAfterS });
 }
+
+/** core.routing.mass_ride_outside_dc's refusal: a Mass Ride's start, stop or end outside DC. */
+export const MASS_OUTSIDE_DC_CODE = "mass_ride_outside_dc";
+export const MASS_OUTSIDE_DC_SAID = "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.";
+/** Its one action (RouteErrorBox). */
+export const GROUP_RIDE_NO_TRAILS = "Switch to Group Ride, trails off";
 
 export function describeError(status: number, body: unknown, retryAfter: string | null): RouteError {
   const said = serverSentence(body);
@@ -1263,16 +1278,22 @@ export function describeError(status: number, body: unknown, retryAfter: string 
     return {
       ...base,
       kind: "too-long",
-      title: "Too long to plan",
+      title: t("Too long to plan"),
       // The API's own words: the ceiling is its to set, and it says what it is.
       message: asSentence(withoutValidatorPrefix(said)),
     };
   }
+  const refusal = body && typeof body === "object" ? (body as { code?: unknown }).code : undefined;
+  if (status === 400 && refusal === MASS_OUTSIDE_DC_CODE) {
+    // The owner, 2026-10-29: "Don't leave DC on a mass ride", then: "Offer to switch to a no trail group ride if they
+    // want to go outside DC. Mostly focus on the fact that it's calibrated to data that's only available inside DC."
+    return { ...base, kind: "mass-outside-dc", title: t("Mass Ride stays in DC"), message: t(MASS_OUTSIDE_DC_SAID) };
+  }
   if (status === 400) {
-    const message = friendlyInput(said);
+    const [message, ownStep] = inputRefusal(said);
     // A refusal that names no step of its own says the next one (P11), beside its Try again.
-    const next = message.startsWith(COULD_NOT_USE) ? ` ${t("Try another start or destination.")}` : "";
-    return { ...base, kind: "bad-input", title: "Can't plan that", message: `${message}${next}` };
+    const next = ownStep ? "" : ` ${t("Try another start or destination.")}`;
+    return { ...base, kind: "bad-input", title: t("Can't plan that"), message: `${message}${next}` };
   }
   const code = body && typeof body === "object" ? (body as { code?: unknown }).code : undefined;
   if (status === 409 && code === "confirm_long") {
@@ -1281,11 +1302,11 @@ export function describeError(status: number, body: unknown, retryAfter: string 
     return {
       ...base,
       kind: "confirm-long",
-      title: "A long ride",
+      title: t("A long ride"),
       message:
         spanKm === undefined
-          ? "This is a long ride. Planning it may take a little longer."
-          : `This is a long ride: about ${formatRoughDistance(spanKm * 1000)} in straight lines. Planning it may take a little longer.`,
+          ? t("This is a long ride. Planning it may take a little longer.")
+          : t("This is a long ride: about {distance} in straight lines. Planning it may take a little longer.", { distance: formatRoughDistance(spanKm * 1000) }),
       ...(spanKm === undefined ? {} : { spanKm }),
     };
   }
@@ -1293,16 +1314,16 @@ export function describeError(status: number, body: unknown, retryAfter: string 
     return {
       ...base,
       kind: "no-route",
-      title: "No bikeshare plan",
-      message: said ? asSentence(said) : "No dock can be used for this plan. Try the other bike type.",
+      title: t("No bikeshare plan"),
+      message: said ? asSentence(said) : t("No dock can be used for this plan. Try the other bike type."),
     };
   }
   if (status === 422 && code === NO_TRANSIT) {
     return {
       ...base,
       kind: "no-route",
-      title: "No transit plan",
-      message: said ? asSentence(said) : "No Metro or bus combination can be planned here. Try riding the whole way.",
+      title: t("No transit plan"),
+      message: said ? asSentence(said) : t("No Metro or bus combination can be planned here. Try riding the whole way."),
     };
   }
   if (status === 404 || status === 422) {
@@ -1313,7 +1334,7 @@ export function describeError(status: number, body: unknown, retryAfter: string 
     return {
       ...base,
       kind: "no-route",
-      title: "No route found",
+      title: t("No route found"),
       message: plain ? [t("No route joins these points. Try moving a point or another ride type."), detail].filter(Boolean).join(" ") : (said ?? ""),
       ...(plain ? { joins: { detail } } : {}),
     };
@@ -1322,32 +1343,32 @@ export function describeError(status: number, body: unknown, retryAfter: string 
     return {
       ...base,
       kind: "rate-limited",
-      title: "Slow down",
-      message: `Too many route requests from this connection. ${wait(retryAfterS, "Try again in a minute.")}`,
+      title: t("Slow down"),
+      message: `${t("Too many route requests from this connection.")} ${wait(retryAfterS, t("Try again in a minute."))}`,
     };
   }
   if (status === 502) {
     return {
       ...base,
       kind: "router-down",
-      title: "Router unavailable",
-      message: "The routing engine is not answering right now. Try again shortly.",
+      title: t("Router unavailable"),
+      message: t("The routing engine is not answering right now. Try again shortly."),
     };
   }
   if (status === 503 && code === BIKESHARE_UNAVAILABLE) {
     return {
       ...base,
       kind: "bikeshare-unavailable",
-      title: "Bikeshare data unavailable",
-      message: `Station data is not available right now, so no dock can be chosen. ${wait(retryAfterS, "Try again shortly.")}`,
+      title: t("Bikeshare data unavailable"),
+      message: `${t("Station data is not available right now, so no dock can be chosen.")} ${wait(retryAfterS, t("Try again shortly."))}`,
     };
   }
   if (status === 503 && code === TRANSIT_UNAVAILABLE) {
     return {
       ...base,
       kind: "timed-out",
-      title: "Transit times unavailable",
-      message: said ? asSentence(said) : `Transit times are not available right now. ${wait(retryAfterS, "Try again shortly.")}`,
+      title: t("Transit times unavailable"),
+      message: said ? asSentence(said) : `${t("Transit times are not available right now.")} ${wait(retryAfterS, t("Try again shortly."))}`,
       noAutoResend: true,
     };
   }
@@ -1355,8 +1376,8 @@ export function describeError(status: number, body: unknown, retryAfter: string 
     return {
       ...base,
       kind: "timed-out",
-      title: "Long ride not planned",
-      message: said ?? `Planning this long ride ran out of time. ${wait(retryAfterS, "Try again shortly.")}`,
+      title: t("Long ride not planned"),
+      message: said ?? `${t("Planning this long ride ran out of time.")} ${wait(retryAfterS, t("Try again shortly."))}`,
       noAutoResend: true,
     };
   }
@@ -1372,8 +1393,8 @@ export function describeError(status: number, body: unknown, retryAfter: string 
   return {
     ...base,
     kind: "server",
-    title: "Something went wrong",
-    message: "The planner hit an unexpected problem. Try again, or try a different route.",
+    title: t("Something went wrong"),
+    message: t("The planner hit an unexpected problem. Try again, or try a different route."),
   };
 }
 
@@ -1440,10 +1461,8 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
       ? dialFields(preset === "mass-ride" || twoPointsOnly(preset) ? { ...options.dials, loop: false } : options.dials)
       : {}),
     ...(options.confirmLong ? { confirm_long: true } : {}),
-    // "Route through anyway" (v0.7.0, lib/closureMap.ts): this plan's only, in the request, never in a link.
-    ...(options.dials?.closureBypass?.length ? { closure_bypass: options.dials.closureBypass } : {}),
-    // Go and a ride: only the closures known to be on, not DDOT's permits (lib/dials.ts closuresNow).
-    ...(options.dials?.closuresNow ? { closures_now: true } : {}),
+    // "Route through anyway" and Go's closures in force (lib/dials.ts closureFields).
+    ...(options.dials ? closureFields(options.dials) : {}),
     // The via points (v0.7.0, "Via points vs stops"): passed without a stop. Never on a two-point ride type.
     ...(options.vias?.length && !twoPointsOnly(preset) ? { via_points: [...options.vias] } : {}),
     // The first good route at once (v0.7.0, "Faster routing"); the API answers the full plan where it cannot.
@@ -1503,8 +1522,8 @@ export async function requestRoute(
       error: {
         kind: "network",
         status: 0,
-        title: "Can't reach the planner",
-        message: "The request did not get through. Check your connection and try again.",
+        title: t("Can't reach the planner"),
+        message: t("The request did not get through. Check your connection and try again."),
       },
     };
   }
@@ -1527,7 +1546,7 @@ export async function requestRoute(
   const said = serverSentence(body);
   // A long ride that ran out of time already has its own title and words.
   if (options.confirmLong && (status === 429 || status === 503) && said && !error.noAutoResend) {
-    return { ok: false, error: { ...error, title: "Planner busy", message: said } };
+    return { ok: false, error: { ...error, title: t("Planner busy"), message: said } };
   }
   return { ok: false, error };
 }
@@ -1578,7 +1597,7 @@ export async function requestNeighbours(
     }
     return { ok: false, error: describeError(response.ok ? 500 : response.status, body, response.headers.get("Retry-After")) };
   } catch {
-    return { ok: false, error: { kind: "network", status: 0, title: "Can't reach the planner", message: "" } };
+    return { ok: false, error: { kind: "network", status: 0, title: t("Can't reach the planner"), message: "" } };
   }
 }
 
@@ -1617,7 +1636,7 @@ export async function requestStations(
       signal: options.signal,
     });
   } catch {
-    return { ok: false, message: "The station list did not load. Check your connection and try again." };
+    return { ok: false, message: t("The station list did not load. Check your connection and try again.") };
   }
   let body: unknown = null;
   try {
@@ -1626,9 +1645,9 @@ export async function requestStations(
     body = null;
   }
   if (response.ok && looksLikeStations(body)) return { ok: true, answer: body };
-  if (response.status === 429) return { ok: false, message: "Too many requests just now. Try again in a minute." };
+  if (response.status === 429) return { ok: false, message: t("Too many requests just now. Try again in a minute.") };
   if (response.status === 503) {
-    return { ok: false, message: "Station availability is not available right now. Try again shortly." };
+    return { ok: false, message: t("Station availability is not available right now. Try again shortly.") };
   }
-  return { ok: false, message: "The station list is not available right now." };
+  return { ok: false, message: t("The station list is not available right now.") };
 }

@@ -19,6 +19,11 @@ import { placeWords, type ReportPlace } from "./report311.ts";
 import { STRESS_TILE_LAYER } from "../stressStyle.js";
 import { tierWords } from "./profileChart.ts";
 import { t } from "./i18n.ts";
+import { secretFrom, withSecret } from "./rideSeal.ts";
+import { leadKeyOfMark, leadMark } from "./linkCode.ts";
+
+/** The fragment key of a broadcast link's leader mark (lib/sharedRoutes.ts LEAD_PARAM). */
+const LEAD_PARAM = "lead";
 
 /** The big button's name in Go with no destination, the card's heading, and its end. */
 export const ROAM_NAME = "Roam";
@@ -31,6 +36,8 @@ export const BACK_TO_ROAM = t("Back to roaming.");
 export const STILL_ROAMING_SAID = t("Still roaming. Use End roam to stop.");
 /** Shown on the card before the map has a road near the rider. */
 export const NO_ROAD_YET = t("Looking for the road you're on…");
+/** Only poor GPS fixes for a while (lib/navigate.ts weighFix): the road names wait for a good one. */
+export const ROAM_GPS_WEAK = t("GPS is weak: road names paused.");
 /** No named road near: on an unnamed path, or off the map's roads. */
 export const NO_NAMED_ROAD = t("No named road here");
 /** The rider outside the area the map covers (P11): no roads to read, and nothing to start riding for. */
@@ -418,21 +425,27 @@ export const ROAM_BROADCAST_ON = t("Sharing live. Those who open your link see y
 /** The link went without the leader key (not ready yet, or no SHA-256 here): nothing is broadcast. */
 export const ROAM_BROADCAST_NOT_READY = t("Share live is not ready yet; try again in a moment.");
 
-/** The fragment keys of a Roam broadcast link: the ride's random id and the leader key. */
+/** The fragment keys of a Roam broadcast link: the ride's random id, the leader key and the ride's secret (lib/rideSeal.ts). */
 export const ROAM_PARAM = "roam";
 const HEX32 = /^[0-9a-f]{32}$/;
 
-/** A Roam broadcast's link: the page's own address, its fragment naming the ride and its leader, nothing else. */
-export function roamLink(origin: string, id: string, lead: string): string {
-  return `${origin}/#${ROAM_PARAM}=${id}&lead=${lead}`;
+/**
+ * A Roam broadcast's link: the page's own address, its fragment naming the ride and its leader, nothing else. The
+ * leader key (32 hex digits) goes in its short form, 22 characters (lib/linkCode.ts leadMark, 2026-10-29).
+ */
+export function roamLink(origin: string, id: string, lead: string, secret: string | null = null): string {
+  return withSecret(`${origin}/#${ROAM_PARAM}=${id}&${LEAD_PARAM}=${leadMark(lead) ?? lead}`, secret);
 }
 
-/** The ride a Roam broadcast link names, and its leader key, or null for any other address. */
-export function roamLinkFrom(hash: string): { id: string; lead: string } | null {
+/**
+ * The ride a Roam broadcast link names, its leader key (32 hex digits, from either form of the mark) and its secret
+ * (null in an older link), or null for any other address.
+ */
+export function roamLinkFrom(hash: string): { id: string; lead: string; secret: string | null } | null {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   const id = params.get(ROAM_PARAM);
-  const lead = params.get("lead");
-  return id && lead && HEX32.test(id) && HEX32.test(lead) ? { id, lead } : null;
+  const lead = leadKeyOfMark(params.get(LEAD_PARAM));
+  return id && lead && HEX32.test(id) ? { id, lead, secret: secretFrom(hash) } : null;
 }
 
 // ---- Sunrise and sunset (Stephen 2026-10-22: "Also add sunrise and sunset") -------------------------------------

@@ -2,7 +2,10 @@
 
 Re-opening a plan, Undo, the Home chip and Go's early start (step 4) ask for the same
 route again within minutes; each used to be a whole plan. An answer is kept here for
-`TTL_S` (10 minutes) and given again for an identical request, so those are instant.
+`TTL_S` (2 minutes) and given again for an identical request, so those are instant. Two
+minutes, not longer, because a re-route in a ride and a "from my location" plan start at the
+rider's live position, which is kept no longer than that (the owner, 2026-10-22 and
+2026-10-29).
 
 **The key** is everything the answer is made from:
 
@@ -52,6 +55,8 @@ worker's memory, like the request it answers.
 
 from __future__ import annotations
 
+import contextvars
+import functools
 import hashlib
 import json
 import logging
@@ -59,13 +64,14 @@ import threading
 import time
 import zlib
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-TTL_S = 10 * 60
+TTL_S = 2 * 60
 MAX_ENTRIES = 128
 # Points are compared at this many decimal places of a degree: 1e-4 is about 11 m of
 # latitude and 9 m of longitude here.
@@ -92,15 +98,52 @@ _entries: OrderedDict[tuple[str, str], _Entry] = OrderedDict()
 
 
 def ttl_s() -> float:
-    """How long an answer is kept: `settings.ROUTE_CACHE_TTL_S`, `TTL_S` unless set; 0
-    turns the cache off (the test suite, whose tests change the segment table under a
-    plan directly, without the edit generation an edit bumps)."""
+    """How long an answer is kept: `settings.ROUTE_CACHE_TTL_S`, `TTL_S` unless set, and never
+    past `TTL_S`; 0 turns the cache off (the test suite, whose tests change the segment table
+    under a plan directly, without the edit generation an edit bumps)."""
     from django.conf import settings
 
     try:
-        return max(0.0, float(getattr(settings, "ROUTE_CACHE_TTL_S", TTL_S)))
+        return min(float(TTL_S), max(0.0, float(getattr(settings, "ROUTE_CACHE_TTL_S", TTL_S))))
     except (TypeError, ValueError):
         return float(TTL_S)
+
+
+def _drop_expired(now: float) -> None:
+    """Forget every answer past its life (called with `_lock` held), so none waits in a worker's
+    memory for a read or a push to find it."""
+    for slot in [slot for slot, entry in _entries.items() if entry.expires <= now]:
+        del _entries[slot]
+
+
+def _later(delay: float, run: Callable[[], None]) -> None:
+    timer = threading.Timer(delay, run)
+    timer.daemon = True
+    timer.start()
+
+
+# A sweep is due: one at a time, so a busy worker starts no pile of timers.
+_sweep_due = False
+
+
+def _sweep() -> None:
+    """Forget what has expired even when no read or push comes, so a quiet worker keeps no
+    route, and its start, past its 2 minutes (as core.weather and core.ride_presence sweep)."""
+    global _sweep_due
+    with _lock:
+        _sweep_due = False
+        now = _clock()
+        _drop_expired(now)
+        if _entries:
+            _schedule(max(0.0, min(e.expires for e in _entries.values()) - now))
+
+
+def _schedule(delay: float) -> None:
+    """A sweep in `delay` seconds, unless one is due (called with `_lock` held)."""
+    global _sweep_due
+    if not _sweep_due:
+        _sweep_due = True
+        _later(delay, _sweep)
 
 
 def clear() -> None:
@@ -215,6 +258,7 @@ def get(key: str, quick: bool = False) -> dict | None:
         return _shared_get(shared, key, kinds)
     now = _clock()
     with _lock:
+        _drop_expired(now)
         for kind in kinds:
             entry = _entries.get((key, kind))
             if entry is None:
@@ -238,7 +282,10 @@ def put(key: str, body: dict, valid_s: float = TTL_S) -> None:
         _shared_put(shared, key, kind, body, ttl)
         return
     with _lock:
-        _entries[(key, kind)] = _Entry(body, _clock() + ttl)
+        now = _clock()
+        _drop_expired(now)
+        _entries[(key, kind)] = _Entry(body, now + ttl)
+        _schedule(ttl)
         _entries.move_to_end((key, kind))
         if kind == FULL:
             # The full plan supersedes its first route.
@@ -314,21 +361,78 @@ def _closures_part(now: datetime) -> tuple[str, datetime | None]:
     return digest, upcoming
 
 
-def _approved_part(preset: str) -> list:
-    """The approvals the plan reads at request time."""
-    from . import avoid_junctions, flashing_signals, mass_hazards
+# The approvals one request has read (`approval`), by name: the key and the plan it misses
+# read the same ones, once. None outside `reads_approvals_once`.
+_approvals_read: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "approvals_read", default=None
+)
+
+
+def reads_approvals_once(fn):
+    """`fn` (one route request) with each approval read at most once in it (`approval`)."""
+
+    @functools.wraps(fn)
+    def run(*args, **kwargs):
+        token = _approvals_read.set({})
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            _approvals_read.reset(token)
+
+    return run
+
+
+def approval(name: str, read: Callable[[], object]):
+    """`read()`, the approval `name`, as this request first read it (`reads_approvals_once`);
+    read afresh outside one."""
+    memo = _approvals_read.get()
+    if memo is None:
+        return read()
+    if name not in memo:
+        memo[name] = read()
+    return memo[name]
+
+
+def avoid_list() -> tuple:
+    """The approved Avoid junctions (`avoid_junctions.approved`)."""
+    from . import avoid_junctions
+
+    return approval("avoid", avoid_junctions.approved)
+
+
+def junction_ratings() -> tuple:
+    """The approved rider ratings of junctions (`junction_suggestions.approved_ratings`)."""
     from .junction_suggestions import approved_ratings
 
+    return approval("ratings", approved_ratings)
+
+
+def mass_ride_hazards() -> dict:
+    """A Mass Ride's approved hazards (`mass_hazards.approved`)."""
+    from . import mass_hazards
+
+    return approval("hazards", mass_hazards.approved)
+
+
+def beacons() -> tuple:
+    """The active flashing beacons (`flashing_signals.active`)."""
+    from . import flashing_signals
+
+    return approval("beacons", flashing_signals.active)
+
+
+def _approved_part(preset: str) -> list:
+    """The approvals the plan reads at request time, read as the plan reads them."""
     hazards = []
     if preset == "mass-ride":
-        for way, hazard in sorted(mass_hazards.approved().items()):
+        for way, hazard in sorted(mass_ride_hazards().items()):
             fields = {k: str(v) for k, v in vars(hazard).items() if not k.startswith("_")}
             hazards.append([way, sorted(fields.items())])
     return [
-        [repr(item) for item in avoid_junctions.approved()],
-        [repr(item) for item in approved_ratings()],
+        [repr(item) for item in avoid_list()],
+        [repr(item) for item in junction_ratings()],
         hazards,
-        flashing_signals.digest(),
+        [repr(item) for item in beacons()],
     ]
 
 
@@ -382,7 +486,8 @@ def key_for(
 
 def keepable(body: dict, own_variant: str, failures: int) -> bool:
     """Whether an answer may be kept: planned on the ride's own graph, and not cut short
-    by the budget (a failed router call, or a search that stopped for time)."""
+    by the budget (a failed or skipped router call, or a search or pass that stopped for
+    time)."""
     if failures:
         return False
     if body.get("variant") != own_variant:
@@ -393,4 +498,12 @@ def keepable(body: dict, own_variant: str, failures: int) -> bool:
     for field in ("hills_seek", "hills_avoid", "hills_tolerate"):
         if (body.get(field) or {}).get("limited") == "timed_out":
             return False
-    return True
+    # The passes that give up on the clock without a router call to fail: the router's
+    # alternatives, the dodge pass, the hill seek and the way round an Avoid junction.
+    stopped = (
+        (calm_search.get("alternates") or {}).get("limited"),
+        (body.get("dodges") or {}).get("limited"),
+        ((body.get("hills_seek") or {}).get("climb_seek") or {}).get("limited"),
+        (body.get("avoid_search") or {}).get("alternate"),
+    )
+    return "time" not in stopped

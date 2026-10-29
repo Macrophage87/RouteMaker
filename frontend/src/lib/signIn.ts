@@ -20,7 +20,7 @@ export function rememberPlan(storage: StorageLike | null, hash: string): void {
   if (!storage) return;
   // A plan with no points keeps nothing, and drops an older kept plan: the rider cleared it,
   // and a kept copy must not bring it back on the next load (the correctness re-check's C8).
-  if (!/[#&]p=/.test(hash)) {
+  if (!/[#&][pq]=/.test(hash)) {
     forgetPlan(storage);
     return;
   }
@@ -108,7 +108,7 @@ export function rememberPlanForPage(storage: StorageLike | null, hash: string): 
 /**
  * The hash to open with: the page's own if it has a plan, else a remembered one (used once).
  *
- * A hash with points (`p=`) or only a ride type (`preset=`, which is what a
+ * A hash with points (`q=`, or `p=` in an older link) or only a ride type (`preset=`, which is what a
  * preset link such as /trailmaxxing redirects to) is the page's own plan: the
  * person followed that link on purpose, so it beats a plan left behind by a
  * sign-in that never came back. The callback itself lands on a bare "/".
@@ -122,7 +122,7 @@ export function planToOpen(storage: StorageLike | null, hash: string): string {
   } catch {
     return hash;
   }
-  if (/[#&](p|preset)=/.test(hash) || !saved) return hash;
+  if (/[#&](p|q|preset)=/.test(hash) || !saved) return hash;
   return saved;
 }
 

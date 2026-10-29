@@ -89,7 +89,9 @@ class TestNearest:
         assert post(client, body).status_code == 200
         url, payload = fake.calls[0]
         assert url.startswith(routing.settings.VALHALLA_UPSTREAMS["ebike"])
-        assert payload["sources"] == [{"lon": HERE[0], "lat": HERE[1]}]
+        assert payload["sources"] == [
+            {"lon": HERE[0], "lat": HERE[1], "radius": routing.STOP_RADIUS_M}
+        ]
         assert payload["targets"] == [{"lon": lon, "lat": lat} for lon, lat in PLACES]
         assert payload["costing"] == "bicycle"
         assert payload["costing_options"] == presets.costing(
@@ -255,7 +257,9 @@ class TestNearestDetails:
         )
         fake = router(FakeRouter({"sources_to_targets": row_answer([(1, 1)] * 3)}))
         assert post(client, {"points": [HERE, *PLACES], "preset": "default"}).status_code == 200
-        assert fake.calls[0][1]["sources"] == [{"lon": racks[0], "lat": racks[1]}]
+        assert fake.calls[0][1]["sources"] == [
+            {"lon": racks[0], "lat": racks[1], "radius": routing.STOP_RADIUS_M}
+        ]
 
     def test_cargo_with_people_is_asked_at_its_own_start(self, client, router) -> None:
         fake = router(FakeRouter({"sources_to_targets": row_answer([(1, 1)] * 3)}))
@@ -329,3 +333,62 @@ class TestNearestSlots:
         finally:
             other.close()
         assert refused.status_code == 429
+
+
+class TestTheRidesOwnSettings:
+    """Review 2026-10-29: the distances are on the plan's own speed, closures and the roads
+    the rider marked closed, as the route there will be."""
+
+    def test_the_riders_speed_closures_and_blocked_roads_are_asked_for(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from core import stoporder, workzones
+
+        closure = [[-77.04, 38.89], [-77.03, 38.89], [-77.03, 38.91], [-77.04, 38.89]]
+        seen = {}
+
+        def plan_zones(points, when, bypass=(), reserve=(0.0, 0), now_only=False):
+            seen.update(points=points, bypass=bypass, now_only=now_only)
+            return SimpleNamespace(exclude=[closure])
+
+        def ask_matrix(variant, payload, deadline):
+            seen["payload"] = payload
+            return row_answer([(1, 1)] * len(PLACES))
+
+        monkeypatch.setattr(workzones, "plan_zones", plan_zones)
+        monkeypatch.setattr(stoporder, "ask_matrix", ask_matrix)
+        monkeypatch.setattr(
+            stoporder,
+            "ride_graph",
+            lambda preset, dials: (
+                "standard",
+                {"bicycle": {"cycling_speed": dials.cycling_speed_kmh}},
+            ),
+        )
+        line = ((-77.045, 38.90), (-77.045, 38.901))
+        dials = routing.Dials(
+            cycling_speed_kmh=21.0, closure_bypass=("z1",), closures_now=True, blocked=(line,)
+        )
+        answer = nearest.distances([HERE, *PLACES], "default", dials)
+        assert answer["by"] == "riding"
+        payload = seen["payload"]
+        assert payload["costing_options"]["bicycle"]["cycling_speed"] == 21.0
+        assert payload["exclude_polygons"][0] == closure
+        assert len(payload["exclude_polygons"]) == 2
+        assert seen["bypass"] == ("z1",) and seen["now_only"] is True
+        assert payload["sources"][0]["radius"] == routing.STOP_RADIUS_M
+
+    def test_without_closures_or_blocked_roads_nothing_is_left_out(self, monkeypatch):
+        from core import stoporder, workzones
+
+        seen = {}
+        monkeypatch.setattr(workzones, "plan_zones", lambda *a, **k: None)
+
+        def ask_matrix(variant, payload, deadline):
+            seen["payload"] = payload
+            return row_answer([(1, 1)] * len(PLACES))
+
+        monkeypatch.setattr(stoporder, "ask_matrix", ask_matrix)
+        monkeypatch.setattr(stoporder, "ride_graph", lambda preset, dials: ("standard", {}))
+        nearest.distances([HERE, *PLACES], "default", routing.Dials())
+        assert "exclude_polygons" not in seen["payload"]

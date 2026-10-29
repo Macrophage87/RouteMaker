@@ -75,7 +75,7 @@ def test_with_no_token_nothing_is_asked(settings) -> None:
     assert fake.calls == []
 
 
-def test_the_token_is_in_the_header_only_and_an_answer_is_kept_an_hour(settings) -> None:
+def test_the_token_is_in_the_header_only_and_an_answer_is_kept_two_minutes(settings) -> None:
     settings.MAPILLARY_ACCESS_TOKEN = SECRET
     fake, clock = Fake(), Clock()
     photos = street_photo.StreetPhoto(fake, clock, bearing=lambda *_: EAST_WEST)
@@ -86,11 +86,34 @@ def test_the_token_is_in_the_header_only_and_an_answer_is_kept_an_hour(settings)
     assert SECRET not in url and "access_token" not in url and "MLY" not in url
     assert url.startswith("https://graph.mapillary.com/images?") and "bbox=" in url
     assert SECRET not in json.dumps(first)
-    clock.now += street_photo.CACHE_S - 1
+    clock.now += 119
     assert photos.photo(LON, LAT, 5) == first and len(fake.calls) == 1
     clock.now += 2
     photos.photo(LON, LAT, 5)
     assert len(fake.calls) == 2
+
+
+def test_a_spot_asked_about_is_swept_from_memory_after_two_minutes(settings) -> None:
+    """The answer is keyed by the spot tapped, so it goes at 2 minutes (Stephen 2026-10-29)
+    even when nothing else is asked; the next sweep is set by the oldest answer left."""
+    settings.MAPILLARY_ACCESS_TOKEN = SECRET
+    clock, timers = Clock(), []
+    photos = street_photo.StreetPhoto(
+        Fake(), clock, bearing=lambda *_: EAST_WEST, later=lambda d, f: timers.append((d, f))
+    )
+    photos.photo(LON, LAT, 5)
+    assert street_photo.KEEP_S == 120.0
+    assert len(timers) == 1 and timers[0][0] == 120.0
+    clock.now = 60.0
+    photos.photo(LON + 0.01, LAT, 6)  # a second spot a minute later: no second timer
+    assert len(timers) == 1
+    clock.now = 120.0
+    timers.pop()[1]()
+    assert list(photos._cache) == [(6, round(LON + 0.01, 4), LAT)]
+    assert len(timers) == 1 and timers[0][0] == pytest.approx(60.0)
+    clock.now = 180.0
+    timers.pop()[1]()
+    assert not photos._cache and not timers
 
 
 def test_no_photo_is_said_and_no_answer_is_nothing(settings, caplog) -> None:
@@ -185,15 +208,17 @@ def test_the_image_fetch_names_only_mapillarys_image_hosts() -> None:
 class Graph:
     """Mapillary's Graph API: the search answer, or one image's record."""
 
-    def __init__(self, thumb: str) -> None:
+    def __init__(self, thumb: str, at: tuple[float, float] = (LON, LAT)) -> None:
         self.calls: list[tuple[str, dict]] = []
         self.thumb = thumb
+        self.at = at
 
     def __call__(self, url: str, headers: dict, _timeout: float) -> bytes:
         self.calls.append((url, headers))
         if url.startswith(street_photo.API_URL):
             return (DATA / "images.json").read_bytes()
-        return json.dumps({"thumb_1024_url": self.thumb}).encode()
+        geometry = {"type": "Point", "coordinates": list(self.at)}
+        return json.dumps({"thumb_1024_url": self.thumb, "geometry": geometry}).encode()
 
 
 def test_another_process_finds_the_image_again_through_the_graph_api(settings) -> None:
@@ -208,10 +233,35 @@ def test_another_process_finds_the_image_again_through_the_graph_api(settings) -
     other = street_photo.StreetPhoto(graph, bearing=lambda *_: EAST_WEST, fetch_image=image)
     assert other.image("1002") == b"\xff\xd8jpeg"
     ((url, headers),) = graph.calls
-    assert url == "https://graph.mapillary.com/1002?fields=thumb_1024_url"
+    assert url == "https://graph.mapillary.com/1002?fields=thumb_1024_url,geometry"
     assert headers["Authorization"] == f"OAuth {SECRET}" and SECRET not in url
     assert image.calls[0][0] == thumb and "Authorization" not in image.calls[0][1]
     assert other.image("1002") == b"\xff\xd8jpeg" and len(graph.calls) == 1  # kept
+
+
+def test_only_photos_of_the_covered_area_are_looked_up_or_served(settings) -> None:
+    settings.MAPILLARY_ACCESS_TOKEN = SECRET
+    search = Fake()
+    far = street_photo.StreetPhoto(search, bearing=lambda *_: None)
+    assert far.photo(2.35, 48.86, None) == street_photo.NONE and search.calls == []
+    thumb = "https://scontent-iad3-1.xx.fbcdn.net/m1/v/t6/An1002.jpg?oe=1"
+    image = Fake(body=b"x")
+    elsewhere = street_photo.StreetPhoto(
+        Graph(thumb, at=(2.35, 48.86)), bearing=lambda *_: None, fetch_image=image
+    )
+    assert elsewhere.image("1002") is None and image.calls == []
+    nowhere = street_photo.StreetPhoto(Graph(thumb, at=()), fetch_image=image)
+    assert nowhere.image("1002") is None and image.calls == []
+
+
+def test_neither_fetch_follows_a_redirect() -> None:
+    import urllib.request
+
+    assert street_photo._NoFollow().redirect_request(None, None, 302, "", {}, "x") is None
+    assert any(isinstance(h, street_photo._NoFollow) for h in street_photo._OPENER.handlers)
+    assert not any(
+        type(h) is urllib.request.HTTPRedirectHandler for h in street_photo._OPENER.handlers
+    )
 
 
 def test_a_looked_up_url_on_another_host_is_not_fetched(settings) -> None:

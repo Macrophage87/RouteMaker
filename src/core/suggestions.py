@@ -25,6 +25,7 @@ only; it is never in the post, the tiles or anything a rider reads.
 from __future__ import annotations
 
 from django.db import IntegrityError, connection, transaction
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from . import audit, road_names, segment_info, stress_edits, suggestion_post
@@ -336,19 +337,33 @@ def open_suggestions(limit: int = 100) -> list[StressSuggestion]:
     `settings.SUGGEST_SIGNED_OUT_MIN_AGREE` of them agree (1: every one)."""
     from django.conf import settings
 
+    minimum = getattr(settings, "SUGGEST_SIGNED_OUT_MIN_AGREE", 1)
     # A rider's closure report is reviewed with the closures (core.reviewed_closures), not here.
-    rows = list(
-        StressSuggestion.objects.filter(
-            status__in=(StressSuggestion.Status.PENDING, StressSuggestion.Status.SENT)
+    waiting = StressSuggestion.objects.filter(
+        status__in=(StressSuggestion.Status.PENDING, StressSuggestion.Status.SENT)
+    ).exclude(kind=StressSuggestion.Kind.CLOSURE)
+    if minimum > 1:
+        # Signed-out sends that can never show are left out before the window is cut: those of a
+        # road with fewer open signed-out sends than the minimum and no signed-in one (whose
+        # `agree` they would count towards). Read first and dropped below, as they used to be,
+        # old ones that never gathered agreement filled the window and kept newer suggestions,
+        # signed-in ones included, out of the queue.
+        signed_out = waiting.filter(signed_out=True)
+        enough = (
+            signed_out.order_by()
+            .values("osm_way_id")
+            .annotate(sends=Count("pk"))
+            .filter(sends__gte=minimum)
+            .values("osm_way_id")
         )
-        .exclude(kind=StressSuggestion.Kind.CLOSURE)
-        .prefetch_related("reviews")
-        .order_by("created_at")[:OPEN_READ]
-    )
+        signed_in = waiting.filter(signed_out=False).values("osm_way_id")
+        waiting = waiting.exclude(
+            Q(signed_out=True) & ~Q(osm_way_id__in=enough) & ~Q(osm_way_id__in=signed_in)
+        )
+    rows = list(waiting.prefetch_related("reviews").order_by("created_at")[:OPEN_READ])
     by_road: dict[int, list[StressSuggestion]] = {}
     for row in rows:
         by_road.setdefault(row.osm_way_id, []).append(row)
-    minimum = getattr(settings, "SUGGEST_SIGNED_OUT_MIN_AGREE", 1)
     groups = []
     for road in by_road.values():
         for row in road:

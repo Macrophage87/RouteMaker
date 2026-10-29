@@ -6,14 +6,19 @@ psycopg2-binary
 psycopg
 procrastinate
 defusedxml
-pytest
-pytest-django
-ruff
+# The test and lint tools, exactly: they are in neither image, and a new ruff that adds a rule
+# or changes its format turns CI red with no code change. Dependabot proposes the bumps.
+pytest==9.2.0
+pytest-django==4.14.0
+ruff==0.17.3
 pyyaml
 osmium
 cryptography
 # Django's PyMemcacheCache, the shared answer cache (docker/requirements.txt says why).
 pymemcache
+# The api's server, at the api image's pin (docker/requirements-api.txt): tests/test_server_logs.py
+# writes access lines through config.access_log.Logger, which subclasses its logger.
+gunicorn==26.2.0
 shapely
 
 # Used by the worker-schedule tests to derive each alert window from its cron

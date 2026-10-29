@@ -30,20 +30,20 @@
 #   2. the checkout must be clean, at the deployed tag's commit, with .env's TAG matching it, and
 #      its origin https://github.com/$RM_CD_GITHUB_REPO, the repository whose CI is read.
 #   3. `git fetch --tags`; the highest strict vX.Y.Z tag newer than the deployed one.
-#   4. it must be an annotated tag (optionally a signed one: RM_CD_REQUIRE_SIGNED_TAGS=1), its
-#      commit an ancestor of origin/main and a descendant of the deployed release, and GitHub's
-#      `test` check run green for that commit (an unauthenticated read of the public repository;
-#      a rate limit is tried again next pass).
+#   4. it must be an annotated tag, or a lightweight one on the commit whose subject is "Release
+#      vX.Y.Z" (optionally a signed one: RM_CD_REQUIRE_SIGNED_TAGS=1), its commit an ancestor of
+#      origin/main and a descendant of the deployed release, and GitHub's `test` and `a11y` check
+#      runs green for that commit (an unauthenticated read of the public repository; a rate limit
+#      is tried again next pass).
 #   5. the gate (cd_logic.py gate): only a code release is deployed by itself. Anything needing
 #      data from home, sudo or the nginx site stops with a report in $RM_STATE/cd/hold/<tag>. A
 #      release with nothing for the server (documentation, CI) is only recorded, if the running api
 #      image is on the host (if not, it is a full deploy): the checkout and TAG move (the running
 #      api image is tagged with it), nothing is stopped.
 #   6. "A new release sha" from the runbook without sudo, inside RM_CD_WINDOW if one is set: the
-#      tag's tree is exported (`git archive`); then the api and worker stop, and the api image (3
-#      tries; skipped if it is already on the host) and, if frontend/ changed, the front end are
-#      built, in the memory the api and worker had and not the other sites' headroom; the database
-#      is snapshotted (pg_dump into $RM_STATE/cd/backups), the front end's top-level files
+#      tag's tree is exported (`git archive`), and the api image (3 tries; skipped if it is already
+#      on the host) and, if frontend/ changed, the front end are built while the beta still runs;
+#      then the api and worker stop, the database is snapshotted (pg_dump into $RM_STATE/cd/backups), the front end's top-level files
 #      (index.html, beta-build.txt) are saved, the checkout moves to the tag, TAG is set in .env,
 #      the compose gate runs, migrations run (only after the snapshot), the front end is installed
 #      (index.html last), the api and worker start, photon and the routers are recreated if a
@@ -52,7 +52,9 @@
 #      `migrate --check` and collectstatic run in the api, and the local smoke tests run. The
 #      release is then recorded as deployed. Last,
 #      if a tile FORMAT_VERSION changed, the pre-draw runs and is waited for (OWNER-DECISIONS 436);
-#      a pre-draw that fails is a warning, not a rollback.
+#      a pre-draw that fails is a warning, not a rollback. After a deploy, a release that changed
+#      the agent's own files has them reinstalled in $RM_STATE/cd/bin for the next pass, and old
+#      api images, build cache and node_modules copies are pruned (never the previous release's).
 #   7. any failure in 6 before the release is recorded rolls back automatically (cd_logic.py
 #      rollback: rollback A/C as the runbook defines them) and the tag is marked failed; a failed
 #      rollback marks the agent BROKEN. Each step is written to $RM_STATE/cd/in-progress before it
@@ -72,6 +74,8 @@
 #   RM_CD_DOCKER_FREE_GIB        GiB that must be free on Docker's root before a deploy [3]
 #   RM_CD_REQUIRE_SIGNED_TAGS    1: also require `git verify-tag` to pass [0]
 #   RM_CD_KEEP                   release snapshots kept in $RM_STATE/cd/backups [3]
+#   RM_CD_WAIT_ALERT_MIN         minutes a release may wait (CI, node_modules, the node image, the
+#                                network) before the owner is alerted [30]
 #   RM_CD_HOST                   Host header for the local health check [RM_BETA_HOST from the
 #                                checkout's .env; one of the two is required]
 # DOCKER and CURL name the docker and curl binaries [docker, curl] (the tests use stubs).
@@ -113,6 +117,8 @@ load_vars() {
 	case "$gh_repo" in *[!A-Za-z0-9._/-]* | */*/* | /* | */) die "RM_CD_GITHUB_REPO '$gh_repo' is not owner/name" ;; */*) ;; *) die "RM_CD_GITHUB_REPO '$gh_repo' is not owner/name" ;; esac
 	keep=${RM_CD_KEEP:-3}
 	case "$keep" in '' | *[!0-9]* | 0) die "RM_CD_KEEP must be a whole number of 1 or more" ;; esac
+	wait_alert_min=${RM_CD_WAIT_ALERT_MIN:-30}
+	case "$wait_alert_min" in '' | *[!0-9]*) die "RM_CD_WAIT_ALERT_MIN must be a whole number of minutes" ;; esac
 	# The beta's name is server config, never in the repository (review sec-infra-8).
 	health_host=${RM_CD_HOST:-$(env_value RM_BETA_HOST 2>/dev/null)}
 	[ -n "$health_host" ] || die "no host for the health check: set RM_BETA_HOST=<the beta's name> in $RM_SRC/.env (docs/BETA-RUNBOOK.md, section 0)"
@@ -136,10 +142,10 @@ routers() {
 	echo
 }
 gitc() { git -C "$RM_SRC" "$@"; }
-# The pass runs under umask 077 (its logs and snapshots are the operator's alone), but the
-# release's files are read inside the containers as another user: a checkout or an exported
-# tree written under 077 is owner-only, and the v0.8.1 deploy failed at the migration on an
-# unreadable manage.py. Both are written under 022.
+# The pass runs under umask 022: the release's files are read inside the containers as another
+# user, and the v0.8.1 deploy failed at the migration on an unreadable manage.py written under 077.
+# Its logs, reports and snapshots are private because $RM_STATE/cd and its backups are mode 700;
+# the pre-draw log and pg_dump write under their own 077. The checkout stays 022 explicitly.
 checkout_at() { (umask 022 && gitc checkout --quiet --detach "$1"); }
 utc() { date -u +%Y%m%dT%H%M%SZ; }
 env_value() { sed -n "s/^[[:space:]]*$1[[:space:]]*=//p" "$RM_SRC/.env" | tail -n 1 | tr -d '\r' | sed "s/^['\"]//; s/['\"]\$//"; }
@@ -156,6 +162,7 @@ finish() { # word message
 	if [ "$dry_run" = 0 ]; then
 		printf '%s %s: %s\n' "$(utc)" "$word" "$*" >"$cd_dir/status"
 		printf '%s %s: %s\n' "$(utc)" "$word" "$*" >>"$cd_dir/agent.log"
+		[ "$word" = waiting ] || rm -f "$cd_dir/waiting"
 		tail -n 2000 "$cd_dir/agent.log" >"$cd_dir/agent.log.new" && mv "$cd_dir/agent.log.new" "$cd_dir/agent.log"
 		[ -z "$report" ] || cp "$report" "$cd_dir/last-report.txt"
 		# The last pass that did something about a release, kept past the idle passes after it.
@@ -181,10 +188,29 @@ notify() { # word message
 		rolled-back | failed) "$alert" send deploy "failed $id" "$word: $message" ;;
 		held | interrupted) "$alert" send deploy "$word $id" "$word: $message" ;;
 		broken | error | drift) "$alert" send deploy "$word $(printf '%s' "$message" | sed 's/[0-9][0-9.]*/N/g' | sha256sum | cut -c1-12)" "$word: $message" ;;
-		waiting) case "$message" in *" free "*) "$alert" send deploy "disk" "waiting: $message" ;; esac ;;
+		waiting)
+			case "$message" in
+				*" free "*) "$alert" send deploy "disk" "waiting: $message" ;;
+				*) ! waited_long "$message" || "$alert" send deploy "waiting $(same_wait "$message")" "waiting for over $wait_alert_min min: $message" ;;
+			esac
+			;;
 	esac >>"$run_log" 2>&1 </dev/null
 	case "$word" in deployed | up-to-date) release_notes "$alert" ;; esac
 	return 0
+}
+# A wait's identity: its words without their numbers, as alert.sh's repeat check reads them.
+same_wait() { printf '%s' "$1" | sed 's/[0-9][0-9.]*/N/g' | sha256sum | cut -c1-12; }
+# Whether a release has waited for the same reason for RM_CD_WAIT_ALERT_MIN minutes: the first
+# pass that waits for it records the time in $cd_dir/waiting; a wait for another reason starts
+# again, and any other result forgets it (finish). The planned waits (the deploy window, the
+# nightly backup's slot, a pre-draw) never alert.
+waited_long() { # message
+	local id since now
+	case "$1" in *"outside the deploy window"* | *"nightly backup runs at"* | *"pre-draw is running"*) rm -f "$cd_dir/waiting"; return 1 ;; esac
+	id=$(same_wait "$1"); now=$(date +%s)
+	since=$(sed -n "s/^$id \([0-9]*\)$/\1/p" "$cd_dir/waiting" 2>/dev/null | head -n 1)
+	if [ -z "$since" ]; then printf '%s %s\n' "$id" "$now" >"$cd_dir/waiting"; return 1; fi
+	[ $((now - since)) -ge $((wait_alert_min * 60)) ]
 }
 # The riders' channel (alert.sh release-notes): the live release's notes, docs/releases/<tag>.md
 # from its checkout, once per tag. Tried on every deploy and up-to-date pass until posted, only
@@ -240,6 +266,16 @@ is_semver() { [[ $1 =~ ^v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]
 deployed_tag() { cat "$cd_dir/deployed-tag" 2>/dev/null; }
 deployed_sha() { cat "$cd_dir/deployed-sha" 2>/dev/null; }
 annotated() { [ "$(gitc cat-file -t "refs/tags/$1" 2>/dev/null)" = tag ]; }
+# A release tag: annotated, or a lightweight one (`git tag vX.Y.Z`, GitHub's release page) on the
+# commit whose subject names that release ("Release vX.Y.Z", the release procedure's last commit).
+release_tag() {
+	local subject
+	annotated "$1" && return 0
+	[ "$(gitc cat-file -t "refs/tags/$1" 2>/dev/null)" = commit ] || return 1
+	subject=$(gitc log -1 --format=%s "refs/tags/$1" 2>/dev/null) || return 1
+	case "$subject" in "Release $1" | "Release $1 "*) return 0 ;; esac
+	return 1
+}
 tag_commit() { gitc rev-parse --verify --quiet "refs/tags/$1^{commit}"; }
 # Prints what is wrong with RM_CD_WINDOW, and succeeds, if anything is (a pass reports it as an error).
 window_problem() {
@@ -317,12 +353,13 @@ check_report_url() {
 
 # --- GitHub ---------------------------------------------------------------------------------------
 # Prints green, pending, red, or "unknown <reason>" (rate limit, network): try again next pass.
+# Green is every check run cd_logic.py names (CHECK_NAMES: `test` and `a11y`) green.
 ci_status() { # sha
 	local sha=$1 body code
 	body=$(mktemp)
 	code=$("${CURL:-curl}" -sS --max-time 30 -o "$body" -w '%{http_code}' \
 		-H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' -H 'User-Agent: routemaker-beta-cd' \
-		"https://api.github.com/repos/$gh_repo/commits/$sha/check-runs?check_name=test&filter=latest&per_page=100" 2>>"$run_log") || code=000
+		"https://api.github.com/repos/$gh_repo/commits/$sha/check-runs?filter=latest&per_page=100" 2>>"$run_log") || code=000
 	case "$code" in
 		200) "$py" "$logic" ci-verdict --sha "$sha" <"$body" ;;
 		403 | 429) echo "unknown GitHub's rate limit (HTTP $code)" ;;
@@ -332,8 +369,10 @@ ci_status() { # sha
 }
 
 # --- the front end --------------------------------------------------------------------------------
-lock_hash() { gitc show "$1:frontend/package-lock.json" 2>/dev/null | sha256sum | cut -c1-64; }
-# The node_modules for a lockfile, offline: $cd_dir/node_modules/<sha256 of package-lock.json>/
+# The lockfile's hash without its version fields, which every release bumps (cd_logic.py lock-hash;
+# the runbook's send command makes the same one).
+lock_hash() { gitc show "$1:frontend/package-lock.json" 2>/dev/null | "$py" "$logic" lock-hash; }
+# The node_modules for a lockfile, offline: $cd_dir/node_modules/<cd_logic.py lock-hash>/
 # node_modules, put there by the owner from home (the server never downloads npm packages:
 # OWNER-DECISIONS 436). Prints why not, and fails, if it is missing.
 frontend_ready() { # sha
@@ -606,21 +645,24 @@ deploy() { # tag new-sha gate-file
 	rm -rf "$src"; mkdir -p "$src"; chmod 755 "$src"
 	step "export the release's tree" sh -c 'umask 022 && git -C "$1" archive --format=tar "$2" | tar -x -C "$3"' sh "$RM_SRC" "$new" "$src" || return 3
 
-	# The runbook's "A new release sha", steps 2 to 8, without sudo. The builds come after the stop,
-	# so they use the memory the api and worker had and not the other sites' headroom (the api
-	# build is not capped: BuildKit runs in the daemon; docs/BETA-RUNBOOK.md, install step 6).
-	mark stopped "stop the api and worker" || return 1
-	step "stop the api and worker" bc stop api worker </dev/null || return 1
-	mark image "the api image $API_IMAGE:$new_short" || return 1
+	# The builds, while the beta still runs: a build that fails (pip, the network, a test) leaves
+	# the running release alone, and the downtime is the stop to the smoke tests, not the builds.
+	# No step is recorded yet, so a pass stopped here has nothing to roll back. The front-end
+	# build is capped (1536m, killed first if the host runs short); the api build runs in the
+	# daemon (BuildKit) and is not (docs/BETA-RUNBOOK.md, install step 6).
 	if dk image inspect "$API_IMAGE:$new_short" >/dev/null 2>&1; then
 		say "step: the api image $API_IMAGE:$new_short is already on the host (built or loaded earlier)"
 	else
-		build_api "$src" "$new_short" || return 1
+		build_api "$src" "$new_short" || return 3
 	fi
 	if [ "$(kv frontend "$gate_file")" = 1 ]; then
 		out="$cd_dir/build/frontend-$new_short"
-		build_frontend "$src" "$new" "$out" || { say "FAILED: the front-end test or build"; return 1; }
+		build_frontend "$src" "$new" "$out" || { say "FAILED: the front-end test or build"; return 3; }
 	fi
+
+	# The runbook's "A new release sha", steps 2 to 8, without sudo.
+	mark stopped "stop the api and worker" || return 1
+	step "stop the api and worker" bc stop api worker </dev/null || return 1
 	mark snapshot "snapshot the database (pre-release)" || return 1
 	dump=$(RECEIVE_DATA_REPO="$RM_SRC" "$receive" --env-file "$RM_SRC/.env" --backups-dir "$cd_dir/backups" snapshot-db --label release </dev/null 2>>"$run_log") && [ -s "$dump" ] ||
 		{ say "FAILED: the database snapshot"; return 1; }
@@ -697,11 +739,27 @@ deploy() { # tag new-sha gate-file
 	return 0
 }
 
+# The plain pre-release and pre-rollback dumps go after 6.5 days (9360 minutes), as the nightly
+# dumps do (config.procrastinate BACKUP_MAX_AGE): the privacy page says copies taken before an
+# update stay at most a week. They stay plain because a rollback here restores them and the
+# server has no key to decrypt with. Every pass runs this, so it holds between releases too.
+# Spared: the snapshot a stopped pass's rollback will restore ($cd_dir/run-snapshot).
+prune_aged_snapshots() {
+	local keep_file f
+	keep_file=$(cat "$cd_dir/run-snapshot" 2>/dev/null)
+	find "$cd_dir/backups" -maxdepth 1 -type f \( -name 'pre-release-*.dump' -o -name 'pre-rollback-*.dump' \) -mmin +9360 2>/dev/null |
+		while IFS= read -r f; do
+			{ [ -n "$keep_file" ] && [ "$f" -ef "$keep_file" ]; } && continue
+			rm -f -- "$f"
+		done
+}
+
 prune() {
 	local pattern
 	# A dump a stopped snapshot left half written (receive-data.sh writes <name>.part, then renames):
 	# never restorable, and only a pass holding the lock writes one.
-	rm -f "$cd_dir/backups"/*.dump.part
+	rm -f "$cd_dir/backups"/*.dump.part "$cd_dir/backups"/*.dump.age.part
+	prune_aged_snapshots
 	for pattern in 'pre-release-*.dump' 'pre-rollback-*.dump' 'frontend.pre-release-*'; do
 		# shellcheck disable=SC2012
 		ls -1dt "$cd_dir/backups"/$pattern 2>/dev/null | tail -n +"$((keep + 1))" | while IFS= read -r f; do rm -rf -- "$f"; done
@@ -709,6 +767,55 @@ prune() {
 	# shellcheck disable=SC2012
 	ls -1t "$cd_dir/runs"/*.log 2>/dev/null | tail -n +31 | while IFS= read -r f; do rm -f -- "$f"; done
 	rm -rf "$cd_dir/build"; mkdir -p "$cd_dir/build"
+}
+
+# After a deploy whose release changed the agent: its files from the deployed checkout replace the
+# installed ones, each by rename, so this pass (whose script bash has already read) is not
+# disturbed and the next pass runs the new ones. A copy that fails is a warning: the old agent
+# keeps running, and auto-release.sh install does the rest by hand.
+AGENT_BIN="auto-release.sh:700 cd_logic.py:600 receive-data.sh:700 frontend-build.sh:700 alert.sh:700"
+reinstall_agent() {
+	local entry name mode ok=1
+	for entry in $AGENT_BIN; do
+		name=${entry%:*}; mode=${entry#*:}
+		[ -f "$RM_SRC/scripts/beta/$name" ] || continue
+		install -m "$mode" "$RM_SRC/scripts/beta/$name" "$cd_dir/bin/.$name.new" && mv -f "$cd_dir/bin/.$name.new" "$cd_dir/bin/$name" || ok=0
+	done
+	if [ "$ok" = 1 ]; then
+		gitc rev-parse HEAD >"$cd_dir/bin/FROM"
+		say "step: the release changed the agent: its files in $cd_dir/bin are the deployed release's from the next pass"
+	else
+		say "WARNING: the agent's files could not all be reinstalled in $cd_dir/bin; run $RM_SRC/scripts/beta/auto-release.sh install"
+	fi
+}
+
+# After a deploy, what piles up on the host (review OPS-6): api images of releases before the
+# previous one (rollback C needs the previous one, and an image loaded for a later release is not
+# an ancestor of the deployed commit, so it stays), BuildKit cache over a week old, and
+# node_modules copies for neither the deployed nor the previous lockfile that are over 30 days old
+# (a copy sent for a release still to come is newer). Never fails the pass.
+prune_deployed() { # new-sha old-sha
+	local new=$1 old=$2 keep_new keep_old tag h1 h2 dir n=0
+	keep_new=${new:0:12}; keep_old=${old:0:12}
+	for tag in $(dk image ls "$API_IMAGE" --format '{{.Tag}}' 2>/dev/null </dev/null | sort -u); do
+		[[ $tag =~ ^[0-9a-f]{12}$ ]] || continue
+		[ "$tag" != "$keep_new" ] && [ "$tag" != "$keep_old" ] || continue
+		gitc merge-base --is-ancestor "$tag" "$new" 2>/dev/null || continue
+		quiet dk image rm "$API_IMAGE:$tag" </dev/null && n=$((n + 1))
+	done
+	quiet dk builder prune -f --filter until=168h </dev/null || true
+	h1=$(lock_hash "$new"); h2=$(lock_hash "$old")
+	# Without both hashes the copies to keep are unknown: keep them all.
+	[[ $h1 =~ ^[0-9a-f]{64}$ && $h2 =~ ^[0-9a-f]{64}$ ]] || { h1=""; h2=""; }
+	for dir in "$cd_dir/node_modules"/*; do
+		[ -n "$h1" ] || break
+		[ -d "$dir" ] || continue
+		case "$(basename "$dir")" in "$h1" | "$h2") continue ;; esac
+		[ -n "$(find "$dir" -maxdepth 0 -mtime +30 2>/dev/null)" ] || continue
+		rm -rf -- "$dir" && n=$((n + 1))
+	done
+	[ "$n" = 0 ] || say "pruned: $n old api image tags and node_modules copies (kept the deployed and the previous release's)"
+	return 0
 }
 
 # A deploy that a stopped pass left half done: roll it back from the steps $progress records.
@@ -795,7 +902,7 @@ pass() {
 	[ -f "$cd_dir/failed/$tag" ] && { finish failed "$tag failed and was rolled back earlier (see $cd_dir/failed/$tag); auto-release.sh retry $tag to try again"; return 0; }
 
 	say "candidate: $tag (deployed: $cur)"
-	annotated "$tag" || { hold "$tag" "not an annotated tag (git tag -a); the agent deploys annotated tags only"; return 0; }
+	release_tag "$tag" || { hold "$tag" "a lightweight tag on a commit whose subject is not \"Release $tag\"; tag releases with git tag -a (a tag is never moved: push the next patch version)"; return 0; }
 	new=$(tag_commit "$tag") || { hold "$tag" "the tag names no commit"; return 0; }
 	if [ "${RM_CD_REQUIRE_SIGNED_TAGS:-0}" = 1 ]; then
 		gitc verify-tag "$tag" >>"$run_log" 2>&1 || { hold "$tag" "the tag's signature does not verify (RM_CD_REQUIRE_SIGNED_TAGS=1)"; return 0; }
@@ -804,9 +911,9 @@ pass() {
 	gitc merge-base --is-ancestor "$cur_sha" "$new" || { hold "$tag" "it does not descend from the deployed release $cur"; return 0; }
 	verdict=$(ci_status "$new")
 	case "$verdict" in
-		green) say "CI: the test check run is green on $new" ;;
-		red) hold "$tag" "GitHub's test check run is not green on $new"; return 0 ;;
-		pending) finish waiting "$tag: the test check run on $new has not finished (or not started)"; return 0 ;;
+		green) say "CI: the test and a11y check runs are green on $new" ;;
+		red) hold "$tag" "GitHub's test or a11y check run is not green on $new"; return 0 ;;
+		pending) finish waiting "$tag: the test or a11y check run on $new has not finished (or not started)"; return 0 ;;
 		*) finish waiting "$tag: ${verdict#unknown }; trying again next pass"; return 0 ;;
 	esac
 
@@ -819,7 +926,7 @@ pass() {
 		say "Ship it by hand with docs/BETA-RUNBOOK.md (\"Shipping an update later\"), then: auto-release.sh mark-deployed $tag"
 		rm -f "$gate_file"; hold "$tag" "the release needs the owner (data from home, sudo or nginx; reasons in the report)"; return 0
 	fi
-	[ "$(kv agent_changed "$gate_file")" = 1 ] && say "note: this release changes the release agent itself; once it is deployed, reinstall it: $RM_SRC/scripts/beta/auto-release.sh install"
+	[ "$(kv agent_changed "$gate_file")" = 1 ] && say "note: this release changes the release agent itself; once it is deployed, its files are reinstalled in $cd_dir/bin for the next pass (the systemd units only by auto-release.sh install)"
 	[ "$(kv migrations "$gate_file")" = 1 ] && say "note: the release carries migrations; they run after the pre-release snapshot"
 	[ "$(kv lockfile_changed "$gate_file")" = 1 ] && say "note: the front end's package files changed, so the release needs node_modules for its new lockfile, sent from home"
 	if [ "$(kv changed_files "$gate_file")" = 0 ] && dk image inspect "$API_IMAGE:${cur_sha:0:12}" >/dev/null 2>&1; then
@@ -855,10 +962,13 @@ pass() {
 
 	say "deploying $tag ($new) over $cur at $(utc)"
 	if [ "$noop" = 1 ]; then noop_release "$tag" "$new"; else deploy "$tag" "$new" "$gate_file"; fi
-	local rc=$?
+	local rc=$? agent_changed
+	agent_changed=$(kv agent_changed "$gate_file")
 	rm -f "$gate_file"
 	if [ "$rc" = 0 ]; then
+		[ "$agent_changed" != 1 ] || reinstall_agent
 		prune
+		prune_deployed "$new" "$cur_sha"
 		if [ "$noop" = 1 ]; then
 			finish deployed "$tag ($new), was $cur: nothing in it for the server, so it was recorded without touching the stack"
 		else
@@ -869,7 +979,7 @@ pass() {
 	if [ "$rc" = 3 ]; then # failed before anything running was touched
 		rm -f "$progress"
 		{ echo "$(utc) $tag failed before the deploy touched the stack"; cat "$report"; } >"$cd_dir/failed/$tag"
-		prune; finish failed "$tag: the release's tree could not be prepared; nothing was changed (see $cd_dir/failed/$tag)"
+		prune; finish failed "$tag: the release could not be exported or built; the running release was not touched (see $cd_dir/failed/$tag; auto-release.sh retry $tag to try again)"
 		return 1
 	fi
 	if rollback "$cur_sha" "${cur_sha:0:12}"; then
@@ -890,7 +1000,7 @@ cmd_run() {
 	chmod 700 "$cd_dir/backups"
 	exec 9>"$cd_dir/lock"
 	flock -n 9 || { echo "auto-release: another pass is running; nothing to do"; return 0; }
-	umask 077
+	umask 022
 	stamp=$(utc)
 	run_log="$cd_dir/runs/$stamp.log"; : >"$run_log"
 	report=$(mktemp)
@@ -901,6 +1011,7 @@ cmd_run() {
 	fi
 	if [ "$dry_run" = 1 ]; then say "auto-release pass at $stamp (dry run: fetches, then changes nothing)"; else say "auto-release pass at $stamp"; fi
 	say "run log: $run_log"
+	[ "$dry_run" = 1 ] || prune_aged_snapshots
 	pass; local rc=$?
 	trap - TERM INT HUP
 	rm -f "$report"
@@ -931,7 +1042,7 @@ cmd_status() {
 	root=$(docker_root)
 	echo "disk free:  Docker's root ${root:-(unknown)}: $( [ -n "$root" ] && df -P -h "$root" 2>/dev/null | awk 'NR == 2 { print $4 " of " $2 }')  $RM_STATE: $(df -P -h "$RM_STATE" 2>/dev/null | awk 'NR == 2 { print $4 " of " $2 }')"
 	n=$(dk image ls -q "$API_IMAGE" 2>/dev/null </dev/null | sort -u | grep -c .)
-	echo "api images: ${n:-0} (one a release, kept for rollback C; the owner removes old ones: docker image ls $API_IMAGE)"
+	echo "api images: ${n:-0} (one a release; each deploy keeps the deployed and the previous one, for rollback C, and prunes older ones)"
 	pguser=$(env_value PGUSER 2>/dev/null); pguser=${pguser:-routemaker}
 	n=$(bc exec -T postgis psql -U "$pguser" -d postgres -At -c "select count(*) from pg_database where datname like '%\_before\_%'" </dev/null 2>/dev/null)
 	echo "kept dbs:   ${n:-unknown} <db>_before_<time> databases left by restores (the owner drops them once the beta works)"
@@ -979,7 +1090,7 @@ cmd_resume() { rm -f "$cd_dir/PAUSED"; echo "resumed"; }
 verify_at_tag() { # tag: the checkout is clean at the tag's commit with TAG set to it
 	local tag=$1 sha
 	is_semver "$tag" || die "'$tag' is not a strict vX.Y.Z tag"
-	annotated "$tag" || die "$tag is not an annotated tag here (git fetch --tags first?)"
+	release_tag "$tag" || die "$tag is not a release tag here: annotated, or on a \"Release $tag\" commit (git fetch --tags first?)"
 	sha=$(tag_commit "$tag") || die "$tag names no commit"
 	[ "$(gitc rev-parse HEAD)" = "$sha" ] || die "the checkout ($RM_SRC) is at $(gitc rev-parse HEAD), not $tag ($sha)"
 	[ -z "$(gitc status --porcelain)" ] || die "the checkout has local changes"

@@ -22,12 +22,15 @@ import {
   walkFeatures,
 } from "./bikeshare.ts";
 import { announceRoute } from "./summary.ts";
-import { setLanguageForTest } from "./i18n.ts";
+import { loadLanguage, setLanguageForTest } from "./i18n.ts";
 import { PRESETS } from "./presets.ts";
 import { BIKESHARE_HILLS, dialFields, fitDials, offersAssist, offersBike, startDials } from "./dials.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
 import { loopView } from "./loop.ts";
 import { appSource } from "../testSupport/appSource.mjs";
+
+// Spanish's catalog is fetched on choosing it (lib/i18n.ts loadLanguage), as the app does before it starts.
+await loadLanguage("es");
 
 const SRC = new URL("../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, SRC), "utf8");
@@ -385,8 +388,8 @@ test("Bikeshare offers no loop: it plans a walk, a ride between docks and a walk
   assert.notEqual(loopView("default", false, [A, B]), null);
 });
 
-test("the points panel says Bikeshare and Rebalance Ride take a start and an end only", () => {
-  assert.match(appSource(), /Bikeshare plans, Rebalance Rides too, take a start and an end only/);
+test("the points panel says Bikeshare and Rebalance Ride take a start and an end only, and only when there is a stop to remove", () => {
+  assert.match(appSource(), /\{usesBikeshare\(preset\) && points\.length > 2 && <p className="hint">\{t\("Bikeshare and Rebalance Rides take a start and an end only: remove the stops\."\)\}<\/p>\}/);
 });
 
 test("the plan's heading names the ride type: Bikeshare plan, or Rebalance Ride", () => {

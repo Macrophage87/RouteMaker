@@ -25,10 +25,11 @@ FILES = [MOCO, BALTIMORE]
 
 @pytest.mark.parametrize("path", FILES, ids=lambda path: path.name)
 def test_the_file_passes_the_loaders_validation(path) -> None:
-    from core.management.commands.load_access_overrides import parse_file
+    from core.management.commands.load_access_overrides import parse_file, parse_retired
 
     rows = parse_file(path.read_text(), path.name)
-    assert rows
+    # Montgomery's file loads none since review 2026-10-29: every row is retired.
+    assert rows or parse_retired(path.read_text(), path.name)
 
 
 @pytest.mark.parametrize("path", FILES, ids=lambda path: path.name)
@@ -68,21 +69,25 @@ def test_no_way_is_named_twice_across_the_approved_files() -> None:
     assert not set(new) & others
 
 
-def test_the_montgomery_file_is_avoid_and_only_avoid() -> None:
-    """OWNER-DECISIONS 149: the layer's LTS 5 maps to Avoid (tier 5) and nothing else."""
+def test_the_montgomery_file_retires_every_row_it_loaded() -> None:
+    """Review 2026-10-29: the rebuild reads Montgomery's layer directly, so the 2026-10-01
+    snapshot loads nothing and retires all 409 rows it ever loaded, each exactly as loaded
+    (tier 5, OWNER-DECISIONS 149), so loading the file deletes them."""
     document = json.loads(MOCO.read_text())
-    assert {row["kind"] for row in document["rows"]} == {"stress"}
-    assert {row["value"]["tier"] for row in document["rows"]} == {5}
-    assert all("fb903d1ffbc84b219bdb47629bd02b82" in row["evidence"] for row in document["rows"])
-    assert all(row["value"]["adjustment_id"].startswith("moco-lts5-") for row in document["rows"])
-    assert all("LTS5, which we can mark as avoid" in row["reason"] for row in document["rows"])
+    assert document["rows"] == []
+    retired = document["retire"]
+    assert len(retired) == 409
+    assert {row["kind"] for row in retired} == {"stress"}
+    assert {row["value"]["tier"] for row in retired} == {5}
+    assert all(row["value"]["adjustment_id"].startswith("moco-lts5-") for row in retired)
+    assert sum("review of 2026-10-29" in row["reason"].lower() for row in retired) == 381
 
 
 def test_the_montgomery_file_groups_by_street_not_one_unnamed_bucket() -> None:
     """Review r1: "moco-lts5-unnamed" held 39 unrelated ways. Unnamed ways are grouped
     by where they are."""
     document = json.loads(MOCO.read_text())
-    ids = {row["value"]["adjustment_id"] for row in document["rows"]}
+    ids = {row["value"]["adjustment_id"] for row in document["retire"]}
     assert "moco-lts5-unnamed" not in ids
     assert all(
         re.fullmatch(r"moco-lts5-unnamed-\d+-\d+n-\d+-\d+w", aid)

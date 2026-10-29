@@ -1,7 +1,8 @@
 // v0.7.0's place sheets: Go's Repair and Sights (behind the More chip; the owner, 2026-10-14: "Make sure that go
 // stays clean, but they can find it there. Plan can have more complexity"), and Plan's Places to see. Each list
-// is lettered as the map's markers are (lib/letteredPlaces.ts); a Go row's one button opens the place's card on the
-// map (what's there, its website, Route here or Add as stop: lib/stopCard.ts), never a route by itself. App.tsx keeps the state; the lists are lib/repair.ts's and lib/places.ts's.
+// is lettered as the map's markers are (lib/letteredPlaces.ts); a Go row has Ride here first, as Eat's and Water's rows do,
+// and Show on map, which opens the place's card on the map (what's there, its website: lib/stopCard.ts). App.tsx keeps
+// the state; the lists are lib/repair.ts's and lib/places.ts's.
 import { useId, type ReactNode } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { setSource, stopCard, useMap } from "./mapOverlay.ts";
@@ -9,7 +10,7 @@ import { foodWords, repairWords, sightWords } from "../lib/stopWords.ts";
 import type { StopActionFor } from "../lib/stopCard.ts";
 import { Icon } from "../Icon.tsx";
 import { SheetFrame } from "../Sidebar.tsx";
-import { placeLetter } from "../lib/letteredPlaces.ts";
+import { placeLetter, SHOW_ALL_ON_MAP } from "../lib/letteredPlaces.ts";
 import {
   REPAIR_ICON_ID,
   REPAIR_LAYER,
@@ -34,7 +35,6 @@ import {
   placesGeoJson,
   placesLayer,
   sightHowFar,
-  sightText,
   type PlaceFilter,
   type SightPlace,
   type SightResult,
@@ -47,8 +47,39 @@ import type { SheetNav } from "./Sheets.tsx";
 import { t } from "../lib/i18n.ts";
 import { hoursText } from "../lib/openingHours.ts";
 
-/** Go's Repair: the nearest repair stands and bike shops, lettered; a row opens its card. */
-export function RepairSheet({ nav, status, items, at, onPick }: { nav: SheetNav; status: string; items: readonly RepairNearby[] | null; at: Date; onPick: (item: RepairNearby) => void }) {
+/**
+ * A Go place row's buttons, as Eat's and Water's (the 2026-10-29 review: one row pattern in Go): Ride here first and
+ * filled, the one main action; then Show on map, which opens the place's card (what's there, its website).
+ */
+function PlaceActions({ name, index, describedBy, onRide, onCard }: { name: string; index: number; describedBy?: string; onRide: () => void; onCard: () => void }) {
+  return (
+    <span className="actions">
+      <button type="button" className="ride-here" aria-label={t("Ride here: {place}", { place: name })} aria-describedby={describedBy} onClick={onRide}>
+        {t("Ride here")}
+      </button>
+      <button type="button" className="secondary" aria-label={t("Show on map: {place}, marker {letter}", { place: name, letter: placeLetter(index) })} onClick={onCard}>
+        {t("Show on map")}
+      </button>
+    </span>
+  );
+}
+
+/** Go's Repair: the nearest repair stands and bike shops, lettered; Ride here, or Show on map for its card. */
+export function RepairSheet({
+  nav,
+  status,
+  items,
+  at,
+  onPick,
+  onRide,
+}: {
+  nav: SheetNav;
+  status: string;
+  items: readonly RepairNearby[] | null;
+  at: Date;
+  onPick: (item: RepairNearby) => void;
+  onRide: (item: RepairNearby) => void;
+}) {
   const rowId = useId();
   return (
     <SheetFrame id="sheet-repair" title={SHEET_TITLES.repair} open={nav.view === "repair"} onBack={nav.back} backLabel={nav.backLabel("repair")}>
@@ -60,22 +91,16 @@ export function RepairSheet({ nav, status, items, at, onPick }: { nav: SheetNav;
           <ol role="list" className="nearest-list repair-list" aria-label={t("Repair stands and bike shops")}>
             {items.map((item, i) => (
               <li key={item.place.id}>
-                {/* Named by the place and how far; its details are its description (review F13), not repeated in the name. */}
-                <button
-                  type="button"
-                  className="secondary place-row"
-                  onClick={() => onPick(item)}
-                  aria-label={`${placeLetter(i)}: ${repairTitle(item.place)}, ${repairHowFar(item)}`}
-                  aria-describedby={`${rowId}-${i}`}
-                >
-                  <Icon name={item.place.kind === "stand" ? "wrench" : "shop"} size={18} />
-                  <span>
-                    <strong>
-                      {placeLetter(i)}. {repairTitle(item.place)}
-                    </strong>{" "}
-                    {repairHowFar(item)}. <span id={`${rowId}-${i}`}>{repairDetails(item.place, at).join(" ")}</span>
-                  </span>
-                </button>
+                <span>
+                  <Icon name={item.place.kind === "stand" ? "wrench" : "shop"} size={18} />{" "}
+                  {/* Named, not lettered, on the map (#628): the letter is heard, as in the other place lists. */}
+                  <strong>
+                    <span className="visually-hidden">{placeLetter(i)}. </span>
+                    {repairTitle(item.place)}
+                  </strong>{" "}
+                  {repairHowFar(item)}. <span id={`${rowId}-${i}`}>{repairDetails(item.place, at).join(" ")}</span>
+                </span>
+                <PlaceActions name={repairTitle(item.place)} index={i} describedBy={`${rowId}-${i}`} onRide={() => onRide(item)} onCard={() => onPick(item)} />
               </li>
             ))}
           </ol>
@@ -94,23 +119,24 @@ function SightRow({ result, index, children }: { result: SightResult; index: num
       <span aria-hidden="true" className="place-emoji">
         {category.emoji}
       </span>{" "}
+      {/* The map's marker shows the name (Stephen 2026-10-29: "Named, not lettered"); the letter, its key's, is heard. */}
       <strong>
-        {placeLetter(index)}. {result.place.name}
+        <span className="visually-hidden">{placeLetter(index)}. </span>
+        {result.place.name}
       </strong>{" "}
       {category.one}. {sightHowFar(result)}.{children}
     </span>
   );
 }
 
-/** Go's Places to see: the nearest five, no filters; a row opens its card. */
-export function SightsList({ items, onPick }: { items: readonly SightResult[]; onPick: (result: SightResult) => void }) {
+/** Go's Places to see: the nearest five, no filters; Ride here, or Show on map for its card. */
+export function SightsList({ items, onPick, onRide }: { items: readonly SightResult[]; onPick: (result: SightResult) => void; onRide: (result: SightResult) => void }) {
   return (
     <ol role="list" className="nearest-list sights-list" aria-label={t("Places to see")}>
       {items.map((r, i) => (
         <li key={r.place.id}>
-          <button type="button" className="secondary place-row" onClick={() => onPick(r)} aria-label={`${placeLetter(i)}: ${sightText(r)}`}>
-            <SightRow result={r} index={i} />
-          </button>
+          <SightRow result={r} index={i} />
+          <PlaceActions name={r.place.name} index={i} onRide={() => onRide(r)} onCard={() => onPick(r)} />
         </li>
       ))}
     </ol>
@@ -129,15 +155,19 @@ export interface PlacesSheetProps {
   onFilter: (filter: PlaceFilter) => void;
   canAddStop: boolean;
   onShow: (result: SightResult) => void;
+  /** Show all on map (Stephen 2026-10-29): every place listed, named on the map, framed together. */
+  onShowAll?: () => void;
   onAddStop: (result: SightResult) => void;
-  /** Go: a row's one tap, the place's card on the map. */
+  /** Go: a row's Show on map, the place's card on the map. */
   onGoPick: (result: SightResult) => void;
+  /** Go: a row's Ride here, the place as the destination. */
+  onGoRide: (result: SightResult) => void;
 }
 
 /** Places to see: Plan's with filters, hours and website, Go's the nearest five, one tap each. One name in both, as
  * their chips say it (P12: Go's was "Sights"). */
 export function PlacesSheet(props: PlacesSheetProps) {
-  const { nav, go, status, items, total, onMore, filter, onFilter, canAddStop, onShow, onAddStop, onGoPick } = props;
+  const { nav, go, status, items, total, onMore, filter, onFilter, canAddStop, onShow, onShowAll, onAddStop, onGoPick, onGoRide } = props;
   // The hours in words for now ("Open now · closes 5 PM": lib/openingHours.ts).
   const now = new Date();
   return (
@@ -158,7 +188,12 @@ export function PlacesSheet(props: PlacesSheetProps) {
       <p className="hint places-status" role="status">
         {status}
       </p>
-      {items && items.length > 0 && go && <SightsList items={items} onPick={onGoPick} />}
+      {items && items.length > 0 && go && <SightsList items={items} onPick={onGoPick} onRide={onGoRide} />}
+      {items && items.length > 1 && !go && onShowAll && (
+        <button type="button" className="secondary show-all" onClick={onShowAll}>
+          {SHOW_ALL_ON_MAP}
+        </button>
+      )}
       {items && items.length > 0 && !go && (
         <ol role="list" className="nearest-list places-list" aria-label={t("Places to see")}>
           {items.map((r, i) => (

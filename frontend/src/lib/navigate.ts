@@ -1238,6 +1238,12 @@ export interface RideEvent {
   after?: boolean;
   cue?: Cue;
   phase?: Phase;
+  /**
+   * The same cue said again from `progressM` (review RIDE-4): a polite cue the throttle holds back up to POLITE_GAP_MS
+   * is built when it is said, with the distance then, not when it was made; null once the rider is at or past the turn
+   * (its "now" says it). Only on cues that give a distance.
+   */
+  respoken?: (progressM: number) => string | null;
 }
 
 export interface RideState {
@@ -1515,7 +1521,9 @@ export function step(
           if (left < FAR_SIDE_LAST_M) said[cue.index] = ["advance"];
           else if (!before || progress - before.atM >= FAR_SIDE_GAP_M) {
             said[cue.index] = ["advance"];
-            events.push({ kind: "cue", spoken: cueSpoken(cue, "advance", left), urgent: false, cue, phase: "advance" });
+            const lengthM = model.lengthM;
+            const respoken = (at: number) => (lengthM - at > ARRIVE_M ? cueSpoken(cue, "advance", lengthM - at) : null);
+            events.push({ kind: "cue", spoken: cueSpoken(cue, "advance", left), urgent: false, cue, phase: "advance", respoken });
           }
         }
       }
@@ -1533,11 +1541,15 @@ export function step(
     if (!reached.length) break;
     const phase = reached[reached.length - 1];
     if (!done.includes(phase.phase)) {
+      const first = done.length === 0;
+      const urgent = phase.phase === "now" || phase.phase === "arrive";
       events.push({
         kind: "cue",
-        spoken: cueSpoken(cue, phase.phase, distance, done.length === 0),
-        urgent: phase.phase === "now" || phase.phase === "arrive",
+        spoken: cueSpoken(cue, phase.phase, distance, first),
+        urgent,
         ...(cue.joined ? { after: true } : {}),
+        // A turn's or a hazard's "In 500 feet, ..." (a stop's is said on reaching it, with no distance).
+        ...(!urgent && cue.kind !== "stop" ? { respoken: (at: number) => (cue.atM - at > 0 ? cueSpoken(cue, phase.phase, cue.atM - at, first) : null) } : {}),
         cue,
         phase: phase.phase,
       });
@@ -1899,31 +1911,44 @@ function capital(text: string): string {
  * a loop). `points` are the plan's (the route's own stops in order); the stops' places on the line come
  * from the model's stop cues.
  */
-export function replanPoints(model: RideModel, progressM: number, here: LonLat, points: readonly LonLat[], loop: boolean, guides = false): LonLat[] {
-  return [here, ...replanKept(model, progressM, points, loop, guides).map((i) => points[i])];
+export function replanPoints(model: RideModel, progressM: number, here: LonLat, points: readonly LonLat[], loop: boolean): LonLat[] {
+  return [here, ...replanKept(model, progressM, points, loop).map((i) => points[i])];
+}
+
+/** How far along the line a rider off it may have got, for each metre they now are from their last place on it, as the crow flies. */
+export const REPLAN_REACH_FACTOR = 1.5;
+
+/**
+ * Where a re-route counts from on the planned line: the rider's place on it now (the point of the line nearest `here`,
+ * from `progressM` on and no further than they could have ridden beside it, REPLAN_REACH_FACTOR), else `progressM`,
+ * the last place they were on it. After Keep going and a long ride beside the line, the via points they rode past are
+ * behind this place (replanKept's `viasFromM`), and the planned time to the next one is counted from here
+ * (viaSkipWorth), not from where they left the line.
+ */
+export function replanFromM(model: Pick<RideModel, "coordinates" | "along">, progressM: number, here: LonLat): number {
+  if (model.coordinates.length < 2) return progressM;
+  const reach = REPLAN_REACH_FACTOR * haversineM(pointAt(model, progressM), here) + OFF_MAX_M;
+  const found = snap(model, here, progressM, progressM + reach, undefined, progressM);
+  return found ? Math.max(progressM, found.alongM) : progressM;
 }
 
 /**
- * A re-route's via points are guides, its stops mandatory (Stephen 2026-10-24: "If a reroute needs to be done assume
- * via points are guides and stops are mandatory"): a via point less than this far ahead on the planned line (half a
- * mile) is dropped, so the rider is never sent back to touch it; one further on still shapes the rest of the ride.
- */
-export const VIA_GUIDE_SKIP_M = 800;
-
-/**
  * Which of the plan's points a re-plan keeps, by their index in `points`: the stops not yet passed, the via points
- * not yet passed (with `guides`, a re-route's, only those VIA_GUIDE_SKIP_M on or more), then the end (a loop's is
- * its start, index 0). `replanPoints` sends these after the rider's position.
+ * still ahead of `viasFromM` (a re-route's replanFromM, else `progressM`), then the end (a loop's is its start, index
+ * 0). `replanPoints` sends these after the rider's position. A re-route's via points are guides and its stops
+ * mandatory (Stephen 2026-10-24), but every via point ahead is kept: only the next one may be left out, and only where
+ * keeping it costs more than VIA_SKIP_EXTRA_S (2026-10-27: "Sometimes people plan very indirect routes for fun, so it
+ * shouldn't skip all of the vias").
  */
-export function replanKept(model: RideModel, progressM: number, points: readonly LonLat[], loop: boolean, guides = false): number[] {
+export function replanKept(model: RideModel, progressM: number, points: readonly LonLat[], loop: boolean, viasFromM = progressM): number[] {
   const last = loop ? points.length : points.length - 1;
   const left: number[] = [];
   for (let i = 1; i < last; i += 1) {
-    // A via point passed is dropped as a stop passed is (v0.7.0); the line's own place for it. A re-route (`guides`)
-    // also drops one close ahead (VIA_GUIDE_SKIP_M): via points are guides; stops are never dropped.
+    // A via point passed is dropped as a stop passed is (v0.7.0); the line's own place for it. One the rider rode past
+    // beside the line (`viasFromM`) is passed too, so they are never sent back to touch it; a stop never is.
     const pass = model.passes?.find((p) => p.point === i);
     if (pass) {
-      if (pass.atM > progressM + (guides ? VIA_GUIDE_SKIP_M : ARRIVE_M)) left.push(i);
+      if (pass.atM > Math.max(progressM, viasFromM) + ARRIVE_M) left.push(i);
       continue;
     }
     const cue = model.cues.find((c) => c.kind === "stop" && (c.point ?? c.stop) === i);
@@ -2015,6 +2040,19 @@ export function planAfterEnd(
 /** The pacing of automatic re-plans: one in flight, 30 s apart, 2 min after two failures in a row. */
 export const REPLAN_GAP_MS = 30_000;
 export const REPLAN_BACKOFF_MS = 120_000;
+
+/**
+ * After a new route, no automatic re-plan again until the rider has moved this far (about 165 ft) from where it was
+ * asked from, or has been on its line (review RIDE-6): a new line that cannot start near a rider standing still (a car
+ * park, a plaza) left them "off" again at once, and it was planned again every REPLAN_GAP_MS with an urgent "Off the
+ * planned route" each time. The rider's own asks are not held.
+ */
+export const REPLAN_MOVED_M = 50;
+
+/** Whether an automatic re-plan from `here` waits (REPLAN_MOVED_M): `from` is where the last new route was asked from, null once ridden on. */
+export function replanHeld(from: LonLat | null, here: LonLat): boolean {
+  return from !== null && haversineM(from, here) < REPLAN_MOVED_M;
+}
 
 export class ReplanGate {
   private inFlight = false;

@@ -11,6 +11,29 @@
 # deployments: a hostname such as `routes.example.org` gets an automatic
 # certificate, and `:80` serves a local stack over plain HTTP. compose passes
 # CADDY_SITE_ADDRESS to this service and nothing else; it is not a secret.
+
+# Caddy's own log. There is no access log (no `log` directive in the site below), but Caddy
+# still writes an error entry when a handler fails - the API refusing during a restart or a
+# deploy - and that entry carries the request: its URI with the query string (a reverse look-up's
+# or a search's lat and lon, which after "Use my location" are the rider's own spot) and the
+# client's address. The filter takes those out and keeps the rest of the entry (the error, the
+# status, the method and the duration), so an outage can still be read here. Cookie and
+# Authorization are redacted by Caddy already; the headers go too, the Referer among them.
+{
+	log default {
+		format filter {
+			wrap json
+			fields {
+				request>uri delete
+				request>remote_ip delete
+				request>remote_port delete
+				request>client_ip delete
+				request>headers delete
+			}
+		}
+	}
+}
+
 {$CADDY_SITE_ADDRESS} {
 	# HSTS, on every response this site makes - the static files as much as the
 	# proxied ones, which is why it is here and not inside a `handle`.
@@ -250,6 +273,8 @@
 		encode zstd gzip
 		header Referrer-Policy "same-origin"
 		header X-Content-Type-Options "nosniff"
+		# Location for this site only, never a frame; no camera, microphone, payment or USB.
+		header Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=(), usb=()"
 		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
 		root * /srv/frontend
 		@hashed {

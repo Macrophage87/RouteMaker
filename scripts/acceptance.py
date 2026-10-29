@@ -71,7 +71,6 @@ REBUILD_POLL_S = 60
 # outlasts three default budgets and the backoff between them; pass --rebuild-timeout
 # for a deployment with a longer budget.
 REBUILD_TIMEOUT_S = 3 * 8 * 3600 + 3600
-RESTORE_DB = "routemaker_acceptance_restore"
 
 
 class Fail(Exception):
@@ -626,62 +625,41 @@ def _canary(ctx: Context, variant: str) -> None:
 
 
 def a5_backup_and_restore(ctx: Context, out: list[str]) -> None:
-    """A5 — a nightly dump is written and verified, and restores cleanly
-    into an empty database beside the live one."""
+    """A5 — a nightly dump is written, verified and encrypted, and the server
+    cannot read it back. The restore itself needs the owner's private key, which
+    is never on the server, so it is rehearsed on the owner's computer
+    (docs/OPERATIONS.md, "Restoring one")."""
+    ctx.exec_in("worker", "./manage.py", "check_backup_encryption", timeout=60)
     facts = ctx.django_json("worker", BACKUP_NOW, timeout=1800)
     if ctx.args.dry_run:
-        dump = "/data/backups/routemaker-<instant>.dump"
+        dump = "/data/backups/routemaker-<instant>.dump.age"
+        ctx.exec_in("worker", "head", "-c", str(len(AGE_HEADER)), dump)
         ctx.exec_in("worker", "pg_restore", "--list", dump)
-        ctx.exec_in("worker", "createdb", RESTORE_DB)
-        ctx.exec_in("worker", "pg_restore", "--no-owner", "-d", RESTORE_DB, dump)
-        ctx.exec_in("worker", "dropdb", "--if-exists", RESTORE_DB)
         return
     dump = facts.get("path")
     if not dump:
         raise Fail(f"perform_backup did not return a path: {facts}")
     out.append(f"dump written: {Path(dump).name}")
-    listing = ctx.exec_in("worker", "pg_restore", "--list", dump, timeout=300).stdout
-    if "TABLE DATA" not in listing or "cached_membership" in _data_entries(listing):
-        raise Fail(
-            "the dump's listing is not the promised one (no data, or the excluded table's data)"
-        )
-    out.append("pg_restore --list shows table data and no excluded table's rows")
-    ctx.exec_in("worker", "dropdb", "--if-exists", RESTORE_DB, check=False, timeout=120)
-    ctx.exec_in("worker", "createdb", RESTORE_DB, timeout=120)
-    try:
-        restore = ctx.exec_in(
-            "worker", "pg_restore", "--no-owner", "-d", RESTORE_DB, dump, check=False, timeout=1800
-        )
-        errors = re.findall(r"errors ignored on restore: (\d+)", restore.stderr)
-        if restore.returncode != 0 or errors:
-            raise Fail(
-                f"pg_restore into an empty database: exit {restore.returncode}, "
-                f"errors {errors or 0}: {restore.stderr.strip().splitlines()[-3:]}"
-            )
-        count = ctx.exec_in(
-            "worker",
-            "psql",
-            "-At",
-            "-d",
-            RESTORE_DB,
-            "-c",
-            "select (select count(*) from django_migrations), (select count(*) from live.segment)",
-            timeout=300,
-        ).stdout.strip()
-        out.append(f"restored into an empty database with 0 errors; migrations,segments = {count}")
-    finally:
-        ctx.exec_in("worker", "dropdb", "--if-exists", RESTORE_DB, check=False, timeout=120)
+    header = ctx.exec_in("worker", "head", "-c", str(len(AGE_HEADER)), dump, timeout=60).stdout
+    if not dump.endswith(".dump.age") or header != AGE_HEADER:
+        raise Fail(f"the dump is not age-encrypted: {Path(dump).name} begins {header[:24]!r}")
+    plain = ctx.exec_in("worker", "pg_restore", "--list", dump, check=False, timeout=300)
+    if plain.returncode == 0:
+        raise Fail("pg_restore read the dump on the server: it is not encrypted")
+    out.append(
+        "the dump is age-encrypted and the server cannot read it; rehearse the restore on "
+        "the owner's computer (docs/OPERATIONS.md, Restoring one)"
+    )
 
+
+# The first line of every file age writes.
+AGE_HEADER = "age-encryption.org/v1"
 
 BACKUP_NOW = """
 import json
 from config.procrastinate import perform_backup
 print(json.dumps({"path": str(perform_backup())}))
 """
-
-
-def _data_entries(listing: str) -> str:
-    return "\n".join(line for line in listing.splitlines() if "TABLE DATA" in line)
 
 
 def a6_rollback(ctx: Context, out: list[str]) -> None:
@@ -748,7 +726,7 @@ ITEMS = [
     ("A2", "Build and start the stack", a2_build_and_start),
     ("A3", "Edge, sign-in and the admin flows", a3_sign_in_and_admin),
     ("A4", "First rebuild, promotion, routers, canary", a4_first_rebuild),
-    ("A5", "Backup and restore into an empty database", a5_backup_and_restore),
+    ("A5", "Encrypted backup the server cannot read", a5_backup_and_restore),
     ("A6", "Rollback after a second rebuild", a6_rollback),
     ("A7", "Weekday trails beside the weekend parkways", a7_weekday_trails),
 ]

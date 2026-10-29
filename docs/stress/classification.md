@@ -39,7 +39,7 @@ half-step editor). Half-step words (1.5 "Probably comfortable for older children
 | State | State polygons from the extract (`src/pipeline/states.py`; `run.py:1948-1954`) | DC's statutory 20 mph (15 mph in alleys) for an unposted way; MD and VA urban defaults (`stress.py:198-223`, `:788-806`). A missing state refuses the rebuild. |
 | Divided roads | `src/routemaker/divided.py` | A one-way carriageway of a two-way road is scored as the two-way road (`stress.py:816`). |
 | Separate bikeway beside a road | `routemaker.facility.separate_pairs` (`run.py:1981-1983`) | Counts as bike infrastructure for the arterial and collector floors. |
-| Curated speed limits | `fixtures/speed/` (`src/routemaker/speed_corrections.py`; OWNER-DECISIONS 131) | Fill a missing `maxspeed` only. A posted speed wins (`run.py:2029-2031`). |
+| Curated speed limits | `fixtures/speed/` (`src/routemaker/speed_corrections.py`; OWNER-DECISIONS 131) | Fill a missing `maxspeed` only. A posted speed wins, by direction or as a list too (`run.py:2029-2031`). |
 | Curated bike lanes | `fixtures/bike_lanes/` (`src/routemaker/bike_lanes.py`; OWNER-DECISIONS 433) | Add a painted lane OSM lacks (`run.py:2032-2034`). The owner's reading then holds the way at LTS 4 on 3 or more lanes a direction or at 45 mph or more (`bike_lanes.owner_tier`, `bike_lanes.py:86-102`; `run.py:2069-2074`). |
 | Named corridors | `fixtures/corridors/` (`src/routemaker/corridors.py`; OWNER-DECISIONS 284-286, 294-296) | Set the tier on owner-judged stretches, matched by street name and an axis, not by way id (`run.py:2100-2109`). |
 | Override rows | The `Override` table, approved rows only | Applied last. See [overrides.md](overrides.md). |
@@ -54,9 +54,9 @@ recorded in `assumed` (`stress.py:135-137`).
 |---|---|---|
 | 1 | Trail-class way (`cycleway`, `footway`, `path`, `pedestrian`, `bridleway`, `steps`): LTS 1 | `:777-778`; `classes.py:19` |
 | 2 | `motorway`, `motorway_link`: LTS 4 | `:780-781`; `classes.py:33` |
-| 3 | Speed: posted `maxspeed`; else DC 20 (alley 15); else MD/VA urban defaults; else the urban or rural table by class (an unpaved rural lane is capped at 30 mph) | `:783-806`, tables `:142-223`, `:292` |
+| 3 | Speed: posted `maxspeed` (a `;` list read as its highest part), or without it the higher of `maxspeed:forward` and `maxspeed:backward`; else DC 20 (alley 15); else MD/VA urban defaults; else the urban or rural table by class (an unpaved rural lane is capped at 30 mph) | `:783-806`, tables `:142-223`, `:292` |
 | 4 | Lanes per direction (default 1). A `;` list reads as its largest part, and with one direction tagged on a two-way road the other is the rest of `lanes` (review RL-8). An urban multi-lane street is read on the single-lane row. A one-way of up to 2 lanes gets relief. | `:808-822`, `:482-503` |
-| 5 | Facility. A separated track: LTS 1. A painted lane: Furth's bike-lane table by speed, lanes and width (beside parking, the 15 ft [4.57 m] reach). A decent lane at 40 mph is LTS 3. A painted lane (or a credited shoulder) on a two-way street with 2 or more lanes each way is LTS 3 at least (review RL-3; the owner, 2026-10-16). On a one-way street a contraflow facility (`opposite*`, or a side whose own `cycleway:<side>:oneway` runs against the traffic) is not the with-flow rider's, however it is tagged (review RL-2). With no lane, the mixed-traffic table, and the urban two-way floor (LTS 3, or LTS 4 at 30 mph or more over 8,000 vehicles a day) | `:859-895`; tables `:524-611`, `:506-521`, `:632-656` |
+| 5 | Facility. A separated track: LTS 1. A painted lane: Furth's bike-lane table by speed, lanes and width (beside parking, the 15 ft [4.57 m] reach). A decent lane at 40 mph is LTS 3. A painted lane (or a credited shoulder) on a two-way street with 2 or more lanes each way, or on a one-way street with 3 or more lanes, is LTS 3 at least (review RL-3; the owner, 2026-10-16; one-ways from the 2026-10-29 review). On a one-way street a contraflow facility (`opposite*`, or a side whose own `cycleway:<side>:oneway` runs against the traffic) is not the with-flow rider's, however it is tagged (review RL-2). With no lane, the mixed-traffic table, and the urban two-way floor (LTS 3, or LTS 4 at 30 mph or more over 8,000 vehicles a day) | `:859-895`; tables `:524-611`, `:506-521`, `:632-656` |
 | 6 | Paved shoulder 4 ft [1.2 m] or wider: the bike-lane table, never worse than no provision | `:936-990`, `:250` |
 | 7 | Volume, on single-lane roads with no provision. Up to 1,500 vehicles a day: one tier down (only to 35 mph, or when the speed was assumed). 8,000 or more: one tier up. Over 1,500 at 20 mph or less: LTS 1 becomes 2. An urban two-way floored road at LTS 4 drops to LTS 3 at 1,500 or less (same speed condition) | `:1023-1064`; thresholds `:298-301` |
 | 8 | Floors without a facility: trunk, primary and secondary at least LTS 3 (OWNER-DECISIONS 141); tertiary at least LTS 2 (176). A rideable shoulder is read as a lane instead | `:1080-1098`, `:302-307` |
@@ -105,7 +105,7 @@ Whether a bicycle may use a way is decided by the access rules, never by the tie
   (`src/routemaker/trailaccess.py`, `singletrack.py`). Rated singletrack is closed on
   every graph. The mountain-bike class (`rm:no_bicycle=mtb`) is closed on every graph
   but the off-road one, which Gravel and Mountain Goat ride (`OFFROAD_PRESETS`,
-  `src/core/presets.py:653-659`; `src/pipeline/variants.py:61-71`; OWNER-DECISIONS
+  `src/core/presets.py`; `Variant`, `src/pipeline/variants.py`; OWNER-DECISIONS
   291(2)).
 - The standing rule is to **err closed**: when it is unclear whether bikes are allowed,
   the way is closed, and the owner reopens it with evidence through an access override.

@@ -5,6 +5,7 @@
  *   - JSX text with a letter in it: <p>Saved</p>
  *   - a string with a letter as a JSX child: <p>{"Saved"}</p>, <p>{`Saved ${n}`}</p>
  *   - a string with a letter in aria-label, title, placeholder or alt: aria-label="Close", title={`Map ${n}`}
+ *   - a string with a letter passed to announce, setNotice, say and the like (SAYERS): announce(`Opening ${name}.`)
  * Fix one by putting it through t() (t("Saved"), t("Map {n}", { n })) and adding its Spanish to src/i18n/es.ts, or,
  * where it must stay as written (a brand, a symbol, a unit formatted elsewhere), by adding it to ALLOWED below with
  * the reason. Strings built in .ts modules are not read here: lib/i18n.test.ts and the modules' own tests cover those.
@@ -22,13 +23,20 @@ const SRC = fileURLToPath(new URL("..", import.meta.url));
 const PROPS = new Set(["aria-label", "title", "placeholder", "alt"]);
 
 /**
+ * The calls whose first argument is said or shown to the rider (the 2026-10-29 review: a sentence passed straight to
+ * announce() or setNotice() was English on a Spanish page): a plain string there, or in either branch of a `?:`, is
+ * reported as "said".
+ */
+const SAYERS = new Set(["announce", "announceExtra", "setNotice", "setNoticeSaying", "say", "sayDetour", "showToast"]);
+
+/**
  * What may stay as written, by file (relative to src/) and its text, with why. A whole file is "*". An entry that
  * no longer matches anything fails the test too, so the list stays short.
  */
 const ALLOWED: readonly { file: string; text: string; why: string }[] = [
   { file: "ReviewMode.tsx", text: "*", why: "the reviewers' screen (signed-in reviewers only), English as the review tools are" },
   { file: "ClosureReview.tsx", text: "*", why: "the reviewers' closure list (signed-in reviewers only), English as the review tools are" },
-  { file: "App.tsx", text: "v", why: "the version's prefix, v0.14.0" },
+  { file: "App.tsx", text: "v", why: "the version's prefix, v0.15.0" },
   { file: "MyRoutes.tsx", text: "GPX", why: "the file format's name" },
   { file: "app/RoutePanel.tsx", text: "GPX", why: "the file format's name" },
   { file: "RailStations.tsx", text: "Metro", why: "the system's name" },
@@ -57,6 +65,23 @@ function stringOf(node: { type: string; value?: unknown; quasis?: { value: { coo
   if (node.type === "Literal" && typeof node.value === "string") return node.value;
   if (node.type === "TemplateLiteral" && node.quasis) return node.quasis.map((q) => q.value.cooked ?? q.value.raw).join("${…}");
   return null;
+}
+
+/** A call's function name: announce(...) and announcer.current?.say(...) alike. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function calleeName(callee: any): string | null {
+  if (callee?.type === "Identifier") return callee.name;
+  if (callee?.type === "MemberExpression" && callee.property?.type === "Identifier") return callee.property.name;
+  return null;
+}
+
+/** An argument's possible values: each branch of a `?:` (nested too), else the argument itself. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function branchesOf(node: any): any[] {
+  if (!node) return [];
+  if (node.type === "ConditionalExpression") return [...branchesOf(node.consequent), ...branchesOf(node.alternate)];
+  if (node.type === "ParenthesizedExpression") return branchesOf(node.expression);
+  return [node];
 }
 
 /** What one component file shows untranslated; `file` is its name in the report. */
@@ -95,6 +120,11 @@ function untranslated(source: string, file: string): Found[] {
       const value = node.value?.type === "JSXExpressionContainer" ? node.value.expression : node.value;
       const text = stringOf(value);
       if (text !== null) add(node.start, text, node.name.name);
+    } else if (node.type === "CallExpression" && SAYERS.has(calleeName(node.callee) ?? "")) {
+      for (const branch of branchesOf(node.arguments?.[0])) {
+        const text = stringOf(branch);
+        if (text !== null) add(branch.start, text, "said");
+      }
     }
     for (const key of Object.keys(node)) if (key !== "start" && key !== "end") walk(node[key], node);
   };
@@ -119,7 +149,7 @@ test("rider-visible text in components goes through t(): no plain JSX text or ar
   assert.deepEqual(stale, [], "ALLOWED entries that match nothing any more; remove them");
 });
 
-test("the lint finds plain text, plain props and plain string children, and leaves t() and symbols alone", () => {
+test("the lint finds plain text, plain props, plain string children and plain said sentences, and leaves t() and symbols alone", () => {
   const sample = [
     "export const A = () => (",
     '  <p title="Plain title" aria-label={t("Marked")} alt={`Photo ${1}`}>',
@@ -127,6 +157,9 @@ test("the lint finds plain text, plain props and plain string children, and leav
     "    <input placeholder={`${n}`} />",
     "  </p>",
     ");",
+    "announce(ok ? t(\"Marked\") : `Plain said ${n}`);",
+    "ride.current?.say(\"Plain member said\", true);",
+    "setNotice(LINE);",
   ].join("\n");
   const found = untranslated(sample, "sample.tsx").map((f) => [f.line, f.where, f.text]);
   assert.deepEqual(found, [
@@ -134,5 +167,7 @@ test("the lint finds plain text, plain props and plain string children, and leav
     [2, "alt", "Photo ${…}"],
     [3, "text", "Plain text"],
     [3, "text", "Plain child"],
+    [7, "said", "Plain said ${…}"],
+    [8, "said", "Plain member said"],
   ]);
 });

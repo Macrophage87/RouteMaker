@@ -10,9 +10,11 @@ comes from:
   background-location permission (mobile/README.md, "Privacy"; mobile/test/config.test.mjs); a
   route request carries points in its body, and the logs keep no query (docs/DEVELOPMENT.md,
   "Logs and the rider's position").
-- Group and Mass Ride: core.ride_presence (20 m grid, memory only; dots, alerts and a leader's
-  path 2 minutes, nothing longer)
-  and frontend/src/RideGroup.tsx (only while sharing and the page is in front, near the route).
+- Group and Mass Ride: core.ride_presence (sealed values only, memory only; dots, alerts and a
+  leader's path 2 minutes, nothing longer)
+  and frontend/src/RideGroup.tsx (only while sharing and the page is in front, near the route);
+  every ride link carries a key and is sealed end to end (frontend/src/lib/rideSeal.ts), a ride
+  post's link too (core.route_posts.ride_key).
 - Discord sign-in: core.discord_oauth (identify scope, no token kept) and core.models.User (the
   Discord id and dates only); the bot's role cache: core.membership.
 - What an account keeps: core.models MyGo, AccountSettings (frontend/src/lib/accountSettings.ts,
@@ -20,14 +22,18 @@ comes from:
   ConnectorGrant and ConnectorDraft (core.connector).
 - Shared links: core.shared_routes (keeping, no weight, owner only) and core.share_preview (Home
   left out of the preview).
-- Suggestions: core.suggestions, core.junction_suggestions, core.mass_hazards (the spot dropped,
-  the account for the admin only), core.suggestion_post (the Discord poll names nobody),
-  core.signed_out_suggestions (a salted daily hash, 24 hours); 311: core.report_log and core.dc311.
+- Suggestions: core.suggestions (the tap snapped onto the road), core.junction_suggestions (the
+  junction), core.mass_hazards (the spot dropped, the account for the admin only),
+  core.suggestion_post (the Discord poll names nobody), core.signed_out_suggestions (a salted
+  daily hash, 24 hours); 311: core.report_log (core.dc311's server send is off: the site has no
+  DC311_API_KEY, so the policy names none; the owner, 2026-10-29). Recent places:
+  frontend/src/lib/recentPlaces.ts (RECENT_PLACES_DAYS).
 - What the browser and the server contact: the Content-Security-Policy (Caddyfile, `connect-src
-  'self'`), core.street_photo, core.gbfs, core.wmata_live, core.closure_sources, core.dc311,
+  'self'`), core.street_photo, core.gbfs, core.wmata_live, core.closure_sources,
   core.weather (points rounded to 0.01 degree, answers 2 minutes in memory).
 - Logs, limits and backups: docker/api-entrypoint.sh (the access log's format), core.ratelimit,
-  config.procrastinate (BACKUP_KEEP, BACKUP_EXCLUDED_TABLES); sessions: core.revocation.
+  config.procrastinate (BACKUP_KEEP, BACKUP_MAX_AGE, BACKUP_EXCLUDED_TABLES, perform_backup's
+  encryption); sessions: core.revocation and core.auth_views (Sign out, Sign out everywhere).
 - Garmin: core.garmin (the encrypted token, offered only with core.garmin.COURSES_WIRED),
   core.garmin_views (connect, Disconnect, Garmin's deregistration notice), core.garmin_courses
   (the course sent, and GarminLink.courses, which course each saved route was sent as). Garmin's
@@ -55,7 +61,7 @@ from . import account_deletion
 PATH = account_deletion.PRIVACY_PATH
 TITLE = "RouteMaker privacy policy"
 # Change with the text: the date a rider reads as when this page last said something new.
-LAST_UPDATED = ("2026-10-26", "October 26, 2026")
+LAST_UPDATED = ("2026-10-29", "October 29, 2026")
 # Unless the deployment sets PRIVACY_CONTACT (an e-mail address or a web address).
 CONTACT = "Questions, or a request about your data: ask the site's owner on Discord."
 CONTACT_LEAD = "Questions, or a request about your data: "
@@ -73,7 +79,7 @@ WHERE_YOU_ARE = (
     "Your location is used on your phone or computer to plan and guide your ride. The server "
     "keeps no record of where you are, only places you choose to save or share (Home, favorite "
     "places, saved and shared routes, a 311 problem’s spot) and, while you share on a Group or "
-    "Mass Ride, your rounded dot for 2 minutes and an alert’s spot for 2 minutes."
+    "Mass Ride, your encrypted dot for 2 minutes and an encrypted alert for 2 minutes."
 )
 
 
@@ -83,6 +89,58 @@ def _p(text: str) -> str:
 
 def _ul(items: list[str]) -> str:
     return "<ul>" + "".join(f"<li>{escape(i)}</li>" for i in items) + "</ul>"
+
+
+def _details(summary: str, items: list[str]) -> str:
+    """A section's technical detail, closed until opened (summary first, the rest behind it)."""
+    return f"<details><summary>{escape(summary)}</summary>{_ul(items)}</details>"
+
+
+# The encryption in full (Stephen 2026-10-29: "Put the full technical specification in the expand,
+# since nothing is secret except the key"). The code is frontend/src/lib/rideSeal.ts (rides) and
+# config.procrastinate perform_backup (backups); test_privacy_policy checks the numbers against it.
+RIDE_CRYPTO_SUMMARY = "How the encryption works (technical details)"
+RIDE_CRYPTO = [
+    "The ride's key: 16 random bytes from the browser's cryptographic random source "
+    "(crypto.getRandomValues), or, for a ride post's link, from the server's (Python's secrets "
+    "module), written as 22 base64url characters in the link's fragment as k= (an older link's "
+    "key of 32 bytes, 43 characters, still works). Every ride link "
+    "carries one. The fragment, the part after #, is never sent to any server by a browser. "
+    "Nothing about the method is secret; only the key is.",
+    "From the key, HKDF with SHA-256 (salt “routemaker ride seal v1”) derives two things: with "
+    "info “ride id”, 256 bits written as 64 hex digits, the name the server knows the live ride "
+    "by; with info “ride key”, an AES-GCM key of 256 bits, which the browser keeps "
+    "non-extractable (Web Crypto). The ride id cannot be turned back into the key.",
+    "Each dot, alert and leader path is written as JSON, padded with spaces to a whole number "
+    "of 128 bytes (a dot), 512 bytes (an alert) or 4,096 bytes (a path), so its size does not "
+    "give away a role, an alert's kind or the length of its words, then encrypted with "
+    "AES-256-GCM under a fresh random 12-byte nonce. Its kind and the ride id are bound in as "
+    "associated data, so a dot cannot be passed off as an alert, or one ride's data as "
+    "another's. What is sent is the nonce, the ciphertext and GCM's 128-bit tag, in base64url.",
+    "Each phone sends its position as its GPS measures it, to 6 decimal places of a degree "
+    "(about 4 in, 0.1 m), encrypted, and an alert's spot the same way; a leader's route and "
+    "ridden path go to 5 decimal places (about 3 ft, 1 m), at most 600 points each. A phone "
+    "sends nothing outside the map's area, and merges matching alerts as it reads them. The "
+    "server refuses a position or alert that is not encrypted.",
+    "Each phone posts under its own random code for the ride (16 random bytes). A ride leader's "
+    "link also carries lead=, the first 16 bytes of the SHA-256 of the leader's code as 22 "
+    "base64url characters (the phone sends the server the same 16 bytes as 32 hex digits), so "
+    "riders can tell which dot is the leader's; only the leader's phone, which holds the code, "
+    "can post as that dot.",
+    "What the server still sees: the ride id, each phone's random code, when and how often "
+    "phones send and ask, the padded sizes, each dot's age and which one is the leader's, and "
+    "the internet address a request comes from, as for any page. It cannot read a dot, an alert "
+    "or the leader's live path, except on a ride whose key it made or was given and keeps: a "
+    "ride post's Group or Mass Ride link, and a ride link an AI assistant app planned or opened "
+    "(kept with that app's draft). A Share ride or Share live link is also a shared route: its "
+    "planned line is kept on the server like any shared link (see Shared links).",
+    "Nightly database backups are encrypted with age to the owner's X25519 public key; the "
+    "matching private key is kept on the owner's computer, not on the server, so the server can "
+    "write a nightly backup but never read one. The copies taken just before RouteMaker is "
+    "updated are not encrypted; they stay on the server for less than a week.",
+    "RouteMaker is open source (MIT license), so anyone can check this: the ride encryption is "
+    "frontend/src/lib/rideSeal.ts in github.com/Macrophage87/RouteMaker.",
+]
 
 
 SUMMARY = (
@@ -123,7 +181,8 @@ SECTIONS: list[tuple[str, str]] = [
             "(every 5 minutes), finding which 311 website covers a problem you log, and Group or "
             "Mass Ride sharing. The server answers "
             "and does not store it, except places you choose to save or share and ride sharing "
-            "(below)."
+            "(below). A route planned from where you are is kept in the server’s memory for "
+            "2 minutes at most, so asking for it again is quick, and is then forgotten."
         )
         + _p(
             "A route’s link holds its points, so a route planned from your location carries "
@@ -136,17 +195,34 @@ SECTIONS: list[tuple[str, str]] = [
             [
                 "Off until you choose to show yourself as a dot, and only while RouteMaker is on "
                 "screen and you are within a quarter mile (400 m) of the route.",
-                "Your position is rounded to about 66 ft (20 m), kept only in the server’s "
-                "memory, never on disk or in a log, and dropped 2 minutes after it was sent.",
+                "Your position is encrypted on your phone, kept only in the server’s memory, "
+                "never on disk or in a log, and dropped 2 minutes after it was sent.",
                 "Other riders on the same ride see an unnamed dot. No account or name is sent: "
                 "your phone makes a new random code for each ride.",
-                "An alert you send keeps your rounded spot for 2 minutes, or until you clear it.",
-                "Share ride and Broadcast make you the ride leader, shown as a dot from the start "
+                "An alert you send keeps your spot, encrypted, for 2 minutes, or until you clear "
+                "it.",
+                "Every ride link carries a key: Share ride, Share live (in Roam too) and every "
+                "Group or Mass Ride link. Your phone encrypts your dot, your alerts and the "
+                "leader’s path before sending them, with the key only the link carries (in the "
+                "part after #, which browsers never send to a server). The server holds them "
+                "only as scrambled text it cannot read, unless the server keeps that ride's key: "
+                "a ride post's ride, or a ride an AI assistant app you connected planned or was "
+                "given a link to. It still sees when a phone on the ride sends or asks, as it "
+                "does for any page.",
+                "A ride post's Group or Mass Ride link carries its key too, so anyone who can "
+                "read the post can see the dots and alerts of that ride. The server keeps that "
+                "key with the post, and the post keeps it when its route changes; a post changed "
+                "between Group Ride and Mass Ride gets a new one.",
+                "Share ride and Share live make you the ride leader, shown as a dot from the start "
                 "of your ride. While you ride a shared ride, you and anyone on it who chooses to "
                 "be shown are shown on or off the route, so riders who get separated can find "
-                "each other; once the ride ends, the quarter-mile rule is back.",
+                "each other. When the ride ends, so does your dot, and the next ride asks again "
+                "(a ride leader is shown again when they ride on).",
+                "Your dot is not sent while you are within 500 ft (150 m) of the Home you saved, "
+                "or once you have stayed in one spot for over an hour; it is sent again as soon "
+                "as you move on.",
                 "As leader, your phone also sends the route you are riding and the path you have "
-                "ridden (rounded the same way, without its first 650 ft (200 m), as rides often "
+                "ridden (without its first 650 ft (200 m), as rides often "
                 "start at home) about every 2 minutes; the server keeps each only in memory and "
                 "drops it after 2 minutes. Only those with your link see it. The link itself, "
                 "like any shared route, shows where the route starts.",
@@ -154,7 +230,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "browser's maker (Google for Chrome, Apple for Safari) turns the recording into "
                 "text. The words go only into the box until you tap Send.",
             ]
-        ),
+        )
+        + _details(RIDE_CRYPTO_SUMMARY, RIDE_CRYPTO),
     ),
     (
         "If you sign in with Discord",
@@ -183,7 +260,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "label).",
                 "Favorites: the places you save, Work among them (each one point and its name).",
                 "Your 311 log (below).",
-                "The assistant apps you connected, with the routes they drafted for a week.",
+                "The assistant apps you connected, with the routes each one drafted and you have "
+                "not saved, for a day.",
             ]
         )
         + _p(
@@ -249,8 +327,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "Your weight is taken out.",
                 "When a route starts, ends or stops at your Home, the preview a chat app shows "
                 "leaves out the part near it.",
-                "A link is kept a year after it was last opened, unless you choose to keep it "
-                "permanently or until a date.",
+                "A link is kept a year after it was last opened, unless, signed in, you choose "
+                "to keep it permanently or until a date.",
                 "A link you turn off loses its route and only says it was turned off.",
             ]
         ),
@@ -260,19 +338,18 @@ SECTIONS: list[tuple[str, str]] = [
         _ul(
             [
                 "A suggestion for a road or junction, or a Mass Ride hazard, keeps the road, your "
-                "level and your reason. The spot you tapped is not kept. Signed in, your account "
-                "is kept with it for the site’s admin only.",
+                "level and your reason. A road suggestion also keeps the point on the road nearest "
+                "where you tapped; a junction suggestion keeps the junction; a Mass Ride hazard "
+                "keeps no spot. Signed in, your account is kept with it for the site’s admin only.",
                 "The admin may post a suggestion as a poll on Discord. The poll names nobody.",
                 "Signed out, a suggestion keeps no account. To limit sends, your device is counted "
                 "by a one-way code made from your internet address and the day, deleted after 24 "
                 "hours. E-mail addresses and phone numbers are taken out of what you type.",
                 "The 311 log keeps each problem you log: what it is, the road’s name, its GPS "
-                "position, the time and your note. It stays on your device, and with your account "
-                "when signed in. RouteMaker shows which city or county 311 website takes it; you "
+                "position, the day (not the time) and your note. It stays on your device, and with "
+                "your account when signed in. RouteMaker shows which city or county 311 website "
+                "takes it; you "
                 "send it yourself.",
-                "In Washington, DC, where the site has DC 311’s key, a problem logged in Ride "
-                "mode is also sent to DC 311 by the server: the problem, the point on your route "
-                "and the report’s words, nothing about you.",
             ]
         ),
     ),
@@ -296,7 +373,6 @@ SECTIONS: list[tuple[str, str]] = [
                 "position. The answers are kept 2 minutes, by the rounded point only.",
                 "The bikeshare operator’s public feeds, for docks and bikes.",
                 "The National Park Service and DC’s road-closure notices, for closures.",
-                "DC 311, as above.",
                 "Discord, to finish your sign-in and for the bot.",
             ]
         )
@@ -317,7 +393,10 @@ SECTIONS: list[tuple[str, str]] = [
         + _p(
             "If you connect an AI assistant app, the routes it plans go to that app and its "
             "maker, under their own privacy policy. It can plan routes and add them to My routes; "
-            "it cannot read your saved routes."
+            "it cannot read your saved routes. Each route it plans gets a link that opens it, "
+            "and a GPX download link if asked, which anyone with the link can open. Both work "
+            "for a day. Disconnecting the app in Settings, or signing out everywhere, deletes its "
+            "unsaved routes at once, and their links stop working."
         ),
     ),
     (
@@ -325,12 +404,19 @@ SECTIONS: list[tuple[str, str]] = [
         _p(
             "Two cookies, both needed for the site to work: one keeps you signed in, one protects "
             "forms. No advertising or tracking cookies. A sign-in ends after 30 days unused, or "
-            "after 90 days."
+            "after 90 days. Sign out ends it on the server at once; Sign out everywhere, beside it "
+            "in Settings, Account, ends every sign-in to your account on every device, and "
+            "disconnects your AI assistant apps."
         )
         + _p(
             "Your browser or the app keeps your settings, Home, weight, offline routes and 311 log "
-            "until you clear its storage. The Android app also keeps the site address. It has no "
-            "analytics or crash reporting, and its data is left out of phone backups."
+            "until you clear its storage, and the last few places you picked in search for 30 "
+            "days after each was last picked. A ride in progress (its planned route, not where you "
+            "rode) is kept so it can resume, with the link and key of a ride you follow, until End "
+            "ride or Not now; after 12 hours it is no longer offered, and it is removed the next "
+            "time the app opens. The Android app "
+            "also keeps the site address. It has no analytics or crash reporting, and its data "
+            "is left out of phone backups."
         ),
     ),
     (
@@ -344,8 +430,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "The app’s own logs are capped in size, so old lines are overwritten.",
                 "When a request fails, an error log may keep more of it, including the internet "
                 "address, for a short time.",
-                "Request limits count a one-way code made from your internet address, deleted "
-                "within about 30 hours.",
+                "Request limits count a one-way code made from your internet address (or, for "
+                "some, your account), deleted within about 30 hours.",
             ]
         ),
     ),
@@ -359,9 +445,11 @@ SECTIONS: list[tuple[str, str]] = [
                 "Group and Mass Ride positions, alerts and a leader's path: 2 minutes. Nothing "
                 "about a ride is kept longer.",
                 "Shared links: as above.",
-                "Database backups: one a night, the last seven kept, so deleted data can stay in "
-                "them for up to a week. Sign-ins, request limits, the Discord role list and Garmin "
-                "and Wahoo connections are left out of them.",
+                "Database backups: one a night, encrypted, the last seven kept, so deleted data "
+                "leaves them within a week, or, if backups fail for longer, with the next one "
+                "that succeeds. Copies taken just before RouteMaker is updated are not encrypted, "
+                "and are kept on the server for less than a week. Sign-ins, request limits, the "
+                "Discord role list and Garmin and Wahoo connections are left out of them.",
                 "Suggestions already decided stay as the map’s history, with nothing linking "
                 "them to you once your account is deleted.",
                 "A note that an account was deleted, and when, under an account number.",

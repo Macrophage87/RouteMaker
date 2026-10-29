@@ -132,7 +132,7 @@ test("the scrub says the mile, the elevation in feet then metres, the grade and 
   const { route, profile } = build();
   const r = readingAt(route, profile, 1200);
   assert.equal(r.m, 1200);
-  assert.match(r.text, /^Mile 0\.7: elevation \d+ ft \(\d+ m\), grade 6%, LTS 3\.$/);
+  assert.match(r.text, /^Mile 0\.7: elevation \d+ feet \(\d+ meters\), grade 6%, LTS 3\.$/, "the units in words");
 });
 
 test("the example in the decision: Mile 4.2 ... grade 6%, LTS 2", () => {
@@ -147,7 +147,7 @@ test("the example in the decision: Mile 4.2 ... grade 6%, LTS 2", () => {
   };
   const route = { preset: "default", distance_m: 9000, stress_spans: [{ from_m: 0, to_m: 9000, tier: 2, facility: "none" }] } as unknown as RouteResponse;
   const r = readingAt(route, profile, 6759);
-  assert.equal(r.text, "Mile 4.2: elevation 310 ft (94 m), grade 6%, LTS 2.");
+  assert.equal(r.text, "Mile 4.2: elevation 310 feet (94 meters), grade 6%, LTS 2.");
 });
 
 test("a descent says downhill, a flat stretch level, a missing tier says it is not rated", () => {

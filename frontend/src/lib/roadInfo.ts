@@ -119,7 +119,7 @@ export interface InfoRequest {
  * opens the card, and this button routes to the spot as the tap did before (App's goTo, the destination in place
  * of any before it). Two taps where it was one, so a stray tap never plans a ride.
  */
-export const ROUTE_HERE_TEXT = t("Route here");
+export const ROUTE_HERE_TEXT = t("Ride here");
 
 /** The trail panel's via button: a via point on the trail, which shapes the route through it (lib/pointKinds.ts). */
 export const TRAIL_VIA_TEXT = t("Route through this trail");
@@ -401,11 +401,6 @@ export function wayRows(info: SegmentInfo): InfoRow[] {
     rows.push({ label: "Distance from the spot", value: formatRadius(info.distance_m), source: null });
   }
   return rows;
-}
-
-/** One row, as a sentence for the live region and the row's own reading: "Speed limit: 30 mph, posted (OpenStreetMap)". */
-export function rowText(row: InfoRow): string {
-  return `${row.label}: ${row.value}${row.source ? ` (source: ${row.source})` : ""}`;
 }
 
 /** The stress in a phrase: "LTS 3, for experienced cyclists", or "Avoid". */

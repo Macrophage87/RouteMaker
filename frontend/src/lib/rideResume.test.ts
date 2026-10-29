@@ -58,7 +58,7 @@ test("a ride left too long ago, or unreadable, is not offered and is forgotten; 
 
 test("the page keeps the ride at Start, forgets it at End, and asks at load; nothing goes to the server", () => {
   const app = src("../App.tsx");
-  assert.match(app, /if \(kept\) \{[\s\S]{0,300}?keepLeftRide\(\{ route, points: leg\.points, loop: leg\.loop, preset: leg\.preset, dials: rideDialsNow, fixed, destination \}/);
+  assert.match(app, /if \(kept\) \{[\s\S]{0,300}?keepLeftRide\(\{ route, points: leg\.points, loop: leg\.loop, preset: leg\.preset, dials: rideDialsNow, fixed, destination, passOn, follows \}/);
   assert.match(app, /const endRide = useCallback\(\(after: EndedPlan, stats: RideStats\) => \{\s*const \{ start, mode: endedIn \} = rideNow\.current;\s*forgetLeftRide\(\);/);
   assert.match(app, /const \[leftAsk, setLeftAsk\] = useState\(\(\) => leftRide\(VIA_MARKS, Date\.now\(\)\)\);/);
   assert.match(app, /<ResumeRideDialog\s+open=\{leftAsk !== null && !riding && !roaming\}/);
@@ -69,7 +69,7 @@ test("each new route of the ride is kept in its place, and the question holds th
   const ride = src("../RideMode.tsx");
   assert.match(ride, /if \(!trip && keepLeft\) keepLeftRide\(\{ route: found, points, loop: false, preset, dials: dialsRef\.current, fixed: fixedRef\.current \}, VIA_MARKS, Date\.now\(\)\);/);
   assert.match(ride, /const auto = !keepRef\.current && !fixedRef\.current && !restartOpen\.current;/);
-  assert.match(ride, /!fixedRef\.current && !restartOpen\.current && !uturns\.current\.held && state\.goodFix\) void replan/);
+  assert.match(ride, /!fixedRef\.current && !restartOpen\.current && !uturns\.current\.held && state\.goodFix && !replanHeld\(replannedFrom\.current, state\.goodFix\.point\)\) void replan/);
   const app = src("../App.tsx");
   assert.match(app, /const kept = !rest && !leg\.trip;/);
   assert.match(app, /keepLeft=\{rideStart\.kept === true\}/);
@@ -89,4 +89,27 @@ test("the ride's destination is kept with it, through its re-routes, to name it 
   assert.equal(leftRide(marks, 0, store)?.destination, undefined);
   keepLeftRide({ route, points, loop: true, preset: "standard", dials, fixed: false, destination: "Home" }, marks, 0, store);
   assert.equal(leftRide(marks, 0, store)?.destination, undefined);
+});
+
+test("a ride following someone's broadcast keeps its link to pass on once resumed, through its re-routes; one's own has none", () => {
+  const store = memory();
+  const marks = new ViaMarks();
+  const points: LonLat[] = [[-77, 38.9], [-77.01, 38.9]];
+  const link = "https://x.test/s/abc#ride=1&lead=L&k=K";
+  keepLeftRide({ route, points, loop: false, preset: "standard", dials, fixed: true, passOn: link, follows: true }, marks, 0, store);
+  assert.equal(leftRide(marks, 0, store)?.passOn, link);
+  assert.equal(leftRide(marks, 0, store)?.follows, true);
+  // A re-route mid-ride (RideMode) says nothing of it: the one kept at Start goes on.
+  keepLeftRide({ route, points: [[-77.002, 38.9], [-77.01, 38.9]], loop: false, preset: "standard", dials, fixed: true }, marks, 0, store);
+  assert.equal(leftRide(marks, 0, store)?.passOn, link);
+  assert.equal(leftRide(marks, 0, store)?.follows, true);
+  // Following one whose link had no key: it follows, with nothing to pass on, through a re-route too.
+  keepLeftRide({ route, points, loop: false, preset: "standard", dials, fixed: true, passOn: null, follows: true }, marks, 0, store);
+  keepLeftRide({ route, points: [[-77.002, 38.9], [-77.01, 38.9]], loop: false, preset: "standard", dials, fixed: true }, marks, 0, store);
+  assert.equal(leftRide(marks, 0, store)?.passOn, undefined);
+  assert.equal(leftRide(marks, 0, store)?.follows, true);
+  // The next ride, the rider's own, has neither.
+  keepLeftRide({ route, points, loop: false, preset: "standard", dials, fixed: false, passOn: null, follows: false }, marks, 0, store);
+  assert.equal(leftRide(marks, 0, store)?.passOn, undefined);
+  assert.equal(leftRide(marks, 0, store)?.follows, undefined);
 });

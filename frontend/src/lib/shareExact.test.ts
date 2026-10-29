@@ -139,7 +139,7 @@ test("a route everyone shares stays fixed on the ride: off route, the way back, 
   assert.match(app, /fixed=\{rideStart\.fixed\}/);
   // No automatic re-plan, from a fix or when the signal comes back.
   assert.match(ride, /const auto = !keepRef\.current && !fixedRef\.current && !restartOpen\.current;/);
-  assert.match(ride, /if \(state\.off && !keepRef\.current && !fixedRef\.current && !restartOpen\.current && !uturns\.current\.held && state\.goodFix\) void replan/);
+  assert.match(ride, /if \(state\.off && !keepRef\.current && !fixedRef\.current && !restartOpen\.current && !uturns\.current\.held && state\.goodFix && !replanHeld\(replannedFrom\.current, state\.goodFix\.point\)\) void replan/);
   // The way back is said once on leaving it and shown while off; Keep is not offered (it is always kept).
   assert.match(ride, /if \(fixedRef\.current && out\.events\.some\(\(e\) => e\.kind === "off-route"\)\) \{\s*const back = wayBack\(modelRef\.current, out\.state\);\s*if \(back\) announcer\.current\?\.answer\(`\$\{FIXED_SAID\} \$\{wayBackSaid\(back\)\}`\);/);
   assert.match(ride, /\{\(keepPlanned \|\| fixedRef\.current\) && back && \(/);
@@ -159,11 +159,11 @@ test("Share route or Share ride: a ride's link opens fixed, with location sharin
   assert.equal(rideLinkFrom(hash.replace("&ride=1", "")), false);
   assert.equal(rideLinkFrom("", "?route=x&ride=1"), true);
   // Only with its exact line kept is a link a ride; the sharer rides it as its openers do.
-  assert.match(app, /const link = again \? again\.link : ride && kept \? asRideLink\(now!\.link, lead\?\.key \?\? null\) : now!\.link;/);
+  assert.match(app, /const link = again \? again\.link : ride && kept \? \(lead \? withSecret\(asRideLink\(now!\.link, lead\.key\), lead\.secret\) : withoutSecret\(asRideLink\(now!\.link\)\)\) : now!\.link;/);
   // Only once the sheet shared it with the line kept; while the route is still planned, Share ride says to wait.
-  assert.match(app, /\} else if \(ride && kept && done === "shared"\) \{(\s*\/\/[^\n]*\n)+\s*if \(lead && sharedId\) \{\s*leadConsent\(await broadcastRideId\(sharedId\), lead\.token\);[\s\S]*?if \(led\) rideLinkSent\.current = \{ route: rideRoute, keep: shareKeep, link, lead, id: sharedId \};\s*const open = \{ answer: rideRoute, ride: true, own: true, id: sharedId \?\? undefined, lead: lead && sharedId \? lead\.key : null \};\s*sharedOpenNow\.current = open;\s*setSharedOpen\(open\);/);
+  assert.match(app, /\} else if \(ride && kept && done === "shared"\) \{(\s*\/\/[^\n]*\n)+\s*if \(lead && sharedId\) \{\s*const on = await rideOf\(lead\.secret\);\s*if \(on\) leadConsent\(on\.id, lead\.token\);[\s\S]*?if \(led\) rideLinkSent\.current = \{ route: rideRoute, keep: shareKeep, link, lead, id: sharedId \};\s*const open = \{ answer: rideRoute, ride: true, own: true, id: sharedId \?\? undefined, lead: lead && sharedId \? lead\.key : null, secret: lead && sharedId \? lead\.secret : null \};\s*sharedOpenNow\.current = open;\s*setSharedOpen\(open\);/);
   assert.match(app, /if \(ride && !shareExact\(\)\?\.save\.answer\) \{\s*setShareSaid\(\(before\) => \(\{ text: SHARE_RIDE_WAIT, count: before\.count \+ 1 \}\)\);\s*return \{ led: false, said: SHARE_RIDE_WAIT \};\s*\}/);
-  assert.match(app, /if \(shared\.answer\) setSharedOpen\(\{ answer: shared\.answer, ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD, name: shared\.name \}\);/);
+  assert.match(app, /if \(shared\.answer\) setSharedOpen\(\{ answer: shared\.answer, ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD, secret: SHARED_SECRET, name: shared\.name \}\);/);
   // What each does, on an Info button beside them (a phone has no hover) and as each button's description.
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /className="link icon-button info-button share-about-button" aria-expanded=\{about\} aria-controls=\{aboutId\}/);

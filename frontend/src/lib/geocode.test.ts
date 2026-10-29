@@ -32,6 +32,9 @@ import {
   namesCityOutside,
   namesQuery,
   nearestFirst,
+  KIND_SEARCHES,
+  isKindSearch,
+  kindPhrase,
   nothingFoundText,
   placeDistance,
   placeRowLine,
@@ -48,6 +51,7 @@ import {
 } from "./geocode.ts";
 import { COVERAGE_BBOX, MAX_POINTS, type LonLat } from "./geo.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
+import { readFileSync } from "node:fs";
 
 class FakeTimers implements Timers {
   now = 0;
@@ -132,6 +136,18 @@ test("a name is asked of /api/reverse for the point", () => {
   const url = new URL(reverseUrl([-77.0869, 38.887]), "http://site.test");
   assert.equal(url.pathname, "/api/reverse");
   assert.deepEqual([Number(url.searchParams.get("lon")), Number(url.searchParams.get("lat"))], [-77.0869, 38.887]);
+});
+
+test("a route point's name never asks for an address; Go's tapped spot does", async () => {
+  assert.equal(new URL(reverseUrl([-77.0869, 38.887]), "http://site.test").searchParams.has("address"), false);
+  assert.equal(new URL(reverseUrl([-77.0869, 38.887], true), "http://site.test").searchParams.get("address"), "true");
+  const urls: string[] = [];
+  const fetchImpl = async (url: string) => {
+    urls.push(url);
+    return found();
+  };
+  await nameSender(new GeoGate(), fetchImpl, true)(A);
+  assert.equal(new URL(urls[0], "http://site.test").searchParams.get("address"), "true");
 });
 
 // --- the answer -----------------------------------------------------------------
@@ -564,7 +580,7 @@ test("coordinates read latitude first", () => {
 
 test("the link carries points and ride type only, never a name", () => {
   const hash = encodePlan([A, B], "default");
-  assert.deepEqual([...new URLSearchParams(hash.slice(1)).keys()].sort(), ["p", "preset"]);
+  assert.deepEqual([...new URLSearchParams(hash.slice(1)).keys()].sort(), ["preset", "q"]);
   assert.equal(decodePlan(hash).points.length, 2);
 });
 
@@ -972,4 +988,20 @@ test("nothing found says what to try, and the coverage when the query is a city 
     assert.ok(!namesCityOutside(query), query);
   }
   assert.equal(COVERS_LINE, "RouteMaker covers DC to Baltimore.");
+});
+
+test('a kind of place (a grocery, a bike shop), "near me" or in Spanish, is nearest first, not names first (the 2026-10-29 review)', () => {
+  for (const q of ["grocery", "Grocery near me", "supermarket nearby", "supermercados cerca de mí", "bike shop close to me"]) assert.ok(isKindSearch(q), q);
+  for (const q of ["near me", "Safeway", "grocery outlet", "nearby bakery"]) assert.ok(!isKindSearch(q), q);
+  assert.equal(kindPhrase("  Grocery   store near me "), "grocery store");
+  // A store named for the word typed is not put ahead of a nearer one.
+  const named = at("Capitol Grocery", "Ward 6", -77.0, 38.89);
+  const near = at("Safeway", "Dupont Circle, Washington", -77.0416, 38.9105);
+  assert.deepEqual(nearestFirst([named, near], SCOTT_CIRCLE, "grocery near me"), [near, named]);
+  assert.deepEqual(nearestFirst([named, near], SCOTT_CIRCLE, "capitol"), [named, near], "a name still ranks first");
+  // The same words as the server's tag searches.
+  const server = readFileSync(new URL("../../../src/core/geocode.py", import.meta.url), "utf8");
+  const block = server.slice(server.indexOf("TAG_SEARCHES = {"), server.indexOf("TAG_SEARCH_RADIUS_KM ="));
+  const phrases = [...block.matchAll(/^\s+"([^"]+)",$/gm)].map((m) => m[1]);
+  assert.deepEqual([...KIND_SEARCHES].sort(), phrases.sort());
 });

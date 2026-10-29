@@ -68,7 +68,7 @@ test("App: every way of adding, setting or removing a point is handed the toggle
   assert.match(app, /addPoint\(current, point, loopVias\)/);
   assert.match(app, /const said = kindSaid\(next, index, VIA_MARKS\.isVia, loopVias, "added"\);/);
   assert.match(app, /stationEdit\(pointsRef\.current, point, role, loopVias\)/);
-  assert.match(app, /announce\(loopOff \? `\$\{stationSaid\(edit\.index, edit\.next\.length, false\)\} Loop off\.` : stationSaid\(edit\.index, edit\.next\.length, loopVias\)\)/);
+  assert.match(app, /announce\(loopOff \? `\$\{stationSaid\(edit\.index, edit\.next\.length, false\)\} \$\{t\("Loop off\."\)\}` : stationSaid\(edit\.index, edit\.next\.length, loopVias\)\)/);
   // An end set on a loop (a station's End here, the road panel's Set as end) turns the loop off in the same edit.
   assert.match(app, /const loopOff = loopVias && role === "end";[\s\S]{0,120}commit\(edit\.next, loopOff \? \{ \.\.\.ride, dials: withLoop\(ride\.dials, false\) \} : undefined\)/);
   assert.match(app, /commit\(placed\.next, placed\.loopOff \? \{ \.\.\.ride, dials: withLoop\(ride\.dials, false\) \} : undefined\)/);
@@ -133,7 +133,7 @@ test("App hands the toggle to the search, the map, the points list and the GPX",
   const app = appSource();
   // Plan's From, To and Add a stop (Plan streamline, 2026-10-17).
   assert.match(app, /<PlaceSearch\s+key=\{variant\}\s+variant=\{variant\}\s+pointCount=\{points\.length\}\s+loop=\{loopVias\}/);
-  assert.match(app, /<MapView\s+points=\{onBike \|\| reviewing \? NO_POINTS : points\}\s+loopVias=\{loopVias\}/);
+  assert.match(app, /<LiveMap\s+points=\{onBike \|\| reviewing \? NO_POINTS : points\}\s+loopVias=\{loopVias\}/);
   assert.match(app, /rows=\{pointRows\(points, names, loopVias, VIA_MARKS\.isVia\)\}/);
 });
 
