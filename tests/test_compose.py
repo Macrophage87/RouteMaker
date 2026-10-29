@@ -450,10 +450,8 @@ NOT_DELIVERED_TO_THE_API: dict[str, tuple[str, ...] | None] = {
     # an empty default - and until then a deployment that has its own tiles
     # reaches the container the same way any other unlisted variable does.
     "ADMIN_BASEMAP_TILE_URL": None,
-    # The nightly dump's public-key file, read by the worker's backup task alone. Its default
-    # (DATA_ROOT/backups/age-recipients.txt) is the path every deployment uses, so no service
-    # declares it; docs/OPERATIONS.md says to set it in the worker's environment to move it.
-    "BACKUP_AGE_RECIPIENTS": None,
+    # The public-key file the nightly dump is encrypted to, read by the worker's backup task alone.
+    "BACKUP_AGE_RECIPIENTS": ("worker",),
 }
 
 
