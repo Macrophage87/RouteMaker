@@ -257,7 +257,9 @@ class TestNearestDetails:
         )
         fake = router(FakeRouter({"sources_to_targets": row_answer([(1, 1)] * 3)}))
         assert post(client, {"points": [HERE, *PLACES], "preset": "default"}).status_code == 200
-        assert fake.calls[0][1]["sources"] == [{"lon": racks[0], "lat": racks[1]}]
+        assert fake.calls[0][1]["sources"] == [
+            {"lon": racks[0], "lat": racks[1], "radius": routing.STOP_RADIUS_M}
+        ]
 
     def test_cargo_with_people_is_asked_at_its_own_start(self, client, router) -> None:
         fake = router(FakeRouter({"sources_to_targets": row_answer([(1, 1)] * 3)}))
