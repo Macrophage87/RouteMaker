@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { CLEARED_SAID, ROUTE_UP_TO_DATE, planRowShown } from "./planFirst.ts";
+import { CLEARED_SAID, GO_CLEARED_SAID, ROUTE_UP_TO_DATE, planRowShown } from "./planFirst.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const app = read("../App.tsx");
@@ -45,7 +45,9 @@ test("Reset goes back to the drawn plan without routing, Clear keeps the ride, a
 
 test("Clear says so and hands the focus to the place search; Plan's Clear stays focusable (review a11y-1)", () => {
   assert.equal(CLEARED_SAID, "Plan cleared. Undo brings it back.");
-  assert.match(app, /commit\(\[\], ride\.imported \|\| startDials !== ride\.dials \? \{ \.\.\.ride, imported: null, dials: startDials \} : undefined\);\s*\/\/[^\n]*\n\s*announce\(CLEARED_SAID\);\s*focusAfterRemove\.current = -1;/);
+  // Go names the route, as its Clear button does.
+  assert.equal(GO_CLEARED_SAID, "Route cleared. Undo brings it back.");
+  assert.match(app, /commit\(\[\], ride\.imported \|\| startDials !== ride\.dials \? \{ \.\.\.ride, imported: null, dials: startDials \} : undefined\);\s*\/\/[^\n]*\n\s*announce\(modeRef\.current === "go" \? GO_CLEARED_SAID : CLEARED_SAID\);\s*focusAfterRemove\.current = -1;/);
   // -1: no Remove button, the search; Go's Where to? waits for the cleared route to stop hiding it.
   assert.match(app, /const target = index < 0 \? null : removeRefs\.current/);
   assert.match(app, /panelRef\.current\?\.querySelector\("\.go-search"\)/);

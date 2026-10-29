@@ -1205,8 +1205,9 @@ What the edge does with it (Caddyfile, `@frontend`):
   (the owner, 2026-10-19), served like the stress page and replaced by a rename
   like it; `/about/route-example.webp` is the routing page's example map. Settings links to the first,
   the map's credits to the last. A new page under `about/` has to be added to
-  `@frontend`, the beta template's `/about/` location and the publish command
-  above (`tests/test_deploy_docs.py` and `tests/test_beta_overlay.py` check).
+  `@frontend` and the publish command above (`tests/test_deploy_docs.py` and
+  `tests/test_beta_overlay.py` check); the beta template's `/about/` location
+  serves any `/about/<name>.html` or `.webp` the build has, so it needs no change.
 - `index.html` and `licenses.txt` are `Cache-Control: no-cache`, so a deploy
   is seen on the next load; the files under `assets/` are content-hashed and
   `max-age=31536000, immutable` - only files that exist, so a 404 is not

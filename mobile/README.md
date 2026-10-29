@@ -32,8 +32,10 @@ and its Broadcast copies the link instead, for the rider to paste.
 
 **Opening a RouteMaker link in the app** (v0.9.0 app): in any app, Share the link and pick RouteMaker.
 `SharedLink.java` takes the first https link in the shared text and opens it only when it is on the site kept
-on this phone; any other link is refused with a short message. Opening a shared link replaces the page
-shown, a ride in progress included.
+on this phone; any other link is refused with a short message. With the app already open on the site, the
+link is handed to the page (`MainActivity.handToPage`, `frontend/src/lib/rideLinks.ts`): it opens at once, but
+during a ride or Roam the page first asks "Leave your ride to open this link?", and No keeps the ride going.
+A site from before v0.15.0, or a page that is not the site's, gets the link opened in its place as before.
 
 **Links open in the app** (store build, v0.12.6): a tapped link to the site's map, a ride type's address
 (`/mass-ride`, `/group-ride`, ...) or a shared route's `/s/` link opens the store app instead of the browser,

@@ -512,9 +512,15 @@ test("go start: App asks once when Go opens, says the start politely, and says w
   assert.match(app, /if \(pointsRef\.current\.length > 0\) return;[\s\S]{0,300}?\} else \{\s*\/\/[^\n]*\n\s*flyToInView\(result\.fix\.point, 15\);\s*announce\(GO_START_SAID\);\s*\}/);
   // Not available: said as why (P11): blocked on the start line (said, not shown twice), off the map as that, else "not available".
   assert.match(app, /const none = goStartNone\(result\);\s*setGoStart\(none\);\s*if \(pointsRef\.current\.length === 0\) \{\s*if \(pending\?\.pressed\) setNoticeSaying\(goDestinationNeedsStart\(pending\.name\), goPressNeedsStartSaid\(pending\.name\)\);\s*else if \(pending\) setNotice\(goDestinationNeedsStart\(pending\.name\)\);[\s\S]{0,300}?else if \(none\.kind === "none" && none\.why === "denied"\) announce\(GO_LOCATION_OFF\);\s*else setNotice\(none\.kind === "none" && none\.why === "outside" \? LOCATION_OUTSIDE : GO_START_UNAVAILABLE\);/);
-  // Go offers the routes to choose from at once; Plan keeps its fold.
+  // The routes to choose from start closed in Go too (the half sheet fits one screen); the chip opens them.
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /const \[routesOpen, setRoutesOpen\] = useState\(mode === "go"\);/);
+  assert.match(panel, /const \[routesOpen, setRoutesOpen\] = useState\(false\);/);
+  // Go's trip time and stress bar come before the station options and the bikeshare and transit folds.
+  const goPart = panel.slice(panel.indexOf("if (goMode) {"));
+  const at = (needle: string) => goPart.indexOf(needle);
+  assert.ok(at('<div className="go-head">') < at("<StressFigure"));
+  for (const later of ["<GoBikeOptions", "{!go.peek && bikeshareFold}", "{!go.peek && transitFold}"]) assert.ok(at("<StressFigure") < at(later), later);
+  assert.match(panel, /<Fold title=\{t\("Bikeshare plan"\)\} open=\{!goMode\}/);
 });
 
 // ---- Announcements, Brief or Full (the owner, 2026-10-11 20:23 UTC) ----
