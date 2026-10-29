@@ -45,7 +45,11 @@ test("the cue card keeps its height: a two-line slot for the instruction, one li
   // Large text fits the instruction to the card itself, unclamped.
   assert.match(css, /\.ride-large \.cue-next \.cue-text \{\s*height: auto;\s*display: block;/);
   assert.match(css, /\.ride-large \.cue-next \.cue-text > \[aria-hidden\] \{\s*display: inline;\s*overflow: visible;/);
-  assert.match(ride, /const CUE_TEXT_MIN_PX = 16;/);
+  // Never under the ride's 20 px for street names (the owner, 2026-10-20), the small print and the weak-GPS rows too.
+  assert.match(ride, /const CUE_TEXT_MIN_PX = 20;/);
+  assert.match(css, /\.ride \.cue-more \{\s*font-size: 20px;\s*\}/);
+  assert.match(css, /\.cue-sheet-list li \{[^}]*font-size: max\(20px, 1em\);/);
+  assert.match(css, /\.cue-sheet-list li\.cue-sheet-next \{\s*font-size: max\(24px, 1\.2em\);/);
   assert.match(ride, /for \(let px = Math\.floor\(parseFloat\(getComputedStyle\(line\)\.fontSize\)\) - 1; px >= CUE_TEXT_MIN_PX; px -= 1\)/);
   // The small print is always there, empty too, so the card does not change height between cues.
   assert.match(ride, /<p className="cue-more" aria-hidden="true">\s*\{cueShown\.rest\}\s*<\/p>/);
