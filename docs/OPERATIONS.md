@@ -469,8 +469,9 @@ band, grep `route timing` from the api's log.
   stress edits' generation, a digest of the closures snapshot, the approved
   junction ratings and hazards, and the ride time's rush and weekend state.
   The keep also ends at the next closure start or end and at local midnight.
-  An answer that was cut short (a failed trace, a timed-out search) is not
-  kept. Bikeshare and transit plans are never kept.
+  An answer that was cut short (a failed trace, a timed-out search, or a
+  check or pass skipped or stopped for want of time) is not kept. Bikeshare
+  and transit plans are never kept.
 - `"quick": true` in a request (Go sends it when a ride is not under way) asks
   for the first good route alone: the router's own route, its trace,
   closures, and work zones. It skips the alternates, the calm search, hill
@@ -4887,7 +4888,9 @@ without it NPS is simply not read. The host needs egress to the four hosts (PLAY
 
 1. `runs` shows `refresh_dc_closures` succeeding; a source that failed is named in the
    warning `closures: the <source> source could not be read` (the URL and the key are
-   never logged).
+   never logged). A source with no good read within its "Stale after" time fails the run
+   (`no good read in time: <source>`), so the operations page flags it; its last good copy
+   is still used until "Dropped after".
 2. TOPS: the query asks `where=EXPIRATIONDATE >= DATE 'YYYY-MM-DD'` with `outSR=4326`,
    `f=geojson`, and keeps Status in active, issued or approved. Confirm the layer's field
    names (IsRoadClosed, BikeLaneLength, Status, the effective and expiration dates) and its
@@ -4927,14 +4930,20 @@ out.
 
 1. `python scripts/ddot_advisories.py watch --days 45` lists the dated advisories on every
    DDOT advisories page changed in that time whose link is not yet in the file's `seen`.
+   It first prints a `CHECK:` line for each hand-kept date due a look: a guessed last day
+   (`"end_estimated": true`) within 30 days, this file or the Purple Line's not updated in 45
+   days, and the deer schedules' assumed season (14 days ahead) or last night (30 days ahead).
 2. Read each one (the link is the release, PDF or Word). For a closure, add an entry:
    `id`, `project`, `page` (the advisories page, which the card links), `advisory` (the
    release), `posted`, `road` (as the card says it), `reason`, `first_day`, `last_day` (whole
    days in the region's time; "about eight weeks" counted to its end, "the duration of the
-   project" to the project's stated end), `ways` (OpenStreetMap way ids) and `lines`
+   project" to the project's stated end, with `"end_estimated": true` where the day is
+   counted or guessed rather than given), `ways` (OpenStreetMap way ids) and `lines`
    (`python scripts/ddot_advisories.py lines WAY ...` prints them).
 3. Add the advisory's link to `seen` either way, set `updated` to today, and ship it in the
-   next release. A later advisory that extends or ends a closure changes its `last_day`.
+   next release. A later advisory that extends or ends a closure changes its `last_day`. A
+   file whose `updated` is more than 45 days old is labelled stale on the route ("last read
+   more than 45 days ago"); its closures still stand.
 
 The first entries (2026-10-25): the Connecticut Avenue NW service lanes from Dupont Circle to
 Q Street (both directions, closed since 2025-09-23 for the deckover; OSM already maps them as
@@ -4976,7 +4985,7 @@ closed through October 2026", notice of 2026-07-24; "The long-term lane closure 
 Street (West) between Ramsey Avenue and Georgia Avenue remains in effect through the
 completion of construction", and in the same item "the road closure"; the owner saw it closed).
 The notices give no end for the block, so its last day is 2027-03-31, the Purple Line's spring
-2027 opening: check it in March, and sooner if the Dixon junction's notice (through October
+2027 opening (`end_estimated`, so the watch reminds from March 1): check it in March, and sooner if the Dixon junction's notice (through October
 2026) is not renewed. The strip the router excludes also takes the block's own sidewalks and crossings (3 to 5
 m off the centre line) inside the work zone.
 
@@ -6430,7 +6439,10 @@ nodes and 500 ft (150 m) or less together, that touch bicycle-open ways at two n
 more, on two ways or more, one a trail or a public street, and that are closed only for
 the mountain-bike class, a natural surface, an untagged park path, a footpath for walkers,
 poor visibility, a hiking route, `sac_scale=hiking`, a farm track or a working site
-(`trail_closures.SHORT_LINK_REOPENS`). Their reason is lifted. One with a natural surface,
+(`trail_closures.SHORT_LINK_REOPENS`). A farm track or a working site's way is reopened only
+where its link touches a trail (`SHORT_LINK_TRAIL_ONLY`; the owner, 2026-10-29: "Keep short
+farm tracks and working-site links only where they connect to a trail"): between two streets
+it stays closed, as likely private. Their reason is lifted. One with a natural surface,
 bad smoothness, a grade 4 or 5 track, poor visibility, a hiking rating or of the
 mountain-bike class gets
 `rm:link_walk` (the remap writes `bicycle=dismount`, and the route says to walk); the rest
@@ -7306,7 +7318,12 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
   written to a run row. Rotating it: docs/DEPLOYMENT.md, "Secrets".
 - What a plan does: a zone closed to bicycles (every lane closed, the bike lane listed closed) is
   left out of every router request (`exclude_polygons`, a strip 6 m [20 ft] either side of the
-  zone's line, trimmed 20 m [66 ft] at each end so cross streets stay open). Every other zone in
+  zone's line, trimmed 20 m [66 ft] at each end so cross streets stay open). The line is kept to
+  within 3 m [10 ft] of the road in at most 12 points, so a curved road stays inside its strip; a
+  longer winding one gets a wider strip instead. Where more closures are in force than the
+  router takes (100 vertices in all), those nearest the line through the rider's points in
+  order are kept and the rest are warned of. The answer is checked against the closures it
+  went round: one it still runs along is warned of in red, not counted as routed round. Every other zone in
   force at the ride time that the route runs along costs its penalty: 60 s shoulder only, 120 s a
   lane closed, 180 s a flagger or alternating one-way, 600 s every lane closed with bicycles not
   mentioned (shown in red). The plan asks once for the route round those zones and keeps it where
