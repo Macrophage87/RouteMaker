@@ -723,7 +723,7 @@ offline on a planned route (up to 10).</li>
 background location, a screen wake lock and spoken cues during a ride, and, from its next update, Android's own share sheet for sharing a route or ride.</li>
 <li><strong>Accounts.</strong> Sign-in uses Discord with the narrowest permission (your user id).
 RouteMaker exchanges the sign-in code once and keeps no Discord token.</li>
-<li><strong>Garmin and Wahoo.</strong> When you connect Garmin or Wahoo in Settings, the server
+<li><strong>Garmin and Wahoo.</strong> When you connect Garmin or Wahoo in Settings, Account, the server
 keeps that service's sign-in token, encrypted under a key that is never in the database. It contacts
 Garmin (diauth.garmin.com to sign in and renew the token, apis.garmin.com for the rest) or api.wahooligan.com only to send the routes you choose, read your account number once, and end the
 connection when you disconnect or delete your account. Deleting your account also removes from Wahoo up to 100 routes RouteMaker sent there.</li>
@@ -742,7 +742,7 @@ the pages are the same for every reader.</li>
 after it was last opened. Where the route starts, ends or stops near Home, its preview image leaves out the route and pins inside Home's circle and keeps the map there.</li>
 <li><strong>AI assistants.</strong> RouteMaker has a Model Context Protocol<sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a></sup> server, so an AI
 assistant can find places and plan and revise routes. Through the site's connector, after you sign
-in, it can save routes to your account, and Settings lists each connected assistant with a Disconnect
+in, it can save routes to your account, and Settings, Account, lists each connected assistant with a Disconnect
 button; instance admins can also have it draft Featured routes posts. Run on your own computer, the
 server plans and writes GPX files only. See <a href="/about/assistants.html">AI
 assistants</a>.</li>
@@ -792,7 +792,7 @@ release has short rider-facing notes.</li>
 <p class="next">Next: <a href="/about/acknowledgements.html">Acknowledgements</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.13.2. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.14.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

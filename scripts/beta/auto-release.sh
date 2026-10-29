@@ -541,7 +541,7 @@ rollback() { # old-sha old-short
 				fi
 				;;
 			restore-index) restore_frontend "$(cat "$cd_dir/run-index" 2>/dev/null)" || { say "FAILED: put the old front end's top-level files back (index.html, beta-build.txt)"; ok=0; } ;;
-			start-app) step "start the api and worker" bc up -d api worker </dev/null || ok=0 ;;
+			start-app) { step "start the api and worker" bc up -d api worker </dev/null && wait_healthy && sync_rows; } || ok=0 ;;
 			# The four only: the release rolled back to may be one whose compose gives the trail routers their old
 			# 768M caps, over the budget, so a rollback never starts them; nothing here stops them either, that is
 			# done by hand (docs/BETA-RUNBOOK.md, rollback A).
@@ -553,6 +553,14 @@ rollback() { # old-sha old-short
 		esac
 	done
 	[ "$ok" = 1 ]
+}
+
+# The settings rows the api serves each variant by, from the tile links (manage.py sync_upstreams):
+# nothing else on the beta writes them, and a restored snapshot brings back the old ones. Idempotent,
+# and a warning only (an image from before the command has none).
+sync_rows() {
+	step "write the routers' settings rows from the tile links" bc exec -T api ./manage.py sync_upstreams </dev/null ||
+		say "WARNING: sync_upstreams failed (see the run log); run it by hand: scripts/beta/beta-compose.sh exec -T api ./manage.py sync_upstreams"
 }
 
 # The api image, with pip's network: a failure is tried again twice (a pip index or network blip),
@@ -647,11 +655,27 @@ deploy() { # tag new-sha gate-file
 		mark services "recreate photon and the routers whose compose settings changed" || return 1
 		step "recreate photon and the routers" bc up -d photon "${running[@]}" </dev/null || return 1
 	fi
+	# A trail router whose tiles are here but which is not running (never started, or stopped) is
+	# started on every deploy: only a compose change recreated them before, so a beta whose trail
+	# tiles arrived with a map swap planned Mountain Bike on the standard graph for releases on end.
+	# `up -d` leaves a running one alone.
+	local -a trail=()
+	local router
+	for router in "${running[@]}"; do
+		case "$router" in valhalla-offroad | valhalla-mtb) trail+=("$router") ;; esac
+	done
+	if [ "${#trail[@]}" -gt 0 ]; then
+		# Never a reason to roll a release back: without them those rides are planned on the
+		# standard graph, as before.
+		step "start the trail routers if they are not running" bc up -d "${trail[@]}" </dev/null ||
+			say "WARNING: a trail router did not start (see the run log); Mountain Bike, Gravel and Mountain Goat are planned on the standard graph"
+	fi
 	if [ "$(kv routers_restart "$gate_file")" = 1 ]; then
 		mark routers "restart the routers (a valhalla/*.json they read changed)" || return 1
 		step "restart the routers" bc restart "${running[@]}" </dev/null || return 1
 	fi
 	wait_healthy || { say "FAILED: /healthz did not answer 200 (60 tries, 3 s apart)"; return 1; }
+	sync_rows
 	step "migrations check" bc exec -T api ./manage.py migrate --check </dev/null || return 1
 	step "collectstatic" bc exec -T api ./manage.py collectstatic --noinput </dev/null || return 1
 	smoke || { say "FAILED: the smoke tests"; return 1; }

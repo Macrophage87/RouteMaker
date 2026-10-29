@@ -14,6 +14,8 @@
  * The environment is passed in (as geolocation.ts's GeoEnv) so the tests drive it with stand-ins.
  */
 
+import { t } from "./i18n.ts";
+
 /** The message the worker skips waiting on (src/sw/swCore.mjs SKIP_WAITING). */
 export const SKIP_WAITING = "SKIP_WAITING";
 export const WORKER_URL = "/sw.js";
@@ -24,6 +26,18 @@ export const UPDATE_RELOAD = "Reload";
 export const UPDATE_RELOAD_NAME = "Reload RouteMaker to use the new version";
 export const OFFLINE_SAID = "You are offline. RouteMaker still opens, and routes you kept for offline open from Save & load.";
 export const ONLINE_SAID = "Back online.";
+/** Offline with a route on screen (P11): the route stays, and this one line says so. */
+export const OFFLINE_LAST_ROUTE = t("Offline: showing your last route.");
+
+/**
+ * The one offline line at the top of the planner (P11): the last route kept on screen, else where kept routes open
+ * (OFFLINE_SAID, the Save & load hint, only with no route). Null online, and while the route's error box says it,
+ * so there is one message, not two boxes.
+ */
+export function offlineLine(state: { offline: boolean; routeShown: boolean; errorSaysIt: boolean }): string | null {
+  if (!state.offline || state.errorSaysIt) return null;
+  return state.routeShown ? OFFLINE_LAST_ROUTE : OFFLINE_SAID;
+}
 
 /** Whether the update offer shows: a worker waiting, and no ride under way. */
 export function updateOffered(ready: boolean, riding: boolean): boolean {

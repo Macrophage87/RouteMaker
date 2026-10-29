@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { ES } from "../i18n/es.ts";
 import { crashReport, errorText, KEPT_ERRORS, logError, safeFragment, withoutPlaces, type LoggedError } from "./crashReport.ts";
 
 test("the link's places are left out of the report, its settings kept", () => {
@@ -57,4 +59,13 @@ test("coordinates and tile numbers in an error's own text are left out", () => {
   assert.equal(withoutPlaces("at https://x/index.js?v=abc:12:345"), "at https://x/index.js?(query left out):12:345", "a stack's line and column stay");
   assert.equal(withoutPlaces("RouteMaker 0.12.2, maplibre 6.14.0"), "RouteMaker 0.12.2, maplibre 6.14.0", "version numbers stay");
   assert.equal(withoutPlaces("maplibre 3.10.11, 2.15.3; zoom 14.25, 15.50"), "maplibre 3.10.11, 2.15.3; zoom 14.25, 15.50");
+});
+
+test("the crash screen says to paste the report in our Discord, linked as the beta notice links it (P11)", () => {
+  const screen = readFileSync(new URL("../CrashScreen.tsx", import.meta.url), "utf8");
+  assert.match(screen, /t\("Error report copied\. Paste it into your bug report in our Discord\."\)/);
+  assert.match(screen, /import \{ BETA_DISCORD_TEXT, BETA_DISCORD_URL \} from "\.\/lib\/betaBanner\.ts";/);
+  assert.match(screen, /<a href=\{BETA_DISCORD_URL\} target="_blank" rel="noopener noreferrer">/);
+  assert.match(screen, /\{saidWithDiscord\(said\)\}/);
+  assert.match(ES["Error report copied. Paste it into your bug report in our Discord."], /Discord\.$/, "the Spanish keeps the word the link is on");
 });

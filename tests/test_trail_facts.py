@@ -50,3 +50,11 @@ def test_an_unknown_surface_is_said_as_mapped_and_other_unknowns_are_left_out() 
     assert trail_facts.rows(kept) == [("trail_surface", "Trail surface", "Artificial turf")]
     assert trail_facts.rows(None) == []
     assert trail_facts.rows({"mtb:scale:uphill": "9"}) == []
+
+
+def test_the_two_difficulty_scales_are_kept_with_no_line_of_their_own() -> None:
+    """Kept so the panel and the hover card can say which scale set a trail's level (the
+    owner, 2026-10-28; `singletrack.mtb_scale_words`), and said nowhere else."""
+    kept = trail_facts.facts({"mtb:scale": "2", "mtb:scale:imba": "3", "highway": "path"})
+    assert kept == {"mtb:scale": "2", "mtb:scale:imba": "3"}
+    assert trail_facts.rows(kept) == []

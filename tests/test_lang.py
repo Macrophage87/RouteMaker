@@ -102,7 +102,11 @@ def test_no_phrase_is_left_over():
 def test_english_unless_asked():
     assert lang.language() == "en"
     assert lang.t("Continue onto {street}", street="B") == "Continue onto B"
-    with lang.speaking("fr"):
+    with lang.speaking("xx"):
+        assert lang.language() == "en"
+    # A language the app has but this server has no sentences for yet: wholly English.
+    with lang.speaking("am"):
+        assert not lang.catalog("am")
         assert lang.language() == "en"
     with lang.speaking("es"):
         assert lang.t("Continue onto {street}", street="B") == "Continúe por B"
@@ -258,6 +262,8 @@ def test_a_pool_thread_speaks_the_requests_language(settings):
 def test_a_language_the_server_does_not_word_is_english():
     from core.api import RouteIn
 
+    assert RouteIn._known_language("de") == "en"
+    # French is a Go and Ride language with no server catalog (only lang_es.py): English.
     assert RouteIn._known_language("fr") == "en"
     assert RouteIn._known_language("es") == "es"
 
@@ -405,3 +411,33 @@ class TestTransitAndBikeshareSteps:
             assert out["steps"][0]["text"].startswith("Vaya en bicicleta 2.5 mi (4.0 km) hasta")
             assert out["summary"].startswith("Bikeshare, bicicleta clásica: unos 30 min en total.")
             assert out["steps"][0]["text"] in out["summary"]
+
+
+def test_dcs_languages_match_the_apps():
+    """The server words the languages the app offers (frontend/src/lib/i18n.ts LANGUAGES),
+    each catalog keeping its English's {places}."""
+    app = (SRC.parent / "frontend/src/lib/i18n.ts").read_text()
+    listed = re.search(r"export const LANGUAGES = \[(.*?)\] as const", app, re.S)
+    assert listed
+    assert tuple(re.findall(r'"(\w+)"', listed[1])) == lang.LANGUAGES
+    for code in lang.LANGUAGES:
+        for english, text in lang.catalog(code).items():
+            assert sorted(_PLACE.findall(text)) == sorted(_PLACE.findall(english)), (code, english)
+
+
+def test_a_way_by_what_it_is_in_another_language(monkeypatch):
+    """The API's way words through the language's catalog; a real name as it is."""
+    fake = {"the path": "le sentier", "{way} beside {road}": "{way} le long de {road}"}
+    monkeypatch.setattr(lang, "catalog", lambda code: fake if code == "fr" else {})
+    with lang.speaking("fr"):
+        said = lang.way_said("path beside East-West Highway")
+        assert said == "le sentier le long de East-West Highway"
+        assert lang.way_said("path") == "le sentier"
+        assert lang.way_said("R Street Northwest") is None
+        assert d.ordinal(3) == "3"
+    with lang.speaking("en"):
+        assert lang.way_said("path") is None
+    # A language with no sentences yet is English throughout: "3rd", never a bare "3".
+    with lang.speaking("am"):
+        assert lang.language() == "en"
+        assert d.ordinal(3) == "3rd"

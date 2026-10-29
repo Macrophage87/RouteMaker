@@ -21,23 +21,23 @@
  * Written with createElement, like CandidatePicker, so a test renders it.
  */
 import { createElement as h, useId, useRef, useState, type ReactElement } from "react";
+import { t } from "./i18n.ts";
 
-export const BETA_BANNER_TEXT =
-  "Beta: routes may still use some paths where bikes aren't allowed until the next map update. If anything looks wrong, tell us on";
+export const BETA_BANNER_TEXT = t("Beta: routes may still use some paths where bikes aren't allowed until the next map update. If anything looks wrong, tell us on");
 
 export const BETA_DISCORD_TEXT = "Discord";
 
 export const BETA_DISCORD_URL = "https://discord.gg/Qwz6BEt6gc";
 
-export const BETA_SIGNUP_TEXT = "Sign up to test here!";
+export const BETA_SIGNUP_TEXT = t("Sign up to test here!");
 
 export const BETA_SIGNUP_URL = "https://forms.gle/dipMsGpheyF3oQA59";
 
-export const BETA_REPORT_LINK_TEXT = "Report a problem";
+export const BETA_REPORT_LINK_TEXT = t("Report a problem");
 
 export const BETA_CHIP_TEXT = "Beta";
 
-export const BETA_NOTICE_NAME = "Beta notice";
+export const BETA_NOTICE_NAME = t("Beta notice");
 
 /** Whether this build is the beta build: VITE_BETA is "1" (or "true"), nothing else. */
 export function isBetaBuild(flag: unknown): boolean {
@@ -81,7 +81,7 @@ export function BetaChip(props: Props): ReactElement | null {
       "a",
       { href, target: "_blank", rel: "noopener noreferrer" },
       text,
-      h("span", { className: "visually-hidden" }, " (opens in a new tab)"),
+      h("span", { className: "visually-hidden" }, ` ${t("(opens in a new tab)")}`),
     );
   const report = props.reportUrl && props.reportUrl !== BETA_DISCORD_URL ? link(props.reportUrl, BETA_REPORT_LINK_TEXT) : null;
   return h(

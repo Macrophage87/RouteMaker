@@ -9,8 +9,8 @@
  * Repair chip (behind More) lists the nearest REPAIR_STANDS stands and REPAIR_SHOPS shops together, nearest
  * first, lettered as the other chips' lists (with a route shown, those with the least detour off it, least first:
  * the owner, 2026-10-18, "if on a route we'd want to sort by miles of detour too", "Same for the other detour
- * types"); a stand says what it has ("Pump and tools"), a shop its hours and
- * "Closed now" when its OSM hours say so. Stands are drawn on the map with the Water and restrooms layer (a
+ * types"); a stand says what it has ("Pump and tools"), a shop its hours in words ("Open now · closes 6 PM",
+ * lib/openingHours.ts). Stands are drawn on the map with the Water and restrooms layer (a
  * wrench); shops never are.
  *
  * Plain data in, plain data out, so node --test runs all of it.
@@ -21,6 +21,7 @@ import { haversineM, type LonLat } from "./geo.ts";
 import { hexToRgb, rasterise, type Raster, type Rgb } from "./stationIcons.ts";
 import { WATER_ICON_PADDING } from "./waterRestrooms.ts";
 import { t } from "./i18n.ts";
+import { hoursText, openAt } from "./openingHours.ts";
 
 export interface RepairPlace {
   /** The OSM element, "n123" or "w456". */
@@ -80,70 +81,12 @@ export async function loadRepair(
 
 // --- Opening hours -----------------------------------------------------------
 
-const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-
-function dayList(spec: string): Set<number> | null {
-  const out = new Set<number>();
-  for (const part of spec.split(",")) {
-    const range = /^(Mo|Tu|We|Th|Fr|Sa|Su)(?:-(Mo|Tu|We|Th|Fr|Sa|Su))?$/.exec(part.trim());
-    if (!range) return null;
-    const from = DAYS.indexOf(range[1]);
-    const to = DAYS.indexOf(range[2] ?? range[1]);
-    for (let d = from; ; d = (d + 1) % 7) {
-      out.add(d);
-      if (d === to) break;
-    }
-  }
-  return out;
-}
-
-function minutes(hhmm: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
-  if (!m) return null;
-  const v = Number(m[1]) * 60 + Number(m[2]);
-  return v <= 24 * 60 ? v : null;
-}
-
 /**
- * Whether OSM `opening_hours` says the place is open at `at` (its local clock): true, false, or null when the
- * hours use more than this reads (months, holidays, sunrise, week numbers, comments), so nothing is claimed.
- * Read: "24/7"; rules split on ";", each days ("Mo-Fr", "Sa,Su"; none means every day) and times
- * ("10:00-18:00", several with ","), or "off"/"closed"; a later rule for a day replaces an earlier one, as the
- * OSM wiki's Key:opening_hours specification has it; a time past midnight ("22:00-02:00") runs into the next day.
+ * Whether OSM `opening_hours` says the place is open at `at`, on the region's clock: true, false, or null when the
+ * hours use more than lib/openingHours.ts reads (months, sunrise, week numbers, comments), so nothing is claimed.
  */
 export function openNow(hours: string, at: Date): boolean | null {
-  const spec = hours.trim();
-  if (spec === "24/7") return true;
-  const byDay: Array<Array<[number, number]> | undefined> = new Array(7).fill(undefined);
-  for (const rawRule of spec.split(";")) {
-    const rule = rawRule.trim();
-    if (!rule) continue;
-    const m = /^((?:(?:Mo|Tu|We|Th|Fr|Sa|Su)(?:-(?:Mo|Tu|We|Th|Fr|Sa|Su))?,?)+)?\s*(.*)$/.exec(rule);
-    if (!m) return null;
-    const days = m[1] ? dayList(m[1].replace(/,$/, "")) : new Set([0, 1, 2, 3, 4, 5, 6]);
-    if (!days) return null;
-    const times = m[2].trim();
-    let spans: Array<[number, number]>;
-    if (times === "off" || times === "closed") spans = [];
-    else {
-      spans = [];
-      for (const part of times.split(",")) {
-        const t = /^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/.exec(part.trim());
-        if (!t) return null;
-        const from = minutes(t[1]);
-        const to = minutes(t[2]);
-        if (from === null || to === null) return null;
-        spans.push([from, to]);
-      }
-    }
-    for (const d of days) byDay[d] = spans;
-  }
-  const day = at.getDay();
-  const now = at.getHours() * 60 + at.getMinutes();
-  const today = byDay[day] ?? [];
-  if (today.some(([from, to]) => (to > from ? now >= from && now < to : now >= from))) return true;
-  const yesterday = byDay[(day + 6) % 7] ?? [];
-  return yesterday.some(([from, to]) => to <= from && now < to);
+  return openAt(hours, at);
 }
 
 // --- Words -------------------------------------------------------------------
@@ -164,7 +107,7 @@ export function repairTitle(p: RepairPlace): string {
   return p.name ? `${kind}, ${p.name}` : kind;
 }
 
-/** A stand's kit and fee, or a shop's hours (with "Closed now." or "Open now." when its hours can be read). */
+/** A stand's kit and fee, or a shop's hours in words ("Open now · closes 6 PM.": lib/openingHours.ts). */
 export function repairDetails(p: RepairPlace, at: Date): string[] {
   const out: string[] = [];
   if (p.kind === "stand") {
@@ -175,11 +118,7 @@ export function repairDetails(p: RepairPlace, at: Date): string[] {
     return out;
   }
   if (!p.hours) return ["Hours not listed."];
-  const open = openNow(p.hours, at);
-  if (open === false) out.push("Closed now.");
-  if (open === true) out.push("Open now.");
-  out.push(p.hours === "24/7" ? "Open 24/7." : `Hours: ${p.hours}.`);
-  return out;
+  return [`${hoursText(p.hours, at)}.`];
 }
 
 export const REPAIR_STANDS = 2;
@@ -238,7 +177,7 @@ export function repairText(item: RepairNearby, at: Date): string {
 export const REPAIR_NONE = t("No repair stands or bike shops known yet: they arrive with the next map data update.");
 export const REPAIR_UNAVAILABLE = t("Repair stands and bike shops are unavailable for now; try again shortly.");
 export const REPAIR_NO_ORIGIN = t("Location unknown: press Locate, or move the map.");
-export const REPAIR_NOTE = t("Straight-line distances, or estimated detours with a route; check hours (OpenStreetMap).");
+export const REPAIR_NOTE = t("Estimates; check hours (OpenStreetMap).");
 
 /** The status line once the list is in. */
 export function repairFoundSaid(items: readonly RepairNearby[], fromHere: boolean): string {

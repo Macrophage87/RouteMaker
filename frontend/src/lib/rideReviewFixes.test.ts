@@ -17,7 +17,7 @@ test("a11y-3: going off route, back on, or out of DC hands a dropped focus to Wh
   assert.match(rescue, /if \(rescueRideFocus\(\{ focusWasIn: focusWasIn\.current, before, now, focusLost \}\)\) \{\s*focusWasIn\.current = null;\s*whereRef\.current\?\.focus\(\{ preventScroll: true \}\);/);
   assert.match(ride, /focusWasIn\.current = blockOf\(event\.target, \{ "311": block311\.current, off: blockOff\.current \}\);/);
   assert.match(ride, /<div className="ride-311" ref=\{block311\}/);
-  assert.match(ride, /<div className="actions ride-off-actions" ref=\{blockOff\}>/);
+  assert.match(ride, /<div className="ride-off-actions" ref=\{blockOff\}>/);
   // After show311 is worked out, so it sees this render's value.
   assert.ok(ride.indexOf("const show311 = ride311Shown(") < ride.indexOf("const shownBefore = useRef"));
 });

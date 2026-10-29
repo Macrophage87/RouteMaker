@@ -357,7 +357,8 @@ class RouteIn(Schema):
         max_length=16,
         description=(
             "The language of the route's sentences (the description list, hazards, work-zone"
-            ' lines, climbs): "en" or "es"; any other is answered in English, so an app that'
+            ' lines, climbs): one of routemaker.lang.LANGUAGES ("en", "es", "fr", "am", "zh", ...);'
+            " one without a catalog yet, or any other, is answered in English, so an app that"
             " knows a language this server does not still gets its route. Street and place"
             " names, agencies' own notices and the closure cards' words are not translated."
         ),
@@ -611,7 +612,7 @@ class RouteIn(Schema):
     @classmethod
     def _known_language(cls, value: str) -> str:
         """A language this server does not word is English, so the cache keeps one answer."""
-        return value if value in lang.LANGUAGES else "en"
+        return value if value in lang.LANGUAGES and (value == "en" or lang.catalog(value)) else "en"
 
     @model_validator(mode="after")
     def dials_fit_the_preset(self):
@@ -5652,6 +5653,13 @@ class TrailProfileOut(Schema):
     )
     end: list[float] | None = Field(
         default=None, description="The way's last point, [lon, lat]: the chart's right end."
+    )
+    line: list[list[float]] | None = Field(
+        default=None,
+        description=(
+            "The way's line, [lon, lat] pairs from start to end (thinned to at most 1000"
+            " points): the map lights up the section the chart and the rating are of."
+        ),
     )
 
 
