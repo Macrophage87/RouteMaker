@@ -5158,6 +5158,13 @@ class ReverseIn(Schema):
         return self
 
 
+class PlaceNameIn(ReverseIn):
+    address: bool = Field(
+        default=False,
+        description="Name the point by its house number and street when one is near.",
+    )
+
+
 class PlaceOut(Schema):
     name: str = Field(description="A short name: the place, the street or trail, or 'near X'.")
     label: str = Field(description="One line naming it with its neighbourhood or town.")
@@ -5166,7 +5173,8 @@ class PlaceOut(Schema):
     kind: str = Field(
         description=(
             "Search: Photon's layer (house, street, city, district, other, ...). Names for a"
-            " point: 'street' or 'trail' when named from the route network, 'near' when not."
+            " point: 'street' or 'trail' when named from the route network, 'near' when not,"
+            " 'address' when asked for the street address and a house number is near."
         )
     )
     osm_type: Literal["N", "W", "R"] | None = Field(
@@ -5254,9 +5262,9 @@ def geocode_search(request, params: Query[GeocodeIn], response: HttpResponse):
     same_site_only,
     errors_as_json,
 )
-def geocode_reverse(request, params: Query[ReverseIn], response: HttpResponse):
+def geocode_reverse(request, params: Query[PlaceNameIn], response: HttpResponse):
     try:
-        found = geocode.reverse(params.lat, params.lon, lang=params.lang)
+        found = geocode.reverse(params.lat, params.lon, lang=params.lang, address=params.address)
     except geocode.Unavailable as unavailable:
         logger.warning("place name: neither the router nor the geocoder answered: %s", unavailable)
         return Status(502, {"error": GEOCODER_DOWN})
