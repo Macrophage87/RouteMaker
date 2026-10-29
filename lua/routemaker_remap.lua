@@ -485,6 +485,13 @@ end
 -- What a way inside a cemetery is made (remap_way): destination-only.
 M.CEMETERY_ACCESS = "destination"
 
+-- The `access` values upstream reads as destination-only (its `private` table,
+-- lua/vendor/graph_upstream.lua; tests/lua/test_graph_entry.lua holds the two equal).
+M.UPSTREAM_PRIVATE_ACCESS = {
+  private = true, destination = true, customers = true, delivery = true, permit = true,
+  residents = true,
+}
+
 -- A parking aisle, driveway or drive-through that its own tags open to bicycles
 -- is a link in the bicycle network, not a local-access road. Valhalla's parser
 -- (3.6 to 3.9.1, `pbfgraphparser.cc`) makes every edge of those three uses
@@ -903,11 +910,14 @@ function M.remap_way(tags, derived)
   -- (or by `bicycle=no`). The spur, the walk links (station footways and short informal
   -- connectors) and the ridden sidewalks below are the only places this remap widens a
   -- bicycle tag, and only for the ways the rebuild names.
-  -- On `access=no` the spur is not opened: a bicycle grant there would carry no
-  -- destination-only flag (upstream reads it from `access` and `vehicle`, and `no` is not
-  -- in its private table), so the spur would be through-routable (audit 2026-10-29).
-  if derived.destination_only and tags.access ~= "no" then
-    if tags.access == nil or M.PERMISSIVE_ACCESS[tags.access] then
+  -- The spur is opened only where it ends up destination-only: an open `access` (written
+  -- `destination` here) or one upstream already reads as destination-only. Over any other
+  -- (`no`, `agricultural`, ...) a bicycle grant would carry no destination-only flag
+  -- (upstream reads it from `access` and `vehicle`), so it is left closed (audit 2026-10-29).
+  local spur_access_open = tags.access == nil or M.PERMISSIVE_ACCESS[tags.access]
+  if derived.destination_only
+    and (spur_access_open or M.UPSTREAM_PRIVATE_ACCESS[tags.access]) then
+    if spur_access_open then
       out.access = M.CEMETERY_ACCESS
     end
     out.bicycle = "destination"

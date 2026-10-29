@@ -1455,10 +1455,16 @@ check("a stricter access in a cemetery is kept",
   M.remap_way({ highway = "service", access = "private" }, { cemetery = true }).access == nil)
 check("a way outside one is untouched",
   M.remap_way({ highway = "path" }, {}).access == nil)
--- The Zoo spur is not opened over access=no (audit 2026-10-29).
+-- The Zoo spur is opened only where it ends up destination-only (audit 2026-10-29).
 local barred = M.remap_way({ highway = "service", access = "no" }, { destination_only = true })
 check("a destination-only way on access=no is not opened",
   barred.bicycle == nil and barred.access == nil)
+check("nor on access=agricultural",
+  M.remap_way({ highway = "service", access = "agricultural" },
+    { destination_only = true }).bicycle == nil)
+check("but one on access=private is, its access kept",
+  M.remap_way({ highway = "service", access = "private" }, { destination_only = true }).bicycle
+    == "destination")
 -- A directional vehicle grant, as a plain one.
 check("vehicle:forward=private on a footway closes that direction",
   M.remap_way({ highway = "footway", ["vehicle:forward"] = "private" }, {})["bicycle:forward"]

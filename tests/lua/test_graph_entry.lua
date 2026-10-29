@@ -1151,12 +1151,29 @@ local _, closed_cemetery = transform_way({ highway = "service", access = "no",
 check("a cemetery way its own access closes stays closed",
   closed_cemetery.bike_forward == "false", tostring(closed_cemetery.bike_forward))
 
--- The Zoo spur is never opened over access=no, where no destination-only flag would follow.
-local _, barred_spur = transform_way({ highway = "service", access = "no",
-  ["rm:destination_only"] = "zoo", ["rm:stress_tier"] = "1" })
-check("a Zoo spur on access=no is not opened",
-  barred_spur.bike_forward == "false" and barred_spur.bike_backward == "false",
-  tostring(barred_spur.bike_forward) .. "/" .. tostring(barred_spur.bike_backward))
+-- The Zoo spur is opened only where it ends up destination-only.
+for _, access in ipairs({ "no", "agricultural", "forestry" }) do
+  local _, barred_spur = transform_way({ highway = "service", access = access,
+    ["rm:destination_only"] = "zoo", ["rm:stress_tier"] = "1" })
+  check("a Zoo spur on access=" .. access .. " is not opened",
+    barred_spur.bike_forward == "false" and barred_spur.bike_backward == "false",
+    tostring(barred_spur.bike_forward) .. "/" .. tostring(barred_spur.bike_backward))
+end
+for _, access in ipairs({ "yes", "private" }) do
+  local _, spur = transform_way({ highway = "footway", access = access,
+    ["rm:destination_only"] = "zoo" })
+  check("a Zoo spur on access=" .. access .. " is opened, destination-only",
+    spur.bike_forward == "true" and spur.private == "true",
+    tostring(spur.bike_forward) .. " " .. tostring(spur.private))
+end
+-- The remap's table of upstream's destination-only access values is upstream's own.
+for value, flag in pairs(private) do
+  check("UPSTREAM_PRIVATE_ACCESS agrees with upstream on " .. value,
+    (remap.UPSTREAM_PRIVATE_ACCESS[value] == true) == (flag == "true"), value)
+end
+for value in pairs(remap.UPSTREAM_PRIVATE_ACCESS) do
+  check("UPSTREAM_PRIVATE_ACCESS holds only upstream's values: " .. value, private[value] == "true")
+end
 
 -- A conditional grant never reopens what the remap itself closed (audit 2026-10-29): a
 -- bridge roadway the crossings fixture calls illegal stays closed both ways at every hour.
