@@ -601,14 +601,14 @@ class TestCacheParts:
     @pytest.mark.django_db
     def test_kept_no_later_than_a_closure_starts_or_ends(self, settings, monkeypatch) -> None:
         settings.ROUTE_CACHE_TTL_S = route_cache.TTL_S
-        soon = datetime.now(UTC) + timedelta(minutes=3)
+        soon = datetime.now(UTC) + timedelta(minutes=1)
         zone = wz.Zone("z", "md", wz.CLOSED, 0, ((0, 0), (0, 1)), None, None, soon, None)
         found = workzones.Snapshot((zone,), {"md": "current"}, {"md": None})
         monkeypatch.setattr(workzones, "snapshot", lambda now=None: found)
         monkeypatch.setattr(route_cache, "_edits_part", lambda: [1, [], 0])
         monkeypatch.setattr(route_cache, "_approved_part", lambda preset: [])
         key = route_cache.key_for({"points": [[0, 0]], "preset": "default"}, "night", "t", "")
-        assert key is not None and 150 < key.valid_s <= 180
+        assert key is not None and 30 < key.valid_s <= 60
 
     def test_the_request_part_leaves_quick_out_and_rounds_the_points(self) -> None:
         a = route_cache.request_part({"points": [[-77.04001, 38.90001]], "quick": True})
@@ -738,10 +738,10 @@ class TestSharedCache:
     ) -> None:
         kept: list = []
         monkeypatch.setattr(shared, "set", lambda name, value, timeout: kept.append(timeout))
-        route_cache.put("a", {"provisional": False}, 179.9)
+        route_cache.put("a", {"provisional": False}, 79.9)
         route_cache.put("b", {"provisional": False}, 0.5)
         route_cache.put("c", {"provisional": False}, 10_000)
-        assert kept == [179, route_cache.TTL_S]
+        assert kept == [79, route_cache.TTL_S]
 
     def test_an_answer_too_large_for_memcached_is_not_sent(self, shared, monkeypatch) -> None:
         monkeypatch.setattr(route_cache, "MAX_SHARED_BYTES", 64)
@@ -836,3 +836,38 @@ class TestCachesSetting:
         # An item stored with pymemcache's pickle flag (1) by anything else is a miss.
         assert serde.deserialize("k", pickle.dumps({"a": 1}), 1) is None
         assert serde.deserialize("k", b"answer", 0) == b"answer"
+
+
+def test_no_answer_is_kept_past_2_minutes_whatever_is_set(settings) -> None:
+    # Stephen 2026-10-29: a "From my location" start is a live location, kept 2 minutes at most.
+    assert route_cache.TTL_S == 120
+    settings.ROUTE_CACHE_TTL_S = 600
+    assert route_cache.ttl_s() == 120
+    settings.ROUTE_CACHE_TTL_S = 30
+    assert route_cache.ttl_s() == 30
+    settings.ROUTE_CACHE_TTL_S = 0
+    assert route_cache.ttl_s() == 0
+
+
+def test_an_expired_answer_is_swept_even_when_nobody_asks_again(settings, monkeypatch) -> None:
+    # A quiet worker keeps no route, and its start, past its 2 minutes (core.weather's sweep).
+    settings.ROUTE_CACHE_TTL_S = route_cache.TTL_S
+    settings.ROUTE_CACHE_LOCATION = ""
+    monkeypatch.setattr(route_cache, "_shared", lambda: None)
+    now = [1000.0]
+    timers: list = []
+    monkeypatch.setattr(route_cache, "_clock", lambda: now[0])
+    monkeypatch.setattr(route_cache, "_later", lambda delay, run: timers.append((delay, run)))
+    monkeypatch.setattr(route_cache, "_sweep_due", False)
+    route_cache.clear()
+    route_cache.put("a", {"provisional": False})
+    route_cache.put("b", {"provisional": False}, 30)
+    assert len(timers) == 1 and timers[0][0] == route_cache.TTL_S
+    now[0] += route_cache.TTL_S
+    timers.pop()[1]()
+    assert route_cache.size() == 0 and not timers
+    # Asked or added later, what has expired goes too.
+    route_cache.put("c", {"provisional": False}, 10)
+    now[0] += 10
+    route_cache.put("d", {"provisional": False}, 50)
+    assert ("c", route_cache.FULL) not in route_cache._entries

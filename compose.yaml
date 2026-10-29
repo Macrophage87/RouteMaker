@@ -255,7 +255,8 @@ services:
       # flight on its pool (1: one at a time), and how long a finished answer is kept in a
       # worker's memory (0: not kept).
       ROUTER_PARALLEL_CALLS: ${ROUTER_PARALLEL_CALLS:-3}
-      ROUTE_CACHE_TTL_S: ${ROUTE_CACHE_TTL_S:-600}
+      # At most 120 (2 minutes): core.route_cache keeps nothing longer, whatever is set.
+      ROUTE_CACHE_TTL_S: ${ROUTE_CACHE_TTL_S:-120}
       # A memcached the workers share their answers through (host:port; audit S14). Empty
       # here: this stack runs none (its limits already reach the 32 GB host's at the swap
       # peak), so each worker keeps its own. compose.beta.yaml sets it to its own memcached.

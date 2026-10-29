@@ -2,7 +2,12 @@
 
 Re-opening a plan, Undo, the Home chip and Go's early start (step 4) ask for the same
 route again within minutes; each used to be a whole plan. An answer is kept here for
-`TTL_S` (10 minutes) and given again for an identical request, so those are instant.
+`TTL_S` (2 minutes) and given again for an identical request, so those are instant.
+
+**At most 2 minutes** (Stephen 2026-10-29): a route's start is often "From my location", which
+counts as a live location, and nothing of that kind stays on the server longer than 2 minutes
+(core.ride_presence, the same rule). The cache cannot tell such a start from any other, so
+every answer goes at 2 minutes, and no setting keeps one longer (`ttl_s`).
 
 **The key** is everything the answer is made from:
 
@@ -68,7 +73,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-TTL_S = 10 * 60
+TTL_S = 2 * 60
 MAX_ENTRIES = 128
 # Points are compared at this many decimal places of a degree: 1e-4 is about 11 m of
 # latitude and 9 m of longitude here.
@@ -95,13 +100,14 @@ _entries: OrderedDict[tuple[str, str], _Entry] = OrderedDict()
 
 
 def ttl_s() -> float:
-    """How long an answer is kept: `settings.ROUTE_CACHE_TTL_S`, `TTL_S` unless set; 0
-    turns the cache off (the test suite, whose tests change the segment table under a
-    plan directly, without the edit generation an edit bumps)."""
+    """How long an answer is kept: `settings.ROUTE_CACHE_TTL_S`, `TTL_S` unless set, and
+    never past `TTL_S` (the 2-minute rule); 0 turns the cache off (the test suite, whose
+    tests change the segment table under a plan directly, without the edit generation an
+    edit bumps)."""
     from django.conf import settings
 
     try:
-        return max(0.0, float(getattr(settings, "ROUTE_CACHE_TTL_S", TTL_S)))
+        return min(float(TTL_S), max(0.0, float(getattr(settings, "ROUTE_CACHE_TTL_S", TTL_S))))
     except (TypeError, ValueError):
         return float(TTL_S)
 
@@ -209,6 +215,42 @@ def _clock() -> float:
     return time.monotonic()
 
 
+def _later(delay: float, run: Callable[[], None]) -> None:
+    timer = threading.Timer(delay, run)
+    timer.daemon = True
+    timer.start()
+
+
+# A sweep is due: one at a time, so a busy worker starts no pile of timers.
+_sweep_due = False
+
+
+def _prune(now: float) -> None:
+    """Drop every expired answer (called with the lock held)."""
+    for gone in [k for k, e in _entries.items() if e.expires <= now]:
+        del _entries[gone]
+
+
+def _sweep() -> None:
+    """Drop what has expired even when nothing asks again, so a quiet worker keeps no route,
+    and its start, past its 2 minutes (as core.weather and core.ride_presence sweep)."""
+    global _sweep_due
+    with _lock:
+        _sweep_due = False
+        now = _clock()
+        _prune(now)
+        if _entries:
+            _schedule(max(0.0, min(e.expires for e in _entries.values()) - now))
+
+
+def _schedule(delay: float) -> None:
+    """A sweep in `delay` seconds, unless one is due (called with the lock held)."""
+    global _sweep_due
+    if not _sweep_due:
+        _sweep_due = True
+        _later(delay, _sweep)
+
+
 def get(key: str, quick: bool = False) -> dict | None:
     """The answer kept for `key`: the full plan's, or for a quick request the first
     route's where no full plan is kept. None where neither is, or it has expired."""
@@ -218,6 +260,7 @@ def get(key: str, quick: bool = False) -> dict | None:
         return _shared_get(shared, key, kinds)
     now = _clock()
     with _lock:
+        _prune(now)
         for kind in kinds:
             entry = _entries.get((key, kind))
             if entry is None:
@@ -241,7 +284,10 @@ def put(key: str, body: dict, valid_s: float = TTL_S) -> None:
         _shared_put(shared, key, kind, body, ttl)
         return
     with _lock:
-        _entries[(key, kind)] = _Entry(body, _clock() + ttl)
+        now = _clock()
+        _prune(now)
+        _entries[(key, kind)] = _Entry(body, now + ttl)
+        _schedule(ttl)
         _entries.move_to_end((key, kind))
         if kind == FULL:
             # The full plan supersedes its first route.

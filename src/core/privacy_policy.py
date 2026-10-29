@@ -8,7 +8,8 @@ comes from:
 - Location: Ride mode's positions stay on the device (frontend/src/RideMode.tsx, "Privacy"); the
   app uses location only while on screen when asked, or during a ride, never with
   background-location permission (mobile/README.md, "Privacy"; mobile/test/config.test.mjs); a
-  route request carries points in its body, and the logs keep no query (docs/DEVELOPMENT.md,
+  route request carries points in its body, its answer kept 2 minutes in memory
+  (core.route_cache), and the logs keep no query (docs/DEVELOPMENT.md,
   "Logs and the rider's position").
 - Group and Mass Ride: core.ride_presence (20 m grid, memory only; dots, alerts and a leader's
   path 2 minutes, nothing longer)
@@ -75,7 +76,8 @@ WHERE_YOU_ARE = (
     "Your location is used on your phone or computer to plan and guide your ride. The server "
     "keeps no record of where you are, only places you choose to save or share (Home, favorite "
     "places, saved and shared routes, a 311 problem’s spot) and, while you share on a Group or "
-    "Mass Ride, your rounded dot for 2 minutes and an alert’s spot for 2 minutes."
+    "Mass Ride, your rounded dot for 2 minutes and an alert’s spot for 2 minutes. A route you "
+    "ask for is kept 2 minutes in memory, so asking again is instant."
 )
 
 
@@ -124,8 +126,8 @@ SECTIONS: list[tuple[str, str]] = [
             "a Detour search, checking the weather along your route or, in Roam, where you are "
             "(every 5 minutes), finding which 311 website covers a problem you log, and Group or "
             "Mass Ride sharing. The server answers "
-            "and does not store it, except places you choose to save or share and ride sharing "
-            "(below)."
+            "and does not store it, except places you choose to save or share, ride sharing "
+            "(below), and a route's answer, kept 2 minutes in memory."
         )
         + _p(
             "A route’s link holds its points, so a route planned from your location carries "
@@ -366,6 +368,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "What you save with your account: until you delete it, or the account.",
                 "Group and Mass Ride positions, alerts and a leader's path: 2 minutes. Nothing "
                 "about a ride is kept longer.",
+                "A route you ask for, with its points: 2 minutes in the server's memory, so asking "
+                "again is instant; never on disk or in a log.",
                 "Shared links: as above.",
                 "Database backups: one a night, the last seven kept, so deleted data can stay in "
                 "them for up to a week. Sign-ins, request limits, the Discord role list and Garmin "
