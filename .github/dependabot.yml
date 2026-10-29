@@ -1,6 +1,7 @@
 # Weekly update pull requests for every pinned dependency: the images' Python pins,
-# the front end's lockfile, the Dockerfiles' and compose files' base images, and the
-# CI actions (pinned by commit). Each is a pull request for CI and the owner to read;
+# the dev tools' pins (requirements-dev.txt), the front end's and the phone app's lockfiles,
+# the phone app's Gradle libraries, the Dockerfiles' and compose files' base images, and
+# the CI actions (pinned by commit). Each is a pull request for CI and the owner to read;
 # nothing merges by itself.
 version: 2
 updates:
@@ -8,8 +9,20 @@ updates:
     directory: /docker
     schedule:
       interval: weekly
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
   - package-ecosystem: npm
     directory: /frontend
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /mobile
+    schedule:
+      interval: weekly
+  - package-ecosystem: gradle
+    directory: /mobile/android
     schedule:
       interval: weekly
   - package-ecosystem: docker

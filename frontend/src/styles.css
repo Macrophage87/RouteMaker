@@ -2421,7 +2421,11 @@ dialog.go-spot {
 .road-info-details > summary {
   cursor: pointer;
   font-weight: 600;
-  min-height: 24px;
+  /* 44 px, as the rest of the panel (the 2026-10-29 a11y review): the road card opens mid-ride on a phone. Padded,
+     not flex, so the summary keeps its disclosure triangle. */
+  box-sizing: border-box;
+  min-height: 44px;
+  padding-block: 10px;
 }
 
 .road-info-body h3 {
@@ -7208,14 +7212,16 @@ details.fold > summary .icon {
 /*
  * Accessibility mode on (lib/accessMode.ts ACCESS_MODE_CLASS, the one shared mode): Go's small text is 15 px at
  * least. The place chips (14 px), the ride-type chips and the stress line (12.75 px), Settings' section headings
- * (12.75 px) and the map's scale (10 px) come up to 1rem; the chips wrap where a row no longer fits.
+ * (12.75 px) and the map's scale (10 px) come up to 1rem; the chips wrap where a row no longer fits. So do the charts'
+ * key, tiers and source lines and their data tables, the charts' text alternative (12 px; the 2026-10-29 a11y review).
  */
 :root.access-mode .panel .go-places .place-chip,
 :root.access-mode .panel .go-sheet .go-places:not(.go-more-row) .place-chip,
 :root.access-mode .panel .go-sheet .ride-chips .chip,
 :root.access-mode .stress-key,
 :root.access-mode #sheet-settings :is(.settings-group, .install-offer) h3,
-:root.access-mode .maplibregl-ctrl-scale {
+:root.access-mode .maplibregl-ctrl-scale,
+:root.access-mode :is(.pc-table, .pc-legend, .pc-tiers, .pc-keys, .pc-source) {
   font-size: max(1rem, 15px);
 }
 
@@ -8405,7 +8411,8 @@ summary.closure-notices-heading {
   display: flex;
   gap: 6px;
   align-items: center;
-  min-height: 24px;
+  /* 44 px, as the rest of the panel (the 2026-10-29 a11y review). */
+  min-height: 44px;
   font-size: 0.9em;
 }
 
@@ -9573,7 +9580,10 @@ summary.closure-notices-heading {
 
 /* Info's route sources, behind Data sources in Go. */
 .route-credit-fold summary {
-  min-height: 32px;
+  /* 44 px, as the rest of the panel (the 2026-10-29 a11y review); padded, so it keeps its triangle. */
+  box-sizing: border-box;
+  min-height: 44px;
+  padding-block: 10px;
   color: var(--text-muted);
   font-size: 0.9rem;
   cursor: pointer;

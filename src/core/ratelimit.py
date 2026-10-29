@@ -252,16 +252,18 @@ WEATHER_CHECK = Limit(scope="weather-check", requests=20, window_s=60)
 # A report sent to DC 311 from Ride mode (POST /api/report311, core.dc311; v0.7.0 "Go riding
 # fixes" item 3): a rider reports a pothole or two on a ride, so 10 an hour is a cap on a script.
 REPORT_311 = Limit(scope="report-311", requests=10, window_s=3600)
+# The same sends per signed-in account (core.dc311: sending is signed in only), so an account
+# moving between addresses still has the one budget.
+REPORT_311_ACCOUNT = Limit(scope="report-311-user", requests=10, window_s=3600)
 # Whether Ride mode's 311 reports go from here (GET /api/report311): asked once when Ride mode
 # opens, and it hands out a send ticket; PLAN's 60 a minute for unauthenticated paths.
 REPORT_311_STATUS = Limit(scope="report-311-status", requests=60, window_s=60)
 # Mass Ride and Group Ride links (/api/rides/*, core.ride_presence): a whole ride's phones can
 # share one carrier address, each polling about every 15 s and sending its position as often, so
 # 600 a minute per address is far above one rider and still a ceiling on a script. Writes are
-# also counted per ride: MAX_RIDERS_PER_RIDE riders each sending a position every 15 s is 12,000
-# a minute, so 15,000.
+# also counted per ride, in the ride's own state (ride_presence.RIDE_WRITES_PER_MINUTE), so no
+# row here names a ride.
 RIDE_LINKS = Limit(scope="ride-link", requests=600, window_s=60)
-RIDE_WRITES = Limit(scope="ride-write", requests=15000, window_s=60)
 # Signing in and out (core.auth_views): a sign-in is two requests (the start and Discord's
 # callback), so 30 a minute per address is a cap on a script only.
 SIGN_IN = Limit(scope="sign-in", requests=30, window_s=60)

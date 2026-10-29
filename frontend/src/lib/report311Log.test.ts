@@ -171,7 +171,10 @@ test("the store: logged, noted and checked off on the device; signed in, moved t
   assert.ok(heard >= 1);
   await tick();
   assert.equal(log.list()[0].where, "moco", "looked up at once");
-  assert.match(net.calls[0].url, /^https:\/\/x\/api\/report311\/where\?lat=38\.98510&lon=-77\.09570$/);
+  // The point goes in a POST body, never the URL (a server log keeps the request line).
+  assert.equal(net.calls[0].url, "https://x/api/report311/where");
+  assert.equal(net.calls[0].init?.method, "POST");
+  assert.deepEqual(JSON.parse(String(net.calls[0].init?.body)), { lat: 38.9851, lon: -77.0957 });
   log.setNote(added.id, "across the trail", new Date("2026-10-20T16:01:00Z"));
   log.setReported(added.id, true, new Date("2026-10-20T16:02:00Z"));
   assert.equal(log.list()[0].reported, "2026-10-20T16:02:00.000Z");
