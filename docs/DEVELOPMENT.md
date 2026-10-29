@@ -1789,9 +1789,10 @@ model's forces (`routemaker.effort`, Martin et al. 1998: rolling resistance 0.00
   (300 m), so a short kick averages out) the standard rider climbs at the endurance
   pace, never faster than the flat speed and never slower than 5 mph. The request's
   system weight moves at that same power, so a loaded bike climbs slower, down to
-  pushing pace in its low gears; the steepness penalty never changes with weight (the
-  calm search's effort blend and Mountain Goat's effort tiebreak still weigh it). The extra
-  seconds over the flat cost what the same seconds of flat riding do.
+  pushing pace in its low gears, and no rider climbs a steeper grade faster than a
+  gentler one (timed in steps of 0.1% of grade); the steepness penalty never changes with
+  weight (the calm search's effort blend and Mountain Goat's effort tiebreak still weigh
+  it). The extra seconds over the flat cost what the same seconds of flat riding do.
 - **Past the endurance pace**, where holding 5 mph takes more, the penalty is the
   window's seconds times `(e^(d / 0.2) - 1) / (e^(0.35 / 0.2) - 1)`
   (`hill_cost.steepness_rate`), with `d` the power past the endurance pace as a share of
