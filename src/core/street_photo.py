@@ -17,7 +17,9 @@ and the panel says nothing of one.
 
 What Mapillary is sent: a box about 200 ft (60 m) across around the point on the road (never the
 rider's own position, and nothing of the rider). The answer is kept in this process's memory for
-`CACHE_S`, so the same road asked again asks Mapillary once.
+`CACHE_S`, so the same road asked again asks Mapillary once. Only photos inside the covered area
+(`settings.COVERAGE_BBOX`) are looked up or served, and neither fetch follows a redirect, so
+every request goes to the host it names.
 
 Licence: Mapillary's imagery is CC BY-SA 4.0 (<https://www.mapillary.com/terms>); the panel
 credits "Mapillary" with a link, and the creator's name where given (docs/SOURCES.md).
@@ -45,8 +47,9 @@ from pipeline.schema import validate_schema_name
 logger = logging.getLogger(__name__)
 
 API_URL = "https://graph.mapillary.com/images"
-# One image's record, to find its file again in a process that did not show it (StreetPhoto.image).
-IMAGE_API_URL = "https://graph.mapillary.com/{id}?fields=thumb_1024_url"
+# One image's record, to find its file again in a process that did not show it (StreetPhoto.image),
+# with where it was taken, so only a photo of the covered area is served.
+IMAGE_API_URL = "https://graph.mapillary.com/{id}?fields=thumb_1024_url,geometry"
 API_HOSTS = frozenset({"graph.mapillary.com"})
 # Where Mapillary serves its image files (its CDN), the only hosts an image URL may name. This
 # server fetches the file (`StreetPhoto.image`); the page's CSP names no other host.
@@ -87,13 +90,27 @@ def configured() -> bool:
     return bool(token())
 
 
+class _NoFollow(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None  # urllib then raises HTTPError: a redirect is no answer
+
+
+_OPENER = urllib.request.build_opener(_NoFollow)
+
+
+def in_area(lon: float, lat: float) -> bool:
+    """Whether a point is inside the covered area (`settings.COVERAGE_BBOX`)."""
+    west, south, east, north = settings.COVERAGE_BBOX
+    return west <= lon <= east and south <= lat <= north
+
+
 def http_get(url: str, headers: dict, timeout: float) -> bytes:
     parts = urllib.parse.urlsplit(url)
     if parts.scheme != "https" or parts.hostname not in API_HOSTS:
         raise Unavailable("not a Mapillary API URL")
     request = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+        with _OPENER.open(request, timeout=timeout) as response:
             body = response.read(MAX_BYTES + 1)
     except urllib.error.HTTPError as error:
         raise Unavailable(f"HTTP {error.code}") from None
@@ -110,7 +127,7 @@ def image_get(url: str, headers: dict, timeout: float) -> bytes:
         raise Unavailable("not a Mapillary image URL")
     request = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+        with _OPENER.open(request, timeout=timeout) as response:
             body = response.read(MAX_BYTES + 1)
     except urllib.error.HTTPError as error:
         raise Unavailable(f"HTTP {error.code}") from None
@@ -268,6 +285,8 @@ class StreetPhoto:
         token, or Mapillary not answering): the panel then says nothing of a photo."""
         if not configured():
             return None
+        if not in_area(lon, lat):
+            return NONE
         key = (way_id, round(lon, 4), round(lat, 4))
         now = self._clock()
         with self._lock:
@@ -322,6 +341,13 @@ class StreetPhoto:
             return None
         url = doc.get("thumb_1024_url") if isinstance(doc, dict) else None
         if not image_url_ok(url):
+            return None
+        try:
+            point = doc["geometry"]["coordinates"]
+            taken = (float(point[0]), float(point[1]))
+        except (KeyError, TypeError, ValueError, IndexError):
+            return None
+        if not in_area(*taken):
             return None
         with self._lock:
             self._sources[image_id] = (self._clock(), url)

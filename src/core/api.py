@@ -7318,13 +7318,27 @@ REPORT_311_BODY_MAX_BYTES = 2048
 def report311_status(request):
     from . import dc311
 
-    on = dc311.enabled()
-    # On, the answer carries a short-lived signed ticket that a send must bring back.
+    # On for a signed-in rider (signed out, Ride mode texts 311): the answer carries a short-lived
+    # ticket, signed for this account, that a send must bring back.
+    on = dc311.enabled() and signed_in(request)
     response = JsonResponse(
-        {"enabled": True, "ticket": dc311.ticket()} if on else {"enabled": False}
+        {"enabled": True, "ticket": dc311.ticket(_report311_who(request))}
+        if on
+        else {"enabled": False}
     )
     response["Cache-Control"] = "no-store"
     return response
+
+
+def _report311_who(request) -> str:
+    """The signed-in rider as a 311 ticket and the per-account count name them: a keyed digest."""
+    return ratelimit.client_key(f"user:{request.user.pk}")
+
+
+def _report311_refused(status: int, message: str, code: str):
+    out = JsonResponse({"error": message, "code": code}, status=status)
+    out["Cache-Control"] = "no-store"
+    return out
 
 
 @api.get("/report311/where", summary="Which 311 website takes a problem at a point")
@@ -7374,23 +7388,22 @@ def report311_send(request):
     if not isinstance(description, str) or len(description) > dc311.DESCRIPTION_MAX:
         return _error(400, f"description is text of at most {dc311.DESCRIPTION_MAX} characters.")
     if dc311.enabled():
-        if not dc311.ticket_ok(body.get("ticket")):
-            out = JsonResponse(
-                {"error": "Ask the server again, then send the report.", "code": "no_ticket"},
-                status=403,
+        if not signed_in(request):
+            return _report311_refused(401, "Sign in to send reports from here.", "signed_out")
+        who = _report311_who(request)
+        if not dc311.ticket_ok(body.get("ticket"), who):
+            return _report311_refused(
+                403, "Ask the server again, then send the report.", "no_ticket"
             )
-            out["Cache-Control"] = "no-store"
-            return out
+        if not ratelimit.hit(ratelimit.REPORT_311_ACCOUNT, who).allowed:
+            return _report311_refused(
+                429, "You have sent this hour's reports from here; text 311 instead.", "busy"
+            )
         everyone = ratelimit.Limit(
             scope=dc311.GLOBAL_SCOPE, requests=dc311.HOURLY_MAX, window_s=3600
         )
         if not ratelimit.hit(everyone, "all").allowed:
-            out = JsonResponse(
-                {"error": "DC 311 reports from here are paused for now.", "code": "busy"},
-                status=429,
-            )
-            out["Cache-Control"] = "no-store"
-            return out
+            return _report311_refused(429, "DC 311 reports from here are paused for now.", "busy")
     try:
         ident = dc311.send(kind, float(lat), float(lon), description)
     except dc311.NotSent as refused:
