@@ -571,6 +571,8 @@ def plan_fragment(points, vias, preset: str, dials: dict, sent: dict) -> str:
         parts.append(f"level={sent['mtb_level']}")
     if sent.get("mtb_preferred"):
         parts.append(f"prefer={sent['mtb_preferred']}")
+    if preset == "mass-ride" and sent.get("ride_size"):
+        parts.append(f"riders={sent['ride_size']}")
     return "#" + "&".join(parts)
 
 
@@ -593,6 +595,7 @@ def page_dials(dials: dict, sent: dict) -> dict:
         "ending": sent.get("ending"),
         "mtbLevel": sent.get("mtb_level"),
         "mtbPreferred": sent.get("mtb_preferred"),
+        "rideSize": sent.get("ride_size"),
     }
     kept.update({k: v for k, v in optional.items() if v})
     return kept
@@ -666,6 +669,7 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         "ending": "outside_dock" if one("ending") == "outside" else None,
         "mtb_level": number("level"),
         "mtb_preferred": number("prefer"),
+        "ride_size": (None if number("riders") is None else min(2000, max(100, number("riders")))),
     }
     if one("targetmi"):
         try:
@@ -1708,6 +1712,65 @@ def route_details(plan: Plan) -> dict:
     if spurs:
         out["via_spurs"] = spurs
     out.update(route_closures(plan))
+    capacity = mass_capacity(answer)
+    if capacity:
+        out["mass_capacity"] = capacity
+    return out
+
+
+def mass_capacity(answer: dict) -> dict | None:
+    """A Mass Ride's road capacity and corker needs, in miles, for an assistant to improve the
+    route on (the owner, 2026-10-29: "allow for things like road capacity and corker
+    requirements for mass rides to be returned so the agents can improve opon them"): what the
+    ride size needs and what the route carries, where it falls short, and the corkers held at
+    once. None off a Mass Ride."""
+    found = answer.get("mass_capacity")
+    if not found:
+        return None
+
+    def mi(metres) -> float | None:
+        return None if metres is None else round(metres / METRES_PER_MILE, 2)
+
+    out: dict = {
+        "riders": found.get("riders"),
+        "needs_riders_per_min": found.get("need_riders_per_min"),
+        "narrowest_riders_per_min": found.get("narrowest_riders_per_min"),
+        "narrowest_at_mi": mi(found.get("narrowest_m")),
+        "miles_below_need": mi(found.get("below_need_m") or 0),
+        "capacity_changes": found.get("capacity_changes"),
+        "narrow_stretches": [
+            {
+                "from_mi": mi(row.get("from_m")),
+                "to_mi": mi(row.get("to_m")),
+                "street": row.get("street"),
+                "riders_per_min": row.get("riders_per_min"),
+                **({"avoid": True} if row.get("avoid") else {}),
+            }
+            for row in found.get("narrow_stretches") or []
+        ],
+        "how_to_improve": (
+            "The planner weighs capacity only between a start and an end up to about 15 mi apart"
+            " (with stops or via points it reports, not chooses). To lift a narrow stretch above"
+            " the need, plan again by way of a wider parallel street and compare the two"
+            " answers; fewer changes of width keep the group together; fewer busy junctions"
+            " need fewer corkers."
+        ),
+    }
+    corkers = found.get("corkers")
+    if corkers:
+        out["corkers"] = {
+            "about": corkers.get("headline"),
+            "at_least": corkers.get("at_least"),
+            "most_held_at_once": corkers.get("most_at_once"),
+            "most_held_at_mi": mi(corkers.get("most_at_once_m")),
+            "junctions": [
+                {"at_mi": mi(j.get("m")), "street": j.get("street"), "corkers": j.get("corkers")}
+                for j in corkers.get("junctions") or []
+            ],
+        }
+    else:
+        out["corkers"] = None
+        out["corkers_note"] = "the intersections were not checked, so the corkers are not known"
     return out
 
 
@@ -2121,6 +2184,17 @@ RIDE_OPTIONS = {
         "enum": ["classic", "ebike"],
         "description": "Bikeshare and Rebalance only.",
     },
+    "ride_size": {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 2000,
+        "description": (
+            "Mass Ride only: the anticipated ride size, riders (default 500). Roads carrying"
+            " fewer riders a minute than it needs (riders / 5) are priced in the route choice;"
+            " the answer's `mass_capacity` says where the route falls short and the corkers it"
+            " needs."
+        ),
+    },
     "ending": {
         "type": "string",
         "enum": ["dock", "outside_dock"],
@@ -2200,6 +2274,7 @@ PASSED_OPTIONS = (
     "trails_off",
     "mtb_level",
     "mtb_preferred",
+    "ride_size",
     "bike",
     "ending",
     "depart_at",
