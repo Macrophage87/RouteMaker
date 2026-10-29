@@ -22,10 +22,13 @@ export const POINTS_PARAM = "q";
 export const OLD_POINTS_PARAM = "p";
 export type PointsForm = "q" | "p";
 
-/** The points a link's fragment holds, in either form (`q=` first), before any check of where they are. */
+/**
+ * The points a link's fragment holds, in either form (`q=` first, the older `p=` when there is no `q=` or it holds no
+ * point), before any check of where they are.
+ */
 export function linkPoints(params: URLSearchParams): LonLat[] {
-  const short = params.get(POINTS_PARAM);
-  if (short !== null) return decodePoints(short);
+  const short = decodePoints(params.get(POINTS_PARAM) ?? "");
+  if (short.length) return short;
   const points: LonLat[] = [];
   for (const pair of (params.get(OLD_POINTS_PARAM) ?? "").split(";")) {
     const parts = pair.split(",");

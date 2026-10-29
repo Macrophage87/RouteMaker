@@ -892,7 +892,6 @@ export function otherWords(text: string): string {
 }
 
 /** An alert, sealed with the ride's key; nothing is sent without one. */
-
 export async function sendAlert(origin: string, ride: string, token: string, type: RideLinkType, kind: string, text: string, p: LonLat, send: Fetch = fetch, seal: RideSeal | null = null): Promise<SendOutcome> {
   const words = kind === "other" ? otherWords(text) : "";
   // The checks the server made on a plain alert, made here (it sees none of it). Nothing is sent without the key.

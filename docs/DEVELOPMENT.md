@@ -8620,7 +8620,9 @@ age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
   rider to reload. The server's rounding (`rounded`, `GRID_M`), its alert lists and merge, and its roles are
   gone; the 2-minute keep, limits, leader mark, shuffle and sealed size caps stay. The ride links the server
   writes carry a key too: a Featured routes post of a Group or Mass Ride (`core.route_posts.freeze_route`, the
-  post's own key kept in `post.stats["ride_key"]`, the same through every new route or resend; migration 0053
+  post's own key kept in `post.stats["ride_key"]`, the same through every new route or resend while the post
+  stays the same ride type, and a new one when it changes between Group Ride and Mass Ride (another ride, as the
+  app's `presetSecret` and the assistant's `revise_route` make it; `post_ride_key`); migration 0053
   gave the posts kept before theirs) and the assistant's draft links (`mcp/routemaker_mcp.py`, `Draft.ride_key`,
   kept as the draft is revised, the link's own when one is opened). Anyone who can read a ride post can read
   that ride, and the privacy policy says so.
@@ -8631,8 +8633,12 @@ age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
 
 ### Shorter ride links (Stephen, 2026-10-29)
 
-Stephen said "yes" to making ride links shorter three ways. All three are front end only; the server is unchanged,
-and every older link still opens.
+Stephen said "yes" to making ride links shorter three ways. The page writes the short forms, and every older link
+still opens. The server's own links (a ride post's, the assistant's drafts) still write `p=`; what reads a plan's
+stops on the server reads `q=` as well: the assistant's `open_link` and a kept shared route's hash
+(`mcp/routemaker_mcp.py` `decode_points`, a port of `linkCode.ts` `decodePoints`, and `parse_fragment`, which reads
+`q=` first and `p=` when `q=` holds no point), and the account setting that must hold no stops
+(`core.accounts.settings_problem`, `accountSettings.ts` `planFromSetting`, both refusing `p=` or `q=`).
 
 - **Stops: `q=`.** `planHash.ts` `encodePlan` writes the points as `q=` (`lib/linkCode.ts` `encodePoints`): each
   longitude then latitude as whole 1e-5 degrees (rounded as `toFixed(5)` rounds), the first point as it is and each
@@ -8640,7 +8646,8 @@ and every older link still opens.
   for "more follows": the encoded-polyline scheme, but with the base64url alphabet (`A-Z a-z 0-9 - _`), which
   URLSearchParams never escapes. Two stops in the DC area take about 16 characters, against about 50 for `p=`. The
   stops read back exactly as `p=` of the same stops reads (`linkPoints`; a link cut short opens with the points still
-  whole). `decodePlan` reads `q=` first, then the older `p=` (`lon,lat;lon,lat`, 5 decimals), for ever: every link
+  whole). `decodePlan` reads `q=` first, then, where there is no `q=` or it holds no stop, the older `p=`
+  (`lon,lat;lon,lat`, 5 decimals), for ever: every link
   already shared and every ride post the server writes carry `p=`. `appMode.ts` `hasPlanLink` counts either. A kept
   route's key (`offlineRoutes.ts` `keptPlanKey`) still writes `p=` (`encodePlan(..., "p")`): it is a key on the
   device, never a link, and the routes kept before the change are found by it still.
@@ -8659,7 +8666,9 @@ and every older link still opens.
 - Tests: `frontend/src/lib/planHash.test.ts` (round trips at 5 decimals, west longitudes, 500 random plans against
   `p=`, characters never escaped, older `p=` links, cut-short links, the kept key, the lengths),
   `broadcast.test.ts` and `roam.test.ts` (both forms of the leader mark), `rideSeal.test.ts` (22- and 43-character
-  keys).
+  keys), `signIn.test.ts` (a `q=` plan kept over sign-in), `tests/test_mcp_server.py` (`q=` read as the page reads
+  it, against vectors and `linkCode.ts` itself; an app's `q=` link and a `/s/<id>` kept with `q=` opened), and
+  `tests/test_accounts.py` (a settings plan with `q=` refused).
 
 ### Where and when a dot is sent (2026-10-29)
 

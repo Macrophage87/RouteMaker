@@ -7,7 +7,7 @@ import base64
 import re
 import secrets
 
-from django.db import migrations
+from django.db import migrations, transaction
 
 RIDE_LINK_TYPES = ("mass-ride", "group-ride")
 KEY_RE = re.compile(r"[A-Za-z0-9_-]{22}|[A-Za-z0-9_-]{43}")
@@ -22,23 +22,28 @@ def _with_key(fragment, key):
 
 def give_keys(apps, schema_editor):
     RoutePost = apps.get_model("core", "RoutePost")
-    for post in RoutePost.objects.select_related("route").exclude(route=None):
-        row = post.route
-        inputs = dict(row.inputs or {})
-        stats = dict(post.stats or {})
-        preset = str(inputs.get("preset") or stats.get("preset") or "")
-        fragment = inputs.get("hash")
-        if preset not in RIDE_LINK_TYPES or not isinstance(fragment, str):
-            continue
-        key = stats.get("ride_key")
-        if not (isinstance(key, str) and KEY_RE.fullmatch(key)):
-            key = base64.urlsafe_b64encode(secrets.token_bytes(16)).rstrip(b"=").decode("ascii")
-        stats["ride_key"] = key
-        inputs["hash"] = _with_key(fragment, key)
-        row.inputs = inputs
-        row.save(update_fields=["inputs"])
-        post.stats = stats
-        post.save(update_fields=["stats"])
+    posts = RoutePost.objects.select_related("route").exclude(route=None)
+    with transaction.atomic():
+        for post in posts.iterator(chunk_size=200):
+            row = post.route
+            inputs = dict(row.inputs or {})
+            answer = row.answer if isinstance(row.answer, dict) else {}
+            stats = dict(post.stats or {})
+            # The ride type as freeze_route reads it: the plan's, else the answer's; the post's
+            # stats only where neither says.
+            preset = str(inputs.get("preset") or answer.get("preset") or stats.get("preset") or "")
+            fragment = inputs.get("hash")
+            if preset not in RIDE_LINK_TYPES or not isinstance(fragment, str):
+                continue
+            key = stats.get("ride_key")
+            if not (isinstance(key, str) and KEY_RE.fullmatch(key)):
+                key = base64.urlsafe_b64encode(secrets.token_bytes(16)).rstrip(b"=").decode()
+            stats["ride_key"] = key
+            inputs["hash"] = _with_key(fragment, key)
+            row.inputs = inputs
+            row.save(update_fields=["inputs"])
+            post.stats = stats
+            post.save(update_fields=["stats"])
 
 
 class Migration(migrations.Migration):

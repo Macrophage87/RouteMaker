@@ -116,9 +116,11 @@ RIDE_CRYPTO = [
     "AES-256-GCM under a fresh random 12-byte nonce. Its kind and the ride id are bound in as "
     "associated data, so a dot cannot be passed off as an alert, or one ride's data as "
     "another's. What is sent is the nonce, the ciphertext and GCM's 128-bit tag, in base64url.",
-    "Each phone sends its position as its GPS measures it, encrypted; it sends nothing outside "
-    "the map's area, and merges matching alerts as it reads them. The server refuses a position "
-    "or alert that is not encrypted.",
+    "Each phone sends its position as its GPS measures it, to 6 decimal places of a degree "
+    "(about 4 in, 0.1 m), encrypted, and an alert's spot the same way; a leader's route and "
+    "ridden path go to 5 decimal places (about 3 ft, 1 m), at most 600 points each. A phone "
+    "sends nothing outside the map's area, and merges matching alerts as it reads them. The "
+    "server refuses a position or alert that is not encrypted.",
     "Each phone posts under its own random code for the ride (16 random bytes). A ride leader's "
     "link also carries lead=, the first 16 bytes of the SHA-256 of the leader's code as 22 "
     "base64url characters (the phone sends the server the same 16 bytes as 32 hex digits), so "
@@ -127,7 +129,9 @@ RIDE_CRYPTO = [
     "What the server still sees: the ride id, each phone's random code, when and how often "
     "phones send and ask, the padded sizes, each dot's age and which one is the leader's, and "
     "the internet address a request comes from, as for any page. It cannot read a dot, an alert "
-    "or the leader's live path. A Share ride or Broadcast link is also a shared route: its "
+    "or the leader's live path, except on a ride whose key it made or was given and keeps: a "
+    "ride post's Group or Mass Ride link, and a ride link an AI assistant app planned or opened "
+    "(kept with that app's draft). A Share ride or Broadcast link is also a shared route: its "
     "planned line is kept on the server like any shared link (see Shared links).",
     "Nightly database backups are encrypted with age to the owner's X25519 public key; the "
     "matching private key is kept on the owner's computer, not on the server, so the server can "
@@ -199,11 +203,14 @@ SECTIONS: list[tuple[str, str]] = [
                 "Group or Mass Ride link. Your phone encrypts your dot, your alerts and the "
                 "leader’s path before sending them, with the key only the link carries (in the "
                 "part after #, which browsers never send to a server). The server holds them "
-                "only as scrambled text it cannot read; it still sees when a phone on the ride "
-                "sends or asks, as it does for any page.",
+                "only as scrambled text it cannot read, unless the server keeps that ride's key: "
+                "a ride post's ride, or a ride an AI assistant app you connected planned or was "
+                "given a link to. It still sees when a phone on the ride sends or asks, as it "
+                "does for any page.",
                 "A ride post's Group or Mass Ride link carries its key too, so anyone who can "
                 "read the post can see the dots and alerts of that ride. The server keeps that "
-                "key with the post, and the post keeps it when its route changes.",
+                "key with the post, and the post keeps it when its route changes; a post changed "
+                "between Group Ride and Mass Ride gets a new one.",
                 "Share ride and Broadcast make you the ride leader, shown as a dot from the start "
                 "of your ride. While you ride a shared ride, you and anyone on it who chooses to "
                 "be shown are shown on or off the route, so riders who get separated can find "

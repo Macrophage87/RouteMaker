@@ -184,6 +184,15 @@ test("a link cut short opens with the stops it still has whole; a broken one wit
   assert.deepEqual(decodePlan(`#q=${encodePoints([[-77.03652, 38.89768], [0, 0]])}`).points, [[-77.03652, 38.89768]]);
 });
 
+test("a q= that holds no stop falls back to the link's p=", () => {
+  const old = "p=-77.04000,38.91000;-77.01000,38.89000";
+  assert.deepEqual(decodePlan(`#q=!!&${old}&preset=default`).points, [[-77.04, 38.91], [-77.01, 38.89]]);
+  assert.deepEqual(decodePlan(`#q=&${old}`).points, [[-77.04, 38.91], [-77.01, 38.89]]);
+  // A q= with stops wins over a p= beside it.
+  const q = encodePoints([[-77.03652, 38.89768], [-77.00911, 38.88993]]);
+  assert.deepEqual(decodePlan(`#q=${q}&${old}`).points, [[-77.03652, 38.89768], [-77.00911, 38.88993]]);
+});
+
 test("a kept route's key keeps the older p= form, so routes kept before the change are still found", () => {
   const points: LonLat[] = [[-77.03652, 38.89768], [-77.00911, 38.88993]];
   const dials = startDials("default", null);

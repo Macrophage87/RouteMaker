@@ -7,7 +7,13 @@ its fragment, which no browser sends to a server. Each phone seals its dot (with
 alerts and the leader's path with a key from that secret before sending, and the ride id is
 derived from it one way. Here each is opaque text: nothing in it can be read or checked, and a
 post in plain numbers is refused. The phones keep to the map's area and merge matching alerts
-themselves.
+themselves. What they seal: a dot and an alert's spot to 6 decimals of a degree (about 4 in,
+0.1 m; rideSeal.ts `sealedSpot`), the leader's route and ridden path thinned to at most
+600 points at 5 decimals (about 3 ft, 1 m; rideGroup.ts `thinLine`, `PATH_MAX_POINTS`).
+
+The server reads none of it, except on a ride whose key it made or was given and keeps: a ride
+post's ride (core.route_posts) and a ride link the site's assistant planned or opened (its
+drafts, core.connector).
 
 Privacy is the shape of this module:
 

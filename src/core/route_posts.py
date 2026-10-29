@@ -233,9 +233,9 @@ def freeze_route(post, *, source, line, distance_m, inputs, answer, planned=None
         inputs["dials"] = {k: v for k, v in inputs["dials"].items() if "weight" not in k.lower()}
     preset = str(inputs.get("preset") or answer.get("preset") or "")
     # A Group or Mass Ride post's link carries the post's own ride key (the owner, 2026-10-29:
-    # "All rides should have a key."), the same one each time the route changes; never a key the
-    # saved route's own link carried.
-    key = post_ride_key(post, make=preset in RIDE_LINK_TYPES)
+    # "All rides should have a key."), the same one each time the route changes while the ride
+    # type stays; never a key the saved route's own link carried.
+    key = post_ride_key(post, preset)
     # Open in RouteMaker opens the copy as the app opens any shared link (frontend/src/App.tsx
     # openSaved): a plan from its link (`hash`), a followed line from its file. An assistant's
     # followed line came with neither, and the app opened empty (the owner, 2026-10-25: "It just
@@ -243,7 +243,7 @@ def freeze_route(post, *, source, line, distance_m, inputs, answer, planned=None
     if not isinstance(inputs.get("hash"), str):
         inputs["hash"] = plan_hash(inputs, line, answer, key)
     else:
-        inputs["hash"] = with_ride_key(inputs["hash"], key if preset in RIDE_LINK_TYPES else None)
+        inputs["hash"] = with_ride_key(inputs["hash"], key)
     row = SharedRoute.objects.create(
         id=secrets.token_hex(16),
         name=post.title[:120],
@@ -288,13 +288,19 @@ def new_ride_key() -> str:
     )
 
 
-def post_ride_key(post, *, make: bool = True) -> str | None:
-    """The post's ride key, kept in its `stats`; a new one when it has none and `make`."""
+def post_ride_key(post, preset: str) -> str | None:
+    """The ride key for the post's route of ride type `preset`: the one kept in its `stats` while
+    the post stays that ride type; a new one when it has none, or when it changes between Group
+    Ride and Mass Ride (another ride, as the app's `presetSecret` and the assistant's
+    revise_route make it); none for a ride type whose link is not a live ride."""
+    if preset not in RIDE_LINK_TYPES:
+        return None
     stats = post.stats if isinstance(post.stats, dict) else {}
     key = stats.get(RIDE_KEY)
-    if isinstance(key, str) and RIDE_KEY_RE.fullmatch(key):
+    was = stats.get("preset")
+    if isinstance(key, str) and RIDE_KEY_RE.fullmatch(key) and (not was or was == preset):
         return key
-    return new_ride_key() if make else None
+    return new_ride_key()
 
 
 def with_ride_key(fragment: str, key: str | None) -> str:

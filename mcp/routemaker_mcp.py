@@ -420,7 +420,7 @@ class Api:
     def shared_fragment(self, route_id: str) -> str:
         """A shared route's plan link fragment."""
         fragment = (self.shared_route(route_id).get("inputs") or {}).get("hash") or ""
-        if "p=" not in fragment:
+        if not has_plan_points(fragment):
             raise ToolError("that shared route keeps no plan to continue from (an opened file?)")
         return fragment
 
@@ -675,6 +675,67 @@ def stress_from_v1(old: float) -> int:
     return STRESS_DEFAULT_AT + round(old - 90)
 
 
+LINK_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+LINK_VALUE = {c: i for i, c in enumerate(LINK_ALPHABET)}
+
+
+def decode_points(text: str) -> list[tuple[float, float]]:
+    """The points a link's `q=` holds (linkCode.ts `decodePoints`): zigzagged whole 1e-5 degrees,
+    longitude then latitude, each after the first as the change from the one before, 5 bits a
+    base64url character, lowest first, with a sixth bit saying another follows. Read up to the
+    first character outside the alphabet or a number left unfinished; a number over 53 bits
+    stops there too."""
+    numbers: list[int] = []
+    z = 0
+    scale = 1
+    for c in text:
+        v = LINK_VALUE.get(c)
+        if v is None:
+            break
+        z += (v % 32) * scale
+        scale *= 32
+        if scale > 2**53:
+            break
+        if v >= 32:
+            continue
+        numbers.append(-(z + 1) // 2 if z % 2 == 1 else z // 2)
+        z = 0
+        scale = 1
+    points = []
+    lon = lat = 0
+    for i in range(0, len(numbers) - 1, 2):
+        lon += numbers[i]
+        lat += numbers[i + 1]
+        points.append((lon / 1e5, lat / 1e5))
+    return points
+
+
+def fragment_points(params: dict) -> list[tuple[float, float]]:
+    """The points a parsed fragment holds, in either form (planHash.ts `linkPoints`): `q=` first,
+    the older `p=` when there is no `q=` or it holds no point."""
+    short = params.get("q")
+    if short:
+        points = decode_points(short[0])
+        if points:
+            return points
+    points = []
+    for pair in ((params.get("p") or [""])[0]).split(";"):
+        try:
+            lon, lat = (float(v) for v in pair.split(","))
+        except ValueError:
+            continue
+        points.append((lon, lat))
+    return points
+
+
+PLAN_POINTS_RE = re.compile(r"(?:^|[#&?])[pq]=[^&]")
+
+
+def has_plan_points(fragment: str) -> bool:
+    """Whether a link's fragment carries stops in either form (`q=` or the older `p=`)."""
+    return bool(PLAN_POINTS_RE.search(str(fragment or "")))
+
+
 def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
     """A plan link's fragment as the page reads it (planHash.ts `decodePlan`): the points, the
     via points, the ride type and POST /api/route's options."""
@@ -684,14 +745,7 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         values = params.get(key)
         return values[0] if values else None
 
-    points = []
-    for pair in (one("p") or "").split(";"):
-        try:
-            lon, lat = (float(v) for v in pair.split(","))
-        except ValueError:
-            continue
-        if inside_coverage((lon, lat)):
-            points.append((lon, lat))
+    points = [point for point in fragment_points(params) if inside_coverage(point)]
     points = points[:MAX_POINTS]  # the page opens the first 25 too
     if len(points) < 2:
         raise ToolError("that link holds no route (it needs at least a start and an end)")
@@ -3503,7 +3557,7 @@ class Server:
         if not shared_id:
             named = urllib.parse.parse_qs(url.query).get("route")
             shared_id = named[0] if named else None
-        has_points = "p" in urllib.parse.parse_qs(fragment)
+        has_points = has_plan_points(fragment)
         shared = None
         if shared_id:
             try:
@@ -3513,12 +3567,12 @@ class Server:
                     raise
         if shared is not None and not has_points:
             fragment = (shared.get("inputs") or {}).get("hash") or ""
-            if "p=" not in fragment:
+            if not has_plan_points(fragment):
                 raise ToolError(
                     "that shared route keeps no plan to continue from (an opened file?)"
                 )
         if not fragment:
-            match = re.search(r"(?:^|[#&?])(p=.*)$", link)
+            match = re.search(r"(?:^|[#&?])([pq]=.*)$", link)
             fragment = match.group(1) if match else ""
         points, vias, preset, options = parse_fragment(fragment)
         limit = args.get("max_miles_from_metro")

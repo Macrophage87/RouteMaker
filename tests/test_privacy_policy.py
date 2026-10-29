@@ -223,6 +223,8 @@ class TestPage:
         text = re.sub(r"<[^>]+>", " ", ride).replace("&#x27;", "'").replace("’", "'")
         assert "Every ride link carries a key" in text
         assert "anyone who can read the post can see the dots and alerts of that ride" in text
+        assert "only as scrambled text it cannot read, unless the server keeps" in text
+        assert "a ride post's ride, or a ride an AI assistant app you connected planned" in text
         assert "not encrypted this way" not in text and "rounded" not in text
         # The server's own ride links (a ride post's) carry a key as the phone's do.
         assert len(route_posts.new_ride_key()) == 22
@@ -251,8 +253,17 @@ class TestPage:
         assert "additionalData: aad(seal, kind)" in seal and "`${kind}|${seal.ride}`" in seal
         assert 'export const SECRET_PARAM = "k";' in seal and "k=" in text
         assert "Every ride link carries one" in text
-        # Phones send their position as measured: no grid or rounding is claimed.
+        # Phones send their position as measured, to the decimals the page seals them at; no grid
+        # or rounding to a coarser spot is claimed.
         assert "20 m" not in text and "grid" not in text and "round" not in text
+        assert "Math.round(lon * 1e6) / 1e6" in seal and "6 decimal places" in text
+        assert "about 4 in, 0.1 m" in text
+        assert "Math.round(p[0] * 1e5) / 1e5" in group and "5 decimal places" in text
+        assert "about 3 ft, 1 m" in text
+        assert "export const PATH_MAX_POINTS = 600;" in group and "600 points" in text
+        # What the server can read: none of it, but for a ride whose key it keeps.
+        assert "It cannot read a dot, an alert or the leader's live path, except on a ride" in text
+        assert "ride post's Group or Mass Ride link" in text and "AI assistant app" in text
         assert "new Uint8Array(16)" in group and "16 random bytes" in text
 
 

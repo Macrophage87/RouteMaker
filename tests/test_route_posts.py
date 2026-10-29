@@ -659,6 +659,29 @@ def test_a_ride_post_keeps_the_same_key_when_its_route_changes() -> None:
 
 
 @db
+def test_a_ride_post_that_changes_ride_type_is_another_ride() -> None:
+    """Group Ride to Mass Ride is another ride with its own key, as the app's presetSecret and
+    the assistant's revise_route make it; back to a plain ride type, no key."""
+    post = make_post()
+    group = post.stats[route_posts.RIDE_KEY]
+    assert post.stats["preset"] == "group-ride"
+    mass_inputs = {**INPUTS, "preset": "mass-ride", "hash": INPUTS["hash"].replace("group", "mass")}
+    route_posts.freeze(post, saved_route(post.author, inputs=mass_inputs))
+    post.save()
+    mass = post.stats[route_posts.RIDE_KEY]
+    assert KEY_RE.match(mass) and mass != group
+    assert _fragment_key(route_posts.open_link(post)) == mass
+    # The same ride type again keeps the Mass Ride's key.
+    route_posts.freeze(post, saved_route(post.author, inputs=mass_inputs))
+    assert post.stats[route_posts.RIDE_KEY] == mass
+    # Not a ride: no key kept, and none in the link.
+    answer = {**ANSWER, "preset": "default"}
+    route_posts.freeze(post, saved_route(post.author, inputs=NOT_A_RIDE, answer=answer))
+    post.save()
+    assert route_posts.RIDE_KEY not in post.stats and "k=" not in route_posts.open_link(post)
+
+
+@db
 def test_a_ride_post_never_carries_the_saved_routes_own_key() -> None:
     author = make_user(is_instance_admin=True)
     own = "R" * 43

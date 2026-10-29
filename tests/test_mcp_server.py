@@ -700,6 +700,97 @@ def test_a_link_with_no_route_is_refused(tools) -> None:
     assert out["result"]["isError"] and not StandIn.routes
 
 
+# --- The stops' short form (`q=`, frontend/src/lib/linkCode.ts; shorter ride links, 2026-10-29) --
+
+
+# Written by linkCode.ts `encodePoints` (node, 2026-10-29) and read back by its `decodePoints`.
+Q_VECTORS = [
+    (
+        "nmm2OwmttHqrFtwBu-tCukuC",
+        [(-77.03652, 38.89768), (-77.00911, 38.88993), (-76.61, 39.29)],
+    ),
+    (
+        "_n0qiB_jqlRgwo1kCgo0qiB_n0qiB_jqlRBCworrCp152It79hRoqnkQ",
+        [(-180, -90), (180, 90), (0, 0), (-0.00001, 0.00001), (12.34567, -45.67892), (-77.1, 38.9)],
+    ),
+    ("hi_1O-lhuHritG7n8E", [(-77.00001, 38.99999), (-78.04999, 38.20001)]),
+]
+
+
+@pytest.mark.parametrize(("text", "points"), Q_VECTORS)
+def test_the_short_form_reads_as_the_page_reads_it(text, points) -> None:
+    assert mcp.decode_points(text) == [(float(x), float(y)) for x, y in points]
+
+
+def test_the_short_form_stops_where_the_link_does() -> None:
+    text, points = Q_VECTORS[0]
+    for cut in range(len(text) + 1):
+        back = mcp.decode_points(text[:cut])
+        assert back == points[: len(back)], cut
+    assert mcp.decode_points("") == [] and mcp.decode_points(",;!") == []
+    # A character outside the form ends it; a number over 53 bits is no coordinate.
+    assert mcp.decode_points(text[:10] + "!" + text[10:]) == points[:1]
+    assert mcp.decode_points("_" * 18) == []
+
+
+def test_the_short_form_agrees_with_the_page_s_own_code(tmp_path) -> None:
+    """linkCode.ts `encodePoints` on many points, read here: the same numbers the page reads."""
+    link_code = Path(__file__).resolve().parents[1] / "frontend/src/lib/linkCode.ts"
+    script = tmp_path / "encode.mts"
+    script.write_text(
+        f"import {{ encodePoints, decodePoints }} from {json.dumps(str(link_code))};\n"
+        "let seed = 11;\n"
+        "const next = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;\n"
+        "const out = [];\n"
+        "for (let n = 0; n < 200; n += 1) {\n"
+        "  const pts = Array.from({ length: 1 + (n % 25) },"
+        " () => [-78.05 + next() * 2.03, 38.2 + next() * 1.52]);\n"
+        "  const q = encodePoints(pts);\n"
+        "  out.push([q, decodePoints(q)]);\n"
+        "}\n"
+        "console.log(JSON.stringify(out));\n"
+    )
+    done = subprocess.run(
+        ["node", str(script)], capture_output=True, text=True, timeout=60, check=True
+    )
+    for text, points in json.loads(done.stdout.strip().splitlines()[-1]):
+        assert [list(p) for p in mcp.decode_points(text)] == points, text
+
+
+def test_a_link_the_app_wrote_with_short_stops_is_opened(tools) -> None:
+    text, _ = Q_VECTORS[0]
+    key = "A" * 22
+    link = f"https://routes.example.org/#q={text}&preset=group-ride&v=2&stress=50&k={key}"
+    out = tools.call("open_link", {"link": link})
+    sent = StandIn.routes[-1]
+    assert sent["points"] == [[-77.03652, 38.89768], [-77.00911, 38.88993], [-76.61, 39.29]]
+    assert sent["preset"] == "group-ride" and sent["stress"] == 50
+    assert parse_qs(out["link"].split("#", 1)[1]).get("k") == [key]
+
+
+def test_a_shared_route_kept_with_short_stops_is_opened_by_its_plan(tools, monkeypatch) -> None:
+    text, _ = Q_VECTORS[2]
+
+    def shared(route_id):
+        return {"inputs": {"hash": f"#q={text}&preset=gravel&v=2&stress=50"}, "answer": None}
+
+    monkeypatch.setattr(tools.api, "shared_route", shared)
+    tools.call("open_link", {"link": "https://routes.example.org/s/Ab12Cd34"})
+    sent = StandIn.routes[-1]
+    assert sent["points"] == [[-77.00001, 38.99999], [-78.04999, 38.20001]]
+    assert sent["preset"] == "gravel" and sent["stress"] == 50
+
+
+def test_short_stops_that_hold_nothing_fall_back_to_the_older_form() -> None:
+    points, _vias, _preset, _options = mcp.parse_fragment(
+        "#q=!!&p=-77.03000,38.90000;-77.02000,38.91000&preset=default"
+    )
+    assert points == [(-77.03, 38.9), (-77.02, 38.91)]
+    assert mcp.has_plan_points("#q=abc") and mcp.has_plan_points("preset=x&p=1,2")
+    assert not mcp.has_plan_points("#loop=1&preset=default")
+    assert not mcp.has_plan_points("#q=")
+
+
 def test_points_added_and_removed_together_are_named_by_the_draft_s_numbers(tools) -> None:
     first = tools.call(
         "plan_route",
