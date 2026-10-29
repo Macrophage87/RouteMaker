@@ -363,6 +363,45 @@ class TestTheAnswer:
         monkeypatch.setattr(routing, "_transport", PlanRouter(detour_cost=600.0))
         return lambda preset, **extra: plan(Client(), {**body_for(preset), **extra}).json()
 
+    def test_the_api_chooses_the_wider_alternative_for_a_big_ride_only(
+        self, monkeypatch, segment_schemas
+    ):
+        """Through the planner, not the choice alone: the router offers its own route (too
+        narrow for 1500 riders) and a wider alternative; the plan rides the wider one for 1500
+        and keeps the router's own for 200 (the v0.15.0 end review: nothing tested the plan)."""
+        from django.test import Client
+        from test_avoid_junctions import DETOUR, body_for, trace_for
+        from test_route_api import VERTICES, route_answer
+        from test_route_api import post as plan
+
+        own_shape = route_answer([(VERTICES, 2.2, [])])["trip"]["legs"][0]["shape"]
+
+        def router(url, payload, timeout):
+            endpoint = url.rsplit("/", 1)[1]
+            if endpoint == "trace_attributes":
+                return trace_for(payload)
+            if endpoint == "locate":
+                return []
+            answer = route_answer([(VERTICES, 2.2, [])])
+            answer["trip"]["summary"]["cost"] = 500.0
+            if "alternates" in payload:
+                wide = route_answer([(DETOUR, 2.4, [])])["trip"]
+                wide["summary"]["cost"] = 560.0
+                answer["alternates"] = [{"trip": wide}]
+            return answer
+
+        def stretches(variant, costing, one, when, deadline, traces=None, names=False):
+            narrow = one["legs"][0]["shape"] == own_shape
+            return [road(2200, 60 if narrow else 400)]
+
+        monkeypatch.setattr(routing, "_transport", router)
+        monkeypatch.setattr(routing, "capacity_stretches", stretches)
+        big = plan(Client(), {**body_for("mass-ride"), "ride_size": 1500}).json()
+        small = plan(Client(), {**body_for("mass-ride"), "ride_size": 200}).json()
+        assert big["mass_capacity"]["choice"]["chosen"] == 1, big["mass_capacity"]
+        assert small["mass_capacity"]["choice"]["chosen"] == 0, small["mass_capacity"]
+        assert big["geometry"] != small["geometry"]
+
     def test_a_mass_ride_says_its_capacity_for_the_ride_size_and_no_other_does(self, planned):
         body = planned("mass-ride")["mass_capacity"]
         assert body["riders"] == 500 and body["need_riders_per_min"] == 100

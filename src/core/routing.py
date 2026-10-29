@@ -3931,15 +3931,19 @@ def not_public_ends(pieces: list[Piece], leg_runs: list, count: int) -> list[dic
     if not ends:
         return []
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
-    if not segment_info.has_columns(schema, "bike_access_reason"):
+    try:
+        if not segment_info.has_columns(schema, "bike_access_reason"):
+            return []
+        with plan_cursor() as cursor:
+            cursor.execute(
+                f"SELECT DISTINCT osm_way_id FROM {schema}.segment "
+                "WHERE osm_way_id = ANY(%s) AND bike_access_reason = ANY(%s)",
+                [sorted(set(ends.values())), list(NOT_PUBLIC_REASONS)],
+            )
+            closed = {int(row[0]) for row in cursor.fetchall()}
+    except Exception:  # noqa: BLE001 - a route is answered without its end notes
+        logger.warning("the not-public end roads could not be read", exc_info=True)
         return []
-    with plan_cursor() as cursor:
-        cursor.execute(
-            f"SELECT DISTINCT osm_way_id FROM {schema}.segment "
-            "WHERE osm_way_id = ANY(%s) AND bike_access_reason = ANY(%s)",
-            [sorted(set(ends.values())), list(NOT_PUBLIC_REASONS)],
-        )
-        closed = {int(row[0]) for row in cursor.fetchall()}
     return [
         {"index": index, "reason": "not_public", "note": t(NOT_PUBLIC_NOTE)}
         for index, way in sorted(ends.items())
