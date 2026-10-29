@@ -29,7 +29,7 @@ import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { ACCESS_FINE_TUNE, ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { RideSettingsFields } from "../RideMode.tsx";
-import { RIDE_TEXT_HELP, RIDE_TEXT_LABEL, type RideTextSize } from "../lib/rideOutput.ts";
+import { RIDE_ICONS_HELP, RIDE_ICONS_LABEL, RIDE_TEXT_HELP, RIDE_TEXT_LABEL, readRideIconsOnly, writeRideIconsOnly, type RideTextSize } from "../lib/rideOutput.ts";
 import type { RidePrefs } from "../lib/rideOutput.ts";
 import type { RailVisibility } from "../lib/railStations.ts";
 import { RailStationsSection } from "../RailStations.tsx";
@@ -515,6 +515,34 @@ function ContrastRow() {
   );
 }
 
+/** Icons only on the ride's side buttons, kept on this device (lib/rideOutput.ts); a ride reads it as it opens. */
+function IconsOnlyRow() {
+  const [on, setOn] = useState(() => readRideIconsOnly());
+  return (
+    <SettingRow infoId="settings-icons-only-info" about="icons only" info={RIDE_ICONS_HELP} className="icons-only-row">
+      <button
+        type="button"
+        role="switch"
+        className="switch"
+        aria-checked={on}
+        aria-labelledby="settings-icons-only-label"
+        aria-describedby="settings-icons-only-info"
+        onClick={() => {
+          writeRideIconsOnly(!on);
+          setOn(!on);
+        }}
+      >
+        <span id="settings-icons-only-label" className="switch-label">
+          {RIDE_ICONS_LABEL}
+        </span>
+        <span className="switch-state" aria-hidden="true">
+          {on ? t("On") : t("Off")}
+        </span>
+      </button>
+    </SettingRow>
+  );
+}
+
 /** Settings' tabs (the owner, 2026-10-28: "Settings = display, riding, account"; routes stay in Save & load). */
 export const SETTINGS_TABS = ["riding", "display", "account"] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
@@ -664,6 +692,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
             </button>
           </SettingRow>
         </div>
+        {/* Icons only on the ride's side buttons (Stephen 2026-10-29: "allow icon only bubbles in settings"); off by default. */}
+        <IconsOnlyRow />
         {/* How much screen readers are told (the owner, 2026-10-11 20:23 UTC): Brief or Full; unset, Go is brief. Named
             Screen-reader detail (it was Announcements), so it is not taken for the ride's How much to say. */}
         <SettingRow
