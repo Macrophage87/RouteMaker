@@ -2022,7 +2022,7 @@ export function App() {
   // the map click's path; from the "Your location" choice, the search's Start / Destination / Stop choice.
   // A failure is the Points notice (a status, said once; through the app region only while the planner is
   // hidden). It is cleared and set again a moment later, so a second press with the same answer is said again.
-  const useMyLocation = useCallback(async (choice?: PlaceChoice) => {
+  const locateMe = useCallback(async (choice?: PlaceChoice) => {
     const press = gate.begin();
     if (press === null) {
       // A press while one is under way still gets an answer.
@@ -5506,7 +5506,7 @@ export function App() {
       onReset={resetPlan}
       locate={
         points.length === 0
-          ? { onLocate: () => void useMyLocation("start"), busy: locating, unavailable: locateReady.available ? null : locateReady.reason }
+          ? { onLocate: () => void locateMe("start"), busy: locating, unavailable: locateReady.available ? null : locateReady.reason }
           : null
       }
       onSay={announce}
@@ -5516,7 +5516,7 @@ export function App() {
     <PointsSection key="points"
       {...{
         pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate,
-        searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials,
+        searchBias, pickPlace, locateReady, locating, hereInPlan, here, locateMe, loop, loopHintId, commitDials,
         dials, accessMode, namer, located: fromHere, removeAt, reorderPoint, pointWarnings, removeRefs, preset, stationChoice, chooseStation,
         federalPlanner,
         pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, historyHere: !narrow && !planFirst,

@@ -636,9 +636,9 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
   assert.doesNotMatch(lib, LEAKS);
   assert.doesNotMatch(lib, /watchPosition/);
   const app = code(appSource());
-  const start = app.indexOf("const useMyLocation");
+  const start = app.indexOf("const locateMe");
   const end = app.indexOf("}, [gate, geoEnv", start);
-  assert.ok(start > 0 && end > start, "the useMyLocation body is found");
+  assert.ok(start > 0 && end > start, "the locateMe body is found");
   assert.doesNotMatch(app.slice(start, end), LEAKS);
   // The whole of App, not only that body (A28, A29): no log, send or other channel anywhere in it.
   // Storage is the one term left out: tabSession() is the sign-in round trip's, on purpose (signIn.ts).
@@ -732,21 +732,21 @@ const body = (text: string, from: string, to: string) => {
 
 test("App: the look-up's answer is placed with the ride read after the wait and the list's choice", () => {
   const app = code(appSource());
-  const useMy = body(app, "const useMyLocation", "}, [gate, geoEnv");
-  const waited = useMy.indexOf("await locate(geoEnv)");
-  const ride = useMy.indexOf("const ride = rideRef.current;");
+  const locateBody = body(app, "const locateMe", "}, [gate, geoEnv");
+  const waited = locateBody.indexOf("await locate(geoEnv)");
+  const ride = locateBody.indexOf("const ride = rideRef.current;");
   assert.ok(waited > 0 && ride > waited, "the ride is read after the wait (S2, AW2)");
   assert.match(
-    useMy,
+    locateBody,
     /placeFix\(result, pointsRef\.current, \{ loop: loopStops\(ride\.preset, ride\.dials\.loop\), choice \}\)/,
     "the fresh points, the fresh loop flag and the choice (S3, AW3)",
   );
   // Plan's From and To put their box away first (Plan streamline, 2026-10-17).
-  assert.match(app, /onLocate: \(choice\) => \{\s*setChanging\(null\);\s*afterPick\.current = variant;\s*void useMyLocation\(choice\);\s*\},/, "App passes the list's choice on (P6)");
+  assert.match(app, /onLocate: \(choice\) => \{\s*setChanging\(null\);\s*afterPick\.current = variant;\s*void locateMe\(choice\);\s*\},/, "App passes the list's choice on (P6)");
   // A press while busy is answered (AW8); a refusal is cleared and set again, so a repeat is said again (N4).
-  assert.match(useMy, /if \(press === null\) \{\s*announce\(FINDING_LOCATION\);\s*return;\s*\}/);
+  assert.match(locateBody, /if \(press === null\) \{\s*announce\(FINDING_LOCATION\);\s*return;\s*\}/);
   assert.match(
-    useMy,
+    locateBody,
     /if \("refuse" in placed\) \{\s*setNotice\(null\);\s*locateNoticeTimer\.current = window\.setTimeout\(\(\) => \{\s*if \(gate\.latest\(press\)\) setNotice\(placed\.refuse\);\s*\}, 150\);\s*return;/,
   );
   // The spoken Copy link text goes with the plan it was about (L4).

@@ -363,8 +363,10 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /
   registry for npm's latest version on every run in a fresh container.
 - `npm run lint` is ESLint with the React hooks rules alone (`eslint.config.js`):
   a hook called conditionally, and an effect, memo or callback whose dependency
-  list leaves out a value it reads. Both are warnings while the existing reports
-  are worked through, so CI lists them and fails on neither. It parses with
+  list leaves out a value it reads. The first (rules-of-hooks) is an error, so CI
+  fails on it; name a plain function so it does not start with `use`. The second
+  is a warning while the existing reports are worked through, so CI lists them
+  and fails on none. It parses with
   Babel's parser, since typescript-eslint does not support the TypeScript the
   project builds with.
 - `npm run build` typechecks (`tsc --noEmit`) and then builds `dist/`, which

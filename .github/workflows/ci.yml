@@ -112,8 +112,8 @@ jobs:
       - name: Front end
         working-directory: frontend
         run: npm ci && npm run typecheck && npm test && npm run build
-      # The React hooks rules (frontend/eslint.config.js). Warnings for now: they are listed here and
-      # fail nothing; a rule raised to an error fails the step.
+      # The React hooks rules (frontend/eslint.config.js). rules-of-hooks is an error and fails the
+      # step; exhaustive-deps is still a warning, listed here and failing nothing.
       - name: Front end hooks lint
         run: npm --prefix frontend run lint
       # The same tests and build again, the way every beta path runs them: the shared script,
