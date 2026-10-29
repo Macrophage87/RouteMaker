@@ -602,6 +602,21 @@ export const ROAM_ALERT_KINDS: readonly AlertKind[] = ["lost", "wait", "mechanic
 /** Stephen 2026-10-27: "make the alert (call it send alert) a larger button". */
 export const ALERT_LABEL = t("Send alert");
 export const ALERT_NOTE = t("Sends your location with the alert");
+/**
+ * An alert needs its spot, so it always carries it, even from a rider not shown as a dot; on a ride with no key in its
+ * link (every Mass Ride, and a Group Ride link without one) the spot is in plain numbers, which anyone who has the
+ * route can read. So the rider is told before sending (2026-10-29).
+ */
+export const ALERT_SPOT_NOTE = t("Sends your spot to everyone on this ride.");
+
+/**
+ * The alert panel's line. Seen: ALERT_SPOT_NOTE where it adds something (no key, and the rider not shown as a dot, so
+ * the alert is the first time their spot goes out), else the usual short ALERT_NOTE. Heard (a screen reader, and the
+ * Alert button's description): ALERT_SPOT_NOTE always, true on every ride.
+ */
+export function alertNote(sealed: boolean, shownAsDot: boolean): { seen: string; heard: string } {
+  return { seen: !sealed && !shownAsDot ? ALERT_SPOT_NOTE : `${ALERT_NOTE}.`, heard: ALERT_SPOT_NOTE };
+}
 export const CONFIRM_QUESTION = t("Send to everyone on this ride?");
 export const OTHER_MAX = 80;
 export const ALERT_EVERY_MS = 60_000;

@@ -482,6 +482,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Wait up, regroup": "ቆዩ፣ እንሰብሰብ",
   "Send alert": "ማንቂያ ላክ",
   "Sends your location with the alert": "አካባቢዎን ከማንቂያው ጋር ይልካል",
+  "Sends your spot to everyone on this ride.": "አካባቢዎን በዚህ ጉዞ ላይ ላሉ ሁሉ ይልካል።",
   "Send to everyone on this ride?": "በዚህ ጉዞ ላይ ላሉ ሁሉ ይላክ?",
   "Call 911": "911 ይደውሉ",
   "You have sent {count} alerts on this ride, the most one phone sends.": "በዚህ ጉዞ ላይ {count} ማንቂያዎችን ልከዋል፣ ይህም ከአንድ ስልክ የሚላከው ከፍተኛው ነው።",

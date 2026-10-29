@@ -482,6 +482,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Wait up, regroup": "Chờ đã, tập hợp lại",
   "Send alert": "Gửi cảnh báo",
   "Sends your location with the alert": "Gửi vị trí của bạn kèm cảnh báo",
+  "Sends your spot to everyone on this ride.": "Gửi vị trí của bạn cho mọi người trong chuyến đi này.",
   "Send to everyone on this ride?": "Gửi cho mọi người trong chuyến đi này?",
   "Call 911": "Gọi 911",
   "You have sent {count} alerts on this ride, the most one phone sends.": "Bạn đã gửi {count} cảnh báo trong chuyến đi này, mức tối đa cho một điện thoại.",

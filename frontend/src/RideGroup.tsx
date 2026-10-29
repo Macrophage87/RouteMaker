@@ -29,7 +29,6 @@ import {
   ALERT_KINDS,
   ROAM_ALERT_KINDS,
   ALERT_LABEL,
-  ALERT_NOTE,
   BROADCAST_CONSENT_NOTE,
   CALL_911,
   CALL_911_HREF,
@@ -51,6 +50,7 @@ import {
   RIDE_ROLES,
   ROLE_QUESTION,
   SHARE_STOPPED_SAID,
+  alertNote,
   alertRefusal,
   alertText,
   awayWords,
@@ -387,6 +387,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   // Everyone on the ride, the leader and this rider (where the others see them) included.
   const meShown = leading || shareOn;
   const riders = riderTotal(dots, meShown);
+  const note = alertNote(seal !== null, meShown);
   const leaderInKey = dots.some((d) => d.leader);
 
   // Following the leader: the leader's dot, the path it has taken since this page opened, and the map kept on it.
@@ -594,8 +595,12 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
         {consent && <RolePicker name="ride-role" value={consent.role} onChange={changeRole} />}
       </div>
       <div id={alertPanel} className="ride-alert-panel" hidden={!alertOpen}>
-        <p id={`${alertPanel}-note`} className="hint">
-          {ALERT_NOTE}.
+        {/* Seen: the spot line only where it adds something; heard: always (lib/rideGroup.ts alertNote). */}
+        <p className="hint">
+          <span aria-hidden="true">{note.seen}</span>
+          <span id={`${alertPanel}-note`} className="visually-hidden">
+            {note.heard}
+          </span>
         </p>
         {confirming ? (
           <div role="group" aria-label={CONFIRM_QUESTION} data-idle-hold>

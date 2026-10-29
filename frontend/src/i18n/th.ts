@@ -482,6 +482,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Wait up, regroup": "รอด้วย รวมกลุ่ม",
   "Send alert": "ส่งการแจ้งเตือน",
   "Sends your location with the alert": "ส่งตำแหน่งของคุณไปกับการแจ้งเตือน",
+  "Sends your spot to everyone on this ride.": "ส่งตำแหน่งของคุณให้ทุกคนในทริปนี้",
   "Send to everyone on this ride?": "ส่งถึงทุกคนในการปั่นนี้?",
   "Call 911": "โทร 911",
   "You have sent {count} alerts on this ride, the most one phone sends.": "คุณส่งการแจ้งเตือน {count} ครั้งในการปั่นนี้แล้ว ซึ่งมากที่สุดที่โทรศัพท์หนึ่งเครื่องส่งได้",

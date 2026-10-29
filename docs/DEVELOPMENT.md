@@ -8498,6 +8498,11 @@ age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
   still on the older build joins a link's ride by its points and does not meet those on the sealed ride. A Group
   Ride's secret comes from the plan as opened (`OPENED_HASH`), so one kept over a sign-in keeps it; a saved or
   kept route the rider opens gets a new one, a link pasted in its own or none.
+- **An alert's spot.** An alert needs its spot, so it carries it on every ride, even from a rider who is not
+  shown as a dot. On a ride without a key that spot is in plain numbers, which anyone who has the route can read,
+  so the alert panel says "Sends your spot to everyone on this ride." where that adds something: no key, and the
+  rider not shown as a dot (`rideGroup.ts alertNote`). Elsewhere the panel keeps its short "Sends your location
+  with the alert."; a screen reader, and the Alert button's description, always get the spot line.
 - Tests: `frontend/src/lib/rideSeal.test.ts` (secret, derivation, sealing, the grid against the server's,
   merging, a sealed ride end to end through `rideGroup.ts`, the page's wiring) and `tests/test_ride_presence.py`
   (sealed dots, alerts and paths kept, limited, marked and dropped as plain ones are).
