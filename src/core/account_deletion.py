@@ -217,6 +217,7 @@ def _page(
         "label{display:flex;gap:.5rem;align-items:flex-start;margin:1rem 0}"
         "input[type=checkbox]{width:1.4rem;height:1.4rem;flex:none}"
         ".note{font-weight:600}"
+        "summary{cursor:pointer;font-weight:600;min-height:44px;display:list-item;padding:.6rem 0}"
         "</style></head><body><main>"
         f"<h1>{escape(title)}</h1>{body}"
         f'{links}<p><a href="/">Back to RouteMaker</a></p>'
