@@ -105,7 +105,7 @@ test("Plan offers the manual mode while the opened file is not edited, and each 
 
 test("an opened file fitted round by round is said once, at the end; its progress line is out of the status region (a11y-5)", () => {
   const panel = readFileSync(new URL("../GpxPanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /const fitting = fit !== null;\s*useEffect\(\(\) => onFitting\?\.\(fitting\), \[fitting, onFitting\]\);/);
+  assert.match(panel, /const fitting = fit !== null;\s*useEffect\(\(\) => \{\s*onFitting\?\.\(fitting\);[\s\S]*?return \(\) => onFitting\?\.\(false\);\s*\}, \[fitting, onFitting\]\);/);
   const region = panel.slice(panel.indexOf('<div role="status" aria-live="polite">'), panel.indexOf('className="loading gpx-fitting"'));
   assert.ok(region.includes("{imported.matched &&"), "the fitting line comes after the status region's content");
   assert.match(region, /<\/div>\s*\)\}\s*<\/div>\s*\{\/\*/, "and after the region closes");

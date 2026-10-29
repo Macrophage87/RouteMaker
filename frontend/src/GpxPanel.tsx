@@ -453,7 +453,11 @@ export function GpxPanel(props: Props) {
     onRefine(next.points);
   }, [fit, imported, points, planStatus, route, routedPoints, onRefine]);
   const fitting = fit !== null;
-  useEffect(() => onFitting?.(fitting), [fitting, onFitting]);
+  useEffect(() => {
+    onFitting?.(fitting);
+    // Gone mid-fit: the page is not left holding the route's sentence back.
+    return () => onFitting?.(false);
+  }, [fitting, onFitting]);
 
   // The file's own line, faint, under the route.
   const reference = imported && showTrack && imported.reference.length >= 2 ? imported.reference : null;
