@@ -1238,6 +1238,12 @@ export interface RideEvent {
   after?: boolean;
   cue?: Cue;
   phase?: Phase;
+  /**
+   * The same cue said again from `progressM` (review RIDE-4): a polite cue the throttle holds back up to POLITE_GAP_MS
+   * is built when it is said, with the distance then, not when it was made; null once the rider is at or past the turn
+   * (its "now" says it). Only on cues that give a distance.
+   */
+  respoken?: (progressM: number) => string | null;
 }
 
 export interface RideState {
@@ -1515,7 +1521,9 @@ export function step(
           if (left < FAR_SIDE_LAST_M) said[cue.index] = ["advance"];
           else if (!before || progress - before.atM >= FAR_SIDE_GAP_M) {
             said[cue.index] = ["advance"];
-            events.push({ kind: "cue", spoken: cueSpoken(cue, "advance", left), urgent: false, cue, phase: "advance" });
+            const lengthM = model.lengthM;
+            const respoken = (at: number) => (lengthM - at > ARRIVE_M ? cueSpoken(cue, "advance", lengthM - at) : null);
+            events.push({ kind: "cue", spoken: cueSpoken(cue, "advance", left), urgent: false, cue, phase: "advance", respoken });
           }
         }
       }
@@ -1533,11 +1541,15 @@ export function step(
     if (!reached.length) break;
     const phase = reached[reached.length - 1];
     if (!done.includes(phase.phase)) {
+      const first = done.length === 0;
+      const urgent = phase.phase === "now" || phase.phase === "arrive";
       events.push({
         kind: "cue",
-        spoken: cueSpoken(cue, phase.phase, distance, done.length === 0),
-        urgent: phase.phase === "now" || phase.phase === "arrive",
+        spoken: cueSpoken(cue, phase.phase, distance, first),
+        urgent,
         ...(cue.joined ? { after: true } : {}),
+        // A turn's or a hazard's "In 500 feet, ..." (a stop's is said on reaching it, with no distance).
+        ...(!urgent && cue.kind !== "stop" ? { respoken: (at: number) => (cue.atM - at > 0 ? cueSpoken(cue, phase.phase, cue.atM - at, first) : null) } : {}),
         cue,
         phase: phase.phase,
       });
@@ -2015,6 +2027,19 @@ export function planAfterEnd(
 /** The pacing of automatic re-plans: one in flight, 30 s apart, 2 min after two failures in a row. */
 export const REPLAN_GAP_MS = 30_000;
 export const REPLAN_BACKOFF_MS = 120_000;
+
+/**
+ * After a new route, no automatic re-plan again until the rider has moved this far (about 165 ft) from where it was
+ * asked from, or has been on its line (review RIDE-6): a new line that cannot start near a rider standing still (a car
+ * park, a plaza) left them "off" again at once, and it was planned again every REPLAN_GAP_MS with an urgent "Off the
+ * planned route" each time. The rider's own asks are not held.
+ */
+export const REPLAN_MOVED_M = 50;
+
+/** Whether an automatic re-plan from `here` waits (REPLAN_MOVED_M): `from` is where the last new route was asked from, null once ridden on. */
+export function replanHeld(from: LonLat | null, here: LonLat): boolean {
+  return from !== null && haversineM(from, here) < REPLAN_MOVED_M;
+}
 
 export class ReplanGate {
   private inFlight = false;
