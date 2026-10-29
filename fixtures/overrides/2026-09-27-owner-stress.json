@@ -509,5 +509,21 @@
         "line": "-76.974518,38.875270 -76.975301,38.875586 -76.976092,38.875964"
       }
     }
+  ],
+  "retire": [
+    {
+      "kind": "stress",
+      "osm_way_id": 15561007,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "us-340-wilson-freeway",
+        "category": "speed",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "route_only",
+        "public_note": "Freeway-grade highway with fast through traffic."
+      },
+      "reason": "The owner, 2026-10-29, of this rural row (US 340, the William L. Wilson Freeway), asked whether it should follow the rule of 2026-10-17 (\"The rural road LTS 5s should be LTS4.5\"): \"Make it 4.5\". Not Avoid: this file's LTS 4.5 row (tier 4 with half) replaces it."
+    }
   ]
 }

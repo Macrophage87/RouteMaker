@@ -511,7 +511,7 @@ def map_class(tags: dict[str, str]) -> MapClass:
     `bicycle_link_service`), and a road or path the public may not enter
     (`access` or `vehicle` of no, private, military, restricted, permit), a
     bicycle or foot tag reopening it. Neither is drawn (OWNER-DECISIONS 89).
-    "Legal but avoid" (US 340, `bicycle=use_sidepath`) is a road a bicycle may
+    "Legal but avoid" (an urban expressway, `bicycle=use_sidepath`) is a road a bicycle may
     use, and keeps its tier."""
     highway = tags.get("highway")
     if highway in NOT_A_WAY_HIGHWAY or tags.get("indoor", "no") != "no":
