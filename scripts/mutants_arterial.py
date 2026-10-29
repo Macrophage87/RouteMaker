@@ -126,7 +126,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ("rematch: a failed row is dropped", RM, "        if index is None or index not in resolved:\n            out.append(row)\n            continue", "        if index is None or index not in resolved:\n            continue", REMATCH),
     ("rematch: simplification keeps nothing", RM, "SIMPLIFY_M = 1.0", "SIMPLIFY_M = 1000.0", REMATCH),
     ("rematch: superseded entries not read", RM, '*document.get("superseded", [])', "", REMATCH),
-    ("rematch: stored fingerprint not attached", OV, "fingerprint=fingerprints.get((row.kind, row.osm_way_id)),", "fingerprint=None,", REMATCH),
+    ("rematch: stored fingerprint not attached", OV, 'fingerprints.get((row.kind, row.osm_way_id)) or getattr(row, "fingerprint", None)', 'getattr(row, "fingerprint", None)', REMATCH),
     ("rematch: stage does not re-match", RUN, "rows, rematch_report = rematch.resolve(rows, context.ways_by_id)", "rows, rematch_report = rows, rematch.RematchReport()", REMATCH),
     ("rematch: stage writes no report", RUN, "        write_rematch_report(rematch_report)\n", "", REMATCH),
     ("rematch: failures not counted", RUN, "rematch_failed=len(rematch_report.failed),", "rematch_failed=0,", REMATCH),

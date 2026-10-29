@@ -6,7 +6,8 @@ The shell script does the work; every judgement it acts on is made here, in smal
 functions the tests call directly (tests/test_beta_cd.py):
 
   pick        which release tag to deploy: the highest strict vX.Y.Z newer than the deployed one
-  ci-verdict  whether GitHub's `test` check run is green for the tag's commit
+  ci-verdict  whether GitHub's `test` and `a11y` check runs are green for the tag's commit
+  lock-hash   the front end's lockfile, named without its version fields (node_modules' key)
   gate        whether the change between two commits is a code release the server may deploy
               by itself, or needs the owner (data from home, sudo, nginx); and which optional
               steps the deploy needs (front end, router restart, services to recreate)
@@ -20,6 +21,7 @@ check-run JSON.
   cd_logic.py pick --deployed v0.1.0 < tags.txt          # prints the tag, or nothing
   cd_logic.py semver v0.2.0                               # exit 0 if strict vX.Y.Z
   cd_logic.py ci-verdict --sha <40 hex> < check-runs.json # green | pending | red
+  cd_logic.py lock-hash < frontend/package-lock.json      # 64 hex
   cd_logic.py gate --repo DIR --old SHA --new SHA         # KEY=VALUE lines
   cd_logic.py rollback --done stopped,snapshot,...        # one undo action per line
 """
@@ -27,6 +29,7 @@ check-run JSON.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -71,6 +74,9 @@ def pick_release(tags: Iterable[str], deployed: str) -> Optional[str]:
 # --- GitHub's check run ----------------------------------------------------------------------
 
 CHECK_NAME = "test"  # .github/workflows/ci.yml, jobs.test: the check main's ruleset requires
+# Every check run a release needs green: the tests, and the browser accessibility check
+# (.github/workflows/ci.yml, jobs.a11y), so a keyboard or screen-reader regression is not deployed.
+CHECK_NAMES = (CHECK_NAME, "a11y")
 CHECK_APP = "github-actions"
 
 
@@ -95,6 +101,38 @@ def ci_verdict(payload: dict, sha: str, name: str = CHECK_NAME, app: str = CHECK
     if latest.get("status") != "completed":
         return "pending"
     return "green" if latest.get("conclusion") == "success" else "red"
+
+
+def ci_verdicts(payload: dict, sha: str, names: Sequence[str] = CHECK_NAMES) -> str:
+    """green only when every check run in `names` is green; red if any is red; else pending."""
+    verdicts = [ci_verdict(payload, sha, name) for name in names]
+    if "red" in verdicts:
+        return "red"
+    if "pending" in verdicts:
+        return "pending"
+    return "green"
+
+
+# --- the front end's lockfile ----------------------------------------------------------------
+
+
+def lock_hash(text: str) -> str:
+    """sha256 of frontend/package-lock.json without its two version fields (the top-level
+    `version` and `packages[""].version`), which every release bumps: node_modules sent from
+    home stays valid until a dependency changes. Text that is not a lockfile's JSON is hashed
+    as it is."""
+    try:
+        lock = json.loads(text)
+    except ValueError:
+        lock = None
+    if isinstance(lock, dict):
+        lock.pop("version", None)
+        packages = lock.get("packages")
+        root = packages.get("") if isinstance(packages, dict) else None
+        if isinstance(root, dict):
+            root.pop("version", None)
+        text = json.dumps(lock, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8", "surrogateescape")).hexdigest()
 
 
 # --- the gate --------------------------------------------------------------------------------
@@ -140,10 +178,14 @@ COMPOSE_FILES = ("compose.yaml", "compose.beta.yaml")
 # 436). The one pre-draw command (predraw_stress_tiles) draws both the stress and the Mass Ride tiles.
 TILE_FORMAT_FILES = ("src/core/stress_tiles.py", "src/core/mass_tiles.py")
 FORMAT_VERSION = re.compile(r"(?m)^FORMAT_VERSION\s*=\s*(\S+)")
+# The files auto-release.sh runs from $RM_STATE/cd/bin (its `install`, and its reinstall after a
+# deploy that changes one of them).
 AGENT_FILES = (
     "scripts/beta/auto-release.sh",
     "scripts/beta/cd_logic.py",
     "scripts/beta/receive-data.sh",
+    "scripts/beta/frontend-build.sh",
+    "scripts/beta/alert.sh",
 )
 MIGRATION = re.compile(r"^src/[^/]+/migrations/[^/]+\.py$")
 # A migration that names the live schema reads or reshapes data that comes from home. A
@@ -446,6 +488,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     sub.add_parser("pick").add_argument("--deployed", required=True)
     sub.add_parser("semver").add_argument("tag")
     sub.add_parser("ci-verdict").add_argument("--sha", required=True)
+    sub.add_parser("lock-hash")
     g = sub.add_parser("gate")
     g.add_argument("--repo", required=True)
     g.add_argument("--old", required=True)
@@ -465,7 +508,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             payload = json.loads(sys.stdin.read() or "{}")
         except ValueError:
             payload = {}
-        print(ci_verdict(payload if isinstance(payload, dict) else {}, args.sha))
+        print(ci_verdicts(payload if isinstance(payload, dict) else {}, args.sha))
+        return 0
+    if args.command == "lock-hash":
+        print(lock_hash(sys.stdin.read()))
         return 0
     if args.command == "gate":
         result = git_gate(args.repo, args.old, args.new)
