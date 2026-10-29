@@ -7303,7 +7303,12 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
   written to a run row. Rotating it: docs/DEPLOYMENT.md, "Secrets".
 - What a plan does: a zone closed to bicycles (every lane closed, the bike lane listed closed) is
   left out of every router request (`exclude_polygons`, a strip 6 m [20 ft] either side of the
-  zone's line, trimmed 20 m [66 ft] at each end so cross streets stay open). Every other zone in
+  zone's line, trimmed 20 m [66 ft] at each end so cross streets stay open). The line is kept to
+  within 3 m [10 ft] of the road in at most 12 points, so a curved road stays inside its strip; a
+  longer winding one gets a wider strip instead. Where more closures are in force than the
+  router takes (100 vertices in all), those nearest the line through the rider's points in
+  order are kept and the rest are warned of. The answer is checked against the closures it
+  went round: one it still runs along is warned of in red, not counted as routed round. Every other zone in
   force at the ride time that the route runs along costs its penalty: 60 s shoulder only, 120 s a
   lane closed, 180 s a flagger or alternating one-way, 600 s every lane closed with bicycles not
   mentioned (shown in red). The plan asks once for the route round those zones and keeps it where
