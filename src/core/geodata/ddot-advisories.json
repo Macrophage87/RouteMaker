@@ -11,6 +11,7 @@
  "reason": "Closed for the Connecticut Avenue Streetscape and Deckover Project: deliveries and USPS only, protected walkway for pedestrians.",
  "first_day": "2026-08-31",
  "last_day": "2026-11-03",
+ "end_estimated": true,
  "ways": [425103385],
  "lines": [
   [[-77.04417, 38.91114], [-77.04421, 38.91121], [-77.04475, 38.91214], [-77.04481, 38.91222], [-77.04491, 38.9123]]
@@ -26,6 +27,7 @@
  "reason": "Both service lanes closed for the Dupont Circle deckover, for the length of the project.",
  "first_day": "2025-09-23",
  "last_day": "2027-08-31",
+ "end_estimated": true,
  "ways": [49887379, 49887381, 1460812580],
  "lines": [
   [[-77.04446, 38.91114], [-77.04442, 38.91107], [-77.04397, 38.91032], [-77.04394, 38.91025], [-77.04393, 38.91019], [-77.04394, 38.91016], [-77.04397, 38.91011]],
@@ -42,6 +44,7 @@
  "reason": "The walking and biking trail across the bridge is closed for the bridge rehabilitation. Signed detours use Key Bridge and Arlington Memorial Bridge.",
  "first_day": "2026-09-21",
  "last_day": "2027-09-30",
+ "end_estimated": true,
  "ways": [619876895],
  "lines": [
   [[-77.06364, 38.89197], [-77.06349, 38.89195], [-77.06337, 38.89194], [-77.06327, 38.89193], [-77.06313, 38.89193], [-77.06302, 38.89193], [-77.06284, 38.89194], [-77.06229, 38.89203], [-77.06203, 38.89208], [-77.06175, 38.89212], [-77.06141, 38.89216], [-77.0612, 38.89219], [-77.06013, 38.89237], [-77.05892, 38.89257], [-77.05804, 38.89272], [-77.05649, 38.89298], [-77.05593, 38.89308]]

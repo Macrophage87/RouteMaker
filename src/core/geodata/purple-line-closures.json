@@ -11,6 +11,7 @@
  "reason": "Closed to traffic for Purple Line track work, Dixon Ave junction included. Pedestrian access is kept round the work zone.",
  "first_day": "2026-07-24",
  "last_day": "2027-03-31",
+ "end_estimated": true,
  "ways": [697586209, 697586210, 244626217, 100023934, 519073841],
  "lines": [
   [[-77.02916, 38.99337], [-77.02907, 38.99337], [-77.02888, 38.99337], [-77.02811, 38.99337], [-77.02807, 38.99338], [-77.02796, 38.99338], [-77.02783, 38.99338], [-77.02765, 38.99338]],
