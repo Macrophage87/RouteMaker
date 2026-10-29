@@ -3514,8 +3514,8 @@ it had only the nearest. The stop on the Fairfax County Parkway Trail lay 15 ft 
 from a ramp and 19 ft (5.9 m) from the trail; matched to the ramp, the route left the
 trail for 0.6 mi (1.0 km) of the Avoid-rated parkway. The search's own requests reuse
 the plan's locations, so they match alike, and so do the stop-order leg costs and
-its matrix past ten stops (`stoporder`); `core.nearest` asks for fixed places and keeps
-the nearest way. The cut points of a long plan (`refine.long_legs`) and the dedodge
+its matrix past ten stops (`stoporder`); `core.nearest` matches the rider the same way and
+keeps the nearest way at its fixed places. The cut points of a long plan (`refine.long_legs`) and the dedodge
 locations are on the route and get no radius; a bikeshare walk leg (pedestrian, to and
 from the dock) keeps the nearest way. Only ways the ride's costing allows are
 candidates, so a way closed to bicycles is never matched (err closed is unchanged), and
@@ -7336,7 +7336,11 @@ and Metrorail's stations at their bike entrance (`railStations.bikeEntrance`), M
 nearest in straight lines (`NEAREST_CANDIDATES`) go to `POST /api/nearest` with the ride's preset and
 dials (not the weight, loop or target), which answers each one's riding distance and time from
 Valhalla's `sources_to_targets` on the ride's own graph and costing (`stoporder.ride_graph`, shared
-with Best order), or straight lines when the router gives none. The 3 nearest by bike
+with Best order), or straight lines when the router gives none. Like Best order's legs and matrix,
+it is asked at the rider's own speed where the request gives one (`cycling_speed_kmh`), and leaves
+out what the plan would (`stoporder.ride_exclusions`): the closures to bicycles in force at the ride
+time, but those routed through (`closure_bypass`, `closures_now`), and the roads the rider marked
+closed (`blocked_lines`). The 3 nearest by bike
 (`NEAREST_SHOWN`; one the router cannot reach is left out) are listed in words, US units first, each
 with Ride here (a new plan from the search's origin to it: one `commit`, so Undo puts the plan back;
 a loop is turned off in the same edit) and, for water and restrooms with a plan of two or more

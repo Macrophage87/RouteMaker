@@ -37,6 +37,7 @@ from routemaker import stoporder
 from routemaker.geo import Point, haversine
 
 from . import presets, routing
+from . import workzones as work_zones
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +79,9 @@ def free_stops(points: list, loop: bool) -> int:
 
 def ride_graph(preset_name: str, dials: routing.Dials) -> tuple[str, dict]:
     """The router (variant) and costing the ride's own route would be asked on: the
-    preset's and dials' stress, hills, time, assist and trails off, with /route's choice
-    of a twin graph that is down or not promoted left to the standard one. Shared with
-    `core.nearest`, whose riding distances are on the same graph."""
+    preset's and dials' stress, hills, time, assist, trails off and the rider's own speed,
+    with /route's choice of a twin graph that is down or not promoted left to the standard
+    one. Shared with `core.nearest`, whose riding distances are on the same graph."""
     preset = presets.PRESETS[preset_name]
     stress = (
         presets.stress_start(preset_name, dials.carrying) if dials.stress is None else dials.stress
@@ -96,7 +97,29 @@ def ride_graph(preset_name: str, dials: routing.Dials) -> tuple[str, dict]:
     costing = presets.costing(
         preset_name, stress, hills, assist=assist, avoid_gravel=bool(dials.avoid_gravel)
     )
+    if dials.cycling_speed_kmh is not None:
+        # As the plan times its route (`routing._plan`).
+        costing["bicycle"]["cycling_speed"] = float(dials.cycling_speed_kmh)
     return variant, costing
+
+
+def ride_exclusions(points: list, dials: routing.Dials) -> list:
+    """What the ride's own route would be asked to leave out (`routing._plan`'s
+    `exclude_polygons`): the roads the rider marked closed on this ride, and the closures
+    to bicycles in force at the ride time near `points`, but those the rider routes through.
+    Shared with `core.nearest`."""
+    when = dials.when or routing.default_when()
+    blocked = work_zones.blocked_rings(dials.blocked)
+    zones = work_zones.plan_zones(
+        points,
+        when,
+        bypass=dials.closure_bypass,
+        reserve=work_zones.rules.budget_used(blocked),
+        now_only=dials.closures_now,
+    )
+    if zones is None:
+        return list(blocked)
+    return list(zones.exclude) + blocked
 
 
 def _ask(variant: str, endpoint: str, payload: dict, deadline) -> tuple[dict, str]:
@@ -169,7 +192,7 @@ def _requests_of(chain: list[int], points: list) -> list[list[int]]:
 
 
 def _leg_costs(
-    variant: str, request_points: list, costing: dict, when: str, deadline
+    variant: str, request_points: list, costing: dict, when: str, deadline, exclude=()
 ) -> tuple[tuple[list, list, list] | None, str]:
     """The router's cost, riding time (seconds) and length (metres) of the route
     between every pair of points an order may ride, from the legs of /route
@@ -206,6 +229,8 @@ def _leg_costs(
                 "directions_type": "none",
                 "units": "kilometers",
             }
+            if exclude:
+                payload["exclude_polygons"] = list(exclude)
             try:
                 answer, answered = _ask(variant, "route", payload, deadline)
             except routing.DeadlineExceeded as error:
@@ -217,7 +242,7 @@ def _leg_costs(
             if answered != variant:
                 if filled and variant == asked and asked in routing.TWIN_VARIANTS:
                     # The twin went down part way: ask the standard graph for every leg.
-                    return _leg_costs(answered, request_points, costing, when, deadline)
+                    return _leg_costs(answered, request_points, costing, when, deadline, exclude)
                 variant = answered
             legs = (answer.get("trip") or {}).get("legs")
             if not isinstance(legs, list) or len(legs) != len(indices) - 1:
@@ -239,7 +264,7 @@ def _leg_costs(
     return (cost, times, metres), variant
 
 
-def _matrix(variant: str, request_points: list, costing: dict, deadline) -> list | None:
+def _matrix(variant: str, request_points: list, costing: dict, deadline, exclude=()) -> list | None:
     """The riding times (seconds) and distances (metres) between every pair, or
     None if the router would not give them. Only the variant and the router's
     error are logged, never the points."""
@@ -254,6 +279,8 @@ def _matrix(variant: str, request_points: list, costing: dict, deadline) -> list
         "costing_options": costing,
         "units": "kilometers",
     }
+    if exclude:
+        payload["exclude_polygons"] = list(exclude)
     try:
         answer = ask_matrix(variant, payload, deadline)
     except (routing.RouterUnavailable, routing.RouterRefused, routing.DeadlineExceeded) as error:
@@ -327,6 +354,7 @@ def order(points: list, preset_name: str, dials: routing.Dials, started: float |
 
     variant, costing = ride_graph(preset_name, dials)
     when = dials.when or routing.default_when()
+    exclude = ride_exclusions(request_points, dials)
 
     # A long ride is ordered by straight line without asking the router: a matrix
     # of 26 points over that span holds a router's workers well past the answer's
@@ -335,7 +363,7 @@ def order(points: list, preset_name: str, dials: routing.Dials, started: float |
     legs = None
     if not long_ride and len(request_points) - 2 <= COST_MAX_STOPS:
         legs_by = routing.Deadline(min(deadline.at, started + COST_BUDGET_S), deadline.per_call_s)
-        legs, variant = _leg_costs(variant, request_points, costing, when, legs_by)
+        legs, variant = _leg_costs(variant, request_points, costing, when, legs_by, exclude)
     if legs is not None:
         cost, times, metres = legs
         chosen = stoporder.best_order(cost)
@@ -349,7 +377,7 @@ def order(points: list, preset_name: str, dials: routing.Dials, started: float |
         }
         new = chosen.order[:-1] if appended else chosen.order
         return {"order": new, "changed": chosen.changed, "exact": chosen.exact} | body
-    matrix = None if long_ride else _matrix(variant, request_points, costing, deadline)
+    matrix = None if long_ride else _matrix(variant, request_points, costing, deadline, exclude)
     if matrix is not None:
         times, metres = matrix
         chosen = stoporder.best_order(times)
