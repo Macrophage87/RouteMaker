@@ -450,20 +450,6 @@ def swapped_job(tiles_dir: Path) -> int | None:
     return job_id if isinstance(job_id, int) else None
 
 
-def journal_build_ids(journal: Mapping) -> set[str]:
-    """Every build an interrupted swap's links named before it moved them.
-
-    The rollback target among them: after a `promote` that moved `previous` and
-    then failed, nothing on disk links to it any more, and retention deletes
-    what nothing links to.
-    """
-    ids = {journal.get("build_id")}
-    for link in (journal.get("links") or {}).values():
-        if isinstance(link, Mapping):
-            ids |= {link.get("current"), link.get("previous")}
-    return {build for build in ids if isinstance(build, str) and build}
-
-
 def describe_interrupted_swap(journal: Mapping) -> str:
     """The operator's sentence for an interrupted swap: what it was, what to put back."""
     if journal.get("unreadable"):
