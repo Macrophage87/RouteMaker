@@ -2022,6 +2022,9 @@ def _seek_leg(
         logger.warning("the trail seek's table read ran past its time")
         seek["limited"] = "time"
         return None
+    except routing.PlanCancelled:
+        # A newer plan replaced this one: the plan ends here, not without the seek.
+        raise
     except Exception:  # noqa: BLE001 - a plan is answered without the seek
         logger.warning("the trail seek could not read the segment table", exc_info=True)
         seek["limited"] = "table"

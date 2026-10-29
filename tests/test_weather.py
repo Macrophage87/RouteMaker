@@ -245,6 +245,20 @@ def test_a_service_down_is_said_not_failed() -> None:
     assert out == {"alerts": [], "rain": None, "unchecked": ["alerts", "rain"]}
 
 
+def test_some_points_unanswered_is_said_unchecked() -> None:
+    class Partly(Fake):
+        def __call__(self, url, timeout):
+            if url.startswith(weather.ALERTS_URL) and "39.30" in url.replace("%2C", ","):
+                self.asked.append(url)
+                raise weather.Unavailable("HTTP 503")
+            return super().__call__(url, timeout)
+
+    fake = Partly(rain=rain_doc([[0.0] * 8, [0.0] * 8]))
+    w = weather.Weather(fetch=fake, clock=lambda: NOW)
+    out = w.check([(-77.0, 38.9, 0), (-76.6, 39.3, 600)])
+    assert out["unchecked"] == ["alerts"]
+
+
 def test_a_service_down_is_not_asked_again_for_a_minute() -> None:
     clock = [NOW]
     fake = Fake(fail=("alerts", "rain"))
