@@ -14,7 +14,7 @@ The day, never the time of day (Stephen, 2026-10-29: the log keeps the date, not
 the exact spot stays, because crews need it to find the pothole): an entry's `at` (logged),
 `changed` and `reported` are days in Washington's time ("2026-10-20"), and its id is random, with
 no time in it. `dated` cuts what an older page sends (full times, and ids that began with the time
-they were made) to that, and migration 0051 did the same to the logs already kept. Two changes to
+they were made) to that, and migration 0052 did the same to the logs already kept. Two changes to
 one entry on the same day are told apart by its `rev`, a count of its changes.
 
 Two pieces live here:
@@ -35,7 +35,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from functools import cache
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -109,6 +109,8 @@ JURISDICTION_IDS = frozenset(
 
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 _DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# A day as the API serves it (`served`): noon in Washington, with its offset.
+_SERVED_DAY = re.compile(r"^(\d{4}-\d{2}-\d{2})T12:00:00[+-]\d{2}:\d{2}$")
 # An id as the page made them before 2026-10-29: the time it was made (milliseconds, base 36),
 # then a random part. Cut to the random part (lib/report311Log.ts the same).
 _TIMED_ID = re.compile(r"^[0-9a-z]{8}-([0-9a-z]{1,8})$")
@@ -201,7 +203,30 @@ def day_of(value: str) -> str:
     """The day of an entry's time, in Washington ("2026-10-20"); a day stays as it is."""
     if _DAY.match(value):
         return value
+    served_day = _SERVED_DAY.match(value)
+    if served_day:
+        return served_day.group(1)
     return _when(value).astimezone(DAY_ZONE).date().isoformat()
+
+
+def _noon(day: str) -> str:
+    return datetime.combine(date.fromisoformat(day), time(12), tzinfo=DAY_ZONE).isoformat()
+
+
+def served(entries: list[dict]) -> list[dict]:
+    """The log as the API answers it: `dated`, then each day as noon in Washington with its offset
+    ("2026-10-20T12:00:00-04:00"). A page of the release before reads a bare day as midnight UTC,
+    which it shows as the evening before; it shows noon as the right day (at "12:00 PM", the same
+    for every entry, so it says nothing of when). The page of this release reads only the day.
+    Kept as days; only the answer carries noon."""
+    out = []
+    for entry in entries:
+        entry = dated(entry)
+        for key in ("at", "changed", "reported"):
+            if isinstance(entry.get(key), str) and _DAY.match(entry[key]):
+                entry[key] = _noon(entry[key])
+        out.append(entry)
+    return out
 
 
 def dated(entry: dict) -> dict:
@@ -239,8 +264,9 @@ def cap_log(entries: list[dict]) -> list[dict]:
 
 def merge_logs(stored: list[dict], incoming: list[dict]) -> list[dict]:
     """The account's log and a device's, merged by entry: one in both keeps whichever changed
-    last (a tie keeps the device's). Nothing is deleted from a log, only archived, so an entry
-    missing from a device's copy is one it has not seen yet, and it stays. Both are `dated`
+    last (the later day, then the higher `rev`); a tie keeps the reported copy, so a check-off is
+    never lost, and otherwise the device's. Nothing is deleted from a log, only archived, so an
+    entry missing from a device's copy is one it has not seen yet, and it stays. Both are `dated`
     first, so no copy brings a time of day back. Newest day first; within a day, in the device's
     order (newest first), then the account's."""
     stored = [dated(e) for e in stored]
@@ -253,7 +279,12 @@ def merge_logs(stored: list[dict], incoming: list[dict]) -> list[dict]:
         by_id[entry["id"]] = entry
     for entry in incoming:
         had = by_id.get(entry["id"])
-        won = entry if had is None or _changed(entry) >= _changed(had) else had
+        if had is None or _changed(entry) > _changed(had):
+            won = entry
+        elif _changed(entry) < _changed(had):
+            won = had
+        else:
+            won = had if had.get("reported") and not entry.get("reported") else entry
         # A website looked up on one copy is kept whichever copy wins (a lookup is not a change).
         if had is not None and won.get("where") is None:
             won = {**won, "where": (had if won is entry else entry).get("where")}

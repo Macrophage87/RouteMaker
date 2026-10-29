@@ -8207,10 +8207,13 @@ spot, because crews need it to find the pothole, and its days: `at` (logged), `c
 `reported` are dates in Washington's time ("2026-10-20", `today`, `dayOf`), never a time, and a new
 id is 16 random hex characters (the ids before began with the time they were made). The checklist
 and the copied report say the day ("Pothole, Oct 20"; "Seen Oct 20."). Two changes to one entry on
-one day are told apart by `rev`, a count of its changes, which a merge compares after the day. An
+one day are told apart by `rev`, a count of its changes, which a merge compares after the day; a tie
+on both keeps the reported copy, so a check-off is never lost. The API serves each day as noon in
+Washington with its offset (`served`, "2026-10-20T12:00:00-04:00"), because the page of the release
+before reads a bare day as midnight UTC, the evening before; the page reads only the day. An
 older copy is cut to days wherever it is read: on the device as the page opens (both stored copies are
 written back), on the server at each save (`dated`, in `merge_logs`), and the accounts' logs already
-kept by migration 0051, which also makes the row's `updated_at` a date. What goes to DC 311 is
+kept by migration 0052, which also makes the row's `updated_at` a date. What goes to DC 311 is
 unchanged in form: the problem's code, the exact spot and the report's words, which now say the day.
 `tests/test_report_log.py` and `report311Log.test.ts` check it.
 

@@ -1971,7 +1971,7 @@ class Report311Log(models.Model):
     )
     entries = models.JSONField(default=list)
     # The day it was last saved, in Washington (report_log.today), never the time: that would say
-    # when the rider last logged a problem. A date since migration 0051; the name is kept so the
+    # when the rider last logged a problem. A date since migration 0052; the name is kept so the
     # api of the release before still reads and writes it (Postgres casts its time to the day).
     updated_at = models.DateField(null=True, blank=True)
 

@@ -123,11 +123,41 @@ test("two changes on one day: the copy with more changes wins the merge", () => 
   const checked = entry({ id: "x", reported: "2026-10-20", rev: 1 });
   assert.equal(mergeLogs([logged], [checked])[0].reported, "2026-10-20");
   assert.equal(mergeLogs([checked], [logged])[0].reported, "2026-10-20", "an older copy sent later does not undo it");
+  // The day comes first: an earlier day with more changes loses to a later day with fewer.
+  const early = entry({ id: "x", changed: "2026-10-20", rev: 5, note: "early" });
+  const late = entry({ id: "x", changed: "2026-10-21", rev: 1, note: "late" });
+  assert.equal(mergeLogs([early], [late])[0].note, "late");
+  assert.equal(mergeLogs([late], [early])[0].note, "late");
+});
+
+test("a tie on day and changes keeps the reported copy, so a check-off is never lost; else the first", () => {
+  const checked = entry({ id: "x", reported: "2026-10-20", rev: 1 });
+  const noted = entry({ id: "x", note: "deep", rev: 1 });
+  assert.equal(mergeLogs([checked], [noted])[0].reported, "2026-10-20");
+  assert.equal(mergeLogs([noted], [checked])[0].reported, "2026-10-20");
+  const other = entry({ id: "x", note: "shallow", rev: 1 });
+  assert.equal(mergeLogs([noted], [other])[0].note, "deep", "neither reported: the first (the account's) stays");
+});
+
+test("a day the server serves as noon in Washington is read as that day", () => {
+  const [read] = parseLog([{ ...entry(), at: "2026-10-20T12:00:00-04:00", changed: "2026-10-20T12:00:00-04:00", reported: "2026-12-01T12:00:00-05:00" }]);
+  assert.deepEqual([read.at, read.changed, read.reported], ["2026-10-20", "2026-10-20", "2026-12-01"]);
+  assert.equal(whenWords("2026-10-20T12:00:00-04:00"), "Oct 20");
+});
+
+test("signed in, the signed-out copy on this device is left for the sign-in to move, not rewritten", () => {
+  const store = memory();
+  const before = JSON.stringify([{ ...entry(), id: "mh2k3l4p-1a2b3c4d", at: "2026-10-21T02:30:00.000Z" }]);
+  store.data.set(LOG_KEY, before);
+  store.data.set(ACCOUNT_LOG_KEY, JSON.stringify({ owner: "owner-a", entries: [entry({ id: "a1" })] }));
+  new Report311LogStore(store, "https://x", fakeFetch(() => ({ status: 404 })).fn);
+  assert.equal(store.data.get(LOG_KEY), before);
 });
 
 test("stale is counted in days, from the day logged to today in Washington", () => {
   const logged = entry({ at: "2026-10-20" });
   assert.ok(!isStale(logged, new Date("2026-11-20T03:00:00Z")), "still Nov 19 in Washington: 30 days");
+  assert.ok(isStale(logged, new Date("2026-11-20T17:00:00Z")), "Nov 20: day 31");
   assert.ok(isStale(logged, new Date("2026-11-21T05:00:00Z")), "Nov 21: 32 days");
 });
 

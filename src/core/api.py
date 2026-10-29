@@ -6327,8 +6327,12 @@ def _report_log_owner(user) -> str:
 
 
 def _report_log_out(row, user) -> dict:
+    from . import report_log
+
     return {
-        "entries": row.entries if row is not None else None,
+        # Each day served as noon in Washington (report_log.served), so a page of the release
+        # before shows the right day.
+        "entries": report_log.served(row.entries) if row is not None else None,
         "updated_at": row.updated_at.isoformat() if row is not None and row.updated_at else None,
         "owner": _report_log_owner(user),
     }
@@ -6344,10 +6348,18 @@ def _report_log_out(row, user) -> dict:
 def report311_log_read(request):
     from django.middleware.csrf import get_token
 
+    from . import report_log
     from .models import Report311Log
 
     get_token(request)
     row = Report311Log.objects.filter(user=request.user).first()
+    if row is not None:
+        # A save by the api of the release before (during a deploy, or after a rollback) kept
+        # times: cut to days here, as the next save would.
+        cut = [report_log.dated(e) for e in row.entries or []]
+        if cut != row.entries:
+            Report311Log.objects.filter(pk=row.pk, entries=row.entries).update(entries=cut)
+            row.entries = cut
     return _private(JsonResponse(_report_log_out(row, request.user)))
 
 

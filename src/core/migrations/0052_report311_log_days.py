@@ -7,7 +7,10 @@
 # The column keeps its name, so the api of the release before still reads and writes it between
 # migrate and the api's recreation, or after a rollback of the images: Postgres casts the time it
 # writes to the day. Going back makes the column a time again (midnight of each day) and leaves the
-# entries as days: the times are gone, and every reader takes a day.
+# entries as days: the times are gone for good (docs/OPERATIONS.md: take a backup first). The page
+# of the release before reads a bare day as midnight UTC, the evening before in Washington, so the
+# API serves each day as noon in Washington (core.report_log.served), which it shows as the right
+# day; this release's page reads only the day.
 
 import re
 from datetime import UTC, datetime
@@ -54,7 +57,7 @@ def to_days(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("core", "0050_my_go_places_db_default"),
+        ("core", "0051_connector_draft_grant"),
     ]
 
     operations = [

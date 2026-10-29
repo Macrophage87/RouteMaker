@@ -14,7 +14,7 @@
  * spot stays, because crews need it to find the pothole): `at`, `changed` and `reported` are days in Washington's
  * time ("2026-10-20", dayOf), and an id is random, with no time in it. A copy kept before (full times, and ids that
  * began with the time they were made) is cut to that as it is read (parseEntry), here and on the server
- * (core/report_log.py dated, migration 0051). Two changes to one entry on the same day are told apart by `rev`,
+ * (core/report_log.py dated, migration 0052). Two changes to one entry on the same day are told apart by `rev`,
  * a count of its changes.
  *
  * The log's list (Report311Log.tsx, in Reports) is a checklist by website: each site's open entries
@@ -170,9 +170,13 @@ export function today(now = new Date()): string {
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
-/** The day of a kept time ("2026-10-20"); a day stays as it is (core/report_log.py day_of). */
+/** A day as the server serves it: noon in Washington, with its offset (core/report_log.py served). */
+const SERVED_DAY = /^(\d{4}-\d{2}-\d{2})T12:00:00[+-]\d{2}:\d{2}$/;
+
+/** The day of a kept time ("2026-10-20"); a day stays as it is, and a served one is its day (core/report_log.py day_of). */
 export function dayOf(value: string): string {
-  return DAY.test(value) ? value : today(new Date(value));
+  if (DAY.test(value)) return value;
+  return SERVED_DAY.exec(value)?.[1] ?? today(new Date(value));
 }
 
 /** An id as this page made them before 2026-10-29 (the time it was made, base 36, then a random part): its random part. */
@@ -235,13 +239,15 @@ export function capLog(entries: LogEntry[]): LogEntry[] {
   return entries.filter((e) => !drop.has(e.id));
 }
 
-/** Whether `x` changed after `y`: a later day, or on one day more changes. */
+/** Whether `x` wins over `y`: a later day, or on one day more changes; a tie goes to a reported copy, so a check-off is never lost. */
 function newer(x: LogEntry, y: LogEntry): boolean {
   const days = Date.parse(x.changed) - Date.parse(y.changed);
-  return days > 0 || (days === 0 && x.rev > y.rev);
+  if (days !== 0) return days > 0;
+  if (x.rev !== y.rev) return x.rev > y.rev;
+  return x.reported !== null && y.reported === null;
 }
 
-/** The account's log and this device's, merged by entry: one in both keeps whichever changed last. Newest first. */
+/** The account's log and this device's, merged by entry: one in both keeps whichever changed last (a tie the first, unless only the second is reported). Newest first. */
 export function mergeLogs(a: LogEntry[], b: LogEntry[]): LogEntry[] {
   const byId = new Map<string, LogEntry>();
   for (const entry of [...a, ...b]) {
@@ -427,14 +433,15 @@ export function readAccountLog(store: Store | null = local()): AccountLog | null
 
 /**
  * This device's copies written back as they are read (days, no times, ids with no time in them), where a copy kept
- * before still holds a time: so the time goes from the device as the page opens, not at the next change.
+ * before still holds a time: so the time goes from the device as the page opens, not at the next change. The
+ * signed-out copy only while it is the one shown (`own`): signed in, it waits for the sign-in, which moves it.
  */
-function tidyStored(store: Store | null, copy: AccountLog | null): void {
+function tidyStored(store: Store | null, copy: AccountLog | null, own: boolean): void {
   try {
-    const own = store?.getItem(LOG_KEY);
-    if (own) {
+    const mine = own ? store?.getItem(LOG_KEY) : null;
+    if (mine) {
       const read = JSON.stringify(readLog(store));
-      if (read !== own) store?.setItem(LOG_KEY, read);
+      if (read !== mine) store?.setItem(LOG_KEY, read);
     }
     const account = store?.getItem(ACCOUNT_LOG_KEY);
     if (account && copy) {
@@ -554,7 +561,7 @@ export class Report311LogStore {
     const shown = copy && !copy.waiting ? copy : null;
     this.owner = shown?.owner ?? null;
     this.entries = shown ? shown.entries : readLog(store);
-    tidyStored(store, copy);
+    tidyStored(store, copy, this.owner === null);
   }
 
   list = (): LogEntry[] => this.entries;

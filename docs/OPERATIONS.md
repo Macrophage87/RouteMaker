@@ -2223,6 +2223,28 @@ reverse cleanly with `migrate core 0048`.
 `0018_junction_suggestions`, so the chain stays linear with one leaf. It reverses cleanly
 (`migrate core 0018` drops the table). `migrate` runs at `up`, as always.
 
+## The 311 log's days (migration 0052, v0.15.0)
+
+Stephen, 2026-10-29: the 311 log keeps the date, not the time of day; the exact spot stays, because
+crews need it to find the pothole. `core/migrations/0052_report311_log_days.py` (after
+`0051_connector_draft_grant`) cuts every kept entry's `at`, `changed` and `reported` in
+`report311_log` to its day in Washington, cuts ids that began with the time they were made to their
+random part, and makes the row's `updated_at` a date (docs/DEVELOPMENT.md, "The 311 log keeps the
+day").
+
+- **The times are gone for good.** Going back (`migrate core 0051`) makes `updated_at` a time
+  again (midnight of each day) but leaves the entries as days. Take a backup before `migrate`
+  (the nightly dump has the table; a fresh one is `pg_dump -Fc -t report311_log`), and keep it
+  only as long as the dumps are kept.
+- **The deploy window.** Between `migrate` and the api's recreation, and after an image rollback,
+  the api of the release before still reads and saves the log: Postgres casts the time it writes
+  to `updated_at` to the day, and its page shows each served day correctly (the API serves a day as
+  noon in Washington).
+- **Rows that api saved** keep its times in their entries until the rider's next save, or the
+  next read of the log (GET `/api/me/report311-log` cuts them and writes the row back). A rider
+  who never opens the log again keeps them; to cut every row at once, run the migration's step
+  again from `manage.py shell` after the old api is gone (`report_log.dated` on each entry).
+
 ## Transit schedule (TRANSIT-ASSIST, v0.6.0)
 
 The Own Bike + 🚆🚌 and Bikeshare + 🚶🚆🚌 ride types read one file:
