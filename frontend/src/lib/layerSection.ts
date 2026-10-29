@@ -13,7 +13,7 @@
  * role="switch" like the layers' own switches, its name the section's heading. Written with createElement so
  * a test renders it.
  */
-import { createElement as h, useState, type ReactElement, type ReactNode } from "react";
+import { createElement as h, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { t } from "./i18n.ts";
 import { ICON_PATHS } from "./iconPaths.ts";
 
@@ -113,12 +113,17 @@ export interface LayerSectionProps {
    * for a section whose layers keep their own status lines inside.
    */
   status?: string | ((open: boolean) => string);
+  /** Each new number opens the section (Go's stress bar, a tap: the Traffic stress key; the owner's P1). 0: never asked. */
+  openAsk?: number;
   children?: ReactNode;
 }
 
 /** The section: its row (name, switch, disclosure), its status line, and its layers, closed to begin with. */
-export function LayerSection({ id, title, headingId = `${id}-heading`, switchId = `${id}-section-switch`, className, layers, onLayers, status, children }: LayerSectionProps): ReactElement {
+export function LayerSection({ id, title, headingId = `${id}-heading`, switchId = `${id}-section-switch`, className, layers, onLayers, status, openAsk = 0, children }: LayerSectionProps): ReactElement {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (openAsk > 0) setOpen(true);
+  }, [openAsk]);
   const state = sectionState(layers);
   const bodyId = `${id}-section-body`;
   const someId = `${id}-section-some`;

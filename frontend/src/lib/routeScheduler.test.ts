@@ -590,5 +590,5 @@ test("one deliberate press goes at once: Plan's Route, Try again and a transit p
   assert.doesNotMatch(confirm, /now: true|sendNow/);
   const addStop = app.slice(app.indexOf("const goAddStopAt = "), app.indexOf("const goAddStop = "));
   assert.doesNotMatch(addStop, /now: true|sendNow/);
-  assert.equal((app.match(/sendNow\.current = true;/g) ?? []).length, 2, "only Route and the transit pick set it");
+  assert.equal((app.match(/sendNow\.current = true;/g) ?? []).length, 3, "only Route, the transit pick and the plan kept offline, once back online (P11), set it");
 });

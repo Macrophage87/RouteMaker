@@ -12,14 +12,37 @@ variable, which `core.parallel.submit` carries into the router's threads.
 from __future__ import annotations
 
 import contextvars
+import importlib
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
+from functools import cache
 
 from routemaker.lang_es import ES
 
-LANGUAGES = ("en", "es")
-_CATALOGS: dict[str, dict[str, str]] = {"es": ES}
+# DC's languages (the owner, 2026-10-28, the city's Language ID poster), as the app names them
+# (frontend/src/lib/i18n.ts LANGUAGES): Spanish in the whole app, the rest in Go and Ride. Mandarin
+# ("zh") in Simplified characters, Cantonese ("yue") in Traditional.
+LANGUAGES = (
+    "en", "es", "am", "ar", "bn", "yue", "fa", "fr", "ht", "hi", "id",
+    "ja", "ko", "zh", "ps", "pt", "ru", "th", "ti", "tr", "vi",
+)  # fmt: skip
+
+
+@cache
+def catalog(lang: str) -> dict[str, str]:
+    """A language's phrases (`routemaker.lang_<lang>`, CATALOG; Spanish's is ES), empty for
+    English or a language with none yet: its sentences are then the English."""
+    if lang == "es":
+        return ES
+    if lang not in LANGUAGES or lang == "en":
+        return {}
+    try:
+        module = importlib.import_module(f"routemaker.lang_{lang}")
+    except ModuleNotFoundError:
+        return {}
+    return dict(module.CATALOG)
+
 
 _current: contextvars.ContextVar[str] = contextvars.ContextVar("route_language", default="en")
 
@@ -31,8 +54,11 @@ def language() -> str:
 
 @contextmanager
 def speaking(lang: str | None) -> Iterator[None]:
-    """The route's words in `lang` within the block; English for anything not in LANGUAGES."""
-    token = _current.set(lang if lang in LANGUAGES else "en")
+    """The route's words in `lang` within the block; English for anything not in LANGUAGES or
+    with no catalog yet."""
+    # A language with no catalog yet is answered wholly in English, never half (an ordinal or a
+    # way's words worded for a sentence that stays English).
+    token = _current.set(lang if lang in LANGUAGES and (lang == "en" or catalog(lang)) else "en")
     try:
         yield
     finally:
@@ -45,8 +71,7 @@ _PLACE = re.compile(r"\{(\w+)\}")
 def t(english: str, **places: object) -> str:
     """A phrase in the language in force, from its English, its {places} filled after the
     lookup so a translation can put them where its grammar wants them."""
-    catalog = _CATALOGS.get(language())
-    text = catalog.get(english, english) if catalog else english
+    text = catalog(language()).get(english, english)
     if not places:
         return text
     return _PLACE.sub(lambda m: str(places[m[1]]) if m[1] in places else m[0], text)
@@ -54,6 +79,10 @@ def t(english: str, **places: object) -> str:
 
 def spanish() -> bool:
     return language() == "es"
+
+
+def english() -> bool:
+    return language() == "en"
 
 
 # The API's names for a way by what it is ("service road beside East-West Highway"), as a
@@ -82,3 +111,34 @@ def way_es(street: str) -> str | None:
         if head.match(street):
             return head.sub(words, street, count=1).replace(" beside ", " junto a ")
     return None
+
+
+_COMMON_WAY = re.compile(r"^(path|sidewalk|service road|alley|parking aisle)\b(?: beside (.+))?")
+_LANE = re.compile(r"^(.+) (protected )?bike lane$")
+
+
+def way_said(street: str) -> str | None:
+    """A way the API names by what it is, in the language in force (Spanish by its own
+    rules above, the rest by their catalogs, as the app's wayWordsOther); None for a
+    real name, and in English."""
+    if english():
+        return None
+    if spanish():
+        return way_es(street)
+    if street in ("the road", "unnamed road", "an unnamed road"):
+        return t("the road")
+    lane = _LANE.match(street)
+    if lane:
+        phrase = "the protected bike lane on {street}" if lane[2] else "the bike lane on {street}"
+        return t(phrase, street=lane[1])
+    kind = _COMMON_WAY.match(street)
+    if not kind:
+        return None
+    words = {
+        "path": t("the path"),
+        "sidewalk": t("the sidewalk"),
+        "service road": t("the service road"),
+        "alley": t("the alley"),
+        "parking aisle": t("the parking aisle"),
+    }[kind[1]]
+    return t("{way} beside {road}", way=words, road=kind[2]) if kind[2] else words

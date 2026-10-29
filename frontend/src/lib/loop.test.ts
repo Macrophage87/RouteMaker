@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { RouteResponse } from "./api.ts";
 import { dialFields, fitDials, startDials } from "./dials.ts";
-import { LOOP_FIRST_HINT, LOOP_LABEL, LOOP_SAME_M, isRoundTrip, loopNote, loopView, planStartDials } from "./loop.ts";
+import { LOOP_FIRST_HINT, LOOP_LABEL, LOOP_SAME_M, isRoundTrip, loopNote, loopNoteShort, loopView, planStartDials } from "./loop.ts";
 import { readFileSync } from "node:fs";
 import { decodePlan, encodePlan } from "./planHash.ts";
 import { announceRoute } from "./summary.ts";
@@ -94,6 +94,9 @@ test("a loop with no other way back says it is an out-and-back", () => {
   const note = loopNote(route({ overlap_pct: 100, shared_m: 8000, return_m: 8000, fallback: "out_and_back" })) ?? "";
   assert.match(note, /no other way back that fits, so this loop returns the way it went out/);
   assert.match(loopNote(route({ overlap_pct: 50, shared_m: 1, return_m: 2, fallback: "time" })) ?? "", /could not look for another way back in time/);
+  // The note line shows it short, so a phone's line does not cut it at "so this loop retu…" (the audit's P14).
+  assert.equal(loopNoteShort(route({ overlap_pct: 100, shared_m: 8000, return_m: 8000, fallback: "out_and_back" })), "Loop returns the same way: no other fit.");
+  assert.equal(loopNoteShort(route({ overlap_pct: 18.4, shared_m: 1500, return_m: 8150 })), null);
 });
 
 test("a screen reader hears the loop's note with the route, once", () => {

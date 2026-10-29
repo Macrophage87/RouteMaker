@@ -434,7 +434,7 @@ class TestRouteAnswer:
         (zone,) = plan.excluded
         assert (
             wz.when_text(zone, now, False)
-            == f"Closed through {wz.date_text(zone.end - timedelta(days=1))}"
+            == f"Closed through {wz.date_text(zone.end - timedelta(days=1), now)}"
         )
         assert wz.citation(zone).endswith(
             f", through {wz.date_text(zone.end - timedelta(days=1))}."
@@ -504,7 +504,7 @@ class TestAreaClosures:
         assert (row["source"], row["kind"], row["severity"]) == ("reviewer", "closed", "red")
         assert row["url"] == "https://example.org/n"
         assert row["effect"] == "none" and row["can_bypass"] is False
-        assert row["effect_text"] == "Closed to bikes: routes go round it."
+        assert row["effect_text"] == "Routes go round it."
         assert row["when_text"].startswith("Closed through ")
         # Elsewhere, nothing; a view too big is refused.
         far = f"{LON + 1},{LAT + 1},{LON + 1.01},{LAT + 1.01}"

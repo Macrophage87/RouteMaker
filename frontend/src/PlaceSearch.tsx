@@ -1,8 +1,8 @@
 /**
  * The search box: type a place, pick it, and it becomes the start, the
  * destination or a stop, as chosen (lib/geocode.ts, applyPlace). Each result
- * shows a short type from its OSM tag, and the list says it holds only places
- * in this map's area.
+ * shows a short type from its OSM tag and, with the route's start known, how far it is from there; the places are
+ * then nearest first (P2, lib/geocode.ts nearestFirst). The list says it holds only places in this map's area.
  *
  * The ARIA 1.2 combobox pattern: the input owns a listbox, the arrow keys
  * move through the options without leaving the input (aria-activedescendant),
@@ -16,11 +16,17 @@
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import {
+  COVERS_LINE,
   MAX_QUERY_CHARS,
   MIN_QUERY_CHARS,
   PlaceSearchRunner,
   comboboxKey,
+  namesCityOutside,
+  nearestFirst,
+  nothingFoundText,
   pickTarget,
+  placeDistance,
+  placeRowLine,
   placeEffectHint,
   placeType,
   searchSender,
@@ -99,8 +105,27 @@ export function searchStatus(result: GeoResult | null, query: string): string {
       ? t("Search is busy; keep typing or try again in a moment.")
       : t("Place search is not available right now.");
   }
-  if (result.places.length === 0) return t("No places found for “{query}” in this map's area.", { query });
-  return result.places.length === 1 ? t("1 place found.") : t("{count} places found.", { count: result.places.length });
+  if (result.places.length === 0) return nothingFoundText(query);
+  const found = result.places.length === 1 ? t("1 place found.") : t("{count} places found.", { count: result.places.length });
+  return namesCityOutside(query) ? `${found} ${COVERS_LINE}` : found;
+}
+
+/**
+ * A result's second line (P2): "Dupont Circle, Washington · 0.7 mi (1.1 km)". A screen reader hears the distance as
+ * words, "…, 0.7 mi (1.1 km) away in a straight line"; the dot and the bare figure are for the eye.
+ */
+function PlaceRowLine({ place, start }: { place: Place; start: LonLat | undefined }) {
+  const line = placeRowLine(place, start);
+  if (line === "") return null;
+  if (!start) return <span className="place-label">{line}</span>;
+  const area = placeRowLine(place, undefined);
+  const said = t("{distance} away in a straight line", { distance: placeDistance(place, start) });
+  return (
+    <span className="place-label">
+      <span aria-hidden="true">{line}</span>
+      <span className="visually-hidden">{area ? `${area}, ${said}` : said}</span>
+    </span>
+  );
 }
 
 export function PlaceSearch({
@@ -108,6 +133,7 @@ export function PlaceSearch({
   full,
   gate,
   bias,
+  origin,
   onPick,
   loop = false,
   locate,
@@ -134,6 +160,11 @@ export function PlaceSearch({
   gate: GeoGate;
   /** Where results should lean towards: the rider's known location (rounded) while it is in view, else the map's centre; none outside the area (lib/geocode.ts searchBiasPoint). */
   bias: () => LonLat | undefined;
+  /**
+   * The route's start (Go: the rider's location or the start typed in; Plan: the first point): the places found are
+   * listed nearest it first, each with its distance (P2). Absent, or none known: the server's order, no distances.
+   */
+  origin?: () => LonLat | undefined;
   onPick: (place: Place, choice: PlaceChoice) => void;
   /**
    * The first place listed, each time another leads the list (Go's early start; v0.7.0, "Faster routing"); null when
@@ -190,7 +221,7 @@ export function PlaceSearch({
   };
   useEffect(() => stopKeyboardWatch, []);
 
-  const { places, answeredNow, searching, choices, choice, effect } = searchView({
+  const { places: found, answeredNow, searching, choices, choice, effect } = searchView({
     query,
     answered,
     result,
@@ -200,6 +231,9 @@ export function PlaceSearch({
     chosen: chosen ?? boxChoice ?? null,
     loop,
   });
+  // Nearest the start first (P2); Enter and Go's early start take the same first place the list shows.
+  const start = origin?.();
+  const places = nearestFirst(found, start, answered);
   // "Your location" leads the list while the box is empty or says so; it is never the Enter default.
   const showHere = locate?.support.available === true && locationMatches(query);
   // A pick that adds a stop (Plan with a start and an end) offers the place as the destination too, on a row
@@ -331,9 +365,10 @@ export function PlaceSearch({
 
   return (
     <div className={variant === "go" ? "place-search go-search" : "place-search"}>
-      <label htmlFor={`${id}-input`} className={variant === "go" ? "place-search-label visually-hidden" : "place-search-label"}>
-        {t(variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "work" ? "Find your Work" : variant === "favorite" ? "Find a place to save" : variant === "start" ? "Start from" : variant === "stop" || variant === "add" ? "Add a stop" : variant === "from" ? "From" : variant === "to" ? "To" : "Find a place")}
-        {current && <span className="place-search-current">{` (now ${current})`}</span>}
+      {/* Go's Where to? and Add a stop say their names in the box (and Add a stop on the button that opens it). */}
+      <label htmlFor={`${id}-input`} className={variant === "go" || variant === "stop" ? "place-search-label visually-hidden" : "place-search-label"}>
+        {t(variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "work" ? "Find your Work" : variant === "favorite" ? "Find a place to save" : variant === "start" ? "Start from" : variant === "stop" || variant === "add" ? "Add a stop" : variant === "from" ? (loop ? "Start and finish (loop)" : "From") : variant === "to" ? "To" : "Find a place")}
+        {current && <span className="place-search-current">{` ${t("(now {place})", { place: current })}`}</span>}
       </label>
       <div className={(locate && !locate.listOnly) || variant === "go" ? "place-search-row" : undefined}>
       {variant === "go" && <Icon name="search" className="search-icon" />}
@@ -456,7 +491,8 @@ export function PlaceSearch({
               <span className="place-name">
                 {item.name} <span className="place-type">{placeType(item)}</span>
               </span>
-              {item.label !== item.name && <span className="place-label">{item.label}</span>}
+              {/* The last places picked (an empty box) show no distance: they are not answers to a search. */}
+              <PlaceRowLine place={item} start={empty ? undefined : start} />
             </li>
           ),
         )}
@@ -468,7 +504,7 @@ export function PlaceSearch({
       {expanded && places.length > 0 && (
         <p className="place-credit">
           {t("Only places in this map's area.")}
-          {result?.ok && result.attribution.length > 0 && <> Search: {result.attribution.join("; ")}</>}
+          {result?.ok && result.attribution.length > 0 && <> {t("Search: {credits}", { credits: result.attribution.join("; ") })}</>}
         </p>
       )}
       {!single && choices.length > 1 && (
@@ -488,10 +524,11 @@ export function PlaceSearch({
           ))}
         </fieldset>
       )}
-      {/* Go's hint is said with the box and kept out of sight, so Go's sheet fits one phone screen (the owner, 2026-10-17). */}
-      {/* Go's hint is said with the box and kept out of sight (above); so are Plan's From, To and Add a stop,
-          whose labels say what a pick does (Plan streamline): only the full plan's reason shows. */}
-      <p id={`${id}-hint`} className={variant === "go" ? "visually-hidden go-from" : planBox ? (full && planBox === "add" ? "hint" : "visually-hidden") : "hint"}>
+      {/* Go's hint is said with the box and kept out of sight, so Go's sheet fits one phone screen (the owner, 2026-10-17);
+          so are those of Go's other boxes, whose labels say what a pick does (the owner's P1, 2026-10-28: Add a stop's,
+          the start's, Home's and Favorites'), and Plan's From, To and Add a stop's (Plan streamline): only the full
+          plan's reason shows. */}
+      <p id={`${id}-hint`} className={variant === "go" ? "visually-hidden go-from" : planBox ? (full && planBox === "add" ? "hint" : "visually-hidden") : variant === "plan" ? "hint" : "visually-hidden"}>
         {variant === "plan" ? <>{placeEffectHint(effect, loop)}</> : planBox === "from" && loop ? placeEffectHint("start", true) : SINGLE_HINT[variant]}
         {(!single || planBox === "add") && full && " The route has as many points as it can take, so no stop can be added."}
       </p>
@@ -499,6 +536,7 @@ export function PlaceSearch({
         {answeredNow ? searchStatusWithHere(searchStatus(result, answered), expanded && showHere) : ""}
       </p>
       {searching && <p className="hint">{t("Searching…")}</p>}
+      {answeredNow && expanded && places.length > 0 && namesCityOutside(answered) && <p className="hint">{COVERS_LINE}</p>}
       {answeredNow && result && (!result.ok || result.places.length === 0) && (
         <p className="hint">{searchStatus(result, answered)}</p>
       )}

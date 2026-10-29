@@ -5,16 +5,20 @@
  *
  * The list is the layer in words: a screen-reader or keyboard rider hears every
  * fountain and restroom near the route, in riding order, with how far along and
- * how far off it is, and can add one as a stop without the map.
+ * how far off it is, and can add one as a stop without the map. It shows the first
+ * WATER_ALONG_FIRST and a "Show all" button (the 2026-10-28 audit, P7: the fold was
+ * 4.2 screens), and says a Throne's how-to once under the list (SheetNotes).
  */
-import { createElement as h, type ReactElement } from "react";
+import { createElement as h, useEffect, useRef, useState, type ReactElement } from "react";
 import { formatDistance } from "./format.ts";
 import { LayerSection } from "./layerSection.ts";
 import {
   ALONG_ROUTE_TEXT,
   WATER_CAUTION,
+  sheetNotes,
   waterAlongCount,
   waterAlongText,
+  waterDetails,
   waterIcon,
   waterTitle,
   type WaterAlong,
@@ -85,6 +89,24 @@ export function waterStatusText(on: boolean, status: WaterStatus): string {
   return status === "loading" ? WATER_LOADING : status === "unavailable" ? WATER_UNAVAILABLE : "";
 }
 
+/** How many of the points along the route the list shows before "Show all". */
+export const WATER_ALONG_FIRST = 3;
+
+/** The notes a list says once (a Throne's how-to, an approximate pin): short on screen, whole for a screen reader. */
+export function SheetNotes({ details }: { details: ReadonlyArray<readonly string[]> }): ReactElement | null {
+  const notes = sheetNotes(details);
+  if (notes.length === 0) return null;
+  return h(
+    "p",
+    { className: "hint sheet-notes" },
+    ...notes.flatMap(({ short, full }, i) => [
+      i > 0 ? " " : null,
+      h("span", { key: `s${i}`, "aria-hidden": "true" }, short),
+      h("span", { key: `f${i}`, className: "visually-hidden" }, full),
+    ]),
+  );
+}
+
 interface AlongProps {
   /** The points along the route, or null with no route yet. */
   items: WaterAlong[] | null;
@@ -95,12 +117,19 @@ interface AlongProps {
   level?: "h3" | "h4";
 }
 
-/** The points along the route, in words, each with an Add as stop button. */
+/** The points along the route, in words, each with an Add as stop button: the first WATER_ALONG_FIRST, then Show all. */
 export function WaterAlongList({ items, onAddStop, headingId, level = "h4" }: AlongProps): ReactElement {
+  const [all, setAll] = useState(false);
+  // Show all goes away once pressed: the focus goes on to the first place it added, so a keyboard rider goes on from there.
+  const list = useRef<HTMLUListElement | null>(null);
+  useEffect(() => {
+    if (all) list.current?.querySelectorAll("li")[WATER_ALONG_FIRST]?.focus();
+  }, [all]);
   // The heading always, so a rider moving by headings finds the list's place even when it is empty.
   const heading = h(level, { id: headingId }, WATER_ALONG_HEADING);
   if (items === null) return h("div", { className: "water-along" }, heading, h("p", { className: "hint" }, WATER_ALONG_NO_ROUTE));
   if (items.length === 0) return h("div", { className: "water-along" }, heading, h("p", { className: "hint" }, WATER_ALONG_NONE));
+  const shown = all ? items : items.slice(0, WATER_ALONG_FIRST);
   return h(
     "div",
     { className: "water-along" },
@@ -108,12 +137,13 @@ export function WaterAlongList({ items, onAddStop, headingId, level = "h4" }: Al
     h("p", { className: "hint" }, waterAlongCount(items)),
     h(
       "ul",
-      { "aria-labelledby": headingId },
-      ...items.map((item) => {
-        const said = waterAlongText(item);
+      { "aria-labelledby": headingId, ref: list },
+      ...shown.map((item) => {
+        // A Throne's how-to and an approximate pin are said once, under the list.
+        const said = waterAlongText(item, true);
         return h(
           "li",
-          { key: item.point.id },
+          { key: item.point.id, tabIndex: -1 },
           h("span", null, said),
           onAddStop &&
             h(
@@ -129,6 +159,13 @@ export function WaterAlongList({ items, onAddStop, headingId, level = "h4" }: Al
         );
       }),
     ),
+    shown.length < items.length &&
+      h(
+        "button",
+        { type: "button", className: "secondary water-all", onClick: () => setAll(true) },
+        t("Show all {count}", { count: items.length }),
+      ),
+    h(SheetNotes, { details: shown.map((item) => waterDetails(item.point)) }),
     h("p", { className: "hint" }, WATER_CAUTION),
   );
 }
