@@ -5082,7 +5082,8 @@ export function App() {
     openStopCard(map, row.point, words, stopActionFor(row.point, words.title), focus);
   };
   useSpotPins(getMap, spotOpen && goSpot ? goSpot.point : null, spotRows, pickSpot, framePadding);
-  const spotLookup = useMemo(() => nameSender(geoGate), [geoGate]);
+  // The street address when one is near ("1234 Franklin Street Northeast"; Stephen, 2026-10-29), else the street.
+  const spotLookup = useMemo(() => nameSender(geoGate, undefined, true), [geoGate]);
   // The card closes when a route is planned, Go is left or a ride starts, and when the road card opens over it.
   useEffect(() => setGoSpot(null), [points, mode, onBike]);
   useEffect(() => {

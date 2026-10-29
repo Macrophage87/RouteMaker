@@ -1969,17 +1969,30 @@ dialog.go-spot {
   border-radius: 50%;
 }
 
-/* The tapped spot itself: a small pin, not a control. */
+/* The tapped spot itself: a big pin, not a control (Stephen, 2026-10-29: "The tapped location is way too small").
+   48 by 62 px, red with a white rim and a white centre and a shadow, so it stands out on an orange road; the
+   tip is on the spot. Above the place pins, which never hide it. */
 .spot-here {
   display: block;
-  width: 18px;
-  height: 18px;
-  border: 3px solid #ffffff;
-  border-radius: 50% 50% 50% 0;
-  background: #b91c1c;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
-  transform: rotate(-45deg);
+  width: 48px;
+  height: 62px;
   pointer-events: none;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+  z-index: 2;
+}
+
+.spot-here svg {
+  display: block;
+}
+
+.spot-here-body {
+  fill: #b91c1c;
+  stroke: #ffffff;
+  stroke-width: 3;
+}
+
+.spot-here-centre {
+  fill: #ffffff;
 }
 
 /* The top row (OWNER-DECISIONS 441n): real buttons, compact, wrapping on a phone. */
@@ -7376,12 +7389,24 @@ details.fold > summary .icon {
 @media (forced-colors: active) {
   /* Go's tapped-spot pins (app/spotPins.ts), as the lettered pins. */
   .spot-pin-dot,
-  .spot-pin-label,
-  .spot-here {
+  .spot-pin-label {
     border-color: CanvasText;
     background: Canvas;
     color: CanvasText;
     forced-color-adjust: none;
+  }
+
+  .spot-here {
+    forced-color-adjust: none;
+  }
+
+  .spot-here-body {
+    fill: Canvas;
+    stroke: CanvasText;
+  }
+
+  .spot-here-centre {
+    fill: CanvasText;
   }
 
   .lettered-pin,

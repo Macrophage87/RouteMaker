@@ -2160,8 +2160,8 @@ curl -s 'http://localhost:8000/api/reverse?lat=38.90133&lon=-77.260598'
 
 | | `GET /api/geocode` | `GET /api/reverse` |
 | --- | --- | --- |
-| Parameters | `q` (2-200 characters after white space is collapsed), optional `lat` and `lon` together (a bias, inside `COVERAGE_BBOX`), `limit` 1-10 (default 6), `lang` (`en` only, the imported language) | `lat`, `lon` (inside `COVERAGE_BBOX`), `lang` (`en`) |
-| What reaches Photon | the query with US street abbreviations spelled out (`Blvd`, `St`, `Ave`, `Rd`, `Dr`, `Pkwy`, `Hwy`, `Ct`, `Ln`, `Pl`, `Sq`, `Ter`, `N`/`S`/`E`/`W`, `NE`/`NW`/`SE`/`SW`; `geocode.expand_abbreviations` has the rules), the bias with its strength (`zoom` 14 and `location_bias_scale` 0.2, `geocode.BIAS_ZOOM` and `BIAS_SCALE`, so nearby places rank first; the page sends the rider's location when it already has one, else the map's centre), a count a few above `limit`, `lang`, and `bbox` = `COVERAGE_BBOX`; nothing else the request carries | `lat`, `lon`, `lang`, `limit=1`, `radius=0.25` km |
+| Parameters | `q` (2-200 characters after white space is collapsed), optional `lat` and `lon` together (a bias, inside `COVERAGE_BBOX`), `limit` 1-10 (default 6), `lang` (`en` only, the imported language) | `lat`, `lon` (inside `COVERAGE_BBOX`), `lang` (`en`), optional `address=true` (Go's tapped-spot card) |
+| What reaches Photon | the query with US street abbreviations spelled out (`Blvd`, `St`, `Ave`, `Rd`, `Dr`, `Pkwy`, `Hwy`, `Ct`, `Ln`, `Pl`, `Sq`, `Ter`, `N`/`S`/`E`/`W`, `NE`/`NW`/`SE`/`SW`; `geocode.expand_abbreviations` has the rules), the bias with its strength (`zoom` 14 and `location_bias_scale` 0.2, `geocode.BIAS_ZOOM` and `BIAS_SCALE`, so nearby places rank first; the page sends the rider's location when it already has one, else the map's centre), a count a few above `limit`, `lang`, and `bbox` = `COVERAGE_BBOX`; nothing else the request carries | `lat`, `lon`, `lang`, `limit=1`, `radius=0.25` km; with `address=true`, first `layer=house`, `limit=1`, `radius=0.04` km |
 | 200 | `{"results": [...], "attribution": [...]}`, at most `limit` results, each inside the box, rows with the same name and OSM key within 300 m folded into one | the same shape, zero or one result |
 
 Each result is `{name, label, lon, lat, kind, osm_type, osm_id, osm_key,
@@ -2182,6 +2182,13 @@ named edge is close enough and X is a place Photon knows, never with a house
 number. Ferry edges never name a point. If the
 router does not answer, the name is the `near` one; if Photon does not, the
 label has no neighbourhood.
+
+With `address=true` (Go's tapped-spot card; the owner, 2026-10-29: "provide
+the address if possible"), a house number and street within 40 m (about 130
+ft, `geocode.ADDRESS_RADIUS_KM`) names the point first: `kind` `address`, name
+"1234 Franklin Street Northeast", the four `osm_*` fields null. With none that
+near, or Photon not answering, the name is the one above. Route points never
+ask, since the nearest house to a point on a road is a neighbour's.
 
 Refusals, all `{"error": "..."}`: 400 for a parameter above; 403 when the
 browser says `Sec-Fetch-Site: cross-site` or `same-site` (refused before it is
