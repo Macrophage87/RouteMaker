@@ -1,4 +1,4 @@
-# RouteMaker phone app (v0.8.0)
+# RouteMaker phone app
 
 The owner, 2026-10-16: "It appears that a standalone app that points to the website would be a
 nessecity for using it in bikeshare mode as the phone stays in the pocket and navigation cues stop
@@ -227,8 +227,9 @@ and wake-lock permissions are removed, and `allowBackup` is off and `dataExtract
 a cloud backup or, on Android 12+, to a new phone by device transfer. The plugin's location service is
 declared not exported (only the app binds it), and a GPS is not required to install. A "Latest cue"
 notification is cleared when the app starts and when the site's screen goes, so none is left stale. The site address is kept in the app's private preferences only; the
-basic-auth password is never kept by the app (above). `mobile/test/config.test.mjs` holds the
-permission list.
+basic-auth password is never kept by the app (above). The app's FileProvider lends files from one
+folder only, `FilesPlugin`'s `cache/courses/` (`res/xml/file_paths.xml`), with read access to the one
+file handed on. `mobile/test/config.test.mjs` holds the permission list and the provider's folder.
 
 ## Building
 
@@ -288,6 +289,36 @@ a click in Play Console. Setting up the account, once:
    app with **Release to testing tracks**.
 3. GitHub: add the JSON file's whole contents as the `ROUTEMAKER_PLAY_SERVICE_ACCOUNT` secret, then
    delete the downloaded file.
+
+**The version** testers and Play Console see is the site release the app was built with (the
+repository's `pyproject.toml` version, read by `android/app/build.gradle`), so a build from the
+v0.15.0 tag shows 0.15.0. `ROUTEMAKER_VERSION_NAME` overrides it. The version code is the workflow's
+run number (`ROUTEMAKER_VERSION_CODE`), so each build is higher than the last.
+
+**Before the first closed test** (Play Console, once; none of it can be done from the repository):
+
+1. **Foreground service declaration** (App content > Foreground service permissions). The app targets
+   SDK 36 and declares `FOREGROUND_SERVICE_LOCATION` for the ride's location service, so Play asks why:
+   turn-by-turn cues during a ride the rider started, with the screen locked. Attach a short video of
+   Start ride showing the "Riding with RouteMaker" notification, and of End ride clearing it.
+2. **Data safety** (App content > Data safety). Match the privacy page (`/privacy`,
+   `src/core/privacy_policy.py`): precise location, sent to the site in route and re-plan requests
+   for the app's function (a route is kept only when the rider saves it); the Discord account id when signed in; the
+   Garmin and Wahoo links when connected; data encrypted in transit; account deletion at the
+   delete-account page. The app itself adds no analytics and no other collection.
+3. **App access** (App content > App access). If the baked-in site asks for a password, or features the
+   review needs sit behind Discord sign-in, give Play's reviewers instructions and a test account
+   there. Never put those credentials in this repository or its secrets.
+4. **A new personal developer account** must run a closed test with at least 12 testers opted in for 14
+   days in a row before it can apply for production. Count the days from when the twelfth tester joins.
+5. **Draft until the first review.** Play takes only draft releases for an app that has never been
+   published, so the tag's upload goes red until then. Upload the first bundle by hand in Play Console
+   (from the run's artifact), or run `scripts/play-upload.sh` by hand with `PLAY_RELEASE_STATUS=draft`
+   and roll the draft out in Play Console. Once the first review has passed, the tag's uploads work
+   unchanged (`completed`).
+
+Also under App content: the privacy policy's address (`/privacy` on the site), the target audience
+(not for children), the content rating questionnaire, and that the app shows no ads.
 
 **Locally** (Android Studio or the SDK installed, JDK 21):
 

@@ -3,6 +3,13 @@ apply plugin: 'com.android.application'
 // RouteMaker (mobile/README.md): the store id, the version and the release key come from the environment,
 // so no owner's domain and no key is committed. Without them: a debug-signed build with a placeholder id.
 def envOr = { String name, String fallback -> def v = System.getenv(name); (v != null && !v.trim().isEmpty()) ? v.trim() : fallback }
+// The version name testers and Play Console see: the site release this app is built with (the repository's
+// pyproject.toml), unless ROUTEMAKER_VERSION_NAME says otherwise.
+def releaseVersion = {
+    def project = rootProject.file("../../pyproject.toml")
+    def found = project.exists() ? (project.text =~ /(?m)^version\s*=\s*"([^"]+)"/) : null
+    (found != null && found.find()) ? found.group(1) : "0.0.0"
+}()
 def releaseKeystore = System.getenv("ROUTEMAKER_KEYSTORE_FILE")
 // A steady debug key (CI's ROUTEMAKER_DEBUG_KEYSTORE_BASE64 secret), so each test build installs over the last.
 // Android's standard debug key passwords and alias; without it, Gradle's own per-machine debug key.
@@ -21,7 +28,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode envOr("ROUTEMAKER_VERSION_CODE", "1").toInteger()
-        versionName envOr("ROUTEMAKER_VERSION_NAME", "0.9.0")
+        versionName envOr("ROUTEMAKER_VERSION_NAME", releaseVersion)
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders = [linkHost: linkHost]
         aaptOptions {
