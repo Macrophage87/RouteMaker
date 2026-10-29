@@ -40,6 +40,12 @@ class TestPage:
         assert body.index(f'<time datetime="{privacy_policy.LAST_UPDATED[0]}">') < first_section
         assert "Last updated: <time" in body
 
+    def test_it_says_you_send_311_reports_yourself_and_the_server_sends_none(self, client) -> None:
+        # The owner, 2026-10-29: the server's DC 311 send is not working (no key on the site).
+        _, body, _ = get(client)
+        assert "send it yourself" in body
+        assert "sent to DC 311" not in body and "DC 311, as above" not in body
+
     def test_every_section_is_a_heading_in_order(self, client) -> None:
         _, body, _ = get(client)
         headings = re.findall(r"<h2>([^<]+)</h2>", body)

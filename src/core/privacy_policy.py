@@ -25,7 +25,8 @@ comes from:
 - Suggestions: core.suggestions (the tap snapped onto the road), core.junction_suggestions (the
   junction), core.mass_hazards (the spot dropped, the account for the admin only),
   core.suggestion_post (the Discord poll names nobody), core.signed_out_suggestions (a salted
-  daily hash, 24 hours); 311: core.report_log and core.dc311. Recent places:
+  daily hash, 24 hours); 311: core.report_log (core.dc311's server send is off: the site has no
+  DC311_API_KEY, so the policy names none; the owner, 2026-10-29). Recent places:
   frontend/src/lib/recentPlaces.ts (RECENT_PLACES_DAYS).
 - What the browser and the server contact: the Content-Security-Policy (Caddyfile, `connect-src
   'self'`), core.street_photo, core.gbfs, core.wmata_live, core.closure_sources, core.dc311,
@@ -349,9 +350,6 @@ SECTIONS: list[tuple[str, str]] = [
                 "your account when signed in. RouteMaker shows which city or county 311 website "
                 "takes it; you "
                 "send it yourself.",
-                "In Washington, DC, where the site has DC 311’s key and you are signed in, a "
-                "problem logged in Ride mode is also sent to DC 311 by the server: the problem, "
-                "the point on your route and the report’s words, nothing about you.",
             ]
         ),
     ),
@@ -375,7 +373,6 @@ SECTIONS: list[tuple[str, str]] = [
                 "position. The answers are kept 2 minutes, by the rounded point only.",
                 "The bikeshare operator’s public feeds, for docks and bikes.",
                 "The National Park Service and DC’s road-closure notices, for closures.",
-                "DC 311, as above.",
                 "Discord, to finish your sign-in and for the bot.",
             ]
         )
