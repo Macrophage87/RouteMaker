@@ -83,6 +83,7 @@ from pydantic import (
     model_validator,
 )
 
+from config.access_log import logged_path
 from routemaker import effort, lang, ridetime
 from routemaker.geo import Point, haversine
 
@@ -2989,7 +2990,7 @@ def unexpected(request, exc: Exception):
     documented posture of a local stack on :80 - renders the full debug page:
     SQL, paths and settings, to anyone who can make a request fail.
     """
-    logger.exception("unhandled error in %s %s", request.method, request.path)
+    logger.exception("unhandled error in %s %s", request.method, logged_path(request.path))
     if request.path.startswith(GEOCODE_PATHS):
         return _error(500, "Something went wrong looking up the place.")
     if request.path.startswith(STRESS_EDIT_PATHS):
@@ -6327,9 +6328,13 @@ def _report_log_owner(user) -> str:
 
 
 def _report_log_out(row, user) -> dict:
+    from . import report_log
+
     return {
-        "entries": row.entries if row is not None else None,
-        "updated_at": row.updated_at.isoformat() if row is not None else None,
+        # Each day served as noon in Washington (report_log.served), so a page of the release
+        # before shows the right day.
+        "entries": report_log.served(row.entries) if row is not None else None,
+        "updated_at": row.updated_at.isoformat() if row is not None and row.updated_at else None,
         "owner": _report_log_owner(user),
     }
 
@@ -6344,10 +6349,18 @@ def _report_log_out(row, user) -> dict:
 def report311_log_read(request):
     from django.middleware.csrf import get_token
 
+    from . import report_log
     from .models import Report311Log
 
     get_token(request)
     row = Report311Log.objects.filter(user=request.user).first()
+    if row is not None:
+        # A save by the api of the release before (during a deploy, or after a rollback) kept
+        # times: cut to days here, as the next save would.
+        cut = [report_log.dated(e) for e in row.entries or []]
+        if cut != row.entries:
+            Report311Log.objects.filter(pk=row.pk, entries=row.entries).update(entries=cut)
+            row.entries = cut
     return _private(JsonResponse(_report_log_out(row, request.user)))
 
 
@@ -6380,6 +6393,7 @@ def report311_log_save(request):
         Report311Log.objects.get_or_create(user=request.user, defaults={"entries": []})
         row = Report311Log.objects.select_for_update().get(user=request.user)
         row.entries = report_log.merge_logs(row.entries or [], entries)
+        row.updated_at = report_log.today()
         row.save(update_fields=["entries", "updated_at"])
     return _private(JsonResponse(_report_log_out(row, request.user)))
 
@@ -6761,6 +6775,7 @@ def connected_apps_read(request):
 def connected_app_delete(request, grant_id: int):
     from .models import ConnectorGrant
 
+    # The app's drafts, their links and GPX links go with its grant (ConnectorDraft.grant).
     ConnectorGrant.objects.filter(user=request.user, pk=grant_id).delete()
     return _private(JsonResponse({"apps": _connected_apps(request.user)}))
 

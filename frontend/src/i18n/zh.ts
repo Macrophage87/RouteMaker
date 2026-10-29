@@ -482,6 +482,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Wait up, regroup": "等等，集合",
   "Send alert": "发送提醒",
   "Sends your location with the alert": "提醒会附带你的位置",
+  "Sends your spot to everyone on this ride.": "会把你的位置发送给本次骑行的所有人。",
   "Send to everyone on this ride?": "发送给本次骑行的所有人？",
   "Call 911": "拨打911",
   "You have sent {count} alerts on this ride, the most one phone sends.": "你在本次骑行已发送{count}条提醒，已达一部手机的上限。",

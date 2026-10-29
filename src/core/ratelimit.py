@@ -240,6 +240,11 @@ CONNECTOR_ADDRESS = Limit(scope="connector-ip", requests=600, window_s=60)
 # claude.ai registers for every rider from the same few addresses, so the cap is wide.
 CONNECTOR_REGISTER = Limit(scope="connector-register", requests=600, window_s=3600)
 CONNECTOR_CALLS = Limit(scope="connector-calls", requests=300, window_s=3600)
+# Featured routes posts refused through the connector because the route touches the admin's
+# Home (core.connector InProcessApi.draft_post): after the third in a day, no post drafts at all
+# until the day is out, so the refusal cannot be used to trace the Home circle. Checked at no
+# cost before each draft, counted at each such refusal.
+CONNECTOR_POST_HOME = Limit(scope="connector-post-home", requests=2, window_s=86400)
 # A shared link fetched for its preview (GET /s/{id} and its image, core.share_preview): a chat
 # app's fetchers share few addresses, so twice the reads.
 SHARE_PREVIEWS = Limit(scope="share-preview", requests=120, window_s=60)
