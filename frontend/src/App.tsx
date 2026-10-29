@@ -1027,6 +1027,8 @@ export function App() {
     roam?: boolean;
     /** Kept on this device to resume if the page closes (lib/rideResume.ts). */
     kept?: boolean;
+    /** Opened from someone else's link: theirs to share, also once resumed (lib/rideResume.ts LeftRide.others). */
+    others?: boolean;
     /** Said once the ride screen is up: Broadcast's link copied, where there was no share sheet. */
     note?: string;
     n: number;
@@ -3364,7 +3366,7 @@ export function App() {
   // The ride's own plan, for its Share live link, where the plan shown is no longer the ride's: a ride resumed after
   // the page closed (lib/rideResume.ts), or the plan made again since Start. A ride kept on this device only, so never
   // a trip's leg, Ride the rest or a detour from Roam (Stephen 2026-10-29: "Sharing a ride disappeared from go").
-  const rideOwnShare = () => (riding && rideStart?.kept && rideStart.route !== shown ? rideStart : null);
+  const rideOwnShare = () => (riding && rideStart?.kept && !rideStart.others && rideStart.route !== shown ? rideStart : null);
   const shareExact = () => {
     const ride = rideOwnShare();
     if (ride) {
@@ -3553,13 +3555,14 @@ export function App() {
     // Kept on this device so a page closed mid-ride can resume it (lib/rideResume.ts); a trip's leg, Ride the rest
     // and a detour from Roam are not.
     const kept = !rest && !leg.trip;
+    const others = opened !== null && !opened.own;
     const note = rideNote.current;
     rideNote.current = "";
-    setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, kept, note, n: (before?.n ?? 0) + 1 }));
+    setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, kept, others, note, n: (before?.n ?? 0) + 1 }));
     if (kept) {
       // The destination's name kept too, so a Resume after a reload can name the ride (the UI review, 2026-10-28).
       const destination = leg.loop ? null : (namer.name(leg.points[leg.points.length - 1])?.name ?? null);
-      keepLeftRide({ route, points: leg.points, loop: leg.loop, preset: leg.preset, dials: rideDialsNow, fixed, destination }, VIA_MARKS, Date.now());
+      keepLeftRide({ route, points: leg.points, loop: leg.loop, preset: leg.preset, dials: rideDialsNow, fixed, destination, others }, VIA_MARKS, Date.now());
     }
     else forgetLeftRide();
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
@@ -5764,9 +5767,10 @@ export function App() {
     onShared !== null && !onShared.own && !!onShared.lead && SHARED_LINK !== null && onShared.id === SHARED_ID && !followsWithoutKey({ leading: false, secret: onShared.secret });
   const rideBroadcast = onShared?.ride && onShared.id && onShared.lead ? { id: onShared.id, lead: onShared.lead, leading: onShared.own === true, secret: onShared.secret ?? null } : null;
   // Ride mode's Broadcast: the plan's own route, or a ride kept on this device whose plan is gone (resumed, or planned
-  // again since: its link is then the ride's own, rideOwnShare), not Ride the rest's or a detour from Roam; a ride
+  // again since: its link is then the ride's own, rideOwnShare) unless opened from someone else's link, not Ride the
+  // rest's or a detour from Roam; a ride
   // opened from someone else's link only where it is their broadcast, passed on as it is (Stephen 2026-10-26).
-  const rideCanBroadcast = !!rideStart && !rideStart.roam && (rideStart.route === shown || rideStart.kept === true) && (!(onShared && !onShared.own) || passesOn);
+  const rideCanBroadcast = !!rideStart && !rideStart.roam && (rideStart.route === shown || (rideStart.kept === true && !rideStart.others)) && (!(onShared && !onShared.own) || passesOn);
   // While leading a broadcast from Roam, its own riders' group is the only one (a Group Ride detour starts none).
   const rideGroupLine =
     !roamBroadcast?.leading && (goMode || riding || (rideBroadcast && !rideBroadcast.leading)) && rideGroupType && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
