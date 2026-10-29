@@ -9,7 +9,7 @@ the last one ending at the route's end."""
 
 from __future__ import annotations
 
-import inspect
+import sys
 
 import pytest
 from django.db import connection
@@ -76,7 +76,7 @@ class TestThroughTheApi:
 
         def fail_for_the_end_note(schema, *columns):
             # Only the end note's own read fails: the caller is not_public_ends.
-            if inspect.stack()[1].function == "not_public_ends":
+            if sys._getframe(1).f_code.co_name == "not_public_ends":
                 raise routing.DeadlineExceeded("the plan's time ran out")
             return real(schema, *columns)
 

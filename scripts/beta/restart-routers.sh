@@ -62,8 +62,9 @@ cmd_check() {
 	fi
 	# A swap the journal says is unfinished (pipeline.promotion's swap-journal.json, its state not
 	# yet "swapped", or a journal that cannot be read) has moved some links but not the live
-	# tables: restarting onto those tiles would serve them against the old segments. The repair
-	# (unwedge_job or a rollback) comes first; the routers stay on the build they started on.
+	# tables: restarting onto those tiles would serve them against the old segments. The repair by
+	# hand (docs/OPERATIONS.md, the swap journal) comes first; the routers stay on the build they
+	# started on.
 	journal="$RM_DATA/tiles/swap-journal.json"
 	if [ -e "$journal" ] && ! grep -Eq '"state"[[:space:]]*:[[:space:]]*"swapped"' "$journal" 2>/dev/null; then
 		echo "restart-routers: $journal says a map swap is unfinished; no router restarted until it is repaired"

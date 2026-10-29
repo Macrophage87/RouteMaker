@@ -634,8 +634,8 @@ function RouteAlerts({ route, answer, choice, around, onAround, pointCount }: { 
   const id = useId();
   const others = facilityNoticeCount(route);
   const hasAvoid = avoidNoticeFor(answer, choice) !== null;
-  // A stop or the end on a road not open to the public (the owner, 2026-10-29): with the warnings, so Go shows it beside
-  // Start rather than under the sheet's fold (the v0.15.0 end review). Said with the route (lib/summary.ts announceRoute).
+  // A stop or the end on a road not open to the public (the owner, 2026-10-29): shown and counted with the
+  // warnings (the v0.15.0 end review). Said with the route (lib/summary.ts announceRoute).
   const notPublic = route.point_notes?.length ? movedPointsNote({ point_notes: route.point_notes }, pointCount) : null;
   if (!hasAvoid && others === 0 && !notPublic) return null;
   return (
@@ -643,7 +643,7 @@ function RouteAlerts({ route, answer, choice, around, onAround, pointCount }: { 
       {/* First in the route's warnings and announced first (335): the route goes through an Avoid-rated junction. */}
       {hasAvoid && answer && <AvoidNotice answer={answer} choice={choice} around={around} onAround={onAround} />}
       {notPublic && (
-        <p className="note-line notice not-public-end">
+        <p className="note-line note-wrap notice not-public-end">
           <Icon name="warn" size={16} />
           <span className="note-text">{notPublic}</span>
         </p>
@@ -927,7 +927,7 @@ export function RouteSummary({
       </p>
     </>
   );
-  const alertCount = (avoidNoticeFor(answer, choice) ? 1 : 0) + facilityNoticeCount(route) + (weather?.alerts.length ?? 0);
+  const alertCount = (avoidNoticeFor(answer, choice) ? 1 : 0) + facilityNoticeCount(route) + (route.point_notes?.length ? 1 : 0) + (weather?.alerts.length ?? 0);
   // The sources once, in Info (P10): the trip's schedules are among them, so its panel no longer says them again.
   const credit = (
     <>
