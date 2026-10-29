@@ -93,8 +93,10 @@ export function RepairSheet({
               <li key={item.place.id}>
                 <span>
                   <Icon name={item.place.kind === "stand" ? "wrench" : "shop"} size={18} />{" "}
+                  {/* Named, not lettered, on the map (#628): the letter is heard, as in the other place lists. */}
                   <strong>
-                    {placeLetter(i)}. {repairTitle(item.place)}
+                    <span className="visually-hidden">{placeLetter(i)}. </span>
+                    {repairTitle(item.place)}
                   </strong>{" "}
                   {repairHowFar(item)}. <span id={`${rowId}-${i}`}>{repairDetails(item.place, at).join(" ")}</span>
                 </span>

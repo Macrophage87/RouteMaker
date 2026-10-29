@@ -312,7 +312,15 @@ export function movedPointsNote(route: Pick<RouteResponse, "moved_points" | "poi
   const noted = [...(route.moved_points ?? []), ...(route.point_notes ?? [])].sort((a, b) => a.index - b.index);
   if (noted.length === 0) return null;
   const n = Math.max(count, ...noted.map((m) => m.index + 1));
-  return noted.map((m) => `${pointName(m.index, n)}: ${m.note}`).join(" ");
+  return noted.map((m) => pointNoted(m.index, n, m.note)).join(" ");
+}
+
+/** "End: <note>", "Stop 2: <note>", "Start: <note>", in the app's language (the v0.15.0 end review). */
+export function pointNoted(index: number, count: number, note: string): string {
+  const name = pointName(index, count);
+  if (name === "Start") return t("Start: {note}", { note });
+  if (name === "End") return t("End: {note}", { note });
+  return t("Stop {number}: {note}", { number: index, note });
 }
 
 /**

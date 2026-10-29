@@ -305,6 +305,12 @@ const GO_RIDE_ALSO = [
   "lib/appWorker.ts",
   "lib/transit.ts",
   "lib/avoidJunctions.ts",
+  // Said or shown in Go and Ride through App (the v0.15.0 end review found 30 phrases these held that no catalog had).
+  "App.tsx",
+  "lib/spokenFigures.ts",
+  "lib/rideLinks.ts",
+  "lib/sendToGarmin.ts",
+  "lib/summary.ts",
 ];
 
 function goRideFiles(): string[] {

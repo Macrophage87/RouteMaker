@@ -6,7 +6,7 @@
 // the state and the effects; the questions, the errors and Start ride are as they were.
 import { choiceColours } from "../lib/routeChoice.ts";
 import { useId, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
-import { routeErrorShown, type BikeshareOption, type RouteError, type RouteResponse } from "../lib/api.ts";
+import { GROUP_RIDE_NO_TRAILS, routeErrorShown, type BikeshareOption, type RouteError, type RouteResponse } from "../lib/api.ts";
 import { placeLetter } from "../lib/letteredPlaces.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
@@ -111,6 +111,8 @@ export interface RouteActionsProps {
 
 /** Go's few extra controls on the route: its route card, its ride types and the Routes chip. */
 export interface GoRouteControls {
+  /** A Mass Ride refused outside DC (the error box's one action, in Plan too): the same points as Group Ride with trails off. */
+  onGroupRideNoTrails: () => void;
   /** The sheet is at its smallest (peek): the route's time, Start and the stress bar only. */
   peek: boolean;
   /** The sheet is at full height (or the page is wide, with no sheet): the elevation chart shows (review F8). */
@@ -216,7 +218,7 @@ function GoBikeOptions({ options }: { options: NonNullable<GoRouteControls["opti
 }
 
 /** A route error: what went wrong and what to do (lib/api.ts routeErrorShown), with one Try again where it can help. */
-function RouteErrorBox({ error, errorRef, retry, goPlace, offline }: { error: RouteError; errorRef: RefObject<HTMLDivElement | null>; retry: () => void; goPlace: string | null; offline: boolean }) {
+function RouteErrorBox({ error, errorRef, retry, goPlace, offline, onGroupRide }: { error: RouteError; errorRef: RefObject<HTMLDivElement | null>; retry: () => void; goPlace: string | null; offline: boolean; onGroupRide: () => void }) {
   const shown = routeErrorShown(error, goPlace, offline);
   const titleId = useId();
   // The words are the alert, said once as they come; the box that takes the focus (App: from Go's Where to?, or back
@@ -235,6 +237,11 @@ function RouteErrorBox({ error, errorRef, retry, goPlace, offline }: { error: Ro
       {shown.retry && (
         <button type="button" onClick={retry}>
           {t("Try again")}
+        </button>
+      )}
+      {error.kind === "mass-outside-dc" && (
+        <button type="button" onClick={onGroupRide}>
+          {t(GROUP_RIDE_NO_TRAILS)}
         </button>
       )}
     </div>
@@ -356,7 +363,7 @@ export function RouteSection(props: RouteSectionProps) {
         </div>
       )}
       {status.kind === "error" && (
-        <RouteErrorBox error={status.error} errorRef={errorRef} retry={retry} goPlace={goMode ? (go.place ?? null) : null} offline={props.offline === true} />
+        <RouteErrorBox error={status.error} errorRef={errorRef} retry={retry} goPlace={goMode ? (go.place ?? null) : null} offline={props.offline === true} onGroupRide={go.onGroupRideNoTrails} />
       )}
       {/* Go keeps the trip under an error (P11): where to, and the ride types, one tap to try another. */}
       {status.kind === "error" && goMode && !go.peek && go.routeCard}
@@ -594,7 +601,8 @@ interface NoteLine {
 function noteLines(route: RouteResponse, points: LonLat[], light: readonly LightMark[] = [], goMode = false): NoteLine[] {
   const lines: NoteLine[] = [];
   // A point inside the National Zoo was moved to its bike racks (291(4)): shown here, and said with the route.
-  const moved = movedPointsNote(route, points.length);
+  // A stop or the end not open to the public is a warning, shown with the route's alerts under its totals (RouteAlerts).
+  const moved = movedPointsNote({ ...route, point_notes: [] }, points.length);
   if (moved) lines.push({ key: "moved", className: "notice moved-points", icon: "pin", text: moved });
   // The ride stops short of a point, and the rider walks the bike the rest (the API's `walk_in`).
   const walkIn = walkInNote(route);
@@ -628,16 +636,25 @@ function noteLines(route: RouteResponse, points: LonLat[], light: readonly Light
  * whole sentence is read), with Avoid it beside it, and a count of the route's other warnings (the roads
  * best avoided, a traffic-tolerant ride, what the hills search found), listed behind it.
  */
-function RouteAlerts({ route, answer, choice, around, onAround }: { route: RouteResponse; answer: RouteResponse | null; choice: number; around: boolean; onAround: (around: boolean) => void }) {
+function RouteAlerts({ route, answer, choice, around, onAround, pointCount }: { route: RouteResponse; answer: RouteResponse | null; choice: number; around: boolean; onAround: (around: boolean) => void; pointCount: number }) {
   const [open, setOpen] = useState(false);
   const id = useId();
   const others = facilityNoticeCount(route);
   const hasAvoid = avoidNoticeFor(answer, choice) !== null;
-  if (!hasAvoid && others === 0) return null;
+  // A stop or the end on a road not open to the public (the owner, 2026-10-29): shown and counted with the
+  // warnings (the v0.15.0 end review). Said with the route (lib/summary.ts announceRoute).
+  const notPublic = route.point_notes?.length ? movedPointsNote({ point_notes: route.point_notes }, pointCount) : null;
+  if (!hasAvoid && others === 0 && !notPublic) return null;
   return (
     <div className="route-alerts">
       {/* First in the route's warnings and announced first (335): the route goes through an Avoid-rated junction. */}
       {hasAvoid && answer && <AvoidNotice answer={answer} choice={choice} around={around} onAround={onAround} />}
+      {notPublic && (
+        <p className="note-line note-wrap notice not-public-end">
+          <Icon name="warn" size={16} />
+          <span className="note-text">{notPublic}</span>
+        </p>
+      )}
       {others > 0 && (
         <>
           <button type="button" className="secondary alert-more" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
@@ -906,7 +923,7 @@ export function RouteSummary({
   );
   const alerts = (
     <>
-      <RouteAlerts route={route} answer={answer} choice={choice} around={around} onAround={onAround} />
+      <RouteAlerts route={route} answer={answer} choice={choice} around={around} onAround={onAround} pointCount={points.length} />
       <NoviceTransitOffer route={route} preset={preset} onTake={go.onNoviceTransit} trips={go.noviceTrips} />
       {/* Weather along the route (Stephen 2026-10-24): the NWS alerts, each linked to its notice, and rain coming. A
           notice only: Start never waits for it. Go shows the alerts under its totals (the owner's P1), and the rain here. */}
@@ -917,7 +934,7 @@ export function RouteSummary({
       </p>
     </>
   );
-  const alertCount = (avoidNoticeFor(answer, choice) ? 1 : 0) + facilityNoticeCount(route) + (weather?.alerts.length ?? 0);
+  const alertCount = (avoidNoticeFor(answer, choice) ? 1 : 0) + facilityNoticeCount(route) + (route.point_notes?.length ? 1 : 0) + (weather?.alerts.length ?? 0);
   // The sources once, in Info (P10): the trip's schedules are among them, so its panel no longer says them again.
   const credit = (
     <>
