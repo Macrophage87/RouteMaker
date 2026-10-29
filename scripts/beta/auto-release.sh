@@ -739,11 +739,27 @@ deploy() { # tag new-sha gate-file
 	return 0
 }
 
+# The plain pre-release and pre-rollback dumps go after 6.5 days (9360 minutes), as the nightly
+# dumps do (config.procrastinate BACKUP_MAX_AGE): the privacy page says copies taken before an
+# update stay at most a week. They stay plain because a rollback here restores them and the
+# server has no key to decrypt with. Every pass runs this, so it holds between releases too.
+# Spared: the snapshot a stopped pass's rollback will restore ($cd_dir/run-snapshot).
+prune_aged_snapshots() {
+	local keep_file f
+	keep_file=$(cat "$cd_dir/run-snapshot" 2>/dev/null)
+	find "$cd_dir/backups" -maxdepth 1 -type f \( -name 'pre-release-*.dump' -o -name 'pre-rollback-*.dump' \) -mmin +9360 2>/dev/null |
+		while IFS= read -r f; do
+			{ [ -n "$keep_file" ] && [ "$f" -ef "$keep_file" ]; } && continue
+			rm -f -- "$f"
+		done
+}
+
 prune() {
 	local pattern
 	# A dump a stopped snapshot left half written (receive-data.sh writes <name>.part, then renames):
 	# never restorable, and only a pass holding the lock writes one.
-	rm -f "$cd_dir/backups"/*.dump.part
+	rm -f "$cd_dir/backups"/*.dump.part "$cd_dir/backups"/*.dump.age.part
+	prune_aged_snapshots
 	for pattern in 'pre-release-*.dump' 'pre-rollback-*.dump' 'frontend.pre-release-*'; do
 		# shellcheck disable=SC2012
 		ls -1dt "$cd_dir/backups"/$pattern 2>/dev/null | tail -n +"$((keep + 1))" | while IFS= read -r f; do rm -rf -- "$f"; done
@@ -995,6 +1011,7 @@ cmd_run() {
 	fi
 	if [ "$dry_run" = 1 ]; then say "auto-release pass at $stamp (dry run: fetches, then changes nothing)"; else say "auto-release pass at $stamp"; fi
 	say "run log: $run_log"
+	[ "$dry_run" = 1 ] || prune_aged_snapshots
 	pass; local rc=$?
 	trap - TERM INT HUP
 	rm -f "$report"
