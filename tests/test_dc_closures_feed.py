@@ -121,7 +121,9 @@ class TestRefresh:
     ) -> None:
         monkeypatch.setenv(sources.NPS_KEY_ENV, KEY)
         net = Net(fail=("developer.nps.gov",))
-        sources.refresh(net, no_sleep, lambda: NOW, Placer())
+        with pytest.raises(workzones.FeedError) as failed:
+            sources.refresh(net, no_sleep, lambda: NOW, Placer())
+        assert "nps failed" in str(failed.value) and KEY not in str(failed.value)
         nps = [(url, h) for url, h in net.asked if "developer.nps.gov" in url]
         assert len(nps) == sources.TRIES
         assert all(h["X-Api-Key"] == KEY and KEY not in url for url, h in nps)
@@ -164,10 +166,13 @@ class TestRefresh:
         placer = Placer()
         later = NOW + timedelta(hours=2)
         net = Slow()
-        line = sources.refresh(
-            net, no_sleep, lambda: later, placer, budget_s=100.0, clock=lambda: clock[0]
-        )
-        assert "not reached in time" in line
+        # The sources not reached are two hours old, past stale: the run fails, so the
+        # operations page says so, and their copies are still kept.
+        with pytest.raises(workzones.FeedError) as failed:
+            sources.refresh(
+                net, no_sleep, lambda: later, placer, budget_s=100.0, clock=lambda: clock[0]
+            )
+        assert "not reached in time" in str(failed.value)
         assert all(t <= sources.TIMEOUT_S for t in timeouts) and timeouts[1] <= 30.0
         assert clock[0] <= 100.0 + 70.0, "nothing was started past the budget"
         # A source not reached keeps its copy from the first refresh, unfailed.
@@ -182,6 +187,19 @@ class TestRefresh:
         sources.refresh(Net(fail=("maps2",)), no_sleep, lambda: later, Placer())
         dc = stored("dc")
         assert dc["failed_at"] == later.isoformat() and len(dc["zones"]) == 2
+
+    def test_a_source_failing_past_stale_fails_the_run(self) -> None:
+        """Audit 2026-10-29: the run said it succeeded while every source kept failing, so
+        the operations page never flagged it. A failure inside `STALE_AFTER_S` of the last
+        good read is not yet an alarm; past it the run fails, its copy still kept."""
+        sources.refresh(Net(), no_sleep, lambda: NOW, Placer())
+        soon = NOW + timedelta(minutes=20)
+        sources.refresh(Net(fail=("hsema",)), no_sleep, lambda: soon, Placer())
+        later = NOW + timedelta(hours=1)
+        with pytest.raises(workzones.FeedError) as failed:
+            sources.refresh(Net(fail=("hsema",)), no_sleep, lambda: later, Placer())
+        assert "no good read in time: alertdc" in str(failed.value)
+        assert stored("alertdc")["read_at"] == NOW.isoformat()
 
 
 @db

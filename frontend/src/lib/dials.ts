@@ -125,8 +125,8 @@ export interface Dials {
    * "Anticipated ride size" (PLAN items 128, 129, 139), Mass Ride only: the riders expected,
    * 100 to 2,000. It sets the group's length, which the corker load is counted over (the
    * owner, 2026-10-10: "Corkers were intended to also have a rollback based on the length of
-   * the ride"). Absent is RIDE_SIZE_DEFAULT. It does not change the route, so it is never
-   * sent to the API (dialFields); it rides in the link (planHash.ts).
+   * the ride"). Absent is RIDE_SIZE_DEFAULT. Sent as ride_size (dialFields): the route choice
+   * prices roads too narrow for it (core.routing choose_by_capacity). It rides in the link (planHash.ts).
    */
   rideSize?: number;
 }
@@ -456,6 +456,9 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   if (dials.transitOption) fields.transit_option = dials.transitOption;
   if (dials.noviceLegs) fields.novice_legs = true;
   if (dials.noviceLegs && dials.noviceHop) fields.novice_hop = dials.noviceHop;
+  // Mass Ride's ride size (fitDials keeps it on that ride type alone); absent is 500, as the API's.
+  const rideSize = fitRideSize(dials.rideSize);
+  if (rideSize !== undefined) fields.ride_size = rideSize;
   return fields;
 }
 

@@ -163,6 +163,107 @@ class TestThePlan:
         assert len(plan.excluded) + len(plan.unexcluded) == 40
 
 
+def _arc(radius_m: float, length_m: float, step_m: float = 10.0) -> list[tuple[float, float]]:
+    """A road on a curve of `radius_m`, a point every `step_m`, as (lon, lat) near DC."""
+    lat0, lon0 = 38.95, -77.0
+    k = math.pi / 180 * 6_371_008.8
+    points = []
+    for n in range(int(length_m // step_m) + 1):
+        angle = n * step_m / radius_m
+        x, y = radius_m * math.sin(angle), radius_m * (1 - math.cos(angle))
+        points.append((lon0 + x / (k * math.cos(math.radians(lat0))), lat0 + y / k))
+    return points
+
+
+def _inside(point, ring) -> bool:
+    """Even-odd point in polygon, on (lon, lat)."""
+    x, y = point
+    inside = False
+    for (x1, y1), (x2, y2) in zip(ring, ring[1:], strict=False):
+        if (y1 > y) != (y2 > y) and x < x1 + (y - y1) * (x2 - x1) / (y2 - y1):
+            inside = not inside
+    return inside
+
+
+class TestTheStripCoversTheRoad:
+    """Audit 2026-10-29 (P2): thinned to 5 points, the strip round a closed road on a long
+    curve drifted off the road, and the blocks in the middle of the curve stayed routable.
+    Every point of the trimmed road must lie inside its strip, so every cross street meets
+    it."""
+
+    def covered(self, line, trim_m: float = wz.TRIM_M) -> list[tuple[float, float]]:
+        ring = wz.line_ring(line, trim_m)
+        lat0 = line[0][1]
+        trimmed = wz._trim([wz._xy(lon, lat, lat0) for lon, lat in line], trim_m)
+        missed = [
+            p
+            for p in wz._samples(trimmed, 5.0)[1:-1]
+            if not _inside(wz._lonlat(p[0], p[1], lat0), ring)
+        ]
+        assert len(ring) <= 2 * wz.MAX_LINE_POINTS + 1
+        return missed
+
+    @pytest.mark.parametrize(("radius", "length"), [(800, 1257), (1500, 1571), (200, 600)])
+    def test_a_curved_closure_is_covered_along_its_length(self, radius, length) -> None:
+        assert self.covered(_arc(radius, length)) == []
+
+    def test_a_long_winding_closure_is_widened_to_stay_on_the_road(self) -> None:
+        # A reviewer closure can be 6.2 mi (10 km) long: a winding one has too many bends
+        # for the points allowed, so its strip is wider, never off the road.
+        lat0, lon0 = 38.95, -77.0
+        k = math.pi / 180 * 6_371_008.8
+        line = [
+            (
+                lon0 + x / (k * math.cos(math.radians(lat0))),
+                lat0 + 40 * math.sin(2 * math.pi * x / 1_000) / k,
+            )
+            for x in range(0, 10_001, 10)
+        ]
+        assert self.covered(line) == []
+        ring = wz.line_ring(line, wz.TRIM_M)
+        lats = [lat for _lon, lat in ring]
+        # Wider than 6 m either side, but not by more than the road's own swing.
+        assert 80 / 111_000 < max(lats) - min(lats) < 130 / 111_000
+
+    def test_a_straight_closure_keeps_its_two_points(self) -> None:
+        ring = wz.line_ring([(-77.03, 38.950), (-77.03, 38.951), (-77.03, 38.953)], wz.TRIM_M)
+        assert len(ring) == 5
+
+    def test_a_sharp_turn_keeps_its_full_width(self) -> None:
+        corner = [(-77.03, 38.950), (-77.03, 38.952), (-77.0275, 38.952)]
+        assert self.covered(corner) == []
+        ring = wz.line_ring(corner)
+        lat0 = corner[0][1]
+        bx, by = wz._xy(-77.03, 38.952, lat0)
+        # 5.5 m out from each leg, just short of the bend, is inside: the corner is mitred,
+        # not cut across (that left about 4.2 m there).
+        for x, y in ((bx - 5.5, by - 1.0), (bx + 1.0, by + 5.5)):
+            assert _inside(wz._lonlat(x, y, lat0), ring)
+
+
+class TestTheClosuresKeptOnALongRide:
+    def test_closures_by_the_start_and_end_come_before_one_off_the_way(self) -> None:
+        # DC to Baltimore: one closure by each end, on the way; one by the middle of the
+        # stops' box but 4 km off the line between them.
+        points = [(-77.03, 38.90), (-76.61, 39.29)]
+
+        def closure(name, lon, lat):
+            return wz.Zone(name, "md", wz.CLOSED, 0, ((lon, lat), (lon, lat + 0.003)), None,
+                           None, None, None)  # fmt: skip
+
+        start = closure("start", -77.02, 38.91)
+        end = closure("end", -76.62, 39.28)
+        aside = closure("aside", -76.86, 39.06)
+        rings, fitted, left = wz.fit_polygons([aside, start, end], points, 0.0,
+                                              wz.MAX_VERTICES - 6)  # fmt: skip
+        assert [z.zone_id for z in fitted] == ["start"]
+        rings, fitted, left = wz.fit_polygons([aside, start, end], points)
+        assert [z.zone_id for z in fitted] == ["start", "end", "aside"]
+        # A single point still ranks as before.
+        rings, fitted, left = wz.fit_polygons([aside, start, end], (-76.86, 39.06))
+        assert fitted[0].zone_id == "aside"
+
+
 class TestAlong:
     def test_a_zone_the_route_runs_along_is_found_with_its_metres(self) -> None:
         (passage,) = wz.along(NORTH, [zones()["md-wz-closed-bikes"]])

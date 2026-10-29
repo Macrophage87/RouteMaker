@@ -435,7 +435,8 @@ band, grep `route timing` from the api's log.
 
 - `ROUTER_PARALLEL_CALLS` (default 3) is the number of router calls one route
   may have in flight at a time: the calm search's wide `/route` asks, the
-  traces of candidate routes and legs, and the delay measure. At 1 every call
+  traces of candidate routes and legs, the delay measure, and a bikeshare
+  plan's walks to and from its candidate docks. At 1 every call
   runs in turn, as before v0.7.0. The pool is one per api worker process, and
   a transit trip's later rides (`api._later_rides`) run on it too rather than
   on a pool of their own; a plan on a pool thread makes its calls in turn. So
@@ -2241,7 +2242,9 @@ metro-typical.json from each line's page (`https://www.wmata.com/ridertools/line
 - The fetch writes one zip per system in `src/core/transitdata/systems.json`, plus a README with
   each zip's URL, size, sha256 and time. The key is read from the environment variable only and is
   never printed. `--only marc` fetches one system. The systems: WMATA Metro and Metrobus (key),
-  MARC, Light RailLink, Metro SubwayLink and VRE (`--only vre`; no key).
+  MARC, Light RailLink, Metro SubwayLink and VRE (`--only vre`; no key). A failed download says its
+  HTTP status: a 401 or 403 from WMATA means the key is wrong or expired, and is not retried; a
+  5xx or a network error is retried 3 times.
 - The build prints a report: stops and patterns per system, any Metro platform it could not match
   to the map's stations, and any system whose zip is missing (left out, not fatal).
 - The zips and the built file are the agencies' data. Keep them on the host and never commit them
@@ -2249,19 +2252,22 @@ metro-typical.json from each line's page (`https://www.wmata.com/ridertools/line
 - The web process reads the file again when it changes, so no restart is needed.
 
 **Refresh at least every 45 days.** The file holds 45 days of service from the build date
-(`--date`, default today). A plan for a later date (or any plan once the file has run out) uses
+(`--date`, default yesterday in Washington, so tonight's trips after midnight are covered on
+any host's time zone). A plan for a later date (or any plan once the file has run out) uses
 Metro's typical timetable alone, which needs no refresh, with the note "Only Metro is planned: the
 other timetables installed cover ... to ...". Refresh as well when an agency publishes a new
 timetable, for example a MARC or VRE schedule change or a Metro shutdown. Planned closures reach the plans
-only through the published GTFS. With fewer than 7 days left, the api logs "the transit schedule
-runs out ..." once a day and `manage.py check_operations` alerts ("transit: the schedule runs out
-on ..."; exit 1). An unreadable file alerts too; no file installed does not.
+only through the published GTFS. With fewer than 21 days left, the api logs "the transit schedule
+runs out ..." once a day, `manage.py check_operations` alerts ("transit: the schedule runs out
+on ..."; exit 1) and the admin operations page shows the same line under "Transit schedule". An
+unreadable file alerts too; no file installed does not. Three weeks leaves room for a refresh by
+hand when the end falls on a holiday week.
 
 **A feed that ends inside the window.** The file records each system's own last day of service
 (`last_day`), and the build warns "<system>: its timetable ends ..., before the window's last
 day". After that day the system is left out of plans and of the map's closed stations (it is not
 covered, not closed), with the note "MARC is not planned for this date: its installed timetable
-ends ..."; Metro's WMATA GTFS gives way to its typical timetable. The 7-day alert counts down to
+ends ..."; Metro's WMATA GTFS gives way to its typical timetable. The 21-day alert counts down to
 the earliest such end ("transit: MARC's timetable runs out on ..."): fetch a newer feed and build
 again.
 
@@ -4884,7 +4890,9 @@ without it NPS is simply not read. The host needs egress to the four hosts (PLAY
 
 1. `runs` shows `refresh_dc_closures` succeeding; a source that failed is named in the
    warning `closures: the <source> source could not be read` (the URL and the key are
-   never logged).
+   never logged). A source with no good read within its "Stale after" time fails the run
+   (`no good read in time: <source>`), so the operations page flags it; its last good copy
+   is still used until "Dropped after".
 2. TOPS: the query asks `where=EXPIRATIONDATE >= DATE 'YYYY-MM-DD'` with `outSR=4326`,
    `f=geojson`, and keeps Status in active, issued or approved. Confirm the layer's field
    names (IsRoadClosed, BikeLaneLength, Status, the effective and expiration dates) and its
@@ -4924,14 +4932,20 @@ out.
 
 1. `python scripts/ddot_advisories.py watch --days 45` lists the dated advisories on every
    DDOT advisories page changed in that time whose link is not yet in the file's `seen`.
+   It first prints a `CHECK:` line for each hand-kept date due a look: a guessed last day
+   (`"end_estimated": true`) within 30 days, this file or the Purple Line's not updated in 45
+   days, and the deer schedules' assumed season (14 days ahead) or last night (30 days ahead).
 2. Read each one (the link is the release, PDF or Word). For a closure, add an entry:
    `id`, `project`, `page` (the advisories page, which the card links), `advisory` (the
    release), `posted`, `road` (as the card says it), `reason`, `first_day`, `last_day` (whole
    days in the region's time; "about eight weeks" counted to its end, "the duration of the
-   project" to the project's stated end), `ways` (OpenStreetMap way ids) and `lines`
+   project" to the project's stated end, with `"end_estimated": true` where the day is
+   counted or guessed rather than given), `ways` (OpenStreetMap way ids) and `lines`
    (`python scripts/ddot_advisories.py lines WAY ...` prints them).
 3. Add the advisory's link to `seen` either way, set `updated` to today, and ship it in the
-   next release. A later advisory that extends or ends a closure changes its `last_day`.
+   next release. A later advisory that extends or ends a closure changes its `last_day`. A
+   file whose `updated` is more than 45 days old is labelled stale on the route ("last read
+   more than 45 days ago"); its closures still stand.
 
 The first entries (2026-10-25): the Connecticut Avenue NW service lanes from Dupont Circle to
 Q Street (both directions, closed since 2025-09-23 for the deckover; OSM already maps them as
@@ -4973,7 +4987,7 @@ closed through October 2026", notice of 2026-07-24; "The long-term lane closure 
 Street (West) between Ramsey Avenue and Georgia Avenue remains in effect through the
 completion of construction", and in the same item "the road closure"; the owner saw it closed).
 The notices give no end for the block, so its last day is 2027-03-31, the Purple Line's spring
-2027 opening: check it in March, and sooner if the Dixon junction's notice (through October
+2027 opening (`end_estimated`, so the watch reminds from March 1): check it in March, and sooner if the Dixon junction's notice (through October
 2026) is not renewed. The strip the router excludes also takes the block's own sidewalks and crossings (3 to 5
 m off the centre line) inside the work zone.
 
@@ -6427,7 +6441,10 @@ nodes and 500 ft (150 m) or less together, that touch bicycle-open ways at two n
 more, on two ways or more, one a trail or a public street, and that are closed only for
 the mountain-bike class, a natural surface, an untagged park path, a footpath for walkers,
 poor visibility, a hiking route, `sac_scale=hiking`, a farm track or a working site
-(`trail_closures.SHORT_LINK_REOPENS`). Their reason is lifted. One with a natural surface,
+(`trail_closures.SHORT_LINK_REOPENS`). A farm track or a working site's way is reopened only
+where its link touches a trail (`SHORT_LINK_TRAIL_ONLY`; the owner, 2026-10-29: "Keep short
+farm tracks and working-site links only where they connect to a trail"): between two streets
+it stays closed, as likely private. Their reason is lifted. One with a natural surface,
 bad smoothness, a grade 4 or 5 track, poor visibility, a hiking rating or of the
 mountain-bike class gets
 `rm:link_walk` (the remap writes `bicycle=dismount`, and the route says to walk); the rest
@@ -7303,7 +7320,12 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
   written to a run row. Rotating it: docs/DEPLOYMENT.md, "Secrets".
 - What a plan does: a zone closed to bicycles (every lane closed, the bike lane listed closed) is
   left out of every router request (`exclude_polygons`, a strip 6 m [20 ft] either side of the
-  zone's line, trimmed 20 m [66 ft] at each end so cross streets stay open). Every other zone in
+  zone's line, trimmed 20 m [66 ft] at each end so cross streets stay open). The line is kept to
+  within 3 m [10 ft] of the road in at most 12 points, so a curved road stays inside its strip; a
+  longer winding one gets a wider strip instead. Where more closures are in force than the
+  router takes (100 vertices in all), those nearest the line through the rider's points in
+  order are kept and the rest are warned of. The answer is checked against the closures it
+  went round: one it still runs along is warned of in red, not counted as routed round. Every other zone in
   force at the ride time that the route runs along costs its penalty: 60 s shoulder only, 120 s a
   lane closed, 180 s a flagger or alternating one-way, 600 s every lane closed with bicycles not
   mentioned (shown in red). The plan asks once for the route round those zones and keeps it where
