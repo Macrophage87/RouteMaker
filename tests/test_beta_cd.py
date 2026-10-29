@@ -115,6 +115,24 @@ def test_the_ci_verdict(runs: list, verdict: str) -> None:
     assert cd_logic.ci_verdict({"check_runs": runs}, SHA) == verdict
 
 
+@pytest.mark.parametrize(
+    "a11y, verdict",
+    [
+        ({}, "green"),
+        ({"conclusion": "failure"}, "red"),
+        ({"status": "in_progress", "conclusion": None}, "pending"),
+    ],
+)
+def test_a_release_needs_the_a11y_check_green_too(a11y: dict, verdict: str) -> None:
+    runs = [run_(), run_(id=2, name="a11y", **a11y)]
+    assert cd_logic.ci_verdicts({"check_runs": runs}, SHA) == verdict
+    # No a11y run at all is not green: it has not run yet.
+    assert cd_logic.ci_verdicts({"check_runs": [run_()]}, SHA) == "pending"
+    # A red test run is red whatever the a11y run says.
+    runs = [run_(conclusion="failure"), run_(id=2, name="a11y", status="queued", conclusion=None)]
+    assert cd_logic.ci_verdicts({"check_runs": runs}, SHA) == "red"
+
+
 def test_a_malformed_check_run_answer_is_pending_not_green() -> None:
     assert cd_logic.ci_verdict({}, SHA) == "pending"
     assert cd_logic.ci_verdict({"check_runs": None}, SHA) == "pending"
@@ -126,6 +144,57 @@ def test_a_malformed_check_run_answer_is_pending_not_green() -> None:
         check=False,
     )
     assert done.stdout.strip() == "pending"
+
+
+# --- the front end's lockfile ---
+
+LOCK = {
+    "name": "routemaker-frontend",
+    "version": "0.12.2",
+    "lockfileVersion": 3,
+    "requires": True,
+    "packages": {
+        "": {"name": "routemaker-frontend", "version": "0.12.2", "dependencies": {"a": "^1"}},
+        "node_modules/a": {"version": "1.0.0", "resolved": "https://example.org/a-1.0.0.tgz"},
+    },
+}
+
+
+def _lock(version: str = "0.12.2", dep: str = "1.0.0", lockfile: int = 3) -> str:
+    lock = json.loads(json.dumps(LOCK))
+    lock["version"] = lock["packages"][""]["version"] = version
+    lock["packages"]["node_modules/a"]["version"] = dep
+    lock["lockfileVersion"] = lockfile
+    return json.dumps(lock, indent=2) + "\n"
+
+
+def test_the_lockfile_hash_ignores_the_release_version() -> None:
+    before = cd_logic.lock_hash(_lock())
+    # The release procedure bumps both version fields: the same node_modules still fits.
+    assert cd_logic.lock_hash(_lock(version="0.12.3")) == before
+    # So does a reformat npm might make.
+    assert cd_logic.lock_hash(json.dumps(json.loads(_lock()))) == before
+    # A dependency's version is not the release's: a new hash.
+    assert cd_logic.lock_hash(_lock(dep="1.0.1")) != before
+    assert cd_logic.lock_hash(_lock(lockfile=2)) != before
+
+
+def test_the_lockfile_hash_from_the_command_line_and_of_text_that_is_not_json() -> None:
+    done = subprocess.run(
+        [sys.executable, str(BETA / "cd_logic.py"), "lock-hash"],
+        input=_lock(),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert done.stdout.strip() == cd_logic.lock_hash(_lock())
+    assert cd_logic.lock_hash("not json") == hashlib.sha256(b"not json").hexdigest()
+
+
+def test_the_runbook_sends_node_modules_under_the_agent_s_hash() -> None:
+    runbook = (REPO / "docs" / "BETA-RUNBOOK.md").read_text()
+    assert "scripts/beta/cd_logic.py lock-hash < frontend/package-lock.json" in runbook
+    assert "sha256sum frontend/package-lock.json" not in runbook
 
 
 # --- the gate ---
@@ -700,7 +769,9 @@ class Beta:
         self.green()
         return sha
 
-    def green(self, conclusion: str = "success", status: str = "completed") -> None:
+    def green(
+        self, conclusion: str = "success", status: str = "completed", a11y: str = "success"
+    ) -> None:
         sha = getattr(self, "sha", self.v1)
         runs = [
             {
@@ -710,7 +781,15 @@ class Beta:
                 "status": status,
                 "conclusion": conclusion,
                 "app": {"slug": "github-actions"},
-            }
+            },
+            {
+                "id": 8,
+                "name": "a11y",
+                "head_sha": sha,
+                "status": "completed",
+                "conclusion": a11y,
+                "app": {"slug": "github-actions"},
+            },
         ]
         self.ci.write_text(json.dumps({"check_runs": runs}))
 
@@ -748,7 +827,7 @@ class Beta:
         return self.log.read_text() if self.log.exists() else ""
 
     def node_modules(self, lockfile: bytes = b"{}\n") -> Path:
-        path = self.cd / "node_modules" / hashlib.sha256(lockfile).hexdigest() / "node_modules"
+        path = self.cd / "node_modules" / cd_logic.lock_hash(lockfile.decode()) / "node_modules"
         path.mkdir(parents=True)
         return path
 
@@ -787,10 +866,23 @@ def test_the_highest_release_is_the_candidate(beta: Beta) -> None:
     assert "candidate: v0.10.0" in beta.agent("run", "--dry-run").stdout
 
 
+def test_a_lightweight_tag_on_the_release_commit_is_a_release(beta: Beta) -> None:
+    commit(beta.origin, {"src/core/a.py": "x = 2\n"}, "Release v0.2.0 (#12)")
+    beta.tag("v0.2.0", annotated=False)
+    beta.sha = git(beta.origin, "rev-parse", "HEAD")
+    beta.green()
+    assert "would deploy v0.2.0" in beta.agent("run", "--dry-run").stdout
+    # Not on another release's commit, nor one that only starts with the name.
+    commit(beta.origin, {"src/core/a.py": "x = 3\n"}, "Release v0.3.00")
+    beta.tag("v0.3.0", annotated=False)
+    beta.agent("run")
+    assert "held" in beta.status() and "git tag -a" in beta.status()
+
+
 def test_a_lightweight_tag_is_held_and_not_retried(beta: Beta) -> None:
     beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"}, annotated=False)
     beta.agent("run")
-    assert "held" in beta.status() and "annotated" in beta.status()
+    assert "held" in beta.status() and "git tag -a" in beta.status()
     assert (beta.cd / "hold" / "v0.2.0").exists()
     beta.log.unlink(missing_ok=True)
     beta.agent("run")
@@ -819,6 +911,14 @@ def test_ci_pending_or_rate_limited_waits_and_red_holds(beta: Beta) -> None:
     beta.green(conclusion="failure")
     beta.agent("run")
     assert "held" in beta.status() and (beta.cd / "hold" / "v0.2.0").exists()
+
+
+def test_a_red_a11y_check_holds_the_release(beta: Beta) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    beta.green(a11y="failure")
+    beta.agent("run")
+    assert "held" in beta.status() and "a11y" in beta.status()
+    assert (beta.cd / "hold" / "v0.2.0").exists()
 
 
 def test_a_release_needing_the_owner_is_held_with_the_reason(beta: Beta) -> None:
@@ -1276,7 +1376,7 @@ def test_a_new_lockfile_waits_even_when_the_old_one_has_node_modules(beta: Beta)
     beta.release("v0.2.0", {"frontend/package-lock.json": new_lock})
     done = beta.agent("run", STUB_HAS_IMAGES="1")
     assert "waiting" in beta.status() and "node_modules" in beta.status()
-    assert hashlib.sha256(new_lock.encode()).hexdigest() in beta.status()
+    assert cd_logic.lock_hash(new_lock) in beta.status()
     assert "the front end's package files changed" in done.stdout
     assert "stop api worker" not in beta.calls()
 
@@ -1781,6 +1881,38 @@ def test_a_held_release_is_sent_to_the_owner_once_per_tag(beta: Beta) -> None:
     sent = _alerts(beta)
     assert len(sent) == 2  # alert.sh itself drops the repeat by its id
     assert all(line.startswith("send|deploy|held v0.2.0|held: v0.2.0") for line in sent)
+
+
+def test_a_release_that_waits_over_half_an_hour_is_sent_to_the_owner(beta: Beta) -> None:
+    _alert_stub(beta)
+    alerts = str(beta.tmp / "alerts.log")
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    beta.green(status="in_progress", conclusion="")
+    beta.agent("run", STUB_ALERTS=alerts)
+    assert "waiting" in beta.status()
+    assert _alerts(beta) == []  # the first wait is only noted
+    since = (beta.cd / "waiting").read_text().split()
+    (beta.cd / "waiting").write_text(f"{since[0]} {int(since[1]) - 31 * 60}\n")
+    beta.agent("run", STUB_ALERTS=alerts)
+    sent = _alerts(beta)
+    assert len(sent) == 1 and sent[0].startswith("send|deploy|waiting ")
+    assert "waiting for over 30 min: v0.2.0: the test or a11y check run" in sent[0]
+    # Another result forgets the wait.
+    beta.green()
+    beta.agent("run", "--dry-run", STUB_ALERTS=alerts)
+    beta.agent("run", STUB_ALERTS=alerts, STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert "deployed" in beta.status()
+    assert not (beta.cd / "waiting").exists()
+
+
+def test_a_planned_wait_never_alerts(beta: Beta) -> None:
+    _alert_stub(beta)
+    beta.vars.write_text(beta.vars.read_text() + "export RM_CD_WINDOW=02-06\n")
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    for _ in range(2):
+        beta.agent("run", STUB_HOUR="12", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+        assert "outside the deploy window" in beta.status()
+    assert _alerts(beta) == [] and not (beta.cd / "waiting").exists()
 
 
 def test_a_quiet_pass_sends_nothing_and_a_missing_alert_script_is_fine(beta: Beta) -> None:
