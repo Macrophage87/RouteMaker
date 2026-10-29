@@ -6709,8 +6709,10 @@ details.fold > summary .icon {
   min-width: 44px;
   height: 44px;
   flex-direction: row;
-  gap: 6px;
-  padding: 0 12px 0 10px;
+  /* Share live, the longest word, keeps the column clear of the map's credits at 320 px with these (2026-10-29): it
+     was 6 px between and 12 px and 10 px a side. */
+  gap: 4px;
+  padding: 0 10px 0 8px;
   border-radius: 22px;
 }
 
