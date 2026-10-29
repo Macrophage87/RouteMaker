@@ -1380,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "غذا یا نام",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "از OpenStreetMap: پیش از اعتماد ساعت‌ها را بررسی کنید. امتیازی نیست.",
   "Find the nearest water, restroom or Metro": "یافتن نزدیک‌ترین آب، دستشویی یا Metro",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "هر جا با نامش روی نقشه نشان داده می‌شود: زدن نامش یا کلید حرفش (A برای اولی) نشان می‌دهد آنجا چه هست. رکاب تا اینجا از جایی که جست‌وجو کردید تا آنجا مسیر محاسبه می‌کند، به‌جای برنامه شما؛ واگرد برنامه‌تان را برمی‌گرداند. افزودن به‌عنوان توقف آب یا دستشویی را در برنامه می‌گذارد. ایستگاه‌های Metro مال Metrorail هستند؛ وقتی مسیرها فهرست می‌شوند، مسیر از آسانسور ایستگاه استفاده می‌کند.",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "نام یک جا را روی نقشه بزنید تا ببینید آنجا چه هست. رکاب تا اینجا تا آنجا مسیر محاسبه می‌کند، به‌جای برنامه شما؛ واگرد برنامه‌تان را برمی‌گرداند.",
   "Nearest {noun}": "نزدیک‌ترین {noun}",
   " of {place}": " برای {place}",
   "From:": "از:",

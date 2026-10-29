@@ -1380,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "Món ăn hoặc tên",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "Từ OpenStreetMap: kiểm tra giờ mở cửa trước khi tin. Không có đánh giá.",
   "Find the nearest water, restroom or Metro": "Tìm nước, nhà vệ sinh hoặc ga Metro gần nhất",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "Mỗi chỗ được ghi tên trên bản đồ: chạm vào tên hoặc phím chữ của nó (A cho chỗ đầu tiên) để xem ở đó có gì. Đạp đến đây tính tuyến từ chỗ bạn tìm đến đó, thay cho kế hoạch của bạn; Hoàn tác đưa kế hoạch trở lại. Thêm làm điểm dừng đưa nước hoặc nhà vệ sinh vào kế hoạch. Ga Metro là của Metrorail; khi tuyến được liệt kê, tuyến dùng thang máy của ga.",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "Chạm vào tên một chỗ trên bản đồ để xem ở đó có gì. Đạp đến đây tính tuyến đến đó, thay cho kế hoạch của bạn; Hoàn tác đưa kế hoạch trở lại.",
   "Nearest {noun}": "{noun} gần nhất",
   " of {place}": " cho {place}",
   "From:": "Từ:",

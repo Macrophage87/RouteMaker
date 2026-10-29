@@ -1380,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "菜品或店名",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "来自 OpenStreetMap：请先确认营业时间。没有评分。",
   "Find the nearest water, restroom or Metro": "找最近的饮水、厕所或 Metro",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "每个地点在地图上都标有名称：点它的名称或按它的字母键（第一个是 A），会显示那里有什么。“骑到这里”从你搜索的地方算到那里的路线，替换你的计划；“撤销”恢复计划。“添加为途经点”把饮水或厕所加入计划。Metro 站是 Metrorail 的；列出路线时会使用车站电梯。",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "点地图上地点的名称，会显示那里有什么。“骑到这里”算出到那里的路线，替换你的计划；“撤销”恢复计划。",
   "Nearest {noun}": "最近的{noun}",
   " of {place}": "（{place}）",
   "From:": "从：",

@@ -1380,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "料理名や店名",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "OpenStreetMap より：営業時間は事前に確認を。評価はありません。",
   "Find the nearest water, restroom or Metro": "最寄りの水・トイレ・Metro を探す",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "各場所は地図に名前で表示されます：名前をタップするか文字キー（最初はA）を押すと、そこに何があるかが表示されます。「ここへ走る」は検索した地点からそこまでのルートを、今の計画の代わりに計算します。「取り消す」で計画を戻せます。「立ち寄り先に追加」は水やトイレを計画に入れます。Metro の駅は Metrorail のものです。ルート一覧では駅のエレベーターを使います。",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "地図で場所の名前をタップすると、そこに何があるかが表示されます。「ここへ走る」はそこまでのルートを今の計画の代わりに計算します。「取り消す」で計画を戻せます。",
   "Nearest {noun}": "最寄りの{noun}",
   " of {place}": "（{place}）",
   "From:": "出発：",

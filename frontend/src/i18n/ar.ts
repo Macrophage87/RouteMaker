@@ -1380,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "طبق أو اسم",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "من OpenStreetMap: تحقق من المواعيد قبل الاعتماد عليها. لا تقييمات.",
   "Find the nearest water, restroom or Metro": "اعثر على أقرب ماء أو دورة مياه أو Metro",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "يظهر كل مكان باسمه على الخريطة: الضغط على اسمه أو مفتاح حرفه (A للأول) يعرض ما هناك. اركب إلى هنا يحسب مسارًا من حيث بحثت إلى ذلك المكان بدل خطتك؛ وتراجع يعيد خطتك. إضافة كتوقف تضع الماء أو دورة المياه في خطتك. محطات Metro هي محطات Metrorail؛ عند إدراج المسارات يستخدم المسار مصعد المحطة.",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "اضغط على اسم مكان على الخريطة لترى ما هناك. اركب إلى هنا يحسب مسارًا إليه بدل خطتك؛ وتراجع يعيد خطتك.",
   "Nearest {noun}": "أقرب {noun}",
   " of {place}": " لـ {place}",
   "From:": "من:",

@@ -1380,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "อาหารหรือชื่อร้าน",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "จาก OpenStreetMap: ตรวจเวลาเปิดก่อน ไม่มีคะแนน",
   "Find the nearest water, restroom or Metro": "หาน้ำ ห้องน้ำ หรือ Metro ที่ใกล้ที่สุด",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "แต่ละที่มีชื่อแสดงบนแผนที่: แตะชื่อหรือกดปุ่มตัวอักษร (A สำหรับที่แรก) เพื่อดูว่ามีอะไรที่นั่น ปั่นไปที่นี่คำนวณเส้นทางจากที่ที่คุณค้นหาไปที่นั่นแทนแผนของคุณ เลิกทำจะคืนแผน เพิ่มเป็นจุดแวะใส่น้ำหรือห้องน้ำลงแผน สถานี Metro เป็นของ Metrorail เมื่อแสดงเส้นทาง เส้นทางใช้ลิฟต์ของสถานี",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "แตะชื่อสถานที่บนแผนที่เพื่อดูว่ามีอะไรที่นั่น ปั่นไปที่นี่คำนวณเส้นทางไปที่นั่นแทนแผนของคุณ เลิกทำจะคืนแผน",
   "Nearest {noun}": "{noun}ที่ใกล้ที่สุด",
   " of {place}": " สำหรับ {place}",
   "From:": "จาก:",

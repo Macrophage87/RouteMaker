@@ -1380,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "خواړه یا نوم",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "له OpenStreetMap: مخکې له باور د کار ساعتونه وګورئ. درجې نشته.",
   "Find the nearest water, restroom or Metro": "نږدې اوبه، تشناب یا Metro ومومئ",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "هر ځای په نقشه کې په خپل نوم ښودل کیږي: د هغه پر نوم یا د تورو کیلي (لومړي لپاره A) کېکاږل ښيي چې هلته څه دي. دلته وچلوئ له هغه ځایه چې لټون مو کړی هلته لار محاسبه کوي، ستاسو د پلان پر ځای؛ بېرته ستاسو پلان راګرځوي. د تمځای په توګه زیاتول اوبه یا تشناب ستاسو پلان ته ورزیاتوي. د Metro سټېشنونه د Metrorail دي؛ کله چې لارې لیست شي، لار د سټېشن لفټ کاروي.",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "په نقشه کې د یوه ځای پر نوم کېکاږئ چې وګورئ هلته څه دي. دلته وچلوئ هلته لار محاسبه کوي، ستاسو د پلان پر ځای؛ بېرته ستاسو پلان راګرځوي.",
   "Nearest {noun}": "نږدې {noun}",
   " of {place}": " د {place} لپاره",
   "From:": "له:",

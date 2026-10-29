@@ -1380,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "Makanan atau nama",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "Dari OpenStreetMap: periksa jam buka sebelum mengandalkannya. Tanpa penilaian.",
   "Find the nearest water, restroom or Metro": "Cari air, toilet, atau Metro terdekat",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "Setiap tempat diberi nama di peta: mengetuk namanya, atau tombol hurufnya (A untuk yang pertama), menampilkan apa yang ada di sana. Bersepeda ke sini menghitung rute dari tempat Anda mencari ke tempat itu, menggantikan rencana Anda; Urungkan mengembalikan rencana Anda. Tambah sebagai perhentian memasukkan air atau toilet ke rencana Anda. Stasiun Metro adalah milik Metrorail; rute memakai lift stasiun jika tercantum.",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "Ketuk nama tempat di peta untuk melihat apa yang ada di sana. Bersepeda ke sini menghitung rute ke tempat itu, menggantikan rencana Anda; Urungkan mengembalikan rencana Anda.",
   "Nearest {noun}": "{noun} terdekat",
   " of {place}": " dari {place}",
   "From:": "Dari:",
