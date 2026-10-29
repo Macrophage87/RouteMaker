@@ -3517,8 +3517,8 @@ it had only the nearest. The stop on the Fairfax County Parkway Trail lay 15 ft 
 from a ramp and 19 ft (5.9 m) from the trail; matched to the ramp, the route left the
 trail for 0.6 mi (1.0 km) of the Avoid-rated parkway. The search's own requests reuse
 the plan's locations, so they match alike, and so do the stop-order leg costs and
-its matrix past ten stops (`stoporder`); `core.nearest` asks for fixed places and keeps
-the nearest way. The cut points of a long plan (`refine.long_legs`) and the dedodge
+its matrix past ten stops (`stoporder`); `core.nearest` matches the rider the same way and
+keeps the nearest way at its fixed places. The cut points of a long plan (`refine.long_legs`) and the dedodge
 locations are on the route and get no radius; a bikeshare walk leg (pedestrian, to and
 from the dock) keeps the nearest way. Only ways the ride's costing allows are
 candidates, so a way closed to bicycles is never matched (err closed is unchanged), and
@@ -5829,8 +5829,9 @@ loop the rider chose every point after the start (a ride that already ends on it
 end). On a shorter ride it could change nothing, so it is left out rather than shown disabled with a
 standing reason under every short ride's tools; More tips says when it appears (`editingTips`). If
 it leaves while it has the focus (an undo or a removal takes a stop away), the focus goes to Reverse
-beside it. A press sends the ride as a route request would (points, preset and dials; not the
-weight, which the order does not use) to `POST /api/stop-order`
+beside it. A press sends the ride as a route request would (points, preset and dials, with the riding
+speed and the closure choices, `closureFields`; not the weight, which the order does not use) to
+`POST /api/stop-order`
 (`core.api.stop_order`, the route request's body, its rate and in-flight limits). While the order is
 found the button keeps its label and is `aria-disabled`, "Finding the best order for the stops." is
 said, and another press says "Still finding the best order." The answer is used only if the points,
@@ -7337,9 +7338,15 @@ own (`lib/nearest.ts`): the water layer's points (drinking water only; restrooms
 with their type; the file is loaded for the search even with the layer off),
 and Metrorail's stations at their bike entrance (`railStations.bikeEntrance`), MARC left out. The 8
 nearest in straight lines (`NEAREST_CANDIDATES`) go to `POST /api/nearest` with the ride's preset and
-dials (not the weight, loop or target), which answers each one's riding distance and time from
+dials, with the riding speed and the closure choices (`closureFields`; not the weight, loop or
+target), which answers each one's riding distance and time from
 Valhalla's `sources_to_targets` on the ride's own graph and costing (`stoporder.ride_graph`, shared
-with Best order), or straight lines when the router gives none. The 3 nearest by bike
+with Best order), or straight lines when the router gives none. Like Best order's legs and matrix,
+it is asked at the rider's own speed where the request gives one (`cycling_speed_kmh`), and leaves
+out what the plan would (`stoporder.ride_exclusions`): the closures to bicycles in force at the ride
+time, but those routed through (`closure_bypass`, `closures_now`), and the roads the rider marked
+closed (`blocked_lines`, which the page does not send yet: Ride keeps them for its re-plans
+only). The 3 nearest by bike
 (`NEAREST_SHOWN`; one the router cannot reach is left out) are listed in words, US units first, each
 with Ride here (a new plan from the search's origin to it: one `commit`, so Undo puts the plan back;
 a loop is turned off in the same edit) and, for water and restrooms with a plan of two or more
