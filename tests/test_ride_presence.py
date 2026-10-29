@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 from types import SimpleNamespace
 
 import pytest
@@ -88,6 +89,25 @@ def test_leaving_drops_the_dot_at_once(clock) -> None:
     rp.post_position(RIDE, ME, *SPOT, now=clock)
     rp.leave(RIDE, ME, now=clock)
     assert rp.read(RIDE, YOU, now=clock)["dots"] == []
+
+
+def test_dots_come_in_a_fresh_order_on_every_read(clock, monkeypatch) -> None:
+    # A dot's place in the list never ties it to one rider from read to read: the server
+    # shuffles them each time, from the system's random source.
+    assert isinstance(rp._SHUFFLE, random.SystemRandom)
+    calls = []
+
+    def reverse(dots):
+        calls.append(len(dots))
+        dots.reverse()
+
+    monkeypatch.setattr(rp, "_SHUFFLE", SimpleNamespace(shuffle=reverse))
+    rp.post_position(RIDE, ME, *SPOT, now=clock, role="sweep")
+    rp.post_position(RIDE, YOU, *SPOT, now=clock, role="corker")
+    roles = [d["role"] for d in rp.read(RIDE, THEM, now=clock)["dots"]]
+    assert calls == [2]
+    # The stub's reversal: the order is the shuffle's, not who posted first.
+    assert roles == ["corker", "sweep"]
 
 
 def test_updates_are_limited_per_token(clock) -> None:

@@ -992,8 +992,8 @@ SESSION_COOKIE_AGE = 90 * 24 * 60 * 60
 # login that set it, which is exactly `created_at + ABSOLUTE_SESSION_LIFETIME`.
 #
 # Nothing is lost by it: the idle clock is `core.Session.last_seen_at`, which
-# SessionEpochMiddleware writes on every request already, so the idle rule is
-# enforced per request whatever Django's session store does.
+# SessionEpochMiddleware keeps within a few minutes of the latest request, so the
+# idle rule is enforced per request whatever Django's session store does.
 SESSION_SAVE_EVERY_REQUEST = False
 CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SAMESITE = "Lax"
