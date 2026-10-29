@@ -1438,7 +1438,7 @@ button.secondary {
   color: var(--text);
   border: 1px solid var(--swatch-border);
   border-radius: 10px;
-  text-align: left;
+  text-align: start;
   font-weight: 400;
 }
 
@@ -1530,7 +1530,7 @@ dialog.ride-types::backdrop {
 
 .ride-type-card > button:not(.ride-fav) {
   width: 100%;
-  text-align: left;
+  text-align: start;
   display: grid;
   gap: 4px;
   padding: 12px;
@@ -1581,13 +1581,13 @@ dialog.ride-types::backdrop {
 }
 
 .ride-type-card.has-fav > button:first-child {
-  padding-right: 52px;
+  padding-inline-end: 52px;
 }
 
 .ride-fav {
   position: absolute;
   top: 2px;
-  right: 2px;
+  inset-inline-end: 2px;
   width: 44px;
   height: 44px;
   display: flex;
@@ -1615,7 +1615,7 @@ dialog.ride-types::backdrop {
   display: grid;
   align-content: start;
   gap: 2px;
-  text-align: left;
+  text-align: start;
   min-height: 44px;
 }
 
@@ -1874,7 +1874,7 @@ dialog.go-spot {
   border-radius: 0;
   background: transparent;
   color: var(--text);
-  text-align: left;
+  text-align: start;
   font: inherit;
 }
 
@@ -3027,7 +3027,7 @@ button.secondary,
   color: var(--text);
   border: 1px solid var(--swatch-border);
   border-radius: 10px;
-  text-align: left;
+  text-align: start;
   font-weight: 400;
 }
 
@@ -3122,7 +3122,7 @@ button.secondary,
 }
 
 .ride-types .ride-type-card.has-fav > button:first-child {
-  padding-right: 52px;
+  padding-inline-end: 52px;
 }
 
 /* The route summary: the totals line, the bar, the quick figures */
@@ -4733,10 +4733,11 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 }
 
 .ride-summary-figures dd {
-  margin: 0 0 0 auto;
+  margin: 0;
+  margin-inline-start: auto;
   font-size: max(16pt, 1.375rem);
   font-weight: 700;
-  text-align: right;
+  text-align: end;
 }
 
 .ride-summary .stress-key {
@@ -5408,18 +5409,18 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 }
 .transit-steps {
   margin: 8px 0;
-  padding-left: 1.6em;
+  padding-inline-start: 1.6em;
 }
 .transit-steps li {
   margin: 0 0 6px;
 }
 .transit-steps li > svg {
-  margin-right: 6px;
+  margin-inline-end: 6px;
   vertical-align: -2px;
 }
 .transit-notes {
   margin: 6px 0;
-  padding-left: 1.2em;
+  padding-inline-start: 1.2em;
 }
 .bikeshare h3 {
   margin: 0 0 6px;
@@ -6001,7 +6002,7 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 
 .go-search .search-icon {
   position: absolute;
-  left: 12px;
+  inset-inline-start: 12px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-muted);
@@ -6011,7 +6012,7 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 .go-search input[type="search"] {
   width: 100%;
   min-height: 48px;
-  padding-left: 40px;
+  padding-inline-start: 40px;
   font-size: 1.05rem;
   border-radius: 999px;
 }
@@ -6925,7 +6926,7 @@ details.fold > summary .icon {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  text-align: left;
+  text-align: start;
   background: var(--bg-soft);
   color: var(--text);
   border: 1px solid var(--swatch-border);
@@ -7027,7 +7028,7 @@ details.fold > summary .icon {
   display: flex;
   align-items: center;
   gap: 8px;
-  text-align: left;
+  text-align: start;
   background: var(--bg-soft);
   color: var(--text);
   border: 1px solid var(--swatch-border);
@@ -7517,7 +7518,7 @@ details.fold > summary .icon {
   background: var(--surface, transparent);
   color: inherit;
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -7529,7 +7530,7 @@ details.fold > summary .icon {
 .go-bike-option[aria-pressed="true"]::after {
   content: "Planned" / "";
   flex: none;
-  margin-left: auto;
+  margin-inline-start: auto;
   padding: 0 6px;
   border: 1px solid currentColor;
   border-radius: 999px;
@@ -7554,7 +7555,7 @@ details.fold > summary .icon {
   width: 100%;
   min-height: 44px;
   padding: 6px 10px;
-  text-align: left;
+  text-align: start;
   font: inherit;
   color: var(--text);
   background: var(--bg-soft);
@@ -7849,7 +7850,7 @@ details.fold > summary .icon {
 .ride-alert-banner .call-911 {
   font-weight: 700;
   color: inherit;
-  margin-right: 8px;
+  margin-inline-end: 8px;
 }
 
 .closure-dialog {
@@ -9137,7 +9138,7 @@ summary.closure-notices-heading {
   color: var(--text);
   border: 1px solid var(--swatch-border);
   border-radius: 10px;
-  text-align: left;
+  text-align: start;
   font-weight: 400;
 }
 
@@ -9161,7 +9162,7 @@ summary.closure-notices-heading {
 }
 
 .go-route-stops {
-  padding-left: 24px;
+  padding-inline-start: 24px;
   font-size: 0.85rem;
   color: var(--text-muted);
 }
@@ -9880,7 +9881,7 @@ summary.closure-notices-heading {
 
 .roam-ahead .roam-tier {
   flex: none;
-  margin-left: 10px;
+  margin-inline-start: 10px;
 }
 
 .ride-large .roam-ahead li {

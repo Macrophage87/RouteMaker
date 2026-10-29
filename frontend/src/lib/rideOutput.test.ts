@@ -437,6 +437,36 @@ test("Voice: a language the phone has no voice for speaks the English; the scree
   }
 });
 
+test("Voice: the server's English sentences in a language it does not word are said in the English voice", () => {
+  setCatalogForTest("fr", { "Left onto {street}.": "Tournez à gauche sur {street}.", "Ride started.": "Trajet commencé." });
+  setLanguageForTest("fr");
+  try {
+    const spoken: UtteranceLike[] = [];
+    const synth = { speak: (u: UtteranceLike) => void spoken.push(u), cancel: () => {}, speaking: false };
+    const utterance = (text: string): UtteranceLike => ({ text, lang: "", onend: null });
+    const voices = () => [{ lang: "en-US" }, { lang: "fr-FR" }];
+    // A road hazard as the server words it: English, in the English voice, not the French one.
+    new Voice({ synth, utterance, voices }).speak("Rails cross the road ahead.", true);
+    assert.deepEqual([spoken[0].text, spoken[0].lang, spoken[0].voice], ["Rails cross the road ahead.", "en-US", undefined]);
+    // The app's own French, in the French voice; an ASCII phrase that reads back to the catalog too.
+    new Voice({ synth, utterance, voices }).speak("Tournez à gauche sur R Street.", true);
+    new Voice({ synth, utterance, voices }).speak("Trajet commencé.", true);
+    assert.deepEqual([spoken[1].lang, spoken[1].voice?.lang, spoken[2].lang], ["fr-FR", "fr-FR", "fr-FR"]);
+  } finally {
+    setLanguageForTest("en");
+  }
+  // Spanish: the server words it, so ASCII Spanish stays with the Spanish voice.
+  setLanguageForTest("es");
+  try {
+    const spoken: UtteranceLike[] = [];
+    const synth = { speak: (u: UtteranceLike) => void spoken.push(u), cancel: () => {}, speaking: false };
+    new Voice({ synth, utterance: (text) => ({ text, lang: "", onend: null }), voices: () => [{ lang: "en-US" }, { lang: "es-US" }] }).speak("Rieles cruzan la calle adelante.", true);
+    assert.deepEqual([spoken[0].lang, spoken[0].voice?.lang], ["es-US", "es-US"]);
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
 test("voiceFor: the asked tag whole, then by its language alone; Cantonese under either of its tags", () => {
   assert.deepEqual(voiceFor([{ lang: "es-MX" }, { lang: "es-US" }], ["es-US", "es"]), { lang: "es-US" });
   assert.deepEqual(voiceFor([{ lang: "es_MX" }], ["es-US", "es"]), { lang: "es_MX" });
