@@ -968,6 +968,8 @@ export function App() {
   const locateReady = locateSupport(geoEnv);
   // The GPX file opened last (GpxPanel), until the plan is cleared.
   const [imported, setImported] = useState<ImportedPlan | null>(null);
+  // Whether GpxPanel is fitting the plan to that file's track, round by round: the route is said once it ends.
+  const [gpxFitting, setGpxFitting] = useState(false);
   // The ride type, the sliders and the opened file as they are now, for the
   // undo history (kept current at once by applyRide, like pointsRef).
   const rideRef = useRef<Ride>({ preset, dials, imported });
@@ -5295,7 +5297,9 @@ export function App() {
   // The route's sentence once it has stood a moment (lib/settle.ts): routes
   // that replace each other quickly are said once, the last. "Planning..." is
   // shown but not said, so a release is one announcement, not two.
-  const settledSaid = useSettled(status.kind === "ok" ? announcement : "", ANNOUNCE_SETTLE_MS);
+  // While an opened GPX file is being fitted, each round's route is held back: the fitted route is said once, at the end
+  // (the a11y review's a11y-5).
+  const settledSaid = useSettled(status.kind === "ok" && !gpxFitting ? announcement : "", ANNOUNCE_SETTLE_MS);
   // While a full plan stands in for Go's first route, the region keeps the first route's sentence: the swap has its
   // own line (lib/progressive.ts betterRouteSaid), said once, and a better route is not read out twice.
   const routeSaid = refinedHeld && answer === refinedHeld.route ? refinedHeld.said : settledSaid;
@@ -6361,7 +6365,7 @@ export function App() {
             <GpxSheet
               {...{
                 nav: sheetNav, shown, routedPoints, routedLoop, federalRoute, points, status, imported,
-                openImported: openImportedChecked, refineImported,
+                openImported: openImportedChecked, refineImported, onFitting: setGpxFitting,
                 // Load route's popup opens this file picker; a file that cannot be opened says why in Save & load.
                 fileInput: (input: HTMLInputElement | null) => {
                   gpxInput.current = input;

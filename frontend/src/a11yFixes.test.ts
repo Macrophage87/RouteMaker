@@ -185,7 +185,7 @@ test("App: 'Planning...' is shown but not said, and the route is said once it se
   assert.match(live, /\{status\.kind === "loading" && slow && <p>\{stillPlanningSaid\(preset, dials\)\}<\/p>\}/);
   assert.match(app, /const slow = useLongerThan\(status\.kind === "loading", STILL_PLANNING_AFTER_MS\)/);
   assert.match(live, /routeSaid/);
-  assert.match(app, /useSettled\(status\.kind === "ok" \? announcement : "", ANNOUNCE_SETTLE_MS\)/);
+  assert.match(app, /useSettled\(status\.kind === "ok" && !gpxFitting \? announcement : "", ANNOUNCE_SETTLE_MS\)/);
   // Go's More direct and Calmer (lib/neighbours.ts) join the choice later: a choice is read among them, an arrival from the answer.
   assert.match(app, /announceRoute\(route, routedPoints, chosen \? announceHow\(picked, choice, true\) : announceHow\(answer, choice, false\)\)/);
 });
