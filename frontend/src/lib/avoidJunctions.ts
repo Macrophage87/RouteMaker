@@ -25,18 +25,16 @@ import type { AvoidJunctionPass, RouteResponse } from "./api.ts";
 import { candidateRoute } from "./candidates.ts";
 import { formatDistance } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
-import { t } from "./i18n.ts";
 
 /** The text surfaces' symbol (310), always drawn with aria-hidden. */
 export const AVOID_SYMBOL = "☠";
 /** What every assistive technology hears in its place (309). */
-export const AVOID_NOUN = t("Avoid-rated junction");
+export const AVOID_NOUN = "Avoid-rated junction";
 
 /**
  * What every mention says after the name and the reason (the owner, 2026-10-10: "this is a
  * really bad idea, please reconsider"). The API's notice and description end with the same
- * words (src/routemaker/avoid_junctions.py PLEA; a test holds them equal). Kept in English, as the API's notice is
- * matched against it (lib/navigate.ts); shown through t().
+ * words (src/routemaker/avoid_junctions.py PLEA; a test holds them equal).
  */
 export const AVOID_PLEA = "Riding through it is a really bad idea. Please reconsider your route.";
 
@@ -58,17 +56,17 @@ export interface AvoidItem extends AvoidJunctionPass {
 export function avoidItems(route: Pick<RouteResponse, "avoid_junctions"> | null): AvoidItem[] {
   const list = route?.avoid_junctions;
   if (!Array.isArray(list)) return [];
-  return list.map((pass) => ({ ...pass, where: t("At {distance}", { distance: formatDistance(pass.m) }) }));
+  return list.map((pass) => ({ ...pass, where: `At ${formatDistance(pass.m)}` }));
 }
 
 /** A list row's name: "Avoid-rated junction: <name>, <reason>, at 0.7 mi (1.1 km). Riding through it ...". */
 export function avoidRowName(item: AvoidItem): string {
-  return `${item.label}, ${item.where.toLowerCase()}. ${t(AVOID_PLEA)}`;
+  return `${item.label}, ${item.where.toLowerCase()}. ${AVOID_PLEA}`;
 }
 
 /** The map marker's accessible name: "Avoid-rated junction: <name>, <reason>. Riding through it ...". */
 export function avoidMarkerName(item: Pick<AvoidJunctionPass, "label">): string {
-  return `${item.label}. ${t(AVOID_PLEA)}`;
+  return `${item.label}. ${AVOID_PLEA}`;
 }
 
 /**
@@ -98,7 +96,7 @@ export function avoidNearSpot(
 }
 
 /** The road panel's warning heading, on an Avoid-rated junction. */
-export const AVOID_CARD_HEADING = t("Avoid this intersection");
+export const AVOID_CARD_HEADING = "Avoid this intersection";
 
 /**
  * The road panel's warning, plain and direct (the owner, 2026-10-10, with the coordinator's
@@ -106,16 +104,9 @@ export const AVOID_CARD_HEADING = t("Avoid this intersection");
  * route."): the junction, the stored reason where there is one, and the plea.
  */
 export function avoidCardText(item: Pick<AvoidJunctionPass, "name" | "reason">): string {
-  const name = item.name?.trim();
-  const reason = item.reason?.trim();
-  const rated = name
-    ? reason
-      ? t("{name} is rated as dangerous for bikes: {reason}.", { name, reason })
-      : t("{name} is rated as dangerous for bikes.", { name })
-    : reason
-      ? t("It is rated as dangerous for bikes: {reason}.", { reason })
-      : t("It is rated as dangerous for bikes.");
-  return `${rated} ${t(AVOID_PLEA)}`;
+  const name = item.name?.trim() ? `${item.name.trim()} is` : "It is";
+  const reason = item.reason?.trim() ? `: ${item.reason.trim()}` : "";
+  return `${name} rated as dangerous for bikes${reason}. ${AVOID_PLEA}`;
 }
 
 /** The whole warning as one sentence for the panel's announcement. */
@@ -132,10 +123,8 @@ export function avoidOffer(answer: Pick<RouteResponse, "avoid_alternate"> | null
   const around = answer?.avoid_alternate;
   if (!around) return null;
   const extra = around.extra_distance_m;
-  const distance = formatDistance(around.distance_m);
-  return extra >= 80
-    ? t("Show the route that avoids it: {distance}, {extra} longer", { distance, extra: formatDistance(extra) })
-    : t("Show the route that avoids it: {distance}", { distance });
+  const longer = extra >= 80 ? `, ${formatDistance(extra)} longer` : "";
+  return `Show the route that avoids it: ${formatDistance(around.distance_m)}${longer}`;
 }
 
 /**
@@ -146,8 +135,9 @@ export function avoidOffer(answer: Pick<RouteResponse, "avoid_alternate"> | null
 export function avoidLine(route: Pick<RouteResponse, "avoid_junctions"> | null): string {
   const items = avoidItems(route);
   const first = items[0]?.name?.trim();
-  if (!first) return t("{noun} on this route", { noun: AVOID_NOUN });
-  return items.length > 1 ? t("Avoid junction: {name} and {count} more", { name: first, count: items.length - 1 }) : t("Avoid junction: {name}", { name: first });
+  if (!first) return `${AVOID_NOUN} on this route`;
+  const more = items.length > 1 ? ` and ${items.length - 1} more` : "";
+  return `Avoid junction: ${first}${more}`;
 }
 
 /** How much longer the way round is, for the Avoid it button ("+1.0 mi (1.6 km)"); null where it is not longer, or there is none. */
@@ -185,15 +175,16 @@ export function shownRoute(answer: RouteResponse | null, choice: number, around:
 }
 
 /** What the notice says while the way round is shown in place of the planned route. */
-export const AVOID_SHOWING_AROUND = t("Showing the route that avoids the Avoid-rated junction. The planned route goes through it.");
-export const AVOID_BACK = t("Show the planned route");
+export const AVOID_SHOWING_AROUND =
+  "Showing the route that avoids the Avoid-rated junction. The planned route goes through it.";
+export const AVOID_BACK = "Show the planned route";
 
 /** Why there is no way round to offer, where the plan says. */
 export function avoidNoAlternate(answer: Pick<RouteResponse, "avoid_search"> | null): string | null {
   const search = answer?.avoid_search;
   if (!search || search.decision !== "kept") return null;
-  if (search.alternate === "no_route") return t("No route round it was found.");
-  if (search.alternate === "time") return t("There was no time left to look for a route round it.");
+  if (search.alternate === "no_route") return "No route round it was found.";
+  if (search.alternate === "time") return "There was no time left to look for a route round it.";
   return null;
 }
 

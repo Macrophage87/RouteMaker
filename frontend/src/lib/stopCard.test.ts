@@ -1,4 +1,4 @@
-/** A stop's card (Stephen 2026-10-19): what's there, the website, Ride here or Add as stop; never a route by itself. */
+/** A stop's card (Stephen 2026-10-19): what's there, the website, Route here or Add as stop; never a route by itself. */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -58,7 +58,7 @@ test("a press on a lettered pin, its key or a Go row opens the card; the map's s
   assert.doesNotMatch(pick, /goTo|goAddStopAt|rideToNearest/, "no route from a pick");
   assert.match(app, /onPick=\{\(item\) => pickLettered\(/);
   assert.match(app, /onGoPick=\{\(r\) => pickLettered\(/);
-  // Nothing while riding; Ride here before a route, Add as stop with one.
+  // Nothing while riding; Route here before a route, Add as stop with one.
   assert.match(app, /stopActionNow\.current = \(point, name\) => \{\s*if \(onBike\) return null;/);
   // A card's action is for the state it opened in: a ride or a mode switch closes it.
   assert.match(app, /useEffect\(\(\) => closeStopCard\(\), \[onBike, mode\]\);/);

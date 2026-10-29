@@ -26,7 +26,7 @@ import { t } from "./i18n.ts";
 /** The button's name, heard before the time. */
 export const DOCK_NAME = t("Ride to the nearest dock");
 export const dockFinding = (way: "closest" | "detour"): string =>
-  way === "closest" ? t("Finding the closest dock with room.") : t("Finding the dock with room that adds least to the ride.");
+  way === "closest" ? "Finding the closest dock with room." : "Finding the dock with room that adds least to the ride.";
 export const DOCK_NONE = t("No Capital Bikeshare dock with room was found nearby.");
 export const DOCK_UNAVAILABLE = t("Bikeshare docks are unavailable for now; try again shortly.");
 /** Stopped this long within DOCKED_M of a dock (moving under DOCK_STILL_M): taken as docked. */
@@ -41,7 +41,7 @@ export const LEFT_DOCK_M = 50;
 export const DOCKED_SHOWN = "Docked";
 export const RESTART_TIME = t("Restart the time");
 export const TIME_RESTARTED = t("Undocked time restarted.");
-export const dockedSaid = (name: string): string => t("Docked at {dock}? The undocked time starts again when you ride off.", { dock: name });
+export const dockedSaid = (name: string): string => `Docked at ${name}? The undocked time starts again when you ride off.`;
 
 /** Where the rider has stood still, since when, and whether the docks there have been looked at. */
 export interface Still {
@@ -99,7 +99,7 @@ export function warningDue(minutes: number, lastSaid: number | null): number | n
   const mark = WARN_FIRST_MIN + Math.floor((minutes - WARN_FIRST_MIN) / WARN_EVERY_MIN) * WARN_EVERY_MIN;
   return lastSaid !== null && mark <= lastSaid ? null : mark;
 }
-export const undockedWarning = (minutes: number): string => t("You have been undocked for {minutes} minutes.", { minutes });
+export const undockedWarning = (minutes: number): string => `You have been undocked for ${minutes} minutes.`;
 
 /** Whole minutes since the undock (never below 0). */
 export function undockedMinutes(sinceMs: number, nowMs: number): number {
@@ -117,11 +117,8 @@ export function dockButtonName(minutes: number | null): string {
   if (minutes === null) return `${DOCK_NAME}.`;
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
-  const parts = [
-    hours ? (hours === 1 ? t("1 hour") : t("{n} hours", { n: hours })) : "",
-    hours && !mins ? "" : mins === 1 ? t("1 minute") : t("{n} minutes", { n: mins }),
-  ].filter(Boolean);
-  return `${DOCK_NAME}. ${t("Undocked about {time}.", { time: parts.join(" ") })}`;
+  const parts = [hours ? `${hours} ${hours === 1 ? "hour" : "hours"}` : "", hours && !mins ? "" : `${mins} ${mins === 1 ? "minute" : "minutes"}`].filter(Boolean);
+  return `${DOCK_NAME}. Undocked about ${parts.join(" ")}.`;
 }
 
 /** Docks a bike can be left at: open, and with a free slot (or counts unknown, which may still have one). */
@@ -133,7 +130,7 @@ export function docksWithRoom(docks: readonly DockInfo[]): NearestPlace[] {
       kind: "dock" as const,
       point: [d.lon, d.lat] as LonLat,
       title: d.name,
-      details: d.docks === null ? [] : [d.docks === 1 ? t("1 open dock.") : t("{count} open docks.", { count: d.docks })],
+      details: d.docks === null ? [] : [`${d.docks} open ${d.docks === 1 ? "dock" : "docks"}.`],
     }));
 }
 
@@ -145,8 +142,8 @@ function around(here: LonLat, span: { lon: number; lat: number }) {
 /** The two ways to pick (the owner, 2026-10-17: "give options for closest or shortest detour"). */
 export type DockWay = "closest" | "detour";
 export const DOCK_WAYS: ReadonlyArray<{ way: DockWay; label: string; hint: string }> = [
-  { way: "closest", label: t("Closest dock"), hint: t("Nearest by bike from here") },
-  { way: "detour", label: t("Shortest detour"), hint: t("Adds the least to the ride") },
+  { way: "closest", label: "Closest dock", hint: "Nearest by bike from here" },
+  { way: "detour", label: "Shortest detour", hint: "Adds the least to the ride" },
 ];
 
 export interface DockDeps {
@@ -164,8 +161,8 @@ export type DockOutcome = { ok: true; dock: Nearby; said: string } | { ok: false
 
 /** "Riding to 15th & P St NW, 0.2 mi (0.3 km) by bike, about 1 min. 6 open docks." */
 export function dockSaid(dock: Nearby, way: DockWay = "closest", addedM: number | null = null): string {
-  const added = way === "detour" && addedM !== null ? ` ${t("It adds about {distance} to the ride.", { distance: formatDistance(Math.max(0, addedM)) })}` : "";
-  return [`${t("Riding to {dock}, {far}.", { dock: dock.place.title, far: howFar(dock) })}${added}`, ...dock.place.details].join(" ");
+  const added = way === "detour" && addedM !== null ? ` It adds about ${formatDistance(Math.max(0, addedM))} to the ride.` : "";
+  return [`Riding to ${dock.place.title}, ${howFar(dock)}.${added}`, ...dock.place.details].join(" ");
 }
 
 /** The docks with room in the box around the rider: the near box first, then a wider one; null when unanswered. */

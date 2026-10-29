@@ -10,7 +10,7 @@
  */
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
 import type { Verbosity } from "./navigate.ts";
-import { englishOf, language, serverWordsIn, speechLang, t, voiceTags } from "./i18n.ts";
+import { englishOf, language, speechLang, t, voiceTags } from "./i18n.ts";
 import { isIos } from "./installOffer.ts";
 import { withoutMenuMarks } from "./menuNames.ts";
 
@@ -346,20 +346,12 @@ export class Voice {
     // language and the voice speaks the English, rather than an English voice spelling out words it cannot read. A
     // sentence with no English in the catalog (one of the server's) is left to the screen.
     const voice = language() === "en" ? undefined : voiceFor(this.env.voices?.() ?? []);
-    const ascii = /^[\x20-\x7e]*$/.test(text);
     // Text already in English (the server's sentences) is spoken as it came.
-    let english = voice === null ? (englishOf(text) ?? (ascii ? text : null)) : null;
-    // A language the server does not word the route in: its hazard, work-zone and signal sentences come in English,
-    // so they are said by the English voice, not read out by the language's own (the 2026-10-29 review, P2). Words
-    // that read back to a catalog phrase stay with the language's voice.
-    if (voice !== null && ascii && !serverWordsIn()) {
-      const back = englishOf(text);
-      if (back === null || back === text) english = text;
-    }
+    const english = voice === null ? (englishOf(text) ?? (/^[\x20-\x7e]*$/.test(text) ? text : null)) : null;
     if (voice === null && english === null) return this.next();
     const utterance = this.env.utterance(english ?? text);
     utterance.lang = english !== null ? speechLang("en") : speechLang();
-    if (voice && english === null) utterance.voice = voice;
+    if (voice) utterance.voice = voice;
     utterance.onend = () => this.next();
     this.env.synth?.speak(utterance);
   }

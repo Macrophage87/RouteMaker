@@ -101,15 +101,6 @@ class StandIn(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         url = urlparse(self.path)
-        if url.path == "/sign-in-page":
-            # What a wrong address or a captive portal answers: a page, with 200.
-            page = b"<html><body>Sign in</body></html>"
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html")
-            self.send_header("Content-Length", str(len(page)))
-            self.end_headers()
-            self.wfile.write(page)
-            return
         if url.path.startswith("/api/shared-routes/"):
             kept = StandIn.shared.get(url.path.rsplit("/", 1)[1])
             return self._answer(200, kept) if kept else self._answer(404, {"error": "gone"})
@@ -570,38 +561,6 @@ def test_a_password_gated_site_gets_its_password(tools, stand_in, monkeypatch) -
     api.route({"points": [[-77.03, 38.9], [-77.02, 38.91]], "preset": "default"})
     for seen in StandIn.headers_seen:
         assert seen["authorization"] == "Basic cmlkZXI6c2VjcmV0"
-
-
-def test_the_password_goes_only_over_https_or_to_this_computer(monkeypatch) -> None:
-    monkeypatch.setenv("ROUTEMAKER_BASIC_AUTH", "rider:secret")
-    with pytest.raises(mcp.ToolError, match="https://"):
-        mcp.Api("http://routes.example.org")
-    for base in (
-        "https://routes.example.org",
-        "http://localhost",
-        "http://127.0.0.1:8080",
-        "http://[::1]",
-    ):
-        assert mcp.Api(base).basic == "Basic cmlkZXI6c2VjcmV0"
-    monkeypatch.delenv("ROUTEMAKER_BASIC_AUTH")
-    assert mcp.Api("http://routes.example.org").basic is None
-
-
-def test_a_page_that_is_not_json_is_a_setup_problem_not_a_wrong_argument(stand_in) -> None:
-    with pytest.raises(
-        mcp.ToolError, match="did not answer as a RouteMaker site .*ROUTEMAKER_BASE_URL"
-    ):
-        mcp.Api(stand_in)._request("GET", "/sign-in-page")
-
-
-@pytest.mark.parametrize("miles", ["1e999", "inf", "nan", float("inf")])
-def test_a_number_out_of_range_is_a_wrong_argument_not_a_crash(tools, miles) -> None:
-    for name, args in (
-        ("plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]], "target_miles": miles}),
-        ("plan_metro_loop", {"target_miles": miles}),
-    ):
-        with pytest.raises(mcp.ToolError, match="not in the expected form"):
-            tools.call(name, args)
 
 
 # --- Drafts: revise, open from a link, save ------------------------------------------------

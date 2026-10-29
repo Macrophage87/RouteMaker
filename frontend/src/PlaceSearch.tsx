@@ -530,7 +530,7 @@ export function PlaceSearch({
           plan's reason shows. */}
       <p id={`${id}-hint`} className={variant === "go" ? "visually-hidden go-from" : planBox ? (full && planBox === "add" ? "hint" : "visually-hidden") : variant === "plan" ? "hint" : "visually-hidden"}>
         {variant === "plan" ? <>{placeEffectHint(effect, loop)}</> : planBox === "from" && loop ? placeEffectHint("start", true) : SINGLE_HINT[variant]}
-        {(!single || planBox === "add") && full && ` ${t("The route has as many points as it can take, so no stop can be added.")}`}
+        {(!single || planBox === "add") && full && " The route has as many points as it can take, so no stop can be added."}
       </p>
       <p className="visually-hidden" role="status" aria-live="polite">
         {answeredNow ? searchStatusWithHere(searchStatus(result, answered), expanded && showHere) : ""}

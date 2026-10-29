@@ -133,7 +133,7 @@ test("Go with the location as its start: the card's Set as end is open before th
   assert.deepEqual(row(0, false), ["Set as start", "Set as end (Set a start first.)", "Add as stop (Set a start first.)"]);
   // A plan with points is as before, whatever Go's start.
   assert.deepEqual(row(2, true), row(2, false));
-  assert.equal(ROUTE_HERE_TEXT, "Ride here");
+  assert.equal(ROUTE_HERE_TEXT, "Route here");
 });
 
 test("a top-row button places the spot as the search's choice would, and says so", () => {

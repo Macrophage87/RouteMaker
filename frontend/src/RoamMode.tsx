@@ -418,7 +418,7 @@ export function RoamMode({
       return;
     }
     busy.current = true;
-    sayDetour(t("Finding a way to {place}.", { place: item.place.title }));
+    sayDetour(`Finding a way to ${item.place.title}.`);
     try {
       const why = await onDetour(here, item.place);
       if (why) sayDetour(why);

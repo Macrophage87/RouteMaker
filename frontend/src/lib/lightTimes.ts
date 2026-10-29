@@ -12,7 +12,7 @@
  * the afternoon, nothing is shown ("Then just leave empty"). Times in the region's time, miles first.
  */
 import type { LonLat } from "./geo.ts";
-import { rightToLeft, t } from "./i18n.ts";
+import { clockLocale, rightToLeft, t } from "./i18n.ts";
 import { haversineM } from "./geo.ts";
 import { formatDuration, formatMilePost } from "./format.ts";
 import type { When } from "./dials.ts";
@@ -82,8 +82,8 @@ function crossingMinutes(dayMs: number, lat: number, lon: number, zenith: number
 
 /** The region's calendar day a moment falls on, as the UTC midnight of that date. */
 const DATE_FORMAT = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, year: "numeric", month: "numeric", day: "numeric" });
-/** The clock as the arrival time shows it (lib/arrival.ts arrivalClock): the device's own, "6:31 PM" or "6:31 p.m.", in the region's time. */
-const CLOCK_FORMAT = new Intl.DateTimeFormat(undefined, { timeZone: ZONE, hour: "numeric", minute: "2-digit" });
+/** The clock as the arrival time shows it (lib/arrival.ts arrivalClock, lib/i18n.ts clockLocale), in the region's time. */
+const CLOCK_FORMAT = new Intl.DateTimeFormat(clockLocale(), { timeZone: ZONE, hour: "numeric", minute: "2-digit" });
 
 function localDay(ms: number): number {
   const parts = Object.fromEntries(

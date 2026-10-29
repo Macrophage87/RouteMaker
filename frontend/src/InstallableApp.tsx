@@ -120,7 +120,7 @@ export function useAppStatus(riding: boolean, onSay: (text: string) => void, off
   useEffect(() => {
     if (updateShown && !said.current.update) {
       said.current.update = true;
-      onSay(`${UPDATE_READY} ${t("The {button} button is at the top of the planner.", { button: UPDATE_RELOAD })}`);
+      onSay(`${UPDATE_READY} The ${UPDATE_RELOAD} button is at the top of the planner.`);
     }
   }, [updateShown, onSay]);
   useEffect(() => {

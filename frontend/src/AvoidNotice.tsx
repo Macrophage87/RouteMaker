@@ -41,7 +41,7 @@ export function AvoidNotice({ answer, choice, around, onAround }: Props) {
   if (!said) return null;
   const { notice, offer, none } = said;
   const sentence = around && offer ? AVOID_SHOWING_AROUND : notice;
-  const line = around && offer ? t("Showing the way round the Avoid junction") : avoidLine(candidateRoute(answer, choice));
+  const line = around && offer ? "Showing the way round the Avoid junction" : avoidLine(candidateRoute(answer, choice));
   return (
     <div className="avoid-notice alert-line" role="alert">
       <p className="alert-text">
@@ -55,7 +55,7 @@ export function AvoidNotice({ answer, choice, around, onAround }: Props) {
       <div className="alert-actions">
         {offer && (
           <button type="button" className="secondary avoid-it" onClick={() => onAround(!around)} aria-describedby={around ? undefined : `${id}-offer`}>
-            {around ? AVOID_BACK : `${t("Avoid it")} ${avoidOfferShort(answer) ?? ""}`.trim()}
+            {around ? AVOID_BACK : `Avoid it ${avoidOfferShort(answer) ?? ""}`.trim()}
           </button>
         )}
         <button type="button" className="link alert-details-toggle" aria-expanded={open} aria-controls={`${id}-full`} onClick={() => setOpen(!open)}>

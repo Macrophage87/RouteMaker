@@ -119,7 +119,7 @@ export interface InfoRequest {
  * opens the card, and this button routes to the spot as the tap did before (App's goTo, the destination in place
  * of any before it). Two taps where it was one, so a stray tap never plans a ride.
  */
-export const ROUTE_HERE_TEXT = t("Ride here");
+export const ROUTE_HERE_TEXT = t("Route here");
 
 /** The trail panel's via button: a via point on the trail, which shapes the route through it (lib/pointKinds.ts). */
 export const TRAIL_VIA_TEXT = t("Route through this trail");

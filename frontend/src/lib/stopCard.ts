@@ -3,15 +3,13 @@
  * including a link to the website if available. Then offer a route/detour here", and "don't auto route"): a press
  * on a food, sight, repair, water or restroom point, or on a lettered pin, opens this card and never routes by
  * itself. Most important first: the name, what it is and whether it is open, how far; then the one action and the
- * website. The action is Ride here before there is a route and Add as stop (the detour) with one: Ride here, as the
- * Eat and Water lists name the same action (the 2026-10-29 review: the card said Route here, untranslated).
+ * website. The action is Route here before there is a route and Add as stop (the detour) with one.
  */
 import type { LonLat } from "./geo.ts";
-import { t } from "./i18n.ts";
 import { hoursText } from "./openingHours.ts";
 
-export const ROUTE_HERE = t("Ride here");
-export const ADD_AS_STOP = t("Add as stop");
+export const ROUTE_HERE = "Route here";
+export const ADD_AS_STOP = "Add as stop";
 
 export interface StopAction {
   text: typeof ROUTE_HERE | typeof ADD_AS_STOP;
@@ -85,8 +83,8 @@ export function stopCardElement(words: StopCardWords, action: StopAction | null,
     a.target = "_blank";
     a.rel = "noopener noreferrer";
     a.className = "food-web";
-    a.textContent = t("Website");
-    a.setAttribute("aria-label", t("Website: {place} (opens in a new tab)", { place: words.title }));
+    a.textContent = "Website";
+    a.setAttribute("aria-label", `Website: ${words.title} (opens in a new tab)`);
     row.appendChild(a);
   }
   body.appendChild(row);

@@ -68,7 +68,7 @@ test("App: every way of adding, setting or removing a point is handed the toggle
   assert.match(app, /addPoint\(current, point, loopVias\)/);
   assert.match(app, /const said = kindSaid\(next, index, VIA_MARKS\.isVia, loopVias, "added"\);/);
   assert.match(app, /stationEdit\(pointsRef\.current, point, role, loopVias\)/);
-  assert.match(app, /announce\(loopOff \? `\$\{stationSaid\(edit\.index, edit\.next\.length, false\)\} \$\{t\("Loop off\."\)\}` : stationSaid\(edit\.index, edit\.next\.length, loopVias\)\)/);
+  assert.match(app, /announce\(loopOff \? `\$\{stationSaid\(edit\.index, edit\.next\.length, false\)\} Loop off\.` : stationSaid\(edit\.index, edit\.next\.length, loopVias\)\)/);
   // An end set on a loop (a station's End here, the road panel's Set as end) turns the loop off in the same edit.
   assert.match(app, /const loopOff = loopVias && role === "end";[\s\S]{0,120}commit\(edit\.next, loopOff \? \{ \.\.\.ride, dials: withLoop\(ride\.dials, false\) \} : undefined\)/);
   assert.match(app, /commit\(placed\.next, placed\.loopOff \? \{ \.\.\.ride, dials: withLoop\(ride\.dials, false\) \} : undefined\)/);

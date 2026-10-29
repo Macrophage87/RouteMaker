@@ -94,12 +94,7 @@ standard library only. Add the server to your assistant with these settings:
   local stack. Route links are built from it, so `http://localhost` links open only on that
   computer; use the site's public address to open them on your phone.
 - `ROUTEMAKER_ROUTES_DIR` (optional): where GPX files go; default `~/RouteMaker-routes`.
-- `ROUTEMAKER_BASIC_AUTH` (optional): `user:password` for a site behind a password. It is sent
-  only to an `https://` address, or to plain `http://` on this computer (`localhost`); with any other
-  `http://` address the tools refuse to start.
-
-If the address answers with something other than RouteMaker (a sign-in or Wi-Fi portal page, or the
-wrong site), each tool says so and names `ROUTEMAKER_BASE_URL` to check.
+- `ROUTEMAKER_BASIC_AUTH` (optional): `user:password` for a site behind a password.
 
 ### Claude Desktop on Windows, with the checkout in WSL
 

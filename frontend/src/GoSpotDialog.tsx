@@ -2,7 +2,7 @@
  * Go's card for a spot tapped on the map (Stephen, 2026-10-28: "For routing, on a click instead of showing the road,
  * show the address and what's near"; then "Let them show all on the map so you can select them" and "Maybe just show
  * that in most cases. For restaurants and the like, label them"; the mockup shown to him, ui-audit
- * go-tap-nearby-mockup.png): the big Ride here on top, the spot's address under it, the area and how far it is,
+ * go-tap-nearby-mockup.png): the big Route here on top, the spot's address under it, the area and how far it is,
  * then one line, "5 places nearby, shown on the map", with a List button. The places themselves are pins on the map,
  * a named one labelled with its name (app/spotPins.ts; lib/spotNearby.ts); a pin opens the place's own card
  * (lib/stopCard.ts), never a route by itself. List shows the same places as buttons, for a screen reader and the
@@ -10,7 +10,7 @@
  *
  * Placed as the road card is (dialog.road-info: a sheet from the bottom on a phone), but not modal: the map above it
  * stays live, so its pins can be pressed and another tap moves the card to that spot. Escape and Close close it; the
- * focus goes to Ride here on open and back to the map on close. The dialog is named by the address.
+ * focus goes to Route here on open and back to the map on close. The dialog is named by the address.
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { formatDistance } from "./lib/format.ts";
