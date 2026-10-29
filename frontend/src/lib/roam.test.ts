@@ -1,8 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import type { LonLat } from "./geo.ts";
 import { lightClock, solarDay } from "./lightTimes.ts";
-import { HeadingTrack, OUTSIDE_MAP, ROAM_DETOUR_HELP, ROAM_NEARBY_NAME, aheadRow, aheadSaid, foodNearestPlaces, headingOf, linesOf, mapLines, notARoad, onRoadSaid, roadsAhead, roamLight, roamLink, roamLinkFrom, roamReportPlace, type RoadLine, type RoamMap, type StressLine } from "./roam.ts";
+import { GPS_WEAK_MS, POOR_FIX_M, weighFix } from "./navigate.ts";
+import { HeadingTrack, OUTSIDE_MAP, ROAM_DETOUR_HELP, ROAM_GPS_WEAK, ROAM_NEARBY_NAME, aheadRow, aheadSaid, foodNearestPlaces, headingOf, linesOf, mapLines, notARoad, onRoadSaid, roadsAhead, roamLight, roamLink, roamLinkFrom, roamReportPlace, type RoadLine, type RoamMap, type StressLine } from "./roam.ts";
 
 // A small grid near Dupont Circle: metres to degrees, close enough at this latitude.
 const O: LonLat = [-77.04, 38.91];
@@ -252,7 +254,7 @@ test("a Roam broadcast's link: the ride's id and the leader key in the fragment,
   const lead = "fedcba9876543210fedcba9876543210";
   const link = roamLink("https://example.org", id, lead);
   assert.equal(link, `https://example.org/#roam=${id}&lead=${lead}`);
-  assert.deepEqual(roamLinkFrom(new URL(link).hash), { id, lead });
+  assert.deepEqual(roamLinkFrom(new URL(link).hash), { id, lead, secret: null });
   assert.equal(roamLinkFrom(`#roam=${id}`), null);
   assert.equal(roamLinkFrom(`#roam=xyz&lead=${lead}`), null);
   assert.equal(roamLinkFrom("#p=1,2;3,4"), null);
@@ -285,7 +287,7 @@ test("App: Broadcast is a tap within Roam; the leader leads a ride with no route
   assert.match(app, /const broadcastRoam = async \(nav: ShareNavigator \| undefined = broadcastNav\): Promise<string> => \{[^]*?const done = await shareLink\(nav,/);
   const before = app.slice(app.indexOf("const broadcastRoam"), app.indexOf("const done = await shareLink(nav,"));
   assert.doesNotMatch(before, /await /);
-  assert.match(app, /leadConsent\(await roamRideId\(id\), lead\.token\);/);
+  assert.match(app, /leadConsent\(\(await rideOf\(\{ broadcast: \{ id, roam: true \}, secret: lead\.secret \}\)\)\.id, lead\.token\);/);
   assert.match(app, /onBroadcast=\{\(\) => broadcastRoam\(\)\}/);
   assert.match(app, /const ROAM_FOLLOW = roamLinkFrom\(window\.location\.hash\);/);
   assert.match(app, /broadcast=\{\{ \.\.\.roamBroadcast, roam: true \}\}/);
@@ -330,4 +332,36 @@ test("Roam outside the map says so, not a road or Start riding; blocked, it ends
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /const startRoam = \(\) => \{[\s\S]{0,300}?if \(start\.kind === "none" && start\.why === "denied"\) \{\s*setNotice\(ROAM_LOCATION_OFF\);\s*return;/);
   assert.match(app, /onLocationOff=\{roamLocationOff\}/);
+});
+
+// ---- Roam's hardening, as Ride's (the 2026-10-29 review) ------------------------------------------------------------
+
+test("Roam asks for the screen lock again when the page is back in front, and when the browser lets it go", () => {
+  const roam = readFileSync(new URL("../RoamMode.tsx", import.meta.url), "utf8");
+  assert.match(roam, /void wake\.hold\(\)\.then\(noteWake\);/);
+  assert.match(roam, /wake\.whenLost\(noteWake\);/);
+  assert.match(roam, /if \(document\.visibilityState === "visible"\) void wake\.again\(\)\.then\(noteWake\);/);
+  assert.match(roam, /document\.addEventListener\("visibilitychange", onVisibility\);/);
+  // Said once each time it changes.
+  assert.match(roam, /if \(note && note !== wakeTold\.current\) say\(wakeSaid\(note, phone\)\);/);
+});
+
+test("Roam reads roads only from good fixes, and says once when GPS has been weak a while", () => {
+  // Weak only after GPS_WEAK_MS of poor fixes; said once; a good fix takes it down.
+  const poor = POOR_FIX_M + 1;
+  const early = weighFix({ goodAt: 0, weak: false }, poor, GPS_WEAK_MS - 1);
+  assert.equal(early.weak, false);
+  const weak = weighFix(early, poor, GPS_WEAK_MS);
+  assert.equal(weak.sayNow, true);
+  assert.equal(weighFix(weak, poor, GPS_WEAK_MS + 1000).sayNow, false);
+  assert.equal(weighFix(weak, POOR_FIX_M, GPS_WEAK_MS + 2000).weak, false);
+  assert.equal(ROAM_GPS_WEAK, "GPS is weak: road names paused.");
+  const roam = readFileSync(new URL("../RoamMode.tsx", import.meta.url), "utf8");
+  const effect = roam.slice(roam.indexOf("const weighed = weighFix("), roam.indexOf("const map = getMap();"));
+  // The marker moves on a poor fix; the heading, the roads and the spoken road wait for a good one.
+  assert.match(effect, /if \(fix\.accuracyM > POOR_FIX_M\) \{\s*onView\(\{ point: fix\.point, headingDeg: headingKept\.current, accuracyM: fix\.accuracyM \}\);\s*return;\s*\}\s*const h = track\.step/);
+  assert.match(effect, /if \(weighed\.sayNow\) say\(ROAM_GPS_WEAK\);/);
+  // Where am I? while weak says so, not the road last read.
+  assert.match(roam, /const whereAmI = \(\) => \{[\s\S]{0,300}?if \(weakGps\) \{\s*answer\(ROAM_GPS_WEAK\);\s*return;/);
+  assert.match(roam, /\{\(gps \|\| weakGps\) && <p className="hint ride-gps">\{gps \|\| ROAM_GPS_WEAK\}<\/p>\}/);
 });

@@ -106,7 +106,8 @@ export const SHARED_PATH = "/s/";
 /**
  * How long the server keeps a shared line (core.shared_routes.KEEP_CHOICES; the owner, 2026-10-16: "For the 1 year
  * deletion, make this the default. For other users, we can offer "keep permanently" and "delete after <date>"").
- * Chosen beside Share in Plan's More; Go always keeps the default.
+ * Chosen beside Share in Plan's More, signed in only (the server keeps a signed-out link the default year); Go always
+ * keeps the default.
  */
 export type ShareKeepChoice = "year" | "forever" | "until";
 export interface ShareKeep {

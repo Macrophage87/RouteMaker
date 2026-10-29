@@ -1091,3 +1091,26 @@ def test_photon_import_and_ci_postgis_use_composes_pinned_images() -> None:
     (job,) = (j for j in ci["jobs"].values() if "postgis" in j.get("services", {}))
     assert job["services"]["postgis"]["image"] == SERVICES["postgis"]["image"]
     assert "@sha256:" in photon and "@sha256:" in SERVICES["postgis"]["image"]
+
+
+def test_every_base_image_is_pinned_by_digest_and_its_tag_agrees_with_the_args() -> None:
+    """Review sec-infra-6: a rebuild of the same release gets the same base, and the tag
+    beside the digest says what it is (PYTHON_VERSION, DEBIAN_SUITE)."""
+    for path in sorted(set(BUILT.values())):
+        for base in Dockerfile(path).froms:
+            assert re.fullmatch(r"[^@\s]+:[^@\s]+@sha256:[0-9a-f]{64}", base), (path.name, base)
+    api = Dockerfile(REPO / "docker" / "api.Dockerfile")
+    tag = f"python:{api.args['PYTHON_VERSION']}-slim-{api.args['DEBIAN_SUITE']}@"
+    assert all(base.startswith(tag) for base in api.froms), api.froms
+
+
+def test_no_dockerfile_still_says_it_was_never_built() -> None:
+    for path in sorted(set(BUILT.values())) + [REPO / "docker" / "requirements.txt"]:
+        assert "NOT BUILT" not in path.read_text() and "has not happened" not in path.read_text()
+
+
+@pytest.mark.parametrize("service", sorted(BUILT))
+def test_the_images_built_here_drop_every_capability(service: str) -> None:
+    """They run as uid 10001 and need none; nothing in them may gain privileges by exec."""
+    assert SERVICES[service].get("cap_drop") == ["ALL"], service
+    assert SERVICES[service].get("security_opt") == ["no-new-privileges:true"], service

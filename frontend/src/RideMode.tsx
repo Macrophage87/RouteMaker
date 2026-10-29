@@ -57,6 +57,8 @@ import { requestRoute, type ErrorKind, type RouteResponse } from "./lib/api.ts";
 import { VIA_MARKS, drawnLegs, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
 import {
   SKIP_STOP,
+  RESTART_AUTO_M,
+  RESTART_AUTO_SAID,
   detourButtonName,
   insteadLabel,
   insteadName,
@@ -115,6 +117,7 @@ import {
   nextAction,
   planAfterEnd,
   replanKept,
+  replanHeld,
   replanFromM,
   skippableVia,
   viaSkipWorth,
@@ -266,8 +269,9 @@ export const RIDE_STARTED = t("Ride started.");
 export const START_NOTE_MS = 1_500;
 /** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
 export const END_RIDE_NAME = t("End ride");
-/** The least a long instruction shrinks to at normal text, from its own size (styles.css .cue-text, 1.5rem). */
-const CUE_TEXT_MIN_PX = 16;
+/** The least a long instruction shrinks to at normal text, from its own size (styles.css .cue-text, 1.5rem): the ride's
+ *  20 px for street names (the owner, 2026-10-20); longer still, its second line ends in "…". */
+const CUE_TEXT_MIN_PX = 20;
 /** Its words once arrived, filled (the UI review, 2026-10-28); the name goes on with End ride. */
 export const RIDE_DONE_TEXT = t("Done");
 /**
@@ -906,6 +910,8 @@ export function RideMode({
   const statsRef = useRef<RideStats>(resumeStats ? statsPause(resumeStats) : statsStart(Date.now()));
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
+  // Where the last new route was asked from, until the rider is on its line (lib/navigate.ts replanHeld).
+  const replannedFrom = useRef<LonLat | null>(null);
   const settingsId = useId();
   // More, the last side button (closed at Start): it opens a row of bubbles beside it (Stephen 2026-10-26: "Have many
   // of those options just expanded as more bubble buttons, not in settings"): Less traffic, Fewer hills, Skip this stop
@@ -1142,7 +1148,12 @@ export function RideMode({
   // After the page comes back from the background: say where the rider is once, on the next fix.
   const sayWhereNext = useRef(false);
   const say = useCallback((events: RideEvent[]) => {
-    for (const event of events) announcer.current?.say(event.spoken, event.urgent, event.after);
+    // A cue held back by the throttle is said with the distance as it is then (review RIDE-4), from the rider's place.
+    for (const event of events) {
+      const respoken = event.respoken;
+      const again = respoken && (() => (rideRef.current.progressM === null ? event.spoken : respoken(rideRef.current.progressM)));
+      announcer.current?.say(event.spoken, event.urgent, event.after, again);
+    }
   }, []);
   // A note about the ride itself (no GPS, the screen may sleep, paused): said once, politely, through the
   // rider's outputs, and through the polite region with "neither" chosen, since it changes what the rider
@@ -1245,11 +1256,16 @@ export function RideMode({
           if (prefsRef.current.output === "neither") setPolite((s) => ({ text: note, count: s.count + 1 }));
         }
       };
-      // No answer in REPLAN_TIMEOUT_MS: the rider is told there is no signal, while the request goes on
-      // (the gate stays busy until it settles, so no second one joins it at the server; a late new
-      // route is still taken).
+      // No answer in REPLAN_TIMEOUT_MS: the rider is told there is no signal, and the gate is let go as a failure
+      // (`released`), so a request hung on a half-open connection no longer holds every re-route back: the next
+      // automatic try (after the gate's gap or back-off), the `online` retry and Re-plan from here can start. The
+      // request goes on, and a late new route is still taken unless a newer re-plan has started since (the ticket).
+      let released = false;
       const timer = check ? undefined : window.setTimeout(() => {
         if (ended.current || ticket !== replanTicket.current) return;
+        released = true;
+        gate.finish(false);
+        setReplanning(false);
         setReplanNote(REPLAN_NO_SIGNAL);
         tell(REPLAN_NO_SIGNAL);
       }, REPLAN_TIMEOUT_MS);
@@ -1312,7 +1328,10 @@ export function RideMode({
       }
       window.clearTimeout(timer);
       if (check) checking.current = false;
-      else gate.finish(found !== null);
+      else if (!released) gate.finish(found !== null);
+      // Let go at the timeout and answered late with a route that is still taken (nothing newer since): the back-off
+      // starts afresh.
+      else if (found && !voided() && !gate.busy) gate.finish(true);
       // Road closed pressed while this one was under way: this answer did not leave that road out, so it is
       // dropped (the press voided it) and the ride is planned again from where the rider is now.
       if (!check && closedPending.current && !ended.current) {
@@ -1326,12 +1345,15 @@ export function RideMode({
       if (check && (!found || heading === null || setsOffBack(found.geometry.coordinates, heading))) return false;
       setReplanning(false);
       if (!found) {
+        // Already told "No signal" at the timeout: not said again.
+        if (released) return false;
         const said = failed === "network" ? REPLAN_NO_SIGNAL : REPLAN_FAILED;
         setReplanNote(said);
         tell(said);
         return false;
       }
       plan.current = { points, loop: false };
+      replannedFrom.current = here;
       // The first route, without the picker, during a ride (plan section 4).
       announcer.current?.drop();
       // Turned round (the API keeps a U-turn only where it saves half a mile): said plainly, and the first cue.
@@ -1428,6 +1450,8 @@ export function RideMode({
   // While it is asked, no re-route of its own: the stops it lists are the plan's as it stands (review of #444).
   const restartOpen = useRef(false);
   restartOpen.current = restart !== null;
+  // Where it was asked: ridden RESTART_AUTO_M from there unanswered, it goes on with the stops as marked.
+  const restartAt = useRef<LonLat | null>(null);
   const onFix = useCallback(
     (fix: RideFix) => {
       if (ended.current) return;
@@ -1439,6 +1463,15 @@ export function RideMode({
       if (weighed.sayNow) notify(GPS_WEAK_SAID);
       setGps(weighed.weak ? GPS_WEAK_SAID : "");
       checkCueSheet(lastFixAt.current);
+      // "Already done?" left unanswered while the rider rides on (gloves, the phone on the bars): once they are
+      // RESTART_AUTO_M from where it was asked, it closes with the stops as marked, says so, and re-routing runs again.
+      const askedAt = restartAt.current;
+      if (restartOpen.current && askedAt && fix.accuracyM <= POOR_FIX_M && haversineM(fix.point, askedAt) >= RESTART_AUTO_M) {
+        restartOpen.current = false;
+        restartAt.current = null;
+        setRestart(null);
+        notify(RESTART_AUTO_SAID);
+      }
       const auto = !keepRef.current && !fixedRef.current && !restartOpen.current;
       // Walking to the dock, nothing is placed on the line or taken as off route (lib/rideTrip.ts).
       const wasWalking = tripRef.current.walking;
@@ -1501,6 +1534,7 @@ export function RideMode({
         if (stops) {
           const named = stops.map((s) => (s.name ? s : { ...s, name: stopName?.(plan.current.points[s.index]) }));
           restartOpen.current = true;
+          restartAt.current = fix.point;
           setRestart(named);
           notify(restartSaid(named));
         }
@@ -1525,7 +1559,9 @@ export function RideMode({
       if (out.events.some((e) => e.kind === "back-on-route") || (keepRef.current && !out.state.off)) setKeepPlanned(false);
       // Never from a poor fix: a re-plan from a Wi-Fi guess 300 m out would be wrong at once.
       // Not after "No route found ahead": that route stays up (Re-plan from here still asks again), checked quietly.
-      if (out.state.off && auto && !gate.busy && fix.accuracyM <= POOR_FIX_M && out.state.goodFix) {
+      // On the line again: the next automatic re-plan need not wait for the rider to move (REPLAN_MOVED_M).
+      if (!out.state.off && out.state.offCount === 0 && out.state.progressM !== null) replannedFrom.current = null;
+      if (out.state.off && auto && !gate.busy && fix.accuracyM <= POOR_FIX_M && out.state.goodFix && !replanHeld(replannedFrom.current, fix.point)) {
         const offRoute = uturnStep(uturns.current, { kind: "off-route", now: Date.now() });
         uturns.current = offRoute.state;
         if (offRoute.replan === "ask") void replan(out.state.goodFix.point);
@@ -1630,7 +1666,7 @@ export function RideMode({
     const onOnline = () => {
       gate.online();
       const state = rideRef.current;
-      if (state.off && !keepRef.current && !fixedRef.current && !restartOpen.current && !uturns.current.held && state.goodFix) void replan(state.goodFix.point);
+      if (state.off && !keepRef.current && !fixedRef.current && !restartOpen.current && !uturns.current.held && state.goodFix && !replanHeld(replannedFrom.current, state.goodFix.point)) void replan(state.goodFix.point);
     };
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
@@ -2048,6 +2084,7 @@ export function RideMode({
   const continueRestart = (done: ReadonlySet<number>) => {
     const stops = restart;
     restartOpen.current = false;
+    restartAt.current = null;
     setRestart(null);
     if (!stops || restartUnchanged(stops, done)) return;
     const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
@@ -2199,7 +2236,7 @@ export function RideMode({
       card.style.removeProperty("--cue-fit");
       card.style.removeProperty("--cue-fit-d");
       // The instruction keeps its two-line slot, so the card and the map do not jump between turns (the UI review,
-      // 2026-10-28): a long street shrinks to fit it, never under 16 px; longer still, its second line ends in "…".
+      // 2026-10-28): a long street shrinks to fit it, never under 20 px; longer still, its second line ends in "…".
       const line = card.querySelector<HTMLElement>(".cue-next .cue-text");
       const shown = line?.querySelector<HTMLElement>("[aria-hidden]");
       if (!line || !shown) return;

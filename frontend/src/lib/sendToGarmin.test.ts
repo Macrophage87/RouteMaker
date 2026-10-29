@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import type { CapacitorBridge } from "./nativeShell.ts";
 import {
   FILES_PLUGIN,
+  FILE_CHOOSER,
+  FILE_HAND_FAILED,
+  FILE_HAND_NONE,
   FIT_TYPE,
   SEND_CANCELLED,
   SEND_FAILED,
@@ -13,6 +16,7 @@ import {
   canSendToGarmin,
   SENT_SHARE,
   courseTrimmed,
+  handFile,
   sendCourse,
   toBase64,
   type SendEnv,
@@ -109,6 +113,21 @@ test("on a computer the saved file goes to Garmin Connect's website (there is no
   const { saved, save } = saver();
   assert.equal(await sendCourse(BYTES, NAME, { bridge: null, nav: undefined, save, phone: false }), SENT_SAVED_COMPUTER);
   assert.equal(saved.length, 1);
+});
+
+test("handFile: in the phone app each Plan file goes to Android's Open with list; in a browser it is the caller's download", async () => {
+  assert.equal(await handFile(BYTES, NAME, null), null);
+  for (const name of [NAME, "r.tcx", "r-cues.pdf", "r-strip.pdf", "r-lock.png", "r-lock-2-of-3.png"]) {
+    const { b, calls } = bridge(true, async () => ({ app: "chooser" }));
+    assert.equal(await handFile(BYTES, name, b), FILE_CHOOSER);
+    assert.deepEqual(calls, [[FILES_PLUGIN, "openWith", { name, data: toBase64(BYTES), anyApp: true }]]);
+  }
+  // Refused (no app opens it, or an app whose plugin takes no such file): said, never "made".
+  assert.equal(await handFile(BYTES, "r.pdf", bridge(true, () => Promise.reject(new Error("no app"))).b), FILE_HAND_FAILED);
+  // An app from before the plugin: nothing is asked of it.
+  const old = bridge(false);
+  assert.equal(await handFile(BYTES, "r.pdf", old.b), FILE_HAND_NONE);
+  assert.deepEqual(old.calls, []);
 });
 
 test("courseTrimmed: only when fitting left something out", () => {

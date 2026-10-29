@@ -325,7 +325,7 @@ ROUTING_CONCURRENCY = routing_concurrency(os.environ.get("WEB_CONCURRENCY"))
 # worker's memory (core.route_cache; 0 turns the cache off). The router sees at most
 # ROUTER_PARALLEL_CALLS + 1 calls per slot: the pool's threads and the request's own.
 ROUTER_PARALLEL_CALLS = max(1, int(os.environ.get("ROUTER_PARALLEL_CALLS", "3")))
-ROUTE_CACHE_TTL_S = max(0, int(os.environ.get("ROUTE_CACHE_TTL_S", "600")))
+ROUTE_CACHE_TTL_S = max(0, int(os.environ.get("ROUTE_CACHE_TTL_S", "120")))
 # The answer cache shared by the api's workers (audit S14; the owner signed off a ~16 MB
 # memcached on beta on 2026-10-27): memcached's host:port, which compose.beta.yaml sets to
 # its `memcached` service. Unset or empty, each worker keeps its own answers in its memory,
@@ -541,6 +541,12 @@ WEEKLY_REBUILD_PAUSED = env_true(os.environ.get("WEEKLY_REBUILD_PAUSED"))
 # where the file was never installed and no road carried an agency's rating. 1 or
 # true builds without them anyway, with a warning, every way on the formula's tier.
 REBUILD_ALLOW_NO_AGENCY_LTS = env_true(os.environ.get("REBUILD_ALLOW_NO_AGENCY_LTS"))
+
+# The rebuild refuses a REBUILD_REFERENCE_DIR/volume.json with fewer traffic counts
+# in longitude and latitude than this: an empty or misprojected file used to load and
+# leave every road uncounted. The 2026-10-11 install had 53,756 (MDOT SHA, VDOT and
+# DDOT together); 0 turns the check off.
+REBUILD_VOLUME_MIN_ROWS = int(os.environ.get("REBUILD_VOLUME_MIN_ROWS") or "10000")
 
 # Build validation reads two known edges back out of the tiles. The steep edge
 # proves elevation was baked; the derived edge proves the derived tags reached

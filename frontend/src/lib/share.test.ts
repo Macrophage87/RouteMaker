@@ -68,7 +68,7 @@ test("the shared URL is Copy link's, at its full precision and without the weigh
   assert.equal(sent[0].url, `https://x.test/${encodePlan(points, "default", dials)}`);
   assert.doesNotMatch(`${sent[0].url} ${sent[0].text}`, /weight|97\.5|\bkg\b|\blbs?\b/i);
   // App hands share the link Copy link copies, with only the shared line's id added (lib/sharedRoutes.ts).
-  assert.match(app, /let link = linkToCopy\(window\.location, points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\);/);
+  assert.match(app, /let link = withSecret\(linkToCopy\(window\.location, points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\), preset === "group-ride" \? groupSecret : null\);/);
   assert.match(app, /link = withSharedId\(link, id\);/);
   assert.match(app, /shareContent\(link, distanceM, presetSaid\(preset\)\)/);
   // Copy link copies that same link, the exact line's id and all (v0.9.0, "share the exact route").

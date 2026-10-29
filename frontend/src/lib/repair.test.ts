@@ -122,13 +122,27 @@ test("Go: Metro, Repair and Places to see sit behind More, with its expanded sta
   assert.match(app, /onMetro: \(chip\) => openNearest\("metro", chip\),/);
 });
 
-test("F13. a Repair row is named by its place and distance; its details are its description", () => {
+test("F13. a Repair row is its place and distance in words; its details describe its Ride here", () => {
   const sheet = readFileSync(new URL("../app/PlacesSheets.tsx", import.meta.url), "utf8");
   const repair = sheet.slice(sheet.indexOf("export function RepairSheet("), sheet.indexOf("function SightRow("));
-  assert.match(repair, /aria-label=\{`\$\{placeLetter\(i\)\}: \$\{repairTitle\(item\.place\)\}, \$\{repairHowFar\(item\)\}`\}\s*aria-describedby=\{`\$\{rowId\}-\$\{i\}`\}/);
   assert.match(repair, /<span id=\{`\$\{rowId\}-\$\{i\}`\}>\{repairDetails\(item\.place, at\)\.join\(" "\)\}<\/span>/);
-  // The name no longer repeats the details.
+  assert.match(repair, /<PlaceActions name=\{repairTitle\(item\.place\)\} index=\{i\} describedBy=\{`\$\{rowId\}-\$\{i\}`\} onRide=\{\(\) => onRide\(item\)\} onCard=\{\(\) => onPick\(item\)\} \/>/);
+  // The name does not repeat the details.
   assert.doesNotMatch(repair, /aria-label=\{[^}]*repairDetails/);
+});
+
+test("Go's Repair and Places to see rows work as Eat's and Water's: Ride here first and filled, then Show on map for the card (2026-10-29)", () => {
+  const sheet = readFileSync(new URL("../app/PlacesSheets.tsx", import.meta.url), "utf8");
+  const actions = sheet.slice(sheet.indexOf("function PlaceActions("), sheet.indexOf("export function RepairSheet("));
+  assert.match(actions, /<button type="button" className="ride-here" aria-label=\{t\("Ride here: \{place\}", \{ place: name \}\)\}[^>]*onClick=\{onRide\}>/);
+  assert.ok(actions.indexOf('"ride-here"') < actions.indexOf('t("Show on map")'), "Ride here first");
+  assert.match(actions, /className="secondary" aria-label=\{t\("Show on map: \{place\}, marker \{letter\}"[^>]*onClick=\{onCard\}>/);
+  const sights = sheet.slice(sheet.indexOf("export function SightsList("), sheet.indexOf("export interface PlacesSheetProps"));
+  assert.match(sights, /<PlaceActions name=\{r\.place\.name\} index=\{i\} onRide=\{\(\) => onRide\(r\)\} onCard=\{\(\) => onPick\(r\)\} \/>/);
+  // App: Ride here goes there as Eat's does; Show on map opens the card.
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /onRide=\{\(item\) => goToLettered\(\[item\.place\.lon, item\.place\.lat\], repairTitle\(item\.place\)\)\}/);
+  assert.match(app, /onGoRide=\{\(r\) => goToLettered\(\[r\.place\.lon, r\.place\.lat\], r\.place\.name\)\}/);
 });
 
 test("with a route: the least detour off it first, in words (the owner, 2026-10-18)", () => {
