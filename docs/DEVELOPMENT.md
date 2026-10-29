@@ -241,6 +241,9 @@ Dependabot pull request, not as a red main. CI lints and format-checks
 `src tests scripts mcp`, runs `makemigrations --check` (a model change with no
 migration fails it) and the phone app's Node tests (`mobile/`, which pin parts of
 the front end), and cancels a pull request's older run when a newer push lands.
+`tests/test_mutants_apply.py` runs every `scripts/mutants_*.py --check` (a text
+match, no tests): a change that rewrites a line a mutant targets fails there, and
+re-anchors or drops that mutant in the same change.
 
 Then the database and the suite, from the checkout:
 

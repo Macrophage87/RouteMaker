@@ -136,8 +136,11 @@ test("MapView: the credits start collapsed, below the scales", () => {
 });
 
 test("MapView: the junction card is a named dialog, takes the focus only from a marker, and Escape closes it", () => {
-  assert.match(mapView, /focusAfterOpen:\s*false/);
-  assert.match(mapView, /setAttribute\("role", "dialog"\)/);
+  // The junction card's own function: the closure card below it makes the same calls.
+  const card = mapView.slice(mapView.indexOf("function showJunctionCard("), mapView.indexOf("function showClosureCard("));
+  assert.ok(card.length > 0);
+  assert.match(card, /focusAfterOpen:\s*false/);
+  assert.match(card, /setAttribute\("role", "dialog"\)/);
   assert.match(mapView, /setAttribute\("aria-label", cardName\(item\)\)/);
   assert.match(mapView, /setAttribute\("aria-label", CARD_CLOSE_LABEL\)/);
   assert.match(mapView, /if \(takeFocus\) close\?\.focus\(\)/);
