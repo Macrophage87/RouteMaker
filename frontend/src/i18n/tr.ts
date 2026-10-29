@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "Sapma: {summary}",
   "Already done?": "Zaten yapıldı mı?",
   "Ticked stops are skipped. Untick one to go back to it.": "İşaretli duraklar atlanır. Geri dönmek için birinin işaretini kaldırın.",
+  "Riding on with the stops as marked.": "Duraklar işaretlendiği gibi devam ediliyor.",
   "Resume your ride?": "Sürüşünüze devam edilsin mi?",
   "Resume your ride to {place}?": "{place} sürüşünüze devam edilsin mi?",
   "The app closed during a ride. Resume picks it up from where you are.": "Uygulama sürüş sırasında kapandı. Sürdür, bulunduğunuz yerden devam eder.",

@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "انحراف: {summary}",
   "Already done?": "قبلاً انجام شده؟",
   "Ticked stops are skipped. Untick one to go back to it.": "توقف‌های تیک‌خورده رد می‌شوند. برای برگشتن، تیک را بردارید.",
+  "Riding on with the stops as marked.": "سفر با توقف‌ها همان‌طور که علامت خورده‌اند ادامه می‌یابد.",
   "Resume your ride?": "سواری را ادامه می‌دهید؟",
   "Resume your ride to {place}?": "سواری به {place} را ادامه می‌دهید؟",
   "The app closed during a ride. Resume picks it up from where you are.": "برنامه وسط سواری بسته شد. ادامه از جایی که هستید پی می‌گیرد.",

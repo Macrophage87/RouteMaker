@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "ዙረት፦ {summary}",
   "Already done?": "ድሮ ተገይሩ?",
   "Ticked stops are skipped. Untick one to go back to it.": "ምልክት ዝተገብሮም መዕረፍታት ይሕለፉ። ናብ ሓደ ንምምላስ ምልክት ኣልግስ።",
+  "Riding on with the stops as marked.": "ምስ ከም ዝተመልከቱ ደው መበሊ ቦታታት ጉዕዞ ይቕጽል።",
   "Resume your ride?": "ጉዕዞኻ ክትቅጽል?",
   "Resume your ride to {place}?": "ናብ {place} ጉዕዞኻ ክትቅጽል?",
   "The app closed during a ride. Resume picks it up from where you are.": "ኣፕ ኣብ ማእከል ጉዕዞ ተዓጽዩ። ምቕጻል ካብ ዘለኻዮ ይጅምር።",

@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "Détour : {summary}",
   "Already done?": "Déjà fait ?",
   "Ticked stops are skipped. Untick one to go back to it.": "Les arrêts cochés sont passés. Décochez-en un pour y retourner.",
+  "Riding on with the stops as marked.": "On continue avec les arrêts tels qu’ils sont cochés.",
   "Resume your ride?": "Reprendre votre sortie ?",
   "Resume your ride to {place}?": "Reprendre votre sortie vers {place} ?",
   "The app closed during a ride. Resume picks it up from where you are.": "L'appli s'est fermée pendant une sortie. Reprendre repart d'où vous êtes.",

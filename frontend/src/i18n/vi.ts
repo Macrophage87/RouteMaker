@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "Đường vòng: {summary}",
   "Already done?": "Đã xong chưa?",
   "Ticked stops are skipped. Untick one to go back to it.": "Điểm dừng đã đánh dấu sẽ được bỏ qua. Bỏ đánh dấu để quay lại điểm đó.",
+  "Riding on with the stops as marked.": "Tiếp tục với các điểm dừng như đã đánh dấu.",
   "Resume your ride?": "Tiếp tục chuyến đi?",
   "Resume your ride to {place}?": "Tiếp tục chuyến đi đến {place}?",
   "The app closed during a ride. Resume picks it up from where you are.": "Ứng dụng đã đóng giữa chuyến đi. Tiếp tục sẽ đi tiếp từ chỗ bạn đứng.",

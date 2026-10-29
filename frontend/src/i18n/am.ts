@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "ማለፊያ፦ {summary}",
   "Already done?": "አስቀድሞ ተደርጓል?",
   "Ticked stops are skipped. Untick one to go back to it.": "ምልክት የተደረገባቸው ማቆሚያዎች ይዘለላሉ። ወደ አንዱ ለመመለስ ምልክቱን ያንሱ።",
+  "Riding on with the stops as marked.": "ማቆሚያዎቹ እንደተመረጡ ጉዞው ይቀጥላል።",
   "Resume your ride?": "ጉዞዎን ይቀጥሉ?",
   "Resume your ride to {place}?": "ወደ {place} ጉዞዎን ይቀጥሉ?",
   "The app closed during a ride. Resume picks it up from where you are.": "መተግበሪያው በጉዞ ላይ ተዘግቷል። መቀጠል ካሉበት ያነሳዋል።",

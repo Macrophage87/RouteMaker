@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "ঘুরপথ: {summary}",
   "Already done?": "আগেই হয়ে গেছে?",
   "Ticked stops are skipped. Untick one to go back to it.": "টিক দেওয়া থামার জায়গা বাদ যায়। ফিরে যেতে টিক তুলে দিন।",
+  "Riding on with the stops as marked.": "চিহ্নিত স্টপগুলো যেমন আছে তেমনই রেখে চলা হচ্ছে।",
   "Resume your ride?": "সফর চালিয়ে যাবেন?",
   "Resume your ride to {place}?": "{place} পর্যন্ত সফর চালিয়ে যাবেন?",
   "The app closed during a ride. Resume picks it up from where you are.": "সফরের মাঝে অ্যাপ বন্ধ হয়েছিল। চালিয়ে গেলে আপনি যেখানে আছেন সেখান থেকে শুরু হবে।",
