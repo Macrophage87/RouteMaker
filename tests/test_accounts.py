@@ -185,6 +185,13 @@ class TestRoutes:
         assert client.get("/api/me/routes", **addr()).status_code == 401
         assert client.get("/api/me/routes/1", **addr()).status_code == 401
 
+    def test_signed_out_says_so_and_not_my_go(self, client) -> None:
+        """My routes shows the server's words as written, so a save after the sign-in ran out
+        must not talk about My Go."""
+        answer = client.get("/api/me/routes", **addr()).json()
+        assert answer["code"] == "signed_out"
+        assert answer["error"] == "You are signed out. Sign in, then try again."
+
     def test_a_route_is_kept_verbatim_and_read_back(self) -> None:
         client, user, csrf = signed_in()
         r = send(client, "post", "/api/me/routes", route_body(), csrf)
