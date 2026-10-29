@@ -1792,7 +1792,8 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   const tables = await p.eval(`(() => { const d = document.querySelector('.pc-table-fold'); d.querySelector('summary').click(); const ts = [...d.querySelectorAll('table')]; const rows = (t) => (t ? [...t.querySelectorAll('tbody tr')].map((r) => [...r.children].map((c) => c.textContent).join(' | ')) : []); return { summary: d.querySelector('summary').textContent, captions: ts.map((t) => t.querySelector('caption').textContent), heads: [...ts[0].querySelectorAll('thead th')].map((x) => x.textContent), climb: [...ts[0].querySelectorAll('tbody tr:first-child > *')].map((x) => x.textContent), bottlenecks: rows(ts[1]), rows: rows(ts[2]), crossHeads: [...(ts[2]?.querySelectorAll('thead th') ?? [])].map((x) => x.textContent) }; })()`);
   check("mass chart: the climbs table lists the capacity drop, a bottlenecks table, and a table of every intersection with its marker, corkers and the corkers held at once when the head reaches it", tables.summary === "Climbs, bottlenecks and intersections as tables" && tables.heads.at(-1) === "Capacity drop" && tables.climb.at(-1) === "53% fewer riders, down to 90 a minute" && JSON.stringify(tables.captions) === JSON.stringify(["Climbs, in the order ridden", "Bottlenecks, under 60 riders per minute, in the order ridden", "Major intersections, in the order ridden"]) && JSON.stringify(tables.bottlenecks) === JSON.stringify(["Mile 0.0 | 0.1 mi (0.2 km) | About 55 a minute"]) && tables.rows.length === 7 && tables.rows[0] === "Mile 0.6 | 18th Street Northwest | Higher stress (orange triangle) | 2 needed: 2 approaches, one-way not known; lanes not known, 1 each | 2 at 1 junction" && tables.rows[5] === "Mile 2.1 | Pierce Street | Crosses a busy road (LTS 3), cross traffic stops (dot) | 2 needed: 2 approaches, one-way not known; lanes not known, 1 each | 3 at 2 junctions" && tables.crossHeads.at(-1) === "Corkers held at once when the head reaches it", JSON.stringify(tables));
   // The anticipated ride size (PLAN 128, 129, 139): a slider in the dials, named with its unit and read as riders; moving it
-  // redraws the corker load and the ride's corkers, the link carries it, and nothing is planned again (it never reaches the API).
+  // redraws the corker load and the ride's corkers and the link carries it. Plan asks for no route on its own: the size reaches
+  // the API (ride_size) with the next plan the rider asks for.
   const sizeAt = await p.eval(`(() => { const i = [...document.querySelectorAll('.dial input[type=range]')].find((x) => document.getElementById(x.getAttribute('aria-labelledby'))?.textContent === 'Anticipated ride size (riders)'); if (!i) return null; i.dataset.probe = 'ride-size'; return { min: i.min, max: i.max, step: i.step, value: i.value }; })()`);
   const sizeAx = await axNode(p, "input[data-probe=ride-size]");
   check("mass dials: the ride size slider is named with its unit and says riders, 100 to 2,000 in steps of 50, 500 by default",
@@ -5080,14 +5081,18 @@ async function goPressMap(p, card = null) {
     return p.waitFor("document.querySelectorAll('.lettered-marker').length === 3", 20000);
   };
   const shown = await openMetro();
-  const lettered = await p.eval(`({ rows: [...document.querySelectorAll('.nearest-list li')].map((li) => ({ pin: li.querySelector('.place-letter')?.textContent, hidden: li.querySelector('.place-letter')?.getAttribute('aria-hidden'), heard: li.querySelector('.visually-hidden')?.textContent })),
-    markers: [...document.querySelectorAll('.lettered-marker')].map((m) => { const r = m.getBoundingClientRect(); return { tag: m.tagName, name: m.getAttribute('aria-label'), letter: m.textContent, w: Math.round(r.width), h: Math.round(r.height) }; }) })`);
-  const ax = await axNode(p, ".lettered-marker");
-  check("lettered places: the nearest listed are lettered A, B, C in the list (a pin seen, the letter heard first) and on the map, each a 44 px button named letter, place and distance, US units first",
-    shown && JSON.stringify(lettered.rows.map((r) => r.pin)) === '["A","B","C"]' && lettered.rows.every((r, i) => r.hidden === "true" && r.heard === `${"ABC"[i]}: `) &&
-      lettered.markers.every((m, i) => m.tag === "BUTTON" && m.letter === "ABC"[i] && m.name.startsWith(`${"ABC"[i]}: `) && / mi \([0-9.]+ km\)$/.test(m.name) && m.w >= 44 && m.h >= 44) &&
-      ax?.role === "button" && /^A: .+ Metro station, /.test(ax?.name ?? ""), JSON.stringify({ lettered, ax }));
-  await p.eval("document.querySelectorAll('.lettered-marker')[0].click(); true");
+  // Named, not lettered, on the map since #628 (Stephen 2026-10-29): a row has no pin, its letter is heard first; a
+  // marker shows the place's name in a bubble (hidden from the accessibility tree), its accessible name is the letter,
+  // the place and the distance. The markers are added last to first (the nearest on top), so they are read by letter.
+  const lettered = await p.eval(`({ rows: [...document.querySelectorAll('.nearest-list li')].map((li) => { const place = li.querySelector('.nearest-place'); return { pin: !!li.querySelector('.place-letter'), heard: place?.firstElementChild?.matches('.visually-hidden') ? place.firstElementChild.textContent : null, text: place?.textContent ?? '' }; }),
+    markers: [...document.querySelectorAll('.lettered-marker')].map((m) => { const r = m.getBoundingClientRect(); const bubble = m.querySelector('.named-bubble'); return { tag: m.tagName, name: m.getAttribute('aria-label'), seen: bubble?.textContent ?? '', hidden: bubble?.getAttribute('aria-hidden'), w: Math.round(r.width), h: Math.round(r.height) }; }).sort((a, b) => (a.name < b.name ? -1 : 1)) })`);
+  const ax = await axNode(p, '.lettered-marker[aria-label^="A: "]');
+  check("lettered places: the nearest listed are lettered A, B, C in the list (the letter heard first, before the place) and on the map, each a 44 px button showing the place's name and named letter, place and distance, US units first",
+    shown && lettered.rows.length === 3 && lettered.markers.length === 3 &&
+      lettered.markers.every((m, i) => m.tag === "BUTTON" && m.seen.length > 0 && m.hidden === "true" && m.name.startsWith(`${"ABC"[i]}: ${m.seen}, `) && / mi \([0-9.]+ km\)$/.test(m.name) && m.w >= 44 && m.h >= 44) &&
+      lettered.rows.every((r, i) => !r.pin && r.heard === `${"ABC"[i]}: ` && r.text.startsWith(`${"ABC"[i]}: ${lettered.markers[i].seen}`)) &&
+      ax?.role === "button" && /^A: .+ Metro station, [0-9.]+ mi \([0-9.]+ km\)$/.test(ax?.name ?? ""), JSON.stringify({ lettered, ax }));
+  await p.eval(`document.querySelector('.lettered-marker[aria-label^="A: "]').click(); true`);
   await sleep(600);
   const card = await p.eval(`({ title: document.querySelector('.place-popup .place-card strong')?.textContent ?? '', action: document.querySelector('.place-popup .place-card-actions button')?.textContent ?? '',
     focused: !!document.activeElement?.closest('.place-popup'), routed: !!document.querySelector('.go-summary .start-button'), points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length })`);
@@ -5097,7 +5102,7 @@ async function goPressMap(p, card = null) {
   const tapped = await p.eval("({ sheet: document.getElementById('sheet-nearest').hidden, dest: document.querySelector('.go-destination-name')?.textContent ?? '', markers: document.querySelectorAll('.lettered-marker').length, card: !!document.querySelector('.place-popup') })");
   check("lettered places: the card's Route here makes it Go's destination and shows the route (the sheet closes, the markers go, the card closes)", byTap && tapped.sheet && /Metro station$/.test(tapped.dest) && tapped.markers === 0 && !tapped.card, JSON.stringify(tapped));
   await openMetro();
-  const second = await p.eval("document.querySelectorAll('.lettered-marker')[1].getAttribute('aria-label').replace(/^B: /, '').replace(/, [0-9.]+ mi.*$/, '')");
+  const second = await p.eval(`document.querySelector('.lettered-marker[aria-label^="B: "]').getAttribute('aria-label').replace(/^B: /, '').replace(/, [0-9.]+ mi.*$/, '')`);
   await p.eval("document.getElementById('sheet-nearest-title').focus(); true");
   const saidBefore = await p.eval("window.__said.length");
   await p.key("b", "KeyB", 66);
@@ -5132,7 +5137,7 @@ async function goPressMap(p, card = null) {
   await p.eval("[...document.querySelectorAll('.mode-switch .mode-button')].find((x) => x.textContent === 'Go' && x.getClientRects().length).click(); true");
   const listed = await p.waitFor("document.querySelectorAll('.go-bike-option').length === 3 && document.querySelectorAll('.lettered-marker').length === 3", 20000);
   const state = () => p.eval(`({ buttons: [...document.querySelectorAll('.go-bike-option')].map((x) => { const r = x.getBoundingClientRect(); return { pressed: x.getAttribute('aria-pressed'), pin: x.querySelector('.place-letter')?.textContent, h: Math.round(r.height) }; }),
-    markers: [...document.querySelectorAll('.lettered-marker')].map((m) => m.getAttribute('aria-label')), group: document.querySelector('.go-bike-options h3')?.textContent.trim() })`);
+    markers: [...document.querySelectorAll('.lettered-marker')].map((m) => m.getAttribute('aria-label')).sort(), group: document.querySelector('.go-bike-options h3')?.textContent.trim() })`);
   const first = await state();
   const ax = await axNode(p, ".go-bike-option");
   check("go bikeshare options: a Bikeshare route in Go lists its options as buttons lettered A, B, C (44 px), each named by its letter and the option's words, A pressed as the plan shown, and lettered on the map at each pick-up the same",
@@ -5146,7 +5151,8 @@ async function goPressMap(p, card = null) {
   const sentB = JSON.parse(p.routeBodies.at(-1) || "{}");
   check("go bikeshare options: the B key re-plans option B (its pick-up and drop-off stations sent), and the three options stay listed with B now pressed",
     replanned && p.routeRequests > before && sentB.pickup_station === "fx-b" && sentB.dropoff_station === "fx-x" && afterKey.buttons.length === 3 && afterKey.markers.length === 3, JSON.stringify({ afterKey, sentB }));
-  await p.eval("document.querySelectorAll('.lettered-marker')[2].click(); true");
+  // The markers are added last to first since #628 (the first on top), so marker C is found by its name.
+  await p.eval(`document.querySelector('.lettered-marker[aria-label^="C: "]').click(); true`);
   const byMarker = await p.waitFor(`document.querySelector('.go-bike-option[aria-pressed=true] .place-letter')?.textContent === 'C'`, 20000);
   const sentC = JSON.parse(p.routeBodies.at(-1) || "{}");
   await p.eval("document.querySelectorAll('.go-bike-option')[0].click(); true");
