@@ -304,6 +304,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Ride started.": "Recorrido iniciado.",
   "Ride ended.": "Recorrido terminado.",
   "End ride": "Terminar recorrido",
+  "Leave your ride to open this link?": "¿Salir del recorrido para abrir este enlace?",
   "Move it to the end to end the ride": "Deslícelo hasta el final para terminar el recorrido",
   "Slide it to the right to end the ride.": "Deslícelo hacia la derecha para terminar el recorrido.",
   "Slide it to the right to end roam.": "Deslícelo hacia la derecha para terminar Roam.",
