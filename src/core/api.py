@@ -3866,7 +3866,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     when = body.depart_at or timezone.now()
     if when.tzinfo is None:
         when = when.replace(tzinfo=ridetime.ZONE)
-    schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, when.astimezone(ridetime.ZONE).date())
+    # The service day, not the calendar date: owl trips after midnight are the day before's.
+    schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(when).service_day)
     # The docks first, and the candidates' clock after them (TB-8): a slow feed read must not
     # spend the candidates' budget. Feeds that cannot be read are no docks, with a note, not a
     # refusal (TB-2): the trip walks at both ends.
@@ -4298,9 +4299,7 @@ def transit_closures(request, params: Query[ClosuresIn], response: HttpResponse)
     if when.tzinfo is None:
         when = when.replace(tzinfo=ridetime.ZONE)
     try:
-        schedule = transit.load(
-            settings.TRANSIT_SCHEDULE_PATH, when.astimezone(ridetime.ZONE).date()
-        )
+        schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(when).service_day)
     except transit.Unavailable:
         return _transit_refusal(
             "Transit times are not available on this server right now.", "transit_unavailable", 503
@@ -4461,9 +4460,7 @@ def transit_station_times(request, params: Query[StationTimesIn], response: Http
     if when.tzinfo is None:
         when = when.replace(tzinfo=ridetime.ZONE)
     try:
-        schedule = transit.load(
-            settings.TRANSIT_SCHEDULE_PATH, when.astimezone(ridetime.ZONE).date()
-        )
+        schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(when).service_day)
     except transit.Unavailable:
         return _transit_refusal(
             "Transit times are not available on this server right now.", "transit_unavailable", 503
@@ -4541,7 +4538,7 @@ def transit_next_vehicle(request, params: Query[NextVehicleIn], response: HttpRe
         )
         return {"vehicle": transit_live.vehicle_out("train", found)}
     try:
-        today = timezone.now().astimezone(ridetime.ZONE).date()
+        today = transit.moment_of(timezone.now()).service_day
         schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, today)
     except transit.Unavailable:
         schedule = None
@@ -5158,6 +5155,13 @@ class ReverseIn(Schema):
         return self
 
 
+class PlaceNameIn(ReverseIn):
+    address: bool = Field(
+        default=False,
+        description="Name the point by its house number and street when one is near.",
+    )
+
+
 class PlaceOut(Schema):
     name: str = Field(description="A short name: the place, the street or trail, or 'near X'.")
     label: str = Field(description="One line naming it with its neighbourhood or town.")
@@ -5166,7 +5170,8 @@ class PlaceOut(Schema):
     kind: str = Field(
         description=(
             "Search: Photon's layer (house, street, city, district, other, ...). Names for a"
-            " point: 'street' or 'trail' when named from the route network, 'near' when not."
+            " point: 'street' or 'trail' when named from the route network, 'near' when not,"
+            " 'address' when asked for the street address and a house number is near."
         )
     )
     osm_type: Literal["N", "W", "R"] | None = Field(
@@ -5254,9 +5259,9 @@ def geocode_search(request, params: Query[GeocodeIn], response: HttpResponse):
     same_site_only,
     errors_as_json,
 )
-def geocode_reverse(request, params: Query[ReverseIn], response: HttpResponse):
+def geocode_reverse(request, params: Query[PlaceNameIn], response: HttpResponse):
     try:
-        found = geocode.reverse(params.lat, params.lon, lang=params.lang)
+        found = geocode.reverse(params.lat, params.lon, lang=params.lang, address=params.address)
     except geocode.Unavailable as unavailable:
         logger.warning("place name: neither the router nor the geocoder answered: %s", unavailable)
         return Status(502, {"error": GEOCODER_DOWN})

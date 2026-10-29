@@ -435,7 +435,8 @@ band, grep `route timing` from the api's log.
 
 - `ROUTER_PARALLEL_CALLS` (default 3) is the number of router calls one route
   may have in flight at a time: the calm search's wide `/route` asks, the
-  traces of candidate routes and legs, and the delay measure. At 1 every call
+  traces of candidate routes and legs, the delay measure, and a bikeshare
+  plan's walks to and from its candidate docks. At 1 every call
   runs in turn, as before v0.7.0. The pool is one per api worker process, and
   a transit trip's later rides (`api._later_rides`) run on it too rather than
   on a pool of their own; a plan on a pool thread makes its calls in turn. So
@@ -2251,7 +2252,8 @@ metro-typical.json from each line's page (`https://www.wmata.com/ridertools/line
 - The web process reads the file again when it changes, so no restart is needed.
 
 **Refresh at least every 45 days.** The file holds 45 days of service from the build date
-(`--date`, default today). A plan for a later date (or any plan once the file has run out) uses
+(`--date`, default yesterday in Washington, so tonight's trips after midnight are covered on
+any host's time zone). A plan for a later date (or any plan once the file has run out) uses
 Metro's typical timetable alone, which needs no refresh, with the note "Only Metro is planned: the
 other timetables installed cover ... to ...". Refresh as well when an agency publishes a new
 timetable, for example a MARC or VRE schedule change or a Metro shutdown. Planned closures reach the plans

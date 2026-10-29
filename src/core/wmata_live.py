@@ -52,6 +52,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+from routemaker.lang import t
+
 logger = logging.getLogger(__name__)
 
 KEY_ENV = "WMATA_API_KEY"
@@ -850,12 +852,12 @@ class SharedBudget:
 
 def elevator_words(station_name: str) -> str:
     """The one-line warning (the owner, 2026-10-13 11:17 UTC)."""
-    return f"Elevator out at {station_name}: carry your bike on the stairs."
+    return t("Elevator out at {station}: carry your bike on the stairs.", station=station_name)
 
 
 def spare_elevator_words(station_name: str) -> str:
     """An elevator out where another street elevator works: said, never ranked down."""
-    return f"A street elevator is out at {station_name}: use another one."
+    return t("A street elevator is out at {station}: use another one.", station=station_name)
 
 
 def train_minutes(train: Train) -> str:
