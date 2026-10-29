@@ -258,6 +258,9 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     // One who follows another's link rides as a Participant (the roles are the leader's to offer; Riders changes it).
     const kept = keepConsent(ride, yes ? "yes" : "no", Date.now(), undefined, undefined, leads ? pickedRole : DEFAULT_ROLE);
     markAnsweredHere(ride, yes);
+    // A stay before this answer is not this ride's: the meetup is shown from the first fix.
+    dwell.current = null;
+    heldBack.current = false;
     setConsent(kept);
     setAsked(true);
     setShareOn(yes);
@@ -366,7 +369,8 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
       share.current.lastPost = t;
       void sendPosition(origin, ride, token, fix, consent.role, fetch, seal);
     }
-    if (leading && near) setOwnTrail((t) => extendTrail(t, fix));
+    // Nor the leader's ridden path while the dot is held back: its last point would say where they are.
+    if (leading && near && !held) setOwnTrail((t) => extendTrail(t, fix));
   }, [fix, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home]);
 
   // The ride ended: the dot goes, and the next ride on this page asks again (2026-10-29: a Yes is
@@ -377,13 +381,19 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     const resumed = !rodeBefore.current && riding;
     rodeBefore.current = riding;
     // The leader riding again (resumed, or started again on the same link) is shown again: sharing is what they pressed.
-    if (resumed && leading && ride && consent?.answer === "yes") setShareOn(true);
-    if (!ended || !ride || !shareOn) return;
-    setShareOn(false);
+    if (resumed && leading && ride && consent?.answer === "yes") {
+      dwell.current = null;
+      heldBack.current = false;
+      setShareOn(true);
+    }
+    if (!ended || !ride) return;
+    // A follower's answer, Yes or No, was for this ride: the next one asks again.
     if (!leading) {
       markAnsweredHere(ride, false);
       setAsked(false);
     }
+    if (!shareOn) return;
+    setShareOn(false);
     say(SHARE_STOPPED_SAID.off);
     // Only riding's changes: the answer read here is the one at that moment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -395,7 +405,8 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   const routeNow = leaderRoute ?? line;
   const routeNowKey = routeKeyOf(routeNow);
   useEffect(() => {
-    if (!leading || !riding || !shareOn || !front || !ride || !token) return;
+    // Not while the leader's dot is held back (an hour in one spot, or at Home): the server's copy runs out in 2 minutes.
+    if (!leading || !riding || !shareOn || !front || !ride || !token || heldBack.current) return;
     const t = Date.now();
     if (!pathDue(pathSent.current.at, pathSent.current.routeKey, routeNowKey, t)) return;
     pathSent.current = { at: t, routeKey: routeNowKey };

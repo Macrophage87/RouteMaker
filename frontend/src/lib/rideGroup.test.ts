@@ -9,6 +9,7 @@ import {
   DWELL_PAUSE_MS,
   HOME_PAUSE_M,
   answeredHere,
+  forgetAnsweredHere,
   dotHeldBack,
   markAnsweredHere,
   nextDwell,
@@ -235,6 +236,10 @@ test("a Yes counts only in the tab it was given in: opening the link again elsew
   // The ride ended: the next ride on the page asks again.
   markAnsweredHere("ride-a", false, store);
   assert.equal(answeredHere("ride-a", store), false);
+  // A ride ended with its page already gone (Plan): App forgets them all.
+  markAnsweredHere("ride-b", true, store);
+  forgetAnsweredHere(store);
+  assert.equal(answeredHere("ride-b", store), false);
   // Anything else under the key is no answer.
   box.set(ANSWERED_HERE_KEY, "{not json");
   assert.equal(answeredHere("ride-a", store), false);
@@ -547,8 +552,11 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   // A kept Yes from another tab is asked again; a ride that ends stops the dot and asks again next ride.
   assert.match(group, /const askAgain = !leading && kept\?\.answer === "yes" && !answeredHere\(id\);/);
   assert.match(group, /setShareOn\(kept\?\.answer === "yes" && !askAgain\);/);
-  assert.match(group, /if \(!ended \|\| !ride \|\| !shareOn\) return;\s*setShareOn\(false\);/);
-  assert.match(group, /markAnsweredHere\(ride, yes\);/);
+  assert.match(group, /if \(!shareOn\) return;\s*setShareOn\(false\);/);
+  assert.match(group, /markAnsweredHere\(ride, yes\);\s*\/\/[^\n]*\n\s*dwell\.current = null;/);
+  // Held back, the leader's path is neither grown nor sent.
+  assert.match(group, /if \(leading && near && !held\) setOwnTrail/);
+  assert.match(group, /!token \|\| heldBack\.current\) return;/);
   assert.match(group, /<\/button>\s*\)\}\s*\{consent && <RolePicker name="ride-role" value=\{consent\.role\} onChange=\{changeRole\} \/>\}\s*<\/div>/);
   assert.match(group, /sendPosition\(origin, ride, token, fix, consent\.role, fetch, seal\)/);
   // Go's bar keeps its two buttons.

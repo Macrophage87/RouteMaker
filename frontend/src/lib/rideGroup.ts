@@ -616,6 +616,15 @@ export function answeredHere(ride: string, store: Store | null = session()): boo
   return answeredList(store).includes(ride);
 }
 
+/** Forget every ride answered in this tab: a ride ended, so the next one asks again. */
+export function forgetAnsweredHere(store: Store | null = session()): void {
+  try {
+    store?.setItem(ANSWERED_HERE_KEY, "[]");
+  } catch {
+    // Nothing kept to forget.
+  }
+}
+
 /** Mark (or, with false, unmark) a ride as answered Yes in this tab. */
 export function markAnsweredHere(ride: string, yes: boolean, store: Store | null = session()): void {
   const list = answeredList(store).filter((r) => r !== ride);

@@ -155,7 +155,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "Share ride and Broadcast make you the ride leader, shown as a dot from the start "
                 "of your ride. While you ride a shared ride, you and anyone on it who chooses to "
                 "be shown are shown on or off the route, so riders who get separated can find "
-                "each other. When the ride ends, so does your dot, and the next ride asks again.",
+                "each other. When the ride ends, so does your dot, and the next ride asks again "
+                "(a ride leader is shown again when they ride on).",
                 "Your dot is not sent while you are within 500 ft (150 m) of the Home you saved, "
                 "or once you have stayed in one spot for over an hour; it is sent again as soon "
                 "as you move on.",

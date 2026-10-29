@@ -8517,7 +8517,9 @@ age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
   follower who is not riding is never sent.
 - **A new ride, new keys.** When a ride ends, its leads (`leads.current`, Roam's aside) and a Group Ride secret
   the page made (`groupSecretOwn`) are made again, so the next ride is a new ride. Share as image's QR code
-  never carries a Group Ride secret (`shareCardLink`).
+  never carries a Group Ride secret (`shareCardLink`). A leader who starts riding again without sharing again
+  (a resume, or Start ride on the link they shared) is on the same ride as before, as its followers expect; sharing
+  again makes the new one. A dot held back sends no leader path either, and the ridden path stops growing.
 - **Dot order.** `core.ride_presence.read` shuffles the dots (`SystemRandom`) on every read.
 - **Home in links.** Exact starts and ends are fine in links (Stephen: parks, restaurants, bars). The "includes
   your Home" note counts a point within `LINK_HOME_NEAR_M` (150 m) of the saved Home (`lib/geolocation.ts`).
