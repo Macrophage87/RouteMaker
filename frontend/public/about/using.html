@@ -307,8 +307,9 @@ the lines on the map and press <strong>Start ride</strong><sup class="cite"><a h
 Tapping the empty box lists the places you picked recently, once there are some. Results come nearest the
 route's start first (a place whose name matches your words before the rest), each with its area and how far it is in a
 straight line: "Dupont Circle, Washington · 0.3 mi (0.5 km)". An address keeps the order the search gives it.</li>
-<li><strong>A tap on the map</strong> opens a card for that spot: <strong>Route here</strong> at the top, which
-plans a route there in place of any destination before it, then the spot's address, its area and how far away it is,
+<li><strong>A tap on the map</strong> opens a card for that spot, marked by a big red pin: <strong>Ride here</strong> at the top, which
+plans a route there in place of any destination before it, then the spot's address (the nearest house number
+within 130 ft [40 m], else the street), its area and how far away it is,
 and a line such as "5 places nearby, shown on the map". A few places within a mile [1.6 km], the nearest of each kind
 first (food, water, restrooms, repair, Metro and places to see), are pins on the map: a named place, such as a restaurant, bike shop, place to see
 or station, carries its name, and water, restrooms and repair stands an icon only. A pin opens the place's own card,
@@ -351,7 +352,9 @@ route rides, such as "Mostly calm · 1.1 mi on paths and protected lanes · busy
 stress levels and a slim strip for its traffic-free paths and protected lanes; pressing them opens Layers at the
 Traffic stress key, and a screen reader hears every level's share. A National Weather Service alert is one line under
 the totals, red for a Severe or Extreme one. <strong>Details</strong> has the rest, with the sources behind
-<strong>Data sources</strong>.</li>
+<strong>Data sources</strong>. The time, distance and stress bar come first, before any Bikeshare stations; Go's
+Bikeshare fold and its routes list start closed (the routes chip opens it), so the half sheet fits one phone screen.
+Clear says "Route cleared".</li>
 <li><strong>Transit offer:</strong> on Novice and Nervous, when the only way through is a busy road,
 <strong>Own bike + transit</strong> and <strong>Bikeshare + transit</strong> appear beside the route,
 each naming the busy stretch it avoids.</li>
@@ -793,9 +796,8 @@ and <strong>Keep going</strong> appear just under End ride and Go round, as big 
 one (another line from the routes to choose from, or Go's More direct or Trailmaxxed), it first looks for a way back to that route ahead and
 shows (and, by your voice setting, says) "New route found. It rejoins your
 route ahead."; only with no way back does it plan again to the end. Whenever the ride plans again (off the route,
-Reroute, Go round, Less traffic, Fewer hills or a Detour), it keeps every stop still ahead but treats via
-points as guides: one less than half a mile [800 m] ahead is dropped, so you are never sent back to touch
-it. If the next point ahead is a via point and reaching it would take more than about 5 minutes longer than the
+Reroute, Go round, Less traffic, Fewer hills or a Detour), it keeps every stop and every via point still ahead; a via point you
+rode past beside the line counts as passed, so you are never sent back to touch it. If the next point ahead is a via point and reaching it would take more than about 5 minutes longer than the
 planned route would have from where you are (past a closed road, say), it is left out too and the ride shows (and,
 by your voice setting, says) "Skipping via point. New route found." Only that one via point is ever left out this
 way, never a later one or a stop, and not on a Detour, Less traffic, Fewer hills or when you start again part
@@ -956,10 +958,12 @@ OpenStreetMap.</li>
 <li>Plan's map has a <strong>Find</strong> button that opens <strong>Eat</strong>,
 <strong>Water</strong> and <strong>Places to see</strong>. <strong>Eat</strong> has a search box and one sideways row
 of Crab, Coffee, Pizza, Tacos, Ice cream, Farm stands and Grocery, near you; once you move the map, <strong>Search this
-area</strong> looks there instead. Grocery lists the grocery stores nearest the route's start. Where a place's hours
+area</strong> looks there instead. Grocery lists the grocery stores nearest the route's start, small grocers and greengrocers
+included, and the search box understands "grocery near me" and Spanish, such as "supermercado". Where a place's hours
 are known, they read as "Open now · closes 10 PM", here and in the other lists of places. Each row in Eat and in the
 Water, Restroom and Metro lists has <strong>Show on map</strong>; on a phone it closes the popup and keeps the
-lettered pins, which stay until another sheet opens.</li>
+lettered pins, which stay until another sheet opens. In Eat, Water, Repair and Places to see, each row's first
+button is a filled <strong>Ride here</strong>, then <strong>Show on map</strong>, which opens the place's card.</li>
 <li><strong>Repair</strong> (in Go's More) lists the nearest repair stands and bike shops.</li>
 <li>On towpaths and long trails, <strong>trail mile markers</strong> are shown on the map, in the road
 panel and in Where am I?.</li>
@@ -1078,8 +1082,10 @@ route</strong>: others can look it over, change it, or ride it their own way. <s
 ride</strong>: everyone rides this exact route, never re-routed, and each can choose to show where
 they are (see <a href="#suggest">ride links</a>). Share route and Share ride show where your device has a
 share sheet, as on phones, and in the Android app from its next update; Copy link is always there.</li>
-<li><strong>Keep shared link</strong>: 1 year after last opened, Permanently, or Until a date. Shared
-links are listed in Save &amp; load, where you can turn one off.</li>
+<li><strong>Keep shared link</strong>: 1 year after last opened, Permanently, or Until a date;
+Permanently and Until a date need you to be signed in. Shared links are listed in Save &amp; load, where you
+can turn one off. The site makes up to 500 signed-out links a day in all, and an account keeps up to 500
+working links: turn some off to share more.</li>
 <li><strong>Share as image</strong> draws the route as a picture: Square 1080 × 1080, Portrait 1080 ×
 1350, Story 1080 × 1920 or Landscape 1200 × 630, with a QR code if you want one.</li>
 <li>A shared link shows a preview in text messages, Discord and other chat apps: the route's line
