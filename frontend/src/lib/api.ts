@@ -15,7 +15,8 @@ import { twoPointsOnly, type PresetId } from "./presets.ts";
 import type { StressMetres } from "./stressBar.ts";
 import type { FacilityMetres } from "./facilityBar.ts";
 import type { NearbyStationsAnswer, StationAction } from "./stations.ts";
-import { language } from "./i18n.ts";
+import { language, t } from "./i18n.ts";
+import { OFFLINE_SAID } from "./appWorker.ts";
 import type { WithClosures } from "./closureMap.ts";
 import { dialFields, type Bike, type Carrying, type Dials, type Ending, type When } from "./dials.ts";
 
@@ -1128,6 +1129,11 @@ export interface RouteError {
    * long slot each time. "Try again" still waits the Retry-After out.
    */
   noAutoResend?: true;
+  /**
+   * On "no-route": the API's plain refusal (no route joins these points), with any explanation it added after it
+   * ("" with none); Go says it with the destination's name (routeErrorShown).
+   */
+  joins?: { detail: string };
 }
 
 /** The API's code on a long ride's 503 when its time budget ran out. */
@@ -1139,6 +1145,35 @@ export const NO_TRANSIT = "no_transit";
 export const TRANSIT_UNAVAILABLE = "transit_unavailable";
 
 export type RouteResult = { ok: true; route: RouteResponse } | { ok: false; error: RouteError };
+
+/** The API's sentence for a plan no route joins (core/api.py _router_refusal), before any explanation it adds. */
+const NO_ROUTE_SAID = "No route joins these points on this preset.";
+
+/** The error kinds a Try again can help: the planner busy or out of reach, or a refusal the rider may change. */
+const RETRIED: readonly ErrorKind[] = ["bad-input", "router-down", "timed-out", "bikeshare-unavailable", "server", "network", "rate-limited"];
+
+/** A route error as the Route section shows it: its title (none where the message says it all), message and Try again. */
+export interface ErrorShown {
+  title: string | null;
+  message: string;
+  retry: boolean;
+}
+
+/**
+ * What the Route section shows for an error (P11). In Go, a plan no route joins names the destination and says the
+ * one step Go offers, another ride type (its chips stay under the message); the message says it all, so no title.
+ * `goPlace`: Go's destination's name, or null (Plan, or a loop back to the start). `offline`: the page is offline, and
+ * the planner out of reach is said as that, where kept routes open, the one offline message (lib/appWorker.ts offlineLine).
+ */
+export function routeErrorShown(error: RouteError, goPlace: string | null, offline = false): ErrorShown {
+  const retry = RETRIED.includes(error.kind);
+  if (error.kind === "network" && offline) return { title: null, message: OFFLINE_SAID, retry };
+  if (error.joins && goPlace !== null) {
+    const message = [t("No route to {place} with this ride type. Try another ride type.", { place: goPlace }), error.joins.detail].filter(Boolean).join(" ");
+    return { title: null, message, retry };
+  }
+  return { title: error.title, message: error.message, retry };
+}
 
 /** Go's "More direct" (two notches more traffic tolerant) and "Calmer" (one notch calmer); core.presets stress_notches. */
 export type NeighbourKind = "direct" | "calmer";
@@ -1186,6 +1221,9 @@ function withoutValidatorPrefix(said: string): string {
  * field path and "Value error," ("points: Value error, point 1 is outside the
  * area this map covers"), which is for a developer.
  */
+/** How friendlyInput's refusals that name no step of their own begin. */
+const COULD_NOT_USE = "The planner could not use these points";
+
 export function friendlyInput(said: string | undefined): string {
   if (!said) return "The planner could not use these points.";
   if (/outside the area/i.test(said)) {
@@ -1231,7 +1269,10 @@ export function describeError(status: number, body: unknown, retryAfter: string 
     };
   }
   if (status === 400) {
-    return { ...base, kind: "bad-input", title: "Can't plan that", message: friendlyInput(said) };
+    const message = friendlyInput(said);
+    // A refusal that names no step of its own says the next one (P11), beside its Try again.
+    const next = message.startsWith(COULD_NOT_USE) ? ` ${t("Try another start or destination.")}` : "";
+    return { ...base, kind: "bad-input", title: "Can't plan that", message: `${message}${next}` };
   }
   const code = body && typeof body === "object" ? (body as { code?: unknown }).code : undefined;
   if (status === 409 && code === "confirm_long") {
@@ -1265,11 +1306,16 @@ export function describeError(status: number, body: unknown, retryAfter: string 
     };
   }
   if (status === 404 || status === 422) {
+    // The API's plain refusal (core/api.py _router_refusal), or none: said in a rider's words, and in Go with the
+    // destination's name (routeErrorShown). An explanation the API adds after it (a Mass Ride's roadways) is kept.
+    const plain = !said || said.startsWith(NO_ROUTE_SAID);
+    const detail = plain && said ? said.slice(NO_ROUTE_SAID.length).trim() : "";
     return {
       ...base,
       kind: "no-route",
       title: "No route found",
-      message: said ?? "No route joins these points on this preset. Try moving a point or another preset.",
+      message: plain ? [t("No route joins these points. Try moving a point or another ride type."), detail].filter(Boolean).join(" ") : (said ?? ""),
+      ...(plain ? { joins: { detail } } : {}),
     };
   }
   if (status === 429) {
@@ -1315,11 +1361,12 @@ export function describeError(status: number, body: unknown, retryAfter: string 
     };
   }
   if (status === 503 || status === 504) {
+    // The title says busy, the message only what to do (P11: "Planner busy. Try again in a moment.").
     return {
       ...base,
       kind: "timed-out",
-      title: "Planner busy",
-      message: `The planner is busy or ran out of time on this route. ${wait(retryAfterS, "Try again shortly.")}`,
+      title: t("Planner busy"),
+      message: wait(retryAfterS, t("Try again in a moment.")),
     };
   }
   return {

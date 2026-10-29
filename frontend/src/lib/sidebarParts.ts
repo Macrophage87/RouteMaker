@@ -79,8 +79,14 @@ export function RideSettings({
           ),
           h("span", { className: "visually-hidden" }, `: ${spoken}.`),
         ),
-        h("span", { className: "ride-line-action", "aria-hidden": "true" }, rideActionLabel(open)),
-        h("span", { className: "visually-hidden" }, ` ${RIDE_ACTION_SPOKEN}`),
+        // Heard "Adjust" whatever the state (aria-expanded says it). Closed, the shown word is that word, once (P10: the
+        // heading read "Adjust Adjust" as text); open, "Done" is shown and "Adjust" still heard.
+        open
+          ? [
+              h("span", { key: "shown", className: "ride-line-action", "aria-hidden": "true" }, rideActionLabel(open)),
+              h("span", { key: "said", className: "visually-hidden" }, ` ${RIDE_ACTION_SPOKEN}`),
+            ]
+          : h("span", { className: "ride-line-action" }, ` ${RIDE_ACTION_SPOKEN}`),
       ),
     ),
     h("div", { id: bodyId, className: "ride-settings-body", hidden: !open }, children),

@@ -5,8 +5,8 @@ import test from "node:test";
 import { openNowText, safeWebsite } from "./stopCard.ts";
 import { foodWords, nearbyWords, repairWords, sightWords } from "./stopWords.ts";
 
-// A Monday, 12:00 local time.
-const NOON = new Date(2026, 9, 19, 12, 0);
+// A Monday, 12:00 on the region's clock (lib/openingHours.ts), whatever zone the test runs in.
+const NOON = new Date("2026-10-19T12:00:00-04:00");
 
 test("a website is followed only when it is a web address", () => {
   assert.equal(safeWebsite("https://example.org/menu"), "https://example.org/menu");
@@ -17,10 +17,11 @@ test("a website is followed only when it is a web address", () => {
   assert.equal(safeWebsite(undefined), null);
 });
 
-test("open or closed now only where the mapped hours can be read", () => {
-  assert.equal(openNowText("Mo-Fr 09:00-17:00", NOON), "Open now.");
-  assert.equal(openNowText("Mo-Fr 17:00-22:00", NOON), "Closed now.");
-  assert.equal(openNowText("Mo-Fr 09:00-17:00; PH off", NOON), null);
+test("open or closed now and when that changes; hours that cannot be read now are cleaned up", () => {
+  assert.equal(openNowText("Mo-Fr 09:00-17:00", NOON), "Open now · closes 5 PM.");
+  assert.equal(openNowText("Mo-Fr 17:00-22:00", NOON), "Closed now · opens 5 PM.");
+  assert.equal(openNowText("Mo-Fr 09:00-17:00; PH off", NOON), "Open now · closes 5 PM.", "holidays are left out");
+  assert.equal(openNowText("Mo-Fr sunrise-sunset", NOON), "Hours: Mon–Fri sunrise–sunset.");
   assert.equal(openNowText(undefined, NOON), null);
 });
 
@@ -30,15 +31,15 @@ test("food: kind, open now, then how far; the website kept", () => {
     NOON,
   );
   assert.equal(words.title, "Ben's");
-  assert.deepEqual(words.lines.slice(0, 2), ["Restaurant: american.", "Open now."]);
+  assert.deepEqual(words.lines.slice(0, 2), ["Restaurant: american.", "Open now · closes 10 PM."]);
   assert.match(words.lines[2], /^0\.5 mi \(0\.8 km\) from you/);
   assert.equal(words.website, "https://example.org");
 });
 
-test("hours that cannot be read are shown as mapped; a sight's detour is said", () => {
+test("a sight's hours say when it opens; a sight's detour is said", () => {
   const place = { id: "n2", lon: -77, lat: 38.9, category: "museum" as const, name: "Gallery", hours: "Tu-Su 10:00-17:00; PH off" };
   const words = sightWords(place, NOON, { place, metres: 0, detour: { alongM: 1609, offM: 200, extraM: 600 } });
-  assert.deepEqual(words.lines, ["Museum or gallery.", "Hours as mapped: Tu-Su 10:00-17:00; PH off.", "+0.4 mi (0.6 km) detour."]);
+  assert.deepEqual(words.lines, ["Museum or gallery.", "Closed now · opens 10 AM tomorrow.", "+0.4 mi (0.6 km) detour."]);
 });
 
 test("a repair stand's kit and fee, and a nearest place's details and distance", () => {

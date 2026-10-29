@@ -46,7 +46,7 @@ function JunctionButton({ item, onSelect }: { item: JunctionItem; onSelect: (ind
       <span className="junction-severity">{item.severityText}</span>
       <span className="junction-where">{item.where}</span>
       <span className="junction-reason">{item.reason}</span>
-      <span className="junction-cost">{item.costText}</span>
+      {item.costText && <span className="junction-cost">{item.costText}</span>}
     </button>
   );
 }

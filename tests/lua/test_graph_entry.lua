@@ -340,6 +340,15 @@ check("a platform walkway reaches the graph open to bicycles, dismounted",
   tostring(platform_out.bicycle) .. " " .. tostring(platform_out.bike_forward))
 check("and that mark never reaches the tile build", platform_out["rm:platform_walk"] == nil)
 
+-- A short dirt link reopened walked (routemaker.short_links).
+local _, link_walk_out = transform_way({
+  highway = "path", surface = "dirt", ["rm:link_walk"] = "yes", ["rm:trail_class"] = "yes",
+})
+check("a short dirt link reaches the graph open to bicycles, dismounted",
+  link_walk_out.bicycle == "dismount" and link_walk_out.bike_forward == "true",
+  tostring(link_walk_out.bicycle) .. " " .. tostring(link_walk_out.bike_forward))
+check("and that mark never reaches the tile build", link_walk_out["rm:link_walk"] == nil)
+
 -- OWNER-DECISIONS 111: singletrack reaches the graph with upstream's alley use.
 local _, single_out = transform_way({
   highway = "path", surface = "dirt", ["mtb:scale"] = "2", ["rm:no_bicycle"] = "singletrack",

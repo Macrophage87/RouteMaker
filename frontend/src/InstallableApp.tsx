@@ -109,7 +109,7 @@ export interface AppStatus {
  * during a ride, said when it ends), offline, and back online (both shown, not said, during a ride:
  * Ride mode says what a lost signal means for the ride itself).
  */
-export function useAppStatus(riding: boolean, onSay: (text: string) => void): AppStatus {
+export function useAppStatus(riding: boolean, onSay: (text: string) => void, offlineSaid: () => string = () => OFFLINE_SAID): AppStatus {
   // After the page has loaded, when the browser is idle: the worker's install downloads the build, which
   // would otherwise compete with the map's style and first tiles (review fe-perf-6).
   useEffect(() => whenSettled(() => void startWorker()), []);
@@ -126,7 +126,7 @@ export function useAppStatus(riding: boolean, onSay: (text: string) => void): Ap
   useEffect(() => {
     if (!online && !said.current.offline) {
       said.current.offline = true;
-      if (!riding) onSay(OFFLINE_SAID);
+      if (!riding) onSay(offlineSaid());
     } else if (online && said.current.offline) {
       said.current.offline = false;
       if (!riding) onSay(ONLINE_SAID);
@@ -137,12 +137,16 @@ export function useAppStatus(riding: boolean, onSay: (text: string) => void): Ap
   return { updateShown, offline: !online, reload };
 }
 
-/** At the top of the panel: offline, and the new version with its Reload. Empty, it is not drawn. */
-export function AppStatusBar({ status }: { status: AppStatus }) {
-  if (!status.updateShown && !status.offline) return null;
+/**
+ * At the top of the panel: offline, and the new version with its Reload. Empty, it is not drawn. `offline`: the
+ * offline line as the page has it (lib/appWorker.ts offlineLine), null where something else says it.
+ */
+export function AppStatusBar({ status, offline = status.offline ? OFFLINE_SAID : null }: { status: AppStatus; offline?: string | null }) {
+  const offlineShown = status.offline ? offline : null;
+  if (!status.updateShown && !offlineShown) return null;
   return (
     <div className="app-status">
-      {status.offline && <p className="app-offline">{OFFLINE_SAID}</p>}
+      {offlineShown && <p className="app-offline">{offlineShown}</p>}
       {status.updateShown && (
         <div className="app-update">
           <p id="app-update-text">{UPDATE_READY}</p>
@@ -317,7 +321,8 @@ export function KeptRoutes({
               </p>
               <div className="kept-actions">
                 <button type="button" className="secondary" aria-describedby={`${id}-detail-${index}`} onClick={() => onOpen(route)}>
-                  Open<span className="visually-hidden"> {route.title}</span>
+                  {t("Open")}
+                  <span className="visually-hidden"> {route.title}</span>
                 </button>
                 <button
                   type="button"
@@ -327,7 +332,8 @@ export function KeptRoutes({
                   }}
                   onClick={() => void remove(route, index)}
                 >
-                  Remove<span className="visually-hidden"> {route.title}</span>
+                  {t("Remove")}
+                  <span className="visually-hidden"> {route.title}</span>
                 </button>
               </div>
             </li>

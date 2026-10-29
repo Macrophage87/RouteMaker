@@ -171,6 +171,8 @@ export const MANUAL_LABEL = t("Manual mode");
 export const MANUAL_TITLE = t("Manual mode: each point you tap is joined by a straight line");
 export const MANUAL_ON_SAID = t("Manual mode on. Each point you tap is the new end, joined by a straight line.");
 export const MANUAL_OFF_SAID = t("Manual mode off. New points are routed.");
+/** Manual mode turned on in a loop turns the loop off (each tap is the new end): said, and shown on the badge (P10). */
+export const MANUAL_LOOP_OFF = t("Loop off.");
 /** Said after a point's "added" when the line to it is drawn. */
 export const DRAWN_SAID = t("Joined by a straight line.");
 
@@ -441,3 +443,7 @@ const VIA_ROLE_NAME = /^Via \d+$/;
 
 /** The tips' sentence on what a click makes (lib/pointText.ts editingTips). */
 export const CLICK_KINDS_TIP = t("A click adds a via point; Ctrl+click (Cmd+click on a Mac) adds a named stop.");
+/** The same on a phone (P8), and what a click or a tap on a point offers (MapView.tsx offerRemove). */
+export const TAP_KINDS_TIP = t("A tap on the map adds a via point.");
+export const TAP_POINT_TIP = t("Tap a stop or via point to remove it or change its kind.");
+export const CLICK_POINT_TIP = t("Click a stop or via point to remove it or change its kind.");

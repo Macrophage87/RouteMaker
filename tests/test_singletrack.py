@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from routemaker.singletrack import grade, is_singletrack
+from routemaker.singletrack import grade, is_singletrack, mtb_scale_words
 
 # The C&O Canal towpath, as OSM maps it either side of lock 21 (item 93).
 TOWPATH_ABOVE_LOCK_21 = {
@@ -78,3 +78,25 @@ def test_a_paved_trail_is_not_singletrack_whatever_its_rating(surface) -> None:
     assert not is_singletrack(tags)
     assert is_singletrack({**tags, "surface": "dirt"})
     assert is_singletrack({k: v for k, v in tags.items() if k != "surface"})
+
+
+# The same cases as frontend/src/lib/featureHover.test.ts, which says them in the hover card.
+@pytest.mark.parametrize(
+    ("tags", "words"),
+    [
+        ({"mtb:scale": "2"}, "S2"),
+        ({"mtb:scale:imba": "1"}, "IMBA 1"),
+        ({"mtb:scale": "1", "mtb:scale:imba": "1"}, "S1 and IMBA 1 (rated on both scales)"),
+        ({"mtb:scale": "2", "mtb:scale:imba": "3"}, "IMBA 3 (also rated S2, easier)"),
+        ({"mtb:scale": "5", "mtb:scale:imba": "4"}, "S5 and IMBA 4 (rated on both scales)"),
+        ({"mtb:scale": "1-2"}, "S2"),
+        ({"mtb:scale": "2+", "mtb:scale:imba": "0"}, "S2 (also rated IMBA 0, easier)"),
+        ({"mtb:scale": "steep"}, None),
+        ({"surface": "dirt"}, None),
+        (None, None),
+    ],
+)
+def test_mtb_scale_words_say_which_scale_set_the_level(tags, words) -> None:
+    """The owner, 2026-10-28: "say which rating type triggered the rating and if they are
+    rated on both scales say that"."""
+    assert mtb_scale_words(tags) == words

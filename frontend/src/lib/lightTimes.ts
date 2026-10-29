@@ -12,7 +12,7 @@
  * the afternoon, nothing is shown ("Then just leave empty"). Times in the region's time, miles first.
  */
 import type { LonLat } from "./geo.ts";
-import { t } from "./i18n.ts";
+import { rightToLeft, t } from "./i18n.ts";
 import { haversineM } from "./geo.ts";
 import { formatDuration, formatMilePost } from "./format.ts";
 import type { When } from "./dials.ts";
@@ -82,7 +82,8 @@ function crossingMinutes(dayMs: number, lat: number, lon: number, zenith: number
 
 /** The region's calendar day a moment falls on, as the UTC midnight of that date. */
 const DATE_FORMAT = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, year: "numeric", month: "numeric", day: "numeric" });
-const CLOCK_FORMAT = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, hour: "numeric", minute: "2-digit" });
+/** The clock as the arrival time shows it (lib/arrival.ts arrivalClock): the device's own, "6:31 PM" or "6:31 p.m.", in the region's time. */
+const CLOCK_FORMAT = new Intl.DateTimeFormat(undefined, { timeZone: ZONE, hour: "numeric", minute: "2-digit" });
 
 function localDay(ms: number): number {
   const parts = Object.fromEntries(
@@ -198,7 +199,7 @@ export function sameLightMarks(a: readonly LightMark[], b: readonly LightMark[])
   return a.length === b.length && a.every((m, i) => key(m) === key(b[i]));
 }
 
-/** A moment as the region's clock: "6:31 PM". */
+/** A moment as the region's clock: "6:31 PM" (the device's own form, as the arrival time). */
 export function lightClock(ms: number): string {
   return CLOCK_FORMAT.format(new Date(ms));
 }
@@ -306,7 +307,12 @@ export function rideLightCorner(
   };
   const said = marks.map((m) => `${LIGHT_NAME[m.kind]} ${lightClock(m.at)}${till(m.at) ? t(", in {time}", { time: tillSaid(m.at) }) : ""}`);
   return {
-    shown: marks.map((m) => `${LIGHT_SHORT[m.kind]} ${lightClock(m.at)}${till(m.at) ? ` (${till(m.at)})` : ""}`),
+    // In a right-to-left language the clock and its minutes are isolated (FSI ... PDI), so "6:12 PM (11 min)" keeps
+    // its order (v0.14.0 end review: it showed "PM (11 min) 6:12").
+    shown: marks.map((m) => {
+      const time = `${lightClock(m.at)}${till(m.at) ? ` (${till(m.at)})` : ""}`;
+      return `${LIGHT_SHORT[m.kind]} ${rightToLeft() ? `\u2068${time}\u2069` : time}`;
+    }),
     said: `${said.map((text, i) => (i === 0 ? text : text.charAt(0).toLowerCase() + text.slice(1))).join("; ")}.`,
   };
 }
