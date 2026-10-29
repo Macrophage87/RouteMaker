@@ -16,7 +16,7 @@
  * phone app, which rides with the screen locked, has no limit (`rideMaxM`).
  */
 import { askOf, type NextVehicleAsk } from "./nextVehicle.ts";
-import type { RouteResponse, TransitDeparture, TransitPlan, TransitStep } from "./api.ts";
+import type { RouteResponse, TransitDeparture, TransitOption, TransitPlan, TransitStep } from "./api.ts";
 import { bikeshareOf, dockCountWords } from "./bikeshare.ts";
 import { formatDistance, spokenDistance } from "./format.ts";
 import { haversineM, pathLengthM, type LonLat } from "./geo.ts";
@@ -133,6 +133,25 @@ export function ridesLine(route: Pick<RouteResponse, "transit">): boolean {
   if (!plan) return true;
   const index = lineIndex(plan);
   return index < 0 ? plan.direct && plan.mode === "bike-transit" : isRiding(plan.steps[index]);
+}
+
+/** Whether a transit option rides a bike at all: the whole way, or a leg on your own bike or a share bike. */
+export function optionRides(option: Pick<TransitOption, "direct" | "walk" | "legs">): boolean {
+  if (option.walk) return false;
+  if (option.direct) return true;
+  return (option.legs ?? []).some((leg) => leg.mode === "ride" || leg.mode === "bikeshare");
+}
+
+/**
+ * The line in Start's place on a transit option with no ride (Bikeshare + 🚶🚆🚌 can pick a walk and a train): "No
+ * bike on this option. Pick D to ride.", naming the first option that rides (P10; it showed "0.1 mi ridden" and a
+ * stress bar 100% not rated). Null where the option rides, or on a route that is not a transit trip.
+ */
+export function noBikeLine(route: Pick<RouteResponse, "transit">): string | null {
+  const plan = transitOf(route);
+  if (!plan || ridesLine(route)) return null;
+  const index = plan.options.findIndex(optionRides);
+  return index < 0 ? t("No bike on this option.") : t("No bike on this option. Pick {letter} to ride.", { letter: String.fromCharCode(65 + index) });
 }
 
 function distanceWords(metres: number | null): TripWords {

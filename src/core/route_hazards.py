@@ -18,7 +18,7 @@ from django.conf import settings
 
 from pipeline.schema import HAZARD_COLUMN, validate_schema_name
 from routemaker import hazards
-from routemaker.lang import spanish, t
+from routemaker.lang import english, t
 
 from . import segment_info
 
@@ -139,7 +139,7 @@ SHORT_WORDS = {hazards.COBBLES: "Cobblestones", hazards.RAILS: "Rails in the roa
 def line(entry: dict) -> str:
     """The directions' line: "Cobblestones on O Street Northwest, 1.2 to 1.4 mi (1.9 to
     2.3 km): bumpy, and slippery when wet." US units first, metric in brackets."""
-    if spanish():
+    if not english():
         # "Adoquines y rieles en la calle": the first capital, the rest as in a sentence.
         said = [t(SHORT_WORDS[k]) for k in entry["kinds"]]
         what = t(" and ").join([said[0], *(w[:1].lower() + w[1:] for w in said[1:])])

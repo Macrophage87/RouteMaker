@@ -279,7 +279,7 @@ test("the figures and the legend are in plain words, US units first", () => {
   const panel = read("BikeshareSummary.tsx");
   assert.match(panel, /a dotted line is a walk/);
   assert.match(panel, /<ol className="bikeshare-steps">/);
-  assert.match(panel, /<fieldset className="bikeshare-endings">[\s\S]*<legend>Where the ride ends<\/legend>/);
+  assert.match(panel, /<fieldset className="bikeshare-endings">[\s\S]*<legend>\{t\("Where the ride ends"\)\}<\/legend>/);
 });
 
 // --- Endings ----------------------------------------------------------------------------------------------

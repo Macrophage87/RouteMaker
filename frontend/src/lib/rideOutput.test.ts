@@ -2,6 +2,7 @@
 // and the wake lock, each with a stub environment that records the calls.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { setCatalogForTest, setLanguageForTest } from "./i18n.ts";
 import {
   Announcer,
   BIG_TEXT_KEY,
@@ -11,6 +12,7 @@ import {
   RIDE_PREFS_KEY,
   ScreenWake,
   Voice,
+  voiceFor,
   WAKE_LOST,
   WAKE_REASKS,
   WAKE_UNAVAILABLE,
@@ -391,4 +393,36 @@ test("Announcer: an answer drops what waits, and the next cue waits a full gap a
   a.answer("Off the planned route.");
   advance(POLITE_GAP_MS * 2);
   assert.deepEqual(said.map((s) => s.text), ["On A Street.", "cue", "Off the planned route."]);
+});
+
+test("Voice: a language the phone has no voice for speaks the English; the screen keeps the language", () => {
+  setCatalogForTest("am", { "Ride started.": "ጉዞ ተጀምሯል።", "Left onto {street}.": "ወደ {street} ወደ ግራ ይታጠፉ።" });
+  setLanguageForTest("am");
+  try {
+    const spoken: UtteranceLike[] = [];
+    const synth = { speak: (u: UtteranceLike) => void spoken.push(u), cancel: () => {}, speaking: false };
+    const utterance = (text: string): UtteranceLike => ({ text, lang: "", onend: null });
+    // An English and a French voice, no Amharic: the English words, in the English voice.
+    new Voice({ synth, utterance, voices: () => [{ lang: "en-US" }, { lang: "fr-FR" }] }).speak("ወደ R Street ወደ ግራ ይታጠፉ።", true);
+    assert.deepEqual([spoken[0].text, spoken[0].lang], ["Left onto R Street.", "en-US"]);
+    // A sentence with no English in the catalog (one of the server's) is left to the screen.
+    new Voice({ synth, utterance, voices: () => [{ lang: "en-US" }] }).speak("ያልታወቀ።", true);
+    assert.equal(spoken.length, 1);
+    // An Amharic voice: the Amharic, in it.
+    new Voice({ synth, utterance, voices: () => [{ lang: "en-US" }, { lang: "am-ET" }] }).speak("ጉዞ ተጀምሯል።", true);
+    assert.deepEqual([spoken[1].text, spoken[1].lang, spoken[1].voice?.lang], ["ጉዞ ተጀምሯል።", "am-ET", "am-ET"]);
+    // The browser still listing its voices: the language's own words, its tag asked for.
+    new Voice({ synth, utterance, voices: () => [] }).speak("ጉዞ ተጀምሯል።", true);
+    assert.deepEqual([spoken[2].text, spoken[2].lang], ["ጉዞ ተጀምሯል።", "am-ET"]);
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+test("voiceFor: the asked tag whole, then by its language alone; Cantonese under either of its tags", () => {
+  assert.deepEqual(voiceFor([{ lang: "es-MX" }, { lang: "es-US" }], ["es-US", "es"]), { lang: "es-US" });
+  assert.deepEqual(voiceFor([{ lang: "es_MX" }], ["es-US", "es"]), { lang: "es_MX" });
+  assert.deepEqual(voiceFor([{ lang: "zh-CN" }, { lang: "zh-HK" }], ["yue-HK", "zh-HK", "yue"]), { lang: "zh-HK" });
+  assert.equal(voiceFor([{ lang: "en-US" }], ["ti-ER", "ti"]), null);
+  assert.equal(voiceFor([], ["ti-ER"]), undefined);
 });

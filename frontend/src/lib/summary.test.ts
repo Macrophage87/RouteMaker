@@ -6,6 +6,7 @@ import {
   calmSearchNote,
   climbsRiddenNote,
   detourNotice,
+  detourShort,
   detourView,
   othersSaid,
   paceText,
@@ -125,6 +126,21 @@ test("a ratio that rounds to the threshold it is beyond keeps a second decimal",
   // Elsewhere, one decimal.
   assert.match(detourView(direct(4.4, 10, "note"), [GEORGETOWN, ROSSLYN])?.text ?? "", /is 1\.4×/);
   assert.match(detourView(direct(5.2, 10, "note"), [GEORGETOWN, ROSSLYN])?.text ?? "", /is 1\.5×/);
+});
+
+test("Go's detour line is one line at the notice's level, with no slider to move (the owner's P1)", () => {
+  const strong = detourShort(direct(18, 11.25, "strong", 0.8), [GEORGETOWN, ROSSLYN]);
+  assert.deepEqual(strong, { level: "strong", text: "2.6× as far, to skip 0.8 mi (1.3 km) of busy roads." });
+  const warning = detourShort(direct(6, 10, "warning"), [GEORGETOWN, ROSSLYN]);
+  assert.deepEqual(warning, { level: "warning", text: "1.6× as far as the direct route." });
+  assert.doesNotMatch(warning?.text ?? "", /slider/);
+  // Silent where Plan is; the straight-line notice (no direct route to compare) keeps its words.
+  assert.equal(detourShort(direct(0.1, 10, null), [GEORGETOWN, ROSSLYN]), null);
+  assert.equal(detourShort({ distance_m: 141_100, preset: "default" }, [GEORGETOWN, ROSSLYN])?.text, detourNotice({ distance_m: 141_100, preset: "default" }, [GEORGETOWN, ROSSLYN]));
+  // Plan keeps the slider's advice.
+  assert.match(detourView(direct(6, 10, "warning"), [GEORGETOWN, ROSSLYN])?.text ?? "", /Move the Traffic slider down/);
+  const panel = appSource();
+  assert.match(panel, /const detour = goMode \? detourShort\(route, points\) : detourView\(route, points\);/);
 });
 
 test("a calmer-route search that stopped short says so in plain words", () => {
@@ -359,6 +375,11 @@ test("a ride that stops short of the destination says to walk the bike the rest 
   assert.match(walkInNote(both) ?? "", /^Walk your bike .* to where the ride starts\. Walk your bike the last/);
   assert.equal(walkInNote({ walk_in: null } as never), null);
   assert.equal(walkInNote({} as never), null);
+  // The note line's short words (the audit's P14: the sentence was cut at "to your destin…").
+  const { walkInShort } = await import("./summary.ts");
+  assert.equal(walkInShort(route), "Walk the last 300 ft (90 m)");
+  assert.equal(walkInShort(both), "Walk 130 ft (40 m) to the start · Walk the last 300 ft (90 m)");
+  assert.equal(walkInShort({ walk_in: null } as never), null);
 });
 
 test("a Novice route says the busy stretches it walks past on the sidewalk, and draws them (v0.11.0; the owner, 2026-10-21)", async () => {

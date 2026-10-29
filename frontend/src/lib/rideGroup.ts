@@ -95,13 +95,13 @@ export const DEFAULT_ROLE: RideRole = "participant";
 
 /** In the order the question and the key list them. */
 export const RIDE_ROLES: readonly { id: RideRole; label: string }[] = [
-  { id: "participant", label: "Participant" },
-  { id: "lead", label: "Lead line" },
-  { id: "sweep", label: "Sweep" },
-  { id: "corker", label: "Corker" },
+  { id: "participant", label: t("Participant") },
+  { id: "lead", label: t("Lead line") },
+  { id: "sweep", label: t("Sweep") },
+  { id: "corker", label: t("Corker") },
 ];
 
-export const ROLE_QUESTION = "Riding as";
+export const ROLE_QUESTION = t("Riding as");
 
 export function isRole(value: unknown): value is RideRole {
   return RIDE_ROLES.some((r) => r.id === value);
@@ -212,10 +212,15 @@ export function opensIntoRide(at: { phone: boolean; onBike: boolean; resumeAsked
 
 /** Said once a followed broadcast has started the ride or Roam on its own (opensIntoRide): no press started it, so a
  * phone may keep the voice quiet until the first tap. */
-export const BROADCAST_FOLLOWING = "Following the leader's broadcast. If you hear no directions, tap the screen once.";
+export const BROADCAST_FOLLOWING = t("Following the leader live. If you hear no directions, tap the screen once.");
 
 /** On a broadcast: shown on or off the route, so the leader and the riders can find each other. */
 export const BROADCAST_CONSENT_NOTE = "Only while the app is open, on or off the route, so the leader and riders can find each other. No name; positions are rounded and gone after 2 minutes.";
+/**
+ * What the question shows, short (the 2026-10-28 audit, P6: asked as Start ride or Broadcast is pressed, over the
+ * ride's first screen); a screen reader is given the full note (CONSENT_NOTE, BROADCAST_CONSENT_NOTE).
+ */
+export const CONSENT_SHORT = "Only while the app is open. No name; gone in 2 min.";
 export const CONSENT_YES = "Yes";
 export const CONSENT_NO = "No";
 
@@ -503,10 +508,10 @@ export function extendTrail(trail: readonly LonLat[], p: LonLat): readonly LonLa
   return next.length > TRAIL_MAX_POINTS ? next.slice(next.length - TRAIL_MAX_POINTS) : next;
 }
 
-export const FOLLOW_LEADER = "Follow the leader";
-export const FOLLOWING_SAID = "Following the ride leader on the map.";
-export const NOT_FOLLOWING_SAID = "Stopped following the ride leader. Turn on Follow the leader to follow again.";
-export const LEADING_SAID = "You lead this ride: those who open your link follow your dot while the app is open.";
+export const FOLLOW_LEADER = t("Follow the leader");
+export const FOLLOWING_SAID = t("Following the ride leader on the map.");
+export const NOT_FOLLOWING_SAID = t("Stopped following the ride leader. Turn on Follow the leader to follow again.");
+export const LEADING_SAID = t("You lead this ride: those who open your link follow your dot while the app is open.");
 
 // ---- sharing your own dot --------------------------------------------------------------------------
 
@@ -531,9 +536,9 @@ export function shareStop(state: ShareState, now: number): ShareStop {
 }
 
 export const SHARE_STOPPED_SAID: Record<Exclude<ShareStop, null>, string> = {
-  off: "You are no longer shown as a dot.",
-  "left-route": "You have been off the route for 10 minutes, so you are no longer shown as a dot.",
-  "ride-over": "This ride started 12 hours ago, so you are no longer shown as a dot.",
+  off: t("You are no longer shown as a dot."),
+  "left-route": t("You have been off the route for 10 minutes, so you are no longer shown as a dot."),
+  "ride-over": t("This ride started 12 hours ago, so you are no longer shown as a dot."),
 };
 
 // ---- alerts ----------------------------------------------------------------------------------------
@@ -548,23 +553,23 @@ export interface AlertKind {
 /** The plan's lists (the server's core.ride_presence.ALERT_KINDS, the same ids). */
 export const ALERT_KINDS: Record<RideLinkType, readonly AlertKind[]> = {
   "mass-ride": [
-    { id: "spread", label: "Extensive rider spread" },
-    { id: "emergency_vehicle", label: "Emergency vehicle coming through" },
-    { id: "aggressive", label: "Aggressive person" },
-    { id: "medical", label: "Medical emergency or crash", confirm: true, call911: true },
-    { id: "reroute", label: "Rerouting, road closed" },
+    { id: "spread", label: t("Extensive rider spread") },
+    { id: "emergency_vehicle", label: t("Emergency vehicle coming through") },
+    { id: "aggressive", label: t("Aggressive person") },
+    { id: "medical", label: t("Medical emergency or crash"), confirm: true, call911: true },
+    { id: "reroute", label: t("Rerouting, road closed") },
     // Stephen 2026-10-22: "Followers and leaders can text between each other as well with common issues, lost, mechanical, etc".
-    { id: "lost", label: "Lost, separated from the ride" },
-    { id: "other", label: "Other" },
+    { id: "lost", label: t("Lost, separated from the ride") },
+    { id: "other", label: t("Other") },
   ],
   "group-ride": [
-    { id: "off_back", label: "Rider off the back" },
-    { id: "crash", label: "Crash", confirm: true, call911: true },
-    { id: "mechanical", label: "Mechanical or flat, stopping" },
-    { id: "wrong_turn", label: "Wrong turn" },
-    { id: "lost", label: "Lost, separated from the group" },
-    { id: "wait", label: "Wait up, regroup" },
-    { id: "other", label: "Other" },
+    { id: "off_back", label: t("Rider off the back") },
+    { id: "crash", label: t("Crash"), confirm: true, call911: true },
+    { id: "mechanical", label: t("Mechanical or flat, stopping") },
+    { id: "wrong_turn", label: t("Wrong turn") },
+    { id: "lost", label: t("Lost, separated from the group") },
+    { id: "wait", label: t("Wait up, regroup") },
+    { id: "other", label: t("Other") },
   ],
 };
 
@@ -583,16 +588,16 @@ export const CONFIRM_QUESTION = t("Send to everyone on this ride?");
 export const OTHER_MAX = 80;
 export const ALERT_EVERY_MS = 60_000;
 export const ALERTS_PER_RIDE = 10;
-export const CALL_911 = "Call 911";
+export const CALL_911 = t("Call 911");
 export const CALL_911_HREF = "tel:911";
 
 /** Whether this device may send another alert now; else the sentence why not. */
 export function alertRefusal(sentAt: readonly number[], now: number): string | null {
-  if (sentAt.length >= ALERTS_PER_RIDE) return `You have sent ${ALERTS_PER_RIDE} alerts on this ride, the most one phone sends.`;
+  if (sentAt.length >= ALERTS_PER_RIDE) return t("You have sent {count} alerts on this ride, the most one phone sends.", { count: ALERTS_PER_RIDE });
   const last = sentAt[sentAt.length - 1];
   if (last !== undefined && now - last < ALERT_EVERY_MS) {
     const wait = Math.ceil((ALERT_EVERY_MS - (now - last)) / 1000);
-    return `One alert a minute: you can send another in ${wait} s.`;
+    return t("One alert a minute: you can send another in {wait} s.", { wait });
   }
   return null;
 }
@@ -738,7 +743,7 @@ export type SendOutcome = { ok: true; alert: RideAlert } | { ok: false; message:
 export async function sendAlert(origin: string, ride: string, token: string, type: RideLinkType, kind: string, text: string, p: LonLat, send: Fetch = fetch): Promise<SendOutcome> {
   const answer = await post(origin, `/api/rides/${ride}/alerts`, { token, ride_type: type, kind, text: kind === "other" ? text.slice(0, OTHER_MAX) : "", lon: p[0], lat: p[1] }, send);
   if (answer.ok) return { ok: true, alert: answer.body as unknown as RideAlert };
-  return { ok: false, message: typeof answer.body.error === "string" ? answer.body.error : "The alert was not sent; try again." };
+  return { ok: false, message: typeof answer.body.error === "string" ? answer.body.error : t("The alert was not sent; try again.") };
 }
 
 export async function clearAlert(origin: string, ride: string, token: string, id: string, send: Fetch = fetch): Promise<boolean> {

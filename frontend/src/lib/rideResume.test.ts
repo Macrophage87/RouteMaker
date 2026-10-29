@@ -58,10 +58,10 @@ test("a ride left too long ago, or unreadable, is not offered and is forgotten; 
 
 test("the page keeps the ride at Start, forgets it at End, and asks at load; nothing goes to the server", () => {
   const app = src("../App.tsx");
-  assert.match(app, /if \(kept\) keepLeftRide\(/);
+  assert.match(app, /if \(kept\) \{[\s\S]{0,300}?keepLeftRide\(\{ route, points: leg\.points, loop: leg\.loop, preset: leg\.preset, dials: rideDialsNow, fixed, destination \}/);
   assert.match(app, /const endRide = useCallback\(\(after: EndedPlan, stats: RideStats\) => \{\s*const \{ start, mode: endedIn \} = rideNow\.current;\s*forgetLeftRide\(\);/);
   assert.match(app, /const \[leftAsk, setLeftAsk\] = useState\(\(\) => leftRide\(VIA_MARKS, Date\.now\(\)\)\);/);
-  assert.match(app, /<ResumeRideDialog open=\{leftAsk !== null && !riding && !roaming\}/);
+  assert.match(app, /<ResumeRideDialog\s+open=\{leftAsk !== null && !riding && !roaming\}/);
   assert.doesNotMatch(src("./rideResume.ts"), /fetch\(|origin/);
 });
 
@@ -74,4 +74,19 @@ test("each new route of the ride is kept in its place, and the question holds th
   assert.match(app, /const kept = !rest && !leg\.trip;/);
   assert.match(app, /keepLeft=\{rideStart\.kept === true\}/);
   assert.match(app, /if \(ended\.start\.kept\) keepLeftRide\(ended\.start, VIA_MARKS, Date\.now\(\)\);/);
+});
+
+test("the ride's destination is kept with it, through its re-routes, to name it in the question (the UI review, 2026-10-28)", () => {
+  const store = memory();
+  const marks = new ViaMarks();
+  const points: LonLat[] = [[-77, 38.9], [-77.01, 38.9]];
+  keepLeftRide({ route, points, loop: false, preset: "standard", dials, fixed: false, destination: "Union Station" }, marks, 0, store);
+  assert.equal(leftRide(marks, 0, store)?.destination, "Union Station");
+  // A re-route from where the rider is, to the same end, keeps the name; one to elsewhere, or a loop, has none.
+  keepLeftRide({ route, points: [[-77.002, 38.9], [-77.01, 38.9]], loop: false, preset: "standard", dials, fixed: false }, marks, 0, store);
+  assert.equal(leftRide(marks, 0, store)?.destination, "Union Station");
+  keepLeftRide({ route, points: [[-77.002, 38.9], [-77.02, 38.9]], loop: false, preset: "standard", dials, fixed: false }, marks, 0, store);
+  assert.equal(leftRide(marks, 0, store)?.destination, undefined);
+  keepLeftRide({ route, points, loop: true, preset: "standard", dials, fixed: false, destination: "Home" }, marks, 0, store);
+  assert.equal(leftRide(marks, 0, store)?.destination, undefined);
 });

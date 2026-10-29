@@ -2,27 +2,45 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { DOCS_LINKS, INFO_POINTS, MAP_INFO, helpExpanded, wrapCredits } from "./mapInfo.ts";
-import { searchLede } from "./sidebar.ts";
+import { DOCS_LINKS, helpExpanded, infoLines, mapInfo, wrapCredits } from "./mapInfo.ts";
 
 const src = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
-test("the info panel leads with Plan's how-to, the accessibility mode pointer included", () => {
-  assert.ok(MAP_INFO.startsWith(`<p><strong>Plan a route.</strong> ${searchLede(false)}</p>`));
-  assert.match(MAP_INFO, /turn on accessibility mode \(the first button on the page, or in Settings\)/);
+test("Help on a phone: where to start and what the colors mean, in a finger's words (P8)", () => {
+  const phone = mapInfo(true);
+  assert.ok(phone.startsWith("<p><strong>Where to?</strong> Search or tap a chip, then Start ride.</p>"));
+  assert.match(phone, /<p>Line colors: green calm <span aria-hidden="true">→<\/span><span class="visually-hidden">to<\/span> red busy\.<\/p>/);
+  assert.doesNotMatch(phone, /click/i, "no click on a phone");
+  // The accessibility mode pointer is kept for a screen reader, not shown.
+  assert.match(phone, /<p class="visually-hidden">For keyboard or screen reader use, turn on accessibility mode \(the first button on the page, or in Settings\)\.<\/p>/);
+  // The long text is in the documentation now, not here.
+  assert.doesNotMatch(phone, /LTS 1|planned-work permits|<li>/);
 });
 
-test("then the documentation's short version, one line each, and a link to each page", () => {
-  assert.equal(INFO_POINTS.length, 4);
-  for (const point of INFO_POINTS) assert.ok(MAP_INFO.includes(`<li>${point}</li>`), point);
+test("a computer keeps its click, and shows the accessibility mode pointer", () => {
+  const desk = mapInfo(false);
+  assert.ok(desk.startsWith(`<p><strong>Where to?</strong> ${infoLines(false).start}</p>`));
+  assert.match(infoLines(false).start, /click the map/);
+  assert.match(desk, /<p>For keyboard or screen reader use, turn on accessibility mode \(the first button on the page, or in Settings\)\.<\/p>/);
+  for (const html of [desk, mapInfo(true)]) {
+    // Two sentences at most in any paragraph shown (P8: no walls of text).
+    for (const para of html.split("</p>")) assert.ok((para.replace(/<[^>]+>/g, "").match(/[.?!](\s|$)/g) ?? []).length <= 2, para);
+  }
+});
+
+test("then a link to each documentation page", () => {
   assert.deepEqual(DOCS_LINKS.map((l) => l.href), ["/about/using.html", "/about/how-it-works.html", "/about/ride-types.html", "/about/stress.html", "/about/routing.html", "/about/architecture.html"]);
-  for (const link of DOCS_LINKS) assert.ok(MAP_INFO.includes(`<a href="${link.href}">${link.text}</a>`), link.href);
+  for (const touch of [true, false]) {
+    for (const link of DOCS_LINKS) assert.ok(mapInfo(touch).includes(`<a href="${link.href}">${link.text}</a>`), link.href);
+  }
 });
 
 test("plain markup: no handlers, no styles", () => {
-  const tags = [...MAP_INFO.matchAll(/<([a-z]+)/g)].map((m) => m[1]);
-  assert.ok(tags.every((t) => ["p", "strong", "ul", "li", "a"].includes(t)), tags.join());
-  assert.doesNotMatch(MAP_INFO, /\son[a-z]+=|style=/);
+  for (const html of [mapInfo(true), mapInfo(false)]) {
+    const tags = [...html.matchAll(/<([a-z]+)/g)].map((m) => m[1]);
+    assert.ok(tags.every((t) => ["p", "strong", "span", "a"].includes(t)), tags.join());
+    assert.doesNotMatch(html, /\son[a-z]+=|style=/);
+  }
 });
 
 // A stand-in for the few DOM parts wrapCredits uses: elements with a class, children and a parent.
@@ -68,11 +86,11 @@ test("the info panel goes over MapLibre's credits in one body, once, and the cre
   const inner = new Node("maplibregl-ctrl-attrib-inner");
   control.append(button, inner);
   const doc = { createElement: () => new Node() as unknown as HTMLDivElement };
-  assert.equal(wrapCredits(control as unknown as HTMLElement, doc), true);
+  assert.equal(wrapCredits(control as unknown as HTMLElement, doc, true), true);
   assert.deepEqual(control.children.map((c) => c.className), ["maplibregl-ctrl-attrib-button", "map-info-body"]);
   const body = control.children[1];
   assert.deepEqual(body.children.map((c) => c.className), ["map-info", "maplibregl-ctrl-attrib-inner"]);
-  assert.equal(body.children[0].innerHTML, MAP_INFO);
+  assert.equal(body.children[0].innerHTML, mapInfo(true), "a phone's words where the pointer is a finger");
   assert.equal(body.children[1], inner, "the same element MapLibre writes the credits into");
   assert.equal((button as unknown as { textContent: string }).textContent, "Help", "the i says what it opens");
   assert.equal(button.attributes["aria-expanded"], "false", "collapsed at the start, and says so");

@@ -1167,6 +1167,18 @@ check("but a closure reason still closes it",
 check("and without the mark bicycle=yes is ridden",
   M.remap_way({ highway = "footway", bicycle = "yes" }, { is_trail_class = true }).bicycle == nil)
 
+-- A short dirt link the trail rules closed, reopened walked (routemaker.short_links, the
+-- owner, 2026-10-28: "Ride paved/unknown, walk dirt").
+check("a short dirt link is walked",
+  M.remap_way({ highway = "path", bicycle = "yes", surface = "unpaved" },
+    { link_walk = true, is_trail_class = true }).bicycle == "dismount")
+check("but a closure reason still closes it",
+  M.remap_way({ highway = "path", surface = "dirt" },
+    { link_walk = true, is_trail_class = true, no_bicycle = "natural_surface" }).bicycle == "no")
+check("and bicycle=no is never walked open",
+  M.remap_way({ highway = "path", bicycle = "no", surface = "dirt" },
+    { link_walk = true, is_trail_class = true }).bicycle ~= "dismount")
+
 -- A paved way is not a mountain-bike trail: its rating, which Valhalla's parser
 -- prices as dirt, comes off (the Rock Creek Trail in Montgomery County, way
 -- 851669430 among others, as the 2026-10-03 extract tags it).

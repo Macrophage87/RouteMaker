@@ -21,6 +21,7 @@ import {
   planHeading,
   totals,
 } from "./lib/bikeshare.ts";
+import { t } from "./lib/i18n.ts";
 
 /** A sentence of the API's words, its e-bike page address as a real link. */
 function Words({ text }: { text: string }) {
@@ -83,13 +84,12 @@ export function BikeshareSummary({
             strokeDasharray={dash}
           />
         </svg>{" "}
-        On the map, a dotted line is a walk. A solid line is the ride between the docks, coloured by traffic stress,
-        and the wheel markers numbered 1 and 2 are where you take and return the bike.
+        {t("On the map, a dotted line is a walk. A solid line is the ride between the docks, coloured by traffic stress, and the wheel markers numbered 1 and 2 are where you take and return the bike.")}
       </p>
       <p className="hint bikeshare-availability">{availabilityLine(plan)}</p>
       {choice ? (
         <fieldset className="bikeshare-endings">
-          <legend>Where the ride ends</legend>
+          <legend>{t("Where the ride ends")}</legend>
           {offered.map((ending) => (
             <label key={ending.kind} className="toggle">
               <input
@@ -116,7 +116,7 @@ export function BikeshareSummary({
       {plan.pricing_note && <p className="hint bikeshare-pricing">{plan.pricing_note}</p>}
       {plan.notes.length > 0 && (
         <>
-          <h4>Notes on this plan</h4>
+          <h4>{t("Notes on this plan")}</h4>
           <ul className="bikeshare-notes">
             {plan.notes.map((note, index) => (
               <li key={index}>
