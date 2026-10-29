@@ -10,7 +10,7 @@
  */
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
 import type { Verbosity } from "./navigate.ts";
-import { englishOf, language, speechLang, t, voiceTags } from "./i18n.ts";
+import { englishOf, language, serverWordsIn, speechLang, t, voiceTags } from "./i18n.ts";
 import { isIos } from "./installOffer.ts";
 import { withoutMenuMarks } from "./menuNames.ts";
 
@@ -152,6 +152,8 @@ export interface Said {
 export class Announcer {
   private lastPolite: number | null = null;
   private waiting: Said | null = null;
+  /** The waiting sentence built afresh as it is said (say's `again`). */
+  private again: (() => string | null) | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private readonly deliver: (said: Said) => void;
   private readonly now: () => number;
@@ -170,7 +172,11 @@ export class Announcer {
     this.unschedule = unschedule;
   }
 
-  say(text: string, urgent: boolean, after = false): void {
+  /**
+   * `again`, where given, builds a polite sentence afresh when one held back is said at last (review RIDE-4: a
+   * distance as it is then, not as it was up to POLITE_GAP_MS before); null from it drops the sentence.
+   */
+  say(text: string, urgent: boolean, after = false, again?: () => string | null): void {
     if (!text) return;
     if (urgent) {
       this.drop();
@@ -185,14 +191,18 @@ export class Announcer {
       return;
     }
     this.waiting = { text, urgent: false };
+    this.again = again ?? null;
     if (this.timer === null) {
       this.timer = this.schedule(() => {
         this.timer = null;
         const next = this.waiting;
+        const fresh = this.again;
         this.waiting = null;
-        if (next) {
+        this.again = null;
+        const text = next && fresh ? fresh() : next?.text;
+        if (next && text) {
           this.lastPolite = this.now();
-          this.deliver(next);
+          this.deliver({ ...next, text });
         }
       }, POLITE_GAP_MS - (now - this.lastPolite));
     }
@@ -222,6 +232,7 @@ export class Announcer {
   /** Drop what is waiting (End ride, a re-plan). */
   drop(): void {
     this.waiting = null;
+    this.again = null;
     if (this.timer !== null) this.unschedule(this.timer);
     this.timer = null;
   }
@@ -335,12 +346,20 @@ export class Voice {
     // language and the voice speaks the English, rather than an English voice spelling out words it cannot read. A
     // sentence with no English in the catalog (one of the server's) is left to the screen.
     const voice = language() === "en" ? undefined : voiceFor(this.env.voices?.() ?? []);
+    const ascii = /^[\x20-\x7e]*$/.test(text);
     // Text already in English (the server's sentences) is spoken as it came.
-    const english = voice === null ? (englishOf(text) ?? (/^[\x20-\x7e]*$/.test(text) ? text : null)) : null;
+    let english = voice === null ? (englishOf(text) ?? (ascii ? text : null)) : null;
+    // A language the server does not word the route in: its hazard, work-zone and signal sentences come in English,
+    // so they are said by the English voice, not read out by the language's own (the 2026-10-29 review, P2). Words
+    // that read back to a catalog phrase stay with the language's voice.
+    if (voice !== null && ascii && !serverWordsIn()) {
+      const back = englishOf(text);
+      if (back === null || back === text) english = text;
+    }
     if (voice === null && english === null) return this.next();
     const utterance = this.env.utterance(english ?? text);
     utterance.lang = english !== null ? speechLang("en") : speechLang();
-    if (voice) utterance.voice = voice;
+    if (voice && english === null) utterance.voice = voice;
     utterance.onend = () => this.next();
     this.env.synth?.speak(utterance);
   }

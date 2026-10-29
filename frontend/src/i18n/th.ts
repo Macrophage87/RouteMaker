@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "ทางอ้อม: {summary}",
   "Already done?": "ไปมาแล้ว?",
   "Ticked stops are skipped. Untick one to go back to it.": "จุดแวะที่ติ๊กจะถูกข้าม เอาติ๊กออกเพื่อกลับไป",
+  "Riding on with the stops as marked.": "ปั่นต่อโดยใช้จุดแวะตามที่ทำเครื่องหมายไว้",
   "Resume your ride?": "ปั่นต่อไหม?",
   "Resume your ride to {place}?": "ปั่นต่อไป {place} ไหม?",
   "The app closed during a ride. Resume picks it up from where you are.": "แอปปิดระหว่างการปั่น ปั่นต่อจะเริ่มจากที่คุณอยู่",
@@ -1379,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "อาหารหรือชื่อร้าน",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "จาก OpenStreetMap: ตรวจเวลาเปิดก่อน ไม่มีคะแนน",
   "Find the nearest water, restroom or Metro": "หาน้ำ ห้องน้ำ หรือ Metro ที่ใกล้ที่สุด",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "แต่ละที่มีชื่อแสดงบนแผนที่: แตะชื่อหรือกดปุ่มตัวอักษร (A สำหรับที่แรก) เพื่อดูว่ามีอะไรที่นั่น ปั่นไปที่นี่คำนวณเส้นทางจากที่ที่คุณค้นหาไปที่นั่นแทนแผนของคุณ เลิกทำจะคืนแผน เพิ่มเป็นจุดแวะใส่น้ำหรือห้องน้ำลงแผน สถานี Metro เป็นของ Metrorail เมื่อแสดงเส้นทาง เส้นทางใช้ลิฟต์ของสถานี",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "แตะชื่อสถานที่บนแผนที่เพื่อดูว่ามีอะไรที่นั่น ปั่นไปที่นี่คำนวณเส้นทางไปที่นั่นแทนแผนของคุณ เลิกทำจะคืนแผน",
   "Nearest {noun}": "{noun}ที่ใกล้ที่สุด",
   " of {place}": " สำหรับ {place}",
   "From:": "จาก:",
@@ -1548,6 +1549,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "ใช้แป้นพิมพ์ ปุ่มลูกศรเลื่อนแผนที่ {addPoint}",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z เลิกทำการเปลี่ยนแปลงล่าสุด และ Ctrl+Shift+Z ทำซ้ำ",
   "With two or more stops, Best order puts them in the order that rides best.": "เมื่อมีจุดแวะตั้งแต่สองจุด ลำดับที่ดีที่สุดจะเรียงตามลำดับที่ปั่นได้ดีที่สุด",
+  "Saved {date}": "บันทึกเมื่อ {date}",
+  "As of {time}.": "ณ เวลา {time}",
+  "Counts may be out of date: as of {time}.": "จำนวนอาจไม่เป็นปัจจุบัน: ณ เวลา {time}",
 
   // ---- Go and Ride's messages, transit panel and route errors (the 2026-10-29 review) ----
   ", +{minutes} min": ", +{minutes} นาที",

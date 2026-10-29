@@ -53,8 +53,6 @@ import {
   SHARE_STOPPED_SAID,
   alertRefusal,
   alertText,
-  broadcastRideId,
-  roamRideId,
   awayWords,
   clearAlert,
   consentFor,
@@ -74,7 +72,7 @@ import {
   newAlerts,
   project,
   readRide,
-  rideId,
+  rideOf,
   ridersSaid,
   riderTotal,
   roleKey,
@@ -93,6 +91,7 @@ import {
   type RideRole,
   type ShownDot,
 } from "./lib/rideGroup.ts";
+import type { RideSeal } from "./lib/rideSeal.ts";
 import { browserRideEnv, watchRide } from "./lib/rideWatch.ts";
 import { LISTENING_SAID, SPEAK_LABEL, listenOnce, speechSupported } from "./lib/speechInput.ts";
 
@@ -109,7 +108,12 @@ export interface RideGroupProps {
    * A broadcast ride: the shared line's id, the link's leader key, and whether this page is the sharer's (who leads).
    * Null: a Mass Ride or Group Ride by its points, as before.
    */
-  broadcast?: { id: string; lead: string | null; leading: boolean; roam?: boolean } | null;
+  broadcast?: { id: string; lead: string | null; leading: boolean; roam?: boolean; secret?: string | null } | null;
+  /**
+   * A Group Ride link's secret (lib/rideSeal.ts), when the link carries one: the ride is sealed end to end, named by the
+   * secret rather than its points. A broadcast's is its own (`broadcast.secret`).
+   */
+  secret?: string | null;
   /** This page is riding (Ride mode follows the rider, so the map does not follow the leader). */
   riding?: boolean;
   /** The route this page is riding now, re-routes included (the leader sends it to those following). */
@@ -137,13 +141,16 @@ function visible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
 }
 
-export function RideGroup({ type, points, line, getMap, here, broadcast = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0, controls = riding, leads = true, askHeld = false }: RideGroupProps) {
+export function RideGroup({ type, points, line, getMap, here, broadcast = null, secret = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0, controls = riding, leads = true, askHeld = false }: RideGroupProps) {
   const leading = broadcast?.leading === true;
   const isBroadcast = broadcast !== null;
   // The leader key a follower reads with (the leader needs none: it does not see its own dot).
   const followKey = broadcast && !leading ? broadcast.lead : null;
   const origin = window.location.origin;
   const [ride, setRide] = useState<string | null>(null);
+  // Sealed end to end (lib/rideSeal.ts): the key every read and send goes through; null for a ride in plain numbers.
+  const [seal, setSeal] = useState<RideSeal | null>(null);
+  const rideSecret = broadcast ? (broadcast.secret ?? null) : secret;
   const [consent, setConsent] = useState<RideConsent | null>(null);
   const [asked, setAsked] = useState(false);
   // The role picked in the question, before it is answered: Participant, so one tap answers.
@@ -205,12 +212,17 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   const say = (text: string) => setSaid((s) => ({ text, count: s.count + 1 }));
 
   // The ride, and the rider's answer for it (asked as the ride starts: Start ride or Broadcast, the 2026-10-28 audit P6).
-  const key = broadcast ? `${broadcast.roam ? "roam" : "broadcast"}|${broadcast.id}` : points.map((p) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`).join(";");
+  const key = rideSecret
+    ? `sealed|${rideSecret}`
+    : broadcast
+      ? `${broadcast.roam ? "roam" : "broadcast"}|${broadcast.id}`
+      : points.map((p) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`).join(";");
   useEffect(() => {
     let live = true;
-    void (broadcast ? (broadcast.roam ? roamRideId(broadcast.id) : broadcastRideId(broadcast.id)) : rideId(type, points)).then((id) => {
+    void rideOf({ type, points, broadcast, secret: rideSecret }).then(({ id, seal: sealed }) => {
       if (!live) return;
       setRide(id);
+      setSeal(sealed);
       // The sharer leads: sharing is what they pressed (App.tsx keeps the answer as it shares; kept here too).
       let kept = consentFor(id);
       // A "No" the leader gave later, with Show me as a dot, stands (review: never switched back on by a remount).
@@ -260,7 +272,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   // Seeing the others: every 15 s while the page is in front.
   const poll = useCallback(async () => {
     if (!ride || !token || !visible()) return;
-    const got = await readRide(origin, ride, token, fetch, followKey);
+    const got = await readRide(origin, ride, token, fetch, followKey, seal);
     if (!got) return;
     setRead(got);
     setPolledAt(Date.now());
@@ -275,7 +287,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
         // No vibration here.
       }
     }
-  }, [ride, token, origin, line, followKey]);
+  }, [ride, token, origin, line, followKey, seal]);
   useEffect(() => {
     if (!ride || !token) return;
     void poll();
@@ -329,10 +341,10 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     }
     if (near && t - share.current.lastPost >= POST_EVERY_MS) {
       share.current.lastPost = t;
-      void sendPosition(origin, ride, token, fix, consent.role);
+      void sendPosition(origin, ride, token, fix, consent.role, fetch, seal);
     }
     if (leading && near) setOwnTrail((t) => extendTrail(t, fix));
-  }, [fix, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading]);
+  }, [fix, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal]);
 
   // The leader's route and ridden path, sent again about every 2 minutes and whenever the route changes (Stephen
   // 2026-10-22: "Rebroadcast the route every 2 min or when it changes, not keeping it on the server"), while riding.
@@ -345,12 +357,12 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     if (!pathDue(pathSent.current.at, pathSent.current.routeKey, routeNowKey, t)) return;
     pathSent.current = { at: t, routeKey: routeNowKey };
     // Not taken: tried again in about PATH_MIN_GAP_MS, before the server's 2 minutes run out.
-    void sendPath(origin, ride, token, routeNow, ownTrail).then((ok) => {
+    void sendPath(origin, ride, token, routeNow, ownTrail, fetch, seal).then((ok) => {
       if (!ok && pathSent.current.at === t) pathSent.current = { at: t - PATH_EVERY_MS + PATH_MIN_GAP_MS, routeKey: "" };
     });
     // routeNow is named by its key; ownTrail goes with the next send as it is then.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leading, riding, shareOn, front, ride, token, origin, routeNowKey, now]);
+  }, [leading, riding, shareOn, front, ride, token, origin, routeNowKey, now, seal]);
 
   const me = fix ?? here;
   const meRef = useRef<LonLat | null>(null);
@@ -453,7 +465,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
       say(t("Your location is needed to send an alert; allow it and try again."));
       return;
     }
-    const outcome = await sendAlert(origin, ride, token, type, kind.id, otherText, at);
+    const outcome = await sendAlert(origin, ride, token, type, kind.id, otherText, at, fetch, seal);
     setConfirming(null);
     setOtherOpen(false);
     if (!outcome.ok) {

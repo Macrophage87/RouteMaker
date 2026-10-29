@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "Đường vòng: {summary}",
   "Already done?": "Đã xong chưa?",
   "Ticked stops are skipped. Untick one to go back to it.": "Điểm dừng đã đánh dấu sẽ được bỏ qua. Bỏ đánh dấu để quay lại điểm đó.",
+  "Riding on with the stops as marked.": "Tiếp tục với các điểm dừng như đã đánh dấu.",
   "Resume your ride?": "Tiếp tục chuyến đi?",
   "Resume your ride to {place}?": "Tiếp tục chuyến đi đến {place}?",
   "The app closed during a ride. Resume picks it up from where you are.": "Ứng dụng đã đóng giữa chuyến đi. Tiếp tục sẽ đi tiếp từ chỗ bạn đứng.",
@@ -1379,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "Món ăn hoặc tên",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "Từ OpenStreetMap: kiểm tra giờ mở cửa trước khi tin. Không có đánh giá.",
   "Find the nearest water, restroom or Metro": "Tìm nước, nhà vệ sinh hoặc ga Metro gần nhất",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "Mỗi chỗ được ghi tên trên bản đồ: chạm vào tên hoặc phím chữ của nó (A cho chỗ đầu tiên) để xem ở đó có gì. Đạp đến đây tính tuyến từ chỗ bạn tìm đến đó, thay cho kế hoạch của bạn; Hoàn tác đưa kế hoạch trở lại. Thêm làm điểm dừng đưa nước hoặc nhà vệ sinh vào kế hoạch. Ga Metro là của Metrorail; khi tuyến được liệt kê, tuyến dùng thang máy của ga.",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "Chạm vào tên một chỗ trên bản đồ để xem ở đó có gì. Đạp đến đây tính tuyến đến đó, thay cho kế hoạch của bạn; Hoàn tác đưa kế hoạch trở lại.",
   "Nearest {noun}": "{noun} gần nhất",
   " of {place}": " cho {place}",
   "From:": "Từ:",
@@ -1548,6 +1549,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "Với bàn phím, phím mũi tên di chuyển bản đồ; {addPoint}.",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z hoàn tác thay đổi gần nhất và Ctrl+Shift+Z làm lại.",
   "With two or more stops, Best order puts them in the order that rides best.": "Với hai điểm dừng trở lên, Thứ tự tốt nhất xếp chúng theo thứ tự đạp hợp lý nhất.",
+  "Saved {date}": "Đã lưu {date}",
+  "As of {time}.": "Tính đến {time}.",
+  "Counts may be out of date: as of {time}.": "Số liệu có thể chưa cập nhật: tính đến {time}.",
 
   // ---- Go and Ride's messages, transit panel and route errors (the 2026-10-29 review) ----
   ", +{minutes} min": ", +{minutes} phút",

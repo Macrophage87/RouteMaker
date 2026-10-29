@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "Sapma: {summary}",
   "Already done?": "Zaten yapıldı mı?",
   "Ticked stops are skipped. Untick one to go back to it.": "İşaretli duraklar atlanır. Geri dönmek için birinin işaretini kaldırın.",
+  "Riding on with the stops as marked.": "Duraklar işaretlendiği gibi devam ediliyor.",
   "Resume your ride?": "Sürüşünüze devam edilsin mi?",
   "Resume your ride to {place}?": "{place} sürüşünüze devam edilsin mi?",
   "The app closed during a ride. Resume picks it up from where you are.": "Uygulama sürüş sırasında kapandı. Sürdür, bulunduğunuz yerden devam eder.",
@@ -1379,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "Yemek veya ad",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "OpenStreetMap'ten: güvenmeden önce saatleri kontrol edin. Puan yok.",
   "Find the nearest water, restroom or Metro": "En yakın su, tuvalet veya Metro'yu bul",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "Her yer haritada adıyla gösterilir: adına veya harfinin tuşuna (ilki için A) dokunmak orada ne olduğunu gösterir. Buraya sür, aradığınız yerden o yere, planınızın yerine bir rota hesaplar; Geri al planınızı geri getirir. Durak olarak ekle suyu veya tuvaleti planınıza koyar. Metro istasyonları Metrorail'indir; rotalar listelendiğinde istasyonun asansörünü kullanır.",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "Orada ne olduğunu görmek için haritada bir yerin adına dokunun. Buraya sür, planınızın yerine oraya bir rota hesaplar; Geri al planınızı geri getirir.",
   "Nearest {noun}": "En yakın {noun}",
   " of {place}": " {place} için",
   "From:": "Nereden:",
@@ -1548,6 +1549,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "Klavyeyle ok tuşları haritayı kaydırır; {addPoint}.",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z son değişikliği geri alır, Ctrl+Shift+Z yineler.",
   "With two or more stops, Best order puts them in the order that rides best.": "İki veya daha fazla durakla En iyi sıra onları en iyi sürülen sıraya koyar.",
+  "Saved {date}": "Kaydedildi: {date}",
+  "As of {time}.": "Saat {time} itibarıyla.",
+  "Counts may be out of date: as of {time}.": "Sayılar güncel olmayabilir: saat {time} itibarıyla.",
 
   // ---- Go and Ride's messages, transit panel and route errors (the 2026-10-29 review) ----
   ", +{minutes} min": ", +{minutes} dk",

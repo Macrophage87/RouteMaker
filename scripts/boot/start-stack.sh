@@ -22,6 +22,8 @@
 #      that is the bind-race signature: stop postgis, ABORT LOUDLY, start nothing
 #      else;
 #   4. start caddy, the four routers, api, worker, rebuild, photon, in that order,
+#      then each trail router (valhalla-offroad, valhalla-mtb) whose promoted tiles
+#      ($DATA_ROOT/tiles/<variant>/current) are on this host,
 #      each with `up -d --no-deps` (plus --force-recreate when COLD);
 #   5. smoke-check route, geocode and a stress tile: all must return 200, and the
 #      tile must not be empty.
@@ -97,9 +99,15 @@ START_ORDER=(caddy valhalla-standard valhalla-no-trail valhalla-ebike valhalla-w
   api worker rebuild photon)
 # Services that hold database connections; stopped first on the COLD path.
 DB_CLIENTS=(api worker rebuild)
+# The trail routers (Gravel and Mountain Goat's, Mountain Bike's; compose profile `offroad`,
+# which naming them turns on): started after START_ORDER, each only once its promoted build
+# is on this host. Their binds are not in REQUIRED_DIRS, since a host without trail tiles
+# must still boot; without them those rides are planned on the standard graph.
+TRAIL_ROUTERS=(valhalla-offroad valhalla-mtb)
 # Services whose (re)create is slow (large tile sets, a big index): each of
 # their mutating compose calls gets SLOW_COMPOSE_TIMEOUT_S instead.
-SLOW_SERVICES=(valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend photon)
+SLOW_SERVICES=(valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend photon
+  valhalla-offroad valhalla-mtb)
 
 DRY_RUN=0
 FORCE_ALL=0
@@ -429,13 +437,28 @@ if [ "$MODE" = COLD ]; then
   fi
 fi
 
-for svc in "${START_ORDER[@]}"; do
+start_one() { # service
   if [ "$MODE" = COLD ] || [ "$FORCE_ALL" = 1 ]; then
-    DC_T=$(compose_limit "$svc") mutate up -d --no-deps --force-recreate "$svc"
-  elif is_running "$svc"; then
-    log "$svc already running; left alone"
+    DC_T=$(compose_limit "$1") mutate up -d --no-deps --force-recreate "$1"
+  elif is_running "$1"; then
+    log "$1 already running; left alone"
   else
-    DC_T=$(compose_limit "$svc") mutate up -d --no-deps "$svc"
+    DC_T=$(compose_limit "$1") mutate up -d --no-deps "$1"
+  fi
+}
+for svc in "${START_ORDER[@]}"; do
+  start_one "$svc"
+done
+# A trail router whose tiles are missing or unreadable is skipped with a line in the log, never
+# a failed boot: its rides fall back to the standard graph.
+for svc in "${TRAIL_ROUTERS[@]}"; do
+  variant=${svc#valhalla-}
+  if [ ! -L "$DATA_ROOT/tiles/$variant/current" ]; then
+    log "$svc: no promoted tiles at $DATA_ROOT/tiles/$variant/current; not started"
+  elif [ ! -r "$DATA_ROOT/tiles/$variant/current/" ]; then
+    log "WARN: $svc: $DATA_ROOT/tiles/$variant/current does not lead to a readable build; not started"
+  else
+    start_one "$svc"
   fi
 done
 

@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "绕行：{summary}",
   "Already done?": "已经去过？",
   "Ticked stops are skipped. Untick one to go back to it.": "已勾选的途经点会被跳过。取消勾选即可回去。",
+  "Riding on with the stops as marked.": "按已勾选的途经点继续骑行。",
   "Resume your ride?": "继续骑行？",
   "Resume your ride to {place}?": "继续去{place}的骑行？",
   "The app closed during a ride. Resume picks it up from where you are.": "骑行途中应用关闭了。继续会从你所在位置接着骑。",
@@ -1379,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "菜品或店名",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "来自 OpenStreetMap：请先确认营业时间。没有评分。",
   "Find the nearest water, restroom or Metro": "找最近的饮水、厕所或 Metro",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "每个地点在地图上都标有名称：点它的名称或按它的字母键（第一个是 A），会显示那里有什么。“骑到这里”从你搜索的地方算到那里的路线，替换你的计划；“撤销”恢复计划。“添加为途经点”把饮水或厕所加入计划。Metro 站是 Metrorail 的；列出路线时会使用车站电梯。",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "点地图上地点的名称，会显示那里有什么。“骑到这里”算出到那里的路线，替换你的计划；“撤销”恢复计划。",
   "Nearest {noun}": "最近的{noun}",
   " of {place}": "（{place}）",
   "From:": "从：",
@@ -1548,6 +1549,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "用键盘时方向键移动地图；{addPoint}。",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z 撤销上一步，Ctrl+Shift+Z 重做。",
   "With two or more stops, Best order puts them in the order that rides best.": "有两个或以上途经点时，“最佳顺序”会按最顺的骑行顺序排列。",
+  "Saved {date}": "{date} 保存",
+  "As of {time}.": "截至 {time}。",
+  "Counts may be out of date: as of {time}.": "数量可能不是最新的：截至 {time}。",
 
   // ---- Go and Ride's messages, transit panel and route errors (the 2026-10-29 review) ----
   ", +{minutes} min": "，+{minutes}分钟",

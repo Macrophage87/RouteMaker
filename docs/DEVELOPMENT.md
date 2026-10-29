@@ -235,6 +235,15 @@ caused by a Django the stack does not run.
 In that case `tests/test_native_environment.py` also fails, naming each pin the
 interpreter does not have; it does not run first, so read its failure before
 the others. CI installs the same two files.
+pytest, pytest-django and ruff are pinned exactly in `requirements-dev.txt`
+(no image carries them), so a new ruff rule or format style arrives as a
+Dependabot pull request, not as a red main. CI lints and format-checks
+`src tests scripts mcp`, runs `makemigrations --check` (a model change with no
+migration fails it) and the phone app's Node tests (`mobile/`, which pin parts of
+the front end), and cancels a pull request's older run when a newer push lands.
+`tests/test_mutants_apply.py` runs every `scripts/mutants_*.py --check` (a text
+match, no tests): a change that rewrites a line a mutant targets fails there, and
+re-anchors or drops that mutant in the same change.
 
 Then the database and the suite, from the checkout:
 
@@ -298,6 +307,12 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /
   container of the check `com.docker.compose.project=isect`, and remove them after.
 - `frontend/.npmrc` turns off npm's update notifier, which otherwise asks the
   registry for npm's latest version on every run in a fresh container.
+- `npm run lint` is ESLint with the React hooks rules alone (`eslint.config.js`):
+  a hook called conditionally, and an effect, memo or callback whose dependency
+  list leaves out a value it reads. Both are warnings while the existing reports
+  are worked through, so CI lists them and fails on neither. It parses with
+  Babel's parser, since typescript-eslint does not support the TypeScript the
+  project builds with.
 - `npm run build` typechecks (`tsc --noEmit`) and then builds `dist/`, which
   is not committed; `npm run typecheck` is the first half alone.
 - `npm run dev` serves the UI with hot reload and proxies `/api`, `/tiles` and
@@ -697,7 +712,12 @@ alone. Shape comes first and colour second:
   street and station names win; MapView sets 20 px and the shortened field
   (`rideTrailLabelField`) in a ride and puts the climbs under it. The base
   map's own path names (z15+, kind `path`) take the same purple
-  (`roadLabelPaint`).
+  (`roadLabelPaint`). In a ride the map's smaller labels go up by the same
+  share, 20 / 15 (`lib/rideLabelSize.ts`): steep grades and trail mile
+  markers 13 to 17 px, mountain-bike trail names 15 to 20 px, climb numbers
+  9-11 to 12-15 px; each goes back to its own size after. On the cue card a
+  long instruction shrinks to no less than 20 px, and the line under it and
+  the weak-GPS turn list are 20 px or more.
 - **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
   ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
   tier's own dash and width, so the stress still reads without colour
@@ -2006,6 +2026,15 @@ unless named; PLAN.md quotes the owner's words):
   mixed traffic (item 84), and not from three through lanes a direction, where
   Montgomery's Appendix D keeps LTS 4. Decent: buffered, or not tagged narrower
   than 5 ft; an untagged width counts.
+- *A painted lane on a wide street* (review RL-3; the owner, 2026-10-16) is
+  LTS 3 at least: on a two-way street with 2 or more through lanes each way,
+  and on a one-way street with 3 or more (review 2026-10-29), the streets that
+  keep the LTS 3 floor in mixed traffic. A rideable shoulder takes the same
+  floor (`stress.multilane_floor`).
+- *A posted speed* is `maxspeed`, a `;` list read as its highest part; where a
+  way has no `maxspeed`, the higher of `maxspeed:forward` and
+  `maxspeed:backward`, as the router reads them (`tags.posted_maxspeed`; review
+  2026-10-29). The expressway rule and the curated speeds read it the same way.
 - *Missing speed limits* take the state's default (items 108, 112): the
   District 20 mph on every class, 15 in alleys; Maryland and Virginia urban
   areas 25 residential, 30 tertiary and unclassified, 35 secondary and primary;
@@ -4526,12 +4555,14 @@ near the map centre (`/api/geocode?...&lat=..&lon=..`). What keeps it out of the
   Caddy keeps no access log).
 - **Beta nginx** (deploy/beta/nginx-routemaker.conf.template): the access log is
   `rmbeta_noquery`, the path only, with no query string, Referer, client address or tester name.
-  `/api/reverse` and `/api/geocode` log errors at `crit` only, to their own file (a review addition,
+  Every `/api/` path logs errors at `crit` only, to their own file (a review addition,
   not asked for by name: owner to confirm, and the same for dropping the client address and tester name), because an
-  upstream error line (a 502 while the api restarts, a 504) records the whole request. Every other
+  upstream error line (a 502 while the api restarts, a 504) records the whole request; the whole prefix
+  is covered (v0.15.0), so a new endpoint with a place in it needs no template change. Every other
   path's upstream errors still reach the host's error log; none of them has a location in a query.
-  tests/test_beta_overlay.py pins the format, both servers' access log, and that every
-  `/api/...?` path in the front end is one of the two.
+  The 311 log's website lookup (`/api/report311/where`) takes its point in a POST body, so no
+  request line carries it. tests/test_beta_overlay.py pins the format, both servers' access log,
+  and that every `/api/...?` path in the front end, digits and underscores included, is covered.
 - **Tile paths** (`/tiles/stress/{z}/{x}/{y}.pbf`) are logged by nginx and gunicorn and show the
   area viewed, to about a mile [2 km] at zoom 14. That is true of any map pan and is
   not a position fix.
@@ -4540,7 +4571,9 @@ Open: Photon's own request logging is unverified (`docker logs photon` after one
 stack; a log4j override if queries show). Whether Valhalla logs a request on an error path (no
 suitable edges, say) is unverified, and so is the app's own log of Valhalla's refusal text (src/core/routing.py logs it
 when a router refuses a route request or a trace_attributes call); `"do_not_track": true` in the route request would be belt and
-braces. A `Permissions-Policy: geolocation=(self)` header at the edge is a separate deploy change.
+braces. The app's pages carry `Permissions-Policy: geolocation=(self), camera=(), microphone=(),
+payment=(), usb=()` (the Caddyfile, and the beta's nginx template the same,
+tests/test_beta_overlay.py), so only the site itself, never a frame, can ask for location.
 
 ## Contraflow on the no-trail graph
 
@@ -4884,6 +4917,22 @@ Ride the junction model reads those streets two-way: it can only overstate a
 junction there. 181 ways (13.8 mi) on the 09-25 extract, 21 of them (0.9 mi) LTS 3
 or worse.
 
+### What a screen reader hears from the planner (the 2026-10-29 a11y review)
+
+- **Units in words.** The route's sentence (`announceRoute`), the re-plan toast's spoken half
+  (`replannedSaid`) and the elevation sliders' value text (`readingAt`, `elevationReading`) use
+  `lib/spokenFigures.ts`: "12.3 miles (19.8 kilometers), 1 hour 5 minutes moving time, climb 340 feet
+  (104 meters)", the same figures as on screen. "mi", "h" and a bare "m" were read as letters or as minutes.
+- **An opened GPX file is said once.** While GpxPanel fits the plan to the file's track (`onFitting`),
+  App holds the route's sentence back, and the round-by-round progress line sits outside the panel's
+  status region. Only the fitted route is said.
+- **A route error is read once.** The error box is a group named by its title, and its words are the
+  alert. App focuses the box (from Go's Where to?, or back from a sheet), and the focus reads only
+  the title, not the whole error a second time.
+- **The Go/Plan switch keeps the focus.** Each mode has its own copy of the switch, so a press removes
+  the button that had the focus. The new mode's switch then focuses its pressed button (`ModeSwitch`,
+  only within a second of the press and only where it shows).
+
 ### The junction list and the description, for a screen reader
 
 - Every junction row, group and member is named by one `aria-label`
@@ -5011,9 +5060,11 @@ puts it, at most two presses away.
   map center" (at once), is the destination, routed as a picked one is and said "Destination set: …" (named by `goPlaceName`, the same on the sheet: its coordinates until
   its place name comes; a press on a water, climb or federal-land card's feature, or one that only closes such a card,
   is the card's alone, `featureCardPress`; `goTapSetsEnd`, the owner 2026-10-12; it replaces #95's tap-as-start). Picking a
-  destination with a start plans at once (a location start after its look-up, at most 3 s); Go then shows the routes to choose from open, and the ride types under the
+  destination with a start plans at once (a location start after its look-up, at most 3 s); Go then shows the ride types under the
   route, so Bikeshare is one press, and only a Bikeshare route names its pick-up and drop-off
-  stations (the route's Bikeshare plan).
+  stations (the route's Bikeshare plan). The routes to choose from start closed behind the "N routes" chip, and the
+  station options and the Bikeshare and transit folds come after the time, distance and stress bar (Bikeshare's fold
+  closed), so the half sheet fits one phone screen (the 2026-10-29 review).
 - **Few presses** (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"): from
   opening Go, a typed destination is three taps to riding: Where to?, the place picked, then
   Start ride (the review of #95 counted them); with the Home chip it is two: Home, then Start ride
@@ -5028,8 +5079,10 @@ puts it, at most two presses away.
   pin, aria-hidden, with the letter heard first) and on the map (MapView `lettered`: 44 px
   buttons, a pin with the letter, named "B: Drinking water, Garfield Park, 0.3 mi (0.5 km)"),
   while that list's sheet is open; the map fits them in, above a phone's sheet. A marker's tap
-  or the letter's key (not while typing, on the map or in a dialog), and a row of Go's Repair or
-  Sights, opens the place's **stop card**; the rows' own Ride here and Add as stop act at once.
+  or the letter's key (not while typing, on the map or in a dialog), and a row's Show on map in Go's Repair or
+  Places to see, opens the place's **stop card**; the rows' own Ride here and Add as stop act at once. In Go,
+  every place list's row (Eat, Water, Repair, Places to see) has Ride here first and filled, the one main action,
+  with its other buttons plain after it (the 2026-10-29 review).
   Food's numbered circle layer is gone; its list and markers use the letters. The Choose a
   station lists (Plan) are not lettered.
 - **Stop cards** (Stephen 2026-10-19: "when pressing on food or other stops provide information
@@ -6484,6 +6537,17 @@ overall (6.62 mi of rows, K St to Dupont Circle posted 20 and 25 mph is LTS 3) a
 of R St; with the corridor about 67% and 99%. Tests: `tests/test_lts_sentinels.py`, and the
 end-to-end pass, refuse and missing-street cases in `tests/test_pipeline_end_to_end.py`.
 
+**The rating rules (review 2026-10-29).** `pipeline.run.assert_rating_rules`, also at
+VALIDATE_SEGMENTS, reads three rules back from the staging table with one query each
+(`pipeline.lts_sentinels`): no `road_urban IS FALSE` road row at tier 1 without an override,
+less those whose tags exempt them from the rural floor (`stress.rural_floor_applies`: closed
+to cars, a separated track); no row a Montgomery 5 set (the agency rule or a `moco-lts5-*`
+row) at anything but 4 with `stress_half`, less a way our own formula puts at Avoid (which
+keeps Avoid, `agency_lts.apply` and `overrides.stress_adjustment`); no row with an MDOT SHA 5 in `stress_ratings`
+still drawn with no `bike_access_reason`, less the ways `prohibited_closures` listed as
+left open. Not run on a resumed attempt, which has no ways. Tests: the rating-rule cases in
+`tests/test_lts_sentinels.py`.
+
 ## Arterial calibration and the override re-match (2026-10-04)
 
 OWNER-DECISIONS 282, 284-286, 294-296 and 303. Three pieces, each in its own
@@ -7236,7 +7300,7 @@ keys (I, the arrows, + and -) work in both modes.
   (`routemaker.accessibility`, `routemaker.ride.bigText`; the mode's is `routemaker.accessMode`), so a rider who
   had only High contrast on keeps it. None of the three syncs with the account (lib/accountSettings.ts). While the
   mode is on, `access-mode` on the page's root brings Go's small text to 15 px (place and ride-type chips, the
-  stress line, Settings' headings, the map's scale).
+  stress line, Settings' headings, the map's scale), and the charts' key, tiers, source lines and data tables (12 px).
 - **Help that changes with the mode.** Off: the search lede and the lone-start hint (shown
   outside More tips) say "For keyboard or screen reader use, turn on accessibility mode
   (the first button on the page, or in More tips)."; in More tips, the keyboard hints and
@@ -8402,6 +8466,41 @@ none sent is a participant) and answers each dot's `role`. Still no name, token 
 - Tests: `tests/test_ride_presence.py` (validation, default, the role on the dot) and
   `frontend/src/lib/rideGroup.test.ts` (kept role, the body, the images and layers, colours, names, the key,
   the page's wiring).
+
+## End-to-end encrypted rides (Stephen, 2026-10-29)
+
+A tester asked how location sharing is secured; Stephen asked whether end-to-end encryption was worth it, then
+"yes", for broadcasts and Group Ride. Share ride, Broadcast, Roam's Broadcast and a Group Ride link shared from
+the app now carry a ride secret, `k=` (32 random bytes, base64url), in the link's fragment, which no browser
+sends to a server. `frontend/src/lib/rideSeal.ts` derives two things from it with HKDF-SHA-256: the ride id the
+server knows the ride by (64 hex, one way) and an AES-GCM 256 key the server never sees. Each phone seals its
+dot (`{lon, lat, role}`), alert (`{kind, text, lon, lat}`) and the leader's path (`{route, trail}`) with a fresh
+12-byte nonce, the kind and ride id bound in as associated data, and posts `{token, sealed}` to the same
+`/api/rides/...` endpoints. `core.ride_presence` keeps a sealed value as opaque text with the same 2 minutes,
+per-token limits, leader mark and sweep; it answers `{sealed, age_s}` (dots, with `leader`), `{id, sealed,
+age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
+
+- **What moved to the phone.** The server cannot read a sealed value, so the phone rounds to the 20 m grid
+  (`gridded`, the same arithmetic as `rounded`), sends nothing outside the map's area (`sendable`,
+  `sendableLine`), checks an alert's kind and Other's words, and merges alerts as it reads them (`mergeAlerts`,
+  the server's rule: same kind and words, within 200 m, within 2 minutes of the latest report; one's own stay
+  apart so Clear clears only them). A value that does not open with the ride's key is left out.
+- **Padding.** Each value is padded with spaces to a whole number of 128 (dot), 512 (alert) or 4096 (path) bytes
+  before sealing (`padded`), so the sealed text's length gives away no role, alert kind or length of words. The
+  server still sees the ride id, tokens, addresses, timing and counts, and it marks the leader's dot and each
+  dot's age; those are not sealed.
+- **Which rides.** A broadcast's secret is made with the leader's token (`App.tsx` `Lead`) and goes in every link
+  for that ride, including those followers pass on. A Group Ride plan's secret (`groupSecret`) is made when a
+  page starts afresh or the rider picks Group Ride, kept in the address bar (on Group Ride only) and in Copy link
+  and Share. A link without one (a Mass Ride, an older link, a ride post the server wrote) is the ride by its
+  points in plain numbers, as before, so everyone who opens the same link is still on one ride. A sealed ride's
+  page leaves out anything that does not open, plain dots included: for a short while after a release, a page
+  still on the older build joins a link's ride by its points and does not meet those on the sealed ride. A Group
+  Ride's secret comes from the plan as opened (`OPENED_HASH`), so one kept over a sign-in keeps it; a saved or
+  kept route the rider opens gets a new one, a link pasted in its own or none.
+- Tests: `frontend/src/lib/rideSeal.test.ts` (secret, derivation, sealing, the grid against the server's,
+  merging, a sealed ride end to end through `rideGroup.ts`, the page's wiring) and `tests/test_ride_presence.py`
+  (sealed dots, alerts and paths kept, limited, marked and dropped as plain ones are).
 
 ## Phone app (v0.8.0)
 

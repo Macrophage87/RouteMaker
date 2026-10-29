@@ -13,7 +13,7 @@
  * past where it began, so GPS drift at a stop does not start a new allowance.
  */
 import type { ToGo } from "./navigate.ts";
-import { t } from "./i18n.ts";
+import { clockLocale, t } from "./i18n.ts";
 import type { When } from "./dials.ts";
 import { whenAt } from "./rideTime.ts";
 
@@ -102,8 +102,8 @@ export function paceFactor(track: PaceTrack): number {
   return 1 + (ratio - 1) * weight;
 }
 
-/** The clock time `seconds` from `nowMs`, rounded to the minute, in the device's own 12 or 24 hour clock: "6:42 AM", "18:42". */
-export function arrivalClock(nowMs: number, seconds: number, locale?: string): string {
+/** The clock time `seconds` from `nowMs`, rounded to the minute, in the device's own 12 or 24 hour clock where it reads the app's language (lib/i18n.ts clockLocale): "6:42 AM", "18:42". */
+export function arrivalClock(nowMs: number, seconds: number, locale: string | undefined = clockLocale()): string {
   const at = new Date(Math.round((nowMs + seconds * 1000) / 60_000) * 60_000);
   return new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(at);
 }

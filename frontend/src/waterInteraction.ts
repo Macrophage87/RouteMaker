@@ -88,7 +88,11 @@ export function attachWaterInteraction(map: MapLibreMap, options: WaterInteracti
     const actions = action ? stopCardElement({ title: name, lines: [] }, action, close).querySelector(".place-card-actions") : null;
     if (actions) content.append(actions);
     content.addEventListener("keydown", (key) => {
-      if (key.key === "Escape") close();
+      // Its own Escape is not also a sheet's, and the focus goes back to the map it opened from (the 2026-10-29 a11y review).
+      if (key.key !== "Escape") return;
+      key.preventDefault();
+      close();
+      map.getCanvas().focus();
     });
     popup = new maplibregl.Popup({ className: "rail-popup water-card", offset: 10, focusAfterOpen: false, closeOnClick: true })
       .setLngLat([p.lon, p.lat])
@@ -96,7 +100,8 @@ export function attachWaterInteraction(map: MapLibreMap, options: WaterInteracti
       .addTo(map);
   };
   const onKey = (event: KeyboardEvent) => {
-    if (event.key === "Escape") close();
+    // An Escape a sheet or dialog has handled already is not also the card's (as MapView's, review a11y-10).
+    if (event.key === "Escape" && !event.defaultPrevented) close();
   };
   map.on("click", onClick);
   window.addEventListener("keydown", onKey);

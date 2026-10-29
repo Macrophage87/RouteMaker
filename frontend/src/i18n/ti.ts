@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "ዙረት፦ {summary}",
   "Already done?": "ድሮ ተገይሩ?",
   "Ticked stops are skipped. Untick one to go back to it.": "ምልክት ዝተገብሮም መዕረፍታት ይሕለፉ። ናብ ሓደ ንምምላስ ምልክት ኣልግስ።",
+  "Riding on with the stops as marked.": "ምስ ከም ዝተመልከቱ ደው መበሊ ቦታታት ጉዕዞ ይቕጽል።",
   "Resume your ride?": "ጉዕዞኻ ክትቅጽል?",
   "Resume your ride to {place}?": "ናብ {place} ጉዕዞኻ ክትቅጽል?",
   "The app closed during a ride. Resume picks it up from where you are.": "ኣፕ ኣብ ማእከል ጉዕዞ ተዓጽዩ። ምቕጻል ካብ ዘለኻዮ ይጅምር።",
@@ -1379,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "መግቢ ወይ ስም",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "ካብ OpenStreetMap፦ ቅድሚ ምእማንካ ሰዓታት ስራሕ ኣረጋግጽ። ደረጃ የለን።",
   "Find the nearest water, restroom or Metro": "ዝቐረበ ማይ፣ ሽቓቕ ወይ Metro ድለ",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "ነፍሲ ወከፍ ቦታ ኣብ ካርታ ብስሙ ይርአ፦ ስሙ ወይ መፍትሕ ፊደሉ (ንቀዳማይ A) ምጥዋቕ ኣብኡ ዘሎ የርኢ። ናብዚ ጉዓዝ ካብቲ ዝደለኻሉ ቦታ ናብኡ መንገዲ ይሕሰብ፣ ኣብ ክንዲ መደብካ፤ ምልሰት መደብካ ይመልስ። ከም መዕረፊ ወስኽ ማይ ወይ ሽቓቕ ናብ መደብካ የእቱ። መደበራት Metro ናይ Metrorail እዮም፤ መንገድታት ምስ ዝዝርዘሩ መንገዲ ሊፍት መደበር ይጥቀም።",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "ኣብ ካርታ ስም ቦታ ጠውቕ እሞ ኣብኡ ዘሎ ርአ። ናብዚ ጉዓዝ ናብኡ መንገዲ ይሕሰብ፣ ኣብ ክንዲ መደብካ፤ ምልሰት መደብካ ይመልስ።",
   "Nearest {noun}": "ዝቐረበ {noun}",
   " of {place}": " ን{place}",
   "From:": "ካብ፦",
@@ -1548,6 +1549,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "ብመጽሓፍ መፍትሕ፣ መፍትሕታት ምልክት ካርታ የንቀሳቕሱ፤ {addPoint}።",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z ናይ መወዳእታ ለውጢ ይመልስ፣ Ctrl+Shift+Z ድማ ደጊሙ ይገብሮ።",
   "With two or more stops, Best order puts them in the order that rides best.": "ክልተ ወይ ልዕሊኡ መዕረፍታት ምስ ዝህልዉ፣ ዝበለጸ ቅደም ሰዓብ ብዝበለጸ ስርዓት ምጉዓዝ የቐምጦም።",
+  "Saved {date}": "ዝተዓቀበ {date}",
+  "As of {time}.": "ክሳብ {time}።",
+  "Counts may be out of date: as of {time}.": "ቁጽርታት ዘይተሓደሱ ክኾኑ ይኽእሉ፦ ክሳብ {time}።",
 
   // ---- Go and Ride's messages, transit panel and route errors (the 2026-10-29 review) ----
   ", +{minutes} min": "፣ +{minutes} ደቒቕ",

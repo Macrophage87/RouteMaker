@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "ማለፊያ፦ {summary}",
   "Already done?": "አስቀድሞ ተደርጓል?",
   "Ticked stops are skipped. Untick one to go back to it.": "ምልክት የተደረገባቸው ማቆሚያዎች ይዘለላሉ። ወደ አንዱ ለመመለስ ምልክቱን ያንሱ።",
+  "Riding on with the stops as marked.": "ማቆሚያዎቹ እንደተመረጡ ጉዞው ይቀጥላል።",
   "Resume your ride?": "ጉዞዎን ይቀጥሉ?",
   "Resume your ride to {place}?": "ወደ {place} ጉዞዎን ይቀጥሉ?",
   "The app closed during a ride. Resume picks it up from where you are.": "መተግበሪያው በጉዞ ላይ ተዘግቷል። መቀጠል ካሉበት ያነሳዋል።",
@@ -1379,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "ምግብ ወይም ስም",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "ከOpenStreetMap፦ ከማመንዎ በፊት የሥራ ሰዓቱን ያረጋግጡ። ደረጃ የለም።",
   "Find the nearest water, restroom or Metro": "የቅርብ ውሃ፣ መጸዳጃ ወይም Metro ፈልግ",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "እያንዳንዱ ቦታ በካርታው ላይ በስሙ ይታያል፦ ስሙን ወይም የፊደሉን ቁልፍ (ለመጀመሪያው A) መንካት እዚያ ያለውን ያሳያል። ወደዚህ ንዱ ከፈለጉበት ቦታ እስከዚያ መንገድ ያሰላል፣ በዕቅድዎ ምትክ፤ ቀልብስ ዕቅድዎን ይመልሳል። እንደ ማቆሚያ አክል ውሃውን ወይም መጸዳጃውን በዕቅድዎ ውስጥ ያስገባል። የMetro ጣቢያዎች የMetrorail ናቸው፤ መንገዶች ሲዘረዘሩ መንገዱ የጣቢያውን ሊፍት ይጠቀማል።",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "በካርታው ላይ የቦታውን ስም መንካት እዚያ ያለውን ያሳያል። ወደዚህ ንዱ እስከዚያ መንገድ ያሰላል፣ በዕቅድዎ ምትክ፤ ቀልብስ ዕቅድዎን ይመልሳል።",
   "Nearest {noun}": "የቅርብ {noun}",
   " of {place}": " ለ{place}",
   "From:": "ከ፦",
@@ -1548,6 +1549,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "በቁልፍ ሰሌዳ፣ የቀስት ቁልፎች ካርታውን ያንቀሳቅሳሉ፤ {addPoint}።",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z የመጨረሻውን ለውጥ ይቀለብሳል፣ Ctrl+Shift+Z ደግሞ ይመልሰዋል።",
   "With two or more stops, Best order puts them in the order that rides best.": "ሁለት ወይም ከዚያ በላይ ማቆሚያዎች ሲኖሩ ምርጥ ቅደም ተከተል ለመንዳት በሚሻለው ቅደም ተከተል ያስቀምጣቸዋል።",
+  "Saved {date}": "የተቀመጠ {date}",
+  "As of {time}.": "እስከ {time} ድረስ።",
+  "Counts may be out of date: as of {time}.": "ቁጥሮቹ ያልተዘመኑ ሊሆኑ ይችላሉ፦ እስከ {time} ድረስ።",
 
   // ---- Go and Ride's messages, transit panel and route errors (the 2026-10-29 review) ----
   ", +{minutes} min": "፣ +{minutes} ደቂቃ",

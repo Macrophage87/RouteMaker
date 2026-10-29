@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "寄り道：{summary}",
   "Already done?": "もう済みましたか？",
   "Ticked stops are skipped. Untick one to go back to it.": "チェックした立ち寄り先はスキップされます。戻るにはチェックを外してください。",
+  "Riding on with the stops as marked.": "チェックしたままの立ち寄り先で走行を続けます。",
   "Resume your ride?": "ライドを再開しますか？",
   "Resume your ride to {place}?": "{place}へのライドを再開しますか？",
   "The app closed during a ride. Resume picks it up from where you are.": "ライド中にアプリが閉じました。再開すると現在地から続けます。",
@@ -1379,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "料理名や店名",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "OpenStreetMap より：営業時間は事前に確認を。評価はありません。",
   "Find the nearest water, restroom or Metro": "最寄りの水・トイレ・Metro を探す",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "各場所は地図に名前で表示されます：名前をタップするか文字キー（最初はA）を押すと、そこに何があるかが表示されます。「ここへ走る」は検索した地点からそこまでのルートを、今の計画の代わりに計算します。「取り消す」で計画を戻せます。「立ち寄り先に追加」は水やトイレを計画に入れます。Metro の駅は Metrorail のものです。ルート一覧では駅のエレベーターを使います。",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "地図で場所の名前をタップすると、そこに何があるかが表示されます。「ここへ走る」はそこまでのルートを今の計画の代わりに計算します。「取り消す」で計画を戻せます。",
   "Nearest {noun}": "最寄りの{noun}",
   " of {place}": "（{place}）",
   "From:": "出発：",
@@ -1548,6 +1549,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "キーボードでは矢印キーで地図を移動。{addPoint}。",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z で直前の変更を取り消し、Ctrl+Shift+Z でやり直し。",
   "With two or more stops, Best order puts them in the order that rides best.": "立ち寄り先が 2 か所以上あれば、「最適な順番」で走りやすい順に並べます。",
+  "Saved {date}": "{date}に保存",
+  "As of {time}.": "{time}時点。",
+  "Counts may be out of date: as of {time}.": "台数が最新でない可能性があります：{time}時点。",
 
   // ---- Go and Ride's messages, transit panel and route errors (the 2026-10-29 review) ----
   ", +{minutes} min": "、+{minutes}分",

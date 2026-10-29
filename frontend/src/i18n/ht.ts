@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "Detou: {summary}",
   "Already done?": "Deja fèt?",
   "Ticked stops are skipped. Untick one to go back to it.": "Arè ki make yo sote. Retire mak la sou youn pou retounen ladan l.",
+  "Riding on with the stops as marked.": "N ap kontinye ak arè yo jan yo make a.",
   "Resume your ride?": "Kontinye woulib ou?",
   "Resume your ride to {place}?": "Kontinye woulib ou pou {place}?",
   "The app closed during a ride. Resume picks it up from where you are.": "Aplikasyon an te fèmen pandan yon woulib. Kontinye pran l kote ou ye a.",
@@ -1379,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "Manje oswa non",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "Soti nan OpenStreetMap: tcheke lè yo louvri anvan ou konte sou yo. Pa gen nòt.",
   "Find the nearest water, restroom or Metro": "Jwenn dlo, twalèt oswa Metro ki pi pre a",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "Chak kote parèt ak non li sou kat la: peze non li, oswa touch lèt li (A pou premye a), montre sa ki la. Ale la a bisiklèt kalkile yon wout depi kote ou te chèche a rive nan kote sa a, nan plas plan ou a; Defèt remete plan ou. Ajoute kòm arè mete dlo oswa yon twalèt nan plan ou a. Estasyon Metro yo se pa Metrorail; wout yo sèvi ak asansè estasyon an lè gen youn.",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "Peze non yon kote sou kat la pou wè sa ki la. Ale la a bisiklèt kalkile yon wout rive la, nan plas plan ou a; Defèt remete plan ou.",
   "Nearest {noun}": "{noun} ki pi pre a",
   " of {place}": " nan {place}",
   "From:": "Depi:",
@@ -1548,6 +1549,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "Sou klavye a, flèch yo deplase kat la; {addPoint}.",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z defèt dènye chanjman an epi Ctrl+Shift+Z refè l.",
   "With two or more stops, Best order puts them in the order that rides best.": "Avèk de arè oswa plis, Pi bon lòd mete yo nan lòd ki pi bon pou woule a.",
+  "Saved {date}": "Anrejistre {date}",
+  "As of {time}.": "Depi {time}.",
+  "Counts may be out of date: as of {time}.": "Kantite yo ka pa ajou: depi {time}.",
 
   // ---- Go and Ride's messages, transit panel and route errors (the 2026-10-29 review) ----
   ", +{minutes} min": ", +{minutes} min",

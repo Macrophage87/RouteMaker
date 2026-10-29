@@ -6,6 +6,8 @@
 #   PLAY_SERVICE_ACCOUNT_JSON  the service account's JSON key (repository secret)
 #   PLAY_PACKAGE               the application id (ROUTEMAKER_APP_ID)
 #   PLAY_NOTES                 release notes, en-US, 500 characters at most
+#   PLAY_RELEASE_STATUS        optional: completed (the default), or draft, which Play requires until
+#                              the app's first review has passed (mobile/README.md)
 #   $1                         the .aab file
 #
 # Promoting a build from internal testing to the closed test or production stays a click in Play
@@ -22,6 +24,11 @@ call() {
 
 aab="$1"
 : "${PLAY_SERVICE_ACCOUNT_JSON:?}" "${PLAY_PACKAGE:?}" "${PLAY_NOTES:?}"
+status="${PLAY_RELEASE_STATUS:-completed}"
+case "$status" in
+  completed | draft) ;;
+  *) echo "::error::PLAY_RELEASE_STATUS must be completed or draft." >&2; exit 1 ;;
+esac
 # PLAY_API_ROOT only for the script's own test (mobile/test/play-upload.test.mjs).
 root="${PLAY_API_ROOT:-https://androidpublisher.googleapis.com}"
 api="$root/androidpublisher/v3/applications/$PLAY_PACKAGE"
@@ -51,10 +58,10 @@ auth=(-H "Authorization: Bearer $token")
 edit="$(call -X POST "${auth[@]}" "$api/edits" | jq -r .id)"
 code="$(call -X POST "${auth[@]}" -H "Content-Type: application/octet-stream" \
   --data-binary "@$aab" "$upload/edits/$edit/bundles?uploadType=media" | jq -r .versionCode)"
-jq -n --arg code "$code" --arg notes "$PLAY_NOTES" \
-  '{track: "internal", releases: [{versionCodes: [$code], status: "completed",
+jq -n --arg code "$code" --arg notes "$PLAY_NOTES" --arg status "$status" \
+  '{track: "internal", releases: [{versionCodes: [$code], status: $status,
     releaseNotes: [{language: "en-US", text: $notes}]}]}' |
   call -X PUT "${auth[@]}" -H "Content-Type: application/json" --data-binary @- \
     "$api/edits/$edit/tracks/internal" >/dev/null
 call -X POST "${auth[@]}" "$api/edits/$edit:commit" >/dev/null
-echo "Uploaded version code $code to internal testing."
+echo "Uploaded version code $code to internal testing ($status)."

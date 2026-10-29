@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "들르기: {summary}",
   "Already done?": "이미 다녀왔나요?",
   "Ticked stops are skipped. Untick one to go back to it.": "체크한 경유지는 건너뜁니다. 다시 가려면 체크를 해제하세요.",
+  "Riding on with the stops as marked.": "표시된 정류지 그대로 계속 달립니다.",
   "Resume your ride?": "라이드를 재개할까요?",
   "Resume your ride to {place}?": "{place}까지 라이드를 재개할까요?",
   "The app closed during a ride. Resume picks it up from where you are.": "라이드 중에 앱이 닫혔습니다. 재개하면 현재 위치에서 이어집니다.",
@@ -1379,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "음식이나 이름",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "OpenStreetMap 기준: 영업시간은 미리 확인하세요. 평점은 없습니다.",
   "Find the nearest water, restroom or Metro": "가장 가까운 물, 화장실, Metro 찾기",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "각 장소는 지도에 이름으로 표시됩니다: 이름이나 글자 키(첫 번째는 A)를 누르면 그곳에 무엇이 있는지 보여 줍니다. 여기로 가기는 검색한 곳에서 그곳까지 경로를 계획 대신 계산하며, 실행 취소로 계획을 되돌립니다. 경유지로 추가는 물이나 화장실을 계획에 넣습니다. Metro 역은 Metrorail 역이며, 경로가 나오면 역 엘리베이터를 씁니다.",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "지도에서 장소 이름을 누르면 그곳에 무엇이 있는지 보여 줍니다. 여기로 가기는 그곳까지 경로를 계획 대신 계산하며, 실행 취소로 계획을 되돌립니다.",
   "Nearest {noun}": "가장 가까운 {noun}",
   " of {place}": " ({place})",
   "From:": "출발:",
@@ -1548,6 +1549,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "키보드에서는 화살표 키로 지도를 옮깁니다. {addPoint}.",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z로 마지막 변경을 취소하고 Ctrl+Shift+Z로 다시 합니다.",
   "With two or more stops, Best order puts them in the order that rides best.": "경유지가 둘 이상이면 최적 순서가 달리기 좋은 순서로 정렬합니다.",
+  "Saved {date}": "{date}에 저장됨",
+  "As of {time}.": "{time} 기준.",
+  "Counts may be out of date: as of {time}.": "수량이 최신이 아닐 수 있습니다: {time} 기준.",
 
   // ---- Go and Ride's messages, transit panel and route errors (the 2026-10-29 review) ----
   ", +{minutes} min": ", +{minutes}분",

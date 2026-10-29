@@ -24,12 +24,13 @@ const store = (name: string, lon: number, lat: number, id: number, value = "supe
 });
 
 test("the chip's words, and the same words typed, are a grocery search; food words are not", () => {
-  for (const q of ["grocery", "Groceries", " grocery store ", "Supermarket", "supermercado"]) assert.ok(isGroceryQuery(q), q);
+  for (const q of ["grocery", "Groceries", " grocery store ", "Supermarket", "supermercado", "grocery near me", "supermercados cerca de mí"]) assert.ok(isGroceryQuery(q), q);
   for (const q of ["", "crab", "farm stands", "market", "grocery outlet bakery"]) assert.ok(!isGroceryQuery(q), q);
-  // One of the server's tag searches (src/core/geocode.py TAG_SEARCHES): shop=supermarket near the bias point.
+  // One of the server's tag searches (src/core/geocode.py TAG_SEARCHES): supermarkets and small grocers near the bias point.
   assert.equal(GROCERY_QUERY, "supermarket");
   const tags = readFileSync(new URL("../../../src/core/geocode.py", import.meta.url), "utf8");
-  assert.match(tags, /phrase: "shop:supermarket"[\s\S]*?"supermarket",/);
+  assert.match(tags, /GROCERY_TAGS = \("shop:supermarket", "shop:grocery", "shop:greengrocer"\)/);
+  assert.match(tags, /phrase: GROCERY_TAGS[\s\S]*?"supermarket",/);
 });
 
 test("the stores are listed nearest the start first, as food rows with their distance and no hours", () => {
@@ -97,6 +98,8 @@ test("the list is the Food sheet's own, under Grocery stores, with Ride here in 
   assert.match(html, /<strong><span class="visually-hidden">A\. <\/span>Whole Foods Market<\/strong> Grocery store\. 0\.2 mi \(0\.4 km\) from you in a straight line\./);
   assert.match(html, /aria-label="Ride here: Whole Foods Market"/);
   assert.match(html, /aria-label="Show on map: Whole Foods Market, marker A"/);
+  // Go's one main action: Ride here first and filled, Show on map plain after it (the 2026-10-29 review).
+  assert.match(html, /<span class="actions"><button type="button" class="ride-here" aria-label="Ride here: Whole Foods Market">Ride here<\/button><button type="button" class="secondary" aria-label="Show on map/);
   assert.doesNotMatch(html, /Show \d+ more/);
   // Without a heading the list is still Places to eat.
   assert.match(renderToStaticMarkup(createElement(FoodFinder, { ...props, heading: undefined })), />Places to eat<\/h3>/);

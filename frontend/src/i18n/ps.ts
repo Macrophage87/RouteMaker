@@ -432,6 +432,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Detour: {summary}": "انحراف: {summary}",
   "Already done?": "مخکې شوی؟",
   "Ticked stops are skipped. Untick one to go back to it.": "نښه شوي تمځایونه پرېښودل کېږي. د بېرته تګ لپاره نښه لرې کړئ.",
+  "Riding on with the stops as marked.": "سفر د نښه شویو تمځایونو سره دوام لري.",
   "Resume your ride?": "سفر ته دوام ورکوئ؟",
   "Resume your ride to {place}?": "{place} ته سفر ته دوام ورکوئ؟",
   "The app closed during a ride. Resume picks it up from where you are.": "اپ د سفر په منځ کې وتړل شو. دوام له هغه ځایه پیلېږي چې یاست.",
@@ -1379,7 +1380,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "خواړه یا نوم",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "له OpenStreetMap: مخکې له باور د کار ساعتونه وګورئ. درجې نشته.",
   "Find the nearest water, restroom or Metro": "نږدې اوبه، تشناب یا Metro ومومئ",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "هر ځای په نقشه کې په خپل نوم ښودل کیږي: د هغه پر نوم یا د تورو کیلي (لومړي لپاره A) کېکاږل ښيي چې هلته څه دي. دلته وچلوئ له هغه ځایه چې لټون مو کړی هلته لار محاسبه کوي، ستاسو د پلان پر ځای؛ بېرته ستاسو پلان راګرځوي. د تمځای په توګه زیاتول اوبه یا تشناب ستاسو پلان ته ورزیاتوي. د Metro سټېشنونه د Metrorail دي؛ کله چې لارې لیست شي، لار د سټېشن لفټ کاروي.",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "په نقشه کې د یوه ځای پر نوم کېکاږئ چې وګورئ هلته څه دي. دلته وچلوئ هلته لار محاسبه کوي، ستاسو د پلان پر ځای؛ بېرته ستاسو پلان راګرځوي.",
   "Nearest {noun}": "نږدې {noun}",
   " of {place}": " د {place} لپاره",
   "From:": "له:",
@@ -1548,6 +1549,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "د کیبورډ سره، د غشي کیلي نقشه خوځوي؛ {addPoint}.",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z وروستی بدلون بېرته کوي او Ctrl+Shift+Z یې بیا کوي.",
   "With two or more stops, Best order puts them in the order that rides best.": "د دوو یا ډېرو تمځایونو سره، غوره ترتیب یې د چلولو په غوره ترتیب کې ږدي.",
+  "Saved {date}": "خوندي شوی {date}",
+  "As of {time}.": "تر {time} پورې.",
+  "Counts may be out of date: as of {time}.": "شمېرې ښايي تازه نه وي: تر {time} پورې.",
 
   // ---- Go and Ride's messages, transit panel and route errors (the 2026-10-29 review) ----
   ", +{minutes} min": "، +{minutes} دقیقې",
