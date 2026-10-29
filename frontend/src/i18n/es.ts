@@ -2224,7 +2224,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Start: {note}": "Inicio: {note}",
   "Stop {number}: {note}": "Parada {number}: {note}",
   "End: {note}": "Llegada: {note}",
-  "Mass Ride stays in DC": "Mass Ride se queda en DC",
-  "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.": "Mass Ride está calibrado con datos de calles que solo existen dentro de DC, así que su inicio, paradas y llegada deben estar en el Distrito. Para ir fuera de DC, cambie a Group Ride sin senderos.",
-  "Switch to Group Ride, trails off": "Cambiar a Group Ride sin senderos",
+  "Mass Ride stays in DC": "Paseo masivo se queda en DC",
+  "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.": "Paseo masivo está calibrado con datos de calles que solo existen dentro de DC, así que su inicio, paradas y llegada deben estar en el Distrito. Para ir fuera de DC, cambie a Paseo en grupo sin senderos.",
+  "Switch to Group Ride, trails off": "Cambiar a Paseo en grupo sin senderos",
 };

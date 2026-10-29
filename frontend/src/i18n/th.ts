@@ -1763,6 +1763,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Stop {number}: {note}": "จุดแวะ {number}: {note}",
   "End: {note}": "จุดหมาย: {note}",
   "Mass Ride stays in DC": "Mass Ride อยู่ใน DC เท่านั้น",
-  "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.": "Mass Ride ปรับเทียบจากข้อมูลถนนที่มีเฉพาะใน DC ดังนั้นจุดเริ่ม จุดแวะ และจุดหมายต้องอยู่ในเขต DC หากจะปั่นออกนอก DC ให้เปลี่ยนเป็น Group Ride แบบไม่ใช้เส้นทางเทรล",
-  "Switch to Group Ride, trails off": "เปลี่ยนเป็น Group Ride ไม่ใช้เทรล",
+  "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.": "Mass Ride ปรับเทียบจากข้อมูลถนนที่มีเฉพาะใน DC ดังนั้นจุดเริ่ม จุดแวะ และจุดหมายต้องอยู่ในเขต DC หากจะปั่นออกนอก DC ให้เปลี่ยนเป็น ปั่นเป็นกลุ่ม แบบไม่ใช้เส้นทางเทรล",
+  "Switch to Group Ride, trails off": "เปลี่ยนเป็น ปั่นเป็นกลุ่ม ไม่ใช้เทรล",
 };

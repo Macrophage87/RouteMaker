@@ -1265,8 +1265,7 @@ function wait(retryAfterS: number | undefined, fallback: string): string {
 
 /** core.routing.mass_ride_outside_dc's refusal: a Mass Ride's start, stop or end outside DC. */
 export const MASS_OUTSIDE_DC_CODE = "mass_ride_outside_dc";
-export const MASS_OUTSIDE_DC_SAID =
-  "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.";
+export const MASS_OUTSIDE_DC_SAID = "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.";
 /** Its one action (RouteErrorBox). */
 export const GROUP_RIDE_NO_TRAILS = "Switch to Group Ride, trails off";
 

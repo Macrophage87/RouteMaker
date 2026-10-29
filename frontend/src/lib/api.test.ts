@@ -455,3 +455,12 @@ test("a Mass Ride refused outside DC says why and offers no Try again", () => {
   // Without the code, a 400 is still a plain bad input.
   assert.equal(describeError(400, { error: "Mass Ride is calibrated to road data that is only available inside DC." }, null).kind, "bad-input");
 });
+
+test("the refusal's one button switches to Group Ride with trails off, and only on that refusal", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const panel = await readFile(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
+  const app = await readFile(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(panel, /error\.kind === "mass-outside-dc" && \(\s*<button type="button" onClick=\{onGroupRide\}>\s*\{t\(GROUP_RIDE_NO_TRAILS\)\}/);
+  assert.match(panel, /onGroupRide=\{go\.onGroupRideNoTrails\}/);
+  assert.match(app, /onGroupRideNoTrails: \(\) => \{\s*choosePreset\("group-ride", \{ \.\.\.chooseRideType\("group-ride", null, dials\), trailsOff: true \}\);/);
+});

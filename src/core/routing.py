@@ -2196,8 +2196,8 @@ def _named(stretches: list[tuple], leg_runs: list, pieces: list[Piece]) -> list[
 
 # The app says it in the rider's language from the answer's `code` (frontend/src/lib/api.ts).
 MASS_RIDE_OUTSIDE_DC = (
-    "Mass Ride is calibrated to road data that is only available inside DC, so its start, stops"
-    " and end must be in the District. To ride outside DC, use Group Ride with trails off."
+    "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end"
+    " must be in the District. To ride outside DC, switch to Group Ride with trails off."
 )
 
 

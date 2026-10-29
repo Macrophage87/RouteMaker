@@ -439,6 +439,15 @@ class TestTheAnswer:
         )
         assert "mass_capacity" in planned("mass-ride")
 
+    def test_a_ride_replan_just_over_the_line_still_routes_back(self, planned):
+        # The v0.15.0 review: a re-plan starts at the rider, who may be a few metres into
+        # Maryland; refusing it would leave the ride no way back into DC.
+        from test_avoid_junctions import body_for
+
+        inside = body_for("mass-ride")["points"]
+        over = planned("mass-ride", points=[[-77.0910, 38.8800], inside[-1]], ride_replan=True)
+        assert over.get("code") != "mass_ride_outside_dc", over
+
     def test_a_mass_ride_says_its_capacity_for_the_ride_size_and_no_other_does(self, planned):
         body = planned("mass-ride")["mass_capacity"]
         assert body["riders"] == 500 and body["need_riders_per_min"] == 100

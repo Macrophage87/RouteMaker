@@ -1763,6 +1763,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Stop {number}: {note}": "立ち寄り地点{number}：{note}",
   "End: {note}": "到着地：{note}",
   "Mass Ride stays in DC": "Mass Ride は DC 内のみ",
-  "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.": "Mass Ride は DC 内でしか得られない道路データで調整されているため、出発地・経由地・目的地はすべて特別区内にする必要があります。DC の外を走るには、トレイルなしの Group Ride に切り替えてください。",
-  "Switch to Group Ride, trails off": "トレイルなしの Group Ride に切り替え",
+  "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.": "Mass Ride は DC 内でしか得られない道路データで調整されているため、出発地・経由地・目的地はすべて特別区内にする必要があります。DC の外を走るには、トレイルなしのグループライドに切り替えてください。",
+  "Switch to Group Ride, trails off": "トレイルなしのグループライドに切り替え",
 };

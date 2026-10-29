@@ -111,7 +111,7 @@ export interface RouteActionsProps {
 
 /** Go's few extra controls on the route: its route card, its ride types and the Routes chip. */
 export interface GoRouteControls {
-  /** A Mass Ride refused outside DC (the error box's one action): the same points as Group Ride with trails off. */
+  /** A Mass Ride refused outside DC (the error box's one action, in Plan too): the same points as Group Ride with trails off. */
   onGroupRideNoTrails: () => void;
   /** The sheet is at its smallest (peek): the route's time, Start and the stress bar only. */
   peek: boolean;

@@ -1763,6 +1763,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Stop {number}: {note}": "Arè {number}: {note}",
   "End: {note}": "Fen: {note}",
   "Mass Ride stays in DC": "Mass Ride rete nan DC",
-  "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.": "Mass Ride kalibre ak done sou wout ki disponib sèlman andedan DC, kidonk depa, arè ak arive li dwe nan Distri a. Pou w woule deyò DC, chanje pou Group Ride san santye.",
-  "Switch to Group Ride, trails off": "Chanje pou Group Ride san santye",
+  "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.": "Mass Ride kalibre ak done sou wout ki disponib sèlman andedan DC, kidonk depa, arè ak arive li dwe nan Distri a. Pou w woule deyò DC, chanje pou Woulib an gwoup san santye.",
+  "Switch to Group Ride, trails off": "Chanje pou Woulib an gwoup san santye",
 };

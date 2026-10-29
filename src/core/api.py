@@ -3238,7 +3238,9 @@ def _waited_s(request) -> float:
 
 
 def _route_answer(request, body: RouteIn, response: HttpResponse):
-    refused = routing.mass_ride_outside_dc(body.preset, body.points)
+    # Never during a ride: its re-plan starts where the rider is, which may be just over the line,
+    # and refusing it would leave the ride no way back into DC.
+    refused = None if body.ride_replan else routing.mass_ride_outside_dc(body.preset, body.points)
     if refused is not None:
         return Status(400, {"error": refused, "code": "mass_ride_outside_dc"})
     # A loop is as long as its way back too.
