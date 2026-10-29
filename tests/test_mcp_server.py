@@ -902,6 +902,64 @@ def test_a_link_still_comes_back_when_the_exact_route_is_not_kept(tools, monkeyp
     assert "plans the route again" in out["notes"][-1]
 
 
+# --- Ride keys (the owner, 2026-10-29: "All rides should have a key.") ------------------------
+
+
+def _key_of(link: str) -> str | None:
+    values = parse_qs(link.split("#", 1)[1]).get("k")
+    return values[0] if values else None
+
+
+@pytest.mark.parametrize("preset", ["group-ride", "mass-ride"])
+def test_a_ride_link_the_assistant_writes_carries_a_ride_key(tools, preset) -> None:
+    out = tools.call("plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]], "preset": preset})
+    key = _key_of(out["link"])
+    assert key and mcp.RIDE_KEY_RE.fullmatch(key)
+    route_id = out["link"].rsplit("route=", 1)[1]
+    assert _key_of(StandIn.shared[route_id]["inputs"]["hash"]) == key
+    # Never sent to the planner.
+    assert key not in json.dumps(StandIn.routes[-1])
+
+
+def test_a_link_that_is_not_a_ride_carries_no_key(tools) -> None:
+    out = tools.call("plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+    assert _key_of(out["link"]) is None
+
+
+def test_a_ride_draft_keeps_its_key_as_it_is_revised_and_opened(tools) -> None:
+    first = tools.call(
+        "plan_route",
+        {"points": [[-77.03, 38.9], [-77.02, 38.91]], "preset": "group-ride", "trim_spurs": False},
+    )
+    key = _key_of(first["link"])
+    revised = tools.call(
+        "revise_route",
+        {"draft_id": first["draft_id"], "move_points": [{"index": 1, "to": [-77.01, 38.92]}]},
+    )
+    assert _key_of(revised["link"]) == key
+    # Another ride type is another ride: Mass Ride gets its own key, a plain ride type none.
+    mass = tools.call("revise_route", {"draft_id": first["draft_id"], "preset": "mass-ride"})
+    assert _key_of(mass["link"]) not in (None, key)
+    plain = tools.call("revise_route", {"draft_id": first["draft_id"], "preset": "fast"})
+    assert _key_of(plain["link"]) is None
+    # A ride link the rider pastes back keeps the ride the riders are on.
+    edited = first["link"].replace("p=-77.03000,38.90000;", "p=-77.03000,38.90000;-77.01,38.93;")
+    opened = tools.call("open_link", {"link": edited})
+    assert _key_of(opened["link"]) == key
+
+
+def test_the_fragment_keeps_one_key() -> None:
+    fragment = "#p=1,2;3,4&preset=group-ride&k=" + "A" * 43
+    assert mcp.with_ride_key(fragment, "B" * 43) == "#p=1,2;3,4&preset=group-ride&k=" + "B" * 43
+    assert mcp.with_ride_key(fragment, None) == "#p=1,2;3,4&preset=group-ride"
+    assert mcp.ride_key_of(fragment) == "A" * 43 and mcp.ride_key_of("#k=short") is None
+    assert mcp.ride_key_for("default", "A" * 43) is None
+    assert mcp.ride_key_for("group-ride", "A" * 43) == "A" * 43
+    # A new key is 16 bytes, 22 characters (the owner, 2026-10-29); an older link's 43 still is one.
+    made = mcp.ride_key_for("mass-ride", None)
+    assert len(made) == 22 and mcp.RIDE_KEY_RE.fullmatch(made)
+
+
 # --- Featured routes posts ------------------------------------------------------------------
 
 

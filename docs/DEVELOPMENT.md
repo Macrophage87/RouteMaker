@@ -8541,8 +8541,8 @@ Participant (already chosen, so Yes alone answers), Lead line, Sweep or Corker. 
 answer for that ride on the device (`rideGroup.ts keepConsent`; in the question a compact "Riding as" list)
 and changed in the riders panel, under "Show me as a dot", where the next position goes as soon as the server
 takes one (within 15 s); Go's bar gains nothing. Each position the page sends carries the role
-(`POST /api/rides/{ride}/here`, `role`); `core.ride_presence` takes the four ids only (anything else is a 400,
-none sent is a participant) and answers each dot's `role`. Still no name, token or id on a dot.
+inside its sealed dot (`POST /api/rides/{ride}/here`, `sealed`; since every ride is sealed the server never
+reads it, and each phone checks the four ids as it opens a dot). Still no name, token or id on a dot.
 
 - **Self-declared.** A ride link has no sign-in, so the server cannot know who leads or sweeps: a role is what
   that phone chose, nothing more. Anyone on the link can mark themselves Sweep. Do not build anything that
@@ -8562,8 +8562,7 @@ none sent is a participant) and answers each dot's `role`. Still no name, token 
   summary adds the nearest of each role on the ride after the nearest rider. The panel's key lists only the
   roles present, each with its swatch (decoration, `aria-hidden`; kept in its colours in forced-colours mode)
   and its count in words.
-- Tests: `tests/test_ride_presence.py` (validation, default, the role on the dot) and
-  `frontend/src/lib/rideGroup.test.ts` (kept role, the body, the images and layers, colours, names, the key,
+- Tests: `frontend/src/lib/rideGroup.test.ts` (kept role, the body, the images and layers, colours, names, the key,
   the page's wiring).
 
 ## End-to-end encrypted rides (Stephen, 2026-10-29)
@@ -8603,9 +8602,19 @@ age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
   so the alert panel says "Sends your spot to everyone on this ride." where that adds something: no key, and the
   rider not shown as a dot (`rideGroup.ts alertNote`). Elsewhere the panel keeps its short "Sends your location
   with the alert."; a screen reader, and the Alert button's description, always get the spot line.
-- Tests: `frontend/src/lib/rideSeal.test.ts` (secret, derivation, sealing, the grid against the server's,
-  merging, a sealed ride end to end through `rideGroup.ts`, the page's wiring) and `tests/test_ride_presence.py`
-  (sealed dots, alerts and paths kept, limited, marked and dropped as plain ones are).
+- **Every ride sealed, on the server (Stephen, 2026-10-29: "Encrypted rides send GPS accurate numbers. All
+  rides should have a key.").** `core.ride_presence` takes only `{token, sealed}`: a body in plain numbers
+  (`lon`/`lat`, `route`/`trail`, `kind`/`text`) is a 400 with `ride_presence.PLAIN_REFUSED`, which tells the
+  rider to reload. The server's rounding (`rounded`, `GRID_M`), its alert lists and merge, and its roles are
+  gone; the 2-minute keep, limits, leader mark, shuffle and sealed size caps stay. The ride links the server
+  writes carry a key too: a Featured routes post of a Group or Mass Ride (`core.route_posts.freeze_route`, the
+  post's own key kept in `post.stats["ride_key"]`, the same through every new route or resend; migration 0053
+  gave the posts kept before theirs) and the assistant's draft links (`mcp/routemaker_mcp.py`, `Draft.ride_key`,
+  kept as the draft is revised, the link's own when one is opened). Anyone who can read a ride post can read
+  that ride, and the privacy policy says so.
+- Tests: `frontend/src/lib/rideSeal.test.ts` (secret, derivation, sealing, merging, a sealed ride end to end
+  through `rideGroup.ts`, the page's wiring), `tests/test_ride_presence.py` (only sealed values taken; kept,
+  limited, marked and dropped), `tests/test_route_posts.py` and `tests/test_mcp_server.py` (ride keys).
 
 ### Where and when a dot is sent (2026-10-29)
 
@@ -8693,15 +8702,15 @@ path the leader takes, with no account.
 
 - Server: `core.ride_presence`, behind the `/api/rides/{ride}/...` endpoints (`here`, `path`,
   `alerts`, `leave`). The module docstring is the reference. In short, everything is held in
-  memory only (a tmpfs store shared by the api workers, `RIDE_PRESENCE_DIR`), positions are
-  rounded to 20 m, and nothing stays longer than 2 minutes (Stephen, 2026-10-22). That covers a
+  memory only (a tmpfs store shared by the api workers, `RIDE_PRESENCE_DIR`), every dot, path
+  and alert comes sealed, and nothing stays longer than 2 minutes (Stephen, 2026-10-22). That covers a
   dot (`DOT_TTL_S`), the leader's route and ridden path (`PATH_TTL_S`, re-sent about every 2
   minutes or when the route changes), an alert, and a rider's token and counts (`KEEP_S`). Each
   api process sweeps every ride every `SWEEP_S`. The limits (posting and polling intervals, riders
   per ride, rides, path size) are the module's constants. A request over them gets a 429.
-- Sealed rides (v0.15.0): a Share live or Group Ride link made in the app carries a secret in its
-  fragment, and each phone seals what it sends. The server keeps the sealed text the same way and
-  cannot read it ("End-to-end encrypted rides", above).
+- Sealed rides (v0.15.0): every ride link carries a secret in its fragment, and each phone seals
+  what it sends. The server keeps the sealed text and cannot read it, and refuses plain numbers
+  ("End-to-end encrypted rides", above).
 - Front end: `frontend/src/lib/rideGroup.ts` (ride ids, tokens, the consent question),
   `frontend/src/RideGroup.tsx`, and `frontend/src/lib/broadcastJoin.ts` with
   `BroadcastJoinDialog.tsx` (the join popup that offers the leader's route as GPX, or sends it to

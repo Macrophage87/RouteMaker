@@ -10,11 +10,11 @@ comes from:
   background-location permission (mobile/README.md, "Privacy"; mobile/test/config.test.mjs); a
   route request carries points in its body, and the logs keep no query (docs/DEVELOPMENT.md,
   "Logs and the rider's position").
-- Group and Mass Ride: core.ride_presence (20 m grid, memory only; dots, alerts and a leader's
-  path 2 minutes, nothing longer)
+- Group and Mass Ride: core.ride_presence (sealed values only, memory only; dots, alerts and a
+  leader's path 2 minutes, nothing longer)
   and frontend/src/RideGroup.tsx (only while sharing and the page is in front, near the route);
-  sealed end to end on a broadcast and a Group Ride link shared from the app
-  (frontend/src/lib/rideSeal.ts).
+  every ride link carries a key and is sealed end to end (frontend/src/lib/rideSeal.ts), a ride
+  post's link too (core.route_posts.ride_key).
 - Discord sign-in: core.discord_oauth (identify scope, no token kept) and core.models.User (the
   Discord id and dates only); the bot's role cache: core.membership.
 - What an account keeps: core.models MyGo, AccountSettings (frontend/src/lib/accountSettings.ts,
@@ -78,7 +78,7 @@ WHERE_YOU_ARE = (
     "Your location is used on your phone or computer to plan and guide your ride. The server "
     "keeps no record of where you are, only places you choose to save or share (Home, favorite "
     "places, saved and shared routes, a 311 problem’s spot) and, while you share on a Group or "
-    "Mass Ride, your rounded dot for 2 minutes and an alert’s spot for 2 minutes."
+    "Mass Ride, your encrypted dot for 2 minutes and an encrypted alert for 2 minutes."
 )
 
 
@@ -100,10 +100,12 @@ def _details(summary: str, items: list[str]) -> str:
 # config.procrastinate perform_backup (backups); test_privacy_policy checks the numbers against it.
 RIDE_CRYPTO_SUMMARY = "How the encryption works (technical details)"
 RIDE_CRYPTO = [
-    "The ride's key: 32 random bytes from the browser's cryptographic random source "
-    "(crypto.getRandomValues), written as 43 base64url characters in the link's fragment as "
-    "k=. The fragment, the part after #, is never sent to any server. Nothing about the method "
-    "is secret; only the key is.",
+    "The ride's key: 16 random bytes from the browser's cryptographic random source "
+    "(crypto.getRandomValues), or, for a ride post's link, from the server's (Python's secrets "
+    "module), written as 22 base64url characters in the link's fragment as k= (an older link's "
+    "key of 32 bytes, 43 characters, still works). Every ride link "
+    "carries one. The fragment, the part after #, is never sent to any server by a browser. "
+    "Nothing about the method is secret; only the key is.",
     "From the key, HKDF with SHA-256 (salt “routemaker ride seal v1”) derives two things: with "
     "info “ride id”, 256 bits written as 64 hex digits, the name the server knows the live ride "
     "by; with info “ride key”, an AES-GCM key of 256 bits, which the browser keeps "
@@ -114,12 +116,12 @@ RIDE_CRYPTO = [
     "AES-256-GCM under a fresh random 12-byte nonce. Its kind and the ride id are bound in as "
     "associated data, so a dot cannot be passed off as an alert, or one ride's data as "
     "another's. What is sent is the nonce, the ciphertext and GCM's 128-bit tag, in base64url.",
-    "Before encrypting, the phone does what the server did with plain positions: it rounds each "
-    "dot, alert spot and ridden path to the same 66 ft (20 m) grid (the leader's planned route "
-    "to about 3 ft (1 m)), sends nothing outside the map's area, and merges "
-    "matching alerts as it reads them.",
+    "Each phone sends its position as its GPS measures it, encrypted; it sends nothing outside "
+    "the map's area, and merges matching alerts as it reads them. The server refuses a position "
+    "or alert that is not encrypted.",
     "Each phone posts under its own random code for the ride (16 random bytes). A ride leader's "
-    "link also carries lead=, the first 32 hex digits of the SHA-256 of the leader's code, so "
+    "link also carries lead=, the first 16 bytes of the SHA-256 of the leader's code as 22 "
+    "base64url characters (the phone sends the server the same 16 bytes as 32 hex digits), so "
     "riders can tell which dot is the leader's; only the leader's phone, which holds the code, "
     "can post as that dot.",
     "What the server still sees: the ride id, each phone's random code, when and how often "
@@ -187,17 +189,21 @@ SECTIONS: list[tuple[str, str]] = [
             [
                 "Off until you choose to show yourself as a dot, and only while RouteMaker is on "
                 "screen and you are within a quarter mile (400 m) of the route.",
-                "Your position is rounded to about 66 ft (20 m), kept only in the server’s "
-                "memory, never on disk or in a log, and dropped 2 minutes after it was sent.",
+                "Your position is encrypted on your phone, kept only in the server’s memory, "
+                "never on disk or in a log, and dropped 2 minutes after it was sent.",
                 "Other riders on the same ride see an unnamed dot. No account or name is sent: "
                 "your phone makes a new random code for each ride.",
-                "An alert you send keeps your rounded spot for 2 minutes, or until you clear it.",
-                "On Share ride, Broadcast (in Roam too) and a Group or Mass Ride link shared from "
-                "RouteMaker, your phone encrypts your dot, your alerts and the leader’s path "
-                "before sending them, with a key only the link carries (in the part after #, which "
-                "browsers never send to a server). The server holds them only as scrambled text it "
-                "cannot read; it still sees when a phone on the ride sends or asks, as it does for "
-                "any page. Ride posts written by RouteMaker's server are not encrypted this way.",
+                "An alert you send keeps your spot, encrypted, for 2 minutes, or until you clear "
+                "it.",
+                "Every ride link carries a key: Share ride, Broadcast (in Roam too) and every "
+                "Group or Mass Ride link. Your phone encrypts your dot, your alerts and the "
+                "leader’s path before sending them, with the key only the link carries (in the "
+                "part after #, which browsers never send to a server). The server holds them "
+                "only as scrambled text it cannot read; it still sees when a phone on the ride "
+                "sends or asks, as it does for any page.",
+                "A ride post's Group or Mass Ride link carries its key too, so anyone who can "
+                "read the post can see the dots and alerts of that ride. The server keeps that "
+                "key with the post, and the post keeps it when its route changes.",
                 "Share ride and Broadcast make you the ride leader, shown as a dot from the start "
                 "of your ride. While you ride a shared ride, you and anyone on it who chooses to "
                 "be shown are shown on or off the route, so riders who get separated can find "
@@ -207,7 +213,7 @@ SECTIONS: list[tuple[str, str]] = [
                 "or once you have stayed in one spot for over an hour; it is sent again as soon "
                 "as you move on.",
                 "As leader, your phone also sends the route you are riding and the path you have "
-                "ridden (rounded the same way, without its first 650 ft (200 m), as rides often "
+                "ridden (without its first 650 ft (200 m), as rides often "
                 "start at home) about every 2 minutes; the server keeps each only in memory and "
                 "drops it after 2 minutes. Only those with your link see it. The link itself, "
                 "like any shared route, shows where the route starts.",
