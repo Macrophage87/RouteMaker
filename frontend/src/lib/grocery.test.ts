@@ -97,6 +97,8 @@ test("the list is the Food sheet's own, under Grocery stores, with Ride here in 
   assert.match(html, /<strong><span class="visually-hidden">A\. <\/span>Whole Foods Market<\/strong> Grocery store\. 0\.2 mi \(0\.4 km\) from you in a straight line\./);
   assert.match(html, /aria-label="Ride here: Whole Foods Market"/);
   assert.match(html, /aria-label="Show on map: Whole Foods Market, marker A"/);
+  // Go's one main action: Ride here first and filled, Show on map plain after it (the 2026-10-29 review).
+  assert.match(html, /<span class="actions"><button type="button" class="ride-here" aria-label="Ride here: Whole Foods Market">Ride here<\/button><button type="button" class="secondary" aria-label="Show on map/);
   assert.doesNotMatch(html, /Show \d+ more/);
   // Without a heading the list is still Places to eat.
   assert.match(renderToStaticMarkup(createElement(FoodFinder, { ...props, heading: undefined })), />Places to eat<\/h3>/);

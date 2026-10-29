@@ -927,7 +927,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Direct, some busy streets": "Directo, algunas calles con mucho tráfico",
   "Drinking water": "Agua potable",
   "E-bike": "Bicicleta eléctrica",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "Cada lugar aparece con su nombre en el mapa: tocar su nombre, o la tecla de su letra (A para el primero), muestra qué hay allí. Ir aquí planea una ruta desde donde buscó hasta ese lugar, en lugar del plan que tiene; Deshacer recupera su plan. Agregar como parada agrega agua o un baño al plan que tiene. Las estaciones de Metro son de Metrorail; las rutas usan el ascensor de la estación donde hay uno.",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "Toque el nombre de un lugar en el mapa para ver qué hay allí. Ir aquí planea una ruta hasta él en lugar de su plan; Deshacer recupera su plan.",
   "Easiest trails only: wide, smooth, gentle.": "Solo los senderos más fáciles: anchos, lisos, suaves.",
   "Easy up to {grade}%": "Cómodo hasta {grade}%",
   "Edit in OSM": "Editar en OSM",

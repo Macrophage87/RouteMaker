@@ -5034,7 +5034,7 @@ export function App() {
     }
     return null;
   };
-  // A lettered pin, its letter's key, or a row of Go's Repair or Sights: the place's card, never a route by itself.
+  // A lettered pin, its letter's key, or a Go Repair or Sights row's Show on map: the place's card, never a route by itself.
   const pickLettered = (index: number) => {
     if (letteredOf === "bikeshare") {
       pickOption(index);
@@ -6393,7 +6393,14 @@ export function App() {
               <NearestFinder {...nearestProps} folded={false} />
             </NearestSheet>
             <FoodSheet nav={sheetNav}>{foodFinder}</FoodSheet>
-            <RepairSheet nav={sheetNav} status={repairList?.said ?? ""} items={repairList?.items ?? null} at={new Date()} onPick={(item) => pickLettered(repairList?.items.indexOf(item) ?? -1)} />
+            <RepairSheet
+              nav={sheetNav}
+              status={repairList?.said ?? ""}
+              items={repairList?.items ?? null}
+              at={new Date()}
+              onPick={(item) => pickLettered(repairList?.items.indexOf(item) ?? -1)}
+              onRide={(item) => goToLettered([item.place.lon, item.place.lat], repairTitle(item.place))}
+            />
             <PlacesSheet
               nav={sheetNav}
               go={goMode}
@@ -6411,6 +6418,7 @@ export function App() {
               onShowAll={showAllLettered}
               onAddStop={addSightStop}
               onGoPick={(r) => pickLettered(placesShown?.indexOf(r) ?? -1)}
+              onGoRide={(r) => goToLettered([r.place.lon, r.place.lat], r.place.name)}
             />
             {/* Go's Edit route: Plan's points, the one copy in the page while Go shows (Plan's panel holds it otherwise). */}
             <EditRouteSheet nav={sheetNav}>{goMode && view === "points" && sections.points}</EditRouteSheet>
