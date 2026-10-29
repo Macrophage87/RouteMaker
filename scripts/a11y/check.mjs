@@ -4138,7 +4138,10 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await sleep(1500);
   const off = await p.eval(`(() => ({ online: navigator.onLine, bar: document.querySelector('.app-status .app-offline')?.textContent,
     said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) }))()`);
-  check("offline: the installed app's shell opens with no network, from the worker", shell && workers.length === 1, JSON.stringify({ shell, workers: workers.length }));
+  // At least one, not exactly one: after the two navigations above (sw.js is fetched afresh on each),
+  // Chromium can briefly list a second target for the same registration (an installing or redundant
+  // version). Every one listed was taken offline by the loop above.
+  check("offline: the installed app's shell opens with no network, from the worker", shell && workers.length >= 1, JSON.stringify({ shell, workers: workers.length }));
   check("offline: the top of the planner says so, and it is said once, politely",
     off.online === false && /^You are offline\. RouteMaker still opens, and routes you kept for offline open from Save & load\.$/.test(off.bar ?? "") && off.said.filter((t) => t.startsWith("You are offline.")).length === 1, JSON.stringify(off));
 
