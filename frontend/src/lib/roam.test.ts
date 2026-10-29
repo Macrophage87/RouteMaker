@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import type { LonLat } from "./geo.ts";
 import { lightClock, solarDay } from "./lightTimes.ts";
 import { GPS_WEAK_MS, POOR_FIX_M, weighFix } from "./navigate.ts";
-import { HeadingTrack, OUTSIDE_MAP, ROAM_DETOUR_HELP, ROAM_GPS_WEAK,ROAM_NEARBY_NAME, aheadRow, aheadSaid, foodNearestPlaces, headingOf, linesOf, mapLines, notARoad, onRoadSaid, roadsAhead, roamLight, roamLink, roamLinkFrom, roamReportPlace, type RoadLine, type RoamMap, type StressLine } from "./roam.ts";
+import { HeadingTrack, OUTSIDE_MAP, ROAM_DETOUR_HELP, ROAM_GPS_WEAK, ROAM_NEARBY_NAME, aheadRow, aheadSaid, foodNearestPlaces, headingOf, linesOf, mapLines, notARoad, onRoadSaid, roadsAhead, roamLight, roamLink, roamLinkFrom, roamReportPlace, type RoadLine, type RoamMap, type StressLine } from "./roam.ts";
 
 // A small grid near Dupont Circle: metres to degrees, close enough at this latitude.
 const O: LonLat = [-77.04, 38.91];
@@ -361,5 +361,7 @@ test("Roam reads roads only from good fixes, and says once when GPS has been wea
   // The marker moves on a poor fix; the heading, the roads and the spoken road wait for a good one.
   assert.match(effect, /if \(fix\.accuracyM > POOR_FIX_M\) \{\s*onView\(\{ point: fix\.point, headingDeg: headingKept\.current, accuracyM: fix\.accuracyM \}\);\s*return;\s*\}\s*const h = track\.step/);
   assert.match(effect, /if \(weighed\.sayNow\) say\(ROAM_GPS_WEAK\);/);
+  // Where am I? while weak says so, not the road last read.
+  assert.match(roam, /const whereAmI = \(\) => \{[\s\S]{0,300}?if \(weakGps\) \{\s*answer\(ROAM_GPS_WEAK\);\s*return;/);
   assert.match(roam, /\{\(gps \|\| weakGps\) && <p className="hint ride-gps">\{gps \|\| ROAM_GPS_WEAK\}<\/p>\}/);
 });

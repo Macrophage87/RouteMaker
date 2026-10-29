@@ -328,6 +328,11 @@ export function RoamMode({
       answer(gps || WAITING_FOR_GPS);
       return;
     }
+    // Only poor fixes a while: the road last read may be behind the rider, so it is not said as where they are.
+    if (weakGps) {
+      answer(ROAM_GPS_WEAK);
+      return;
+    }
     answer([onRoadSaid(roads?.on ?? null), aheadSaid(roads?.ahead ?? [])].filter(Boolean).join(" "));
   };
 
