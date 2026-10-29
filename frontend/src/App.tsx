@@ -310,7 +310,7 @@ import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
 import { BROADCAST_FOLLOWING, isRideLink, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, type RideLinkType } from "./lib/rideGroup.ts";
-import { newRideSecret, secretFrom, withSecret } from "./lib/rideSeal.ts";
+import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
 // With Ride mode's kept tiles behind the network, for dead spots (lib/corridorStore.ts).
@@ -343,7 +343,9 @@ interface Plan {
   quick?: boolean;
 }
 
-const initialPlan = decodePlan(planToOpen(tabSession(), window.location.hash));
+// The plan's fragment as opened: the address's, or the one kept over a sign-in or a visit to another page.
+const OPENED_HASH = planToOpen(tabSession(), window.location.hash);
+const initialPlan = decodePlan(OPENED_HASH);
 // The link's via points (v0.7.0, lib/pointKinds.ts): an older link has none, so every point is a stop.
 VIA_MARKS.markAt(initialPlan.points, initialPlan.vias);
 // And its legs drawn in Plan's manual mode (v0.9.1); an older link has none.
@@ -402,7 +404,8 @@ if (new URLSearchParams(window.location.search).has(WAHOO_RETURN_PARAM)) {
 // follows the leader's dot, read once here (the plan's own fragment is written over it later).
 const ROAM_FOLLOW = roamLinkFrom(window.location.hash);
 // A Group Ride plan link's secret (lib/rideSeal.ts), read once here likewise: not a broadcast's.
-const PLAN_SECRET = SHARED_RIDE || ROAM_FOLLOW ? null : secretFrom(window.location.hash);
+// From the plan as opened, so one kept over a sign-in keeps its secret too.
+const PLAN_SECRET = SHARED_RIDE || ROAM_FOLLOW ? null : secretFrom(OPENED_HASH);
 /** The opened link to pass on: its path, the query's own parameters (the line, ride and leader), and its fragment;
  * nothing a messaging app added on the way (its tracking parameters). */
 function passedOnLink(at: Pick<Location, "origin" | "pathname" | "search" | "hash">): string {
@@ -1325,6 +1328,8 @@ export function App() {
   // A page started afresh has one; a page opened from a link has the link's, or none (a link without one, such as an
   // older one or a ride post's, is a ride by its points, so all who open it are still on one ride). Picking Group Ride
   // here makes one where there is none.
+  // The page itself is opening a plan of the rider's own (a saved or kept route), told apart from a link pasted in.
+  const ownHashOpen = useRef(false);
   const [groupSecret, setGroupSecret] = useState<string | null>(() => PLAN_SECRET ?? (PLAN_LINK ? null : newRideSecret()));
   const presetBefore = useRef(preset);
   useEffect(() => {
@@ -1355,7 +1360,11 @@ export function App() {
         return;
       }
       const plan = decodePlan(window.location.hash);
-      setGroupSecret(secretFrom(window.location.hash));
+      // A link from outside: its secret, or none (a ride by its points, as everyone who opens it is). One of the
+      // rider's own (a saved or kept route) is a new ride of theirs: a new secret.
+      const own = ownHashOpen.current;
+      ownHashOpen.current = false;
+      setGroupSecret(own ? newRideSecret() : secretFrom(window.location.hash));
       setConfirmedKm(null);
       // Another plan: undo does not reach back into the one before it.
       history.current.clear();
@@ -3416,7 +3425,8 @@ export function App() {
     const exact = again ? null : now!.exact;
     const sharedId = again ? again.id : (sharedLine.current?.id ?? null);
     const lead = again ? again.lead : ride && kept ? ((sharedId ? leads.current.get(sharedId) : undefined) ?? leadPrep.current) : null;
-    const link = again ? again.link : ride && kept ? withSecret(asRideLink(now!.link, lead?.key ?? null), lead?.secret ?? null) : now!.link;
+    // A ride link carries its own leader's secret, never the plan's (a Group Ride's): one without a leader carries none.
+    const link = again ? again.link : ride && kept ? (lead ? withSecret(asRideLink(now!.link, lead.key), lead.secret) : withoutSecret(asRideLink(now!.link))) : now!.link;
     const file = exact?.file ? gpxShareFile(exact.file.text, exact.file.fileName) : null;
     const content = withGpxFile(nav, shareContent(link, distanceM, presetSaid(preset)), file);
     const outcome = shareLink(nav, content);
@@ -3529,7 +3539,10 @@ export function App() {
     showPlanner(true);
     // The kept plan carries its own Mass Ride ride size (keptPlanKey): the route was chosen for it.
     const hash = kept.plan;
-    if (window.location.hash !== hash) window.location.hash = hash;
+    if (window.location.hash !== hash) {
+      ownHashOpen.current = true;
+      window.location.hash = hash;
+    }
     announce(`Opening ${kept.title}.`);
   };
   const startRide = (unlocked = false) => {
@@ -4024,7 +4037,10 @@ export function App() {
     const answer = savedAnswer(saved);
     const key = keptPlanKey(plan.points, plan.preset, plan.dials);
     savedShown.current = answer ? { key, answer } : null;
-    if (window.location.hash !== saved.inputs.hash) window.location.hash = saved.inputs.hash;
+    if (window.location.hash !== saved.inputs.hash) {
+      ownHashOpen.current = true;
+      window.location.hash = saved.inputs.hash;
+    }
     else retry();
     announce(said);
     if (check) void checkThen("open", saved.line, false, () => {});

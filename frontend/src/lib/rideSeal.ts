@@ -67,13 +67,22 @@ export function secretFrom(hash: string): string | null {
   return isRideSecret(value) ? value : null;
 }
 
-/** The link with its ride's secret in the fragment (replacing any it had). */
+/** The link with its ride's secret in the fragment (replacing any it had); null leaves the link as it is. */
 export function withSecret(link: string, secret: string | null): string {
-  if (!secret) return link;
+  return secret ? replaceSecret(link, secret) : link;
+}
+
+/** The link with no secret: a ride link that went out without its own leaves no other ride's secret in it. */
+export function withoutSecret(link: string): string {
+  return replaceSecret(link, null);
+}
+
+function replaceSecret(link: string, secret: string | null): string {
   const at = link.indexOf("#");
+  if (at < 0 && !secret) return link;
   const base = at < 0 ? link : link.slice(0, at);
   const params = (at < 0 ? "" : link.slice(at + 1)).split("&").filter((p) => p && !p.startsWith(`${SECRET_PARAM}=`));
-  params.push(`${SECRET_PARAM}=${secret}`);
+  if (secret) params.push(`${SECRET_PARAM}=${secret}`);
   return `${base}#${params.join("&")}`;
 }
 
@@ -100,11 +109,25 @@ export async function rideSeal(secret: string): Promise<RideSeal | null> {
 
 const aad = (seal: RideSeal, kind: SealedKind) => enc.encode(`${kind}|${seal.ride}`);
 
+/**
+ * Each kind is padded with spaces (which JSON ignores) to a whole number of these bytes before sealing, so the sealed
+ * text's length does not tell the server a dot's role, an alert's kind or how long its words are.
+ */
+export const PAD_BYTES: Record<SealedKind, number> = { dot: 128, alert: 512, path: 4096 };
+
+export function padded(kind: SealedKind, value: unknown): Uint8Array<ArrayBuffer> {
+  const json = enc.encode(JSON.stringify(value));
+  const size = Math.max(1, Math.ceil(json.length / PAD_BYTES[kind])) * PAD_BYTES[kind];
+  const out = new Uint8Array(size).fill(0x20);
+  out.set(json);
+  return out;
+}
+
 /** The value as sealed text: base64url of the nonce and the ciphertext. */
 export async function sealValue(seal: RideSeal, kind: SealedKind, value: unknown): Promise<string> {
   const iv = new Uint8Array(NONCE_BYTES);
   crypto.getRandomValues(iv);
-  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad(seal, kind) }, seal.key, enc.encode(JSON.stringify(value))));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad(seal, kind) }, seal.key, padded(kind, value)));
   const out = new Uint8Array(iv.length + ct.length);
   out.set(iv);
   out.set(ct, iv.length);
@@ -129,7 +152,7 @@ export async function openValue(seal: RideSeal, kind: SealedKind, text: unknown)
 
 // ---- what the server did with plain numbers, done before sealing ---------------------------------------
 
-/** The grid every kept position is put on (core.ride_presence.GRID_M and `rounded`, the same arithmetic). */
+/** The grid every kept position is put on (core.ride_presence.GRID_M and `rounded`: the same grid; an exact tie may round the other way). */
 export const GRID_M = 20;
 
 export function gridded([lon, lat]: LonLat): LonLat {

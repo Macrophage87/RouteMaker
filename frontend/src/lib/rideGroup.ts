@@ -689,7 +689,10 @@ const isSpot = (v: Record<string, unknown> | null): v is { lon: number; lat: num
   v !== null && typeof v.lon === "number" && typeof v.lat === "number" && Number.isFinite(v.lon) && Number.isFinite(v.lat);
 const asRecord = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 
-/** A sealed ride's answer (lib/rideSeal.ts): each dot, alert and the leader's path opened with the link's key; any that does not open is left out. */
+/**
+ * A sealed ride's answer (lib/rideSeal.ts): each dot, alert and the leader's path opened with the link's key; any that
+ * does not open is left out, a plain one too (only a phone without the link's secret, an older page, sends those).
+ */
 async function openRead(seal: RideSeal, body: Record<string, unknown>): Promise<RideRead> {
   const dots: Dot[] = [];
   for (const raw of Array.isArray(body.dots) ? body.dots : []) {

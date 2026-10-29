@@ -13,12 +13,15 @@ import {
   mergeAlerts,
   newRideSecret,
   openValue,
+  padded,
+  PAD_BYTES,
   rideSeal,
   sealValue,
   secretFrom,
   sendable,
   sendableLine,
   withSecret,
+  withoutSecret,
   type OpenedAlert,
 } from "./rideSeal.ts";
 
@@ -44,6 +47,29 @@ test("the secret rides in the fragment only, replacing any the link had, and is 
   assert.equal(secretFrom(new URL(link).hash), s);
   assert.equal(secretFrom("#k=short"), null);
   assert.equal(secretFrom(""), null);
+});
+
+test("a ride link without a leader of its own carries no secret", () => {
+  const s = newRideSecret();
+  assert.equal(withoutSecret(`https://example.org/#p=1,2&k=${s}&ride=1`), "https://example.org/#p=1,2&ride=1");
+  assert.equal(withoutSecret("https://example.org/"), "https://example.org/");
+});
+
+test("each value is padded to its kind's size, so the sealed length says nothing of role, kind or words", async () => {
+  const seal = (await rideSeal(newRideSecret()))!;
+  assert.equal(padded("dot", { lon: 1, lat: 2, role: "participant" }).length, PAD_BYTES.dot);
+  const lengths = new Set<number>();
+  for (const role of ["participant", "lead", "sweep", "corker"]) lengths.add((await sealValue(seal, "dot", { lon: SPOT[0], lat: SPOT[1], role })).length);
+  assert.equal(lengths.size, 1);
+  const alerts = new Set<number>();
+  for (const [kind, text] of [["crash", ""], ["other", "x"], ["other", "ጥ".repeat(80)]]) alerts.add((await sealValue(seal, "alert", { kind, text, lon: SPOT[0], lat: SPOT[1] })).length);
+  assert.equal(alerts.size, 1);
+  // Still opens to the value itself.
+  const text = await sealValue(seal, "alert", { kind: "crash", text: "", lon: 1, lat: 2 });
+  assert.deepEqual(await openValue(seal, "alert", text), { kind: "crash", text: "", lon: 1, lat: 2 });
+  // The longest path the page sends fits the server's bound (core.ride_presence.SEALED_PATH_MAX).
+  const line: LonLat[] = Array.from({ length: 600 }, (_, i) => [-77.12345 + i * 1e-5, 38.12345]);
+  assert.ok((await sealValue(seal, "path", { route: line, trail: line })).length <= 48 * 1024 - 256);
 });
 
 test("the ride id comes from the secret one way, and is the server's ride id shape", async () => {
@@ -195,7 +221,13 @@ test("a Roam broadcast's link carries its secret, and an older one without it st
 
 test("the page puts each ride's secret in its links: Share ride, Broadcast, Roam and a Group Ride plan", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /withSecret\(asRideLink\(now!\.link, lead\?\.key \?\? null\), lead\?\.secret \?\? null\)/);
+  assert.match(app, /lead \? withSecret\(asRideLink\(now!\.link, lead\.key\), lead\.secret\) : withoutSecret\(asRideLink\(now!\.link\)\)/);
+  // The secret of a plan kept over a sign-in or another page is read from the plan as opened, not the bare address.
+  assert.match(app, /const OPENED_HASH = planToOpen\(tabSession\(\), window\.location\.hash\);\s*const initialPlan = decodePlan\(OPENED_HASH\);/);
+  assert.match(app, /const PLAN_SECRET = SHARED_RIDE \|\| ROAM_FOLLOW \? null : secretFrom\(OPENED_HASH\);/);
+  // A saved or kept route the page opens is the rider's own: a new secret; a link from outside: its own, or none.
+  assert.equal((app.match(/ownHashOpen\.current = true;\s*window\.location\.hash = /g) ?? []).length, 2);
+  assert.match(app, /setGroupSecret\(own \? newRideSecret\(\) : secretFrom\(window\.location\.hash\)\);/);
   assert.match(app, /roamLink\(window\.location\.origin, id, lead\.key, lead\.secret\)/);
   assert.match(app, /roamLink\(window\.location\.origin, roamBroadcast\.id, roamBroadcast\.lead, roamBroadcast\.secret\)/);
   assert.match(app, /withSecret\(encodePlan\([^\n]*preset === "group-ride" \? groupSecret : null\)/);

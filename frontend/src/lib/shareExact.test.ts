@@ -159,7 +159,7 @@ test("Share route or Share ride: a ride's link opens fixed, with location sharin
   assert.equal(rideLinkFrom(hash.replace("&ride=1", "")), false);
   assert.equal(rideLinkFrom("", "?route=x&ride=1"), true);
   // Only with its exact line kept is a link a ride; the sharer rides it as its openers do.
-  assert.match(app, /const link = again \? again\.link : ride && kept \? withSecret\(asRideLink\(now!\.link, lead\?\.key \?\? null\), lead\?\.secret \?\? null\) : now!\.link;/);
+  assert.match(app, /const link = again \? again\.link : ride && kept \? \(lead \? withSecret\(asRideLink\(now!\.link, lead\.key\), lead\.secret\) : withoutSecret\(asRideLink\(now!\.link\)\)\) : now!\.link;/);
   // Only once the sheet shared it with the line kept; while the route is still planned, Share ride says to wait.
   assert.match(app, /\} else if \(ride && kept && done === "shared"\) \{(\s*\/\/[^\n]*\n)+\s*if \(lead && sharedId\) \{\s*leadConsent\(\(await rideOf\(\{ broadcast: \{ id: sharedId \}, secret: lead\.secret \}\)\)\.id, lead\.token\);[\s\S]*?if \(led\) rideLinkSent\.current = \{ route: rideRoute, keep: shareKeep, link, lead, id: sharedId \};\s*const open = \{ answer: rideRoute, ride: true, own: true, id: sharedId \?\? undefined, lead: lead && sharedId \? lead\.key : null, secret: lead && sharedId \? lead\.secret : null \};\s*sharedOpenNow\.current = open;\s*setSharedOpen\(open\);/);
   assert.match(app, /if \(ride && !shareExact\(\)\?\.save\.answer\) \{\s*setShareSaid\(\(before\) => \(\{ text: SHARE_RIDE_WAIT, count: before\.count \+ 1 \}\)\);\s*return \{ led: false, said: SHARE_RIDE_WAIT \};\s*\}/);

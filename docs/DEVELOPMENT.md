@@ -8421,11 +8421,19 @@ age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
   `sendableLine`), checks an alert's kind and Other's words, and merges alerts as it reads them (`mergeAlerts`,
   the server's rule: same kind and words, within 200 m, within 2 minutes of the latest report; one's own stay
   apart so Clear clears only them). A value that does not open with the ride's key is left out.
+- **Padding.** Each value is padded with spaces to a whole number of 128 (dot), 512 (alert) or 4096 (path) bytes
+  before sealing (`padded`), so the sealed text's length gives away no role, alert kind or length of words. The
+  server still sees the ride id, tokens, addresses, timing and counts, and it marks the leader's dot and each
+  dot's age; those are not sealed.
 - **Which rides.** A broadcast's secret is made with the leader's token (`App.tsx` `Lead`) and goes in every link
   for that ride, including those followers pass on. A Group Ride plan's secret (`groupSecret`) is made when a
   page starts afresh or the rider picks Group Ride, kept in the address bar (on Group Ride only) and in Copy link
   and Share. A link without one (a Mass Ride, an older link, a ride post the server wrote) is the ride by its
-  points in plain numbers, as before, so everyone who opens the same link is still on one ride.
+  points in plain numbers, as before, so everyone who opens the same link is still on one ride. A sealed ride's
+  page leaves out anything that does not open, plain dots included: for a short while after a release, a page
+  still on the older build joins a link's ride by its points and does not meet those on the sealed ride. A Group
+  Ride's secret comes from the plan as opened (`OPENED_HASH`), so one kept over a sign-in keeps it; a saved or
+  kept route the rider opens gets a new one, a link pasted in its own or none.
 - Tests: `frontend/src/lib/rideSeal.test.ts` (secret, derivation, sealing, the grid against the server's,
   merging, a sealed ride end to end through `rideGroup.ts`, the page's wiring) and `tests/test_ride_presence.py`
   (sealed dots, alerts and paths kept, limited, marked and dropped as plain ones are).

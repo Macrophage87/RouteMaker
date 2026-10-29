@@ -675,3 +675,14 @@ def test_the_api_takes_sealed_values_in_post_bodies(client, clock, monkeypatch) 
     assert r["dots"] == [{"sealed": SEALED_DOT, "age_s": 0, "leader": True}]
     assert r["leader_path"]["sealed"] == SEALED_PATH
     assert [a["sealed"] for a in r["alerts"]] == [SEALED_ALERT]
+
+
+def test_a_sealed_body_keeps_no_plain_field_sent_beside_it(clock) -> None:
+    rp.post_position(RIDE, ME, *SPOT, role="sweep", now=clock, sealed=SEALED_DOT)
+    rider = rp.store()._rides[RIDE]["riders"][ME]
+    assert not {"lon", "lat", "role"} & set(rider)
+    alert = rp.send_alert(
+        RIDE, ME, "group-ride", "crash", "", *SPOT, now=clock, sealed=SEALED_ALERT
+    )
+    kept = rp.store()._rides[RIDE]["alerts"][0]
+    assert not {"lon", "lat", "kind", "text"} & set(kept) and "label" not in alert
