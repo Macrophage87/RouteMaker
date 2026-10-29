@@ -118,6 +118,7 @@ import {
   planAfterEnd,
   replanKept,
   replanHeld,
+  replanFromM,
   skippableVia,
   viaSkipWorth,
   viaSkippedNote,
@@ -268,8 +269,9 @@ export const RIDE_STARTED = t("Ride started.");
 export const START_NOTE_MS = 1_500;
 /** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
 export const END_RIDE_NAME = t("End ride");
-/** The least a long instruction shrinks to at normal text, from its own size (styles.css .cue-text, 1.5rem). */
-const CUE_TEXT_MIN_PX = 16;
+/** The least a long instruction shrinks to at normal text, from its own size (styles.css .cue-text, 1.5rem): the ride's
+ *  20 px for street names (the owner, 2026-10-20); longer still, its second line ends in "…". */
+const CUE_TEXT_MIN_PX = 20;
 /** Its words once arrived, filled (the UI review, 2026-10-28); the name goes on with End ride. */
 export const RIDE_DONE_TEXT = t("Done");
 /**
@@ -1209,13 +1211,15 @@ export function RideMode({
       const heading = turnRound ? null : (current.goodFix?.headingDeg ?? null);
       // Two U-turns ridden past: the rider means to stay on this way, so this one sets off ahead whatever turning saves.
       const aheadOnly = uturnAheadOnly(uturns.current, heading);
-      // A re-route: via points close ahead are guides and dropped, stops kept (2026-10-24); the stop the rider
+      // A re-route: every stop and via point still ahead is kept (2026-10-24, 2026-10-27; only the next via point may be
+      // left out, below), a via point the rider rode past beside the line is not (replanFromM); the stop the rider
       // skipped (Skip this stop, or a place chosen instead of it) is left out.
       // The same kept points for the way back below, so its stops keep their numbers in the new plan.
       // A restart part way (`done`, RestartStopsDialog): the stops the rider left unticked, behind or not.
+      const fromM = replanFromM(modelRef.current, current.progressM ?? 0, here);
       const keptPoints = done
         ? restartKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, done)
-        : replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, true).filter((i) => i !== skip);
+        : replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, fromM).filter((i) => i !== skip);
       const left = withoutStop(plan.current.points, keptPoints, here, skip ?? -1);
       // `let`: a re-route that leaves out the next via point (VIA_SKIP_EXTRA_S, below) rides the points without it.
       let points = via ? detourPoints(left, via) : left;
@@ -1297,12 +1301,12 @@ export function RideMode({
         // be skipped a little more, for instance if a road is closed, you shouldn't expect a 20 minute detour just to get
         // to the other side. Those are guides. Stops are where you want to end up." and "Sometimes people plan very
         // indirect routes for fun, so it shouldn't skip all of the vias"): where the new route takes more than
-        // VIA_SKIP_EXTRA_S longer to reach it than the planned one would have from the rider's place, it is planned once
-        // more without it. Not for a detour, a held U-turn's check, a restart, or a Calmer or Flatter press (its route is
-        // slower by choice). The second ask is made only when that trips.
+        // VIA_SKIP_EXTRA_S longer to reach it than the planned one would have from the rider's place on it now
+        // (replanFromM), it is planned once more without it. Not for a detour, a held U-turn's check, a restart, or a
+        // Calmer or Flatter press (its route is slower by choice). The second ask is made only when that trips.
         const eased = easing.current?.ticket === ticket;
         const next = result.ok && !via && !check && !done && !eased ? skippableVia(modelRef.current, keptPoints) : null;
-        if (result.ok && next && viaSkipWorth(modelRef.current, current.progressM ?? 0, next.atM, modelOf(result.route, points), 1) && !voided()) {
+        if (result.ok && next && viaSkipWorth(modelRef.current, fromM, next.atM, modelOf(result.route, points), 1) && !voided()) {
           const without = points.filter((_, i) => i !== 1);
           const again = await ask(without);
           if (again.ok) {
@@ -1325,8 +1329,9 @@ export function RideMode({
       window.clearTimeout(timer);
       if (check) checking.current = false;
       else if (!released) gate.finish(found !== null);
-      // Let go at the timeout and answered late with a route, nothing newer in flight: the back-off starts afresh.
-      else if (found && !gate.busy) gate.finish(true);
+      // Let go at the timeout and answered late with a route that is still taken (nothing newer since): the back-off
+      // starts afresh.
+      else if (found && !voided() && !gate.busy) gate.finish(true);
       // Road closed pressed while this one was under way: this answer did not leave that road out, so it is
       // dropped (the press voided it) and the ride is planned again from where the rider is now.
       if (!check && closedPending.current && !ended.current) {
@@ -2231,7 +2236,7 @@ export function RideMode({
       card.style.removeProperty("--cue-fit");
       card.style.removeProperty("--cue-fit-d");
       // The instruction keeps its two-line slot, so the card and the map do not jump between turns (the UI review,
-      // 2026-10-28): a long street shrinks to fit it, never under 16 px; longer still, its second line ends in "…".
+      // 2026-10-28): a long street shrinks to fit it, never under 20 px; longer still, its second line ends in "…".
       const line = card.querySelector<HTMLElement>(".cue-next .cue-text");
       const shown = line?.querySelector<HTMLElement>("[aria-hidden]");
       if (!line || !shown) return;

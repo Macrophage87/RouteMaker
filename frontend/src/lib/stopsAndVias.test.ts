@@ -10,9 +10,10 @@ import {
   REPLAN_FAILED,
   REPLAN_FOUND,
   REPLAN_UTURN,
-  VIA_GUIDE_SKIP_M,
+  REPLAN_REACH_FACTOR,
   VIA_SKIP_EXTRA_S,
   cueSpoken,
+  replanFromM,
   replanKept,
   replanTold,
   rideModel,
@@ -103,7 +104,7 @@ test("the page's link, its saved routes and its kept routes: names in the first 
   const saved = src("./savedRoutes.ts");
   assert.equal(saved.match(/hash: encodePlan\(points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\)/g)?.length, 2);
   assert.match(src("./planHash.ts"), /names: ReadonlyMap<number, string> = stopNames\(points, VIA_MARKS\.nameOf, VIA_MARKS\.isVia, dials\?\.loop === true\)/);
-  assert.match(src("./offlineRoutes.ts"), /encodePlan\(points, preset, sent, vias, undefined, new Map\(\)\)/);
+  assert.match(src("./offlineRoutes.ts"), /encodePlan\(points, preset, dials, vias, undefined, new Map\(\)\)/);
   const app = src("../App.tsx");
   assert.match(app, /VIA_MARKS\.nameAt\(initialPlan\.points, initialPlan\.names\)/);
 });
@@ -162,24 +163,38 @@ function ride(): { route: RouteResponse; points: LonLat[]; vias: number[] } {
   return { route, points, vias: [1, 3] };
 }
 
-test("a re-route keeps the stops and the far via points, and drops a via point close ahead", () => {
+/** `east` metres along and `north` metres off the line. */
+const off = (east: number, north: number): LonLat => [at(east)[0], LAT + north / M_PER_DEG];
+
+test("a re-route keeps every stop and via point still ahead, close or not (only the next via may be skipped)", () => {
   const { route, points, vias } = ride();
   const model = rideModel(route, vias);
-  // 100 m along: the via at 300 m is close ahead, the stop at 1,000 m and the via at 2,000 m are not.
-  assert.ok(300 - 100 < VIA_GUIDE_SKIP_M && 2000 - 100 > VIA_GUIDE_SKIP_M);
-  assert.deepEqual(replanKept(model, 100, points, false, true), [2, 3, 4]);
-  // Without `guides` (End ride's plan left), every via point not passed stays.
+  // 100 m along: the via at 300 m is close ahead and kept, with the stop at 1,000 m and the via at 2,000 m.
   assert.deepEqual(replanKept(model, 100, points, false), [1, 2, 3, 4]);
-  // Close to a stop: the stop is never dropped.
-  assert.deepEqual(replanKept(model, 900, points, false, true), [2, 3, 4]);
-  assert.deepEqual(replanKept(model, 1500, points, false, true), [4], "the via at 2,000 m is close ahead now");
+  assert.deepEqual(replanKept(model, 900, points, false), [2, 3, 4]);
+  assert.deepEqual(replanKept(model, 1500, points, false), [3, 4], "the via at 2,000 m is close ahead and kept");
   // Skip this stop: the re-plan's points without it.
   const here = at(950);
-  assert.deepEqual(withoutStop(points, replanKept(model, 900, points, false, true), here, 2), [here, points[3], points[4]]);
-  // The re-route and its way back use the same kept points (guides dropped, the skipped stop left out).
+  assert.deepEqual(withoutStop(points, replanKept(model, 900, points, false), here, 2), [here, points[3], points[4]]);
+  // The re-route and its way back use the same kept points (the skipped stop left out).
   const rideSrc = src("../RideMode.tsx");
-  assert.match(rideSrc, /: replanKept\(modelRef\.current, current\.progressM \?\? 0, plan\.current\.points, plan\.current\.loop, true\)\.filter\(\(i\) => i !== skip\);/);
+  assert.match(rideSrc, /const fromM = replanFromM\(modelRef\.current, current\.progressM \?\? 0, here\);/);
+  assert.match(rideSrc, /: replanKept\(modelRef\.current, current\.progressM \?\? 0, plan\.current\.points, plan\.current\.loop, fromM\)\.filter\(\(i\) => i !== skip\);/);
   assert.match(rideSrc, /const kept = keptPoints;/);
+});
+
+test("a rider who rode on beside the line has passed its via points, never its stops, and is measured from there", () => {
+  const { route, points, vias } = ride();
+  const model = rideModel(route, vias);
+  // Left the line at 100 m (Keep going) and rode a parallel street 150 m north to 2,100 m along.
+  const fromM = replanFromM(model, 100, off(2100, 150));
+  assert.ok(Math.abs(fromM - 2100) < 2);
+  // Both via points are behind them now; the stop at 1,000 m they never reached is kept.
+  assert.deepEqual(replanKept(model, 100, points, false, fromM), [2, 4]);
+  // Back toward the start of the line: never before where they left it.
+  assert.equal(replanFromM(model, 1500, off(200, 50)), 1500);
+  // Far ahead of where they could have ridden: no further than about 1.5 times the way, as the crow flies.
+  assert.ok(replanFromM(model, 100, off(400, 400)) <= 100 + REPLAN_REACH_FACTOR * 500 + 100);
 });
 
 // ---- A re-route may leave out the next via point (Stephen 2026-10-27: "Vias can be skipped a little more ... Those
@@ -201,7 +216,7 @@ test("only the next via point may be left out: never a stop, never a via point b
   const { route, points, vias } = ride();
   const model = rideModel(route, vias);
   // 1,100 m along: the stop at 1,000 m is passed and the via at 2,000 m is the next point.
-  const kept = replanKept(model, 1100, points, false, true);
+  const kept = replanKept(model, 1100, points, false);
   assert.deepEqual(kept, [3, 4]);
   const next = skippableVia(model, kept);
   assert.equal(next?.point, 3);
@@ -237,7 +252,7 @@ test("Ride mode asks again without the via point only when that trips, and not f
   assert.match(replan, /const next = result\.ok && !via && !check && !done && !eased \? skippableVia\(modelRef\.current, keptPoints\) : null;/);
   assert.match(
     replan,
-    /if \(result\.ok && next && viaSkipWorth\(modelRef\.current, current\.progressM \?\? 0, next\.atM, modelOf\(result\.route, points\), 1\) && !voided\(\)\) \{\s*const without = points\.filter\(\(_, i\) => i !== 1\);\s*const again = await ask\(without\);/,
+    /if \(result\.ok && next && viaSkipWorth\(modelRef\.current, fromM, next\.atM, modelOf\(result\.route, points\), 1\) && !voided\(\)\) \{\s*const without = points\.filter\(\(_, i\) => i !== 1\);\s*const again = await ask\(without\);/,
   );
   assert.match(replan, /if \(skippedVia\) note = viaSkippedNote\(note\);/);
 });

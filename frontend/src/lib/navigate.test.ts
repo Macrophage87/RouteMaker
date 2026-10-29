@@ -700,7 +700,7 @@ test("ReplanGate: one in flight, 30 s apart, 2 min after two failures, online li
 test("a re-plan hung past REPLAN_TIMEOUT_MS lets the gate go, and a late answer never frees a newer one", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /if \(ended\.current \|\| ticket !== replanTicket\.current\) return;\s*released = true;\s*gate\.finish\(false\);\s*setReplanning\(false\);/);
-  assert.match(ride, /else if \(!released\) gate\.finish\(found !== null\);\s*\/\/[^\n]*\n\s*else if \(found && !gate\.busy\) gate\.finish\(true\);/);
+  assert.match(ride, /else if \(!released\) gate\.finish\(found !== null\);\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*else if \(found && !voided\(\) && !gate\.busy\) gate\.finish\(true\);/);
   // Told "No signal" once, at the timeout.
   assert.match(ride, /if \(!found\) \{\s*\/\/[^\n]*\n\s*if \(released\) return false;/);
 });

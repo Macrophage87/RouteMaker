@@ -15,7 +15,7 @@ from concurrent.futures import Future
 
 import pytest
 
-from core import parallel, presets, refine, routing, trailseek
+from core import parallel, presets, refine, routing, timing, trailseek
 from routemaker import calm, trace_junctions
 from routemaker import intersections as model
 from routemaker.intersections import Control, Event, Movement
@@ -1281,8 +1281,15 @@ class TestRouterAlternates:
         assert refine.ALTERNATES_MIN_S == 1.0
         ctx = self.ctx()
         ctx.search_budget_s = refine.ALTERNATES_ROUND_RESERVE_S + 0.5
-        _kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        timings = timing.Timings()
+        token = timing.start(timings)
+        try:
+            _kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        finally:
+            timing.stop(token)
         assert self.asks(world) == [] and "alternates" not in info
+        # Skipped for want of time, so the answer is not kept (`route_cache.keepable`).
+        assert timings.failures == 1
 
     def test_the_plans_own_are_ranked_however_little_time_is_left(self, monkeypatch) -> None:
         """No ask is needed for them, so the ask's least time does not apply."""
