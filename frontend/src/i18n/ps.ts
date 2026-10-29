@@ -1550,4 +1550,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "د کیبورډ سره، د غشي کیلي نقشه خوځوي؛ {addPoint}.",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z وروستی بدلون بېرته کوي او Ctrl+Shift+Z یې بیا کوي.",
   "With two or more stops, Best order puts them in the order that rides best.": "د دوو یا ډېرو تمځایونو سره، غوره ترتیب یې د چلولو په غوره ترتیب کې ږدي.",
+  "Saved {date}": "خوندي شوی {date}",
+  "As of {time}.": "تر {time} پورې.",
+  "Counts may be out of date: as of {time}.": "شمېرې ښايي تازه نه وي: تر {time} پورې.",
 };

@@ -18,6 +18,9 @@ import {
   rightToLeft,
   setCatalogForTest,
   setLanguageForTest,
+  clockLocale,
+  FROM_DEVICE,
+  startLanguage,
   speechLang,
   t,
   voiceTags,
@@ -99,6 +102,30 @@ test("the language: the rider's choice, else the device's first language the app
   assert.equal(deviceLanguage(undefined), "en");
   assert.equal(speechLang("es"), "es-US");
   assert.equal(speechLang("en"), "en-US");
+});
+
+test("the app starts in the rider's choice, else the phone's language only for English and Spanish: the drafts wait to be chosen", () => {
+  assert.equal(startLanguage("", "es"), "es");
+  assert.equal(startLanguage("", "en"), "en");
+  assert.equal(startLanguage("", "fr"), "en", "a Claude-drafted language is not turned on by the phone");
+  assert.equal(startLanguage("", "ar"), "en");
+  assert.equal(startLanguage("fr", "en"), "fr", "chosen in Settings, a draft is used");
+  assert.equal(startLanguage("en", "es"), "en");
+  assert.equal(startLanguage("", deviceLanguage(["fr-FR", "es-MX"], FROM_DEVICE)), "es", "a French phone with Spanish second opens in Spanish");
+  assert.equal(startLanguage("", deviceLanguage(["fr-FR"], FROM_DEVICE)), "en");
+});
+
+test("arrival clocks: the phone's own 12- or 24-hour clock when it reads the app's language, else the app's language", () => {
+  try {
+    setLanguageForTest("en");
+    assert.equal(clockLocale(["en-GB"]), undefined, "an English phone keeps its own clock");
+    assert.equal(clockLocale(["es-MX"]), "en-US");
+    setLanguageForTest("fr");
+    assert.equal(clockLocale(["fr-CA"]), undefined);
+    assert.equal(clockLocale(["en-US"]), "fr", "French chosen on an English phone writes French times");
+  } finally {
+    setLanguageForTest("en");
+  }
 });
 
 test("Spanish turn directions are whole Spanish sentences, the street names as they are", () => {
@@ -245,6 +272,53 @@ test("each of DC's languages has every turn sentence Ride says (the owner, 2026-
   for (const lang of LANGUAGES.filter((l) => l !== "en")) {
     const catalog = lang === "es" ? ES : await catalogOfFile(lang);
     assert.deepEqual(phrases.filter((p) => !(p in catalog)), [], lang);
+  }
+});
+
+/**
+ * Each language's words for left and right, as its turn sentences write them. A sentence on the wrong side sends a rider
+ * the wrong way, so a reviewer's edit that swaps them fails here (the 2026-10-29 review).
+ */
+const LEFT_RIGHT: Record<Exclude<Language, "en">, readonly [RegExp, RegExp]> = {
+  es: [/izquierda/, /derecha/],
+  am: [/ግራ/, /ቀኝ/],
+  ar: [/يسار/, /يمين/],
+  bn: [/বাঁ/, /ডান/],
+  fa: [/چپ/, /راست/],
+  fr: [/gauche/, /droite/],
+  hi: [/बाएँ|बाईं|बाएं|बायें/, /दाएँ|दाईं|दाएं|दायें/],
+  ht: [/goch/, /dwat/],
+  id: [/kiri/, /kanan/],
+  ja: [/左/, /右/],
+  ko: [/왼|좌/, /오른|우회전/],
+  ps: [/کیڼ/, /ښي/],
+  pt: [/esquerda/, /direita/],
+  ru: [/налево|левее|слева|влево|левой|левую/, /направо|правее|справа|вправо|правой|правую/],
+  th: [/ซ้าย/, /ขวา/],
+  ti: [/ጸጋም/, /የማን/],
+  tr: [/(^|\s)sol/i, /(^|\s)sağ/i],
+  vi: [/trái/, /(rẽ|sang|bên) phải/i],
+  yue: [/左/, /右/],
+  zh: [/左/, /右/],
+};
+
+test("no language swaps left and right: each turn sentence keyed left says its left word and not its right, and the reverse", async () => {
+  // Turns, keep-left and keep-right, the side the destination is on, and the end-ride slide (laid out left to right).
+  const sided = Object.keys(ES).filter(
+    (p) =>
+      /^(Left|Right|Bear (left|right)|Keep (left|right))(?![-\w])|on your (left|right)|^Slide it to the right/.test(p) &&
+      /\bleft\b/i.test(p) !== /\bright\b/i.test(p),
+  );
+  assert.ok(sided.length >= 25, `${sided.length} sided phrases`);
+  for (const lang of LANGUAGES.filter((l): l is Exclude<Language, "en"> => l !== "en")) {
+    const catalog = lang === "es" ? ES : await catalogOfFile(lang);
+    const [left, right] = LEFT_RIGHT[lang];
+    for (const english of sided) {
+      const text = catalog[english];
+      if (text === undefined) continue;
+      const [says, not] = /\bleft\b/i.test(english) ? [left, right] : [right, left];
+      assert.ok(says.test(text) && !not.test(text), `${lang}: "${english}" is "${text}"`);
+    }
   }
 });
 

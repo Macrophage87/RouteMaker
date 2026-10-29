@@ -1550,4 +1550,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "Dengan papan ketik, tombol panah menggeser peta; {addPoint}.",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z membatalkan perubahan terakhir dan Ctrl+Shift+Z mengulanginya.",
   "With two or more stops, Best order puts them in the order that rides best.": "Dengan dua perhentian atau lebih, Urutan terbaik menyusunnya dalam urutan yang paling enak dikayuh.",
+  "Saved {date}": "Disimpan {date}",
+  "As of {time}.": "Per {time}.",
+  "Counts may be out of date: as of {time}.": "Jumlahnya mungkin belum terbaru: per {time}.",
 };

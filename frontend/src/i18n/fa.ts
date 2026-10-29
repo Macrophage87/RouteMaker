@@ -1550,4 +1550,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "با صفحه‌کلید، کلیدهای جهت نقشه را جابه‌جا می‌کنند؛ {addPoint}.",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z آخرین تغییر را واگرد می‌کند و Ctrl+Shift+Z دوباره انجامش می‌دهد.",
   "With two or more stops, Best order puts them in the order that rides best.": "با دو توقف یا بیشتر، بهترین ترتیب آن‌ها را به بهترین ترتیب رکاب می‌چیند.",
+  "Saved {date}": "ذخیره‌شده در {date}",
+  "As of {time}.": "تا ساعت {time}.",
+  "Counts may be out of date: as of {time}.": "شاید شمارش‌ها به‌روز نباشند: تا ساعت {time}.",
 };

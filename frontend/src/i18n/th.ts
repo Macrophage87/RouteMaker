@@ -1550,4 +1550,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "ใช้แป้นพิมพ์ ปุ่มลูกศรเลื่อนแผนที่ {addPoint}",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z เลิกทำการเปลี่ยนแปลงล่าสุด และ Ctrl+Shift+Z ทำซ้ำ",
   "With two or more stops, Best order puts them in the order that rides best.": "เมื่อมีจุดแวะตั้งแต่สองจุด ลำดับที่ดีที่สุดจะเรียงตามลำดับที่ปั่นได้ดีที่สุด",
+  "Saved {date}": "บันทึกเมื่อ {date}",
+  "As of {time}.": "ณ เวลา {time}",
+  "Counts may be out of date: as of {time}.": "จำนวนอาจไม่เป็นปัจจุบัน: ณ เวลา {time}",
 };

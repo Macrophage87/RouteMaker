@@ -1550,4 +1550,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "कीबोर्ड से तीर कुंजियाँ नक्शा खिसकाती हैं; {addPoint}।",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z आख़िरी बदलाव पूर्ववत करता है और Ctrl+Shift+Z दोबारा करता है।",
   "With two or more stops, Best order puts them in the order that rides best.": "दो या ज़्यादा पड़ाव हों तो सबसे अच्छा क्रम उन्हें चलाने के सबसे अच्छे क्रम में लगाता है।",
+  "Saved {date}": "सहेजा गया {date}",
+  "As of {time}.": "{time} तक।",
+  "Counts may be out of date: as of {time}.": "गिनती पुरानी हो सकती है: {time} तक।",
 };

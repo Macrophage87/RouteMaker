@@ -1550,4 +1550,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "ብመጽሓፍ መፍትሕ፣ መፍትሕታት ምልክት ካርታ የንቀሳቕሱ፤ {addPoint}።",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z ናይ መወዳእታ ለውጢ ይመልስ፣ Ctrl+Shift+Z ድማ ደጊሙ ይገብሮ።",
   "With two or more stops, Best order puts them in the order that rides best.": "ክልተ ወይ ልዕሊኡ መዕረፍታት ምስ ዝህልዉ፣ ዝበለጸ ቅደም ሰዓብ ብዝበለጸ ስርዓት ምጉዓዝ የቐምጦም።",
+  "Saved {date}": "ዝተዓቀበ {date}",
+  "As of {time}.": "ክሳብ {time}።",
+  "Counts may be out of date: as of {time}.": "ቁጽርታት ዘይተሓደሱ ክኾኑ ይኽእሉ፦ ክሳብ {time}።",
 };
