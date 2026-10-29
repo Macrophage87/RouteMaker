@@ -60,7 +60,12 @@ def reasons_of(ways, park=True):
 
 
 def links(ways, reasons=None):
-    return sl.links(ways, reasons_of(ways) if reasons is None else reasons, tc.SHORT_LINK_REOPENS)
+    return sl.links(
+        ways,
+        reasons_of(ways) if reasons is None else reasons,
+        tc.SHORT_LINK_REOPENS,
+        trail_only=tc.SHORT_LINK_TRAIL_ONLY,
+    )
 
 
 def test_an_untagged_park_path_off_a_street_is_ridden():
@@ -160,6 +165,18 @@ def test_a_works_or_track_link_open_by_its_tags_is_ridden():
     assert links(connector({"highway": "path"}), {2: "works"}) == {2: False}
     assert links(connector({"highway": "track", "surface": "gravel"}), {2: "track"}) == {2: False}
     assert links(connector({"highway": "track", "tracktype": "grade5"}), {2: "track"}) == {2: True}
+
+
+def test_a_works_or_track_link_between_two_streets_stays_closed():
+    """The owner, 2026-10-29: "Keep short farm tracks and working-site links only where they
+    connect to a trail". Between a county road and a farm drive it is the likely private
+    case; a park path between two streets is still ridden."""
+    road = placed(1, {"highway": "residential", "name": "Farm Lane"},
+                  [(-300.0, 0.0), (0.0, 0.0), (300.0, 0.0)])  # fmt: skip
+    for tags, reason in (({"highway": "track", "surface": "gravel"}, "track"),
+                         ({"highway": "path"}, "works")):  # fmt: skip
+        assert links([road, *connector(tags)[1:]], {2: reason}) == {}, reason
+    assert links([road, *connector()[1:]], {2: trailaccess.PARK_PATH}) == {2: False}
 
 
 def test_a_rough_path_is_walked():

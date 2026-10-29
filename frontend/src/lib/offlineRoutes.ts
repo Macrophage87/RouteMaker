@@ -79,15 +79,14 @@ export function keepOffered(standalone: boolean, inTab: boolean = KEEP_IN_BROWSE
 }
 
 /**
- * The key a route is kept and looked up under: the routed plan's link, without Mass Ride's ride size
- * (never sent to the planner: App.tsx plans from the dials without it), so a keep, the last ride,
- * Settings' Open and the planner's offline lookup all agree.
+ * The key a route is kept and looked up under: the routed plan's link, Mass Ride's ride size with it (the
+ * planner chooses a Mass Ride's route by it: core.routing choose_by_capacity), so a keep, the last ride,
+ * Settings' Open and the planner's offline lookup all agree, and a route kept at one size never answers another.
  */
 export function keptPlanKey(points: readonly LonLat[], preset: PresetId, dials: Dials, vias: readonly number[] = []): string {
-  const { rideSize: _unsent, ...sent } = dials;
   // The via points too (v0.7.0): a kept route opens with each point's kind.
   // Never a stop's own name: renaming a stop asks for no new route.
-  return encodePlan(points, preset, sent, vias, undefined, new Map());
+  return encodePlan(points, preset, dials, vias, undefined, new Map());
 }
 
 /** The kept answer for a plan with no network: a kept route of that plan first, else the last ride's. */
