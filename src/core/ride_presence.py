@@ -48,6 +48,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from random import SystemRandom
 
 # How long a dot lives after its last reading (the plan: "kept only in server memory for 2
 # minutes"; the front end draws it gone at the same age).
@@ -97,6 +98,7 @@ RIDE_WRITES_WINDOW_S = 60
 SWEEP_S = 10
 OTHER_TEXT_MAX = 80
 
+_SHUFFLE = SystemRandom()
 MASS_RIDE = "mass-ride"
 GROUP_RIDE = "group-ride"
 
@@ -712,6 +714,9 @@ def read(ride_id: str, token: str, now: Callable[[], float] = time.time, leader:
                     p = r["path"]
                     path = {k: v for k, v in p.items() if k in ("route", "trail", "sealed")}
                     path["age_s"] = max(0, int(t - p["at"]))
+    # A fresh order each time: a dot's place in the list never ties it to the same rider
+    # from one read to the next (2026-10-29).
+    _SHUFFLE.shuffle(dots)
     answer = {"dots": dots, "alerts": alerts}
     if path is not None:
         answer["leader_path"] = path
