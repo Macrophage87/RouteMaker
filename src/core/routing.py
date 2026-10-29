@@ -105,6 +105,7 @@ from routemaker import (
     hill_cost,
     intersections,
     junction_delay,
+    mass_route,
     mdot_aadt,
     mtbmode,
     ridetime,
@@ -1717,6 +1718,9 @@ class Dials:
     # reroutes and on the third time assume that the user wants to stay on that path"): the route
     # that sets off ahead is taken whatever turning round would save (`plan_onward`).
     ahead_only: bool = False
+    # Mass Ride's "Anticipated ride size" (PLAN items 128, 129), riders: the capacity a road
+    # needs, which the route choice prices (`choose_by_capacity`); None: 500.
+    ride_size: int | None = None
 
 
 def _same_pace(options: dict, request: dict) -> dict:
@@ -2102,6 +2106,125 @@ def choose_by_steep(trips: list[dict], price: HillPrice, quiet_cost: float) -> i
 # What an alternative must save, in the router's cost seconds, for the hills choice to take
 # it over the router's own route: a few seconds is the elevation samples' noise.
 HILLS_EPS_S = 5.0
+
+
+def capacity_stretches(
+    variant: str,
+    costing: dict,
+    trip: dict,
+    when: str,
+    deadline: Deadline,
+    traces: dict | None = None,
+    names: bool = False,
+) -> list[tuple] | None:
+    """A trip's Mass Ride stretches (`_flow_stretches`: metres, usable width, note; with
+    `names` its street name fourth), read as the answer reads them; None where a leg cannot
+    be traced."""
+    prefetch_traces(variant, costing, [trip], deadline, traces)
+    pieces: list[Piece] = []
+    for leg in trip.get("legs") or []:
+        trace = _trace(variant, costing, leg.get("shape", ""), deadline, traces)
+        if trace is None:
+            return None
+        pieces.extend(trace_reading(trace)[0])
+    classes = classify(pieces, when, roadway_only=True)
+    capacity = _has_capacity_column(validate_schema_name(settings.SEGMENT_SCHEMA_LIVE))
+    outside = [_outside_dc(piece) for piece in pieces]
+    found = _flow_stretches([(0, len(pieces))], pieces, classes, capacity, outside)
+    if names:
+        found = _named(found, [(0, len(pieces))], pieces)
+    return found
+
+
+def _mass_capacity(
+    stretches: list[tuple],
+    profile: dict | None,
+    length_m: float,
+    riders: int,
+    choice: dict | None,
+) -> dict | None:
+    """The answer's `mass_capacity`: what the route carries against what the ride size needs,
+    where it falls short, and the corkers it needs (`routemaker.mass_route`); None where it
+    cannot be read (the route is answered without it)."""
+    try:
+        priced = mass_route.price(stretches, riders)
+        narrowest = priced.narrowest_riders_per_min
+        return {
+            "riders": riders,
+            "need_riders_per_min": priced.need_per_min,
+            "hold_minutes": mass_route.HOLD_MINUTES,
+            "narrowest_riders_per_min": None if narrowest is None else round(narrowest),
+            "narrowest_m": None if priced.narrowest_m is None else round(priced.narrowest_m),
+            "below_need_m": round(priced.below_need_m),
+            "capacity_changes": priced.transitions,
+            "capacity_price_s": round(priced.total_s, 1),
+            "narrow_stretches": mass_route.narrow_stretches(stretches, priced.need_per_min),
+            "corkers": mass_route.corker_load(profile, length_m, riders),
+            "choice": choice,
+        }
+    except Exception:  # noqa: BLE001 - the route is answered without its capacity summary
+        logger.warning("the Mass Ride capacity summary could not be built", exc_info=True)
+        return None
+
+
+def _named(stretches: list[tuple], leg_runs: list, pieces: list[Piece]) -> list[tuple]:
+    """`_flow_stretches`' stretches with each one's street name fourth (None on a leg that
+    was not traced, or an unnamed way), for the answer's narrow stretches."""
+    names: list[str | None] = []
+    for run in leg_runs:
+        if isinstance(run, tuple):
+            names.extend(
+                (pieces[i].names[0] if pieces[i].names else None) for i in range(run[0], run[1])
+            )
+        else:
+            names.append(None)
+    return [(*stretch, name) for stretch, name in zip(stretches, names, strict=True)]
+
+
+def choose_by_capacity(
+    trips: list[dict],
+    hill_part: Callable[[dict], float],
+    riders: int,
+    variant: str,
+    costing: dict,
+    when: str,
+    deadline: Deadline,
+    traces: dict | None = None,
+) -> tuple[int, dict | None]:
+    """A Mass Ride's choice among the router's routes by road capacity (PLAN "Mass Ride map
+    and mode", items 120-123, 128; `routemaker.mass_route`): the index of the trip whose router
+    cost plus its climbing (`hill_part`) plus its capacity price for a group of `riders` is
+    least, and what was weighed. The router's own route is kept unless another saves more than
+    HILLS_EPS_S. Busier roads are not held against an alternative: a Mass Ride is corked and
+    judged by what a road carries, not its LTS (OWNER-DECISIONS 125, 325). Where the router's
+    own route cannot be read in time, (0, None): the caller chooses as before; an alternative
+    that cannot be read is passed over."""
+    prefetch_traces(variant, costing, trips, deadline, traces)
+    best, best_score = 0, None
+    weighed: list[dict] = []
+    for index, trip in enumerate(trips):
+        try:
+            stretches = capacity_stretches(variant, costing, trip, when, deadline, traces)
+        except (DeadlineExceeded, RouterUnavailable):
+            stretches = None
+        if stretches is None:
+            if index == 0:
+                return 0, None
+            continue
+        priced = mass_route.price(stretches, riders)
+        score = _router_cost(trip) + hill_part(trip) + priced.total_s
+        weighed.append(
+            {
+                "route": index,
+                "capacity_s": round(priced.total_s, 1),
+                "narrow_s": round(priced.narrow_s, 1),
+                "transitions": priced.transitions,
+                "below_need_m": round(priced.below_need_m),
+            }
+        )
+        if best_score is None or score < best_score - HILLS_EPS_S:
+            best, best_score = index, score
+    return best, {"riders": riders, "routes_weighed": weighed, "chosen": best}
 
 
 def _trace(
@@ -4521,7 +4644,27 @@ def _plan(
             avoid_gravel,
         )
         trips = trips + sought.trips
-    if fixed:
+    # A Mass Ride chooses among the router's routes by road capacity for its ride size
+    # (`choose_by_capacity`), its climbing priced as the rest of this choice prices it.
+    ride_size = mass_route.fit_ride_size(dials.ride_size)
+    capacity_choice = None
+    if preset_name == "mass-ride" and not fixed and not quick and len(trips) > 1:
+
+        def mass_hill_part(one: dict) -> float:
+            if direct_tolerate or avoiding:
+                return hill_s(one, hill_price, _quiet_cost(costing))
+            return (
+                _quiet_cost(costing)
+                * steep_grades.penalty_s(grade_profile(one))
+                * hill_price.flat_ms
+            )
+
+        chosen, capacity_choice = choose_by_capacity(
+            trips, mass_hill_part, ride_size, variant, costing, when, deadline, traces
+        )
+    if capacity_choice is not None:
+        pass  # chosen by capacity, above
+    elif fixed:
         chosen = 0
     elif climb_seek:
         chosen = choose_climb(trips, presets.seek_distance_ratio(hills_dial))
@@ -4555,7 +4698,9 @@ def _plan(
     trip = trips[chosen]
     kept_middle = False
     trace_costing = costing
-    if avoiding and not quick and not fixed:
+    # Not on a Mass Ride weighed by capacity: the middle's check is by LTS, which would undo
+    # a wider road chosen for the group (OWNER-DECISIONS 125, 325).
+    if avoiding and not quick and not fixed and capacity_choice is None:
         middle_costing = _same_pace(
             presets.costing(preset_name, stress_dial, 0, assist=assist, avoid_gravel=avoid_gravel),
             request,
@@ -5288,6 +5433,24 @@ def _plan(
             "mass_hazards": (
                 mass_hazards.along(leg_runs, pieces, classes, hazard_list)
                 if preset_name == "mass-ride"
+                else None
+            ),
+            # A Mass Ride's road capacity for its ride size and the corkers it needs
+            # (`routemaker.mass_route`), for the page and the assistants' tool to improve on;
+            # null on other ride types.
+            "mass_capacity": (
+                _mass_capacity(
+                    _named(
+                        _flow_stretches(leg_runs, pieces, classes, capacity, outside_dc),
+                        leg_runs,
+                        pieces,
+                    ),
+                    profile,
+                    _trip_length_m(trip),
+                    ride_size,
+                    None if alternate else capacity_choice,
+                )
+                if preset_name == "mass-ride" and not over_budget
                 else None
             ),
             # Novice and Nervous (v0.7.0): the busiest stretch, read on the real levels.

@@ -1293,6 +1293,40 @@ order), and nothing asks for hazards.
   `src/lib/massCapacity.test.ts` and `src/lib/profileChart.test.ts`, and for the parts outside DC (427) the "427"
   test in `src/lib/massCapacity.test.ts`, `tests/test_profile_flow.py` and `tests/test_mass_capacity.py`; in the browser, section 20 of scripts/a11y/check.mjs.
 
+### Mass Ride routing by road capacity (items 120-123, 128; v0.15.0)
+
+The riders a minute the capacity map draws now choose the route, for the ride size the rider
+set (the "Anticipated ride size" slider, sent as `ride_size`, 100 to 2,000, 500 by default;
+moving it plans again). `routemaker.mass_route.price` turns a route's stretches (the answer's
+own `_flow_stretches`: each piece's usable width, Avoid, untraced, outside DC) into seconds:
+
+- **Too narrow for the ride.** A road needs riders / 5 a minute (the riders chart's dashed line,
+  a 5-minute hold). Where it carries less, each metre costs its time at the 7 mph cruise times
+  (need / carried - 1), at most 3 times; Avoid carries nothing and pays the cap. So the same road
+  is free for 100 riders and costly for 1,500.
+- **Changes of capacity** (120-123, "It tends to scatter the group"): 60 s stepping down and 30 s
+  stepping up, times (the change / the larger figure) squared, times the group scale (ride size
+  / 500, between 0.5 and 3). Changes under 15% and stretches under 25 m (a junction's own metres)
+  are not changes.
+
+`core.routing.choose_by_capacity` reads every one of the router's routes that way (traced as the
+answer traces them) and keeps the one whose router cost plus climbing plus capacity price is
+least, the router's own unless another saves more than 5 s. Busier roads are not held against a
+Mass Ride's choice (the LTS checks `calmer_or_own` and `no_busier_than_middle` are skipped once
+it has run): a corked ride is judged by what a road carries (325). Where the router's own route
+cannot be read in time, the choice is made as before. The weights are proposals for the owner.
+
+The answer's `mass_capacity` says what the ride size needs and the route carries: the narrowest
+point, the metres below the need, the narrow stretches by street (longest 15), the capacity
+changes, the corkers (`mass_route.corker_load`, the Corker load chart's count in Python, held to
+the front end's figures by tests/test_mass_route.py) and how the router's routes were weighed.
+The assistants' tool (`mcp/routemaker_mcp.py`, `plan_route` and the other plan tools) takes
+`ride_size` and returns the same in miles as `mass_capacity`, so an assistant can move a via
+point onto a wider street and plan again (the owner, 2026-10-29).
+
+Not priced yet: the signal waits, pavement and tight turns (PLAN's other reductions) and the
+busy-road crossings (133-136); a Mass Ride's own Avoid marks; flagging narrow roads on the map.
+
 ### Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3, items 325-327)
 
 "Some stretches can be marked as a caution or warning where we've had problems. They go along side like
