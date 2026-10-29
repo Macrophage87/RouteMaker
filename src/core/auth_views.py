@@ -216,29 +216,18 @@ def logout_view(request):
     return HttpResponseRedirect("/")
 
 
-# The form field that keeps this device signed in while every other session ends. Settings' one
-# button leaves it out, so it signs this device out too.
-KEEP_THIS_DEVICE_FIELD = "keep_this_device"
-
-
 @require_http_methods(["POST"])
 @ratelimit.rate_limited(ratelimit.SIGN_IN)
 @csrf_protect
 def logout_everywhere_view(request):
     """Sign out everywhere: end every session of the signed-in account, and its assistant apps'
     grants, through the epoch (`revocation.bump_session_epoch`). Only that account's: the user
-    is the session's, never a field of the form. Then "/", which loads signed out."""
+    is the session's, never a field of the form. This device's session ends with the rest.
+    Then "/", which loads signed out."""
     if not request.user.is_authenticated:
         return HttpResponseRedirect("/")
-    keep = request.POST.get(KEEP_THIS_DEVICE_FIELD) == "yes"
-    bump_session_epoch(
-        request.user,
-        "signed out everywhere" + (", this device kept" if keep else ""),
-        actor=request.user,
-        keep_session_key=(request.session.session_key or "") if keep else "",
-    )
-    if not keep:
-        django_logout(request)
+    bump_session_epoch(request.user, "signed out everywhere", actor=request.user)
+    django_logout(request)
     return HttpResponseRedirect("/")
 
 

@@ -5,8 +5,7 @@
  *
  * Sign out everywhere, beside it (Stephen approved the one control, 2026-10-29): the same kind of form to
  * /auth/logout-everywhere (logout_everywhere_view), which ends every session of the account, this one too, and its
- * assistant apps' grants. One button, asked once; keeping this device signed in is the server's
- * `keep_this_device`, which this form leaves out.
+ * assistant apps' grants. One button, asked once, in the danger style.
  */
 import { t } from "./lib/i18n.ts";
 import { csrfFromCookie } from "./lib/stressEditor.ts";
@@ -36,7 +35,7 @@ export function SignOutEverywhereForm() {
       }}
     >
       <input type="hidden" name="csrfmiddlewaretoken" value={csrfFromCookie(document.cookie) ?? ""} />
-      <button type="submit" className="secondary">
+      <button type="submit" className="secondary danger">
         {SIGN_OUT_EVERYWHERE}
       </button>
     </form>

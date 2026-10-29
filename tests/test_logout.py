@@ -90,13 +90,18 @@ def grant_for(user: User):
 
 @db
 def test_sign_out_everywhere_ends_every_session_of_the_account_and_its_apps() -> None:
+    from django.contrib.sessions.models import Session as DjangoSession
+
     phone, token = signed_in()
     user = User.objects.get(sessions__session_key=phone.session.session_key)
     laptop, _ = signed_in(user)
     copied = copy_of(phone)
+    keys = [phone.session.session_key, laptop.session.session_key]
     grant_for(user)
     r = phone.post("/auth/logout-everywhere", {"csrfmiddlewaretoken": token}, **addr())
     assert r.status_code == 302 and r["Location"] == "/"
+    # Django's own rows go too, the copied cookie's (the phone's key) among them.
+    assert DjangoSession.objects.filter(session_key__in=keys).count() == 0
     assert not any(is_signed_in(c) for c in (phone, laptop, copied))
     assert not Session.objects.filter(user=user).exists()
     assert not user.connector_grants.exists()
@@ -114,14 +119,22 @@ def test_sign_out_everywhere_leaves_another_accounts_sessions_and_apps() -> None
 
 
 @db
-def test_sign_out_everywhere_can_keep_this_device() -> None:
-    phone, token = signed_in()
-    user = User.objects.get(sessions__session_key=phone.session.session_key)
-    laptop, _ = signed_in(user)
-    form = {"csrfmiddlewaretoken": token, "keep_this_device": "yes"}
-    phone.post("/auth/logout-everywhere", form, **addr())
-    assert is_signed_in(phone)
-    assert not is_signed_in(laptop)
+def test_sign_out_everywhere_signed_out_goes_home_and_changes_nothing() -> None:
+    other, _ = signed_in()
+    them = User.objects.get(sessions__session_key=other.session.session_key)
+    epoch = them.session_epoch
+    from django.middleware.csrf import _get_new_csrf_string
+
+    # A valid token, as a signed-out page's cookie would carry it.
+    visitor = Client(enforce_csrf_checks=True)
+    token = _get_new_csrf_string()
+    visitor.cookies["csrftoken"] = token
+    r = visitor.post("/auth/logout-everywhere", {"csrfmiddlewaretoken": token}, **addr())
+    assert r.status_code == 302 and r["Location"] == "/"
+    assert is_signed_in(other)
+    them.refresh_from_db()
+    assert them.session_epoch == epoch
+    assert Session.objects.filter(user=them).count() == 1
 
 
 @db

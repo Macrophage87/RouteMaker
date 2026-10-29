@@ -304,7 +304,8 @@ test("Sign out everywhere sits beside Sign out: one button, asked once, a form P
   assert.match(everywhere, /if \(!window\.confirm\(SIGN_OUT_EVERYWHERE_ASK\)\) event\.preventDefault\(\);/);
   // One control: no choice of keeping this device or the assistant apps.
   assert.equal((everywhere.match(/<button\b/g) ?? []).length, 1);
-  assert.doesNotMatch(everywhere, /keep_this_device|type="checkbox"/);
+  assert.doesNotMatch(everywhere, /type="checkbox"|type="radio"/);
+  assert.match(everywhere, /<button type="submit" className="secondary danger">/);
   assert.match(form, /export const SIGN_OUT_EVERYWHERE = t\("Sign out everywhere"\);/);
 });
 

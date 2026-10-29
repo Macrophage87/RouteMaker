@@ -5139,7 +5139,8 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   border-radius: 26px;
 }
 
-.ride button.danger {
+.ride button.danger,
+#sheet-settings button.danger {
   background: transparent;
   color: var(--error-text);
   border-color: var(--error-text);
