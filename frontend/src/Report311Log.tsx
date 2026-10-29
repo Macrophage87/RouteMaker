@@ -35,12 +35,12 @@ import { looksLikePhone } from "./lib/startOnComputer.ts";
 export const LOG_HEADING = t("Your 311 checklist");
 export const LOG_EMPTY = t("Nothing to report yet.");
 
-/** What the checkbox says: the problem and when it was logged, "Pothole, Oct 20, 10:29 AM". */
+/** What the checkbox says: the problem and the day it was logged, "Pothole, Oct 20". */
 export function entryLabel(entry: LogEntry): string {
   return `${kindShown(entry.kind)}, ${whenWords(entry.at)}`;
 }
 
-/** The line under it: the place words, the GPS position, the note; archived, when it was reported, or that it went stale. */
+/** The line under it: the place words, the GPS position, the note; archived, the day it was reported, or that it went stale. */
 export function entryPlace(entry: LogEntry, now = new Date()): string {
   const words = entry.place ? `${entry.place[0].toUpperCase()}${entry.place.slice(1)}. ` : "";
   const done = entry.reported !== null ? ` Reported ${whenWords(entry.reported)}.` : isStale(entry, now) ? ` Not reported; archived after ${STALE_DAYS} days.` : "";

@@ -8255,6 +8255,22 @@ spot. Until the build host fills it the file is empty and every place reads as b
 `trailMiles.test.ts`, the trail cases in `report311.test.ts` and `navigate.test.ts`, and
 `tests/test_build_trail_miles.py` (which builds from a small made-up extract) check it.
 
+**The 311 log keeps the day, not the time of day (Stephen, 2026-10-29).** Since 2026-10-20 a 311 pick
+is logged (`lib/report311Log.ts`, `core/report_log.py`) rather than texted. Each entry keeps the exact
+spot, because crews need it to find the pothole, and its days: `at` (logged), `changed` and
+`reported` are dates in Washington's time ("2026-10-20", `today`, `dayOf`), never a time, and a new
+id is 16 random hex characters (the ids before began with the time they were made). The checklist
+and the copied report say the day ("Pothole, Oct 20"; "Seen Oct 20."). Two changes to one entry on
+one day are told apart by `rev`, a count of its changes, which a merge compares after the day; a tie
+on both keeps the reported copy, so a check-off is never lost. The API serves each day as noon in
+Washington with its offset (`served`, "2026-10-20T12:00:00-04:00"), because the page of the release
+before reads a bare day as midnight UTC, the evening before; the page reads only the day. An
+older copy is cut to days wherever it is read: on the device as the page opens (both stored copies are
+written back), on the server at each save (`dated`, in `merge_logs`), and the accounts' logs already
+kept by migration 0052, which also makes the row's `updated_at` a date. What goes to DC 311 is
+unchanged in form: the problem's code, the exact spot and the report's words, which now say the day.
+`tests/test_report_log.py` and `report311Log.test.ts` check it.
+
 **Checks (N7).** `corridor.test.ts`, `report311.test.ts`, the trail cases in `navigate.test.ts` and
 `loadTile` in `stressProtocol.test.ts`; the browser suite's Ride mode section checks that the stress
 tiles along the mocked route are kept at z12-14, that one answers the tile loader at once with the
@@ -8552,6 +8568,11 @@ age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
   still on the older build joins a link's ride by its points and does not meet those on the sealed ride. A Group
   Ride's secret comes from the plan as opened (`OPENED_HASH`), so one kept over a sign-in keeps it; a saved or
   kept route the rider opens gets a new one, a link pasted in its own or none.
+- **An alert's spot.** An alert needs its spot, so it carries it on every ride, even from a rider who is not
+  shown as a dot. On a ride without a key that spot is in plain numbers, which anyone who has the route can read,
+  so the alert panel says "Sends your spot to everyone on this ride." where that adds something: no key, and the
+  rider not shown as a dot (`rideGroup.ts alertNote`). Elsewhere the panel keeps its short "Sends your location
+  with the alert."; a screen reader, and the Alert button's description, always get the spot line.
 - Tests: `frontend/src/lib/rideSeal.test.ts` (secret, derivation, sealing, the grid against the server's,
   merging, a sealed ride end to end through `rideGroup.ts`, the page's wiring) and `tests/test_ride_presence.py`
   (sealed dots, alerts and paths kept, limited, marked and dropped as plain ones are).

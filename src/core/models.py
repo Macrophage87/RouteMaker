@@ -1958,8 +1958,9 @@ class AccountSettings(models.Model):
 class Report311Log(models.Model):
     """A signed-in rider's 311 log (core.report_log; Stephen, 2026-10-20): the problems they
     logged from a ride's 311 button or the road panel's Log for 311, each with what it is, the
-    road's name and GPS position, the time, a note, the 311 site that takes it and when they
-    reported it there. Kept with the account so it follows the rider to another device.
+    road's name and GPS position, the day (never the time of day: core.report_log), a note, the
+    311 site that takes it and the day they reported it there. Kept with the account so it
+    follows the rider to another device.
 
     One row per account, the whole log as the front end keeps it (frontend/src/lib/report311Log.ts),
     checked for shape and size by the API (`report_log.log_problem`) before it is written; the last
@@ -1970,7 +1971,10 @@ class Report311Log(models.Model):
         "User", on_delete=models.CASCADE, primary_key=True, related_name="report311_log"
     )
     entries = models.JSONField(default=list)
-    updated_at = models.DateTimeField(auto_now=True)
+    # The day it was last saved, in Washington (report_log.today), never the time: that would say
+    # when the rider last logged a problem. A date since migration 0052; the name is kept so the
+    # api of the release before still reads and writes it (Postgres casts its time to the day).
+    updated_at = models.DateField(null=True, blank=True)
 
     class Meta:
         db_table = "report311_log"
