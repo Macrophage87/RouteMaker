@@ -196,6 +196,46 @@ class TestMpd:
         assert wz.when_text(zone, NOW, True) == "Closed Mon, Sep 7 4:30 am to 1:30 pm"
 
 
+class TestTheNewYear:
+    """Audit 2026-10-29: a date without a year took the year it was posted in, so a late
+    December notice of an early January closure read as last January's, already over."""
+
+    DEC_29 = datetime(2026, 12, 29, 15, 0, tzinfo=UTC)
+
+    def test_an_mpd_window_in_january_posted_in_december_is_next_year(self) -> None:
+        segments, _unparsed, start, end = dc.read_lines(
+            [
+                "Friday, January 1 from 7 am to 5 pm",
+                "Constitution Avenue NW from 14th Street NW to 18th Street NW",
+            ],
+            self.DEC_29,
+        )
+        (segment,) = segments
+        assert segment.start == datetime(2027, 1, 1, 12, tzinfo=UTC)
+        assert segment.end == datetime(2027, 1, 1, 22, tzinfo=UTC)
+
+    def test_a_recent_date_keeps_its_year(self) -> None:
+        segments, *_ = dc.read_lines(
+            [
+                "Monday, December 28 from 7 am to 5 pm",
+                "Constitution Avenue NW from 14th Street NW to 18th Street NW",
+            ],
+            self.DEC_29,
+        )
+        assert segments[0].start == datetime(2026, 12, 28, 12, tzinfo=UTC)
+        # A year written out is kept as it is.
+        assert dc._dates("January 1, 2026", 2026, self.DEC_29.date()) == [
+            datetime(2026, 1, 1).date()
+        ]
+
+    def test_an_alertdc_end_in_january_posted_in_december_is_next_year(self) -> None:
+        end = dc._alert_end(
+            "M Street SE is closed from 1st Street SE to 4th Street SE until 6 pm January 2.",
+            self.DEC_29,
+        )
+        assert end == datetime(2027, 1, 2, 23, tzinfo=UTC)
+
+
 class TestAlertDc:
     def test_only_traffic_items_and_never_crime_or_weather(self) -> None:
         advisories = dc.parse_alertdc(text("alertdc-nrss.xml"), NOW)

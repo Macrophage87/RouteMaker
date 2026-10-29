@@ -1386,6 +1386,21 @@ def test_weight_changes_the_climbing_time_only_and_the_slider_the_penalty():
     assert hill_cost.window_cost_s(1000.0, 0.05, 300.0, 5.0, lt1)[0] <= walk_s
 
 
+def test_a_steeper_window_never_costs_less_at_any_weight():
+    """A rider lighter or heavier than the standard one is timed at the standard rider's
+    power; held at V_MIN_MS, that power rises with the grade, and a light rider used to climb
+    8% faster than 7%. Over every weight and slider position the cost only rises."""
+    for hills in (hill_cost.HILLS_MIN, -50, 0, 50, hill_cost.HILLS_MAX):
+        lt1 = hill_cost.lt1_grade_for(hills)
+        for mass in (25.0, 30.0, 48.0, 70.0, 90.0, 100.0, 130.0, 200.0, 450.0, 700.0):
+            costs = [
+                sum(hill_cost.window_cost_s(300.0, step / 1000, mass, 5.0, lt1))
+                for step in range(1, 301)
+            ]
+            drops = [i for i in range(1, len(costs)) if costs[i] < costs[i - 1] - 1e-9]
+            assert not drops, (hills, mass, [(i + 1) / 1000 for i in drops[:3]])
+
+
 def test_fine_with_hills_takes_the_shorter_route_only_where_it_is_quick_enough():
     """A 2 km climb at 11% against flat routes: at "fine with hills" (LT1 15%) it costs its
     time alone and beats a flat route 2.6 km longer, not one 0.4 km longer; at the detent
