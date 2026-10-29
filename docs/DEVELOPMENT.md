@@ -697,7 +697,12 @@ alone. Shape comes first and colour second:
   street and station names win; MapView sets 20 px and the shortened field
   (`rideTrailLabelField`) in a ride and puts the climbs under it. The base
   map's own path names (z15+, kind `path`) take the same purple
-  (`roadLabelPaint`).
+  (`roadLabelPaint`). In a ride the map's smaller labels go up by the same
+  share, 20 / 15 (`lib/rideLabelSize.ts`): steep grades and trail mile
+  markers 13 to 17 px, mountain-bike trail names 15 to 20 px, climb numbers
+  9-11 to 12-15 px; each goes back to its own size after. On the cue card a
+  long instruction shrinks to no less than 20 px, and the line under it and
+  the weak-GPS turn list are 20 px or more.
 - **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
   ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
   tier's own dash and width, so the stress still reads without colour

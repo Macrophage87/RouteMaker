@@ -265,8 +265,9 @@ export const RIDE_STARTED = t("Ride started.");
 export const START_NOTE_MS = 1_500;
 /** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
 export const END_RIDE_NAME = t("End ride");
-/** The least a long instruction shrinks to at normal text, from its own size (styles.css .cue-text, 1.5rem). */
-const CUE_TEXT_MIN_PX = 16;
+/** The least a long instruction shrinks to at normal text, from its own size (styles.css .cue-text, 1.5rem): the ride's
+ *  20 px for street names (the owner, 2026-10-20); longer still, its second line ends in "…". */
+const CUE_TEXT_MIN_PX = 20;
 /** Its words once arrived, filled (the UI review, 2026-10-28); the name goes on with End ride. */
 export const RIDE_DONE_TEXT = t("Done");
 /**
@@ -2196,7 +2197,7 @@ export function RideMode({
       card.style.removeProperty("--cue-fit");
       card.style.removeProperty("--cue-fit-d");
       // The instruction keeps its two-line slot, so the card and the map do not jump between turns (the UI review,
-      // 2026-10-28): a long street shrinks to fit it, never under 16 px; longer still, its second line ends in "…".
+      // 2026-10-28): a long street shrinks to fit it, never under 20 px; longer still, its second line ends in "…".
       const line = card.querySelector<HTMLElement>(".cue-next .cue-text");
       const shown = line?.querySelector<HTMLElement>("[aria-hidden]");
       if (!line || !shown) return;
