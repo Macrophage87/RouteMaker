@@ -105,7 +105,7 @@ RIDE_CRYPTO = [
     "k=. The fragment, the part after #, is never sent to any server. Nothing about the method "
     "is secret; only the key is.",
     "From the key, HKDF with SHA-256 (salt “routemaker ride seal v1”) derives two things: with "
-    "info “ride id”, 256 bits written as 64 hex digits, the only name the server knows the ride "
+    "info “ride id”, 256 bits written as 64 hex digits, the name the server knows the live ride "
     "by; with info “ride key”, an AES-GCM key of 256 bits, which the browser keeps "
     "non-extractable (Web Crypto). The ride id cannot be turned back into the key.",
     "Each dot, alert and leader path is written as JSON, padded with spaces to a whole number "
@@ -115,7 +115,8 @@ RIDE_CRYPTO = [
     "associated data, so a dot cannot be passed off as an alert, or one ride's data as "
     "another's. What is sent is the nonce, the ciphertext and GCM's 128-bit tag, in base64url.",
     "Before encrypting, the phone does what the server did with plain positions: it rounds each "
-    "position to the same 66 ft (20 m) grid, sends nothing outside the map's area, and merges "
+    "dot, alert spot and ridden path to the same 66 ft (20 m) grid (the leader's planned route "
+    "to about 3 ft (1 m)), sends nothing outside the map's area, and merges "
     "matching alerts as it reads them.",
     "Each phone posts under its own random code for the ride (16 random bytes). A ride leader's "
     "link also carries lead=, the first 32 hex digits of the SHA-256 of the leader's code, so "
@@ -123,11 +124,12 @@ RIDE_CRYPTO = [
     "can post as that dot.",
     "What the server still sees: the ride id, each phone's random code, when and how often "
     "phones send and ask, the padded sizes, each dot's age and which one is the leader's, and "
-    "the internet address a request comes from, as for any page. It cannot read a position, an "
-    "alert or a path.",
-    "Nightly database backups are encrypted with age (X25519) to a public key; the matching "
-    "private key is kept offline, not on the server, so the server can write a backup but "
-    "never read one.",
+    "the internet address a request comes from, as for any page. It cannot read a dot, an alert "
+    "or the leader's live path. A Share ride or Broadcast link is also a shared route: its "
+    "planned line is kept on the server like any shared link (see Shared links).",
+    "Nightly database backups are encrypted with age to the owner's X25519 public key; the "
+    "matching private key is kept on the owner's computer, not on the server, so the server can "
+    "write a backup but never read one.",
     "RouteMaker is open source (MIT license), so anyone can check this: the ride encryption is "
     "frontend/src/lib/rideSeal.ts in github.com/Macrophage87/RouteMaker.",
 ]
