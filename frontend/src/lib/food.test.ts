@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { LonLat } from "./geo.ts";
 import {
   CIRCUITY,
+  FOOD_PAGE,
   FOOD_SYNONYMS,
   NO_FOOD_DATA,
   ON_ROUTE_M,
@@ -26,7 +27,7 @@ import {
   type FoodPlace,
   type FoodResult,
 } from "./food.ts";
-import { FOOD_SUMMARY, FoodFinder, type FoodFinderProps } from "./foodFinder.ts";
+import { FOOD_FIRST, FOOD_SUMMARY, FoodFinder, foodRowsShown, type FoodFinderProps } from "./foodFinder.ts";
 import { appSource } from "../testSupport/appSource.mjs";
 
 const place = (id: string, name: string, cuisine: string[], lon = -77.0, lat = 38.9, kind: FoodPlace["kind"] = "r"): FoodPlace => ({
@@ -195,8 +196,8 @@ test("words: US units first with metric in brackets; the detour, the turn-off an
   assert.equal(foodKindText(r.place), "Restaurant: seafood, soft shell crab");
   assert.equal(foodHowFar(r), "Detour about +0.5 mi (0.8 km) and 4 min there and back, turning off at 12.3 mi (19.8 km) on your route.");
   assert.equal(
-    foodText(r),
-    "Near Crab. Restaurant: seafood, soft shell crab. Detour about +0.5 mi (0.8 km) and 4 min there and back, turning off at 12.3 mi (19.8 km) on your route. Hours as mapped: Mo-Su 11:00-22:00.",
+    foodText(r, new Date("2026-10-14T12:00:00-04:00")),
+    "Near Crab. Restaurant: seafood, soft shell crab. Detour about +0.5 mi (0.8 km) and 4 min there and back, turning off at 12.3 mi (19.8 km) on your route. Open now · closes 10 PM.",
   );
   assert.equal(foodHowFar({ ...r, detour: { ...r.detour!, extraM: 0, extraS: 0 } }), "On your route at 12.3 mi (19.8 km).");
   // Just past the on-route margin the detour rounds to 0.0 mi: on your route, not "+0.0 mi (0.0 km)".
@@ -209,7 +210,7 @@ test("words: US units first with metric in brackets; the detour, the turn-off an
 test("the status line says the count, where and the order", () => {
   assert.equal(foodFoundSaid(" Crab ", "view", 12, 10, true), "12 places match “crab” in the map view, least detour first. Showing the first 10.");
   assert.equal(foodFoundSaid("pizza", "near", 1, 1, false), "1 place matches “pizza” in the whole area, nearest the map's center first.");
-  assert.equal(foodFoundSaid("crab", "view", 0, 0, true), "No places match “crab” in the map view. Try Near you, or move the map.");
+  assert.equal(foodFoundSaid("crab", "view", 0, 0, true), "No places match “crab” in the map view. Move the map, then Search this area.");
   assert.equal(foodFoundSaid("crab", "near", 0, 0, true), "No places match “crab” in the whole area.");
   assert.equal(foodFoundSaid("", "near", 15480, 10, false, true), "15,480 places to eat in the whole area, nearest you first. Showing the first 10.");
   assert.equal(foodFoundSaid("food", "view", 3, 3, true), "3 places to eat in the map view, least detour first.");
@@ -219,8 +220,6 @@ const noop = () => {};
 const baseProps: FoodFinderProps = {
   query: "crab",
   onQuery: noop,
-  scope: "near",
-  onScope: noop,
   onSearch: noop,
   busy: false,
   status: "",
@@ -232,17 +231,26 @@ const baseProps: FoodFinderProps = {
   onAddStop: noop,
 };
 
-test("the panel: a labelled search, the two scopes, a status line, collapsed", () => {
-  const html = renderToStaticMarkup(createElement(FoodFinder, baseProps));
-  assert.match(html, /^<details class="fold food"><summary>Find food<\/summary>/);
-  assert.equal(FOOD_SUMMARY, "Find food");
-  assert.match(html, /<form role="search" aria-label="Find food"/);
-  assert.match(html, /<label for="food-query"[^>]*>Food or name<\/label>/);
-  assert.match(html, /<input id="food-query" type="search"/);
-  assert.match(html, /<input type="radio" name="food-scope" checked="" value="near"\/>Near you/);
-  assert.match(html, /In the map view/);
+test("the panel: a labelled search, then the chips, a status line, collapsed; Search this area once the map moved", () => {
+  const html = renderToStaticMarkup(createElement(FoodFinder, { ...baseProps, chips: createElement("div", { className: "food-chips" }) }));
+  // The sheet is Eat, as its chip (P12); the search in it is named for what it does.
+  assert.match(html, /^<details class="fold food"><summary>Search places to eat<\/summary>/);
+  assert.equal(FOOD_SUMMARY, "Search places to eat");
+  assert.match(html, /<form role="search" aria-label="Search places to eat"/);
+  // The label is kept for screen readers; on screen the box says it (the 2026-10-28 audit, P7: results first).
+  assert.match(html, /<label for="food-query" class="visually-hidden">Food or name<\/label>/);
+  assert.match(html, /<input id="food-query" type="search" placeholder="Search food or a name"/);
+  // The search, then the chips, then the status line: no radios for where.
+  assert.ok(html.indexOf("</form>") < html.indexOf("food-chips") && html.indexOf("food-chips") < html.indexOf("food-status"));
+  assert.doesNotMatch(html, /type="radio"/);
+  assert.doesNotMatch(html, /Search this area/, "not before the map is moved");
   assert.match(html, /<p class="hint food-status" role="status"><\/p>/);
   assert.doesNotMatch(html, /<ol/);
+  // The help: short on screen, the rest for screen readers.
+  assert.match(html, /<p class="hint" id="food-help">Search a food or a name; blank shows all\.<span class="visually-hidden"> With a route shown/);
+  let area = 0;
+  const moved = renderToStaticMarkup(createElement(FoodFinder, { ...baseProps, areaMoved: true, onSearchArea: () => area++ }));
+  assert.match(moved, /<button type="button" class="secondary food-area">Search this area<\/button>/);
 });
 
 test("the panel's list: lettered as the markers, Show on map, Add as stop, website, Show more", () => {
@@ -250,8 +258,11 @@ test("the panel's list: lettered as the markers, Show on map, Add as stop, websi
     { place: { ...place("n2", "Near Crab", ["crab"]), website: "https://crab.example" }, fromCentreM: 100, detour: { offM: 300, alongM: 1000, extraM: 840, extraS: 210 } },
     { place: place("n4", "Dock", ["seafood"]), fromCentreM: 200, detour: { offM: 1, alongM: 500, extraM: 0, extraS: 0 } },
   ];
-  const html = renderToStaticMarkup(createElement(FoodFinder, { ...baseProps, results, total: 25 }));
+  const html = renderToStaticMarkup(createElement(FoodFinder, { ...baseProps, results, total: 25, status: "25 places match “crab” in the whole area." }));
   assert.match(html, /<ol role="list" aria-labelledby="food-list-heading">/);
+  // With the list shown, its heading and count line are for screen readers only.
+  assert.match(html, /<h3 id="food-list-heading" class="visually-hidden">Places to eat<\/h3>/);
+  assert.match(html, /<p class="hint food-status visually-hidden" role="status">25 places match/);
   assert.match(html, /<strong>A\. Near Crab<\/strong>/);
   assert.match(html, /<strong>B\. Dock<\/strong>/);
   assert.match(html, /aria-label="Show on map: Near Crab, marker A"/);
@@ -259,11 +270,28 @@ test("the panel's list: lettered as the markers, Show on map, Add as stop, websi
   assert.match(html, /aria-label="Add as stop: Dock"/);
   assert.match(html, /href="https:\/\/crab.example" target="_blank" rel="noopener noreferrer" aria-label="Website: Near Crab \(opens in a new tab\)"/);
   assert.match(html, />Show 10 more</);
-  assert.match(html, /Detours are estimates/);
+  // Short on screen; how it is worked out, for screen readers.
+  assert.match(html, /<span aria-hidden="true">Detours are estimates; check hours \(OpenStreetMap\)\.<\/span><span class="visually-hidden">Detours are estimates: the straight-line/);
   // No plan to add to: no Add as stop.
   const none = renderToStaticMarkup(createElement(FoodFinder, { ...baseProps, results, total: 2, canAddStop: false }));
   assert.doesNotMatch(none, /aria-label="Add as stop/);
   assert.doesNotMatch(none, /Show \d+ more/);
+});
+
+test("the list in the Food popup: the first few of the page, the rest of it behind Show more, then the next page (the owner, 2026-10-28)", () => {
+  assert.equal(FOOD_FIRST, 4);
+  assert.equal(FOOD_PAGE, 10, "the owner's page of ten is kept");
+  assert.equal(foodRowsShown(10, false), 4);
+  assert.equal(foodRowsShown(3, false), 3);
+  assert.equal(foodRowsShown(10, true), 10);
+  const results: FoodResult[] = Array.from({ length: 10 }, (_, i) => ({ place: place(`n${i}`, `Place ${i}`, ["crab"]), fromCentreM: 100 * (i + 1) }));
+  const html = renderToStaticMarkup(createElement(FoodFinder, { ...baseProps, results, total: 25 }));
+  assert.equal((html.match(/<li>/g) ?? []).length, 4);
+  assert.match(html, /<strong>D\. Place 3<\/strong>/);
+  assert.doesNotMatch(html, /E\. Place 4/);
+  // The rest of the page first (its letters are already on the map), never a second page before it.
+  assert.match(html, />Show 6 more</);
+  assert.doesNotMatch(html, />Show 10 more</);
 });
 
 

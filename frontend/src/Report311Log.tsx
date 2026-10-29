@@ -21,7 +21,8 @@ import {
   isStale,
   entryPoint,
   entryText,
-  kindLabel,
+  kindShown,
+  logHint,
   openGroups,
   report311Log,
   useReport311Log,
@@ -29,15 +30,14 @@ import {
   type LogEntry,
 } from "./lib/report311Log.ts";
 import { t } from "./lib/i18n.ts";
+import { looksLikePhone } from "./lib/startOnComputer.ts";
 
 export const LOG_HEADING = t("Your 311 checklist");
-export const LOG_HINT =
-  t("Log a problem with a ride's 311 button, or right-click a road (press and hold on a phone) and choose Log for 311. Copy the report into the site, then check it off. One left unchecked is archived after {days} days.", { days: STALE_DAYS });
 export const LOG_EMPTY = t("Nothing to report yet.");
 
 /** What the checkbox says: the problem and when it was logged, "Pothole, Oct 20, 10:29 AM". */
 export function entryLabel(entry: LogEntry): string {
-  return `${kindLabel(entry.kind)}, ${whenWords(entry.at)}`;
+  return `${kindShown(entry.kind)}, ${whenWords(entry.at)}`;
 }
 
 /** The line under it: the place words, the GPS position, the note; archived, when it was reported, or that it went stale. */
@@ -99,7 +99,7 @@ export function Report311Log() {
   const copy = async (entry: LogEntry) => {
     const done = await copyText(entryText(entry), navigator.clipboard, selectionCopy);
     setCopied("");
-    window.setTimeout(() => setCopied(done ? t("{kind} report copied.", { kind: kindLabel(entry.kind) }) : t("Could not copy; select the report's text instead.")), 150);
+    window.setTimeout(() => setCopied(done ? t("{kind} report copied.", { kind: kindShown(entry.kind) }) : t("Could not copy; select the report's text instead.")), 150);
   };
   // One time for both lists, so an entry at the 30-day mark is in exactly one of them.
   const now = new Date();
@@ -113,8 +113,14 @@ export function Report311Log() {
     const from = inArchive ? old : groups.flatMap((g) => g.entries);
     nextFocus.current = { id: staysArchived ? entry.id : focusAfter(from, entry.id), to: inArchive ? "archived" : "heading" };
     report311Log().setReported(entry.id, checked);
-    const kind = kindLabel(entry.kind);
-    const said = !checked ? (staysArchived ? `${kind} marked not reported.` : `${kind} back on the checklist.`) : inArchive ? `${kind} marked reported.` : `${kind} archived.`;
+    const kind = kindShown(entry.kind);
+    const said = !checked
+      ? staysArchived
+        ? t("{kind} marked not reported.", { kind })
+        : t("{kind} back on the checklist.", { kind })
+      : inArchive
+        ? t("{kind} marked reported.", { kind })
+        : t("{kind} archived.", { kind });
     setCopied("");
     window.setTimeout(() => setCopied(said), 150);
   };
@@ -123,7 +129,11 @@ export function Report311Log() {
       <h3 id="suggest-311-heading" tabIndex={-1}>
         {LOG_HEADING}
       </h3>
-      <p className="hint">{LOG_HINT}</p>
+      <ul className="hint info-bullets">
+        {logHint(looksLikePhone()).map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
       {groups.length === 0 && <p>{LOG_EMPTY}</p>}
       {groups.map((group) => (
         <div key={group.where ?? "pending"} className="log311-group">
@@ -131,7 +141,7 @@ export function Report311Log() {
           {group.site?.note && <p className="hint">{group.site.note}</p>}
           {group.site && (
             <a className="action-link secondary" href={group.site.url} target="_blank" rel="noopener noreferrer">
-              {`Open ${group.site.site} (new tab)`}
+              {t("Open {site} (new tab)", { site: group.site.site })}
             </a>
           )}
           <ul className="log311-entries" role="list">
@@ -146,7 +156,7 @@ export function Report311Log() {
       </p>
       {old.length > 0 && (
         <details className="fold log311-archived">
-          <summary>{`Archived (${old.length})`}</summary>
+          <summary>{t("Archived ({count})", { count: old.length })}</summary>
           <div className="fold-body">
             <ul className="log311-entries" role="list">
               {old.map((entry) => (

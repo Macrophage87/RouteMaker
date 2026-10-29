@@ -60,6 +60,8 @@ export interface NearestPlace {
   point: LonLat;
   /** What it is, with its name: "Drinking water, Peirce Mill", "Dupont Circle". */
   title: string;
+  /** Its own name alone, where it has one ("Peirce Mill"): a ride's detour rows lead with it. */
+  name?: string;
   /** Short sentences after the title: "Bottle filler.", "Red line." */
   details: string[];
 }
@@ -78,6 +80,7 @@ export function waterPlaces(points: readonly WaterPoint[], kind: "water" | "rest
     kind,
     point: [p.lon, p.lat],
     title: waterTitle(p),
+    ...(p.name ? { name: p.name } : {}),
     details: waterDetails(p),
   }));
 }
@@ -190,7 +193,8 @@ export async function requestNearest(
   }
   if (response.ok && looksLikeAnswer(body, places.length)) return { ok: true, answer: body };
   const error = describeError(response.ok ? 500 : response.status, body, response.headers.get("Retry-After"));
-  return { ok: false, message: error.message };
+  // A busy planner says so in its title, its message only what to do (lib/api.ts describeError).
+  return { ok: false, message: error.kind === "timed-out" ? `${error.title}. ${error.message}` : error.message };
 }
 
 export interface Nearby {
@@ -260,6 +264,19 @@ export function nearbyShort(item: Nearby): string {
   return `${item.place.title}: ${howFar(item)}.`;
 }
 
+/**
+ * A ride's detour row as shown (the UI review, 2026-10-28): the place's own name where it has one, how far, and
+ * whether it is ahead on the route or behind: "Peirce Mill · 0.5 mi (0.8 km) ahead". `side` is null where it cannot be
+ * told. Screen readers keep nearbyText's whole line.
+ */
+export function detourRowShown(item: Nearby, side: "ahead" | "behind" | null): string {
+  const place = item.place.name || item.place.title;
+  const distance = formatDistance(item.distanceM);
+  if (side === "ahead") return t("{place} · {distance} ahead", { place, distance });
+  if (side === "behind") return t("{place} · {distance} behind", { place, distance });
+  return `${place} · ${distance}`;
+}
+
 export const STRAIGHT_LINE_NOTE = t("The router's riding distances were not available, so these are by straight-line distance.");
 
 /** Where the search was from, in words, for the status line. */
@@ -292,7 +309,17 @@ export function foundSaid(kind: NearestKind, from: NearestFrom, items: readonly 
   return items[0].byBike ? lead : `${lead} ${STRAIGHT_LINE_NOTE}`;
 }
 
-export const findingSaid = (kind: NearestKind): string => t("Finding the nearest {noun}.", { noun: nounOf(kind) });
+/**
+ * The status line on screen once the list is in (the 2026-10-28 audit, P7: cut the text around lists): only what the
+ * rows do not say. By bike, nothing (each row says "by bike"); foundSaid stays what a screen reader hears.
+ */
+export function foundShort(items: readonly Nearby[]): string | null {
+  if (items.length === 0) return null;
+  if (items[0].detour) return t("Least detour first.");
+  return items[0].byBike ? "" : t("Straight-line distances (router busy).");
+}
+
+export const findingSaid =(kind: NearestKind): string => t("Finding the nearest {noun}.", { noun: nounOf(kind) });
 export const noneKnownSaid = (kind: NearestKind): string => t("No {noun} on the map to search.", { noun: nounOf(kind) });
 export const WATER_NOT_LOADED = t("Water and restrooms are unavailable for now; try again shortly.");
 export const LOCATION_BUSY = t("Your location is already being found; try again in a moment.");

@@ -34,6 +34,8 @@ export interface PlanWords {
   traffic: string | null;
   /** The hills slider in words (dials.ts hillsWords), or null. */
   hills: string | null;
+  /** The ride type's name is already a ride's (presets.ts presetNamesRide): "Mass Ride, ...", not "Mass Ride ride, ...". */
+  named?: boolean;
 }
 
 const lower = (text: string) => (text ? text[0].toLowerCase() + text.slice(1) : text);
@@ -46,6 +48,18 @@ function linked(items: { name: string; index: number }[]): Phrase[] {
     out.push({ text: item.name, target: { kind: "point", index: item.index } });
   });
   return out;
+}
+
+/** A spot named for what is near it (the reverse geocoder's "near Capitol Stones", core/geocode.py). */
+const NEAR = /^near\s+/i;
+
+/**
+ * The words before a place: "End at Silver Spring", but "End near Capitol Stones", never "End at near Capitol
+ * Stones" (P10). `items` are the names after it; the first loses its "near" when the lead says it.
+ */
+function lead(at: string, near: string, items: { name: string; index: number }[]): Phrase[] {
+  if (!items.length || !NEAR.test(items[0].name)) return [{ text: at }, ...linked(items)];
+  return [{ text: near }, ...linked([{ ...items[0], name: items[0].name.replace(NEAR, "") }, ...items.slice(1)])];
 }
 
 /**
@@ -66,18 +80,21 @@ export function planSentences(
   if (points.length === 0) {
     sentences.push([{ text: t("Start: tap the map or search for a place.") }]);
   } else {
-    sentences.push([{ text: loop ? t("Start and finish at ") : t("Start at ") }, { text: nameAt(0), target: { kind: "point", index: 0 } }, { text: "." }]);
+    const start = [{ name: nameAt(0), index: 0 }];
+    sentences.push([...(loop ? lead(t("Start and finish at "), t("Start and finish near "), start) : lead(t("Start at "), t("Start near "), start)), { text: "." }]);
     const stops = named.flatMap((n, index) => (n.role === "stop" ? [{ name: nameAt(index), index }] : []));
     const vias = named.flatMap((n, index) => (n.role === "via" ? [{ name: nameAt(index), index }] : []));
-    if (stops.length) sentences.push([{ text: t("Stop at ") }, ...linked(stops), { text: "." }]);
+    if (stops.length) sentences.push([...lead(t("Stop at "), t("Stop near "), stops), { text: "." }]);
     if (vias.length) sentences.push([{ text: t("Pass through ") }, ...linked(vias), { text: t(" (via).") }]);
     const end = named.findIndex((n) => n.role === "end");
-    if (end >= 0) sentences.push([{ text: t("End at ") }, { text: nameAt(end), target: { kind: "point", index: end } }, { text: "." }]);
+    if (end >= 0) sentences.push([...lead(t("End at "), t("End near "), [{ name: nameAt(end), index: end }]), { text: "." }]);
     else if (!loop) sentences.push([{ text: t("End: tap the map or search for a place.") }]);
   }
   // The words around the ride type, in the language's own order ("Default ride", "Recorrido Default").
   const rideLink: Phrase = { text: words.ride, target: { kind: "ride" } };
-  const [before, after] = t("{ride} ride").split("{ride}");
+  // A ride type named as a ride already (Group Ride, Mass Ride, Rebalance Ride) stands alone: never "Mass Ride ride"
+  // (the audit's P14).
+  const [before, after] = words.named || /\bride$/i.test(words.ride.trim()) ? ["", ""] : t("{ride} ride").split("{ride}");
   const ride: Phrase[] = [{ text: before }, rideLink, { text: after }].filter((p) => p === rideLink || p.text !== "");
   if (words.traffic) ride.push({ text: ", " }, { text: lower(words.traffic), target: { kind: "traffic" } });
   if (words.hills) ride.push({ text: ", " }, { text: lower(words.hills), target: { kind: "hills" } });
@@ -116,6 +133,14 @@ export const ROUTE_UP_TO_DATE = t("The route shown is up to date.");
 export const RESET_LABEL = t("Reset");
 export const RESET_NOTHING = t("Nothing changed since the route was drawn");
 export const CLEAR_LABEL = t("Clear");
+
+/**
+ * The plan panel's row (app/PlanPanel.tsx): while routing, on an empty plan, or with the plan changed. A route up to
+ * date shows none (Plan on a phone, P10: "Route ✓ up to date" said the obvious); the panel says it out of sight.
+ */
+export function planRowShown(state: { routing: boolean; locate: boolean; unavailable: string | null }): boolean {
+  return state.routing || state.locate || state.unavailable !== ROUTE_UP_TO_DATE;
+}
 export const PLANNING_SAID = t("Planning route");
 export const CANCELLED_SAID = t("Routing cancelled. The plan is as you left it.");
 export const RESET_SAID = t("Reset to the route as drawn. Undo brings your changes back.");

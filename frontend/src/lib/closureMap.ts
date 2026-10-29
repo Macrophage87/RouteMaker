@@ -267,6 +267,8 @@ export function closureMarkerName(item: ClosureItem): string {
         : item.kind === "penalty"
           ? "Construction"
           : "Road closed";
+  // "Closed" once (P11), as the card says it.
+  if (lead === "Road closed") return `${lead}: ${item.title.replace(/:\s*closed$/i, "")}. ${item.effect_text.replace(/^Closed to bikes: r/, "R").replace(/\.$/, "")}`;
   return `${lead}: ${item.title}. ${item.effect_text.replace(/\.$/, "")}`;
 }
 
@@ -283,6 +285,7 @@ export interface ClosureCard {
   heading: string;
   what: string;
   source: { name: string; url: string | null };
+  /** "" where the heading says it ("Road closed through Aug 31"): not drawn. */
   when: string;
   effect: string;
   /** The card's button, or null where it has none (a blocked lane is not routed round, so there is nothing to bypass). */
@@ -303,12 +306,15 @@ export function closureCard(item: ClosureItem): ClosureCard {
   if (item.bypassed) action = { label: UNDO_BYPASS_LABEL, bypass: false };
   else if (item.can_bypass && (item.effect === "routed_round" || item.effect === "may_still_apply" || item.effect === "on_route"))
     action = { label: ROUTE_THROUGH_LABEL, bypass: true };
+  // "Closed" once (P11): a road closed says when in its heading ("Road closed through Aug 31, 2027"), its title
+  // without its ": closed", and its effect without "Closed to bikes:" (an older answer's words).
+  const closedFor = heading === "Road closed" && /^Closed /.test(item.when_text) ? item.when_text.slice("Closed ".length) : null;
   return {
-    heading,
-    what: item.title,
+    heading: closedFor ? `${heading} ${closedFor}` : heading,
+    what: closedFor ? item.title.replace(/:\s*closed$/i, "") : item.title,
     source: { name: `Source: ${item.source_name}`, url: item.url },
-    when: item.when_text,
-    effect: item.effect_text,
+    when: closedFor ? "" : item.when_text,
+    effect: closedFor ? item.effect_text.replace(/^Closed to bikes: r/, "R") : item.effect_text,
     action,
   };
 }
@@ -322,6 +328,56 @@ export function noticeCard(notice: ClosureNotice): ClosureCard {
     effect: notice.text,
     action: null,
   };
+}
+
+// --- Markers on one spot (P11) ---------------------------------------------------------------
+//
+// Six Rock Creek Park notices stood on the park's one point, and only the top one could be tapped. Markers on exactly
+// one spot are one marker, with their count, that opens them as a list; closures on one spot likewise.
+
+/** The items in groups by their exact spot (to a micro-degree), each group in the items' order, groups by first seen. */
+export function atSameSpot<T>(items: readonly T[], spotOf: (item: T) => LonLat): T[][] {
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const [lon, lat] = spotOf(item);
+    const key = `${lon.toFixed(6)},${lat.toFixed(6)}`;
+    const group = groups.get(key);
+    if (group) group.push(item);
+    else groups.set(key, [item]);
+  }
+  return [...groups.values()];
+}
+
+/** A list card: one heading, then each item's own card, in order (MapView draws them as a list). */
+export interface ClosureListCard {
+  heading: string;
+  entries: ClosureCard[];
+  /** Whether each entry shows its own heading: closures do (each says what it is); a park's notices share theirs. */
+  entryHeadings: boolean;
+}
+
+/** "6 park notices", the marker's count said in words and the list's heading. */
+export const parkNoticesText = (count: number): string => `${count} park notices`;
+export const closuresHereText = (count: number): string => `${count} closures here`;
+
+/** A park's notices on its one spot: the marker's name, every title in it. */
+export function noticesMarkerName(group: readonly ClosureNotice[]): string {
+  if (group.length === 1) return noticeMarkerName(group[0]);
+  return `${parkNoticesText(group.length)}, ${group[0].area_name ?? "park"}: ${group.map((n) => n.title).join("; ")}`;
+}
+
+export function noticeListCard(group: readonly ClosureNotice[]): ClosureListCard {
+  return { heading: `${parkNoticesText(group.length)}: ${group[0].area_name ?? "park"}`, entries: group.map(noticeCard), entryHeadings: false };
+}
+
+/** Closures on one spot: the marker's name, each closure's in turn. */
+export function closuresMarkerName(group: readonly ClosureItem[]): string {
+  if (group.length === 1) return closureMarkerName(group[0]);
+  return `${closuresHereText(group.length)}. ${group.map(closureMarkerName).join(". ")}`;
+}
+
+export function closureListCard(group: readonly ClosureItem[]): ClosureListCard {
+  return { heading: closuresHereText(group.length), entries: group.map(closureCard), entryHeadings: true };
 }
 
 /** The rider's bypassed closures, for the plan they were chosen on (its start and end). */

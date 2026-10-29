@@ -35,6 +35,9 @@ PER_CALL_S = 5.0
 # The most samples one profile has (a 30 m step to about 12 km, then wider).
 MAX_SAMPLES = 400
 KEEP = 512
+# The way's own line in the answer, for the map to light up the section the chart is of:
+# no more points than this (a long way is thinned, its ends kept).
+MAX_LINE_POINTS = 1000
 
 _kept: OrderedDict[tuple[int, int | None], dict | None] = OrderedDict()
 
@@ -98,6 +101,16 @@ def samples(line: list[tuple[float, float]]) -> tuple[list[float], list[tuple[fl
     return at, where, step
 
 
+def line_out(line: list[tuple[float, float]]) -> list[list[float]]:
+    """The line as [lon, lat] pairs to six places, every k-th point of a long one and
+    its last, no more than MAX_LINE_POINTS."""
+    k = -(-len(line) // MAX_LINE_POINTS)
+    kept = line[::k]
+    if kept[-1] != line[-1]:
+        kept = [*kept[: MAX_LINE_POINTS - 1], line[-1]]
+    return [[round(lon, 6), round(lat, 6)] for lon, lat in kept]
+
+
 def body_of(way_id: int, at: list[float], heights: list[float | None], step: int) -> dict | None:
     """The answer: the samples, the climbing and descending, the steepest grade either
     way. None where the router gave no heights."""
@@ -156,6 +169,10 @@ def profile(way_id: int) -> dict | None:
         # trail goes from N to S put those directions on each end").
         body["start"] = [round(line[0][0], 6), round(line[0][1], 6)]
         body["end"] = [round(line[-1][0], 6), round(line[-1][1], 6)]
+        # And its line, so the map lights up where the chart and the rating begin and end (the
+        # owner, 2026-10-28: "highlight that trail so you know where the elevation profile and
+        # rating begins and ends").
+        body["line"] = line_out(line)
     _kept[key] = body
     while len(_kept) > KEEP:
         _kept.popitem(last=False)

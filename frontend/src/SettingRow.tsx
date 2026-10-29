@@ -44,6 +44,7 @@ export function SettingSelect<T extends string>({
   describedBy,
   className,
   optionLang,
+  groups,
 }: {
   label: string;
   value: T;
@@ -53,16 +54,28 @@ export function SettingSelect<T extends string>({
   className?: string;
   /** An option's own language, where it is not the page's ("Español" on an English page), for a screen reader. */
   optionLang?: Partial<Record<T, string>>;
+  /** The options under their group names (optgroups), in the groups' order; an option in no group is left out. */
+  groups?: readonly { label: string; ids: readonly T[] }[];
 }) {
+  const option = ([id, words]: readonly [T, string]) => (
+    <option key={id} value={id} lang={optionLang?.[id]}>
+      {words}
+    </option>
+  );
   return (
     <label className={className ? `select-setting ${className}` : "select-setting"}>
       <span className="setting-name">{label}</span>
       <select value={value} aria-describedby={describedBy} onChange={(event) => onChange(event.target.value as T)}>
-        {options.map(([option, words]) => (
-          <option key={option} value={option} lang={optionLang?.[option]}>
-            {words}
-          </option>
-        ))}
+        {groups
+          ? groups.map((group) => {
+              const inGroup = options.filter(([id]) => group.ids.includes(id));
+              return inGroup.length > 0 ? (
+                <optgroup key={group.label} label={group.label}>
+                  {inGroup.map(option)}
+                </optgroup>
+              ) : null;
+            })
+          : options.map(option)}
       </select>
     </label>
   );

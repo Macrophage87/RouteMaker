@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import { ViaMarks } from "./pointKinds.ts";
+import { presetNamesRide } from "./presets.ts";
 import {
   RESET_NOTHING,
   ROUTE_NEEDS_POINTS,
@@ -51,6 +52,27 @@ test("the plan reads as sentences: start, stops, via points, end, then the ride"
   ]);
 });
 
+test("a ride type named as a ride already is not called a ride twice (the audit's P14: \"Mass Ride ride\")", () => {
+  const none = new ViaMarks().isVia;
+  for (const ride of ["Mass Ride", "Group Ride", "Rebalance Ride"]) {
+    const sentences = planSentences([], none, false, () => undefined, { ride, traffic: null, hills: null });
+    assert.equal(sentencesText(sentences), `Start: tap the map or search for a place. ${ride}.`);
+    // The ride type is still the link to its choice.
+    assert.deepEqual(sentences[1][0], { text: ride, target: { kind: "ride" } });
+  }
+  assert.match(sentencesText(planSentences([], none, false, () => undefined, { ride: "Gravel", traffic: null, hills: null })), /Gravel ride\.$/);
+});
+
+test("a spot named for what is near it is said \"near\", never \"at near\" (P10)", () => {
+  const none = new ViaMarks().isVia;
+  const near = (q: LonLat) => (q[0] === -77 ? "Connecticut Avenue Northwest" : "near Capitol Stones");
+  const text = sentencesText(planSentences([p(-77), p(-76.99)], none, false, near, words));
+  assert.equal(text, "Start at Connecticut Avenue Northwest. End near Capitol Stones. Default ride, balanced, avoids hills.");
+  assert.doesNotMatch(text, /at near/);
+  const loop = sentencesText(planSentences([p(-76.99), p(-77)], none, true, near, words));
+  assert.match(loop, /^Start and finish near Capitol Stones\. Stop at Connecticut Avenue Northwest\./);
+});
+
 test("an unfinished plan says what to do next, and a loop starts and finishes at its start", () => {
   const none = new ViaMarks().isVia;
   assert.equal(sentencesText(planSentences([], none, false, () => undefined, { ride: "Default", traffic: null, hills: null })), "Start: tap the map or search for a place. Default ride.");
@@ -62,6 +84,19 @@ test("an unfinished plan says what to do next, and a loop starts and finishes at
     sentencesText(planSentences([p(-77), p(-77.1)], none, true, () => "Here", words)),
     "Start and finish at Here. Stop at Here. Default ride, balanced, avoids hills.",
   );
+});
+
+test("a ride type already named a ride is not a ride twice: Mass Ride, not Mass Ride ride (the 2026-10-28 audit)", () => {
+  const none = new ViaMarks().isVia;
+  assert.equal(presetNamesRide("mass-ride"), true);
+  assert.equal(presetNamesRide("group-ride"), true);
+  assert.equal(presetNamesRide("default"), false);
+  const mass = planSentences([], none, false, () => undefined, { ride: "Mass Ride", traffic: null, hills: "Easy up to 1%", named: true });
+  assert.equal(sentencesText(mass), "Start: tap the map or search for a place. Mass Ride, easy up to 1%.");
+  // The name is still the ride type's link.
+  assert.deepEqual(mass[mass.length - 1][0], { text: "Mass Ride", target: { kind: "ride" } });
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /named: presetNamesRide\(preset\),/);
 });
 
 test("the Route button: Route, then Update route after a change; unavailable with its reason", () => {
@@ -141,9 +176,9 @@ test("the per-leg details: each leg's length and change, new legs, and legs no l
 test("an empty plan has Start at current location in Route's place, and From keeps it in its list only", () => {
   const panel = readFileSync(new URL("../app/PlanPanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /export const START_HERE_LABEL = t\("Start at current location"\);/);
-  assert.match(panel, /\{locate \? \([\s\S]{0,400}className="route-button start-here"[\s\S]{0,300}if \(locate\.unavailable === null\) locate\.onLocate\(\);/);
-  // Why Route is unavailable is said with it, not shown (Stephen 2026-10-20: simpler).
-  assert.match(panel, /<span id=\{routeWhy\} className="visually-hidden">/);
+  assert.match(panel, /\{locate && \([\s\S]{0,400}className="route-button start-here"[\s\S]{0,300}if \(locate\.unavailable === null\) locate\.onLocate\(\);/);
+  // Why Route is unavailable is said, not shown (Stephen 2026-10-20: simpler); the button is Plan's bar's (P10).
+  assert.match(panel, /<p id=\{routeWhy\} className="visually-hidden plan-route-state">/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /\? \{ onLocate: \(\) => void useMyLocation\("start"\), busy: locating, unavailable: locateReady\.available \? null : locateReady\.reason \}/);
   const planner = readFileSync(new URL("../app/Planner.tsx", import.meta.url), "utf8");
