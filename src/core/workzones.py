@@ -424,18 +424,22 @@ def _load(now: datetime) -> Snapshot:
         status[reviewed_closures.SOURCE] = CURRENT
         read_at[reviewed_closures.SOURCE] = (changed or now).isoformat()
     # DDOT's project traffic advisories (v0.12.4; routemaker.ddot_advisories): read by hand
-    # into a file, so current; "read at" is the day the file last changed.
+    # into a file; "read at" is the day the file last changed, and the file is stale once that
+    # is more than `STALE_DAYS` ago (audit 2026-10-29), its closures still used.
+    today = now.date()
     advised = ddot_advisories.zones(now)
     if advised:
         zones.extend(advised)
-        status[ddot_advisories.SOURCE] = CURRENT
-        read_at[ddot_advisories.SOURCE] = ddot_advisories.updated()
+        read = ddot_advisories.updated()
+        status[ddot_advisories.SOURCE] = STALE if ddot_advisories.stale(read, today) else CURRENT
+        read_at[ddot_advisories.SOURCE] = read
     # The Purple Line's construction updates (v0.13.0; routemaker.purple_line), read the same way.
     building = purple_line.zones(now)
     if building:
         zones.extend(building)
-        status[purple_line.SOURCE] = CURRENT
-        read_at[purple_line.SOURCE] = purple_line.updated()
+        read = purple_line.updated()
+        status[purple_line.SOURCE] = STALE if ddot_advisories.stale(read, today) else CURRENT
+        read_at[purple_line.SOURCE] = read
     # The parks' deer-management closures (v0.12.3; routemaker.deer_closures): published
     # schedules, so notices made from the clock, with no feed to read.
     notices = [*notices, *deer_closures.notices(now)]
@@ -832,9 +836,15 @@ MAY_APPLY_NOTE = " No end time is given, so it may still apply on your ride day.
 
 
 def stale_note(source: str) -> str:
-    """The stale label for a source: the work zones' twenty minutes, or a DC source's own."""
+    """The stale label for a source: the work zones' twenty minutes, a DC source's own, or a
+    hand-read file's days (`ddot_advisories.STALE_DAYS`)."""
+    from routemaker import ddot_advisories, purple_line
+
     from . import closure_sources
 
+    if source in (ddot_advisories.SOURCE, purple_line.SOURCE):
+        span = t("{n} days", n=ddot_advisories.STALE_DAYS)
+        return t(" This source was last read more than {span} ago.", span=span)
     limit = closure_sources.STALE_AFTER_S.get(source)
     if limit is None:
         return t(STALE_NOTE)
