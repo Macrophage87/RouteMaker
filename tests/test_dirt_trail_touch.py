@@ -465,6 +465,37 @@ class TestRounds:
         assert [len(h) for h in held[:-1]] == list(range(routing.STRAY_ROUNDS))
         assert held[-1] == [], "the final round starts with no earlier reading"
 
+    def test_a_cancel_after_a_stray_round_starts_no_round_on_the_own_graph(
+        self, monkeypatch
+    ) -> None:
+        """A replaced plan ends where it is cancelled; a round that runs out of time still
+        falls back to the ride type's own graph."""
+        seen: list[int] = []
+
+        def fake_plan(*args, traces=None, **_):
+            seen.append(1)
+            if len(seen) == 1:
+                raise routing.StrayTrails((self.RING,), (frozenset({TOUCHED}),))
+            raise routing.PlanCancelled("replaced")
+
+        monkeypatch.setattr(routing, "_plan", fake_plan)
+        with pytest.raises(routing.PlanCancelled):
+            routing.plan(self.POINTS, "default")
+        assert len(seen) == 2
+
+        seen.clear()
+
+        def out_of_time(*args, traces=None, **_):
+            seen.append(1)
+            if len(seen) == 1:
+                raise routing.StrayTrails((self.RING,), (frozenset({TOUCHED}),))
+            if traces is not None:
+                raise routing.DeadlineExceeded("no time left")
+            return {"round": len(seen)}
+
+        monkeypatch.setattr(routing, "_plan", out_of_time)
+        assert routing.plan(self.POINTS, "default") == {"round": 3}
+
     def test_a_plan_without_strays_is_one_round(self, monkeypatch) -> None:
         seen = self.fake(monkeypatch, strays=0)
         assert routing.plan(self.POINTS, "default") == {"round": 1}

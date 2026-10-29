@@ -4,6 +4,7 @@ FOLLOWUP-WORKZONES). The network is a fake; the database is real."""
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -245,6 +246,20 @@ class TestTheAnswer:
             "Work zones could not be checked for this route: "
             "MPD's traffic advisories not available."
         )
+
+    def test_a_closure_the_route_still_runs_along_is_warned_of(self) -> None:
+        """Audit 2026-10-29 (P2): a closure routed round whose strip missed part of the road
+        is checked against the route, and warned of, not counted as routed round."""
+        closed = replace(ZONES["md-wz-flagger"], zone_id="md-closed", kind=wz.CLOSED)
+        plan = wz.PlanZones(status={"md": "current"}, excluded=[closed])
+        summary = workzones.with_work_zones(self.body(), plan)["work_zones"]
+        assert [z["id"] for z in summary["on_route"]] == ["md-closed"]
+        assert summary["on_route"][0]["warning"]
+        assert summary["routed_round"] == 0
+        # The standard way through a closure that changed the route runs along it on purpose.
+        plan.affecting = {"md-closed"}
+        summary = workzones.with_work_zones(self.body(), plan)["work_zones"]
+        assert summary["on_route"] == [] and summary["routed_round"] == 1
 
     def test_no_zone_no_entry(self) -> None:
         body = workzones.with_work_zones(self.body(), wz.PlanZones(status={"md": "current"}))
