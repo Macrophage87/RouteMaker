@@ -8642,8 +8642,10 @@ and place names, agency notices and anything sent to the server or kept on the d
 written. Miles come first in every language.
 
 - Catalogs: `frontend/src/i18n/<language>.ts`, one object from the English phrase to its
-  translation. Spanish (`es.ts`) is in the bundle. The others are fetched before the app starts
-  (`loadLanguage`, called from main.tsx), and the service worker keeps the one a rider uses.
+  translation. Each, Spanish's (`es.ts`) included, is a file of its own fetched before the app
+  starts (`loadLanguage`, called from main.tsx and the Featured post page's `post/main.ts`), so
+  an English reader downloads none. The service worker precaches Spanish's and keeps any other
+  the first time a rider uses it.
 - The language a page opens in (`startLanguage`): the rider's choice (Settings > Display >
   Language, kept on this device), else the phone's language if it is English or Spanish, else
   English. Since v0.15.0 the 19 draft languages are used only once a rider picks one

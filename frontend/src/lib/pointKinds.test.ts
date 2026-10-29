@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
-import { setLanguageForTest } from "./i18n.ts";
+import { loadLanguage, setLanguageForTest } from "./i18n.ts";
 import {
   ViaMarks,
   addStopWhereShortest,
@@ -16,6 +16,9 @@ import {
   viaIndices,
   withVias,
 } from "./pointKinds.ts";
+
+// Spanish's catalog is fetched on choosing it (lib/i18n.ts loadLanguage), as the app does before it starts.
+await loadLanguage("es");
 
 const p = (lon: number, lat = 38.9): LonLat => [lon, lat];
 

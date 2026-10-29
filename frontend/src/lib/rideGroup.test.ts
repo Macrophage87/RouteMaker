@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
-import { t } from "./i18n.ts";
+import { loadLanguage, t } from "./i18n.ts";
 import {
   ANSWERED_HERE_KEY,
   DWELL_M,
@@ -75,6 +75,9 @@ import { PALETTES, contrastRatio } from "../stressStyle.js";
 import { baseSurfaces } from "../testSupport/baseSurfaces.ts";
 import { VISIONS, deltaE2000, simulate } from "../testSupport/colourVision.ts";
 import { readFileSync } from "node:fs";
+
+// Spanish's catalog is fetched on choosing it (lib/i18n.ts loadLanguage), as the app does before it starts.
+await loadLanguage("es");
 
 // An east-west route about 3.4 km long.
 const LINE: LonLat[] = Array.from({ length: 21 }, (_, i) => [-77.04 + i * 0.002, 38.9] as LonLat);

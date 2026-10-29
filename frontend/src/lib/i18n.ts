@@ -13,7 +13,6 @@
  * (module constants) follow it too.
  */
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
-import { ES } from "../i18n/es.ts";
 
 /**
  * The languages (the owner, 2026-10-28: "These are all the languages supported in DC", the city's Language ID
@@ -80,11 +79,12 @@ const VOICE: Record<Language, readonly string[]> = {
 };
 
 /**
- * The catalogs (src/i18n/<language>.ts). Spanish is in the bundle; the others are fetched before the app starts
- * (loadLanguage, main.tsx), so a rider downloads only the one they read. The service worker keeps each on first use (swCore.mjs
- * LAZY_ASSET), and fetches it again across an update for a rider who used it.
+ * The catalogs (src/i18n/<language>.ts), Spanish's too: each is fetched before the app starts (loadLanguage, main.tsx;
+ * the Featured post page's post/main.ts), so a rider downloads only the one they read and an English reader none. The
+ * service worker keeps each on first use (swCore.mjs LAZY_ASSET), and fetches it again across an update for a rider who used it.
  */
 const LOADERS: Partial<Record<Language, () => Promise<Readonly<Record<string, string>>>>> = {
+  es: () => import("../i18n/es.ts").then((m) => m.ES),
   am: () => import("../i18n/am.ts").then((m) => m.CATALOG),
   ar: () => import("../i18n/ar.ts").then((m) => m.CATALOG),
   bn: () => import("../i18n/bn.ts").then((m) => m.CATALOG),
@@ -105,7 +105,7 @@ const LOADERS: Partial<Record<Language, () => Promise<Readonly<Record<string, st
   tr: () => import("../i18n/tr.ts").then((m) => m.CATALOG),
   vi: () => import("../i18n/vi.ts").then((m) => m.CATALOG),
 };
-const CATALOGS: Partial<Record<Language, Readonly<Record<string, string>>>> = { es: ES };
+const CATALOGS: Partial<Record<Language, Readonly<Record<string, string>>>> = {};
 
 function isLanguage(raw: unknown): raw is Language {
   return typeof raw === "string" && (LANGUAGES as readonly string[]).includes(raw);
