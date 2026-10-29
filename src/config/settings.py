@@ -821,6 +821,9 @@ LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {"plain": {"format": "{asctime} {levelname} {name} {message}", "style": "{"}},
+    # A link's id and a map tile's z/x/y are written as the access logs write them
+    # (config.access_log): Django logs each 4xx and 5xx answer's path under django.request.
+    "filters": {"logged_path": {"()": "config.access_log.PathFilter"}},
     "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
     "root": {"handlers": ["console"], "level": "WARNING"},
     "loggers": {
@@ -829,6 +832,8 @@ LOGGING = {
         # Named at the package, so `config.procrastinate` and anything else this
         # package logs from are covered by one entry.
         "config": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        # No handler of its own: it still reaches the root's, at WARNING.
+        "django.request": {"filters": ["logged_path"]},
     },
 }
 

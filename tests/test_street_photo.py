@@ -75,7 +75,7 @@ def test_with_no_token_nothing_is_asked(settings) -> None:
     assert fake.calls == []
 
 
-def test_the_token_is_in_the_header_only_and_an_answer_is_kept_an_hour(settings) -> None:
+def test_the_token_is_in_the_header_only_and_an_answer_is_kept_two_minutes(settings) -> None:
     settings.MAPILLARY_ACCESS_TOKEN = SECRET
     fake, clock = Fake(), Clock()
     photos = street_photo.StreetPhoto(fake, clock, bearing=lambda *_: EAST_WEST)
@@ -86,11 +86,34 @@ def test_the_token_is_in_the_header_only_and_an_answer_is_kept_an_hour(settings)
     assert SECRET not in url and "access_token" not in url and "MLY" not in url
     assert url.startswith("https://graph.mapillary.com/images?") and "bbox=" in url
     assert SECRET not in json.dumps(first)
-    clock.now += street_photo.CACHE_S - 1
+    clock.now += 119
     assert photos.photo(LON, LAT, 5) == first and len(fake.calls) == 1
     clock.now += 2
     photos.photo(LON, LAT, 5)
     assert len(fake.calls) == 2
+
+
+def test_a_spot_asked_about_is_swept_from_memory_after_two_minutes(settings) -> None:
+    """The answer is keyed by the spot tapped, so it goes at 2 minutes (Stephen 2026-10-29)
+    even when nothing else is asked; the next sweep is set by the oldest answer left."""
+    settings.MAPILLARY_ACCESS_TOKEN = SECRET
+    clock, timers = Clock(), []
+    photos = street_photo.StreetPhoto(
+        Fake(), clock, bearing=lambda *_: EAST_WEST, later=lambda d, f: timers.append((d, f))
+    )
+    photos.photo(LON, LAT, 5)
+    assert street_photo.KEEP_S == 120.0
+    assert len(timers) == 1 and timers[0][0] == 120.0
+    clock.now = 60.0
+    photos.photo(LON + 0.01, LAT, 6)  # a second spot a minute later: no second timer
+    assert len(timers) == 1
+    clock.now = 120.0
+    timers.pop()[1]()
+    assert list(photos._cache) == [(6, round(LON + 0.01, 4), LAT)]
+    assert len(timers) == 1 and timers[0][0] == pytest.approx(60.0)
+    clock.now = 180.0
+    timers.pop()[1]()
+    assert not photos._cache and not timers
 
 
 def test_no_photo_is_said_and_no_answer_is_nothing(settings, caplog) -> None:

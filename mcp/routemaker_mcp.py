@@ -2842,7 +2842,7 @@ class MemoryDrafts:
     """The drafts of this session (the owner, 2026-10-18: "see a ride, then tell the agent the
     revisions to make and only save it ... when committed"), by id. Held in memory only: nothing
     reaches the site until save_route. The site's own connector keeps them in its database
-    instead (core.connector), with the same two methods."""
+    instead (core.connector), with the same methods."""
 
     def __init__(self):
         self._drafts: dict[str, Draft] = {}
@@ -2860,14 +2860,19 @@ class MemoryDrafts:
                 del self._drafts[next(iter(self._drafts))]
         return draft_id
 
+    def shared(self, draft_id: str, route_id: str) -> None:
+        """The draft's link was kept under `route_id`. Nothing to tie here: on the site's own
+        connector the link goes with the draft."""
+
     def __contains__(self, draft_id) -> bool:
         return draft_id in self._drafts
 
 
-# A draft's exact-route link lasts as long as the draft (a week) and a day more, then the site
-# deletes it (shared_routes keep "until"): a draft often starts at home, and every revision makes
-# one. A route the rider saves is kept in My routes on its own.
-DRAFT_LINK_DAYS = 8
+# The site deletes a draft's exact-route link after the next day at the latest (shared_routes
+# keep "until"): a draft often starts at home, and every revision makes one. On the site's own
+# connector it goes sooner, with its draft (a day, core.models.ConnectorDraft.KEPT). A route the
+# rider saves is kept in My routes on its own.
+DRAFT_LINK_DAYS = 1
 
 
 def draft_link_keep(today: date | None = None) -> dict:
@@ -3216,6 +3221,7 @@ class Server:
             self.api.share(
                 {"id": route_id, **kept_route(plan, name, fragment, dials), **draft_link_keep()}
             )
+            self.drafts.shared(draft_id, route_id)
             link = f"{self.api.base}/s/{route_id}{fragment}&route={route_id}"
         except ToolError as error:
             notes.append(
@@ -3315,7 +3321,7 @@ class Server:
         out: dict = {"draft_id": draft_id, "name": name, "distance_mi": miles}
         if self.gpx_link is not None:
             out["gpx_link"] = self.gpx_link(draft_id, name)
-            out["note"] = "the link downloads the file; it works while the draft is kept"
+            out["note"] = "the link downloads the file; it works while the draft is kept (a day)"
         elif self.files:
             try:
                 out["gpx_file"] = str(write_gpx(name, draft.plan.line, self.out_dir))

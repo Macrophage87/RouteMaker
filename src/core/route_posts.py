@@ -168,8 +168,11 @@ def line_problem(answer, line, points, author) -> str | None:
         return "This saved route has no line."
     zone = author_zone(author)
     if zone is not None and share_preview.at_home(line, points, zone):
-        return "This route starts, ends or stops at your Home. Posts are public, so pick another."
+        return HOME_REFUSAL
     return None
+
+
+HOME_REFUSAL = "This route starts, ends or stops at your Home. Posts are public, so pick another."
 
 
 def author_zone(author):

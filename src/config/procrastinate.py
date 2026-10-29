@@ -967,8 +967,8 @@ def degraded_guild_sweep(timestamp: int) -> None:
     is the retry - and a retry schedule would hold the queueing lock through
     several ticks, which is the opposite of what a five-minute bound wants.
 
-    It also applies due instance-admin removals, and that half runs whatever the
-    gateway gate says.
+    It also applies due instance-admin removals and drops assistant-app drafts past
+    their day, and those run whatever the gateway gate says.
 
     PLAN.md:212 makes the removal of a peer take effect "after a delay,
     configurable and defaulting to an hour". The only thing that applied one was
@@ -988,6 +988,7 @@ def degraded_guild_sweep(timestamp: int) -> None:
     """
     import logging
 
+    from core.connector import drop_stale_drafts
     from core.models import apply_due_instance_admin_removals
     from core.revocation import gateway_has_ever_reported, mark_degraded_guilds
     from core.runs import record
@@ -1004,7 +1005,14 @@ def degraded_guild_sweep(timestamp: int) -> None:
             marked, restored = mark_degraded_guilds()
             detail = f"marked {marked} guilds degraded, restored {restored} to active"
         removals = apply_due_instance_admin_removals()
-        run.detail = f"{detail}; applied {removals} due instance-admin removals"
+        # Assistant-app drafts past their day (core.connector), with their links: they hold
+        # route points, often a rider's door, so they go within minutes, not at the next
+        # six-hourly membership sweep. Outside the gate too.
+        drafts = drop_stale_drafts()
+        run.detail = (
+            f"{detail}; applied {removals} due instance-admin removals; "
+            f"dropped {drafts} assistant-app drafts"
+        )
         run.save(update_fields=["detail"])
 
 
