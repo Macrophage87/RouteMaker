@@ -6,9 +6,11 @@ psycopg2-binary
 psycopg
 procrastinate
 defusedxml
-pytest
-pytest-django
-ruff
+# The test and lint tools, exactly: they are in neither image, and a new ruff that adds a rule
+# or changes its format turns CI red with no code change. Dependabot proposes the bumps.
+pytest==9.2.0
+pytest-django==4.14.0
+ruff==0.17.3
 pyyaml
 osmium
 cryptography

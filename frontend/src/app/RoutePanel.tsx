@@ -218,10 +218,19 @@ function GoBikeOptions({ options }: { options: NonNullable<GoRouteControls["opti
 /** A route error: what went wrong and what to do (lib/api.ts routeErrorShown), with one Try again where it can help. */
 function RouteErrorBox({ error, errorRef, retry, goPlace, offline }: { error: RouteError; errorRef: RefObject<HTMLDivElement | null>; retry: () => void; goPlace: string | null; offline: boolean }) {
   const shown = routeErrorShown(error, goPlace, offline);
+  const titleId = useId();
+  // The words are the alert, said once as they come; the box that takes the focus (App: from Go's Where to?, or back
+  // from a sheet) is a group named by its title, so the focus does not read the whole error a second time (the
+  // 2026-10-29 a11y review).
   return (
-    <div ref={errorRef} tabIndex={-1} className={`error error-${error.kind}`} role="alert">
-      <p>
-        {shown.title && <strong>{shown.title}.</strong>} {shown.message}
+    <div ref={errorRef} tabIndex={-1} className={`error error-${error.kind}`} role="group" aria-labelledby={titleId}>
+      {!shown.title && (
+        <span id={titleId} hidden>
+          {t("Route problem")}
+        </span>
+      )}
+      <p role="alert">
+        {shown.title && <strong id={titleId}>{shown.title}.</strong>} {shown.message}
       </p>
       {shown.retry && (
         <button type="button" onClick={retry}>
@@ -809,9 +818,9 @@ export function RouteSummary({
 }) {
   useStressStyle();
   const [info, setInfo] = useState(false);
-  // Go offers the routes to choose from at once (the owner, 2026-10-11: "select a destination ... then offer
-  // the options for routing to it"); Plan keeps them in their closed fold.
-  const [routesOpen, setRoutesOpen] = useState(mode === "go");
+  // The routes to choose from start closed in both modes: Go's "N routes" chip opens them and the map draws them
+  // anyway, so Go's half sheet fits one phone screen (the 2026-10-29 fix plan).
+  const [routesOpen, setRoutesOpen] = useState(false);
   const infoId = useId();
   const routesId = useId();
   // Broadcast held (or right-clicked): its link as a QR code (lib/broadcastQr.ts).
@@ -978,8 +987,9 @@ export function RouteSummary({
       </ul>
     ) : null;
   const bikeshareFold = bikeshare ? (
-    // The bikeshare plan, as a fold kept open (the mockup's table: "Same: a fold, open").
-    <Fold title={t("Bikeshare plan")} open className="bikeshare-fold" icon="bikeshare">
+    // The bikeshare plan, as a fold kept open in Plan (the mockup's table: "Same: a fold, open"). Go keeps it
+    // closed under the trip time: the answer first, the stations behind a tap.
+    <Fold title={t("Bikeshare plan")} open={!goMode} className="bikeshare-fold" icon="bikeshare">
       <BikeshareSummary plan={bikeshare} onEnding={onEnding} />
     </Fold>
   ) : null;
@@ -1006,8 +1016,6 @@ export function RouteSummary({
     // (peek) the sheet keeps the time, Start and the stress bar, and counts the warnings.
     return (
       <div className={`summary go-summary${go.peek ? " peek" : ""}`}>
-        {!go.peek && go.options && <GoBikeOptions options={go.options} />}
-        {!go.peek && bikeshareFold}
         <div className="go-head">
           <h3 className="visually-hidden">{t("Totals")}</h3>
           <dl className="stats totals go-totals">
@@ -1060,7 +1068,6 @@ export function RouteSummary({
             Extreme; its notice behind the link. At peek the totals count it. */}
         {!go.peek && <WeatherLines report={weather} riding={false} now={Date.now()} part="alerts" />}
         {!go.peek && infoBody}
-        {!go.peek && transitFold}
         {/* At peek the trip's panel is folded away, but an infrequent departure's countdown keeps
             running (and its milestones and a miss are still said): one compact line. */}
         {go.peek && transit?.departure && (
@@ -1072,6 +1079,11 @@ export function RouteSummary({
           />
         )}
         {segments.length > 0 && <StressFigure segments={segments} line={groupLine} go={{ route, peek: go.peek, onKey: go.onStressKey }} />}
+        {/* The station options and the trip's steps after the time, distance and stress bar (the 2026-10-29 review:
+            above them, they pushed the trip time off a half sheet). */}
+        {!go.peek && go.options && <GoBikeOptions options={go.options} />}
+        {!go.peek && bikeshareFold}
+        {!go.peek && transitFold}
         {!go.peek && <CapacityShort route={route} corkers={corkerShort(route, profile, rideSize)} />}
         {!go.peek && go.routeCard}
         {!go.peek && go.addStop}

@@ -182,6 +182,14 @@ ROUTER_RESTART_NOTICE = (
     f"`{RESTART_OFFROAD_ROUTER}`."
 )
 
+# What a job killed after its swap left undone, for the two places that refuse to
+# run it again (the rebuild's own start and `unwedge_job`).
+AFTER_SWAP_BY_HAND = (
+    "What it had left to do after the swap is finished by hand: "
+    "`manage.py predraw_stress_tiles` draws the stress tiles, and next week's rebuild "
+    "writes the next drift report."
+)
+
 
 class RebuildAlreadyRunning(JobAborted):
     """Another `weekly_rebuild` job is already `doing`, so this one will not start.
@@ -297,6 +305,24 @@ def weekly_rebuild(context=None, *, timestamp: int, manual: bool = False) -> Non
                 ".env and recreate the services (docs/OPERATIONS.md, \"The rebuild's own "
                 'budget").'
             )
+        # A swap a kill or an incomplete undo left half-done is repaired by hand
+        # first: this run would promote over links that no longer say what is
+        # served, and its first stage drops the staging schema. And a job whose swap
+        # already committed is not run again (an `unwedge_job` requeue after a kill
+        # past the swap): it would rebuild for hours and swap a second time,
+        # dropping the retired schema a rollback needs.
+        from pipeline import promotion
+
+        interrupted = promotion.interrupted_swap(settings.TILES_DIR)
+        if interrupted is not None:
+            raise RebuildAbandoned(
+                "refusing to start: " + promotion.describe_interrupted_swap(interrupted) + "."
+            )
+        if job_id is not None and promotion.swapped_job(settings.TILES_DIR) == job_id:
+            raise RebuildAbandoned(
+                f"refusing to start: job {job_id} already swapped its build in, so it is not "
+                f"run again. {ROUTER_RESTART_NOTICE} {AFTER_SWAP_BY_HAND}"
+            )
         # A checkpoint left by an earlier attempt of THIS job is resumed (its
         # retries and an `unwedge_job` requeue keep the job id); a new job's first
         # stage deletes it. `SOURCE_EXTRACT_FORCE_REFRESH=1` and
@@ -313,6 +339,7 @@ def weekly_rebuild(context=None, *, timestamp: int, manual: bool = False) -> Non
             reference_dir=settings.REBUILD_REFERENCE_DIR,
             checked_in_crossings=settings.REBUILD_CROSSINGS_FIXTURE,
             require_agency_lts=not settings.REBUILD_ALLOW_NO_AGENCY_LTS,
+            min_volume_rows=settings.REBUILD_VOLUME_MIN_ROWS,
             deadline=time.monotonic() + REBUILD_TIMEOUT_S,
             job_id=job_id,
             checkpoints=settings.REBUILD_CHECKPOINTS,
@@ -596,9 +623,20 @@ def _prune_tile_builds(tiles_dir, keep: int, what: str, protect=()) -> int:
     """
     import logging
 
-    from pipeline import retention
+    from pipeline import promotion, retention
 
     try:
+        # Nothing goes while a swap is unrepaired: the links no longer say which
+        # build is the rollback target, and the journal's list of them is only as
+        # good as the journal (review 2026-10-29).
+        interrupted = promotion.interrupted_swap(tiles_dir)
+        if interrupted is not None:
+            logging.getLogger(__name__).warning(
+                "not pruning old build directories %s: %s",
+                what,
+                promotion.describe_interrupted_swap(interrupted),
+            )
+            return 0
         pruned = retention.prune_tile_builds(tiles_dir, keep=keep, protect=protect)
     except Exception:  # noqa: BLE001 - cleanup must not replace the failure it follows
         logging.getLogger(__name__).exception("could not prune old build directories %s", what)

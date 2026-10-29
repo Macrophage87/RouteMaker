@@ -6,8 +6,17 @@
 #
 #   render-nginx.sh --stage acme [--out FILE]
 #       Port 80 only, answering the ACME challenge. For before a certificate exists.
-#   render-nginx.sh --stage full --cert-fullchain F --cert-key K [--out FILE]
+#   render-nginx.sh --stage full --cert-fullchain F --cert-key K [--out FILE | --diff FILE]
 #       The whole site: 80 redirects to 443, 443 serves the beta.
+#
+# The site's shape is remembered as settings (exported, as vars.sh does, or else a line in .env),
+# so a re-render after a template change needs only --stage full (and --diff against the
+# installed file to see the change first):
+#   BETA_SITE_PASSWORD=0      as --no-password        BETA_NGINX_IPV6=0   as --no-ipv6
+#   BETA_NGINX_401_PAGE=0     as --no-401-page
+#   RM_CERT_FULLCHAIN, RM_CERT_KEY, BETA_NGINX_TLS_INCLUDE
+#                             as --cert-fullchain, --cert-key, --tls-options-include
+# A flag given on the command line wins. Each switch is 1 (the default) or 0.
 #
 # Options (defaults in brackets; RM_BETA_HOST, DATA_ROOT and BETA_API_PORT are read out of
 # .env by sed, never by sourcing it):
@@ -20,6 +29,8 @@
 #   --tls-options-include F  an nginx file to include in the 443 server, such as
 #                            certbot's /etc/letsencrypt/options-ssl-nginx.conf
 #   --env-file FILE          [<repo>/.env]
+#   --diff FILE              print `diff -u FILE <the rendering>` instead of the rendering, and
+#                            exit 0 if they are the same, 1 if not (FILE is the installed site)
 #   --no-ipv6                drop the `listen [::]:...` lines (for a host whose other
 #                            sites do not listen on IPv6; docs/BETA-RUNBOOK.md, step 1)
 #   --no-password            no site password (the owner opened the beta, 2026-10-22): leave out
@@ -43,9 +54,10 @@ stage=""; out=""; server_name=""; api_port=""; data_root=""
 htpasswd="/etc/nginx/routemaker-beta.htpasswd"; acme_root="/var/www/routemaker-acme"
 cert_fullchain=""; cert_key=""; tls_include=""; env_file="$repo/.env"
 
-ipv6=1
-page401=1
-password=1
+diff_file=""
+ipv6=""
+page401=""
+password=""
 while [ $# -gt 0 ]; do
 	if [ "$1" = --no-ipv6 ]; then ipv6=0; shift; continue; fi
 	if [ "$1" = --no-401-page ]; then page401=0; shift; continue; fi
@@ -63,6 +75,7 @@ while [ $# -gt 0 ]; do
 		--cert-key) cert_key=$2 ;;
 		--tls-options-include) tls_include=$2 ;;
 		--env-file) env_file=$2 ;;
+		--diff) diff_file=$2 ;;
 		*) die "unknown option $1" ;;
 	esac
 	shift 2
@@ -82,6 +95,24 @@ env_value() { # the last KEY= line of the env file, quotes stripped, never evalu
 [ -n "$api_port" ] || api_port=8087
 [ -n "$data_root" ] || data_root=$(env_value DATA_ROOT)
 [ -n "$data_root" ] || data_root=/data/routemaker
+
+setting() { # key: from the environment (vars.sh), else from .env
+	printenv "$1" 2>/dev/null || env_value "$1"
+}
+switch() { # flag-value key: the flag, else the setting, else on; prints 1 or 0
+	[ -z "$1" ] || { echo "$1"; return 0; }
+	case "$(setting "$2")" in
+		'' | 1) echo 1 ;;
+		0) echo 0 ;;
+		*) die "$2 (in the environment or $env_file) must be 1 or 0" ;;
+	esac
+}
+password=$(switch "$password" BETA_SITE_PASSWORD)
+ipv6=$(switch "$ipv6" BETA_NGINX_IPV6)
+page401=$(switch "$page401" BETA_NGINX_401_PAGE)
+[ -n "$cert_fullchain" ] || cert_fullchain=$(setting RM_CERT_FULLCHAIN)
+[ -n "$cert_key" ] || cert_key=$(setting RM_CERT_KEY)
+[ -n "$tls_include" ] || tls_include=$(setting BETA_NGINX_TLS_INCLUDE)
 
 safe() { # name value: a word with no space, quote, brace, semicolon, backslash or @
 	case "$2" in
@@ -175,7 +206,12 @@ if printf '%s\n' "$rendered" | grep -n '@[A-Z_]*@' >&2; then
 	die "unfilled placeholders remain (listed above)"
 fi
 
-if [ -n "$out" ]; then
+if [ -n "$diff_file" ]; then
+	[ -z "$out" ] || die "--diff and --out are one or the other"
+	[ -r "$diff_file" ] || die "cannot read $diff_file"
+	printf '%s\n' "$rendered" | diff -u "$diff_file" - && echo "render-nginx: no change from $diff_file" >&2
+	exit $?
+elif [ -n "$out" ]; then
 	[ ! -e "$out" ] || [ -n "${RENDER_NGINX_FORCE:-}" ] || die "$out exists; remove it or set RENDER_NGINX_FORCE=1"
 	printf '%s\n' "$rendered" >"$out"
 	echo "render-nginx: wrote $out (stage $stage)" >&2

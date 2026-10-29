@@ -74,8 +74,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "order: the junction kinds are swapped",
         RF,
-        "e.severity == severity) / model.FEET_PER_METRE",
-        "e.severity != severity) / model.FEET_PER_METRE",
+        "presets.shifted_severity(e.severity, shift) == severity)",
+        "presets.shifted_severity(e.severity, shift) != severity)",
         LC,
     ),
     (
@@ -102,15 +102,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "order: the Hills slider is not blended in",
         RF,
-        "    return (1 - w) * read.length_m + w * effort\n",
-        "    return read.length_m\n",
+        "    return charged_m(read, ctx) - ctx.hills_seek_weight * effort + delay_m(read, ctx)",
+        "    return charged_m(read, ctx) + delay_m(read, ctx)",
         LC,
     ),
     (
         "order: the Hills slider blends the length with itself",
         RF,
-        "    return (1 - w) * read.length_m + w * effort\n",
-        "    return (1 - w) * read.length_m + w * read.length_m\n",
+        "    effort = read.effort_m or read.length_m\n    return charged_m(",
+        "    effort = read.length_m\n    return charged_m(",
         LC,
     ),
     ("order: the seek half's hook does nothing", RF, "- ctx.hills_seek_weight * effort", "", LC),
@@ -146,8 +146,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "ceiling: the default is the smaller",
         PR,
-        "    return max(first_m * DEFAULT_CEILING_RATIO, first_m + DEFAULT_CEILING_EXTRA_M)",
-        "    return min(first_m * DEFAULT_CEILING_RATIO, first_m + DEFAULT_CEILING_EXTRA_M)",
+        "    return max(first_m * ratio, first_m + DEFAULT_CEILING_EXTRA_M)",
+        "    return min(first_m * ratio, first_m + DEFAULT_CEILING_EXTRA_M)",
         PS,
     ),
     (
@@ -281,7 +281,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "worth: with no target the stricter bar",
         RF,
-        "        return max(added, 0.0) / WORTH_DEFAULT",
+        "        return max(added, 0.0) / worth_ratio(ctx)",
         "        return max(added, 0.0) / WORTH_OVER_TARGET",
         LC,
     ),
@@ -309,8 +309,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "worth: an orange junction saves nothing",
         RF,
-        "        + w.lts3 * read.orange_m",
-        "",
+        "        return self.lts3_m + self.orange_m + self.lts2_weight * self.lts2_m",
+        "        return self.lts3_m + self.lts2_weight * self.lts2_m",
         LC,
     ),
     (
@@ -351,8 +351,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "worth: the rule cannot be off",
         RF,
-        "    if not ctx.worth_rule:\n        return True\n    charge",
-        "    charge",
+        "    if not ctx.worth_rule or (not ctx.maxcalm and ctx.rate <= 0):",
+        "    if not ctx.maxcalm and ctx.rate <= 0:",
         LC,
     ),
     (
@@ -365,8 +365,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "worth: a spliced trip need not be worth its miles",
         RF,
-        "        if ctx.maxcalm and read.length_m > best.length_m and not worth_it(best, read, ctx):",
-        "        if False:",
+        '        if read.length_m > best.length_m and not worth_it(best, read, ctx):\n            seek["taken"] = False\n            seek["whole_trip"] = "not_worth"',
+        '        if False:\n            seek["taken"] = False\n            seek["whole_trip"] = "not_worth"',
         RFT,
     ),
     (
@@ -537,8 +537,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "legs: a long plan is not a long plan if it is a loop",
         RT,
-        "    long_calm = not loop and long_calm_for(preset_name, points, stress_dial, long_ride)",
-        "    long_calm = long_calm_for(preset_name, points, stress_dial, long_ride)",
+        "    long_calm = (\n        not loop\n        and not fixed\n",
+        "    long_calm = (\n        not fixed\n",
         AP,
     ),
     (
@@ -645,8 +645,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "loop: the most stressful within the share is kept",
         RF,
-        "        ranked = (share > LOOP_OVERLAP_OK, whole.key(ctx) if share <= LOOP_OVERLAP_OK else share)",
-        "        ranked = (share > LOOP_OVERLAP_OK, share)",
+        "                whole.key(ctx) if share <= LOOP_OVERLAP_OK else share,",
+        "                share,",
         LP,
     ),
     (
@@ -750,15 +750,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "298(3) the climb search among alternatives at the top",
         RT,
-        "    if climb_seek or avoiding:",
-        "    if seeking or avoiding:",
+        "    if climb_seek or avoiding or direct_tolerate:",
+        "    if climb_seek or calm_seek or avoiding or direct_tolerate:",
         AP,
     ),
     (
         "298(3) hills_seek not calm_first",
         RT,
-        '    seek_limited = "calm_first" if calm_seek else None',
-        "    seek_limited = None",
+        '    seek_limited = "calm_first" if calm_seek or calm_tolerate else None',
+        '    seek_limited = "calm_first" if calm_tolerate else None',
         AP,
     ),
     # S1: a long plan's candidates in the plan's legs.

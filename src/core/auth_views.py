@@ -38,11 +38,21 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods
 
 from . import ratelimit
-from .discord_oauth import LoginRequest, OAuthStateError, begin_login, scopes_are_minimal
+from .discord_oauth import (
+    STATE_LIFETIME,
+    LoginRequest,
+    OAuthStateError,
+    begin_login,
+    scopes_are_minimal,
+)
 from .models import BanTombstone, Session, User
 from .revocation import tombstone
 
 STATE_SESSION_KEY = "discord_login_request"
+# A signed-out visitor's session holds only the login in progress: it lasts as long as that can
+# (`STATE_LIFETIME`) and a little more, not the 90 days of a signed-in one, so an unfinished
+# sign-in leaves nothing kept for long. A finished one goes back to the default at login.
+PENDING_SESSION_S = int(STATE_LIFETIME.total_seconds()) + 5 * 60
 USER_URL = "https://discord.com/api/users/@me"
 TOKEN_URL = "https://discord.com/api/oauth2/token"
 
@@ -128,6 +138,9 @@ def login_start(request):
         "issued_at": pending.issued_at.isoformat(),
         "redirect_after": pending.redirect_after,
     }
+    user = getattr(request, "user", None)
+    if user is None or not user.is_authenticated:
+        request.session.set_expiry(PENDING_SESSION_S)
     return HttpResponseRedirect(url)
 
 
@@ -182,6 +195,8 @@ def login_callback(request, exchange=None):
         return HttpResponseForbidden("this account is not permitted to sign in")
 
     django_login(request, user, backend="core.auth_backend.DiscordStandingBackend")
+    # The login request's short life is carried over by the key cycle: the default again.
+    request.session.set_expiry(None)
     user.last_login = timezone.now()
     user.save(update_fields=["last_login"])
     issue_session(request, user)

@@ -229,13 +229,17 @@ export function withTimeout(get: typeof fetch, ms: number): typeof fetch {
   }) as typeof fetch;
 }
 
-/** One tile through the protocol: the network, and with `offline` the ride's kept tiles around it. */
+/**
+ * One tile through the protocol: the network, and with `offline` the ride's kept tiles around it.
+ * `retry` is fetchTile's clock between attempts, for tests.
+ */
 export async function loadTile(
   url: string,
   signal: AbortSignal,
   get?: typeof fetch,
   offline?: OfflineTiles,
   timeoutMs = NETWORK_TIMEOUT_MS,
+  retry: Pick<Fetching, "wait" | "now"> = {},
 ): Promise<ArrayBuffer> {
   const riding = offline?.riding() ?? false;
   if (offline && (riding || offlineNow())) {
@@ -245,6 +249,7 @@ export async function loadTile(
   try {
     // A ride falls back to its kept tiles at once rather than waiting out a server that is down.
     const data = await fetchTile(url, {
+      ...retry,
       get: riding ? withTimeout(get ?? ((i, o) => fetch(i, o)), timeoutMs) : get,
       signal,
       retryDown: !riding,
