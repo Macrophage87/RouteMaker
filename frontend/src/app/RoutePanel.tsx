@@ -594,7 +594,8 @@ interface NoteLine {
 function noteLines(route: RouteResponse, points: LonLat[], light: readonly LightMark[] = [], goMode = false): NoteLine[] {
   const lines: NoteLine[] = [];
   // A point inside the National Zoo was moved to its bike racks (291(4)): shown here, and said with the route.
-  const moved = movedPointsNote(route, points.length);
+  // A stop or the end not open to the public is a warning, shown with the route's alerts under its totals (RouteAlerts).
+  const moved = movedPointsNote({ ...route, point_notes: [] }, points.length);
   if (moved) lines.push({ key: "moved", className: "notice moved-points", icon: "pin", text: moved });
   // The ride stops short of a point, and the rider walks the bike the rest (the API's `walk_in`).
   const walkIn = walkInNote(route);
@@ -628,16 +629,25 @@ function noteLines(route: RouteResponse, points: LonLat[], light: readonly Light
  * whole sentence is read), with Avoid it beside it, and a count of the route's other warnings (the roads
  * best avoided, a traffic-tolerant ride, what the hills search found), listed behind it.
  */
-function RouteAlerts({ route, answer, choice, around, onAround }: { route: RouteResponse; answer: RouteResponse | null; choice: number; around: boolean; onAround: (around: boolean) => void }) {
+function RouteAlerts({ route, answer, choice, around, onAround, pointCount }: { route: RouteResponse; answer: RouteResponse | null; choice: number; around: boolean; onAround: (around: boolean) => void; pointCount: number }) {
   const [open, setOpen] = useState(false);
   const id = useId();
   const others = facilityNoticeCount(route);
   const hasAvoid = avoidNoticeFor(answer, choice) !== null;
-  if (!hasAvoid && others === 0) return null;
+  // A stop or the end on a road not open to the public (the owner, 2026-10-29): with the warnings, so Go shows it beside
+  // Start rather than under the sheet's fold (the v0.15.0 end review). Said with the route (lib/summary.ts announceRoute).
+  const notPublic = route.point_notes?.length ? movedPointsNote({ point_notes: route.point_notes }, pointCount) : null;
+  if (!hasAvoid && others === 0 && !notPublic) return null;
   return (
     <div className="route-alerts">
       {/* First in the route's warnings and announced first (335): the route goes through an Avoid-rated junction. */}
       {hasAvoid && answer && <AvoidNotice answer={answer} choice={choice} around={around} onAround={onAround} />}
+      {notPublic && (
+        <p className="note-line notice not-public-end">
+          <Icon name="warn" size={16} />
+          <span className="note-text">{notPublic}</span>
+        </p>
+      )}
       {others > 0 && (
         <>
           <button type="button" className="secondary alert-more" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
@@ -906,7 +916,7 @@ export function RouteSummary({
   );
   const alerts = (
     <>
-      <RouteAlerts route={route} answer={answer} choice={choice} around={around} onAround={onAround} />
+      <RouteAlerts route={route} answer={answer} choice={choice} around={around} onAround={onAround} pointCount={points.length} />
       <NoviceTransitOffer route={route} preset={preset} onTake={go.onNoviceTransit} trips={go.noviceTrips} />
       {/* Weather along the route (Stephen 2026-10-24): the NWS alerts, each linked to its notice, and rain coming. A
           notice only: Start never waits for it. Go shows the alerts under its totals (the owner's P1), and the rain here. */}

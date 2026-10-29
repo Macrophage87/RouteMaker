@@ -2220,4 +2220,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Train": "Tren",
   "Bus {lines}": "Autobús {lines}",
   "{named}, to {stop}": "{named}, hasta {stop}",
+  "Start: {note}": "Inicio: {note}",
+  "Stop {number}: {note}": "Parada {number}: {note}",
+  "End: {note}": "Llegada: {note}",
 };
