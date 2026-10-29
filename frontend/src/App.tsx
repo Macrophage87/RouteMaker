@@ -5642,6 +5642,9 @@ export function App() {
     noviceTrips: noviceTripsShown,
     onGroupRideNoTrails: () => {
       choosePreset("group-ride", { ...chooseRideType("group-ride", null, dials), trailsOff: true });
+      // One press, as a transit pick is: in Plan too it plans at once rather than waiting for Route.
+      sendNow.current = true;
+      if (planFirst) setRouteAsk((n) => n + 1);
       announceExtra(`${presetSaid("group-ride")}.`);
     },
     // The route card (edit-route redesign, Stephen 2026-10-18): the start and the destination, and Edit route, which
