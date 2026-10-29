@@ -8589,9 +8589,10 @@ age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
   server still sees the ride id, tokens, addresses, timing and counts, and it marks the leader's dot and each
   dot's age; those are not sealed.
 - **Which rides.** A broadcast's secret is made with the leader's token (`App.tsx` `Lead`) and goes in every link
-  for that ride, including those followers pass on. A Group Ride plan's secret (`groupSecret`) is made when a
-  page starts afresh or the rider picks Group Ride, kept in the address bar (on Group Ride only) and in Copy link
-  and Share. A link without one (a Mass Ride, an older link, a ride post the server wrote) is the ride by its
+  for that ride, including those followers pass on. A Group or Mass Ride plan's secret (`groupSecret`; Mass Ride too,
+  Stephen 2026-10-29: "Mass rides should be encrypted too.") is made when a page starts afresh or the rider picks
+  either ride type, made again when the page's own moves from one to the other (`rideGroup.ts` `presetSecret`), and kept in the address bar (on those two only)
+  and in Copy link and Share. A link without one (an older link, a ride post the server wrote) is the ride by its
   points in plain numbers, as before, so everyone who opens the same link is still on one ride. A sealed ride's
   page leaves out anything that does not open, plain dots included: for a short while after a release, a page
   still on the older build joins a link's ride by its points and does not meet those on the sealed ride. A Group
@@ -8619,9 +8620,9 @@ age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
   is shown again when riding resumes.
 - **Off the route only while riding.** On a broadcast a dot is sent off the route only while riding; a Roam
   follower who is not riding is never sent.
-- **A new ride, new keys.** When a ride ends, its leads (`leads.current`, Roam's aside) and a Group Ride secret
+- **A new ride, new keys.** When a ride ends, its leads (`leads.current`, Roam's aside) and a Group or Mass Ride secret
   the page made (`groupSecretOwn`) are made again, so the next ride is a new ride. Share as image's QR code
-  never carries a Group Ride secret (`shareCardLink`). A leader who starts riding again without sharing again
+  never carries a Group or Mass Ride secret (`shareCardLink`). A leader who starts riding again without sharing again
   (a resume, or Start ride on the link they shared) is on the same ride as before, as its followers expect; sharing
   again makes the new one. A dot held back sends no leader path either, and the ridden path stops growing.
 - **Dot order.** `core.ride_presence.read` shuffles the dots (`SystemRandom`) on every read.

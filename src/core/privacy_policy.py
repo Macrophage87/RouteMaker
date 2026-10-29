@@ -90,6 +90,51 @@ def _ul(items: list[str]) -> str:
     return "<ul>" + "".join(f"<li>{escape(i)}</li>" for i in items) + "</ul>"
 
 
+def _details(summary: str, items: list[str]) -> str:
+    """A section's technical detail, closed until opened (summary first, the rest behind it)."""
+    return f"<details><summary>{escape(summary)}</summary>{_ul(items)}</details>"
+
+
+# The encryption in full (Stephen 2026-10-29: "Put the full technical specification in the expand,
+# since nothing is secret except the key"). The code is frontend/src/lib/rideSeal.ts (rides) and
+# config.procrastinate perform_backup (backups); test_privacy_policy checks the numbers against it.
+RIDE_CRYPTO_SUMMARY = "How the encryption works (technical details)"
+RIDE_CRYPTO = [
+    "The ride's key: 32 random bytes from the browser's cryptographic random source "
+    "(crypto.getRandomValues), written as 43 base64url characters in the link's fragment as "
+    "k=. The fragment, the part after #, is never sent to any server. Nothing about the method "
+    "is secret; only the key is.",
+    "From the key, HKDF with SHA-256 (salt “routemaker ride seal v1”) derives two things: with "
+    "info “ride id”, 256 bits written as 64 hex digits, the name the server knows the live ride "
+    "by; with info “ride key”, an AES-GCM key of 256 bits, which the browser keeps "
+    "non-extractable (Web Crypto). The ride id cannot be turned back into the key.",
+    "Each dot, alert and leader path is written as JSON, padded with spaces to a whole number "
+    "of 128 bytes (a dot), 512 bytes (an alert) or 4,096 bytes (a path), so its size does not "
+    "give away a role, an alert's kind or the length of its words, then encrypted with "
+    "AES-256-GCM under a fresh random 12-byte nonce. Its kind and the ride id are bound in as "
+    "associated data, so a dot cannot be passed off as an alert, or one ride's data as "
+    "another's. What is sent is the nonce, the ciphertext and GCM's 128-bit tag, in base64url.",
+    "Before encrypting, the phone does what the server did with plain positions: it rounds each "
+    "dot, alert spot and ridden path to the same 66 ft (20 m) grid (the leader's planned route "
+    "to about 3 ft (1 m)), sends nothing outside the map's area, and merges "
+    "matching alerts as it reads them.",
+    "Each phone posts under its own random code for the ride (16 random bytes). A ride leader's "
+    "link also carries lead=, the first 32 hex digits of the SHA-256 of the leader's code, so "
+    "riders can tell which dot is the leader's; only the leader's phone, which holds the code, "
+    "can post as that dot.",
+    "What the server still sees: the ride id, each phone's random code, when and how often "
+    "phones send and ask, the padded sizes, each dot's age and which one is the leader's, and "
+    "the internet address a request comes from, as for any page. It cannot read a dot, an alert "
+    "or the leader's live path. A Share ride or Broadcast link is also a shared route: its "
+    "planned line is kept on the server like any shared link (see Shared links).",
+    "Nightly database backups are encrypted with age to the owner's X25519 public key; the "
+    "matching private key is kept on the owner's computer, not on the server, so the server can "
+    "write a backup but never read one.",
+    "RouteMaker is open source (MIT license), so anyone can check this: the ride encryption is "
+    "frontend/src/lib/rideSeal.ts in github.com/Macrophage87/RouteMaker.",
+]
+
+
 SUMMARY = (
     f'<p>Last updated: <time datetime="{LAST_UPDATED[0]}">{LAST_UPDATED[1]}</time>.</p>'
     + _ul(
@@ -147,12 +192,12 @@ SECTIONS: list[tuple[str, str]] = [
                 "Other riders on the same ride see an unnamed dot. No account or name is sent: "
                 "your phone makes a new random code for each ride.",
                 "An alert you send keeps your rounded spot for 2 minutes, or until you clear it.",
-                "On Share ride, Broadcast (in Roam too) and a Group Ride link shared from "
+                "On Share ride, Broadcast (in Roam too) and a Group or Mass Ride link shared from "
                 "RouteMaker, your phone encrypts your dot, your alerts and the leader’s path "
                 "before sending them, with a key only the link carries (in the part after #, which "
                 "browsers never send to a server). The server holds them only as scrambled text it "
                 "cannot read; it still sees when a phone on the ride sends or asks, as it does for "
-                "any page. Mass Ride links are not encrypted this way.",
+                "any page. Ride posts written by RouteMaker's server are not encrypted this way.",
                 "Share ride and Broadcast make you the ride leader, shown as a dot from the start "
                 "of your ride. While you ride a shared ride, you and anyone on it who chooses to "
                 "be shown are shown on or off the route, so riders who get separated can find "
@@ -170,7 +215,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "browser's maker (Google for Chrome, Apple for Safari) turns the recording into "
                 "text. The words go only into the box until you tap Send.",
             ]
-        ),
+        )
+        + _details(RIDE_CRYPTO_SUMMARY, RIDE_CRYPTO),
     ),
     (
         "If you sign in with Discord",

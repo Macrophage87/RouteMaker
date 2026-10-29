@@ -7162,6 +7162,8 @@ def shared_route_add(request):
     except IntegrityError:
         # Ids are 128 random bits: a taken one is a resend, never another rider's to replace.
         return _stress_error(409, "That link's route is already kept.", code="taken")
+    # Its preview image drawn now by the worker, not on a chat app's first fetch.
+    share_preview.draw_later(row)
     response = JsonResponse({"id": row.pk}, status=201)
     response["Cache-Control"] = "no-store"
     return response
@@ -7300,13 +7302,14 @@ def my_shared_route_revoke(request, route_id: str):
 def my_shared_route_regenerate(request, route_id: str):
     from django.utils import timezone
 
-    from . import shared_routes
+    from . import share_preview, shared_routes
 
     now = timezone.now()
     row = _owned_shared(request, route_id)
     if row is None or shared_routes.expired(row, now):
         return _stress_error(404, SHARED_NOT_YOURS, code="not_found")
     fresh = shared_routes.regenerate(row, now)
+    share_preview.draw_later(fresh)
     return _private(JsonResponse(_shared_summary(request, fresh), status=201))
 
 
