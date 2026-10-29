@@ -279,9 +279,9 @@ SECTIONS: list[tuple[str, str]] = [
                 "position, the time and your note. It stays on your device, and with your account "
                 "when signed in. RouteMaker shows which city or county 311 website takes it; you "
                 "send it yourself.",
-                "In Washington, DC, where the site has DC 311’s key, a problem logged in Ride "
-                "mode is also sent to DC 311 by the server: the problem, the point on your route "
-                "and the report’s words, nothing about you.",
+                "In Washington, DC, where the site has DC 311’s key and you are signed in, a "
+                "problem logged in Ride mode is also sent to DC 311 by the server: the problem, "
+                "the point on your route and the report’s words, nothing about you.",
             ]
         ),
     ),
@@ -353,8 +353,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "The app’s own logs are capped in size, so old lines are overwritten.",
                 "When a request fails, an error log may keep more of it, including the internet "
                 "address, for a short time.",
-                "Request limits count a one-way code made from your internet address, deleted "
-                "within about 30 hours.",
+                "Request limits count a one-way code made from your internet address (or, for "
+                "some, your account), deleted within about 30 hours.",
             ]
         ),
     ),
