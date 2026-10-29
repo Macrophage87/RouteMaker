@@ -561,6 +561,43 @@ def as_point(
     raise ToolError(f"not a point: {value!r}")
 
 
+# The ride types whose link is a live ride (frontend/src/lib/rideGroup.ts `isRideLinkType`). Every
+# ride link carries its ride's key (the owner, 2026-10-29: "All rides should have a key."): 16
+# random bytes, base64url without padding (22 characters; an older link's 43 still open), as the
+# fragment's `k=` (frontend/src/lib/rideSeal.ts).
+RIDE_LINK_TYPES = ("mass-ride", "group-ride")
+RIDE_KEY_RE = re.compile(r"[A-Za-z0-9_-]{22}|[A-Za-z0-9_-]{43}")
+
+
+def new_ride_key() -> str:
+    """A ride's key as rideSeal.ts `newRideSecret` makes one."""
+    return base64.urlsafe_b64encode(secrets.token_bytes(16)).rstrip(b"=").decode("ascii")
+
+
+def ride_key_of(fragment: str) -> str | None:
+    """The ride key a link's fragment carries (rideSeal.ts `secretFrom`), or None."""
+    values = urllib.parse.parse_qs(str(fragment or "").lstrip("#")).get("k") or []
+    return values[0] if values and RIDE_KEY_RE.fullmatch(values[0]) else None
+
+
+def with_ride_key(fragment: str, key: str | None) -> str:
+    """The fragment with `key` as its `k=` (rideSeal.ts `withSecret`), replacing any it had;
+    None takes it out."""
+    lead = "#" if fragment.startswith("#") else ""
+    params = [p for p in fragment.lstrip("#").split("&") if p and not p.startswith("k=")]
+    if key:
+        params.append(f"k={key}")
+    return lead + "&".join(params)
+
+
+def ride_key_for(preset: str, key: str | None) -> str | None:
+    """A ride type's key: the one it had (`key`), else a new one; none for a ride type whose
+    link is not a live ride."""
+    if preset not in RIDE_LINK_TYPES:
+        return None
+    return key if isinstance(key, str) and RIDE_KEY_RE.fullmatch(key) else new_ride_key()
+
+
 def plan_fragment(points, vias, preset: str, dials: dict, sent: dict) -> str:
     """The page's own plan link fragment (frontend/src/lib/planHash.ts `encodePlan`): the
     answer's `dials`, and what only the request carried (`sent`, the POST /api/route body)."""
@@ -1940,6 +1977,14 @@ class Draft:
     name: str
     trim_spurs: bool = True
     intervals: dict | None = None
+    # A Group or Mass Ride's key (`ride_key_for`), kept as the draft is revised.
+    ride_key: str | None = None
+
+    def fragment(self, dials: dict) -> str:
+        """The draft's plan link fragment, with its ride key."""
+        plan = self.plan
+        fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
+        return with_ride_key(fragment, self.ride_key)
 
 
 @dataclass
@@ -3207,11 +3252,22 @@ class Server:
         taken: list[dict] | None = None,
         trim_spurs: bool = True,
         intervals: dict | None = None,
+        ride_key: str | None = None,
     ) -> dict:
-        """Keep the plan as a draft and describe it: nothing is saved or written."""
-        draft_id = self.drafts.put(Draft(plan, dict(options), limit, name, trim_spurs, intervals))
+        """Keep the plan as a draft and describe it: nothing is saved or written. A Group or Mass
+        Ride keeps `ride_key` (a revised draft's, or the opened link's), else gets a new one."""
+        draft = Draft(
+            plan,
+            dict(options),
+            limit,
+            name,
+            trim_spurs,
+            intervals,
+            ride_key_for(plan.preset, ride_key),
+        )
+        draft_id = self.drafts.put(draft)
         dials = self._dials(plan)
-        fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
+        fragment = draft.fragment(dials)
         notes = list(notes)
         # The link opens this exact line in the app, as its Share does, so the map, Start ride
         # and the app's GPX are this route; the plan's inputs ride along for editing.
@@ -3358,7 +3414,7 @@ class Server:
             )
         else:
             dials = self._dials(plan)
-            fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
+            fragment = draft.fragment(dials)
             saved = self.api.save(kept_route(plan, name, fragment, dials))
             out["saved"] = {
                 "id": saved.get("id"),
@@ -3387,7 +3443,8 @@ class Server:
                 )
             plan = draft.plan
             dials = self._dials(plan)
-            fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
+            # The post's own key replaces the draft's (core.route_posts.freeze_route).
+            fragment = draft.fragment(dials)
             route = kept_route(plan, draft.name, fragment, dials)
         else:
             follow = args["follow"]
@@ -3477,9 +3534,11 @@ class Server:
             sent = request_body(points, vias, preset, options)
             plan = Plan(list(points), list(vias), preset, answer, check, sent)
             name = str(shared.get("name") or "RouteMaker route")
-            return self._draft(plan, options, limit, [], name)
+            return self._draft(plan, options, limit, [], name, ride_key=ride_key_of(fragment))
         plan, notes = self._plan_and_fix(call, points, vias, preset, options, limit, 0)
-        return self._draft(plan, options, limit, notes, "RouteMaker route")
+        return self._draft(
+            plan, options, limit, notes, "RouteMaker route", ride_key=ride_key_of(fragment)
+        )
 
     # revise_route
     def revise_route(self, args: dict, call: Call) -> dict:
@@ -3563,6 +3622,8 @@ class Server:
             taken=taken,
             trim_spurs=trim,
             intervals=intervals,
+            # Mass Ride and Group Ride are different rides: a change between them is a new key.
+            ride_key=draft.ride_key if preset == plan.preset else None,
         )
 
     # plan_route

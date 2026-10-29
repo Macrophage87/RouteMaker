@@ -313,6 +313,7 @@ class DatabaseDrafts:
             # Drafts kept before v0.12.3 have neither: the module's defaults.
             trim_spurs=data.get("trim_spurs", True),
             intervals=data.get("intervals"),
+            ride_key=data.get("ride_key"),
         )
 
     def put(self, draft) -> str:
@@ -332,6 +333,7 @@ class DatabaseDrafts:
             "name": draft.name,
             "trim_spurs": draft.trim_spurs,
             "intervals": draft.intervals,
+            "ride_key": draft.ride_key,
         }
         # 128 random bits: an id seen in a transcript cannot be walked to its neighbours.
         draft_id = f"d{secrets.token_hex(16)}"

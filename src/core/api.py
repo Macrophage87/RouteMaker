@@ -7537,8 +7537,9 @@ def report311_send(request):
 
 
 # Mass Ride and Group Ride links: the other riders as dots, and alerts (v0.7.0 plan;
-# core.ride_presence). No sign-in: a ride is the digest of the link's plan and a rider a random
-# per-ride token. Positions are in POST bodies only, kept in memory for 2 minutes, never logged.
+# core.ride_presence). No sign-in: a ride is an id derived from the link's key and a rider a
+# random per-ride token. Dots, paths and alerts come sealed by the phones, in POST bodies only,
+# kept in memory for 2 minutes, never logged; a post in plain numbers is refused.
 # The fine limits are per token, in memory; the database counts only a generous ceiling per
 # address (a whole ride's phones can share one carrier address) and per ride, by keyed digest.
 
@@ -7607,7 +7608,7 @@ def ride_read(request, ride_id: str):
     return _ride_call(request, lambda rp: rp.read(ride_id, token, leader=leader))
 
 
-@api.post("/rides/{ride_id}/here", summary="Show this rider as a dot (rounded to 20 m) for 2 min")
+@api.post("/rides/{ride_id}/here", summary="Show this rider's sealed dot for 2 min")
 @decorate_view(*RIDE_WRITE_GUARDS)
 def ride_here(request, ride_id: str):
     body, refusal = _ride_body(request)
@@ -7615,20 +7616,13 @@ def ride_here(request, ride_id: str):
         return refusal
     return _ride_call(
         request,
-        lambda rp: rp.post_position(
-            ride_id,
-            body.get("token", ""),
-            body.get("lon"),
-            body.get("lat"),
-            body.get("role"),
-            sealed=body.get("sealed"),
-        ),
+        lambda rp: rp.post_position(ride_id, body.get("token", ""), body.get("sealed")),
     )
 
 
 @api.post(
     "/rides/{ride_id}/path",
-    summary="A broadcast leader's route and ridden path, kept in memory for 2 min",
+    summary="A broadcast leader's sealed route and ridden path, kept in memory for 2 min",
 )
 @decorate_view(*RIDE_WRITE_GUARDS)
 def ride_path(request, ride_id: str):
@@ -7641,13 +7635,7 @@ def ride_path(request, ride_id: str):
         return refusal
     return _ride_call(
         request,
-        lambda rp: rp.post_path(
-            ride_id,
-            body.get("token", ""),
-            body.get("route"),
-            body.get("trail"),
-            sealed=body.get("sealed"),
-        ),
+        lambda rp: rp.post_path(ride_id, body.get("token", ""), body.get("sealed")),
     )
 
 
@@ -7660,7 +7648,7 @@ def ride_leave(request, ride_id: str):
     return _ride_call(request, lambda rp: rp.leave(ride_id, body.get("token", "")))
 
 
-@api.post("/rides/{ride_id}/alerts", summary="Send an alert to everyone on the ride link")
+@api.post("/rides/{ride_id}/alerts", summary="Send a sealed alert to everyone on the ride link")
 @decorate_view(*RIDE_WRITE_GUARDS)
 def ride_alert(request, ride_id: str):
     body, refusal = _ride_body(request)
@@ -7668,16 +7656,7 @@ def ride_alert(request, ride_id: str):
         return refusal
     return _ride_call(
         request,
-        lambda rp: rp.send_alert(
-            ride_id,
-            body.get("token", ""),
-            str(body.get("ride_type", "")),
-            str(body.get("kind", "")),
-            str(body.get("text", "") or ""),
-            body.get("lon"),
-            body.get("lat"),
-            sealed=body.get("sealed"),
-        ),
+        lambda rp: rp.send_alert(ride_id, body.get("token", ""), body.get("sealed")),
     )
 
 
