@@ -52,7 +52,7 @@ test("Spanish is fetched on choosing it, like every other language: no catalog i
   assert.match(post, /language\(\) === "es" \? loadLanguage\("es"\) : Promise\.resolve\(\)\)\s*\.then\(\(\) => import\("\.\/postPage\.tsx"\)\)/);
 });
 
-const SRC =fileURLToPath(new URL("..", import.meta.url));
+const SRC = fileURLToPath(new URL("..", import.meta.url));
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
