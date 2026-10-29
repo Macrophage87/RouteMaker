@@ -6109,8 +6109,8 @@ grep -o 'assets/[^"]*' ~/rmdata/frontend-index-$L.html     # the live script and
 git rev-parse HEAD > ~/rmdata/t9-head-pre-rel.txt
 ```
 
-The api build looks up its base image (`python:3.11-slim-bookworm`) on Docker Hub when that tag is
-not in the local store, and that network use needs the owner's approval for the deploy, as
+The api build looks up its base image (`python:3.11-slim-bookworm`, pinned by digest in
+`docker/api.Dockerfile`) on Docker Hub when that digest is not in the local store, and that network use needs the owner's approval for the deploy, as
 OWNER-DECISIONS 253 gave the last one.
 
 Steps 1 to 4 are:
