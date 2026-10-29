@@ -25,7 +25,7 @@ a message naming `RM_BETA_HOST` when it is missing; on a server set up before v0
 | `~/routemaker-beta-passwords.txt` | Mode 600: the testers' passwords, for the owner to read and hand out | the owner deletes it (`shred -u`) |
 | `~/routemaker-beta-state/cd`, `~/.config/systemd/user/routemaker-beta-cd.*` | Only once continuous deployment is installed ("Continuous deployment", below): the release agent, its state, logs and pre-release snapshots, and its user timer | `auto-release.sh uninstall`, then `rm -rf` the `cd` directory |
 | `~/routemaker-beta-state/cd/bin/restart-routers.sh`, `~/.config/systemd/user/routemaker-beta-routers.*` | Only once the router hook is installed ("The routers after a map swap", below): the script and its user timer | `restart-routers.sh uninstall`, then `rm` the script |
-| `~/routemaker-beta-state/alert-webhook`, `~/routemaker-beta-state/release-webhook`, `~/routemaker-beta-state/alerts`, `~/.config/systemd/user/routemaker-beta-alert.*` | Only once alerts are installed ("Alerts", below): the Discord webhook addresses (mode 600), what was last posted, and the check timer | `alert.sh uninstall`, then `rm` the webhook files and the `alerts` directory |
+| `~/routemaker-beta-state/alert-webhook`, `~/routemaker-beta-state/release-webhook`, `~/routemaker-beta-state/alerts`, `~/.config/systemd/user/routemaker-beta-alert.*`, `~/.config/systemd/user/routemaker-beta-heartbeat.*` | Only once alerts are installed ("Alerts", below): the Discord webhook addresses (mode 600), what was last posted, the check timer and the uptime heartbeat's timer | `alert.sh uninstall`, then `rm` the webhook files and the `alerts` directory |
 
 Every RouteMaker path above is created only after a check that it **does not exist yet**; if one
 does, stop and ask the owner. Nothing here changes the owner, group or mode of a directory that
@@ -261,6 +261,7 @@ database initialised with the old one. The required values and what is optional:
 | `NPS_API_KEY` | no | v0.7.0 National Park Service closure alerts, read by the **worker** (`refresh_dc_closures`). The owner pastes it himself; then `beta-compose.sh up -d worker`. Empty: the NPS feed is skipped, the DC feeds still run. Allow outbound `developer.nps.gov` from the worker, beside the DC closure hosts below. |
 | `GARMIN_CLIENT_ID`, `GARMIN_CLIENT_SECRET`, `GARMIN_REDIRECT_URI` | no | Garmin Connect (`core/garmin.py`): the Connect Developer Program app's client id and secret from Garmin's developer portal, and `https://beta.example.org/auth/garmin/callback`, which must match the portal's redirect exactly. Empty: Settings offers no Garmin connection. The host must reach `diauth.garmin.com` and `apis.garmin.com` (443). In the portal, point the deregistration notice at `https://beta.example.org/garmin/deregistrations`. Then `beta-compose.sh up -d api`. |
 | `WAHOO_CLIENT_ID`, `WAHOO_CLIENT_SECRET`, `WAHOO_REDIRECT_URI` | no | Wahoo (`core/wahoo.py`): the Wahoo Cloud API app's client id and secret from Wahoo's developer portal, and `https://beta.example.org/auth/wahoo/callback`, which must match the portal's redirect exactly. Empty: Settings offers no Wahoo connection. The host must reach `api.wahooligan.com` (443). Then `beta-compose.sh up -d api`. |
+| `HEALTHCHECK_PING_URL` | no | The off-host uptime check's ping address (Healthchecks.io), read by `alert.sh heartbeat` on the host, never by a container ("Alerts", below). The owner pastes it himself. Empty or absent: nothing is pinged. No restart needed. |
 | `PRIVACY_CONTACT` | no | The privacy policy's contact (`/privacy`, `core/privacy_policy.py`): an e-mail address or a web address, read by the api. Empty: the page says to ask the site's owner on Discord. The owner fills it in; then `beta-compose.sh up -d api`. |
 | `PRIVACY_HOSTING` | no | Who hosts the server, named in the privacy policy's "Where your data is kept" (Garmin's developer program asks for every party that stores riders' data), for example `Amazon Web Services (AWS)`. Empty: the page says the owner runs it at home or with a hosting company, which is vaguer than Garmin wants, so set it on beta. Not in `env.beta.template` (a template change holds the release agent): add the line to `.env` by hand, then `beta-compose.sh up -d api`. |
 | `ANDROID_APP_ID` | no | The store app's id (the `ROUTEMAKER_APP_ID` secret's value), for Android App Links (`core.app_links`, `/.well-known/assetlinks.json`): with `ANDROID_CERT_SHA256`, a tapped link to the site opens the store app. Empty: no file, links open in the browser. Not in `env.beta.template`: add the line to `.env` by hand, then `beta-compose.sh up -d api`, then install the store app again (Android checks the file at install). |
@@ -1455,9 +1456,32 @@ Without `release-webhook` nothing is posted there, and the alerts channel is unc
 
 Day to day: `journalctl --user -u routemaker-beta-alert --since today` shows each check;
 `ls "$RM_STATE/alerts"` shows what is currently posted (a `.strike` file is a failure seen once).
-`alert.sh uninstall` stops the checks; the agent then posts only its own results while a webhook
-is set, and nothing once `alert-webhook` is removed. An off-host uptime check of the public URL is
-not part of this: if the whole server is down, nothing on it can post.
+`alert.sh uninstall` stops the checks and the heartbeat; the agent then posts only its own results
+while a webhook is set, and nothing once `alert-webhook` is removed.
+
+**The off-host uptime check (Healthchecks.io; the owner, 2026-10-29).** Nothing on this server can
+post when the whole server is down, so a second user timer, `routemaker-beta-heartbeat`, installed
+by the same `alert.sh install`, pings a Healthchecks.io check every 5 minutes, and Healthchecks.io
+tells the owner when the pings stop. It pings only while the api's own `/healthz` on 127.0.0.1
+answers `ok`, so a dead api, database or Docker stops the pings just like a dead host, timer or
+network. It runs during a deploy pass too, so a deploy's planned downtime (usually under 5
+minutes, longer when a step is retried) also stops the pings: give the check a grace time well
+beyond that.
+
+At ship time, once: in Healthchecks.io, add a check with a period of 5 minutes and a grace time of
+30 minutes, set its notifications (e-mail, or the Discord integration), and copy its ping URL.
+Then add one line to the beta's `.env` (the owner pastes it; the address below is a placeholder):
+
+```text
+HEALTHCHECK_PING_URL=https://hc-ping.com/00000000-0000-0000-0000-000000000000
+```
+
+and run `"$RM_SRC/scripts/beta/alert.sh" install` again (it rewrites both units and enables both
+timers; nothing restarts). Check it: `"$RM_STATE/cd/bin/alert.sh" heartbeat` prints
+`alert: healthy; pinged`, and the check turns green. Without the line the heartbeat pings nothing and
+says so in its journal (`journalctl --user -u routemaker-beta-heartbeat`); the address is read from
+`.env` by the login user's timer, never by a container, and goes to curl on standard input, so it is
+in no process list. Outbound: `hc-ping.com` from the host.
 
 ## Tester reports
 
