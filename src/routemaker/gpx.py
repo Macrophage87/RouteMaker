@@ -41,16 +41,3 @@ def read_track_points(path: str | Path) -> list[Point]:
                 break
         points.append(Point(float(element.get("lon")), float(element.get("lat")), ele))
     return points
-
-
-def read_waypoint_names(path: str | Path) -> list[str]:
-    """Names of any `wpt` elements, which the import path promotes to control points."""
-    root = ET.parse(str(path)).getroot()
-    names = []
-    for element in root.iter():
-        if _local(element.tag) != "wpt":
-            continue
-        for child in element:
-            if _local(child.tag) == "name" and child.text:
-                names.append(child.text)
-    return names
