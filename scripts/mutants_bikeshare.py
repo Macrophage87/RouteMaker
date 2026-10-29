@@ -54,8 +54,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "nearest: farthest first",
         BS,
-        "key=lambda t: (t[0], t[1].name)",
-        "key=lambda t: (-t[0], t[1].name)",
+        "if d <= SEARCH_RADIUS_M), key=lambda t: (t[0], t[1].name)",
+        "if d <= SEARCH_RADIUS_M), key=lambda t: (-t[0], t[1].name)",
         PLAN_T,
     ),
     (
@@ -279,8 +279,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "notes: the whole walk is never compared",
         BS,
-        "    if direct is not None and direct.duration_s <= walk_s + ride_s:",
-        "    if False:",
+        "    walk_note = _walk_note(direct, walk_s + ride_s)",
+        "    walk_note = None",
         PLAN_T,
     ),
     (
@@ -601,28 +601,28 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "net: plain http allowed",
         GB,
-        '    return parts.scheme == "https" and parts.hostname in ALLOWED_HOSTS and not parts.username',
-        "    return parts.hostname in ALLOWED_HOSTS and not parts.username",
+        '    return parts.scheme == "https" and parts.hostname in hosts and not parts.username',
+        "    return parts.hostname in hosts and not parts.username",
         GBFS_T,
     ),
     (
         "net: any host allowed",
         GB,
-        '    return parts.scheme == "https" and parts.hostname in ALLOWED_HOSTS and not parts.username',
+        '    return parts.scheme == "https" and parts.hostname in hosts and not parts.username',
         '    return parts.scheme == "https" and not parts.username',
         GBFS_T,
     ),
     (
         "net: a URL with a login allowed",
         GB,
-        '    return parts.scheme == "https" and parts.hostname in ALLOWED_HOSTS and not parts.username',
-        '    return parts.scheme == "https" and parts.hostname in ALLOWED_HOSTS',
+        '    return parts.scheme == "https" and parts.hostname in hosts and not parts.username',
+        '    return parts.scheme == "https" and parts.hostname in hosts',
         GBFS_T,
     ),
     (
         "net: a redirect off the hosts followed",
         GB,
-        "        if not allowed_url(newurl):",
+        "        if not allowed_url(newurl, self.hosts):",
         "        if False:",
         GBFS_T,
     ),
@@ -636,7 +636,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "net: discovery's off-host feeds kept",
         GB,
-        "if isinstance(name, str) and isinstance(url, str) and allowed_url(url):",
+        "if isinstance(name, str) and isinstance(url, str) and allowed(url):",
         "if isinstance(name, str) and isinstance(url, str):",
         GBFS_T,
     ),
@@ -693,8 +693,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "steps: the count is not said",
         BS,
-        '        count = f"{st.bikes_of(bike)} available"',
-        '        count = "available"',
+        'count = t("1 available") if n == 1 else t("{n} available", n=n)',
+        'count = t("available")',
         PLAN_T,
     ),
     (
@@ -750,8 +750,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "request: any number of points",
         AP,
-        "            if len(self.points) != 2:",
-        "            if False:",
+        "        if self.preset in presets.BIKESHARE_PRESETS:\n            if len(self.points) != 2:",
+        "        if self.preset in presets.BIKESHARE_PRESETS:\n            if False:",
         API_T,
     ),
     (
@@ -782,8 +782,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "answer: unavailable data is a 500",
         AP,
-        "        except gbfs.Unavailable:",
-        "        except ZeroDivisionError:",
+        '            return JsonResponse({"error": str(refusal), "code": "no_bikeshare"}, status=422)\n        except gbfs.Unavailable:',
+        '            return JsonResponse({"error": str(refusal), "code": "no_bikeshare"}, status=422)\n        except ZeroDivisionError:',
         API_T,
     ),
     # --- the nearest stations (OWNER-DECISIONS 466, 466a) ------------------------------
@@ -867,21 +867,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "nearby: listed by fullness, not distance",
         BS,
-        "    for distance, station in _nearest(snapshot, point):"
-        + NL
-        + "        status = snapshot.status.get(station.station_id)",
-        "    for distance, station in sorted(_nearest(snapshot, point), key=lambda t: -(snapshot.status.get(t[1].station_id).fullness or 0)):"
-        + NL
-        + "        status = snapshot.status.get(station.station_id)",
+        "        key=lambda t: (station_cost_m([t[1].lon, t[1].lat], point, toward), t[0], t[1].name),\n    )[:NEARBY_COUNT]",
+        "        key=lambda t: (-t[3], t[1].name),\n    )[:NEARBY_COUNT]",
         NEAR_T,
     ),
     (
         "nearby: no availability feed lists every station",
         BS,
-        "    if snapshot.status is None:" + NL + "        return []",
-        "    if snapshot.status is None:"
-        + NL
-        + "        return [NearbyStation(s.station_id, s.name, s.lon, s.lat, 100, 0.0, 1, 0, 0) for s in snapshot.stations]",
+        '        raise ValueError(f"not an action: {action}")\n    if snapshot.status is None:\n        return []',
+        '        raise ValueError(f"not an action: {action}")\n    if snapshot.status is None:\n        return [NearbyStation(s.station_id, s.name, s.lon, s.lat, 100, 0.0, 1, 0, 0) for s in snapshot.stations]',
         NEAR_T,
     ),
     (
@@ -964,8 +958,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "nearby: the answer may be cached",
         AP,
-        'response["Cache-Control"] = "no-store"' + NL + "    try:",
-        "pass" + NL + "    try:",
+        'def bikeshare_stations(request, body: NearbyStationsIn, response: HttpResponse):\n    response["Cache-Control"] = "no-store"',
+        "def bikeshare_stations(request, body: NearbyStationsIn, response: HttpResponse):\n    pass",
         NEAR_T,
     ),
     # --- one reading for every worker (the shared copy) --------------------------------
