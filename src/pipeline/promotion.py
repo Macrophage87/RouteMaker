@@ -65,16 +65,17 @@ API which build a restarted container is serving.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 
 from django.db import connection, transaction
 from django.utils import timezone
 
-from . import tiles
+from . import checkpoint, tiles
 from .schema import schema_exists, validate_schema_name
 from .swap import SwapInsideTransaction, SwapResult, rollback_swap, swap_schemas
 from .variants import Variant
@@ -391,13 +392,159 @@ def describe_state(
     return lines
 
 
+# The swap journal: what the swap found, on disk, for as long as the swap is the
+# one thing that could leave the deployment half-moved. `SwapUndoIncomplete`
+# carries the same lines in memory, and a SIGKILL between the promotion and the
+# rename (a deploy, `compose up -d`, an OOM kill) runs no undo and raises
+# nothing, so before the journal there was no record to repair from. It sits at
+# the root of the tiles directory because that is the one place the rebuild
+# writes and the `worker` service (`check_operations`, `unwedge_job`) can read.
+SWAP_JOURNAL = "swap-journal.json"
+SWAP_JOURNAL_FORMAT = 1
+# `state` is SWAPPING from before the first write until the rename commits, and
+# SWAPPED after it, naming the job that swapped: `unwedge_job` and the rebuild's
+# own start read that to refuse re-running a job whose swap already happened.
+SWAPPING = "swapping"
+SWAPPED = "swapped"
+
+
+def swap_journal_path(tiles_dir: Path) -> Path:
+    return Path(tiles_dir) / SWAP_JOURNAL
+
+
+def read_swap_journal(tiles_dir: Path) -> dict | None:
+    """The journal, or None where there is none.
+
+    A file that is there but cannot be read as one is returned as an interrupted
+    swap with nothing recorded, never as None: it was written by a swap, and
+    "no journal" is the answer that lets a rebuild run over it.
+    """
+    path = swap_journal_path(tiles_dir)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        return {"state": SWAPPING, "unreadable": str(error), "before": []}
+    try:
+        data = json.loads(text)
+    except ValueError as error:
+        return {"state": SWAPPING, "unreadable": str(error), "before": []}
+    if not isinstance(data, dict) or data.get("state") not in (SWAPPING, SWAPPED):
+        return {"state": SWAPPING, "unreadable": "not a swap journal", "before": []}
+    return data
+
+
+def interrupted_swap(tiles_dir: Path) -> dict | None:
+    """The journal of a swap that started and neither finished nor undid itself."""
+    journal = read_swap_journal(tiles_dir)
+    return journal if journal is not None and journal["state"] == SWAPPING else None
+
+
+def swapped_job(tiles_dir: Path) -> int | None:
+    """The job id of the last swap that committed its rename, if one is recorded."""
+    journal = read_swap_journal(tiles_dir)
+    if journal is None or journal["state"] != SWAPPED:
+        return None
+    job_id = journal.get("job_id")
+    return job_id if isinstance(job_id, int) else None
+
+
+def journal_build_ids(journal: Mapping) -> set[str]:
+    """Every build an interrupted swap's links named before it moved them.
+
+    The rollback target among them: after a `promote` that moved `previous` and
+    then failed, nothing on disk links to it any more, and retention deletes
+    what nothing links to.
+    """
+    ids = {journal.get("build_id")}
+    for link in (journal.get("links") or {}).values():
+        if isinstance(link, Mapping):
+            ids |= {link.get("current"), link.get("previous")}
+    return {build for build in ids if isinstance(build, str) and build}
+
+
+def describe_interrupted_swap(journal: Mapping) -> str:
+    """The operator's sentence for an interrupted swap: what it was, what to put back."""
+    if journal.get("unreadable"):
+        found = f"its journal could not be read ({journal['unreadable']})"
+    else:
+        found = "as the swap found it: " + "; ".join(journal.get("before") or ["(nothing)"])
+    return (
+        f"a swap to build {journal.get('build_id') or '(unknown)'} (job "
+        f"{journal.get('job_id') or 'unknown'}, started {journal.get('started_at') or 'unknown'}) "
+        f"neither finished nor undid itself; {found}. Put the tile links and the settings rows "
+        f'back by hand (docs/OPERATIONS.md, "A `SwapUndoIncomplete` alert or an interrupted '
+        f'swap"), then remove '
+        f"{SWAP_JOURNAL} from the tiles directory"
+    )
+
+
+def _write_swap_journal(
+    tiles_dir: Path,
+    build_id: str,
+    job_id: int | None,
+    links_before: Mapping[Variant, tiles.TileLinks],
+    rows_before: Mapping[str, UpstreamState],
+) -> None:
+    checkpoint.atomic_write_json(
+        swap_journal_path(tiles_dir),
+        {
+            "format": SWAP_JOURNAL_FORMAT,
+            "state": SWAPPING,
+            "build_id": build_id,
+            "job_id": job_id,
+            "started_at": timezone.now().isoformat(),
+            "links": {
+                variant.value: {"current": link.current, "previous": link.previous}
+                for variant, link in links_before.items()
+            },
+            "rows": {variant: asdict(state) for variant, state in rows_before.items()},
+            "before": describe_state(links_before, rows_before),
+        },
+    )
+
+
+def _close_swap_journal(tiles_dir: Path, build_id: str, job_id: int | None) -> None:
+    """Replace the journal with the record of a committed swap. Never raises: the
+    swap has happened, and a journal it could not rewrite is reported, not undone."""
+    try:
+        checkpoint.atomic_write_json(
+            swap_journal_path(tiles_dir),
+            {
+                "format": SWAP_JOURNAL_FORMAT,
+                "state": SWAPPED,
+                "build_id": build_id,
+                "job_id": job_id,
+                "swapped_at": timezone.now().isoformat(),
+            },
+        )
+    except Exception:  # noqa: BLE001 - the swap stands; check_operations names the file
+        logger.exception("the swap committed but its journal could not be closed")
+
+
+def _discard_swap_journal(tiles_dir: Path) -> None:
+    """Remove the journal of a swap that undid itself completely."""
+    try:
+        swap_journal_path(tiles_dir).unlink(missing_ok=True)
+    except OSError:
+        logger.exception("the swap undid itself but its journal could not be removed")
+
+
 def perform_swap(
     tiles_dir: Path,
     build_id: str,
     upstreams: Mapping[str, str],
     overrides_read_at: datetime | None = None,
+    job_id: int | None = None,
 ) -> SwapOutcome:
     """Promote, repoint, rename - and undo whatever was done if a later step fails.
+
+    The state the undo restores is also written to the swap journal before the
+    first write, so a process killed partway leaves the record the undo would
+    have used. A swap that commits closes the journal as SWAPPED, naming `job_id`;
+    one that undoes itself completely removes it; one whose undo did not finish
+    leaves it, and the next rebuild refuses until an operator has put things back.
 
     Once the new table is live, the road panel's edits made after `overrides_read_at` (when
     the rebuild read the approved overrides) are re-applied to it, so an edit an admin made
@@ -407,6 +554,9 @@ def perform_swap(
     outcome = SwapOutcome(build_id=build_id)
     links_before = {variant: tiles.links(tiles_dir, variant) for variant in Variant}
     rows_before = upstream_states(upstreams)
+    # Before anything moves, and outside the `try`: a journal that cannot be
+    # written refuses the swap with nothing to undo.
+    _write_swap_journal(tiles_dir, build_id, job_id, links_before, rows_before)
     try:
         for variant in Variant:
             outcome.promoted[variant] = tiles.promote(tiles_dir, variant, build_id)
@@ -431,7 +581,9 @@ def perform_swap(
             raise SwapUndoIncomplete(
                 error, failures, describe_state(links_before, rows_before)
             ) from error
+        _discard_swap_journal(tiles_dir)
         raise
+    _close_swap_journal(tiles_dir, build_id, job_id)
     from core import segment_info, stress_edits
 
     # Another table is live: none of its columns are taken from the one it replaced (CH-1).

@@ -80,6 +80,11 @@ class Command(BaseCommand):
         headroom = disk_headroom()
         # The transit ride types' timetables, when installed: under a week left is an alert.
         transit_alert = transit.schedule_alert(settings.TRANSIT_SCHEDULE_PATH)
+        # A map swap that neither finished nor undid itself (killed partway, or an
+        # undo that failed): the rebuild refuses until it is put back by hand.
+        from pipeline import promotion
+
+        interrupted = promotion.interrupted_swap(settings.TILES_DIR)
 
         for entry in stale:
             last = entry["last_success_at"] or "never"
@@ -139,6 +144,8 @@ class Command(BaseCommand):
             )
         if transit_alert is not None:
             self.stdout.write(transit_alert)
+        if interrupted is not None:
+            self.stdout.write(f"swap: {promotion.describe_interrupted_swap(interrupted)}")
         if len(jobs) < failed_total:
             self.stdout.write(
                 f"(listing the {len(jobs)} newest of {failed_total} failed jobs; "
@@ -151,6 +158,7 @@ class Command(BaseCommand):
             and not headroom["alert"]
             and bad_budget is None
             and transit_alert is None
+            and interrupted is None
         ):
             # The free-space clause names the path and the figure rather than
             # asserting room in the abstract. "room for a rebuild" was printed
@@ -176,6 +184,7 @@ class Command(BaseCommand):
         )
         invalid = ", 1 setting(s) invalid" if bad_budget is not None else ""
         invalid += ", 1 transit schedule to rebuild" if transit_alert is not None else ""
+        invalid += ", 1 interrupted swap" if interrupted is not None else ""
         self.stdout.write(
             f"{len(stale)} stale task(s), {len(wedged)} wedged job(s), "
             f"{failed_total} failed job(s), {volumes}{invalid}"
