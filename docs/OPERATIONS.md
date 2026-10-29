@@ -470,7 +470,8 @@ band, grep `route timing` from the api's log.
   junction ratings and hazards, and the ride time's rush and weekend state.
   The keep also ends at the next closure start or end and at local midnight.
   An answer that was cut short (a failed trace, a timed-out search, or a
-  check or pass skipped or stopped for want of time) is not kept. Bikeshare and transit plans are never kept.
+  check or pass skipped or stopped for want of time) is not kept. Bikeshare
+  and transit plans are never kept.
 - `"quick": true` in a request (Go sends it when a ride is not under way) asks
   for the first good route alone: the router's own route, its trace,
   closures, and work zones. It skips the alternates, the calm search, hill
