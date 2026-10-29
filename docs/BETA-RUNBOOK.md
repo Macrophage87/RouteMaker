@@ -684,6 +684,20 @@ curl -s -m 10 -o /dev/null -w '%{http_code}\n' https://beta.example.org/   # mus
 `listen [::]` in the other sites (an IPv6-disabled host makes `nginx -t` fail on them, safely).
 The rendered file says at its top which template, stage and git sha it was rendered from.
 
+**Remember the site's shape**, so a later re-render (a release that changes the template) needs no
+flags: `render-nginx.sh` reads `RM_CERT_FULLCHAIN` and `RM_CERT_KEY` from `vars.sh` (above) and these
+from `.env` (or `vars.sh`), each `1` (the default) or `0`, and a flag on the command line still wins.
+Add the lines for the flags given above to `$RM_SRC/.env`:
+
+| Setting | Same as |
+| --- | --- |
+| `BETA_SITE_PASSWORD=0` | `--no-password` (the open beta, since 2026-10-22) |
+| `BETA_NGINX_IPV6=0` | `--no-ipv6` |
+| `BETA_NGINX_401_PAGE=0` | `--no-401-page` |
+| `BETA_NGINX_TLS_INCLUDE=<path>` | `--tls-options-include <path>` |
+
+Then `scripts/beta/render-nginx.sh --stage full --diff "$NGINX_SITE"` must print no change.
+
 If `nginx -t` complains about `http2 on`, the host's nginx is older than 1.25.1: edit the installed file,
 delete the `http2 on;` line and write `listen 443 ssl http2;` and `listen [::]:443 ssl http2;`, then test again.
 
@@ -993,11 +1007,14 @@ anything can run `migrate` (rollback C restores that snapshot), and the app star
    (the same line as rollback A), with `valhalla-offroad valhalla-mtb` added once their tiles are on the host.
    Check with `git diff --stat <old sha>..<new sha> -- valhalla lua`.
 9. **Only if `git diff --stat <old sha>..<new sha> -- deploy/beta` lists the nginx template** (owner steps, because
-   they use sudo): re-render it with the same command and flags as step 9c of the install into `$RM_STATE`, install it
-   over the site file (`sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE"`), then
-   `sudo nginx -t && sudo nginx -s reload`, and run the `curl` check from step 9c. The beta has been open since
-   2026-10-22, so the render takes `--no-password` (plus `--no-401-page` if the installed file used it) and the
-   check expects 200; a render without `--no-password` puts the password back. Without this the beta keeps
+   they use sudo): re-render it into `$RM_STATE`, see the change against the installed file, install it over the site
+   file, then `sudo nginx -t && sudo nginx -s reload`, and run the `curl` check from step 9c:
+   `scripts/beta/render-nginx.sh --stage full --diff "$NGINX_SITE"`, then
+   `RENDER_NGINX_FORCE=1 scripts/beta/render-nginx.sh --stage full --out "$RM_STATE/routemaker-beta.full.conf" && sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE"`.
+   The site's shape comes from the settings the install recorded ("Remember the site's shape" in step 9c:
+   the certificate paths from `vars.sh`, `BETA_SITE_PASSWORD=0` and the rest from `.env`), so no flag has to
+   be retyped; the beta has been open since 2026-10-22, so the check expects 200. Until those settings are
+   recorded, the render needs the install's flags, and one without `--no-password` puts the password back. Without this the beta keeps
    the old log settings, and any other template change, until it is next installed.
    A template change must pass `nginx -t` in CI before it is tagged: `tests/test_beta_nginx_conf.py` renders
    the runbook's variants and has a pinned nginx test them (v0.12.3's robots.txt line failed on the beta).
@@ -1496,13 +1513,13 @@ secret like the webhooks: never in chat, the repo or a command line.
   Exporting `DATA_ROOT`, `TAG` or a `BETA_...` value in your shell changes nothing; edit `.env` and rerun the gate.
 - **Logs:** `scripts/beta/beta-compose.sh logs --tail 100 api`. Access logs carry no query strings or addresses by design:
   the api's gunicorn log and nginx's `/var/log/nginx/rmbeta-access.log` keep the method, the path, the status and the time,
-  with no query string, no client address and no tester name. The paths whose queries hold a place (`/api/reverse`,
-  `/api/geocode`, `/api/segment-info`, `/api/street-photo`, `/api/junction-suggestions/at`,
-  `/api/stress-suggestions/ticket`, `/api/stress-suggestions/mine`, `/api/transit/station-times`, `/api/transit/next-vehicle`, `/api/bikeshare/docks`, `/api/closures/map`,
-  and Review's `/api/review/items`, `/api/review/map`, `/api/review/next`, `/api/review/road/<way>` and `/api/review/street-photo`, and the connector's `/api/scenic-roads` and `/api/climbs-near`) log nginx errors at `crit` only, to `/var/log/nginx/rmbeta-error.log`, so
+  with no query string, no client address and no tester name. Many api paths hold a place in their query or path
+  (`/api/reverse`, `/api/geocode`, `/api/segment-info`, the transit and bikeshare look-ups, Review's, the connector's
+  `/api/scenic-roads`, ...), so every `/api/` path logs nginx errors at `crit` only, to `/var/log/nginx/rmbeta-error.log`
+  (a new endpoint is covered without a template change), so
   a 502 or 504 there leaves no error-log line; `rmbeta-access.log` still shows the status and the time (about 0 s:
   the api was down; about 75 s: it timed out), and for a 502 the api's own log usually has nothing, because the
-  request never reached it. The time in the nginx and gunicorn logs is the whole request's, not one router call's. Upstream errors on every other path still go to the
+  request never reached it. The time in the nginx and gunicorn logs is the whole request's, not one router call's. Upstream errors on every other (non-`/api/`) path still go to the
   host's own nginx error log, with the request line (those paths carry no location in a query; a tile path does show
   the area viewed, as any map pan does).
 - **No rebuild runs here.** There is no rebuild container, and `WEEKLY_REBUILD_PAUSED=1` is set so that a rebuild

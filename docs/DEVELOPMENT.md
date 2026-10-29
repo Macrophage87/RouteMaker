@@ -4531,9 +4531,10 @@ near the map centre (`/api/geocode?...&lat=..&lon=..`). What keeps it out of the
   Caddy keeps no access log).
 - **Beta nginx** (deploy/beta/nginx-routemaker.conf.template): the access log is
   `rmbeta_noquery`, the path only, with no query string, Referer, client address or tester name.
-  `/api/reverse` and `/api/geocode` log errors at `crit` only, to their own file (a review addition,
+  Every `/api/` path logs errors at `crit` only, to their own file (a review addition,
   not asked for by name: owner to confirm, and the same for dropping the client address and tester name), because an
-  upstream error line (a 502 while the api restarts, a 504) records the whole request. Every other
+  upstream error line (a 502 while the api restarts, a 504) records the whole request; the whole prefix
+  is covered (v0.15.0), so a new endpoint with a place in it needs no template change. Every other
   path's upstream errors still reach the host's error log; none of them has a location in a query.
   tests/test_beta_overlay.py pins the format, both servers' access log, and that every
   `/api/...?` path in the front end is one of the two.
