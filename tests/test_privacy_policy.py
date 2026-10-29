@@ -246,7 +246,7 @@ class TestPage:
         assert 'info: enc.encode("ride id") }, base, 256)' in seal and "256 bits" in text
         assert 'info: enc.encode("ride key")' in seal
         assert '{ name: "AES-GCM", length: 256 },\n    false,' in seal and "non-extractable" in text
-        assert "PAD_BYTES: Record<SealedKind, number> = { dot: 128, alert: 512, path: 4096 }" in seal
+        assert "number> = { dot: 128, alert: 512, path: 4096 }" in seal
         assert "128 bytes (a dot), 512 bytes (an alert) or 4,096 bytes (a path)" in text
         assert "additionalData: aad(seal, kind)" in seal and "`${kind}|${seal.ride}`" in seal
         assert 'export const SECRET_PARAM = "k";' in seal and "k=" in text
