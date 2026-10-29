@@ -60,7 +60,7 @@ KINDS = tuple(SERVICE_NAMES)
 
 # A send is a signed-in rider's, and needs a ticket from the page (GET /api/report311 gives one
 # while the sender is on), signed by the server for that account and good for `TICKET_MAX_AGE_S`.
-# Each account sends at most ratelimit.REPORT_311_ACCOUNT a day; and however many riders send, at
+# Each account sends at most ratelimit.REPORT_311_ACCOUNT an hour; and however many riders send, at
 # most `HOURLY_MAX` reports an hour leave this server for DC (`GLOBAL_SCOPE`, counted in the
 # database so every worker shares it), on top of the per-address limit (ratelimit.REPORT_311).
 # Signed out, Ride mode texts 311 instead, as it does with the sender off.
