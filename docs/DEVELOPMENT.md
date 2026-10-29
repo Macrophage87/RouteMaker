@@ -5049,14 +5049,14 @@ puts it, at most two presses away.
   link holds no position until a destination is picked; denied, unavailable or timed out, the
   start stays empty, the start box opens and "Current location not available; type a start." is
   shown and said politely. A start typed in (Change start, `PlaceSearch variant="start"`), or
-  one placed in Plan, is the plan's first point and replaces the location (a press on the map in Go opens the spot's card, whose Route here makes it the destination). A destination picked
+  one placed in Plan, is the plan's first point and replaces the location (a press on the map in Go opens the spot's card, whose Ride here makes it the destination). A destination picked
   before there is a start is never dropped nor made the start (`goPickAction`): while the
   location is still being found it waits ("To …: finding your location for the start…") and is
   routed when the location comes; with no location, it is kept ("To …. Current location not
   available; type a start.") and a start typed in the start box plans the route to it at once. A
   press on the map in Go, the route line included (a drag of the line still adds a stop; `lineTapIsPoint`), opens
   the spot's card (`GoSpotDialog.tsx`, lib/spotNearby.ts, the owner 2026-10-28): its address, the places near it as
-  pins on the map, and Route here; the press alone never routes. That Route here, or Map tools' "Set destination at
+  pins on the map, and Ride here; the press alone never routes. That Ride here, or Map tools' "Set destination at
   map center" (at once), is the destination, routed as a picked one is and said "Destination set: …" (named by `goPlaceName`, the same on the sheet: its coordinates until
   its place name comes; a press on a water, climb or federal-land card's feature, or one that only closes such a card,
   is the card's alone, `featureCardPress`; `goTapSetsEnd`, the owner 2026-10-12; it replaces #95's tap-as-start). Picking a
@@ -5093,7 +5093,7 @@ puts it, at most two presses away.
   main click counts the stop layers as feature cards in both modes). Most important first: the
   name, what it is, Open now or Closed now where the mapped hours can be read (else the hours as
   mapped), how far or the detour; then one action and the website (http or https only, a new
-  tab, named "Website: <place> (opens in a new tab)"). The action is Route here before there is
+  tab, named "Website: <place> (opens in a new tab)"). The action is Ride here before there is
   a route (Go: from Go's start; Plan: from the rider's location with an empty plan, else as the
   end) and Add as stop with one (Go: where it is shortest; Plan: as a stop). Nothing while
   riding.
