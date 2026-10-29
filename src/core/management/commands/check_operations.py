@@ -151,6 +151,11 @@ class Command(BaseCommand):
         routers = stale_routers(
             ValhallaUpstream.objects.all(), Path(settings.TILES_DIR), timezone.now()
         )
+        # A map swap that neither finished nor undid itself (killed partway, or an
+        # undo that failed): the rebuild refuses until it is put back by hand.
+        from pipeline import promotion
+
+        interrupted = promotion.interrupted_swap(settings.TILES_DIR)
 
         for entry in stale:
             last = entry["last_success_at"] or "never"
@@ -212,6 +217,8 @@ class Command(BaseCommand):
             self.stdout.write(transit_alert)
         for line in routers:
             self.stdout.write(line)
+        if interrupted is not None:
+            self.stdout.write(f"swap: {promotion.describe_interrupted_swap(interrupted)}")
         if len(jobs) < failed_total:
             self.stdout.write(
                 f"(listing the {len(jobs)} newest of {failed_total} failed jobs; "
@@ -225,6 +232,7 @@ class Command(BaseCommand):
             and bad_budget is None
             and transit_alert is None
             and not routers
+            and interrupted is None
         ):
             # The free-space clause names the path and the figure rather than
             # asserting room in the abstract. "room for a rebuild" was printed
@@ -251,6 +259,7 @@ class Command(BaseCommand):
         invalid = ", 1 setting(s) invalid" if bad_budget is not None else ""
         invalid += ", 1 transit schedule to rebuild" if transit_alert is not None else ""
         invalid += f", {len(routers)} router(s) on an old build" if routers else ""
+        invalid += ", 1 interrupted swap" if interrupted is not None else ""
         self.stdout.write(
             f"{len(stale)} stale task(s), {len(wedged)} wedged job(s), "
             f"{failed_total} failed job(s), {volumes}{invalid}"

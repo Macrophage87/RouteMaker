@@ -254,7 +254,7 @@ test("a Roam broadcast's link: the ride's id and the leader key in the fragment,
   const lead = "fedcba9876543210fedcba9876543210";
   const link = roamLink("https://example.org", id, lead);
   assert.equal(link, `https://example.org/#roam=${id}&lead=${lead}`);
-  assert.deepEqual(roamLinkFrom(new URL(link).hash), { id, lead });
+  assert.deepEqual(roamLinkFrom(new URL(link).hash), { id, lead, secret: null });
   assert.equal(roamLinkFrom(`#roam=${id}`), null);
   assert.equal(roamLinkFrom(`#roam=xyz&lead=${lead}`), null);
   assert.equal(roamLinkFrom("#p=1,2;3,4"), null);
@@ -287,7 +287,7 @@ test("App: Broadcast is a tap within Roam; the leader leads a ride with no route
   assert.match(app, /const broadcastRoam = async \(nav: ShareNavigator \| undefined = broadcastNav\): Promise<string> => \{[^]*?const done = await shareLink\(nav,/);
   const before = app.slice(app.indexOf("const broadcastRoam"), app.indexOf("const done = await shareLink(nav,"));
   assert.doesNotMatch(before, /await /);
-  assert.match(app, /leadConsent\(await roamRideId\(id\), lead\.token\);/);
+  assert.match(app, /leadConsent\(\(await rideOf\(\{ broadcast: \{ id, roam: true \}, secret: lead\.secret \}\)\)\.id, lead\.token\);/);
   assert.match(app, /onBroadcast=\{\(\) => broadcastRoam\(\)\}/);
   assert.match(app, /const ROAM_FOLLOW = roamLinkFrom\(window\.location\.hash\);/);
   assert.match(app, /broadcast=\{\{ \.\.\.roamBroadcast, roam: true \}\}/);

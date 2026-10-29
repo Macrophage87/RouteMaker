@@ -23,6 +23,7 @@ import { QUARTER_MILE, formatDistance } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
 import type { PresetId } from "./presets.ts";
+import { mergeAlerts, openValue, rideSeal, sealValue, sendable, sendableLine, type OpenedAlert, type RideSeal } from "./rideSeal.ts";
 
 export const RIDE_LINK_TYPES: readonly PresetId[] = ["mass-ride", "group-ride"];
 export type RideLinkType = "mass-ride" | "group-ride";
@@ -63,6 +64,23 @@ export async function broadcastRideId(sharedId: string): Promise<string> {
 export async function roamRideId(roamId: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`roam|${roamId}`));
   return hex(digest);
+}
+
+/**
+ * The ride a page is on, and its seal: a link carrying a secret (lib/rideSeal.ts) is sealed end to end and named by
+ * the secret; else a broadcast by its shared line or Roam id, or a Mass Ride or Group Ride by its points, in plain
+ * numbers as before. App.tsx keeps the leader's answer under the same id.
+ */
+export async function rideOf(at: {
+  type?: PresetId;
+  points?: readonly LonLat[];
+  broadcast?: { id: string; roam?: boolean } | null;
+  secret?: string | null;
+}): Promise<{ id: string; seal: RideSeal | null }> {
+  const sealed = at.secret ? await rideSeal(at.secret) : null;
+  if (sealed) return { id: sealed.ride, seal: sealed };
+  if (at.broadcast) return { id: await (at.broadcast.roam ? roamRideId(at.broadcast.id) : broadcastRideId(at.broadcast.id)), seal: null };
+  return { id: await rideId(at.type ?? "group-ride", at.points ?? []), seal: null };
 }
 
 /**
@@ -650,13 +668,14 @@ export interface RideRead {
 const isLine = (v: unknown): v is LonLat[] =>
   Array.isArray(v) && v.every((p) => Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === "number" && Number.isFinite(n)));
 
-export async function readRide(origin: string, ride: string, token: string, get: Fetch = fetch, leader: string | null = null): Promise<RideRead | null> {
+export async function readRide(origin: string, ride: string, token: string, get: Fetch = fetch, leader: string | null = null, seal: RideSeal | null = null): Promise<RideRead | null> {
   try {
     const headers: Record<string, string> = { Accept: "application/json", "X-Ride-Token": token };
     if (leader) headers["X-Ride-Leader"] = leader;
     const response = await get(`${origin}/api/rides/${ride}`, { headers });
     if (!response.ok) return null;
-    const body = (await response.json()) as Partial<RideRead> & { leader_path?: Partial<LeaderPath> };
+    const body = (await response.json()) as Partial<RideRead> & { leader_path?: Partial<LeaderPath> & { sealed?: unknown } };
+    if (seal) return await openRead(seal, body);
     const out: RideRead = { dots: Array.isArray(body.dots) ? body.dots : [], alerts: Array.isArray(body.alerts) ? body.alerts : [] };
     const path = body.leader_path;
     if (path && isLine(path.route) && isLine(path.trail)) out.leaderPath = { route: path.route, trail: path.trail, age_s: Number(path.age_s) || 0 };
@@ -665,6 +684,46 @@ export async function readRide(origin: string, ride: string, token: string, get:
     return null;
   }
 }
+
+const isSpot = (v: Record<string, unknown> | null): v is { lon: number; lat: number } & Record<string, unknown> =>
+  v !== null && typeof v.lon === "number" && typeof v.lat === "number" && Number.isFinite(v.lon) && Number.isFinite(v.lat);
+const asRecord = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+
+/**
+ * A sealed ride's answer (lib/rideSeal.ts): each dot, alert and the leader's path opened with the link's key; any that
+ * does not open is left out, a plain one too (only a phone without the link's secret, an older page, sends those).
+ */
+async function openRead(seal: RideSeal, body: Record<string, unknown>): Promise<RideRead> {
+  const dots: Dot[] = [];
+  for (const raw of Array.isArray(body.dots) ? body.dots : []) {
+    const d = asRecord(raw);
+    const v = asRecord(await openValue(seal, "dot", d?.sealed));
+    if (!d || !isSpot(v)) continue;
+    const dot: Dot = { lon: v.lon, lat: v.lat, age_s: Number(d.age_s) || 0, role: roleOf(v.role) };
+    if (d.leader === true) dot.leader = true;
+    dots.push(dot);
+  }
+  const opened: OpenedAlert[] = [];
+  for (const raw of Array.isArray(body.alerts) ? body.alerts : []) {
+    const a = asRecord(raw);
+    const v = asRecord(await openValue(seal, "alert", a?.sealed));
+    // Only the kinds the ride types send (the server checked plain ones; a sealed one it cannot).
+    if (!a || typeof a.id !== "string" || !isSpot(v) || !ALERT_KIND_IDS.has(v.kind as string)) continue;
+    opened.push({ id: a.id, kind: String(v.kind), text: typeof v.text === "string" ? v.text.slice(0, OTHER_MAX) : "", lon: v.lon, lat: v.lat, age_s: Number(a.age_s) || 0, mine: a.mine === true });
+  }
+  const out: RideRead = { dots, alerts: mergeAlerts(opened).map(asRideAlert) };
+  const path = asRecord(body.leader_path);
+  const p = asRecord(await openValue(seal, "path", path?.sealed));
+  if (path && p && isLine(p.route) && isLine(p.trail)) out.leaderPath = { route: p.route, trail: p.trail, age_s: Number(path.age_s) || 0 };
+  return out;
+}
+
+/** An opened alert as the banner takes it: its label and Call 911 from the ride types' lists, as the server answered them. */
+function asRideAlert(a: OpenedAlert & { count: number }): RideAlert {
+  const kind = Object.values(ALERT_KINDS).flat().find((k) => k.id === a.kind);
+  return { ...a, label: kind?.label ?? "", call_911: kind?.call911 === true };
+}
+const ALERT_KIND_IDS = new Set(Object.values(ALERT_KINDS).flat().map((k) => k.id));
 
 async function post(origin: string, path: string, body: unknown, send: Fetch): Promise<{ ok: boolean; body: Record<string, unknown> }> {
   try {
@@ -680,7 +739,14 @@ async function post(origin: string, path: string, body: unknown, send: Fetch): P
   }
 }
 
-export async function sendPosition(origin: string, ride: string, token: string, p: LonLat, role: RideRole = DEFAULT_ROLE, send: Fetch = fetch): Promise<boolean> {
+export async function sendPosition(origin: string, ride: string, token: string, p: LonLat, role: RideRole = DEFAULT_ROLE, send: Fetch = fetch, seal: RideSeal | null = null): Promise<boolean> {
+  if (seal) {
+    // Sealed: put on the grid here, as the server did; a spot outside the map's area is not sent.
+    const spot = sendable(p);
+    if (!spot) return false;
+    const sealed = await sealValue(seal, "dot", { lon: spot[0], lat: spot[1], role });
+    return (await post(origin, `/api/rides/${ride}/here`, { token, sealed }, send)).ok;
+  }
   return (await post(origin, `/api/rides/${ride}/here`, { token, lon: p[0], lat: p[1], role }, send)).ok;
 }
 
@@ -730,7 +796,11 @@ export function withoutStart(trail: readonly LonLat[]): readonly LonLat[] {
   return away < 0 ? [] : trail.slice(away);
 }
 
-export async function sendPath(origin: string, ride: string, token: string, route: readonly LonLat[], trail: readonly LonLat[], send: Fetch = fetch): Promise<boolean> {
+export async function sendPath(origin: string, ride: string, token: string, route: readonly LonLat[], trail: readonly LonLat[], send: Fetch = fetch, seal: RideSeal | null = null): Promise<boolean> {
+  if (seal) {
+    const sealed = await sealValue(seal, "path", { route: sendableLine(thinLine(route), false), trail: sendableLine(thinLine(withoutStart(trail)), true) });
+    return (await post(origin, `/api/rides/${ride}/path`, { token, sealed }, send)).ok;
+  }
   return (await post(origin, `/api/rides/${ride}/path`, { token, route: thinLine(route), trail: thinLine(withoutStart(trail)) }, send)).ok;
 }
 
@@ -740,8 +810,22 @@ export async function leaveRide(origin: string, ride: string, token: string, sen
 
 export type SendOutcome = { ok: true; alert: RideAlert } | { ok: false; message: string };
 
-export async function sendAlert(origin: string, ride: string, token: string, type: RideLinkType, kind: string, text: string, p: LonLat, send: Fetch = fetch): Promise<SendOutcome> {
-  const answer = await post(origin, `/api/rides/${ride}/alerts`, { token, ride_type: type, kind, text: kind === "other" ? text.slice(0, OTHER_MAX) : "", lon: p[0], lat: p[1] }, send);
+export async function sendAlert(origin: string, ride: string, token: string, type: RideLinkType, kind: string, text: string, p: LonLat, send: Fetch = fetch, seal: RideSeal | null = null): Promise<SendOutcome> {
+  const words = kind === "other" ? text.trim().slice(0, OTHER_MAX) : "";
+  if (seal) {
+    // Sealed: the checks the server made on the plain alert, made here (it sees none of it).
+    const spot = sendable(p);
+    const known = ALERT_KINDS[type].some((k) => k.id === kind) && (kind !== "other" || words !== "");
+    if (!spot || !known) return { ok: false, message: t("The alert was not sent; try again.") };
+    const sealed = await sealValue(seal, "alert", { kind, text: words, lon: spot[0], lat: spot[1] });
+    const answer = await post(origin, `/api/rides/${ride}/alerts`, { token, sealed }, send);
+    if (answer.ok && typeof answer.body.id === "string") {
+      const alert = asRideAlert({ id: answer.body.id, kind, text: words, lon: spot[0], lat: spot[1], age_s: 0, mine: true, count: 1 });
+      return { ok: true, alert };
+    }
+    return { ok: false, message: typeof answer.body.error === "string" ? answer.body.error : t("The alert was not sent; try again.") };
+  }
+  const answer = await post(origin, `/api/rides/${ride}/alerts`, { token, ride_type: type, kind, text: words, lon: p[0], lat: p[1] }, send);
   if (answer.ok) return { ok: true, alert: answer.body as unknown as RideAlert };
   return { ok: false, message: typeof answer.body.error === "string" ? answer.body.error : t("The alert was not sent; try again.") };
 }

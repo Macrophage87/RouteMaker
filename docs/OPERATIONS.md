@@ -291,8 +291,8 @@ get those 429s and 503s too. Its map read has 2 s (`scenic_near.TIMEOUT_MS`), pa
 answer is 503 "took too long; try a smaller area"; the roads' names then come from the router's
 locate, up to 6 s more (`scenic_near.LOCATE_TIMEOUT_S`; on failure the roads come back
 unnamed), so one search can hold the names slot for about 8 s. The climbs search reads the climbs file in memory, and answers 503 when the server has
-none. The radius defaults to 5 mi (8 km), at most 15 mi (24 km). Their queries hold a point, so
-the beta's nginx logs their errors at `crit` only.
+none. The radius defaults to 5 mi (8 km), at most 15 mi (24 km). Their queries hold a point; the
+beta's nginx logs errors on every `/api/` path at `crit` only.
 
 The content type is checked before the count on purpose: a page on any site
 can make a visitor's browser send a `text/plain` or form POST here without a
@@ -2296,7 +2296,7 @@ minute, 4 a second at most); the train positions are one shared reading every 20
 (row `wmata-trains`). Worst case with Metro's reading: about 36,000 calls a day and 9 a second,
 under WMATA's 50,000 and 10 (docs/SOURCES.md). The log says `wmata bus: ...`, `wmata trains: ...`
 or `wmata budget: ...` (never the key, never a stop or route) when a call fails. The new path's
-query holds a place, so nginx logs it at `crit` only, as `/api/transit/station-times`. To check
+query holds a place; the beta's nginx logs every `/api/` path's errors at `crit` only. To check
 it is working: plan Own Bike + 🚆🚌 to a trip with a Metrobus step; the step says "Live: bus ...". With no key, or WMATA not answering for
 about three minutes, everything is the timetable's and says "scheduled". An elevator out where a
 rider takes their bike is a warning on the plan and the station card, never an avoidance. To check
@@ -2921,7 +2921,8 @@ names. If the swap fails and its undo completes (the ordinary, retryable failure
 swap that met the backup's locks), the same manifest is put back, since the staging schema
 is again exactly what it describes, and the retry reuses every graph and re-runs
 VALIDATE_TILES and the swap. If the undo did not complete (`SwapUndoIncomplete`), or the
-process died, the manifest stays deleted and the next attempt starts fresh.
+process died, the manifest stays deleted, and the swap journal stops the next attempt until
+the swap is repaired ("A `SwapUndoIncomplete` alert or an interrupted swap").
 
 ### Starting fresh on purpose
 
@@ -4660,9 +4661,10 @@ modification time of that variant's `current/tiles.tar`, and prints
 `router: <variant> is not serving build <id> ...` (exit 1) for a router that
 loaded another file. A router that does not answer, or a container that cannot
 see the tiles, is left to the other checks. Run the restart after every
-successful rebuild and after a rollback, which moves the same symlink back. Then run the post-swap bicycle-closure probes ("Bicycle closures
-in the tiles", step 3): their `locate` run is also the quickest check that each
-router is serving the new build.
+successful rebuild and after a rollback, which moves the same symlink back.
+Then run the post-swap bicycle-closure probes ("Bicycle closures in the tiles",
+step 3): their `locate` run is also the quickest check that each router is
+serving the new build.
 
 The restart is a few seconds of 502s per variant, taken one at a time. Starting
 the new containers against the new build before stopping the old ones — the
@@ -5311,6 +5313,18 @@ matching slip onto a side street is likeliest). Check it, and reopen with an acc
 override in Review if it is wrong (a `bicycle=yes` row, in force from the next rebuild).
 A build where MDOT's 5 records are installed but close no way logs a warning. DDOT's 5
 stays Avoid; Montgomery's is LTS 4.5 (except where our formula already says Avoid).
+MDOT's 5 never sets a road's level (review 2026-10-29): a way left open (the bridge, the
+reopened road) takes Montgomery's level where it rates the road, else the formula's, not
+Avoid, and the road panel says the formula is used because the 5 is about access.
+
+VALIDATE_SEGMENTS also checks the rating rules over the whole built table
+(`pipeline.run.assert_rating_rules`; review 2026-10-29) and refuses the build, naming up to
+10 way ids, where: a rural road open to cars is LTS 1 with no override row (the rural
+floor); a road Montgomery rates 5 is at any level but 4.5 (or Avoid where our own formula says
+Avoid); or a road MDOT SHA bans is still
+drawn with no access reason and is not listed as left open in `agency-prohibited.csv`.
+A refusal means a rating step ran out of order or did not run; look at the way in the
+build's reports before retrying.
 
 DDOT's level field is not recorded in this repository: the script prints `ddot: level read
 from <field>`, and where the layer has none of the expected fields it stops and lists the
@@ -5577,7 +5591,7 @@ after the routers above with `docker compose --profile offroad up -d --no-deps
 fresh schema there, and without `--force-recreate` a container whose bind came
 up empty keeps it. The same restart kills any running job: a rebuild or a backup
 interrupted by it sits as `doing` (Wedged jobs, below: `unwedge_job`), and one
-killed during its swap may need "A `SwapUndoIncomplete` alert" below. Never
+killed during its swap needs "A `SwapUndoIncomplete` alert or an interrupted swap" below. Never
 force-kill Docker Desktop and never use "Reset to factory defaults": the first
 leaves stale sockets that stop the next start, the second deletes the images
 and volumes.
@@ -5622,7 +5636,7 @@ docker compose exec -T worker ./manage.py unwedge_job <job id>
 `unwedge_job` puts the job back to `todo` through `procrastinate_retry_job`,
 which is the same function the retry strategy calls, and writes an audit row
 with a null actor — the convention for the worker or the host operator, the
-same as `run_rebuild_now` and `rollback_rebuild --confirm`. It refuses in three
+same as `run_rebuild_now` and `rollback_rebuild --confirm`. It refuses in four
 cases, all of them by design:
 
 - **The job is not `doing`.** A `todo` job is already queued and a terminal one
@@ -5637,6 +5651,17 @@ cases, all of them by design:
   allows one `todo` job per lock, so moving this row back would be a unique
   violation inside the retry function. The queued job is the next run; let it
   run.
+- **A swap neither finished nor undid itself** (the swap journal says so). A
+  requeued rebuild would only refuse at its start; repair it first ("A
+  `SwapUndoIncomplete` alert or an interrupted swap", below).
+
+And a `weekly_rebuild` that was killed **after** its swap (in the reconciliation or
+the stress-tile pre-draw) is finished, not requeued: a requeue starts fresh,
+rebuilds for hours and swaps again, which drops the retired schema a rollback
+needs. The command says so, with the router restart and
+`manage.py predraw_stress_tiles` that are left to do by hand. The rebuild itself
+refuses to start a job whose swap the journal records, for a requeue made any
+other way.
 
 A rebuild requeued this way keeps its job id, so it **resumes** from the checkpoints its
 killed attempt wrote ("Rebuild checkpoints") **if the image and the classification inputs
@@ -5789,12 +5814,22 @@ After a rollback there is no build before the one being served: `previous` is
 removed and `previous_build_id` is cleared, so a second rollback refuses. The
 way forward from there is a rebuild.
 
-## A `SwapUndoIncomplete` alert: a half-restored swap
+## A `SwapUndoIncomplete` alert or an interrupted swap
 
 **What it looks like.** A failed `weekly_rebuild` whose message begins "the swap
 failed and its undo did not complete, so this deployment is half-restored and
 is not retried", on the operations page's run row, as a failed job there and in
-`check_operations`. It is terminal on purpose: nothing retries it, because a
+`check_operations`. Or, after a rebuild was killed during its swap (a deploy,
+`docker compose up -d`, an OOM kill, a reboot), which runs no undo at all: a
+`swap:` line in `check_operations` that begins "a swap to build ... neither
+finished nor undid itself", and the same sentence from the next rebuild, which
+refuses to start, and from `unwedge_job`, which refuses to requeue. Both come
+from the **swap journal**, `swap-journal.json` at the root of the tiles
+directory: the swap writes what it found there before it moves anything, and
+marks it finished once the rename commits, so the record survives a kill. The
+state is the one described below; a killed swap's message lists nothing as
+"still to put back", so check every variant against "As the swap found it". It
+is terminal on purpose: nothing retries it, because a
 retry would promote over a deployment no component has a consistent picture
 of. Nothing fixes it on its own either, and `rollback_rebuild` is not the tool —
 see below.
@@ -5877,8 +5912,22 @@ tiles):
    `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the off-road router runs, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb`
    (see "After a rebuild: restart the routers"). Harmless if none did.
 6. **Leave `staging` alone.** It is the failed build's output and the next
-   rebuild's first stage drops it. Then rebuild — `run_rebuild_now`, or wait
-   for the weekly one.
+   rebuild's first stage drops it.
+7. **Remove the swap journal**, which is what lets the next rebuild start (and
+   stops the `swap:` line). While it says the swap is unfinished no rebuild
+   starts and retention deletes no build, so the rollback target the lines
+   name is still on the volume:
+
+   ```sh
+   docker compose exec -T rebuild rm /data/tiles/swap-journal.json
+   ```
+
+   Then rebuild — `run_rebuild_now`, or wait for the weekly one.
+
+A swap killed in the moment between its rename committing and its journal
+being marked finished reports as interrupted though it completed: the links,
+the rows and `live` all name the new build, `rollback_rebuild`'s dry run
+agrees, and step 7 is the whole repair.
 
 ### Long calm plans, the target distance, candidates and loops (FOLLOWUP-LONG-CALM, items 256 to 271)
 
@@ -6129,8 +6178,8 @@ grep -o 'assets/[^"]*' ~/rmdata/frontend-index-$L.html     # the live script and
 git rev-parse HEAD > ~/rmdata/t9-head-pre-rel.txt
 ```
 
-The api build looks up its base image (`python:3.11-slim-bookworm`) on Docker Hub when that tag is
-not in the local store, and that network use needs the owner's approval for the deploy, as
+The api build looks up its base image (`python:3.11-slim-bookworm`, pinned by digest in
+`docker/api.Dockerfile`) on Docker Hub when that digest is not in the local store, and that network use needs the owner's approval for the deploy, as
 OWNER-DECISIONS 253 gave the last one.
 
 Steps 1 to 4 are:

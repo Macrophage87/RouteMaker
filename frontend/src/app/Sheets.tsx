@@ -310,6 +310,8 @@ export interface GpxSheetProps {
   onOpenFailed?: () => void;
   onPick?: () => void;
   refineImported: (next: LonLat[]) => void;
+  /** Whether the opened file is being fitted (GpxPanel onFitting): App holds the route's sentence back till it ends. */
+  onFitting?: (fitting: boolean) => void;
   getMap: () => MapLibreMap | null;
   /** Download GPX: the page checks closures first, and an unedited opened file downloads as it came. */
   downloadRoute: (said?: (line: string) => void) => void;
@@ -329,7 +331,7 @@ export interface GpxSheetProps {
 
 /** The GPX sheet. */
 export function GpxSheet(props: GpxSheetProps) {
-  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, fileInput, onOpenFailed, onPick, refineImported, getMap, downloadRoute, downloadCourse, sendToGarmin, sendToWahoo, match, shareControls, routes } = props;
+  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, fileInput, onOpenFailed, onPick, refineImported, onFitting, getMap, downloadRoute, downloadCourse, sendToGarmin, sendToWahoo, match, shareControls, routes } = props;
   return (
     <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")} popup>
       {/* Save and Share first, then My routes to load (in Go, the way to start a saved route), then the files. */}
@@ -348,6 +350,7 @@ export function GpxSheet(props: GpxSheetProps) {
         onOpenFailed={onOpenFailed}
         onPick={onPick}
         onRefine={refineImported}
+        onFitting={onFitting}
         getMap={getMap}
         onDownload={downloadRoute}
         onDownloadCourse={downloadCourse}
