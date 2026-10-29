@@ -246,3 +246,9 @@ test("every ride type starts where it planned before the rescale, Trailmaxxing a
     { default: 70, trailmaxxing: 100, "group-ride": 40, "mass-ride": 0, "mountain-goat": 40, "mountain-bike": 80, gravel: 40, fast: 10, cargo: 70, ebike: 70, bikeshare: 80, novice: 100, "bike-transit": 70, "bikeshare-transit": 80, rebalance: 80 },
   );
 });
+
+test("Mass Ride's ride size is sent as ride_size, as the link keeps it (the route choice prices roads too narrow for it)", () => {
+  assert.equal(dialFields(fitDials("mass-ride", { ...startDials("mass-ride"), rideSize: 1200 })).ride_size, 1200);
+  assert.equal(dialFields(fitDials("mass-ride", startDials("mass-ride"))).ride_size, undefined, "absent is the API's 500");
+  assert.equal(dialFields(fitDials("default", { ...startDials("default"), rideSize: 1200 })).ride_size, undefined);
+});

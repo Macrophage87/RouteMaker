@@ -2,8 +2,10 @@
 // the map so you can select them", then "For restaurants and the like, label them"): each nearby place a real button
 // on the map, its icon in a dot, and a named place's name beside it (15 px, haloed, as the map's street names); water,
 // a restroom or a repair stand is its icon alone. Its accessible name is the place in full, kind and distance too.
-// A press opens the place's card (lib/stopCard.ts), never a route by itself. The tapped spot itself is a small pin,
-// not a control. The map frames the spot and the places in the part the card and the panel leave clear.
+// A press opens the place's card (lib/stopCard.ts), never a route by itself. The tapped spot itself is a big pin,
+// not a control (Stephen, 2026-10-29: "The tapped location is way too small"): red with a white rim and a white
+// centre, its tip on the spot, clear on an orange road. The map frames the spot and the places in the part the card
+// and the panel leave clear.
 import { useEffect, useRef } from "react";
 import { Marker, type Map as MapLibreMap } from "maplibre-gl";
 import type { LonLat } from "../lib/geo.ts";
@@ -27,6 +29,18 @@ function iconSvg(name: IconName): SVGSVGElement {
   svg.setAttribute("focusable", "false");
   svg.innerHTML = ICON_PATHS[name];
   return svg;
+}
+
+/** The tapped spot's pin: a teardrop whose tip is the box's bottom centre, so a "bottom" anchor puts it on the spot. */
+export function spotHereElement(): HTMLElement {
+  const element = document.createElement("span");
+  element.className = "spot-here";
+  element.setAttribute("aria-hidden", "true");
+  element.innerHTML =
+    '<svg width="48" height="62" viewBox="0 0 40 52" focusable="false">' +
+    '<path class="spot-here-body" d="M20 50.5C20 50.5 2 31.5 2 19.5a18 18 0 0 1 36 0C38 31.5 20 50.5 20 50.5Z"/>' +
+    '<circle class="spot-here-centre" cx="20" cy="19.5" r="7"/></svg>';
+  return element;
 }
 
 /** The paddings shrunk together where they leave less than 120 px of map across or down. */
@@ -92,10 +106,7 @@ export function useSpotPins(getMap: () => MapLibreMap | null, spot: LonLat | nul
     }
     const rows = latest.current;
     const markers: Marker[] = [];
-    const here = document.createElement("span");
-    here.className = "spot-here";
-    here.setAttribute("aria-hidden", "true");
-    markers.push(new Marker({ element: here, anchor: "bottom" }).setLngLat(spot).addTo(map));
+    markers.push(new Marker({ element: spotHereElement(), anchor: "bottom" }).setLngLat(spot).addTo(map));
     for (const [index, row] of (rows ?? []).entries()) {
       markers.push(new Marker({ element: spotPinElement(row, (keyboard) => pick.current(index, keyboard)), anchor: "center" }).setLngLat(row.point).addTo(map));
     }
