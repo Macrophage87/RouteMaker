@@ -7310,6 +7310,17 @@ def weather_check(request):
 REPORT_311_BODY_MAX_BYTES = 2048
 
 
+def _report311_who(request) -> str:
+    """The signed-in rider as a 311 ticket and the per-account count name them: a keyed digest."""
+    return ratelimit.client_key(f"user:{request.user.pk}")
+
+
+def _report311_refused(status: int, message: str, code: str):
+    out = JsonResponse({"error": message, "code": code}, status=status)
+    out["Cache-Control"] = "no-store"
+    return out
+
+
 @api.get("/report311", summary="Whether Ride mode's 311 reports are sent to DC from here")
 @decorate_view(
     ratelimit.rate_limited(ratelimit.REPORT_311_STATUS),
@@ -7329,17 +7340,6 @@ def report311_status(request):
     )
     response["Cache-Control"] = "no-store"
     return response
-
-
-def _report311_who(request) -> str:
-    """The signed-in rider as a 311 ticket and the per-account count name them: a keyed digest."""
-    return ratelimit.client_key(f"user:{request.user.pk}")
-
-
-def _report311_refused(status: int, message: str, code: str):
-    out = JsonResponse({"error": message, "code": code}, status=status)
-    out["Cache-Control"] = "no-store"
-    return out
 
 
 @api.get("/report311/where", summary="Which 311 website takes a problem at a point")
