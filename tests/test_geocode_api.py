@@ -859,6 +859,70 @@ class TestReverse:
         assert params["limit"] == 1
         assert 0 < params["radius"] <= 1, "a nearby place, in km: a kilometre is not nearby"
 
+    def test_asked_for_an_address_a_near_house_number_names_the_spot(
+        self, client, photon, router
+    ) -> None:
+        """Stephen 2026-10-29, Go's tapped-spot card: "provide the address if possible"."""
+        fake = photon(answer(NEARBY_HOUSE))
+        fake_router = router(located((["Mill Street Southeast"], 2.0, "road", 2)))
+        response = get(client, REVERSE, lat=38.9012, lon=-77.2609, address="true")
+        (place,) = response.json()["results"]
+        assert set(place) == PLACE_KEYS
+        assert place["name"] == "1500 Mill Street Southeast"
+        assert place["label"] == "1500 Mill Street Southeast, Vienna, Fairfax County"
+        assert place["kind"] == "address"
+        ((path, params),) = fake.calls
+        assert path == "/reverse"
+        assert params["layer"] == "house"
+        assert params["radius"] == geocode.ADDRESS_RADIUS_KM
+        assert fake_router.calls == [], "an address found needs no street from the router"
+
+    def test_without_asking_a_house_number_never_names_the_spot(
+        self, client, photon, router
+    ) -> None:
+        fake = photon(answer(NEARBY_HOUSE))
+        router(located((["Mill Street Southeast"], 2.0, "road", 2)))
+        (place,) = get(client, REVERSE, lat=38.9012, lon=-77.2609).json()["results"]
+        assert place["name"] == "Mill Street Southeast"
+        assert [params.get("layer") for _, params in fake.calls] == [None]
+
+    @pytest.mark.parametrize(
+        "house",
+        [
+            # Too far: a building across the block (Photon's radius, checked again here).
+            feature(
+                -77.2609, 38.9030, type="house", housenumber="1500", street="Mill Street Southeast"
+            ),
+            # A number with no street, or a street with no number, is no address.
+            feature(-77.2609, 38.9012, type="house", housenumber="1500"),
+            feature(-77.2609, 38.9012, type="house", street="Mill Street Southeast"),
+            # Outside the box the map covers.
+            feature(-77.0, 39.7215, type="house", housenumber="1", street="Over the Line Road"),
+        ],
+    )
+    def test_with_no_near_address_the_street_names_it_still(
+        self, client, photon, router, house
+    ) -> None:
+        photon(answer(house))
+        router(located((["Mill Street Southeast"], 2.0, "road", 2)))
+        (place,) = get(client, REVERSE, lat=38.9012, lon=-77.2609, address="true").json()["results"]
+        assert (place["name"], place["kind"]) == ("Mill Street Southeast", "street")
+
+    def test_an_address_look_up_that_fails_still_names_the_street(
+        self, client, photon, router
+    ) -> None:
+        fake = photon(geocode.Unavailable("photon down"))
+        router(located((["Mill Street Southeast"], 2.0, "road", 2)))
+        response = get(client, REVERSE, lat=38.9012, lon=-77.2609, address="true")
+        assert response.status_code == 200
+        assert response.json()["results"][0]["name"] == "Mill Street Southeast"
+        assert len(fake.calls) == 1, "a geocoder that did not answer is not asked again"
+
+    def test_with_neither_answering_an_address_ask_is_502(self, client, photon, router) -> None:
+        photon(geocode.Unavailable("photon down"))
+        router(geocode.Unavailable("router down"))
+        assert get(client, REVERSE, lat=38.9, lon=-77.26, address="true").status_code == 502
+
     def test_a_nearby_place_outside_the_box_is_not_named(self, client, photon, router) -> None:
         router(located())
         photon(answer(feature(-77.0, 39.7215, name="Over the line", type="house")))

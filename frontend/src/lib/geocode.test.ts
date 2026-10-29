@@ -138,6 +138,18 @@ test("a name is asked of /api/reverse for the point", () => {
   assert.deepEqual([Number(url.searchParams.get("lon")), Number(url.searchParams.get("lat"))], [-77.0869, 38.887]);
 });
 
+test("a route point's name never asks for an address; Go's tapped spot does", async () => {
+  assert.equal(new URL(reverseUrl([-77.0869, 38.887]), "http://site.test").searchParams.has("address"), false);
+  assert.equal(new URL(reverseUrl([-77.0869, 38.887], true), "http://site.test").searchParams.get("address"), "true");
+  const urls: string[] = [];
+  const fetchImpl = async (url: string) => {
+    urls.push(url);
+    return found();
+  };
+  await nameSender(new GeoGate(), fetchImpl, true)(A);
+  assert.equal(new URL(urls[0], "http://site.test").searchParams.get("address"), "true");
+});
+
 // --- the answer -----------------------------------------------------------------
 
 function respond(status: number, body: unknown, headers: Record<string, string> = {}) {
