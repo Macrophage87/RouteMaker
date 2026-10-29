@@ -30,10 +30,11 @@
 #   2. the checkout must be clean, at the deployed tag's commit, with .env's TAG matching it, and
 #      its origin https://github.com/$RM_CD_GITHUB_REPO, the repository whose CI is read.
 #   3. `git fetch --tags`; the highest strict vX.Y.Z tag newer than the deployed one.
-#   4. it must be an annotated tag (optionally a signed one: RM_CD_REQUIRE_SIGNED_TAGS=1), its
-#      commit an ancestor of origin/main and a descendant of the deployed release, and GitHub's
-#      `test` check run green for that commit (an unauthenticated read of the public repository;
-#      a rate limit is tried again next pass).
+#   4. it must be an annotated tag, or a lightweight one on the commit whose subject is "Release
+#      vX.Y.Z" (optionally a signed one: RM_CD_REQUIRE_SIGNED_TAGS=1), its commit an ancestor of
+#      origin/main and a descendant of the deployed release, and GitHub's `test` and `a11y` check
+#      runs green for that commit (an unauthenticated read of the public repository; a rate limit
+#      is tried again next pass).
 #   5. the gate (cd_logic.py gate): only a code release is deployed by itself. Anything needing
 #      data from home, sudo or the nginx site stops with a report in $RM_STATE/cd/hold/<tag>. A
 #      release with nothing for the server (documentation, CI) is only recorded, if the running api
@@ -72,6 +73,8 @@
 #   RM_CD_DOCKER_FREE_GIB        GiB that must be free on Docker's root before a deploy [3]
 #   RM_CD_REQUIRE_SIGNED_TAGS    1: also require `git verify-tag` to pass [0]
 #   RM_CD_KEEP                   release snapshots kept in $RM_STATE/cd/backups [3]
+#   RM_CD_WAIT_ALERT_MIN         minutes a release may wait (CI, node_modules, the node image, the
+#                                network) before the owner is alerted [30]
 #   RM_CD_HOST                   Host header for the local health check [RM_BETA_HOST from the
 #                                checkout's .env; one of the two is required]
 # DOCKER and CURL name the docker and curl binaries [docker, curl] (the tests use stubs).
@@ -113,6 +116,8 @@ load_vars() {
 	case "$gh_repo" in *[!A-Za-z0-9._/-]* | */*/* | /* | */) die "RM_CD_GITHUB_REPO '$gh_repo' is not owner/name" ;; */*) ;; *) die "RM_CD_GITHUB_REPO '$gh_repo' is not owner/name" ;; esac
 	keep=${RM_CD_KEEP:-3}
 	case "$keep" in '' | *[!0-9]* | 0) die "RM_CD_KEEP must be a whole number of 1 or more" ;; esac
+	wait_alert_min=${RM_CD_WAIT_ALERT_MIN:-30}
+	case "$wait_alert_min" in '' | *[!0-9]*) die "RM_CD_WAIT_ALERT_MIN must be a whole number of minutes" ;; esac
 	# The beta's name is server config, never in the repository (review sec-infra-8).
 	health_host=${RM_CD_HOST:-$(env_value RM_BETA_HOST 2>/dev/null)}
 	[ -n "$health_host" ] || die "no host for the health check: set RM_BETA_HOST=<the beta's name> in $RM_SRC/.env (docs/BETA-RUNBOOK.md, section 0)"
@@ -156,6 +161,7 @@ finish() { # word message
 	if [ "$dry_run" = 0 ]; then
 		printf '%s %s: %s\n' "$(utc)" "$word" "$*" >"$cd_dir/status"
 		printf '%s %s: %s\n' "$(utc)" "$word" "$*" >>"$cd_dir/agent.log"
+		[ "$word" = waiting ] || rm -f "$cd_dir/waiting"
 		tail -n 2000 "$cd_dir/agent.log" >"$cd_dir/agent.log.new" && mv "$cd_dir/agent.log.new" "$cd_dir/agent.log"
 		[ -z "$report" ] || cp "$report" "$cd_dir/last-report.txt"
 		# The last pass that did something about a release, kept past the idle passes after it.
@@ -181,10 +187,29 @@ notify() { # word message
 		rolled-back | failed) "$alert" send deploy "failed $id" "$word: $message" ;;
 		held | interrupted) "$alert" send deploy "$word $id" "$word: $message" ;;
 		broken | error | drift) "$alert" send deploy "$word $(printf '%s' "$message" | sed 's/[0-9][0-9.]*/N/g' | sha256sum | cut -c1-12)" "$word: $message" ;;
-		waiting) case "$message" in *" free "*) "$alert" send deploy "disk" "waiting: $message" ;; esac ;;
+		waiting)
+			case "$message" in
+				*" free "*) "$alert" send deploy "disk" "waiting: $message" ;;
+				*) ! waited_long "$message" || "$alert" send deploy "waiting $(same_wait "$message")" "waiting for over $wait_alert_min min: $message" ;;
+			esac
+			;;
 	esac >>"$run_log" 2>&1 </dev/null
 	case "$word" in deployed | up-to-date) release_notes "$alert" ;; esac
 	return 0
+}
+# A wait's identity: its words without their numbers, as alert.sh's repeat check reads them.
+same_wait() { printf '%s' "$1" | sed 's/[0-9][0-9.]*/N/g' | sha256sum | cut -c1-12; }
+# Whether a release has waited for the same reason for RM_CD_WAIT_ALERT_MIN minutes: the first
+# pass that waits for it records the time in $cd_dir/waiting; a wait for another reason starts
+# again, and any other result forgets it (finish). The planned waits (the deploy window, the
+# nightly backup's slot, a pre-draw) never alert.
+waited_long() { # message
+	local id since now
+	case "$1" in *"outside the deploy window"* | *"nightly backup runs at"* | *"pre-draw is running"*) rm -f "$cd_dir/waiting"; return 1 ;; esac
+	id=$(same_wait "$1"); now=$(date +%s)
+	since=$(sed -n "s/^$id \([0-9]*\)$/\1/p" "$cd_dir/waiting" 2>/dev/null | head -n 1)
+	if [ -z "$since" ]; then printf '%s %s\n' "$id" "$now" >"$cd_dir/waiting"; return 1; fi
+	[ $((now - since)) -ge $((wait_alert_min * 60)) ]
 }
 # The riders' channel (alert.sh release-notes): the live release's notes, docs/releases/<tag>.md
 # from its checkout, once per tag. Tried on every deploy and up-to-date pass until posted, only
@@ -240,6 +265,16 @@ is_semver() { [[ $1 =~ ^v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]
 deployed_tag() { cat "$cd_dir/deployed-tag" 2>/dev/null; }
 deployed_sha() { cat "$cd_dir/deployed-sha" 2>/dev/null; }
 annotated() { [ "$(gitc cat-file -t "refs/tags/$1" 2>/dev/null)" = tag ]; }
+# A release tag: annotated, or a lightweight one (`git tag vX.Y.Z`, GitHub's release page) on the
+# commit whose subject names that release ("Release vX.Y.Z", the release procedure's last commit).
+release_tag() {
+	local subject
+	annotated "$1" && return 0
+	[ "$(gitc cat-file -t "refs/tags/$1" 2>/dev/null)" = commit ] || return 1
+	subject=$(gitc log -1 --format=%s "refs/tags/$1" 2>/dev/null) || return 1
+	case "$subject" in "Release $1" | "Release $1 "*) return 0 ;; esac
+	return 1
+}
 tag_commit() { gitc rev-parse --verify --quiet "refs/tags/$1^{commit}"; }
 # Prints what is wrong with RM_CD_WINDOW, and succeeds, if anything is (a pass reports it as an error).
 window_problem() {
@@ -317,12 +352,13 @@ check_report_url() {
 
 # --- GitHub ---------------------------------------------------------------------------------------
 # Prints green, pending, red, or "unknown <reason>" (rate limit, network): try again next pass.
+# Green is every check run cd_logic.py names (CHECK_NAMES: `test` and `a11y`) green.
 ci_status() { # sha
 	local sha=$1 body code
 	body=$(mktemp)
 	code=$("${CURL:-curl}" -sS --max-time 30 -o "$body" -w '%{http_code}' \
 		-H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' -H 'User-Agent: routemaker-beta-cd' \
-		"https://api.github.com/repos/$gh_repo/commits/$sha/check-runs?check_name=test&filter=latest&per_page=100" 2>>"$run_log") || code=000
+		"https://api.github.com/repos/$gh_repo/commits/$sha/check-runs?filter=latest&per_page=100" 2>>"$run_log") || code=000
 	case "$code" in
 		200) "$py" "$logic" ci-verdict --sha "$sha" <"$body" ;;
 		403 | 429) echo "unknown GitHub's rate limit (HTTP $code)" ;;
@@ -332,8 +368,10 @@ ci_status() { # sha
 }
 
 # --- the front end --------------------------------------------------------------------------------
-lock_hash() { gitc show "$1:frontend/package-lock.json" 2>/dev/null | sha256sum | cut -c1-64; }
-# The node_modules for a lockfile, offline: $cd_dir/node_modules/<sha256 of package-lock.json>/
+# The lockfile's hash without its version fields, which every release bumps (cd_logic.py lock-hash;
+# the runbook's send command makes the same one).
+lock_hash() { gitc show "$1:frontend/package-lock.json" 2>/dev/null | "$py" "$logic" lock-hash; }
+# The node_modules for a lockfile, offline: $cd_dir/node_modules/<cd_logic.py lock-hash>/
 # node_modules, put there by the owner from home (the server never downloads npm packages:
 # OWNER-DECISIONS 436). Prints why not, and fails, if it is missing.
 frontend_ready() { # sha
@@ -795,7 +833,7 @@ pass() {
 	[ -f "$cd_dir/failed/$tag" ] && { finish failed "$tag failed and was rolled back earlier (see $cd_dir/failed/$tag); auto-release.sh retry $tag to try again"; return 0; }
 
 	say "candidate: $tag (deployed: $cur)"
-	annotated "$tag" || { hold "$tag" "not an annotated tag (git tag -a); the agent deploys annotated tags only"; return 0; }
+	release_tag "$tag" || { hold "$tag" "a lightweight tag on a commit whose subject is not \"Release $tag\"; tag releases with git tag -a (a tag is never moved: push the next patch version)"; return 0; }
 	new=$(tag_commit "$tag") || { hold "$tag" "the tag names no commit"; return 0; }
 	if [ "${RM_CD_REQUIRE_SIGNED_TAGS:-0}" = 1 ]; then
 		gitc verify-tag "$tag" >>"$run_log" 2>&1 || { hold "$tag" "the tag's signature does not verify (RM_CD_REQUIRE_SIGNED_TAGS=1)"; return 0; }
@@ -804,9 +842,9 @@ pass() {
 	gitc merge-base --is-ancestor "$cur_sha" "$new" || { hold "$tag" "it does not descend from the deployed release $cur"; return 0; }
 	verdict=$(ci_status "$new")
 	case "$verdict" in
-		green) say "CI: the test check run is green on $new" ;;
-		red) hold "$tag" "GitHub's test check run is not green on $new"; return 0 ;;
-		pending) finish waiting "$tag: the test check run on $new has not finished (or not started)"; return 0 ;;
+		green) say "CI: the test and a11y check runs are green on $new" ;;
+		red) hold "$tag" "GitHub's test or a11y check run is not green on $new"; return 0 ;;
+		pending) finish waiting "$tag: the test or a11y check run on $new has not finished (or not started)"; return 0 ;;
 		*) finish waiting "$tag: ${verdict#unknown }; trying again next pass"; return 0 ;;
 	esac
 
@@ -979,7 +1017,7 @@ cmd_resume() { rm -f "$cd_dir/PAUSED"; echo "resumed"; }
 verify_at_tag() { # tag: the checkout is clean at the tag's commit with TAG set to it
 	local tag=$1 sha
 	is_semver "$tag" || die "'$tag' is not a strict vX.Y.Z tag"
-	annotated "$tag" || die "$tag is not an annotated tag here (git fetch --tags first?)"
+	release_tag "$tag" || die "$tag is not a release tag here: annotated, or on a \"Release $tag\" commit (git fetch --tags first?)"
 	sha=$(tag_commit "$tag") || die "$tag names no commit"
 	[ "$(gitc rev-parse HEAD)" = "$sha" ] || die "the checkout ($RM_SRC) is at $(gitc rev-parse HEAD), not $tag ($sha)"
 	[ -z "$(gitc status --porcelain)" ] || die "the checkout has local changes"

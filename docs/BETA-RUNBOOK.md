@@ -1032,14 +1032,15 @@ server detail goes into GitHub or the repository: the agent reads the public rep
 server's user, paths and `RM_SSH_HOST` stay in `vars.sh` here. The local live stack at home is not
 part of it.
 
-**How a release flows.** The change is reviewed and merged to `main`; CI's `test` check goes green on
-that commit; the owner says go; the owner (and only the owner, or someone on the owner's word)
-pushes an **annotated** tag on that commit. Before the tag, at home, on that commit (a tag goes
+**How a release flows.** The change is reviewed and merged to `main`; CI's `test` and `a11y` checks go
+green on that commit; the owner says go; the owner (and only the owner, or someone on the owner's word)
+pushes an **annotated** tag on that commit (a lightweight one, as GitHub's release page makes, is
+taken too when the commit's subject is "Release vX.Y.Z", the release procedure's last commit). Before the tag, at home, on that commit (a tag goes
 live within about 10 minutes, and nothing after it checks what a screen reader hears):
 
-- If `frontend/` changed since the deployed tag, run the browser accessibility check,
-  `scripts/a11y/run.sh <a node_modules for that lockfile>` (offline; docs/DEVELOPMENT.md), and it
-  must pass. CI and the agent run only `npm test`.
+- CI's `a11y` job runs the browser accessibility check (`scripts/a11y/run.sh`; docs/DEVELOPMENT.md)
+  on every push, and the agent deploys a tag only once it is green beside `test`. Run it at home
+  as well when a release changes what a screen reader hears, to see the failures before the tag.
 - If the release changes anything `docs/BETA-TESTER-HANDOUT.md` describes (the skip link, the
   landmarks, the headings, the beta notice and its Beta chip), update the handout in
   the same release and send it to the testers again once the release is deployed.
@@ -1084,9 +1085,10 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 3. `git fetch --tags`, then the highest strict `vX.Y.Z` tag (no `-rc`, no leading zeros) newer than
    the deployed one. Only the highest: if it cannot go, the agent waits for the owner rather than
    deploying an older one.
-4. The tag must be annotated (`git tag -a`), its commit on `origin/main` and descended from the
-   deployed release, and GitHub's `test` check run (by GitHub Actions, on exactly that commit, the
-   newest run) green. The check is an unauthenticated read of the public API, a few calls an hour at
+4. The tag must be annotated (`git tag -a`), or a lightweight one on a commit whose subject is
+   "Release vX.Y.Z" for that tag; its commit on `origin/main` and descended from the deployed
+   release; and GitHub's `test` and `a11y` check runs (by GitHub Actions, on exactly that commit,
+   the newest run of each) green: either one red holds the tag, either one unfinished waits. The check is an unauthenticated read of the public API, a few calls an hour at
    most; a rate limit or a network failure is tried again next pass. Signed tags: the repository has
    none today; setting `RM_CD_REQUIRE_SIGNED_TAGS=1` makes `git verify-tag` a requirement too (the
    server then needs the signer's public key in its keyring).
@@ -1192,7 +1194,7 @@ stop the api, fail the build and roll back on every front-end release. Once the 
 it installs `frontend-build.sh` beside the agent, which builds with the whole tree mounted.
 
 `install` checks the user is in the docker group and not root, that the checkout is clean at an
-annotated release tag with the matching `TAG`, copies the agent (`auto-release.sh`, `cd_logic.py`,
+release tag (annotated, or a lightweight one on its "Release vX.Y.Z" commit) with the matching `TAG`, copies the agent (`auto-release.sh`, `cd_logic.py`,
 `receive-data.sh`, `frontend-build.sh`) into `$RM_STATE/cd/bin` (so a release can never change the agent under a pass, and
 a rollback to a release older than the agent still has the agent's no-sudo snapshot and restore),
 records the deployed tag and the beta notice's report link (`--report-url URL|none` if
@@ -1216,6 +1218,7 @@ Optional settings, appended to `vars.sh` like any later decision (never a secret
 | `export RM_CD_DOCKER_FREE_GIB=5` | `3` | GiB that must be free on Docker's root (`docker info`) before a deploy; less, and the release waits |
 | `export RM_CD_REQUIRE_SIGNED_TAGS=1` | `0` | also require a good tag signature |
 | `export RM_CD_KEEP=5` | `3` | release snapshots kept in `$RM_STATE/cd/backups` (each about 200 MB, on `$HOME`'s disk) |
+| `export RM_CD_WAIT_ALERT_MIN=60` | `30` | minutes a release may wait for the same reason (CI not finished, no node_modules, no node image, a failed fetch) before it is posted to the owner (Alerts) |
 | `export RM_CD_GITHUB_REPO=owner/name` | `Macrophage87/RouteMaker` | where the check runs are read |
 
 **Front-end releases need two things on the server**, neither of which the agent ever downloads
@@ -1235,10 +1238,13 @@ Optional settings, appended to `vars.sh` like any later decision (never a secret
 
   If that prints an error instead of an id (a Docker that does not keep the digest through save and load), the
   way left is the one the agent's status offers: the owner approves a `docker pull` of that digest on the server.
-- `node_modules` for the release's lockfile, at `$RM_STATE/cd/node_modules/<sha256 of frontend/package-lock.json>/node_modules`
-  (status prints the exact path). From home, in a checkout at the release with `npm ci` done:
-  `h=$(sha256sum frontend/package-lock.json | cut -c1-64); tar -C frontend -czf - node_modules | ssh "$RM_SSH_HOST" "d=\$HOME/routemaker-beta-state/cd/node_modules/$h; mkdir -p \$d.part && tar -C \$d.part -xzf - && mv -T \$d.part \$d"`.
-  A copy is reused for every release with the same lockfile. There is no download fallback: the
+- `node_modules` for the release's lockfile, at `$RM_STATE/cd/node_modules/<lockfile hash>/node_modules`
+  (status prints the exact path). The hash is `scripts/beta/cd_logic.py lock-hash`: the lockfile's
+  sha256 without its two `version` fields, which every release bumps. From home, in a checkout at
+  the release with `npm ci` done:
+  `h=$(python3 scripts/beta/cd_logic.py lock-hash < frontend/package-lock.json); tar -C frontend -czf - node_modules | ssh "$RM_SSH_HOST" "d=\$HOME/routemaker-beta-state/cd/node_modules/$h; mkdir -p \$d.part && tar -C \$d.part -xzf - && mv -T \$d.part \$d"`.
+  A copy is reused for every release whose dependencies are the same, whatever its version (a
+  copy sent before v0.15.0 sits under the old whole-file hash: send it once more). There is no download fallback: the
   release waits until the copy arrives.
 
 The build is the same as `ship-data.sh --build-frontend`: `npm test`, `tsc --noEmit` and `vite build`
@@ -1346,7 +1352,10 @@ What is posted, each as one short message starting "RouteMaker beta:":
   reported as paused, not stale (above), so it never posts.
 - **Releases:** the release agent posts each deploy, and a rollback, a failure, a hold, an
   interrupted pass, BROKEN, a setting error, checkout drift or a disk stall once per tag (again
-  once a day while it lasts). Idle passes post nothing.
+  once a day while it lasts). A release that has waited over 30 minutes for the same reason (CI
+  not finished, node_modules or the node image not on the host, a failed fetch;
+  `RM_CD_WAIT_ALERT_MIN`) is posted the same way; the planned waits (the deploy window, the
+  nightly backup's slot, a running pre-draw) never are. Idle passes post nothing.
 
 Messages carry release tags, step names, the smoke tests' FAIL lines and `check_operations`' own
 report: no secret, no address and no rider's data. Mentions are switched off in every message.
