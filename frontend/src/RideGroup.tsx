@@ -29,7 +29,9 @@ import {
   ALERT_KINDS,
   ROAM_ALERT_KINDS,
   ALERT_LABEL,
+  ALERT_SPOT_NOTE,
   BROADCAST_CONSENT_NOTE,
+  followsWithoutKey,
   CALL_911,
   CALL_911_HREF,
   CONFIRM_QUESTION,
@@ -50,7 +52,6 @@ import {
   RIDE_ROLES,
   ROLE_QUESTION,
   SHARE_STOPPED_SAID,
-  alertNote,
   alertRefusal,
   alertText,
   awayWords,
@@ -159,6 +160,9 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
   // A link without a secret (an older one) is a new ride of this page's own, under a secret made here.
   const [ownSecret] = useState(newRideSecret);
   const rideSecret = (broadcast ? broadcast.secret : secret) ?? ownSecret;
+  // Following a broadcast whose link lost its key: a ride of this page's own would show no leader, so none is made,
+  // nothing is asked or sent, and App.tsx says the link is missing its key (lib/rideGroup.ts BROADCAST_NO_KEY).
+  const keyless = followsWithoutKey(broadcast);
   const [consent, setConsent] = useState<RideConsent | null>(null);
   const [asked, setAsked] = useState(false);
   // The role picked in the question, before it is answered: Participant, so one tap answers.
@@ -224,6 +228,16 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
 
   // The ride, and the rider's answer for it (asked as the ride starts: Start ride or Broadcast, the 2026-10-28 audit P6).
   useEffect(() => {
+    if (keyless) {
+      // A keyed follow turned keyless (a link pasted over it): nothing of the ride it was is kept, or shown.
+      setRide(null);
+      setSeal(null);
+      setConsent(null);
+      setAsked(false);
+      setShareOn(false);
+      setRead({ dots: [], alerts: [] });
+      return;
+    }
     let live = true;
     void rideOf(rideSecret).then((on) => {
       if (!live || !on) return;
@@ -248,7 +262,7 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
     };
     // The secret is the ride's identity; the type and the broadcast object (made anew upstream) are not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, rideSecret, leading]);
+  }, [type, rideSecret, leading, keyless]);
 
   const answer = (yes: boolean) => {
     if (!ride) return;
@@ -438,7 +452,6 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
   // Everyone on the ride, the leader and this rider (where the others see them) included.
   const meShown = leading || shareOn;
   const riders = riderTotal(dots, meShown);
-  const note = alertNote(seal !== null, meShown);
   const leaderInKey = dots.some((d) => d.leader);
 
   // Following the leader: the leader's dot, the path it has taken since this page opened, and the map kept on it.
@@ -560,7 +573,21 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
 
   // The question, asked once the ride is under way (Start ride or Broadcast pressed), never while planning (P6).
   const askNow = riding && !asked && !askHeld;
-  if (!ride) return null;
+  if (!ride) {
+    // A followed link without its key has no ride, so no Send alert; Call 911 stays where Send alert sits (it is
+    // otherwise only on a Crash or Medical alert's banner), a ride-sized press.
+    if (!keyless || !controls) return null;
+    return (
+      <div className="ride-group">
+        <div className="ride-group-bar">
+          <a className="chip ride-alert-button" href={CALL_911_HREF}>
+            <Icon name="warn" size={18} />
+            {CALL_911}
+          </a>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="ride-group">
       <ConsentDialog open={askNow} leads={leads} note={broadcast ? BROADCAST_CONSENT_NOTE : CONSENT_NOTE} role={pickedRole} onRole={setPickedRole} onAnswer={answer} />
@@ -646,12 +673,9 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
         {consent && <RolePicker name="ride-role" value={consent.role} onChange={changeRole} />}
       </div>
       <div id={alertPanel} className="ride-alert-panel" hidden={!alertOpen}>
-        {/* Seen: the spot line only where it adds something; heard: always (lib/rideGroup.ts alertNote). */}
-        <p className="hint">
-          <span aria-hidden="true">{note.seen}</span>
-          <span id={`${alertPanel}-note`} className="visually-hidden">
-            {note.heard}
-          </span>
+        {/* One line, seen and heard (the Alert button's description too): the spot goes with every alert. */}
+        <p id={`${alertPanel}-note`} className="hint">
+          {ALERT_SPOT_NOTE}
         </p>
         {confirming ? (
           <div role="group" aria-label={CONFIRM_QUESTION} data-idle-hold>

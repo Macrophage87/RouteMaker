@@ -8614,10 +8614,19 @@ age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
   a sign-in keeps it; a saved or kept route the rider opens gets a new one, a link pasted in its own, or a new one
   where it has none.
 - **An alert's spot.** An alert needs its spot, so it carries it on every ride, even from a rider who is not
-  shown as a dot. The alert panel says "Sends your spot to everyone on this ride." only while the ride's key is
-  still being made (`rideGroup.ts alertNote`; the Send button needs the ride's id, made with it). Elsewhere the
-  panel keeps its short "Sends your location with the alert."; a screen reader, and the Alert button's
-  description, always get the spot line.
+  shown as a dot. The alert panel says "Sends your spot to everyone on this ride." (`rideGroup.ts`
+  `ALERT_SPOT_NOTE`), one line seen and heard alike, and the Alert button's description.
+- **A broadcast link without its key.** `RideGroup.tsx` `ownSecret` above is for a Group or Mass Ride plan link
+  and the leader's own page. A follower of a broadcast or Roam link that came without `k=` (an old v0.14 link, or
+  one a chat app cut short) could never see the leader, so `rideGroup.ts` `followsWithoutKey` holds: `RideGroup`
+  makes no ride (no dot question, nothing read or sent, and a keyed follow that turns keyless drops the ride it
+  had), and `App.tsx` says "This link is missing its ride key. Ask the leader to send it again."
+  (`BROADCAST_NO_KEY`) politely, in place of "Following the leader live.", or as the plan's note where the link
+  does not open into Ride mode. No "Joined the ride" sheet is offered for it (it would mark that ride's sheet
+  shown, so the leader's link sent again with its key would open without one). With no ride there is no Send
+  alert, so a Call 911 link (`CALL_911_HREF`) stands where Send alert sits. The link is never passed on: Ride
+  mode's and Roam's Broadcast are not offered (`passesOn`, `roamKeyless`), and Go's Broadcast says
+  `BROADCAST_NO_KEY` (`followedNoKey`).
 - **Every ride sealed, on the server (Stephen, 2026-10-29: "Encrypted rides send GPS accurate numbers. All
   rides should have a key.").** `core.ride_presence` takes only `{token, sealed}`: a body in plain numbers
   (`lon`/`lat`, `route`/`trail`, `kind`/`text`) is a 400 with `ride_presence.PLAIN_REFUSED`, which tells the
