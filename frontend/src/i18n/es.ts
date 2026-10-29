@@ -119,6 +119,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Finding a new way from here.": "Buscando un camino nuevo desde aquí.",
   "Still waiting for the last re-plan.": "Todavía se espera la última nueva planificación.",
   "GPS is weak: turn cues paused.": "La señal de GPS es débil: las indicaciones de giro están en pausa.",
+  "GPS is weak: road names paused.": "La señal de GPS es débil: los nombres de las calles están en pausa.",
   "GPS is still weak: the turns ahead are shown as a list, next turn first.":
     "La señal de GPS sigue débil: los próximos giros se muestran en una lista, el siguiente primero.",
   "In {distance}": "En {distance}",
