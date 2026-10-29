@@ -298,6 +298,12 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /
   container of the check `com.docker.compose.project=isect`, and remove them after.
 - `frontend/.npmrc` turns off npm's update notifier, which otherwise asks the
   registry for npm's latest version on every run in a fresh container.
+- `npm run lint` is ESLint with the React hooks rules alone (`eslint.config.js`):
+  a hook called conditionally, and an effect, memo or callback whose dependency
+  list leaves out a value it reads. Both are warnings while the existing reports
+  are worked through, so CI lists them and fails on neither. It parses with
+  Babel's parser, since typescript-eslint does not support the TypeScript the
+  project builds with.
 - `npm run build` typechecks (`tsc --noEmit`) and then builds `dist/`, which
   is not committed; `npm run typecheck` is the first half alone.
 - `npm run dev` serves the UI with hot reload and proxies `/api`, `/tiles` and
