@@ -4,6 +4,15 @@ import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
 import {
+  ANSWERED_HERE_KEY,
+  DWELL_M,
+  DWELL_PAUSE_MS,
+  HOME_PAUSE_M,
+  answeredHere,
+  forgetAnsweredHere,
+  dotHeldBack,
+  markAnsweredHere,
+  nextDwell,
   ALERT_LABEL,
   ALERT_KINDS,
   ROAM_ALERT_KINDS,
@@ -187,6 +196,53 @@ test("sharing stops when turned off, after 10 minutes off the route, or 12 hours
   assert.equal(shareStop({ ...base, on: false }, 1), "off");
   assert.equal(shareStop(base, 10 * 60_000), "left-route");
   assert.equal(shareStop({ ...base, lastNearAt: 12 * 3600_000 - 1 }, 12 * 3600_000), "ride-over");
+});
+
+test("a dot is shown at the meetup and through a regroup stop, and held back after an hour in one spot", () => {
+  const dupont: LonLat = [-77.0434, 38.9096];
+  let dwell = nextDwell(null, dupont, 0);
+  // Waiting at the meetup for 50 minutes, drifting a few metres: shown the whole time.
+  const drift: LonLat = [dupont[0] + 0.0003, dupont[1]];
+  dwell = nextDwell(dwell, drift, 50 * 60_000);
+  assert.equal(dwell.since, 0, "a few metres is the same stay");
+  assert.equal(dotHeldBack(dwell, drift, 50 * 60_000, null), false);
+  assert.equal(dotHeldBack(dwell, drift, DWELL_PAUSE_MS, null), false, "an hour is fine");
+  assert.equal(dotHeldBack(dwell, drift, DWELL_PAUSE_MS + 1, null), true, "over an hour in one spot is held back");
+  // Moving on starts a new stay, and the dot is sent again.
+  const onTheRoad: LonLat = [dupont[0] + (DWELL_M * 3) / (111_195 * Math.cos((dupont[1] * Math.PI) / 180)), dupont[1]];
+  dwell = nextDwell(dwell, onTheRoad, DWELL_PAUSE_MS + 60_000);
+  assert.equal(dwell.since, DWELL_PAUSE_MS + 60_000);
+  assert.equal(dotHeldBack(dwell, onTheRoad, DWELL_PAUSE_MS + 60_000, null), false);
+});
+
+test("a dot is held back at the rider's saved Home, but not at a start elsewhere", () => {
+  const home: LonLat = [-77.02, 38.92];
+  const nearHome: LonLat = [-77.021, 38.92];
+  const kx = 111_195 * Math.cos((38.92 * Math.PI) / 180);
+  const pastHome: LonLat = [-77.02 - (HOME_PAUSE_M + 20) / kx, 38.92];
+  assert.equal(dotHeldBack(nextDwell(null, home, 0), home, 0, home), true);
+  assert.equal(dotHeldBack(nextDwell(null, nearHome, 0), nearHome, 0, home), true);
+  assert.equal(dotHeldBack(nextDwell(null, pastHome, 0), pastHome, 0, home), false);
+  assert.equal(dotHeldBack(nextDwell(null, home, 0), home, 0, null), false, "no saved Home, nothing held back at the start");
+});
+
+test("a Yes counts only in the tab it was given in: opening the link again elsewhere asks again", () => {
+  const box = new Map<string, string>();
+  const store = { getItem: (k: string) => box.get(k) ?? null, setItem: (k: string, v: string) => void box.set(k, v) };
+  assert.equal(answeredHere("ride-a", store), false);
+  markAnsweredHere("ride-a", true, store);
+  assert.equal(answeredHere("ride-a", store), true);
+  assert.equal(answeredHere("ride-b", store), false);
+  // The ride ended: the next ride on the page asks again.
+  markAnsweredHere("ride-a", false, store);
+  assert.equal(answeredHere("ride-a", store), false);
+  // A ride ended with its page already gone (Plan): App forgets them all.
+  markAnsweredHere("ride-b", true, store);
+  forgetAnsweredHere(store);
+  assert.equal(answeredHere("ride-b", store), false);
+  // Anything else under the key is no answer.
+  box.set(ANSWERED_HERE_KEY, "{not json");
+  assert.equal(answeredHere("ride-a", store), false);
 });
 
 test("the alert lists are the plan's, and Medical emergency or crash and Crash ask first", () => {
@@ -478,7 +534,7 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.equal(CONSENT_SHORT, "Only while the app is open. No name; gone in 2 min.");
   assert.match(ask, /<span aria-hidden="true">\{t\(CONSENT_SHORT\)\}<\/span>\s*<span id=\{`\$\{id\}-note`\} className="visually-hidden">\s*\{t\(note\)\}/);
   // The count and Send alert while riding only, by default.
-  assert.match(group, /controls = riding, leads = true, askHeld = false \}: RideGroupProps\)/);
+  assert.match(group, /controls = riding, leads = true, askHeld = false, home = null \}: RideGroupProps\)/);
   // One popup at a time: a follower's join sheet (BroadcastJoinDialog) first, from the offer until it closes, then the dot question.
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /askHeld=\{joinHeld \|\| joinPending !== null \|\| joinAsk !== null\}/);
@@ -488,7 +544,19 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.match(group, /\{controls && \(\s*<div className="ride-group-bar">/);
   // A role change moves the next post up, and the post sends the consent's (new) role.
   assert.match(group, /const changeRole[\s\S]*?keepConsent\(ride, consent\.answer, Date\.now\(\), undefined, undefined, role\)[\s\S]*?share\.current\.lastPost = postSoonAfter\(share\.current\.lastPost\)/);
-  assert.match(group, /\}, \[fix, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal\]\);/);
+  assert.match(group, /\}, \[fix, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home\]\);/);
+  // Held back (an hour in one spot, or at Home): the dot goes at once, and none is sent until the rider moves on.
+  assert.match(group, /const held = dotHeldBack\(dwell\.current, fix, t, home\);/);
+  assert.match(group, /if \(held\) void leaveRide\(origin, ride, token\);/);
+  assert.match(group, /if \(near && !held && t - share\.current\.lastPost >= POST_EVERY_MS\)/);
+  // A kept Yes from another tab is asked again; a ride that ends stops the dot and asks again next ride.
+  assert.match(group, /const askAgain = !leading && kept\?\.answer === "yes" && !answeredHere\(id\);/);
+  assert.match(group, /setShareOn\(kept\?\.answer === "yes" && !askAgain\);/);
+  assert.match(group, /if \(!shareOn\) return;\s*setShareOn\(false\);/);
+  assert.match(group, /markAnsweredHere\(ride, yes\);\s*\/\/[^\n]*\n\s*dwell\.current = null;/);
+  // Held back, the leader's path is neither grown nor sent.
+  assert.match(group, /if \(leading && near && !held\) setOwnTrail/);
+  assert.match(group, /!token \|\| heldBack\.current\) return;/);
   assert.match(group, /<\/button>\s*\)\}\s*\{consent && <RolePicker name="ride-role" value=\{consent\.role\} onChange=\{changeRole\} \/>\}\s*<\/div>/);
   assert.match(group, /sendPosition\(origin, ride, token, fix, consent\.role, fetch, seal\)/);
   // Go's bar keeps its two buttons.

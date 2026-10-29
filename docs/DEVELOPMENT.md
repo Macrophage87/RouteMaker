@@ -8502,6 +8502,28 @@ age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
   merging, a sealed ride end to end through `rideGroup.ts`, the page's wiring) and `tests/test_ride_presence.py`
   (sealed dots, alerts and paths kept, limited, marked and dropped as plain ones are).
 
+### Where and when a dot is sent (2026-10-29)
+
+- **Meetups and regroups stay on show.** Stephen: groups meet at shared spots such as Dupont Circle, "you'd want to
+  see all the dots to make sure sharing is working", and "an hour of dwell time is fine". Nothing is held back at a
+  ride's start or end. A dot is held back only after more than `DWELL_PAUSE_MS` (an hour) within `DWELL_M` (100 m)
+  of one spot, or within `HOME_PAUSE_M` (150 m) of the saved Home (`lib/rideGroup.ts` `nextDwell`,
+  `dotHeldBack`). Held back, the phone leaves the ride at once, and sends again as soon as the rider moves on.
+- **A Yes is for the ride it was given for.** A Yes kept from another tab or an earlier visit (`consentFor`) only
+  picks the role for the question, which is asked again before any dot goes out (`answeredHere`,
+  `markAnsweredHere`, sessionStorage). When riding ends, sharing stops and the next ride asks again; the leader
+  is shown again when riding resumes.
+- **Off the route only while riding.** On a broadcast a dot is sent off the route only while riding; a Roam
+  follower who is not riding is never sent.
+- **A new ride, new keys.** When a ride ends, its leads (`leads.current`, Roam's aside) and a Group Ride secret
+  the page made (`groupSecretOwn`) are made again, so the next ride is a new ride. Share as image's QR code
+  never carries a Group Ride secret (`shareCardLink`). A leader who starts riding again without sharing again
+  (a resume, or Start ride on the link they shared) is on the same ride as before, as its followers expect; sharing
+  again makes the new one. A dot held back sends no leader path either, and the ridden path stops growing.
+- **Dot order.** `core.ride_presence.read` shuffles the dots (`SystemRandom`) on every read.
+- **Home in links.** Exact starts and ends are fine in links (Stephen: parks, restaurants, bars). The "includes
+  your Home" note counts a point within `LINK_HOME_NEAR_M` (150 m) of the saved Home (`lib/geolocation.ts`).
+
 ## Phone app (v0.8.0)
 
 The owner, 2026-10-16: a standalone app is needed for bikeshare riding with the phone in a pocket,
