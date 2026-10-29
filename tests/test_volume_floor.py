@@ -42,6 +42,22 @@ def test_a_floor_of_zero_checks_nothing() -> None:
     check_volume_rows([], 0, PATH)
 
 
+def test_the_rebuilds_reference_load_applies_the_floor(tmp_path) -> None:
+    import json
+
+    from pipeline.run import ReferenceData
+
+    for name in ("urban-areas.json", "crossings.json"):
+        (tmp_path / name).write_text("[]")
+    counts = [{**row, "aadt": 4000, "source": "state"} for row in rows(2)]
+    (tmp_path / "volume.json").write_text(json.dumps(counts))
+    with pytest.raises(ReferenceDataMissing, match="REBUILD_VOLUME_MIN_ROWS"):
+        ReferenceData.load(tmp_path, min_volume_rows=3)
+    assert len(ReferenceData.load(tmp_path, min_volume_rows=2).volume_features) == 2
+    loaded = ReferenceData.load(tmp_path)
+    assert len(loaded.volume_features) == 2, "no floor unless one is given"
+
+
 def test_the_weekly_task_passes_the_setting() -> None:
     import inspect
 
