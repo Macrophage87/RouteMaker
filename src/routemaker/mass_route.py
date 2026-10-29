@@ -18,6 +18,11 @@ router's routes (`core.routing.choose_by_capacity`):
   what it carries, so the group crosses it slower by the shortfall: each metre costs its time
   at cruise times (need / carried - 1), at most `NARROW_RATIO_CAP`. A stretch marked Avoid
   carries nothing (OWNER-DECISIONS 325) and pays the cap.
+- Outside the District: not priced but measured (`outside_m`, the route's `outside_dc`
+  stretches). The choice takes the route that leaves DC least before any price (the owner,
+  2026-10-29: "Don't leave DC on a mass ride. The laws in other jurisdictions are too
+  different for us to accommodate a multi-jurisdiction mass ride."; `core.routing
+  .choose_by_capacity`).
 - Transitions: at each change between roads whose figures differ by `STEP_IGNORED` or more,
   weight x (|before - after| / the larger)^2, `STEP_DOWN_S` stepping down and `STEP_UP_S`
   stepping up, scaled for the group as the plan's intersection penalties are (item 171: the
@@ -52,6 +57,7 @@ RIDE_SIZE_DEFAULT = 500
 HOLD_MINUTES = 5
 
 NARROW_RATIO_CAP = 3.0
+OUTSIDE_DC_NOTE = "outside_dc"
 STEP_DOWN_S = 60.0
 STEP_UP_S = 30.0
 STEP_IGNORED = 0.15
@@ -102,6 +108,7 @@ class CapacityPrice:
     riders: int
     need_per_min: int
     narrow_s: float = 0.0
+    outside_m: float = 0.0
     transition_s: float = 0.0
     transitions: int = 0
     below_need_m: float = 0.0
@@ -124,6 +131,8 @@ def price(stretches: Sequence[Sequence], riders: int) -> CapacityPrice:
     for stretch in stretches:
         metres = float(stretch[0])
         rpm = _rpm(stretch)
+        if rpm is None and len(stretch) > 2 and stretch[2] == OUTSIDE_DC_NOTE:
+            out.outside_m += metres
         if rpm is not None:
             if out.narrowest_riders_per_min is None or rpm < out.narrowest_riders_per_min:
                 out.narrowest_riders_per_min, out.narrowest_m = rpm, at

@@ -2194,6 +2194,10 @@ def _named(stretches: list[tuple], leg_runs: list, pieces: list[Piece]) -> list[
     return [(*stretch, name) for stretch, name in zip(stretches, names, strict=True)]
 
 
+# Mass Ride's out-of-DC measure is rounded to this before it decides (`choose_by_capacity`).
+OUTSIDE_DC_STEP_M = 50.0
+
+
 def choose_by_capacity(
     trips: list[dict],
     hill_part: Callable[[dict], float],
@@ -2213,7 +2217,7 @@ def choose_by_capacity(
     own route cannot be read in time, (0, None): the caller chooses as before; an alternative
     that cannot be read is passed over."""
     prefetch_traces(variant, costing, trips, deadline, traces)
-    best, best_score = 0, None
+    best, best_score, best_outside = 0, None, 0
     weighed: list[dict] = []
     for index, trip in enumerate(trips):
         try:
@@ -2229,17 +2233,26 @@ def choose_by_capacity(
             continue
         priced = mass_route.price(stretches, riders)
         score = _router_cost(trip) + hill_part(trip) + priced.total_s
+        # Out of DC least first, whatever the price (the owner, 2026-10-29: "Don't leave DC on a
+        # mass ride"); to the nearest OUTSIDE_DC_STEP_M, so a few metres traced over the line
+        # by a bridge's end decide nothing.
+        outside = round(priced.outside_m / OUTSIDE_DC_STEP_M)
         weighed.append(
             {
                 "route": index,
                 "capacity_s": round(priced.total_s, 1),
                 "narrow_s": round(priced.narrow_s, 1),
+                "outside_dc_m": round(priced.outside_m),
                 "transitions": priced.transitions,
                 "below_need_m": round(priced.below_need_m),
             }
         )
-        if best_score is None or score < best_score - HILLS_EPS_S:
-            best, best_score = index, score
+        if (
+            best_score is None
+            or outside < best_outside
+            or (outside == best_outside and score < best_score - HILLS_EPS_S)
+        ):
+            best, best_score, best_outside = index, score, outside
     return best, {"riders": riders, "routes_weighed": weighed, "chosen": best}
 
 

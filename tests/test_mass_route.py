@@ -243,6 +243,29 @@ def test_a_wider_alternative_wins_where_the_routers_own_is_too_narrow_for_the_ri
     assert info["routes_weighed"][1]["capacity_s"] == 0
 
 
+def test_a_stretch_outside_dc_is_measured_not_priced():
+    assert mass_route.OUTSIDE_DC_NOTE == routing.STRETCH_OUTSIDE_DC
+    out = mass_route.price([road(1000, None, routing.STRETCH_OUTSIDE_DC)], 500)
+    assert out.outside_m == 1000 and out.total_s == 0
+    assert mass_route.price([road(1000, None, routing.STRETCH_UNTRACED)], 500).outside_m == 0
+
+
+def test_a_route_that_stays_in_dc_wins_whatever_its_price(stretches_of):
+    # The owner, 2026-10-29: "Don't leave DC on a mass ride." The router's own route crosses into
+    # Maryland; the alternative stays in DC on a street far too narrow for 1500 riders, and wins.
+    stretches_of["out"] = [road(1500, 400), road(1500, None, routing.STRETCH_OUTSIDE_DC)]
+    stretches_of["in"] = [road(3000, 60)]
+    chosen, info = choose([trip(1000, "out"), trip(1400, "in")], riders=1500)
+    assert chosen == 1
+    assert [row["outside_dc_m"] for row in info["routes_weighed"]] == [1500, 0]
+
+
+def test_a_few_metres_over_the_line_decide_nothing(stretches_of):
+    stretches_of["own"] = [road(2000, 400), road(20, None, routing.STRETCH_OUTSIDE_DC)]
+    stretches_of["narrow"] = [road(2000, 60)]
+    assert choose([trip(1000, "own"), trip(1000, "narrow")], riders=1500)[0] == 0
+
+
 def test_the_ride_size_decides_the_same_two_routes(stretches_of):
     stretches_of["own"] = [road(2000, 60)]
     stretches_of["wide"] = [road(2200, 200)]
