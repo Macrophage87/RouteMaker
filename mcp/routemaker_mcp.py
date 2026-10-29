@@ -114,6 +114,14 @@ class ToolError(Exception):
     """A refusal to show the model as the tool's answer, not a protocol error."""
 
 
+def finite(value) -> float:
+    """A number argument as a float; "inf", "nan" and their like are not in the expected form."""
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{value!r} is not a finite number")
+    return number
+
+
 # --- Geometry -------------------------------------------------------------------------------
 
 
@@ -278,9 +286,17 @@ class Api:
         if not re.match(r"^https?://", base):
             raise ToolError("ROUTEMAKER_BASE_URL must start with http:// or https://")
         self.base = base
-        # A site behind a password (the beta's nginx gate): "user:password", sent on every request.
+        # A site behind a password (the beta's nginx gate): "user:password", sent on every request,
+        # so only over https, or plain http to this computer.
         basic = os.environ.get("ROUTEMAKER_BASIC_AUTH", "")
         self.basic = "Basic " + base64.b64encode(basic.encode()).decode() if ":" in basic else None
+        host = (urllib.parse.urlsplit(base).hostname or "").lower()
+        local = host in ("localhost", "127.0.0.1", "::1") or host.endswith(".localhost")
+        if self.basic and base.startswith("http://") and not local:
+            raise ToolError(
+                "ROUTEMAKER_BASIC_AUTH is set but ROUTEMAKER_BASE_URL is plain http: use the site's"
+                " https:// address (plain http only for localhost)."
+            )
 
     def _request(self, method: str, path: str, body=None, headers=None, timeout=30):
         data = None if body is None else json.dumps(body, separators=(",", ":")).encode()
@@ -295,7 +311,16 @@ class Api:
             request.add_header(key, value)
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
-                return response.status, json.loads(response.read() or b"null"), response.headers
+                try:
+                    payload = json.loads(response.read() or b"null")
+                except ValueError:
+                    # A wrong address, or a sign-in or captive page answering 200: a setup problem,
+                    # not the assistant's arguments.
+                    raise ToolError(
+                        f"{self.base} did not answer as a RouteMaker site (not JSON);"
+                        " check ROUTEMAKER_BASE_URL"
+                    ) from None
+                return response.status, payload, response.headers
         except urllib.error.HTTPError as error:
             try:
                 payload = json.loads(error.read() or b"null")
@@ -3101,9 +3126,9 @@ class Server:
         options = {key: args.get(key) for key in PASSED_OPTIONS}
         options["loop"] = bool(args.get("loop"))
         if args.get("target_miles"):
-            options["target_distance_m"] = int(float(args["target_miles"]) * METRES_PER_MILE)
+            options["target_distance_m"] = int(finite(args["target_miles"]) * METRES_PER_MILE)
         if args.get("rider_weight_lb"):
-            options["system_weight_kg"] = round(float(args["rider_weight_lb"]) * KG_PER_LB)
+            options["system_weight_kg"] = round(finite(args["rider_weight_lb"]) * KG_PER_LB)
         return options
 
     def _plan(self, call: Call, points, vias, preset, options, limit) -> Plan:
@@ -3633,8 +3658,8 @@ class Server:
 
     # plan_metro_loop
     def plan_metro_loop(self, args: dict, call: Call) -> dict:
-        target = float(args["target_miles"])
-        limit = float(args.get("max_miles_from_metro") or 5)
+        target = finite(args["target_miles"])
+        limit = finite(args.get("max_miles_from_metro") or 5)
         taken: list[dict] = []
         centre = self._point(args["centre"], taken) if args.get("centre") is not None else DC_CENTRE
         start = self._point(args["start"], taken) if args.get("start") is not None else None
@@ -3765,7 +3790,7 @@ class Server:
             return handler(args or {}, call or Call())
         except KeyError as missing:
             raise ToolError(f"missing argument {missing}") from None
-        except (TypeError, ValueError) as wrong:
+        except (TypeError, ValueError, OverflowError) as wrong:
             raise ToolError(f"an argument is not in the expected form: {wrong}") from None
 
 

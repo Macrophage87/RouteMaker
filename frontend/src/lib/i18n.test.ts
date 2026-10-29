@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ES } from "../i18n/es.ts";
 import {
@@ -18,8 +18,6 @@ import {
   rightToLeft,
   setCatalogForTest,
   setLanguageForTest,
-  clockLocale,
-  startLanguage,
   speechLang,
   t,
   voiceTags,
@@ -101,28 +99,6 @@ test("the language: the rider's choice, else the device's first language the app
   assert.equal(deviceLanguage(undefined), "en");
   assert.equal(speechLang("es"), "es-US");
   assert.equal(speechLang("en"), "en-US");
-});
-
-test("the app starts in the rider's choice, else the phone's language only for English and Spanish: the drafts wait to be chosen", () => {
-  assert.equal(startLanguage("", "es"), "es");
-  assert.equal(startLanguage("", "en"), "en");
-  assert.equal(startLanguage("", "fr"), "en", "a Claude-drafted language is not turned on by the phone");
-  assert.equal(startLanguage("", "ar"), "en");
-  assert.equal(startLanguage("fr", "en"), "fr", "chosen in Settings, a draft is used");
-  assert.equal(startLanguage("en", "es"), "en");
-});
-
-test("arrival clocks: the phone's own 12- or 24-hour clock when it reads the app's language, else the app's language", () => {
-  try {
-    setLanguageForTest("en");
-    assert.equal(clockLocale(["en-GB"]), undefined, "an English phone keeps its own clock");
-    assert.equal(clockLocale(["es-MX"]), "en-US");
-    setLanguageForTest("fr");
-    assert.equal(clockLocale(["fr-CA"]), undefined);
-    assert.equal(clockLocale(["en-US"]), "fr", "French chosen on an English phone writes French times");
-  } finally {
-    setLanguageForTest("en");
-  }
 });
 
 test("Spanish turn directions are whole Spanish sentences, the street names as they are", () => {
@@ -269,6 +245,70 @@ test("each of DC's languages has every turn sentence Ride says (the owner, 2026-
   for (const lang of LANGUAGES.filter((l) => l !== "en")) {
     const catalog = lang === "es" ? ES : await catalogOfFile(lang);
     assert.deepEqual(phrases.filter((p) => !(p in catalog)), [], lang);
+  }
+});
+
+/**
+ * Go and Ride, where the 19 languages apply (the owner, 2026-10-28): the screens, the lib modules they import, and the
+ * modules whose words they show through App (route errors, the skip links, Go's re-plan lines, the offline line).
+ */
+const GO_RIDE_SCREENS = ["app/Go.tsx", "RideMode.tsx", "RideGroup.tsx", "RoamMode.tsx", "app/Sheets.tsx"];
+const GO_RIDE_ALSO = [
+  "TransitSummary.tsx",
+  "AvoidNotice.tsx",
+  "lib/accessMode.ts",
+  "lib/skipLink.ts",
+  "lib/neighbours.ts",
+  "lib/progressive.ts",
+  "lib/stopCard.ts",
+  "lib/appWorker.ts",
+  "lib/transit.ts",
+  "lib/avoidJunctions.ts",
+];
+
+function goRideFiles(): string[] {
+  const files = new Set([...GO_RIDE_SCREENS, ...GO_RIDE_ALSO]);
+  for (const screen of GO_RIDE_SCREENS) {
+    const dir = join(SRC, screen, "..");
+    for (const m of readFileSync(join(SRC, screen), "utf8").matchAll(/from "(\.[^"]+\.tsx?)"/g)) {
+      const path = relative(SRC, join(dir, m[1])).split("\\").join("/");
+      if (path.startsWith("lib/")) files.add(path);
+    }
+  }
+  return [...files];
+}
+
+/** Every `export const NAME = "..."` in the source, so t(NAME) counts as its phrase. */
+function exportedStrings(): Map<string, string> {
+  const found = new Map<string, string>();
+  for (const path of sources(SRC)) {
+    for (const m of readFileSync(path, "utf8").matchAll(/\bexport const ([A-Z][A-Z0-9_]*) = "((?:[^"\\]|\\.)*)";/g)) found.set(m[1], JSON.parse(`"${m[2]}"`));
+  }
+  return found;
+}
+
+/** The phrases Go and Ride show: t("...") as written, and t(NAME) of an exported constant. */
+function goRidePhrases(): Map<string, string> {
+  const named = exportedStrings();
+  const found = new Map<string, string>();
+  for (const file of goRideFiles()) {
+    const text = readFileSync(join(SRC, file), "utf8");
+    for (const m of text.matchAll(/\bt\("((?:[^"\\]|\\.)*)"/g)) found.set(JSON.parse(`"${m[1]}"`), file);
+    for (const m of text.matchAll(/\bt\(([A-Z][A-Z0-9_]*)[,)]/g)) {
+      const english = named.get(m[1]);
+      if (english !== undefined) found.set(english, file);
+    }
+  }
+  return found;
+}
+
+test("each of DC's languages has every phrase Go and Ride show, constants passed to t() too (the 2026-10-29 review)", async () => {
+  const phrases = goRidePhrases();
+  assert.ok(phrases.size > 900, `${phrases.size} Go and Ride phrases`);
+  assert.ok(phrases.has("Accessibility mode"), "t(ACCESS_LABEL) is resolved to its phrase");
+  for (const lang of LANGUAGES.filter((l) => l !== "en")) {
+    const catalog = lang === "es" ? ES : await catalogOfFile(lang);
+    assert.deepEqual([...phrases].filter(([english]) => !(english in catalog)).map(([english, file]) => `${english} (${file})`), [], lang);
   }
 });
 

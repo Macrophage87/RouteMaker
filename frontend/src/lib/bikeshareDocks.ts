@@ -30,7 +30,7 @@
  */
 import { CLIMB_FONT } from "./climbs.ts";
 import { hexToRgb, rasterise, type Raster, type Rgb } from "./stationIcons.ts";
-import { locale, t } from "./i18n.ts";
+import { t } from "./i18n.ts";
 
 export interface DockInfo {
   id: string;
@@ -241,15 +241,15 @@ export function dockCounts(dock: Pick<DockInfo, "classic" | "ebikes" | "docks" |
   return `${dock.classic} classic, ${plural(dock.ebikes, "e-bike", "e-bikes")}, ${plural(dock.docks, "open dock", "open docks")}`;
 }
 
-/** "1:42 pm", the feed's time on this device's clock, written as the language in force writes a time. */
+/** "1:42 pm", the feed's time on this device's clock. */
 export function asOfTime(epochSeconds: number): string {
-  return new Date(epochSeconds * 1000).toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" }).toLowerCase();
+  return new Date(epochSeconds * 1000).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase();
 }
 
 function freshness(answer: Pick<DocksAnswer, "availability" | "as_of">): string[] {
   if (answer.as_of === null) return [];
   const at = asOfTime(answer.as_of);
-  return [answer.availability === "stale" ? t("Counts may be out of date: as of {time}.", { time: at }) : t("As of {time}.", { time: at })];
+  return [answer.availability === "stale" ? `Counts may be out of date: as of ${at}.` : `As of ${at}.`];
 }
 
 const sourceLine = (credit: readonly string[]) => (credit.length ? [`Source: ${credit.join(" and ")} open data.`] : []);
@@ -277,7 +277,7 @@ export function docksStatus(answer: DocksAnswer | null, asked: boolean, zoom: nu
   if (zoom < DOCKS_MIN_ZOOM) return DOCKS_ZOOM_IN;
   if (asked && answer === null) return DOCKS_UNAVAILABLE;
   if (answer?.availability === "unavailable") return DOCKS_UNAVAILABLE;
-  if (answer?.availability === "stale" && answer.as_of !== null) return t("Counts may be out of date: as of {time}.", { time: asOfTime(answer.as_of) });
+  if (answer?.availability === "stale" && answer.as_of !== null) return `Counts may be out of date: as of ${asOfTime(answer.as_of)}.`;
   return "";
 }
 

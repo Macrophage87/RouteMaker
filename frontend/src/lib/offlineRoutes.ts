@@ -23,7 +23,7 @@ import { formatDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import { encodePlan } from "./planHash.ts";
 import type { PresetId } from "./presets.ts";
-import { locale, t } from "./i18n.ts";
+import { t } from "./i18n.ts";
 
 /** At most this many routes kept by the rider; the last ride is one more, replaced by the next. */
 export const MAX_KEPT = 10;
@@ -181,7 +181,7 @@ export function routeTitle(start: string | undefined, end: string | undefined, l
 export function keptDate(savedAt: number, now: number = Date.now()): string {
   const at = new Date(savedAt);
   const sameYear = at.getFullYear() === new Date(now).getFullYear();
-  return at.toLocaleDateString(locale(), { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
+  return at.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
 }
 
 /** "12 MB", "800 KB": a rough size, for the Settings list. */
