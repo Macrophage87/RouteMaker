@@ -89,7 +89,7 @@ test("App: the line's legs, Reverse, the hints and the toggle's announcement use
   assert.match(app, /const linesShown = !shown \|\| stale \|\| routedPoints !== points;\s+return linesShown && mode === "plan" && !twoPointsOnly\(preset\) \? planLegEdit\(points, loopVias\) : null;/);
   assert.match(app, /if \(!canReverse\(current, loopVias\)\) return;\s+const reversed = reversedPoints\(current, loopVias\);/);
   assert.match(app, /announce\(reversedSaid\(loopVias\)\);/);
-  assert.match(app, /\{emptyPlanHint\(preset, loopVias, accessMode\)\}/);
+  assert.match(app, /emptyPlanHint\(preset, loopVias, accessMode, touch\)/);
   assert.match(app, /\{loneStartHint\(preset, loopVias, accessMode\)\}/);
 });
 

@@ -82,7 +82,8 @@ test("Go's cards carry the star only when asked; Plan's dialog has it on every c
   assert.match(starred, /aria-pressed="true" aria-label="Favorite Gravel/);
   const picker = src("../RideTypePicker.tsx");
   assert.match(picker, /<FavoriteStar id=\{option\.id\}/);
-  assert.match(picker, /withFavorites\(filterRideGroups\(query\), favorites\)/);
+  // P3: Plan's dialog has Go's grouping, favorites first (lib/rideTypeGroups.ts rideTypeSections).
+  assert.match(picker, /const groups = rideTypeSections\(query, favorites\);/);
   // Both pickers hand toggleFromPicker their own part of the page, so the focus follows the star there.
   assert.match(picker, /toggleFromPicker\(id, dialogRef\.current\)/);
   assert.match(src("../app/Sheets.tsx"), /toggleFromPicker\(id, scopeRef\.current\)/);

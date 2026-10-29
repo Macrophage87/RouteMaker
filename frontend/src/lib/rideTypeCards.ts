@@ -9,7 +9,7 @@
  * createElement component, so a test renders it (node's runner reads .ts, not .tsx).
  */
 import { createElement as h, type ReactElement, type ReactNode } from "react";
-import { PRESETS, type PresetId } from "./presets.ts";
+import { PRESETS, presetSummary, type PresetId } from "./presets.ts";
 import { PresetName } from "./presetName.ts";
 import { FavoriteStar } from "./favoriteRides.ts";
 
@@ -55,7 +55,7 @@ export function RideTypeCards({
           },
           icon ? h("span", { className: "ride-card-icon", "aria-hidden": "true" }, icon(id)) : null,
           h("strong", { id: nameId }, h(PresetName, { id })),
-          h("span", { id: aboutId, className: "hint" }, option?.summary ?? ""),
+          h("span", { id: aboutId, className: "hint" }, option ? presetSummary(option) : ""),
         ),
         onFavorite ? h(FavoriteStar, { id, on: favorites?.includes(id) ?? false, onToggle: onFavorite }) : null,
       );

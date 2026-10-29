@@ -2,7 +2,7 @@
 # Smoke test for the beta: health, a route, place search and reverse lookup, a stress tile,
 # and (public mode) the gate: robots.txt, basic auth, noindex, the base map's same-origin rule
 # and byte ranges, and Django's static files.
-# Read-only: it only sends GET and one POST /api/route, which plans a short ride and saves nothing.
+# Read-only: it only sends GET and POST /api/route (one short ride, three with --trails), saving nothing.
 #
 #   scripts/beta/smoke-test.sh --local [--port 8087] [--host NAME]
 #       Straight to the api on 127.0.0.1, before nginx is involved. No credentials. The Host
@@ -17,6 +17,10 @@
 #   scripts/beta/smoke-test.sh --public https://beta.example.org --open
 #       The same for a beta with no site password (the owner removed it, 2026-10-22): no
 #       credentials, and the front end and the api must answer without them instead of 401.
+#   --trails
+#       Also plan a short Mountain Bike ride and a Gravel one and check each came back on its own
+#       graph (`variant` mtb / offroad), not the standard one: for a beta whose trail routers run
+#       (their tiles are on the host). Without it those two checks are skipped, and say so.
 #   --no-401-page
 #       With --public, after the runbook's step 10 recovery (render-nginx.sh --no-401-page): skip
 #       the check of the sign-in page's text, which nginx's own 401 page does not carry.
@@ -24,10 +28,11 @@
 # Exit status 0 only if every check passed.
 set -uo pipefail
 
-mode=""; port=""; host=""; base=""; passwords_file=""; page401=1; open=0
+mode=""; port=""; host=""; base=""; passwords_file=""; page401=1; open=0; trails=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--local) mode=local; shift ;;
+		--trails) trails=1; shift ;;
 		--public) mode=public; base=${2:-}; [ -n "$base" ] || { echo "smoke-test: --public needs a URL" >&2; exit 2; }; shift 2 ;;
 		--port) port=${2:-}; shift 2 ;;
 		--host) host=${2:-}; shift 2 ;;
@@ -153,6 +158,18 @@ fi
 
 check_body "a route comes back with a distance and a line" '"distance_m".*"geometry"|"geometry".*"distance_m"' \
 	-X POST -H 'Content-Type: application/json' -H 'Accept: application/json' -d "$route" "$base/api/route"
+# The trail graphs (--trails): a short ride by Lake Needwood, answered on each one's own graph. On
+# the standard graph instead, the trail router is down or its settings row is missing
+# (manage.py sync_upstreams).
+if [ "$trails" = 1 ]; then
+	for trail in mountain-bike:mtb gravel:offroad; do
+		check_body "a ${trail%%:*} route is planned on the ${trail#*:} graph" "\"variant\": ?\"${trail#*:}\"" \
+			-X POST -H 'Content-Type: application/json' -H 'Accept: application/json' \
+			-d "{\"points\":[[-77.13100,39.15256],[-77.13587,39.16116]],\"preset\":\"${trail%%:*}\"}" "$base/api/route"
+	done
+else
+	printf 'SKIP  %s\n' "the Mountain Bike and Gravel graphs (give --trails where the trail routers run)"
+fi
 check_body "place search finds Union Station" 'Union' "$base/api/geocode?q=union%20station&limit=5&lat=38.9&lon=-77.03"
 check_status "a place name for a point (reverse)" 200 "$base/api/reverse?lat=38.8895&lon=-77.0353"
 check_status "a stress tile (z12, central DC)" 200 "$base/tiles/stress/12/1171/1566.pbf"

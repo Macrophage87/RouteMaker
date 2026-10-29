@@ -176,7 +176,8 @@ test("App: Share keeps the exact line and attaches the file Download GPX saves; 
   assert.match(exact, /file: verbatimDownload\(verbatim, importEdited, imported\?\.name\)/);
   assert.match(app, /const file = verbatim \? verbatimDownload\(verbatim, importEdited, imported\?\.name\) : null;/);
   assert.match(exact, /file: routeGpxFile\(shown, routedPoints, routedLoop, federalRoute\)/);
-  assert.match(app, /downloadGpx\(route, at, routedLoop, federalRoute\)/);
+  // Download GPX writes the same file (handed to the phone app's Open with list there, lib/sendToGarmin.ts handGpx).
+  assert.match(app, /const made = routeGpxFile\(route, at, routedLoop, federalRoute\);/);
   const panel = readFileSync(new URL("../GpxPanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /export function downloadGpx\([^)]*\): void \{\s*const file = routeGpxFile\(route, routedPoints, loop, federal\);/);
   // The saved route's own bodies: the shared line is what Save route keeps.

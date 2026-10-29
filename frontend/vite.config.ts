@@ -57,7 +57,12 @@ export default defineConfig({
       // The app, and a Featured routes post's script (src/post/; core/route_posts.py), which the server's page names
       // as /post.js: a fixed name, revalidated on every load (Caddyfile @frontend), since the page cannot know a hash.
       input: { index: `${frontendRoot}index.html`, post: `${frontendRoot}src/post/main.ts` },
-      output: { entryFileNames: (chunk) => (chunk.name === "post" ? "post.js" : "assets/[name]-[hash].js") },
+      // A language's catalog (src/i18n/<code>.ts, loaded by lib/i18n.ts on choosing it) is named lang-*, which the
+      // service worker leaves out of the precache (swCore.mjs LAZY_ASSET): an install does not download all 19.
+      output: {
+        entryFileNames: (chunk) => (chunk.name === "post" ? "post.js" : "assets/[name]-[hash].js"),
+        chunkFileNames: (chunk) => (/\/src\/i18n\/[a-z]+\.ts$/.test(chunk.facadeModuleId ?? "") ? "assets/lang-[name]-[hash].js" : "assets/[name]-[hash].js"),
+      },
     },
   },
   server: { proxy: { "/api": toStack, "/tiles": toStack, "/basemap": toStack } },

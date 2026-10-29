@@ -1,6 +1,6 @@
 /**
  * The panel's list of the plan's points: each one's role (Start, Stop 1, ...,
- * End), its place name when it has one, its coordinates, a Mass Ride point's
+ * End), its place name when it has one with its street or neighbourhood (else its coordinates), a Mass Ride point's
  * federal-land warning, and a Remove button.
  * Written with createElement rather than JSX so that a test can render it with
  * react-dom/server under `node --test`, which reads TypeScript but not JSX
@@ -8,7 +8,7 @@
  * role belongs passed every test).
  */
 import { createElement as h, Fragment, type ReactElement } from "react";
-import type { PointRow } from "./geocode.ts";
+import { placeArea, type PointRow } from "./geocode.ts";
 import { ICON_PATHS } from "./iconPaths.ts";
 import { rowShift, type PointMover } from "./pointMover.ts";
 
@@ -55,12 +55,15 @@ export function PointsList({ rows, warnings, onRemove, removeRef, onChange, chan
       if (editor && editor.index === index) {
         return h("li", { key: index, className: "point-editing" }, h("span", { className: "point-name" }, role), editor.node);
       }
+      // A named point: its street or neighbourhood under the name, its coordinates in the title only (P10: "38.9120,
+      // -77.0390" told a rider nothing). A point not yet named shows its coordinates, all there is.
+      const area = place ? placeArea(place) : "";
       const shown = place
         ? h(
             "span",
             { className: "point-place", title: `${place.label} (${coords})` },
             h("span", { className: "place-name" }, place.name),
-            h("span", { className: "coords" }, coords),
+            area ? h("span", { className: "place-area" }, area) : null,
           )
         : h("span", { className: "coords" }, coords);
       // The start and the destination: the place itself is the Change button (edit-route redesign), named
