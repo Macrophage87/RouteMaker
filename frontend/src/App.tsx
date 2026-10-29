@@ -1029,6 +1029,8 @@ export function App() {
     kept?: boolean;
     /** Following someone else's broadcast: its link, passed on by Share live, also once resumed (LeftRide.passOn). */
     passOn?: string | null;
+    /** Following someone else's broadcast at all: one without its key offers no Share live (LeftRide.follows). */
+    follows?: boolean;
     /** Said once the ride screen is up: Broadcast's link copied, where there was no share sheet. */
     note?: string;
     n: number;
@@ -3557,14 +3559,15 @@ export function App() {
     // and a detour from Roam are not.
     const kept = !rest && !leg.trip;
     // Following someone's broadcast: its link, for Share live to pass on, a resumed ride too.
-    const passOn = opened && !opened.own && !followedNoKey() ? followedLink() : null;
+    const follows = !!opened && !opened.own && !!opened.lead;
+    const passOn = follows && !followedNoKey() ? followedLink() : null;
     const note = rideNote.current;
     rideNote.current = "";
-    setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, kept, passOn, note, n: (before?.n ?? 0) + 1 }));
+    setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, kept, passOn, follows, note, n: (before?.n ?? 0) + 1 }));
     if (kept) {
       // The destination's name kept too, so a Resume after a reload can name the ride (the UI review, 2026-10-28).
       const destination = leg.loop ? null : (namer.name(leg.points[leg.points.length - 1])?.name ?? null);
-      keepLeftRide({ route, points: leg.points, loop: leg.loop, preset: leg.preset, dials: rideDialsNow, fixed, destination, passOn }, VIA_MARKS, Date.now());
+      keepLeftRide({ route, points: leg.points, loop: leg.loop, preset: leg.preset, dials: rideDialsNow, fixed, destination, passOn, follows }, VIA_MARKS, Date.now());
     }
     else forgetLeftRide();
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
@@ -5773,8 +5776,9 @@ export function App() {
   // Ride mode's Broadcast: the plan's own route, or a ride kept on this device whose plan is gone (resumed, or planned
   // again since: its link is then the ride's own, rideOwnShare), not Ride the rest's or a detour from Roam. A ride
   // opened from someone else's link too (Stephen 2026-10-29: "A ride opened should allow sharing too"): their
-  // broadcast is passed on as it is, its sharer still leading; a route they shared becomes the rider's own broadcast.
-  const rideCanBroadcast = !!rideStart && !rideStart.roam && (rideStart.route === shown || rideStart.kept === true);
+  // broadcast is passed on as it is, its sharer still leading (never one without its key, nor a ride of the rider's own
+  // in its place); a route they shared becomes the rider's own broadcast.
+  const rideCanBroadcast = !!rideStart && !rideStart.roam && (rideStart.route === shown || rideStart.kept === true) && (!rideStart.follows || !!rideStart.passOn);
   // While leading a broadcast from Roam, its own riders' group is the only one (a Group Ride detour starts none).
   const rideGroupLine =
     !roamBroadcast?.leading && (goMode || riding || (rideBroadcast && !rideBroadcast.leading)) && rideGroupType && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
