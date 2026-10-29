@@ -27,7 +27,7 @@ import os
 import re
 import shutil
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from .tiles import CURRENT, PREVIOUS
@@ -48,15 +48,16 @@ BUILD_ID = re.compile(r"^\d{8}T\d{6}Z(-\d+)?$")
 
 BUILD_ID_FORMAT = "%Y%m%dT%H%M%SZ"
 
-# The dumps `perform_backup` writes, by name.
-DUMP_NAME = re.compile(r"^routemaker-\d{8}T\d{6}Z\.dump$")
+# The dumps `perform_backup` writes, by name: `.dump.age`, encrypted to the owner's public key,
+# and `.dump`, the plain dumps written before that, which are matched so that they are pruned.
+DUMP_NAME = re.compile(r"^routemaker-(\d{8}T\d{6}Z)\.dump(\.age)?$")
 
 # The staging name `perform_backup` writes into before it renames. Its own
 # `finally` removes it on every path the process survives; what it cannot clean
 # up is a SIGKILL, which is the one failure that leaves a part file behind - and
 # a part file is a full-sized archive, on the volume the rebuild's disk gate
 # measures.
-PART_NAME = re.compile(r"^(routemaker-\d{8}T\d{6}Z\.dump)\.part$")
+PART_NAME = re.compile(r"^(routemaker-\d{8}T\d{6}Z\.dump(?:\.age)?)\.part$")
 
 
 def unique_build_id(now: datetime, existing: object = ()) -> str:
@@ -172,7 +173,12 @@ def prune_tile_builds(
     }
 
 
-def prune_backups(backup_dir: Path | str, keep: int) -> list[Path]:
+def prune_backups(
+    backup_dir: Path | str,
+    keep: int,
+    max_age: timedelta | None = None,
+    now: datetime | None = None,
+) -> list[Path]:
     """Keep the newest `keep` dumps and remove the rest, newest by name.
 
     By name rather than by mtime: the name carries the UTC instant the dump was
@@ -180,6 +186,13 @@ def prune_backups(backup_dir: Path | str, keep: int) -> list[Path]:
     copy, and a volume snapshot being brought back - all of which rewrite mtime
     and none of which should change which dump is the newest. Files that are not
     dumps this task wrote are not touched.
+
+    Two more rules, both about what a dump holds rather than about space. A dump
+    whose instant is more than `max_age` before `now` goes whatever the count,
+    because deleted accounts are promised to leave the backups within a week and
+    a run of failed nights would otherwise keep the old ones. And a plain `.dump`
+    older than the newest encrypted `.dump.age` goes as soon as that one exists:
+    the plain ones are what the encryption replaced.
 
     Returns the finished dumps it removed. The abandoned `.dump.part` files it
     also reclaims are not in that list and are logged instead: they are not
@@ -193,13 +206,30 @@ def prune_backups(backup_dir: Path | str, keep: int) -> list[Path]:
         (entry for entry in directory.iterdir() if entry.is_file() and DUMP_NAME.match(entry.name)),
         key=lambda entry: entry.name,
     )
-    doomed = dumps[: max(len(dumps) - max(keep, 0), 0)]
-    for dump in doomed:
+    doomed = set(dumps[: max(len(dumps) - max(keep, 0), 0)])
+    if max_age is not None:
+        cutoff = (now or datetime.now(UTC)) - max_age
+        doomed.update(dump for dump in dumps if _dump_instant(dump.name) < cutoff)
+    encrypted = [dump for dump in dumps if dump.name.endswith(".age")]
+    if encrypted:
+        newest_encrypted = _dump_instant(encrypted[-1].name)
+        doomed.update(
+            dump
+            for dump in dumps
+            if not dump.name.endswith(".age") and _dump_instant(dump.name) < newest_encrypted
+        )
+    removed = [dump for dump in dumps if dump in doomed]
+    for dump in removed:
         dump.unlink()
-    if doomed:
-        logger.info("pruned %d old dumps from %s", len(doomed), directory)
-    _prune_dump_parts(directory, kept=dumps[len(doomed) :])
-    return doomed
+    if removed:
+        logger.info("pruned %d old dumps from %s", len(removed), directory)
+    _prune_dump_parts(directory, kept=[dump for dump in dumps if dump not in doomed])
+    return removed
+
+
+def _dump_instant(name: str) -> datetime:
+    """The UTC instant a dump's name carries."""
+    return datetime.strptime(DUMP_NAME.match(name).group(1), BUILD_ID_FORMAT).replace(tzinfo=UTC)
 
 
 def _prune_dump_parts(directory: Path, kept: list[Path]) -> list[Path]:

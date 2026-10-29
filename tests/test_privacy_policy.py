@@ -174,6 +174,8 @@ class TestPage:
             "24 hours",  # signed_out_suggestions: SignedOutSend
             "about 30 hours",  # ratelimit.RETENTION and the sweep
             "the last seven kept",  # procrastinate.BACKUP_KEEP
+            "none older than a week",  # procrastinate.BACKUP_MAX_AGE
+            "one a night, encrypted",  # procrastinate.perform_backup, through age
             "30 days unused, or after 90 days",  # revocation's idle and absolute lifetimes
             "Two cookies",  # the session and CSRF cookies
             privacy_policy.CONTACT,
@@ -190,6 +192,7 @@ class TestPage:
         assert ride_presence.KEEP_S == 120 and ride_presence.PATH_TTL_S == 120
         assert ride_presence.GRID_M == 20.0
         assert procrastinate.BACKUP_KEEP == 7
+        assert procrastinate.BACKUP_MAX_AGE < timedelta(days=7)
         assert {"app_session", "django_session", "rate_limit_window", "cached_membership"} <= set(
             procrastinate.BACKUP_EXCLUDED_TABLES
         )

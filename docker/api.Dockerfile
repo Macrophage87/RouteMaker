@@ -66,7 +66,9 @@ ENV PYTHONUNBUFFERED=1 \
 # that resolution at build time rather than leaving it to the first request.
 #
 # libpq5 is for pg_dump and pg_restore. Django does not need it: the
-# psycopg2-binary wheel carries its own libpq.
+# psycopg2-binary wheel carries its own libpq. age encrypts the nightly dump
+# to the owner's public key (config.procrastinate.perform_backup), which
+# refuses to dump at all without it.
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates curl gnupg; \
@@ -78,6 +80,7 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         "postgresql-client-${PG_MAJOR}" \
+        age \
         gdal-bin \
         libpq5; \
     apt-get purge -y --auto-remove gnupg; \
@@ -90,7 +93,8 @@ RUN set -eux; \
 RUN set -eux; \
     python -c "import ctypes.util as u, sys; m = [n for n in ('gdal', 'geos_c') if not u.find_library(n)]; sys.exit('GeoDjango cannot resolve: ' + ', '.join(m) if m else 0)"; \
     pg_dump --version | grep -Eq "[[:space:]]${PG_MAJOR}\."; \
-    pg_restore --version | grep -Eq "[[:space:]]${PG_MAJOR}\."
+    pg_restore --version | grep -Eq "[[:space:]]${PG_MAJOR}\."; \
+    age --version
 
 COPY --from=wheels /wheels /wheels
 COPY docker/requirements.txt docker/requirements-api.txt /tmp/

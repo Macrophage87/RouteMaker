@@ -41,6 +41,7 @@ from rebuild_fixtures import (
 
 from config.procrastinate import (
     BACKUP_KEEP,
+    BACKUP_MAX_AGE,
     BACKUP_TIMEOUT_S,
     DC_CLOSURES_CRON,
     DEGRADED_GUILD_SWEEP_CRON,
@@ -1589,8 +1590,45 @@ def test_the_membership_sweep_applies_due_instance_admin_removals() -> None:
 # --- The backup ------------------------------------------------------------------------
 
 
+@pytest.fixture(scope="session")
+def backup_key_pair(tmp_path_factory) -> tuple[Path, Path]:
+    """An age key pair for the backup tests: the private half stands in for the one on the
+    owner's computer, the public half for the recipients file on the server."""
+    directory = tmp_path_factory.mktemp("age")
+    identity = directory / "owner-key.txt"
+    subprocess.run(["age-keygen", "-o", str(identity)], check=True, capture_output=True)
+    recipients = directory / "age-recipients.txt"
+    recipients.write_text(
+        subprocess.run(
+            ["age-keygen", "-y", str(identity)], check=True, capture_output=True, text=True
+        ).stdout
+    )
+    return identity, recipients
+
+
+@pytest.fixture(autouse=True)
+def backup_recipients(monkeypatch, backup_key_pair) -> tuple[Path, Path]:
+    """Every test in this file dumps to the test key pair's public half unless it says
+    otherwise, as the server dumps to the owner's."""
+    monkeypatch.setattr(settings, "BACKUP_AGE_RECIPIENTS", backup_key_pair[1])
+    return backup_key_pair
+
+
+def decrypted(dump: Path, identity: Path) -> Path:
+    """The plain archive inside `dump`, decrypted with the private key, as the owner does on
+    their own computer before a restore."""
+    plain = dump.with_name(dump.name.removesuffix(".age") + ".plain")
+    subprocess.run(
+        ["age", "--decrypt", "--identity", str(identity), "--output", str(plain), str(dump)],
+        check=True,
+    )
+    return plain
+
+
 @pytest.mark.django_db(transaction=True)
-def test_the_backup_excludes_the_sessions_and_the_membership_cache(monkeypatch, tmp_path) -> None:
+def test_the_backup_excludes_the_sessions_and_the_membership_cache(
+    monkeypatch, tmp_path, backup_key_pair
+) -> None:
     """A real pg_dump of this test's database, read back with pg_restore --list
     the way the task reads it. The membership cache is excluded because who
     organizes with whom is the sensitive part; the sessions because a dump that
@@ -1603,12 +1641,16 @@ def test_the_backup_excludes_the_sessions_and_the_membership_cache(monkeypatch, 
 
     destination = perform_backup()
     assert destination.parent == tmp_path / "backups"
-    assert destination.suffix == ".dump"
+    assert destination.name.endswith(".dump.age")
     # Readable by its owner only (sec-infra-4).
     assert destination.stat().st_mode & 0o777 == 0o600
 
+    identity, _ = backup_key_pair
     listing = subprocess.run(
-        ["pg_restore", "--list", str(destination)], capture_output=True, text=True, check=True
+        ["pg_restore", "--list", str(decrypted(destination, identity))],
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout
     data_entries = [line for line in listing.splitlines() if "TABLE DATA" in line]
     assert any("app_user" in line for line in data_entries), "the dump carries the users"
@@ -1665,7 +1707,7 @@ def test_operations_backups_section_names_every_excluded_table() -> None:
 
 @pytest.mark.django_db(transaction=True)
 def test_the_runbooks_restore_is_clean_into_an_empty_database_and_fails_into_a_full_one(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, backup_key_pair
 ) -> None:
     """What the restore runbook's step 3 rests on, measured with its own commands.
 
@@ -1719,7 +1761,8 @@ def test_the_runbooks_restore_is_clean_into_an_empty_database_and_fails_into_a_f
             assert made.returncode == 0, made.stderr.decode()
 
     def restore(dump: Path, name: str) -> subprocess.CompletedProcess:
-        with dump.open("rb") as archive:
+        # Decrypted first, with the private key, as the runbook does on the owner's computer.
+        with decrypted(dump, backup_key_pair[0]).open("rb") as archive:
             return run("pg_restore", "--no-owner", "-d", name, stdin=archive)
 
     monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "app")
@@ -1779,13 +1822,18 @@ def test_the_task_itself_refuses_a_dump_whose_listing_leaks(monkeypatch, tmp_pat
     from config.procrastinate import BackupVerificationFailed, perform_backup
 
     monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
-
-    def leaking_listing(archive, env, timeout=None):
-        assert archive.exists(), "the dump is written before it is verified"
-        return "1; 0 1 TABLE DATA public app_user r\n2; 0 2 TABLE DATA public app_session r\n"
+    # The listing reads the same stream age encrypts; this one reads it all and then says
+    # the archive carries session data.
+    session_data_listing = (
+        "sh",
+        "-c",
+        "cat >/dev/null; printf '1; 0 1 TABLE DATA public app_user r\\n"
+        "2; 0 2 TABLE DATA public app_session r\\n'",
+    )
+    monkeypatch.setattr("config.procrastinate.LIST_ARCHIVE", session_data_listing)
 
     with pytest.raises(BackupVerificationFailed, match="app_session"):
-        perform_backup(read_listing=leaking_listing)
+        perform_backup()
     assert left_behind(tmp_path / "backups") == [], (
         "a dump the verification rejected must not be left under the name a restore trusts, "
         "least of all this one: the listing says it carries the rows the exclusion exists for"
@@ -1814,7 +1862,148 @@ def test_a_verified_dump_is_the_only_thing_the_successful_path_leaves(
     destination = perform_backup()
 
     assert left_behind(tmp_path / "backups") == [destination.name]
-    assert destination.name.endswith(".dump") and destination.is_file()
+    assert destination.name.endswith(".dump.age") and destination.is_file()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_dump_on_disk_is_encrypted_and_opens_only_with_the_private_key(
+    monkeypatch, tmp_path, backup_key_pair
+) -> None:
+    """The server holds only the public half, so what it writes it cannot read: pg_restore
+    cannot open the file, and nothing in the backups folder is a plain archive (`PGDMP` is
+    the custom format's first bytes). The owner's private key opens it."""
+    from config.procrastinate import perform_backup
+
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
+
+    destination = perform_backup()
+
+    assert destination.read_bytes().startswith(b"age-encryption.org/v1\n")
+    for entry in (tmp_path / "backups").iterdir():
+        assert b"PGDMP" not in entry.read_bytes(), f"{entry.name} holds a plain archive"
+    unreadable = subprocess.run(["pg_restore", "--list", str(destination)], capture_output=True)
+    assert unreadable.returncode != 0, "pg_restore read the dump without the private key"
+    plain = decrypted(destination, backup_key_pair[0])
+    assert plain.read_bytes().startswith(b"PGDMP")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_backup_refuses_to_dump_without_a_recipients_file(monkeypatch, tmp_path) -> None:
+    """No public key, no dump: nothing is run and nothing is written, not even a part file,
+    and the night is recorded as failed so the 26-hour alert names it. A plain dump in its
+    place is the one outcome that is never acceptable."""
+    import subprocess as sp
+
+    from config.procrastinate import BackupRecipientsMissing, perform_backup
+    from core.models import ScheduledRun
+
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
+    monkeypatch.setattr(settings, "BACKUP_AGE_RECIPIENTS", tmp_path / "absent.txt")
+
+    def no_process(*args, **kwargs):
+        raise AssertionError(f"a process was started with no recipients file: {args[0]}")
+
+    monkeypatch.setattr(sp, "Popen", no_process)
+
+    with pytest.raises(BackupRecipientsMissing, match="absent.txt"):
+        perform_backup()
+    with pytest.raises(BackupRecipientsMissing):
+        app.tasks["nightly_backup"].func(timestamp=0)
+
+    assert left_behind(tmp_path / "backups") == []
+    run = ScheduledRun.objects.get(task="nightly_backup")
+    assert not run.succeeded
+    assert "BackupRecipientsMissing" in run.detail
+
+
+@pytest.mark.parametrize(
+    ("contents", "why"),
+    [
+        ("", "holds no recipient"),
+        ("# the owner's key goes here\n", "holds no recipient"),
+        ("AGE-SECRET-KEY-1QQQQ\n", "private key"),
+        ("age1abc\nnot a key\n", "not age recipients"),
+    ],
+)
+def test_the_backup_refuses_a_recipients_file_it_cannot_safely_use(tmp_path, contents, why) -> None:
+    """An empty file, and one with a private key in it: a server holding the private half
+    could read every dump it writes, which is the one thing the encryption is for."""
+    from config.procrastinate import backup_recipients_problem
+
+    path = tmp_path / "age-recipients.txt"
+    path.write_text(contents)
+
+    problem = backup_recipients_problem(path)
+
+    assert problem is not None and why in problem, problem
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_recipients_file_put_in_place_after_the_worker_started_is_used_that_night(
+    monkeypatch, tmp_path, backup_key_pair
+) -> None:
+    """The deploy can land before the owner copies the public key across: the file is read
+    on every run, so the first night after it is in place has a dump, with no restart."""
+    from config.procrastinate import BackupRecipientsMissing, perform_backup
+
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
+    recipients = tmp_path / "later" / "age-recipients.txt"
+    monkeypatch.setattr(settings, "BACKUP_AGE_RECIPIENTS", recipients)
+
+    with pytest.raises(BackupRecipientsMissing):
+        perform_backup()
+    recipients.parent.mkdir()
+    recipients.write_text(backup_key_pair[1].read_text())
+
+    destination = perform_backup()
+
+    assert left_behind(tmp_path / "backups") == [destination.name]
+
+
+def test_the_dry_run_refuses_without_a_recipients_file_and_writes_nothing(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    """`manage.py check_backup_encryption` answers "will tonight's dump run?" before 07:00:
+    non-zero with the reason when it will not, and nothing dumped or written either way."""
+    from django.core.management import call_command
+
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
+    monkeypatch.setattr(settings, "BACKUP_AGE_RECIPIENTS", tmp_path / "absent.txt")
+
+    with pytest.raises(SystemExit) as refused:
+        call_command("check_backup_encryption")
+
+    assert refused.value.code == 1
+    out = capsys.readouterr().out
+    assert "refused" in out and "absent.txt" in out
+    assert left_behind(tmp_path / "backups") == []
+
+
+def test_the_dry_run_passes_with_a_public_recipients_file(
+    monkeypatch, tmp_path, capsys, backup_key_pair
+) -> None:
+    from django.core.management import call_command
+
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
+
+    call_command("check_backup_encryption")
+
+    assert capsys.readouterr().out.startswith("ok: ")
+    assert left_behind(tmp_path / "backups") == []
+
+
+def test_the_dry_run_refuses_a_key_age_itself_would_not_take(monkeypatch, tmp_path) -> None:
+    """Shaped like a recipient, but not one: `age` is asked, as the dump will ask it."""
+    from django.core.management import call_command
+
+    recipients = tmp_path / "age-recipients.txt"
+    recipients.write_text("age1notarealkey\n")
+    monkeypatch.setattr(settings, "BACKUP_AGE_RECIPIENTS", recipients)
+
+    with pytest.raises(SystemExit) as refused:
+        call_command("check_backup_encryption")
+
+    assert refused.value.code == 1
 
 
 @pytest.mark.django_db(transaction=True)
@@ -1839,7 +2028,7 @@ def test_the_archive_carries_the_part_name_until_the_verification_has_passed(
 
     monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
     now = timezone.now()
-    final = tmp_path / "backups" / f"routemaker-{now:%Y%m%dT%H%M%SZ}.dump"
+    final = tmp_path / "backups" / f"routemaker-{now:%Y%m%dT%H%M%SZ}.dump.age"
     part = final.with_name(final.name + ".part")
     seen: dict[str, object] = {}
 
@@ -1998,7 +2187,7 @@ def test_a_backup_past_its_budget_is_killed_and_recorded_as_failed(monkeypatch, 
     run = ScheduledRun.objects.get(task="nightly_backup")
     assert not run.succeeded
     assert "BackupTimedOut" in run.detail
-    assert list((tmp_path / "backups").glob("*.dump")) == [], (
+    assert left_behind(tmp_path / "backups") == [], (
         "a half-written archive must not be left where the next restore would find it"
     )
 
@@ -2046,13 +2235,17 @@ def test_the_backup_prunes_all_but_the_newest_dumps(monkeypatch, tmp_path) -> No
     backups = tmp_path / "backups"
     backups.mkdir()
     monkeypatch.setattr(settings, "BACKUP_DIR", backups)
-    older = [f"routemaker-2026010{day}T000000Z.dump" for day in range(1, 10)]
+    # Hours apart rather than nights, so that the count is what drops them and not their age.
+    start = timezone.now() - timedelta(hours=12)
+    older = [
+        f"routemaker-{start + timedelta(hours=hour):%Y%m%dT%H%M%SZ}.dump.age" for hour in range(9)
+    ]
     for name in older:
         (backups / name).write_bytes(b"old")
 
     app.tasks["nightly_backup"].func(timestamp=0)
 
-    remaining = sorted(path.name for path in backups.glob("*.dump"))
+    remaining = sorted(path.name for path in backups.glob("*.dump.age"))
     assert len(remaining) == BACKUP_KEEP
     assert remaining[-1] not in older, "tonight's dump is the newest one kept"
     assert remaining[:-1] == older[-(BACKUP_KEEP - 1) :], "the oldest dumps are the ones that go"
@@ -2143,6 +2336,16 @@ def test_the_local_dump_retention_is_a_week() -> None:
     year of them. The plan's remote 30-day retention is a separate, unbuilt
     thing."""
     assert BACKUP_KEEP == 7
+
+
+def test_no_dump_is_kept_past_the_week_deleted_accounts_are_promised() -> None:
+    """The privacy page and the delete-account page say deleted data leaves the backups
+    within a week. The cap sits half a day under it, so a run that starts late one night and
+    on time a week later still drops the week-old dump."""
+    assert BACKUP_MAX_AGE <= timedelta(days=7) - timedelta(hours=12)
+    assert BACKUP_MAX_AGE >= timedelta(days=BACKUP_KEEP - 1), (
+        "and not so short that it drops dumps the count means to keep"
+    )
 
 
 @pytest.mark.django_db(transaction=True)

@@ -31,7 +31,8 @@ comes from:
   'self'`), core.street_photo, core.gbfs, core.wmata_live, core.closure_sources, core.dc311,
   core.weather (points rounded to 0.01 degree, answers 2 minutes in memory).
 - Logs, limits and backups: docker/api-entrypoint.sh (the access log's format), core.ratelimit,
-  config.procrastinate (BACKUP_KEEP, BACKUP_EXCLUDED_TABLES); sessions: core.revocation.
+  config.procrastinate (BACKUP_KEEP, BACKUP_MAX_AGE, BACKUP_EXCLUDED_TABLES, perform_backup's
+  encryption); sessions: core.revocation.
 - Garmin: core.garmin (the encrypted token, offered only with core.garmin.COURSES_WIRED),
   core.garmin_views (connect, Disconnect, Garmin's deregistration notice), core.garmin_courses
   (the course sent, and GarminLink.courses, which course each saved route was sent as). Garmin's
@@ -376,9 +377,10 @@ SECTIONS: list[tuple[str, str]] = [
                 "Group and Mass Ride positions, alerts and a leader's path: 2 minutes. Nothing "
                 "about a ride is kept longer.",
                 "Shared links: as above.",
-                "Database backups: one a night, the last seven kept, so deleted data can stay in "
-                "them for up to a week. Sign-ins, request limits, the Discord role list and Garmin "
-                "and Wahoo connections are left out of them.",
+                "Database backups: one a night, encrypted, the last seven kept and none older "
+                "than a week, so deleted data can stay in them for up to a week. Sign-ins, "
+                "request limits, the Discord role list and Garmin and Wahoo connections are left "
+                "out of them.",
                 "Suggestions already decided stay as the map’s history, with nothing linking "
                 "them to you once your account is deleted.",
                 "A note that an account was deleted, and when, under an account number.",

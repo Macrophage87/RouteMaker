@@ -67,7 +67,7 @@ KEPT = [
     "Suggestions already approved or declined, and map changes made from them, as part of the "
     "map's history, with nothing linking them to you",
     "A note that an account was deleted, and when, under an account number",
-    "Database backups, until they age out, usually within a week",
+    "Database backups, until they age out, within a week",
 ]
 ON_DEVICE = (
     "Routes kept for offline use, your settings and your rider and bike weight stay in each "

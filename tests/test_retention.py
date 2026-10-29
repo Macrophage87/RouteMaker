@@ -14,7 +14,7 @@ filesystem behaviour rather than logic.
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -285,6 +285,65 @@ def test_backup_pruning_of_no_more_dumps_than_it_keeps_removes_nothing(tmp_path,
 
     assert prune_backups(tmp_path, keep=7) == []
     assert sorted(path.name for path in tmp_path.glob("*.dump")) == dumps
+
+
+def test_a_dump_past_its_age_is_pruned_even_when_the_count_would_keep_it(tmp_path) -> None:
+    """Deleted accounts are promised to leave the backups within a week. Counting alone kept
+    that promise only while every night succeeded: three failed nights left three week-old
+    dumps under a count of seven. The age goes whatever the count."""
+    now = datetime(2026, 10, 29, 7, 30, tzinfo=UTC)
+    names = [
+        "routemaker-20261020T070000Z.dump.age",  # nine days old
+        "routemaker-20261022T070000Z.dump.age",  # seven days old
+        "routemaker-20261023T070000Z.dump.age",  # six days and half an hour
+        "routemaker-20261028T070000Z.dump.age",
+    ]
+    for name in names:
+        (tmp_path / name).write_bytes(b"dump")
+
+    removed = prune_backups(tmp_path, keep=7, max_age=timedelta(days=6, hours=12), now=now)
+
+    assert [path.name for path in removed] == names[:2]
+    assert sorted(entry.name for entry in tmp_path.iterdir()) == names[2:]
+
+
+def test_plain_dumps_go_once_an_encrypted_one_is_in_place(tmp_path) -> None:
+    """The dumps written before encryption are the ones the change is for, so they go as
+    soon as a newer encrypted dump exists, rather than lingering out their week."""
+    plain = [f"routemaker-2026102{day}T070000Z.dump" for day in range(5, 8)]
+    encrypted = "routemaker-20261028T070000Z.dump.age"
+    for name in [*plain, encrypted]:
+        (tmp_path / name).write_bytes(b"dump")
+
+    removed = prune_backups(tmp_path, keep=7)
+
+    assert sorted(path.name for path in removed) == plain
+    assert sorted(entry.name for entry in tmp_path.iterdir()) == [encrypted]
+
+
+def test_plain_dumps_stay_while_there_is_no_encrypted_one(tmp_path) -> None:
+    """Before the first encrypted dump they are the only backups there are, so they are
+    counted and aged like any other, and not dropped for being plain."""
+    plain = [f"routemaker-2026102{day}T070000Z.dump" for day in range(5, 8)]
+    for name in plain:
+        (tmp_path / name).write_bytes(b"dump")
+
+    assert prune_backups(tmp_path, keep=7) == []
+    assert sorted(entry.name for entry in tmp_path.iterdir()) == plain
+
+
+def test_an_abandoned_encrypted_part_file_is_reclaimed(tmp_path) -> None:
+    """`perform_backup` stages `<name>.dump.age.part`; one left by a SIGKILL is reclaimed by
+    the same rule as the plain part files."""
+    kept = "routemaker-20261028T070000Z.dump.age"
+    (tmp_path / kept).write_bytes(b"dump")
+    abandoned = tmp_path / "routemaker-20261027T070000Z.dump.age.part"
+    abandoned.write_bytes(b"half a dump")
+
+    prune_backups(tmp_path, keep=7)
+
+    assert not abandoned.exists()
+    assert (tmp_path / kept).exists()
 
 
 def test_backup_pruning_of_an_absent_directory_removes_nothing(tmp_path) -> None:
