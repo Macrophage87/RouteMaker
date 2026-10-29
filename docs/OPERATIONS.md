@@ -1372,7 +1372,7 @@ the same whatever the style decides):
   to the base map, unmarked ("You can just
   leave the public roads where bikes aren't allowed as unmarked, using the base
   map", OWNER-DECISIONS 89, which replaced 73's white line); "legal but avoid"
-  (US 340, and `bicycle=use_sidepath`: legal, Avoid where a side path is mapped
+  (an urban expressway, and `bicycle=use_sidepath`: legal, Avoid where a side path is mapped
   beside it, review RL-1) is a road and keeps its colour. A way no typical rider could use
   (`'hidden'`) is not drawn either:
   - no road or path at all: BWI's terminal hallways (`highway=corridor` +

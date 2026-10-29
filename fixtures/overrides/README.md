@@ -142,8 +142,7 @@ place (audited as a change); a different tier is a conflict to resolve in the
 admin. A stress row typed into the admin as `{"tier": n}` still sets the tier,
 as a hidden adjustment named `way-<id>`.
 
-- `2026-09-27-owner-stress.json`: the owner's curated tiers - US 340's William
-  L. Wilson Freeway, the Benning Road and Frederick Douglass bridge roadways,
+- `2026-09-27-owner-stress.json`: the owner's curated tiers - the Benning Road and Frederick Douglass bridge roadways,
   and Pennsylvania Avenue SE eastbound from the DC 295 off-ramp merge east of
   the Sousa Bridge to Fairlawn Avenue SE ("Looking at it, there's a highway
   offramp with a blind corner. It's a level 5 road afterwards.") and westbound
@@ -151,7 +150,8 @@ as a hidden adjustment named `way-<id>`.
   2026-09-28), at 5; the
   11th Street local span and its south landing (the owner's "Steer to the
   path", whose separate penalty was retired for this tier), and the Sousa
-  Bridge roadway, at 4. The owner approved loading it on 2026-09-27 ("Yes, load
+  Bridge roadway, at 4; and US 340's William L. Wilson Freeway at 4.5 (Avoid
+  until 2026-10-29: "Make it 4.5"; the file retires the old row). The owner approved loading it on 2026-09-27 ("Yes, load
   it"); docs/OPERATIONS.md, "A deploy that changes the crossings fixture or
   loads access overrides", gives the order. Its categories and notes were
   proposed here and approved by the owner the same day for `route_only`
