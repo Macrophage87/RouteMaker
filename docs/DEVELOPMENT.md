@@ -2011,6 +2011,15 @@ unless named; PLAN.md quotes the owner's words):
   mixed traffic (item 84), and not from three through lanes a direction, where
   Montgomery's Appendix D keeps LTS 4. Decent: buffered, or not tagged narrower
   than 5 ft; an untagged width counts.
+- *A painted lane on a wide street* (review RL-3; the owner, 2026-10-16) is
+  LTS 3 at least: on a two-way street with 2 or more through lanes each way,
+  and on a one-way street with 3 or more (review 2026-10-29), the streets that
+  keep the LTS 3 floor in mixed traffic. A rideable shoulder takes the same
+  floor (`stress.multilane_floor`).
+- *A posted speed* is `maxspeed`, a `;` list read as its highest part; where a
+  way has no `maxspeed`, the higher of `maxspeed:forward` and
+  `maxspeed:backward`, as the router reads them (`tags.posted_maxspeed`; review
+  2026-10-29). The expressway rule and the curated speeds read it the same way.
 - *Missing speed limits* take the state's default (items 108, 112): the
   District 20 mph on every class, 15 in alleys; Maryland and Virginia urban
   areas 25 residential, 30 tertiary and unclassified, 35 secondary and primary;
@@ -7262,7 +7271,7 @@ keys (I, the arrows, + and -) work in both modes.
   (`routemaker.accessibility`, `routemaker.ride.bigText`; the mode's is `routemaker.accessMode`), so a rider who
   had only High contrast on keeps it. None of the three syncs with the account (lib/accountSettings.ts). While the
   mode is on, `access-mode` on the page's root brings Go's small text to 15 px (place and ride-type chips, the
-  stress line, Settings' headings, the map's scale).
+  stress line, Settings' headings, the map's scale), and the charts' key, tiers, source lines and data tables (12 px).
 - **Help that changes with the mode.** Off: the search lede and the lone-start hint (shown
   outside More tips) say "For keyboard or screen reader use, turn on accessibility mode
   (the first button on the page, or in More tips)."; in More tips, the keyboard hints and
@@ -8428,6 +8437,41 @@ none sent is a participant) and answers each dot's `role`. Still no name, token 
 - Tests: `tests/test_ride_presence.py` (validation, default, the role on the dot) and
   `frontend/src/lib/rideGroup.test.ts` (kept role, the body, the images and layers, colours, names, the key,
   the page's wiring).
+
+## End-to-end encrypted rides (Stephen, 2026-10-29)
+
+A tester asked how location sharing is secured; Stephen asked whether end-to-end encryption was worth it, then
+"yes", for broadcasts and Group Ride. Share ride, Broadcast, Roam's Broadcast and a Group Ride link shared from
+the app now carry a ride secret, `k=` (32 random bytes, base64url), in the link's fragment, which no browser
+sends to a server. `frontend/src/lib/rideSeal.ts` derives two things from it with HKDF-SHA-256: the ride id the
+server knows the ride by (64 hex, one way) and an AES-GCM 256 key the server never sees. Each phone seals its
+dot (`{lon, lat, role}`), alert (`{kind, text, lon, lat}`) and the leader's path (`{route, trail}`) with a fresh
+12-byte nonce, the kind and ride id bound in as associated data, and posts `{token, sealed}` to the same
+`/api/rides/...` endpoints. `core.ride_presence` keeps a sealed value as opaque text with the same 2 minutes,
+per-token limits, leader mark and sweep; it answers `{sealed, age_s}` (dots, with `leader`), `{id, sealed,
+age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
+
+- **What moved to the phone.** The server cannot read a sealed value, so the phone rounds to the 20 m grid
+  (`gridded`, the same arithmetic as `rounded`), sends nothing outside the map's area (`sendable`,
+  `sendableLine`), checks an alert's kind and Other's words, and merges alerts as it reads them (`mergeAlerts`,
+  the server's rule: same kind and words, within 200 m, within 2 minutes of the latest report; one's own stay
+  apart so Clear clears only them). A value that does not open with the ride's key is left out.
+- **Padding.** Each value is padded with spaces to a whole number of 128 (dot), 512 (alert) or 4096 (path) bytes
+  before sealing (`padded`), so the sealed text's length gives away no role, alert kind or length of words. The
+  server still sees the ride id, tokens, addresses, timing and counts, and it marks the leader's dot and each
+  dot's age; those are not sealed.
+- **Which rides.** A broadcast's secret is made with the leader's token (`App.tsx` `Lead`) and goes in every link
+  for that ride, including those followers pass on. A Group Ride plan's secret (`groupSecret`) is made when a
+  page starts afresh or the rider picks Group Ride, kept in the address bar (on Group Ride only) and in Copy link
+  and Share. A link without one (a Mass Ride, an older link, a ride post the server wrote) is the ride by its
+  points in plain numbers, as before, so everyone who opens the same link is still on one ride. A sealed ride's
+  page leaves out anything that does not open, plain dots included: for a short while after a release, a page
+  still on the older build joins a link's ride by its points and does not meet those on the sealed ride. A Group
+  Ride's secret comes from the plan as opened (`OPENED_HASH`), so one kept over a sign-in keeps it; a saved or
+  kept route the rider opens gets a new one, a link pasted in its own or none.
+- Tests: `frontend/src/lib/rideSeal.test.ts` (secret, derivation, sealing, the grid against the server's,
+  merging, a sealed ride end to end through `rideGroup.ts`, the page's wiring) and `tests/test_ride_presence.py`
+  (sealed dots, alerts and paths kept, limited, marked and dropped as plain ones are).
 
 ## Phone app (v0.8.0)
 

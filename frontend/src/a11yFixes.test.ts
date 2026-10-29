@@ -340,3 +340,15 @@ test("Map tools' Add point, with the plan full, stays in the Tab order with its 
   const add = app.slice(app.indexOf("const addAtCentre = () => {"), app.indexOf("place([lng, lat]);"));
   assert.match(add, /if \(!goTapSetsEnd\(mode\) && pointsRef\.current\.length >= MAX_POINTS\) \{\s*announce\(maxPointsNotice\(\)\);\s*return;/);
 });
+
+test("the 2026-10-29 a11y review: 44 px disclosures and toggles, and the charts' small text enlarged in accessibility mode", () => {
+  const rule = (selector: string) => {
+    const at = css.indexOf(`\n${selector} {`);
+    assert.ok(at >= 0, selector);
+    return css.slice(at, css.indexOf("}", at));
+  };
+  for (const selector of [".road-info-details > summary", ".route-credit-fold summary", ".review-map-toggle"]) assert.match(rule(selector), /min-height: 44px;/, selector);
+  // Padded, not flex, so a summary keeps its disclosure triangle.
+  for (const selector of [".road-info-details > summary", ".route-credit-fold summary"]) assert.doesNotMatch(rule(selector), /display: flex/, selector);
+  assert.match(css, /:root\.access-mode \.maplibregl-ctrl-scale,\s*:root\.access-mode :is\(\.pc-table, \.pc-legend, \.pc-tiers, \.pc-keys, \.pc-source\) \{\s*font-size: max\(1rem, 15px\);/);
+});
