@@ -3119,13 +3119,18 @@ def test_every_server_block_sources_the_vars_file_which_holds_no_secret() -> Non
     assert "Every tool call is a fresh shell" in zero and "never a password, key or token" in zero
     assert 'rm_absent "$RM_STATE" && mkdir -m 700 "$RM_STATE"' in zero
     assert "( umask 077; set -C; cat > \"${RM_STATE:?}/vars.sh\" ) <<'VARS'" in zero
-    # re-check 3 ops NIT-A and NIT-B: the function only after a fresh write; no unfilled <...>
-    assert "<<'VARS' && declare -f rm_absent >> \"$RM_STATE/vars.sh\"" in zero
-    assert zero.count("declare -f rm_absent") == 1
+    # re-check 3 ops NIT-A and NIT-B: the function only in a fresh write; no unfilled <...>.
+    # It is written as text inside the heredoc (review 2026-10-29): `declare -f` is bash's,
+    # and under the server's sh it left vars.sh without the function.
+    assert "declare -f" not in RUNBOOK
     assert 'grep -n \'<[^>]*>\' "$RM_STATE/vars.sh" && echo "STOP: fill in' in zero
     heredoc = zero[zero.index("<<'VARS'") : zero.index("\nVARS\n")]
     assert not re.search(r"(?i)(password|secret|token|_key\b|PGPASS|htpasswd)", heredoc), heredoc
-    for line in heredoc.splitlines()[1:]:
+    lines = heredoc.splitlines()[1:]
+    assert sum(line == guard_function() for line in lines) == 1, "the guard is in vars.sh"
+    for line in lines:
+        if line == guard_function():
+            continue
         assert line.startswith("export RM_") or line.startswith("export BETA_API_PORT="), line
     for appended in re.findall(r"echo '(export [A-Z_]+=[^']*)' >> \"\$RM_STATE/vars.sh\"", RUNBOOK):
         # RM_CERT_KEY is the private key's PATH (re-check 3 ops NIT-E), never its content
@@ -3755,6 +3760,32 @@ def test_every_routemaker_service_yields_to_the_hosts_other_sites() -> None:
 
 
 @needs_sh
+@pytest.mark.skipif(shutil.which("dash") is None, reason="needs dash")
+def test_every_runbook_block_is_plain_sh() -> None:
+    """Review 2026-10-29: the server's sh is dash. Every block parses under `dash -n` (a
+    `<...>` placeholder read as a word), and none uses bash's process substitution or
+    `declare`."""
+    blocks = re.findall(r"^( *)```sh\n(.*?)^\1```", RUNBOOK, re.M | re.S)
+    assert len(blocks) >= 30
+    for indent, body in blocks:
+        text = "\n".join(line[len(indent) :] for line in body.splitlines())
+        assert "<(" not in text and "declare " not in text, text[:200]
+        parsed = run("dash", "-n", stdin=re.sub(r"<[A-Za-z][^<>\n]*>", "X", text))
+        assert parsed.returncode == 0, (parsed.stderr, text[:200])
+
+
+@pytest.mark.skipif(shutil.which("dash") is None, reason="needs dash")
+def test_section_0_writes_a_vars_file_that_gives_sh_the_guard(tmp_path: Path) -> None:
+    zero = RUNBOOK[RUNBOOK.index("## 0. Variables") : RUNBOOK.index("## 1. Prerequisites")]
+    block = re.search(r"```sh\n(.*?)```", zero, re.S).group(1)
+    block = block.replace('"$HOME/routemaker-beta-state"', f'"{tmp_path}/state"')
+    block = re.sub(r"<[A-Za-z][^<>\n]*>", "x", block)
+    done = run("dash", "-c", block + '\nrm_absent "$RM_STATE/nope" && echo GUARD-OK')
+    assert done.returncode == 0 and "GUARD-OK" in done.stdout, done.stderr
+    later = run("dash", "-c", f'. "{tmp_path}/state/vars.sh"; rm_absent "$RM_STATE" || echo HELD')
+    assert "HELD" in later.stdout and "EXISTS" in later.stderr, later.stderr
+
+
 def test_rm_absent_refuses_an_empty_argument(tmp_path: Path) -> None:
     """An unset variable must not slip past the guard (`rm_absent "$UNSET" && ...`)."""
     for args in ('""', f'"{tmp_path / "absent"}" ""', ""):

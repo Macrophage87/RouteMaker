@@ -377,7 +377,10 @@ directory and never sees a compiler.
   `psycopg2-binary` wheel carries its own libpq.
 - **`gunicorn`**, plus the runtime Python set in `docker/requirements.txt`.
 
-Runs as uid 10001, non-root.
+Runs as uid 10001, non-root. Its base is `python:3.11-slim-bookworm` pinned by digest (the
+`PYTHON_IMAGE` argument; `tests/test_images.py` holds its tag to `PYTHON_VERSION` and
+`DEBIAN_SUITE`). Built for every release since v0.8; the transitive Python dependencies are
+still resolved by pip at build time.
 
 ### `docker/pipeline.Dockerfile` — rebuild
 
@@ -464,7 +467,9 @@ lands, that test fails, the row leaves the list, and the test above it demands a
 
 ## `${DATA_ROOT}` and the order it has to be prepared in
 
-Both images run as uid 10001. `${DATA_ROOT}` is a host bind mount, and the
+Both images run as uid 10001, and their services (`api`, `worker`, `migrate`, `rebuild`) drop
+every Linux capability and set `no-new-privileges` (compose.yaml's `x-hardened`); the third-party
+images keep Docker's defaults. `${DATA_ROOT}` is a host bind mount, and the
 processes write into it: the nightly dump into `${DATA_ROOT}/backups`, the
 rebuild into the five directories it binds under `/data` (tiles, extracts,
 reference, its own work directory, and the elevation cache — the timezone
@@ -1568,7 +1573,10 @@ empty cluster looks healthy.
       3), and **abort without starting anything else** if not (the bind-race
       signature).
    5. Start caddy, the four routers, api, worker, rebuild, photon (recreated when
-      COLD, only the stopped ones when WARM).
+      COLD, only the stopped ones when WARM), then valhalla-offroad and
+      valhalla-mtb, each only when `${DATA_ROOT}/tiles/<variant>/current` leads to
+      a readable build (otherwise a log line, never a failed boot: those rides are
+      then planned on the standard graph).
    6. Route, geocode and the stress tile must return 200, and the tile must not
       be empty.
 

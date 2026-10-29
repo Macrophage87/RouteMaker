@@ -80,8 +80,9 @@ export RM_STATE="$HOME/routemaker-beta-state"
 # on one line, so an existing path stops that command (a `for` loop's status alone would not).
 rm_absent() { ok=1; [ "$#" -gt 0 ] || ok=0; for p in "$@"; do if [ -z "$p" ]; then echo "EMPTY path (an unset variable?): stop and ask the owner" >&2; ok=0; elif [ -e "$p" ] || [ -L "$p" ]; then echo "EXISTS: $p: stop and ask the owner" >&2; ok=0; fi; done; [ "$ok" = 1 ]; }
 rm_absent "$RM_STATE" && mkdir -m 700 "$RM_STATE"
-( umask 077; set -C; cat > "${RM_STATE:?}/vars.sh" ) <<'VARS' && declare -f rm_absent >> "$RM_STATE/vars.sh"   # set -C: never overwrites; the function is added only after a fresh write
+( umask 077; set -C; cat > "${RM_STATE:?}/vars.sh" ) <<'VARS'   # set -C: never overwrites; the function is written as text, so this works in sh as in bash
 export RM_STATE="$HOME/routemaker-beta-state"
+rm_absent() { ok=1; [ "$#" -gt 0 ] || ok=0; for p in "$@"; do if [ -z "$p" ]; then echo "EMPTY path (an unset variable?): stop and ask the owner" >&2; ok=0; elif [ -e "$p" ] || [ -L "$p" ]; then echo "EXISTS: $p: stop and ask the owner" >&2; ok=0; fi; done; [ "$ok" = 1 ]; }
 export RM_SHA=<the 40-character git sha the owner gave you (the bundle's MANIFEST.txt git_sha= matches it)>
 export RM_REPO_URL=<the repository URL the owner gave you>
 export RM_DATA=/data/routemaker
@@ -706,7 +707,8 @@ Prove nothing else changed:
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
 (umask 077; sudo nginx -T > "$RM_STATE/nginx-after.txt" 2>&1)
-diff <(sed 's/[[:space:]]*$//' "$RM_STATE/nginx-before.txt") <(sed 's/[[:space:]]*$//' "$RM_STATE/nginx-after.txt") | grep '^<' | head   # no output: nothing was removed or edited
+(umask 077; sed 's/[[:space:]]*$//' "$RM_STATE/nginx-before.txt" > "$RM_STATE/nginx-before.trim"; sed 's/[[:space:]]*$//' "$RM_STATE/nginx-after.txt" > "$RM_STATE/nginx-after.trim")
+diff "$RM_STATE/nginx-before.trim" "$RM_STATE/nginx-after.trim" | grep '^<' | head   # no output: nothing was removed or edited
 while read -r s; do printf '%s %s\n' "$s" "$(curl -s -o /dev/null -m 10 -w '%{http_code}' "https://$s/" || echo fail)"; done < "$RM_STATE/sites-before.txt" | diff - "$RM_STATE/sites-before-status.txt" && echo "other sites unchanged"
 ```
 
