@@ -1,7 +1,9 @@
 # Vendored Valhalla config generator
 
 `valhalla_build_config.py` is Valhalla's own `scripts/valhalla_build_config`,
-byte-identical to the tag in `VERSION`.
+byte-identical to the tag in `VERSION`, fetched with the Lua by
+`scripts/vendor_valhalla_lua.sh`. Its sha256 is in `SHA256SUMS`, which the script
+writes and the test suite checks.
 
 Valhalla reads a good many configuration keys with no default and throws at
 startup when one is absent — `httpd.service.listen`, `loki.service.proxy` and

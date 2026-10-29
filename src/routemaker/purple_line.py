@@ -20,7 +20,7 @@ Pure: no network, no database. `core.workzones.snapshot` adds `zones(now)` to th
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 from functools import lru_cache
 from pathlib import Path
 
@@ -47,3 +47,10 @@ def zones(now: datetime, closures=None) -> list[wz.Zone]:
     """The closures not yet past their last day: in force now or later."""
     found = _loaded()[0] if closures is None else closures
     return [z for c in found if c.end > now for z in ddot_advisories.zones_of(c, SOURCE)]
+
+
+def check_due(today: date) -> list[str]:
+    """What to check in the file (`ddot_advisories.reminders`): a guessed last day close by,
+    or the file not read for a while."""
+    closures, read = _loaded()
+    return ddot_advisories.reminders("Purple Line", closures, read, today)

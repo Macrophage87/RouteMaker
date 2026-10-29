@@ -387,12 +387,40 @@ def runs_along(area: str, coordinates: Sequence[Sequence[float]]) -> bool:
     return False
 
 
+# How near an assumed season's first night, or the last night in these tables, is a reminder
+# (audit 2026-10-29: the tables run out in March with nothing to prompt next season's dates,
+# and the assumed Rock Creek season is never checked against NPS's own record).
+ASSUMED_WARN_DAYS = 14
+TABLES_WARN_DAYS = 30
+
+
+def check_due(today: date) -> list[str]:
+    """What to check in the schedules above (`scripts/ddot_advisories.py watch` prints them):
+    an assumed Rock Creek season starting within `ASSUMED_WARN_DAYS`, and the tables' last
+    night within `TABLES_WARN_DAYS` (or past)."""
+    out = [
+        f"Deer closures: Rock Creek's {first.year}-{last.year % 100:02d} season is assumed and"
+        f" starts {first.isoformat()}; confirm it against NPS's record"
+        for first, last, posted in ROCK_CREEK_SEASONS
+        if not posted and today <= first <= today + timedelta(days=ASSUMED_WARN_DAYS)
+    ]
+    final = max(
+        [last for _first, last, _posted in ROCK_CREEK_SEASONS]
+        + [SHARPSHOOTING_SEASON[1]]
+        + [date.fromisoformat(day) for days in FIREARMS.values() for day in days]
+    )
+    if final <= today + timedelta(days=TABLES_WARN_DAYS):
+        out.append(f"Deer closures: the schedules end {final.isoformat()}; add next season's dates")
+    return out
+
+
 __all__ = [
     "MOCO",
     "NPS",
     "SOURCES",
     "Window",
     "areas",
+    "check_due",
     "first_each",
     "in_force",
     "moments",
