@@ -297,6 +297,34 @@ function M.vehicle_reopens_for_bicycle(tags)
   return not M.BICYCLE_BY_DEFAULT_HIGHWAY[tags.highway] or M.ACCESS_CLOSES[tags.access] == true
 end
 
+--- The values upstream's own `bicycle` table reads as open (lua/vendor/graph_upstream.lua);
+-- tests/lua/test_graph_entry.lua holds the two together through the real transform.
+M.UPSTREAM_BICYCLE_OPENS = {
+  yes = true, designated = true, use_sidepath = true, permissive = true, destination = true,
+  dismount = true, lane = true, track = true, shared = true, shared_lane = true, sidepath = true,
+  share_busway = true, allowed = true, private = true, official = true, permit = true,
+  residents = true,
+}
+
+--- Whether a directional `vehicle:forward` / `vehicle:backward` value would open that
+-- direction to a bicycle where this project keeps it closed. Upstream reads
+-- `bicycle:<side>` and falls back to `vehicle:<side>` through its *bicycle* table, which
+-- counts `private`, `permit`, `residents` and `destination` as grants, and writes that
+-- direction over whatever plain `bicycle` said. `bicycle` is the way's bicycle value as
+-- the remap leaves it (its own write, else OSM's). Where it closes, any grant reopens;
+-- where nothing speaks, the rule is `vehicle_reopens_for_bicycle`'s for a plain `vehicle`.
+function M.directional_vehicle_reopens(tags, value, bicycle)
+  local granted = false
+  for part in value:gmatch("[^;]+") do
+    if M.VEHICLE_GRANTS[part:match("^%s*(.-)%s*$")] then granted = true end
+  end
+  if not granted then return false end
+  if bicycle ~= nil then return not M.UPSTREAM_BICYCLE_OPENS[bicycle] end
+  return M.vehicle_reopens_for_bicycle({
+    highway = tags.highway, access = tags.access, vehicle = value,
+  })
+end
+
 --- Whether the fixture's `roadway_bicycle_legal: true` may be written onto this way.
 --
 -- The write is a *widening* one, so it needs the guard the cycleway write has,
@@ -348,14 +376,14 @@ function M.bridge_may_be_granted(tags)
   -- the one class of way this file is allowed to widen.
   --
   -- The protection is real and it belongs in the injection, not here. One Lua
-  -- script serves all three extracts - `mjolnir.graph_lua_name` is a single
+  -- script serves all six extracts - `mjolnir.graph_lua_name` is a single
   -- path in every build config - so a guard in this file cannot tell which
   -- variant is being parsed and has to decline the legality row on the standard
   -- and no-trail extracts too, where the row applies and nothing has written
   -- `bicycle=no`. `inject_tags` knows the variant, so it suppresses the
   -- bridge-legality tag on an `electric_bicycle=no` way for the EBIKE variant
-  -- alone and leaves the other two extracts carrying it. Declining the grant
-  -- here as well would take the row away from the two variants that are
+  -- alone and leaves the other extracts carrying it. Declining the grant
+  -- here as well would take the row away from the variants that are
   -- entitled to it, so this function stays silent about the key.
   for _, key in ipairs(M.WAY_ACCESS_KEYS) do
     local value = tags[key]
@@ -372,8 +400,8 @@ M.SURFACE_ORDER = {
   dirt = 5, gravel = 6, path = 7, impassable = 8,
 }
 
--- The minimum ridable surface per bicycle_type. Valhalla refuses outright any
--- edge worse than this; avoid_bad_surfaces does not relax it.
+-- The minimum ridable surface per bicycle_type (see below for when Valhalla refuses an
+-- edge worse than this).
 M.MIN_RIDABLE = { Road = 4, Hybrid = 5, Cross = 6, Mountain = 7 }
 
 -- The strictest configured type's threshold. Used as a ceiling on roughness: a
@@ -456,6 +484,13 @@ end
 --- Remap one way's tags. Returns a table of *changes* only.
 -- What a way inside a cemetery is made (remap_way): destination-only.
 M.CEMETERY_ACCESS = "destination"
+
+-- The `access` values upstream reads as destination-only (its `private` table,
+-- lua/vendor/graph_upstream.lua; tests/lua/test_graph_entry.lua holds the two equal).
+M.UPSTREAM_PRIVATE_ACCESS = {
+  private = true, destination = true, customers = true, delivery = true, permit = true,
+  residents = true,
+}
 
 -- A parking aisle, driveway or drive-through that its own tags open to bicycles
 -- is a link in the bicycle network, not a local-access road. Valhalla's parser
@@ -636,10 +671,11 @@ function M.remap_way(tags, derived)
     out.bicycle = "yes"
   end
 
-  -- A way bicycles may not ride on any current ride type: a sidewalk in the
-  -- District's Central Business District (OWNER-DECISIONS 104; `routemaker.cbd`
-  -- decides which, and never a way signed bicycle=designated or a road), or
-  -- mountain-bike singletrack (OWNER-DECISIONS 111; `routemaker.singletrack`).
+  -- A way bicycles may not ride: a sidewalk in the District's Central Business
+  -- District on any ride type (OWNER-DECISIONS 104; `routemaker.cbd` decides which,
+  -- and never a way signed bicycle=designated or a road), or mountain-bike
+  -- singletrack on every graph but Mountain Bike's, which opens it (OWNER-DECISIONS
+  -- 111; `routemaker.singletrack`).
   -- Only narrows. Singletrack is closed rather than charged: upstream sets a
   -- trail's use from its highway class and ignores `service` there, so the
   -- tier-5 entry charge cannot reach it, and `highway` may not be rewritten.
@@ -844,8 +880,14 @@ function M.remap_way(tags, derived)
     out.lit = derived.lit and "yes" or "no"
   end
 
-  for key, value in pairs(M.remap_conditional_access(tags)) do
-    out[key] = value
+  -- Never over a closure the remap itself wrote above (a bridge the crossings fixture
+  -- calls illegal, a restricted vehicle grant, a closing use_sidepath): the conditional is
+  -- weighed against OSM's own bicycle value, which upstream would then read the
+  -- direction's grant over (audit 2026-10-29).
+  if out.bicycle ~= "no" then
+    for key, value in pairs(M.remap_conditional_access(tags)) do
+      out[key] = value
+    end
   end
 
   -- A way inside a cemetery (`rm:cemetery`, pipeline.restricted_areas): no
@@ -868,8 +910,14 @@ function M.remap_way(tags, derived)
   -- (or by `bicycle=no`). The spur, the walk links (station footways and short informal
   -- connectors) and the ridden sidewalks below are the only places this remap widens a
   -- bicycle tag, and only for the ways the rebuild names.
-  if derived.destination_only then
-    if tags.access == nil or M.PERMISSIVE_ACCESS[tags.access] then
+  -- The spur is opened only where it ends up destination-only: an open `access` (written
+  -- `destination` here) or one upstream already reads as destination-only. Over any other
+  -- (`no`, `agricultural`, ...) a bicycle grant would carry no destination-only flag
+  -- (upstream reads it from `access` and `vehicle`), so it is left closed (audit 2026-10-29).
+  local spur_access_open = tags.access == nil or M.PERMISSIVE_ACCESS[tags.access]
+  if derived.destination_only
+    and (spur_access_open or M.UPSTREAM_PRIVATE_ACCESS[tags.access]) then
+    if spur_access_open then
       out.access = M.CEMETERY_ACCESS
     end
     out.bicycle = "destination"
@@ -928,6 +976,20 @@ function M.remap_way(tags, derived)
     if derived.sidewalk == M.LAST_RESORT_SIDEWALK then
       out["lanes:forward"] = M.GRADED_LANES
       out["lanes:backward"] = M.GRADED_LANES
+    end
+  end
+
+  -- A directional `vehicle` grant opens no more than a plain one (audit 2026-10-29):
+  -- upstream reads `vehicle:forward` for a bicycle's forward direction where no
+  -- `bicycle:forward` speaks, over plain `bicycle`, so `vehicle:forward=private` on a
+  -- footway, or on a way the remap closed, opened that direction. Closed here as
+  -- `vehicle_reopens_for_bicycle` closes a plain grant. Only narrows.
+  for _, side in ipairs({ "forward", "backward" }) do
+    local key = "bicycle:" .. side
+    local value = tags["vehicle:" .. side]
+    if value ~= nil and tags[key] == nil and out[key] == nil
+      and M.directional_vehicle_reopens(tags, value, out.bicycle or tags.bicycle) then
+      out[key] = "no"
     end
   end
 
@@ -1173,6 +1235,24 @@ end
 -- Never tightening is the deliberate half of that and is not up for quiet
 -- revision: tightening on a conditional is the one direction that would make
 -- the graph assert a legal claim, which is the thing this project does not do.
+--
+-- The router applies the window (FOLLOWUP-CONDITIONAL-ACCESS; the owner,
+-- 2026-10-29, of Pulaski Highway's one-ways, `bicycle=no` with `bicycle:conditional=
+-- yes @ (Sa-Su dawn-dusk; PH dawn-dusk)`). The static grant above opens the way, and
+-- Valhalla's C++ parser reads the undirected `bicycle:conditional` grant as a timed
+-- restriction: the edge is then open only inside the window, checked against the
+-- request's `date_time` (every plan sends the ride time's representative moment). The
+-- parser cannot read a sun event (dawn, dusk, sunrise, sunset: `timeparsing.cc` calls them
+-- unsupported and drops the rule), nor a grant other than `yes`, `designated`,
+-- `private` or `delivery` (`permissive @` reads as a denial), nor more than one rule set. So
+-- for an undirected grant the remap writes `bicycle:conditional` again as one `yes @ (...)`
+-- of the granting branches, each sun event a fixed time that keeps inside the real window
+-- all year in the region (`M.SUN_LATEST` for a start, `M.SUN_EARLIEST` for an end), and
+-- opens the way only where every condition can be so written (`M.router_window`): a grant
+-- the router cannot time stays closed, as unclear access is, and so does one on holidays
+-- alone, whose rules the parser drops (no rule left would read as open at every hour). A directional conditional
+-- (`bicycle:forward:conditional`), which the parser does not read, is resolved statically
+-- as before.
 M.ACCESS_RANK = {
   no = 1, private = 2, customers = 3, destination = 4,
   permissive = 5, designated = 6, yes = 6,
@@ -1230,6 +1310,62 @@ function M.least_restrictive(base, conditional_value)
   return best
 end
 
+-- Sun events as fixed local times that keep a grant inside its real window every day of the
+-- year here (Baltimore and DC, civil twilight for dawn and dusk, daylight saving included):
+-- the latest each comes, for a window's start, and the earliest, for its end.
+M.SUN_LATEST = { dawn = "07:15", sunrise = "07:45", sunset = "20:40", dusk = "21:10" }
+M.SUN_EARLIEST = { dawn = "05:05", sunrise = "05:35", sunset = "16:40", dusk = "17:10" }
+-- The words Valhalla's condition parser reads: weekdays, holidays (dropped there, never
+-- widening) and months.
+M.ROUTER_WORDS = {
+  Mo = true, Tu = true, We = true, Th = true, Fr = true, Sa = true, Su = true,
+  PH = true, SH = true,
+  Jan = true, Feb = true, Mar = true, Apr = true, May = true, Jun = true,
+  Jul = true, Aug = true, Sep = true, Oct = true, Nov = true, Dec = true,
+}
+-- The grants the router times as allowed (kTimedAllowed); written as `yes`.
+M.ROUTER_GRANTS = { yes = true, designated = true, permissive = true }
+
+local function clock(value)
+  local hours, minutes = value:match("^(%d%d?):(%d%d)$")
+  if not hours then return nil end
+  return string.format("%02d:%s", tonumber(hours), minutes)
+end
+
+--- A grant's condition as Valhalla's parser reads it, or nil where it cannot be: each sun
+-- event in a range a fixed time inside the real window (`SUN_LATEST` at a start,
+-- `SUN_EARLIEST` at an end), and nothing left but weekdays, holidays, months, numbers and
+-- times.
+function M.router_window(condition)
+  if condition == nil then return nil end
+  local ok = true
+  local written = condition:gsub("([%w:]+)%s*%-%s*([%w:]+)", function(first, last)
+    local from_sun, to_sun = M.SUN_LATEST[first:lower()], M.SUN_EARLIEST[last:lower()]
+    if not from_sun and not to_sun then return nil end
+    local from = from_sun or clock(first)
+    local to = to_sun or clock(last)
+    -- Fixed, a window across midnight could hold hours the real one does not.
+    if not from or not to or from >= to then
+      ok = false
+      return nil
+    end
+    return from .. "-" .. to
+  end)
+  if not ok or written:find("[^%w%s:,;%-]") then return nil end
+  for word in written:gmatch("%a+") do
+    if not M.ROUTER_WORDS[word] then return nil end
+  end
+  -- The parser drops a rule that starts with a holiday (unless a weekday list follows), and
+  -- a grant left with no rule at all would reach it as no restriction: open at every hour.
+  for rule in written:gmatch("[^;]+") do
+    local head = rule:match("^%s*(%a+)")
+    if not (head == "PH" or head == "SH") or rule:match("^%s*%a+%s*,%s*%u%l%f[^%a]") then
+      return written
+    end
+  end
+  return nil
+end
+
 -- What on a one-way's own tags gives a bicycle the direction against the traffic,
 -- as `pipeline.variants.has_contraflow_tag` reads them: `oneway:bicycle` waived
 -- (or reversed), an `opposite*` cycleway value, a reverse-direction grant.
@@ -1270,12 +1406,41 @@ function M.remap_conditional_access(tags)
   -- one is present for that direction, which is the wiki's own precedence.
   local both = tags["bicycle:conditional"]
   local reverse_closed = M.is_motor_oneway(tags) and not M.speaks_for_reverse(tags)
+  -- An undirected grant alone is the router's to time (see above ACCESS_RANK).
+  local timed = both ~= nil and tags["bicycle:forward:conditional"] == nil
+    and tags["bicycle:backward:conditional"] == nil
+  local written
 
   for _, side in ipairs({ "forward", "backward" }) do
     local key = "bicycle:" .. side
     local conditional = tags[key .. ":conditional"] or both
     if side == "backward" and reverse_closed then conditional = nil end
-    if conditional then
+    if conditional and timed then
+      local base = tags[key] or tags.bicycle
+      local resolved = M.least_restrictive(base, conditional)
+      if resolved and resolved ~= base and M.ROUTER_GRANTS[resolved] then
+        local windows, always = {}, false
+        for _, branch in ipairs(M.parse_conditional(conditional)) do
+          if M.ROUTER_GRANTS[branch.value] then
+            -- A bare value with no condition reads as unconditional, as before.
+            if branch.condition == nil then always = true end
+            windows[#windows + 1] = M.router_window(branch.condition) or false
+          end
+        end
+        local readable = #windows > 0
+        for _, window in ipairs(windows) do
+          if not window then readable = false end
+        end
+        if always then
+          out[key] = resolved
+        elseif readable then
+          out[key] = resolved
+          written = "yes @ (" .. table.concat(windows, "; ") .. ")"
+        end
+      elseif resolved and resolved ~= base then
+        out[key] = resolved
+      end
+    elseif conditional then
       -- Nothing is recorded about the condition here. An earlier version wrote
       -- `rm:access_conditional_<side>` for phase 3 to report on, and the entry
       -- point stripped it three lines later, before anything could read it: a
@@ -1289,6 +1454,9 @@ function M.remap_conditional_access(tags)
         out[key] = resolved
       end
     end
+  end
+  if written and written ~= both then
+    out["bicycle:conditional"] = written
   end
 
   return out
@@ -1509,9 +1677,12 @@ M.NARROW_GAP_M = 1.5
 -- cost and nothing about who may ride.
 M.STRESS_PENALTY_BICYCLE = "use_sidepath"
 -- The `access` / `vehicle` values that keep the public off a way whatever OSM's own
--- `bicycle=use_sidepath` says (`routemaker.facility.NO_PUBLIC_ACCESS`).
+-- `bicycle=use_sidepath` says (`routemaker.facility.USE_SIDEPATH_CLOSING_ACCESS`, held
+-- equal by tests/test_facility.py): no public access, and upstream's own closing values
+-- (`ACCESS_CLOSES`), over which it reads `use_sidepath` as a grant.
 M.USE_SIDEPATH_CLOSING_ACCESS = {
   no = true, private = true, military = true, restricted = true, permit = true,
+  agricultural = true, forestry = true, discouraged = true, emergency = true, psv = true,
 }
 M.PENALISABLE_BICYCLE = { yes = true, designated = true, permissive = true }
 
