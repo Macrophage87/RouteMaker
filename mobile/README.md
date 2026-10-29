@@ -176,7 +176,7 @@ in the build environment):
 ## Screen readers (TalkBack)
 
 The rider's existing choice in the ride settings decides, as on the website
-(`lib/rideOutput.ts`): "My screen reader", "RouteMaker's voice", "Both" or "Neither". A page cannot
+(`lib/rideOutput.ts`): "My screen reader", "App voice", "Both" or "Neither". A page cannot
 tell whether TalkBack is on, so the choice is what keeps cues from being said twice.
 
 - With the screen on and the app in front, "My screen reader" goes to TalkBack through the page's
@@ -187,7 +187,7 @@ tell whether TalkBack is on, so the choice is what keeps cues from being said tw
 - The "Latest cue" notification is on a low-importance channel: no sound, no vibration, no heads-up,
   and Android sends TalkBack no announcement for it, so it never repeats the voice.
 - On an older site (compatibility layer), "My screen reader" is silent with the phone locked: choose
-  "RouteMaker's voice" for pocket riding until v0.8.0 is deployed.
+  "App voice" for pocket riding until v0.8.0 is deployed.
 
 ## Permissions at Start ride
 

@@ -9,9 +9,9 @@
  */
 import { t } from "./i18n.ts";
 import { createElement as h, type ChangeEvent, type ReactElement } from "react";
-import { PRESETS, type PresetId, type PresetOption } from "./presets.ts";
+import { PRESETS, presetDescription, presetSummary, type PresetId, type PresetOption } from "./presets.ts";
 
-export type RideGroupId = "favorites" | "transportation" | "adventure" | "group";
+export type RideGroupId = "favorites" | "common" | "transportation" | "adventure" | "group";
 
 export interface RideGroup {
   id: RideGroupId;
@@ -24,12 +24,13 @@ export const RIDE_GROUPS: readonly RideGroup[] = [
   {
     id: "transportation",
     label: t("Transportation"),
-    ids: ["default", "bike-transit", "bikeshare-transit", "bikeshare", "cargo", "ebike", "novice"],
+    // Rebalance Ride is here, not in Adventure (P3): a working ride from dock to dock.
+    ids: ["default", "bike-transit", "bikeshare-transit", "bikeshare", "cargo", "ebike", "novice", "rebalance"],
   },
   {
     id: "adventure",
     label: t("Adventure"),
-    ids: ["fast", "trailmaxxing", "mountain-goat", "mountain-bike", "gravel", "rebalance"],
+    ids: ["fast", "trailmaxxing", "mountain-goat", "mountain-bike", "gravel"],
   },
   {
     id: "group",
@@ -47,7 +48,9 @@ function fold(text: string): string {
 export function matchesRideType(option: PresetOption, query: string): boolean {
   const words = fold(query).split(/\s+/).filter(Boolean);
   if (words.length === 0) return true;
-  const text = fold(`${option.label} ${option.spoken ?? ""} ${option.keywords ?? ""} ${option.summary} ${option.description}`);
+  // The English words and, on a Spanish page, the shown ones, so either finds it.
+  const shown = `${t(option.label)} ${option.spoken ? t(option.spoken) : ""} ${presetSummary(option)} ${presetDescription(option)}`;
+  const text = fold(`${option.label} ${option.spoken ?? ""} ${option.keywords ?? ""} ${option.summary} ${option.description} ${shown}`);
   return words.every((word) => text.includes(word));
 }
 
@@ -106,6 +109,20 @@ export function rideSections(
     groups: all.map((g) => ({ ...g, ids: rest(g.ids, taken) })).filter((g) => g.ids.length > 0),
     folded: true,
   };
+}
+
+/**
+ * One grouping everywhere (P3): Go's Ride sheet's sections (rideSections) as a list of groups, each under its
+ * heading: the favorites (where there are any), Common, then Transportation, Adventure and Group less those. Plan's
+ * ride type dialog shows them so, and Settings' Default ride type as the select's option groups (no favorites).
+ */
+export function rideTypeSections(query = "", favorites: readonly PresetId[] = [], presets: readonly PresetOption[] = PRESETS): RideGroup[] {
+  const sections = rideSections(query, presets, favorites);
+  return [
+    ...(sections.favorites.length > 0 ? [{ id: "favorites" as const, label: t("Favorites"), ids: sections.favorites }] : []),
+    ...(sections.common.length > 0 ? [{ id: "common" as const, label: t("Common"), ids: sections.common }] : []),
+    ...sections.groups,
+  ];
 }
 
 /** How many ride types the groups hold. */

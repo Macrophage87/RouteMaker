@@ -29,6 +29,7 @@ import {
   regionToday,
   type ClosureField,
 } from "./lib/closureReview.ts";
+import { t } from "./lib/i18n.ts";
 
 interface Props {
   origin: string;
@@ -128,7 +129,7 @@ export function ClosureEntry({ origin, wayId, title, report, onClose, onDone }: 
         <form onSubmit={onSubmit} noValidate aria-describedby={error ? id("error") : undefined}>
           {!showExtent && (
             <p className="stress-editor-extent">
-              <span className="road-info-label">This road piece:</span> {title}
+              <span className="road-info-label">{t("This road piece:")}</span> {title}
             </p>
           )}
           {showExtent && (
@@ -200,7 +201,7 @@ export function ClosureEntry({ origin, wayId, title, report, onClose, onDone }: 
               {sending ? "Sending…" : CLOSURE_SEND}
             </button>
             <button type="button" className="secondary" onClick={onClose}>
-              Cancel
+              {t("Cancel")}
             </button>
           </div>
         </form>
@@ -208,7 +209,7 @@ export function ClosureEntry({ origin, wayId, title, report, onClose, onDone }: 
       {sent && (
         <div className="stress-editor-buttons">
           <button type="button" className="secondary" onClick={onClose}>
-            Done
+            {t("Done")}
           </button>
         </div>
       )}

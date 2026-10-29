@@ -25,10 +25,12 @@ import {
   stepIcon,
   stepStressSaid,
   timesFromText,
+  tripNotes,
 } from "./lib/transit.ts";
 import { Icon } from "./Icon.tsx";
 import { DepartureTimer } from "./DepartureTimer.tsx";
 import { RIDE_REST, RIDE_REST_HINT } from "./lib/rideTrip.ts";
+import { t } from "./lib/i18n.ts";
 
 function Swatch({ colour, dash, width }: { colour: string; dash: [number, number]; width: number }) {
   return (
@@ -66,6 +68,8 @@ export function TransitSummary({
   onRideRest?: () => void;
 }) {
   const id = useId();
+  // The trip's own lines' notes, each said once (P11; lib/transit.ts tripNotes).
+  const notes = tripNotes(plan);
   return (
     <section className="transit" aria-labelledby={`${id}-heading`}>
       <h3 id={`${id}-heading`}>
@@ -98,10 +102,11 @@ export function TransitSummary({
         <strong>{plan.summary}</strong>
       </p>
       {plan.departure && <DepartureTimer departure={plan.departure} announce={announce} onMissed={onMissed} />}
-      {plan.comparison && <p className={plan.riding_quicker ? "transit-compare notice" : "transit-compare hint"}>{plan.comparison}</p>}
+      {/* Riding the whole way quicker is a plain line, not a warning box (P11): nothing is wrong. */}
+      {plan.comparison && <p className={plan.riding_quicker ? "transit-compare" : "transit-compare hint"}>{plan.comparison}</p>}
       {plan.live && plan.live.warnings.length > 0 && (
         // An elevator out where the bike needs one: a warning, never an avoidance (v0.7.0).
-        <ul className="transit-warnings notice" aria-label="Warnings">
+        <ul className="transit-warnings notice" aria-label={t("Warnings")}>
           {plan.live.warnings.map((warning) => (
             <li key={warning}>{warning}</li>
           ))}
@@ -131,14 +136,14 @@ export function TransitSummary({
           </p>
         </div>
       )}
-      {(plan.notes.length > 0 || (plan.live?.alerts.length ?? 0) > 0) && (
-        <ul className="transit-notes" aria-label="Notes on this plan">
+      {(notes.length > 0 || (plan.live?.alerts.length ?? 0) > 0) && (
+        <ul className="transit-notes" aria-label={t("Notes on this plan")}>
           {(plan.live?.alerts ?? []).map((alert) => (
             <li key={alert} className="hint transit-alert">
-              {alert} ({plan.live?.credit}, live)
+              {alert} {t("({credit}, live)", { credit: plan.live?.credit ?? "" })}
             </li>
           ))}
-          {plan.notes.map((note) => (
+          {notes.map((note) => (
             <li key={note} className="hint">
               {note}
             </li>
@@ -148,17 +153,16 @@ export function TransitSummary({
       {plan.scheduled && (
         <>
           <p className="hint transit-legend">
-            <Swatch colour={TRANSIT_COLOUR} dash={TRANSIT_DASH} width={TRANSIT_LINE_WIDTH} /> On the map, a dashed line marked with its
-            system (Metro, MARC, Bus) is the ride on transit, through its stops.{" "}
-            <Swatch colour={WALK_COLOUR} dash={WALK_DASH} width={WALK_LINE_WIDTH} /> A dotted line is a walk. {RIDES_LEGEND}
+            <Swatch colour={TRANSIT_COLOUR} dash={TRANSIT_DASH} width={TRANSIT_LINE_WIDTH} />{" "}
+            {t("On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.")}{" "}
+            <Swatch colour={WALK_COLOUR} dash={WALK_DASH} width={WALK_LINE_WIDTH} /> {t("A dotted line is a walk.")} {RIDES_LEGEND}
           </p>
           <p className="hint transit-scheduled">
             {TRACK_WORK} {timesFromText(plan)} {liveTimesText(plan)}
           </p>
         </>
       )}
-      {plan.credits.length > 0 && <p className="route-credit">Transit times: {plan.credits.join("; ")}.</p>}
-      {plan.live && <p className="route-credit">Live: {plan.live.credit}.</p>}
+      {/* The trip's sources (its schedules and WMATA's live data) are in the route's Info, once (P10). */}
     </section>
   );
 }

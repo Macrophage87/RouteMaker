@@ -898,6 +898,10 @@ class RebuildContext:
     # Walkways at rail platforms that `bicycle=yes` opens, walked and no facility
     # (`routemaker.station_links.platform_walks`), all of them in `walk_bike` too.
     platform_walks: set[int] = field(default_factory=set)
+    # Short links the trail rules close, reopened (`routemaker.short_links`): way id ->
+    # walked; and those of the mountain-bike class, walked on the standard graphs alone.
+    short_links: dict[int, bool] = field(default_factory=dict)
+    short_links_mtb: set[int] = field(default_factory=set)
     # Parking aisles where a trail ends, routed as plain service roads
     # (`routemaker.aisle_links`).
     aisle_links: set[int] = field(default_factory=set)
@@ -3000,9 +3004,7 @@ def build_handlers(
         beside = facility.beside_separate_roads(
             (way.osm_id, way.tags, way.coordinates) for way in context.ways
         )
-        context.short_paths_hidden = facility.short_paths_to_hide(
-            (way.osm_id, way.tags, way.node_ids, way.coordinates) for way in context.ways
-        )
+        context.short_paths_hidden = set()
         # By their place: the roads inside a military base, many with no access
         # tag of their own (the Pentagon's; OWNER-DECISIONS 88), every way inside
         # a cemetery (98), and a parking lot's own ways (99). Map only, but for
@@ -3167,6 +3169,13 @@ def build_handlers(
         )
         context.short_paths_hidden |= context.cemetery_ways
         context.short_paths_hidden |= restricted_areas.parking_ways(placed, areas["parking"])
+        # Last, so a way hidden by its place neither anchors a short link nor
+        # leaves the rest of a link mapped in pieces drawn as a stub.
+        context.short_paths_hidden |= facility.short_paths_to_hide(
+            (way.osm_id, way.tags, way.node_ids, way.coordinates)
+            for way in context.ways
+            if way.osm_id not in context.short_paths_hidden
+        )
         nobike = trail_closures.closures(
             context.ways,
             routes,
@@ -3222,6 +3231,9 @@ def build_handlers(
             "agency-prohibited",
         )
         # After the agency prohibitions, so a link never leads onto a road they close.
+        trail_closures.add_short_links(nobike, context.ways)
+        context.short_links = nobike.short_links
+        context.short_links_mtb = nobike.short_links_mtb
         trail_closures.add_sidewalk_rides(nobike, context.ways)
         trail_closures.add_station_links(nobike, context.ways, context.station_ways_in)
         trail_closures.add_platform_walks(nobike, context.ways, context.platform_nodes)
@@ -3238,7 +3250,8 @@ def build_handlers(
             context.stress_by_way, nobike.sidewalk_rides, context.sidewalk_last_resort
         )
         context.destination_only = nobike.destination_only
-        context.mtb_only = nobike.mtb_only()
+        # A walked short link of the mountain-bike class stays on that layer, as it was.
+        context.mtb_only = nobike.mtb_only() | nobike.short_links_mtb
         context.cbd_sidewalks = {w for w, r in nobike.reasons.items() if r == cbd.NO_BICYCLE}
         context.singletracks = {w for w, r in nobike.reasons.items() if r == singletrack.NO_BICYCLE}
         context.drawn_singletracks = nobike.drawn_singletrack
@@ -3262,7 +3275,10 @@ def build_handlers(
             closed = facility.car_free_when(way.tags)
             if closed:
                 context.car_free_by_way[way.osm_id] = closed
-            if nobike.reasons.get(way.osm_id) in trail_closures.MTB_ONLY:
+            if (
+                nobike.reasons.get(way.osm_id) in trail_closures.MTB_ONLY
+                or way.osm_id in nobike.short_links_mtb
+            ):
                 # No path rail on a trail only a mountain bike rides (the mountain-bike
                 # class, and the rated singletrack the layer now draws, 456).
                 context.facility_by_way[way.osm_id] = facility.Facility.NONE.value
@@ -3283,7 +3299,8 @@ def build_handlers(
             "barred to bicycles, %d singletrack ways avoided; no-bicycle reasons %s, %d "
             "walk-your-bike connectors kept, %d footways ridden as a last resort (sidewalks, "
             "crosswalks, links), %d destination-only, %d parking aisles routed "
-            "as links where a trail ends, %d walkways at rail platforms walked",
+            "as links where a trail ends, %d walkways at rail platforms walked, %d short links "
+            "reopened (%d of them walked)",
             dict(sorted(Counter(context.facility_by_way.values()).items())),
             len(context.car_free_by_way),
             car_free_for_good,
@@ -3296,6 +3313,8 @@ def build_handlers(
             len(nobike.destination_only),
             len(nobike.aisle_links),
             len(nobike.platform_walks),
+            len(nobike.short_links),
+            sum(nobike.short_links.values()),
         )
 
     def write_bike_bans(placed, parks) -> None:
@@ -3580,6 +3599,13 @@ def build_handlers(
                 # (`routemaker.station_links.platform_walks`): walked too.
                 if way.osm_id in context.platform_walks:
                     derived["platform_walk"] = True
+                # A short dirt link the trail rules closed (`routemaker.short_links`): walked,
+                # but for one of the mountain-bike class on the graphs that already rode it.
+                if context.short_links.get(way.osm_id) and not (
+                    way.osm_id in context.short_links_mtb
+                    and variant in (variants.Variant.OFFROAD, variants.Variant.MTB)
+                ):
+                    derived["link_walk"] = True
                 # A parking aisle or driveway where a trail ends (`routemaker.aisle_links`):
                 # lua/routemaker_remap.lua routes it as a plain service road.
                 if way.osm_id in context.aisle_links:

@@ -122,6 +122,7 @@ from pipeline.schema import (
     TRAIL_NETWORK_FACILITY,
     TRAIL_ROUTE_COLUMN,
     TRAIL_RUN_COLUMN,
+    TRAIL_TAGS_COLUMN,
     Z10_LONG_TRAILS,
     Z11_LONG_TRAILS,
     LongTrails,
@@ -184,8 +185,9 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # 13: the popular bike corridors' `popular`, z10-11 keep them and the long calm roads
 # (`popular_and_calm`), and a long trail's name from z10. 14: a major corridor's name,
 # `trail_name` on a way of the top popular class (POPULAR_NAMED_MIN_CLASS), and `dense` from
-# 8 km a square (DENSE_ROAD_M), and a slip road's `link`.
-FORMAT_VERSION = 14
+# 8 km a square (DENSE_ROAD_M), and a slip road's `link`. 15: every mountain-bike trail at z7-11
+# (ZOOMED_OUT_MTB), and a rated trail's `mtb_scale` and `mtb_imba` (MTB_SCALE_PROPERTIES).
+FORMAT_VERSION = 15
 
 # Five minutes (OWNER-DECISIONS 460.6, "5 min sounds good"): an instance admin's change in
 # the road panel (core.stress_edits) is in the tiles at once, and other riders' browsers
@@ -492,6 +494,22 @@ BRIDGE_UNPAVED = (
 # for it.
 FALLBACKS = {"facility": TRAIL_NETWORK_FACILITY}
 
+# THE MOUNTAIN-BIKE TRAILS ZOOMED OUT. The owner, 2026-10-28: "When on Mountain bike mode, you
+# should generally show the mountain bike trails at any zoom so people can see them." So the
+# zoomed-out levels (z7-11) keep every mountain-bike-only way beside the long trails, merged and
+# simplified as the rest; the front end draws them that far out in the Mountain Bike ride type
+# alone (stressStyle.js, `mtbMinZoom`), and every other ride type leaves them out below z12 as
+# before (its routable layers cut them, `mtbHides`, and the trail layer starts at z12). Only on a
+# table with the column; the map class's own rule (a road) still applies after it.
+ZOOMED_OUT_MTB = f"s.{MTB_ONLY_COLUMN}"
+
+# A rated trail's two OSM difficulty scales as mapped (the owner, 2026-10-28: "say which rating
+# type triggered the rating and if they are rated on both scales say that"), read from the kept
+# tags (`segment.trail_tags`, `routemaker.trail_facts.KEYS`) on a table that has them. The front end
+# says which one set the level (lib/featureHover.ts). Left out where none is mapped: a table built
+# before the rebuild that keeps the scales carries neither, and the card says both as before.
+MTB_SCALE_PROPERTIES = {"mtb_scale": "mtb:scale", "mtb_imba": "mtb:scale:imba"}
+
 # The three columns the long-trails rule reads (OWNER-DECISIONS 375, 377), which the
 # rebuild writes from the OSM route relations and way names
 # (`pipeline.trail_routes`). Not carried in a tile: they only choose which ways
@@ -690,11 +708,20 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
         carried["trail_name"] = trail_name_rule(has_facility, named)
     if CALM_RUN_COLUMN in optional:
         carried["calm"] = CALM_STREET_RULE
+    if TRAIL_TAGS_COLUMN in optional and MTB_LEVEL_COLUMN in optional:
+        for name, key in MTB_SCALE_PROPERTIES.items():
+            tag = f"s.{TRAIL_TAGS_COLUMN} ->> '{key}'"
+            carried[name] = f"CASE WHEN s.{MTB_LEVEL_COLUMN} IS NOT NULL THEN {tag} END"
     if level.predicate is not None:
         where, extra = zoomed_out_where(level, optional)
         if STRAY_ZOOM_COLUMN in optional:
             # A stray bit of what this zoom draws ("These bits too": `pipeline.bike_network`).
             where = f"({where}) AND s.{STRAY_ZOOM_COLUMN} < {level.min_zoom}"
+        if MTB_ONLY_COLUMN in optional:
+            # Every mountain-bike trail at every zoom (ZOOMED_OUT_MTB): the map draws them this far
+            # out only in the Mountain Bike ride type, and every other ride type leaves them out.
+            where = f"({where}) OR {ZOOMED_OUT_MTB}"
+            extra = [*extra, ZOOMED_OUT_MTB]
         if has_car_free:
             # A road closed to cars at set times is in a zoomed-out tile that
             # would not otherwise hold it only for those times: it carries them
@@ -803,6 +830,7 @@ def live_state() -> tuple[int | None, frozenset[str], int]:
                     *LONG_TRAIL_COLUMNS,
                     CALM_RUN_COLUMN,
                     STRAY_ZOOM_COLUMN,
+                    TRAIL_TAGS_COLUMN,
                 ],
                 _table(),
             ],
@@ -849,6 +877,8 @@ ETAG_LETTERS = {
     # `x` for the network marks, `z` for the zoomed-out stray bits.
     OVERVIEW_COLUMN: "x",
     STRAY_ZOOM_COLUMN: "z",
+    # `g` for the trail's kept tags (its difficulty scales).
+    TRAIL_TAGS_COLUMN: "g",
 }
 
 

@@ -11,7 +11,7 @@
  * |-------------------------------------------|-------------------------------------------------------|
  * | navigation to / or /index.html            | network first, SHELL_TIMEOUT_MS, else the kept shell  |
  * | any other navigation                      | not intercepted (sign-in, the admin, /static, presets)|
- * | /assets/{food,climbs}-*.json (LAZY_ASSET)  | cache first; else fetched and kept on first use       |
+ * | /assets/{food,climbs}-*.json, lang-*.js    | cache first; else fetched and kept on first use       |
  * | /assets/*                                 | precached at install; cache first                     |
  * | /favicon.*, /icons/*, /licenses.txt       | stale-while-revalidate                                |
  * | /basemap/fonts/*, /basemap/sprites/*      | the kept routes' bucket first, else the network       |
@@ -55,7 +55,9 @@ export const SKIP_WAITING = "SKIP_WAITING";
  * page asks, kept then in the build's cache (so a search works offline after one use), and carried
  * into the next build's cache at its install while the file is unchanged.
  */
-export const LAZY_ASSET = /^\/assets\/(?:food|climbs|federal-land)-[^/]*\.json$/;
+/** A language's catalog (vite.config.ts chunkFileNames), its code in group 1. */
+export const LANG_ASSET = /^\/assets\/lang-([a-z]+)-[^/]*\.js$/;
+export const LAZY_ASSET = /^\/assets\/(?:(?:food|climbs|federal-land)-[^/]*\.json|lang-[^/]*\.js)$/;
 
 /** The build's own cache: its assets and its shell. */
 export function buildCache(buildId) {
@@ -124,6 +126,22 @@ export async function precache(scope, buildId, assets, lazy = []) {
           break;
         }
       }
+    }
+    // A language catalog whose file changed (a new hash): fetched again when an older build kept that language's
+    // catalog, so a rider reading it keeps it offline across the update. Best effort: a failure leaves it lazy.
+    for (const path of lazy) {
+      const code = LANG_ASSET.exec(path)?.[1];
+      if (!code || (await cache.match(path, ANY_VARY))) continue;
+      const prefix = `/assets/lang-${code}-`;
+      let used = false;
+      for (const name of older) {
+        const keys = await (await scope.caches.open(name)).keys();
+        if (keys.some((request) => new URL(request.url).pathname.startsWith(prefix))) {
+          used = true;
+          break;
+        }
+      }
+      if (used) await cache.add(path).catch(() => undefined);
     }
   }
   await cache.put(SHELL_KEY, shell);

@@ -8,9 +8,10 @@
  * and why (src/routemaker/intersections.py); this is how they are listed,
  * worded and drawn, kept out of the components so it is tested without a DOM.
  */
-import type { JunctionGroupSummary, JunctionWarning, RouteResponse } from "./api.ts";
+import type { JunctionGroupSummary, JunctionWarning, ProfileCrossing, RouteResponse } from "./api.ts";
 import { formatDistance } from "./format.ts";
 import { t } from "./i18n.ts";
+import { corkersFor } from "./profileChart.ts";
 
 export type Severity = JunctionWarning["severity"];
 
@@ -76,21 +77,42 @@ export interface JunctionItem extends JunctionWarning {
   label: string;
   /** The severity in words, shown at the start of the list row: "Very high stress". */
   severityText: string;
-  /** "Costs 0.62 calm mi (1.00 calm km), more at rush hour" (467, 468a). */
+  /**
+   * "Costs 0.62 calm mi (1.00 calm km), more at rush hour" (467, 468a); on a Mass Ride, what the group needs there
+   * instead, "Cork this junction: 2 corkers" (the 2026-10-28 audit, P6), or "" where the profile does not say.
+   */
   costText: string;
 }
 
+/** How near a Mass Ride's major junction (its profile's crossing) is to the junction it is: the profile's sample spacing. */
+const CROSSING_MATCH_M = 30;
+
+/**
+ * A Mass Ride's line for a junction (the 2026-10-28 audit, P6: a group corks it, so a single rider's calm-mile cost
+ * says nothing): its corkers from the profile's major junction at the same place (lib/profileChart.ts corkersFor),
+ * "Cork this junction: 2 corkers", or "No corkers needed here"; "" where the profile has none there.
+ */
+export function junctionCorkText(crossings: readonly ProfileCrossing[] | null | undefined, m: number): string {
+  let best: ProfileCrossing | null = null;
+  for (const c of crossings ?? []) if (Math.abs(c.m - m) <= CROSSING_MATCH_M && (!best || Math.abs(c.m - m) < Math.abs(best.m - m))) best = c;
+  if (!best) return "";
+  if (!best.corkers_needed) return t("No corkers needed here");
+  const count = corkersFor(best);
+  return count === 1 ? t("Cork this junction: 1 corker") : t("Cork this junction: {count} corkers", { count });
+}
+
 /** The route's junctions, in route order, worded; empty when the API had none to say or is older. */
-export function junctionItems(route: Pick<RouteResponse, "intersections"> | null): JunctionItem[] {
+export function junctionItems(route: (Pick<RouteResponse, "intersections"> & Partial<Pick<RouteResponse, "preset" | "profile">>) | null): JunctionItem[] {
   const list = route?.intersections;
   if (!list) return [];
+  const mass = route?.preset === "mass-ride";
   return list.map((junction, index) => ({
     ...junction,
     index,
     where: `At ${formatDistance(junction.m)}`,
     label: `${SEVERITY_COLOURS[junction.severity].label}: ${junction.reason}`,
     severityText: SEVERITY_COLOURS[junction.severity].short,
-    costText: junctionCostText(junction),
+    costText: mass ? junctionCorkText(route?.profile?.crossings, junction.m) : junctionCostText(junction),
   }));
 }
 

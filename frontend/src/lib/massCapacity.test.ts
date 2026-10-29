@@ -24,6 +24,8 @@ import {
   narrowestText,
   ridersPerMinute,
   typicalLines,
+  capacityShortLine,
+  sampleTypicals,
 } from "./massCapacity.ts";
 import { CapacityFigures, CapacityStats, MassLegend, MassZoomNotes } from "./massLegend.ts";
 import { capacityLead, descriptionText } from "./routeDescription.ts";
@@ -355,7 +357,8 @@ test("the app wires the mode: the map's capacity layers, the legend and the pane
   assert.match(app, /massMap \? \(\s*<>\s*<MassLegend \/>\s*<MassZoomNotes[^>]*\/>\s*<\/>\s*\) : \(\s*<>\s*<StressLegend/);
   // The panel's figures are the route's own: they need the sections' capacity, so an older table keeps the stress breakdown.
   assert.match(app, /const capacity = capacitySummary\(route\.stress_spans\);/);
-  assert.match(app, /const segments = capacity \? \[\] : stressSegments\(route\.stress_m\);/);
+  // P10: nor does a transit option with no ride on it (lib/rideTrip.ts noBikeLine).
+  assert.match(app, /const segments = capacity \|\| noBike \? \[\] : stressSegments\(route\.stress_m\);/);
   assert.match(view, /setMassMode\(null, callbacks\.current\.massCapacity === true/);
   assert.match(view, /props\.massCapacity === true/);
   assert.match(view, /addDcMask\(map, callbacks\.current\.massArea === true/);
@@ -387,4 +390,30 @@ test("427: the parts of a Mass Ride outside DC carry no figure, keep their stres
   assert.ok(!lead.includes("outside dc"), lead);
   const withAvoid = capacityLead({ stress_spans: SPANS })!;
   assert.ok(withAvoid.includes("Marked Avoid: no capacity given") && withAvoid.includes("no capacity figure"), withAvoid);
+});
+
+test("the typical pair is read from the same samples, so with the hills is never above on the flat (the 2026-10-28 audit, P6)", () => {
+  // Wide open sections running 200 to 470 counted at their lowest (200) put the flat typical under the samples' own figures.
+  const m = [0, 100, 200, 300, 400, 500];
+  const level = [261, 270, 270, 270, 261, null];
+  const hills = [261, 261, 270, 270, 250, null];
+  assert.deepEqual(sampleTypicals({ m, level_riders_per_min: level, riders_per_min: hills }), { flat: 270, hills: 261 });
+  const pair = capacityPair(capacitySummary(SPANS), { narrowest_riders_per_min: 50, narrowest_m: 0, typical_riders_per_min: 999 }, { m, level_riders_per_min: level, riders_per_min: hills });
+  assert.equal(pair.typicalFlat, 270);
+  assert.equal(pair.typicalHills, 261);
+  // An older answer with no level figures: the two sources, but the hills never above the flat.
+  const older = capacityPair(capacitySummary(SPANS), { narrowest_riders_per_min: 50, narrowest_m: 0, typical_riders_per_min: 999 });
+  assert.equal(older.typicalHills, older.typicalFlat);
+  assert.equal(sampleTypicals({ m }), null);
+});
+
+test("Go's one capacity line: the narrowest point and the corkers, short on screen and whole for a screen reader (P6)", () => {
+  const pair = capacityPair(capacitySummary(SPANS), { narrowest_riders_per_min: 40, narrowest_m: 1500, typical_riders_per_min: 120 });
+  const line = capacityShortLine(pair, "about 8 corkers for 500 riders")!;
+  assert.equal(line.shown, "Narrowest: 40 riders/min at 0.9 mi · about 8 corkers for 500 riders");
+  assert.equal(line.said, "Narrowest: 40 riders per minute, at 0.9 mi (1.5 km) along; about 8 corkers for 500 riders.");
+  assert.equal(capacityShortLine(capacityPair(capacitySummary(SPANS), null), null)!.shown, "Narrowest: 50 riders/min at the start");
+  const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /\{!go\.peek && <CapacityShort route=\{route\} corkers=\{corkerShort\(route, profile, rideSize\)\} \/>\}/);
+  assert.match(panel, /\{goMode && <CapacityStats route=\{route\} corkers=\{corkerFigure\(route, profile, rideSize\)\} \/>\}/);
 });

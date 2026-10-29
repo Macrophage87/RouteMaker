@@ -4923,13 +4923,15 @@ puts it, at most two presses away.
   link holds no position until a destination is picked; denied, unavailable or timed out, the
   start stays empty, the start box opens and "Current location not available; type a start." is
   shown and said politely. A start typed in (Change start, `PlaceSearch variant="start"`), or
-  one placed in Plan, is the plan's first point and replaces the location (a press on the map in Go is the destination). A destination picked
+  one placed in Plan, is the plan's first point and replaces the location (a press on the map in Go opens the spot's card, whose Route here makes it the destination). A destination picked
   before there is a start is never dropped nor made the start (`goPickAction`): while the
   location is still being found it waits ("To …: finding your location for the start…") and is
   routed when the location comes; with no location, it is kept ("To …. Current location not
   available; type a start.") and a start typed in the start box plans the route to it at once. A
-  press on the map in Go, the route line included (a drag of the line still adds a stop; `lineTapIsPoint`), or Map tools' "Set destination at map center", is the destination, routed as a
-  picked one is and said "Destination set: …" (named by `goPlaceName`, the same on the sheet: its coordinates until
+  press on the map in Go, the route line included (a drag of the line still adds a stop; `lineTapIsPoint`), opens
+  the spot's card (`GoSpotDialog.tsx`, lib/spotNearby.ts, the owner 2026-10-28): its address, the places near it as
+  pins on the map, and Route here; the press alone never routes. That Route here, or Map tools' "Set destination at
+  map center" (at once), is the destination, routed as a picked one is and said "Destination set: …" (named by `goPlaceName`, the same on the sheet: its coordinates until
   its place name comes; a press on a water, climb or federal-land card's feature, or one that only closes such a card,
   is the card's alone, `featureCardPress`; `goTapSetsEnd`, the owner 2026-10-12; it replaces #95's tap-as-start). Picking a
   destination with a start plans at once (a location start after its look-up, at most 3 s); Go then shows the routes to choose from open, and the ride types under the
@@ -4940,7 +4942,7 @@ puts it, at most two presses away.
   Start ride (the review of #95 counted them); with the Home chip it is two: Home, then Start ride
   (signed in, three: Favorites, Home, Start ride; see Favorite places below). Go
   starts the ride with Settings > Ride mode's cues and asks nothing first (Plan still asks the
-  first time). **Announcements** (`lib/announceLevel.ts`, Settings > Display): Brief or Full,
+  first time). **Screen-reader detail** (it was Announcements; `lib/announceLevel.ts`, Settings > Display): Brief or Full,
   kept on this device; unset, Go is Brief and Plan is Full. The route found, guidance, the start
   Go found, errors and notices are always said; Brief leaves out the narration (`announceExtra`:
   finding your location, planning a route to, the view or ride type changed, the map moved).
@@ -5014,10 +5016,11 @@ puts it, at most two presses away.
   Suggest, GPX and Settings. Layers holds the switches only, with a Legend button that opens
   the Legend sheet one step in; Suggest says how to suggest from the road panel and opens it
   at the map's center, with DC 311 and an admin's Review; Settings is My Go (Home, one line with
-  Change, and Go's ride type), Riding (cues, large text, rider and bike weight), Display (High
-  contrast, Accessibility mode, Announcements) and Account, most used first, one row per setting; on a phone it takes the panel's whole height.
-  Plan's map has Food and Water chips (`PlanMapChips`), which open the Find food and Nearest
-  sheets. `openOnto`/`backFrom` keep the way back through nested sheets; Back returns the
+  Change, and Go's ride type), Riding (cues, rider and bike weight), Display (Accessibility mode, with High
+  contrast and Large text during a ride indented under it, Screen-reader detail, Language) and Account, most used
+  first, one row per setting; on a phone it takes the panel's whole height.
+  Plan's map has Eat, Water and Places to see chips behind one Find chip (`PlanMapChips`),
+  which open the Find food, Nearest and Places to see sheets. `openOnto`/`backFrom` keep the way back through nested sheets; Back returns the
   focus to what opened the sheet, and a sheet's heading takes it on the way in.
 - **Road panel**: two or more ways to suggest (a road's level, a junction, a Mass Ride
   hazard) are one "Suggest a change…" disclosure; one is its own button, as before.
@@ -7141,18 +7144,28 @@ keys (I, the arrows, + and -) work in both modes.
   mode": the page's first element and first Tab stop (`.access-link`, off screen until
   focused like the skip link, which is now the second stop; both at least 44 px tall), and
   one in More tips (`.access-toggle`). `accessModeToggle` gives the new state, what the
-  page's polite region says ("Accessibility mode on. Map tools is by the map's zoom
-  buttons." / "Accessibility mode off. Map tools is hidden.") and whether the focus moves:
+  page's polite region says ("Accessibility mode on: high contrast, large text during a ride, and Map
+  tools by the map's zoom buttons." / "Accessibility mode off: high contrast and large ride text are off,
+  and Map tools is hidden.") and whether the focus moves:
   only the first switch, turning the mode on, moves it to the Map tools button. The move
   waits for Map tools to mount (`MapTools`' `onShown`; the map may still be loading) and is
   dropped if the focus has moved on since the press.
+- **One shared mode** (P5; the owner: "Accessibility = one shared mode with screen-reader tweaks"). Every
+  press of the mode's switch (the first button, Points' Info, Settings > Display) goes through App's
+  `toggleAccessMode`, which also sets High contrast (`setAccessibility`) and Large text during a ride
+  (`setRideText`) the same way (`accessModeParts`). Those two stay switches of their own, indented under the
+  mode in Settings > Display; changing one leaves the mode and the other alone. Each keeps its own key
+  (`routemaker.accessibility`, `routemaker.ride.bigText`; the mode's is `routemaker.accessMode`), so a rider who
+  had only High contrast on keeps it. None of the three syncs with the account (lib/accountSettings.ts). While the
+  mode is on, `access-mode` on the page's root brings Go's small text to 15 px (place and ride-type chips, the
+  stress line, Settings' headings, the map's scale).
 - **Help that changes with the mode.** Off: the search lede and the lone-start hint (shown
   outside More tips) say "For keyboard or screen reader use, turn on accessibility mode
   (the first button on the page, or in More tips)."; in More tips, the keyboard hints and
   the road help say "turn on accessibility mode" before naming Map tools, and its own line
-  says "For keyboard or screen reader use, turn on accessibility mode. It adds Map tools by
-  the map's zoom buttons and is kept on this device. It is also the first button on the
-  page." On: the hints name Map tools directly (`mapToolsWays`, `infoHelp`, `searchLede`,
+  says "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast,
+  large text during a ride, and Map tools by the map's zoom buttons, and is kept on this device. It is
+  also the first button on the page." On: the hints name Map tools directly (`mapToolsWays`, `infoHelp`, `searchLede`,
   `loneStartHint`, `editingTips`, `emptyPlanHint` all take the mode).
 - **Upgrade note.** v0.2.1 showed Map tools to everyone; after this change it is behind the
   mode, which starts off on every device (no earlier key to migrate from). The release

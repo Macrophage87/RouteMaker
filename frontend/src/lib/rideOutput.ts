@@ -10,7 +10,9 @@
  */
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
 import type { Verbosity } from "./navigate.ts";
-import { speechLang, t } from "./i18n.ts";
+import { englishOf, language, speechLang, t, voiceTags } from "./i18n.ts";
+import { isIos } from "./installOffer.ts";
+import { withoutMenuMarks } from "./menuNames.ts";
 
 // ---- The rider's choices, kept on this device -----------------------------------------------------
 
@@ -18,7 +20,8 @@ export type CueOutput = "screen-reader" | "voice" | "both" | "neither";
 
 export const OUTPUT_LABELS: Record<CueOutput, string> = {
   "screen-reader": t("My screen reader"),
-  voice: t("RouteMaker's voice"),
+  // "App voice" (it was RouteMaker's voice): short enough for Settings' dropdown at 390 px.
+  voice: t("App voice"),
   both: t("Both"),
   neither: t("Neither (on screen only)"),
 };
@@ -237,18 +240,47 @@ export interface UtteranceLike {
   text: string;
   lang: string;
   onend: (() => void) | null;
+  voice?: VoiceLike | null;
+}
+
+/** A voice the phone has (SpeechSynthesisVoice): its language tag. */
+export interface VoiceLike {
+  lang: string;
 }
 
 export interface SpeechEnv {
   synth: SpeechApi | undefined;
   utterance: (text: string) => UtteranceLike;
+  /** The phone's voices; empty while the browser is still listing them. */
+  voices?: () => readonly VoiceLike[];
+}
+
+/**
+ * The phone's voice for the language in force: the first tag it is asked by (lib/i18n.ts voiceTags), matched whole,
+ * then by its language alone ("es-MX" for "es"); undefined while the browser has listed none, null if it has none.
+ */
+export function voiceFor(voices: readonly VoiceLike[], tags: readonly string[] = voiceTags()): VoiceLike | null | undefined {
+  if (!voices.length) return undefined;
+  const norm = (tag: string) => tag.toLowerCase().replace(/_/g, "-");
+  for (const tag of tags) {
+    const found = voices.find((v) => norm(v.lang) === norm(tag)) ?? voices.find((v) => norm(v.lang).split("-")[0] === norm(tag));
+    if (found) return found;
+  }
+  return null;
 }
 
 export function browserSpeech(): SpeechEnv {
   const synth = typeof window !== "undefined" && "speechSynthesis" in window ? (window.speechSynthesis as unknown as SpeechApi) : undefined;
   const utterance = (text: string): UtteranceLike =>
     typeof SpeechSynthesisUtterance === "function" ? (new SpeechSynthesisUtterance(text) as unknown as UtteranceLike) : { text, lang: "", onend: null };
-  return { synth, utterance };
+  const voices = (): readonly VoiceLike[] => {
+    try {
+      return synth ? (window.speechSynthesis.getVoices() as readonly VoiceLike[]) : [];
+    } catch {
+      return [];
+    }
+  };
+  return { synth, utterance, voices };
 }
 
 /**
@@ -299,14 +331,24 @@ export class Voice {
   }
 
   private start(text: string): void {
-    const utterance = this.env.utterance(text);
-    utterance.lang = speechLang();
-    utterance.onend = () => {
-      const next = this.waiting;
-      this.waiting = null;
-      if (next) this.start(next);
-    };
+    // A language the phone has no voice for (Amharic, Tigrinya and others on many phones): the screen keeps the
+    // language and the voice speaks the English, rather than an English voice spelling out words it cannot read. A
+    // sentence with no English in the catalog (one of the server's) is left to the screen.
+    const voice = language() === "en" ? undefined : voiceFor(this.env.voices?.() ?? []);
+    // Text already in English (the server's sentences) is spoken as it came.
+    const english = voice === null ? (englishOf(text) ?? (/^[\x20-\x7e]*$/.test(text) ? text : null)) : null;
+    if (voice === null && english === null) return this.next();
+    const utterance = this.env.utterance(english ?? text);
+    utterance.lang = english !== null ? speechLang("en") : speechLang();
+    if (voice) utterance.voice = voice;
+    utterance.onend = () => this.next();
     this.env.synth?.speak(utterance);
+  }
+
+  private next(): void {
+    const next = this.waiting;
+    this.waiting = null;
+    if (next) this.start(next);
   }
 }
 
@@ -330,13 +372,38 @@ export function browserWake(): WakeEnv {
   return { request: wakeLock ? () => wakeLock.request("screen") : undefined, visible: () => typeof document === "undefined" || document.visibilityState === "visible" };
 }
 
-/** What the rider is told when the screen may turn off. */
-export const WAKE_UNAVAILABLE =
-  t("This browser cannot keep the screen on. Keep your screen on yourself for this ride (on an iPhone: Settings, Display and Brightness, Auto-Lock, Never).");
+/** What the rider is told when the screen may turn off; the phone's own steps follow it (wakeSaid). */
+export const WAKE_UNAVAILABLE = t("This browser cannot keep the screen on. Keep your screen on yourself for this ride.");
 
 /** Said instead when the screen was kept on earlier in the ride and the browser stopped (review RIDE-8). */
-export const WAKE_LOST =
-  t("The screen may now turn off: the browser stopped keeping it on. Keep your screen on yourself for this ride (on an iPhone: Settings, Display and Brightness, Auto-Lock, Never).");
+export const WAKE_LOST = t("The screen may now turn off: the browser stopped keeping it on. Keep your screen on yourself for this ride.");
+
+/**
+ * The same note as shown, one line (the UI review, 2026-10-28: the three-line note stayed for the whole ride); the
+ * steps are behind its How (ScreenSleepNote.tsx), and the voice and screen readers keep the whole sentence.
+ */
+export const WAKE_SHORT = t("Screen may sleep: keep it on.");
+
+/** Which phone's steps to give: an iPhone's (an iPad too), Android's, or general words for any other. */
+export type PhoneKind = "ios" | "android" | "other";
+
+export function phoneKind(nav: { userAgent: string; platform?: string; maxTouchPoints?: number } | undefined = globalThis.navigator): PhoneKind {
+  if (!nav) return "other";
+  if (isIos(nav.userAgent, nav.platform ?? "", nav.maxTouchPoints ?? 0)) return "ios";
+  return /Android/.test(nav.userAgent) ? "android" : "other";
+}
+
+/** How to keep the screen on by hand, for the rider's own phone only (the review: an Android phone was given an iPhone's). */
+export const WAKE_STEPS: Record<PhoneKind, string> = {
+  ios: t("On an iPhone: **Settings**, **Display & Brightness**, **Auto-Lock**, **Never**."),
+  android: t("On Android: **Settings**, **Display**, **Screen timeout**, the longest time."),
+  other: t("In your phone's display settings, set the screen to stay on longer."),
+};
+
+/** The whole note, said and read by screen readers: the sentence, then the phone's steps; none for no note. */
+export function wakeSaid(note: string, kind: PhoneKind): string {
+  return note ? `${note} ${withoutMenuMarks(WAKE_STEPS[kind])}` : "";
+}
 
 /** How many times a ride asks again for a lock the browser let go in front, before it stops asking. */
 export const WAKE_REASKS = 3;

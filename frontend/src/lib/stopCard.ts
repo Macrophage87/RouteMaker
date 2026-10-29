@@ -6,7 +6,7 @@
  * website. The action is Route here before there is a route and Add as stop (the detour) with one.
  */
 import type { LonLat } from "./geo.ts";
-import { openNow } from "./repair.ts";
+import { hoursText } from "./openingHours.ts";
 
 export const ROUTE_HERE = "Route here";
 export const ADD_AS_STOP = "Add as stop";
@@ -28,11 +28,12 @@ export interface StopCardWords {
   website?: string | null;
 }
 
-/** "Open now." or "Closed now." where the mapped hours can be read at `at`, else nothing (lib/repair.ts openNow). */
+/**
+ * "Open now · closes 10 PM." where the mapped hours can be read at `at`, else the hours cleaned up ("Hours: Mon–Fri
+ * 9 AM–5 PM."; lib/openingHours.ts); nothing with no hours mapped.
+ */
 export function openNowText(hours: string | undefined, at: Date): string | null {
-  if (!hours) return null;
-  const open = openNow(hours, at);
-  return open === true ? "Open now." : open === false ? "Closed now." : null;
+  return hours ? `${hoursText(hours, at)}.` : null;
 }
 
 /** A website only if it is a web address (http or https): mapped text is never followed as a script or an app link. */

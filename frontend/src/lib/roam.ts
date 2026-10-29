@@ -8,12 +8,14 @@
  * Everything here is pure, so a test runs it on made-up roads: the map's features in, the words out.
  */
 import type { FoodPlace } from "./food.ts";
-import { foodKindText } from "./food.ts";
+import { foodHoursText, foodKindText } from "./food.ts";
+import { shortStreets } from "./cueShown.ts";
 import { formatDistance, formatDuration, spokenDistance } from "./format.ts";
 import { lightClock, solarDay } from "./lightTimes.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { BASEMAP_SOURCE_ID, STRESS_SOURCE_ID } from "./mapStyle.ts";
 import type { NearestPlace } from "./nearest.ts";
+import { placeWords, type ReportPlace } from "./report311.ts";
 import { STRESS_TILE_LAYER } from "../stressStyle.js";
 import { tierWords } from "./profileChart.ts";
 import { t } from "./i18n.ts";
@@ -31,8 +33,27 @@ export const STILL_ROAMING_SAID = t("Still roaming. Use End roam to stop.");
 export const NO_ROAD_YET = t("Looking for the road you're on…");
 /** No named road near: on an unnamed path, or off the map's roads. */
 export const NO_NAMED_ROAD = t("No named road here");
-/** What Roam's Detour menu offers (the owner: "bathroom food water"). */
-export const ROAM_DETOUR_HELP = t("Detour plans a ride from where you are to that place. End the ride there to go back to roaming.");
+/** The rider outside the area the map covers (P11): no roads to read, and nothing to start riding for. */
+export const OUTSIDE_MAP = t("Outside the map (DC to Baltimore)");
+/**
+ * Roam's Nearby button and menu (the owner: "bathroom food water"): named Nearby, not Detour, since Roam has no route to
+ * detour from (the audit's P13, approved 2026-10-28); its results say Ride here.
+ */
+export const ROAM_NEARBY_NAME = t("Nearby");
+export const ROAM_DETOUR_HELP = t("Nearby rides you there; end it to roam again.");
+
+/**
+ * The base map's lines that are no road to ride onto (the audit's P14: "Washington Metro - Green and Yellow Line" was
+ * listed as a road ahead): rail of every kind, by its own `kind` or a rail `kind_detail`, and tunnels, which pass under
+ * the roads they cross.
+ */
+const RAIL_DETAILS = new Set(["rail", "subway", "light_rail", "tram", "monorail", "narrow_gauge", "funicular", "miniature", "preserved", "disused"]);
+export function notARoad(properties: Record<string, unknown> | null | undefined): boolean {
+  const p = properties ?? {};
+  if (p.kind === "rail" || typeof p.railway === "string") return true;
+  if (typeof p.kind_detail === "string" && RAIL_DETAILS.has(p.kind_detail)) return true;
+  return p.is_tunnel === true || p.is_tunnel === "true" || p.tunnel === "yes";
+}
 
 /** One line of the map: a named road (the base map's) or a stress line (the stress tiles'), each as lon/lat lines. */
 export interface RoadLine {
@@ -250,6 +271,32 @@ export function onRoadSaid(on: RoadNow | null): string {
 /** One road ahead, as shown under the card's road: the distance, US units first. */
 export const aheadShown = (road: RoadAhead): string => formatDistance(road.distanceM);
 
+/**
+ * One road ahead on one line of the card (the audit's P13): the street words as Ride's card shortens them, then the
+ * distance, its metric apart so the card can show it smaller ("13th St NW", "0.1 mi", "(0.2 km)"). Shown only: `said`
+ * is the whole of it in words for screen readers ("13th Street Northwest, 0.1 mi (0.2 km), LTS 4").
+ */
+export function aheadRow(road: RoadAhead): { name: string; us: string; metric: string; said: string } {
+  const far = aheadShown(road);
+  const at = far.indexOf(" (");
+  return {
+    name: shortStreets(road.name),
+    us: at < 0 ? far : far.slice(0, at),
+    metric: at < 0 ? "" : far.slice(at + 1),
+    said: [road.name, far, roamTier(road.tier)].filter(Boolean).join(", "),
+  };
+}
+
+/** Said when a 311 pick in Roam comes before the first GPS fix. */
+export const ROAM_NO_PLACE_311 = t("Your position is not known yet, so nothing was logged.");
+/** How near the next road ahead is to be named in a 311 entry from Roam ("on 14th St NW near U St NW"). */
+export const ROAM_PLACE_NEAR_M = 60;
+/** Where a 311 entry from Roam says the rider is: the road ridden, the next road ahead when close, and the GPS point. */
+export function roamReportPlace(point: LonLat, roads: RoadsAhead | null): ReportPlace {
+  const next = roads?.ahead[0];
+  return { words: placeWords(roads?.on?.name ?? null, next && next.distanceM <= ROAM_PLACE_NEAR_M ? next.name : null), point };
+}
+
 /** The roads ahead, as said: "Ahead: Calvert Street in 300 feet, LTS 3; Ontario Road in 0.2 miles." */
 export function aheadSaid(ahead: readonly RoadAhead[]): string {
   if (ahead.length === 0) return "";
@@ -290,14 +337,18 @@ export class HeadingTrack {
 }
 
 /** Find food's places as the nearest search's, so Roam's Detour lists food by riding distance as it does water. */
-export function foodNearestPlaces(food: readonly FoodPlace[]): NearestPlace[] {
+export function foodNearestPlaces(food: readonly FoodPlace[], at: Date = new Date()): NearestPlace[] {
   return food.map((place) => ({
     id: place.id,
     // Food rides like water: a stop on the way (lib/nearest.ts stopsOnTheWay). The kind is only a label here.
     kind: "water",
     point: [place.lon, place.lat],
     title: place.name || foodKindText(place),
-    details: [place.name ? `${foodKindText(place)}.` : "", place.hours ? t("Hours as mapped: {hours}.", { hours: place.hours }) : ""].filter(Boolean),
+    ...(place.name ? { name: place.name } : {}),
+    // Worked out when read: only the few places listed say their hours, not every place in the area.
+    get details() {
+      return [place.name ? `${foodKindText(place)}.` : "", place.hours ? foodHoursText(place, at) : ""].filter(Boolean);
+    },
   }));
 }
 
@@ -338,7 +389,7 @@ export function mapLines(map: RoamMap, rider: LonLat, reach = AHEAD_M + 200): { 
   if (map.getSource(BASEMAP_SOURCE_ID)) {
     for (const f of map.querySourceFeatures(BASEMAP_SOURCE_ID, { sourceLayer: "roads" })) {
       const name = roadName(f.properties);
-      if (!name) continue;
+      if (!name || notARoad(f.properties)) continue;
       const lines = linesOf(f.geometry);
       if (near(lines)) roads.push({ name, lines });
     }
@@ -360,12 +411,12 @@ export function mapLines(map: RoamMap, rider: LonLat, reach = AHEAD_M + 200): { 
 // ---- Broadcast from Roam (Stephen 2026-10-22: "Yes, but have it as a tap within roam") ----------------------------
 
 /** Roam's Broadcast: one tap on the Roam screen opens the share sheet; those who open the link follow the rider. */
-export const ROAM_BROADCAST_NAME = t("Broadcast");
+export const ROAM_BROADCAST_NAME = t("Share live");
 export const ROAM_BROADCAST_TITLE = t("Follow my ride");
 export const ROAM_BROADCAST_TEXT = t("Follow my ride on RouteMaker: my dot and the way I've ridden, while my app is open.");
-export const ROAM_BROADCAST_ON = t("Broadcasting. Those who open your link see your dot and the way you ride.");
+export const ROAM_BROADCAST_ON = t("Sharing live. Those who open your link see your dot and the way you ride.");
 /** The link went without the leader key (not ready yet, or no SHA-256 here): nothing is broadcast. */
-export const ROAM_BROADCAST_NOT_READY = t("Broadcast is not ready yet; try again in a moment.");
+export const ROAM_BROADCAST_NOT_READY = t("Share live is not ready yet; try again in a moment.");
 
 /** The fragment keys of a Roam broadcast link: the ride's random id and the leader key. */
 export const ROAM_PARAM = "roam";

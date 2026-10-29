@@ -17,6 +17,7 @@
 import { haversineM, type LonLat } from "./geo.ts";
 import type { ClosureNotice } from "./closureMap.ts";
 import type { When } from "./dials.ts";
+import { t } from "./i18n.ts";
 
 /** One closure the line runs along, as the API answers it. */
 export interface Closure {
@@ -127,22 +128,34 @@ export async function checkClosures(
 
 /** The dialog's heading: "This route goes through 2 closures". */
 export function closureHeading(count: number): string {
-  return `This route goes through ${count === 1 ? "1 closure" : `${count} closures`}`;
+  return count === 1 ? t("This route goes through 1 closure") : t("This route goes through {count} closures", { count });
 }
 
-export const REROUTE_LABEL = "Reroute around them";
-export const CANCEL_LABEL = "Cancel";
+export const REROUTE_LABEL = t("Reroute around them");
+export const REROUTE_ONE_LABEL = t("Reroute around it");
+export const CANCEL_LABEL = t("Cancel");
+
+/** The default choice, for one closure or more (P11). */
+export function rerouteLabel(count: number): string {
+  return count === 1 ? REROUTE_ONE_LABEL : REROUTE_LABEL;
+}
+
+/** The park-wide notices' disclosure under the list (P11): "Park notices (6)", opened only when asked. */
+export function parkNoticesSummary(count: number): string {
+  return t("Park notices ({count})", { count });
+}
 
 /** The middle choice, by what the check was for. */
 export function anywayLabel(why: CheckFor): string {
-  return why === "download" ? "Download anyway" : why === "save" ? "Save anyway" : "Ride it anyway";
+  return why === "download" ? t("Download anyway") : why === "save" ? t("Save anyway") : t("Ride it anyway");
 }
 
 /** One sentence under the heading, by what the check was for. */
 export function closureLead(why: CheckFor): string {
-  if (why === "download") return "Closures in force now that the file's line runs along. Reroute first, or download it as it is.";
-  if (why === "save") return "Closures in force now that this route runs along. Reroute first, or save it as it is.";
-  return "This route was planned before these closures. Reroute around them, or ride it as it is.";
+  if (why === "download") return t("Closures in force now that the file's line runs along. Reroute first, or download it as it is.");
+  if (why === "save") return t("Closures in force now that this route runs along. Reroute first, or save it as it is.");
+  // At Start ride the route may have been planned a moment ago: it says what is so, not when it was planned (P11).
+  return t("Closures on this route now.");
 }
 
 /** Metres along each vertex of a line. */
