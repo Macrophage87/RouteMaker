@@ -4984,6 +4984,12 @@ and its header). What the panel shows is in `app/`, moved out unchanged:
   Climbs layer's "Show climbs from") goes inside, under that layer's switch; long help goes by
   the legend in the Legend sheet, not in Layers.
 - `app/hooks.ts`: `useNarrow` (and `NARROW`), `useLongerThan`, `useSettled`.
+- `app/LiveMap.tsx`: `LiveMap`, the map with the rider's position and the elevation chart's
+  scrub point read from their own stores (`lib/liveValue.ts`), and `LiveRiderPoint`, the
+  same for a ride group's dot. A GPS fix (about once a second) or a scrub re-renders the map
+  alone, not App and the hidden planner. App keeps a ride's slower parts (the route, the
+  stops, Detour's letters) in `rideView` and re-renders only when they change
+  (`lib/rideViewKept.ts`). Unlike the pass-throughs above, these two read their stores.
 
 Each component is a pass-through: it takes its props under the names App gives them, keeps
 no state and calls no hook (`RouteSummary` keeps its own `useStressStyle()`), and App renders

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactElement } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
-import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
+import { type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
+import { LiveMap, LiveRiderPoint, type LiveRider } from "./app/LiveMap.tsx";
+import { liveValue } from "./lib/liveValue.ts";
+import { rideViewKept } from "./lib/rideViewKept.ts";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { GoSpotDialog, type SpotRequest } from "./GoSpotDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
@@ -902,8 +905,10 @@ export function App() {
   // The junction a click on the route summary's list names; `nonce` makes a second
   // click on the same one open its card again.
   const [junctionFocus, setJunctionFocus] = useState<{ index: number; nonce: number } | null>(null);
-  // The point on the route the elevation chart is reading (OWNER-DECISIONS 322), or null.
-  const [scrubPoint, setScrubPoint] = useState<LonLat | null>(null);
+  // The point on the route the elevation chart is reading (OWNER-DECISIONS 322), or null: in its own store, read by the
+  // map alone (app/LiveMap.tsx), so a scrub re-renders the map, not App.
+  const [scrubPoint] = useState(() => liveValue<LonLat | null>(null));
+  const setScrubPoint = scrubPoint.set;
   // Bumped to put the markers back where the points are, without changing
   // the points (which would plan the same route again).
   const [markerReset, setMarkerReset] = useState(0);
@@ -990,12 +995,11 @@ export function App() {
   const [ridePrefs, setRidePrefs] = useState<RidePrefs>(() => readRidePrefs());
   const [riding, setRiding] = useState(false);
   // Roam (RoamMode.tsx, lib/roam.ts; the owner, 2026-10-22): a ride with no destination, from Go's Roam button. The
-  // rider for the map, in memory only, as a ride's is. A detour from it is an ordinary ride (`rideStart.roam`), and
-  // ending that ride comes back here.
+  // rider for the map, in memory only, as a ride's is, in its own store (app/LiveMap.tsx: a GPS fix re-renders the map,
+  // not App). A detour from it is an ordinary ride (`rideStart.roam`), and ending that ride comes back here.
   const [roaming, setRoaming] = useState(false);
-  const [roamRider, setRoamRider] = useState<{ point: LonLat; headingDeg: number | null; accuracyM: number } | null>(null);
-  const roamRiderNow = useRef(roamRider);
-  roamRiderNow.current = roamRider;
+  const [roamRider] = useState(() => liveValue<LiveRider>(null));
+  const setRoamRider = roamRider.set;
   // Roam's Nearby places, lettered on the map as its rows (as a ride's Detour, RideView.lettered).
   const [roamLettered, setRoamLettered] = useState<{ places: LetteredPlace[]; pick: (index: number) => void } | null>(null);
   const onBike = riding || roaming;
@@ -1029,9 +1033,18 @@ export function App() {
   } | null>(null);
   // What the next ride screen says once it is up (rideStart.note); a ride started any other way says nothing.
   const rideNote = useRef("");
-  const [rideView, setRideView] = useState<RideView | null>(null);
-  const rideViewNow = useRef(rideView);
-  rideViewNow.current = rideView;
+  // What the ride shows on the map (RideMode onView). The rider's position, a GPS fix about once a second, goes to its own
+  // store, read by the map and the ride group alone (app/LiveMap.tsx); App re-renders only when the rest changes
+  // (lib/rideViewKept.ts), not on every fix (fe-perf-1).
+  const [rideView, setRideViewState] = useState<RideView | null>(null);
+  const [rideRider] = useState(() => liveValue<LiveRider>(null));
+  const setRideView = useCallback(
+    (view: RideView | null) => {
+      rideRider.set(view?.rider ?? null);
+      setRideViewState((was) => (rideViewKept(was, view) ? was : view));
+    },
+    [rideRider],
+  );
   const [follow, setFollow] = useState(true);
   // A screen left alone 30 s with no panel open goes back to the ride's own view (lib/idleRecentre.ts, the owner,
   // 2026-10-24): `movedByHand` marks a pan, pinch or turn since, and `followReset` takes the zoom back too.
@@ -1056,7 +1069,6 @@ export function App() {
   const startRideRef = useRef<HTMLButtonElement>(null);
   // The Start ride button pressed (under the figures or in Directions): where the focus goes back to.
   const rideOpener = useRef<HTMLElement | null>(null);
-  const rideCircle = rideView?.rider ? { centre: rideView.rider.point, radiusM: rideView.rider.accuracyM } : null;
   const ridePrefsNow = useRef(ridePrefs);
   ridePrefsNow.current = ridePrefs;
   const ridingNow = useRef(riding);
@@ -4179,7 +4191,7 @@ export function App() {
     // Problems still to report to 311 are said too: the focus goes to Done, past the summary's line about them.
     const owed = openCount(report311Log().list());
     announce([RIDE_ENDED_SAID, note, owed > 0 ? `${outstandingSaid(owed)} ${REPORTS_WHERE}` : null].filter(Boolean).join(" "));
-  }, [announce, commit]);
+  }, [announce, commit, setRideView]);
   // A back gesture during a ride does nothing; End ride is the way out (lib/rideBack.ts, review RIDE-2).
   // Each held back is told, politely, once (review RIDE-2).
   useEffect(() => (onBike ? holdBackDuringRide(window, () => announce(roaming ? STILL_ROAMING_SAID : STILL_RIDING_SAID)) : undefined), [onBike, roaming, announce]);
@@ -4205,13 +4217,13 @@ export function App() {
     requestAnimationFrame(() => {
       const map = mapRef.current;
       if (!map) return;
-      const rider = rideViewNow.current?.rider?.point ?? roamRiderNow.current?.point ?? null;
+      const rider = rideRider.get()?.point ?? roamRider.get()?.point ?? null;
       const box = (selector: string) => document.querySelector(selector)?.getBoundingClientRect() ?? null;
       const padding = rideOpenPadding(map.getContainer().getBoundingClientRect(), box(".ride-middle"), box(".ride-rail"));
       const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       map.fitBounds(frameAround(rider ? [point, rider] : [point]), { padding, bearing: map.getBearing(), maxZoom: 17, duration: still ? 0 : 400 });
     });
-  }, []);
+  }, [rideRider, roamRider]);
   // No ride is on at load: a ride's entry left by a reload is the page's own again.
   useEffect(() => forgetStaleRideEntry(window), []);
   // A ride left going when the page closed (lib/rideResume.ts): asked once at load. Resume starts it again from where
@@ -5714,7 +5726,7 @@ export function App() {
       {/* The map, the planner and the overlays each in a guard: an error in one during a ride or Roam leaves it out and
           the ride goes on (RideGuard.tsx); off the bike the crash screen shows as before. */}
       <RideGuard on={onBike}>
-      <MapView
+      <LiveMap
         points={onBike || reviewing ? NO_POINTS : points}
         loopVias={loopVias}
         openAt={OPEN_AT}
@@ -5747,8 +5759,9 @@ export function App() {
         onRenameStop={onBike || reviewing ? undefined : renameStop}
         rideStops={riding ? (rideView?.stops ?? null) : null}
         markerReset={markerReset}
-        accuracy={riding ? rideCircle : roaming ? (roamRider ? { centre: roamRider.point, radiusM: roamRider.accuracyM } : null) : hereCircle}
-        rider={riding && rideView?.rider ? rideView.rider : roaming ? roamRider : null}
+        // The rider and the accuracy circle from the ride's or Roam's store; off the bike, the located point's circle.
+        riderFrom={riding ? rideRider : roaming ? roamRider : null}
+        hereCircle={hereCircle}
         nextVehicle={riding ? (rideView?.vehicle ?? null) : null}
         // Go, before a destination: its start, the location found, drawn as the ride's still dot (the owner,
         // 2026-10-17: the location centred, so it is seen). With a route its start pin marks it.
@@ -5762,7 +5775,7 @@ export function App() {
         onRiderMoved={() => (movedByHand.current = true)}
         followReset={followReset}
         junctionFocus={junctionFocus}
-        scrubPoint={scrubPoint}
+        scrubFrom={scrubPoint}
         lettered={riding ? (rideView?.lettered ?? null) : roaming && roamLettered ? roamLettered.places : lettered}
         onLettered={riding ? (rideView?.onLettered ?? ignore) : roaming && roamLettered ? roamLettered.pick : pickLettered}
         letteredShown={riding || (roaming && roamLettered) ? null : letteredShown}
@@ -5842,40 +5855,48 @@ export function App() {
       />
       </RideGuard>
       {roamBroadcast && (roamBroadcast.leading ? onBike : !rideGroupLine) && (
-        <RideGroup
-          type="group-ride"
-          points={NO_POINTS}
-          line={NO_POINTS}
-          getMap={getMap}
-          here={rideView?.rider?.point ?? roamRider?.point ?? (here ? here.point : null)}
-          broadcast={{ ...roamBroadcast, roam: true }}
-          riding={onBike}
-          leaderRoute={null}
-          controls={onBike || !goMode}
-          leads={roamBroadcast.leading}
-        />
+        <LiveRiderPoint ride={rideRider} roam={roamRider} fallback={here ? here.point : null}>
+          {(riderHere) => (
+            <RideGroup
+              type="group-ride"
+              points={NO_POINTS}
+              line={NO_POINTS}
+              getMap={getMap}
+              here={riderHere}
+              broadcast={{ ...roamBroadcast, roam: true }}
+              riding={onBike}
+              leaderRoute={null}
+              controls={onBike || !goMode}
+              leads={roamBroadcast.leading}
+            />
+          )}
+        </LiveRiderPoint>
       )}
       {rideGroupLine && (
-        <RideGroup
-          type={rideGroupType ?? "group-ride"}
-          points={rideGroupPoints}
-          line={rideGroupLine}
-          getMap={getMap}
-          here={rideView?.rider?.point ?? (here ? here.point : null)}
-          broadcast={rideBroadcast}
-          secret={rideGroupType === "group-ride" && !onShared ? groupSecret : null}
-          riding={riding}
-          onRiders={setRideRiders}
-          ridersElsewhere={riding && rideCanBroadcast && rideBroadcast !== null}
-          ridersAsk={ridersAsk}
-          // The count and Send alert while riding only (the 2026-10-28 audit, P6), and to a computer watching a broadcast.
-          controls={riding || (rideBroadcast !== null && !rideBroadcast.leading && !goMode)}
-          // The roles are offered to the ride's leader: one who planned it, or shares it; one following another's link is a Participant.
-          leads={!(onShared && !onShared.own)}
-          // The follower's join sheet first (BroadcastJoinDialog), then the dot question: one popup at a time.
-          askHeld={joinHeld || joinPending !== null || joinAsk !== null}
-          leaderRoute={rideBroadcast?.leading ? ((riding && rideView ? rideView.route : shown)?.geometry.coordinates as LonLat[] | undefined) : null}
-        />
+        <LiveRiderPoint ride={rideRider} roam={null} fallback={here ? here.point : null}>
+          {(riderHere) => (
+            <RideGroup
+              type={rideGroupType ?? "group-ride"}
+              points={rideGroupPoints}
+              line={rideGroupLine}
+              getMap={getMap}
+              here={riderHere}
+              broadcast={rideBroadcast}
+              secret={rideGroupType === "group-ride" && !onShared ? groupSecret : null}
+              riding={riding}
+              onRiders={setRideRiders}
+              ridersElsewhere={riding && rideCanBroadcast && rideBroadcast !== null}
+              ridersAsk={ridersAsk}
+              // The count and Send alert while riding only (the 2026-10-28 audit, P6), and to a computer watching a broadcast.
+              controls={riding || (rideBroadcast !== null && !rideBroadcast.leading && !goMode)}
+              // The roles are offered to the ride's leader: one who planned it, or shares it; one following another's link is a Participant.
+              leads={!(onShared && !onShared.own)}
+              // The follower's join sheet first (BroadcastJoinDialog), then the dot question: one popup at a time.
+              askHeld={joinHeld || joinPending !== null || joinAsk !== null}
+              leaderRoute={rideBroadcast?.leading ? ((riding && rideView ? rideView.route : shown)?.geometry.coordinates as LonLat[] | undefined) : null}
+            />
+          )}
+        </LiveRiderPoint>
       )}
       <LoadRouteDialog
         open={loadOpen === "plan" ? barLoad : loadOpen === "go" && mode === "go" && !riding}
