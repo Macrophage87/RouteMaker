@@ -228,7 +228,16 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
 
   // The ride, and the rider's answer for it (asked as the ride starts: Start ride or Broadcast, the 2026-10-28 audit P6).
   useEffect(() => {
-    if (keyless) return;
+    if (keyless) {
+      // A keyed follow turned keyless (a link pasted over it): nothing of the ride it was is kept, or shown.
+      setRide(null);
+      setSeal(null);
+      setConsent(null);
+      setAsked(false);
+      setShareOn(false);
+      setRead({ dots: [], alerts: [] });
+      return;
+    }
     let live = true;
     void rideOf(rideSecret).then((on) => {
       if (!live || !on) return;
@@ -564,7 +573,21 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
 
   // The question, asked once the ride is under way (Start ride or Broadcast pressed), never while planning (P6).
   const askNow = riding && !asked && !askHeld;
-  if (!ride) return null;
+  if (!ride) {
+    // A followed link without its key has no ride, so no Send alert; Call 911 stays where Send alert sits (it is
+    // otherwise only on a Crash or Medical alert's banner), a ride-sized press.
+    if (!keyless || !controls) return null;
+    return (
+      <div className="ride-group">
+        <div className="ride-group-bar">
+          <a className="chip ride-alert-button" href={CALL_911_HREF}>
+            <Icon name="warn" size={18} />
+            {CALL_911}
+          </a>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="ride-group">
       <ConsentDialog open={askNow} leads={leads} note={broadcast ? BROADCAST_CONSENT_NOTE : CONSENT_NOTE} role={pickedRole} onRole={setPickedRole} onAnswer={answer} />

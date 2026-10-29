@@ -323,15 +323,43 @@ test("a followed ride link without its key says so and asks for no dot", async (
   const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
   // No ride of its own is made for it, so there is no dot question and nothing is read or sent.
   assert.match(group, /const keyless = followsWithoutKey\(broadcast\);/);
-  assert.match(group, /useEffect\(\(\) => \{\s*if \(keyless\) return;\s*let live = true;\s*void rideOf\(rideSecret\)/);
-  assert.match(group, /if \(!ride\) return null;/);
+  // A keyed follow turned keyless (a pasted link) keeps nothing of the ride it was: no stale ride, key, answer or dots.
+  assert.match(
+    group,
+    /useEffect\(\(\) => \{\s*if \(keyless\) \{\s*\/\/[^\n]*\n\s*setRide\(null\);\s*setSeal\(null\);\s*setConsent\(null\);\s*setAsked\(false\);\s*setShareOn\(false\);\s*setRead\(\{ dots: \[\], alerts: \[\] \}\);\s*return;\s*\}\s*let live = true;\s*void rideOf\(rideSecret\)/,
+  );
+  // No ride, so no Send alert; Call 911 stays reachable where Send alert sits, a ride-sized link (56 px, past the 44 px floor).
+  const none = group.slice(group.indexOf("if (!ride) {"), group.indexOf("<ConsentDialog open={askNow}"));
+  assert.match(none, /if \(!keyless \|\| !controls\) return null;/);
+  assert.match(none, /<div className="ride-group">\s*<div className="ride-group-bar">\s*<a className="chip ride-alert-button" href=\{CALL_911_HREF\}>\s*<Icon name="warn" size=\{18\} \/>\s*\{CALL_911\}\s*<\/a>\s*<\/div>\s*<\/div>/);
+  assert.doesNotMatch(none, /ALERT_LABEL|<button/);
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(css, /\.ride-group-bar \.ride-alert-button \{\s*min-height: 56px;/);
+  assert.match(css, /a\.chip \{\s*text-decoration: none;\s*\}/);
   // A plan link without one still rides under a new key of its own.
   assert.match(group, /const rideSecret = \(broadcast \? broadcast\.secret : secret\) \?\? ownSecret;/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   // Said in place of Following the leader live, on a shared route's ride and in Roam alike, and as the join sheet's title.
   assert.match(app, /startRideNoted\(keyless \? BROADCAST_NO_KEY : BROADCAST_FOLLOWING\);/);
   assert.match(app, /announce\(keyless \? BROADCAST_NO_KEY : BROADCAST_FOLLOWING\)/);
-  assert.match(app, /title: keyless \? BROADCAST_NO_KEY : joinTitle\(name\)/);
+  // No join sheet for it: it would say the same, and mark the ride's sheet shown, so the leader's link sent again with
+  // its key would open without one.
+  assert.match(app, /if \(!keyless && sharedOpen\?\.id && sharedOpen\.lead\) offerJoin\(joinKey\(sharedOpen\.id, sharedOpen\.lead\), sharedOpen\.answer, sharedOpen\.name\);/);
+  assert.match(app, /const offerJoin = \(key: string, route: RouteResponse, name: string \| undefined\) => \{/);
+  assert.match(app, /title: joinTitle\(name\), line: joinLine\(route\)/);
+  assert.doesNotMatch(app, /keyless \? BROADCAST_NO_KEY : joinTitle/);
+  // Never passed on: Ride mode's Broadcast is not offered, Go's says the link is missing its key, and Roam's is not offered.
+  assert.match(app, /const passesOn =\s*onShared !== null && !onShared\.own && !!onShared\.lead && SHARED_LINK !== null && onShared\.id === SHARED_ID && !followsWithoutKey\(\{ leading: false, secret: onShared\.secret \}\);/);
+  assert.match(app, /const followedNoKey = \(\) => followedLink\(\) !== null && followsWithoutKey\(\{ leading: false, secret: sharedOpenNow\.current\?\.secret \}\);/);
+  for (const name of ["broadcastRide", "broadcastQr"]) {
+    assert.match(app, new RegExp(String.raw`const ${name} = \(\) => \{\s*if \(followedNoKey\(\)\) \{\s*setBroadcastNote\(\(n\) => \(\{ text: BROADCAST_NO_KEY, count: n\.count \+ 1 \}\)\);\s*return;`), name);
+  }
+  for (const name of ["broadcastFromRide", "broadcastQrFromRide"]) {
+    assert.match(app, new RegExp(String.raw`const ${name} = async \(\): Promise<string> => \{\s*if \(followedNoKey\(\)\) return BROADCAST_NO_KEY;`), name);
+  }
+  assert.match(app, /const roamKeyless = followsWithoutKey\(roamBroadcast\);/);
+  assert.match(app, /if \(roamBroadcast && !roamBroadcast\.leading\) \{\s*\/\/[^\n]*\n\s*if \(roamKeyless\) return BROADCAST_NO_KEY;\s*const done = await shareLink/);
+  assert.match(app, /onBroadcast=\{roamKeyless \? null : \(\) => broadcastRoam\(\)\}\s*onBroadcastHold=\{roamKeyless \? null : broadcastRoamQr\}/);
   // Where the link does not open into Ride mode (a computer watching), shown as the plan's note and said politely.
   assert.match(app, /if \(keyless\) \{\s*setSharedNote\(BROADCAST_NO_KEY\);\s*announce\(BROADCAST_NO_KEY\);\s*\}/);
 });

@@ -3889,6 +3889,9 @@ export function App() {
   });
   // A broadcast this page follows: the link it opened, passed on as it is (its leader stays the leader).
   const followedLink = () => (SHARED_LINK && sharedOpenNow.current?.lead && !sharedOpenNow.current.own && sharedOpenNow.current.id === SHARED_ID ? SHARED_LINK : null);
+  // That link without its ride key (lib/rideGroup.ts followsWithoutKey): never passed on, and no ride of the rider's
+  // own is made in its place; Broadcast says the link is missing its key.
+  const followedNoKey = () => followedLink() !== null && followsWithoutKey({ leading: false, secret: sharedOpenNow.current?.secret });
   // Answers whether it went, and what to say.
   const passOn = async (link: string, nav: ShareNavigator | undefined): Promise<{ sent: boolean; said: string }> => {
     const done = await shareLink(nav, shareContent(link, null, presetSaid(preset)));
@@ -3902,6 +3905,10 @@ export function App() {
   // On a computer it asks first, before the link goes (review S1): Go back shares nothing, Start anyway presses again.
   const [broadcastNote, setBroadcastNote] = useState({ text: "", count: 0 });
   const broadcastRide = () => {
+    if (followedNoKey()) {
+      setBroadcastNote((n) => ({ text: BROADCAST_NO_KEY, count: n.count + 1 }));
+      return;
+    }
     if (!computerOk.current && askBeforeStart(looksLikePhone(), tabSession())) {
       setComputerAsk("broadcast");
       return;
@@ -3927,6 +3934,7 @@ export function App() {
   // Broadcast from a ride (Stephen 2026-10-24: "Let people broadcast from a ride"): Share ride's link as Plan's and Go's
   // Broadcast sends it, the ride already going; the rider leads once it went with its key. Answers what to say.
   const broadcastFromRide = async (): Promise<string> => {
+    if (followedNoKey()) return BROADCAST_NO_KEY;
     const followed = followedLink();
     if (followed) return (await passOn(followed, broadcastNav)).said;
     const { led, said } = await shareRoute(true, broadcastNav);
@@ -3936,6 +3944,10 @@ export function App() {
   };
   // Broadcast held beside Start: its link as a QR code, with Start ride; the sharer leads, as Broadcast's sheet does.
   const broadcastQr = () => {
+    if (followedNoKey()) {
+      setBroadcastNote((n) => ({ text: BROADCAST_NO_KEY, count: n.count + 1 }));
+      return;
+    }
     // On a computer, asked first, as Broadcast is: Go back makes no link.
     if (!riding && !computerOk.current && askBeforeStart(looksLikePhone(), tabSession())) {
       setComputerAsk("qr");
@@ -3952,6 +3964,7 @@ export function App() {
   };
   // Held on the ride screen: the same, without Start (the ride is going). Answers what to say.
   const broadcastQrFromRide = async (): Promise<string> => {
+    if (followedNoKey()) return BROADCAST_NO_KEY;
     const followed = followedLink();
     if (followed) {
       setQrAsk({ link: followed, start: null });
@@ -4324,9 +4337,13 @@ export function App() {
   const [roamBroadcast, setRoamBroadcast] = useState<{ id: string; lead: string; leading: boolean; secret: string | null } | null>(() =>
     ROAM_FOLLOW ? { ...ROAM_FOLLOW, leading: false } : null,
   );
+  // Following a Roam broadcast from a link without its key (lib/rideGroup.ts followsWithoutKey): Broadcast is not offered.
+  const roamKeyless = followsWithoutKey(roamBroadcast);
   // `nav`: the sheet (or Broadcast's QR code, broadcastRoamQr). Following someone's Roam broadcast, their link is passed on.
   const broadcastRoam = async (nav: ShareNavigator | undefined = broadcastNav): Promise<string> => {
     if (roamBroadcast && !roamBroadcast.leading) {
+      // A link without its key is never passed on: those it reached could not see the leader either.
+      if (roamKeyless) return BROADCAST_NO_KEY;
       const done = await shareLink(nav, { title: ROAM_BROADCAST_TITLE, text: ROAM_BROADCAST_TEXT, url: roamLink(window.location.origin, roamBroadcast.id, roamBroadcast.lead, roamBroadcast.secret) });
       if (done !== "shared") return done === "failed" && !canShare ? BROADCAST_RIDE_COPY_FAILED : shareSaidFor(done);
       return canShare ? "" : BROADCAST_COPIED;
@@ -4501,7 +4518,7 @@ export function App() {
     keepJoinShown(joinPending.key, store, Date.now());
     setJoinAsk(joinPending.ask);
   }, [riding, joinPending]);
-  const offerJoin = (key: string, route: RouteResponse, name: string | undefined, keyless = false) => {
+  const offerJoin = (key: string, route: RouteResponse, name: string | undefined) => {
     if (joinShown(key, browserStore(), Date.now())) return;
     // Connections are asked only of a rider who may have one (not when the server said signed out).
     const asks = !(meRef.current !== NO_ME && !meRef.current.signed_in);
@@ -4509,8 +4526,7 @@ export function App() {
     void Promise.all(asks ? [readGarmin(origin), readWahoo(origin)] : [undefined, undefined])
       .then(([garmin, wahoo]) => {
         const actions = joinActions({ canHandFile: canSendToGarmin(), garmin, wahoo });
-        // A link without its ride key is not a joined ride: the sheet says so where it would say Joined.
-        setJoinPending({ key, ask: { title: keyless ? BROADCAST_NO_KEY : joinTitle(name), line: joinLine(route), actions } });
+        setJoinPending({ key, ask: { title: joinTitle(name), line: joinLine(route), actions } });
       })
       .catch(() => setJoinHeld(false));
   };
@@ -4544,7 +4560,9 @@ export function App() {
     document.addEventListener("click", unlock, true);
     if (sharedFollow) {
       startRideNoted(keyless ? BROADCAST_NO_KEY : BROADCAST_FOLLOWING);
-      if (sharedOpen?.id && sharedOpen.lead) offerJoin(joinKey(sharedOpen.id, sharedOpen.lead), sharedOpen.answer, sharedOpen.name, keyless);
+      // No join sheet for a link without its key: it would say what the note says, and mark the ride's sheet shown,
+      // so the leader's link sent again with its key would open without one.
+      if (!keyless && sharedOpen?.id && sharedOpen.lead) offerJoin(joinKey(sharedOpen.id, sharedOpen.lead), sharedOpen.answer, sharedOpen.name);
     } else {
       startRoam();
       // After "Roaming.", as the ride screen says its start note.
@@ -5717,8 +5735,10 @@ export function App() {
     onShared && !onShared.ride ? null : isRideLink(preset, rideGroupPoints) ? preset : onShared && rideGroupPoints.length >= 2 ? "group-ride" : null;
   // A broadcast (a ride link with its leader): the sharer leads it, and one who opened it follows the leader, in Plan
   // too (watching from a computer), not only in Go or riding.
-  // Following a broadcast whose link this page opened: Broadcast passes that link on (followedLink).
-  const passesOn = onShared !== null && !onShared.own && !!onShared.lead && SHARED_LINK !== null && onShared.id === SHARED_ID;
+  // Following a broadcast whose link this page opened: Broadcast passes that link on (followedLink), never one
+  // without its key (lib/rideGroup.ts followsWithoutKey).
+  const passesOn =
+    onShared !== null && !onShared.own && !!onShared.lead && SHARED_LINK !== null && onShared.id === SHARED_ID && !followsWithoutKey({ leading: false, secret: onShared.secret });
   const rideBroadcast = onShared?.ride && onShared.id && onShared.lead ? { id: onShared.id, lead: onShared.lead, leading: onShared.own === true, secret: onShared.secret ?? null } : null;
   // Ride mode's Broadcast: the plan's own route only (its link is the plan's), not Ride the rest's or a detour from Roam; a
   // ride opened from someone else's link only where it is their broadcast, passed on as it is (Stephen 2026-10-26).
@@ -6253,8 +6273,8 @@ export function App() {
           onDetour={roamDetour}
           onEnd={endRoam}
           onLocationOff={roamLocationOff}
-          onBroadcast={() => broadcastRoam()}
-          onBroadcastHold={broadcastRoamQr}
+          onBroadcast={roamKeyless ? null : () => broadcastRoam()}
+          onBroadcastHold={roamKeyless ? null : broadcastRoamQr}
           passingOn={roamBroadcast !== null && !roamBroadcast.leading}
           broadcasting={roamBroadcast?.leading === true}
         />

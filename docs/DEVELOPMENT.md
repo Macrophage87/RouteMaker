@@ -8615,9 +8615,14 @@ age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
 - **A broadcast link without its key.** `RideGroup.tsx` `ownSecret` above is for a Group or Mass Ride plan link
   and the leader's own page. A follower of a broadcast or Roam link that came without `k=` (an old v0.14 link, or
   one a chat app cut short) could never see the leader, so `rideGroup.ts` `followsWithoutKey` holds: `RideGroup`
-  makes no ride (no dot question, nothing read or sent), and `App.tsx` says "This link is missing its ride key.
-  Ask the leader to send it again." (`BROADCAST_NO_KEY`) politely, in place of "Following the leader live." and
-  the join sheet's "Joined the ride" title, or as the plan's note where the link does not open into Ride mode.
+  makes no ride (no dot question, nothing read or sent, and a keyed follow that turns keyless drops the ride it
+  had), and `App.tsx` says "This link is missing its ride key. Ask the leader to send it again."
+  (`BROADCAST_NO_KEY`) politely, in place of "Following the leader live.", or as the plan's note where the link
+  does not open into Ride mode. No "Joined the ride" sheet is offered for it (it would mark that ride's sheet
+  shown, so the leader's link sent again with its key would open without one). With no ride there is no Send
+  alert, so a Call 911 link (`CALL_911_HREF`) stands where Send alert sits. The link is never passed on: Ride
+  mode's and Roam's Broadcast are not offered (`passesOn`, `roamKeyless`), and Go's Broadcast says
+  `BROADCAST_NO_KEY` (`followedNoKey`).
 - **Every ride sealed, on the server (Stephen, 2026-10-29: "Encrypted rides send GPS accurate numbers. All
   rides should have a key.").** `core.ride_presence` takes only `{token, sealed}`: a body in plain numbers
   (`lon`/`lat`, `route`/`trail`, `kind`/`text`) is a 400 with `ride_presence.PLAIN_REFUSED`, which tells the

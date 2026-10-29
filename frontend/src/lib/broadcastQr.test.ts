@@ -39,7 +39,7 @@ test("a hold (a press held, a right-click, the menu key) shows the code, and the
   assert.match(app, /broadcastRide: \{ onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote \}/);
   assert.match(app, /const rideCanBroadcast = !!rideStart && !rideStart\.roam && rideStart\.route === shown && \(!\(onShared && !onShared\.own\) \|\| passesOn\);/);
   assert.match(app, /onBroadcastHold=\{rideCanBroadcast \? broadcastQrFromRide : null\}/);
-  assert.match(app, /onBroadcastHold=\{broadcastRoamQr\}/);
+  assert.match(app, /onBroadcastHold=\{roamKeyless \? null : broadcastRoamQr\}/);
   assert.match(app, /<BroadcastQrDialog ask=\{qrAsk\} onClose=\{\(\) => setQrAsk\(null\)\} \/>/);
 });
 
@@ -59,7 +59,7 @@ test("one following passes on the link they opened, by the sheet or the code; th
   assert.match(app, /const SHARED_LINK = SHARED_RIDE && SHARED_LEAD \? passedOnLink\(window\.location\) : null;\nif \(SHARED_ID && /);
   assert.match(app, /const followedLink = \(\) => \(SHARED_LINK && sharedOpenNow\.current\?\.lead && !sharedOpenNow\.current\.own && sharedOpenNow\.current\.id === SHARED_ID \? SHARED_LINK : null\);/);
   assert.match(app, /if \(followed\) return setQrAsk\(\{ link: followed, start \}\);/);
-  assert.match(app, /if \(roamBroadcast && !roamBroadcast\.leading\) \{\s*const done = await shareLink\(nav, \{ title: ROAM_BROADCAST_TITLE, text: ROAM_BROADCAST_TEXT, url: roamLink\(window\.location\.origin, roamBroadcast\.id, roamBroadcast\.lead, roamBroadcast\.secret\) \}\);/);
+  assert.match(app, /if \(roamBroadcast && !roamBroadcast\.leading\) \{\s*\/\/[^\n]*\n\s*if \(roamKeyless\) return BROADCAST_NO_KEY;\s*const done = await shareLink\(nav, \{ title: ROAM_BROADCAST_TITLE, text: ROAM_BROADCAST_TEXT, url: roamLink\(window\.location\.origin, roamBroadcast\.id, roamBroadcast\.lead, roamBroadcast\.secret\) \}\);/);
   assert.match(ride, /passingOn \? t\("\{name\}: pass on the link to this ride", \{ name: RIDE_BROADCAST_NAME \}\)/);
 });
 
@@ -71,7 +71,7 @@ test("the review's guards: a link turned off, another keeping or a ride ended is
   assert.match(app, /setGroupSecret\(newRideSecret\(\)\);\s*\/\/[^\n]*\n\s*forgetAnsweredHere\(\);/);
   assert.match(app, /if \(!riding && !computerOk\.current && askBeforeStart\(looksLikePhone\(\), tabSession\(\)\)\) \{\s*setComputerAsk\("qr"\);/);
   // Only a broadcast whose link this page opened is passed on; any other ride opened from a link has no Broadcast.
-  assert.match(app, /const passesOn = onShared !== null && !onShared\.own && !!onShared\.lead && SHARED_LINK !== null && onShared\.id === SHARED_ID;/);
+  assert.match(app, /const passesOn =\s*onShared !== null && !onShared\.own && !!onShared\.lead && SHARED_LINK !== null && onShared\.id === SHARED_ID && !followsWithoutKey\(/);
   // A messaging app's tracking parameters are not passed on.
   assert.match(app, /for \(const name of \["route", RIDE_PARAM, LEAD_PARAM\]\) \{/);
 });

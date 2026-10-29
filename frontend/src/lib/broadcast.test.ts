@@ -267,8 +267,9 @@ test("the ridden path goes without its first 650 ft (200 m): rides often start a
 test("on a computer Broadcast asks before the share sheet: Go back sends nothing, Start anyway shares then rides", () => {
   const app = read("../App.tsx");
   const fn = app.slice(app.indexOf("const broadcastRide = () => {"), app.indexOf("\n  };\n", app.indexOf("const broadcastRide = () => {")));
-  // The question comes first, before the voice and the share sheet (review S1).
-  assert.match(fn, /^const broadcastRide = \(\) => \{\s*if \(!computerOk\.current && askBeforeStart\(looksLikePhone\(\), tabSession\(\)\)\) \{\s*setComputerAsk\("broadcast"\);\s*return;\s*\}/);
+  // The question comes first, before the voice and the share sheet (review S1); only a followed link without its
+  // key is said before it (it is never passed on, so there is nothing to ask).
+  assert.match(fn, /^const broadcastRide = \(\) => \{\s*if \(followedNoKey\(\)\) \{[^\n]*\n[^\n]*\n\s*return;\s*\}\s*if \(!computerOk\.current && askBeforeStart\(looksLikePhone\(\), tabSession\(\)\)\) \{\s*setComputerAsk\("broadcast"\);\s*return;\s*\}/);
   assert.ok(fn.indexOf('setComputerAsk("broadcast")') < fn.indexOf("shareRoute(true, broadcastNav)"));
   const dialog = app.slice(app.indexOf("<StartOnComputerDialog"), app.indexOf("<ClosureDialog"));
   assert.match(dialog, /onBack=\{\(\) => setComputerAsk\(null\)\}/);
