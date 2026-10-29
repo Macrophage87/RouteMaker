@@ -423,6 +423,8 @@ export const ES: Readonly<Record<string, string>> = {
   "Ride the rest": "Recorrer el resto",
   "Large text": "Texto grande",
   "Large text during a ride": "Texto grande en ruta",
+  "Icons only on ride buttons": "Solo iconos en los botones de ruta",
+  "The buttons beside the map in a ride show their icons without words, for more map. Screen readers still say each button's name. Kept on this device.": "Los botones junto al mapa en ruta muestran sus iconos sin palabras, para ver más mapa. Los lectores de pantalla siguen diciendo el nombre de cada botón. Se guarda en este dispositivo.",
   "Large text on": "Texto grande activado",
   "Large text off": "Texto grande desactivado",
   "The next turn as big as it fits on the top half of the screen, the map below, for bright sun or near sight. The Large text button in a ride turns it on and off too. Kept on this device.":
@@ -1250,6 +1252,7 @@ export const ES: Readonly<Record<string, string>> = {
   "high contrast": "alto contraste",
   "how much to say": "cuánto decir",
   "large text": "texto grande",
+  "icons only": "solo iconos",
   "riding speed": "velocidad",
   "say cues with": "indicaciones",
   "Crab": "Cangrejo",

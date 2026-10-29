@@ -42,7 +42,7 @@ import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
 import { IosLocationHelp } from "./IosLocationHelp.tsx";
 import { POOR_FIX_M, weighFix, type GpsWeakness, type RideFix } from "./lib/navigate.ts";
-import { RIDE_TEXT_BUTTON, ScreenWake, phoneKind, toScreenReader, wakeSaid, type RidePrefs, type RideTextSize } from "./lib/rideOutput.ts";
+import { RIDE_TEXT_BUTTON, ScreenWake, phoneKind, readRideIconsOnly, toScreenReader, wakeSaid, type RidePrefs, type RideTextSize } from "./lib/rideOutput.ts";
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
 import { useRailFit } from "./lib/railFit.ts";
 import { WAITING_FOR_GPS, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
@@ -200,7 +200,9 @@ export function RoamMode({
   const [polite, setPolite] = useState({ text: "", count: 0 });
   const [toast, setToast] = useState("");
   const railRef = useRef<HTMLDivElement>(null);
-  const railFit = useRailFit(railRef);
+  // Icons only (Settings > Display): read as the ride opens; the buttons' names are unchanged either way.
+  const [iconsOnly] = useState(() => readRideIconsOnly());
+  const railFit = useRailFit(railRef, iconsOnly);
   // The screen-on note, as Ride mode's (ScreenSleepNote): one line, the phone's own steps behind its How.
   const [wakeNote, setWakeNote] = useState("");
   const phone = useMemo(() => phoneKind(), []);
@@ -669,7 +671,7 @@ export function RoamMode({
           </div>
         )}
         {/* Each button's word under it, or beside its icon where the map is short, as Ride mode's (lib/railFit.ts). */}
-        <div ref={railRef} className={`ride-rail ride-rail-${railFit}`} role="group" aria-label={t("Roam buttons")}>
+        <div ref={railRef} className={`ride-rail ride-rail-${railFit}${iconsOnly ? " ride-rail-icons" : ""}`} role="group" aria-label={t("Roam buttons")}>
           <button
             type="button"
             ref={whereRef}
