@@ -6,8 +6,8 @@ def envOr = { String name, String fallback -> def v = System.getenv(name); (v !=
 // The version name testers and Play Console see: the site release this app is built with (the repository's
 // pyproject.toml), unless ROUTEMAKER_VERSION_NAME says otherwise.
 def releaseVersion = {
-    def project = rootProject.file("../../pyproject.toml")
-    def found = project.exists() ? (project.text =~ /(?m)^version\s*=\s*"([^"]+)"/) : null
+    def pyproject = rootProject.file("../../pyproject.toml")
+    def found = pyproject.exists() ? (pyproject.text =~ /(?m)^version\s*=\s*"([^"]+)"/) : null
     (found != null && found.find()) ? found.group(1) : "0.0.0"
 }()
 def releaseKeystore = System.getenv("ROUTEMAKER_KEYSTORE_FILE")
