@@ -1430,6 +1430,7 @@ def _router_alternates(trip, best, first_exposure, stop_at, ctx: Context, info: 
     alt_stop = stop_at - ALTERNATES_ROUND_RESERVE_S
     given = ctx.router_trips
     if given is None and alt_stop - routing.clock() < ALTERNATES_MIN_S:
+        routing._skipped_for_time()
         return best, trip
     found = {"given": 0, "ranked": 0, "taken": False, "limited": None}
     info["alternates"] = found

@@ -442,7 +442,8 @@ def key_for(
 
 def keepable(body: dict, own_variant: str, failures: int) -> bool:
     """Whether an answer may be kept: planned on the ride's own graph, and not cut short
-    by the budget (a failed router call, or a search that stopped for time)."""
+    by the budget (a failed or skipped router call, or a search or pass that stopped for
+    time)."""
     if failures:
         return False
     if body.get("variant") != own_variant:
@@ -453,4 +454,12 @@ def keepable(body: dict, own_variant: str, failures: int) -> bool:
     for field in ("hills_seek", "hills_avoid", "hills_tolerate"):
         if (body.get(field) or {}).get("limited") == "timed_out":
             return False
-    return True
+    # The passes that give up on the clock without a router call to fail: the router's
+    # alternatives, the dodge pass, the hill seek and the way round an Avoid junction.
+    stopped = (
+        (calm_search.get("alternates") or {}).get("limited"),
+        (body.get("dodges") or {}).get("limited"),
+        ((body.get("hills_seek") or {}).get("climb_seek") or {}).get("limited"),
+        (body.get("avoid_search") or {}).get("alternate"),
+    )
+    return "time" not in stopped
