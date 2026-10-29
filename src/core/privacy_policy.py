@@ -12,7 +12,9 @@ comes from:
   "Logs and the rider's position").
 - Group and Mass Ride: core.ride_presence (20 m grid, memory only; dots, alerts and a leader's
   path 2 minutes, nothing longer)
-  and frontend/src/RideGroup.tsx (only while sharing and the page is in front, near the route).
+  and frontend/src/RideGroup.tsx (only while sharing and the page is in front, near the route);
+  sealed end to end on a broadcast and a Group Ride link shared from the app
+  (frontend/src/lib/rideSeal.ts).
 - Discord sign-in: core.discord_oauth (identify scope, no token kept) and core.models.User (the
   Discord id and dates only); the bot's role cache: core.membership.
 - What an account keeps: core.models MyGo, AccountSettings (frontend/src/lib/accountSettings.ts,
@@ -123,7 +125,8 @@ SECTIONS: list[tuple[str, str]] = [
             "(every 5 minutes), finding which 311 website covers a problem you log, and Group or "
             "Mass Ride sharing. The server answers "
             "and does not store it, except places you choose to save or share and ride sharing "
-            "(below)."
+            "(below). A route planned from where you are is kept in the server’s memory for "
+            "2 minutes at most, so asking for it again is quick, and is then forgotten."
         )
         + _p(
             "A route’s link holds its points, so a route planned from your location carries "
@@ -141,6 +144,12 @@ SECTIONS: list[tuple[str, str]] = [
                 "Other riders on the same ride see an unnamed dot. No account or name is sent: "
                 "your phone makes a new random code for each ride.",
                 "An alert you send keeps your rounded spot for 2 minutes, or until you clear it.",
+                "On Share ride, Broadcast (in Roam too) and a Group Ride link shared from "
+                "RouteMaker, your phone encrypts your dot, your alerts and the leader’s path "
+                "before sending them, with a key only the link carries (in the part after #, which "
+                "browsers never send to a server). The server holds them only as scrambled text it "
+                "cannot read; it still sees when a phone on the ride sends or asks, as it does for "
+                "any page. Mass Ride links are not encrypted this way.",
                 "Share ride and Broadcast make you the ride leader, shown as a dot from the start "
                 "of your ride. While you ride a shared ride, you and anyone on it who chooses to "
                 "be shown are shown on or off the route, so riders who get separated can find "

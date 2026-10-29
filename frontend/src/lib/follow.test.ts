@@ -102,3 +102,15 @@ test("Plan offers the manual mode while the opened file is not edited, and each 
   assert.match(panel, /\{snap\?\.onExact && imported && imported\.reference\.length >= 2 && \(snap\.exact \|\| match\?\.warn \|\| \(route\?\.against_traffic\?\.length \?\? 0\) > 0\) && \(/);
   assert.match(FOLLOW_EXACT_SAID, /^Follow the file exactly/);
 });
+
+test("an opened file fitted round by round is said once, at the end; its progress line is out of the status region (a11y-5)", () => {
+  const panel = readFileSync(new URL("../GpxPanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /const fitting = fit !== null;\s*useEffect\(\(\) => \{\s*onFitting\?\.\(fitting\);[\s\S]*?return \(\) => onFitting\?\.\(false\);\s*\}, \[fitting, onFitting\]\);/);
+  const region = panel.slice(panel.indexOf('<div role="status" aria-live="polite">'), panel.indexOf('className="loading gpx-fitting"'));
+  assert.ok(region.includes("{imported.matched &&"), "the fitting line comes after the status region's content");
+  assert.match(region, /<\/div>\s*\)\}\s*<\/div>\s*\{\/\*/, "and after the region closes");
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /const settledSaid = useSettled\(status\.kind === "ok" && !gpxFitting \? announcement : "", ANNOUNCE_SETTLE_MS\);/);
+  assert.match(app, /refineImported, onFitting: setGpxFitting,/);
+  assert.match(readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8"), /onRefine=\{refineImported\}\s*onFitting=\{onFitting\}/);
+});

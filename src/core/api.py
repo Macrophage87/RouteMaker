@@ -7504,8 +7504,9 @@ def report311_send(request):
 
 
 def ride_writes_limited(view):
-    """Count a write against its ride (ratelimit.RIDE_WRITES), keyed by a digest of the ride id;
-    a path that is not a ride id is left to the view's 404 uncounted."""
+    """Count a write against its ride (ride_presence.count_write, in the ride's own state, so the
+    count is gone with the ride); a path that is not a ride id is left to the view's 404
+    uncounted."""
 
     @wraps(view)
     def wrapped(request, *args, **kwargs):
@@ -7513,11 +7514,13 @@ def ride_writes_limited(view):
 
         ride_id = str(kwargs.get("ride_id", ""))
         if ride_presence.RIDE_ID.match(ride_id):
-            limit = ratelimit.RIDE_WRITES
-            decision = ratelimit.hit(limit, ratelimit.client_key(f"ride:{ride_id}"))
-            if not decision.allowed:
+            try:
+                wait = ride_presence.count_write(ride_id)
+            except ride_presence.Refused as refused:
+                return _stress_error(refused.status, refused.message)
+            if wait:
                 out = _stress_error(429, "This ride is busy; try again shortly.")
-                out["Retry-After"] = str(decision.retry_after_s)
+                out["Retry-After"] = str(wait)
                 return out
         return view(request, *args, **kwargs)
 
@@ -7573,7 +7576,12 @@ def ride_here(request, ride_id: str):
     return _ride_call(
         request,
         lambda rp: rp.post_position(
-            ride_id, body.get("token", ""), body.get("lon"), body.get("lat"), body.get("role")
+            ride_id,
+            body.get("token", ""),
+            body.get("lon"),
+            body.get("lat"),
+            body.get("role"),
+            sealed=body.get("sealed"),
         ),
     )
 
@@ -7594,7 +7602,11 @@ def ride_path(request, ride_id: str):
     return _ride_call(
         request,
         lambda rp: rp.post_path(
-            ride_id, body.get("token", ""), body.get("route"), body.get("trail")
+            ride_id,
+            body.get("token", ""),
+            body.get("route"),
+            body.get("trail"),
+            sealed=body.get("sealed"),
         ),
     )
 
@@ -7624,6 +7636,7 @@ def ride_alert(request, ride_id: str):
             str(body.get("text", "") or ""),
             body.get("lon"),
             body.get("lat"),
+            sealed=body.get("sealed"),
         ),
     )
 
