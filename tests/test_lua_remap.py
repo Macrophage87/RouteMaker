@@ -112,6 +112,26 @@ def test_the_vendored_upstream_is_pinned_and_present() -> None:
     assert not source.rstrip().endswith("return M")
 
 
+@pytest.mark.parametrize(
+    ("folder", "name"),
+    [("lua/vendor", "graph_upstream.lua"), ("valhalla/vendor", "valhalla_build_config.py")],
+)
+def test_the_vendored_files_are_the_ones_recorded(folder, name) -> None:
+    """Byte-identical to the tag, as the READMEs say: each file's sha256 is recorded beside
+    it (SHA256SUMS, written by scripts/vendor_valhalla_lua.sh, which refuses a pinned
+    re-vendor that does not reproduce it)."""
+    import hashlib
+
+    sums = dict(
+        reversed(line.split())
+        for line in (REPO / folder / "SHA256SUMS").read_text().splitlines()
+        if line.strip()
+    )
+    digest = hashlib.sha256((REPO / folder / name).read_bytes()).hexdigest()
+    assert sums == {name: digest}
+    assert (REPO / folder / "VERSION").read_text() == (REPO / "lua/vendor/VERSION").read_text()
+
+
 # Keys Valhalla's C++ parser reads off the transform's table, not its Lua
 # (src/mjolnir/pbfgraphparser.cc at the pinned tag).
 PARSER_KEYS = {"bicycle:conditional"}

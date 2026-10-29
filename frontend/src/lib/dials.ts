@@ -100,8 +100,8 @@ export interface Dials {
   transitOption?: string;
   /**
    * "Route through anyway" (v0.7.0, lib/closureMap.ts): the closures the rider chose to route through, for this
-   * plan only. Session only, like the stations: added to the route request (lib/api.ts requestRoute), in no link,
-   * and not in dialFields (the other endpoints do not take it).
+   * plan only. Session only, like the stations: added to the route, Best order and nearest requests
+   * (`closureFields`), in no link, and not in dialFields (the other endpoints do not take it).
    */
   closureBypass?: string[];
   /**
@@ -457,6 +457,16 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   if (dials.noviceLegs) fields.novice_legs = true;
   if (dials.noviceLegs && dials.noviceHop) fields.novice_hop = dials.noviceHop;
   return fields;
+}
+
+/** The closure choices a request sends with its dials (`closureBypass`, `closuresNow`): /api/route, Best order and nearest. */
+export function closureFields(dials: Dials): { closure_bypass?: string[]; closures_now?: true } {
+  return {
+    // "Route through anyway" (v0.7.0, lib/closureMap.ts): this plan's only, in the request, never in a link.
+    ...(dials.closureBypass?.length ? { closure_bypass: dials.closureBypass } : {}),
+    // Go and a ride: only the closures known to be on, not DDOT's permits.
+    ...(dials.closuresNow ? { closures_now: true as const } : {}),
+  };
 }
 
 /**
