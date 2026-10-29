@@ -9,7 +9,7 @@
  * may move. What changed is said in words, stop by stop.
  */
 import { describeError } from "./api.ts";
-import { dialFields, type Dials } from "./dials.ts";
+import { closureFields, dialFields, type Dials } from "./dials.ts";
 import { formatDistance, formatDuration } from "./format.ts";
 import { coordinatesText } from "./geocode.ts";
 import type { LonLat } from "./geo.ts";
@@ -83,8 +83,10 @@ export async function requestStopOrder(
         points,
         preset,
         // The order does not use the weight, so it is not sent (OWNER-DECISIONS 264's privacy:
-        // the weight leaves the device only for the plan that uses it). Nor the riding speed, which it does not use.
-        ...dialFields({ ...dials, systemWeightKg: undefined, ridingSpeedKmh: undefined }),
+        // the weight leaves the device only for the plan that uses it). The riding speed and the closure
+        // choices are sent: the legs are timed and routed as the plan's.
+        ...dialFields({ ...dials, systemWeightKg: undefined }),
+        ...closureFields(dials),
       }),
     });
   } catch {

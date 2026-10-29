@@ -167,6 +167,7 @@ ES: dict[str, str] = {
     ),
     "{n} hours": "{n} horas",
     "{n} minutes": "{n} minutos",
+    "{n} days": "{n} días",
     " You chose to route through it.": " Usted eligió pasar por ella.",
     " No end time is given, so it may still apply on your ride day.": (
         " No tiene hora de fin, así que podría seguir vigente el día de su recorrido."
