@@ -7,6 +7,7 @@
  */
 import { Fragment, createElement as h, type ReactElement } from "react";
 import { PRESETS, presetLabel, type PresetId } from "./presets.ts";
+import { t } from "./i18n.ts";
 
 export function PresetName({
   id,
@@ -21,7 +22,7 @@ export function PresetName({
   return h(
     Fragment,
     null,
-    h("span", { "aria-hidden": "true" }, `${option.label}${suffix}`),
-    h("span", { className: "visually-hidden" }, `${option.spoken}${suffix}`),
+    h("span", { "aria-hidden": "true" }, `${t(option.label)}${suffix}`),
+    h("span", { className: "visually-hidden" }, `${t(option.spoken)}${suffix}`),
   );
 }

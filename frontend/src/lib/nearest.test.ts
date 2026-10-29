@@ -11,6 +11,7 @@ import {
   NEAREST_SHOWN,
   STRAIGHT_LINE_NOTE,
   foundSaid,
+  foundShort,
   howFar,
   metroPlaces,
   nearbyText,
@@ -30,7 +31,7 @@ import {
 } from "./nearest.ts";
 import { NEAREST_SUMMARY, NearestFinder, type FinderProps } from "./nearestFinder.ts";
 import type { Station } from "./railStations.ts";
-import { WATER_CAUTION, type WaterPoint } from "./waterRestrooms.ts";
+import { APPROXIMATE_DETAIL, APPROXIMATE_SHORT, THRONE_DETAIL, THRONE_SHORT, WATER_CAUTION, type WaterPoint } from "./waterRestrooms.ts";
 import { LOCATE_MESSAGES, LOCATION_OUTSIDE } from "./geolocation.ts";
 import { MAX_POINTS, insideCoverage } from "./geo.ts";
 import { appSource } from "../testSupport/appSource.mjs";
@@ -227,20 +228,39 @@ const props = (over: Partial<FinderProps> = {}): FinderProps => ({
 
 const items = rankNearest(CANDIDATES, { by: "riding", places: CANDIDATES.map((_, i) => ({ distance_m: 500 * (i + 1), time_s: 60 })) });
 
-test("the panel: a fold with where from, three buttons and a status line that is always there", () => {
+test("the panel: a fold with three buttons, a status line that is always there, then where from", () => {
   const html = renderToStaticMarkup(createElement(NearestFinder, props()));
   assert.ok(html.startsWith('<details class="fold nearest"><summary>' + NEAREST_SUMMARY));
-  assert.match(html, /<legend>Search from<\/legend>/);
-  assert.match(html, /type="radio" name="nearest-from" checked="" value="location"/);
+  // Where from is one line under the list (the 2026-10-28 audit, P7): "From: My location", named "Search from".
+  assert.match(html, /<label class="nearest-from"><span aria-hidden="true">From:<\/span><span class="visually-hidden">Search from<\/span><select><option value="location" selected="">My location<\/option>/);
   // Short labels, first (the owner, 2026-10-18); each button's name still says "Nearest".
   for (const [label, name] of [["Water", "Nearest water"], ["Restroom", "Nearest restroom"], ["Metro", "Nearest Metro"]]) {
     assert.ok(html.includes(`aria-label="${name}"`) && html.includes(`>${label}</button>`), label);
   }
-  assert.ok(html.indexOf("nearest-kinds") < html.indexOf("<legend>Search from</legend>"), "the choices before where from");
+  assert.ok(html.indexOf("nearest-kinds") < html.indexOf("nearest-status") && html.indexOf("nearest-status") < html.indexOf("nearest-from"), "the choices, the status, then where from");
   assert.match(html, /<p class="hint nearest-status" role="status"><\/p>/);
+  // None chosen yet; the list's kind is the one pressed.
+  assert.equal((html.match(/aria-pressed="false"/g) ?? []).length, 3);
+  const chosen = renderToStaticMarkup(createElement(NearestFinder, props({ list: { kind: "restroom", items } })));
+  assert.match(chosen, /aria-label="Nearest restroom" aria-pressed="true"/);
+  assert.match(chosen, /aria-label="Nearest water" aria-pressed="false"/);
+  assert.ok(chosen.indexOf("<ol") < chosen.indexOf("nearest-from"), "the list before where from");
   assert.ok(!html.includes("<ol"));
   assert.ok(!html.includes("aria-disabled"));
   assert.match(renderToStaticMarkup(createElement(NearestFinder, props({ busy: true }))), /aria-disabled="true"/);
+});
+
+test("the list: Show on map first, as Find food's, where the page offers it (the owner, 2026-10-28)", () => {
+  const shown: number[] = [];
+  const html = renderToStaticMarkup(createElement(NearestFinder, props({ list: { kind: "water", items }, onShow: (_item, index) => shown.push(index) })));
+  assert.equal((html.match(/>Show on map</g) ?? []).length, 3);
+  assert.ok(html.includes('aria-label="Show on map: Place a, marker A"'));
+  assert.ok(html.indexOf(">Show on map<") < html.indexOf(">Ride here<"), "before Ride here");
+  assert.ok(!renderToStaticMarkup(createElement(NearestFinder, props({ list: { kind: "water", items } }))).includes("Show on map"), "absent without onShow");
+  // App: a phone's popup closes first, its pins kept (letteredOf), as Food's Show on map.
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /onShow: \(item: Nearby, index: number\) => \{[\s\S]*?if \(!popupShown\("nearest"\)\) return show\(\);\s*setNearestPinsKept\(true\);\s*closePopupThen\(show\);/);
+  assert.match(app, /\(view === "nearest" \|\| \(nearestPinsKept && view === "planner"\)\) && nearestList/);
 });
 
 test("the list: each place in words with Ride here, and Add as stop for water in a planned ride", () => {
@@ -407,4 +427,37 @@ test("with a route shown: the least detour off it, no router call, in words (the
   for (let i = 1; i < items.length; i += 1) assert.ok(items[i - 1].detour!.extraM <= items[i].detour!.extraM);
   assert.match(outcome.said, /least detour off your route/);
   assert.match(howFar(items[0]), /^(on your route at|\+[\d.]+ mi \([\d.]+ km\) detour, about \d+ min, turning off at)/);
+});
+
+test("the status line on screen says only what the rows do not; the whole sentence is heard", () => {
+  assert.equal(foundShort(items), "", "by bike: each row says so");
+  const straight = items.map((r) => ({ ...r, byBike: false }));
+  assert.equal(foundShort(straight), "Straight-line distances (router busy).");
+  const detour = items.map((r) => ({ ...r, detour: { alongM: 100, extraM: 200, extraS: 60 } }));
+  assert.equal(foundShort(detour), "Least detour first.");
+  assert.equal(foundShort([]), null);
+  const said = foundSaid("water", "location", straight);
+  const html = renderToStaticMarkup(createElement(NearestFinder, props({ status: said, list: { kind: "water", items: straight, from: "location" } })));
+  assert.ok(
+    html.includes(`<p class="hint nearest-status" role="status"><span aria-hidden="true">Straight-line distances (router busy).</span><span class="visually-hidden">${said.replace(/'/g, "&#x27;")}</span></p>`),
+  );
+  // Any other words (a search under way, an error) are shown as they are.
+  const busy = renderToStaticMarkup(createElement(NearestFinder, props({ status: "Still searching.", list: { kind: "water", items: straight, from: "location" } })));
+  assert.match(busy, /<p class="hint nearest-status" role="status">Still searching\.<\/p>/);
+});
+
+test("a Throne's how-to and an approximate pin: once under the list, short, not in every row", () => {
+  const throne = items.map((r) => ({ ...r, place: { ...r.place, details: [THRONE_DETAIL, APPROXIMATE_DETAIL, "Free."] } }));
+  const html = renderToStaticMarkup(createElement(NearestFinder, props({ list: { kind: "restroom", items: throne } })));
+  // Each row's details keep the rest.
+  assert.equal((html.match(/<p class="hint">Free\.<\/p>/g) ?? []).length, 3);
+  // Once, short on screen and whole for a screen reader.
+  assert.equal((html.match(/sheet-notes/g) ?? []).length, 1);
+  assert.ok(html.includes(`<span aria-hidden="true">${THRONE_SHORT}</span>`));
+  assert.ok(html.includes(`<span aria-hidden="true">${APPROXIMATE_SHORT}</span>`));
+  assert.equal(THRONE_SHORT, "Open with the Throne app or text THRONE to 202-751-3694.");
+  assert.equal(APPROXIMATE_SHORT, "Pin is approximate.");
+  assert.equal(html.split("10-minute limit").length - 1, 1, "the whole how-to once");
+  const plain = renderToStaticMarkup(createElement(NearestFinder, props({ list: { kind: "restroom", items } })));
+  assert.ok(!plain.includes("sheet-notes"));
 });

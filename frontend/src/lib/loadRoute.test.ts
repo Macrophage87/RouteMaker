@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
-import { SAVED_ROUTES, gpxRideTypes, gpxStartRide, keptLine, loadRows, withGpxChoice } from "./loadRoute.ts";
+import { LOAD_ROUTE, gpxRideTypes, gpxStartRide, keptLine, loadRows, withGpxChoice } from "./loadRoute.ts";
 import type { KeptRoute } from "./offlineRoutes.ts";
 import type { SavedSummary } from "./savedRoutes.ts";
 
@@ -38,15 +38,18 @@ test("a file opens on the ride type chosen (its own sliders kept for the same on
   assert.deepEqual(withGpxChoice({ preset: null, name: "b.gpx" }, { preset: "novice", exact: false }), { preset: "novice", name: "b.gpx", dials: undefined, exact: false });
 });
 
-test("Go: Saved routes sits behind More and opens Load route's popup, named Saved routes", () => {
+test("Go: Load route sits behind More and opens Load route's popup, one name for both (P12: it was Saved routes)", () => {
   const go = readFileSync(new URL("../app/Go.tsx", import.meta.url), "utf8");
   const row = go.slice(go.indexOf('aria-label={t("Places")}'), go.indexOf('aria-label={t("More places")}'));
-  assert.ok(!row.includes("SAVED_ROUTES"), "the main row stays as it is: one more control goes behind More");
+  assert.ok(!row.includes("LOAD_ROUTE"), "the main row stays as it is: one more control goes behind More");
   const more = go.slice(go.indexOf('aria-label={t("More places")}'), go.indexOf("go-home-sheet"));
-  assert.match(more, /aria-haspopup="dialog" onClick=\{places\.onSavedRoutes\}>\s*<Icon name="routes" size=\{18\} \/>\s*\{SAVED_ROUTES\}/);
+  assert.match(more, /aria-haspopup="dialog" onClick=\{places\.onSavedRoutes\}>\s*<Icon name="routes" size=\{18\} \/>\s*\{LOAD_ROUTE\}/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /onSavedRoutes: \(\) => setLoadOpen\("go"\)/);
-  // The one popup: from Go it is named for the chip, and a route picked in it opens there (openSaved, openKept).
-  assert.match(app, /open=\{loadOpen === "plan" \? barLoad : loadOpen === "go" && mode === "go" && !riding\}\s*title=\{loadOpen === "go" \? SAVED_ROUTES : undefined\}/);
-  assert.equal(SAVED_ROUTES, "Saved routes");
+  // The one popup with one title, from Plan's bar and Go's chip alike, and a route picked in it opens there (openSaved, openKept).
+  assert.match(app, /open=\{loadOpen === "plan" \? barLoad : loadOpen === "go" && mode === "go" && !riding\}\s*onClose=/);
+  assert.match(app, /<Icon name="file" size=\{20\} \/>\s*\{LOAD_ROUTE\}/);
+  assert.match(readFileSync(new URL("../LoadRouteDialog.tsx", import.meta.url), "utf8"), /<h2 id=\{headingId\}>\{LOAD_ROUTE\}<\/h2>/);
+  assert.equal(LOAD_ROUTE, "Load route");
+  assert.doesNotMatch(go + app, /Saved routes/);
 });

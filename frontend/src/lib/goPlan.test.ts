@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_START_SAID, GO_START_UNAVAILABLE, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, GO_WARM_AFTER_MS, goWarmDue, goPickStart, goHereStart, goStartStale, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, GO_WARM_AFTER_MS, goWarmDue, goPickStart, goHereStart, goStartStale, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -167,22 +167,32 @@ test("Go's ride types: the rider's own (My Go, Default until set), then Own Bike
   // The rider's own is a transit type: no chip twice, and Default fills the third place.
   assert.deepEqual(goRideChips("bike-transit"), ["bike-transit", "bikeshare-transit", "default"]);
   assert.deepEqual(goRideChips("bikeshare-transit"), ["bikeshare-transit", "bike-transit", "default"]);
-  // App: the chips from My Go's ride, the first described as the rider's own; More opens the Ride sheet with every type.
-  assert.match(appFile, /<RideChips ids=\{goRideChips\(myGo\.ride\)\} preset=\{preset\} onPick=\{pickRide\} more=\{\(opener\) => openView\("ride", opener\)\} label=\{t\("Ride type"\)\} ownHint=\{OWN_RIDE_HINT\} \/>/);
-  assert.match(src("../app/Sheets.tsx"), /aria-describedby=\{ownHint && index === 0 \? "ride-own-hint" : undefined\}/);
-  // More ride types: every type, searchable, in its group (RIDE-TYPE-ORGANISE; lib/rideTypeGroups.test.ts).
-  assert.match(appFile, /<RideGroupChips preset=\{preset\} onPick=\{pickRide\} open=\{view === "ride"\} \/>/);
+  // P3: the ride type in use first, always (Mass Ride picked from the Ride sheet showed no chip), then the rider's
+  // own, the starred ones, and the fixed ones; each once.
+  assert.deepEqual(goRideChips(null, "mass-ride"), ["mass-ride", "default", "bike-transit", "bikeshare-transit"]);
+  assert.deepEqual(goRideChips(null, "default"), ["default", "bike-transit", "bikeshare-transit"]);
+  assert.deepEqual(goRideChips("cargo", "bike-transit", ["gravel", "cargo"]), ["bike-transit", "cargo", "gravel", "bikeshare-transit"]);
+  assert.deepEqual(goRideChips(null, "gravel", ["gravel", "novice"]), ["gravel", "default", "novice", "bike-transit", "bikeshare-transit"]);
+  // App: the chips from the ride in use, My Go's ride (described as the rider's own) and the favorites; Ride type &
+  // settings opens the Ride sheet with every type; the chip in use says when its sliders were moved.
+  assert.match(
+    appFile,
+    /<RideChips\s+ids=\{goRideChips\(myGo\.ride, preset, favoriteRides\)\}\s+preset=\{preset\}\s+onPick=\{pickRide\}\s+more=\{\(opener\) => openView\("ride", opener\)\}\s+label=\{t\("Ride type"\)\}\s+ownHint=\{OWN_RIDE_HINT\}\s+own=\{myGo\.ride \?\? "default"\}\s+changed=\{isCustom\(preset, dials\)\}\s+\/>/,
+  );
+  assert.match(src("../app/Sheets.tsx"), /aria-describedby=\{ownHint && id === ownId \? "ride-own-hint" : undefined\}/);
+  // More ride types: every type, searchable, in its group (RIDE-TYPE-ORGANISE; lib/rideTypeGroups.test.ts); a pick closes it (P3).
+  assert.match(appFile, /<RideGroupChips preset=\{preset\} onPick=\{pickRideAndClose\} open=\{view === "ride"\} \/>/);
   // A pick goes through the ride type dialog's own choice, with Mountain Bike's loop (mtbChosen).
   assert.match(appFile, /choosePreset\(id, mtbChosen\(preset, id, chooseRideType\(id, carries\(id\) \? "cargo" : null, dials\)\)\);/);
   // Toggle buttons with their state, not colour alone.
   assert.match(src("../app/Sheets.tsx"), /className="chip ride-type-chip"\s+aria-pressed=\{preset === id\}/);
 });
 
-test("Go's places are Home, Food, Water and Restroom (Work only in Favorites); Home works signed out", () => {
+test("Go's places are Home, Eat, Water and Restroom (Work only in Favorites); Home works signed out", () => {
   // Signed in, Favorites takes Home's place (lib/favoritePlaces.test.ts), and Work is its second row, not a chip.
   const row = go.slice(go.indexOf('aria-label={t("Places")}'), go.indexOf('aria-label={t("More places")}'));
   const chips = [...row.matchAll(/<Icon name="(\w+)" size=\{18\} \/>\s*\{t\("(\w+)"\)\}\s*<\/button>/g)].map((m) => m[2]);
-  assert.deepEqual(chips.slice(0, 4), ["Home", "Food", "Water", "Restroom"]);
+  assert.deepEqual(chips.slice(0, 4), ["Home", "Eat", "Water", "Restroom"]);
   assert.match(row, /\{FAVORITES_TEXT\}/);
   assert.doesNotMatch(row, /Work/);
   assert.ok("work" in ICON_PATHS, "Work's icon, in the Favorites popout");
@@ -197,8 +207,10 @@ test("Go's places are Home, Food, Water and Restroom (Work only in Favorites); H
   assert.match(go, /onClick=\{\(event\) => \(places\.homeReady \? places\.onHome\(event\.currentTarget\) : setHomeOpen\(!homeOpen\)\)\}/);
   assert.match(appFile, /if \(!home\) return;[\s\S]*?void goTo\(home\.point, home\.label \|\| "Home"\);/);
   // Water and Restroom search from the rider's location, in their own sheet.
-  assert.match(appFile, /onWater: \(chip\) => \{\s*openView\("nearest", chip\);\s*findNearestHere\("water"\);/);
-  assert.match(appFile, /onRestroom: \(chip\) => \{\s*openView\("nearest", chip\);\s*findNearestHere\("restroom"\);/);
+  assert.match(appFile, /onWater: \(chip\) => openNearest\("water", chip\),/);
+  assert.match(appFile, /onRestroom: \(chip\) => openNearest\("restroom", chip\),/);
+  // The chip opens the sheet and searches from the rider, unless Show on map kept that kind's list (2026-10-28).
+  assert.match(appFile, /const openNearest = \(kind: NearestKind, chip: HTMLElement \| null\) => \{\s*const kept = nearestPinsKept && nearestList\?\.kind === kind;\s*openView\("nearest", chip\);\s*if \(!kept\) findNearestHere\(kind\);/);
 });
 
 test("Go's Where to? is the destination from the rider's location, in one edit, with the loop off; without a location it keeps the destination and asks for a start", () => {
@@ -211,7 +223,7 @@ test("Go's Where to? is the destination from the rider's location, in one edit, 
   assert.match(goTo, /goPending\.current = \{ dest, name, vias, pressed, said: pressed && action\.kind === "wait" \};\s*if \(action\.kind === "wait"\) \{\s*if \(pressed\) setNoticeSaying\(goDestinationLocating\(name\), goPressLocatingSaid\(name\)\);\s*else setNotice\(goDestinationLocating\(name\)\);/);
   // A look-up's answer settles the destination waiting on it, only while the plan has no start (a start typed during
   // a slow look-up is routed from; no "To X. Current location not available" after it; review after #127).
-  assert.match(goTo, /const settleGoWaiting = \(result: LocateResult, reason = false\) => \{\s*goAwaiting\.current = false;\s*const pending = goPending\.current;\s*if \(!result\.ok \|\| !insideCoverage\(result\.fix\.point\)\) \{\s*setGoStart\(\{ kind: "none" \}\);\s*if \(pending && pointsRef\.current\.length === 0\) \{\s*const why = reason && !result\.ok \? result\.reason : null;\s*const shown = why \? goDestinationNeedsStartBecause\(pending\.name, why\) : goDestinationNeedsStart\(pending\.name\);\s*if \(pending\.pressed\) setNoticeSaying\(shown, why \? goPressNeedsStartBecause\(pending\.name, why\) : goPressNeedsStartSaid\(pending\.name\)\);\s*else setNotice\(shown\);\s*\}\s*return;\s*\}\s*setHere\(result\.fix\);\s*setGoStart\(goHereStart\(result\.fix\.point\)\);\s*clearGoPending\(\);\s*if \(pending && pointsRef\.current\.length === 0\) routeGo\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
+  assert.match(goTo, /const settleGoWaiting = \(result: LocateResult, reason = false\) => \{\s*goAwaiting\.current = false;\s*const pending = goPending\.current;\s*if \(!result\.ok \|\| !insideCoverage\(result\.fix\.point\)\) \{\s*setGoStart\(goStartNone\(result\)\);\s*if \(pending && pointsRef\.current\.length === 0\) \{\s*const why = reason && !result\.ok \? result\.reason : null;\s*const shown = why \? goDestinationNeedsStartBecause\(pending\.name, why\) : goDestinationNeedsStart\(pending\.name\);\s*if \(pending\.pressed\) setNoticeSaying\(shown, why \? goPressNeedsStartBecause\(pending\.name, why\) : goPressNeedsStartSaid\(pending\.name\)\);\s*else setNotice\(shown\);\s*\}\s*return;\s*\}\s*setHere\(result\.fix\);\s*setGoStart\(goHereStart\(result\.fix\.point\)\);\s*clearGoPending\(\);\s*if \(pending && pointsRef\.current\.length === 0\) routeGo\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
   assert.match(goTo, /if \(!insideCoverage\(dest\)\) \{\s*setNotice\(OUTSIDE_NOTICE\);\s*return;/);
   // The opening look-up routes a destination picked while it ran; a start typed in routes one picked before it.
   assert.match(appFile, /if \(pending\) \{\s*clearGoPending\(\);\s*routeGoRef\.current\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
@@ -260,9 +272,34 @@ test("the Avoid notice is one line: the first junction and how many more, with A
   assert.match(notice, /<span className="visually-hidden">\{sentence\}<\/span>/);
 });
 
-test("a route's notes are one line each with an icon; their full words are in Info (the owner's choice 5)", () => {
-  assert.match(app, /<li key=\{note\.key\} className=\{`note-line \$\{note\.className\}`\}>\s*<Icon name=\{note\.icon\} size=\{16\} \/>\s*<span className="note-text">\{note\.text\}<\/span>/);
-  assert.match(app, /\{notes\.map\(\(note\) => \(\s*<p key=\{note\.key\} className="hint note-full">/);
+test("Go has one Start ride, the sheet's, last and pinned to its bottom edge at every size (the owner's P1)", () => {
+  const whole = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  // The map's bar: Route while the plan has changed, Roam with no destination, and no Start ride on a route ready to ride.
+  assert.match(whole, /const goBig = routingNow\s*\? \{ label: ROUTING_LABEL, start: false, busy: true, onPress: \(\) => \{\} \}\s*: errorRetries\s*\? null\s*: goReady\s*\? null/);
+  assert.doesNotMatch(whole, /label: t\("Start ride"\), start: true/);
+  // The sheet's: last in Go's summary (after the routes), at peek too; Broadcast (and its hold for a QR code) beside it.
+  assert.match(app, /\{\(start \|\| startHint\) && \(\s*<div className="actions start-ride go-start">\s*\{start\}\s*\{startHint\}\s*<\/div>\s*\)\}\s*<\/div>\s*\);\s*\}/);
+  assert.match(app, /\{!go\.peek && infoButton\}/);
+  assert.match(app, /className="secondary broadcast-button" onClick=\{ride\.onBroadcast\} \{\.\.\.broadcastHold\}/);
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(css, /\.go-summary > \.go-start \{\s*position: sticky;\s*bottom: -10px;/);
+  // How Start works is its description, out of sight, in Go as in Plan.
+  assert.match(app, /<p id="start-ride-hint" className="visually-hidden start-ride-hint">/);
+  // Go's Info: the notes are not said again, the sources behind Data sources.
+  assert.match(app, /<details className="route-credit-fold">\s*<summary>\{t\("Data sources"\)\}<\/summary>\s*\{credit\}/);
+});
+
+test("a route's notes are one line each with an icon; their full words are in Info (the owner's choice 5); Go's Info gives only the shortened ones (P1)", () => {
+  assert.match(app, /<li key=\{note\.key\} className=\{`note-line \$\{note\.className\}\$\{note\.short \? " note-wrap" : ""\}`\}>\s*<Icon name=\{note\.icon\} size=\{16\} \/>/);
+  assert.match(app, /: \(\s*<span className="note-text">\{note\.text\}<\/span>\s*\)\}/);
+  // A note too long for a phone's line shows its short words, wrapping, never cut (the audit's P14); the whole
+  // sentence stays for screen readers.
+  assert.match(app, /\{note\.short \? \(\s*<>\s*<span className="note-text" aria-hidden="true">\s*\{note\.short\}\s*<\/span>\s*<span className="visually-hidden">\{note\.text\}<\/span>/);
+  assert.match(app, /icon: "pin", text: walkIn, short: walkInShort\(route\) \}/);
+  assert.match(app, /icon: "loop", text: loop, short: loopNoteShort\(route\) \}/);
+  assert.match(app, /\{notes\s*\.filter\(\(note\) => !goMode \|\| note\.short\)\s*\.map\(\(note\) => \(\s*<p key=\{note\.key\} className="hint note-full">/);
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(css, /\.go-summary \.note-line \.note-text \{\s*white-space: normal;/);
   // The four quick figures are in Stress and facilities (choice 4); Share as image and Keep for offline behind More
   // (choice 8; Share itself is in the Route file sheet since v0.9.0).
   assert.match(app, /\{\/\* The four quick figures, first in the fold \(the owner's choice 4\)\. \*\/\}\s*<QuickFigures/);
@@ -333,6 +370,17 @@ test("go start: the line says the location, a typed or tapped start in its place
   assert.equal(goStartLine({ kind: "locating" }, null), "Start: finding your location…");
   assert.equal(goStartLine({ kind: "none" }, null), "Start: none yet; type a start");
   assert.equal(GO_START_UNAVAILABLE, "Current location not available; type a start.");
+  // Blocked (P11): the one line above the start box gives the reason and both ways on.
+  assert.equal(goStartLine({ kind: "none", why: "denied" }, null), "Location off. Type a start, or allow location in site settings.");
+  assert.equal(goStartLine({ kind: "none", why: "denied" }, null), GO_LOCATION_OFF);
+  assert.equal(goStartLine({ kind: "none", why: "outside" }, null), "Start: none yet; type a start");
+  assert.equal(ROAM_LOCATION_OFF, "Roam needs your location. Allow location in site settings.");
+});
+
+test("go start: not available says why, a denial or a fix off the map (P11)", () => {
+  assert.deepEqual(goStartNone({ ok: false, reason: "denied" }), { kind: "none", why: "denied" });
+  assert.deepEqual(goStartNone({ ok: false, reason: "timeout" }), { kind: "none" });
+  assert.deepEqual(goStartNone({ ok: true, fix: { point: [-73.9855, 40.758], accuracyM: 10 } }), { kind: "none", why: "outside" });
 });
 
 test("go start: a destination routes from the plan's first point, else from the location found, else asks", () => {
@@ -352,6 +400,38 @@ test("go pick: route from the start Go has, wait while the location is found, el
   assert.deepEqual(goPickAction([], { kind: "idle" }), { kind: "locate" });
   assert.equal(goDestinationNeedsStart("Union Station"), "To Union Station. Current location not available; type a start.");
   assert.match(goDestinationLocating("Union Station"), /^To Union Station: finding your location/);
+});
+
+test("go tap: a tap on the map in Go opens the spot's card, whose big Route here routes there as the tap did (the owner, 2026-10-28)", () => {
+  const tap = appFile.slice(appFile.indexOf("const tapMap = useCallback("), appFile.indexOf("const goRouteHere ="));
+  // Go: the spot's card (its address and what's near; GoSpotDialog.tsx), after the area check; the Home pick's tap
+  // and Plan's taps still go to place. A long press and the card's Road info open the road card.
+  assert.match(tap, /if \(goTapSetsEnd\(modeRef\.current\) && !homePickRef\.current\) \{/);
+  assert.match(tap, /if \(!insideCoverage\(point\)\) \{\s*setNotice\(OUTSIDE_NOTICE\);\s*return;\s*\}\s*setGoSpot\(\{ point \}\);\s*return;\s*\}\s*place\(point\);/);
+  assert.match(appFile, /<GoSpotDialog[\s\S]*?onRouteHere=\{goRouteHere\}[\s\S]*?onRoadInfo=\{\(point\) => setRoadInfo\(\{ point, origin: "spot" \}\)\}/);
+  const spotCard = src("../GoSpotDialog.tsx");
+  // Route here first, then the address that names the dialog; the focus on Route here.
+  assert.ok(spotCard.indexOf('className="road-info-route-here"') < spotCard.indexOf("<h2 id={titleId}"));
+  assert.match(spotCard, /aria-labelledby=\{titleId\}/);
+  assert.match(spotCard, /routeRef\.current\?\.focus\(\);/);
+  assert.match(spotCard, /onRouteHere\(request\.point\);\s*close\(\);/);
+  assert.doesNotMatch(tap, /goToRef/, "a tap alone never routes");
+  assert.match(appFile, /onMapClick=\{onBike \|\| reviewing \? ignore : tapMap\}/);
+  // Route here is the old tap: goTo with the same name and as a pressed destination ("Destination set").
+  assert.match(appFile, /const goRouteHere = \(point: LonLat\) => void goToRef\.current\(point, goPlaceName\(namer\.name\(point\)\?\.name, point\), true\);/);
+  assert.match(appFile, /onRouteHere=\{mode === "go" \? goRouteHere : undefined\}/);
+  // The card's Set as end is open with the location as Go's start, and routes the same way before the plan has a point.
+  assert.match(appFile, /plan=\{\{ count: points\.length, loop: loopVias, startKnown: mode === "go" && goStart\.kind === "here" \}\}/);
+  assert.match(appFile, /choice === "end" && mode === "go" && points\.length === 0 \? goRouteHere\(point\)/);
+  // Map tools' Set destination at map center still places through place, at once.
+  assert.match(appFile, /const addAtCentre = \(\) => \{[\s\S]*?place\(\[lng, lat\]\);/);
+  // The card: Route here right under its title, full width, before the other actions; it routes the spot and closes.
+  const card = src("../RoadInfoDialog.tsx");
+  const header = card.indexOf("{infoHeading(state)}");
+  const button = card.indexOf('className="road-info-route-here"');
+  assert.ok(header > 0 && button > header && button < card.indexOf('className="road-info-kind"') && button < card.indexOf('className="road-info-place"'));
+  assert.match(card, /\{request && onRouteHere && \([\s\S]*?onRouteHere\(request\.point\);\s*close\(\);[\s\S]*?\{ROUTE_HERE_TEXT\}/);
+  assert.match(src("../styles.css"), /\.road-info-route-here \{\s*display: block;\s*width: 100%;\s*min-height: 52px;/);
 });
 
 test("go tap: a press on the map in Go is the destination, routed as a picked one is (the owner, 2026-10-12)", () => {
@@ -430,7 +510,8 @@ test("go start: App asks once when Go opens, says the start politely, and says w
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /if \(!shouldAskGoStart\(\{ mode, asked: goStartAsked\.current, pointCount: pointsRef\.current\.length \}\)\) return;/);
   assert.match(app, /if \(pointsRef\.current\.length > 0\) return;[\s\S]{0,300}?\} else \{\s*\/\/[^\n]*\n\s*flyToInView\(result\.fix\.point, 15\);\s*announce\(GO_START_SAID\);\s*\}/);
-  assert.match(app, /if \(pointsRef\.current\.length === 0\) \{\s*if \(pending\?\.pressed\) setNoticeSaying\(goDestinationNeedsStart\(pending\.name\), goPressNeedsStartSaid\(pending\.name\)\);\s*else setNotice\(pending \? goDestinationNeedsStart\(pending\.name\) : GO_START_UNAVAILABLE\);/);
+  // Not available: said as why (P11): blocked on the start line (said, not shown twice), off the map as that, else "not available".
+  assert.match(app, /const none = goStartNone\(result\);\s*setGoStart\(none\);\s*if \(pointsRef\.current\.length === 0\) \{\s*if \(pending\?\.pressed\) setNoticeSaying\(goDestinationNeedsStart\(pending\.name\), goPressNeedsStartSaid\(pending\.name\)\);\s*else if \(pending\) setNotice\(goDestinationNeedsStart\(pending\.name\)\);[\s\S]{0,300}?else if \(none\.kind === "none" && none\.why === "denied"\) announce\(GO_LOCATION_OFF\);\s*else setNotice\(none\.kind === "none" && none\.why === "outside" \? LOCATION_OUTSIDE : GO_START_UNAVAILABLE\);/);
   // Go offers the routes to choose from at once; Plan keeps its fold.
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /const \[routesOpen, setRoutesOpen\] = useState\(mode === "go"\);/);
@@ -462,7 +543,9 @@ test("announcements: the essentials are always said; only the narration is extra
     assert.ok(app.includes(extra), extra);
   // The start Go found, and when it could not, are essentials.
   assert.match(app, /announce\(GO_START_SAID\)/);
-  assert.match(app, /setNotice\(pending \? goDestinationNeedsStart\(pending\.name\) : GO_START_UNAVAILABLE\)/);
+  assert.match(app, /else if \(pending\) setNotice\(goDestinationNeedsStart\(pending\.name\)\);/);
+  assert.match(app, /announce\(GO_LOCATION_OFF\)/);
+  assert.match(app, /setNotice\(none\.kind === "none" && none\.why === "outside" \? LOCATION_OUTSIDE : GO_START_UNAVAILABLE\)/);
   // Go and Plan both start the ride at once (the owner, 2026-10-24): no first-ride question.
   assert.match(app, /const startRide = \(unlocked = false\) => \{[^}]*beginRide\(ridePrefs, unlocked\);\s*\};/);
   assert.doesNotMatch(app, /setRideAsk|ride-ask/);
@@ -537,4 +620,17 @@ test("go warm look-up: Where to? focused or an early start fired refreshes a loc
   assert.match(go, /<PlaceSearch variant="go"[^\n]*onFocusBox=\{onWhereToFocus\} \/>/);
   const search = readFileSync(new URL("../PlaceSearch.tsx", import.meta.url), "utf8");
   assert.match(search, /onFocus=\{\(event\) => \{\s*onFocusBox\?\.\(\);/);
+});
+
+test("Go's searches lean to the route's start and list places nearest it first, with distances (P2)", () => {
+  // Where to?, the start box and Add a stop each sort by the start; Go's bias is the start, the map's view only without one.
+  assert.match(go, /variant="go"[^\n]*bias=\{searchBias\} origin=\{searchOrigin\}/);
+  assert.match(go, /variant="stop"[^\n]*bias=\{searchBias\} origin=\{searchOrigin\}/);
+  assert.match(go, /variant="start"[\s\S]{0,160}origin=\{searchOrigin\}/);
+  assert.match(appFile, /const goSearchBias = \(\): LonLat \| undefined => startBiasPoint\(goSearchOrigin\(\)\) \?\? searchBias\(\);/);
+  assert.equal(appFile.match(/searchBias=\{goSearchBias\}\s+searchOrigin=\{goSearchOrigin\}/g)?.length, 2);
+  // Plan's boxes sort by the first point.
+  assert.match(src("../app/Planner.tsx"), /origin=\{\(\) => points\[0\]\}/);
+  // The list is the sorted one, and Enter takes its first place.
+  assert.match(src("../PlaceSearch.tsx"), /const places = nearestFirst\(found, start, answered\);/);
 });

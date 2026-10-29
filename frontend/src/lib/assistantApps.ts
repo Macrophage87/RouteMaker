@@ -4,7 +4,7 @@
  * beside them is retired (the owner, 2026-10-25: "the old method with the random token, we should take it out and just
  * link to the documentation on MCP").
  */
-import { language, t } from "./i18n.ts";
+import { locale, t } from "./i18n.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
 
 export const APPS_LABEL = t("AI assistants");
@@ -40,7 +40,7 @@ export function assistantsSummary(apps: ConnectedApp[]): string {
 
 function shortDate(iso: string): string {
   const when = new Date(iso);
-  return Number.isNaN(when.getTime()) ? t("before") : when.toLocaleDateString(language() === "es" ? "es-US" : "en-US", { month: "short", day: "numeric" });
+  return Number.isNaN(when.getTime()) ? t("before") : when.toLocaleDateString(locale(), { month: "short", day: "numeric" });
 }
 
 type Fetch = typeof fetch;

@@ -79,7 +79,7 @@ class TestZones:
         assert not wz.possible(zone)
         assert zone.source in wz.CLOSURE_SOURCES
         assert zone.url == purple_line.PAGE
-        assert wz.when_text(zone, now, False) == "Closed through Mar 31"
+        assert wz.when_text(zone, now, False) == "Closed through Mar 31, 2027"  # next year (P11)
         assert wz.source_text(zone) == "Purple Line construction update, Jul 24"
         assert all(wz.polygon(z) for z in zones)
 
