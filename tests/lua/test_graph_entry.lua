@@ -1094,5 +1094,95 @@ io.stderr = real_stderr
 check("any other class write on a node is still refused",
   wrong_class.highway == nil and wrong_class[remap.VIOLATION_TAG] ~= nil and #logged == 1)
 
+-- A directional vehicle grant opens no more than a plain one (audit 2026-10-29): upstream
+-- reads vehicle:forward for a bicycle's forward direction over plain bicycle, through its
+-- bicycle table, which counts private, permit, residents and destination as grants.
+for _, case in ipairs({
+  { "a footway with vehicle:forward=private",
+    { highway = "footway", ["vehicle:forward"] = "private" }, "false", nil },
+  { "access=no with vehicle:backward=destination",
+    { highway = "residential", access = "no", ["vehicle:backward"] = "destination" }, nil, "false" },
+  { "bicycle=no with vehicle:forward=permit",
+    { highway = "residential", bicycle = "no", ["vehicle:forward"] = "permit" }, "false", nil },
+  { "bicycle=no with vehicle:backward=yes",
+    { highway = "path", bicycle = "no", ["vehicle:backward"] = "yes" }, nil, "false" },
+}) do
+  local _, out = transform_way(case[2])
+  check(case[1] .. " stays closed in that direction",
+    out ~= nil and (case[3] == nil or out.bike_forward == case[3])
+      and (case[4] == nil or out.bike_backward == case[4]),
+    out and (tostring(out.bike_forward) .. "/" .. tostring(out.bike_backward)))
+end
+check("a public directional grant on a footway reads as a plain one does",
+  bike_of({ highway = "footway", ["vehicle:forward"] = "yes" }):sub(1, 4) == "true",
+  bike_of({ highway = "footway", ["vehicle:forward"] = "yes" }))
+check("and a directional grant on a road open by its class stands",
+  bike_of({ highway = "residential", ["vehicle:backward"] = "private" }) == "true/true",
+  bike_of({ highway = "residential", ["vehicle:backward"] = "private" }))
+check("a mapper's own bicycle:forward speaks over vehicle:forward",
+  bike_of({ highway = "footway", ["vehicle:forward"] = "private", ["bicycle:forward"] = "yes" })
+    :sub(1, 4) == "true",
+  bike_of({ highway = "footway", ["vehicle:forward"] = "private", ["bicycle:forward"] = "yes" }))
+-- The remap's table of upstream's bicycle grants is upstream's own.
+for value, opens in pairs(bicycle) do
+  check("UPSTREAM_BICYCLE_OPENS agrees with upstream on " .. value,
+    (remap.UPSTREAM_BICYCLE_OPENS[value] == true) == (opens == "true"), value)
+end
+for value in pairs(remap.UPSTREAM_BICYCLE_OPENS) do
+  check("UPSTREAM_BICYCLE_OPENS holds only upstream's values: " .. value, bicycle[value] == "true")
+end
+
+-- A cemetery's ways (OWNER-DECISIONS 98): open, but destination-only, so a route may enter
+-- only to reach a point inside; never a cut-through (audit 2026-10-29: untested before).
+for _, tags in ipairs({
+  { highway = "path", ["rm:cemetery"] = "yes", ["rm:trail_class"] = "yes" },
+  { highway = "service", ["rm:cemetery"] = "yes", ["rm:stress_tier"] = "1" },
+}) do
+  local _, out = transform_way(tags)
+  check("a cemetery " .. tags.highway .. " is open to bicycles",
+    out.bike_forward == "true" and out.bike_backward == "true",
+    tostring(out.bike_forward) .. "/" .. tostring(out.bike_backward))
+  check("and destination-only", out.access == "destination" and out.private == "true",
+    tostring(out.access) .. " " .. tostring(out.private))
+  check("and the mark never reaches the tile build", out["rm:cemetery"] == nil)
+end
+local _, closed_cemetery = transform_way({ highway = "service", access = "no",
+  ["rm:cemetery"] = "yes", ["rm:stress_tier"] = "1" })
+check("a cemetery way its own access closes stays closed",
+  closed_cemetery.bike_forward == "false", tostring(closed_cemetery.bike_forward))
+
+-- The Zoo spur is opened only where it ends up destination-only.
+for _, access in ipairs({ "no", "agricultural", "forestry" }) do
+  local _, barred_spur = transform_way({ highway = "service", access = access,
+    ["rm:destination_only"] = "zoo", ["rm:stress_tier"] = "1" })
+  check("a Zoo spur on access=" .. access .. " is not opened",
+    barred_spur.bike_forward == "false" and barred_spur.bike_backward == "false",
+    tostring(barred_spur.bike_forward) .. "/" .. tostring(barred_spur.bike_backward))
+end
+for _, access in ipairs({ "yes", "private" }) do
+  local _, spur = transform_way({ highway = "footway", access = access,
+    ["rm:destination_only"] = "zoo" })
+  check("a Zoo spur on access=" .. access .. " is opened, destination-only",
+    spur.bike_forward == "true" and spur.private == "true",
+    tostring(spur.bike_forward) .. " " .. tostring(spur.private))
+end
+-- The remap's table of upstream's destination-only access values is upstream's own.
+for value, flag in pairs(private) do
+  check("UPSTREAM_PRIVATE_ACCESS agrees with upstream on " .. value,
+    (remap.UPSTREAM_PRIVATE_ACCESS[value] == true) == (flag == "true"), value)
+end
+for value in pairs(remap.UPSTREAM_PRIVATE_ACCESS) do
+  check("UPSTREAM_PRIVATE_ACCESS holds only upstream's values: " .. value, private[value] == "true")
+end
+
+-- A conditional grant never reopens what the remap itself closed (audit 2026-10-29): a
+-- bridge roadway the crossings fixture calls illegal stays closed both ways at every hour.
+local _, illegal_bridge = transform_way({ highway = "primary", bridge = "yes", bicycle = "no",
+  ["bicycle:conditional"] = "yes @ (Sa,Su)", ["rm:bridge_bicycle"] = "no",
+  ["rm:stress_tier"] = "3" })
+check("an illegal bridge's conditional grant opens neither direction",
+  illegal_bridge.bike_forward == "false" and illegal_bridge.bike_backward == "false",
+  tostring(illegal_bridge.bike_forward) .. "/" .. tostring(illegal_bridge.bike_backward))
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

@@ -110,8 +110,14 @@ HALF_WIDTH_M = 6.0
 # and the vertices, counted over all of them.
 MAX_PERIMETER_M = 50_000.0
 MAX_VERTICES = 100
-# A polygon is at most this many vertices along each side.
-MAX_LINE_POINTS = 5
+# A polygon is at most this many vertices along each side. The line is thinned to within
+# `THIN_M` of the road, so a 6 m strip still covers a curved road with half its width to
+# spare (audit 2026-10-29: thinned to 5 points, a closed road on a long curve drifted 50 to
+# 80 ft off its strip, and the blocks in the middle of the curve stayed routable). A line
+# that needs more than `MAX_LINE_POINTS` at that tolerance is thinned further, and its strip
+# widened by as much, so it still covers the whole road.
+MAX_LINE_POINTS = 12
+THIN_M = HALF_WIDTH_M / 2
 # A closure within this distance of a point the rider placed is not excluded (the
 # router could not start or stop there); it is warned of instead.
 NEAR_POINT_M = 50.0
@@ -399,10 +405,12 @@ def _trim(points: list[tuple[float, float]], metres: float) -> list[tuple[float,
     return [at(start), *middle, at(end)]
 
 
-def _thin(points: list[tuple[float, float]], most: int) -> list[tuple[float, float]]:
-    """At most `most` points, by Douglas-Peucker with a growing tolerance."""
-    if len(points) <= most:
-        return points
+def _thin(points: list[tuple[float, float]], most: int) -> tuple[list[tuple[float, float]], float]:
+    """At most `most` points, by Douglas-Peucker from `THIN_M`, the tolerance raised until
+    they fit; with the tolerance used (0 for a line of two points). Every point of the line
+    is within that tolerance of the thinned line."""
+    if len(points) <= 2:
+        return points, 0.0
 
     def simplify(pts: list, tolerance: float) -> list:
         if len(pts) < 3:
@@ -417,12 +425,23 @@ def _thin(points: list[tuple[float, float]], most: int) -> list[tuple[float, flo
             return [a, b]
         return simplify(pts[: index + 1], tolerance)[:-1] + simplify(pts[index:], tolerance)
 
-    tolerance = 1.0
+    tolerance = THIN_M
     out = simplify(points, tolerance)
+    if len(out) <= most:
+        return out, tolerance
     while len(out) > most:
         tolerance *= 2
         out = simplify(points, tolerance)
-    return out
+    # Back down towards the least tolerance that fits, so the strip is no wider than it needs.
+    low = tolerance / 2
+    for _ in range(6):
+        middle = (low + tolerance) / 2
+        tried = simplify(points, middle)
+        if len(tried) <= most:
+            tolerance, out = middle, tried
+        else:
+            low = middle
+    return out, tolerance
 
 
 def _to_segment(p, a, b) -> float:
@@ -446,23 +465,39 @@ def polygon(zone: Zone) -> list[list[float]] | None:
 def line_ring(line: Sequence[Sequence[float]], trim_m: float = 0.0) -> list[list[float]] | None:
     """`polygon`'s strip round any line of [lon, lat] pairs, `trim_m` cut from each end:
     a closed ring, or None for a line under 1 m. A road a rider marked closed (v0.8.2,
-    `blocked_lines`) is left out whole, untrimmed."""
+    `blocked_lines`) is left out whole, untrimmed. The strip is `HALF_WIDTH_M` either side,
+    wider where the line had to be thinned more than `THIN_M` to fit (`_thin`), and mitred
+    at each bend so a turn does not narrow it."""
     lat0 = line[0][1]
     points = [_xy(lon, lat, lat0) for lon, lat in line]
     if _length(points) < 1.0:
         return None
     if trim_m > 0:
         points = _trim(points, trim_m)
-    points = _thin(points, MAX_LINE_POINTS)
-    left, right = [], []
-    for i, p in enumerate(points):
-        a = points[max(i - 1, 0)]
-        b = points[min(i + 1, len(points) - 1)]
+    points = [p for i, p in enumerate(points) if i == 0 or p != points[i - 1]]
+    if len(points) < 2:
+        return None
+    points, tolerance = _thin(points, MAX_LINE_POINTS)
+    half = max(HALF_WIDTH_M, tolerance + THIN_M)
+
+    def normal(a, b) -> tuple[float, float]:
         dx, dy = b[0] - a[0], b[1] - a[1]
         norm = math.hypot(dx, dy) or 1.0
-        nx, ny = -dy / norm * HALF_WIDTH_M, dx / norm * HALF_WIDTH_M
-        left.append((p[0] + nx, p[1] + ny))
-        right.append((p[0] - nx, p[1] - ny))
+        return -dy / norm, dx / norm
+
+    left, right = [], []
+    for i, p in enumerate(points):
+        before = normal(points[max(i - 1, 0)], points[max(i, 1)])
+        after = normal(points[min(i, len(points) - 2)], points[min(i + 1, len(points) - 1)])
+        nx, ny = before[0] + after[0], before[1] + after[1]
+        norm = math.hypot(nx, ny)
+        if norm < 1e-9:  # the line turns straight back: square across it
+            nx, ny, norm = before[0], before[1], 1.0
+        nx, ny = nx / norm, ny / norm
+        # The mitre: as far out as keeps `half` from both segments, at most twice it.
+        reach = half / max(nx * before[0] + ny * before[1], 0.5)
+        left.append((p[0] + nx * reach, p[1] + ny * reach))
+        right.append((p[0] - nx * reach, p[1] - ny * reach))
     ring = left + right[::-1]
     ring.append(ring[0])
     return [[round(c, 6) for c in _lonlat(x, y, lat0)] for x, y in ring]
@@ -881,11 +916,16 @@ def _near_point(zone: Zone, points: Sequence[Sequence[float]]) -> bool:
     return any(_distance_to_line(_xy(p[0], p[1], lat0), line) <= NEAR_POINT_M for p in points)
 
 
-def fit_polygons(zones: Sequence[Zone], centre, used_m: float = 0.0, used_vertices: int = 0):
-    """The zones' polygons, nearest `centre` (lon, lat) first, as many as fit the
-    router's limits beside what is already used. (polygons, fitted zones, left out)."""
+def fit_polygons(zones: Sequence[Zone], near, used_m: float = 0.0, used_vertices: int = 0):
+    """The zones' polygons, nearest `near` first, as many as fit the router's limits beside
+    what is already used. (polygons, fitted zones, left out). `near` is a (lon, lat) point,
+    or the rider's points in order: a zone is then ranked by its distance from the line
+    through them, so on a long ride the closures by the start and the end count as much as
+    those in the middle (audit 2026-10-29: ranked from the points' average, a DC to
+    Baltimore ride left out the closures at both ends first)."""
+    stops = [near] if isinstance(near[0], (int, float)) else list(near)
     rings, fitted, left = [], [], []
-    for zone in sorted(zones, key=lambda z: _centre_distance(z, centre)):
+    for zone in sorted(zones, key=lambda z: _stops_distance(z, stops)):
         ring = polygon(zone)
         if ring is None:
             left.append(zone)
@@ -901,10 +941,13 @@ def fit_polygons(zones: Sequence[Zone], centre, used_m: float = 0.0, used_vertic
     return rings, fitted, left
 
 
-def _centre_distance(zone: Zone, centre) -> float:
-    lat0 = centre[1]
-    c = _xy(centre[0], centre[1], lat0)
-    return min(math.dist(c, _xy(lon, lat, lat0)) for lon, lat in zone.line)
+def _stops_distance(zone: Zone, stops: Sequence[Sequence[float]]) -> float:
+    """Metres from the zone's nearest point to the line through `stops` (one point or more)."""
+    lat0 = stops[0][1]
+    line = [_xy(p[0], p[1], lat0) for p in stops]
+    if len(line) == 1:
+        line = line * 2
+    return min(_distance_to_line(_xy(lon, lat, lat0), line) for lon, lat in zone.line)
 
 
 def budget_used(rings: Sequence[Sequence[Sequence[float]]]) -> tuple[float, int]:
@@ -964,9 +1007,6 @@ def for_plan(
         return plan
     bypassed = set(bypass)
     box = _box(points)
-    lons = [p[0] for p in points]
-    lats = [p[1] for p in points]
-    centre = (sum(lons) / len(lons), sum(lats) / len(lats))
     closures = []
     for zone in zones:
         if not active(zone, at) or not _in_box(zone, box):
@@ -991,7 +1031,7 @@ def for_plan(
                 closures.append(zone)
         else:
             plan.passable.append(zone)
-    plan.exclude, plan.excluded, left = fit_polygons(closures, centre, *reserve)
+    plan.exclude, plan.excluded, left = fit_polygons(closures, points, *reserve)
     plan.unexcluded.extend(left)
     return plan
 
