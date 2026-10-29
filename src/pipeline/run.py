@@ -3982,7 +3982,7 @@ def build_handlers(
         return facts.block_facts
 
     def write_segments() -> None:
-        from .schema import schema_exists
+        from .schema import create_segment_indexes, schema_exists
 
         if not schema_exists(context.staging_schema):
             raise RuntimeError(
@@ -4144,6 +4144,9 @@ def build_handlers(
                 hazard_ways += rows[-1]["hazard"] is not None
         logger.info("segments marked with a hazard (cobbles, rails): %d", hazard_ways)
         writers.write_segments(context.staging_schema, rows)
+        # The indexes the staging table was created without (`reset_segment_schema`),
+        # now that its rows are in, and before anything below updates or joins them.
+        create_segment_indexes(context.staging_schema)
         logger.info(
             "slip roads (ramps) marked for the map: %d",
             writers.mark_links(

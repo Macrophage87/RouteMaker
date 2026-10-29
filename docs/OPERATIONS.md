@@ -2765,6 +2765,10 @@ BUILD_TILES [a checkpoint after each graph]   VALIDATE_TILES
 SWAP  RECONCILE
 ```
 
+FETCH_EXTRACT creates the staging segment table without its indexes, and WRITE_SEGMENTS
+builds them (then runs ANALYZE) straight after its bulk insert, before the steps that update
+and join the rows (`pipeline.schema.create_segment_indexes`).
+
 Two changes from the old order. WRITE_SEGMENTS moved before BUILD_TILES (it reads only
 memory and the staging schema, never a tile). The old VALIDATE stage split in two:
 **VALIDATE_SEGMENTS** has the checks that need no graph (the reference LTS 4 street, the

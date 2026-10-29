@@ -566,7 +566,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "table: the rebuild has no seek index",
         "src/pipeline/schema.py",
-        "CREATE INDEX segment_seek_geom_idx ON {schema}.segment USING gist (geometry)"
+        "CREATE INDEX IF NOT EXISTS segment_seek_geom_idx ON {schema}.segment USING gist (geometry)"
         + NL
         + "    WHERE {seek};",
         "",
