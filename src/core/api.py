@@ -7435,8 +7435,8 @@ def weather_check(request):
 
 
 # Ride mode's 311 (v0.7.0 "Go riding fixes" item 3; core.dc311): whether the server sends a
-# report to DC 311 itself (only with DC311_API_KEY set), and the sending. Off, the page opens
-# the phone's text app to 311 instead. The position and the words go to DC only, never a log.
+# report to DC 311 itself (only with DC311_API_KEY set), and the sending. Off, the problem stays
+# in the 311 log for the rider to send. The position and the words go to DC only, never a log.
 REPORT_311_BODY_MAX_BYTES = 2048
 
 
@@ -7460,8 +7460,8 @@ def _report311_refused(status: int, message: str, code: str):
 def report311_status(request):
     from . import dc311
 
-    # On for a signed-in rider (signed out, Ride mode texts 311): the answer carries a short-lived
-    # ticket, signed for this account, that a send must bring back.
+    # On for a signed-in rider (signed out, the problem stays in the 311 log): the answer carries
+    # a short-lived ticket, signed for this account, that a send must bring back.
     on = dc311.enabled() and signed_in(request)
     response = JsonResponse(
         {"enabled": True, "ticket": dc311.ticket(_report311_who(request))}

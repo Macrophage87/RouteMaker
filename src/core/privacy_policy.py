@@ -29,7 +29,7 @@ comes from:
   DC311_API_KEY, so the policy names none; the owner, 2026-10-29). Recent places:
   frontend/src/lib/recentPlaces.ts (RECENT_PLACES_DAYS).
 - What the browser and the server contact: the Content-Security-Policy (Caddyfile, `connect-src
-  'self'`), core.street_photo, core.gbfs, core.wmata_live, core.closure_sources, core.dc311,
+  'self'`), core.street_photo, core.gbfs, core.wmata_live, core.closure_sources,
   core.weather (points rounded to 0.01 degree, answers 2 minutes in memory).
 - Logs, limits and backups: docker/api-entrypoint.sh (the access log's format), core.ratelimit,
   config.procrastinate (BACKUP_KEEP, BACKUP_MAX_AGE, BACKUP_EXCLUDED_TABLES, perform_backup's

@@ -15,7 +15,7 @@
  *
  * Privacy (the owner, 2026-10-22: nothing kept on the server): the position stays on the phone. Only a Nearby search
  * (POST /api/nearest) and the ride it starts send where the rider is, in a POST body, as Ride mode's detours do; a 311
- * pick sent to DC 311 sends its point, as a ride's does; and while the rider broadcasts, the position and trail go to
+ * pick sent to DC 311 (only with DC311_API_KEY) sends its point, as a ride's does; and while the rider broadcasts, the position and trail go to
  * /api/rides as any broadcast's do, kept 2 minutes there.
  */
 import { BROADCAST_HOLD_HINT } from "./lib/broadcastQr.ts";
