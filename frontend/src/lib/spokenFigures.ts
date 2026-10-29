@@ -5,7 +5,7 @@
  *
  * Plain data in, plain data out, so node --test runs all of it.
  */
-import { FEET_BELOW_M, FEET_PER_METRE, formatDistance, milesFigure } from "./format.ts";
+import { FEET_BELOW_M, FEET_PER_METRE, formatDistance, kmFigure, milesFigure } from "./format.ts";
 import { t } from "./i18n.ts";
 
 const DASH = "–";
@@ -28,7 +28,7 @@ export function formatDistanceSpoken(metres: number): string {
   if (!usable(metres)) return formatDistance(metres);
   if (metres < FEET_BELOW_M) return feetSpoken(String(roundShort(metres * FEET_PER_METRE)), String(roundShort(metres)));
   const miles = milesFigure(metres);
-  const km = (metres / 1000).toFixed(1);
+  const km = kmFigure(metres);
   return miles === "1.0" ? t("1 mile ({km} kilometers)", { km }) : t("{miles} miles ({km} kilometers)", { miles, km });
 }
 
