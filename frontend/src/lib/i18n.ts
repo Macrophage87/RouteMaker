@@ -235,6 +235,14 @@ export function planStaysEnglish(lang: Language = current): boolean {
   return lang !== "en" && lang !== "es";
 }
 
+/**
+ * Whether the server words the route's own sentences (hazards, work zones, signal cards) in this language: English
+ * and Spanish (src/routemaker/lang.py has a catalog for them). For the others the server answers in English (lang.py `speaking`).
+ */
+export function serverWordsIn(lang: Language = current): boolean {
+  return lang === "en" || lang === "es";
+}
+
 /** Plan's English mark (planStaysEnglish), spread onto its containers. */
 export function planLanguageAttributes(lang: Language = current): { lang?: string; dir?: "ltr" } {
   return planStaysEnglish(lang) ? { lang: "en-US", dir: "ltr" } : {};
