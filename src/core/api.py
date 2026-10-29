@@ -6761,6 +6761,7 @@ def connected_apps_read(request):
 def connected_app_delete(request, grant_id: int):
     from .models import ConnectorGrant
 
+    # The app's drafts, their links and GPX links go with its grant (ConnectorDraft.grant).
     ConnectorGrant.objects.filter(user=request.user, pk=grant_id).delete()
     return _private(JsonResponse({"apps": _connected_apps(request.user)}))
 

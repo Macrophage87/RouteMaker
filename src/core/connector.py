@@ -10,7 +10,8 @@ same module runs inside the site, and three things change:
   the app's and each rider is counted against their own rate limits, not those of the
   assistant's servers, whose one address every rider would share.
 - Drafts are kept in the database (`core.models.ConnectorDraft`), since gunicorn's processes
-  share nothing.
+  share nothing: each app's own, for a day (`ConnectorDraft.KEPT`), with the link each plan
+  makes and its GPX link going with it, and all of them when the app is disconnected.
 - A call answers inside one web request, which gunicorn ends at 60 s: the module plans again
   only while another long plan still fits, and says so when it stops.
 
@@ -44,18 +45,18 @@ from functools import cache
 
 from django.conf import settings
 from django.contrib.sessions.backends.base import SessionBase
-from django.core import signing
 from django.db import transaction
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.test import RequestFactory
 from django.urls import resolve, reverse
 from django.utils import timezone
+from django.utils.crypto import constant_time_compare, salted_hmac
 from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from django.views.decorators.csrf import csrf_exempt
 
 from . import ratelimit
-from .models import ConnectorClient, ConnectorDraft, ConnectorGrant, User
+from .models import ConnectorClient, ConnectorDraft, ConnectorGrant, SharedRoute
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,9 @@ REFRESH_LIFETIME = timedelta(days=30)
 CALL_BUDGET_S = 55
 MAX_REDIRECT_URIS = 5
 MAX_BODY_BYTES = 64 * 1024
+# What draft_route_post says of a route the admin's own checks refuse for their Home.
+POST_ROUTE_REFUSED = "this route cannot be a post; pick another, or pick the route in the admin"
+POST_REFUSED_TODAY = "no more post drafts today; write the post in the admin"
 
 
 def _digest(secret: str) -> str:
@@ -244,7 +248,15 @@ class InProcessApi:
             raise self._module.ToolError(
                 f"too many changes just now; wait {decision.retry_after_s} seconds"
             )
+        # A route at the admin's Home is refused in words that do not name Home, and only a few
+        # times a day: the route is the caller's to choose, point by point.
+        home_key = ratelimit.client_key(f"connector-post-home:{self.user.pk}")
+        if not ratelimit.hit(ratelimit.CONNECTOR_POST_HOME, home_key, cost=0).allowed:
+            raise self._module.ToolError(POST_REFUSED_TODAY)
         post, problem = route_posts.write_draft(self.user, fields, route)
+        if problem == route_posts.HOME_REFUSAL:
+            ratelimit.hit(ratelimit.CONNECTOR_POST_HOME, home_key)
+            problem = POST_ROUTE_REFUSED
         if problem:
             raise self._module.ToolError(f"the site did not keep the post: {problem}")
         return {
@@ -259,24 +271,29 @@ class InProcessApi:
 
 
 class DatabaseDrafts:
-    """The module's draft store, in `ConnectorDraft`: the rider's own, kept a week."""
+    """The module's draft store, in `ConnectorDraft`: the rider's own, drafted through this one
+    app (`grant`), kept `ConnectorDraft.KEPT`. Another app the rider connected finds none of
+    them."""
 
-    def __init__(self, user):
+    def __init__(self, user, grant):
         self.user = user
+        self.grant_id = getattr(grant, "pk", grant)
 
     def _rows(self):
-        return ConnectorDraft.objects.filter(user=self.user)
+        return ConnectorDraft.objects.filter(user=self.user, grant_id=self.grant_id)
+
+    def _row(self, draft_id: str):
+        if self.grant_id is None:
+            return None
+        return (
+            self._rows()
+            .filter(draft_id=draft_id, created_at__gte=timezone.now() - ConnectorDraft.KEPT)
+            .first()
+        )
 
     def get(self, draft_id: str):
         module = mcp_module()
-        row = (
-            self._rows()
-            .filter(
-                draft_id=draft_id,
-                created_at__gte=timezone.now() - timedelta(days=ConnectorDraft.KEPT_DAYS),
-            )
-            .first()
-        )
+        row = self._row(draft_id)
         if row is None:
             return None
         data = row.data
@@ -316,14 +333,54 @@ class DatabaseDrafts:
             "trim_spurs": draft.trim_spurs,
             "intervals": draft.intervals,
         }
-        draft_id = f"d{secrets.token_hex(4)}"
+        # 128 random bits: an id seen in a transcript cannot be walked to its neighbours.
+        draft_id = f"d{secrets.token_hex(16)}"
         with transaction.atomic():
-            ConnectorDraft.objects.create(user=self.user, draft_id=draft_id, data=data)
-            stale = timezone.now() - timedelta(days=ConnectorDraft.KEPT_DAYS)
-            self._rows().filter(created_at__lt=stale).delete()
-            extra = self._rows().order_by("-created_at", "-pk")[ConnectorDraft.MAX_PER_USER :]
-            self._rows().filter(pk__in=[row.pk for row in extra]).delete()
+            ConnectorDraft.objects.create(
+                user=self.user, grant_id=self.grant_id, draft_id=draft_id, data=data
+            )
+            drop_stale_drafts()
+            mine = ConnectorDraft.objects.filter(user=self.user)
+            extra = mine.order_by("-created_at", "-pk")[ConnectorDraft.MAX_PER_USER :]
+            mine.filter(pk__in=[row.pk for row in extra]).delete()
         return draft_id
+
+    def shared(self, draft_id: str, route_id: str) -> None:
+        """The link the module made for this draft (a SharedRoute) goes with the draft."""
+        row = self._row(draft_id)
+        if row is not None:
+            SharedRoute.objects.filter(pk=route_id, owner=self.user).update(connector_draft=row)
+
+    def name_gpx(self, draft_id: str, name: str) -> bool:
+        """Keep the name the GPX link's file is given; whether the draft is still kept."""
+        row = self._row(draft_id)
+        if row is None:
+            return False
+        row.data = {**row.data, "gpx_name": name}
+        row.save(update_fields=["data"])
+        return True
+
+
+def _drafts_deleted(by_model: dict) -> int:
+    return by_model.get(ConnectorDraft._meta.label, 0)
+
+
+def drop_stale_drafts(now=None) -> int:
+    """Delete every rider's drafts past `ConnectorDraft.KEPT`, and with them their links
+    (SharedRoute.connector_draft); how many drafts."""
+    now = now or timezone.now()
+    _count, by_model = ConnectorDraft.objects.filter(
+        created_at__lt=now - ConnectorDraft.KEPT
+    ).delete()
+    return _drafts_deleted(by_model)
+
+
+def drop_for_user(user) -> int:
+    """Delete all of a rider's connector drafts and their links, as disconnecting every app
+    does; how many drafts. Deleting a grant drops that app's drafts and links by itself (the
+    foreign keys cascade), so a caller that deletes the rider's grants needs nothing more."""
+    _count, by_model = ConnectorDraft.objects.filter(user=user).delete()
+    return _drafts_deleted(by_model)
 
 
 # --- The MCP endpoint --------------------------------------------------------------------------
@@ -390,9 +447,9 @@ def mcp_endpoint(request):
     user = grant.user
     server = module.Server(
         lambda: InProcessApi(request, user),
-        drafts=DatabaseDrafts(user),
+        drafts=DatabaseDrafts(user, grant),
         files=False,
-        gpx_link=lambda draft_id, name: gpx_link(request, user, draft_id, name),
+        gpx_link=lambda draft_id, name: gpx_link(request, user, grant, draft_id, name),
         posts=bool(getattr(user, "is_instance_admin", False)),
         icons=server_icons(request),
     )
@@ -430,35 +487,65 @@ def server_icons(request) -> list[dict]:
 # --- A draft's GPX ------------------------------------------------------------------------------
 
 GPX_SALT = "core.connector.gpx"
+# The draft's id, then the keyed digest (`_gpx_mac`).
+GPX_TOKEN_RE = re.compile(r"(d[0-9a-f]{32})\.([0-9a-f]{64})")
 
 
-def gpx_link(request, user, draft_id: str, name: str) -> str:
-    """A link that downloads the rider's draft as GPX, signed so it names that rider's draft
-    and nothing else, and good while drafts are kept. Opened from the assistant app on any
-    device, so it carries no sign-in of its own and grants nothing but this one file."""
-    token = signing.dumps({"u": user.pk, "d": draft_id, "n": name}, salt=GPX_SALT, compress=True)
-    return f"{_origin(request)}/mcp/gpx/{token}"
+def _gpx_mac(user_id, grant_id, draft_id: str) -> str:
+    message = f"{user_id}:{grant_id}:{draft_id}"
+    return salted_hmac(GPX_SALT, message, algorithm="sha256").hexdigest()
+
+
+def gpx_link(request, user, grant, draft_id: str, name: str) -> str:
+    """A link that downloads the rider's draft as GPX, good while the draft is kept (a day) and
+    the app that drafted it is connected. Garmin and Wahoo never fetch it (the server sends them
+    the route itself: core.garmin_courses, core.wahoo_routes). A person opens it from the
+    assistant app, on any device and often in that app's own browser, signed in to nothing
+    here, so it carries no sign-in of its own. It is the draft's random id and a keyed digest
+    (SECRET_KEY) of that id with the rider and the app: nothing in it can be read, and it opens
+    that one file and nothing else. The file's name is kept on the draft, not in the link."""
+    if not DatabaseDrafts(user, grant).name_gpx(draft_id, name):
+        raise mcp_module().ToolError(
+            f"no draft {draft_id} (drafts last only a while; plan it again)"
+        )
+    return f"{_origin(request)}/mcp/gpx/{draft_id}.{_gpx_mac(user.pk, grant.pk, draft_id)}"
+
+
+def _gpx_gone():
+    return _page("This link has expired", format_html("<p>{}</p>", GPX_GONE), status=404)
 
 
 @ratelimit.rate_limited(ratelimit.SHARED_ROUTE_READS)
 def draft_gpx(request, token: str):
-    """GET /mcp/gpx/<token>: the draft as a .gpx download."""
+    """GET /mcp/gpx/<token>: the draft as a .gpx download, while the draft is kept."""
     if request.method != "GET":
         return HttpResponse(status=405, headers={"Allow": "GET"})
-    try:
-        signed = signing.loads(
-            token, salt=GPX_SALT, max_age=timedelta(days=ConnectorDraft.KEPT_DAYS)
+    found = GPX_TOKEN_RE.fullmatch(token)
+    if found is None:
+        return _gpx_gone()
+    draft_id, mac = found.groups()
+    row = (
+        ConnectorDraft.objects.select_related("user")
+        .filter(
+            draft_id=draft_id,
+            grant__isnull=False,
+            created_at__gte=timezone.now() - ConnectorDraft.KEPT,
         )
-    except signing.BadSignature:
-        return _page("This link has expired", format_html("<p>{}</p>", GPX_GONE), status=404)
-    user = User.objects.filter(pk=signed.get("u")).first()
-    if user is None or not user.is_active:
-        user = None
-    draft = DatabaseDrafts(user).get(str(signed.get("d"))) if user is not None else None
+        .first()
+    )
+    if (
+        row is None
+        or not row.user.is_active
+        or not constant_time_compare(mac, _gpx_mac(row.user_id, row.grant_id, draft_id))
+        # Disconnecting the app drops its drafts; this holds even where a draft was left behind.
+        or not ConnectorGrant.objects.filter(pk=row.grant_id, user_id=row.user_id).exists()
+    ):
+        return _gpx_gone()
+    draft = DatabaseDrafts(row.user, row.grant_id).get(draft_id)
     if draft is None:
-        return _page("This link has expired", format_html("<p>{}</p>", GPX_GONE), status=404)
+        return _gpx_gone()
     module = mcp_module()
-    name = str(signed.get("n") or draft.name)[:120]
+    name = str(row.data.get("gpx_name") or draft.name)[:120]
     response = HttpResponse(
         module.gpx_text(name, draft.plan.line), content_type="application/gpx+xml"
     )
@@ -897,12 +984,11 @@ def token(request):
 
 def sweep_connector() -> int:
     """Delete what will never be used again (the membership sweep's backstop): drafts past their
-    week, grants whose code expired untraded or whose refresh token expired, and apps a day old
-    with no grant left. Drafts hold route points, often a rider's home."""
+    day, with their links, grants whose code expired untraded or whose refresh token expired, and
+    apps a day old with no grant left. Drafts hold route points, often a rider's home, so the
+    five-minute sweep drops stale ones as well (`drop_stale_drafts`)."""
     now = timezone.now()
-    drafts, _ = ConnectorDraft.objects.filter(
-        created_at__lt=now - timedelta(days=ConnectorDraft.KEPT_DAYS)
-    ).delete()
+    drafts = drop_stale_drafts(now)
     untraded, _ = ConnectorGrant.objects.filter(
         refresh_digest__isnull=True, created_at__lt=now - CODE_LIFETIME - timedelta(hours=1)
     ).delete()

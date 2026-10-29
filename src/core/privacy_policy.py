@@ -194,7 +194,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "label).",
                 "Favorites: the places you save, Work among them (each one point and its name).",
                 "Your 311 log (below).",
-                "The assistant apps you connected, with the routes they drafted for a week.",
+                "The assistant apps you connected, with the routes each one drafted and you have "
+                "not saved, for a day.",
             ]
         )
         + _p(
@@ -329,7 +330,10 @@ SECTIONS: list[tuple[str, str]] = [
         + _p(
             "If you connect an AI assistant app, the routes it plans go to that app and its "
             "maker, under their own privacy policy. It can plan routes and add them to My routes; "
-            "it cannot read your saved routes."
+            "it cannot read your saved routes. Each route it plans gets a link that opens it, "
+            "and a GPX download link if asked, which anyone with the link can open. Both work "
+            "for a day. Disconnecting the app in Settings, or signing out everywhere, deletes its "
+            "unsaved routes at once, and their links stop working."
         ),
     ),
     (

@@ -158,6 +158,8 @@ class TestSharedRoutes:
             "preview_zone",
             "preview_key",
             "preview_png",
+            # An assistant app's draft link: the draft it goes with (core.connector).
+            "connector_draft",
         }
         assert "198.51.100" not in json.dumps([row.name, row.line, row.inputs, row.answer, row.gpx])
         # A position, an account or anything else not part of a route is refused, not kept.

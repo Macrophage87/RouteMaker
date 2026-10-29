@@ -31,6 +31,9 @@ keeping, the old one turned off), from My routes in Plan. A turned-off link stay
 with its route cleared and is kept permanently, so its link keeps saying it was turned off
 (`REVOKED`, 410) rather than planning its points again once the row was gone. The link's preview,
 for chat apps that fetch it: `core.share_preview`.
+
+A link an assistant app's plan made (core.connector) goes with its draft (`connector_draft`): a
+day, or less if the app is disconnected. Then it is "no longer kept", as any expired link is.
 """
 
 from __future__ import annotations
@@ -75,20 +78,26 @@ def prune(now=None) -> int:
     from django.db.models import Q
     from django.utils import timezone
 
-    from .models import SharedRoute
+    from .models import ConnectorDraft, SharedRoute
 
     now = now or timezone.now()
     deleted, _ = SharedRoute.objects.filter(
         Q(keep="year", last_opened_at__lt=now - KEEP)
         | Q(keep="until", delete_after__lt=timezone.localdate(now))
+        | Q(connector_draft__isnull=False, created_at__lt=now - ConnectorDraft.KEPT)
     ).delete()
     return deleted
 
 
 def expired(row, now) -> bool:
-    """Whether a kept row is past its keeping, as `prune` reads it."""
+    """Whether a kept row is past its keeping, as `prune` reads it. An assistant's draft link
+    lasts as long as its draft (`ConnectorDraft.KEPT`), whatever its keeping says."""
     from django.utils import timezone
 
+    from .models import ConnectorDraft
+
+    if row.connector_draft_id is not None and row.created_at < now - ConnectorDraft.KEPT:
+        return True
     if row.keep == "forever":
         return False
     if row.keep == "until":

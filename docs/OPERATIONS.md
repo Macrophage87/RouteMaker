@@ -198,6 +198,8 @@ declining every week with "grow the volume" as the only remedy.
 | Finished `procrastinate_jobs` and their events | 30 days | `core.runs.prune_job_rows`, run nightly |
 | `rate_limit_window` rows (keyed client addresses) | 1 day idle, so at most about 30 hours | `core.ratelimit.purge_expired`, run by the six-hourly membership sweep |
 | `shared_route` rows (the exact lines Share links open) | 1 year after the link was last opened | `core.shared_routes.prune`, at every share and every open, and nightly by the backup task |
+| `shared_route` rows an assistant app's plan made (`connector_draft` set) | As long as their draft: 24 hours, or until the app is disconnected | Deleted with the draft (the foreign key cascades); `core.shared_routes.expired` refuses them past 24 hours even before that |
+| `connector_draft` rows (an assistant app's unsaved routes, with their points) | 24 hours (`ConnectorDraft.KEPT`), and none once the app is disconnected, the rider signs out everywhere, or the account is banned or deleted | `core.connector.drop_stale_drafts`, at every new draft and by the five-minute degraded-guild sweep; deleting a `connector_grant` deletes its drafts. The GPX link (`/mcp/gpx/<draft id>.<keyed digest>`) works only while its draft is kept and its app connected |
 | `signed_out_send` rows (a device's salted daily hash and the road, for the signed-out suggestion limits) | 24 hours | `core.signed_out_suggestions.prune`, at every signed-out send, and nightly by the backup task |
 
 Three rules are load-bearing rather than incidental:
