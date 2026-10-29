@@ -91,6 +91,10 @@ SAME_PLACE_M = 300
 
 # How far from the point Photon may look for a place to say it is near, in km.
 REVERSE_RADIUS_KM = 0.25
+# Go's tapped-spot card asks for the spot's street address (Stephen 2026-10-29: "provide
+# the address if possible"): the nearest house number within this, in km (about 130 ft).
+# Further off, the number is a building across the block, and the card keeps the street.
+ADDRESS_RADIUS_KM = 0.04
 # The 311 log's county lookup (`area`) takes any object within this: a county is wide, and a
 # rural road may have nothing Photon knows within REVERSE_RADIUS_KM.
 AREA_RADIUS_KM = 2
@@ -393,18 +397,77 @@ def _area(properties: dict, name: str) -> list[str]:
     return rest[:2]
 
 
-def reverse(lat: float, lon: float, *, lang: str) -> list[dict]:
+def street_address(lat: float, lon: float, *, lang: str) -> dict | None:
+    """The nearest house number and street to the point within ADDRESS_RADIUS_KM, as
+    {name: "1234 Franklin Street Northeast", label}, or None. Raises Unavailable when
+    Photon does not answer."""
+    answer = _get(
+        "/reverse",
+        {
+            "lat": lat,
+            "lon": lon,
+            "lang": lang,
+            "limit": 1,
+            "radius": ADDRESS_RADIUS_KM,
+            "layer": "house",
+        },
+    )
+    for feature in answer.get("features", []):
+        if not isinstance(feature, dict) or not isinstance(feature.get("properties"), dict):
+            continue
+        point = _point(feature)
+        if point is None or not inside(*point):
+            continue
+        if haversine(Point(lon, lat), Point(*point)) > ADDRESS_RADIUS_KM * 1000:
+            continue
+        properties = feature["properties"]
+        number, street = _text(properties, "housenumber"), _text(properties, "street")
+        if not number or not street:
+            continue
+        name = f"{number} {street}"
+        return {"name": name, "label": ", ".join([name, *_area(properties, street)])}
+    return None
+
+
+def reverse(lat: float, lon: float, *, lang: str, address: bool = False) -> list[dict]:
     """What the point is on: the named road or trail it snaps to, or failing
     that "near" a place Photon knows. At most one result.
 
+    With `address` (Go's tapped-spot card), a house number within
+    ADDRESS_RADIUS_KM names it instead: "1234 Franklin Street Northeast", kind
+    "address". Route points never ask, since the nearest house to a point on a
+    road is a neighbour's.
+
     Raises Unavailable only when neither the router nor Photon answered.
     """
+    point = {"lon": round(lon, 6), "lat": round(lat, 6)}
+    # Photon not answering the address is not asked again (a second timeout): the
+    # street from the router names it, with no neighbourhood.
+    photon_answered = True
+    try:
+        found = street_address(lat, lon, lang=lang) if address else None
+    except Unavailable:
+        found, photon_answered = None, False
+    if found is not None:
+        return [
+            {
+                **found,
+                **point,
+                "kind": "address",
+                "osm_type": None,
+                "osm_id": None,
+                "osm_key": None,
+                "osm_value": None,
+            }
+        ]
     try:
         edge = edge_name(_locate(lat, lon))
         router_answered = True
     except Unavailable:
         edge, router_answered = None, False
     try:
+        if not photon_answered:
+            raise Unavailable("the geocoder did not answer the address")
         answer = _get(
             "/reverse",
             {"lat": lat, "lon": lon, "lang": lang, "limit": 1, "radius": REVERSE_RADIUS_KM},
@@ -425,7 +488,6 @@ def reverse(lat: float, lon: float, *, lang: str) -> list[dict]:
             raise
         feature = None
     properties = feature["properties"] if feature else {}
-    point = {"lon": round(lon, 6), "lat": round(lat, 6)}
     if edge is not None:
         name = f"near {edge['name']}" if edge["kind"] == "near" else edge["name"]
         return [
