@@ -303,6 +303,8 @@ import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from 
 import { permitsShown, readPermitsLayer, savePermitsLayer } from "./lib/permitLayer.ts";
 import { RideGroup } from "./RideGroup.tsx";
 import { RoamMode } from "./RoamMode.tsx";
+import { RideGuard } from "./RideGuard.tsx";
+import { watchOpenLinks } from "./lib/rideLinks.ts";
 import { BACK_TO_ROAM, ROAM_BROADCAST_NOT_READY, ROAM_BROADCAST_ON, ROAM_BROADCAST_TEXT, ROAM_BROADCAST_TITLE, ROAM_ENDED, ROAM_NAME, ROAM_STARTED, STILL_ROAMING_SAID, roamLink, roamLinkFrom, type RoamMap } from "./lib/roam.ts";
 import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
@@ -983,6 +985,10 @@ export function App() {
   // Roam's Nearby places, lettered on the map as its rows (as a ride's Detour, RideView.lettered).
   const [roamLettered, setRoamLettered] = useState<{ places: LetteredPlace[]; pick: (index: number) => void } | null>(null);
   const onBike = riding || roaming;
+  // A link the phone app hands over (lib/rideLinks.ts): opened at once, or during a ride or Roam only once the rider says so.
+  const onBikeNow = useRef(onBike);
+  onBikeNow.current = onBike;
+  useEffect(() => watchOpenLinks(window, () => onBikeNow.current, (question) => window.confirm(question), (url) => window.location.assign(url)), []);
   // How many are on the ride's broadcast (RideGroup's count), shown in Ride mode's Broadcast; More > Riders opens its panel.
   const [rideRiders, setRideRiders] = useState<number | null>(null);
   const [ridersAsk, setRidersAsk] = useState(0);
@@ -5661,6 +5667,9 @@ export function App() {
           bar={goBar}
         />
       )}
+      {/* The map, the planner and the overlays each in a guard: an error in one during a ride or Roam leaves it out and
+          the ride goes on (RideGuard.tsx); off the bike the crash screen shows as before. */}
+      <RideGuard on={onBike}>
       <MapView
         points={onBike || reviewing ? NO_POINTS : points}
         loopVias={loopVias}
@@ -5770,6 +5779,9 @@ export function App() {
           ) : null
         }
       />
+      </RideGuard>
+      {/* The map's overlays: one failing during a ride leaves them out, not the ride (RideGuard.tsx). */}
+      <RideGuard on={onBike}>
       <RepairStandsOverlay getMap={getMap} places={Array.isArray(repairData) ? repairData : null} on={waterPrefs.on && !onBike} pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))} actionFor={stopActionFor} />
       <PlacesOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={placesOn && !onBike} actionFor={stopActionFor} />
       <FoodOverlay getMap={getMap} results={grocery ? null : foodAll} on={letteredOf === "food" && !onBike} actionFor={stopActionFor} />
@@ -5784,6 +5796,7 @@ export function App() {
         pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))}
         onReport={onDocksReport}
       />
+      </RideGuard>
       {roamBroadcast && (roamBroadcast.leading ? onBike : !rideGroupLine) && (
         <RideGroup
           type="group-ride"
@@ -6144,6 +6157,7 @@ export function App() {
         />
       )}
       {/* Hidden, not removed, during a ride: the planner keeps its state, and Sign in is out of reach (plan section 7). */}
+      <RideGuard on={onBike}>
       <aside
         ref={panelRef}
         id="route-planner"
@@ -6443,6 +6457,7 @@ export function App() {
           {!goMode && <BottomBar view={view} onOpen={openSheet} buttonRef={(id, button) => (barButtons.current[id] = button)} />}
         </div>
       </aside>
+      </RideGuard>
     </div>
   );
 }
