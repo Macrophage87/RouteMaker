@@ -1967,6 +1967,15 @@ unless named; PLAN.md quotes the owner's words):
   mixed traffic (item 84), and not from three through lanes a direction, where
   Montgomery's Appendix D keeps LTS 4. Decent: buffered, or not tagged narrower
   than 5 ft; an untagged width counts.
+- *A painted lane on a wide street* (review RL-3; the owner, 2026-10-16) is
+  LTS 3 at least: on a two-way street with 2 or more through lanes each way,
+  and on a one-way street with 3 or more (review 2026-10-29), the streets that
+  keep the LTS 3 floor in mixed traffic. A rideable shoulder takes the same
+  floor (`stress.multilane_floor`).
+- *A posted speed* is `maxspeed`, a `;` list read as its highest part; where a
+  way has no `maxspeed`, the higher of `maxspeed:forward` and
+  `maxspeed:backward`, as the router reads them (`tags.posted_maxspeed`; review
+  2026-10-29). The expressway rule and the curated speeds read it the same way.
 - *Missing speed limits* take the state's default (items 108, 112): the
   District 20 mph on every class, 15 in alleys; Maryland and Virginia urban
   areas 25 residential, 30 tertiary and unclassified, 35 secondary and primary;

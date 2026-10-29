@@ -327,7 +327,7 @@ def apply(
 
 # The rebuild's list of the roads review RL-3 is about (the owner, 2026-10-16: "defer to local
 # government ratings"; the formula holds a painted lane on a two-way street with two or more
-# lanes each way at LTS 3, `stress.painted_lane_two_way_multilane`): each such road in the
+# lanes each way at LTS 3, `stress.painted_lane_multilane`): each such road in the
 # District or rated by DDOT or Montgomery, with the agency's level beside the formula's, for his
 # review. A Virginia road is listed too, scope `comparison`, with the formula's level alone: the
 # admin-only Review puts Arlington's level beside it from its own file
