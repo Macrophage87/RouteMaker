@@ -4406,6 +4406,7 @@ def build_handlers(
                 context.build_id,
                 context.upstreams,
                 overrides_read_at=context.overrides_read_at,
+                job_id=context.job_id,
             )
         except promotion.SwapUndoIncomplete:
             raise
