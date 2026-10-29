@@ -6011,13 +6011,18 @@ class MyGoOut(Schema):
     home: HomeOut | None
 
 
+SIGNED_OUT = "You are signed out. Sign in, then try again."
+
+
 def signed_in_only(view):
-    """A session of an account in standing, or 401: My Go is the rider's own."""
+    """A session of an account in standing, or 401: what these keep is the rider's own."""
 
     @wraps(view)
     def wrapped(request, *args, **kwargs):
         if not signed_in(request):
-            return _stress_error(401, "Sign in to keep My Go with your account.", code="signed_out")
+            # One sentence for every guarded endpoint (saved routes, settings, the 311 log,
+            # places, shared links, Garmin, Wahoo, My Go): My routes shows it as written.
+            return _stress_error(401, SIGNED_OUT, code="signed_out")
         return view(request, *args, **kwargs)
 
     return wrapped
@@ -6428,7 +6433,8 @@ def saved_routes_list(request):
     return _private(
         JsonResponse(
             {
-                "routes": [_route_summary(r) for r in rows.defer("line", "answer")],
+                # The summary reads none of the heavy fields; a route's GPX alone may be 4 MB.
+                "routes": [_route_summary(r) for r in rows.defer("line", "answer", "gpx")],
                 "max": SavedRoute.MAX_PER_ACCOUNT,
             }
         )

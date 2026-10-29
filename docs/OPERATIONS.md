@@ -454,7 +454,10 @@ band, grep `route timing` from the api's log.
   `BETA_WEB_CONCURRENCY` adds to it: keep the sum under 40.
 - `ROUTE_CACHE_TTL_S` (default 120; 0 turns it off; read from the environment, passed to the api by compose) keeps a finished answer
   for 2 minutes, and a larger value is held to 2 minutes: a re-route and a "from my location"
-  plan start at the rider's live position, which the 2-minute rule covers. Where `ROUTE_CACHE_LOCATION` names a memcached (host:port), the
+  plan start at the rider's live position, which the 2-minute rule covers. Each worker also sweeps
+  its expired answers on a timer, so a quiet one keeps none. Answers memcached took under the
+  old 600 s timeout can last up to 10 minutes after the deploy that brings this; restarting
+  `memcached` with that deploy drops them at once. Where `ROUTE_CACHE_LOCATION` names a memcached (host:port), the
   api's workers share it, so a repeat is a hit whichever worker serves it (audit
   S14; the owner signed off a ~16 MB memcached on beta on 2026-10-27).
   compose.beta.yaml runs one (`memcached`, `-m 16`, capped at 24M) and sets the
