@@ -697,7 +697,12 @@ alone. Shape comes first and colour second:
   street and station names win; MapView sets 20 px and the shortened field
   (`rideTrailLabelField`) in a ride and puts the climbs under it. The base
   map's own path names (z15+, kind `path`) take the same purple
-  (`roadLabelPaint`).
+  (`roadLabelPaint`). In a ride the map's smaller labels go up by the same
+  share, 20 / 15 (`lib/rideLabelSize.ts`): steep grades and trail mile
+  markers 13 to 17 px, mountain-bike trail names 15 to 20 px, climb numbers
+  9-11 to 12-15 px; each goes back to its own size after. On the cue card a
+  long instruction shrinks to no less than 20 px, and the line under it and
+  the weak-GPS turn list are 20 px or more.
 - **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
   ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
   tier's own dash and width, so the stress still reads without colour
@@ -4526,9 +4531,10 @@ near the map centre (`/api/geocode?...&lat=..&lon=..`). What keeps it out of the
   Caddy keeps no access log).
 - **Beta nginx** (deploy/beta/nginx-routemaker.conf.template): the access log is
   `rmbeta_noquery`, the path only, with no query string, Referer, client address or tester name.
-  `/api/reverse` and `/api/geocode` log errors at `crit` only, to their own file (a review addition,
+  Every `/api/` path logs errors at `crit` only, to their own file (a review addition,
   not asked for by name: owner to confirm, and the same for dropping the client address and tester name), because an
-  upstream error line (a 502 while the api restarts, a 504) records the whole request. Every other
+  upstream error line (a 502 while the api restarts, a 504) records the whole request; the whole prefix
+  is covered (v0.15.0), so a new endpoint with a place in it needs no template change. Every other
   path's upstream errors still reach the host's error log; none of them has a location in a query.
   tests/test_beta_overlay.py pins the format, both servers' access log, and that every
   `/api/...?` path in the front end is one of the two.
@@ -5027,9 +5033,11 @@ puts it, at most two presses away.
   map center" (at once), is the destination, routed as a picked one is and said "Destination set: …" (named by `goPlaceName`, the same on the sheet: its coordinates until
   its place name comes; a press on a water, climb or federal-land card's feature, or one that only closes such a card,
   is the card's alone, `featureCardPress`; `goTapSetsEnd`, the owner 2026-10-12; it replaces #95's tap-as-start). Picking a
-  destination with a start plans at once (a location start after its look-up, at most 3 s); Go then shows the routes to choose from open, and the ride types under the
+  destination with a start plans at once (a location start after its look-up, at most 3 s); Go then shows the ride types under the
   route, so Bikeshare is one press, and only a Bikeshare route names its pick-up and drop-off
-  stations (the route's Bikeshare plan).
+  stations (the route's Bikeshare plan). The routes to choose from start closed behind the "N routes" chip, and the
+  station options and the Bikeshare and transit folds come after the time, distance and stress bar (Bikeshare's fold
+  closed), so the half sheet fits one phone screen (the 2026-10-29 review).
 - **Few presses** (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"): from
   opening Go, a typed destination is three taps to riding: Where to?, the place picked, then
   Start ride (the review of #95 counted them); with the Home chip it is two: Home, then Start ride
@@ -5044,8 +5052,10 @@ puts it, at most two presses away.
   pin, aria-hidden, with the letter heard first) and on the map (MapView `lettered`: 44 px
   buttons, a pin with the letter, named "B: Drinking water, Garfield Park, 0.3 mi (0.5 km)"),
   while that list's sheet is open; the map fits them in, above a phone's sheet. A marker's tap
-  or the letter's key (not while typing, on the map or in a dialog), and a row of Go's Repair or
-  Sights, opens the place's **stop card**; the rows' own Ride here and Add as stop act at once.
+  or the letter's key (not while typing, on the map or in a dialog), and a row's Show on map in Go's Repair or
+  Places to see, opens the place's **stop card**; the rows' own Ride here and Add as stop act at once. In Go,
+  every place list's row (Eat, Water, Repair, Places to see) has Ride here first and filled, the one main action,
+  with its other buttons plain after it (the 2026-10-29 review).
   Food's numbered circle layer is gone; its list and markers use the letters. The Choose a
   station lists (Plan) are not lettered.
 - **Stop cards** (Stephen 2026-10-19: "when pressing on food or other stops provide information
