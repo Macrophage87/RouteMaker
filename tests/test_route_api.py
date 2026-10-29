@@ -86,6 +86,7 @@ CONTRACT_KEYS = {
     # Additive, FOLLOWUP-MASSRIDE-MAP part 3 (OWNER-DECISIONS 325-327): approved rider-marked
     # hazards along a Mass Ride; null on other ride types.
     "mass_hazards",
+    "mass_capacity",
     "road_hazards",
     # Additive, v0.12.3: the rustic roads, byways and named bike routes it rides.
     "scenic_roads",

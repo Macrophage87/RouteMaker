@@ -69,17 +69,19 @@ test("the last ride is not one of the ten: it is always kept, replacing the one 
   assert.equal(canKeep(nine, "new"), true);
 });
 
-test("the keep key is the planner's lookup key: Mass Ride's ride size (never sent) and the private weight are left out", () => {
+test("the keep key is the planner's lookup key: Mass Ride's ride size is in it (it chooses the route), the private weight is not", () => {
   const points: [number, number][] = [
     [-77.04, 38.91],
     [-77.01, 38.89],
   ];
   const dials = { stress: 60, hills: 50 };
-  // As App keeps it (the dials shown, with the ride size) and as the scheduler looks it up (the dials sent: no ride size, the weight added).
+  // As App keeps it (the dials shown) and as the scheduler looks it up (the dials sent: the weight added).
   const kept = keptPlanKey(points, "mass-ride", { ...dials, rideSize: 1200 });
-  const lookedUp = keptPlanKey(points, "mass-ride", { ...dials, systemWeightKg: 94 });
+  const lookedUp = keptPlanKey(points, "mass-ride", { ...dials, rideSize: 1200, systemWeightKg: 94 });
   assert.equal(kept, lookedUp);
-  assert.ok(!/riders=|weight/.test(kept), kept);
+  assert.ok(/riders=1200/.test(kept), kept);
+  assert.ok(!/weight/.test(kept), kept);
+  assert.notEqual(keptPlanKey(points, "mass-ride", dials), kept, "a route kept at one ride size never answers another");
   assert.notEqual(keptPlanKey(points, "default", dials), kept, "another ride type is another route");
 });
 
