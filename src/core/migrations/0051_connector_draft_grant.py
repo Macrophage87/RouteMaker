@@ -1,7 +1,8 @@
 # Connector drafts belong to the app that drafted them (ConnectorDraft.grant), so disconnecting
 # the app drops them, and a draft's link goes with its draft (SharedRoute.connector_draft). The
 # drafts kept before name no app, so no app could read them again: they go now rather than at
-# the sweep.
+# the sweep. Their links name no draft and cannot be told from other links, so they keep the
+# date they were given and are deleted within 8 days of being made.
 import django.db.models.deletion
 from django.db import migrations, models
 

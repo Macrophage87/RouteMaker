@@ -375,14 +375,6 @@ def drop_stale_drafts(now=None) -> int:
     return _drafts_deleted(by_model)
 
 
-def drop_for_user(user) -> int:
-    """Delete all of a rider's connector drafts and their links, as disconnecting every app
-    does; how many drafts. Deleting a grant drops that app's drafts and links by itself (the
-    foreign keys cascade), so a caller that deletes the rider's grants needs nothing more."""
-    _count, by_model = ConnectorDraft.objects.filter(user=user).delete()
-    return _drafts_deleted(by_model)
-
-
 # --- The MCP endpoint --------------------------------------------------------------------------
 
 
@@ -830,7 +822,7 @@ def authorize(request):
         """<p><strong>{app}</strong> is asking to use RouteMaker for you.
 If you allow it, it can:</p>
 <ul>
-<li>plan routes with RouteMaker's routing, each with a link to it that lasts a week</li>
+<li>plan routes with RouteMaker's routing, each with a link to it that lasts a day</li>
 <li>add routes to your My routes, when you ask it to</li>
 {posts}</ul>
 <p>It can't read your saved routes, sign in to the site as you, or change anything else.</p>

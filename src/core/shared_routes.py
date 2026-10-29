@@ -172,6 +172,8 @@ def regenerate(row, now):
             owner=row.owner,
             preview_image=row.preview_image,
             preview_zone=row.preview_zone,
+            # An assistant's draft link: the new one goes with the same draft.
+            connector_draft_id=row.connector_draft_id,
         )
         revoke(row, now)
     return fresh

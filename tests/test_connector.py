@@ -787,6 +787,32 @@ class TestGpx:
         r = Client().get(urllib.parse.urlsplit(link).path, **addr())
         assert r.status_code == 200 and 'filename="rock-creek.gpx"' in r["Content-Disposition"]
 
+    def test_a_gpx_link_opens_only_with_its_own_digest(self, planner) -> None:
+        user, tokens, _client_id = tokens_for()
+        token = tokens["access_token"]
+        first = call(token, "plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+        second = call(token, "plan_route", {"points": [[-77.04, 38.9], [-77.02, 38.92]]})
+        draft_id = first["structuredContent"]["draft_id"]
+        other_id = second["structuredContent"]["draft_id"]
+        link = call(token, "gpx_route", {"draft_id": draft_id})["structuredContent"]["gpx_link"]
+        path = urllib.parse.urlsplit(link).path
+        assert Client().get(path, **addr()).status_code == 200
+        head, digest = path.rsplit(".", 1)
+        flipped = digest[:10] + ("0" if digest[10] != "0" else "1") + digest[11:]
+        grant = ConnectorGrant.objects.get(user=user)
+        other_app = a_grant(user)
+        wrong = [
+            f"{head}.{flipped}",
+            # Another draft's digest on this draft's id, and this draft's on another's.
+            f"{head}.{connector._gpx_mac(user.pk, grant.pk, other_id)}",
+            f"/mcp/gpx/{other_id}.{digest}",
+            # The digest another app of the same rider would have.
+            f"{head}.{connector._gpx_mac(user.pk, other_app.pk, draft_id)}",
+        ]
+        for bad in wrong:
+            r = Client().get(bad, **addr())
+            assert r.status_code == 404 and b"no longer kept" in r.content, bad
+
     def test_the_gpx_link_stops_with_its_draft_after_a_day(self, planner) -> None:
         from datetime import timedelta
 
@@ -911,16 +937,19 @@ class TestDraftKeeping:
         path = urllib.parse.urlsplit(gpx["gpx_link"]).path
         assert Client().get(path, **addr()).status_code == 404
 
-    def test_drop_for_user_drops_the_rider_s_drafts_and_links_only(self, planner) -> None:
-        user, tokens, _ = tokens_for()
-        _other, other_tokens, _ = tokens_for()
-        mine = self.plan(tokens["access_token"])
-        theirs = self.plan(other_tokens["access_token"])
-        assert connector.drop_for_user(user) == 1
-        assert list(ConnectorDraft.objects.values_list("draft_id", flat=True)) == [
-            theirs["draft_id"]
-        ]
-        assert not SharedRoute.objects.filter(pk=mine["link"].rsplit("route=", 1)[1]).exists()
+    def test_a_new_link_for_a_draft_link_still_goes_with_the_draft(self, planner) -> None:
+        from django.utils import timezone
+
+        from core import shared_routes
+
+        _user, tokens, _ = tokens_for()
+        route_id = self.plan(tokens["access_token"])["link"].rsplit("route=", 1)[1]
+        fresh = shared_routes.regenerate(SharedRoute.objects.get(pk=route_id), timezone.now())
+        assert fresh.connector_draft_id is not None
+        self.age(25)
+        assert Client().get(f"/api/shared-routes/{fresh.pk}", **addr()).status_code == 404
+        connector.sweep_connector()
+        assert not SharedRoute.objects.filter(pk=fresh.pk).exists()
 
 
 @db
