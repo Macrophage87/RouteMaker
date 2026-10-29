@@ -4927,7 +4927,12 @@ docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhal
 docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
 ```
 
-Nothing in the rebuild does this. The symptom of a missed restart is a
+Nothing in the rebuild does this. On the beta a host-side hook does it
+(`scripts/beta/restart-routers.sh`, docs/BETA-RUNBOOK.md, "The routers after a
+map swap"; the owner, 2026-10-29): a user timer restarts each running router
+that started before its variant's `current` link last changed, once the link
+has been still for 5 minutes. Elsewhere the restart is by hand, as above. The
+symptom of a missed restart is a
 deployment whose routes disagree with its own segment table, which reads like a
 conflation bug, so `check_operations` checks for it: an hour after a
 `valhalla_upstream` row changed, it asks each router's `/status` for the
