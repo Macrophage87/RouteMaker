@@ -2248,7 +2248,8 @@ metro-typical.json from each line's page (`https://www.wmata.com/ridertools/line
 - The web process reads the file again when it changes, so no restart is needed.
 
 **Refresh at least every 45 days.** The file holds 45 days of service from the build date
-(`--date`, default today). A plan for a later date (or any plan once the file has run out) uses
+(`--date`, default yesterday in Washington, so tonight's trips after midnight are covered on
+any host's time zone). A plan for a later date (or any plan once the file has run out) uses
 Metro's typical timetable alone, which needs no refresh, with the note "Only Metro is planned: the
 other timetables installed cover ... to ...". Refresh as well when an agency publishes a new
 timetable, for example a MARC or VRE schedule change or a Metro shutdown. Planned closures reach the plans
