@@ -28,12 +28,35 @@ import {
 
 const SPOT: LonLat = [-77.03651, 38.89768];
 
-test("a ride's secret is 32 random bytes in 43 link-safe characters, different each time", () => {
+test("a ride's secret is 16 random bytes in 22 link-safe characters, different each time", () => {
   const a = newRideSecret();
   const b = newRideSecret();
   assert.ok(isRideSecret(a) && isRideSecret(b));
   assert.notEqual(a, b);
-  assert.match(a, /^[A-Za-z0-9_-]{43}$/);
+  assert.match(a, /^[A-Za-z0-9_-]{22}$/);
+});
+
+test("an older 43-character key still opens its ride", async () => {
+  // A secret as the page made them before 2026-10-29: 32 bytes, 43 characters.
+  const old = "PxDylHo2sOKC8LqsIUTTezX7o4oj_M4FrMa_DX6QXL8";
+  assert.ok(isRideSecret(old));
+  assert.equal(secretFrom(`#ride=1&k=${old}`), old);
+  const a = (await rideSeal(old))!;
+  const b = (await rideSeal(old))!;
+  // The ride id the page derived from it before the change (worked out with the 2026-10-29 rideSeal.ts at 49a2a84a).
+  assert.equal(a.ride, "3ea16a0f747c6c75d878ea100c5a97ae7adc9d15ae690339df49a85d14c424bf");
+  assert.equal(a.ride, b.ride, "the same ride each time it is opened");
+  // What one holder of the older link seals, another opens.
+  assert.deepEqual(await openValue(b, "dot", await sealValue(a, "dot", { lon: -77.03651, lat: 38.89768 })), { lon: -77.03651, lat: 38.89768 });
+  // A new 22-character key is a different ride from any older one.
+  assert.notEqual((await rideSeal(newRideSecret()))!.ride, a.ride);
+});
+
+test("a key of any other length is no key", async () => {
+  for (const bad of ["A".repeat(21), "A".repeat(23), "A".repeat(42), "A".repeat(44), "A".repeat(32)]) {
+    assert.equal(isRideSecret(bad), false, bad);
+    assert.equal(await rideSeal(bad), null, bad);
+  }
 });
 
 test("the secret rides in the fragment only, replacing any the link had, and is read from there only", () => {

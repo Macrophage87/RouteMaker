@@ -4,8 +4,11 @@
  * sealed. Each phone seals its dot, its alerts and the leader's path before sending, and the server only holds the
  * sealed text for its 2 minutes (core.ride_presence, "sealed").
  *
- * - The ride's secret is 32 random bytes in the link's fragment (`k=`), which a browser never sends to any server. The
- *   server learns neither the secret nor the key: it sees only the ride id, derived from the secret one way (HKDF).
+ * - The ride's secret is 16 random bytes (128 bits), 22 base64url characters in the link's fragment (`k=`), which a
+ *   browser never sends to any server (2026-10-29, shorter ride links; it was 32 bytes, 43 characters, and an older
+ *   link's 43-character secret still opens its ride). The server learns neither the secret nor the key: it sees only
+ *   the ride id, derived from the secret one way (HKDF, whose input may be of any length, so both sizes derive as
+ *   before: the same 64-hex-digit ride id and AES-256 key, by the same labels).
  * - The key is AES-GCM 256 from the same secret (HKDF, another label), the browser's own Web Crypto. Each sealed text
  *   is a fresh 12-byte nonce and the ciphertext; what it is (a dot, a path, an alert) and the ride id are bound in as
  *   associated data, so one cannot be passed off as another, or on another ride.
@@ -16,11 +19,15 @@
  *   older link) becomes a new ride of the one who opened it, with a secret of its own. Nothing goes in plain numbers.
  */
 import { insideCoverage, type LonLat } from "./geo.ts";
+import { b64url, fromB64url } from "./linkCode.ts";
 
 /** The link's fragment parameter that carries the ride's secret. */
 export const SECRET_PARAM = "k";
-const SECRET_BYTES = 32;
-const SECRET_RE = /^[A-Za-z0-9_-]{43}$/;
+/** A new secret's bytes: 128 bits, 22 characters. */
+export const SECRET_BYTES = 16;
+/** An older link's secret: 32 bytes, 43 characters, read for ever. */
+const OLD_SECRET_BYTES = 32;
+const SECRET_RE = /^(?:[A-Za-z0-9_-]{22}|[A-Za-z0-9_-]{43})$/;
 const NONCE_BYTES = 12;
 const enc = new TextEncoder();
 
@@ -32,25 +39,7 @@ export interface RideSeal {
   key: CryptoKey;
 }
 
-function b64url(bytes: Uint8Array): string {
-  let s = "";
-  for (const b of bytes) s += String.fromCharCode(b);
-  return btoa(s).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
-}
-
-function fromB64url(text: string): Uint8Array<ArrayBuffer> | null {
-  if (!/^[A-Za-z0-9_-]*$/.test(text)) return null;
-  try {
-    const s = atob(text.replaceAll("-", "+").replaceAll("_", "/") + "=".repeat((4 - (text.length % 4)) % 4));
-    const out = new Uint8Array(s.length);
-    for (let i = 0; i < s.length; i += 1) out[i] = s.charCodeAt(i);
-    return out;
-  } catch {
-    return null;
-  }
-}
-
-/** A new ride's secret: 32 bytes from the browser's random source, 43 characters. */
+/** A new ride's secret: 16 bytes from the browser's random source, 22 characters. */
 export function newRideSecret(): string {
   const bytes = new Uint8Array(SECRET_BYTES);
   crypto.getRandomValues(bytes);
@@ -93,7 +82,8 @@ function hex(bytes: ArrayBuffer): string {
 /** The ride id (64 hex digits, as core.ride_presence.RIDE_ID) and key, both from the secret; null for a bad secret. */
 export async function rideSeal(secret: string): Promise<RideSeal | null> {
   const raw = isRideSecret(secret) ? fromB64url(secret) : null;
-  if (!raw || raw.length !== SECRET_BYTES) return null;
+  // Either size: a new 16-byte secret, or an older link's 32 bytes (HKDF takes input keying material of any length).
+  if (!raw || (raw.length !== SECRET_BYTES && raw.length !== OLD_SECRET_BYTES)) return null;
   const base = await crypto.subtle.importKey("raw", raw, "HKDF", false, ["deriveBits", "deriveKey"]);
   const salt = enc.encode("routemaker ride seal v1");
   const ride = hex(await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt, info: enc.encode("ride id") }, base, 256));

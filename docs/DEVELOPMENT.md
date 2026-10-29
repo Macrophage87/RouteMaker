@@ -8570,7 +8570,8 @@ none sent is a participant) and answers each dot's `role`. Still no name, token 
 
 A tester asked how location sharing is secured; Stephen asked whether end-to-end encryption was worth it, then
 "yes", for broadcasts and Group Ride. Share ride, Broadcast, Roam's Broadcast and a Group Ride link shared from
-the app now carry a ride secret, `k=` (32 random bytes, base64url), in the link's fragment, which no browser
+the app now carry a ride secret, `k=` (16 random bytes, 22 base64url characters; see "Shorter ride links" below),
+in the link's fragment, which no browser
 sends to a server. `frontend/src/lib/rideSeal.ts` derives two things from it with HKDF-SHA-256: the ride id the
 server knows the ride by (64 hex, one way) and an AES-GCM 256 key the server never sees. Each phone seals its
 dot (`{lon, lat, role}`), alert (`{kind, text, lon, lat}`) and the leader's path (`{route, trail}`) with a fresh
@@ -8618,6 +8619,38 @@ age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
   cases, merging, a sealed ride end to end through `rideGroup.ts`, nothing sent or read without a key, a keyless
   link getting a new key, the page's wiring) and `tests/test_ride_presence.py`
   (sealed dots, alerts and paths kept, limited, marked and dropped as plain ones are).
+
+### Shorter ride links (Stephen, 2026-10-29)
+
+Stephen said "yes" to making ride links shorter three ways. All three are front end only; the server is unchanged,
+and every older link still opens.
+
+- **Stops: `q=`.** `planHash.ts` `encodePlan` writes the points as `q=` (`lib/linkCode.ts` `encodePoints`): each
+  longitude then latitude as whole 1e-5 degrees (rounded as `toFixed(5)` rounds), the first point as it is and each
+  after as the change from the one before, zigzagged and written 5 bits a character, lowest first, with a sixth bit
+  for "more follows": the encoded-polyline scheme, but with the base64url alphabet (`A-Z a-z 0-9 - _`), which
+  URLSearchParams never escapes. Two stops in the DC area take about 16 characters, against about 50 for `p=`. The
+  stops read back exactly as `p=` of the same stops reads (`linkPoints`; a link cut short opens with the points still
+  whole). `decodePlan` reads `q=` first, then the older `p=` (`lon,lat;lon,lat`, 5 decimals), for ever: every link
+  already shared and every ride post the server writes carry `p=`. `appMode.ts` `hasPlanLink` counts either. A kept
+  route's key (`offlineRoutes.ts` `keptPlanKey`) still writes `p=` (`encodePlan(..., "p")`): it is a key on the
+  device, never a link, and the routes kept before the change are found by it still.
+- **Leader mark: 22 characters.** `lead=` is the leader key (the first 32 hex digits of the SHA-256 of the leader's
+  token, `rideGroup.ts` `leaderKey`) as base64url of its 16 bytes (`linkCode.ts` `leadMark`), written by
+  `sharedRoutes.ts` `asRideLink` and `roam.ts` `roamLink`. `leadKeyFrom` and `roamLinkFrom` read either form
+  (`leadKeyOfMark`: 22 characters, or an older link's 32 lower-case hex digits) and give back the 32 hex digits; the
+  page keeps those, and the `X-Ride-Leader` header goes in hex as before.
+- **Key: 16 bytes.** `rideSeal.ts` `newRideSecret` makes 16 random bytes (128 bits, 22 characters), not 32 (43).
+  `isRideSecret` takes either length, so an older link's 43-character key still opens its ride: HKDF-SHA-256 takes
+  input keying material of any length, and the ride id (64 hex) and AES-GCM 256 key come from it by the same salt and
+  labels as before (a fixed older key's ride id is pinned in `rideSeal.test.ts`).
+- **How much shorter.** A typical two-stop Broadcast link (Default, `route=`, `ride=1`, `lead=`, `k=`) went from 206
+  to 154 characters after the `#`; a two-stop Group Ride link with its key from 127 to 85. The `route=` id (32
+  hex) is the server's, and unchanged.
+- Tests: `frontend/src/lib/planHash.test.ts` (round trips at 5 decimals, west longitudes, 500 random plans against
+  `p=`, characters never escaped, older `p=` links, cut-short links, the kept key, the lengths),
+  `broadcast.test.ts` and `roam.test.ts` (both forms of the leader mark), `rideSeal.test.ts` (22- and 43-character
+  keys).
 
 ### Where and when a dot is sent (2026-10-29)
 

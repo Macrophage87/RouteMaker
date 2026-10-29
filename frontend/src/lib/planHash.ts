@@ -11,6 +11,29 @@ import { PRESET_ALIASES, parsePreset, type PresetId } from "./presets.ts";
 import { VIA_MARKS, decodeDrawn, decodeStopNames, decodeVias, drawnLegs, encodeStopNames, stopNames } from "./pointKinds.ts";
 import { STRESS_DEFAULT_AT, fitDials, isBike, isCarrying, isWhen, type Dials } from "./dials.ts";
 import { METRES_PER_MILE } from "./format.ts";
+import { decodePoints, encodePoints } from "./linkCode.ts";
+
+/**
+ * The stops' field (2026-10-29, shorter ride links): `q=`, the points in lib/linkCode.ts's short form, about 8
+ * characters a stop. `p=` is the older form, `lon,lat;lon,lat` to 5 decimals, which every link already shared and
+ * every ride post the server writes still carry: it is read for ever, and written only where asked (`pointsForm`).
+ */
+export const POINTS_PARAM = "q";
+export const OLD_POINTS_PARAM = "p";
+export type PointsForm = "q" | "p";
+
+/** The points a link's fragment holds, in either form (`q=` first), before any check of where they are. */
+export function linkPoints(params: URLSearchParams): LonLat[] {
+  const short = params.get(POINTS_PARAM);
+  if (short !== null) return decodePoints(short);
+  const points: LonLat[] = [];
+  for (const pair of (params.get(OLD_POINTS_PARAM) ?? "").split(";")) {
+    const parts = pair.split(",");
+    if (parts.length !== 2) continue;
+    points.push([Number(parts[0]), Number(parts[1])]);
+  }
+  return points;
+}
 
 /**
  * The link's version. It stays 2 for the target distance (OWNER-DECISIONS 256, 271):
@@ -56,9 +79,14 @@ export function encodePlan(
   drawn: readonly number[] = drawnLegs(points),
   // The stops' own names, likewise from the page's marks unless given.
   names: ReadonlyMap<number, string> = stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, dials?.loop === true),
+  // The short `q=` unless asked for the older `p=` (a kept route's key, so the routes kept before still match).
+  pointsForm: PointsForm = "q",
 ): string {
   const params = new URLSearchParams();
-  if (points.length) params.set("p", points.map(([lon, lat]) => `${lon.toFixed(5)},${lat.toFixed(5)}`).join(";"));
+  if (points.length) {
+    if (pointsForm === "q") params.set(POINTS_PARAM, encodePoints(points));
+    else params.set(OLD_POINTS_PARAM, points.map(([lon, lat]) => `${lon.toFixed(5)},${lat.toFixed(5)}`).join(";"));
+  }
   // Each point's kind (v0.7.0): the via points by index; a new field an older link does not have.
   if (vias.length) params.set("via", vias.join(","));
   // The legs drawn in Plan's manual mode (v0.9.1): a new field an older link does not have, and means none.
@@ -124,10 +152,7 @@ export function atFromHash(hash: string): LonLat | null {
 export function decodePlan(hash: string): Plan {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   const points: LonLat[] = [];
-  for (const pair of (params.get("p") ?? "").split(";")) {
-    const parts = pair.split(",");
-    if (parts.length !== 2) continue;
-    const point: LonLat = [Number(parts[0]), Number(parts[1])];
+  for (const point of linkPoints(params)) {
     if (!Number.isFinite(point[0]) || !Number.isFinite(point[1]) || !insideCoverage(point)) continue;
     points.push(point);
     if (points.length === MAX_POINTS) break;

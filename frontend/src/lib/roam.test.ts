@@ -253,8 +253,11 @@ test("a Roam broadcast's link: the ride's id and the leader key in the fragment,
   const id = "0123456789abcdef0123456789abcdef";
   const lead = "fedcba9876543210fedcba9876543210";
   const link = roamLink("https://example.org", id, lead);
-  assert.equal(link, `https://example.org/#roam=${id}&lead=${lead}`);
+  // The leader key's 16 bytes as 22 base64url characters (2026-10-29), read back as its 32 hex digits.
+  assert.equal(link, `https://example.org/#roam=${id}&lead=_ty6mHZUMhD-3LqYdlQyEA`);
   assert.deepEqual(roamLinkFrom(new URL(link).hash), { id, lead, secret: null });
+  assert.deepEqual(roamLinkFrom(`#roam=${id}&lead=${lead}`), { id, lead, secret: null }, "an older link's 32 hex digits");
+  assert.equal(roamLinkFrom(`#roam=${id}&lead=_ty6mHZUMhD-3LqYdlQyE`), null, "a mark cut short");
   assert.equal(roamLinkFrom(`#roam=${id}`), null);
   assert.equal(roamLinkFrom(`#roam=xyz&lead=${lead}`), null);
   assert.equal(roamLinkFrom("#p=1,2;3,4"), null);

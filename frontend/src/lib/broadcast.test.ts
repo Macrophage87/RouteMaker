@@ -32,6 +32,8 @@ import { newRideSecret, rideSeal, sealValue } from "./rideSeal.ts";
 
 const LINE: LonLat[] = Array.from({ length: 21 }, (_, i) => [-77.04 + i * 0.002, 38.9] as LonLat);
 const KEY = "8a83665f3798727f14f92ad0e6c99fda";
+/** KEY as a link writes it: its 16 bytes in base64url. */
+const MARK = "ioNmXzeYcn8U-SrQ5smf2g";
 
 class Memory {
   map = new Map<string, string>();
@@ -53,16 +55,36 @@ test("the leader key is the server's: the first 32 hex digits of the SHA-256 of 
 
 test("a broadcast link carries the leader key beside ride=1, and only a well-formed key is read back", () => {
   const link = asRideLink("https://x.test/s/abc#p=1", KEY);
-  assert.equal(link, `https://x.test/s/abc#p=1&ride=1&lead=${KEY}`);
+  // The key's 16 bytes as 22 base64url characters (2026-10-29, shorter ride links).
+  assert.equal(link, `https://x.test/s/abc#p=1&ride=1&lead=${MARK}`);
   const hash = link.slice(link.indexOf("#"));
   assert.equal(rideLinkFrom(hash), true);
-  assert.equal(leadKeyFrom(hash), KEY);
-  assert.equal(leadKeyFrom("", `?route=x&ride=1&lead=${KEY}`), KEY, "the query sent on from /s/<id>");
-  assert.equal(leadKeyFrom(`#lead=${KEY}`), null, "a leader only on a ride link");
+  assert.equal(leadKeyFrom(hash), KEY, "read back as the 32 hex digits the server knows");
+  assert.equal(leadKeyFrom("", `?route=x&ride=1&lead=${MARK}`), KEY, "the query sent on from /s/<id>");
+  assert.equal(leadKeyFrom(`#lead=${MARK}`), null, "a leader only on a ride link");
   assert.equal(leadKeyFrom("#ride=1&lead=nothex"), null);
+  assert.equal(leadKeyFrom(`#ride=1&lead=${MARK.slice(1)}`), null, "a mark cut short");
   // An older Share ride link, or one shared before the key was ready: a ride with no leader.
   assert.equal(asRideLink("https://x.test/#p=1"), "https://x.test/#p=1&ride=1");
   assert.equal(asRideLink("https://x.test/#p=1", "short"), "https://x.test/#p=1&ride=1");
+});
+
+test("a 32-digit leader mark from an older link still marks the leader", async () => {
+  // A broadcast link as the page wrote it before 2026-10-29: the 32 hex digits, an older 43-character key, p= stops.
+  const old = `#p=-77.04000,38.91000;-77.01000,38.89000&preset=default&v=2&stress=70&hills=0&route=${"a".repeat(32)}&ride=1&lead=${KEY}&k=PxDylHo2sOKC8LqsIUTTezX7o4oj_M4FrMa_DX6QXL8`;
+  assert.equal(leadKeyFrom(old), KEY);
+  assert.equal(leadKeyFrom("", `?route=x&ride=1&lead=${KEY}`), KEY, "the query sent on from /s/<id>");
+  // The same leader, whichever form the link wrote: the X-Ride-Leader header goes in hex as before.
+  assert.equal(leadKeyFrom(`#ride=1&lead=${MARK}`), leadKeyFrom(`#ride=1&lead=${KEY}`));
+  assert.equal(leadKeyFrom(`#ride=1&lead=${KEY.toUpperCase()}`), null, "hex as the server writes it, lower case");
+  const sent: Record<string, string>[] = [];
+  const get = (async (_url: string, init?: RequestInit) => {
+    sent.push(init?.headers as Record<string, string>);
+    return new Response("{}", { status: 404 });
+  }) as typeof fetch;
+  const seal = (await rideSeal("PxDylHo2sOKC8LqsIUTTezX7o4oj_M4FrMa_DX6QXL8"))!;
+  await readRide("https://x.test", seal.ride, "1".repeat(32), get, leadKeyFrom(old), seal);
+  assert.equal(sent[0]["X-Ride-Leader"], KEY);
 });
 
 test("a broadcast is its link's secret's ride: the sharer and its openers are on it whatever each one rides", async () => {

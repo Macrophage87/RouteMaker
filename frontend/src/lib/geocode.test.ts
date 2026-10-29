@@ -580,7 +580,7 @@ test("coordinates read latitude first", () => {
 
 test("the link carries points and ride type only, never a name", () => {
   const hash = encodePlan([A, B], "default");
-  assert.deepEqual([...new URLSearchParams(hash.slice(1)).keys()].sort(), ["p", "preset"]);
+  assert.deepEqual([...new URLSearchParams(hash.slice(1)).keys()].sort(), ["preset", "q"]);
   assert.equal(decodePlan(hash).points.length, 2);
 });
 
