@@ -829,6 +829,10 @@ export const ES: Readonly<Record<string, string>> = {
   "Choose an app to open the GPX file.": "Elija una app para abrir el archivo GPX.",
   "Could not hand the GPX file on. Is an app that opens GPX files installed?":
     "No se pudo pasar el archivo GPX. ¿Tiene instalada una app que abra archivos GPX?",
+  "Choose an app to open the file.": "Elija una app para abrir el archivo.",
+  "Could not hand the file on. Is an app that opens it installed?": "No se pudo pasar el archivo. ¿Tiene instalada una app que lo abra?",
+  "This version of the RouteMaker app cannot hand on this file. Update it, or download it from the website.":
+    "Esta versión de la app RouteMaker no puede pasar este archivo. Actualícela o descárguelo desde el sitio web.",
   "Wahoo connected. Send to Wahoo is now beside Download in the GPX section.":
     "Wahoo conectado. Enviar a Wahoo está ahora junto a Descargar en la sección GPX.",
   "Wahoo not connected: you did not allow it at Wahoo.": "Wahoo sin conectar: no lo permitió en Wahoo.",
