@@ -1445,5 +1445,37 @@ do
       ~= M.GRADED_LANES)
 end
 
+-- A cemetery's ways (OWNER-DECISIONS 98): access=destination where their own access is open.
+check("a cemetery path is destination-only",
+  M.remap_way({ highway = "path" }, { cemetery = true }).access == M.CEMETERY_ACCESS)
+check("and so is one with a permissive access",
+  M.remap_way({ highway = "service", access = "yes" }, { cemetery = true }).access
+    == M.CEMETERY_ACCESS)
+check("a stricter access in a cemetery is kept",
+  M.remap_way({ highway = "service", access = "private" }, { cemetery = true }).access == nil)
+check("a way outside one is untouched",
+  M.remap_way({ highway = "path" }, {}).access == nil)
+-- The Zoo spur is not opened over access=no (audit 2026-10-29).
+local barred = M.remap_way({ highway = "service", access = "no" }, { destination_only = true })
+check("a destination-only way on access=no is not opened",
+  barred.bicycle == nil and barred.access == nil)
+-- A directional vehicle grant, as a plain one.
+check("vehicle:forward=private on a footway closes that direction",
+  M.remap_way({ highway = "footway", ["vehicle:forward"] = "private" }, {})["bicycle:forward"]
+    == "no")
+check("and vehicle:backward=destination under bicycle=no",
+  M.remap_way({ highway = "residential", bicycle = "no", ["vehicle:backward"] = "destination" },
+    {})["bicycle:backward"] == "no")
+check("but not vehicle:forward=no, nor a grant a bicycle:forward speaks over",
+  M.remap_way({ highway = "footway", ["vehicle:forward"] = "no" }, {})["bicycle:forward"] == nil
+    and M.remap_way({ highway = "footway", ["vehicle:forward"] = "private",
+      ["bicycle:forward"] = "yes" }, {})["bicycle:forward"] == nil)
+-- use_sidepath over upstream's own closing access values (audit 2026-10-29).
+for _, access in ipairs({ "agricultural", "forestry", "discouraged", "emergency", "psv" }) do
+  check("use_sidepath on access=" .. access .. " is closed",
+    M.remap_way({ highway = "secondary", bicycle = "use_sidepath", access = access },
+      { stress_tier = 3 }).bicycle == "no")
+end
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)
