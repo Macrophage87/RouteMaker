@@ -269,4 +269,136 @@ ES: dict[str, str] = {
     "e-bike": "bicicleta eléctrica",
     "classic bike": "bicicleta clásica",
     "about {time} in all": "unos {time} en total",
+    # ---- The transit panel (core.transit block, label and the plans' notes; core.transit_live
+    # and core.wmata_live's station notes; the 2026-10-29 review). Drafted with the steps' words
+    # above; the languages stream reviews them. Dates read "4 de julio".
+    "January": "enero",
+    "February": "febrero",
+    "March": "marzo",
+    "April": "abril",
+    "May": "mayo",
+    "June": "junio",
+    "July": "julio",
+    "August": "agosto",
+    "September": "septiembre",
+    "October": "octubre",
+    "November": "noviembre",
+    "December": "diciembre",
+    "{month} {number}": "{number} de {month}",
+    "Saturday": "sábado",
+    "Sunday": "domingo",
+    "{system} is not planned for this date: its installed timetable ends {day}, {year}.": (
+        "{system} no se planifica para esta fecha: su horario instalado termina el {day} de {year}."
+    ),
+    "Only Metro is planned: the other timetables installed cover {first} to {last}, {year}.": (
+        "Solo se planifica el Metro: los demás horarios instalados cubren del {first} al {last}"
+        " de {year}."
+    ),
+    "Bikes aren't allowed on Metro today ({day}).": (
+        "Hoy no se permiten bicicletas en el Metro ({day})."
+    ),
+    "The timetables installed run {first} to {last}: no transit is planned for this date.": (
+        "Los horarios instalados van del {first} al {last}: no se planifica transporte público"
+        " para esta fecha."
+    ),
+    "No Metro, train or bus is scheduled between these places at this time: riding the whole"
+    " way is the plan.": (
+        "No hay Metro, tren ni autobús programado entre estos lugares a esta hora: el plan es ir"
+        " en bicicleta todo el camino."
+    ),
+    "No station that takes a bike is within {distance} of the start: riding the whole way is"
+    " the plan.": (
+        "No hay ninguna estación que admita bicicletas a menos de {distance} del inicio: el plan"
+        " es ir en bicicleta todo el camino."
+    ),
+    "No station that takes a bike is within {distance} of the destination: riding the whole"
+    " way is the plan.": (
+        "No hay ninguna estación que admita bicicletas a menos de {distance} del destino: el plan"
+        " es ir en bicicleta todo el camino."
+    ),
+    "Bike and dock availability is unknown right now: the nearest docks are used.": (
+        "Ahora no se sabe cuántas bicicletas y espacios hay: se usan las estaciones más cercanas."
+    ),
+    "You would miss the {time} {source} ({vehicle}) and no later one leaves within the hour:"
+    " that trip is left out.": (
+        "Perdería el de las {time} {source} ({vehicle}) y no sale otro en la próxima hora: ese"
+        " viaje queda fuera."
+    ),
+    "You would miss the {time} {source} ({vehicle}): planned on the {next} {source} instead.": (
+        "Perdería el de las {time} {source} ({vehicle}): se planifica con el de las {next}"
+        " {source}."
+    ),
+    "Ride the whole way": "En bicicleta todo el camino",
+    "Bikeshare the whole way": "En bicicleta compartida todo el camino",
+    "Walk the whole way": "A pie todo el camino",
+    "walk": "a pie",
+    "ride": "en bicicleta",
+    "bikeshare": "en bicicleta compartida",
+    "bus {routes} to {place}": "autobús {routes} hasta {place}",
+    "{system} to {place}": "{system} hasta {place}",
+    "{system} to {place} ({routes})": "{system} hasta {place} ({routes})",
+    "Today is a federal holiday: each system's holiday timetable is used, as it publishes it.": (
+        "Hoy es feriado federal: se usa el horario de feriado de cada sistema, tal como lo publica."
+    ),
+    "Today is a federal holiday: Metro is planned on its {day} timetable.": (
+        "Hoy es feriado federal: el Metro se planifica con su horario de {day}."
+    ),
+    "Today is a federal holiday: Metro is planned on its {day} timetable; the others, their"
+    " holiday timetables.": (
+        "Hoy es feriado federal: el Metro se planifica con su horario de {day}; los demás, con sus"
+        " horarios de feriado."
+    ),
+    "The trip chosen is no longer scheduled: the quickest is shown.": (
+        "El viaje elegido ya no está programado: se muestra el más rápido."
+    ),
+    "Bikes at {dock} are counted now; check on arrival.": (
+        "Las bicicletas en {dock} se cuentan ahora; compruébelo al llegar."
+    ),
+    "Riding": "Ir en bicicleta",
+    "Riding a bikeshare bike": "Ir en bicicleta compartida",
+    "About {m} min door to door, by bikeshare.": (
+        "Unos {m} min de puerta a puerta, en bicicleta compartida."
+    ),
+    "About {m} min door to door, riding the whole way.": (
+        "Unos {m} min de puerta a puerta, en bicicleta todo el camino."
+    ),
+    "About {m} min door to door, walking.": "Unos {m} min de puerta a puerta, a pie.",
+    "About {m} min door to door, with live departures.": (
+        "Unos {m} min de puerta a puerta, con salidas en vivo."
+    ),
+    "About {m} min door to door, scheduled.": "Unos {m} min de puerta a puerta, según horario.",
+    "{how} the whole way is quickest: the quickest transit trip is about {m} min.": (
+        "{how} todo el camino es lo más rápido: el viaje en transporte público más rápido tarda"
+        " unos {m} min."
+    ),
+    "{how} the whole way: about {m} min. Transit could save about {saved} min.": (
+        "{how} todo el camino: unos {m} min. El transporte público podría ahorrar unos {saved} min."
+    ),
+    "{how} the whole way is quicker: about {m} min, against about {transit} min with transit.": (
+        "{how} todo el camino es más rápido: unos {m} min, frente a unos {transit} min en"
+        " transporte público."
+    ),
+    "{how} the whole way: about {m} min. Transit saves about {saved} min.": (
+        "{how} todo el camino: unos {m} min. El transporte público ahorra unos {saved} min."
+    ),
+    "Elevator out at {station}: carry your bike on the stairs.": (
+        "Ascensor fuera de servicio en {station}: lleve su bicicleta por las escaleras."
+    ),
+    "A street elevator is out at {station}: use another one.": (
+        "Un ascensor de la calle está fuera de servicio en {station}: use otro."
+    ),
+    "{first} and {last}": "{first} y {last}",
+    "{station} is closed (WMATA): every trip here takes a bike through it.": (
+        "{station} está cerrada (WMATA): todos los viajes aquí llevan la bicicleta por ella."
+    ),
+    "{stations} are closed (WMATA): every trip here takes a bike through them.": (
+        "{stations} están cerradas (WMATA): todos los viajes aquí llevan la bicicleta por ellas."
+    ),
+    "{station} is closed (WMATA): trips taking a bike through it are left out.": (
+        "{station} está cerrada (WMATA): quedan fuera los viajes que llevan la bicicleta por ella."
+    ),
+    "{stations} are closed (WMATA): trips taking a bike through them are left out.": (
+        "{stations} están cerradas (WMATA): quedan fuera los viajes que llevan la bicicleta por"
+        " ellas."
+    ),
 }
