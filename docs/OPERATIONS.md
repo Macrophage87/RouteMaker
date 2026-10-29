@@ -6426,7 +6426,10 @@ nodes and 500 ft (150 m) or less together, that touch bicycle-open ways at two n
 more, on two ways or more, one a trail or a public street, and that are closed only for
 the mountain-bike class, a natural surface, an untagged park path, a footpath for walkers,
 poor visibility, a hiking route, `sac_scale=hiking`, a farm track or a working site
-(`trail_closures.SHORT_LINK_REOPENS`). Their reason is lifted. One with a natural surface,
+(`trail_closures.SHORT_LINK_REOPENS`). A farm track or a working site's way is reopened only
+where its link touches a trail (`SHORT_LINK_TRAIL_ONLY`; the owner, 2026-10-29: "Keep short
+farm tracks and working-site links only where they connect to a trail"): between two streets
+it stays closed, as likely private. Their reason is lifted. One with a natural surface,
 bad smoothness, a grade 4 or 5 track, poor visibility, a hiking rating or of the
 mountain-bike class gets
 `rm:link_walk` (the remap writes `bicycle=dismount`, and the route says to walk); the rest
