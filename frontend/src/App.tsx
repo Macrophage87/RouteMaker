@@ -2349,6 +2349,20 @@ export function App() {
     const offset = visibleCentreOffset(map.getContainer().getBoundingClientRect(), bar, panel, window.matchMedia(NARROW).matches);
     map.flyTo({ center: point, zoom: Math.max(map.getZoom(), zoom), offset });
   };
+  // A list's Show on map (Find food, Water, Restroom, Metro, Sights, Repair): the place in the part of the map the
+  // sheet leaves (it was under a phone's sheet: Stephen 2026-10-29, "you should see a marker for the location"), its
+  // named marker standing out (MapView letteredShown) until the list changes. Show all on map frames them all again.
+  const [letteredShown, setLetteredShown] = useState<number | null>(null);
+  const [letteredRefit, setLetteredRefit] = useState(0);
+  const showLettered = (point: LonLat, index: number) => {
+    setLetteredShown(index >= 0 ? index : null);
+    flyToInView(point, 15);
+  };
+  const showAllLettered = () => {
+    setLetteredShown(null);
+    setLetteredRefit((n) => n + 1);
+    announce(t("Showing all the places found on the map."));
+  };
   const locateForGo = async (quiet = false): Promise<LocateResult | null> => {
     const press = gate.begin();
     if (!quiet) announceExtra(FINDING_LOCATION);
@@ -4768,16 +4782,23 @@ export function App() {
     void searchFoodNow(undefined, "view");
   };
   const showFood = (result: FoodResult) => {
-    const map = mapRef.current;
     const n = foodResults?.indexOf(result) ?? -1;
     const show = () => {
-      map?.flyTo({ center: [result.place.lon, result.place.lat], zoom: Math.max(map.getZoom(), 15) });
+      showLettered([result.place.lon, result.place.lat], n);
       announce(`Showing ${result.place.name} on the map${n >= 0 ? `, marker ${placeLetter(n)}` : ""}.`);
     };
     if (!popupShown("food")) return show();
     foodListKept.current = true;
     setFoodPinsKept(true);
     closePopupThen(show);
+  };
+  // Show all on map (Stephen 2026-10-29: "There should be a button to show all the searched on map"): as a row's
+  // Show on map, the popup closes with its list and its named markers kept, and the map frames all of them.
+  const showAllFood = () => {
+    if (!popupShown("food")) return showAllLettered();
+    foodListKept.current = true;
+    setFoodPinsKept(true);
+    closePopupThen(showAllLettered);
   };
   const addFoodStop = (result: FoodResult) => {
     const point: LonLat = [result.place.lon, result.place.lat];
@@ -4847,9 +4868,8 @@ export function App() {
     placesFromNow();
   };
   const showSight = (r: SightResult) => {
-    const map = mapRef.current;
     const n = placesShown?.indexOf(r) ?? -1;
-    map?.flyTo({ center: [r.place.lon, r.place.lat], zoom: Math.max(map.getZoom(), 15) });
+    showLettered([r.place.lon, r.place.lat], n);
     announce(`Showing ${r.place.name} on the map${n >= 0 ? `, marker ${placeLetter(n)}` : ""}.`);
   };
   const addSightStop = (r: SightResult) => {
@@ -4871,14 +4891,18 @@ export function App() {
     onRide: (item: Nearby) => (mode === "go" ? goToLettered(item.place.point, item.place.title) : popupShown("nearest") ? closePopupThen(() => rideToNearest(item)) : rideToNearest(item)),
     onAddStop: addNearestStop,
     onShow: (item: Nearby, index: number) => {
-      const map = mapRef.current;
       const show = () => {
-        map?.flyTo({ center: item.place.point, zoom: Math.max(map.getZoom(), 15) });
+        showLettered(item.place.point, index);
         announce(detourShownSaid(item, index));
       };
       if (!popupShown("nearest")) return show();
       setNearestPinsKept(true);
       closePopupThen(show);
+    },
+    onShowAll: () => {
+      if (!popupShown("nearest")) return showAllLettered();
+      setNearestPinsKept(true);
+      closePopupThen(showAllLettered);
     },
   };
   // Another sheet put the kept pins away; the chip's own sheet shows them as its list does.
@@ -4926,19 +4950,21 @@ export function App() {
   const lettered = useMemo(
     () =>
       letteredOf === "nearest" && nearestList
-        ? letterPlaces(nearestList.items, (item) => ({ point: item.place.point, title: item.place.title, metres: item.detour ? null : item.distanceM }))
+        ? letterPlaces(nearestList.items, (item) => ({ point: item.place.point, title: item.place.title, metres: item.detour ? null : item.distanceM }), true)
         : letteredOf === "food" && foodResults
-          ? letterPlaces(foodResults, (r) => ({ point: [r.place.lon, r.place.lat] as LonLat, title: r.place.name, metres: r.detour ? null : r.fromCentreM }))
+          ? letterPlaces(foodResults, (r) => ({ point: [r.place.lon, r.place.lat] as LonLat, title: r.place.name, metres: r.detour ? null : r.fromCentreM }), true)
           : letteredOf === "repair" && repairList
-            ? letterPlaces(repairList.items, (item) => ({ point: [item.place.lon, item.place.lat] as LonLat, title: repairTitle(item.place), metres: item.metres }))
+            ? letterPlaces(repairList.items, (item) => ({ point: [item.place.lon, item.place.lat] as LonLat, title: repairTitle(item.place), metres: item.metres }), true)
             : letteredOf === "places" && placesShown
-              ? letterPlaces(placesShown, (r) => ({ point: [r.place.lon, r.place.lat] as LonLat, title: r.place.name, metres: r.detour ? null : r.metres }))
+              ? letterPlaces(placesShown, (r) => ({ point: [r.place.lon, r.place.lat] as LonLat, title: r.place.name, metres: r.detour ? null : r.metres }), true)
           : letteredOf === "bikeshare" && goOptions
             ? // Each option at its pick-up station, named as its button is.
               goOptions.map((o, i) => ({ letter: placeLetter(i), point: [o.pickup.lon, o.pickup.lat] as LonLat, name: optionName(placeLetter(i), o) }))
             : null,
     [letteredOf, nearestList, foodResults, repairList, placesShown, goOptions],
   );
+  // A new list (or none) has no row shown yet.
+  useEffect(() => setLetteredShown(null), [lettered]);
   const goToLettered = (point: LonLat, title: string) => {
     namer.remember(point, title);
     showPlanner(true);
@@ -5107,6 +5133,7 @@ export function App() {
       }}
       canAddStop={points.length >= 2}
       onShow={showFood}
+      onShowAll={showAllFood}
       onAddStop={addFoodStop}
     />
   );
@@ -5685,6 +5712,8 @@ export function App() {
         scrubPoint={scrubPoint}
         lettered={riding ? (rideView?.lettered ?? null) : roaming && roamLettered ? roamLettered.places : lettered}
         onLettered={riding ? (rideView?.onLettered ?? ignore) : roaming && roamLettered ? roamLettered.pick : pickLettered}
+        letteredShown={riding || (roaming && roamLettered) ? null : letteredShown}
+        letteredRefit={letteredRefit}
         stopActionFor={stopActionFor}
         onClosureBypass={(item, on) => {
           setClosureBypass((now) => toggleBypass(now, bypassPlan, item.id, on));

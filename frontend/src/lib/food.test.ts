@@ -263,8 +263,8 @@ test("the panel's list: lettered as the markers, Show on map, Add as stop, websi
   // With the list shown, its heading and count line are for screen readers only.
   assert.match(html, /<h3 id="food-list-heading" class="visually-hidden">Places to eat<\/h3>/);
   assert.match(html, /<p class="hint food-status visually-hidden" role="status">25 places match/);
-  assert.match(html, /<strong>A\. Near Crab<\/strong>/);
-  assert.match(html, /<strong>B\. Dock<\/strong>/);
+  assert.match(html, /<strong><span class="visually-hidden">A\. <\/span>Near Crab<\/strong>/);
+  assert.match(html, /<strong><span class="visually-hidden">B\. <\/span>Dock<\/strong>/);
   assert.match(html, /aria-label="Show on map: Near Crab, marker A"/);
   assert.doesNotMatch(html, /Ride here/, "Ride here is Go's (onRide)");
   assert.match(html, /aria-label="Add as stop: Dock"/);
@@ -287,7 +287,7 @@ test("the list in the Food popup: the first few of the page, the rest of it behi
   const results: FoodResult[] = Array.from({ length: 10 }, (_, i) => ({ place: place(`n${i}`, `Place ${i}`, ["crab"]), fromCentreM: 100 * (i + 1) }));
   const html = renderToStaticMarkup(createElement(FoodFinder, { ...baseProps, results, total: 25 }));
   assert.equal((html.match(/<li>/g) ?? []).length, 4);
-  assert.match(html, /<strong>D\. Place 3<\/strong>/);
+  assert.match(html, /<strong><span class="visually-hidden">D\. <\/span>Place 3<\/strong>/);
   assert.doesNotMatch(html, /E\. Place 4/);
   // The rest of the page first (its letters are already on the map), never a second page before it.
   assert.match(html, />Show 6 more</);
@@ -304,4 +304,16 @@ test("the planner renders Find food right after the nearest finder, and fetches 
   assert.match(app, /loadFood\(foodUrl\)/);
   // Add as stop is the road panel's own: the coverage check, the cap, an edit like any other.
   assert.match(app, /placeSpot\("via", point, false, result\.place\.name\)/);
+});
+
+test("Show all on map (Stephen 2026-10-29): one button over a list of two or more, none for one place or without the handler", () => {
+  const results: FoodResult[] = [
+    { place: place("n2", "Near Crab", ["crab"]), fromCentreM: 100 },
+    { place: place("n4", "Dock", ["seafood"]), fromCentreM: 200 },
+  ];
+  const all = renderToStaticMarkup(createElement(FoodFinder, { ...baseProps, results, total: 2, onShowAll: () => undefined }));
+  assert.equal(all.match(/>Show all on map</g)?.length, 1);
+  assert.ok(all.indexOf(">Show all on map<") < all.indexOf('<ol role="list"'), "above the list");
+  assert.doesNotMatch(renderToStaticMarkup(createElement(FoodFinder, { ...baseProps, results: results.slice(0, 1), total: 1, onShowAll: () => undefined })), /Show all on map/);
+  assert.doesNotMatch(renderToStaticMarkup(createElement(FoodFinder, { ...baseProps, results, total: 2 })), /Show all on map/);
 });

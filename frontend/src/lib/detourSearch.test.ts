@@ -302,7 +302,7 @@ test("Ride mode and Roam letter their found places on the map, each row with Sho
   assert.match(app, /lettered=\{riding \? \(rideView\?\.lettered \?\? null\) : roaming && roamLettered \? roamLettered\.places : lettered\}/);
   // The follow camera keeps the map while following: the pins are not framed over it.
   const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
-  assert.match(view, /if \(props\.lettered\.length > 0 && !callbacks\.current\.follow\) \{/);
+  assert.match(view, /if \(!callbacks\.current\.follow\) frameLettered\(map, props\.lettered\);/);
 });
 
 test("Ride mode and Roam both use the shared Detour search and its box", () => {
