@@ -789,7 +789,10 @@ prune_deployed() { # new-sha old-sha
 	done
 	quiet dk builder prune -f --filter until=168h </dev/null || true
 	h1=$(lock_hash "$new"); h2=$(lock_hash "$old")
+	# Without both hashes the copies to keep are unknown: keep them all.
+	[[ $h1 =~ ^[0-9a-f]{64}$ && $h2 =~ ^[0-9a-f]{64}$ ]] || { h1=""; h2=""; }
 	for dir in "$cd_dir/node_modules"/*; do
+		[ -n "$h1" ] || break
 		[ -d "$dir" ] || continue
 		case "$(basename "$dir")" in "$h1" | "$h2") continue ;; esac
 		[ -n "$(find "$dir" -maxdepth 0 -mtime +30 2>/dev/null)" ] || continue
