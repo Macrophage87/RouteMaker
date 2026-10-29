@@ -12,7 +12,9 @@ comes from:
   "Logs and the rider's position").
 - Group and Mass Ride: core.ride_presence (20 m grid, memory only; dots, alerts and a leader's
   path 2 minutes, nothing longer)
-  and frontend/src/RideGroup.tsx (only while sharing and the page is in front, near the route).
+  and frontend/src/RideGroup.tsx (only while sharing and the page is in front, near the route);
+  sealed end to end on a broadcast and a Group Ride link shared from the app
+  (frontend/src/lib/rideSeal.ts).
 - Discord sign-in: core.discord_oauth (identify scope, no token kept) and core.models.User (the
   Discord id and dates only); the bot's role cache: core.membership.
 - What an account keeps: core.models MyGo, AccountSettings (frontend/src/lib/accountSettings.ts,
@@ -20,9 +22,11 @@ comes from:
   ConnectorGrant and ConnectorDraft (core.connector).
 - Shared links: core.shared_routes (keeping, no weight, owner only) and core.share_preview (Home
   left out of the preview).
-- Suggestions: core.suggestions, core.junction_suggestions, core.mass_hazards (the spot dropped,
-  the account for the admin only), core.suggestion_post (the Discord poll names nobody),
-  core.signed_out_suggestions (a salted daily hash, 24 hours); 311: core.report_log and core.dc311.
+- Suggestions: core.suggestions (the tap snapped onto the road), core.junction_suggestions (the
+  junction), core.mass_hazards (the spot dropped, the account for the admin only),
+  core.suggestion_post (the Discord poll names nobody), core.signed_out_suggestions (a salted
+  daily hash, 24 hours); 311: core.report_log and core.dc311. Recent places:
+  frontend/src/lib/recentPlaces.ts (RECENT_PLACES_DAYS).
 - What the browser and the server contact: the Content-Security-Policy (Caddyfile, `connect-src
   'self'`), core.street_photo, core.gbfs, core.wmata_live, core.closure_sources, core.dc311,
   core.weather (points rounded to 0.01 degree, answers 2 minutes in memory).
@@ -55,7 +59,7 @@ from . import account_deletion
 PATH = account_deletion.PRIVACY_PATH
 TITLE = "RouteMaker privacy policy"
 # Change with the text: the date a rider reads as when this page last said something new.
-LAST_UPDATED = ("2026-10-26", "October 26, 2026")
+LAST_UPDATED = ("2026-10-29", "October 29, 2026")
 # Unless the deployment sets PRIVACY_CONTACT (an e-mail address or a web address).
 CONTACT = "Questions, or a request about your data: ask the site's owner on Discord."
 CONTACT_LEAD = "Questions, or a request about your data: "
@@ -123,7 +127,8 @@ SECTIONS: list[tuple[str, str]] = [
             "(every 5 minutes), finding which 311 website covers a problem you log, and Group or "
             "Mass Ride sharing. The server answers "
             "and does not store it, except places you choose to save or share and ride sharing "
-            "(below)."
+            "(below). A route planned from where you are is kept in the server’s memory for "
+            "2 minutes at most, so asking for it again is quick, and is then forgotten."
         )
         + _p(
             "A route’s link holds its points, so a route planned from your location carries "
@@ -141,6 +146,12 @@ SECTIONS: list[tuple[str, str]] = [
                 "Other riders on the same ride see an unnamed dot. No account or name is sent: "
                 "your phone makes a new random code for each ride.",
                 "An alert you send keeps your rounded spot for 2 minutes, or until you clear it.",
+                "On Share ride, Broadcast (in Roam too) and a Group Ride link shared from "
+                "RouteMaker, your phone encrypts your dot, your alerts and the leader’s path "
+                "before sending them, with a key only the link carries (in the part after #, which "
+                "browsers never send to a server). The server holds them only as scrambled text it "
+                "cannot read; it still sees when a phone on the ride sends or asks, as it does for "
+                "any page. Mass Ride links are not encrypted this way.",
                 "Share ride and Broadcast make you the ride leader, shown as a dot from the start "
                 "of your ride. While you ride a shared ride, you and anyone on it who chooses to "
                 "be shown are shown on or off the route, so riders who get separated can find "
@@ -249,8 +260,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "Your weight is taken out.",
                 "When a route starts, ends or stops at your Home, the preview a chat app shows "
                 "leaves out the part near it.",
-                "A link is kept a year after it was last opened, unless you choose to keep it "
-                "permanently or until a date.",
+                "A link is kept a year after it was last opened, unless, signed in, you choose "
+                "to keep it permanently or until a date.",
                 "A link you turn off loses its route and only says it was turned off.",
             ]
         ),
@@ -260,8 +271,9 @@ SECTIONS: list[tuple[str, str]] = [
         _ul(
             [
                 "A suggestion for a road or junction, or a Mass Ride hazard, keeps the road, your "
-                "level and your reason. The spot you tapped is not kept. Signed in, your account "
-                "is kept with it for the site’s admin only.",
+                "level and your reason. A road suggestion also keeps the point on the road nearest "
+                "where you tapped; a junction suggestion keeps the junction; a Mass Ride hazard "
+                "keeps no spot. Signed in, your account is kept with it for the site’s admin only.",
                 "The admin may post a suggestion as a poll on Discord. The poll names nobody.",
                 "Signed out, a suggestion keeps no account. To limit sends, your device is counted "
                 "by a one-way code made from your internet address and the day, deleted after 24 "
@@ -270,9 +282,9 @@ SECTIONS: list[tuple[str, str]] = [
                 "position, the time and your note. It stays on your device, and with your account "
                 "when signed in. RouteMaker shows which city or county 311 website takes it; you "
                 "send it yourself.",
-                "In Washington, DC, where the site has DC 311’s key, a problem logged in Ride "
-                "mode is also sent to DC 311 by the server: the problem, the point on your route "
-                "and the report’s words, nothing about you.",
+                "In Washington, DC, where the site has DC 311’s key and you are signed in, a "
+                "problem logged in Ride mode is also sent to DC 311 by the server: the problem, "
+                "the point on your route and the report’s words, nothing about you.",
             ]
         ),
     ),
@@ -329,8 +341,9 @@ SECTIONS: list[tuple[str, str]] = [
         )
         + _p(
             "Your browser or the app keeps your settings, Home, weight, offline routes and 311 log "
-            "until you clear its storage. The Android app also keeps the site address. It has no "
-            "analytics or crash reporting, and its data is left out of phone backups."
+            "until you clear its storage, and the last few places you picked in search for 30 "
+            "days after each was last picked. The Android app also keeps the site address. It "
+            "has no analytics or crash reporting, and its data is left out of phone backups."
         ),
     ),
     (
@@ -344,8 +357,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "The app’s own logs are capped in size, so old lines are overwritten.",
                 "When a request fails, an error log may keep more of it, including the internet "
                 "address, for a short time.",
-                "Request limits count a one-way code made from your internet address, deleted "
-                "within about 30 hours.",
+                "Request limits count a one-way code made from your internet address (or, for "
+                "some, your account), deleted within about 30 hours.",
             ]
         ),
     ),

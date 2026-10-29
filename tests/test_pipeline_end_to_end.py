@@ -234,7 +234,7 @@ def test_a_first_rebuild_downloads_merges_and_clips_its_own_extract(
     context, report = run_pipeline(source, root, binaries=binaries, skip=NOT_SWAPPED)
 
     assert report.completed, "the rebuild ran rather than stopping at stage one"
-    downloads = binaries.commands("curl")
+    downloads = [c for c in binaries.commands("curl") if not c[-1].endswith(".md5")]
     assert [c[-1] for c in downloads] == [
         "https://download.geofabrik.de/north-america/us/district-of-columbia-latest.osm.pbf",
         "https://download.geofabrik.de/north-america/us/maryland-latest.osm.pbf",
@@ -287,7 +287,7 @@ def test_an_extract_older_than_the_limit_is_rebuilt(workspace, states) -> None:
     binaries = FakeBinaries()
     run_pipeline(source, root, binaries=binaries, skip=NOT_SWAPPED)
 
-    assert len(binaries.commands("curl")) == 4, "the four states again"
+    assert len(binaries.commands("curl")) == 8, "the four states again, each with its MD5"
     assert source.stat().st_mtime > eight_days_ago, "and this week's clip replaced it"
 
 
@@ -310,7 +310,7 @@ def test_a_partial_download_left_behind_is_never_read_as_the_extract(
     binaries = FakeBinaries()
     run_pipeline(source, root, binaries=binaries, skip=NOT_SWAPPED)
 
-    assert len(binaries.commands("curl")) == 4, "the partial file is not a download"
+    assert len(binaries.commands("curl")) == 8, "the partial file is not a download"
     for path in partials:
         assert not path.exists(), f"{path.name} was left behind"
     assert source.read_bytes() != partials[root / "extracts" / "source.osm.pbf.part"]

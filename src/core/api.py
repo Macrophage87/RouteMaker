@@ -7099,6 +7099,10 @@ def shared_route_add(request):
     now = timezone.now()
     _purge_shared(now)
     keep = body.get("keep", "year")
+    owner = request.user if signed_in(request) else None
+    problem = shared_routes.quota_problem(owner, keep, now)
+    if problem:
+        return _stress_error(problem[0], problem[1], field=problem[2])
     delete_after = (
         shared_routes.delete_after_of(body.get("delete_after"), timezone.localdate(now))
         if keep == "until"
@@ -7122,7 +7126,7 @@ def shared_route_add(request):
                 keep=keep,
                 delete_after=delete_after,
                 # Signed in, the owner, so only they can turn the link off (nothing else of them).
-                owner=request.user if signed_in(request) else None,
+                owner=owner,
                 # Missing (a page from before previews) is no image: it never said where Home is.
                 preview_image=body.get("preview_image", False),
             )
@@ -7395,6 +7399,17 @@ def weather_check(request):
 REPORT_311_BODY_MAX_BYTES = 2048
 
 
+def _report311_who(request) -> str:
+    """The signed-in rider as a 311 ticket and the per-account count name them: a keyed digest."""
+    return ratelimit.client_key(f"user:{request.user.pk}")
+
+
+def _report311_refused(status: int, message: str, code: str):
+    out = JsonResponse({"error": message, "code": code}, status=status)
+    out["Cache-Control"] = "no-store"
+    return out
+
+
 @api.get("/report311", summary="Whether Ride mode's 311 reports are sent to DC from here")
 @decorate_view(
     ratelimit.rate_limited(ratelimit.REPORT_311_STATUS),
@@ -7404,37 +7419,42 @@ REPORT_311_BODY_MAX_BYTES = 2048
 def report311_status(request):
     from . import dc311
 
-    on = dc311.enabled()
-    # On, the answer carries a short-lived signed ticket that a send must bring back.
+    # On for a signed-in rider (signed out, Ride mode texts 311): the answer carries a short-lived
+    # ticket, signed for this account, that a send must bring back.
+    on = dc311.enabled() and signed_in(request)
     response = JsonResponse(
-        {"enabled": True, "ticket": dc311.ticket()} if on else {"enabled": False}
+        {"enabled": True, "ticket": dc311.ticket(_report311_who(request))}
+        if on
+        else {"enabled": False}
     )
     response["Cache-Control"] = "no-store"
     return response
 
 
-@api.get("/report311/where", summary="Which 311 website takes a problem at a point")
+@api.post("/report311/where", summary="Which 311 website takes a problem at a point")
 @decorate_view(
     ratelimit.in_flight_limited(ratelimit.GEOCODE_IN_FLIGHT, ratelimit.name_slots),
     ratelimit.rate_limited(ratelimit.REVERSE),
     ratelimit.rate_limited(ratelimit.REVERSE_BURST),
     same_site_only,
+    json_body_only,
     errors_as_json,
 )
-def report311_where(request, params: Query[ReverseIn]):
+def report311_where(request, body: ReverseIn):
     """The 311 log's site for an entry (core.report_log.where): an id the page knows, or null
-    where the point is in no jurisdiction the log names. The point is not kept."""
+    where the point is in no jurisdiction the log names. The point is not kept, and comes in the
+    body, so no request line in a log names it."""
     from . import report_log
 
     try:
-        found = report_log.where(params.lat, params.lon, lang=params.lang)
+        found = report_log.where(body.lat, body.lon, lang=body.lang)
     except geocode.Unavailable as unavailable:
         logger.warning("311 log: the geocoder did not answer: %s", unavailable)
         out = JsonResponse({"error": GEOCODER_DOWN}, status=502)
         out["Cache-Control"] = "no-store"
         return out
     out = JsonResponse({"where": found})
-    out["Cache-Control"] = "private, max-age=86400"
+    out["Cache-Control"] = "no-store"
     return out
 
 
@@ -7460,23 +7480,22 @@ def report311_send(request):
     if not isinstance(description, str) or len(description) > dc311.DESCRIPTION_MAX:
         return _error(400, f"description is text of at most {dc311.DESCRIPTION_MAX} characters.")
     if dc311.enabled():
-        if not dc311.ticket_ok(body.get("ticket")):
-            out = JsonResponse(
-                {"error": "Ask the server again, then send the report.", "code": "no_ticket"},
-                status=403,
+        if not signed_in(request):
+            return _report311_refused(401, "Sign in to send reports from here.", "signed_out")
+        who = _report311_who(request)
+        if not dc311.ticket_ok(body.get("ticket"), who):
+            return _report311_refused(
+                403, "Ask the server again, then send the report.", "no_ticket"
             )
-            out["Cache-Control"] = "no-store"
-            return out
+        if not ratelimit.hit(ratelimit.REPORT_311_ACCOUNT, who).allowed:
+            return _report311_refused(
+                429, "You have sent this hour's reports from here; text 311 instead.", "busy"
+            )
         everyone = ratelimit.Limit(
             scope=dc311.GLOBAL_SCOPE, requests=dc311.HOURLY_MAX, window_s=3600
         )
         if not ratelimit.hit(everyone, "all").allowed:
-            out = JsonResponse(
-                {"error": "DC 311 reports from here are paused for now.", "code": "busy"},
-                status=429,
-            )
-            out["Cache-Control"] = "no-store"
-            return out
+            return _report311_refused(429, "DC 311 reports from here are paused for now.", "busy")
     try:
         ident = dc311.send(kind, float(lat), float(lon), description)
     except dc311.NotSent as refused:
@@ -7496,8 +7515,9 @@ def report311_send(request):
 
 
 def ride_writes_limited(view):
-    """Count a write against its ride (ratelimit.RIDE_WRITES), keyed by a digest of the ride id;
-    a path that is not a ride id is left to the view's 404 uncounted."""
+    """Count a write against its ride (ride_presence.count_write, in the ride's own state, so the
+    count is gone with the ride); a path that is not a ride id is left to the view's 404
+    uncounted."""
 
     @wraps(view)
     def wrapped(request, *args, **kwargs):
@@ -7505,11 +7525,13 @@ def ride_writes_limited(view):
 
         ride_id = str(kwargs.get("ride_id", ""))
         if ride_presence.RIDE_ID.match(ride_id):
-            limit = ratelimit.RIDE_WRITES
-            decision = ratelimit.hit(limit, ratelimit.client_key(f"ride:{ride_id}"))
-            if not decision.allowed:
+            try:
+                wait = ride_presence.count_write(ride_id)
+            except ride_presence.Refused as refused:
+                return _stress_error(refused.status, refused.message)
+            if wait:
                 out = _stress_error(429, "This ride is busy; try again shortly.")
-                out["Retry-After"] = str(decision.retry_after_s)
+                out["Retry-After"] = str(wait)
                 return out
         return view(request, *args, **kwargs)
 
@@ -7565,7 +7587,12 @@ def ride_here(request, ride_id: str):
     return _ride_call(
         request,
         lambda rp: rp.post_position(
-            ride_id, body.get("token", ""), body.get("lon"), body.get("lat"), body.get("role")
+            ride_id,
+            body.get("token", ""),
+            body.get("lon"),
+            body.get("lat"),
+            body.get("role"),
+            sealed=body.get("sealed"),
         ),
     )
 
@@ -7586,7 +7613,11 @@ def ride_path(request, ride_id: str):
     return _ride_call(
         request,
         lambda rp: rp.post_path(
-            ride_id, body.get("token", ""), body.get("route"), body.get("trail")
+            ride_id,
+            body.get("token", ""),
+            body.get("route"),
+            body.get("trail"),
+            sealed=body.get("sealed"),
         ),
     )
 
@@ -7616,6 +7647,7 @@ def ride_alert(request, ride_id: str):
             str(body.get("text", "") or ""),
             body.get("lon"),
             body.get("lat"),
+            sealed=body.get("sealed"),
         ),
     )
 

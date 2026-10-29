@@ -685,13 +685,13 @@ test("P3: a settings change says what it did against the route before it, not Go
   // Flatter and 3 minutes quicker.
   assert.deepEqual(replannedSaid(before, { ...line(B, 720, 300), climb_m: 20 }), {
     shown: "Re-planned: flatter, 3 min less.",
-    said: "Re-planned: flatter, 3 min less.",
+    said: "Re-planned: flatter, 3 minutes less.",
   });
-  // Calmer, the same time: the distance it adds, miles on screen, kilometres too when said.
+  // Calmer, the same time: the distance it adds, miles on screen, kilometers too when said, the units in words.
   const calmer = { ...line(B, 910, 300 - CALMER_BY_M), climb_m: 40, distance_m: before.distance_m + 480 };
   assert.deepEqual(replannedSaid(before, calmer), {
     shown: "Re-planned: calmer, 0.3 mi more.",
-    said: "Re-planned: calmer, 0.3 mi (0.5 km) more.",
+    said: "Re-planned: calmer, 0.3 miles (0.5 kilometers) more.",
   });
   // Hillier and busier, a minute longer; a small change of climb is not "hillier".
   assert.equal(replannedSaid(before, { ...line(B, 960, 300 + CALMER_BY_M), climb_m: 60 }).shown, "Re-planned: hillier, busier, 1 min more.");
