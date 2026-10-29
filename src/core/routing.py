@@ -125,6 +125,7 @@ from routemaker.geo import (
     haversine,
     haversine_lonlat,
 )
+from routemaker.lang import t
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
@@ -3901,6 +3902,51 @@ def move_zoo_points(points: list[list[float]]) -> tuple[list[list[float]], list[
     return out, moved
 
 
+# A stop or the end on a road not open to the public (the owner, 2026-10-29: "It would only be
+# routed to if there's a destination that would use those roads. Basically when you set a
+# destination: This end point is not typically open to the public, make sure you're authorized
+# to go here."). Such roads stay routable as a destination; one the route only passes along
+# says nothing. The reasons are `segment.bike_access_reason`'s (core.segment_info.ACCESS_WORDS):
+# private or no public access (an `access` or `vehicle` of no, private, permit, restricted or
+# military, or `bicycle=private`), a military or secure site, and a farm or forest track with
+# no sign it is public.
+NOT_PUBLIC_REASONS = ("private", "military", "secured", "track")
+NOT_PUBLIC_NOTE = (
+    "This end point is not typically open to the public, make sure you're authorized to go here."
+)
+
+
+def not_public_ends(pieces: list[Piece], leg_runs: list, count: int) -> list[dict]:
+    """The `point_notes` of the stops and the end whose leg finishes on a road not open to the
+    public (NOT_PUBLIC_REASONS): each {index, reason, note}, `index` the point's in the rider's
+    `count` points (leg k ends at point k + 1). The start is not one: it is not a destination.
+    An untraced leg says nothing."""
+    ends: dict[int, int] = {}
+    for k, run in enumerate(leg_runs):
+        if k + 1 >= count or not isinstance(run, tuple) or run[1] <= run[0]:
+            continue
+        way = pieces[run[1] - 1].way_id
+        if way:
+            ends[k + 1] = way
+    if not ends:
+        return []
+    schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    if not segment_info.has_columns(schema, "bike_access_reason"):
+        return []
+    with plan_cursor() as cursor:
+        cursor.execute(
+            f"SELECT DISTINCT osm_way_id FROM {schema}.segment "
+            "WHERE osm_way_id = ANY(%s) AND bike_access_reason = ANY(%s)",
+            [sorted(set(ends.values())), list(NOT_PUBLIC_REASONS)],
+        )
+        closed = {int(row[0]) for row in cursor.fetchall()}
+    return [
+        {"index": index, "reason": "not_public", "note": t(NOT_PUBLIC_NOTE)}
+        for index, way in sorted(ends.items())
+        if way in closed
+    ]
+
+
 # A stop the bike cannot be ridden to the door of (the owner, 2026-10-17: "There are some
 # cases where people could mark stops on a bike trip that should have a dismount like the
 # MLK or FDR memorial. In those cases, we should let them route there, but switch to walk
@@ -5433,6 +5479,12 @@ def _plan(
             "description": described_full,
             "description_overview": described_overview,
             "moved_points": moved_points,
+            # A stop or the end on a road not open to the public (the owner, 2026-10-29).
+            "point_notes": (
+                []
+                if over_budget or len(leg_runs) != len(points) - 1
+                else not_public_ends(pieces, leg_runs, len(asked_points))
+            ),
             "avoid_junctions": avoid_junctions.rows(avoid_found, avoid_scale),
             "avoid_notice": avoid_rules.notice(avoid_found),
             # The known hazards the route rides (v0.10.0): cobbles, rails; [] where none.

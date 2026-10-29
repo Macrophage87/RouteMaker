@@ -1571,6 +1571,15 @@ class MovedPointOut(Schema):
     note: str = Field(description="One plain sentence to show the rider.")
 
 
+class PointNoteOut(Schema):
+    """A note on a trip point the route ends a leg at (the owner, 2026-10-29): a stop or the
+    end on a road not open to the public, which stays routable as a destination."""
+
+    index: int = Field(description="The point's place in `points`, from 0 (never the start).")
+    reason: Literal["not_public"]
+    note: str = Field(description="One plain sentence to show the rider.")
+
+
 class ProfileClimbOut(Schema):
     """One sustained climb of the profile, for the chart's climbs table
     (OWNER-DECISIONS 322; on a Mass Ride also 328(c): the capacity it costs)."""
@@ -2379,6 +2388,7 @@ class RouteBody(Schema):
     # without a second request and the merged sentences are worded in one place.
     description_overview: list[DescriptionEntryOut] | None = None
     moved_points: list[MovedPointOut] = Field(default_factory=list)
+    point_notes: list[PointNoteOut] = Field(default_factory=list)
     walk_in: WalkInOut | None = None
     # The Avoid-rated junctions it passes, in route order (FOLLOWUP-ISECT-AVOID, 307-310),
     # and the notice the panel shows first and announces (335). Additive: empty and null

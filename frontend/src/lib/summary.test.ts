@@ -359,6 +359,12 @@ test("a point the planner moved into the Zoo's bike racks is said with the route
   assert.ok(announceRoute(route, points).includes(`End: ${note}`), announceRoute(route, points));
   assert.equal(movedPointsNote({ moved_points: [] } as never), null);
   assert.equal(movedPointsNote({} as never), null);
+  // A stop or the end on a road not open to the public (point_notes, 2026-10-29), said the same way, in point order.
+  const closed = "This end point is not typically open to the public, make sure you're authorized to go here.";
+  const noted = { ...route, point_notes: [{ index: 2, reason: "not_public", note: closed }] } as unknown as RouteResponse;
+  assert.equal(movedPointsNote(noted, 3), `Stop 1: ${note} End: ${closed}`);
+  assert.ok(announceRoute(noted, [...points, [-77.02, 38.91]]).includes(`End: ${closed}`));
+  assert.equal(movedPointsNote({ point_notes: [] } as never), null);
   const { readFileSync } = await import("node:fs");
   const app = appSource();
   // UI-CLEANUP (the owner's choice 5): one line with an icon, its full words in Info.
