@@ -8,7 +8,7 @@ reached it. That is why the plan calls these mechanisms "specified rather than
 implied" - Django does none of them by default.
 
 The backend also resolves the guild standing the derived `is_staff` reads, once
-per request rather than once per check.
+per request rather than once per check, and only on a request that reads it.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ class DiscordStandingBackend:
             user = User.objects.get(pk=user_id)
         except User.DoesNotExist:
             return None
-        attach_standing(user)
+        defer_standing(user)
         return user
 
     # Models a guild admin holds no model-level write permission on. A guild
@@ -183,6 +183,16 @@ check_guild_admin_allow_list(
 )
 
 
+def defer_standing(user: User) -> None:
+    """Resolve this user's standing on its first read rather than now.
+
+    The three queries `attach_standing` runs are worth paying once per request
+    that asks, not on every signed-in request: tiles, polls and route plans
+    never read standing. See `models._Standing`.
+    """
+    user._standing_deferred = True
+
+
 def attach_standing(user: User, now=None) -> None:
     """Resolve and cache this user's guild standing on the instance.
 
@@ -274,5 +284,6 @@ __all__ = [
     "DiscordStandingBackend",
     "attach_standing",
     "check_guild_admin_allow_list",
+    "defer_standing",
     "session_is_current",
 ]
