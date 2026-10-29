@@ -16,7 +16,7 @@ import { filterRideGroups, rideSections, rideTypeCount, rideTypeSections, RideTy
 import { RideTypeCards } from "../lib/rideTypeCards.ts";
 import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
 import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForPage, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
-import { SignOutForm } from "../SignOut.tsx";
+import { SignOutEverywhereForm, SignOutForm } from "../SignOut.tsx";
 import { AssistantAppsSetting } from "../AssistantApps.tsx";
 import { GarminSetting, WahooSetting } from "../ConnectionSetting.tsx";
 import { pointName } from "../lib/summary.ts";
@@ -705,6 +705,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
                 <Icon name="user" size={16} /> {t("Signed in with Discord.")}
               </p>
               <SignOutForm />
+              {/* Beside Sign out, the one control that ends every sign-in, apps' too (core.auth_views). */}
+              <SignOutEverywhereForm />
               <span className="info-spacer" aria-hidden="true" />
             </div>
           ) : signInAvailable ? (

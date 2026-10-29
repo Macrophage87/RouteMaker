@@ -175,6 +175,7 @@ class TestPage:
             "about 30 hours",  # ratelimit.RETENTION and the sweep
             "the last seven kept",  # procrastinate.BACKUP_KEEP
             "30 days unused, or after 90 days",  # revocation's idle and absolute lifetimes
+            "Sign out everywhere",  # auth_views.logout_everywhere_view
             "Two cookies",  # the session and CSRF cookies
             privacy_policy.CONTACT,
         ):
