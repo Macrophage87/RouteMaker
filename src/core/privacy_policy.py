@@ -125,7 +125,8 @@ SECTIONS: list[tuple[str, str]] = [
             "(every 5 minutes), finding which 311 website covers a problem you log, and Group or "
             "Mass Ride sharing. The server answers "
             "and does not store it, except places you choose to save or share and ride sharing "
-            "(below)."
+            "(below). A route planned from where you are is kept in the server’s memory for "
+            "2 minutes at most, so asking for it again is quick, and is then forgotten."
         )
         + _p(
             "A route’s link holds its points, so a route planned from your location carries "
