@@ -35,6 +35,7 @@ import {
   LINK_HAS_HOME_END,
   LINK_HAS_HOME_POINT,
   LINK_HAS_HOME_START,
+  LINK_HOME_NEAR_M,
   locate,
   locateGate,
   locateSupport,
@@ -597,7 +598,19 @@ test("privacy-2: a link with the rider's Home in it says so, as the destination,
   assert.equal(linkLocationNote([here, atHome], [here], home), `${LINK_HAS_LOCATION_START} ${LINK_HAS_HOME_END}`);
   // No Home, or a plan away from it: as before.
   assert.equal(linkLocationNote([here, other], [here], null), LINK_HAS_LOCATION_START);
-  assert.equal(linkLocationNote([other, [-77.02001, 38.92]], [], home), "");
+  assert.equal(linkLocationNote([other, [-77.0235, 38.92]], [], home), "", "300 m away is not the Home");
+});
+
+test("a link starting or ending near the rider's Home, not only at it, says so", () => {
+  const home: LonLat = [-77.02, 38.92];
+  const other: LonLat = [-77.0, 38.95];
+  // About 90 m from the Home: across the street, or a corner picked from the map.
+  const nearHome: LonLat = [-77.021, 38.92];
+  assert.equal(linkLocationNote([nearHome, other], [], home), LINK_HAS_HOME_START);
+  assert.equal(linkLocationNote([other, nearHome], [], home), LINK_HAS_HOME_END);
+  // Just past LINK_HOME_NEAR_M: a park or a restaurant down the road is not the Home.
+  const pastNear: LonLat = [-77.02 - (LINK_HOME_NEAR_M + 10) / (111_320 * Math.cos((38.92 * Math.PI) / 180)), 38.92];
+  assert.equal(linkLocationNote([pastNear, other], [], home), "");
   assert.equal(LINK_HAS_HOME_END, "This link includes your Home as the destination.");
 });
 
