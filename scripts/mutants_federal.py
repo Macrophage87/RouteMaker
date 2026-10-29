@@ -64,7 +64,7 @@ MUTANTS: list[tuple[str, str, str, str, str]] = [
     (
         "map: fetches while off",
         VIEW,
-        "if (!visible || federalLoading) return;",
+        "if (!(visible || callbacks.current.federalWanted) || federalLoading) return;",
         "if (federalLoading) return;",
         "ts",
     ),
@@ -105,15 +105,15 @@ MUTANTS: list[tuple[str, str, str, str, str]] = [
     (
         "legend: shown while off",
         LG,
-        '    on && status !== "unavailable" && h(FederalLegend),',
-        '    status !== "unavailable" && h(FederalLegend),',
+        "    on && h(FederalKey, { status }),",
+        "    h(FederalKey, { status }),",
         "ts",
     ),
     (
         "legend: shown while unavailable",
         LG,
-        '    on && status !== "unavailable" && h(FederalLegend),',
-        "    on && h(FederalLegend),",
+        '    status !== "unavailable" && h(FederalLegend),',
+        "    h(FederalLegend),",
         "ts",
     ),
     # --- the data and the map -------------------------------------------

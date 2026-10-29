@@ -7,7 +7,7 @@
  *
  * Plan keeps the full panel; its map has Eat, Water and Places to see chips (PlanMapChips), where Go has place chips.
  */
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../Icon.tsx";
 import { IosLocationHelp } from "../IosLocationHelp.tsx";
 import { PlaceSearch } from "../PlaceSearch.tsx";
@@ -75,6 +75,10 @@ export function SheetHandle({
   );
 }
 
+/** A mode pressed on a switch, for the new mode's switch to take the focus; only just after the press. */
+let switchFocus: { mode: AppMode; at: number } | null = null;
+const SWITCH_FOCUS_MS = 1000;
+
 /**
  * Go or Plan: two toggle buttons, the pressed one the view in use (the owner's choice 1: either view can switch). For
  * someone who may review, both switches (Go's bar and the panel's) have a third, Review (lib/appMode.ts switchModes).
@@ -91,10 +95,30 @@ export function ModeSwitch({
   modes?: readonly AppMode[];
 }) {
   const hintId = useId();
+  const groupRef = useRef<HTMLDivElement | null>(null);
+  // Each mode has its own copy of the switch, so a press unmounts the button that had the focus: the new mode's
+  // switch takes it, on its pressed button (the 2026-10-29 a11y review: the focus fell to the page body).
+  useLayoutEffect(() => {
+    const pending = switchFocus;
+    if (!pending || pending.mode !== mode || Date.now() - pending.at > SWITCH_FOCUS_MS) return;
+    const pressed = groupRef.current?.querySelector<HTMLButtonElement>(".mode-button[aria-pressed=true]");
+    if (!pressed || pressed.getClientRects().length === 0) return;
+    switchFocus = null;
+    pressed.focus();
+  }, [mode]);
   return (
-    <div className={`mode-switch ${className}`.trim()} role="group" aria-label={MODE_SWITCH_NAME} aria-describedby={hintId}>
+    <div ref={groupRef} className={`mode-switch ${className}`.trim()} role="group" aria-label={MODE_SWITCH_NAME} aria-describedby={hintId}>
       {modes.map((m) => (
-        <button key={m} type="button" className="mode-button" aria-pressed={mode === m} onClick={() => onChange(m)}>
+        <button
+          key={m}
+          type="button"
+          className="mode-button"
+          aria-pressed={mode === m}
+          onClick={() => {
+            if (m !== mode) switchFocus = { mode: m, at: Date.now() };
+            onChange(m);
+          }}
+        >
           {MODE_LABEL[m]}
         </button>
       ))}

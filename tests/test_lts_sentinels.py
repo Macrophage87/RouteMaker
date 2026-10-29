@@ -10,6 +10,7 @@ from django.db import connection
 
 from pipeline import lts_sentinels
 from pipeline.lts_sentinels import StreetTiers
+from routemaker.stress import Stress
 
 R_ST = 38.9126
 
@@ -237,3 +238,110 @@ def test_validate_refuses_a_stretch_left_at_avoid(monkeypatch) -> None:
         run.assert_owner_stretches(context, [row])
     assert seen["ids"] == ["dc-s"]
     assert run.assert_owner_stretches(context, []) == []
+
+
+# --- The owner's rating rules over the whole table (review 2026-10-29) ---------------------
+
+COUNTY_FIVE_RULE, COUNTY_ROW = lts_sentinels.county_five_prefixes()
+BAN = json.dumps(
+    {"agencies": [{"agency": "mdot-sha", "name": "MDOT SHA", "level": 5.0}], "used": "formula"}
+)
+
+
+@pytest.mark.django_db
+def test_the_rating_rules_are_read_back_from_the_table() -> None:
+    from pipeline.schema import create_segment_schema, drop_segment_schema
+
+    name = "ltsrules"
+    drop_segment_schema(name)
+    create_segment_schema(name)
+    rows = [
+        # (way, tier, half, rule, adjustment, urban, trail, map_class, ratings, access)
+        # A rural road at LTS 1 with no override; one an owner row set; an urban one; a trail.
+        (1, 1, False, "mixed traffic, 20 mph or below", None, False, False, "road", None, None),
+        (2, 1, False, "override: x", "owner-x", False, False, "road", None, None),
+        (3, 1, False, "mixed traffic, 20 mph or below", None, True, False, "road", None, None),
+        (4, 1, False, "path", None, False, True, "road", None, None),
+        (5, 1, False, "mixed traffic", None, False, False, "hidden", None, None),
+        # Montgomery's 5: at 4.5 (held), at 5 from the layer and from a row (refused).
+        (6, 4, True, COUNTY_FIVE_RULE + ", our LTS 4.5", None, True, False, "road", None, None),
+        (7, 5, False, COUNTY_FIVE_RULE, None, True, False, "road", None, None),
+        (8, 5, False, "override: y", COUNTY_ROW + "ridge-road", True, False, "road", None, None),
+        (9, 4, True, "override: y", COUNTY_ROW + "ridge-road", True, False, "road", None, None),
+        # MDOT SHA's ban: closed (held), drawn with no reason (found), reopened by an override.
+        (10, 4, False, "x", None, True, False, "barred", BAN, "mdot_prohibited"),
+        (11, 4, False, "x", None, True, False, "road", BAN, None),
+        (12, 4, False, "x", None, True, False, "road", BAN, "override_open"),
+    ]
+    try:
+        with connection.cursor() as cursor:
+            for way, tier, half, rule, adj, urban, trail, map_class, ratings, access in rows:
+                cursor.execute(
+                    f"INSERT INTO {name}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                    "stress_half, stress_rule, stress_adjustment_id, road_urban, is_trail_class, "
+                    "map_class, stress_ratings, bike_access_reason) VALUES (%s, 0, "
+                    "ST_MakeLine(ST_SetSRID(ST_MakePoint(-77.2, 39.1), 4326), "
+                    "ST_SetSRID(ST_MakePoint(-77.19, 39.1), 4326)), %s, %s, %s, %s, %s, %s, %s, "
+                    "%s::jsonb, %s)",
+                    [way, tier, half, rule, adj, urban, trail, map_class, ratings, access],
+                )
+        rural = lts_sentinels.rural_lts1_ways(name)
+        county = lts_sentinels.county_five_ways(name)
+        bans = lts_sentinels.open_ban_ways(name)
+    finally:
+        drop_segment_schema(name)
+    assert rural == [1]
+    assert county == [7, 8]
+    assert bans == [11]
+
+
+def test_the_rating_rules_say_what_is_wrong_in_words() -> None:
+    assert lts_sentinels.rating_rule_problems([], [], []) == []
+    found = lts_sentinels.rating_rule_problems(list(range(1, 13)), [7], [11])
+    assert len(found) == 3
+    assert found[0].startswith("12 ways (1, 2, 3") and "+2 more" in found[0]
+    assert "rural floor" in found[0]
+    assert found[1].startswith("1 way (7)") and "4.5" in found[1]
+    assert "MDOT SHA" in found[2]
+
+
+def test_validate_drops_exempt_rural_roads_and_listed_bans(monkeypatch) -> None:
+    from pipeline import run
+
+    ways = {
+        1: SimpleNamespace(osm_id=1, tags={"highway": "residential"}),
+        # Closed to cars: exempt from the rural floor.
+        2: SimpleNamespace(osm_id=2, tags={"highway": "residential", "motor_vehicle": "no"}),
+    }
+    context = SimpleNamespace(
+        staging_schema="x",
+        ways_by_id=ways,
+        ways=list(ways.values()),
+        class_tags_by_way={},
+        agency_prohibited_open={12},
+        stress_by_way={
+            # A `moco-lts5-*` row on a road our formula already puts at Avoid keeps Avoid.
+            7: SimpleNamespace(
+                tier=Stress.AVOID,
+                formula_tier=None,
+                adjustment=SimpleNamespace(computed_tier=Stress.AVOID),
+            ),
+            # One the formula rated LTS 4 does not.
+            8: SimpleNamespace(tier=Stress.AVOID, formula_tier=Stress.LTS4, adjustment=None),
+        },
+    )
+    monkeypatch.setattr(lts_sentinels, "rural_lts1_ways", lambda schema: [2])
+    monkeypatch.setattr(lts_sentinels, "county_five_ways", lambda schema: [7])
+    monkeypatch.setattr(lts_sentinels, "open_ban_ways", lambda schema: [12])
+    run.assert_rating_rules(context)
+    monkeypatch.setattr(lts_sentinels, "county_five_ways", lambda schema: [7, 8])
+    with pytest.raises(run.ValidationFailed, match=r"^1 way \(8\) rated 5 by Montgomery"):
+        run.assert_rating_rules(context)
+    monkeypatch.setattr(lts_sentinels, "county_five_ways", lambda schema: [])
+    monkeypatch.setattr(lts_sentinels, "rural_lts1_ways", lambda schema: [1, 2])
+    with pytest.raises(run.ValidationFailed, match=r"^1 way \(1\) on a rural road"):
+        run.assert_rating_rules(context)
+    monkeypatch.setattr(lts_sentinels, "rural_lts1_ways", lambda schema: [])
+    monkeypatch.setattr(lts_sentinels, "open_ban_ways", lambda schema: [11, 12])
+    with pytest.raises(run.ValidationFailed, match="MDOT SHA"):
+        run.assert_rating_rules(context)

@@ -127,6 +127,8 @@ def rebuild_environment(monkeypatch, tmp_path, segment_schemas):
     checked_in = tmp_path / "checked-in-crossings.json"
     checked_in.write_bytes((tmp_path / "reference" / "crossings.json").read_bytes())
     monkeypatch.setattr(settings, "REBUILD_CROSSINGS_FIXTURE", checked_in)
+    # A handful of synthetic traffic counts, not a full install's tens of thousands.
+    monkeypatch.setattr(settings, "REBUILD_VOLUME_MIN_ROWS", 0)
     # Every approved agency's ratings, which the weekly task requires
     # (`pipeline.agency_ratings`): one record each, far from the toy extract's ways.
     from pipeline import agency_ratings

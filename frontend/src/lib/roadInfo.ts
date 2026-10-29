@@ -403,11 +403,6 @@ export function wayRows(info: SegmentInfo): InfoRow[] {
   return rows;
 }
 
-/** One row, as a sentence for the live region and the row's own reading: "Speed limit: 30 mph, posted (OpenStreetMap)". */
-export function rowText(row: InfoRow): string {
-  return `${row.label}: ${row.value}${row.source ? ` (source: ${row.source})` : ""}`;
-}
-
 /** The stress in a phrase: "LTS 3, for experienced cyclists", or "Avoid". */
 function stressPhrase(info: SegmentInfo): string | null {
   const line = info.summary?.find((r) => r.id === "stress")?.value;

@@ -6,9 +6,10 @@ Each mutant changes one line of `routemaker.trailaccess`, `routemaker.zoo`,
 `routemaker.surfaces` or `pipeline.trail_closures`; the focused tests must fail. Run from the repository
 root, one pytest process at a time:
 
-    PGDATABASE=routemaker_nobike python scripts/mutants_nobike.py
+    PGDATABASE=routemaker_nobike python scripts/mutants_nobike.py [--check]
 
-Exit 0 when every mutant is killed. The source file is restored after each.
+Exit 0 when every mutant is killed. The source file is restored after each. `--check` only
+checks that every mutant's old text occurs exactly once (no tests run; CI runs it).
 """
 
 from __future__ import annotations
@@ -232,7 +233,21 @@ def run_tests() -> bool:
     return result.returncode == 0
 
 
+def check() -> int:
+    """Every mutant's text occurs exactly once in its file."""
+    bad = 0
+    for name, path, old, _new in MUTANTS:
+        count = (REPO / path).read_text().count(old)
+        if count != 1:
+            print(f"BAD   {name}: occurs {count} times in {path}")
+            bad += 1
+    print(f"{len(MUTANTS) - bad} of {len(MUTANTS)} mutants apply")
+    return bad
+
+
 def main() -> int:
+    if "--check" in sys.argv[1:]:
+        return check()
     if not run_tests():
         print("the unmutated tests do not pass", file=sys.stderr)
         return 2
