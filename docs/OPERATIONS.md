@@ -3093,7 +3093,11 @@ moved into place only on success: a 1–2 GB transfer killed partway would
 otherwise leave a truncated file under the real name, and nothing downstream can
 tell a truncated PBF from a smaller region — osmium reads what is there and the
 rebuild carries on with part of Virginia missing. A `.part` found on disk is
-deleted and re-fetched, never resumed or renamed into place.
+deleted and re-fetched, never resumed or renamed into place. Each Geofabrik
+download is also checked against the `<file>.md5` Geofabrik publishes beside it,
+fetched first; a mismatch (a cut-short transfer, or a new daily file between the
+two fetches) deletes the `.part` and fails the stage, which is retried. A mirror
+named in `SOURCE_EXTRACT_URLS` is not asked for a checksum.
 
 **`-f pbf` is what makes the `.part` names usable.** osmium takes the output
 format from the file name’s last dot-separated element, and `part` names no
@@ -4854,6 +4858,11 @@ proxy cannot reach the service.
    `AADT_<year>` plus one; 2024 on the 2026-10-11 layer), so 2024 is the same
    answer. The v0.5.0 install (2026-10-11) printed 8,625 count lines from
    mdot-sha, 53,756 in `volume.json` with VDOT's 36,808 and DDOT's 8,323.
+
+   The rebuild refuses (at `load_reference_data`, terminal) a `volume.json` with fewer
+   than `REBUILD_VOLUME_MIN_ROWS` counts placed in longitude and latitude (10,000
+   unless `.env` says otherwise; 0 turns it off). An empty file, or one written in a
+   projected system, used to load and leave every road uncounted.
 
 3. **After the rebuild**, read the log and check MD 185:
 

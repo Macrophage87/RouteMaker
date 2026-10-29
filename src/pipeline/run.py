@@ -429,6 +429,32 @@ class ReferenceDataMissing(RuntimeError):
     """A required input is absent. Never substituted with an empty default."""
 
 
+def check_volume_rows(rows: Sequence[Mapping], minimum: int, path: Path) -> None:
+    """Refuse a `volume.json` with fewer than `minimum` rows placed in lon/lat.
+
+    The file's existence was the only check: `[]`, or counts written in a
+    projected system (metres), loaded without complaint and conflation matched
+    nothing, so every road rated as if it had no traffic count. A row counts
+    when its first point is a plausible longitude and latitude.
+    """
+    if minimum <= 0:
+        return
+    placed = 0
+    for row in rows:
+        try:
+            lon, lat = row["coordinates"][0][:2]
+            placed += -180 <= float(lon) <= 180 and -90 <= float(lat) <= 90
+        except (KeyError, IndexError, TypeError, ValueError):
+            continue
+    if placed < minimum:
+        raise ReferenceDataMissing(
+            f"{path} has {placed} traffic counts in longitude and latitude (of {len(rows)} "
+            f"rows), under the {minimum} a full install has. Reinstall it with every "
+            '--volume file (docs/OPERATIONS.md, "Maryland traffic counts (MDOT SHA)"); '
+            "REBUILD_VOLUME_MIN_ROWS sets the floor."
+        )
+
+
 # How an operator makes the installed crossings match the image, named in the
 # refusal below and in docs/OPERATIONS.md.
 REINSTALL_CROSSINGS = (
@@ -527,6 +553,7 @@ class ReferenceData:
         *,
         checked_in_crossings: Path | None = None,
         require_agency_lts: bool = False,
+        min_volume_rows: int = 0,
     ) -> ReferenceData:
         """Read the three files; with `checked_in_crossings`, refuse a stale copy.
 
@@ -541,6 +568,9 @@ class ReferenceData:
         `require_agency_lts` refuses an absent or empty `agency-lts.json`, or one
         lacking an approved agency (`agency_ratings.load`); the weekly task passes it
         unless `REBUILD_ALLOW_NO_AGENCY_LTS` is set.
+
+        `min_volume_rows` refuses a `volume.json` with fewer counts than that
+        (`check_volume_rows`); the weekly task passes `REBUILD_VOLUME_MIN_ROWS`.
         """
         urban = directory / "urban-areas.json"
         crossings = directory / "crossings.json"
@@ -567,6 +597,8 @@ class ReferenceData:
                     "against the old rows. Reinstall it, then rerun the rebuild: "
                     f"{REINSTALL_CROSSINGS}"
                 )
+        volume_rows = json.loads(volume.read_text())
+        check_volume_rows(volume_rows, min_volume_rows, volume)
         features = tuple(
             conflation.AgencyFeature(
                 feature_id=row["id"],
@@ -584,7 +616,7 @@ class ReferenceData:
                 # see, a tier wearing an agency's name is not.
                 agency=row.get("agency"),
             )
-            for row in json.loads(volume.read_text())
+            for row in volume_rows
         )
         road_blocks = cls.load_road_blocks(directory / "roadway.json")
         bridge_ids, unmatched_sidepath = variants.resolve_sidepath_bridge_ids(crossing_rows, ways)
@@ -723,6 +755,9 @@ class RebuildContext:
     # weekly task passes `not settings.REBUILD_ALLOW_NO_AGENCY_LTS`. Not a settings
     # default because every test context installs synthetic reference rows.
     require_agency_lts: bool = False
+    # Refuse a `volume.json` with fewer traffic counts than this (`check_volume_rows`).
+    # 0, the default, checks nothing; the weekly task passes REBUILD_VOLUME_MIN_ROWS.
+    min_volume_rows: int = 0
     staging_schema: str = field(default_factory=lambda: _setting("SEGMENT_SCHEMA_STAGING"))
     tiles_dir: Path = field(default_factory=lambda: _setting("TILES_DIR"))
     elevation_dir: Path = field(default_factory=lambda: _setting("ELEVATION_DIR"))
@@ -2309,6 +2344,7 @@ def build_handlers(
             context.ways,
             checked_in_crossings=context.checked_in_crossings,
             require_agency_lts=context.require_agency_lts,
+            min_volume_rows=context.min_volume_rows,
         )
 
     def ensure_elevation() -> None:
