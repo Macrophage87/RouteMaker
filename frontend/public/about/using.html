@@ -1260,11 +1260,11 @@ and Other. Crash and Medical ask first and offer to call 911.</li>
 <li>In Send alert, Other, on the website where your browser supports it (it does not work in the Android app),
 <strong>Speak</strong> fills the box from what you say; check it, then tap Send. It needs a connection: your browser's maker (such as Google for Chrome or
 Apple for Safari) turns the recording into text.</li>
-<li>Share ride, Broadcast (Roam's too) and Group Ride links shared from the app are end-to-end
+<li>Share ride, Broadcast (Roam's too), Group Ride and Mass Ride links shared from the app are end-to-end
 encrypted. The link carries a secret after the #, which browsers never send to a server. Each phone
 locks its dot, its alerts and the leader's path with a key made from that secret (AES-256-GCM), so the
-server passes on sealed text it cannot read. A Mass Ride, an older link or a link without the secret
-works as before, with plain positions.</li>
+server passes on sealed text it cannot read. An older link or a link without the secret works as before,
+with plain positions. The full method is on the <a href="/about/architecture.html#apps">architecture page</a>.</li>
 <li>The server keeps dots, the leader's route and path, and alerts in memory only, for 2 minutes. A
 phone's random ride code and its alert counts are forgotten 2 minutes after it last checked in.</li>
 <li>Planning a Mass Ride: <a href="/about/mass-ride.html">Mass Ride</a>.</li>
