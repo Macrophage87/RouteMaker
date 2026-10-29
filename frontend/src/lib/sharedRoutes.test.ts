@@ -195,7 +195,7 @@ test("App: Share keeps the exact line and attaches the file Download GPX saves; 
   assert.match(share, /said = SHARED_INPUTS_ONLY;/);
   // The QR code's link: only once its exact line is kept; one not kept is tried again under a new id.
   const qr = app.slice(app.indexOf("const shareCardLink = async ()"), app.indexOf("\n  };\n", app.indexOf("const shareCardLink = async ()")));
-  assert.match(qr, /const \{ link, kept \} = sharedLinkNow\(\);\s*if \(!kept\) return null;\s*if \(await kept\) return link;\s*if \(sharedLine\.current\?\.kept === kept\) sharedLine\.current = null;\s*return null;/);
+  assert.match(qr, /const \{ link: withAny, kept \} = sharedLinkNow\(\);[\s\S]*?const link = withoutSecret\(withAny\);\s*if \(!kept\) return null;\s*if \(await kept\) return link;\s*if \(sharedLine\.current\?\.kept === kept\) sharedLine\.current = null;\s*return null;/);
   // Share route and Share ride (the owner, 2026-10-18: "There should be the option for sharing the route or sharing
   // a ride"), the one link.
   assert.equal((app.match(/onClick=\{\(\) => shareRoute\((false|true)\)\}/g) ?? []).length, 2);

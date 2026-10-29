@@ -553,6 +553,89 @@ export function shareStop(state: ShareState, now: number): ShareStop {
   return null;
 }
 
+/**
+ * A dot stays shown at a meetup and through regroup stops (Stephen 2026-10-29: groups meet at shared spots such as
+ * Dupont Circle, "you'd want to see all the dots to make sure sharing is working", and "an hour of dwell time is
+ * fine"), so nothing is held back at a ride's start or end. It is held back only once it has stayed within DWELL_M of
+ * one spot for over DWELL_PAUSE_MS, or while it is within HOME_PAUSE_M of the rider's saved Home; it is sent again as
+ * soon as it moves on.
+ */
+export const DWELL_PAUSE_MS = 3600_000;
+export const DWELL_M = 100;
+export const HOME_PAUSE_M = 150;
+
+/** Where a rider has stayed, and since when. */
+export interface Dwell {
+  at: LonLat;
+  since: number;
+}
+
+function metresApart(a: LonLat, b: LonLat): number {
+  const kx = M_PER_DEG * Math.cos((((a[1] + b[1]) / 2) * Math.PI) / 180);
+  return Math.hypot((a[0] - b[0]) * kx, (a[1] - b[1]) * M_PER_DEG);
+}
+
+/** The stay after this fix: the same one while within DWELL_M of where it began, else a new one from here. */
+export function nextDwell(before: Dwell | null, fix: LonLat, now: number): Dwell {
+  return before && metresApart(before.at, fix) <= DWELL_M ? before : { at: fix, since: now };
+}
+
+/** Whether the dot is held back: stayed in one spot for over an hour, or at the saved Home. */
+export function dotHeldBack(dwell: Dwell | null, fix: LonLat, now: number, home: LonLat | null): boolean {
+  if (home && metresApart(home, fix) <= HOME_PAUSE_M) return true;
+  return dwell !== null && now - dwell.since > DWELL_PAUSE_MS;
+}
+
+// ---- answers given in this tab ------------------------------------------------------------------------
+
+/**
+ * The rides answered Yes in this tab (sessionStorage). A Yes kept from another tab, or from before the browser was
+ * closed, is only a starting point for the question: opening the link again asks again before any dot is sent, so a
+ * link opened later never turns sharing back on by itself.
+ */
+export const ANSWERED_HERE_KEY = "routemaker.ride-share-here";
+
+function session(): Store | null {
+  try {
+    return typeof sessionStorage === "undefined" ? null : sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function answeredList(store: Store | null): string[] {
+  try {
+    const raw = JSON.parse(store?.getItem(ANSWERED_HERE_KEY) ?? "[]") as unknown;
+    return Array.isArray(raw) ? raw.filter((r): r is string => typeof r === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function answeredHere(ride: string, store: Store | null = session()): boolean {
+  return answeredList(store).includes(ride);
+}
+
+/** Forget every ride answered in this tab: a ride ended, so the next one asks again. */
+export function forgetAnsweredHere(store: Store | null = session()): void {
+  try {
+    store?.setItem(ANSWERED_HERE_KEY, "[]");
+  } catch {
+    // Nothing kept to forget.
+  }
+}
+
+/** Mark (or, with false, unmark) a ride as answered Yes in this tab. */
+export function markAnsweredHere(ride: string, yes: boolean, store: Store | null = session()): void {
+  const list = answeredList(store).filter((r) => r !== ride);
+  if (yes) list.push(ride);
+  try {
+    store?.setItem(ANSWERED_HERE_KEY, JSON.stringify(list.slice(-20)));
+  } catch {
+    // Not kept: asked again on the next opening.
+  }
+}
+
 export const SHARE_STOPPED_SAID: Record<Exclude<ShareStop, null>, string> = {
   off: t("You are no longer shown as a dot."),
   "left-route": t("You have been off the route for 10 minutes, so you are no longer shown as a dot."),
