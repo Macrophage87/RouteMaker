@@ -177,7 +177,7 @@ class TestPage:
             "the last seven kept",  # procrastinate.BACKUP_KEEP
             "leaves them within a week",  # procrastinate.BACKUP_MAX_AGE
             "with the next one that succeeds",  # retention.prune_backups keeps the newest
-            "kept on the server for at most a week",  # prune_snapshots
+            "kept on the server for less than a week",  # prune_snapshots
             "one a night, encrypted",  # procrastinate.perform_backup, through age
             "30 days unused, or after 90 days",  # revocation's idle and absolute lifetimes
             "Sign out everywhere",  # auth_views.logout_everywhere_view
@@ -234,14 +234,31 @@ class TestPage:
 
     def test_only_the_nightly_backups_are_said_to_be_unreadable_by_the_server(self) -> None:
         # The pre-update copies stay plain for an on-server rollback (pipeline.retention
-        # prune_snapshots), so the policy says so and holds them to the nightly dumps' age.
+        # prune_snapshots), and every sweep that drops them keeps them under a week.
         from config import procrastinate
 
         text = " ".join(privacy_policy.RIDE_CRYPTO)
-        assert "write a nightly backup but never read one" in text
-        assert "copies taken just before an update are not encrypted" in text
-        assert "for at most a week" in text
-        assert procrastinate.BACKUP_MAX_AGE <= timedelta(days=7)
+        assert "so the server can write a nightly backup but never read one." in text
+        assert (
+            "The copies taken just before RouteMaker is updated are not encrypted; they stay "
+            "on the server for less than a week."
+        ) in text
+        week = timedelta(days=7)
+        # The nightly sweep runs once a day, so a copy can wait up to a day past its age.
+        assert procrastinate.SNAPSHOT_MAX_AGE + timedelta(days=1) <= week
+        assert (
+            "prune_snapshots(settings.BACKUP_DIR, SNAPSHOT_MAX_AGE)"
+            in (ROOT / "src/config/procrastinate.py").read_text()
+        )
+        # receive-data.sh prunes at each copy it writes; auto-release.sh about every 10 minutes.
+        receive = (ROOT / "scripts/beta/receive-data.sh").read_text()
+        hours = int(re.search(r"^snapshot_max_age_hours=(\d+)$", receive, re.M).group(1))
+        assert timedelta(hours=hours) < week
+        release = (ROOT / "scripts/beta/auto-release.sh").read_text()
+        minutes = re.findall(r"-name 'pre-rollback-\*\.dump' \\\) -mmin \+(\d+)", release)
+        assert minutes and all(
+            timedelta(minutes=int(m)) + timedelta(hours=1) < week for m in minutes
+        )
 
     def test_the_encryption_details_are_the_code_s(self) -> None:
         from core import route_posts

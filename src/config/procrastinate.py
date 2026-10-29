@@ -162,8 +162,13 @@ BACKUP_KEEP = 7
 # for as long as the failures lasted. Six and a half days rather than seven so that a run
 # that starts late one night and on time a week later still drops the week-old dump. The
 # newest dump is kept whatever its age (pipeline.retention.prune_backups), and the plain
-# pre-update dumps in the same folder are held to the same age (prune_snapshots).
+# pre-update dumps in the same folder to SNAPSHOT_MAX_AGE (prune_snapshots).
 BACKUP_MAX_AGE = timedelta(days=6, hours=12)
+# The plain pre-update dumps in the same folder, at the nightly sweep. They are taken at any
+# hour, not at the dump's 07:00, and are otherwise pruned only when the next one is written, so
+# the sweep, once a day, drops them a day early: one that turns six days old just after a sweep
+# goes at the next, under seven days old, as the privacy page promises.
+SNAPSHOT_MAX_AGE = timedelta(days=6)
 
 
 class RebuildAbandoned(RuntimeError):
@@ -875,7 +880,7 @@ def nightly_backup(timestamp: int) -> None:
             pruned_dumps = retention.prune_backups(
                 settings.BACKUP_DIR, keep=BACKUP_KEEP, max_age=BACKUP_MAX_AGE
             )
-            pruned_snapshots = retention.prune_snapshots(settings.BACKUP_DIR, BACKUP_MAX_AGE)
+            pruned_snapshots = retention.prune_snapshots(settings.BACKUP_DIR, SNAPSHOT_MAX_AGE)
             pruned_runs = prune_run_rows()
             pruned_jobs = prune_job_rows()
             # Rows that are otherwise dropped only when someone shares, opens or sends

@@ -131,12 +131,12 @@ RIDE_CRYPTO = [
     "the internet address a request comes from, as for any page. It cannot read a dot, an alert "
     "or the leader's live path, except on a ride whose key it made or was given and keeps: a "
     "ride post's Group or Mass Ride link, and a ride link an AI assistant app planned or opened "
-    "(kept with that app's draft). A Share ride or Broadcast link is also a shared route: its "
+    "(kept with that app's draft). A Share ride or Share live link is also a shared route: its "
     "planned line is kept on the server like any shared link (see Shared links).",
     "Nightly database backups are encrypted with age to the owner's X25519 public key; the "
     "matching private key is kept on the owner's computer, not on the server, so the server can "
-    "write a nightly backup but never read one. The short-lived copies taken just before an "
-    "update are not encrypted: they stay on the server, for at most a week.",
+    "write a nightly backup but never read one. The copies taken just before RouteMaker is "
+    "updated are not encrypted; they stay on the server for less than a week.",
     "RouteMaker is open source (MIT license), so anyone can check this: the ride encryption is "
     "frontend/src/lib/rideSeal.ts in github.com/Macrophage87/RouteMaker.",
 ]
@@ -200,7 +200,7 @@ SECTIONS: list[tuple[str, str]] = [
                 "your phone makes a new random code for each ride.",
                 "An alert you send keeps your spot, encrypted, for 2 minutes, or until you clear "
                 "it.",
-                "Every ride link carries a key: Share ride, Broadcast (in Roam too) and every "
+                "Every ride link carries a key: Share ride, Share live (in Roam too) and every "
                 "Group or Mass Ride link. Your phone encrypts your dot, your alerts and the "
                 "leader’s path before sending them, with the key only the link carries (in the "
                 "part after #, which browsers never send to a server). The server holds them "
@@ -212,7 +212,7 @@ SECTIONS: list[tuple[str, str]] = [
                 "read the post can see the dots and alerts of that ride. The server keeps that "
                 "key with the post, and the post keeps it when its route changes; a post changed "
                 "between Group Ride and Mass Ride gets a new one.",
-                "Share ride and Broadcast make you the ride leader, shown as a dot from the start "
+                "Share ride and Share live make you the ride leader, shown as a dot from the start "
                 "of your ride. While you ride a shared ride, you and anyone on it who chooses to "
                 "be shown are shown on or off the route, so riders who get separated can find "
                 "each other. When the ride ends, so does your dot, and the next ride asks again "
@@ -446,9 +446,9 @@ SECTIONS: list[tuple[str, str]] = [
                 "Shared links: as above.",
                 "Database backups: one a night, encrypted, the last seven kept, so deleted data "
                 "leaves them within a week, or, if backups fail for longer, with the next one "
-                "that succeeds. Copies taken just before an update are not encrypted, and are "
-                "kept on the server for at most a week. Sign-ins, request limits, the Discord "
-                "role list and Garmin and Wahoo connections are left out of them.",
+                "that succeeds. Copies taken just before RouteMaker is updated are not encrypted, "
+                "and are kept on the server for less than a week. Sign-ins, request limits, the "
+                "Discord role list and Garmin and Wahoo connections are left out of them.",
                 "Suggestions already decided stay as the map’s history, with nothing linking "
                 "them to you once your account is deleted.",
                 "A note that an account was deleted, and when, under an account number.",
