@@ -1501,8 +1501,8 @@ the same whatever the style decides):
     762 mi before named ways inside lots were kept).
 
   Alleys (`service=alley`, `map_class = 'alley'`) are in the z14 tiles only,
-  marked `alley`, and the map draws them from `ALLEY_MIN_ZOOM` (16) and faint
-  ("Alley cut throughs should only be used if the roads are very problematic
+  marked `alley`, and the map draws them from `ALLEY_MIN_ZOOM` (16) and faint,
+  its layers' filters leaving them out below it (`stressStyle.js` `alleyDrawn`) ("Alley cut throughs should only be used if the roads are very problematic
   nearby. Cut down on showing them, and only use them if nessicary. Because
   people don't think of these as intersections, alley dodging is dangerous.",
   100): 5,263 ways, 390 mi on the box extract.

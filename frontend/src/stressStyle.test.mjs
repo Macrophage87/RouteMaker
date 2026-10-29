@@ -57,9 +57,9 @@ const FURTH_TIERS = STRESS_TIERS.filter((t) => t.tier <= 4);
 const DEFAULT_TIERS = tiersFor(DEFAULT_PALETTE);
 
 /** Whether `layer` draws a feature with `properties`, as MapLibre decides it. */
-function draws(layer, properties) {
+function draws(layer, properties, zoom = 12) {
   const { filter } = spec.featureFilter(layer.filter, `layers[${layer.id}].filter`);
-  return filter({ zoom: 12 }, { type: 2, properties, geometry: [] });
+  return filter({ zoom }, { type: 2, properties, geometry: [] });
 }
 
 /** A paint expression's value for a feature with `properties`, at `zoom`. */
@@ -479,7 +479,7 @@ test("stressFilters covers every overlay layer, and a style with them validates"
 function drawnAtZoom(properties, zoom) {
   const out = {};
   for (const layer of stressOverlayLayers("stress")) {
-    if (!draws(layer, properties)) continue;
+    if (!draws(layer, properties, zoom)) continue;
     const opacity = paintValue(layer, "line-opacity", properties, zoom);
     if (opacity > 0) out[layer.id] = { opacity, width: paintValue(layer, "line-width", properties, zoom) };
   }
@@ -614,6 +614,11 @@ test("an alley is not drawn below z16 and is faint from it; a tier-5 road keeps 
     const alley = { tier, alley: true };
     for (const zoom of [14, 15]) assert.deepEqual(drawnAtZoom(alley, zoom), {}, `LTS ${tier} alley at z${zoom}`);
     for (const zoom of [16, 18]) assert.equal(drawnAtZoom(alley, zoom)[`stress-${tier}`].opacity, FAINT.opacity);
+    // Below z16 no layer takes an alley at all, so the tile worker does not lay it out for nothing (fe-perf-5).
+    for (const zoom of [14, 15]) assert.deepEqual(stressOverlayLayers("stress").filter((layer) => draws(layer, alley, zoom)).map((layer) => layer.id), [], `z${zoom}`);
+    assert.ok(stressOverlayLayers("stress").some((layer) => draws(layer, alley, ALLEY_MIN_ZOOM)));
+    // A street is drawn as before at every zoom.
+    for (const zoom of [14, 15, 16]) assert.ok(draws(stressLayers().find((l) => l.id === `stress-${tier}`), { tier }, zoom));
   }
   // Not an alley in the source: a tier-5 road the transform marks service=alley
   // in Valhalla's extract reaches the tiles as a road.
