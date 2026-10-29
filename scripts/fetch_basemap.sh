@@ -170,6 +170,7 @@ if [ -n "$need_region" ] && [ -z "$explicit_build" ] && ! available "$PROTOMAPS_
 	installed=$(cat "$target/.region.source" 2>/dev/null || true)
 	if [ -e "$target/region.pmtiles" ] && [ "${installed##* }" = "bbox=$BBOX" ]; then
 		remind "the pinned build $PROTOMAPS_BUILD is gone; keeping the installed region ($installed)"
+		REGION_STAMP="$installed"
 		need_region=""
 	else
 		n=1

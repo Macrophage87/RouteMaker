@@ -414,6 +414,7 @@ def test_an_installed_region_is_kept_when_the_pin_is_gone(host) -> None:
     assert "go-pmtiles" not in host.curl_calls(), host.curl_calls()
     assert host.snapshot() == before
     assert "keeping the installed region" in again.stderr
+    assert f"is current: build={day(2)} bbox={BBOX}" in again.stdout
 
 
 def test_a_build_named_on_the_command_line_does_not_fall_back(host) -> None:
