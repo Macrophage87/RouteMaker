@@ -6,9 +6,16 @@ DC's Text to 311 (32311) answers every message, even a plain NEW, with only "Wel
 (Stephen's screenshot, 2026-10-20), so the text message it was sent as no longer reports
 anything. A problem is now logged instead: from a ride's 311 button, or from the road panel's
 "Log for 311" (a right-click or a long press on the map). Each entry keeps what it is, where (the
-road's name and the GPS position), when, an optional note, and whether the rider has reported it.
+road's name and the GPS position), the day, an optional note, and whether the rider has reported it.
 The log's list says which 311 website takes it (frontend lib/report311Log.ts holds the sites),
 copies the report and opens the site.
+
+The day, never the time of day (Stephen, 2026-10-29: the log keeps the date, not the time of day;
+the exact spot stays, because crews need it to find the pothole): an entry's `at` (logged),
+`changed` and `reported` are days in Washington's time ("2026-10-20"), and its id is random, with
+no time in it. `dated` cuts what an older page sends (full times, and ids that began with the time
+they were made) to that, and migration 0051 did the same to the logs already kept. Two changes to
+one entry on the same day are told apart by its `rev`, a count of its changes.
 
 Two pieces live here:
 
@@ -28,9 +35,10 @@ from __future__ import annotations
 import json
 import math
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from functools import cache
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from . import geocode
 
@@ -39,6 +47,15 @@ ID_MAX = 40
 PLACE_MAX = 200
 NOTE_MAX = 500
 LOG_MAX_BYTES = 160 * 1024
+# The most changes one entry counts (`rev`).
+REV_MAX = 1_000_000
+# The log's days are Washington's (frontend lib/report311Log.ts dayOf).
+DAY_ZONE = ZoneInfo("America/New_York")
+
+# What an entry keeps (lib/report311Log.ts LogEntry).
+FIELDS = frozenset(
+    ("id", "kind", "lat", "lon", "place", "note", "at", "changed", "rev", "where", "reported")
+)
 
 KINDS = ("pothole", "tree", "bikeLane", "obstruction", "streetlight", "other")
 
@@ -91,6 +108,10 @@ JURISDICTION_IDS = frozenset(
 )
 
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
+_DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# An id as the page made them before 2026-10-29: the time it was made (milliseconds, base 36),
+# then a random part. Cut to the random part (lib/report311Log.ts the same).
+_TIMED_ID = re.compile(r"^[0-9a-z]{8}-([0-9a-z]{1,8})$")
 
 
 def _finite(value) -> bool:
@@ -110,8 +131,7 @@ def _time(value) -> bool:
 def _entry_problem(entry) -> str | None:
     if not isinstance(entry, dict):
         return "Each entry must be an object."
-    known = {"id", "kind", "lat", "lon", "place", "note", "at", "changed", "where", "reported"}
-    if set(entry) - known:
+    if set(entry) - FIELDS:
         return "An entry has a field this log does not keep."
     if not isinstance(entry.get("id"), str) or not _ID.match(entry["id"]):
         return "An entry's id is not in the expected form."
@@ -131,6 +151,9 @@ def _entry_problem(entry) -> str | None:
     changed = entry.get("changed")
     if changed is not None and not _time(changed):
         return "An entry's changed time is not in the expected form."
+    rev = entry.get("rev", 0)
+    if not isinstance(rev, int) or isinstance(rev, bool) or not 0 <= rev <= REV_MAX:
+        return "An entry's count of changes is not a whole number in range."
     where = entry.get("where")
     if where is not None and where not in JURISDICTION_IDS:
         return "An entry's 311 site is not one this log knows."
@@ -169,8 +192,34 @@ def _when(value: str) -> datetime:
     return found if found.tzinfo is not None else found.replace(tzinfo=UTC)
 
 
-def _changed(entry: dict) -> datetime:
-    return _when(entry.get("changed") or entry["at"])
+def today(now: datetime | None = None) -> date:
+    """Today in Washington, the log's day."""
+    return (now or datetime.now(UTC)).astimezone(DAY_ZONE).date()
+
+
+def day_of(value: str) -> str:
+    """The day of an entry's time, in Washington ("2026-10-20"); a day stays as it is."""
+    if _DAY.match(value):
+        return value
+    return _when(value).astimezone(DAY_ZONE).date().isoformat()
+
+
+def dated(entry: dict) -> dict:
+    """An entry as the log keeps it: its times cut to their days, and an id that began with the
+    time it was made cut to its random part."""
+    out = dict(entry)
+    for key in ("at", "changed", "reported"):
+        if isinstance(out.get(key), str):
+            out[key] = day_of(out[key])
+    timed = _TIMED_ID.match(out["id"])
+    if timed:
+        out["id"] = timed.group(1)
+    return out
+
+
+def _changed(entry: dict) -> tuple[datetime, int]:
+    # The day it last changed, then, within a day, how many changes it has had.
+    return _when(entry.get("changed") or entry["at"]), entry.get("rev") or 0
 
 
 def cap_log(entries: list[dict]) -> list[dict]:
@@ -191,7 +240,14 @@ def cap_log(entries: list[dict]) -> list[dict]:
 def merge_logs(stored: list[dict], incoming: list[dict]) -> list[dict]:
     """The account's log and a device's, merged by entry: one in both keeps whichever changed
     last (a tie keeps the device's). Nothing is deleted from a log, only archived, so an entry
-    missing from a device's copy is one it has not seen yet, and it stays. Newest first."""
+    missing from a device's copy is one it has not seen yet, and it stays. Both are `dated`
+    first, so no copy brings a time of day back. Newest day first; within a day, in the device's
+    order (newest first), then the account's."""
+    stored = [dated(e) for e in stored]
+    incoming = [dated(e) for e in incoming]
+    rank: dict[str, int] = {}
+    for entry in [*incoming, *stored]:
+        rank.setdefault(entry["id"], len(rank))
     by_id: dict[str, dict] = {}
     for entry in stored:
         by_id[entry["id"]] = entry
@@ -202,7 +258,7 @@ def merge_logs(stored: list[dict], incoming: list[dict]) -> list[dict]:
         if had is not None and won.get("where") is None:
             won = {**won, "where": (had if won is entry else entry).get("where")}
         by_id[entry["id"]] = won
-    merged = sorted(by_id.values(), key=lambda e: _when(e["at"]), reverse=True)
+    merged = sorted(by_id.values(), key=lambda e: (-_when(e["at"]).toordinal(), rank[e["id"]]))
     return cap_log(merged)
 
 

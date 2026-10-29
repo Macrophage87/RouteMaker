@@ -8201,6 +8201,19 @@ spot. Until the build host fills it the file is empty and every place reads as b
 `trailMiles.test.ts`, the trail cases in `report311.test.ts` and `navigate.test.ts`, and
 `tests/test_build_trail_miles.py` (which builds from a small made-up extract) check it.
 
+**The 311 log keeps the day, not the time of day (Stephen, 2026-10-29).** Since 2026-10-20 a 311 pick
+is logged (`lib/report311Log.ts`, `core/report_log.py`) rather than texted. Each entry keeps the exact
+spot, because crews need it to find the pothole, and its days: `at` (logged), `changed` and
+`reported` are dates in Washington's time ("2026-10-20", `today`, `dayOf`), never a time, and a new
+id is 16 random hex characters (the ids before began with the time they were made). The checklist
+and the copied report say the day ("Pothole, Oct 20"; "Seen Oct 20."). Two changes to one entry on
+one day are told apart by `rev`, a count of its changes, which a merge compares after the day. An
+older copy is cut to days wherever it is read: on the device as the page opens (both stored copies are
+written back), on the server at each save (`dated`, in `merge_logs`), and the accounts' logs already
+kept by migration 0051, which also makes the row's `updated_at` a date. What goes to DC 311 is
+unchanged in form: the problem's code, the exact spot and the report's words, which now say the day.
+`tests/test_report_log.py` and `report311Log.test.ts` check it.
+
 **Checks (N7).** `corridor.test.ts`, `report311.test.ts`, the trail cases in `navigate.test.ts` and
 `loadTile` in `stressProtocol.test.ts`; the browser suite's Ride mode section checks that the stress
 tiles along the mocked route are kept at z12-14, that one answers the tile loader at once with the

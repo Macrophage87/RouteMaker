@@ -22,6 +22,7 @@ import {
   mergeLogs,
   newEntry,
   openGroups,
+  whenWords,
   panelLoggedSaid,
   panelPlace,
   parseLog,
@@ -54,24 +55,80 @@ function entry(over: Partial<LogEntry> = {}): LogEntry {
   return { ...newEntry("pothole", DC_SPOT, NOON), ...over };
 }
 
-test("an entry: the problem, the place words, the GPS position to 5 places and the time; DC known at once, elsewhere looked up", () => {
+test("an entry: the problem, the place words, the GPS position to 5 places and the day; DC known at once, elsewhere looked up", () => {
   const dc = newEntry("pothole", DC_SPOT, NOON);
   assert.equal(dc.where, "dc");
   assert.equal(dc.lat, 38.9126);
   assert.equal(dc.lon, -77.00709);
-  assert.equal(dc.at, "2026-10-20T16:00:00.000Z");
+  assert.equal(dc.at, "2026-10-20");
   assert.equal(dc.reported, null);
   assert.equal(newEntry("tree", MOCO_SPOT, NOON).where, null, "outside DC: waits for the server's lookup");
   assert.notEqual(newEntry("pothole", DC_SPOT, NOON).id, dc.id);
 });
 
-test("the report to paste: what, where, the area, GPS and when (Eastern time), then the note", () => {
-  assert.equal(entryText(entry()), "Pothole. Location: on R Street Northeast, Washington, DC. GPS 38.91260, -77.00709. Seen Oct 20, 12:00 PM.");
+test("the report to paste: what, where, the area, GPS and the day, then the note", () => {
+  assert.equal(entryText(entry()), "Pothole. Location: on R Street Northeast, Washington, DC. GPS 38.91260, -77.00709. Seen Oct 20.");
   assert.equal(
     entryText(entry({ kind: "tree", where: "moco", place: MOCO_SPOT.words, lat: 38.9851, lon: -77.0957, note: "  across the  trail " })),
-    "Downed tree. Location: on Capital Crescent Trail at about mile 3.2, Montgomery County. GPS 38.98510, -77.09570. Seen Oct 20, 12:00 PM. across the trail.",
+    "Downed tree. Location: on Capital Crescent Trail at about mile 3.2, Montgomery County. GPS 38.98510, -77.09570. Seen Oct 20. across the trail.",
   );
-  assert.equal(entryText(entry({ place: null, where: "va" })), "Pothole. Location: GPS 38.91260, -77.00709. Seen Oct 20, 12:00 PM.", "a state's roads add no area name");
+  assert.equal(entryText(entry({ place: null, where: "va" })), "Pothole. Location: GPS 38.91260, -77.00709. Seen Oct 20.", "a state's roads add no area name");
+});
+
+test("the log keeps the day and the exact spot, never the time of day: new entries, check-offs and the ids", () => {
+  // 10:30 PM in Washington is the next day in UTC: the entry's day is Washington's.
+  const late = new Date("2026-10-21T02:30:00Z");
+  const made = newEntry("pothole", DC_SPOT, late);
+  assert.equal(made.at, "2026-10-20");
+  assert.equal(made.changed, "2026-10-20");
+  assert.equal(made.rev, 0);
+  assert.match(made.id, /^[0-9a-f]{16}$/, "a random id, with no time in it");
+  assert.ok(!made.id.includes(late.getTime().toString(36)));
+  assert.deepEqual([made.lat, made.lon], [38.9126, -77.00709], "the spot stays exact: crews need it");
+  const log = new Report311LogStore(memory(), "https://x", fakeFetch(() => ({ status: 404 })).fn);
+  const added = log.add("pothole", DC_SPOT, late);
+  log.setReported(added.id, true, new Date("2026-10-21T03:15:00Z"));
+  const [kept] = log.list();
+  assert.equal(kept.reported, "2026-10-20");
+  assert.equal(kept.changed, "2026-10-20");
+  assert.equal(kept.rev, 1);
+  assert.ok(!/T|:/.test(JSON.stringify([kept.at, kept.changed, kept.reported])), "no time anywhere in it");
+  // What the checklist shows: the day.
+  const view = readFileSync(new URL("../Report311Log.tsx", import.meta.url), "utf8");
+  assert.match(view, /return `\$\{kindShown\(entry\.kind\)\}, \$\{whenWords\(entry\.at\)\}`;/);
+  assert.equal(whenWords(kept.at), "Oct 20");
+  assert.equal(whenWords("2026-10-21T02:30:00.000Z"), "Oct 20", "a time kept before is said as its Washington day");
+});
+
+test("a copy kept on this device before is cut to days as the page opens, ids too, and the spot stays", () => {
+  const store = memory();
+  const before = { ...entry(), id: "mh2k3l4p-1a2b3c4d", at: "2026-10-21T02:30:00.000Z", changed: "2026-10-21T02:31:00.000Z", reported: "2026-10-21T03:00:00.000Z" } as Record<string, unknown>;
+  delete before.rev;
+  store.data.set(LOG_KEY, JSON.stringify([before]));
+  store.data.set(ACCOUNT_LOG_KEY, JSON.stringify({ owner: "owner-a", entries: [before], waiting: true }));
+  const log = new Report311LogStore(store, "https://x", fakeFetch(() => ({ status: 404 })).fn);
+  const [read] = log.list();
+  assert.deepEqual([read.id, read.at, read.changed, read.reported, read.rev], ["1a2b3c4d", "2026-10-20", "2026-10-20", "2026-10-20", 0]);
+  assert.deepEqual([read.lat, read.lon], [38.9126, -77.00709]);
+  // Written back at once, both copies: no time is left on the device.
+  for (const key of [LOG_KEY, ACCOUNT_LOG_KEY]) {
+    const raw = store.data.get(key) ?? "";
+    assert.ok(!raw.includes("T0") && !raw.includes("mh2k3l4p"), key);
+  }
+  assert.equal(JSON.parse(store.data.get(ACCOUNT_LOG_KEY) ?? "{}").waiting, true, "a waiting copy still waits");
+});
+
+test("two changes on one day: the copy with more changes wins the merge", () => {
+  const logged = entry({ id: "x" });
+  const checked = entry({ id: "x", reported: "2026-10-20", rev: 1 });
+  assert.equal(mergeLogs([logged], [checked])[0].reported, "2026-10-20");
+  assert.equal(mergeLogs([checked], [logged])[0].reported, "2026-10-20", "an older copy sent later does not undo it");
+});
+
+test("stale is counted in days, from the day logged to today in Washington", () => {
+  const logged = entry({ at: "2026-10-20" });
+  assert.ok(!isStale(logged, new Date("2026-11-20T03:00:00Z")), "still Nov 19 in Washington: 30 days");
+  assert.ok(isStale(logged, new Date("2026-11-21T05:00:00Z")), "Nov 21: 32 days");
 });
 
 test("the checklist: open entries by website, newest first; not looked up last; checked ones archived", () => {
@@ -177,7 +234,7 @@ test("the store: logged, noted and checked off on the device; signed in, moved t
   assert.deepEqual(JSON.parse(String(net.calls[0].init?.body)), { lat: 38.9851, lon: -77.0957 });
   log.setNote(added.id, "across the trail", new Date("2026-10-20T16:01:00Z"));
   log.setReported(added.id, true, new Date("2026-10-20T16:02:00Z"));
-  assert.equal(log.list()[0].reported, "2026-10-20T16:02:00.000Z");
+  assert.equal(log.list()[0].reported, "2026-10-20");
   assert.equal(JSON.parse(store.data.get(LOG_KEY) ?? "[]")[0].note, "across the trail");
   assert.equal(server.posts, 0, "signed out: nothing is sent");
   await log.signIn();
@@ -277,13 +334,13 @@ test("no signal: the lookup waits, the entry stays under Website not looked up y
 
 test("a website looked up is not a change: it never outranks a check-off from another device, and the merge keeps it", async () => {
   const store = memory();
-  const open = entry({ id: "p", where: null, ...MOCO_AT, changed: "2026-10-20T16:00:00.000Z" });
+  const open = entry({ id: "p", where: null, ...MOCO_AT, changed: "2026-10-20" });
   store.data.set(LOG_KEY, JSON.stringify([open]));
   const log = new Report311LogStore(store, "https://x", fakeFetch(() => ({ status: 200, body: { where: "moco" } })).fn);
   await log.lookUp();
   assert.equal(log.list()[0].where, "moco");
-  assert.equal(log.list()[0].changed, open.changed, "its time is kept");
-  const checked = { ...open, reported: "2026-10-20T17:00:00.000Z", changed: "2026-10-20T17:00:00.000Z" };
+  assert.deepEqual([log.list()[0].changed, log.list()[0].rev], [open.changed, open.rev], "its day and count are kept");
+  const checked = { ...open, reported: "2026-10-20", changed: "2026-10-20", rev: open.rev + 1 };
   const merged = mergeLogs([checked], log.list());
   assert.equal(merged[0].reported, checked.reported, "the check-off stands");
   assert.equal(merged[0].where, "moco", "and the website is kept");

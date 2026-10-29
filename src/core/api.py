@@ -6329,7 +6329,7 @@ def _report_log_owner(user) -> str:
 def _report_log_out(row, user) -> dict:
     return {
         "entries": row.entries if row is not None else None,
-        "updated_at": row.updated_at.isoformat() if row is not None else None,
+        "updated_at": row.updated_at.isoformat() if row is not None and row.updated_at else None,
         "owner": _report_log_owner(user),
     }
 
@@ -6380,6 +6380,7 @@ def report311_log_save(request):
         Report311Log.objects.get_or_create(user=request.user, defaults={"entries": []})
         row = Report311Log.objects.select_for_update().get(user=request.user)
         row.entries = report_log.merge_logs(row.entries or [], entries)
+        row.updated_at = report_log.today()
         row.save(update_fields=["entries", "updated_at"])
     return _private(JsonResponse(_report_log_out(row, request.user)))
 

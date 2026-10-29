@@ -279,8 +279,9 @@ SECTIONS: list[tuple[str, str]] = [
                 "by a one-way code made from your internet address and the day, deleted after 24 "
                 "hours. E-mail addresses and phone numbers are taken out of what you type.",
                 "The 311 log keeps each problem you log: what it is, the road’s name, its GPS "
-                "position, the time and your note. It stays on your device, and with your account "
-                "when signed in. RouteMaker shows which city or county 311 website takes it; you "
+                "position, the day (not the time) and your note. It stays on your device, and with "
+                "your account when signed in. RouteMaker shows which city or county 311 website "
+                "takes it; you "
                 "send it yourself.",
                 "In Washington, DC, where the site has DC 311’s key and you are signed in, a "
                 "problem logged in Ride mode is also sent to DC 311 by the server: the problem, "
