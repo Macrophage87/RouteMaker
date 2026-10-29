@@ -2241,7 +2241,9 @@ metro-typical.json from each line's page (`https://www.wmata.com/ridertools/line
 - The fetch writes one zip per system in `src/core/transitdata/systems.json`, plus a README with
   each zip's URL, size, sha256 and time. The key is read from the environment variable only and is
   never printed. `--only marc` fetches one system. The systems: WMATA Metro and Metrobus (key),
-  MARC, Light RailLink, Metro SubwayLink and VRE (`--only vre`; no key).
+  MARC, Light RailLink, Metro SubwayLink and VRE (`--only vre`; no key). A failed download says its
+  HTTP status: a 401 or 403 from WMATA means the key is wrong or expired, and is not retried; a
+  5xx or a network error is retried 3 times.
 - The build prints a report: stops and patterns per system, any Metro platform it could not match
   to the map's stations, and any system whose zip is missing (left out, not fatal).
 - The zips and the built file are the agencies' data. Keep them on the host and never commit them
@@ -2253,15 +2255,17 @@ metro-typical.json from each line's page (`https://www.wmata.com/ridertools/line
 Metro's typical timetable alone, which needs no refresh, with the note "Only Metro is planned: the
 other timetables installed cover ... to ...". Refresh as well when an agency publishes a new
 timetable, for example a MARC or VRE schedule change or a Metro shutdown. Planned closures reach the plans
-only through the published GTFS. With fewer than 7 days left, the api logs "the transit schedule
-runs out ..." once a day and `manage.py check_operations` alerts ("transit: the schedule runs out
-on ..."; exit 1). An unreadable file alerts too; no file installed does not.
+only through the published GTFS. With fewer than 21 days left, the api logs "the transit schedule
+runs out ..." once a day, `manage.py check_operations` alerts ("transit: the schedule runs out
+on ..."; exit 1) and the admin operations page shows the same line under "Transit schedule". An
+unreadable file alerts too; no file installed does not. Three weeks leaves room for a refresh by
+hand when the end falls on a holiday week.
 
 **A feed that ends inside the window.** The file records each system's own last day of service
 (`last_day`), and the build warns "<system>: its timetable ends ..., before the window's last
 day". After that day the system is left out of plans and of the map's closed stations (it is not
 covered, not closed), with the note "MARC is not planned for this date: its installed timetable
-ends ..."; Metro's WMATA GTFS gives way to its typical timetable. The 7-day alert counts down to
+ends ..."; Metro's WMATA GTFS gives way to its typical timetable. The 21-day alert counts down to
 the earliest such end ("transit: MARC's timetable runs out on ..."): fetch a newer feed and build
 again.
 
