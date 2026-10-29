@@ -24,10 +24,17 @@ costs one page rather than a recurring one.
 
 from __future__ import annotations
 
+import json
+import os
 import sys
+import urllib.request
+from collections.abc import Callable, Iterable
+from datetime import datetime, timedelta
+from pathlib import Path
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
+from django.utils import timezone
 
 from core import transit
 from core.management.commands.unwedge_job import STALLED_WORKER_TIMEOUT_S
@@ -48,6 +55,62 @@ from core.runs import (
 # that treats one kind of breakage as success.
 EXIT_OK = 0
 EXIT_ALERT = 1
+
+# How long after a swap the routers may still be on the old build before it is an
+# alert: valhalla_service does not reload tiles, so they serve the previous build
+# until something restarts them, and an hour leaves the deploy host room to do it.
+ROUTER_RESTART_GRACE = timedelta(hours=1)
+# A router that does not answer in this long is left to the other checks: this
+# one is about a router that answers from the wrong build.
+ROUTER_STATUS_TIMEOUT_S = 3.0
+
+
+def router_tileset_modified(url: str) -> int | None:
+    """The `tileset_last_modified` a Valhalla router reports on `/status`, or None
+    when it does not answer or does not say."""
+    try:
+        with urllib.request.urlopen(  # noqa: S310 - a configured router URL
+            url.rstrip("/") + "/status", timeout=ROUTER_STATUS_TIMEOUT_S
+        ) as response:
+            value = json.loads(response.read()).get("tileset_last_modified")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return int(value) if isinstance(value, int | float) and value > 0 else None
+
+
+def stale_routers(
+    rows: Iterable,
+    tiles_dir: Path,
+    now: datetime,
+    status: Callable[[str], int | None] = router_tileset_modified,
+) -> list[str]:
+    """One line per router still serving a build other than its promoted one.
+
+    A router loads `<variant>/current/tiles.tar` when it starts and reports that
+    file's modification time; after a swap or a rollback `current` names another
+    file, so a router that was not restarted reports a time that is not the
+    promoted file's. Rows changed inside the grace are skipped, and so is a router
+    that does not answer, and a variant whose tiles this container cannot see.
+    """
+    lines = []
+    for row in rows:
+        if not row.build_id or now - row.updated_at < ROUTER_RESTART_GRACE:
+            continue
+        try:
+            promoted = int(
+                os.stat(Path(tiles_dir) / row.variant / "current" / "tiles.tar").st_mtime
+            )
+        except OSError:
+            continue
+        loaded = status(row.url)
+        if loaded is None or abs(loaded - promoted) <= 1:
+            continue
+        lines.append(
+            f"router: {row.variant} is not serving build {row.build_id}, promoted at "
+            f"{row.updated_at:%Y-%m-%d %H:%M} UTC; restart it (docs/OPERATIONS.md, "
+            '"After a rebuild: restart the routers")'
+        )
+    return lines
 
 
 class Command(BaseCommand):
@@ -80,6 +143,13 @@ class Command(BaseCommand):
         headroom = disk_headroom()
         # The transit ride types' timetables, when installed: under a week left is an alert.
         transit_alert = transit.schedule_alert(settings.TRANSIT_SCHEDULE_PATH)
+        # Routers left on last week's graph after a swap: nothing restarts them on
+        # its own, and nothing else notices until a new closure is not routed.
+        from core.models import ValhallaUpstream
+
+        routers = stale_routers(
+            ValhallaUpstream.objects.all(), Path(settings.TILES_DIR), timezone.now()
+        )
 
         for entry in stale:
             last = entry["last_success_at"] or "never"
@@ -139,6 +209,8 @@ class Command(BaseCommand):
             )
         if transit_alert is not None:
             self.stdout.write(transit_alert)
+        for line in routers:
+            self.stdout.write(line)
         if len(jobs) < failed_total:
             self.stdout.write(
                 f"(listing the {len(jobs)} newest of {failed_total} failed jobs; "
@@ -151,6 +223,7 @@ class Command(BaseCommand):
             and not headroom["alert"]
             and bad_budget is None
             and transit_alert is None
+            and not routers
         ):
             # The free-space clause names the path and the figure rather than
             # asserting room in the abstract. "room for a rebuild" was printed
@@ -176,6 +249,7 @@ class Command(BaseCommand):
         )
         invalid = ", 1 setting(s) invalid" if bad_budget is not None else ""
         invalid += ", 1 transit schedule to rebuild" if transit_alert is not None else ""
+        invalid += f", {len(routers)} router(s) on an old build" if routers else ""
         self.stdout.write(
             f"{len(stale)} stale task(s), {len(wedged)} wedged job(s), "
             f"{failed_total} failed job(s), {volumes}{invalid}"
