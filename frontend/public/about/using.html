@@ -1263,8 +1263,9 @@ Apple for Safari) turns the recording into text.</li>
 <li>Share ride, Broadcast (Roam's too), Group Ride and Mass Ride links shared from the app are end-to-end
 encrypted. The link carries a secret after the #, which browsers never send to a server. Each phone
 locks its dot, its alerts and the leader's path with a key made from that secret (AES-256-GCM), so the
-server passes on sealed text it cannot read. An older link or a link without the secret works as before,
-with plain positions. The full method is on the <a href="/about/architecture.html#apps">architecture page</a>.</li>
+server passes on sealed text it cannot read, and it refuses a position that is not sealed. Every ride link
+carries a secret, a Featured route post's Group or Mass Ride link and a link an AI assistant planned included;
+the server keeps the secret for those two, so it can read those rides. The full method is on the <a href="/about/architecture.html#apps">architecture page</a>.</li>
 <li>The server keeps dots, the leader's route and path, and alerts in memory only, for 2 minutes. A
 phone's random ride code and its alert counts are forgotten 2 minutes after it last checked in.</li>
 <li>Planning a Mass Ride: <a href="/about/mass-ride.html">Mass Ride</a>.</li>
