@@ -416,10 +416,6 @@ NOT_DELIVERED_TO_THE_API: dict[str, tuple[str, ...] | None] = {
     # `${DATA_ROOT}` in every volume mapping is the *host* path, read from the
     # deployment's environment file by compose itself, not by a container.
     "DATA_ROOT": ("rebuild", "worker"),
-    # The nightly dump's age recipients file (config/procrastinate.py). Its default,
-    # DATA_ROOT/backups/age-recipients.txt, is inside the worker's backups mount, so
-    # no service overrides it; the variable is there for a test or a hand-run dump.
-    "BACKUP_AGE_RECIPIENTS": None,
     # The rebuild's disk gate, read by the rebuild alone.
     "REBUILD_MIN_FREE_BYTES": ("rebuild",),
     # Threads per valhalla_build_tiles run, read at BUILD_TILES alone.
