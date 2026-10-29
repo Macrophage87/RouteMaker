@@ -399,22 +399,19 @@ def _area(properties: dict, name: str) -> list[str]:
 
 def street_address(lat: float, lon: float, *, lang: str) -> dict | None:
     """The nearest house number and street to the point within ADDRESS_RADIUS_KM, as
-    {name: "1234 Franklin Street Northeast", label}, or None. Photon not answering is
-    None too: the caller still has the street."""
-    try:
-        answer = _get(
-            "/reverse",
-            {
-                "lat": lat,
-                "lon": lon,
-                "lang": lang,
-                "limit": 1,
-                "radius": ADDRESS_RADIUS_KM,
-                "layer": "house",
-            },
-        )
-    except Unavailable:
-        return None
+    {name: "1234 Franklin Street Northeast", label}, or None. Raises Unavailable when
+    Photon does not answer."""
+    answer = _get(
+        "/reverse",
+        {
+            "lat": lat,
+            "lon": lon,
+            "lang": lang,
+            "limit": 1,
+            "radius": ADDRESS_RADIUS_KM,
+            "layer": "house",
+        },
+    )
     for feature in answer.get("features", []):
         if not isinstance(feature, dict) or not isinstance(feature.get("properties"), dict):
             continue
@@ -444,7 +441,13 @@ def reverse(lat: float, lon: float, *, lang: str, address: bool = False) -> list
     Raises Unavailable only when neither the router nor Photon answered.
     """
     point = {"lon": round(lon, 6), "lat": round(lat, 6)}
-    found = street_address(lat, lon, lang=lang) if address else None
+    # Photon not answering the address is not asked again (a second timeout): the
+    # street from the router names it, with no neighbourhood.
+    photon_answered = True
+    try:
+        found = street_address(lat, lon, lang=lang) if address else None
+    except Unavailable:
+        found, photon_answered = None, False
     if found is not None:
         return [
             {
@@ -463,6 +466,8 @@ def reverse(lat: float, lon: float, *, lang: str, address: bool = False) -> list
     except Unavailable:
         edge, router_answered = None, False
     try:
+        if not photon_answered:
+            raise Unavailable("the geocoder did not answer the address")
         answer = _get(
             "/reverse",
             {"lat": lat, "lon": lon, "lang": lang, "limit": 1, "radius": REVERSE_RADIUS_KM},

@@ -1971,7 +1971,8 @@ dialog.go-spot {
 
 /* The tapped spot itself: a big pin, not a control (Stephen, 2026-10-29: "The tapped location is way too small").
    48 by 62 px, red with a white rim and a white centre and a shadow, so it stands out on an orange road; the
-   tip is on the spot. Above the place pins, which never hide it. */
+   tip is on the spot. Above the place pins, which never hide it (it may cover one beside the spot; presses go
+   through to it). */
 .spot-here {
   display: block;
   width: 48px;
@@ -1983,6 +1984,7 @@ dialog.go-spot {
 
 .spot-here svg {
   display: block;
+  overflow: visible;
 }
 
 .spot-here-body {

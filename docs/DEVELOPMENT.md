@@ -2179,7 +2179,7 @@ point is on an unnamed trail and the nearest name is more than 5 m further
 off - a street, or another, named trail (X is that edge's name, with its
 `osm_type` "W" and `osm_id`); or no
 named edge is close enough and X is a place Photon knows, never with a house
-number. Ferry edges never name a point. If the
+number (or `address`, below). Ferry edges never name a point. If the
 router does not answer, the name is the `near` one; if Photon does not, the
 label has no neighbourhood.
 
@@ -2187,7 +2187,9 @@ With `address=true` (Go's tapped-spot card; the owner, 2026-10-29: "provide
 the address if possible"), a house number and street within 40 m (about 130
 ft, `geocode.ADDRESS_RADIUS_KM`) names the point first: `kind` `address`, name
 "1234 Franklin Street Northeast", the four `osm_*` fields null. With none that
-near, or Photon not answering, the name is the one above. Route points never
+near, the name is the one above, at the cost of a second Photon call; if
+Photon does not answer the first, it is not asked again and the label has no
+neighbourhood. Route points never
 ask, since the nearest house to a point on a road is a neighbour's.
 
 Refusals, all `{"error": "..."}`: 400 for a parameter above; 403 when the
