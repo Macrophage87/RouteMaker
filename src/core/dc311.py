@@ -8,9 +8,10 @@ Washington, D.C. at app.311.dc.gov/cwi/Open311/v2 with jurisdiction `dc.gov`). G
 "POST Service Request" requires an API key that the city issues (the spec's method table:
 "Requires API Key: Yes"); DC lists no public way to get one and no test server, and the endpoint
 could not be reached from where this was written (2026-10-15). So this sender exists but is off
-unless the deployment sets DC311_API_KEY (the owner requests it from DC). Off, Ride mode opens
-the phone's text app to DC's Text to 311 (32311), already filled in (frontend lib/report311.ts),
-which is one more tap: Send.
+unless the deployment sets DC311_API_KEY (the owner requests it from DC). Off, Ride mode keeps
+the problem in the 311 log for the rider to send (DC's Text to 311 is gone). The privacy policy
+names no server send while it is off: setting the key needs its DC 311 lines back first (the
+owner, 2026-10-29).
 
 What leaves the server, and only when the key is set and the rider tapped a problem: the
 problem's service code, the point on the route the rider was at (rounded to 5 decimals, about
@@ -19,7 +20,7 @@ note). Nothing is kept or logged: not the position, not the words, not the answe
 
 The service codes are DC's own, read from its `services.json` and matched by name
 (SERVICE_NAMES), at most once a day; a problem with no matching service (or "Something else")
-is not sent from here, and Ride mode falls back to the text message.
+is not sent from here, and stays in the rider's 311 log.
 """
 
 from __future__ import annotations
@@ -63,7 +64,7 @@ KINDS = tuple(SERVICE_NAMES)
 # Each account sends at most ratelimit.REPORT_311_ACCOUNT an hour; and however many riders send, at
 # most `HOURLY_MAX` reports an hour leave this server for DC (`GLOBAL_SCOPE`, counted in the
 # database so every worker shares it), on top of the per-address limit (ratelimit.REPORT_311).
-# Signed out, Ride mode texts 311 instead, as it does with the sender off.
+# Signed out, the problem stays in the 311 log, as it does with the sender off.
 TICKET_SALT = "routemaker/report-311/v1"
 TICKET_MAX_AGE_S = 15 * 60
 HOURLY_MAX = 60

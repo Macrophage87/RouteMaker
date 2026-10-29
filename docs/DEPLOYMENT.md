@@ -319,7 +319,7 @@ refresh: the last alerts are kept until `worker` holds the new key.
 
 **`DC311_API_KEY`: rotate it with DC 311, then here, then `up -d api`.** The
 owner's Open311 key for sending a ride's 311 report in one tap (v0.7.0,
-`core.dc311`). Optional: empty, the report opens a text to DC 311 instead. Held by
+`core.dc311`). Optional: empty, the report stays in the rider's 311 log; before setting it, put the DC 311 lines back in the privacy policy (`core/privacy_policy.py`). Held by
 `api` alone, sent only to DC's Open311 endpoint and never logged; nothing is
 stored under it. A rotation costs at most the one-tap send until `api` is
 recreated with the new value. `up -d`, not `restart`, as above.
