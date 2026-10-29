@@ -8,7 +8,8 @@
       "kind": "stress",
       "osm_way_id": 15561007,
       "value": {
-        "tier": 5,
+        "tier": 4,
+        "half": true,
         "adjustment_id": "us-340-wilson-freeway",
         "category": "speed",
         "visibility": "public",
@@ -16,7 +17,7 @@
         "display": "route_only",
         "public_note": "Freeway-grade highway with fast through traffic."
       },
-      "reason": "Legal but avoid. The owner, 2026-09-27, asked about US 340 in West Virginia (the William L. Wilson Freeway), chose \"Legal but avoid\" (\"Leave access as OSM has it; the stress penalty (LTS 4) already pushes Default and calmer rides off it when there's an alternative.\") and then: \"Maybe make a 5th category for legal but to be avoided\". The first entry of the category.",
+      "reason": "Legal but avoid. The owner, 2026-09-27, asked about US 340 in West Virginia (the William L. Wilson Freeway), chose \"Legal but avoid\" (\"Leave access as OSM has it; the stress penalty (LTS 4) already pushes Default and calmer rides off it when there's an alternative.\") and then: \"Maybe make a 5th category for legal but to be avoided\". The first entry of the category. Changed to LTS 4.5 (tier 4 with half) by the owner, 2026-10-29 (review of v0.14.0, asked whether this rural row should follow the rule of 2026-10-17, \"The rural road LTS 5s should be LTS4.5\"): \"Make it 4.5\".",
       "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 15561007, William L. Wilson Freeway, highway=trunk, ref US 340, maxspeed 45 mph, no bicycle tag, so bicycle-legal by default and LTS 4 by the classifier. Only this 1.05 km of the freeway is in the extract, which is built from the DC, Maryland and Virginia state files; the rest lies in West Virginia.",
       "fingerprint": {
         "name": "William L. Wilson Freeway",
