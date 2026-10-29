@@ -805,7 +805,8 @@ that the update's `files` replaced has no `previous`: rollback A does not bring 
 (`pre-update-<time>.dump` from `db --update-data`, or `pre-restore-<time>.dump` from `--replace-db`).
 `restore-dump` takes a `pre-rollback` snapshot of what is there first, restores the dump into a
 **fresh** database in one transaction (a failure discards it and leaves the current database
-untouched), and swaps it in by rename. The database as it was stays beside it as
+untouched), and swaps it in by rename. These dumps leave out the tables the nightly backup leaves
+out, so after a restore everyone is signed out and riders connect Garmin or Wahoo again. The database as it was stays beside it as
 `routemaker_before_<time>`; once the beta works, drop it
 (`scripts/beta/beta-compose.sh exec -T postgis dropdb -U routemaker routemaker_before_<time>`). It needs
 free space on `/data` for a second copy of the database (about 1.5 GB):
