@@ -14,7 +14,7 @@ filesystem behaviour rather than logic.
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -24,6 +24,7 @@ from pipeline.retention import (
     KEEP_BUILDS,
     prune_backups,
     prune_builds,
+    prune_snapshots,
     prune_tile_builds,
     unique_build_id,
 )
@@ -285,6 +286,99 @@ def test_backup_pruning_of_no_more_dumps_than_it_keeps_removes_nothing(tmp_path,
 
     assert prune_backups(tmp_path, keep=7) == []
     assert sorted(path.name for path in tmp_path.glob("*.dump")) == dumps
+
+
+def test_a_dump_past_its_age_is_pruned_even_when_the_count_would_keep_it(tmp_path) -> None:
+    """Deleted accounts are promised to leave the backups within a week. Counting alone kept
+    that promise only while every night succeeded: three failed nights left three week-old
+    dumps under a count of seven. The age goes whatever the count."""
+    now = datetime(2026, 10, 29, 7, 30, tzinfo=UTC)
+    names = [
+        "routemaker-20261020T070000Z.dump.age",  # nine days old
+        "routemaker-20261022T070000Z.dump.age",  # seven days old
+        "routemaker-20261023T070000Z.dump.age",  # six days and half an hour
+        "routemaker-20261028T070000Z.dump.age",
+    ]
+    for name in names:
+        (tmp_path / name).write_bytes(b"dump")
+
+    removed = prune_backups(tmp_path, keep=7, max_age=timedelta(days=6, hours=12), now=now)
+
+    assert [path.name for path in removed] == names[:2]
+    assert sorted(entry.name for entry in tmp_path.iterdir()) == names[2:]
+
+
+def test_the_newest_dump_is_never_pruned_for_its_age(tmp_path, caplog) -> None:
+    """After a run of failed nights the newest dump is the only backup there is. It stays,
+    and the prune says loudly that nothing newer has succeeded."""
+    now = datetime(2026, 10, 29, 7, 30, tzinfo=UTC)
+    names = ["routemaker-20261018T070000Z.dump.age", "routemaker-20261019T070000Z.dump.age"]
+    for name in names:
+        (tmp_path / name).write_bytes(b"dump")
+
+    with caplog.at_level("WARNING", logger="pipeline.retention"):
+        removed = prune_backups(tmp_path, keep=7, max_age=timedelta(days=6, hours=12), now=now)
+
+    assert [path.name for path in removed] == names[:1]
+    assert (tmp_path / names[-1]).exists()
+    assert any(
+        record.levelname == "WARNING" and names[-1] in record.getMessage()
+        for record in caplog.records
+    )
+
+
+def test_pre_update_dumps_older_than_the_cap_go_newest_included(tmp_path) -> None:
+    """The plain safety dumps receive-data.sh takes before an update, held to the nightly
+    dumps' age between updates. Other files in the folder are not touched."""
+    now = datetime(2026, 10, 29, 7, 30, tzinfo=UTC)
+    aged = ["pre-release-20261020T010000Z.dump", "pre-rollback-20261022T070000Z.dump"]
+    kept = ["pre-update-20261028T070000Z.dump", "routemaker-20261001T070000Z.dump.age", "x.dump"]
+    for name in [*aged, *kept]:
+        (tmp_path / name).write_bytes(b"dump")
+
+    removed = prune_snapshots(tmp_path, timedelta(days=6, hours=12), now=now)
+
+    assert [path.name for path in removed] == aged
+    assert sorted(entry.name for entry in tmp_path.iterdir()) == sorted(kept)
+
+
+def test_plain_dumps_go_once_an_encrypted_one_is_in_place(tmp_path) -> None:
+    """The dumps written before encryption are the ones the change is for, so they go as
+    soon as a newer encrypted dump exists, rather than lingering out their week."""
+    plain = [f"routemaker-2026102{day}T070000Z.dump" for day in range(5, 8)]
+    encrypted = "routemaker-20261028T070000Z.dump.age"
+    for name in [*plain, encrypted]:
+        (tmp_path / name).write_bytes(b"dump")
+
+    removed = prune_backups(tmp_path, keep=7)
+
+    assert sorted(path.name for path in removed) == plain
+    assert sorted(entry.name for entry in tmp_path.iterdir()) == [encrypted]
+
+
+def test_plain_dumps_stay_while_there_is_no_encrypted_one(tmp_path) -> None:
+    """Before the first encrypted dump they are the only backups there are, so they are
+    counted and aged like any other, and not dropped for being plain."""
+    plain = [f"routemaker-2026102{day}T070000Z.dump" for day in range(5, 8)]
+    for name in plain:
+        (tmp_path / name).write_bytes(b"dump")
+
+    assert prune_backups(tmp_path, keep=7) == []
+    assert sorted(entry.name for entry in tmp_path.iterdir()) == plain
+
+
+def test_an_abandoned_encrypted_part_file_is_reclaimed(tmp_path) -> None:
+    """`perform_backup` stages `<name>.dump.age.part`; one left by a SIGKILL is reclaimed by
+    the same rule as the plain part files."""
+    kept = "routemaker-20261028T070000Z.dump.age"
+    (tmp_path / kept).write_bytes(b"dump")
+    abandoned = tmp_path / "routemaker-20261027T070000Z.dump.age.part"
+    abandoned.write_bytes(b"half a dump")
+
+    prune_backups(tmp_path, keep=7)
+
+    assert not abandoned.exists()
+    assert (tmp_path / kept).exists()
 
 
 def test_backup_pruning_of_an_absent_directory_removes_nothing(tmp_path) -> None:

@@ -229,6 +229,7 @@ def test_a_dry_run_lists_every_item_and_runs_nothing(acceptance, monkeypatch, ca
         "run_rebuild_now",
         "scripts/install_reference_data.py --data-root /data",
         "docker compose restart " + " ".join(acceptance.DEFAULT_ROUTERS),
+        "check_backup_encryption",
         "pg_restore --list",
         "rollback_rebuild",
     ):

@@ -384,13 +384,26 @@ snapshot() {
 	printf '%s\n' "$file"
 }
 # The newest $dump_keep pre-<label> dumps in DATA_ROOT/backups stay; older ones go, except the one
-# just written and the one a restore-dump is putting back.
+# just written and the one a restore-dump is putting back. And none of any label older than
+# 6.5 days (156 hours), with the same two exceptions: they are plain (an on-server rollback
+# restores them, and the server holds no key to decrypt with), so they are kept no longer than
+# the encrypted nightly dumps (config.procrastinate BACKUP_MAX_AGE; the nightly task holds the
+# same age between updates).
+snapshot_max_age_hours=156
 prune_snapshots() { # label new-file
-	local old
+	local old stamp cutoff
 	# shellcheck disable=SC2012
 	ls -1t "$backups_dir"/pre-"$1"-*.dump 2>/dev/null | tail -n +"$((dump_keep + 1))" | while IFS= read -r old; do
 		[ "$old" != "$2" ] && { [ -z "$dump_file" ] || [ ! "$old" -ef "$dump_file" ]; } || continue
 		rm -f -- "$old" && note "removed an older safety dump: $old (keeping the newest $dump_keep)"
+	done
+	cutoff=$(date -u -d "-$snapshot_max_age_hours hours" +%Y%m%dT%H%M%SZ) || return 0
+	for old in "$backups_dir"/pre-*-*.dump; do
+		[ -f "$old" ] || continue
+		stamp=${old##*-}; stamp=${stamp%.dump}
+		[[ $stamp =~ ^[0-9]{8}T[0-9]{6}Z$ ]] && [[ $stamp < $cutoff ]] || continue
+		[ "$old" != "$2" ] && { [ -z "$dump_file" ] || [ ! "$old" -ef "$dump_file" ]; } || continue
+		rm -f -- "$old" && note "removed a safety dump older than $snapshot_max_age_hours hours: $old"
 	done
 }
 
