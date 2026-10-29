@@ -1181,9 +1181,24 @@ def with_work_zones(body: dict, plan: rules.PlanZones | None, now: datetime | No
 
     now = now or _now()
     coordinates = (body.get("geometry") or {}).get("coordinates") or []
+    # The closures routed round are checked against the route too (audit 2026-10-29): one
+    # the route still runs along, where its strip missed part of the road, is warned of as
+    # a closure that could not be left out, not counted as routed round. Those that changed
+    # the route (`plan.affecting`) are left out of the check: the standard way through them
+    # (`plan.through`) runs along them on purpose, and the detour does not.
+    missed = rules.along(coordinates, [z for z in plan.excluded if z.zone_id not in plan.affecting])
+    if missed:
+        logger.info("closures: the route runs along %d closure(s) it was to go round", len(missed))
     passages = rules.along(
         coordinates,
-        [*plan.passable, *plan.unexcluded, *plan.bypassed, *plan.uncertain, *plan.lanes],
+        [
+            *plan.passable,
+            *plan.unexcluded,
+            *(p.zone for p in missed),
+            *plan.bypassed,
+            *plan.uncertain,
+            *plan.lanes,
+        ],
     )
     line_m = geometry.line_length_m(coordinates)
     scale = (body.get("distance_m") or 0.0) / line_m if line_m > 0 else 1.0
@@ -1254,7 +1269,7 @@ def with_work_zones(body: dict, plan: rules.PlanZones | None, now: datetime | No
             }
             for p in passages
         ],
-        "routed_round": len(plan.excluded) + len(plan.avoided),
+        "routed_round": len(plan.excluded) - len(missed) + len(plan.avoided),
         "status": dict(plan.status),
         "stale": [NAMES.get(s, s) for s in stale],
         "unchecked": unchecked,
