@@ -1446,7 +1446,7 @@ At ship time, once: in Healthchecks.io, add a check with a period of 5 minutes a
 30 minutes, set its notifications (e-mail, or the Discord integration), and copy its ping URL.
 Then add one line to the beta's `.env` (the owner pastes it; the address below is a placeholder):
 
-```sh
+```text
 HEALTHCHECK_PING_URL=https://hc-ping.com/00000000-0000-0000-0000-000000000000
 ```
 
