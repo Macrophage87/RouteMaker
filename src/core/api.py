@@ -4619,6 +4619,7 @@ def _follow_line(body: RouteIn) -> tuple[tuple[float, float], ...] | None:
         return None
 
 
+@route_cache.reads_approvals_once
 def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_calm: bool) -> dict:
     """The plan's answer, from the short-term cache where an identical request was
     answered within its life (`core.route_cache`, v0.7.0 "Faster routing" step 5), else
