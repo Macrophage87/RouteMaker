@@ -10,25 +10,23 @@
  */
 import { Component, type ReactNode } from "react";
 import { logError } from "./lib/crashReport.ts";
-import { guardOutcome } from "./lib/rideGuard.ts";
-
-type GuardState = { error: unknown; failed: boolean };
+import { guardForProps, guardOutcome, type GuardState } from "./lib/rideGuard.ts";
 
 export class RideGuard extends Component<{ on: boolean; children: ReactNode }, GuardState> {
-  state: GuardState = { error: null, failed: false };
+  state: GuardState = { error: null, failed: false, wasOn: this.props.on };
 
-  static getDerivedStateFromError(error: unknown): GuardState {
+  static getDerivedStateFromError(error: unknown): Partial<GuardState> {
     return { error: error ?? new Error("Unknown error"), failed: true };
+  }
+
+  // The ride over: the part is drawn again, cleared before that draw (lib/rideGuard.ts guardForProps).
+  static getDerivedStateFromProps(props: { on: boolean }, state: GuardState): GuardState {
+    return guardForProps(state, props.on);
   }
 
   componentDidCatch(error: unknown) {
     // Kept for the error report only where the guard holds it; passed on, the crash screen reports it.
     if (guardOutcome(this.props.on) === "leave-out") logError("error", error);
-  }
-
-  componentDidUpdate(before: { on: boolean }) {
-    // The ride over: the part is drawn again.
-    if (before.on && !this.props.on && this.state.failed) this.setState({ error: null, failed: false });
   }
 
   render() {

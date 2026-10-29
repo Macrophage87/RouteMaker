@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { OPEN_LINK_ASK, OPEN_LINK_EVENT, watchOpenLinks } from "./rideLinks.ts";
-import { guardOutcome } from "./rideGuard.ts";
+import { guardForProps, guardOutcome } from "./rideGuard.ts";
 
 function rig(onBike: boolean, yes: boolean) {
   const target = new EventTarget();
@@ -48,6 +48,11 @@ test("the phone app hands a link to the site's page when it is open, and opens i
 test("the map, its overlays and the hidden planner are guarded: an error in one leaves the ride on", () => {
   assert.equal(guardOutcome(true), "leave-out");
   assert.equal(guardOutcome(false), "pass-on", "off the bike: the crash screen, as before");
+  // A part left out during the ride is cleared as the ride ends, before it is drawn, so the old error is not thrown then.
+  const left = { error: new Error("x"), failed: true, wasOn: true };
+  assert.equal(guardForProps(left, true), left, "still riding: still left out");
+  assert.deepEqual(guardForProps(left, false), { error: null, failed: false, wasOn: false });
+  assert.deepEqual(guardForProps({ error: null, failed: false, wasOn: false }, true), { error: null, failed: false, wasOn: true });
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /<RideGuard on=\{onBike\}>\s*<MapView/);
   assert.match(app, /<RideGuard on=\{onBike\}>\s*<RepairStandsOverlay /);
