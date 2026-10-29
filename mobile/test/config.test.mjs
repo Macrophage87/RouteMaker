@@ -109,6 +109,23 @@ test("the manifest: the location service not exported, GPS not required, nothing
   }
 });
 
+test("the FileProvider lends FilesPlugin's courses/ cache folder alone, nothing else of the app or the phone", () => {
+  const paths = readFileSync(here("../android/app/src/main/res/xml/file_paths.xml"), "utf8").replace(/<!--[\s\S]*?-->/g, "");
+  assert.deepEqual([...paths.matchAll(/<([a-z-]+-path)\b[^>]*\/>/g)].map((m) => m[0]), ['<cache-path name="courses" path="courses/" />']);
+  const plugin = readFileSync(here("../android/app/src/main/java/org/routemaker/phone/FilesPlugin.java"), "utf8");
+  assert.match(plugin, /static final String DIR = "courses";/);
+  assert.match(plugin, /new File\(getContext\(\)\.getCacheDir\(\), DIR\)/);
+});
+
+test("the version name is the site release the app is built with (pyproject.toml), unless set", () => {
+  const gradle = readFileSync(here("../android/app/build.gradle"), "utf8");
+  assert.match(gradle, /versionName envOr\("ROUTEMAKER_VERSION_NAME", releaseVersion\)/);
+  assert.match(gradle, /rootProject\.file\("\.\.\/\.\.\/pyproject\.toml"\)/);
+  // The pattern build.gradle reads finds the project's version.
+  const project = readFileSync(here("../../pyproject.toml"), "utf8");
+  assert.match(project.match(/^version\s*=\s*"([^"]+)"/m)?.[1] ?? "", /^\d+\.\d+\.\d+$/);
+});
+
 test("the cue notification is cleared at app start and when the site's screen goes", () => {
   const main = readFileSync(here("../android/app/src/main/java/org/routemaker/phone/MainActivity.java"), "utf8");
   const id = Number(main.match(/CUE_NOTICE_ID = (\d+);/)[1]);

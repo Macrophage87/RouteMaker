@@ -191,7 +191,7 @@ test("App: Share keeps the exact line and attaches the file Download GPX saves; 
   assert.match(share, /const now = again \? null : sharedLinkNow\(\);\s*const kept = again \? Promise\.resolve\(true\) : now!\.kept;\s*const exact = again \? null : now!\.exact;/);
   const linkNow = app.slice(app.indexOf("const sharedLinkNow = () => {"), app.indexOf("\n  };\n", app.indexOf("const sharedLinkNow = () => {")));
   assert.match(linkNow, /kept = before\?\.kept \?\? storeShared\(origin, body!\.json\);/);
-  assert.match(linkNow, /const body = before \? null : sharedBody\(id, exact\.save, shareKeep, previewImageOk\(exact\.save\.line, exact\.save\.inputs\.points, myGo\.home, me\.signed_in\)\);/);
+  assert.match(linkNow, /const body = before \? null : sharedBody\(id, exact\.save, keepChoice, previewImageOk\(exact\.save\.line, exact\.save\.inputs\.points, myGo\.home, me\.signed_in\)\);/);
   assert.match(share, /said = SHARED_INPUTS_ONLY;/);
   // The QR code's link: only once its exact line is kept; one not kept is tried again under a new id.
   const qr = app.slice(app.indexOf("const shareCardLink = async ()"), app.indexOf("\n  };\n", app.indexOf("const shareCardLink = async ()")));
@@ -235,13 +235,16 @@ test("a shared line is kept a year by default; permanently or until a date if th
   assert.equal(keepMod.sharedBody("0".repeat(32), save, { keep: "until", deleteAfter: "2999-01-01" })!.body.delete_after, "2999-01-01");
 });
 
-test("the keeping is chosen under Share in the Files sheet only; a different keeping is a new line", () => {
+test("the keeping is chosen under Share in the Files sheet only, signed in; a different keeping is a new line", () => {
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /\{canShare && ready && onShareKeep && <ShareKeepField value=\{shareKeep\} onChange=\{onShareKeep\} \/>\}/);
   assert.equal(panel.match(/<ShareKeepField /g)?.length, 1, "one place: under Share, in the Files sheet");
   assert.match(panel, /value\.keep === "until" && \(/);
   assert.match(app, /sharedLine\.current\?\.of === exact\.of && sharedLine\.current\.keep === keep/);
-  assert.match(app, /sharedBody\(id, exact\.save, shareKeep, /);
+  assert.match(app, /sharedBody\(id, exact\.save, keepChoice, /);
+  // Signed out, the server keeps a link the default year only (core.shared_routes.OWNER_KEEPS).
+  assert.match(app, /const keepChoice = me\.signed_in \? shareKeep : SHARE_KEEP_DEFAULT;/);
+  assert.match(app, /onShareKeep=\{mode === "plan" && me\.signed_in \? setShareKeep : null\}/);
 });
 
 test("a link its owner turned off: read as revoked, said plainly, and its plan is not planned", async () => {

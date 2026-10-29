@@ -110,7 +110,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "same street: two unnamed are different",
         D,
-        "    if not a.names and not b.names:\n        return True",
+        "    if not a.names and not b.names:\n        return a.service == b.service",
         "    if not a.names and not b.names:\n        return False",
         PURE,
     ),
@@ -156,8 +156,20 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         '    "3": "heavy traffic (LTS 3)",',
         PURE,
     ),
-    ("tier words: a path is its tier", D, IFPATH, "    if False:\n        return PATH_WORDS", PURE),
-    ("range: a dash for to", D, RANGE, RANGE_DASH, PURE),
+    (
+        "tier words: a path is its tier",
+        D,
+        '    if facility == "path":\n        return t(PATH_WORDS)',
+        "    if False:\n        return t(PATH_WORDS)",
+        PURE,
+    ),
+    (
+        "range: a dash for to",
+        D,
+        '"{mi} to {mi_end} mi ({km} to {km_end} km)",',
+        '"{mi}–{mi_end} mi ({km}–{km_end} km)",',
+        PURE,
+    ),
     (
         "range: short stretches as a range",
         D,
@@ -171,11 +183,17 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "via: numbered from 0",
         D,
-        "                number = run.leg\n",
-        "                number = run.leg - 1\n",
+        "        number = point - sum(1 for v in through if v < point)\n",
+        "        number = point - sum(1 for v in through if v < point) - 1\n",
         PURE,
     ),
-    ("turn: left and right swapped", D, TURNS, TURNS_SWAPPED, PURE),
+    (
+        "turn: left and right swapped",
+        D,
+        '    "left": "Left",\n    "right": "Right",',
+        '    "left": "Right",\n    "right": "Left",',
+        PURE,
+    ),
     (
         "turn: heading in read from the wrong end",
         D,
@@ -186,8 +204,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "control: no signal mapped said of unflagged junctions",
         D,
-        '    return ", no signal mapped" if flagged else ""',
-        '    return ", no signal mapped"',
+        'return t(", no signal mapped") if flagged else ""',
+        'return t(", no signal mapped")',
         PURE,
     ),
     (
@@ -215,8 +233,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "overview: a turn's flagged severity dropped",
         D,
-        SEV_OVER,
-        SEV_OVER.replace("if turn is not None and", "if False and"),
+        "        toward = turn is not None and turn.toward is not None and first == last\n        severity = None\n        if turn is not None and turn.event",
+        "        toward = turn is not None and turn.toward is not None and first == last\n        severity = None\n        if False and turn.event",
         PURE,
     ),
     (
@@ -226,15 +244,27 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "    names = sorted(event.road_names)",
         PURE,
     ),
-    ("name: an unnamed path is a road", D, UNNAMED, '    return "unnamed road"', PURE),
+    (
+        "name: an unnamed path is a road",
+        D,
+        '    return UNNAMED_PATH if run.facility in ("path", "protected") or run.path else UNNAMED_ROAD',
+        "    return UNNAMED_ROAD",
+        PURE,
+    ),
     (
         "name: a path use is not a path",
         D,
-        UNNAMED,
-        '    return UNNAMED_PATH if run.facility in ("path", "protected") else "unnamed road"',
+        '    return UNNAMED_PATH if run.facility in ("path", "protected") or run.path else UNNAMED_ROAD',
+        '    return UNNAMED_PATH if run.facility in ("path", "protected") else UNNAMED_ROAD',
         PURE,
     ),
-    ("order: via after the stretch", D, VIA_ENTRY, VIA_LATE, PURE),
+    (
+        "order: via after the stretch",
+        D,
+        "shared.append(((start, 0, i), _point_entry(point, start, through)))",
+        "shared.append(((start, 2, i), _point_entry(point, start, through)))",
+        PURE,
+    ),
     (
         "pieces: names dropped",
         R,
@@ -268,8 +298,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "plan: the stated length unused",
         R,
-        "        return describe.describe_both(legs, events, length or None)",
-        "        return describe.describe_both(legs, events, None)",
+        "            legs, events, length or None, walks, by_relation, through=through",
+        "            legs, events, None, walks, by_relation, through=through",
         BOTH,
     ),
     (
@@ -289,8 +319,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "api: kinds",
         A,
-        '    kind: Literal["stretch", "junction", "via"]',
-        '    kind: Literal["stretch", "junction"]',
+        'kind: Literal["stretch", "junction", "via", "walk",',
+        'kind: Literal["stretch", "junction", "walk",',
         VIEW,
     ),
     (
@@ -413,8 +443,8 @@ MUTANTS += [
     (
         "overview: a stretch may fold in front of a flagged junction",
         D,
-        AFTER,
-        AFTER.replace(" and not _flagged_turn(turns, after[0])", ""),
+        "                and joinable(group, after)\n                and not _flagged_turn(turns, after[0])\n",
+        "                and joinable(group, after)\n",
         PURE,
     ),
     ("overview: merges across a stop", D, JOIN, JOIN.replace("ra.leg == rb.leg", "True"), PURE),
@@ -445,8 +475,8 @@ MUTANTS += [
     (
         "overview: facility kept where members differ",
         D,
-        '        facility=first.facility if len(facilities) == 1 else "none",',
-        "        facility=first.facility,",
+        'facility=first.facility if len(facilities) == 1 else "unknown",',
+        "facility=first.facility,",
         PURE,
     ),
     (
@@ -485,7 +515,13 @@ MUTANTS += [
         "    for street, movement in streets[: MAX_NAMED_TURNS - 1]:",
         PURE,
     ),
-    ("overview: two streets joined without and", D, THEN, THEN.replace('" and "', '", "'), PURE),
+    (
+        "overview: two streets joined without and",
+        D,
+        'listed = ", ".join(pieces[:-1]) + t(" and ") + pieces[-1]',
+        'listed = ", ".join(pieces[:-1]) + ", " + pieces[-1]',
+        PURE,
+    ),
     (
         "overview: the count of more streets is off",
         D,
@@ -517,8 +553,8 @@ MUTANTS += [
     (
         "overview: describe answers the overview",
         D,
-        "    return describe_both(legs, events, total_m)[0]",
-        "    return describe_both(legs, events, total_m)[1]",
+        "return describe_both(legs, events, total_m, walks, through=through)[0]",
+        "return describe_both(legs, events, total_m, walks, through=through)[1]",
         PURE,
     ),
     (
@@ -538,15 +574,15 @@ MUTANTS += [
     (
         "stops: still Via",
         D,
-        'f"Stop {number} at {point_words(start)}."',
-        'f"Via {number} at {point_words(start)}."',
+        '        text = t("Stop {number} at {where}.", number=number, where=where)',
+        '        text = t("Via {number} at {where}.", number=number, where=where)',
         PURE,
     ),
     (
         "stops: said as a stop of the route",
         D,
-        'f"Stop {number} at {point_words(start)}."',
-        'f"Stop {number}: stop at {point_words(start)}."',
+        '        text = t("Stop {number} at {where}.", number=number, where=where)',
+        '        text = t("Stop {number}: stop at {where}.", number=number, where=where)',
         PURE,
     ),
     (

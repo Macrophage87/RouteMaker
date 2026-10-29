@@ -403,7 +403,7 @@ def ride_layer_mtb_predicate(has_facility: bool) -> str:
     return f"({trails_predicate(has_facility)} AND {MTB_ONLY_COLUMN})"
 
 
-# The ride layer's own index (SEGMENT_DDL): a partial one holding only the rows a
+# The ride layer's own index (SEGMENT_INDEX_DDL): a partial one holding only the rows a
 # ride-layer tile can draw, which are well under a tenth of the table, so a z12
 # tile's scan does not read every street in the box. The query's predicate implies
 # it: each of its terms is a run at or above the shorter of the two bars, a timed
@@ -800,29 +800,6 @@ CREATE TABLE {schema}.segment (
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );
 
-CREATE INDEX segment_way_idx ON {schema}.segment (osm_way_id);
-CREATE INDEX segment_geom_idx ON {schema}.segment USING gist (geometry);
-CREATE INDEX segment_stress_idx ON {schema}.segment (stress_tier);
--- The stress tiles' zoomed-out levels draw only the paths and trails
--- (trails_predicate) and then the busy roads (busy_predicate); this index
--- holds only the busy-road level's rows, which include the trails', so a z10 tile's scan
--- does not read the whole region's streets to find them.
-CREATE INDEX segment_overview_geom_idx ON {schema}.segment USING gist (geometry)
-    WHERE {overview};
--- The trail seek reads only its corridors (SEEK_INDEX_PREDICATE), a band at a
--- time; this index holds just those rows (core.trailseek.corridor_segments).
-CREATE INDEX segment_seek_geom_idx ON {schema}.segment USING gist (geometry)
-    WHERE {seek};
--- The scenic roads near a point (core.scenic_near): only the designated ways.
-CREATE INDEX segment_scenic_geom_idx ON {schema}.segment USING gist (geometry)
-    WHERE scenic IS NOT NULL;
--- The z12-13 ride layer's tiles (RIDE_INDEX_PREDICATE).
-CREATE INDEX segment_ride_geom_idx ON {schema}.segment USING gist (geometry)
-    WHERE {ride};
--- The popular corridors and long calm roads the z10-11 tiles keep (ZOOMED_OUT_INDEX_PREDICATE).
-CREATE INDEX segment_zoomed_out_geom_idx ON {schema}.segment USING gist (geometry)
-    WHERE {zoomed_out};
-
 -- What each synthetic border-control node means. The node ids are reassigned
 -- every rebuild, so this table describes one particular graph and changes
 -- hands in the same rename as the segment table. It used to be a managed table
@@ -843,12 +820,59 @@ CREATE INDEX border_crossing_way_idx ON {schema}.border_crossing (osm_way_id);
 """
 
 
-def create_segment_schema(schema: str) -> None:
-    """Build an empty segment schema. Idempotent only at the schema level."""
+# The segment table's indexes, apart from its unique key. Separate from SEGMENT_DDL so
+# the rebuild can create them after its bulk insert (`create_segment_indexes`): building
+# a GiST index over the loaded rows is much cheaper than maintaining eight of them row by
+# row through a multi-million-row insert, and gives tighter trees.
+SEGMENT_INDEX_DDL = """
+CREATE INDEX IF NOT EXISTS segment_way_idx ON {schema}.segment (osm_way_id);
+CREATE INDEX IF NOT EXISTS segment_geom_idx ON {schema}.segment USING gist (geometry);
+CREATE INDEX IF NOT EXISTS segment_stress_idx ON {schema}.segment (stress_tier);
+-- The stress tiles' zoomed-out levels draw only the paths and trails
+-- (trails_predicate) and then the busy roads (busy_predicate); this index
+-- holds only the busy-road level's rows, which include the trails', so a z10 tile's scan
+-- does not read the whole region's streets to find them.
+CREATE INDEX IF NOT EXISTS segment_overview_geom_idx ON {schema}.segment USING gist (geometry)
+    WHERE {overview};
+-- The trail seek reads only its corridors (SEEK_INDEX_PREDICATE), a band at a
+-- time; this index holds just those rows (core.trailseek.corridor_segments).
+CREATE INDEX IF NOT EXISTS segment_seek_geom_idx ON {schema}.segment USING gist (geometry)
+    WHERE {seek};
+-- The scenic roads near a point (core.scenic_near): only the designated ways.
+CREATE INDEX IF NOT EXISTS segment_scenic_geom_idx ON {schema}.segment USING gist (geometry)
+    WHERE scenic IS NOT NULL;
+-- The z12-13 ride layer's tiles (RIDE_INDEX_PREDICATE).
+CREATE INDEX IF NOT EXISTS segment_ride_geom_idx ON {schema}.segment USING gist (geometry)
+    WHERE {ride};
+-- The popular corridors and long calm roads the z10-11 tiles keep (ZOOMED_OUT_INDEX_PREDICATE).
+CREATE INDEX IF NOT EXISTS segment_zoomed_out_geom_idx ON {schema}.segment USING gist (geometry)
+    WHERE {zoomed_out};
+"""
+
+
+def create_segment_schema(schema: str, indexes: bool = True) -> None:
+    """Build an empty segment schema. Idempotent only at the schema level.
+
+    `indexes=False` leaves out SEGMENT_INDEX_DDL, for the rebuild's staging schema:
+    `create_segment_indexes` adds them once the segments are written.
+    """
+    validate_schema_name(schema)
+    with connection.cursor() as cursor:
+        cursor.execute(SEGMENT_DDL.format(schema=schema))
+    if indexes:
+        create_segment_indexes(schema, analyze=False)
+
+
+def create_segment_indexes(schema: str, analyze: bool = True) -> None:
+    """Create the segment table's indexes, then (by default) ANALYZE it.
+
+    The rebuild calls it straight after the bulk insert, before the steps that
+    update and join the rows, so every one of those has the indexes it always had.
+    """
     validate_schema_name(schema)
     with connection.cursor() as cursor:
         cursor.execute(
-            SEGMENT_DDL.format(
+            SEGMENT_INDEX_DDL.format(
                 schema=schema,
                 overview=OVERVIEW_INDEX_PREDICATE,
                 seek=SEEK_INDEX_PREDICATE,
@@ -856,6 +880,8 @@ def create_segment_schema(schema: str) -> None:
                 zoomed_out=ZOOMED_OUT_INDEX_PREDICATE,
             )
         )
+        if analyze:
+            cursor.execute(f"ANALYZE {schema}.segment")
 
 
 def drop_segment_schema(schema: str) -> None:
@@ -943,10 +969,13 @@ def reset_segment_schema(schema: str) -> None:
     Which is why the name is checked before anything is dropped: the first
     thing the first stage of the rebuild does is destructive, and the name it
     is handed comes from the environment.
+
+    The segment table comes back without its indexes (`create_segment_indexes`).
     """
     refuse_unswappable_schema(schema)
     drop_segment_schema(schema)
-    create_segment_schema(schema)
+    # Without the segment indexes: WRITE_SEGMENTS creates them after its insert.
+    create_segment_schema(schema, indexes=False)
 
 
 def schema_exists(schema: str) -> bool:

@@ -55,6 +55,10 @@
 #                            of DATA_ROOT/backups. The no-sudo mode the release agent uses
 #                            (scripts/beta/auto-release.sh): DIR is a directory of the caller's
 #                            own, absolute, outside DATA_ROOT, and writable by nobody else.
+#                            Without it, each safety dump keeps the newest RECEIVE_DATA_KEEP [3]
+#                            of its kind (pre-<label>-*.dump) in DATA_ROOT/backups and removes
+#                            older ones, never the dump being restored; under --backups-dir the
+#                            caller prunes its own.
 #   -h, --help
 #
 # RECEIVE_DATA_REPO names the checkout whose beta-compose.sh and .env to use [the one this
@@ -75,7 +79,7 @@ repo=$(cd "${RECEIVE_DATA_REPO:-$here/../..}" && pwd)
 [ -x "$repo/scripts/beta/beta-compose.sh" ] || die "$repo has no scripts/beta/beta-compose.sh"
 
 bundle=""; env_file="$repo/.env"; replace_db=0; update_data=0; delete_accounts=0
-allow_sha=0; command_name=""; label=""; dump_file=""; backups_dir=""
+allow_sha=0; command_name=""; label=""; dump_file=""; backups_dir=""; prune_dumps=0
 
 usage() { sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//'; }
 
@@ -129,7 +133,10 @@ if [ -n "$backups_dir" ]; then
 	case "$(stat -c %A "$backups_dir")" in ?????w???? | ????????w?) die "--backups-dir $backups_dir is writable by others; chmod 700 it" ;; esac
 else
 	backups_dir="$data_root/backups"
+	prune_dumps=1
 fi
+dump_keep=${RECEIVE_DATA_KEEP:-3}
+case "$dump_keep" in '' | *[!0-9]* | 0) die "RECEIVE_DATA_KEEP must be a whole number of 1 or more" ;; esac
 
 case "$command_name" in
 	verify | files | db)
@@ -355,6 +362,11 @@ app_is_down() { # nothing may write while the database is replaced
 
 # pg_dump of public and live into DATA_ROOT/backups/pre-<label>-<utc>.dump; prints the path.
 # Not a name the worker's nightly pruning matches (routemaker-<utc>.dump), so it is kept.
+# Without the data of the tables the nightly backup leaves out (config.procrastinate
+# BACKUP_EXCLUDED_TABLES): sessions, client addresses and riders' Garmin and Wahoo tokens. A
+# restore from it signs riders out and asks them to connect those again.
+snapshot_excluded=(cached_membership app_session django_session rate_limit_window stress_tile_cache
+	bikeshare_feed_cache signed_out_send garmin_link wahoo_link)
 snapshot() {
 	local file
 	file="$backups_dir/pre-$1-$(date -u +%Y%m%dT%H%M%SZ).dump"
@@ -362,11 +374,24 @@ snapshot() {
 		die "cannot write $backups_dir (DATA_ROOT/backups is owned by the container uid): run this with sudo, or give --backups-dir"
 	note "safety dump of the current database to $file"
 	# umask 077: the dump holds the beta's own accounts.
-	(umask 077 && bc exec -T postgis pg_dump -U "$pguser" -d "$pgdatabase" --format=custom --no-owner -n public -n "$live_schema" </dev/null >"$file.part") ||
+	local excluded=() table
+	for table in "${snapshot_excluded[@]}"; do excluded+=("--exclude-table-data=*.$table"); done
+	(umask 077 && bc exec -T postgis pg_dump -U "$pguser" -d "$pgdatabase" --format=custom --no-owner -n public -n "$live_schema" "${excluded[@]}" </dev/null >"$file.part") ||
 		{ rm -f "$file.part"; die "pg_dump failed; stopping before anything is replaced"; }
 	[ -s "$file.part" ] || { rm -f "$file.part"; die "the safety dump is empty; stopping before anything is replaced"; }
 	mv "$file.part" "$file"
+	[ "$prune_dumps" = 0 ] || prune_snapshots "$1" "$file"
 	printf '%s\n' "$file"
+}
+# The newest $dump_keep pre-<label> dumps in DATA_ROOT/backups stay; older ones go, except the one
+# just written and the one a restore-dump is putting back.
+prune_snapshots() { # label new-file
+	local old
+	# shellcheck disable=SC2012
+	ls -1t "$backups_dir"/pre-"$1"-*.dump 2>/dev/null | tail -n +"$((dump_keep + 1))" | while IFS= read -r old; do
+		[ "$old" != "$2" ] && { [ -z "$dump_file" ] || [ ! "$old" -ef "$dump_file" ]; } || continue
+		rm -f -- "$old" && note "removed an older safety dump: $old (keeping the newest $dump_keep)"
+	done
 }
 
 # The dump names schema `public`, which every database already has, so a plain pg_restore ends with

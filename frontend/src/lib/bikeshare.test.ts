@@ -385,8 +385,8 @@ test("Bikeshare offers no loop: it plans a walk, a ride between docks and a walk
   assert.notEqual(loopView("default", false, [A, B]), null);
 });
 
-test("the points panel says Bikeshare and Rebalance Ride take a start and an end only", () => {
-  assert.match(appSource(), /Bikeshare plans, Rebalance Rides too, take a start and an end only/);
+test("the points panel says Bikeshare and Rebalance Ride take a start and an end only, and only when there is a stop to remove", () => {
+  assert.match(appSource(), /\{usesBikeshare\(preset\) && points\.length > 2 && <p className="hint">\{t\("Bikeshare and Rebalance Rides take a start and an end only: remove the stops\."\)\}<\/p>\}/);
 });
 
 test("the plan's heading names the ride type: Bikeshare plan, or Rebalance Ride", () => {
