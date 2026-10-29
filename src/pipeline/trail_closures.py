@@ -331,6 +331,10 @@ SHORT_LINK_REOPENS = frozenset(
         WORKS_NO_BICYCLE,
     }
 )
+# Of those, the ones lifted only on a link that touches a trail (the owner, 2026-10-29: "Keep
+# short farm tracks and working-site links only where they connect to a trail"): between two
+# streets a short farm lane or works road is the likely private case "err closed" shuts.
+SHORT_LINK_TRAIL_ONLY = frozenset({TRACK_NO_BICYCLE, WORKS_NO_BICYCLE})
 
 
 def add_short_links(result: TrailClosures, ways: Iterable[Way]) -> None:
@@ -355,6 +359,7 @@ def add_short_links(result: TrailClosures, ways: Iterable[Way]) -> None:
         result.reasons,
         SHORT_LINK_REOPENS,
         closed=result.destination_only,
+        trail_only=SHORT_LINK_TRAIL_ONLY,
     )
     for osm_id, walk in found.items():
         reason = result.reasons.pop(osm_id)

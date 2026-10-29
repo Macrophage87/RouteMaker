@@ -141,7 +141,8 @@ class Command(BaseCommand):
         # that refusal arrived - so the first an operator heard of it was a
         # rebuild that did not run, a week after it could have been fixed.
         headroom = disk_headroom()
-        # The transit ride types' timetables, when installed: under a week left is an alert.
+        # The transit ride types' timetables, when installed: under three weeks left
+        # (`transit.STALE_DAYS`) is an alert.
         transit_alert = transit.schedule_alert(settings.TRANSIT_SCHEDULE_PATH)
         # Routers left on last week's graph after a swap: nothing restarts them on
         # its own, and nothing else notices until a new closure is not routed.
