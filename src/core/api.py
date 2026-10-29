@@ -441,6 +441,18 @@ class RouteIn(Schema):
             " what was used). Absent: 2, or `mtb_level` where that is lower."
         ),
     )
+    ride_size: StrictInt | None = Field(
+        default=None,
+        ge=100,
+        le=2000,
+        description=(
+            "Mass Ride only (PLAN items 128, 129): the anticipated ride size, riders. The route"
+            " choice prices roads that carry fewer riders a minute than this size needs (riders"
+            " / 5, a 5-minute hold at a junction) and every big change in capacity"
+            " (`mass_capacity` says how the route fares). Ignored on other ride types. Absent:"
+            " 500."
+        ),
+    )
     bike: BikeName | None = Field(
         default=None,
         description=(
@@ -2031,6 +2043,54 @@ class SteepGradeOut(Schema):
     text: str = Field(description="One plain sentence, US units first with the metric once.")
 
 
+class MassNarrowOut(Schema):
+    """A stretch of a Mass Ride below what its ride size needs, in whole metres along the route."""
+
+    from_m: int
+    to_m: int
+    street: str | None
+    riders_per_min: int = Field(description="What it carries on the level; 0 where marked Avoid.")
+    avoid: bool
+
+
+class MassCorkerJunctionOut(Schema):
+    m: int
+    street: str | None
+    corkers: int
+
+
+class MassCorkersOut(Schema):
+    """The corkers a group of the ride size holds at once (PLAN item 139; the Corker load chart)."""
+
+    headline: int = Field(description="About this many corkers for the ride: the most at once x 2.")
+    at_least: bool = Field(description="True where the junction list may be incomplete.")
+    most_at_once: int
+    most_at_once_m: int | None
+    junctions_held_then: int
+    rotation_factor: int
+    junctions: list[MassCorkerJunctionOut]
+
+
+class MassCapacityOut(Schema):
+    """A Mass Ride's road capacity against its ride size and the corkers it needs
+    (`routemaker.mass_route`), for the page and assistants to improve the route on."""
+
+    riders: int
+    need_riders_per_min: int
+    hold_minutes: int
+    narrowest_riders_per_min: int | None
+    narrowest_m: int | None
+    below_need_m: int
+    capacity_changes: int
+    capacity_price_s: float
+    narrow_stretches: list[MassNarrowOut]
+    corkers: MassCorkersOut | None
+    choice: dict | None = Field(
+        default=None,
+        description="How the router's routes were weighed by capacity, where they were.",
+    )
+
+
 class ScenicSpanOut(Schema):
     """A stretch of the route with a scenic designation (v0.12.3; `core.route_scenic`), in
     whole metres along the traced route as `stress_spans` are measured."""
@@ -2333,6 +2393,9 @@ class RouteBody(Schema):
     # A Mass Ride's rider-marked hazards it passes, in riding order (FOLLOWUP-MASSRIDE-MAP
     # part 3, 325). Additive: null on every other ride type, empty where it passes none.
     mass_hazards: list[MassHazardSpanOut] | None = None
+    # A Mass Ride's road capacity for its ride size and its corkers. Additive: null on every
+    # other ride type.
+    mass_capacity: MassCapacityOut | None = None
     # The known hazards it rides (v0.10.0; cobbles, rails), in riding order. Additive: empty
     # where it rides none or the table predates them.
     road_hazards: list[RoadHazardSpanOut] | None = None
@@ -3803,7 +3866,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     when = body.depart_at or timezone.now()
     if when.tzinfo is None:
         when = when.replace(tzinfo=ridetime.ZONE)
-    schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, when.astimezone(ridetime.ZONE).date())
+    # The service day, not the calendar date: owl trips after midnight are the day before's.
+    schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(when).service_day)
     # The docks first, and the candidates' clock after them (TB-8): a slow feed read must not
     # spend the candidates' budget. Feeds that cannot be read are no docks, with a note, not a
     # refusal (TB-2): the trip walks at both ends.
@@ -4235,9 +4299,7 @@ def transit_closures(request, params: Query[ClosuresIn], response: HttpResponse)
     if when.tzinfo is None:
         when = when.replace(tzinfo=ridetime.ZONE)
     try:
-        schedule = transit.load(
-            settings.TRANSIT_SCHEDULE_PATH, when.astimezone(ridetime.ZONE).date()
-        )
+        schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(when).service_day)
     except transit.Unavailable:
         return _transit_refusal(
             "Transit times are not available on this server right now.", "transit_unavailable", 503
@@ -4398,9 +4460,7 @@ def transit_station_times(request, params: Query[StationTimesIn], response: Http
     if when.tzinfo is None:
         when = when.replace(tzinfo=ridetime.ZONE)
     try:
-        schedule = transit.load(
-            settings.TRANSIT_SCHEDULE_PATH, when.astimezone(ridetime.ZONE).date()
-        )
+        schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(when).service_day)
     except transit.Unavailable:
         return _transit_refusal(
             "Transit times are not available on this server right now.", "transit_unavailable", 503
@@ -4478,7 +4538,7 @@ def transit_next_vehicle(request, params: Query[NextVehicleIn], response: HttpRe
         )
         return {"vehicle": transit_live.vehicle_out("train", found)}
     try:
-        today = timezone.now().astimezone(ridetime.ZONE).date()
+        today = transit.moment_of(timezone.now()).service_day
         schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, today)
     except transit.Unavailable:
         schedule = None
@@ -4595,6 +4655,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         debug_junctions=body.debug_junctions,
         mtb_level=body.mtb_level,
         mtb_preferred=body.mtb_preferred,
+        ride_size=body.ride_size if body.preset == "mass-ride" else None,
         vias=tuple(body.via_points),
         follow=_follow_line(body),
         follow_exact=body.follow_exact,
@@ -4804,6 +4865,12 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         stress=body.stress,
         hills=body.hills,
         when=body.when,
+        # The closures and the roads the rider marked closed, left out as the plan leaves
+        # them out, and the rider's own speed, as the plan times its route.
+        closure_bypass=tuple(body.closure_bypass),
+        closures_now=body.closures_now,
+        blocked=_blocked(body),
+        cycling_speed_kmh=presets.rider_speed(body.preset, body.cycling_speed_kmh),
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
@@ -4964,6 +5031,11 @@ def nearest_places(request, body: NearestIn, response: HttpResponse):
         stress=body.stress,
         hills=body.hills,
         when=body.when,
+        # As Best order's (`stop_order`): the plan's closures, blocked roads and speed.
+        closure_bypass=tuple(body.closure_bypass),
+        closures_now=body.closures_now,
+        blocked=_blocked(body),
+        cycling_speed_kmh=presets.rider_speed(body.preset, body.cycling_speed_kmh),
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
@@ -5083,6 +5155,13 @@ class ReverseIn(Schema):
         return self
 
 
+class PlaceNameIn(ReverseIn):
+    address: bool = Field(
+        default=False,
+        description="Name the point by its house number and street when one is near.",
+    )
+
+
 class PlaceOut(Schema):
     name: str = Field(description="A short name: the place, the street or trail, or 'near X'.")
     label: str = Field(description="One line naming it with its neighbourhood or town.")
@@ -5091,7 +5170,8 @@ class PlaceOut(Schema):
     kind: str = Field(
         description=(
             "Search: Photon's layer (house, street, city, district, other, ...). Names for a"
-            " point: 'street' or 'trail' when named from the route network, 'near' when not."
+            " point: 'street' or 'trail' when named from the route network, 'near' when not,"
+            " 'address' when asked for the street address and a house number is near."
         )
     )
     osm_type: Literal["N", "W", "R"] | None = Field(
@@ -5179,9 +5259,9 @@ def geocode_search(request, params: Query[GeocodeIn], response: HttpResponse):
     same_site_only,
     errors_as_json,
 )
-def geocode_reverse(request, params: Query[ReverseIn], response: HttpResponse):
+def geocode_reverse(request, params: Query[PlaceNameIn], response: HttpResponse):
     try:
-        found = geocode.reverse(params.lat, params.lon, lang=params.lang)
+        found = geocode.reverse(params.lat, params.lon, lang=params.lang, address=params.address)
     except geocode.Unavailable as unavailable:
         logger.warning("place name: neither the router nor the geocoder answered: %s", unavailable)
         return Status(502, {"error": GEOCODER_DOWN})

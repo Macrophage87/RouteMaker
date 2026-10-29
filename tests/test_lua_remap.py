@@ -112,6 +112,31 @@ def test_the_vendored_upstream_is_pinned_and_present() -> None:
     assert not source.rstrip().endswith("return M")
 
 
+@pytest.mark.parametrize(
+    ("folder", "name"),
+    [("lua/vendor", "graph_upstream.lua"), ("valhalla/vendor", "valhalla_build_config.py")],
+)
+def test_the_vendored_files_are_the_ones_recorded(folder, name) -> None:
+    """Byte-identical to the tag, as the READMEs say: each file's sha256 is recorded beside
+    it (SHA256SUMS, written by scripts/vendor_valhalla_lua.sh, which refuses a pinned
+    re-vendor that does not reproduce it)."""
+    import hashlib
+
+    sums = dict(
+        reversed(line.split())
+        for line in (REPO / folder / "SHA256SUMS").read_text().splitlines()
+        if line.strip()
+    )
+    digest = hashlib.sha256((REPO / folder / name).read_bytes()).hexdigest()
+    assert sums == {name: digest}
+    assert (REPO / folder / "VERSION").read_text() == (REPO / "lua/vendor/VERSION").read_text()
+
+
+# Keys Valhalla's C++ parser reads off the transform's table, not its Lua
+# (src/mjolnir/pbfgraphparser.cc at the pinned tag).
+PARSER_KEYS = {"bicycle:conditional"}
+
+
 def test_every_key_the_remap_writes_is_one_valhalla_reads() -> None:
     """The quality bar's supported-key list, read from the pinned source.
 
@@ -120,7 +145,8 @@ def test_every_key_the_remap_writes_is_one_valhalla_reads() -> None:
     enough. `bicycle:forward` and `bicycle:backward` are in it;
     `bicycle:forward:conditional` is not: the Lua transform reads no
     conditional key (the C++ parser reads `bicycle:conditional` and, from 3.6.0,
-    `access:conditional` itself).
+    `access:conditional` itself). `bicycle:conditional` is written for that
+    parser (FOLLOWUP-CONDITIONAL-ACCESS), so it is the one key allowed outside the list.
     """
     supported = {
         line.strip()
@@ -143,7 +169,7 @@ def test_every_key_the_remap_writes_is_one_valhalla_reads() -> None:
         for key in written
         # The rm: namespace is this project's own and is stripped by the entry
         # point before Valhalla sees it, which the entry-point suite asserts.
-        if not key.startswith("rm:") and key not in supported
+        if not key.startswith("rm:") and key not in supported and key not in PARSER_KEYS
     }
     assert not unsupported, f"the remap writes keys Valhalla drops silently: {sorted(unsupported)}"
 
@@ -606,6 +632,35 @@ def test_a_conditional_never_opens_a_one_way_against_its_traffic(variant_name, s
     tags = {**PULASKI, **ONEWAY_SHAPES[shape]}
     built = inject(Variant[variant_name], dict(tags), 7)
     assert _traffic_access(built) == ("true", "false"), (variant_name, built)
+
+
+def _transformed(tags: dict[str, str], key: str) -> str:
+    table = ", ".join(f'["{k}"] = "{v}"' for k, v in sorted(tags.items()))
+    result = _lua_driver(
+        'dofile("lua/graph.lua")\n'
+        f"local _, out = ways_proc({{ {table} }}, 3)\n"
+        f'io.stdout:write(tostring(out and out["{key}"]), "\\n")\n'
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout.strip()
+
+
+def test_the_router_is_handed_pulaskis_window_as_it_can_read_it() -> None:
+    """The owner, 2026-10-29: the router applies the time window. Valhalla's parser drops a
+    condition with a sun event in it, so the weekend dawn-to-dusk grant reaches it as fixed
+    times inside the real window all year; with the static grant, the way is then open only
+    inside the window at the plan's ride time."""
+    tags = {**PULASKI, "oneway": "yes"}
+    assert _transformed(tags, "bicycle:conditional") == "yes @ (Sa-Su 07:15-17:10; PH 07:15-17:10)"
+    assert _bike_access(tags) == ("true", "false")
+
+
+def test_a_grant_the_router_cannot_time_stays_closed() -> None:
+    """Unclear access is closed: a grant whose condition the router cannot read (wet ground,
+    a window running past midnight between sun events) is not opened at every hour."""
+    for condition in ("yes @ (wet)", "yes @ (sunset-sunrise)"):
+        tags = {**PULASKI, "bicycle:conditional": condition}
+        assert _bike_access(tags) == ("false", "false"), condition
 
 
 @pytest.mark.parametrize("variant_name", ["STANDARD", "WEEKEND", "EBIKE", "NO_TRAIL"])

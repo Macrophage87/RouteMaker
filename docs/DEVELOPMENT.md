@@ -1293,6 +1293,44 @@ order), and nothing asks for hazards.
   `src/lib/massCapacity.test.ts` and `src/lib/profileChart.test.ts`, and for the parts outside DC (427) the "427"
   test in `src/lib/massCapacity.test.ts`, `tests/test_profile_flow.py` and `tests/test_mass_capacity.py`; in the browser, section 20 of scripts/a11y/check.mjs.
 
+### Mass Ride routing by road capacity (items 120-123, 128; v0.15.0)
+
+The riders a minute the capacity map draws now choose the route, for the ride size the rider
+set (the "Anticipated ride size" slider, sent as `ride_size`, 100 to 2,000, 500 by default;
+moving it plans again). `routemaker.mass_route.price` turns a route's stretches (the answer's
+own `_flow_stretches`: each piece's usable width, Avoid, untraced, outside DC) into seconds:
+
+- **Too narrow for the ride.** A road needs riders / 5 a minute (the riders chart's dashed line,
+  a 5-minute hold). Where it carries less, each metre costs its time at the 7 mph cruise times
+  (need / carried - 1), at most 3 times; Avoid carries nothing and pays the cap. So the same road
+  is free for 100 riders and costly for 1,500.
+- **Changes of capacity** (120-123, "It tends to scatter the group"): 60 s stepping down and 30 s
+  stepping up, times (the change / the larger figure) squared, times the group scale (ride size
+  / 500, between 0.5 and 3). Changes under 15% and stretches under 25 m (a junction's own metres)
+  are not changes.
+
+`core.routing.choose_by_capacity` reads every one of the router's routes that way (traced as the
+answer traces them) and keeps the one whose router cost plus climbing plus capacity price is
+least, the router's own unless another saves more than 5 s. Busier roads are not held against a
+Mass Ride's choice (the LTS checks `calmer_or_own` and `no_busier_than_middle` are skipped once
+it has run): a corked ride is judged by what a road carries (325). Where the router's own route
+cannot be read in time, the choice is made as before. The router gives alternatives only between
+two points up to 25 km (15.5 mi) apart on the hills slider's avoid half (`AVOID_MAX_SPAN_M`), where
+a Mass Ride starts: with stops or vias, or a longer span, the route is the router's own and
+`mass_capacity` reports on it without choosing. The weights are proposals for the owner.
+
+The answer's `mass_capacity` says what the ride size needs and the route carries: the narrowest
+point, the metres below the need, the narrow stretches by street (longest 15), the capacity
+changes, the corkers (`mass_route.corker_load`, the Corker load chart's count in Python, held to
+the front end's figures by tests/test_mass_route.py) and how the router's routes were weighed.
+The assistants' tool (`mcp/routemaker_mcp.py`, `plan_route` and the other plan tools) takes
+`ride_size` and returns the same in miles as `mass_capacity`, so an assistant can move a via
+point onto a wider street and plan again (the owner, 2026-10-29).
+
+Not priced yet: the signal waits, pavement and tight turns (PLAN's other reductions) and the
+busy-road crossings (133-136). Not built: Avoid marks for Mass Ride alone (stretches marked Avoid
+for every ride type are priced, at the cap); flagging narrow roads on the map.
+
 ### Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3, items 325-327)
 
 "Some stretches can be marked as a caution or warning where we've had problems. They go along side like
@@ -1789,9 +1827,10 @@ model's forces (`routemaker.effort`, Martin et al. 1998: rolling resistance 0.00
   (300 m), so a short kick averages out) the standard rider climbs at the endurance
   pace, never faster than the flat speed and never slower than 5 mph. The request's
   system weight moves at that same power, so a loaded bike climbs slower, down to
-  pushing pace in its low gears; the steepness penalty never changes with weight (the
-  calm search's effort blend and Mountain Goat's effort tiebreak still weigh it). The extra
-  seconds over the flat cost what the same seconds of flat riding do.
+  pushing pace in its low gears, and no rider climbs a steeper grade faster than a
+  gentler one (timed in steps of 0.1% of grade); the steepness penalty never changes with
+  weight (the calm search's effort blend and Mountain Goat's effort tiebreak still weigh
+  it). The extra seconds over the flat cost what the same seconds of flat riding do.
 - **Past the endurance pace**, where holding 5 mph takes more, the penalty is the
   window's seconds times `(e^(d / 0.2) - 1) / (e^(0.35 / 0.2) - 1)`
   (`hill_cost.steepness_rate`), with `d` the power past the endurance pace as a share of
@@ -2159,8 +2198,8 @@ curl -s 'http://localhost:8000/api/reverse?lat=38.90133&lon=-77.260598'
 
 | | `GET /api/geocode` | `GET /api/reverse` |
 | --- | --- | --- |
-| Parameters | `q` (2-200 characters after white space is collapsed), optional `lat` and `lon` together (a bias, inside `COVERAGE_BBOX`), `limit` 1-10 (default 6), `lang` (`en` only, the imported language) | `lat`, `lon` (inside `COVERAGE_BBOX`), `lang` (`en`) |
-| What reaches Photon | the query with US street abbreviations spelled out (`Blvd`, `St`, `Ave`, `Rd`, `Dr`, `Pkwy`, `Hwy`, `Ct`, `Ln`, `Pl`, `Sq`, `Ter`, `N`/`S`/`E`/`W`, `NE`/`NW`/`SE`/`SW`; `geocode.expand_abbreviations` has the rules), the bias with its strength (`zoom` 14 and `location_bias_scale` 0.2, `geocode.BIAS_ZOOM` and `BIAS_SCALE`, so nearby places rank first; the page sends the rider's location when it already has one, else the map's centre), a count a few above `limit`, `lang`, and `bbox` = `COVERAGE_BBOX`; nothing else the request carries | `lat`, `lon`, `lang`, `limit=1`, `radius=0.25` km |
+| Parameters | `q` (2-200 characters after white space is collapsed), optional `lat` and `lon` together (a bias, inside `COVERAGE_BBOX`), `limit` 1-10 (default 6), `lang` (`en` only, the imported language) | `lat`, `lon` (inside `COVERAGE_BBOX`), `lang` (`en`), optional `address=true` (Go's tapped-spot card) |
+| What reaches Photon | the query with US street abbreviations spelled out (`Blvd`, `St`, `Ave`, `Rd`, `Dr`, `Pkwy`, `Hwy`, `Ct`, `Ln`, `Pl`, `Sq`, `Ter`, `N`/`S`/`E`/`W`, `NE`/`NW`/`SE`/`SW`; `geocode.expand_abbreviations` has the rules), the bias with its strength (`zoom` 14 and `location_bias_scale` 0.2, `geocode.BIAS_ZOOM` and `BIAS_SCALE`, so nearby places rank first; the page sends the rider's location when it already has one, else the map's centre), a count a few above `limit`, `lang`, and `bbox` = `COVERAGE_BBOX`; nothing else the request carries | `lat`, `lon`, `lang`, `limit=1`, `radius=0.25` km; with `address=true`, first `layer=house`, `limit=1`, `radius=0.04` km |
 | 200 | `{"results": [...], "attribution": [...]}`, at most `limit` results, each inside the box, rows with the same name and OSM key within 300 m folded into one | the same shape, zero or one result |
 
 Each result is `{name, label, lon, lat, kind, osm_type, osm_id, osm_key,
@@ -2178,9 +2217,18 @@ point is on an unnamed trail and the nearest name is more than 5 m further
 off - a street, or another, named trail (X is that edge's name, with its
 `osm_type` "W" and `osm_id`); or no
 named edge is close enough and X is a place Photon knows, never with a house
-number. Ferry edges never name a point. If the
+number (or `address`, below). Ferry edges never name a point. If the
 router does not answer, the name is the `near` one; if Photon does not, the
 label has no neighbourhood.
+
+With `address=true` (Go's tapped-spot card; the owner, 2026-10-29: "provide
+the address if possible"), a house number and street within 40 m (about 130
+ft, `geocode.ADDRESS_RADIUS_KM`) names the point first: `kind` `address`, name
+"1234 Franklin Street Northeast", the four `osm_*` fields null. With none that
+near, the name is the one above, at the cost of a second Photon call; if
+Photon does not answer the first, it is not asked again and the label has no
+neighbourhood. Route points never
+ask, since the nearest house to a point on a road is a neighbour's.
 
 Refusals, all `{"error": "..."}`: 400 for a parameter above; 403 when the
 browser says `Sec-Fetch-Site: cross-site` or `same-site` (refused before it is
@@ -3516,8 +3564,8 @@ it had only the nearest. The stop on the Fairfax County Parkway Trail lay 15 ft 
 from a ramp and 19 ft (5.9 m) from the trail; matched to the ramp, the route left the
 trail for 0.6 mi (1.0 km) of the Avoid-rated parkway. The search's own requests reuse
 the plan's locations, so they match alike, and so do the stop-order leg costs and
-its matrix past ten stops (`stoporder`); `core.nearest` asks for fixed places and keeps
-the nearest way. The cut points of a long plan (`refine.long_legs`) and the dedodge
+its matrix past ten stops (`stoporder`); `core.nearest` matches the rider the same way and
+keeps the nearest way at its fixed places. The cut points of a long plan (`refine.long_legs`) and the dedodge
 locations are on the route and get no radius; a bikeshare walk leg (pedestrian, to and
 from the dock) keeps the nearest way. Only ways the ride's costing allows are
 candidates, so a way closed to bicycles is never matched (err closed is unchanged), and
@@ -4691,6 +4739,29 @@ car-free roads come from the motor-vehicle conditionals
 (`routemaker.facility.car_free_when`), which this function does not read. `tests/test_lua_remap.py` checks it through `lua/graph.lua` on every
 variant and every one-way spelling.
 
+**The router applies the time window** (FOLLOWUP-CONDITIONAL-ACCESS, the owner,
+2026-10-29). The static grant above opens the way; Valhalla's C++ parser then reads
+the undirected `bicycle:conditional` as a timed restriction, so the edge is open
+only inside the window at the request's `date_time` (every plan sends the ride
+time's representative moment: Saturday 9:00 for a weekend ride, Tuesday 8:00 or
+12:00 for a weekday one). The parser drops a rule with a sun event in it,
+reads only `yes`, `designated`, `private` and `delivery` as grants (`permissive`
+reads as a denial), and reads one rule set. So for an undirected grant
+`remap_conditional_access` writes `bicycle:conditional` again as one `yes @ (...)`
+of the granting branches, each sun event a fixed time that keeps inside the real
+window every day of the year here (`SUN_LATEST` for a start, `SUN_EARLIEST` for an
+end: dawn 07:15, dusk 17:10, so Pulaski Highway reads `yes @ (Sa-Su 07:15-17:10;
+PH 07:15-17:10)`). A grant whose condition cannot be so written (`wet`, a window
+between sun events across midnight) is not opened at all, as unclear access is
+closed; nor is one on holidays alone (`PH dawn-dusk`), since the parser drops a rule
+that starts with a holiday and a grant with no rule left would reach it as open at
+every hour. A bare grant with no condition opens the way unconditionally, as before.
+A request with no `date_time` (map matching, the stop-order matrix) leaves timed
+restrictions unchecked, so there the way reads open at every hour, as before. A directional conditional (`bicycle:forward:conditional`), which the parser
+does not read, is still resolved statically. A Saturday 9:00 plan should ride Pulaski
+Highway with the traffic and a Tuesday plan should not (not yet checked on built tiles). The fixed times are a
+conservative approximation, short of the real window in summer.
+
 **Measured** on the 2026-09-25 clipped region extract
 (`scripts/contraflow_census.py`, read-only; 137,518 non-trail one-way ways):
 192 ways and 15.97 miles (25.70 km) have contraflow on the standard reading
@@ -4731,7 +4802,11 @@ apt-get install -y luajit lua5.4
 
 `lua/vendor/graph_upstream.lua` is Valhalla's own transform at the pinned
 version, checked in so the entry-point contract can be tested against the real
-file. Refresh it with `scripts/vendor_valhalla_lua.sh`; do not edit it.
+file. Refresh it with `scripts/vendor_valhalla_lua.sh [VERSION]`; do not edit it. The
+script fetches it and `valhalla/vendor/valhalla_build_config.py` to a scratch directory,
+checks them (a pinned re-vendor must reproduce the sha256 in each folder's `SHA256SUMS`,
+which the suite also checks) before moving them into place, and then regenerates
+`supported_keys.txt` and the service configs; read the diff.
 
 Setting `CI=1` turns the suite's missing-interpreter skips into failures.
 
@@ -5833,8 +5908,9 @@ loop the rider chose every point after the start (a ride that already ends on it
 end). On a shorter ride it could change nothing, so it is left out rather than shown disabled with a
 standing reason under every short ride's tools; More tips says when it appears (`editingTips`). If
 it leaves while it has the focus (an undo or a removal takes a stop away), the focus goes to Reverse
-beside it. A press sends the ride as a route request would (points, preset and dials; not the
-weight, which the order does not use) to `POST /api/stop-order`
+beside it. A press sends the ride as a route request would (points, preset and dials, with the riding
+speed and the closure choices, `closureFields`; not the weight, which the order does not use) to
+`POST /api/stop-order`
 (`core.api.stop_order`, the route request's body, its rate and in-flight limits). While the order is
 found the button keeps its label and is `aria-disabled`, "Finding the best order for the stops." is
 said, and another press says "Still finding the best order." The answer is used only if the points,
@@ -7341,9 +7417,15 @@ own (`lib/nearest.ts`): the water layer's points (drinking water only; restrooms
 with their type; the file is loaded for the search even with the layer off),
 and Metrorail's stations at their bike entrance (`railStations.bikeEntrance`), MARC left out. The 8
 nearest in straight lines (`NEAREST_CANDIDATES`) go to `POST /api/nearest` with the ride's preset and
-dials (not the weight, loop or target), which answers each one's riding distance and time from
+dials, with the riding speed and the closure choices (`closureFields`; not the weight, loop or
+target), which answers each one's riding distance and time from
 Valhalla's `sources_to_targets` on the ride's own graph and costing (`stoporder.ride_graph`, shared
-with Best order), or straight lines when the router gives none. The 3 nearest by bike
+with Best order), or straight lines when the router gives none. Like Best order's legs and matrix,
+it is asked at the rider's own speed where the request gives one (`cycling_speed_kmh`), and leaves
+out what the plan would (`stoporder.ride_exclusions`): the closures to bicycles in force at the ride
+time, but those routed through (`closure_bypass`, `closures_now`), and the roads the rider marked
+closed (`blocked_lines`, which the page does not send yet: Ride keeps them for its re-plans
+only). The 3 nearest by bike
 (`NEAREST_SHOWN`; one the router cannot reach is left out) are listed in words, US units first, each
 with Ride here (a new plan from the search's origin to it: one `commit`, so Undo puts the plan back;
 a loop is turned off in the same edit) and, for water and restrooms with a plan of two or more
