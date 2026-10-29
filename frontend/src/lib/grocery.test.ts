@@ -94,7 +94,7 @@ test("the list is the Food sheet's own, under Grocery stores, with Ride here in 
   };
   const html = renderToStaticMarkup(createElement(FoodFinder, props));
   assert.match(html, /<h3 id="food-list-heading" class="visually-hidden">Grocery stores<\/h3>/);
-  assert.match(html, /<strong>A\. Whole Foods Market<\/strong> Grocery store\. 0\.2 mi \(0\.4 km\) from you in a straight line\./);
+  assert.match(html, /<strong><span class="visually-hidden">A\. <\/span>Whole Foods Market<\/strong> Grocery store\. 0\.2 mi \(0\.4 km\) from you in a straight line\./);
   assert.match(html, /aria-label="Ride here: Whole Foods Market"/);
   assert.match(html, /aria-label="Show on map: Whole Foods Market, marker A"/);
   assert.doesNotMatch(html, /Show \d+ more/);

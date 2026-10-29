@@ -7295,6 +7295,78 @@ details.fold > summary .icon {
   gap: 4px;
 }
 
+/* A list's Show all on map (Stephen 2026-10-29): one button over the list. */
+.show-all {
+  margin: 4px 0 8px;
+}
+
+/* Named places (Stephen 2026-10-29: "Named, not lettered", "With names in a bubble"): Go's and Plan's lists show
+   each place's name in a bubble, its tail at the spot. The button is at least 44 px tall; a long name is cut. */
+.lettered-marker.named-marker {
+  width: auto;
+  min-width: 44px;
+  max-width: 180px;
+  min-height: 44px;
+  height: auto;
+  padding: 0 0 10px;
+  font: inherit;
+}
+
+.named-bubble {
+  position: relative;
+  display: block;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 5px 10px;
+  border: 2px solid #ffffff;
+  border-radius: 8px;
+  background: #1e3a8a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  color: #ffffff;
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* The tail: a white-edged point under the bubble's middle, its tip on the place. */
+.named-marker::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 12px solid #1e3a8a;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 2px 0 #ffffff);
+}
+
+/* The place a row's Show on map picked: on top of the rest, bigger, with a thicker edge (not its colour alone). */
+/* Over the closure, junction and Avoid markers (3-4), under the cards (5). */
+.lettered-marker.is-shown {
+  z-index: 4;
+}
+
+.named-marker.is-shown .named-bubble {
+  border-width: 3px;
+  background: #c2410c;
+  font-size: 17px;
+}
+
+.named-marker.is-shown::after {
+  border-top-color: #c2410c;
+}
+
+.lettered-marker.is-shown .lettered-pin {
+  border-width: 3px;
+  background: #c2410c;
+}
+
 .lettered-marker:focus-visible {
   outline: 3px solid var(--focus, #1d4ed8);
   outline-offset: 2px;
@@ -7322,6 +7394,33 @@ details.fold > summary .icon {
 
   .lettered-letter {
     color: CanvasText;
+  }
+
+  .named-bubble {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    forced-color-adjust: none;
+  }
+
+  .named-marker::after {
+    border-top-color: CanvasText;
+    forced-color-adjust: none;
+  }
+
+  .named-marker.is-shown .named-bubble,
+  .lettered-marker.is-shown .lettered-pin {
+    border-color: CanvasText;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .lettered-marker.is-shown .lettered-letter {
+    color: HighlightText;
+  }
+
+  .named-marker.is-shown::after {
+    border-top-color: Highlight;
   }
 }
 
