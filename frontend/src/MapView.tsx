@@ -3,6 +3,7 @@ import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
 import { followZoom } from "./lib/idleRecentre.ts";
 import { createPortal } from "react-dom";
 import { attachFeatureHover } from "./featureHoverCard.ts";
+import { attachTrailHighlight, withTrailHighlight } from "./lib/trailHighlight.ts";
 import { climbHoverChart, climbHoverWords, trailHoverChart, trailHoverWords } from "./lib/featureHover.ts";
 import * as maplibregl from "maplibre-gl";
 import type { DataDrivenPropertyValueSpecification, GeoJSONSource, Map as MapLibreMap, Marker, Popup } from "maplibre-gl";
@@ -161,7 +162,6 @@ import {
   LANE_AMBER,
   closureCard,
   closureFeatures,
-  closureMarkerName,
   closuresOf,
   closuresUnderNames,
   AREA_POLL_MS,
@@ -172,10 +172,15 @@ import {
   mergeClosures,
   loadAreaClosures,
   noticeCard,
-  noticeMarkerName,
+  noticeListCard,
+  noticesMarkerName,
   parkNoticesOf,
+  atSameSpot,
+  closureListCard,
+  closuresMarkerName,
   type ClosureCard,
   type ClosureItem,
+  type ClosureListCard,
 } from "./lib/closureMap.ts";
 import { ViaHold } from "./lib/viaHold.ts";
 import { planLegLines, routeDrawnLines } from "./lib/planLegs.ts";
@@ -962,7 +967,10 @@ export function MapView(props: Props) {
     let hoverFrame = 0;
     let hoverPoint: { x: number; y: number } | null = null;
     // The climbs' and the trails' hover card (featureHoverCard.ts), as the stations' own.
-    const featureHover = attachFeatureHover(map);
+    // A trail's hover card also lights up the section its profile and rating are of (lib/trailHighlight.ts), until the
+    // card goes or moves to another feature.
+    const { card: featureHover, lightUp } = withTrailHighlight(attachFeatureHover(map));
+    const detachHighlight = attachTrailHighlight(map);
     // Mouse only: a tap's compatibility mousemove (after its touch pointerdown) shows no hover card.
     let mousePointer = true;
     const onPointer = (event: PointerEvent) => {
@@ -999,7 +1007,8 @@ export function MapView(props: Props) {
           const { lng, lat } = map.unproject([hoverPoint.x, hoverPoint.y]);
           featureHover.show(climbHoverWords(climb), [lng, lat], climbHoverChart(climb));
         } else if (trail) {
-          featureHover.show(trailHoverWords(trail.properties, trail.way), trail.point, trailHoverChart(window.location.origin, trail.point));
+          const words = trailHoverWords(trail.properties, trail.way);
+          featureHover.show(words, trail.point, trailHoverChart(window.location.origin, trail.point, lightUp(words.key)));
         } else featureHover.hide();
         runHover(under, anyPopupOpen(), { handle: hoverShown.current, cursor: canvas.style.cursor }, {
           drawHandle: (at) => showEdit(at as LonLat | null),
@@ -1677,6 +1686,7 @@ export function MapView(props: Props) {
     return () => {
       disposed = true;
       featureHover.hide();
+      detachHighlight();
       canvas.removeEventListener("pointerdown", onPointer);
       canvas.removeEventListener("pointermove", onPointer);
       rail?.close();
@@ -2333,10 +2343,12 @@ export function MapView(props: Props) {
     const items = mergeClosures(props.route && !props.stale ? closuresOf(props.route, props.permitsOn) : [], areaClosures, props.permitsOn);
     const source = map.getSource(CLOSURE_SOURCE) as GeoJSONSource | undefined;
     source?.setData(closureFeatures(items));
-    const open = (opener: HTMLButtonElement, at: LonLat, card: ClosureCard, item: ClosureItem | null) => {
+    // `group`: the closures the card is for, in its order (a list card's entries); [] for a park's notices.
+    const open = (opener: HTMLButtonElement, at: LonLat, card: ClosureCard | ClosureListCard, group: readonly ClosureItem[]) => {
       closurePopup.current?.remove();
-      const popup = showClosureCard(map, at, card, (bypass) => {
+      const popup = showClosureCard(map, at, card, (bypass, index) => {
         popup.remove();
+        const item = group[index];
         if (item) callbacks.current.onClosureBypass?.(item, bypass);
       });
       closurePopup.current = popup;
@@ -2349,37 +2361,49 @@ export function MapView(props: Props) {
         if (opener.isConnected && (!active || active === document.body || element.contains(active))) opener.focus();
       });
     };
-    const button = (className: string, name: string, svg: string) => {
+    // `count`: markers on one spot are one (P11), with their count shown on it.
+    const button = (className: string, name: string, svg: string, count = 1) => {
       const element = document.createElement("button");
       element.type = "button";
       element.className = className;
       element.setAttribute("aria-label", name);
       element.setAttribute("aria-haspopup", "dialog");
       element.innerHTML = svg;
+      if (count > 1) {
+        const badge = document.createElement("span");
+        badge.className = "closure-count";
+        badge.setAttribute("aria-hidden", "true");
+        badge.textContent = String(count);
+        element.append(badge);
+      }
       element.addEventListener("dblclick", (event) => event.stopPropagation());
       return element;
     };
-    for (const item of markerItems(items)) {
+    for (const group of atSameSpot(markerItems(items), (item) => item.point)) {
+      const item = group[0];
+      // The spot's worst: red over amber, a closure still in the way over one routed through.
+      const shown = group.find((i) => !i.bypassed && i.severity === "red") ?? group.find((i) => !i.bypassed) ?? item;
       const element = button(
-        `closure-marker closure-${item.bypassed ? "bypassed" : item.severity}`,
-        closureMarkerName(item),
-        item.bypassed ? bypassedMarkSvg() : barrierSvg(item.severity),
+        `closure-marker closure-${shown.bypassed ? "bypassed" : shown.severity}`,
+        closuresMarkerName(group),
+        shown.bypassed ? bypassedMarkSvg() : barrierSvg(shown.severity),
+        group.length,
       );
       element.addEventListener("click", (event) => {
         // A click on a marker is not a click on the map: it must not add a point.
         event.stopPropagation();
-        open(element, item.point, closureCard(item), item);
+        open(element, item.point, group.length > 1 ? closureListCard(group) : closureCard(item), group);
       });
       closureMarkers.current.push(new maplibregl.Marker({ element, anchor: "center" }).setLngLat(item.point).addTo(map));
     }
     const parks = props.route && !props.stale ? parkNoticesOf(props.route) : [];
-    for (const notice of parks) {
-      if (!notice.point) continue;
-      const point = notice.point;
-      const element = button("closure-marker closure-park", noticeMarkerName(notice), parkNoticeSvg());
+    for (const group of atSameSpot(parks, (notice) => notice.point ?? [0, 0])) {
+      const point = group[0].point;
+      if (!point) continue;
+      const element = button("closure-marker closure-park", noticesMarkerName(group), parkNoticeSvg(), group.length);
       element.addEventListener("click", (event) => {
         event.stopPropagation();
-        open(element, point, noticeCard(notice), null);
+        open(element, point, group.length > 1 ? noticeListCard(group) : noticeCard(group[0]), []);
       });
       closureMarkers.current.push(new maplibregl.Marker({ element, anchor: "center" }).setLngLat(point).addTo(map));
     }
@@ -2449,18 +2473,28 @@ export function MapView(props: Props) {
       element.addEventListener("dblclick", (event) => event.stopPropagation());
       return new maplibregl.Marker({ element, anchor: "bottom" }).setLngLat(place.point).addTo(map);
     });
-    // Bring them into view, above a phone's sheet (which covers about the lower half of the map).
-    if (props.lettered.length > 0) {
+    // Bring them into view in the part of the map the panel does not cover (App's framePadding: above a phone's
+    // sheet as it is now, not a guess at half the map; the 2026-10-28 audit, P7: "pins hide under the sheet"). Room
+    // above each pin's point for the pin itself, and at least 120 px of map between the paddings. Not while a ride's
+    // camera follows the rider (its Detour list, 2026-10-28): the next fix would take the map straight back; a row's
+    // Show on map frames its place instead.
+    if (props.lettered.length > 0 && !callbacks.current.follow) {
       const lons = props.lettered.map((place) => place.point[0]);
       const lats = props.lettered.map((place) => place.point[1]);
       const height = map.getContainer().clientHeight;
-      const narrow = map.getContainer().clientWidth < 721;
+      const width = map.getContainer().clientWidth;
+      const frame = callbacks.current.framePadding();
+      // A phone's top bar and Go's Roam button take about the top 115 px; a pin stands 40 px over its point.
+      const top = Math.max(frame.top, width < 721 ? 155 : 80);
+      const bottom = Math.max(40, Math.min(frame.bottom, height - top - 120));
+      const left = Math.max(50, Math.min(frame.left, width - 170));
+      const right = Math.max(50, Math.min(frame.right, width - left - 120));
       map.fitBounds(
         [
           [Math.min(...lons), Math.min(...lats)],
           [Math.max(...lons), Math.max(...lats)],
         ],
-        { padding: { top: 80, left: 50, right: 50, bottom: narrow ? Math.round(height * 0.55) : 60 }, maxZoom: 16, duration: 400 },
+        { padding: { top, left, right, bottom }, maxZoom: 16, duration: 400 },
       );
     }
   }, [props.lettered]);
@@ -2876,7 +2910,8 @@ function showJunctionCard(map: MapLibreMap, item: JunctionItem, takeFocus: boole
   const where = document.createElement("p");
   where.className = "hint";
   where.textContent = `${item.where}. Drag the route away to plan around it.`;
-  body.append(title, reason, cost, where);
+  // A Mass Ride's junction with no major junction of the profile there has no line (lib/intersectionMarkers.ts junctionCorkText).
+  body.append(...(item.costText ? [title, reason, cost, where] : [title, reason, where]));
   const card = new maplibregl.Popup({
     closeButton: true,
     closeOnClick: true,
@@ -2900,14 +2935,57 @@ function showJunctionCard(map: MapLibreMap, item: JunctionItem, takeFocus: boole
 /**
  * A closure's card (v0.7.0, lib/closureMap.ts closureCard): what is closed, the source named and linked, when it
  * applies, the delay on this route, and "Route through anyway" or Undo. A dialog named for the closure; its close
- * button takes the focus, and Escape closes it.
+ * button takes the focus, and Escape closes it. A list card (markers on one spot, P11) holds each card in a list,
+ * under one heading.
  */
-function showClosureCard(map: MapLibreMap, at: LonLat, card: ClosureCard, onAction: (bypass: boolean) => void): Popup {
+function showClosureCard(map: MapLibreMap, at: LonLat, card: ClosureCard | ClosureListCard, onAction: (bypass: boolean, index: number) => void): Popup {
   const body = document.createElement("div");
   body.className = "closure-card";
-  const heading = document.createElement("strong");
-  heading.textContent = card.heading;
-  const what = document.createElement("p");
+  let named: string;
+  if ("entries" in card) {
+    const heading = document.createElement("strong");
+    heading.textContent = card.heading;
+    const list = document.createElement("ul");
+    list.className = "closure-card-list";
+    card.entries.forEach((entry, index) => {
+      const row = document.createElement("li");
+      row.append(...closureCardParts(entry, card.entryHeadings, (bypass) => onAction(bypass, index)));
+      list.append(row);
+    });
+    body.append(heading, list);
+    named = card.heading;
+  } else {
+    body.append(...closureCardParts(card, true, (bypass) => onAction(bypass, 0)));
+    named = `${card.heading}: ${card.what}`;
+  }
+  const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, focusAfterOpen: false, offset: 16, className: "closure-popup" })
+    .setLngLat(at)
+    .setDOMContent(body)
+    .addTo(map);
+  const element = popup.getElement();
+  element.setAttribute("role", "dialog");
+  element.setAttribute("aria-label", named);
+  element.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      popup.remove();
+    }
+  });
+  const close = element.querySelector<HTMLButtonElement>(".maplibregl-popup-close-button");
+  close?.setAttribute("aria-label", CLOSURE_CARD_CLOSE);
+  close?.focus();
+  return popup;
+}
+
+/** One closure's lines (its heading, unless a list's shared one says it), and its button. A "" line is not drawn. */
+function closureCardParts(card: ClosureCard, withHeading: boolean, onAction: (bypass: boolean) => void): HTMLElement[] {
+  const parts: HTMLElement[] = [];
+  if (withHeading) {
+    const heading = document.createElement("strong");
+    heading.textContent = card.heading;
+    parts.push(heading);
+  }
+  const what = document.createElement(withHeading ? "p" : "strong");
   what.textContent = card.what;
   const source = document.createElement("p");
   source.className = "closure-card-source";
@@ -2921,12 +2999,16 @@ function showClosureCard(map: MapLibreMap, at: LonLat, card: ClosureCard, onActi
   } else {
     source.textContent = card.source.name;
   }
-  const when = document.createElement("p");
-  when.textContent = card.when;
+  parts.push(what, source);
+  if (card.when) {
+    const when = document.createElement("p");
+    when.textContent = card.when;
+    parts.push(when);
+  }
   const effect = document.createElement("p");
   effect.className = "closure-card-effect";
   effect.textContent = card.effect;
-  body.append(heading, what, source, when, effect);
+  parts.push(effect);
   if (card.action) {
     const action = card.action;
     const press = document.createElement("button");
@@ -2937,25 +3019,9 @@ function showClosureCard(map: MapLibreMap, at: LonLat, card: ClosureCard, onActi
       event.stopPropagation();
       onAction(action.bypass);
     });
-    body.append(press);
+    parts.push(press);
   }
-  const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, focusAfterOpen: false, offset: 16, className: "closure-popup" })
-    .setLngLat(at)
-    .setDOMContent(body)
-    .addTo(map);
-  const element = popup.getElement();
-  element.setAttribute("role", "dialog");
-  element.setAttribute("aria-label", `${card.heading}: ${card.what}`);
-  element.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      event.stopPropagation();
-      popup.remove();
-    }
-  });
-  const close = element.querySelector<HTMLButtonElement>(".maplibregl-popup-close-button");
-  close?.setAttribute("aria-label", CLOSURE_CARD_CLOSE);
-  close?.focus();
-  return popup;
+  return parts;
 }
 
 /** A road barrier: a striped board on two legs, red for a closure, amber for a blocked bike lane. */

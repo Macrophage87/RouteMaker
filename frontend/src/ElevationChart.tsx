@@ -165,6 +165,7 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
   const present = stripKey(sections);
   const tableName = calm ? t("Climbs and rolling stress as tables") : t("Climbs as a table");
   const prompt = t("Move along the chart, or use the arrow keys, to read the route at a point.");
+  const promptTouch = t("Move along the chart to read the route at a point.");
   const keys = t("Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift+C go to the next and previous climb.");
 
   const defs = (
@@ -353,82 +354,97 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
       </p>
       {/* In Go the reading line is kept empty until a touch, so it never moves the sheet under the finger. */}
       <p className="pc-readout" aria-hidden="true">
-        {active !== null ? reading.text : compact ? "" : prompt}
+        {active !== null ? (
+          reading.text
+        ) : compact ? (
+          ""
+        ) : (
+          // The keys only where there is a keyboard to use them (P10): not on a touch screen, unless accessibility
+          // mode is on (styles.css .pc-prompt-keys). The keys are always said with the chart (pc-keys).
+          <>
+            <span className="pc-prompt-keys">{prompt}</span>
+            <span className="pc-prompt-touch">{promptTouch}</span>
+          </>
+        )}
       </p>
       {!compact && (
         <>
-          <ul className="pc-legend" aria-label={t("Chart key")}>
-            {GRADE_BANDS.map((band) => (
-              <li key={band.band}>
-                <svg width="14" height="10" aria-hidden="true">
-                  <rect width="14" height="10" fill={GRADE_BAND_FILL} />
-                  <rect width="14" height="10" fill={`url(#${uid}-${band.pattern})`} />
-                </svg>
-                {band.label}
-              </li>
-            ))}
-            {calm ? (
-              <>
-                <li className="pc-legend-strip">
-                  {t("Under the elevation: rolling stress{estimate}, calm miles per mile (calm km per km) over the mile around each point, on a log scale (1 to 2 is as tall as 5 to 10); about 1 is all quiet streets", { estimate: calm.estimate ? t(" (an estimate)") : "" })}
+          {/* The key behind one line (P10): eight lines of it came before the tables. */}
+          <details className="pc-key-fold">
+            <summary>{t("Key")}</summary>
+            <ul className="pc-legend" aria-label={t("Chart key")}>
+              {GRADE_BANDS.map((band) => (
+                <li key={band.band}>
+                  <svg width="14" height="10" aria-hidden="true">
+                    <rect width="14" height="10" fill={GRADE_BAND_FILL} />
+                    <rect width="14" height="10" fill={`url(#${uid}-${band.pattern})`} />
+                  </svg>
+                  {band.label}
                 </li>
-                {CALM_BANDS.map((band) => {
-                  const cls = spanClass({ tier: band.tier, facility: "none" });
-                  return (
-                    <li key={band.index}>
-                      <svg width="14" height="10" aria-hidden="true">
-                        <rect width="14" height="10" fill={cls.color} />
-                        <rect width="14" height="10" fill={`url(#${uid}-t${band.tier})`} />
+              ))}
+              {calm ? (
+                <>
+                  <li className="pc-legend-strip">
+                    {t("Under the elevation: rolling stress{estimate}, calm miles per mile (calm km per km) over the mile around each point, on a log scale (1 to 2 is as tall as 5 to 10); about 1 is all quiet streets", { estimate: calm.estimate ? t(" (an estimate)") : "" })}
+                  </li>
+                  {CALM_BANDS.map((band) => {
+                    const cls = spanClass({ tier: band.tier, facility: "none" });
+                    return (
+                      <li key={band.index}>
+                        <svg width="14" height="10" aria-hidden="true">
+                          <rect width="14" height="10" fill={cls.color} />
+                          <rect width="14" height="10" fill={`url(#${uid}-t${band.tier})`} />
+                        </svg>
+                        {band.label}
+                      </li>
+                    );
+                  })}
+                  <li>
+                    <svg width="14" height="10" aria-hidden="true">
+                      <path d="M0 7H5V3H14" className="pc-calm-steps" fill="none" />
+                    </svg>
+                    {t("Dashed steps: each stretch's own figure, without the mile around it")}
+                  </li>
+                  <li>
+                    <svg width="14" height="10" aria-hidden="true">
+                      <path d="M0 5H14" className="pc-calm-guide" fill="none" />
+                    </svg>
+                    {t("Dotted lines: where the levels change (the solid grey line is 1)")}
+                  </li>
+                  {calmAvoids.length > 0 && (
+                    <li>
+                      <svg width="14" height="10" aria-hidden="true" className="pc-avoid-key">
+                        <rect width="14" height="10" fill={AVOID_FILL} />
+                        <rect width="14" height="10" fill={`url(#${uid}-avoid)`} />
+                        <rect x="0.5" y="0.5" width="13" height="9" fill="none" stroke={AVOID_INK} strokeWidth="1" />
                       </svg>
-                      {band.label}
+                      {t("Avoid (A where narrow)")}
+                    </li>
+                  )}
+                  <JunctionKey orange={calmMarks.some((p) => p.severity === "orange")} red={calmMarks.some((p) => p.severity === "red")} dot={false} />
+                </>
+              ) : (
+                <li className="pc-legend-strip">{t("Strip under the elevation: traffic stress along the route")}</li>
+              )}
+            </ul>
+            {!calm && present.length > 0 && (
+              <ul className="pc-tiers" aria-label={t("Stress on the strip")}>
+                {present.map((s) => {
+                  const cls = spanClass(s);
+                  return (
+                    <li key={cls.key}>
+                      <span
+                        className={`swatch ${s.unpaved ? "pc-swatch-unpaved" : s.tier === 5 ? "stress-seg-5" : s.facility === "path" ? "" : `stress-seg-${s.tier ?? "unknown"}`}`}
+                        style={{ backgroundColor: cls.color, ["--seg-accent" as string]: cls.halo }}
+                        aria-hidden="true"
+                      />
+                      {capitalise(sectionWords(s) ?? t("not rated"))}
                     </li>
                   );
                 })}
-                <li>
-                  <svg width="14" height="10" aria-hidden="true">
-                    <path d="M0 7H5V3H14" className="pc-calm-steps" fill="none" />
-                  </svg>
-                  {t("Dashed steps: each stretch's own figure, without the mile around it")}
-                </li>
-                <li>
-                  <svg width="14" height="10" aria-hidden="true">
-                    <path d="M0 5H14" className="pc-calm-guide" fill="none" />
-                  </svg>
-                  {t("Dotted lines: where the levels change (the solid grey line is 1)")}
-                </li>
-                {calmAvoids.length > 0 && (
-                  <li>
-                    <svg width="14" height="10" aria-hidden="true" className="pc-avoid-key">
-                      <rect width="14" height="10" fill={AVOID_FILL} />
-                      <rect width="14" height="10" fill={`url(#${uid}-avoid)`} />
-                      <rect x="0.5" y="0.5" width="13" height="9" fill="none" stroke={AVOID_INK} strokeWidth="1" />
-                    </svg>
-                    {t("Avoid (A where narrow)")}
-                  </li>
-                )}
-                <JunctionKey orange={calmMarks.some((p) => p.severity === "orange")} red={calmMarks.some((p) => p.severity === "red")} dot={false} />
-              </>
-            ) : (
-              <li className="pc-legend-strip">{t("Strip under the elevation: traffic stress along the route")}</li>
+              </ul>
             )}
-          </ul>
-          {!calm && present.length > 0 && (
-            <ul className="pc-tiers" aria-label={t("Stress on the strip")}>
-              {present.map((s) => {
-                const cls = spanClass(s);
-                return (
-                  <li key={cls.key}>
-                    <span
-                      className={`swatch ${s.unpaved ? "pc-swatch-unpaved" : s.tier === 5 ? "stress-seg-5" : s.facility === "path" ? "" : `stress-seg-${s.tier ?? "unknown"}`}`}
-                      style={{ backgroundColor: cls.color, ["--seg-accent" as string]: cls.halo }}
-                      aria-hidden="true"
-                    />
-                    {capitalise(sectionWords(s) ?? t("not rated"))}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          </details>
           <details className="pc-source-fold">
             <summary>{t("Sources")}</summary>
             <p className="hint pc-source">{calm ? `${t("Elevation: USGS 3DEP.")} ${calmSource(calm)}` : t("Elevation: USGS 3DEP.")}</p>

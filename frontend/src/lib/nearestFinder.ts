@@ -1,19 +1,25 @@
 /**
- * The planner's "Find the nearest" panel (lib/nearest.ts): where to search from,
- * a button each for water, restrooms and the Metro, one persistent status line,
- * and the three nearest as a list in words, each with Ride here and, for water
- * and restrooms in a planned ride, Add as stop. Written with createElement so a
- * test renders it (as waterLegend.ts).
+ * The planner's "Find the nearest" panel (lib/nearest.ts): a button each for water, restrooms and
+ * the Metro, one persistent status line, the three nearest as a list in words, each with Ride here
+ * and, for water and restrooms in a planned ride, Add as stop, then where to search from. Written
+ * with createElement so a test renders it (as waterLegend.ts).
  *
- * Collapsed by default, so it does not crowd every plan. The status line is
- * always rendered and its words change (a live region inserted with its text is
- * often not read); the buttons stay in the Tab order while a search runs
- * (aria-disabled, as Best order's does), so the focus is never lost.
+ * Results first (the 2026-10-28 audit, P7): the three buttons (the one chosen marked, aria-pressed,
+ * in the selected chip's style), the list, then "From: My location" as one line (it was a set of
+ * radios above the list). The status line on screen says only what the rows do not (foundShort);
+ * a screen reader hears the whole sentence. A Throne restroom's how-to and an approximate pin are
+ * said once under the list, short, not in every row's details.
+ *
+ * Collapsed by default, so it does not crowd every plan. The status line is always rendered and its
+ * words change (a live region inserted with its text is often not read); the buttons stay in the
+ * Tab order while a search runs (aria-disabled, as Best order's does), so the focus is never lost.
  */
-import { createElement as h, type ReactElement } from "react";
+import { createElement as h, useState, type ReactElement } from "react";
 import {
   FROM_LABEL,
   NEAREST_KINDS,
+  foundSaid,
+  foundShort,
   nearbyShort,
   nounOf,
   stopsOnTheWay,
@@ -21,7 +27,8 @@ import {
   type NearestFrom,
   type NearestKind,
 } from "./nearest.ts";
-import { WATER_CAUTION } from "./waterRestrooms.ts";
+import { WATER_CAUTION, sheetNoteDetail } from "./waterRestrooms.ts";
+import { SheetNotes } from "./waterLegend.ts";
 import { placeLetter } from "./letteredPlaces.ts";
 import { t } from "./i18n.ts";
 
@@ -32,6 +39,8 @@ export const NEAREST_HELP =
 export interface NearestList {
   kind: NearestKind;
   items: Nearby[];
+  /** Where it was searched from (lib/nearest.ts Found): the status line's full sentence is told from it. */
+  from?: NearestFrom;
 }
 
 export interface FinderProps {
@@ -47,104 +56,127 @@ export interface FinderProps {
   canAddStop: boolean;
   onRide: (item: Nearby) => void;
   onAddStop: (item: Nearby) => void;
+  /**
+   * Show on map, as Find food's (the owner, 2026-10-28): the place on the map; from a phone's popup, the popup closes
+   * first so its lettered pins can be pressed, and the chip opens the same list again. Absent: no button.
+   */
+  onShow?: (item: Nearby, index: number) => void;
   /** A fold of its own (the default), or the body alone, in the map's Water sheet (UI-CLEANUP), whose heading names it. */
   folded?: boolean;
 }
 
 export function NearestFinder(props: FinderProps): ReactElement {
-  const { from, fromOptions, onFrom, onFind, busy, status, list, canAddStop, onRide, onAddStop, folded = true } = props;
+  const { from, fromOptions, onFrom, onFind, busy, status, list, canAddStop, onRide, onAddStop, onShow, folded = true } = props;
+  // The button last pressed, marked while its search runs (the list, once in, says which it is).
+  const [asked, setAsked] = useState<NearestKind | null>(null);
+  const chosen = list?.kind ?? (busy ? asked : null);
   const addStops = list !== null && canAddStop && stopsOnTheWay(list.kind);
+  // The list's own status line, short on screen; the whole sentence is still what is heard.
+  const short = list && list.items.length > 0 && list.from && status === foundSaid(list.kind, list.from, list.items) ? foundShort(list.items) : null;
   const wrap = (body: ReactElement) =>
     folded ? h("details", { className: "fold nearest" }, h("summary", null, NEAREST_SUMMARY), body) : h("div", { className: "nearest nearest-sheet" }, body);
   return wrap(
     h(
       "div",
       { className: "fold-body" },
-    // The three choices first (the owner, 2026-10-18: "the three choices make more sense to be up front"), then where from.
-    h(
-      "div",
-      { className: "actions nearest-kinds" },
-      ...NEAREST_KINDS.map(({ kind, label }) =>
-        h(
-          "button",
-          {
-            key: kind,
-            type: "button",
-            className: "secondary",
-            "aria-label": t("Nearest {noun}", { noun: kind === "metro" ? label : label.toLowerCase() }),
-            "aria-disabled": busy ? true : undefined,
-            onClick: () => onFind(kind),
-          },
-          label,
-        ),
-      ),
-    ),
-    h(
-      "fieldset",
-      { className: "nearest-from" },
-      h("legend", null, t("Search from")),
-      ...fromOptions.map((option) =>
-        h(
-          "label",
-          { key: option, className: "toggle" },
-          h("input", {
-            type: "radio",
-            name: "nearest-from",
-            value: option,
-            checked: option === from,
-            onChange: () => onFrom(option),
-          }),
-          FROM_LABEL[option],
-        ),
-      ),
-    ),
-    h("p", { className: "hint nearest-status", role: "status" }, status),
-    list !== null &&
-      list.items.length > 0 &&
+      // The three choices first (the owner, 2026-10-18: "the three choices make more sense to be up front").
       h(
         "div",
-        { className: "nearest-list" },
-        h("h3", { id: "nearest-list-heading" }, t("Nearest {noun}", { noun: nounOf(list.kind) })),
-        h(
-          "ol",
-          // role="list": WebKit drops a list's role once its bullets are styled away.
-          { role: "list", "aria-labelledby": "nearest-list-heading" },
-          ...list.items.map((item, index) =>
-            h(
-              "li",
-              { key: item.place.id, className: "lettered-row" },
-              // The letter is the map marker's (lib/letteredPlaces.ts): seen in its pin, heard before the place.
-              h("span", { className: "place-letter", "aria-hidden": "true" }, h("span", null, placeLetter(index))),
-              h(
-                "div",
-                { className: "nearest-place" },
-                h("span", { className: "visually-hidden" }, `${placeLetter(index)}: `),
-                nearbyShort(item),
-                // Its details (how to open a Throne, opening hours, access) behind a native fold.
-                item.place.details.length > 0 &&
-                  h("details", { className: "nearest-details" }, h("summary", null, t("Details"), h("span", { className: "visually-hidden" }, t(" of {place}", { place: item.place.title }))), h("p", { className: "hint" }, item.place.details.join(" "))),
-              ),
-              h(
-                "span",
-                { className: "actions" },
-                h(
-                  "button",
-                  { type: "button", className: "secondary", "aria-label": t("Ride here: {place}", { place: item.place.title }), onClick: () => onRide(item) },
-                  t("Ride here"),
-                ),
-                addStops &&
-                  h(
-                    "button",
-                    { type: "button", className: "secondary", "aria-label": t("Add as stop: {place}", { place: item.place.title }), onClick: () => onAddStop(item) },
-                    t("Add as stop"),
-                  ),
-              ),
-            ),
+        { className: "actions nearest-kinds" },
+        ...NEAREST_KINDS.map(({ kind, label }) =>
+          h(
+            "button",
+            {
+              key: kind,
+              type: "button",
+              className: "secondary",
+              "aria-label": t("Nearest {noun}", { noun: kind === "metro" ? label : label.toLowerCase() }),
+              "aria-pressed": chosen === kind,
+              "aria-disabled": busy ? true : undefined,
+              onClick: () => {
+                setAsked(kind);
+                onFind(kind);
+              },
+            },
+            label,
           ),
         ),
-        stopsOnTheWay(list.kind) && h("p", { className: "hint" }, WATER_CAUTION),
       ),
-    h("details", { className: "nearest-help" }, h("summary", null, t("How this works")), h("p", { className: "hint" }, NEAREST_HELP)),
+      short === null
+        ? h("p", { className: "hint nearest-status", role: "status" }, status)
+        : h(
+            "p",
+            { className: "hint nearest-status", role: "status" },
+            h("span", { "aria-hidden": "true" }, short),
+            h("span", { className: "visually-hidden" }, status),
+          ),
+      list !== null &&
+        list.items.length > 0 &&
+        h(
+          "div",
+          { className: "nearest-list" },
+          h("h3", { id: "nearest-list-heading" }, t("Nearest {noun}", { noun: nounOf(list.kind) })),
+          h(
+            "ol",
+            // role="list": WebKit drops a list's role once its bullets are styled away.
+            { role: "list", "aria-labelledby": "nearest-list-heading" },
+            ...list.items.map((item, index) => {
+              // A Throne's how-to and an approximate pin are said once, under the list (SheetNotes).
+              const details = item.place.details.filter((d) => !sheetNoteDetail(d));
+              return h(
+                "li",
+                { key: item.place.id, className: "lettered-row" },
+                // The letter is the map marker's (lib/letteredPlaces.ts): seen in its pin, heard before the place.
+                h("span", { className: "place-letter", "aria-hidden": "true" }, h("span", null, placeLetter(index))),
+                h(
+                  "div",
+                  { className: "nearest-place" },
+                  h("span", { className: "visually-hidden" }, `${placeLetter(index)}: `),
+                  nearbyShort(item),
+                  // Its details (opening hours, access) behind a native fold.
+                  details.length > 0 &&
+                    h("details", { className: "nearest-details" }, h("summary", null, t("Details"), h("span", { className: "visually-hidden" }, t(" of {place}", { place: item.place.title }))), h("p", { className: "hint" }, details.join(" "))),
+                ),
+                h(
+                  "span",
+                  { className: "actions" },
+                  onShow &&
+                    h(
+                      "button",
+                      { type: "button", className: "secondary", "aria-label": t("Show on map: {place}, marker {letter}", { place: item.place.title, letter: placeLetter(index) }), onClick: () => onShow(item, index) },
+                      t("Show on map"),
+                    ),
+                  h(
+                    "button",
+                    { type: "button", className: "secondary", "aria-label": t("Ride here: {place}", { place: item.place.title }), onClick: () => onRide(item) },
+                    t("Ride here"),
+                  ),
+                  addStops &&
+                    h(
+                      "button",
+                      { type: "button", className: "secondary", "aria-label": t("Add as stop: {place}", { place: item.place.title }), onClick: () => onAddStop(item) },
+                      t("Add as stop"),
+                    ),
+                ),
+              );
+            }),
+          ),
+          h(SheetNotes, { details: list.items.map((item) => item.place.details) }),
+          stopsOnTheWay(list.kind) && h("p", { className: "hint" }, WATER_CAUTION),
+        ),
+      // Where from, one line under the list: "From: My location ▾".
+      h(
+        "label",
+        { className: "nearest-from" },
+        h("span", { "aria-hidden": "true" }, t("From:")),
+        h("span", { className: "visually-hidden" }, t("Search from")),
+        h(
+          "select",
+          { value: from, onChange: (event: { target: { value: string } }) => onFrom(event.target.value as NearestFrom) },
+          ...fromOptions.map((option) => h("option", { key: option, value: option }, FROM_LABEL[option])),
+        ),
+      ),
+      h("details", { className: "nearest-help" }, h("summary", null, t("How this works")), h("p", { className: "hint" }, NEAREST_HELP)),
     ),
   );
 }

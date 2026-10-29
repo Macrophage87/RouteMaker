@@ -1,6 +1,27 @@
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { crashReport, loggedErrors } from "./lib/crashReport.ts";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
+import { BETA_DISCORD_TEXT, BETA_DISCORD_URL } from "./lib/betaBanner.ts";
+import { t } from "./lib/i18n.ts";
+
+/** Said once the report is copied: where to paste it, the beta notice's Discord, linked (P11). */
+export const CRASH_COPIED = t("Error report copied. Paste it into your bug report in our Discord.");
+
+/** The status line, its "Discord" the beta notice's link (lib/betaBanner.ts), opening in a new tab. */
+function saidWithDiscord(said: string): ReactNode {
+  const at = said.lastIndexOf(BETA_DISCORD_TEXT);
+  if (at < 0) return said;
+  return (
+    <>
+      {said.slice(0, at)}
+      <a href={BETA_DISCORD_URL} target="_blank" rel="noopener noreferrer">
+        {BETA_DISCORD_TEXT}
+        <span className="visually-hidden"> {t("(opens in a new tab)")}</span>
+      </a>
+      {said.slice(at + BETA_DISCORD_TEXT.length)}
+    </>
+  );
+}
 
 /**
  * In place of the whole page when an error stops it (Stephen 2026-10-25: "The website is just going completely black
@@ -44,7 +65,7 @@ export function CrashScreen({ report }: { report: string }) {
   useEffect(() => heading.current?.focus(), []);
   const copy = async () => {
     const done = await copyText(report, navigator.clipboard, selectionCopy);
-    setSaid(done ? "Error report copied. Paste it into your bug report." : "Could not copy. Copy it from the report below.");
+    setSaid(done ? CRASH_COPIED : t("Could not copy. Copy it from the report below."));
     if (!done && details.current) {
       // The report is opened and selected, so the rider can copy it by hand.
       details.current.open = true;
@@ -55,23 +76,23 @@ export function CrashScreen({ report }: { report: string }) {
   return (
     <main className="crash-screen">
       <h1 ref={heading} tabIndex={-1}>
-        Something went wrong
+        {t("Something went wrong")}
       </h1>
-      <p>RouteMaker hit an error. Reload to carry on: your route comes back with the page.</p>
+      <p>{t("RouteMaker hit an error. Reload to carry on: your route comes back with the page.")}</p>
       <div className="crash-actions">
         <button type="button" onClick={() => window.location.reload()}>
-          Reload
+          {t("Reload")}
         </button>
         <button type="button" className="secondary" onClick={() => void copy()}>
-          Copy error report
+          {t("Copy error report")}
         </button>
       </div>
       <p className="crash-said" role="status">
-        {said}
+        {saidWithDiscord(said)}
       </p>
       <details className="crash-details" ref={details}>
-        <summary>Show the report</summary>
-        <textarea ref={box} readOnly value={report} aria-label="Error report" rows={12} />
+        <summary>{t("Show the report")}</summary>
+        <textarea ref={box} readOnly value={report} aria-label={t("Error report")} rows={12} />
       </details>
     </main>
   );

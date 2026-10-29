@@ -160,6 +160,12 @@ function fakeScope({ network } = {}) {
             return store.get(keyOf(request));
           },
           put: async (request, response) => void store.set(keyOf(request), response),
+          keys: async () => [...store.keys()].map((url) => ({ url })),
+          add: async (url) => {
+            const response = await scope.fetch(url);
+            if (!response.ok) throw new Error(`${url} ${response.status}`);
+            store.set(keyOf(url), response);
+          },
           addAll: async (urls) => {
             for (const url of urls) {
               const response = await scope.fetch(url);
@@ -419,6 +425,13 @@ test("the Find food places and the climbs are left out of the precache and liste
   assert.equal(ruleFor(get("/assets/climbs-Cd34.js"), ORIGIN), "precache");
 });
 
+test("a language's catalog (assets/lang-*.js) is lazy: an install does not download all 19 (v0.14.0 review)", () => {
+  const names = ["assets/index-1.js", "assets/lang-am-Gh78.js", "assets/language-9.js"];
+  assert.deepEqual(precacheList(names), ["/assets/index-1.js", "/assets/language-9.js"]);
+  assert.deepEqual(lazyList(names), ["/assets/lang-am-Gh78.js"]);
+  assert.equal(ruleFor(get("/assets/lang-am-Gh78.js"), ORIGIN), "lazy");
+});
+
 test("the federal land, only Mass Ride's, is lazy too; the worker starts once the page has loaded (review fe-perf-6)", () => {
   const names = ["assets/index-1.js", "assets/federal-land-Ef56.json"];
   assert.deepEqual(precacheList(names), ["/assets/index-1.js"]);
@@ -450,6 +463,15 @@ test("a lazy asset: fetched on first use and kept, then answered from the cache 
   down = true;
   const again = await scope.dispatch("fetch", { request: get("/assets/food-1.json") });
   assert.equal((await again.responded).label, "network");
+});
+
+test("an update fetches a changed catalog of a language the rider used, and leaves the others lazy (v0.14.0 review)", async () => {
+  const scope = fakeScope({ network: site("b2") });
+  scope.stores.set(buildCache("b1"), new Map([[`${ORIGIN}/assets/lang-fr-Old1.js`, new FakeResponse("f", 200, "old-fr")]]));
+  await precache(scope, "b2", ASSETS, ["/assets/lang-fr-New2.js", "/assets/lang-ar-New3.js"]);
+  const kept = scope.stores.get(buildCache("b2"));
+  assert.equal(kept.has(`${ORIGIN}/assets/lang-fr-New2.js`), true);
+  assert.equal(kept.has(`${ORIGIN}/assets/lang-ar-New3.js`), false);
 });
 
 test("a lazy asset is not kept when the edge refuses it", async () => {

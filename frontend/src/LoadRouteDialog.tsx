@@ -39,8 +39,6 @@ import { t } from "./lib/i18n.ts";
 
 export interface LoadRouteDialogProps {
   open: boolean;
-  /** The popup's name: Load route from Plan's bar, Saved routes from Go's More. */
-  title?: string;
   onClose: () => void;
   signedIn: boolean;
   /** Signed out, where the server signs riders in: keeps the plan across the round trip. Null where it does not. */
@@ -53,7 +51,7 @@ export interface LoadRouteDialogProps {
   onOpenKept: (route: KeptRoute) => void;
 }
 
-export function LoadRouteDialog({ open, title = LOAD_ROUTE, onClose, signedIn, signIn, preset, onGpx, onOpenSaved, onOpenKept }: LoadRouteDialogProps) {
+export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx, onOpenSaved, onOpenKept }: LoadRouteDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const opener = useRef<Element | null>(null);
   const headingId = useId();
@@ -198,7 +196,7 @@ export function LoadRouteDialog({ open, title = LOAD_ROUTE, onClose, signedIn, s
       )}
       {open && !gpx && (
         <>
-          <h2 id={headingId}>{title}</h2>
+          <h2 id={headingId}>{LOAD_ROUTE}</h2>
           <div className="load-route-top">
             {!signedIn && signIn && (
               <a

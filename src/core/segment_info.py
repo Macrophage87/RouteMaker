@@ -915,12 +915,11 @@ def riding_rows(row: dict) -> list[dict]:
     if words and is_mtb_trail(row):
         # OWNER-DECISIONS 456: the level the mountain-bike layer draws it in, in words; only
         # on a way the layer draws, so a hidden way never names a colour.
+        # Which scale set it, and both where both are mapped (the owner, 2026-10-28); a table
+        # built before the scales were kept says what the level means on either.
+        scale = singletrack.mtb_scale_words(trail_tags_of(row)) or MTB_LEVEL_SCALES[level]
         rows.append(
-            _row(
-                "Mountain-bike difficulty",
-                f"{words[0].upper()}{words[1:]}: {MTB_LEVEL_SCALES[level]}",
-                OSM,
-            )
+            _row("Mountain-bike difficulty", f"{words[0].upper()}{words[1:]}: {scale}", OSM)
         )
     elif is_mtb_trail(row):
         # The owner, 2026-10-19: unrated trails stay open to Gravel and Mountain Goat, "just
@@ -939,13 +938,18 @@ def trail_rows(row: dict) -> list[tuple[str, str, str]]:
     `routemaker.trail_facts`): none on any other way or from an older table."""
     if not is_mtb_trail(row):
         return []
+    return trail_facts.rows(trail_tags_of(row))
+
+
+def trail_tags_of(row: dict) -> dict | None:
+    """The row's kept trail tags (`segment.trail_tags`) as a dict, or None."""
     tags = row.get("trail_tags")
     if isinstance(tags, str):
         try:
             tags = json.loads(tags)
         except ValueError:
-            return []
-    return trail_facts.rows(tags)
+            return None
+    return tags if isinstance(tags, dict) else None
 
 
 def surface_penalty_words(row: dict) -> str | None:
