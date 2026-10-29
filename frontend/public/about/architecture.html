@@ -232,7 +232,10 @@ search, all behind one Caddy web server.</li>
 <li><strong>Data:</strong> rebuilt weekly from OpenStreetMap and agency data; live feeds read every
 few minutes.</li>
 <li><strong>Privacy:</strong> signed-out plans are never stored; sign-in is through Discord and keeps no
-Discord token.</li>
+Discord token. Live ride sharing from the app is end-to-end encrypted: phones seal their dots, alerts
+and the leader's path with AES-256-GCM, using a key derived by HKDF-SHA-256 from a secret in the link
+after the #, each value padded to a fixed size so its length says little, and the server holds only
+sealed text, for 2 minutes.</li>
 </ul>
 <p class="find"><strong>Looking for something else?</strong> How roads are rated: <a href="/about/stress.html">Stress ratings</a>. Planning from Claude or another assistant: <a href="/about/assistants.html">AI assistants</a>. Every data source and licence: <a href="/about/acknowledgements.html">Acknowledgements</a>.</p>
 </div>
