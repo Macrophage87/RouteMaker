@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<meta name="description" content="How RouteMaker plans a large group ride in DC by riders per minute, group length, corkers and crossing clearance, and the evidence behind it.">
+<meta name="description" content="How RouteMaker plans a large group ride in DC by carrying capacity (riders per minute), group length, corkers and crossing clearance, and the evidence behind it.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <title>Mass Ride - RouteMaker</title>
 <style>
@@ -207,11 +207,11 @@ carry each minute, and how long will the group hold each crossing?"</p>
 <ul>
 <li>A mass ride is a queueing problem, not a traffic-stress problem. The narrowest point and the
 number of crossings to hold decide how it goes.</li>
-<li>The headline figure is <strong>riders per minute</strong>: about 100 for each 11 ft [3.35 m]
-lane.</li>
+<li>The headline figure is a road's <strong>carrying capacity</strong>: how many riders it carries each
+minute, about 100 for each 11 ft [3.35 m] lane.</li>
 <li>Only the ride's own side of a two-way street counts. Parked cars and door zones do not.</li>
 <li>Three charts follow the route: riders per minute, corker load and elevation.</li>
-<li>The figures in this version are for the District of Columbia only.</li>
+<li>Inside DC only: DC's Roadway Block is the only dataset with measured lane widths.</li>
 <li>The evidence is thin. No study of a real mass ride was found. The model rests on the owner's video
 counts and agrees with published bicycle flow studies. Treat it as about ±25%.</li>
 </ul>
@@ -254,8 +254,13 @@ junctions and hold cross traffic until the last rider has passed.</p>
 <p>Every other ride type asks how stressful each road is for one rider in traffic: the
 <a href="/about/stress.html">Level of Traffic Stress</a> (LTS). A big group fills the lane, so drivers
 wait behind it. What matters instead is capacity, pinch points, busy crossings, corkers and hills.</p>
-<p>The figures in this version are for the District of Columbia only. Outside DC the route still
-plans, but the route list says "Outside DC: no figures yet". For a short summary beside the other
+<p>Mass Ride works inside DC only. Carrying capacity is built from each lane's width, and DC's Roadway
+Block data is the only dataset here with measured lane widths, so a Mass Ride's start, stops and end must be in
+the District. For a point outside it, RouteMaker offers one tap to switch to <strong>Group Ride</strong> with trails
+off, with the same points. The laws for a ride that takes the roadway also differ from one jurisdiction to the
+next. A re-plan during a ride is never refused, so a ride that drifts over the line can still route back.</p>
+<p>A route between points in DC is chosen to leave the District as little as it can; where it still crosses the
+line, the route list says "Outside DC: no figures yet". For a short summary beside the other
 ride types, see <a href="/about/ride-types.html#group">Group ride types</a>.</p>
 
 </div></details>
@@ -820,7 +825,8 @@ carries less, it costs extra time, up to three times its riding time, and an Avo
 the most, so the same road is free for 100 riders and costly for 1,500. Stepping down to a narrower
 road, or back up, costs time too, more for a bigger group, as it tends to scatter the group. Small
 changes, under 15%, do not count. RouteMaker weighs each of the router's routes this way and keeps
-the cheapest, its first choice unless another saves more than 5 seconds. Busier roads are not held
+the one that leaves DC least, then the cheapest; the router's own route stays unless another saves more than 5
+seconds. Busier roads are not held
 against a Mass Ride's choice, as a corked ride is judged by what a road carries.</p>
 <p>The router offers other routes only between two points up to 15.5 mi [25 km] apart, or 31 mi [50 km]
 when the Hills slider seeks climbs. With stops or
