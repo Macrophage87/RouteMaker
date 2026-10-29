@@ -367,10 +367,9 @@ class Weather:
                 with self._lock:
                     self._alerts[c] = (now, found)
                     self._schedule()
-        if alerts_down and len(alerts_kept) < len(unique):
-            # Some of the route was not asked: said unchecked, as rain is.
-            unchecked.append("alerts")
-        elif alerts_failed == len(unique):
+        if len(alerts_kept) < len(unique) or alerts_failed == len(unique):
+            # Some of the route was not asked, or its answer did not come: said unchecked, as
+            # rain is, so a warning at the unanswered points is never read as "nothing".
             unchecked.append("alerts")
         if rain_steps is not None:
             for c, steps in zip(need, rain_steps, strict=True):

@@ -486,10 +486,11 @@ export function App() {
   // forgotten when its point moves; added to the request only, never to the link.
   const [stationPins, setStationPins] = useState<Pins>({});
   const stationChoice = useMemo(() => activePins(preset, points, stationPins), [preset, points, stationPins]);
-  // Mass Ride's ride size (PLAN items 128, 139) only redraws the corker load: it is never sent, so moving it
-  // must not plan again. The dials the request is made from leave it out, keyed on what is left.
+  // Mass Ride's ride size (PLAN items 128, 139) redraws the corker load and is sent too: the route choice prices
+  // roads too narrow for it (core.routing choose_by_capacity), so moving it plans again. `routeDials` leaves it out
+  // for what does not depend on it (the nearest places).
   const { rideSize, ...routeDials } = dials;
-  const routeKey = JSON.stringify(routeDials);
+  const routeKey = JSON.stringify(dials);
   // The transit option the rider chose from the list (lib/transit.ts), for this trip only: a new
   // start or end, or another ride type, starts from the quickest again. Request only, never the link.
   const [transitPick, setTransitPick] = useState<TransitPick | null>(null);
@@ -507,7 +508,7 @@ export function App() {
   // lib/dials.ts closuresNow); Plan keeps them, for planning a later ride. Start ride and a ride's re-plans set it too.
   const goNow = mode === "go";
   const planDials = useMemo(() => {
-    const base = withTransitOption(withStations(withSpeed(withWeight(routeDials, weight), ridingSpeed), stationChoice), preset, transitPick, trip);
+    const base = withTransitOption(withStations(withSpeed(withWeight(dials, weight), ridingSpeed), stationChoice), preset, transitPick, trip);
     const made = noviceHopPick?.trip === trip && base.noviceLegs ? { ...base, noviceHop: noviceHopPick.hop } : base;
     const now = goNow ? { ...made, closuresNow: true } : made;
     return bypassIds.length ? { ...now, closureBypass: bypassIds } : now;
@@ -3506,9 +3507,8 @@ export function App() {
   // Settings' Open: the kept plan, into the planner (with no signal, the scheduler answers from the kept route).
   const openKept = (kept: KeptRoute) => {
     showPlanner(true);
-    // The kept key leaves Mass Ride's ride size out (keptPlanKey); the size set now stays.
-    const plan = decodePlan(kept.plan);
-    const hash = dials.rideSize && plan.preset === preset ? encodePlan(plan.points, plan.preset, { ...plan.dials, rideSize: dials.rideSize }, plan.vias, plan.drawn, plan.names) : kept.plan;
+    // The kept plan carries its own Mass Ride ride size (keptPlanKey): the route was chosen for it.
+    const hash = kept.plan;
     if (window.location.hash !== hash) window.location.hash = hash;
     announce(t("Opening {name}.", { name: kept.title }));
   };
