@@ -315,7 +315,7 @@ import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOpera
 import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { BROADCAST_FOLLOWING, isRideLink, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, type RideLinkType } from "./lib/rideGroup.ts";
+import { BROADCAST_FOLLOWING, forgetAnsweredHere, isRideLink, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -1352,9 +1352,15 @@ export function App() {
   // The page itself is opening a plan of the rider's own (a saved or kept route), told apart from a link pasted in.
   const ownHashOpen = useRef(false);
   const [groupSecret, setGroupSecret] = useState<string | null>(() => PLAN_SECRET ?? (PLAN_LINK ? null : newRideSecret()));
+  // Whether this page made the secret (not one from a link opened here): made again when a ride ends.
+  const groupSecretOwn = useRef(PLAN_SECRET === null);
   const presetBefore = useRef(preset);
   useEffect(() => {
-    if (preset === "group-ride" && presetBefore.current !== "group-ride") setGroupSecret((s) => s ?? newRideSecret());
+    if (preset === "group-ride" && presetBefore.current !== "group-ride") setGroupSecret((s) => {
+        if (s !== null) return s;
+        groupSecretOwn.current = true;
+        return newRideSecret();
+      });
     presetBefore.current = preset;
   }, [preset]);
   // Keep the link in step with the plan, without adding history entries. Exactly encodePlan's
@@ -1385,6 +1391,7 @@ export function App() {
       // rider's own (a saved or kept route) is a new ride of theirs: a new secret.
       const own = ownHashOpen.current;
       ownHashOpen.current = false;
+      groupSecretOwn.current = own;
       setGroupSecret(own ? newRideSecret() : secretFrom(window.location.hash));
       setConfirmedKm(null);
       // Another plan: undo does not reach back into the one before it.
@@ -3390,7 +3397,10 @@ export function App() {
   // Share as image's QR code (lib/shareCard.ts): the link only once its exact line is kept; a line not kept is
   // tried again under a new id next time, as Share does.
   const shareCardLink = async (): Promise<string | null> => {
-    const { link, kept } = sharedLinkNow();
+    const { link: withAny, kept } = sharedLinkNow();
+    // An image is posted where anyone sees it: its QR code never carries a Group Ride's secret (2026-10-29),
+    // which goes only in a link sent to the ride's riders.
+    const link = withoutSecret(withAny);
     if (!kept) return null;
     if (await kept) return link;
     if (sharedLine.current?.kept === kept) sharedLine.current = null;
@@ -3418,7 +3428,17 @@ export function App() {
   // A ride ended: its link is not the next ride's.
   const rodeBefore = useRef(riding);
   useEffect(() => {
-    if (rodeBefore.current && !riding) rideLinkSent.current = null;
+    if (rodeBefore.current && !riding) {
+      rideLinkSent.current = null;
+      // Nor its lead: the next ride on the same line is a new ride, under a new token and secret, so the earlier
+      // link's holders do not see it (2026-10-29). Roam's leads end with Roam.
+      for (const id of [...leads.current.keys()]) if (!id.startsWith("roam|")) leads.current.delete(id);
+      // A Group Ride secret this page made is made again: last ride's link reads nothing on the next. One from a link
+      // opened here is the link's, the ride its sender leads.
+      if (groupSecretOwn.current) setGroupSecret(newRideSecret());
+      // The ride's dot answers too, for a ride page already gone with the ride (Plan): the next ride asks again.
+      forgetAnsweredHere();
+    }
     rodeBefore.current = riding;
   }, [riding]);
   // Share ride: the same link marked as a ride (lib/sharedRoutes.ts RIDE_PARAM), opened fixed with location sharing,
@@ -5864,6 +5884,7 @@ export function App() {
               getMap={getMap}
               here={riderHere}
               broadcast={{ ...roamBroadcast, roam: true }}
+              home={myGo.home?.point ?? null}
               riding={onBike}
               leaderRoute={null}
               controls={onBike || !goMode}
@@ -5882,6 +5903,7 @@ export function App() {
               getMap={getMap}
               here={riderHere}
               broadcast={rideBroadcast}
+              home={myGo.home?.point ?? null}
               secret={rideGroupType === "group-ride" && !onShared ? groupSecret : null}
               riding={riding}
               onRiders={setRideRiders}
