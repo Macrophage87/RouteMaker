@@ -7304,6 +7304,7 @@ details.fold > summary .icon {
    each place's name in a bubble, its tail at the spot. The button is at least 44 px tall; a long name is cut. */
 .lettered-marker.named-marker {
   width: auto;
+  min-width: 44px;
   max-width: 180px;
   min-height: 44px;
   height: auto;
@@ -7346,8 +7347,9 @@ details.fold > summary .icon {
 }
 
 /* The place a row's Show on map picked: on top of the rest, bigger, with a thicker edge (not its colour alone). */
+/* Over the closure, junction and Avoid markers (3-4), under the cards (5). */
 .lettered-marker.is-shown {
-  z-index: 2;
+  z-index: 4;
 }
 
 .named-marker.is-shown .named-bubble {
@@ -7404,6 +7406,21 @@ details.fold > summary .icon {
   .named-marker::after {
     border-top-color: CanvasText;
     forced-color-adjust: none;
+  }
+
+  .named-marker.is-shown .named-bubble,
+  .lettered-marker.is-shown .lettered-pin {
+    border-color: CanvasText;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .lettered-marker.is-shown .lettered-letter {
+    color: HighlightText;
+  }
+
+  .named-marker.is-shown::after {
+    border-top-color: Highlight;
   }
 }
 

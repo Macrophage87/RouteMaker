@@ -4964,7 +4964,7 @@ export function App() {
     [letteredOf, nearestList, foodResults, repairList, placesShown, goOptions],
   );
   // A new list (or none) has no row shown yet.
-  useEffect(() => setLetteredShown(null), [lettered]);
+  useEffect(() => setLetteredShown(null), [lettered, riding]);
   const goToLettered = (point: LonLat, title: string) => {
     namer.remember(point, title);
     showPlanner(true);
@@ -6408,6 +6408,7 @@ export function App() {
               }}
               canAddStop={points.length >= 2}
               onShow={showSight}
+              onShowAll={showAllLettered}
               onAddStop={addSightStop}
               onGoPick={(r) => pickLettered(placesShown?.indexOf(r) ?? -1)}
             />

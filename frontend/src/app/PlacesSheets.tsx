@@ -9,7 +9,7 @@ import { foodWords, repairWords, sightWords } from "../lib/stopWords.ts";
 import type { StopActionFor } from "../lib/stopCard.ts";
 import { Icon } from "../Icon.tsx";
 import { SheetFrame } from "../Sidebar.tsx";
-import { placeLetter } from "../lib/letteredPlaces.ts";
+import { placeLetter, SHOW_ALL_ON_MAP } from "../lib/letteredPlaces.ts";
 import {
   REPAIR_ICON_ID,
   REPAIR_LAYER,
@@ -94,8 +94,10 @@ function SightRow({ result, index, children }: { result: SightResult; index: num
       <span aria-hidden="true" className="place-emoji">
         {category.emoji}
       </span>{" "}
+      {/* The map's marker shows the name (Stephen 2026-10-29: "Named, not lettered"); the letter, its key's, is heard. */}
       <strong>
-        {placeLetter(index)}. {result.place.name}
+        <span className="visually-hidden">{placeLetter(index)}. </span>
+        {result.place.name}
       </strong>{" "}
       {category.one}. {sightHowFar(result)}.{children}
     </span>
@@ -129,6 +131,8 @@ export interface PlacesSheetProps {
   onFilter: (filter: PlaceFilter) => void;
   canAddStop: boolean;
   onShow: (result: SightResult) => void;
+  /** Show all on map (Stephen 2026-10-29): every place listed, named on the map, framed together. */
+  onShowAll?: () => void;
   onAddStop: (result: SightResult) => void;
   /** Go: a row's one tap, the place's card on the map. */
   onGoPick: (result: SightResult) => void;
@@ -137,7 +141,7 @@ export interface PlacesSheetProps {
 /** Places to see: Plan's with filters, hours and website, Go's the nearest five, one tap each. One name in both, as
  * their chips say it (P12: Go's was "Sights"). */
 export function PlacesSheet(props: PlacesSheetProps) {
-  const { nav, go, status, items, total, onMore, filter, onFilter, canAddStop, onShow, onAddStop, onGoPick } = props;
+  const { nav, go, status, items, total, onMore, filter, onFilter, canAddStop, onShow, onShowAll, onAddStop, onGoPick } = props;
   // The hours in words for now ("Open now · closes 5 PM": lib/openingHours.ts).
   const now = new Date();
   return (
@@ -159,6 +163,11 @@ export function PlacesSheet(props: PlacesSheetProps) {
         {status}
       </p>
       {items && items.length > 0 && go && <SightsList items={items} onPick={onGoPick} />}
+      {items && items.length > 1 && !go && onShowAll && (
+        <button type="button" className="secondary show-all" onClick={onShowAll}>
+          {SHOW_ALL_ON_MAP}
+        </button>
+      )}
       {items && items.length > 0 && !go && (
         <ol role="list" className="nearest-list places-list" aria-label={t("Places to see")}>
           {items.map((r, i) => (

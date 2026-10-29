@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
 import { letterKeyIndex, letterPlaces, letteredName, placeLetter } from "./letteredPlaces.ts";
 import { NearestFinder } from "./nearestFinder.ts";
 
@@ -82,4 +83,21 @@ test("the nearest list: each row heard with its letter first, no pin (the map na
   assert.match(withAll, /<button type="button" class="secondary show-all">Show all on map<\/button><div class="nearest-list">/);
   assert.match(html, /aria-label="Ride here: Drinking water, Lincoln Park"/);
   assert.match(html, /Each place is named on the map: a tap on its name, or its letter(&#x27;|')s key \(A for the first\), shows what(&#x27;|')s there\./);
+});
+
+test("Show on map and Show all on map are wired (Stephen 2026-10-29): above the sheet, the row's marker marked, Ride and Roam left lettered", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  // A row's Show on map puts the place in the part of the map the sheet leaves (it was centred under a phone's sheet).
+  assert.equal(app.match(/ showLettered\(/g)?.length, 3, "its three callers: food, nearest, places");
+  assert.match(app, /const showLettered = \(point: LonLat, index: number\) => \{\s*setLetteredShown\(index >= 0 \? index : null\);\s*flyToInView\(point, 15\);/);
+  assert.match(app, /onShowAll=\{showAllFood\}/);
+  assert.match(app, /onShowAll=\{showAllLettered\}/);
+  assert.match(app, /onShowAll: \(\) => \{/);
+  assert.match(app, /letteredShown=\{riding \|\| \(roaming && roamLettered\) \? null : letteredShown\}/);
+  // Go's and Plan's lists are named; the bike-share options are not (letterPlaces is not used for them).
+  assert.equal(app.match(/letterPlaces\([^\n]*\), true\)/g)?.length, 4);
+  const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(view, /classList\.toggle\("is-shown", index === props\.letteredShown\)/);
+  assert.match(view, /\[\.\.\.letteredMarkers\.current\]\.reverse\(\)\.forEach\(\(marker\) => marker\.addTo\(map\)\)/);
+  assert.match(view, /if \(map && props\.lettered && props\.letteredRefit\) frameLettered\(map, props\.lettered\);/);
 });
