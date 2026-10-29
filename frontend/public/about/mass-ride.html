@@ -540,7 +540,7 @@ fully jammed at the assumed one rider per 15 ft², 1,000 riders on one lane woul
 <h3>What the app does</h3>
 <p>The <strong>Anticipated ride size</strong> slider runs from 100 to 2,000 riders, in steps of 50. It
 starts at 500. It sets the group's length, which drives the corker load and the requirement line on the
-riders chart. It does not change the route<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup>.</p>
+riders chart. Moving it plans the route again, as it now helps choose the route (below)<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup>.</p>
 <p>The group's length is the riders, divided by the riders a second the road carries, times the 7 mph
 [11 km/h] cruise. So the group is shorter on a wide avenue and longer on a narrow street. Where no width
 is known, the route's typical figure stands in, or two 11 ft lanes. On one lane, 1,000 riders come to
@@ -814,10 +814,20 @@ road and is at most 1 mi [1.6 km] or 25% longer, whichever is more.</li>
 <p>Junction markers work differently too. A crossing of an LTS 3 road gets an orange marker. A crossing
 of an LTS 4 or Avoid road gets a red one. Signalized crossings within about a quarter mile [402 m] of
 each other are listed as one group, such as "6 signalized crossings".</p>
-<p class="note">Today the riders-per-minute figures describe a route. They do not yet choose it.
-Planned, and not built: a time charge for crossing busy roads, sized to the group; flagging and
-penalizing roads too narrow for the chosen ride size; a charge for changing between wide and narrow
-roads; and a capacity drop for sharp turns and poor pavement.</p>
+<p>The riders-per-minute figures now help choose the route, for the ride size you set. A road
+needs a fifth of the riders a minute (the riders chart's dashed line, a 5-minute hold). Where it
+carries less, it costs extra time, up to three times its riding time, and an Avoid road always costs
+the most, so the same road is free for 100 riders and costly for 1,500. Stepping down to a narrower
+road, or back up, costs time too, more for a bigger group, as it tends to scatter the group. Small
+changes, under 15%, do not count. RouteMaker weighs each of the router's routes this way and keeps
+the cheapest, its first choice unless another saves more than 5 seconds. Busier roads are not held
+against a Mass Ride's choice, as a corked ride is judged by what a road carries.</p>
+<p>The router offers other routes only between two points up to 15.5 mi [25 km] apart. With stops or
+via points, or a longer ride, the route is the router's own, and the app only reports what the ride
+size needs and where the route falls short.</p>
+<p class="note">Planned, and not built: a time charge for crossing busy roads, sized to the group; a
+capacity drop for signal waits, sharp turns and poor pavement; Avoid marks for Mass Ride alone; and
+flagging narrow roads on the map.</p>
 
 </div></details>
 <h2 id="width">Usable width</h2>
