@@ -320,7 +320,7 @@ if [ "$command_name" = files ]; then
 		photon_restarted=1
 		note "photon started again; it needs about a minute before its first search answers"
 	fi
-	note "files done. Restart the routers if they were already running: scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
+	note "files done. Restart the routers if they were already running: scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend (restart-routers.sh, once installed, does it within about 7 minutes)"
 	# The trail routers (the owner, 2026-10-20): started, or recreated onto the new build, once their tiles are here.
 	trail=""
 	for variant in offroad mtb; do
