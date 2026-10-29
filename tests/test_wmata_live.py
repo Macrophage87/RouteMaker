@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 from pathlib import Path
 
@@ -186,6 +187,28 @@ def test_the_key_goes_in_wmatas_header_and_never_in_a_message(monkeypatch, setti
     assert secret not in str(refused.value)
     with pytest.raises(wmata_live.Unavailable):
         wmata_live.http_get("https://example.com/x", 1.0)
+
+    # A reply cut off part way is "unavailable" too, not an error the plan cannot handle.
+    class CutOff(Answer):
+        def read(self, _n):
+            raise http.client.IncompleteRead(b"{", 10)
+
+    monkeypatch.setattr(wmata_live._OPENER, "open", lambda request, timeout: CutOff())
+    with pytest.raises(wmata_live.Unavailable) as cut:
+        wmata_live.http_get(wmata_live.ELEVATORS_URL, 1.0)
+    assert "IncompleteRead" in str(cut.value) and secret not in str(cut.value)
+
+
+def test_any_failed_document_is_a_failed_reading_not_an_error() -> None:
+    clock = Clock()
+
+    def fetch(url: str, _timeout: float) -> bytes:
+        raise http.client.IncompleteRead(b"{", 10)
+
+    live = wmata_live.Live(fetch=fetch, wall=clock, enabled=lambda: True)
+    assert live.snapshot() is None
+    # The failure is noted, so the pause applies and WMATA is not asked again at once.
+    assert live._failed_at == clock.now
 
 
 # --- On a plan ------------------------------------------------------------------------------
