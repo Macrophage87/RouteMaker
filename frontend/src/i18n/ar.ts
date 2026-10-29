@@ -550,7 +550,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The ride or where to search from changed during the search; search again.": "تغيّرت الرحلة أو نقطة البحث أثناء البحث؛ ابحث مجددًا.",
   "Detour here re-plans the ride from where you are through that place and on along the rest of the ride.": "مرّ من هنا يعيد تخطيط الرحلة من مكانك عبر ذلك المكان ثم بقية الرحلة.",
   "Your position is not known yet; wait for GPS and try again.": "موقعك غير معروف بعد؛ انتظر GPS وحاول مجددًا.",
-  "This route already has {count} points, so no detour can be added.": "في هذا المسار {count} نقاط بالفعل، فلا يمكن إضافة تحويلة.",
+  "This route already has {count} points, so no detour can be added.": "بلغ هذا المسار الحد الأقصى من النقاط ({count})، فلا يمكن إضافة تحويلة.",
   "A new route is already being found; try again in a moment.": "جارٍ البحث عن مسار جديد بالفعل؛ حاول بعد لحظة.",
   "There is nowhere to search from yet.": "لا توجد نقطة للبحث منها بعد.",
   "That spot is outside the area this map covers.": "تلك النقطة خارج نطاق هذه الخريطة.",
@@ -1550,4 +1550,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "بلوحة المفاتيح، مفاتيح الأسهم تحرك الخريطة؛ {addPoint}.",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z يتراجع عن آخر تغيير وCtrl+Shift+Z يعيده.",
   "With two or more stops, Best order puts them in the order that rides best.": "مع توقفين أو أكثر، أفضل ترتيب يضعها في أفضل ترتيب للركوب.",
+  "Saved {date}": "حُفظ في {date}",
+  "As of {time}.": "حتى {time}.",
+  "Counts may be out of date: as of {time}.": "قد لا تكون الأعداد محدّثة: حتى {time}.",
 };

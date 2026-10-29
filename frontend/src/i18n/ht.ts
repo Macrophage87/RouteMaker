@@ -1550,4 +1550,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "Sou klavye a, flèch yo deplase kat la; {addPoint}.",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z defèt dènye chanjman an epi Ctrl+Shift+Z refè l.",
   "With two or more stops, Best order puts them in the order that rides best.": "Avèk de arè oswa plis, Pi bon lòd mete yo nan lòd ki pi bon pou woule a.",
+  "Saved {date}": "Anrejistre {date}",
+  "As of {time}.": "Depi {time}.",
+  "Counts may be out of date: as of {time}.": "Kantite yo ka pa ajou: depi {time}.",
 };

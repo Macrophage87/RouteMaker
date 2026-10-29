@@ -1550,4 +1550,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "Với bàn phím, phím mũi tên di chuyển bản đồ; {addPoint}.",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z hoàn tác thay đổi gần nhất và Ctrl+Shift+Z làm lại.",
   "With two or more stops, Best order puts them in the order that rides best.": "Với hai điểm dừng trở lên, Thứ tự tốt nhất xếp chúng theo thứ tự đạp hợp lý nhất.",
+  "Saved {date}": "Đã lưu {date}",
+  "As of {time}.": "Tính đến {time}.",
+  "Counts may be out of date: as of {time}.": "Số liệu có thể chưa cập nhật: tính đến {time}.",
 };

@@ -2073,4 +2073,7 @@ export const ES: Readonly<Record<string, string>> = {
   "One left unchecked is archived after {days} days.": "Uno sin marcar se archiva después de {days} días.",
   "Press and hold a road, then choose Suggest a change: its traffic stress, a junction, or a Mass Ride hazard. An admin reviews each one before the map changes.": "Mantenga presionada una calle y elija Sugerir un cambio: su estrés de tráfico, una intersección o un peligro en un Mass Ride. Un administrador revisa cada una antes de que cambie el mapa.",
   "Right-click a road, then choose Suggest a change: its traffic stress, a junction, or a Mass Ride hazard. An admin reviews each one before the map changes.": "Haga clic derecho en una calle y elija Sugerir un cambio: su estrés de tráfico, una intersección o un peligro en un Mass Ride. Un administrador revisa cada una antes de que cambie el mapa.",
+  "Saved {date}": "Guardada el {date}",
+  "As of {time}.": "A las {time}.",
+  "Counts may be out of date: as of {time}.": "Puede que las cifras no estén al día: a las {time}.",
 };

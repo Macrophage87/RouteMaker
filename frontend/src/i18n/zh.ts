@@ -1550,4 +1550,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "用键盘时方向键移动地图；{addPoint}。",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z 撤销上一步，Ctrl+Shift+Z 重做。",
   "With two or more stops, Best order puts them in the order that rides best.": "有两个或以上途经点时，“最佳顺序”会按最顺的骑行顺序排列。",
+  "Saved {date}": "{date} 保存",
+  "As of {time}.": "截至 {time}。",
+  "Counts may be out of date: as of {time}.": "数量可能不是最新的：截至 {time}。",
 };
