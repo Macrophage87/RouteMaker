@@ -267,8 +267,9 @@ test("the ridden path goes without its first 650 ft (200 m): rides often start a
 test("on a computer Broadcast asks before the share sheet: Go back sends nothing, Start anyway shares then rides", () => {
   const app = read("../App.tsx");
   const fn = app.slice(app.indexOf("const broadcastRide = () => {"), app.indexOf("\n  };\n", app.indexOf("const broadcastRide = () => {")));
-  // The question comes first, before the voice and the share sheet (review S1).
-  assert.match(fn, /^const broadcastRide = \(\) => \{\s*if \(!computerOk\.current && askBeforeStart\(looksLikePhone\(\), tabSession\(\)\)\) \{\s*setComputerAsk\("broadcast"\);\s*return;\s*\}/);
+  // The question comes first, before the voice and the share sheet (review S1); only a followed link without its
+  // key is said before it (it is never passed on, so there is nothing to ask).
+  assert.match(fn, /^const broadcastRide = \(\) => \{\s*if \(followedNoKey\(\)\) \{[^\n]*\n[^\n]*\n\s*return;\s*\}\s*if \(!computerOk\.current && askBeforeStart\(looksLikePhone\(\), tabSession\(\)\)\) \{\s*setComputerAsk\("broadcast"\);\s*return;\s*\}/);
   assert.ok(fn.indexOf('setComputerAsk("broadcast")') < fn.indexOf("shareRoute(true, broadcastNav)"));
   const dialog = app.slice(app.indexOf("<StartOnComputerDialog"), app.indexOf("<ClosureDialog"));
   assert.match(dialog, /onBack=\{\(\) => setComputerAsk\(null\)\}/);
@@ -324,13 +325,14 @@ test("opensIntoRide: a phone, not over a ride or the Resume question", async () 
 test("App judges a followed broadcast once, when ready, and starts its ride with no closure check (the leader's), or Roam", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /const sharedFollow = sharedOpen\?\.ride === true && !!sharedOpen\.lead && !sharedOpen\.own && shown === sharedOpen\.answer && !stale && rideableRoute\(shown\);/);
-  assert.match(app, /if \(!ready \|\| autoRode\.current\) return;\n\s+autoRode\.current = true;\n\s+if \(!opensIntoRide\(\{ phone: looksLikePhone\(\), onBike, resumeAsked: leftAsk !== null \}\)\) return;/);
+  assert.match(app, /if \(!ready \|\| autoRode\.current\) return;\n\s+autoRode\.current = true;\n[\s\S]*?if \(!opensIntoRide\(\{ phone: looksLikePhone\(\), onBike, resumeAsked: leftAsk !== null \}\)\) \{\n\s+if \(keyless\) \{[^}]*\}\n\s+return;\n\s+\}/);
   assert.match(app, /openSaved\(shared, SHARED_OPENED\(shared\.name\), !\(SHARED_RIDE && SHARED_LEAD && shared\.answer\)\);/);
   assert.match(app, /if \(check\) void checkThen\("open", saved\.line, false, \(\) => \{\}\);/);
   assert.match(app, /if \(!shown \|\| followsBroadcast\(shown\)\) return startRide\(false\);/);
   assert.match(app, /return !!open && open\.ride && !!open\.lead && !open\.own && open\.answer === route;/);
   // Started with no press: it says so, and how to wake a phone's quiet voice (the end review's a11y finding).
-  assert.match(app, /if \(sharedFollow\) \{\n\s+startRideNoted\(BROADCAST_FOLLOWING\);\n[^}]*\} else \{\n\s+startRoam\(\);[^}]*announce\(BROADCAST_FOLLOWING\), START_NOTE_MS\);/);
+  // A link without its ride key says so instead (lib/rideGroup.ts BROADCAST_NO_KEY).
+  assert.match(app, /if \(sharedFollow\) \{\n\s+startRideNoted\(keyless \? BROADCAST_NO_KEY : BROADCAST_FOLLOWING\);\n[^}]*\} else \{\n\s+startRoam\(\);[^}]*announce\(keyless \? BROADCAST_NO_KEY : BROADCAST_FOLLOWING\), START_NOTE_MS\);/);
   assert.match(app, /if \(plan\.verbatim && check\) void checkThen\("open", plan\.verbatim\.track, true/);
   assert.match(app, /if \(!ridingNow\.current && !roamingNow\.current\) return;\n\s+document\.removeEventListener\("click", unlock, true\);\n\s+if \(!window\.speechSynthesis\?\.speaking\) primeRideVoice\(ridePrefsNow\.current\);/);
   assert.match(app, /document\.addEventListener\("click", unlock, true\);/);
