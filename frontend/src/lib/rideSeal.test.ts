@@ -337,7 +337,7 @@ test("the page puts each ride's secret in its links: Share ride, Broadcast, Roam
   assert.match(app, /roamLink\(window\.location\.origin, id, lead\.key, lead\.secret\)/);
   assert.match(app, /roamLink\(window\.location\.origin, roamBroadcast\.id, roamBroadcast\.lead, roamBroadcast\.secret\)/);
   assert.match(app, /withSecret\(encodePlan\([^\n]*isRideLinkType\(preset\) \? groupSecret : null\)/);
-  assert.match(app, /withSecret\(linkToCopy\([^\n]*isRideLinkType\(preset\) \? groupSecret : null\)/);
+  assert.match(app, /withSecret\(linkToCopy\([^\n]*isRideLinkType\(from\.preset\) \? groupSecret : null\)/);
   // The leader's answer is kept under the sealed ride's id, the one its page reads.
   assert.match(app, /if \(lead && sharedId\) \{\s*const on = await rideOf\(lead\.secret\);\s*if \(on\) leadConsent\(on\.id, lead\.token\);/);
   // A Group or Mass Ride plan carries the page's secret (Stephen 2026-10-29: "Mass rides should be encrypted too."),

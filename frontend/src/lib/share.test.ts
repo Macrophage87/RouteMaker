@@ -49,7 +49,8 @@ test("the shared text is the distance, US first with metric in brackets, and the
   assert.equal(SHARE_TITLE, "RouteMaker route");
   // No distance while a re-plan is pending: the route shown is not the points the link carries.
   assert.equal(shareText(null, "Mass Ride"), "Bike route. Ride type: Mass Ride.");
-  assert.match(app, /const distanceM = !stale && routedPoints === points \? shown\.distance_m : null;/);
+  // A ride's own link (a resumed ride, rideOwnShare) is the ride's route, so its distance.
+  assert.match(app, /const distanceM = ownRide \? ownRide\.route\.distance_m : !stale && routedPoints === points && shown \? shown\.distance_m : null;/);
 });
 
 test("the shared URL is Copy link's, at its full precision and without the weight", async () => {
@@ -68,9 +69,10 @@ test("the shared URL is Copy link's, at its full precision and without the weigh
   assert.equal(sent[0].url, `https://x.test/${encodePlan(points, "default", dials)}`);
   assert.doesNotMatch(`${sent[0].url} ${sent[0].text}`, /weight|97\.5|\bkg\b|\blbs?\b/i);
   // App hands share the link Copy link copies, with only the shared line's id added (lib/sharedRoutes.ts).
-  assert.match(app, /let link = withSecret\(linkToCopy\(window\.location, points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\), isRideLinkType\(preset\) \? groupSecret : null\);/);
+  // The plan's, or a resumed ride's own (rideOwnShare), as Copy link would have copied it.
+  assert.match(app, /const from = rideOwnShare\(\) \?\? \{ points, preset, dials \};\s*let link = withSecret\(linkToCopy\(window\.location, from\.points, from\.preset, from\.dials, viaIndices\(from\.points, VIA_MARKS\.isVia\)\), isRideLinkType\(from\.preset\) \? groupSecret : null\);/);
   assert.match(app, /link = withSharedId\(link, id\);/);
-  assert.match(app, /shareContent\(link, distanceM, presetSaid\(preset\)\)/);
+  assert.match(app, /shareContent\(link, distanceM, presetSaid\(ownRide\?\.preset \?\? preset\)\)/);
   // Copy link copies that same link, the exact line's id and all (v0.9.0, "share the exact route").
   assert.match(app, /const \{ link, kept \} = sharedLinkNow\(\);\s*const done = await copyText\(link, navigator\.clipboard, selectionCopy\);/);
 });
@@ -131,7 +133,7 @@ test("share() is called within the press: synchronously in shareLink, and before
   const call = body.indexOf("shareLink(nav, content)");
   assert.ok(call > 0, "shareRoute calls shareLink");
   assert.doesNotMatch(body.slice(0, call).replace(/\/\/[^\n]*/g, ""), /\bawait\b/, "no await before shareLink");
-  assert.match(body, /if \(!shown \|\| sharing\.current\) return \{ led: false, said: "" \};/);
+  assert.match(body, /if \(!sharedRoute \|\| sharing\.current\) return \{ led: false, said: "" \};/);
   assert.match(body, /return \{ led: false, said: SHARE_RIDE_WAIT \};\s*\}\s*sharing\.current = true;/);
   assert.match(body, /finally \{\s*sharing\.current = false;\s*\}/);
 });

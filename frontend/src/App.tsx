@@ -3361,7 +3361,20 @@ export function App() {
     sharedLine.current = null;
     rideLinkSent.current = null;
   };
+  // The ride's own plan, for its Share live link, where the plan shown is no longer the ride's: a ride resumed after
+  // the page closed (lib/rideResume.ts), or the plan made again since Start. A ride kept on this device only, so never
+  // a trip's leg, Ride the rest or a detour from Roam (Stephen 2026-10-29: "Sharing a ride disappeared from go").
+  const rideOwnShare = () => (riding && rideStart?.kept && rideStart.route !== shown ? rideStart : null);
   const shareExact = () => {
+    const ride = rideOwnShare();
+    if (ride) {
+      const name = defaultRouteName(fileNamed(ride.points[0]), fileNamed(ride.points[ride.points.length - 1]));
+      return {
+        of: ride.route,
+        save: planSave(name, ride.route, ride.points, ride.preset, ride.dials),
+        file: routeGpxFile(ride.route, ride.points, ride.loop, federalRouteLines(ride.route, ride.points, federalData)),
+      };
+    }
     const verbatim = imported?.verbatim;
     if (verbatim && !importEdited) {
       const name = fileName();
@@ -3381,7 +3394,8 @@ export function App() {
   // Share's link: the plan's inputs, and the exact line's id with that line sent (once per line and keeping).
   // Share as image's QR code makes its link here too.
   const sharedLinkNow = () => {
-    let link = withSecret(linkToCopy(window.location, points, preset, dials, viaIndices(points, VIA_MARKS.isVia)), isRideLinkType(preset) ? groupSecret : null);
+    const from = rideOwnShare() ?? { points, preset, dials };
+    let link = withSecret(linkToCopy(window.location, from.points, from.preset, from.dials, viaIndices(from.points, VIA_MARKS.isVia)), isRideLinkType(from.preset) ? groupSecret : null);
     const exact = shareExact();
     let kept: Promise<boolean> | null = null;
     if (exact) {
@@ -3451,7 +3465,9 @@ export function App() {
   // and what was said.
   // `nav`: the sheet to open; Broadcast passes broadcastNav, which copies the link where there is no sheet.
   const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav): Promise<{ led: boolean; said: string }> => {
-    if (!shown || sharing.current) return { led: false, said: "" };
+    const ownRide = rideOwnShare();
+    const sharedRoute = ownRide?.route ?? shown;
+    if (!sharedRoute || sharing.current) return { led: false, said: "" };
     const press = ++sharePresses.current;
     // A ride only with its exact line, kept with the route shown for it: while the route is still being planned the
     // link would plan again, a route, so it is said rather than shared.
@@ -3464,9 +3480,9 @@ export function App() {
     // Shared as a ride without the leader's key (not ready, or no SHA-256 here): Broadcast says so and starts nothing.
     let unled = false;
     setShareSaid((before) => ({ text: "", count: before.count }));
-    const distanceM = !stale && routedPoints === points ? shown.distance_m : null;
+    const distanceM = ownRide ? ownRide.route.distance_m : !stale && routedPoints === points && shown ? shown.distance_m : null;
     // The ride's own route while riding (the plan's may have been made again since), else the one shown.
-    const rideRoute = riding && rideStart ? rideStart.route : shown;
+    const rideRoute = riding && rideStart ? rideStart.route : sharedRoute;
     const again = ride && rideLinkSent.current?.route === rideRoute && rideLinkSent.current.keep === shareKeep ? rideLinkSent.current : null;
     const now = again ? null : sharedLinkNow();
     const kept = again ? Promise.resolve(true) : now!.kept;
@@ -3476,7 +3492,7 @@ export function App() {
     // A ride link carries its own leader's secret, never the plan's (a Group Ride's): one without a leader carries none.
     const link = again ? again.link : ride && kept ? (lead ? withSecret(asRideLink(now!.link, lead.key), lead.secret) : withoutSecret(asRideLink(now!.link))) : now!.link;
     const file = exact?.file ? gpxShareFile(exact.file.text, exact.file.fileName) : null;
-    const content = withGpxFile(nav, shareContent(link, distanceM, presetSaid(preset)), file);
+    const content = withGpxFile(nav, shareContent(link, distanceM, presetSaid(ownRide?.preset ?? preset)), file);
     const outcome = shareLink(nav, content);
     let said: string;
     try {
@@ -5747,9 +5763,10 @@ export function App() {
   const passesOn =
     onShared !== null && !onShared.own && !!onShared.lead && SHARED_LINK !== null && onShared.id === SHARED_ID && !followsWithoutKey({ leading: false, secret: onShared.secret });
   const rideBroadcast = onShared?.ride && onShared.id && onShared.lead ? { id: onShared.id, lead: onShared.lead, leading: onShared.own === true, secret: onShared.secret ?? null } : null;
-  // Ride mode's Broadcast: the plan's own route only (its link is the plan's), not Ride the rest's or a detour from Roam; a
-  // ride opened from someone else's link only where it is their broadcast, passed on as it is (Stephen 2026-10-26).
-  const rideCanBroadcast = !!rideStart && !rideStart.roam && rideStart.route === shown && (!(onShared && !onShared.own) || passesOn);
+  // Ride mode's Broadcast: the plan's own route, or a ride kept on this device whose plan is gone (resumed, or planned
+  // again since: its link is then the ride's own, rideOwnShare), not Ride the rest's or a detour from Roam; a ride
+  // opened from someone else's link only where it is their broadcast, passed on as it is (Stephen 2026-10-26).
+  const rideCanBroadcast = !!rideStart && !rideStart.roam && (rideStart.route === shown || rideStart.kept === true) && (!(onShared && !onShared.own) || passesOn);
   // While leading a broadcast from Roam, its own riders' group is the only one (a Group Ride detour starts none).
   const rideGroupLine =
     !roamBroadcast?.leading && (goMode || riding || (rideBroadcast && !rideBroadcast.leading)) && rideGroupType && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
