@@ -1,30 +1,36 @@
 """Mass Ride and Group Ride links: the other riders as dots, and tap-to-send alerts (v0.7.0 plan,
 "Mass ride and Group Ride: see the others on the route" and "... tap to send an issue").
 
+Every ride is sealed end to end (Stephen 2026-10-29: "Encrypted rides send GPS accurate numbers.
+All rides should have a key."; frontend/src/lib/rideSeal.ts). Every ride link carries a secret in
+its fragment, which no browser sends to a server. Each phone seals its dot (with its role), its
+alerts and the leader's path with a key from that secret before sending, and the ride id is
+derived from it one way. Here each is opaque text: nothing in it can be read or checked, and a
+post in plain numbers is refused. The phones keep to the map's area and merge matching alerts
+themselves. What they seal: a dot and an alert's spot to 6 decimals of a degree (about 4 in,
+0.1 m; rideSeal.ts `sealedSpot`), the leader's route and ridden path thinned to at most
+600 points at 5 decimals (about 3 ft, 1 m; rideGroup.ts `thinLine`, `PATH_MAX_POINTS`).
+
+The server reads none of it, except on a ride whose key it made or was given and keeps: a ride
+post's ride (core.route_posts) and a ride link the site's assistant planned or opened (its
+drafts, core.connector).
+
 Privacy is the shape of this module:
 
-- A position is rounded to a 20 m grid before it is kept, kept only in memory, and dropped
-  2 minutes after it was sent. It is never written to the database, to a file on disk or to a
-  log: nothing here logs at all, and the endpoints take positions in a POST body (the access log
-  carries no body).
+- A sealed value is kept only in memory and dropped 2 minutes after it was sent. It is never
+  written to the database, to a file on disk or to a log: nothing here logs at all, and the
+  endpoints take it in a POST body (the access log carries no body).
 - A rider is a random per-ride token the device makes (it changes each ride); no account, name or
-  address is kept with it. A ride is a digest of the link's plan, so the server never holds the
-  route either.
-- An alert keeps its sender's rounded spot for as long as the alert lasts (2 minutes, or until
-  the sender clears it), because the alert is useless without it.
+  address is kept with it. A ride is an id derived from the link's secret, so the server never
+  holds the route either.
 - Nothing stays longer than 2 minutes (Stephen 2026-10-22: "For privacy, nothing stays on the
   server for more than 2 min"): a dot, a leader's path and an alert each 2 minutes after it was
   sent, and a rider's token and counts 2 minutes after its phone last asked or sent anything.
   Each api process sweeps every ride for this every `SWEEP_S`, so a ride nobody opens again is
   emptied as well.
-
-Sealed rides (Stephen 2026-10-29, end-to-end encryption; frontend/src/lib/rideSeal.ts): a
-broadcast, and a Group Ride link shared from the app, carry a secret in the link's fragment, which
-no browser sends to a server. Each phone seals its dot, its alert and the leader's path with a key
-from that secret before sending, and the ride id is derived from it one way. Here a sealed one is
-opaque text kept exactly as a plain one is (the same 2 minutes, limits and leader mark), but
-nothing in it can be read, rounded or checked: the phones round to the grid, keep to the map's area
-and merge alerts themselves. A ride in plain numbers (a Mass Ride, an older link) is unchanged.
+- What the server still does: the limits (per token and per ride), the leader's mark on a
+  broadcast's sharer, a fresh order of the dots on every read, and caps on each sealed value's
+  size.
 
 "Memory" across the api's gunicorn workers: each worker is its own process, so a dict in one is
 not seen by the others. The shared store is a directory on a tmpfs (by default /dev/shm, which is
@@ -47,14 +53,11 @@ import secrets
 import threading
 import time
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
 from random import SystemRandom
 
 # How long a dot lives after its last reading (the plan: "kept only in server memory for 2
 # minutes"; the front end draws it gone at the same age).
 DOT_TTL_S = 120
-# The rounding of every kept position: "rounded to about 20 m".
-GRID_M = 20.0
 # A device sends its position about every 15 s; one sooner than this is refused (429).
 MIN_POST_INTERVAL_S = 10
 # A device asks for the dots about every 15 s; one sooner than this is refused (429).
@@ -71,7 +74,6 @@ MAX_RIDES = 500
 # 2 minutes after it was sent, as a dot is, so a phone that stops sending leaves nothing behind.
 PATH_TTL_S = DOT_TTL_S
 MIN_PATH_INTERVAL_S = 20
-PATH_MAX_POINTS = 600
 PATHS_PER_RIDE = 3
 PATH_BODY_BYTES = 48 * 1024
 # A sealed dot, alert or path (frontend/src/lib/rideSeal.ts): base64url of the nonce and the
@@ -82,12 +84,10 @@ SEALED_PATH_MAX = PATH_BODY_BYTES - 256
 # Alerts live on one ride at a time; a newer one past this drops the oldest.
 LIVE_ALERTS_PER_RIDE = 20
 
-# Alerts (the plan's lists, limits and merge rule).
+# Alerts (the plan's limits; the phones merge matching ones, frontend rideSeal.ts mergeAlerts).
 ALERT_TTL_S = KEEP_S
 ALERT_MIN_INTERVAL_S = 60
 ALERTS_PER_RIDE = 10
-MERGE_WITHIN_S = 120
-MERGE_WITHIN_M = 200
 # Writes to one ride (positions, paths, alerts), counted in the ride's own state so the count goes
 # with the ride rather than outliving it in the database: MAX_RIDERS_PER_RIDE riders each sending
 # a position every 15 s is 12,000 a minute, so 15,000.
@@ -96,50 +96,8 @@ RIDE_WRITES_WINDOW_S = 60
 # How often each api process sweeps every ride for what has outlived its 2 minutes, so a ride
 # nobody opens again is emptied too, not only one a phone still reads (v0.12.0 end review).
 SWEEP_S = 10
-OTHER_TEXT_MAX = 80
 
 _SHUFFLE = SystemRandom()
-MASS_RIDE = "mass-ride"
-GROUP_RIDE = "group-ride"
-
-
-@dataclass(frozen=True)
-class AlertKind:
-    id: str
-    label: str
-    # Asks "Send to everyone on this ride?" before sending, against pocket taps.
-    confirm: bool = False
-    # The banner adds a "Call 911" link (a tel: link the rider taps; the app never calls).
-    call_911: bool = False
-
-
-ALERT_KINDS: dict[str, tuple[AlertKind, ...]] = {
-    MASS_RIDE: (
-        AlertKind("spread", "Extensive rider spread"),
-        AlertKind("emergency_vehicle", "Emergency vehicle coming through"),
-        AlertKind("aggressive", "Aggressive person"),
-        AlertKind("medical", "Medical emergency or crash", confirm=True, call_911=True),
-        AlertKind("reroute", "Rerouting, road closed"),
-        # Stephen 2026-10-22: "Followers and leaders can text between each other as well with
-        # common issues, lost, mechanical, etc".
-        AlertKind("lost", "Lost, separated from the ride"),
-        AlertKind("other", "Other"),
-    ),
-    GROUP_RIDE: (
-        AlertKind("off_back", "Rider off the back"),
-        AlertKind("crash", "Crash", confirm=True, call_911=True),
-        AlertKind("mechanical", "Mechanical or flat, stopping"),
-        AlertKind("wrong_turn", "Wrong turn"),
-        AlertKind("lost", "Lost, separated from the group"),
-        AlertKind("wait", "Wait up, regroup"),
-        AlertKind("other", "Other"),
-    ),
-}
-
-# The rider's role on the ride, chosen in the same one-time question as showing the dot and sent
-# with each position: self-declared (a ride link has no sign-in), anonymous like the dot itself.
-PARTICIPANT = "participant"
-ROLES = (PARTICIPANT, "lead", "sweep", "corker")
 
 RIDE_ID = re.compile(r"^[0-9a-f]{64}$")
 TOKEN = re.compile(r"^[0-9a-f]{32}$")
@@ -162,38 +120,6 @@ class Refused(Exception):
         self.status = status
         self.message = message
         self.retry_after_s = retry_after_s
-
-
-def kind_of(ride_type: str, kind: str) -> AlertKind | None:
-    for k in ALERT_KINDS.get(ride_type, ()):
-        if k.id == kind:
-            return k
-    return None
-
-
-def label_of(kind: str) -> str:
-    for kinds in ALERT_KINDS.values():
-        for k in kinds:
-            if k.id == kind:
-                return k.label
-    return "Alert"
-
-
-def rounded(lon: float, lat: float) -> tuple[float, float]:
-    """The position on a 20 m grid: what is kept, and all anyone else is ever shown."""
-    step_lat = GRID_M / 111_195.0
-    lat_r = round(lat / step_lat) * step_lat
-    step_lon = GRID_M / (111_195.0 * max(0.01, math.cos(math.radians(lat_r))))
-    lon_r = round(lon / step_lon) * step_lon
-    return round(lon_r, 6), round(lat_r, 6)
-
-
-def _distance_m(a: tuple[float, float], b: tuple[float, float]) -> float:
-    lat1, lat2 = math.radians(a[1]), math.radians(b[1])
-    dlat = lat2 - lat1
-    dlon = math.radians(b[0] - a[0])
-    h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
-    return 2 * 6_371_008.8 * math.asin(min(1.0, math.sqrt(h)))
 
 
 # ---- the store -----------------------------------------------------------------------------
@@ -477,13 +403,13 @@ def _prune(state: dict, now: float) -> None:
             continue
         if "at" in rider and now - rider["at"] > DOT_TTL_S:
             # The position goes at 2 minutes; the token's counts stay for the ride's limits.
-            for key in ("lon", "lat", "at", "role", "sealed"):
+            # (lon, lat and role: what a server before every ride was sealed kept in plain.)
+            for key in ("at", "sealed", "lon", "lat", "role"):
                 rider.pop(key, None)
         if "path" in rider and now - rider["path"]["at"] > PATH_TTL_S:
             del rider["path"]
-    # An alert lasts 2 minutes from its first report: a merge adds a reporter but never extends
-    # how long the first sender's spot is kept.
-    state["alerts"] = [a for a in state["alerts"] if now - a.get("first", a["last"]) <= ALERT_TTL_S]
+    # An alert lasts 2 minutes from when it was sent.
+    state["alerts"] = [a for a in state["alerts"] if now - a["last"] <= ALERT_TTL_S]
     writes = state.get("writes")
     if writes and now - writes[0] >= RIDE_WRITES_WINDOW_S:
         del state["writes"]
@@ -522,50 +448,27 @@ def _check(ride_id: str, token: str) -> None:
         raise Refused(400, "The ride token is missing.")
 
 
-def _position(lon, lat) -> tuple[float, float]:
-    from django.conf import settings
-
-    ok = all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (lon, lat))
-    if not ok or not all(math.isfinite(v) for v in (lon, lat)):
-        raise Refused(400, "The position is not a number.")
-    west, south, east, north = settings.COVERAGE_BBOX
-    if not (west <= lon <= east and south <= lat <= north):
-        raise Refused(400, "That position is outside the area this map covers.")
-    return rounded(float(lon), float(lat))
-
-
-def _role(role) -> str:
-    """One of ROLES; none sent (an older page) is a participant."""
-    if role is None or role == "":
-        return PARTICIPANT
-    if role not in ROLES:
-        raise Refused(400, "Not a rider role: participant, lead, sweep or corker.")
-    return role
+# A post in plain numbers (an older page): refused, since every ride link now carries a key.
+PLAIN_REFUSED = (
+    "This ride now shares only sealed positions and alerts. Reload the ride link to update the"
+    " app, then share again."
+)
 
 
 def _sealed(text, most: int) -> str:
+    """The sealed text as sent; a body without one (plain lon and lat, an older page) is
+    refused."""
+    if text is None:
+        raise Refused(400, PLAIN_REFUSED)
     if not isinstance(text, str) or len(text) > most or not SEALED.match(text):
         raise Refused(400, "Not a sealed value.")
     return text
 
 
-def post_position(
-    ride_id: str,
-    token: str,
-    lon,
-    lat,
-    role=None,
-    now: Callable[[], float] = time.time,
-    sealed=None,
-) -> None:
-    """Keep this rider's dot (rounded) and role for 2 minutes; or, `sealed`, the dot as its phone
-    sealed it."""
+def post_position(ride_id: str, token: str, sealed, now: Callable[[], float] = time.time) -> None:
+    """Keep this rider's dot, as its phone sealed it, for 2 minutes."""
     _check(ride_id, token)
-    if sealed is not None:
-        fields = {"sealed": _sealed(sealed, SEALED_MAX)}
-    else:
-        spot = _position(lon, lat)
-        fields = {"lon": spot[0], "lat": spot[1], "role": _role(role)}
+    kept = _sealed(sealed, SEALED_MAX)
     t = now()
     with store().ride(ride_id) as state:
         _prune(state, t)
@@ -575,53 +478,14 @@ def post_position(
             raise Refused(
                 429, "Too soon; the next position goes in a few seconds.", MIN_POST_INTERVAL_S
             )
-        for key in ("lon", "lat", "role", "sealed"):
-            rider.pop(key, None)
-        rider.update(fields, at=t, posted=t)
+        rider.update(sealed=kept, at=t, posted=t)
 
 
-def _line(points, rounding: bool) -> list[list[float]]:
-    """A list of [lon, lat] within the map's area, at most PATH_MAX_POINTS long; the ridden path is
-    put on the 20 m grid, as a dot is (`rounding`), the planned route to 5 decimals."""
-    from django.conf import settings
-
-    if points is None:
-        return []
-    if not isinstance(points, list) or len(points) > PATH_MAX_POINTS:
-        raise Refused(400, f"A path is a list of at most {PATH_MAX_POINTS} [lon, lat] points.")
-    west, south, east, north = settings.COVERAGE_BBOX
-    out: list[list[float]] = []
-    for p in points:
-        ok = isinstance(p, list) and len(p) == 2
-        ok = ok and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in p)
-        if not ok or not all(math.isfinite(v) for v in p):
-            raise Refused(400, "A path point is [lon, lat] in numbers.")
-        lon, lat = float(p[0]), float(p[1])
-        if not (west <= lon <= east and south <= lat <= north):
-            # Ridden out of the map's area: those points are left out, the rest still go.
-            continue
-        spot = rounded(lon, lat) if rounding else (round(lon, 5), round(lat, 5))
-        if not out or out[-1] != list(spot):
-            out.append(list(spot))
-    return out
-
-
-def post_path(
-    ride_id: str,
-    token: str,
-    route,
-    trail,
-    now: Callable[[], float] = time.time,
-    sealed=None,
-) -> None:
-    """Keep this rider's route and ridden path for 2 minutes (a broadcast's leader sends them; a
-    reader sees them only with the link's leader key); or, `sealed`, both as the phone sealed
-    them."""
+def post_path(ride_id: str, token: str, sealed, now: Callable[[], float] = time.time) -> None:
+    """Keep this rider's route and ridden path, as its phone sealed them, for 2 minutes (a
+    broadcast's leader sends them; a reader gets them only with the link's leader key)."""
     _check(ride_id, token)
-    if sealed is not None:
-        kept = {"sealed": _sealed(sealed, SEALED_PATH_MAX)}
-    else:
-        kept = {"route": _line(route, rounding=False), "trail": _line(trail, rounding=True)}
+    kept = _sealed(sealed, SEALED_PATH_MAX)
     t = now()
     with store().ride(ride_id) as state:
         _prune(state, t)
@@ -632,7 +496,7 @@ def post_path(
         if "path" not in rider and others >= PATHS_PER_RIDE:
             raise Refused(503, "This ride has too many paths shared right now.")
         rider["path_posted"] = t
-        rider["path"] = {**kept, "at": t}
+        rider["path"] = {"sealed": kept, "at": t}
 
 
 def leave(ride_id: str, token: str, now: Callable[[], float] = time.time) -> None:
@@ -642,39 +506,24 @@ def leave(ride_id: str, token: str, now: Callable[[], float] = time.time) -> Non
         _prune(state, now())
         rider = state["riders"].get(token)
         if rider is not None:
-            for key in ("lon", "lat", "at", "role", "sealed", "path"):
+            for key in ("at", "sealed", "path"):
                 rider.pop(key, None)
 
 
 def _alert_out(alert: dict, token: str, t: float) -> dict:
-    if "sealed" in alert:
-        # Sealed: what it is, where and its words only its riders read; they merge reports too.
-        return {
-            "id": alert["id"],
-            "sealed": alert["sealed"],
-            "age_s": max(0, int(t - alert["last"])),
-            "mine": alert["sender"] == token,
-        }
+    # What it is, where and its words only its riders read; they merge matching reports too.
     return {
         "id": alert["id"],
-        "kind": alert["kind"],
-        "label": label_of(alert["kind"]),
-        "text": alert.get("text", ""),
-        "lon": alert["lon"],
-        "lat": alert["lat"],
-        # Age from the latest report, so a merged alert reads as fresh as its newest report.
+        "sealed": alert["sealed"],
         "age_s": max(0, int(t - alert["last"])),
-        "count": len(alert["reporters"]),
         "mine": alert["sender"] == token,
-        "call_911": any(
-            k.call_911 for ks in ALERT_KINDS.values() for k in ks if k.id == alert["kind"]
-        ),
     }
 
 
 def read(ride_id: str, token: str, now: Callable[[], float] = time.time, leader: str = "") -> dict:
-    """The other riders' dots (not this one's own) with their ages and roles, and the ride's
-    alerts. With a broadcast link's `leader` key, the sharer's dot carries "leader": true."""
+    """The other riders' sealed dots (not this one's own) with their ages, and the ride's sealed
+    alerts. With a broadcast link's `leader` key, the sharer's dot carries "leader": true and the
+    sharer's sealed path comes too."""
     _check(ride_id, token)
     if not LEADER_KEY.match(leader or ""):
         leader = ""
@@ -692,28 +541,19 @@ def read(ride_id: str, token: str, now: Callable[[], float] = time.time, leader:
             rider["polled"] = t
         dots = []
         for other, r in state["riders"].items():
-            if other == token or "at" not in r:
+            if other == token or "at" not in r or "sealed" not in r:
                 continue
-            if "sealed" in r:
-                dot = {"sealed": r["sealed"], "age_s": max(0, int(t - r["at"]))}
-            else:
-                dot = {
-                    "lon": r["lon"],
-                    "lat": r["lat"],
-                    "age_s": max(0, int(t - r["at"])),
-                    "role": r.get("role", PARTICIPANT),
-                }
+            dot = {"sealed": r["sealed"], "age_s": max(0, int(t - r["at"]))}
             if leader and leader_key(other) == leader:
                 dot["leader"] = True
             dots.append(dot)
-        alerts = [_alert_out(a, token, t) for a in state["alerts"]]
+        alerts = [_alert_out(a, token, t) for a in state["alerts"] if "sealed" in a]
         path = None
         if leader:
             for other, r in state["riders"].items():
-                if other != token and "path" in r and leader_key(other) == leader:
-                    p = r["path"]
-                    path = {k: v for k, v in p.items() if k in ("route", "trail", "sealed")}
-                    path["age_s"] = max(0, int(t - p["at"]))
+                p = r.get("path")
+                if other != token and p and "sealed" in p and leader_key(other) == leader:
+                    path = {"sealed": p["sealed"], "age_s": max(0, int(t - p["at"]))}
     # A fresh order each time: a dot's place in the list never ties it to the same rider
     # from one read to the next (2026-10-29).
     _SHUFFLE.shuffle(dots)
@@ -723,32 +563,11 @@ def read(ride_id: str, token: str, now: Callable[[], float] = time.time, leader:
     return answer
 
 
-def send_alert(
-    ride_id: str,
-    token: str,
-    ride_type: str,
-    kind: str,
-    text: str,
-    lon,
-    lat,
-    now: Callable[[], float] = time.time,
-    sealed=None,
-) -> dict:
-    """Send (or merge) an alert to everyone on the ride link. Answers the alert as others see it.
-    `sealed`: the alert as its phone sealed it, kept as it is (its riders merge it, not this)."""
+def send_alert(ride_id: str, token: str, sealed, now: Callable[[], float] = time.time) -> dict:
+    """Send an alert, as its phone sealed it, to everyone on the ride link; kept as it is (its
+    riders merge matching reports, not this). Answers the alert as others see it."""
     _check(ride_id, token)
-    if sealed is not None:
-        sealed = _sealed(sealed, SEALED_MAX)
-    else:
-        found = kind_of(ride_type, kind)
-        if found is None:
-            raise Refused(400, "Not an alert this ride type sends.")
-        text = (text or "").strip() if kind == "other" else ""
-        if kind == "other" and not text:
-            raise Refused(400, "Say what the issue is, in up to 80 characters.")
-        if len(text) > OTHER_TEXT_MAX:
-            raise Refused(400, "Say what the issue is in up to 80 characters.")
-        spot = _position(lon, lat)
+    kept = _sealed(sealed, SEALED_MAX)
     t = now()
     with store().ride(ride_id) as state:
         _prune(state, t)
@@ -763,41 +582,11 @@ def send_alert(
             raise Refused(429, "One alert a minute; try again shortly.", wait)
         rider["alerts"] = rider.get("alerts", 0) + 1
         rider["alerted"] = t
-        if sealed is not None:
-            alert = {
-                "id": secrets.token_hex(8),
-                "sealed": sealed,
-                "first": t,
-                "last": t,
-                "sender": token,
-                "reporters": [token],
-            }
-            _add_alert(state, alert)
-            return _alert_out(alert, token, t)
-        # The same issue near the same spot within 2 minutes is one alert: "2 riders reported".
-        for alert in state["alerts"]:
-            if "sealed" in alert:
-                continue
-            same = alert["kind"] == kind and (kind != "other" or alert.get("text") == text)
-            if (
-                same
-                and t - alert["last"] <= MERGE_WITHIN_S
-                and _distance_m((alert["lon"], alert["lat"]), spot) <= MERGE_WITHIN_M
-            ):
-                if token not in alert["reporters"]:
-                    alert["reporters"].append(token)
-                alert["last"] = t
-                return _alert_out(alert, token, t)
         alert = {
             "id": secrets.token_hex(8),
-            "kind": kind,
-            "text": text,
-            "lon": spot[0],
-            "lat": spot[1],
-            "first": t,
+            "sealed": kept,
             "last": t,
             "sender": token,
-            "reporters": [token],
         }
         _add_alert(state, alert)
         return _alert_out(alert, token, t)

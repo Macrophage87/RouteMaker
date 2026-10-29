@@ -193,7 +193,8 @@ class TestPage:
 
         assert ride_presence.DOT_TTL_S == 120 and ride_presence.ALERT_TTL_S == 120
         assert ride_presence.KEEP_S == 120 and ride_presence.PATH_TTL_S == 120
-        assert ride_presence.GRID_M == 20.0
+        # Every ride is sealed: the server rounds nothing, and refuses plain numbers.
+        assert not hasattr(ride_presence, "GRID_M") and not hasattr(ride_presence, "rounded")
         assert procrastinate.BACKUP_KEEP == 7
         assert procrastinate.BACKUP_MAX_AGE < timedelta(days=7)
         assert {"app_session", "django_session", "rate_limit_window", "cached_membership"} <= set(
@@ -213,20 +214,56 @@ class TestPage:
         for item in privacy_policy.RIDE_CRYPTO:
             assert escape(item) in ride
 
+    def test_every_ride_link_carries_a_key_ride_posts_too(self, client) -> None:
+        from core import ride_presence, route_posts
+
+        _, body, _ = get(client)
+        ride = body[body.index("<h2>Group and Mass Ride sharing</h2>") :]
+        ride = ride[: ride.index("<h2>", 5)]
+        text = re.sub(r"<[^>]+>", " ", ride).replace("&#x27;", "'").replace("’", "'")
+        assert "Every ride link carries a key" in text
+        assert "anyone who can read the post can see the dots and alerts of that ride" in text
+        assert "only as scrambled text it cannot read, unless the server keeps" in text
+        assert "a ride post's ride, or a ride an AI assistant app you connected planned" in text
+        assert "not encrypted this way" not in text and "rounded" not in text
+        # The server's own ride links (a ride post's) carry a key as the phone's do.
+        assert len(route_posts.new_ride_key()) == 22
+        assert route_posts.RIDE_LINK_TYPES == ("mass-ride", "group-ride")
+        assert ride_presence.PLAIN_REFUSED
+
     def test_the_encryption_details_are_the_code_s(self) -> None:
+        from core import route_posts
+
         seal = (ROOT / "frontend/src/lib/rideSeal.ts").read_text()
         group = (ROOT / "frontend/src/lib/rideGroup.ts").read_text()
         text = " ".join(privacy_policy.RIDE_CRYPTO)
-        assert "const SECRET_BYTES = 32;" in seal and "32 random bytes" in text
+        # A new key is 16 bytes, 22 characters (the owner, 2026-10-29), as the server makes a ride
+        # post's; an older link's 43 still opens.
+        assert route_posts.RIDE_KEY_BYTES == 16 and "16 random bytes" in text
+        assert "export const SECRET_BYTES = 16;" in seal and "const OLD_SECRET_BYTES = 32;" in seal
+        assert "22 base64url characters" in text and "43 characters, still works" in text
+        assert "lead=, the first 16 bytes of the SHA-256" in text and "32 hex digits" in text
         assert "const NONCE_BYTES = 12;" in seal and "12-byte nonce" in text
         assert 'enc.encode("routemaker ride seal v1")' in seal and "routemaker ride seal v1" in text
         assert 'info: enc.encode("ride id") }, base, 256)' in seal and "256 bits" in text
         assert 'info: enc.encode("ride key")' in seal
         assert '{ name: "AES-GCM", length: 256 },\n    false,' in seal and "non-extractable" in text
-        assert "{ dot: 128, alert: 512, path: 4096 }" in seal
+        assert "number> = { dot: 128, alert: 512, path: 4096 }" in seal
         assert "128 bytes (a dot), 512 bytes (an alert) or 4,096 bytes (a path)" in text
         assert "additionalData: aad(seal, kind)" in seal and "`${kind}|${seal.ride}`" in seal
         assert 'export const SECRET_PARAM = "k";' in seal and "k=" in text
+        assert "Every ride link carries one" in text
+        # Phones send their position as measured, to the decimals the page seals them at; no grid
+        # or rounding to a coarser spot is claimed.
+        assert "20 m" not in text and "grid" not in text and "round" not in text
+        assert "Math.round(lon * 1e6) / 1e6" in seal and "6 decimal places" in text
+        assert "about 4 in, 0.1 m" in text
+        assert "Math.round(p[0] * 1e5) / 1e5" in group and "5 decimal places" in text
+        assert "about 3 ft, 1 m" in text
+        assert "export const PATH_MAX_POINTS = 600;" in group and "600 points" in text
+        # What the server can read: none of it, but for a ride whose key it keeps.
+        assert "It cannot read a dot, an alert or the leader's live path, except on a ride" in text
+        assert "ride post's Group or Mass Ride link" in text and "AI assistant app" in text
         assert "new Uint8Array(16)" in group and "16 random bytes" in text
 
 

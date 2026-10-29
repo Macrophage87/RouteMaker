@@ -6483,6 +6483,12 @@ The order is: pre-flight, **rollback points**, fast-forward, the api image, recr
 the front end last, then **verify**. Keep out of 07:00-07:30 UTC (the nightly backup) and away from
 the Tuesday 08:00Z rebuild. Every step is still confirmed with the owner (OWNER-DECISIONS 293).
 
+**From v0.15.0 the server refuses a ride position, alert or leader path that is not sealed.** The
+order above still holds: the new page works against the old server too, so the only gap is the few
+minutes between recreating the api and putting up the front end, when an old page on a link without a
+key has its dots refused. A tab still on the old page must reload before its dots and alerts are taken
+again.
+
 **0.1 Rollback points, before anything is built.** Nothing else names the live image or keeps the live
 `index.html`. A `docker compose build api` leaves the old image dangling under no name, and the oldest
 index backup may be two releases back. `L` is the short commit t9 is on:

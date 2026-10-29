@@ -1346,13 +1346,13 @@ export function App() {
   }, []);
 
   // A Group or Mass Ride's secret (lib/rideSeal.ts; Stephen 2026-10-29, Mass Ride too: "Mass rides should be encrypted
-  // too."): its link carries it, so the ride is sealed end to end. A page started afresh has one; a page opened from a
-  // link has the link's, or none (a link without one, such as an older one or a ride post's, is a ride by its points, so
-  // all who open it are still on one ride). Picking Group or Mass Ride here makes one where there is none, and moving
-  // from one to the other makes a new one: they are different rides.
+  // too."): its link carries it, so the ride is sealed end to end. Every page has one (Stephen 2026-10-29: "All rides
+  // should have a key."): a page started afresh makes one; a page opened from a link has the link's, or, from a link
+  // without one (an older link), makes its own, a new ride of the rider who opened it. Moving from Group to Mass Ride
+  // or back makes a new one: they are different rides.
   // The page itself is opening a plan of the rider's own (a saved or kept route), told apart from a link pasted in.
   const ownHashOpen = useRef(false);
-  const [groupSecret, setGroupSecret] = useState<string | null>(() => PLAN_SECRET ?? (PLAN_LINK ? null : newRideSecret()));
+  const [groupSecret, setGroupSecret] = useState<string>(() => PLAN_SECRET ?? newRideSecret());
   // Whether this page made the secret (not one from a link opened here): made again when a ride ends.
   const groupSecretOwn = useRef(PLAN_SECRET === null);
   const presetBefore = useRef(preset);
@@ -1389,12 +1389,13 @@ export function App() {
         return;
       }
       const plan = decodePlan(window.location.hash);
-      // A link from outside: its secret, or none (a ride by its points, as everyone who opens it is). One of the
-      // rider's own (a saved or kept route) is a new ride of theirs: a new secret.
+      // A link from outside: its secret. One of the rider's own (a saved or kept route), or a link without a secret (an
+      // older one), is a new ride of theirs: a new secret.
       const own = ownHashOpen.current;
       ownHashOpen.current = false;
-      groupSecretOwn.current = own;
-      setGroupSecret(own ? newRideSecret() : secretFrom(window.location.hash));
+      const linked = own ? null : secretFrom(window.location.hash);
+      groupSecretOwn.current = linked === null;
+      setGroupSecret(linked ?? newRideSecret());
       setConfirmedKm(null);
       // Another plan: undo does not reach back into the one before it.
       history.current.clear();
@@ -3491,7 +3492,8 @@ export function App() {
         // owner, 2026-10-18: "Maybe make the sharer able to reroute").
         // The sharer leads it (Stephen 2026-10-22): shown as Lead line under the token the link's key names.
         if (lead && sharedId) {
-          leadConsent((await rideOf({ broadcast: { id: sharedId }, secret: lead.secret })).id, lead.token);
+          const on = await rideOf(lead.secret);
+          if (on) leadConsent(on.id, lead.token);
           if (!leads.current.has(sharedId)) {
             leads.current.set(sharedId, lead);
             prepareLead();
@@ -4338,7 +4340,8 @@ export function App() {
     // Again while leading: the sheet was the answer; a copy is said.
     if (mine) return canShare ? "" : BROADCAST_COPIED;
     if (!roamingNow.current) return "";
-    leadConsent((await rideOf({ broadcast: { id, roam: true }, secret: lead.secret })).id, lead.token);
+    const on = await rideOf(lead.secret);
+    if (on) leadConsent(on.id, lead.token);
     leads.current.set(`roam|${id}`, lead);
     prepareLead();
     setRoamBroadcast({ id, lead: lead.key, leading: true, secret: lead.secret });
@@ -5883,7 +5886,6 @@ export function App() {
           {(riderHere) => (
             <RideGroup
               type="group-ride"
-              points={NO_POINTS}
               line={NO_POINTS}
               getMap={getMap}
               here={riderHere}
@@ -5902,7 +5904,6 @@ export function App() {
           {(riderHere) => (
             <RideGroup
               type={rideGroupType ?? "group-ride"}
-              points={rideGroupPoints}
               line={rideGroupLine}
               getMap={getMap}
               here={riderHere}

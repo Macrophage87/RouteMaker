@@ -377,6 +377,20 @@ class TestConnector:
         older = store.get(draft_id)
         assert older.trim_spurs is True and older.intervals is None
 
+    def test_a_ride_draft_keeps_its_ride_key(self) -> None:
+        # revise_route reads it back, so a revised ride link is the same ride.
+        user = make_user()
+        store = connector.DatabaseDrafts(user, a_grant(user))
+        module = connector.mcp_module()
+        plan = module.Plan([(-77.03, 38.9), (-77.02, 38.91)], [], "group-ride", {}, None, {})
+        key = module.new_ride_key()
+        draft_id = store.put(module.Draft(plan, {}, None, "x", ride_key=key))
+        assert store.get(draft_id).ride_key == key
+        row = ConnectorDraft.objects.get(draft_id=draft_id)
+        row.data = {k: v for k, v in row.data.items() if k != "ride_key"}
+        row.save()
+        assert store.get(draft_id).ride_key is None
+
 
 @db
 class TestRoutePostDrafts:

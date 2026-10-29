@@ -8541,8 +8541,8 @@ Participant (already chosen, so Yes alone answers), Lead line, Sweep or Corker. 
 answer for that ride on the device (`rideGroup.ts keepConsent`; in the question a compact "Riding as" list)
 and changed in the riders panel, under "Show me as a dot", where the next position goes as soon as the server
 takes one (within 15 s); Go's bar gains nothing. Each position the page sends carries the role
-(`POST /api/rides/{ride}/here`, `role`); `core.ride_presence` takes the four ids only (anything else is a 400,
-none sent is a participant) and answers each dot's `role`. Still no name, token or id on a dot.
+inside its sealed dot (`POST /api/rides/{ride}/here`, `sealed`; since every ride is sealed the server never
+reads it, and each phone checks the four ids as it opens a dot). Still no name, token or id on a dot.
 
 - **Self-declared.** A ride link has no sign-in, so the server cannot know who leads or sweeps: a role is what
   that phone chose, nothing more. Anyone on the link can mark themselves Sweep. Do not build anything that
@@ -8562,15 +8562,15 @@ none sent is a participant) and answers each dot's `role`. Still no name, token 
   summary adds the nearest of each role on the ride after the nearest rider. The panel's key lists only the
   roles present, each with its swatch (decoration, `aria-hidden`; kept in its colours in forced-colours mode)
   and its count in words.
-- Tests: `tests/test_ride_presence.py` (validation, default, the role on the dot) and
-  `frontend/src/lib/rideGroup.test.ts` (kept role, the body, the images and layers, colours, names, the key,
+- Tests: `frontend/src/lib/rideGroup.test.ts` (kept role, the body, the images and layers, colours, names, the key,
   the page's wiring).
 
 ## End-to-end encrypted rides (Stephen, 2026-10-29)
 
 A tester asked how location sharing is secured; Stephen asked whether end-to-end encryption was worth it, then
 "yes", for broadcasts and Group Ride. Share ride, Broadcast, Roam's Broadcast and a Group Ride link shared from
-the app now carry a ride secret, `k=` (32 random bytes, base64url), in the link's fragment, which no browser
+the app now carry a ride secret, `k=` (16 random bytes, 22 base64url characters; see "Shorter ride links" below),
+in the link's fragment, which no browser
 sends to a server. `frontend/src/lib/rideSeal.ts` derives two things from it with HKDF-SHA-256: the ride id the
 server knows the ride by (64 hex, one way) and an AES-GCM 256 key the server never sees. Each phone seals its
 dot (`{lon, lat, role}`), alert (`{kind, text, lon, lat}`) and the leader's path (`{route, trail}`) with a fresh
@@ -8579,33 +8579,96 @@ dot (`{lon, lat, role}`), alert (`{kind, text, lon, lat}`) and the leader's path
 per-token limits, leader mark and sweep; it answers `{sealed, age_s}` (dots, with `leader`), `{id, sealed,
 age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
 
-- **What moved to the phone.** The server cannot read a sealed value, so the phone rounds to the 20 m grid
-  (`gridded`, the same arithmetic as `rounded`), sends nothing outside the map's area (`sendable`,
-  `sendableLine`), checks an alert's kind and Other's words, and merges alerts as it reads them (`mergeAlerts`,
+- **What moved to the phone.** The server cannot read a sealed value, so the phone sends nothing outside the map's
+  area (`sendable`, `sendableLine`), checks an alert's kind and Other's words, and merges alerts as it reads them (`mergeAlerts`,
   the server's rule: same kind and words, within 200 m, within 2 minutes of the latest report; one's own stay
   apart so Clear clears only them). A value that does not open with the ride's key is left out.
+- **Positions as the phone has them** (Stephen 2026-10-29: "Encrypted rides send GPS accurate numbers."). A sealed
+  dot, alert spot and ridden path are no longer put on the old 20 m grid: a dot or alert goes to 6 decimals (about
+  0.1 m, `sealedSpot`), the route and ridden path to 5 (about 1 m, `thinLine`). A follower's trail of the leader
+  adds a reading 5 m or more from the last (`TRAIL_STEP_M`, GPS noise), and `project` still counts passes within
+  30 m (`SAME_SPOT_M`) as the same spot.
 - **Padding.** Each value is padded with spaces to a whole number of 128 (dot), 512 (alert) or 4096 (path) bytes
   before sealing (`padded`), so the sealed text's length gives away no role, alert kind or length of words. The
+  longest dot (`participant`, 6 decimals) is about 55 bytes; the longest alert about 300, as Other's words are
+  80 characters with control characters written as spaces and half an emoji as a replacement character
+  (`otherWords`), so none takes JSON more than 3 bytes; a full path (600 route and 600 ridden points) is 8 pads,
+  about 43 KB sealed, under `SEALED_PATH_MAX` (47.75 KB). The
   server still sees the ride id, tokens, addresses, timing and counts, and it marks the leader's dot and each
   dot's age; those are not sealed.
-- **Which rides.** A broadcast's secret is made with the leader's token (`App.tsx` `Lead`) and goes in every link
+- **Which rides: all of them** (Stephen 2026-10-29: "All rides should have a key." and "When shouldn't they have a
+  key? It's just a longer link."). The phone has no plain ride: `rideGroup.ts` `rideOf` names a ride only by its
+  secret, and `readRide`, `sendPosition`, `sendPath` and `sendAlert` send nothing without the ride's key. A
+  broadcast's secret is made with the leader's token (`App.tsx` `Lead`) and goes in every link
   for that ride, including those followers pass on. A Group or Mass Ride plan's secret (`groupSecret`; Mass Ride too,
   Stephen 2026-10-29: "Mass rides should be encrypted too.") is made when a page starts afresh or the rider picks
   either ride type, made again when the page's own moves from one to the other (`rideGroup.ts` `presetSecret`), and kept in the address bar (on those two only)
-  and in Copy link and Share. A link without one (an older link, a ride post the server wrote) is the ride by its
-  points in plain numbers, as before, so everyone who opens the same link is still on one ride. A sealed ride's
-  page leaves out anything that does not open, plain dots included: for a short while after a release, a page
-  still on the older build joins a link's ride by its points and does not meet those on the sealed ride. A Group
-  Ride's secret comes from the plan as opened (`OPENED_HASH`), so one kept over a sign-in keeps it; a saved or
-  kept route the rider opens gets a new one, a link pasted in its own or none.
+  and in Copy link and Share. A ride link opened without one (an older link) becomes a new ride of the rider who
+  opened it, under a secret the page makes (`groupSecretOwn`; a broadcast or Roam link without one, `RideGroup.tsx`
+  `ownSecret`); the server writes `k=` into a ride post's links. A ride's page leaves out anything that does not
+  open, plain dots included. A Group Ride's secret comes from the plan as opened (`OPENED_HASH`), so one kept over
+  a sign-in keeps it; a saved or kept route the rider opens gets a new one, a link pasted in its own, or a new one
+  where it has none.
 - **An alert's spot.** An alert needs its spot, so it carries it on every ride, even from a rider who is not
-  shown as a dot. On a ride without a key that spot is in plain numbers, which anyone who has the route can read,
-  so the alert panel says "Sends your spot to everyone on this ride." where that adds something: no key, and the
-  rider not shown as a dot (`rideGroup.ts alertNote`). Elsewhere the panel keeps its short "Sends your location
-  with the alert."; a screen reader, and the Alert button's description, always get the spot line.
-- Tests: `frontend/src/lib/rideSeal.test.ts` (secret, derivation, sealing, the grid against the server's,
-  merging, a sealed ride end to end through `rideGroup.ts`, the page's wiring) and `tests/test_ride_presence.py`
-  (sealed dots, alerts and paths kept, limited, marked and dropped as plain ones are).
+  shown as a dot. The alert panel says "Sends your spot to everyone on this ride." only while the ride's key is
+  still being made (`rideGroup.ts alertNote`; the Send button needs the ride's id, made with it). Elsewhere the
+  panel keeps its short "Sends your location with the alert."; a screen reader, and the Alert button's
+  description, always get the spot line.
+- **Every ride sealed, on the server (Stephen, 2026-10-29: "Encrypted rides send GPS accurate numbers. All
+  rides should have a key.").** `core.ride_presence` takes only `{token, sealed}`: a body in plain numbers
+  (`lon`/`lat`, `route`/`trail`, `kind`/`text`) is a 400 with `ride_presence.PLAIN_REFUSED`, which tells the
+  rider to reload. The server's rounding (`rounded`, `GRID_M`), its alert lists and merge, and its roles are
+  gone; the 2-minute keep, limits, leader mark, shuffle and sealed size caps stay. The ride links the server
+  writes carry a key too: a Featured routes post of a Group or Mass Ride (`core.route_posts.freeze_route`, the
+  post's own key kept in `post.stats["ride_key"]`, the same through every new route or resend while the post
+  stays the same ride type, and a new one when it changes between Group Ride and Mass Ride (another ride, as the
+  app's `presetSecret` and the assistant's `revise_route` make it; `post_ride_key`); migration 0053
+  gave the posts kept before theirs) and the assistant's draft links (`mcp/routemaker_mcp.py`, `Draft.ride_key`,
+  kept as the draft is revised, the link's own when one is opened). Anyone who can read a ride post can read
+  that ride, and the privacy policy says so.
+- Tests: `frontend/src/lib/rideSeal.test.ts` (secret, derivation, sealing, exact positions, the padding's worst
+  cases, merging, a sealed ride end to end through `rideGroup.ts`, nothing sent or read without a key, a keyless
+  link getting a new key, the page's wiring) `tests/test_ride_presence.py` (only sealed values taken;
+  kept, limited, marked and dropped), `tests/test_route_posts.py` and `tests/test_mcp_server.py` (ride keys).
+
+### Shorter ride links (Stephen, 2026-10-29)
+
+Stephen said "yes" to making ride links shorter three ways. The page writes the short forms, and every older link
+still opens. The server's own links (a ride post's, the assistant's drafts) still write `p=`; what reads a plan's
+stops on the server reads `q=` as well: the assistant's `open_link` and a kept shared route's hash
+(`mcp/routemaker_mcp.py` `decode_points`, a port of `linkCode.ts` `decodePoints`, and `parse_fragment`, which reads
+`q=` first and `p=` when `q=` holds no point), and the account setting that must hold no stops
+(`core.accounts.settings_problem`, `accountSettings.ts` `planFromSetting`, both refusing `p=` or `q=`).
+
+- **Stops: `q=`.** `planHash.ts` `encodePlan` writes the points as `q=` (`lib/linkCode.ts` `encodePoints`): each
+  longitude then latitude as whole 1e-5 degrees (rounded as `toFixed(5)` rounds), the first point as it is and each
+  after as the change from the one before, zigzagged and written 5 bits a character, lowest first, with a sixth bit
+  for "more follows": the encoded-polyline scheme, but with the base64url alphabet (`A-Z a-z 0-9 - _`), which
+  URLSearchParams never escapes. Two stops in the DC area take about 16 characters, against about 50 for `p=`. The
+  stops read back exactly as `p=` of the same stops reads (`linkPoints`; a link cut short opens with the points still
+  whole). `decodePlan` reads `q=` first, then, where there is no `q=` or it holds no stop, the older `p=`
+  (`lon,lat;lon,lat`, 5 decimals), for ever: every link
+  already shared and every ride post the server writes carry `p=`. `appMode.ts` `hasPlanLink` counts either. A kept
+  route's key (`offlineRoutes.ts` `keptPlanKey`) still writes `p=` (`encodePlan(..., "p")`): it is a key on the
+  device, never a link, and the routes kept before the change are found by it still.
+- **Leader mark: 22 characters.** `lead=` is the leader key (the first 32 hex digits of the SHA-256 of the leader's
+  token, `rideGroup.ts` `leaderKey`) as base64url of its 16 bytes (`linkCode.ts` `leadMark`), written by
+  `sharedRoutes.ts` `asRideLink` and `roam.ts` `roamLink`. `leadKeyFrom` and `roamLinkFrom` read either form
+  (`leadKeyOfMark`: 22 characters, or an older link's 32 lower-case hex digits) and give back the 32 hex digits; the
+  page keeps those, and the `X-Ride-Leader` header goes in hex as before.
+- **Key: 16 bytes.** `rideSeal.ts` `newRideSecret` makes 16 random bytes (128 bits, 22 characters), not 32 (43).
+  `isRideSecret` takes either length, so an older link's 43-character key still opens its ride: HKDF-SHA-256 takes
+  input keying material of any length, and the ride id (64 hex) and AES-GCM 256 key come from it by the same salt and
+  labels as before (a fixed older key's ride id is pinned in `rideSeal.test.ts`).
+- **How much shorter.** A typical two-stop Broadcast link (Default, `route=`, `ride=1`, `lead=`, `k=`) went from 206
+  to 154 characters after the `#`; a two-stop Group Ride link with its key from 127 to 85. The `route=` id (32
+  hex) is the server's, and unchanged.
+- Tests: `frontend/src/lib/planHash.test.ts` (round trips at 5 decimals, west longitudes, 500 random plans against
+  `p=`, characters never escaped, older `p=` links, cut-short links, the kept key, the lengths),
+  `broadcast.test.ts` and `roam.test.ts` (both forms of the leader mark), `rideSeal.test.ts` (22- and 43-character
+  keys), `signIn.test.ts` (a `q=` plan kept over sign-in), `tests/test_mcp_server.py` (`q=` read as the page reads
+  it, against vectors and `linkCode.ts` itself; an app's `q=` link and a `/s/<id>` kept with `q=` opened), and
+  `tests/test_accounts.py` (a settings plan with `q=` refused).
 
 ### Where and when a dot is sent (2026-10-29)
 
@@ -8693,15 +8756,15 @@ path the leader takes, with no account.
 
 - Server: `core.ride_presence`, behind the `/api/rides/{ride}/...` endpoints (`here`, `path`,
   `alerts`, `leave`). The module docstring is the reference. In short, everything is held in
-  memory only (a tmpfs store shared by the api workers, `RIDE_PRESENCE_DIR`), positions are
-  rounded to 20 m, and nothing stays longer than 2 minutes (Stephen, 2026-10-22). That covers a
+  memory only (a tmpfs store shared by the api workers, `RIDE_PRESENCE_DIR`), every dot, path
+  and alert comes sealed, and nothing stays longer than 2 minutes (Stephen, 2026-10-22). That covers a
   dot (`DOT_TTL_S`), the leader's route and ridden path (`PATH_TTL_S`, re-sent about every 2
   minutes or when the route changes), an alert, and a rider's token and counts (`KEEP_S`). Each
   api process sweeps every ride every `SWEEP_S`. The limits (posting and polling intervals, riders
   per ride, rides, path size) are the module's constants. A request over them gets a 429.
-- Sealed rides (v0.15.0): a Share live or Group Ride link made in the app carries a secret in its
-  fragment, and each phone seals what it sends. The server keeps the sealed text the same way and
-  cannot read it ("End-to-end encrypted rides", above).
+- Sealed rides (v0.15.0): every ride link carries a secret in its fragment, and each phone seals
+  what it sends. The server keeps the sealed text and cannot read it, and refuses plain numbers
+  ("End-to-end encrypted rides", above).
 - Front end: `frontend/src/lib/rideGroup.ts` (ride ids, tokens, the consent question),
   `frontend/src/RideGroup.tsx`, and `frontend/src/lib/broadcastJoin.ts` with
   `BroadcastJoinDialog.tsx` (the join popup that offers the leader's route as GPX, or sends it to

@@ -86,7 +86,9 @@ export function keepOffered(standalone: boolean, inTab: boolean = KEEP_IN_BROWSE
 export function keptPlanKey(points: readonly LonLat[], preset: PresetId, dials: Dials, vias: readonly number[] = []): string {
   // The via points too (v0.7.0): a kept route opens with each point's kind.
   // Never a stop's own name: renaming a stop asks for no new route.
-  return encodePlan(points, preset, dials, vias, undefined, new Map());
+  // The stops in the older `p=` form: it is a key on this device, never a link, and the routes kept before the
+  // shorter `q=` (2026-10-29) are found by it still. Opened, it reads as any older link does.
+  return encodePlan(points, preset, dials, vias, undefined, new Map(), "p");
 }
 
 /** The kept answer for a plan with no network: a kept route of that plan first, else the last ride's. */

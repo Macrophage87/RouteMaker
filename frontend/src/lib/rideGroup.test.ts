@@ -24,8 +24,6 @@ import {
   alertRefusal,
   alertText,
   awayWords,
-  roamRideId,
-  broadcastRideId as broadcastIdForRoamTest,
   consentFor,
   countText,
   riderTotal,
@@ -41,7 +39,7 @@ import {
   postSoonAfter,
   project,
   readRide,
-  rideId,
+  rideOf,
   ridersSaid,
   roleKey,
   roleOf,
@@ -52,6 +50,7 @@ import {
   type RideAlert,
   type RideRole,
 } from "./rideGroup.ts";
+import { newRideSecret, openValue, rideSeal, sealValue } from "./rideSeal.ts";
 import {
   ALERT,
   DOT,
@@ -100,10 +99,11 @@ test("only a Mass Ride or Group Ride link with a route is a ride", () => {
 });
 
 test("everyone on the same link is on the same ride; another link is another", async () => {
-  const a = await rideId("mass-ride", LINE.slice(0, 3));
+  const secret = newRideSecret();
+  const a = (await rideOf(secret))!.id;
   assert.match(a, /^[0-9a-f]{64}$/);
-  assert.equal(await rideId("mass-ride", LINE.slice(0, 3).map(([x, y]) => [x + 0.000001, y] as LonLat)), a);
-  assert.notEqual(await rideId("group-ride", LINE.slice(0, 3)), a);
+  assert.equal((await rideOf(secret))!.id, a);
+  assert.notEqual((await rideOf(newRideSecret()))!.id, a);
   assert.match(newToken(), /^[0-9a-f]{32}$/);
   assert.notEqual(newToken(), newToken());
 });
@@ -329,17 +329,19 @@ test("an alert says what, where along the route and how long ago, live", () => {
 test("the API sends the token in a header and positions only in bodies", async () => {
   let url = "";
   let init: RequestInit | undefined;
+  const seal = (await rideSeal(newRideSecret()))!;
+  const dot = await sealValue(seal, "dot", { lon: -77, lat: 38.9, role: "participant" });
   const fake = (async (u: string, i?: RequestInit) => {
     url = u;
     init = i;
-    return new Response(JSON.stringify({ dots: [{ lon: 1, lat: 2, age_s: 3 }], alerts: [] }), { status: 200 });
+    return new Response(JSON.stringify({ dots: [{ sealed: dot, age_s: 3 }], alerts: [] }), { status: 200 });
   }) as unknown as typeof fetch;
-  const read = await readRide("https://x.test", "f".repeat(64), "1".repeat(32), fake);
+  const read = await readRide("https://x.test", seal.ride, "1".repeat(32), fake, null, seal);
   assert.equal(read?.dots.length, 1);
   assert.doesNotMatch(url, /\?/);
   assert.equal((init?.headers as Record<string, string>)["X-Ride-Token"], "1".repeat(32));
   const refused = (async () => new Response(JSON.stringify({ error: "One alert a minute; try again shortly." }), { status: 429 })) as unknown as typeof fetch;
-  const sent = await sendAlert("https://x.test", "f".repeat(64), "1".repeat(32), "group-ride", "crash", "", [-77, 38.9], refused);
+  const sent = await sendAlert("https://x.test", seal.ride, "1".repeat(32), "group-ride", "crash", "", [-77, 38.9], refused, seal);
   assert.deepEqual(sent, { ok: false, message: "One alert a minute; try again shortly." });
 });
 
@@ -481,18 +483,18 @@ test("the role is asked with the answer, Participant unless chosen, kept for the
   assert.equal(shownDots(LINE, [{ lon: -77.03, lat: 38.9, age_s: 1 }])[0].role, "participant");
 });
 
-test("the role travels with the position, in the body", async () => {
-  const bodies: unknown[] = [];
+test("the role travels with the position, sealed in the body", async () => {
+  const seal = (await rideSeal(newRideSecret()))!;
+  const bodies: { token: string; sealed: string }[] = [];
   const fake = (async (_u: string, i?: RequestInit) => {
     bodies.push(JSON.parse(String(i?.body)));
     return new Response("{}", { status: 200 });
   }) as unknown as typeof fetch;
-  await sendPosition("https://x.test", "f".repeat(64), "1".repeat(32), [-77, 38.9], "corker", fake);
-  await sendPosition("https://x.test", "f".repeat(64), "1".repeat(32), [-77, 38.9], undefined, fake);
-  assert.deepEqual(bodies, [
-    { token: "1".repeat(32), lon: -77, lat: 38.9, role: "corker" },
-    { token: "1".repeat(32), lon: -77, lat: 38.9, role: "participant" },
-  ]);
+  await sendPosition("https://x.test", seal.ride, "1".repeat(32), [-77, 38.9], "corker", fake, seal);
+  await sendPosition("https://x.test", seal.ride, "1".repeat(32), [-77, 38.9], undefined, fake, seal);
+  assert.deepEqual(bodies.map((b) => Object.keys(b).sort()), [["sealed", "token"], ["sealed", "token"]]);
+  assert.deepEqual(await openValue(seal, "dot", bodies[0].sealed), { lon: -77, lat: 38.9, role: "corker" });
+  assert.deepEqual(await openValue(seal, "dot", bodies[1].sealed), { lon: -77, lat: 38.9, role: "participant" });
 });
 
 test("a dot is named by its role and where it is along the route, US units first", () => {
@@ -638,16 +640,17 @@ test("review: a role change posts as soon as the server takes a position, with t
   const store = new Memory();
   keepConsent("r9", "yes", 0, store);
   const kept = keepConsent("r9", "yes", 1, store, undefined, "corker");
-  const bodies: { role?: string }[] = [];
+  const seal = (await rideSeal(newRideSecret()))!;
+  const bodies: { sealed?: string }[] = [];
   const fake = (async (_u: string, i?: RequestInit) => {
     bodies.push(JSON.parse(String(i?.body)));
     return new Response("{}", { status: 200 });
   }) as unknown as typeof fetch;
-  await sendPosition("https://x.test", "f".repeat(64), kept.token, [-77, 38.9], consentFor("r9", 2, store)!.role, fake);
-  assert.equal(bodies[0].role, "corker");
+  await sendPosition("https://x.test", seal.ride, kept.token, [-77, 38.9], consentFor("r9", 2, store)!.role, fake, seal);
+  assert.equal(((await openValue(seal, "dot", bodies[0].sealed)) as { role?: string }).role, "corker");
 });
 
-test("a broadcast from Roam (no route): straight-line words from you, its own ride id", async () => {
+test("a broadcast from Roam (no route): straight-line words from you", async () => {
   const me: LonLat = [-77.04, 38.91];
   const near: LonLat = [-77.0401, 38.9101];
   const far: LonLat = [-77.04, 38.92];
@@ -666,10 +669,6 @@ test("a broadcast from Roam (no route): straight-line words from you, its own ri
   ];
   const said = ridersSaid(dots, null, { here: me });
   assert.match(said, /^2 riders\. .*away, seen .*\. Nearest rider beside you, seen /);
-  // Not the id of a shared line's broadcast with the same random id.
-  const id = "0123456789abcdef0123456789abcdef";
-  assert.notEqual(await roamRideId(id), await broadcastIdForRoamTest(id));
-  assert.match(await roamRideId(id), /^[0-9a-f]{64}$/);
 });
 
 test("App: the count and Send alert while riding (or watching a broadcast on a computer), the roles the leader's (P6)", () => {
