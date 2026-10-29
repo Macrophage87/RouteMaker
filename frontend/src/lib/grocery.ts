@@ -12,13 +12,13 @@
 import type { FoodPlace, FoodResult } from "./food.ts";
 import { normaliseQuery } from "./food.ts";
 import { haversineM, insideCoverage, type LonLat } from "./geo.ts";
-import { nearestFirst, type Place } from "./geocode.ts";
+import { kindPhrase, nearestFirst, type Place } from "./geocode.ts";
 import { t } from "./i18n.ts";
 
 /** What the chip asks the geocoder: one of the server's tag searches (shop=supermarket near the bias point). */
 export const GROCERY_QUERY = "supermarket";
 
-/** The chip's words, typed into Food or name, search for grocery stores too (English and Spanish). */
+/** The chip's words, typed into Food or name, search for grocery stores too (English and Spanish), "near me" or not. */
 const GROCERY_WORDS: ReadonlySet<string> = new Set([
   "grocery",
   "groceries",
@@ -31,7 +31,7 @@ const GROCERY_WORDS: ReadonlySet<string> = new Set([
 ]);
 
 export function isGroceryQuery(query: string): boolean {
-  return GROCERY_WORDS.has(normaliseQuery(query));
+  return GROCERY_WORDS.has(kindPhrase(normaliseQuery(query)));
 }
 
 /** OSM shop values that are a grocery: the server's tag search returns supermarkets; a greengrocer or corner store is one too. */

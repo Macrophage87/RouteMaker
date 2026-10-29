@@ -32,6 +32,9 @@ import {
   namesCityOutside,
   namesQuery,
   nearestFirst,
+  KIND_SEARCHES,
+  isKindSearch,
+  kindPhrase,
   nothingFoundText,
   placeDistance,
   placeRowLine,
@@ -48,6 +51,7 @@ import {
 } from "./geocode.ts";
 import { COVERAGE_BBOX, MAX_POINTS, type LonLat } from "./geo.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
+import { readFileSync } from "node:fs";
 
 class FakeTimers implements Timers {
   now = 0;
@@ -972,4 +976,20 @@ test("nothing found says what to try, and the coverage when the query is a city 
     assert.ok(!namesCityOutside(query), query);
   }
   assert.equal(COVERS_LINE, "RouteMaker covers DC to Baltimore.");
+});
+
+test('a kind of place (a grocery, a bike shop), "near me" or in Spanish, is nearest first, not names first (the 2026-10-29 review)', () => {
+  for (const q of ["grocery", "Grocery near me", "supermarket nearby", "supermercados cerca de mí", "bike shop close to me"]) assert.ok(isKindSearch(q), q);
+  for (const q of ["near me", "Safeway", "grocery outlet", "nearby bakery"]) assert.ok(!isKindSearch(q), q);
+  assert.equal(kindPhrase("  Grocery   store near me "), "grocery store");
+  // A store named for the word typed is not put ahead of a nearer one.
+  const named = at("Capitol Grocery", "Ward 6", -77.0, 38.89);
+  const near = at("Safeway", "Dupont Circle, Washington", -77.0416, 38.9105);
+  assert.deepEqual(nearestFirst([named, near], SCOTT_CIRCLE, "grocery near me"), [near, named]);
+  assert.deepEqual(nearestFirst([named, near], SCOTT_CIRCLE, "capitol"), [named, near], "a name still ranks first");
+  // The same words as the server's tag searches.
+  const server = readFileSync(new URL("../../../src/core/geocode.py", import.meta.url), "utf8");
+  const block = server.slice(server.indexOf("TAG_SEARCHES = {"), server.indexOf("TAG_SEARCH_RADIUS_KM ="));
+  const phrases = [...block.matchAll(/^\s+"([^"]+)",$/gm)].map((m) => m[1]);
+  assert.deepEqual([...KIND_SEARCHES].sort(), phrases.sort());
 });

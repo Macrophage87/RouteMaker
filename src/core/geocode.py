@@ -299,17 +299,41 @@ TAG_SEARCHES = {
         "grocery stores",
         "supermarket",
         "supermarkets",
+        # Spanish, as the Eat sheet takes them (frontend/src/lib/grocery.ts GROCERY_WORDS).
+        "supermercado",
+        "supermercados",
     )
 }
 # How far a tag search looks around the bias point, in km (about 12 mi).
 TAG_SEARCH_RADIUS_KM = 20
+# Trailing words that only say "near where I am", which a tag search is anyway (the
+# 2026-10-29 review: "grocery near me" fell through to a name search). Longest first.
+NEAR_ME_TAILS = (
+    ("near", "me"),
+    ("close", "to", "me"),
+    ("near", "by"),
+    ("nearby",),
+    ("cerca", "de", "mí"),
+    ("cerca", "de", "mi"),
+    ("cerca",),
+)
+
+
+def tag_phrase(q: str) -> str:
+    """`q` as TAG_SEARCHES keys it: folded, single-spaced, a trailing "near me" dropped."""
+    words = q.casefold().split()
+    for tail in NEAR_ME_TAILS:
+        if len(words) > len(tail) and tuple(words[-len(tail) :]) == tail:
+            words = words[: -len(tail)]
+            break
+    return " ".join(words)
 
 
 def search(
     q: str, *, lat: float | None = None, lon: float | None = None, limit: int, lang: str
 ) -> list[dict]:
     """Places matching `q` inside the coverage box, nearest `lat, lon` first when given."""
-    tag = TAG_SEARCHES.get(" ".join(q.casefold().split()))
+    tag = TAG_SEARCHES.get(tag_phrase(q))
     if tag is not None and lat is not None and lon is not None:
         answer = _get(
             "/reverse",

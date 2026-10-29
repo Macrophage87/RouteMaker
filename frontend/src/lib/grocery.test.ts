@@ -24,7 +24,7 @@ const store = (name: string, lon: number, lat: number, id: number, value = "supe
 });
 
 test("the chip's words, and the same words typed, are a grocery search; food words are not", () => {
-  for (const q of ["grocery", "Groceries", " grocery store ", "Supermarket", "supermercado"]) assert.ok(isGroceryQuery(q), q);
+  for (const q of ["grocery", "Groceries", " grocery store ", "Supermarket", "supermercado", "grocery near me", "supermercados cerca de mí"]) assert.ok(isGroceryQuery(q), q);
   for (const q of ["", "crab", "farm stands", "market", "grocery outlet bakery"]) assert.ok(!isGroceryQuery(q), q);
   // One of the server's tag searches (src/core/geocode.py TAG_SEARCHES): shop=supermarket near the bias point.
   assert.equal(GROCERY_QUERY, "supermarket");
