@@ -274,8 +274,10 @@ declining every week with "grow the volume" as the only remedy.
 | Database dumps | 7 (`BACKUP_KEEP`) | `pipeline.retention.prune_backups`, run by the backup task after a verified dump |
 | `scheduled_run` rows | 30 days, plus the newest row and the newest successful row per task | `core.runs.prune_run_rows`, run nightly |
 | Finished `procrastinate_jobs` and their events | 30 days | `core.runs.prune_job_rows`, run nightly |
-| `rate_limit_window` rows (keyed client addresses) | 1 day idle, so at most about 30 hours | `core.ratelimit.purge_expired`, run by the six-hourly membership sweep |
+| `rate_limit_window` rows (keyed client addresses, and a keyed account id for Featured routes posts the connector refused for the admin's Home, `CONNECTOR_POST_HOME`) | 1 day idle, so at most about 30 hours | `core.ratelimit.purge_expired`, run by the six-hourly membership sweep |
 | `shared_route` rows (the exact lines Share links open) | 1 year after the link was last opened | `core.shared_routes.prune`, at every share and every open, and nightly by the backup task |
+| `shared_route` rows an assistant app's plan made (`connector_draft` set) | As long as their draft: 24 hours, or until the app is disconnected | Deleted with the draft (the foreign key cascades); `core.shared_routes.expired` refuses them past 24 hours even before that. Links made before v0.15.0 name no draft (migration 0051 cannot tell them from other links), so they keep their old date and expire within 8 days of being made |
+| `connector_draft` rows (an assistant app's unsaved routes, with their points) | 24 hours (`ConnectorDraft.KEPT`), and none once the app is disconnected, the rider signs out everywhere, or the account is banned or deleted | `core.connector.drop_stale_drafts`, at every new draft and by the five-minute degraded-guild sweep; deleting a `connector_grant` deletes its drafts. The GPX link (`/mcp/gpx/<draft id>.<keyed digest>`) works only while its draft is kept and its app connected |
 | `signed_out_send` rows (a device's salted daily hash and the road, for the signed-out suggestion limits) | 24 hours | `core.signed_out_suggestions.prune`, at every signed-out send, and nightly by the backup task |
 
 Three rules are load-bearing rather than incidental:
@@ -302,6 +304,30 @@ A job row still `todo` or `doing` is live state the worker owns and is never
 pruned, whatever its age, and neither is a job a `procrastinate_periodic_defers`
 row still points at — that reference is how the scheduler knows it has already
 fired for a tick.
+
+## What the server logs keep (v0.15.0)
+
+A log is kept for days to months (compose's json-file driver, 10 MB x 5 a container; the
+host's logrotate for nginx), so none of them holds a place a rider was, a route's points or a
+link someone could open later (Stephen 2026-10-29: nothing that could identify a person's
+location stays on the server for more than 2 minutes, except what the rider saves on purpose).
+
+| Log | What it keeps | What it leaves out |
+| --- | --- | --- |
+| PostgreSQL (`docker compose logs postgis`) | the error and its SQLSTATE | the statement (`log_min_error_statement=panic`), its DETAIL, HINT, QUERY and CONTEXT (`log_error_verbosity=terse`); no statement or duration is logged (`log_statement=none`, `log_min_duration_statement=-1`) |
+| gunicorn (`docker compose logs api`) | time, method, path, status, bytes, duration, user agent | the query string, the Referer, the client; link ids, the GPX token and tile z/x/y (`config.access_log.Logger`) |
+| beta nginx (`rmbeta-access.log`) | time, method, path, status, bytes, duration | the same (`$rmbeta_logpath`); upstream errors for `/api/`, `/s/` and `location /` go to `rmbeta-error.log` at `crit` only |
+| home Caddy | Caddy's own messages and error entries (the error, status, duration) | there is no access log; an error entry's URI, client address and headers are filtered out |
+
+A path is logged as its route's shape: `/api/rides/:id/here`, `/api/rides/:id/alerts/:id/clear`,
+`/api/shared-routes/:id`, `/api/me/shared-routes/:id/revoke`, `/s/:id`, `/s/:id/preview.png`,
+`/mcp/gpx/:token`, `/tiles/stress/:zxy`, `/tiles/mass/:zxy`. To find one request, read it by its
+time and status. tests/test_server_logs.py holds nginx's map and gunicorn's list equal.
+
+Each takes effect only when its service is recreated or reloaded: the postgis container (its
+command), the api (the entrypoint), the beta's nginx (re-rendered with
+scripts/beta/render-nginx.sh, `nginx -t`, reload) and home's caddy ("Applying a Caddyfile
+change", below). Lines written before that stay until the log rotates out.
 
 ## The public routing API: its limits, and clearing a client
 
@@ -539,7 +565,9 @@ band, grep `route timing` from the api's log.
   api's workers share it, so a repeat is a hit whichever worker serves it (audit
   S14; the owner signed off a ~16 MB memcached on beta on 2026-10-27).
   compose.beta.yaml runs one (`memcached`, `-m 16`, capped at 24M) and sets the
-  variable itself; compose.yaml leaves it empty. There an answer is stored
+  variable itself; compose.yaml leaves it empty. memcached has no sign-in, so it is on a network
+  of its own, `routecache` (internal), that only the api joins (v0.15.0): no other container on
+  the stack can read the answers. There an answer is stored
   pickled and compressed (zlib level 1), one past
   memcached's 1 MB item limit is not sent, and a memcached that is down, full
   or slow is a miss, never an error: the plan is made (the client gives up
@@ -2300,6 +2328,28 @@ reverse cleanly with `migrate core 0048`.
 **The migration** is `core/migrations/0019_my_go.py` (one new table; nothing else changed), after
 `0018_junction_suggestions`, so the chain stays linear with one leaf. It reverses cleanly
 (`migrate core 0018` drops the table). `migrate` runs at `up`, as always.
+
+## The 311 log's days (migration 0052, v0.15.0)
+
+Stephen, 2026-10-29: the 311 log keeps the date, not the time of day; the exact spot stays, because
+crews need it to find the pothole. `core/migrations/0052_report311_log_days.py` (after
+`0051_connector_draft_grant`) cuts every kept entry's `at`, `changed` and `reported` in
+`report311_log` to its day in Washington, cuts ids that began with the time they were made to their
+random part, and makes the row's `updated_at` a date (docs/DEVELOPMENT.md, "The 311 log keeps the
+day").
+
+- **The times are gone for good.** Going back (`migrate core 0051`) makes `updated_at` a time
+  again (midnight of each day) but leaves the entries as days. Take a backup before `migrate`
+  (the nightly dump has the table; a fresh one is `pg_dump -Fc -t report311_log`), and keep it
+  only as long as the dumps are kept.
+- **The deploy window.** Between `migrate` and the api's recreation, and after an image rollback,
+  the api of the release before still reads and saves the log: Postgres casts the time it writes
+  to `updated_at` to the day, and its page shows each served day correctly (the API serves a day as
+  noon in Washington).
+- **Rows that api saved** keep its times in their entries until the rider's next save, or the
+  next read of the log (GET `/api/me/report311-log` cuts them and writes the row back). A rider
+  who never opens the log again keeps them; to cut every row at once, run the migration's step
+  again from `manage.py shell` after the old api is gone (`report_log.dated` on each entry).
 
 ## Transit schedule (TRANSIT-ASSIST, v0.6.0)
 
