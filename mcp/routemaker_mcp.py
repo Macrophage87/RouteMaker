@@ -669,7 +669,7 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         "ending": "outside_dock" if one("ending") == "outside" else None,
         "mtb_level": number("level"),
         "mtb_preferred": number("prefer"),
-        "ride_size": number("riders"),
+        "ride_size": (None if number("riders") is None else min(2000, max(100, number("riders")))),
     }
     if one("targetmi"):
         try:
@@ -1749,9 +1749,11 @@ def mass_capacity(answer: dict) -> dict | None:
             for row in found.get("narrow_stretches") or []
         ],
         "how_to_improve": (
-            "Move a via point onto a wider parallel street to lift a narrow stretch above the"
-            " need; fewer changes of width keep the group together; fewer busy junctions need"
-            " fewer corkers."
+            "The planner weighs capacity only between a start and an end up to about 15 mi apart"
+            " (with stops or via points it reports, not chooses). To lift a narrow stretch above"
+            " the need, plan again by way of a wider parallel street and compare the two"
+            " answers; fewer changes of width keep the group together; fewer busy junctions"
+            " need fewer corkers."
         ),
     }
     corkers = found.get("corkers")

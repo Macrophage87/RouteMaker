@@ -3507,9 +3507,8 @@ export function App() {
   // Settings' Open: the kept plan, into the planner (with no signal, the scheduler answers from the kept route).
   const openKept = (kept: KeptRoute) => {
     showPlanner(true);
-    // The kept key leaves Mass Ride's ride size out (keptPlanKey); the size set now stays.
-    const plan = decodePlan(kept.plan);
-    const hash = dials.rideSize && plan.preset === preset ? encodePlan(plan.points, plan.preset, { ...plan.dials, rideSize: dials.rideSize }, plan.vias, plan.drawn, plan.names) : kept.plan;
+    // The kept plan carries its own Mass Ride ride size (keptPlanKey): the route was chosen for it.
+    const hash = kept.plan;
     if (window.location.hash !== hash) window.location.hash = hash;
     announce(`Opening ${kept.title}.`);
   };

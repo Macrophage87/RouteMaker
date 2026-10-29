@@ -1314,7 +1314,10 @@ answer traces them) and keeps the one whose router cost plus climbing plus capac
 least, the router's own unless another saves more than 5 s. Busier roads are not held against a
 Mass Ride's choice (the LTS checks `calmer_or_own` and `no_busier_than_middle` are skipped once
 it has run): a corked ride is judged by what a road carries (325). Where the router's own route
-cannot be read in time, the choice is made as before. The weights are proposals for the owner.
+cannot be read in time, the choice is made as before. The router gives alternatives only between
+two points up to 25 km (15.5 mi) apart on the hills slider's avoid half (`AVOID_MAX_SPAN_M`), where
+a Mass Ride starts: with stops or vias, or a longer span, the route is the router's own and
+`mass_capacity` reports on it without choosing. The weights are proposals for the owner.
 
 The answer's `mass_capacity` says what the ride size needs and the route carries: the narrowest
 point, the metres below the need, the narrow stretches by street (longest 15), the capacity
@@ -1325,7 +1328,8 @@ The assistants' tool (`mcp/routemaker_mcp.py`, `plan_route` and the other plan t
 point onto a wider street and plan again (the owner, 2026-10-29).
 
 Not priced yet: the signal waits, pavement and tight turns (PLAN's other reductions) and the
-busy-road crossings (133-136); a Mass Ride's own Avoid marks; flagging narrow roads on the map.
+busy-road crossings (133-136). Not built: Avoid marks for Mass Ride alone (stretches marked Avoid
+for every ride type are priced, at the cap); flagging narrow roads on the map.
 
 ### Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3, items 325-327)
 

@@ -159,8 +159,14 @@ def corkers_for(crossing: dict) -> int:
     if crossing.get("control") == "signal":
         return approaches
     lanes = crossing.get("approach_lanes")
-    good = isinstance(lanes, (int, float)) and not isinstance(lanes, bool) and lanes >= 1
-    return approaches * (round(lanes) if good else 1)
+    good = (
+        isinstance(lanes, (int, float))
+        and not isinstance(lanes, bool)
+        and math.isfinite(lanes)
+        and lanes >= 1
+    )
+    # Rounded half up, as the front end's Math.round.
+    return approaches * (math.floor(lanes + 0.5) if good else 1)
 
 
 @dataclass
@@ -235,7 +241,10 @@ def corker_load(profile: dict | None, total_m: float, riders: int) -> dict | Non
     length = max(total_m, 0.0)
     junctions = []
     for crossing in profile["crossings"]:
-        if not crossing.get("corkers_needed") or not math.isfinite(crossing.get("m", math.nan)):
+        at_m = crossing.get("m")
+        if not crossing.get("corkers_needed") or not isinstance(at_m, (int, float)):
+            continue
+        if not math.isfinite(at_m):
             continue
         at = min(max(float(crossing["m"]), 0.0), length)
         junctions.append(

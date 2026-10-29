@@ -2207,6 +2207,9 @@ def choose_by_capacity(
             stretches = capacity_stretches(variant, costing, trip, when, deadline, traces)
         except (DeadlineExceeded, RouterUnavailable):
             stretches = None
+        except Exception:  # noqa: BLE001 - a reading that fails costs the choice, not the plan
+            logger.warning("a Mass Ride route could not be read for capacity", exc_info=True)
+            stretches = None
         if stretches is None:
             if index == 0:
                 return 0, None
@@ -4647,20 +4650,20 @@ def _plan(
     # A Mass Ride chooses among the router's routes by road capacity for its ride size
     # (`choose_by_capacity`), its climbing priced as the rest of this choice prices it.
     ride_size = mass_route.fit_ride_size(dials.ride_size)
+    # The router gives alternatives only between two points and on the avoid half
+    # (`AVOID_MAX_SPAN_M`), where a Mass Ride starts: with stops or vias, or a longer span, its
+    # route is the router's own and `mass_capacity` only reports on it.
     capacity_choice = None
     if preset_name == "mass-ride" and not fixed and not quick and len(trips) > 1:
-
-        def mass_hill_part(one: dict) -> float:
-            if direct_tolerate or avoiding:
-                return hill_s(one, hill_price, _quiet_cost(costing))
-            return (
-                _quiet_cost(costing)
-                * steep_grades.penalty_s(grade_profile(one))
-                * hill_price.flat_ms
-            )
-
         chosen, capacity_choice = choose_by_capacity(
-            trips, mass_hill_part, ride_size, variant, costing, when, deadline, traces
+            trips,
+            lambda one: hill_s(one, hill_price, _quiet_cost(costing)),
+            ride_size,
+            variant,
+            costing,
+            when,
+            deadline,
+            traces,
         )
     if capacity_choice is not None:
         pass  # chosen by capacity, above
@@ -5446,7 +5449,7 @@ def _plan(
                         pieces,
                     ),
                     profile,
-                    _trip_length_m(trip),
+                    max(_trip_length_m(trip), ((profile or {}).get("m") or [0])[-1] or 0, 1),
                     ride_size,
                     None if alternate else capacity_choice,
                 )
