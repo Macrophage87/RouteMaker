@@ -1,13 +1,16 @@
 """The 311 log (core.report_log; Stephen, 2026-10-20): the account's copy (GET and POST
 /api/me/report311-log), its checks, and which 311 website takes a point (POST
-/api/report311/where): DC from its own boundary, elsewhere the county or city Photon names.
+/api/report311/where): DC from its own boundary, elsewhere the county or city Photon names. The
+log keeps each entry's day and exact spot, never the time of day.
 """
 
 from __future__ import annotations
 
 import json
+from datetime import date
 
 import pytest
+from django.db import connection
 from test_accounts import addr, send, signed_in
 
 from core import geocode, report_log
@@ -18,14 +21,14 @@ db = pytest.mark.django_db(transaction=True)
 
 def entry(**changes) -> dict:
     return {
-        "id": "mabc123-1a2b3c4d",
+        "id": "1a2b3c4d5e6f7a8b",
         "kind": "pothole",
         "lat": 38.9126,
         "lon": -77.00709,
         "place": "on R Street Northeast",
         "note": "",
-        "at": "2026-10-20T16:00:00.000Z",
-        "changed": "2026-10-20T16:00:00.000Z",
+        "at": "2026-10-20",
+        "changed": "2026-10-20",
         "where": "dc",
         "reported": None,
         **changes,
@@ -50,6 +53,9 @@ class TestLogChecks:
             entry(at="yesterday"),
             entry(where="atlantis"),
             entry(reported="soon"),
+            entry(rev=-1),
+            entry(rev=1.5),
+            entry(rev=True),
             {**entry(), "secret": 1},
         ],
     )
@@ -73,10 +79,71 @@ class TestLogChecks:
 
     def test_the_merge_keeps_a_website_and_takes_an_entry_with_no_changed_time(self) -> None:
         stored = [entry(id="a", where="moco")]
-        incoming = [entry(id="a", where=None, changed=None, reported="2026-10-20T17:00:00")]
+        incoming = [entry(id="a", where=None, changed=None, reported="2026-10-20")]
         merged = report_log.merge_logs(stored, incoming)
-        assert merged[0]["where"] == "moco" and merged[0]["reported"] == "2026-10-20T17:00:00"
+        assert merged[0]["where"] == "moco" and merged[0]["reported"] == "2026-10-20"
         assert report_log.cap_log([entry(id="b", at="2026-10-20T16:00:00"), entry(id="c")])
+
+    def test_the_log_keeps_the_day_and_the_exact_spot_never_the_time_of_day(self) -> None:
+        # An older page's entry: times, and an id that begins with the time it was made. 02:30
+        # UTC on the 21st is 10:30 PM on the 20th in Washington, so its day is the 20th.
+        timed = entry(
+            id="mh2k3l4p-1a2b3c4d",
+            at="2026-10-21T02:30:00.000Z",
+            changed="2026-10-21T02:31:00.000Z",
+            reported="2026-10-21T03:00:00.000Z",
+        )
+        [kept] = report_log.merge_logs([], [timed])
+        assert kept == entry(
+            id="1a2b3c4d", at="2026-10-20", changed="2026-10-20", reported="2026-10-20"
+        )
+        assert (kept["lat"], kept["lon"]) == (38.9126, -77.00709), "the spot stays exact"
+        # An account's copy kept from before is cut the same way as it is merged.
+        [again] = report_log.merge_logs([timed], [])
+        assert again == kept
+        assert report_log.day_of("2026-10-20") == "2026-10-20"
+        assert report_log.today().isoformat() == report_log.day_of(
+            report_log.datetime.now(report_log.UTC).isoformat()
+        )
+
+    def test_two_changes_on_one_day_the_one_with_more_changes_wins(self) -> None:
+        # Days alone tie, so `rev` (a count of the entry's changes) says which is newer.
+        logged = entry(id="a")
+        checked = entry(id="a", reported="2026-10-20", rev=1)
+        assert report_log.merge_logs([checked], [logged])[0]["reported"] == "2026-10-20"
+        assert report_log.merge_logs([logged], [checked])[0]["reported"] == "2026-10-20"
+        # The day comes first: an earlier day with more changes loses to a later day with fewer.
+        early = entry(id="a", changed="2026-10-20", rev=5, note="early")
+        late = entry(id="a", changed="2026-10-21", rev=1, note="late")
+        assert report_log.merge_logs([early], [late])[0]["note"] == "late"
+        assert report_log.merge_logs([late], [early])[0]["note"] == "late"
+
+    def test_a_tie_on_day_and_rev_keeps_the_reported_copy_else_the_device_s(self) -> None:
+        checked = entry(id="a", reported="2026-10-20", rev=1)
+        noted = entry(id="a", note="deep", rev=1)
+        # A check-off is never lost to a tie, from either side.
+        assert report_log.merge_logs([checked], [noted])[0]["reported"] == "2026-10-20"
+        assert report_log.merge_logs([noted], [checked])[0]["reported"] == "2026-10-20"
+        # Both reported, or neither: the device's, as before.
+        other = entry(id="a", note="shallow", rev=1)
+        assert report_log.merge_logs([noted], [other])[0]["note"] == "shallow"
+
+    def test_served_days_read_as_the_right_day_on_either_build(self) -> None:
+        # Noon in Washington with its offset: the release before shows the right day (it reads
+        # a bare day as midnight UTC, the evening before), and this release reads only the day.
+        [out] = report_log.served([entry(reported="2026-12-01")])
+        assert out["at"] == "2026-10-20T12:00:00-04:00"
+        assert out["reported"] == "2026-12-01T12:00:00-05:00", "the offset of that day"
+        assert report_log.day_of(out["at"]) == "2026-10-20"
+        assert report_log.merge_logs([], [out])[0] == entry(reported="2026-12-01")
+
+    def test_within_a_day_the_device_s_order_is_kept(self) -> None:
+        stored = [entry(id="older")]
+        incoming = [entry(id="newest"), entry(id="older")]
+        assert [e["id"] for e in report_log.merge_logs(stored, incoming)] == ["newest", "older"]
+        yesterday = entry(id="yesterday", at="2026-10-19", changed="2026-10-19")
+        merged = report_log.merge_logs([entry(id="today")], [yesterday])
+        assert [e["id"] for e in merged] == ["today", "yesterday"], "newest day first"
 
     def test_the_whole_log(self) -> None:
         assert report_log.log_problem({"entries": []})
@@ -182,8 +249,9 @@ class TestAccountLog:
         assert client.get("/api/me/report311-log", **addr()).json()["entries"] is None
         r = send(client, "post", "/api/me/report311-log", {"entries": [entry()]}, csrf)
         assert r.status_code == 200
-        assert client.get("/api/me/report311-log", **addr()).json()["entries"] == [entry()]
-        assert Report311Log.objects.get(user=user).entries == [entry()]
+        got = client.get("/api/me/report311-log", **addr()).json()["entries"]
+        assert got == report_log.served([entry()])
+        assert Report311Log.objects.get(user=user).entries == [entry()], "kept as days"
 
     def test_a_write_needs_the_csrf_token(self) -> None:
         client, user, _csrf = signed_in()
@@ -215,21 +283,39 @@ class TestAccountLog:
     def test_a_save_merges_by_entry_so_an_old_copy_drops_nothing(self) -> None:
         client, user, csrf = signed_in()
         pothole = entry(id="pothole-1")
-        five, six = "2026-10-20T17:00:00.000Z", "2026-10-20T18:00:00.000Z"
+        five, six = "2026-10-21", "2026-10-22"
         tree = entry(id="tree-1", kind="tree", at=five, changed=five)
         send(client, "post", "/api/me/report311-log", {"entries": [pothole]}, csrf)
         # The phone logs a tree; then a desktop with only the pothole checks the pothole off.
         send(client, "post", "/api/me/report311-log", {"entries": [tree, pothole]}, csrf)
-        done = entry(id="pothole-1", reported=six, changed=six)
+        done = entry(id="pothole-1", reported=six, changed=six, rev=1)
         r = send(client, "post", "/api/me/report311-log", {"entries": [done]}, csrf)
         assert r.status_code == 200
         kept = Report311Log.objects.get(user=user).entries
         assert [e["id"] for e in kept] == ["tree-1", "pothole-1"]
         assert kept[1]["reported"] == six
-        assert r.json()["entries"] == kept
+        assert r.json()["entries"] == report_log.served(kept)
         # An older change does not undo a newer one.
         send(client, "post", "/api/me/report311-log", {"entries": [pothole]}, csrf)
         assert Report311Log.objects.get(user=user).entries[1]["reported"] == six
+
+    def test_a_save_keeps_days_only_whatever_the_page_sent(self) -> None:
+        client, user, csrf = signed_in()
+        timed = entry(id="mh2k3l4p-1a2b3c4d", at="2026-10-20T16:00:00.000Z")
+        r = send(client, "post", "/api/me/report311-log", {"entries": [timed]}, csrf)
+        assert r.status_code == 200
+        row = Report311Log.objects.get(user=user)
+        assert row.entries == [entry(id="1a2b3c4d")]
+        assert row.updated_at == report_log.today(), "the row's last save is a day too"
+        assert r.json()["updated_at"] == report_log.today().isoformat()
+
+    def test_a_read_cuts_times_an_older_api_saved(self) -> None:
+        client, user, _csrf = signed_in()
+        timed = entry(id="mh2k3l4p-1a2b3c4d", at="2026-10-21T02:30:00.000Z")
+        Report311Log.objects.create(user=user, entries=[timed])
+        got = client.get("/api/me/report311-log", **addr()).json()["entries"]
+        assert got == report_log.served([entry(id="1a2b3c4d")])
+        assert Report311Log.objects.get(user=user).entries == [entry(id="1a2b3c4d")]
 
     def test_it_goes_with_the_account(self) -> None:
         client, user, csrf = signed_in()
@@ -237,3 +323,50 @@ class TestAccountLog:
         user.is_deleted = True
         user.save()
         assert not Report311Log.objects.filter(user=user).exists()
+
+
+BEFORE = "0051_connector_draft_grant"
+
+
+def migrate_core(target: str | None) -> None:
+    """Migrate `core` to `target`, or back to its head when `target` is None."""
+    from django.db.migrations.executor import MigrationExecutor
+
+    executor = MigrationExecutor(connection)
+    executor.loader.build_graph()
+    if target is None:
+        executor.migrate(executor.loader.graph.leaf_nodes("core"))
+    else:
+        executor.migrate([("core", target)])
+
+
+@db
+def test_the_logs_already_kept_are_cut_to_their_days_and_going_back_keeps_the_days() -> None:
+    _client, user, _csrf = signed_in()
+    timed = entry(
+        id="mh2k3l4p-1a2b3c4d",
+        at="2026-10-21T02:30:00.000Z",
+        changed="2026-10-21T02:31:00.000Z",
+        reported="2026-10-21T03:00:00.000Z",
+    )
+    days = entry(id="1a2b3c4d", at="2026-10-20", changed="2026-10-20", reported="2026-10-20")
+    try:
+        migrate_core(BEFORE)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO report311_log (user_id, entries, updated_at)"
+                " VALUES (%s, %s::jsonb, %s)",
+                [user.pk, json.dumps([timed]), "2026-10-21T02:31:00+00:00"],
+            )
+        migrate_core(None)
+        row = Report311Log.objects.get(user=user)
+        assert row.entries == [days]
+        assert row.updated_at == date(2026, 10, 20), "the day in Washington"
+        # Back to the release before: the column is a time again, and the entries stay days.
+        migrate_core(BEFORE)
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT entries FROM report311_log WHERE user_id = %s", [user.pk])
+            [(kept,)] = cursor.fetchall()
+        assert (json.loads(kept) if isinstance(kept, str) else kept) == [days]
+    finally:
+        migrate_core(None)

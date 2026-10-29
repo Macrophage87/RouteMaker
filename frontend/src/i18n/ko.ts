@@ -482,6 +482,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Wait up, regroup": "기다려요, 모입시다",
   "Send alert": "알림 보내기",
   "Sends your location with the alert": "알림과 함께 내 위치를 보냅니다",
+  "Sends your spot to everyone on this ride.": "이 라이딩의 모든 사람에게 내 위치를 보냅니다.",
   "Send to everyone on this ride?": "이 라이드의 모두에게 보낼까요?",
   "Call 911": "911에 전화",
   "You have sent {count} alerts on this ride, the most one phone sends.": "이 라이드에서 알림 {count}개를 보냈습니다. 한 휴대폰에서 보낼 수 있는 최대치입니다.",
