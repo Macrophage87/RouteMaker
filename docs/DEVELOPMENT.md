@@ -6525,6 +6525,17 @@ overall (6.62 mi of rows, K St to Dupont Circle posted 20 and 25 mph is LTS 3) a
 of R St; with the corridor about 67% and 99%. Tests: `tests/test_lts_sentinels.py`, and the
 end-to-end pass, refuse and missing-street cases in `tests/test_pipeline_end_to_end.py`.
 
+**The rating rules (review 2026-10-29).** `pipeline.run.assert_rating_rules`, also at
+VALIDATE_SEGMENTS, reads three rules back from the staging table with one query each
+(`pipeline.lts_sentinels`): no `road_urban IS FALSE` road row at tier 1 without an override,
+less those whose tags exempt them from the rural floor (`stress.rural_floor_applies`: closed
+to cars, a separated track); no row a Montgomery 5 set (the agency rule or a `moco-lts5-*`
+row) at anything but 4 with `stress_half`, less a way our own formula puts at Avoid (which
+keeps Avoid, `agency_lts.apply` and `overrides.stress_adjustment`); no row with an MDOT SHA 5 in `stress_ratings`
+still drawn with no `bike_access_reason`, less the ways `prohibited_closures` listed as
+left open. Not run on a resumed attempt, which has no ways. Tests: the rating-rule cases in
+`tests/test_lts_sentinels.py`.
+
 ## Arterial calibration and the override re-match (2026-10-04)
 
 OWNER-DECISIONS 282, 284-286, 294-296 and 303. Three pieces, each in its own
