@@ -11,7 +11,6 @@ import {
   PATH_MAX_POINTS,
   PRIVATE_START_M,
   TRAIL_MAX_POINTS,
-  broadcastRideId,
   consentFor,
   extendTrail,
   keepConsent,
@@ -19,7 +18,7 @@ import {
   leaderKey,
   pathDue,
   readRide,
-  rideId,
+  rideOf,
   ridersSaid,
   roleKey,
   routeKeyOf,
@@ -29,6 +28,7 @@ import {
 } from "./rideGroup.ts";
 import { BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, rideLinkFrom } from "./sharedRoutes.ts";
 import { BROADCAST_ABOUT, BROADCAST_LABEL } from "./share.ts";
+import { newRideSecret, rideSeal, sealValue } from "./rideSeal.ts";
 
 const LINE: LonLat[] = Array.from({ length: 21 }, (_, i) => [-77.04 + i * 0.002, 38.9] as LonLat);
 const KEY = "8a83665f3798727f14f92ad0e6c99fda";
@@ -65,12 +65,12 @@ test("a broadcast link carries the leader key beside ride=1, and only a well-for
   assert.equal(asRideLink("https://x.test/#p=1", "short"), "https://x.test/#p=1&ride=1");
 });
 
-test("a broadcast is its shared line's ride: the sharer and its openers are on it whatever each one rides", async () => {
-  const a = await broadcastRideId("a".repeat(32));
-  assert.match(a, /^[0-9a-f]{64}$/);
-  assert.equal(a, await broadcastRideId("a".repeat(32)));
-  assert.notEqual(a, await broadcastRideId("b".repeat(32)));
-  assert.notEqual(a, await rideId("group-ride", LINE));
+test("a broadcast is its link's secret's ride: the sharer and its openers are on it whatever each one rides", async () => {
+  const secret = newRideSecret();
+  const a = (await rideOf(secret))!;
+  assert.match(a.id, /^[0-9a-f]{64}$/);
+  assert.equal(a.id, (await rideOf(secret))!.id);
+  assert.notEqual(a.id, (await rideOf(newRideSecret()))!.id);
 });
 
 test("the sharer's answer: shown, as Lead line, under the token the link's key names, even after an earlier share", () => {
@@ -112,12 +112,14 @@ test("the riders line names the ride leader first, with or without the rider's o
   assert.match(ridersSaid(shown, null), /^2 riders on the route\. Ride leader, [\d.]+ mi \([\d.]+ km\) along the route, seen just now\.$/);
 });
 
-test("the leader's path: a reading 15 m or more from the last is added, and the path is capped", () => {
+test("the leader's path: a reading 5 m or more from the last is added, and the path is capped", () => {
   let trail = extendTrail([], [-77, 38.9]);
   trail = extendTrail(trail, [-77.00005, 38.9]); // about 4 m: the same spot
   assert.equal(trail.length, 1);
-  trail = extendTrail(trail, [-77.001, 38.9]);
+  trail = extendTrail(trail, [-77.0001, 38.9]); // about 9 m: a move
   assert.equal(trail.length, 2);
+  trail = extendTrail(trail, [-77.001, 38.9]);
+  assert.equal(trail.length, 3);
   let long: readonly LonLat[] = [];
   for (let i = 0; i < TRAIL_MAX_POINTS + 10; i += 1) long = extendTrail(long, [-77 + i * 0.001, 38.9]);
   assert.equal(long.length, TRAIL_MAX_POINTS);
@@ -130,8 +132,9 @@ test("a follower reads with the link's leader key in a header; others send none"
     seen.push({ ...(init?.headers as Record<string, string>) });
     return new Response(JSON.stringify({ dots: [], alerts: [] }), { status: 200 });
   }) as typeof fetch;
-  await readRide("https://x.test", "a".repeat(64), "1".repeat(32), get, KEY);
-  await readRide("https://x.test", "a".repeat(64), "1".repeat(32), get);
+  const seal = (await rideSeal(newRideSecret()))!;
+  await readRide("https://x.test", seal.ride, "1".repeat(32), get, KEY, seal);
+  await readRide("https://x.test", seal.ride, "1".repeat(32), get, null, seal);
   assert.equal(seen[0]["X-Ride-Leader"], KEY);
   assert.equal("X-Ride-Leader" in seen[1], false);
 });
@@ -168,7 +171,7 @@ test("opening a broadcast follows the leader: in Plan too, the map eased to the 
   assert.match(app, /const SHARED_LEAD = SHARED_RIDE \? leadKeyFrom\(window\.location\.hash, window\.location\.search\) : null;/);
   assert.match(app, /const rideBroadcast = onShared\?\.ride && onShared\.id && onShared\.lead \? \{ id: onShared\.id, lead: onShared\.lead, leading: onShared\.own === true, secret: onShared\.secret \?\? null \} : null;/);
   const group = read("../RideGroup.tsx");
-  assert.match(group, /void rideOf\(\{ type, points, broadcast, secret: rideSecret \}\)/);
+  assert.match(group, /void rideOf\(rideSecret\)\.then\(\(on\) => \{\s*if \(!live \|\| !on\) return;/);
   // Shown as it shares, but a later "No" stands.
   assert.match(group, /if \(leading && kept === null\) kept = keepConsent\(id, "yes", Date\.now\(\), undefined, undefined, "lead"\);/);
   // The leader is posted on or off the route; the follower reads with the key before answering.
@@ -217,11 +220,17 @@ test("a sent line is at most the server's 1500 points, its ends kept, rounded to
 test("a follower's read keeps the leader's sent route and path; a malformed one is left out", async () => {
   const answer = (body: object) =>
     (async () => new Response(JSON.stringify(body), { status: 200 })) as unknown as typeof fetch;
-  const path = { route: [[-77, 38.9], [-76.99, 38.91]], trail: [[-77, 38.9]], age_s: 30 };
-  const got = await readRide("https://x.test", "a".repeat(64), "1".repeat(32), answer({ dots: [], alerts: [], leader_path: path }), KEY);
-  assert.deepEqual(got?.leaderPath, path);
-  const bad = await readRide("https://x.test", "a".repeat(64), "1".repeat(32), answer({ dots: [], alerts: [], leader_path: { route: "x", trail: [] } }), KEY);
+  const seal = (await rideSeal(newRideSecret()))!;
+  const path = { route: [[-77, 38.9], [-76.99, 38.91]], trail: [[-77, 38.9]] };
+  const sealed = await sealValue(seal, "path", path);
+  const got = await readRide("https://x.test", seal.ride, "1".repeat(32), answer({ dots: [], alerts: [], leader_path: { sealed, age_s: 30 } }), KEY, seal);
+  assert.deepEqual(got?.leaderPath, { ...path, age_s: 30 });
+  const malformed = await sealValue(seal, "path", { route: "x", trail: [] });
+  const bad = await readRide("https://x.test", seal.ride, "1".repeat(32), answer({ dots: [], alerts: [], leader_path: { sealed: malformed, age_s: 30 } }), KEY, seal);
   assert.equal(bad?.leaderPath, undefined);
+  // A path in plain numbers (an older page's) is left out.
+  const plain = await readRide("https://x.test", seal.ride, "1".repeat(32), answer({ dots: [], alerts: [], leader_path: { ...path, age_s: 30 } }), KEY, seal);
+  assert.equal(plain?.leaderPath, undefined);
 });
 
 test("the ridden path goes without its first 650 ft (200 m): rides often start at home", () => {

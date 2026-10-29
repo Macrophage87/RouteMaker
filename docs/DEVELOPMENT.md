@@ -8579,32 +8579,44 @@ dot (`{lon, lat, role}`), alert (`{kind, text, lon, lat}`) and the leader's path
 per-token limits, leader mark and sweep; it answers `{sealed, age_s}` (dots, with `leader`), `{id, sealed,
 age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
 
-- **What moved to the phone.** The server cannot read a sealed value, so the phone rounds to the 20 m grid
-  (`gridded`, the same arithmetic as `rounded`), sends nothing outside the map's area (`sendable`,
-  `sendableLine`), checks an alert's kind and Other's words, and merges alerts as it reads them (`mergeAlerts`,
+- **What moved to the phone.** The server cannot read a sealed value, so the phone sends nothing outside the map's
+  area (`sendable`, `sendableLine`), checks an alert's kind and Other's words, and merges alerts as it reads them (`mergeAlerts`,
   the server's rule: same kind and words, within 200 m, within 2 minutes of the latest report; one's own stay
   apart so Clear clears only them). A value that does not open with the ride's key is left out.
+- **Positions as the phone has them** (Stephen 2026-10-29: "Encrypted rides send GPS accurate numbers."). A sealed
+  dot, alert spot and ridden path are no longer put on the old 20 m grid: a dot or alert goes to 6 decimals (about
+  0.1 m, `sealedSpot`), the route and ridden path to 5 (about 1 m, `thinLine`). A follower's trail of the leader
+  adds a reading 5 m or more from the last (`TRAIL_STEP_M`, GPS noise), and `project` still counts passes within
+  30 m (`SAME_SPOT_M`) as the same spot.
 - **Padding.** Each value is padded with spaces to a whole number of 128 (dot), 512 (alert) or 4096 (path) bytes
   before sealing (`padded`), so the sealed text's length gives away no role, alert kind or length of words. The
+  longest dot (`participant`, 6 decimals) is about 55 bytes; the longest alert about 300, as Other's words are
+  80 characters with control characters written as spaces and half an emoji as a replacement character
+  (`otherWords`), so none takes JSON more than 3 bytes; a full path (600 route and 600 ridden points) is 8 pads,
+  about 43 KB sealed, under `SEALED_PATH_MAX` (47.75 KB). The
   server still sees the ride id, tokens, addresses, timing and counts, and it marks the leader's dot and each
   dot's age; those are not sealed.
-- **Which rides.** A broadcast's secret is made with the leader's token (`App.tsx` `Lead`) and goes in every link
+- **Which rides: all of them** (Stephen 2026-10-29: "All rides should have a key." and "When shouldn't they have a
+  key? It's just a longer link."). The phone has no plain ride: `rideGroup.ts` `rideOf` names a ride only by its
+  secret, and `readRide`, `sendPosition`, `sendPath` and `sendAlert` send nothing without the ride's key. A
+  broadcast's secret is made with the leader's token (`App.tsx` `Lead`) and goes in every link
   for that ride, including those followers pass on. A Group or Mass Ride plan's secret (`groupSecret`; Mass Ride too,
   Stephen 2026-10-29: "Mass rides should be encrypted too.") is made when a page starts afresh or the rider picks
   either ride type, made again when the page's own moves from one to the other (`rideGroup.ts` `presetSecret`), and kept in the address bar (on those two only)
-  and in Copy link and Share. A link without one (an older link, a ride post the server wrote) is the ride by its
-  points in plain numbers, as before, so everyone who opens the same link is still on one ride. A sealed ride's
-  page leaves out anything that does not open, plain dots included: for a short while after a release, a page
-  still on the older build joins a link's ride by its points and does not meet those on the sealed ride. A Group
-  Ride's secret comes from the plan as opened (`OPENED_HASH`), so one kept over a sign-in keeps it; a saved or
-  kept route the rider opens gets a new one, a link pasted in its own or none.
+  and in Copy link and Share. A ride link opened without one (an older link) becomes a new ride of the rider who
+  opened it, under a secret the page makes (`groupSecretOwn`; a broadcast or Roam link without one, `RideGroup.tsx`
+  `ownSecret`); the server writes `k=` into a ride post's links. A ride's page leaves out anything that does not
+  open, plain dots included. A Group Ride's secret comes from the plan as opened (`OPENED_HASH`), so one kept over
+  a sign-in keeps it; a saved or kept route the rider opens gets a new one, a link pasted in its own, or a new one
+  where it has none.
 - **An alert's spot.** An alert needs its spot, so it carries it on every ride, even from a rider who is not
-  shown as a dot. On a ride without a key that spot is in plain numbers, which anyone who has the route can read,
-  so the alert panel says "Sends your spot to everyone on this ride." where that adds something: no key, and the
-  rider not shown as a dot (`rideGroup.ts alertNote`). Elsewhere the panel keeps its short "Sends your location
-  with the alert."; a screen reader, and the Alert button's description, always get the spot line.
-- Tests: `frontend/src/lib/rideSeal.test.ts` (secret, derivation, sealing, the grid against the server's,
-  merging, a sealed ride end to end through `rideGroup.ts`, the page's wiring) and `tests/test_ride_presence.py`
+  shown as a dot. The alert panel says "Sends your spot to everyone on this ride." only while the ride's key is
+  still being made (`rideGroup.ts alertNote`; the Send button needs the ride's id, made with it). Elsewhere the
+  panel keeps its short "Sends your location with the alert."; a screen reader, and the Alert button's
+  description, always get the spot line.
+- Tests: `frontend/src/lib/rideSeal.test.ts` (secret, derivation, sealing, exact positions, the padding's worst
+  cases, merging, a sealed ride end to end through `rideGroup.ts`, nothing sent or read without a key, a keyless
+  link getting a new key, the page's wiring) and `tests/test_ride_presence.py`
   (sealed dots, alerts and paths kept, limited, marked and dropped as plain ones are).
 
 ### Where and when a dot is sent (2026-10-29)

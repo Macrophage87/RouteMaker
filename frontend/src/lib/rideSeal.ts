@@ -1,19 +1,19 @@
 /**
  * End-to-end encryption of a ride's live data (Stephen 2026-10-29, asked "Would E2E encryption be hard/worth it?",
- * then "yes"): on a broadcast (Share ride, Broadcast, Roam's Broadcast) and a Group or Mass Ride link shared from the app (Mass Ride too, Stephen 2026-10-29), each
- * phone seals its dot, its alerts and the leader's path before sending, and the server only holds the sealed text for
- * its 2 minutes (core.ride_presence, "sealed").
+ * then "yes"): every ride the phone takes part in (Share ride, Broadcast, Roam's Broadcast, a Group or Mass Ride) is
+ * sealed. Each phone seals its dot, its alerts and the leader's path before sending, and the server only holds the
+ * sealed text for its 2 minutes (core.ride_presence, "sealed").
  *
  * - The ride's secret is 32 random bytes in the link's fragment (`k=`), which a browser never sends to any server. The
  *   server learns neither the secret nor the key: it sees only the ride id, derived from the secret one way (HKDF).
  * - The key is AES-GCM 256 from the same secret (HKDF, another label), the browser's own Web Crypto. Each sealed text
  *   is a fresh 12-byte nonce and the ciphertext; what it is (a dot, a path, an alert) and the ride id are bound in as
  *   associated data, so one cannot be passed off as another, or on another ride.
- * - What the server did with the plain numbers is done here before sealing: a position is put on the same 20 m grid
- *   (core.ride_presence.rounded) and one outside the map's area is not sent; alerts that the server merged ("2 riders
+ * - Positions are sealed as the phone has them (Stephen 2026-10-29: "Encrypted rides send GPS accurate numbers."), to
+ *   6 decimals (about 0.1 m); one outside the map's area is not sent. Alerts that the server merged ("2 riders
  *   reported") are merged by each phone as it reads them (`mergeAlerts`, the same rule).
- * - A link with no secret (an older link, or one the server wrote for a ride post) is a ride by its points,
- *   in plain numbers, as before.
+ * - Every ride has a secret (Stephen 2026-10-29: "All rides should have a key."): a ride link opened without one (an
+ *   older link) becomes a new ride of the one who opened it, with a secret of its own. Nothing goes in plain numbers.
  */
 import { insideCoverage, type LonLat } from "./geo.ts";
 
@@ -150,30 +150,24 @@ export async function openValue(seal: RideSeal, kind: SealedKind, text: unknown)
   }
 }
 
-// ---- what the server did with plain numbers, done before sealing ---------------------------------------
+// ---- what the server checked on plain numbers, checked before sealing ---------------------------------
 
-/** The grid every kept position is put on (core.ride_presence.GRID_M and `rounded`: the same grid; an exact tie may round the other way). */
-export const GRID_M = 20;
-
-export function gridded([lon, lat]: LonLat): LonLat {
-  const stepLat = GRID_M / 111_195;
-  const latR = Math.round(lat / stepLat) * stepLat;
-  const stepLon = GRID_M / (111_195 * Math.max(0.01, Math.cos((latR * Math.PI) / 180)));
-  const lonR = Math.round(lon / stepLon) * stepLon;
-  return [Math.round(lonR * 1e6) / 1e6, Math.round(latR * 1e6) / 1e6];
+/** A position to 6 decimals (about 0.1 m): the phone's own reading, kept short so each kind stays in its padding. */
+export function sealedSpot([lon, lat]: LonLat): LonLat {
+  return [Math.round(lon * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6];
 }
 
-/** A position fit to send: inside the map's area, on the grid; else null (the server refused those). */
+/** A position fit to send: a finite one inside the map's area, to 6 decimals; else null (the server refused those). */
 export function sendable(p: LonLat): LonLat | null {
-  return Number.isFinite(p[0]) && Number.isFinite(p[1]) && insideCoverage(p) ? gridded(p) : null;
+  return Number.isFinite(p[0]) && Number.isFinite(p[1]) && insideCoverage(p) ? sealedSpot(p) : null;
 }
 
-/** A line as the server kept it (core.ride_presence._line): inside the area, the ridden path on the grid, no repeats. */
-export function sendableLine(line: readonly LonLat[], grid: boolean): LonLat[] {
+/** A line as the server kept it (core.ride_presence._line): its points inside the area, to 6 decimals, no repeats. */
+export function sendableLine(line: readonly LonLat[]): LonLat[] {
   const out: LonLat[] = [];
   for (const p of line) {
-    if (!Number.isFinite(p[0]) || !Number.isFinite(p[1]) || !insideCoverage(p)) continue;
-    const q: LonLat = grid ? gridded(p) : p;
+    const q = sendable(p);
+    if (!q) continue;
     const last = out[out.length - 1];
     if (!last || last[0] !== q[0] || last[1] !== q[1]) out.push(q);
   }

@@ -2,9 +2,10 @@
  * Mass Ride and Group Ride links (v0.7.0 plan): see the others on the route as anonymous dots, and tap to send
  * an issue to everyone on the link. The server side is core.ride_presence (in memory only, 2 minutes).
  *
- * - A ride is the digest of the link's plan (ride type and points), so everyone who opened the same link is on
- *   the same ride and the server never holds the route. A rider is a random token made for that ride on this
- *   device; it changes each ride (a new one after 12 hours).
+ * - A ride is named by its link's secret (lib/rideSeal.ts; Stephen 2026-10-29: "All rides should have a key."), so
+ *   everyone who opened the same link is on the same ride and the server never holds the route or a position in
+ *   plain numbers. A link opened without a secret becomes a new ride of its opener. A rider is a random token made
+ *   for that ride on this device; it changes each ride (a new one after 12 hours).
  * - Showing your own dot is asked once, when the link opens ("Show me as a dot to others on this ride?"), and
  *   the answer kept for that ride on this device. Seeing the others needs no answer.
  * - The same question asks the rider's role (Stephen 2026-10-16): Participant (chosen already, so one tap
@@ -35,19 +36,12 @@ export function isRideLinkType(preset: PresetId): preset is RideLinkType {
 
 /**
  * The plan's ride secret after its ride type changes from `was` to `now` (Stephen 2026-10-29: Group and Mass Ride both
- * sealed). Kept: on a plan that is not a ride; a link's own (opened here); or the page's own moving into a ride type
- * from one that is not. Made new, the page's own: none yet, or the page's own moving between the two ride types, which
- * are different rides. `own`: the page made the secret, not a link opened here.
+ * sealed; "All rides should have a key."). Kept: on a plan that is not a ride; a link's own (opened here); or the
+ * page's own moving into a ride type from one that is not. Made new: the page's own moving between the two ride
+ * types, which are different rides. `own`: the page made the secret, not a link opened here.
  */
-export function presetSecret(
-  was: PresetId,
-  now: PresetId,
-  secret: string | null,
-  own: boolean,
-  make: () => string = newRideSecret,
-): { secret: string | null; own: boolean } {
-  if (!isRideLinkType(now) || was === now) return { secret, own };
-  if (secret !== null && (!isRideLinkType(was) || !own)) return { secret, own };
+export function presetSecret(was: PresetId, now: PresetId, secret: string, own: boolean, make: () => string = newRideSecret): { secret: string; own: boolean } {
+  if (!isRideLinkType(now) || was === now || !isRideLinkType(was) || !own) return { secret, own };
   return { secret: make(), own: true };
 }
 
@@ -55,54 +49,17 @@ export function isRideLink(preset: PresetId, points: readonly LonLat[]): preset 
   return isRideLinkType(preset) && points.length >= 2;
 }
 
-/** What the ride's digest is made from: the ride type and the points as the link writes them. */
-export function rideKey(preset: PresetId, points: readonly LonLat[]): string {
-  return `${preset}|${points.map(([lon, lat]) => `${lon.toFixed(5)},${lat.toFixed(5)}`).join(";")}`;
-}
-
 function hex(bytes: ArrayBuffer | Uint8Array): string {
   return Array.from(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** The ride's id: the SHA-256 of its key, 64 hex digits. */
-export async function rideId(preset: PresetId, points: readonly LonLat[]): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rideKey(preset, points)));
-  return hex(digest);
-}
-
 /**
- * A broadcast ride (Share ride or Broadcast, Stephen 2026-10-22): the ride is the shared line's id, which the sharer
- * and everyone who opens the link both hold whatever each of them rides, so the leader is always on the same ride.
+ * The ride a page is on, and its seal: every ride is named by its secret (lib/rideSeal.ts) and sealed end to end.
+ * Null for no secret or a bad one: nothing is read or sent for it. App.tsx keeps the leader's answer under the same id.
  */
-export async function broadcastRideId(sharedId: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`broadcast|${sharedId}`));
-  return hex(digest);
-}
-
-/**
- * A broadcast from Roam (Stephen 2026-10-22: Broadcast "as a tap within roam"): a ride with no route, named by a random
- * id its link carries, and kept apart from a shared line's broadcast by its prefix.
- */
-export async function roamRideId(roamId: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`roam|${roamId}`));
-  return hex(digest);
-}
-
-/**
- * The ride a page is on, and its seal: a link carrying a secret (lib/rideSeal.ts) is sealed end to end and named by
- * the secret; else a broadcast by its shared line or Roam id, or a Mass Ride or Group Ride by its points, in plain
- * numbers as before. App.tsx keeps the leader's answer under the same id.
- */
-export async function rideOf(at: {
-  type?: PresetId;
-  points?: readonly LonLat[];
-  broadcast?: { id: string; roam?: boolean } | null;
-  secret?: string | null;
-}): Promise<{ id: string; seal: RideSeal | null }> {
-  const sealed = at.secret ? await rideSeal(at.secret) : null;
-  if (sealed) return { id: sealed.ride, seal: sealed };
-  if (at.broadcast) return { id: await (at.broadcast.roam ? roamRideId(at.broadcast.id) : broadcastRideId(at.broadcast.id)), seal: null };
-  return { id: await rideId(at.type ?? "group-ride", at.points ?? []), seal: null };
+export async function rideOf(secret: string | null | undefined): Promise<{ id: string; seal: RideSeal } | null> {
+  const sealed = secret ? await rideSeal(secret) : null;
+  return sealed ? { id: sealed.ride, seal: sealed } : null;
 }
 
 /**
@@ -280,7 +237,7 @@ export function postSoonAfter(lastPost: number): number {
 
 const M_PER_DEG = 111_195;
 
-/** Stretches of the line this much further off than the nearest still count as where `p` is (a 20 m grid, GPS). */
+/** Stretches of the line this much further off than the nearest still count as where `p` is (GPS's own error). */
 export const SAME_SPOT_M = 30;
 
 /**
@@ -534,8 +491,8 @@ export function ridersSaid(dots: readonly ShownDot[], myAlongM: number | null, a
 
 /** The leader's path as this page saw it: kept in memory on this device only, never sent or stored. */
 export const TRAIL_MAX_POINTS = 2000;
-/** A reading within this of the last one adds nothing (the server's grid is 20 m). */
-export const TRAIL_STEP_M = 15;
+/** A reading within this of the last one adds nothing (the leader stood still: GPS wanders a few metres). */
+export const TRAIL_STEP_M = 5;
 
 /** The trail with the leader's new reading added, or the same trail where it has not moved. */
 export function extendTrail(trail: readonly LonLat[], p: LonLat): readonly LonLat[] {
@@ -708,15 +665,14 @@ export const ROAM_ALERT_KINDS: readonly AlertKind[] = ["lost", "wait", "mechanic
 export const ALERT_LABEL = t("Send alert");
 export const ALERT_NOTE = t("Sends your location with the alert");
 /**
- * An alert needs its spot, so it always carries it, even from a rider not shown as a dot; on a ride with no key in its
- * link (an older Group or Mass Ride link, or a ride post's) the spot is in plain numbers, which anyone who has the
- * route can read. So the rider is told before sending (2026-10-29).
+ * An alert needs its spot, so it always carries it, sealed, to everyone on the ride, even from a rider not shown as a
+ * dot. So the rider is told before sending (2026-10-29).
  */
 export const ALERT_SPOT_NOTE = t("Sends your spot to everyone on this ride.");
 
 /**
- * The alert panel's line. Seen: ALERT_SPOT_NOTE where it adds something (no key, and the rider not shown as a dot, so
- * the alert is the first time their spot goes out), else the usual short ALERT_NOTE. Heard (a screen reader, and the
+ * The alert panel's line. Seen: ALERT_SPOT_NOTE where it adds something (the ride's key not made yet, and the rider
+ * not shown as a dot, so the alert is the first time their spot goes out), else the usual short ALERT_NOTE. Heard (a screen reader, and the
  * Alert button's description): ALERT_SPOT_NOTE always, true on every ride.
  */
 export function alertNote(sealed: boolean, shownAsDot: boolean): { seen: string; heard: string } {
@@ -788,18 +744,15 @@ export interface RideRead {
 const isLine = (v: unknown): v is LonLat[] =>
   Array.isArray(v) && v.every((p) => Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === "number" && Number.isFinite(n)));
 
+/** The ride's dots, alerts and leader's path, opened with its key; null without a key (nothing is asked for). */
 export async function readRide(origin: string, ride: string, token: string, get: Fetch = fetch, leader: string | null = null, seal: RideSeal | null = null): Promise<RideRead | null> {
+  if (!seal) return null;
   try {
     const headers: Record<string, string> = { Accept: "application/json", "X-Ride-Token": token };
     if (leader) headers["X-Ride-Leader"] = leader;
     const response = await get(`${origin}/api/rides/${ride}`, { headers });
     if (!response.ok) return null;
-    const body = (await response.json()) as Partial<RideRead> & { leader_path?: Partial<LeaderPath> & { sealed?: unknown } };
-    if (seal) return await openRead(seal, body);
-    const out: RideRead = { dots: Array.isArray(body.dots) ? body.dots : [], alerts: Array.isArray(body.alerts) ? body.alerts : [] };
-    const path = body.leader_path;
-    if (path && isLine(path.route) && isLine(path.trail)) out.leaderPath = { route: path.route, trail: path.trail, age_s: Number(path.age_s) || 0 };
-    return out;
+    return await openRead(seal, (await response.json()) as Record<string, unknown>);
   } catch {
     return null;
   }
@@ -811,7 +764,7 @@ const asRecord = (v: unknown): Record<string, unknown> | null => (v && typeof v 
 
 /**
  * A sealed ride's answer (lib/rideSeal.ts): each dot, alert and the leader's path opened with the link's key; any that
- * does not open is left out, a plain one too (only a phone without the link's secret, an older page, sends those).
+ * does not open is left out, a plain one too (an older page's).
  */
 async function openRead(seal: RideSeal, body: Record<string, unknown>): Promise<RideRead> {
   const dots: Dot[] = [];
@@ -859,15 +812,12 @@ async function post(origin: string, path: string, body: unknown, send: Fetch): P
   }
 }
 
+/** The rider's dot, sealed with the ride's key; nothing is sent without one, or for a spot outside the map's area. */
 export async function sendPosition(origin: string, ride: string, token: string, p: LonLat, role: RideRole = DEFAULT_ROLE, send: Fetch = fetch, seal: RideSeal | null = null): Promise<boolean> {
-  if (seal) {
-    // Sealed: put on the grid here, as the server did; a spot outside the map's area is not sent.
-    const spot = sendable(p);
-    if (!spot) return false;
-    const sealed = await sealValue(seal, "dot", { lon: spot[0], lat: spot[1], role });
-    return (await post(origin, `/api/rides/${ride}/here`, { token, sealed }, send)).ok;
-  }
-  return (await post(origin, `/api/rides/${ride}/here`, { token, lon: p[0], lat: p[1], role }, send)).ok;
+  const spot = sendable(p);
+  if (!seal || !spot) return false;
+  const sealed = await sealValue(seal, "dot", { lon: spot[0], lat: spot[1], role });
+  return (await post(origin, `/api/rides/${ride}/here`, { token, sealed }, send)).ok;
 }
 
 /**
@@ -916,12 +866,11 @@ export function withoutStart(trail: readonly LonLat[]): readonly LonLat[] {
   return away < 0 ? [] : trail.slice(away);
 }
 
+/** The leader's route and ridden path, sealed with the ride's key; nothing is sent without one. */
 export async function sendPath(origin: string, ride: string, token: string, route: readonly LonLat[], trail: readonly LonLat[], send: Fetch = fetch, seal: RideSeal | null = null): Promise<boolean> {
-  if (seal) {
-    const sealed = await sealValue(seal, "path", { route: sendableLine(thinLine(route), false), trail: sendableLine(thinLine(withoutStart(trail)), true) });
-    return (await post(origin, `/api/rides/${ride}/path`, { token, sealed }, send)).ok;
-  }
-  return (await post(origin, `/api/rides/${ride}/path`, { token, route: thinLine(route), trail: thinLine(withoutStart(trail)) }, send)).ok;
+  if (!seal) return false;
+  const sealed = await sealValue(seal, "path", { route: sendableLine(thinLine(route)), trail: sendableLine(thinLine(withoutStart(trail))) });
+  return (await post(origin, `/api/rides/${ride}/path`, { token, sealed }, send)).ok;
 }
 
 export async function leaveRide(origin: string, ride: string, token: string, send: Fetch = fetch): Promise<boolean> {
@@ -930,23 +879,32 @@ export async function leaveRide(origin: string, ride: string, token: string, sen
 
 export type SendOutcome = { ok: true; alert: RideAlert } | { ok: false; message: string };
 
+/**
+ * Other's words as sealed: at most OTHER_MAX characters, a control character as a space and half an emoji (cut at the
+ * limit) as a replacement character, so no character takes JSON more than 3 bytes and the alert stays in its padding.
+ */
+export function otherWords(text: string): string {
+  return text
+    .trim()
+    .slice(0, OTHER_MAX)
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, "�");
+}
+
+/** An alert, sealed with the ride's key; nothing is sent without one. */
+
 export async function sendAlert(origin: string, ride: string, token: string, type: RideLinkType, kind: string, text: string, p: LonLat, send: Fetch = fetch, seal: RideSeal | null = null): Promise<SendOutcome> {
-  const words = kind === "other" ? text.trim().slice(0, OTHER_MAX) : "";
-  if (seal) {
-    // Sealed: the checks the server made on the plain alert, made here (it sees none of it).
-    const spot = sendable(p);
-    const known = ALERT_KINDS[type].some((k) => k.id === kind) && (kind !== "other" || words !== "");
-    if (!spot || !known) return { ok: false, message: t("The alert was not sent; try again.") };
-    const sealed = await sealValue(seal, "alert", { kind, text: words, lon: spot[0], lat: spot[1] });
-    const answer = await post(origin, `/api/rides/${ride}/alerts`, { token, sealed }, send);
-    if (answer.ok && typeof answer.body.id === "string") {
-      const alert = asRideAlert({ id: answer.body.id, kind, text: words, lon: spot[0], lat: spot[1], age_s: 0, mine: true, count: 1 });
-      return { ok: true, alert };
-    }
-    return { ok: false, message: typeof answer.body.error === "string" ? answer.body.error : t("The alert was not sent; try again.") };
+  const words = kind === "other" ? otherWords(text) : "";
+  // The checks the server made on a plain alert, made here (it sees none of it). Nothing is sent without the key.
+  const spot = sendable(p);
+  const known = ALERT_KINDS[type].some((k) => k.id === kind) && (kind !== "other" || words !== "");
+  if (!seal || !spot || !known) return { ok: false, message: t("The alert was not sent; try again.") };
+  const sealed = await sealValue(seal, "alert", { kind, text: words, lon: spot[0], lat: spot[1] });
+  const answer = await post(origin, `/api/rides/${ride}/alerts`, { token, sealed }, send);
+  if (answer.ok && typeof answer.body.id === "string") {
+    const alert = asRideAlert({ id: answer.body.id, kind, text: words, lon: spot[0], lat: spot[1], age_s: 0, mine: true, count: 1 });
+    return { ok: true, alert };
   }
-  const answer = await post(origin, `/api/rides/${ride}/alerts`, { token, ride_type: type, kind, text: words, lon: p[0], lat: p[1] }, send);
-  if (answer.ok) return { ok: true, alert: answer.body as unknown as RideAlert };
   return { ok: false, message: typeof answer.body.error === "string" ? answer.body.error : t("The alert was not sent; try again.") };
 }
 
