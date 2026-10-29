@@ -436,3 +436,94 @@ def test_a_recent_pin_is_not(host) -> None:
     result = host.run()
     assert result.returncode == 0, result.stderr
     assert "reminder:" not in result.stderr
+
+
+# --- our own kept copy of the region (the owner, 2026-10-29) ---
+
+
+def keeping(host) -> Path:
+    keep = host.root / "backups" / "basemap"
+    keep.mkdir(parents=True)
+    return keep
+
+
+def test_a_good_region_is_copied_into_the_keep_directory(host) -> None:
+    keep = keeping(host)
+    first = host.installed()
+    assert (keep / "region.pmtiles").read_bytes() == b"PMTiles region"
+    stamp = (host.basemap / ".region.source").read_text()
+    assert (keep / ".region.source").read_text() == stamp
+    assert "kept a copy" in first.stdout
+    assert not (keep / ".region.pmtiles.part").exists()
+
+
+def test_an_installed_region_without_a_copy_gets_one_with_no_request(host) -> None:
+    host.installed()
+    keep = keeping(host)
+    again = host.run(FAKE_CURL_FORBIDDEN="1")
+    assert again.returncode == 0, again.stderr
+    assert (keep / "region.pmtiles").read_bytes() == b"PMTiles region"
+
+
+def test_a_lost_region_comes_back_from_the_kept_copy_with_no_request(host) -> None:
+    """A disaster rebuild of the basemap directory: the copy, not Protomaps."""
+    keep = keeping(host)
+    host.installed()
+    for name in ("region.pmtiles", ".region.source"):
+        (host.basemap / name).unlink()
+    again = host.run(FAKE_CURL_FORBIDDEN="1")
+    assert again.returncode == 0, again.stderr
+    assert (host.basemap / "region.pmtiles").read_bytes() == b"PMTiles region"
+    assert (host.basemap / ".region.source").read_text() == (keep / ".region.source").read_text()
+
+
+def test_the_kept_copy_comes_before_a_recent_day_when_the_pin_is_gone(host) -> None:
+    keep = keeping(host)
+    keep.joinpath("region.pmtiles").write_bytes(b"kept region")
+    keep.joinpath(".region.source").write_text(f"build=20260801 bbox={BBOX}\n")
+    result = host.run(FAKE_CURL_GONE=BUILD)
+    assert result.returncode == 0, result.stderr
+    assert (host.basemap / "region.pmtiles").read_bytes() == b"kept region"
+    assert f"build=20260801 bbox={BBOX}" in (host.basemap / ".region.source").read_text()
+    assert "installing the kept copy" in result.stderr
+    assert "go-pmtiles" not in host.curl_calls(), host.curl_calls()
+
+
+def test_a_kept_copy_of_another_box_is_not_used(host) -> None:
+    keep = keeping(host)
+    keep.joinpath("region.pmtiles").write_bytes(b"other box")
+    keep.joinpath(".region.source").write_text("build=20260801 bbox=-1,-1,1,1\n")
+    result = host.run(FAKE_CURL_GONE=f"{BUILD} {day(1)}")
+    assert result.returncode == 0, result.stderr
+    assert extracted_from(host) == f"https://build.protomaps.com/{day(2)}.pmtiles"
+    assert (keep / "region.pmtiles").read_bytes() == b"PMTiles region"
+
+
+def test_a_copy_cut_short_is_not_taken_for_a_whole_one(host) -> None:
+    keep = keeping(host)
+    keep.joinpath("region.pmtiles").write_bytes(b"half")  # no stamp: the copy never finished
+    result = host.run()
+    assert result.returncode == 0, result.stderr
+    assert "go-pmtiles" in host.curl_calls()
+    assert (keep / "region.pmtiles").read_bytes() == b"PMTiles region"
+
+
+def test_a_named_keep_directory_that_is_missing_is_refused(host) -> None:
+    refused = host.run(BASEMAP_KEEP_DIR=str(host.tmp / "nowhere"))
+    assert refused.returncode == 2
+    assert "BASEMAP_KEEP_DIR" in refused.stderr
+    assert host.curl_calls() == ""
+
+
+def test_without_the_default_keep_directory_the_run_only_notes_it(host) -> None:
+    result = host.installed()
+    assert "no copy of the region is kept" in result.stderr
+
+
+def test_a_named_keep_directory_is_used_in_place_of_the_default(host) -> None:
+    elsewhere = host.tmp / "kept"
+    elsewhere.mkdir()
+    result = host.run(BASEMAP_KEEP_DIR=str(elsewhere))
+    assert result.returncode == 0, result.stderr
+    assert (elsewhere / "region.pmtiles").read_bytes() == b"PMTiles region"
+    assert not (host.root / "backups" / "basemap").exists()

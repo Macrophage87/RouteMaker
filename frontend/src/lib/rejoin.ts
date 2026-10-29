@@ -7,6 +7,7 @@ import type { DescriptionEntry, ErrorKind, RouteResult, RouteResponse, StressSpa
 import { haversineM, type LonLat } from "./geo.ts";
 import { ARRIVE_M, lineAlong, measureMap, pointAt, snap, wayWords, type RideModel } from "./navigate.ts";
 import { t } from "./i18n.ts";
+import { METRES_PER_MILE } from "./format.ts";
 
 /**
  * The way back aims this far along the line past its nearest point ahead (about 300 ft), so it ends on the
@@ -17,8 +18,6 @@ export const REJOIN_AHEAD_M = 100;
 export const REJOIN_FURTHER_M = [500, 1500] as const;
 /** Two points closer than this along the line are one try. */
 const REJOIN_SAME_M = 50;
-
-const METRES_PER_MILE = 1609.344;
 
 /**
  * Whether a failed re-plan is worth a way back: not with no signal (a way back would not get through either)

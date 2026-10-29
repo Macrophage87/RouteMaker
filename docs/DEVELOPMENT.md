@@ -363,8 +363,10 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /
   registry for npm's latest version on every run in a fresh container.
 - `npm run lint` is ESLint with the React hooks rules alone (`eslint.config.js`):
   a hook called conditionally, and an effect, memo or callback whose dependency
-  list leaves out a value it reads. Both are warnings while the existing reports
-  are worked through, so CI lists them and fails on neither. It parses with
+  list leaves out a value it reads. The first (rules-of-hooks) is an error, so CI
+  fails on it; name a plain function so it does not start with `use`. The second
+  is a warning while the existing reports are worked through, so CI lists them
+  and fails on none. It parses with
   Babel's parser, since typescript-eslint does not support the TypeScript the
   project builds with.
 - `npm run build` typechecks (`tsc --noEmit`) and then builds `dist/`, which
@@ -5058,6 +5060,12 @@ and its header). What the panel shows is in `app/`, moved out unchanged:
   Climbs layer's "Show climbs from") goes inside, under that layer's switch; long help goes by
   the legend in the Legend sheet, not in Layers.
 - `app/hooks.ts`: `useNarrow` (and `NARROW`), `useLongerThan`, `useSettled`.
+- `app/LiveMap.tsx`: `LiveMap`, the map with the rider's position and the elevation chart's
+  scrub point read from their own stores (`lib/liveValue.ts`), and `LiveRiderPoint`, the
+  same for a ride group's dot. A GPS fix (about once a second) or a scrub re-renders the map
+  alone, not App and the hidden planner. App keeps a ride's slower parts (the route, the
+  stops, Detour's letters) in `rideView` and re-renders only when they change
+  (`lib/rideViewKept.ts`). Unlike the pass-throughs above, these two read their stores.
 
 Each component is a pass-through: it takes its props under the names App gives them, keeps
 no state and calls no hook (`RouteSummary` keeps its own `useStressStyle()`), and App renders
@@ -6031,7 +6039,8 @@ end). On a shorter ride it could change nothing, so it is left out rather than s
 standing reason under every short ride's tools; More tips says when it appears (`editingTips`). If
 it leaves while it has the focus (an undo or a removal takes a stop away), the focus goes to Reverse
 beside it. A press sends the ride as a route request would (points, preset and dials, with the riding
-speed and the closure choices, `closureFields`; not the weight, which the order does not use) to
+speed and the closure choices, `closureFields`; not the weight, which the order does not use, nor
+Go round's closed roads, `blocked_lines`, which only a ride's re-plans carry and a ride has no Best order) to
 `POST /api/stop-order`
 (`core.api.stop_order`, the route request's body, its rate and in-flight limits). While the order is
 found the button keeps its label and is `aria-disabled`, "Finding the best order for the stops." is
@@ -8636,13 +8645,16 @@ and place names, agency notices and anything sent to the server or kept on the d
 written. Miles come first in every language.
 
 - Catalogs: `frontend/src/i18n/<language>.ts`, one object from the English phrase to its
-  translation. Spanish (`es.ts`) is in the bundle. The others are fetched before the app starts
-  (`loadLanguage`, called from main.tsx), and the service worker keeps the one a rider uses.
+  translation. Each, Spanish's (`es.ts`) included, is a file of its own fetched before the app
+  starts (`loadLanguage`, called from main.tsx and the Featured post page's `post/main.ts`), so
+  an English reader downloads none. The service worker precaches Spanish's and keeps any other
+  the first time a rider uses it.
 - The language a page opens in (`startLanguage`): the rider's choice (Settings > Display >
-  Language, kept on this device), else the phone's language if it is English or Spanish, else
-  English. Since v0.15.0 the 19 draft languages are used only once a rider picks one
-  (`FROM_DEVICE`). Choosing a language reloads the page, because many labels are module
-  constants built once at load.
+  Language, kept on this device), else the phone's first language the app has, drafts included,
+  else English. A phone in one of the 19 draft languages opens Go and Ride in it with no Settings
+  step (the owner, 2026-10-29: "It should show it when they open it ... It's best to make things
+  easy"); Plan stays in English. Choosing a language reloads the page, because many labels are
+  module constants built once at load.
 - Right to left (Arabic, Farsi, Pashto): `markPageLanguage` sets the page's `lang` and `dir`, and
   `planLanguageAttributes` marks Plan's containers English and left to right, so they are not
   mirrored. Turn sentences keep left and right as written. A test checks that no catalog swaps
@@ -8670,8 +8682,6 @@ speaker has not checked yet, and each file's header says so. To hand one over, s
 reviewer the catalog file. The keys are the English and must not change, and the values are
 theirs to correct. Keep each `{place}` (the test checks them) and the bold marks the English
 has. Turn sentences matter most. Once a reviewer has checked a catalog, say so in its header.
-Whether a checked language may then open from the phone's own language (`FROM_DEVICE`) is the
-owner's call.
 
 ## Share live: the leader's live ride (v0.12.0-v0.15.0)
 

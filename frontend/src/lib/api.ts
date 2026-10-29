@@ -962,6 +962,11 @@ export interface RouteResponse {
   /** Trip points the planner moved: one inside the National Zoo goes to its bike racks. */
   moved_points?: { index: number; asked: LonLat; routed: LonLat; reason: "zoo_racks"; note: string }[];
   /**
+   * Notes on a stop or the end (core.api.PointNoteOut; the owner, 2026-10-29): one on a road not open to the public,
+   * which the route still goes to. Shown and said as the moved points are (lib/summary.ts movedPointsNote).
+   */
+  point_notes?: { index: number; reason: "not_public"; note: string }[];
+  /**
    * The walks at the route's ends where the ride stops short of the point asked (core.api.WalkInOut; the owner,
    * 2026-10-17: a stop at a memorial a bike is walked through). Null or absent where the ride reaches both.
    */

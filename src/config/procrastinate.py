@@ -24,7 +24,7 @@ from __future__ import annotations
 import os
 import re
 import time
-from collections.abc import Callable
+from datetime import timedelta
 from pathlib import Path
 
 from django.conf import settings as django_settings
@@ -155,6 +155,15 @@ BACKUP_EXCLUDED_TABLES = (
 # a local copy to restore from, at a bounded cost in gigabytes rather than a
 # year's worth.
 BACKUP_KEEP = 7
+# And none older than this, whatever the count: the privacy page and the delete-account page
+# promise that deleted data leaves the backups within a week (core.privacy_policy,
+# core.account_deletion.KEPT). The count alone does not keep that promise, because a night
+# whose dump fails prunes nothing to make room, so a week of failed dumps kept the old ones
+# for as long as the failures lasted. Six and a half days rather than seven so that a run
+# that starts late one night and on time a week later still drops the week-old dump. The
+# newest dump is kept whatever its age (pipeline.retention.prune_backups), and the plain
+# pre-update dumps in the same folder are held to the same age (prune_snapshots).
+BACKUP_MAX_AGE = timedelta(days=6, hours=12)
 
 
 class RebuildAbandoned(RuntimeError):
@@ -819,8 +828,9 @@ class RetryUnlessTimedOut(RetryStrategy):
     ),
 )
 def nightly_backup(timestamp: int) -> None:
-    """Dump the database, excluding the membership cache and the sessions, then
-    prune what the dump and the run history leave behind.
+    """Dump the database, encrypted to the owner's public key and excluding the
+    membership cache and the sessions, then prune what the dump and the run
+    history leave behind.
 
     The cache is excluded rather than dumped and protected. Who organizes with
     whom is the sensitive part of this deployment, and the cache is rebuildable
@@ -842,7 +852,11 @@ def nightly_backup(timestamp: int) -> None:
     as the dump kept failing. Only the *dump* retention is still conditional,
     and only in the direction that is safe: `prune_backups` runs on the failure
     path too, but with nothing new written it has one fewer dump to count, so a
-    failed night keeps the oldest dump it would otherwise have dropped.
+    failed night keeps the oldest dump it would otherwise have dropped - unless
+    that dump is past `BACKUP_MAX_AGE`, which goes either way, because deleted
+    accounts are promised to leave the backups within a week. The newest dump is
+    the exception: it is never removed for its age, since after a run of failed
+    nights it is the only backup left.
     """
     from django.conf import settings
 
@@ -858,7 +872,10 @@ def nightly_backup(timestamp: int) -> None:
             # the f-string is on the success path and these have to run on
             # both. `record` re-raises whatever `perform_backup` raised, so a
             # failed night still fails - it just fails having pruned.
-            pruned_dumps = retention.prune_backups(settings.BACKUP_DIR, keep=BACKUP_KEEP)
+            pruned_dumps = retention.prune_backups(
+                settings.BACKUP_DIR, keep=BACKUP_KEEP, max_age=BACKUP_MAX_AGE
+            )
+            pruned_snapshots = retention.prune_snapshots(settings.BACKUP_DIR, BACKUP_MAX_AGE)
             pruned_runs = prune_run_rows()
             pruned_jobs = prune_job_rows()
             # Rows that are otherwise dropped only when someone shares, opens or sends
@@ -867,6 +884,7 @@ def nightly_backup(timestamp: int) -> None:
             pruned_sends = signed_out_suggestions.prune()
         run.detail = (
             f"{destination}; pruned {len(pruned_dumps)} old dumps, "
+            f"{len(pruned_snapshots)} pre-update dumps, "
             f"{pruned_runs} run rows, {pruned_jobs} finished job rows, "
             f"{pruned_shared} shared routes, {pruned_sends} signed-out send rows"
         )
@@ -1118,58 +1136,107 @@ class BackupVerificationFailed(RuntimeError):
     """The dump on disk is not the dump the task promised."""
 
 
-def perform_backup(
-    now=None,
-    read_listing: Callable[[Path, dict, float], str] | None = None,
-    timeout_s: float | None = None,
-) -> Path:
-    """pg_dump to the data volume, then read the archive's table of contents
-    back to prove it is what was asked for. Separated so the task body stays
-    readable. `read_listing` is pg_restore --list, injectable so a test can
-    hand this function a listing that leaks and watch it refuse.
+class BackupRecipientsMissing(RuntimeError):
+    """There is no usable public key to encrypt the dump to, so no dump is taken."""
 
-    Both binaries run under one budget, the same way the rebuild runs its own:
-    a monotonic deadline taken once, and whatever is left of it handed to each
-    subprocess as its timeout. One budget rather than one each, because what is
-    bounded is the maintenance slot the whole task holds, not either process.
 
-    The dump is written to `<name>.dump.part` and renamed to `<name>.dump` only
-    after the verification has passed, and the part file is removed on every
-    failure path. A dump under the ordinary name is therefore a dump that was
-    written whole and read back, which is the only promise a restore procedure
-    can act on.
+# What reads the archive's table of contents back. pg_restore reads it from the start of the
+# stream, so it sees the same bytes `age` encrypts, and the plain archive never touches disk.
+LIST_ARCHIVE = ("pg_restore", "--list")
+# How much of pg_dump's output is handed on at a time.
+_CHUNK = 1 << 20
+
+
+def backup_recipients_problem(path: Path | None = None) -> str | None:
+    """Why the nightly dump cannot be encrypted, or None when it can.
+
+    The file is the public half of the owner's age key pair: one `age1...` recipient a line,
+    `#` comments allowed. A private key in it is refused too, because a server that holds the
+    private half can read every dump it writes, which is the one thing the encryption is for.
+    Read fresh on every run, so a file put in place after a deploy is used that same night.
+    """
+    import shutil
+
+    from django.conf import settings
+
+    path = Path(path or settings.BACKUP_AGE_RECIPIENTS)
+    if shutil.which("age") is None:
+        return "the age command is not installed, so the dump cannot be encrypted"
+    try:
+        text = path.read_text()
+    except FileNotFoundError:
+        return (
+            f"{path} does not exist: put the public recipients file there "
+            "(docs/OPERATIONS.md, Backups)"
+        )
+    except OSError as error:
+        return f"{path} cannot be read ({error.strerror})"
+    if "AGE-SECRET-KEY-" in text.upper():
+        return f"{path} holds a private key; only the public line (age1...) belongs on the server"
+    lines = [line.strip() for line in text.splitlines()]
+    recipients = [line for line in lines if line and not line.startswith("#")]
+    if not recipients:
+        return f"{path} holds no recipient"
+    other = [line for line in recipients if not line.startswith("age1")]
+    if other:
+        return f"{path} holds {len(other)} line(s) that are not age recipients (age1...)"
+    return None
+
+
+def perform_backup(now=None, timeout_s: float | None = None) -> Path:
+    """pg_dump straight through `age` to the data volume, reading the archive's
+    table of contents back from the same stream to prove it is what was asked
+    for. Separated so the task body stays readable.
+
+    Encrypted to the public recipients in `settings.BACKUP_AGE_RECIPIENTS` only,
+    so the server writes dumps it can never read; restoring one needs the
+    owner's private key, on the owner's computer (docs/OPERATIONS.md,
+    "Restoring one"). The plain archive exists only in the pipes between the
+    three processes. With no usable recipients file nothing is dumped and
+    nothing is written: the task fails, and the 26-hour alert names it.
+
+    All three processes run under one budget, the same way the rebuild runs its
+    own: a monotonic deadline taken once, and the processes killed when it runs
+    out. One budget rather than one each, because what is bounded is the
+    maintenance slot the whole task holds, not any one process.
+
+    The dump is written to `<name>.dump.age.part` and renamed to
+    `<name>.dump.age` only after the verification has passed, and the part file
+    is removed on every failure path. A dump under the ordinary name is
+    therefore a dump that was written whole and read back, which is the only
+    promise a restore procedure can act on.
     """
     import subprocess
 
     from django.conf import settings
     from django.utils import timezone
 
-    read_listing = read_listing or _pg_restore_list
+    # Before anything is created or run: no recipients, no dump, and no file of any kind.
+    problem = backup_recipients_problem()
+    if problem is not None:
+        raise BackupRecipientsMissing(problem)
     now = now or timezone.now()
     deadline = time.monotonic() + (BACKUP_TIMEOUT_S if timeout_s is None else timeout_s)
     settings.BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    destination = settings.BACKUP_DIR / f"routemaker-{now:%Y%m%dT%H%M%SZ}.dump"
+    destination = settings.BACKUP_DIR / f"routemaker-{now:%Y%m%dT%H%M%SZ}.dump.age"
     # Written under a name no restore would ever pick and renamed only once the
     # listing has been read back and accepted. Only the timeout used to clean up
     # after itself, so a `pg_dump` that exited non-zero - a wrong database name,
     # a permission error, a full volume - and a dump the verification rejected
-    # both left `routemaker-<instant>.dump` on the volume: the newest by name,
+    # both left a dump under the final name on the volume: the newest by name,
     # which is precisely the one an operator restoring "last night's" reaches
-    # for, and in the verification case possibly carrying the membership-cache
-    # rows the exclusion exists to keep off the disk. `prune_backups` matches
-    # the final name only, so a part file is never mistaken for a kept dump
-    # either.
+    # for. `prune_backups` matches the final name only, so a part file is never
+    # mistaken for a kept dump either.
     part = destination.with_name(destination.name + ".part")
     database = settings.DATABASES["default"]
     env = {**os.environ, "PGPASSWORD": database["PASSWORD"]}
     try:
-        # The dump holds every account and every home: readable by its owner only.
-        # Created 0600 before pg_dump writes into it (pg_dump keeps the mode of the
-        # file it truncates) and set again before the rename.
+        # Encrypted, and readable by its owner only as well. Created 0600 before
+        # age writes into it and set again before the rename.
         part.touch(mode=0o600)
         os.chmod(part, 0o600)
         try:
-            subprocess.run(
+            listing = _dump_encrypted(
                 [
                     "pg_dump",
                     "--format=custom",
@@ -1178,17 +1245,16 @@ def perform_backup(
                     f"--username={database['USER']}",
                     # Excluded, not merely unprotected. See the task docstring.
                     *(f"--exclude-table-data=*.{table}" for table in BACKUP_EXCLUDED_TABLES),
-                    f"--file={part}",
                     database["NAME"],
                 ],
-                check=True,
-                env=env,
-                timeout=_remaining(deadline, "pg_dump"),
+                part,
+                Path(settings.BACKUP_AGE_RECIPIENTS),
+                env,
+                deadline,
             )
-            listing = read_listing(part, env, _remaining(deadline, "pg_restore --list"))
         except subprocess.TimeoutExpired as expired:
-            # The child is already killed by subprocess.run; what is left is the
-            # half-written archive, which the cleanup below removes.
+            # The children are already killed; what is left is the half-written
+            # archive, which the cleanup below removes.
             raise BackupTimedOut(
                 f"the backup exceeded its {BACKUP_TIMEOUT_S:.0f}s budget and was killed "
                 f"while running {expired.cmd[0]}"
@@ -1198,6 +1264,7 @@ def perform_backup(
         # The rename is the last thing that happens, so the ordinary name exists
         # only for an archive that was written whole and verified.
         part.replace(destination)
+        _fsync_directory(destination.parent)
     except BaseException:
         # Every failure path, including the ones nothing here anticipates: what
         # must not survive is a partial or rejected archive under a name the
@@ -1205,6 +1272,108 @@ def perform_backup(
         part.unlink(missing_ok=True)
         raise
     return destination
+
+
+def _dump_encrypted(
+    dump_argv: list[str], part: Path, recipients: Path, env: dict, deadline: float
+) -> str:
+    """Run pg_dump into `age` (whose output is `part`) and into pg_restore --list
+    at once, and return the listing. Raises CalledProcessError for a process that
+    failed and TimeoutExpired, naming the stage, when the deadline ran out.
+
+    pg_restore stops reading once it has the table of contents, which is at the
+    start of a streamed custom-format archive, so its pipe closing early is the
+    ordinary case and the rest goes to `age` alone.
+    """
+    import subprocess
+    import threading
+
+    timeout = _remaining(deadline, "pg_dump")
+    stage = {"now": "pg_dump"}
+    killed = threading.Event()
+    processes: list[subprocess.Popen] = []
+
+    def kill_all() -> None:
+        # Only a process still running is a timeout: the timer can fire in the moment
+        # after the last one exited, and a finished dump is not a killed one.
+        running = [process for process in processes if process.poll() is None]
+        if running:
+            killed.set()
+        for process in running:
+            process.kill()
+
+    listing: list[bytes] = []
+    timer = None
+    broken = False
+    with part.open("wb") as sink:
+        try:
+            encrypt = subprocess.Popen(
+                ["age", "--encrypt", "--recipients-file", str(recipients)],
+                stdin=subprocess.PIPE,
+                stdout=sink,
+                env=env,
+            )
+            processes.append(encrypt)
+            lister = subprocess.Popen(
+                list(LIST_ARCHIVE), stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env
+            )
+            processes.append(lister)
+            dump = subprocess.Popen(dump_argv, stdout=subprocess.PIPE, env=env)
+            processes.append(dump)
+            reader = threading.Thread(
+                target=lambda: listing.append(lister.stdout.read()), daemon=True
+            )
+            reader.start()
+            timer = threading.Timer(timeout, kill_all)
+            timer.daemon = True
+            timer.start()
+            listening = True
+            while chunk := dump.stdout.read(_CHUNK):
+                encrypt.stdin.write(chunk)
+                if listening:
+                    try:
+                        lister.stdin.write(chunk)
+                    except BrokenPipeError:
+                        listening = False
+            encrypt.stdin.close()
+            try:
+                lister.stdin.close()
+            except BrokenPipeError:
+                pass
+            for name, process in (("pg_dump", dump), ("age", encrypt), ("pg_restore", lister)):
+                stage["now"] = name
+                process.wait()
+            reader.join()
+            # On the disk before the rename makes it the dump a restore trusts.
+            os.fsync(sink.fileno())
+        except BrokenPipeError:
+            # age went away mid-stream (a key it refused, a full volume). Its own exit
+            # status says why; the other two are stopped rather than left writing.
+            broken = True
+        finally:
+            if timer is not None:
+                timer.cancel()
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                process.wait()
+    if killed.is_set():
+        raise subprocess.TimeoutExpired(cmd=[stage["now"]], timeout=timeout)
+    if broken:
+        raise subprocess.CalledProcessError(encrypt.returncode or 1, ["age"])
+    for name, process in (("pg_dump", dump), ("age", encrypt), ("pg_restore", lister)):
+        if process.returncode != 0:
+            raise subprocess.CalledProcessError(process.returncode or 1, [name])
+    return b"".join(listing).decode("utf-8", errors="replace")
+
+
+def _fsync_directory(directory: Path) -> None:
+    """Make a rename in `directory` durable."""
+    descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _remaining(deadline: float, what: str) -> float:
@@ -1216,19 +1385,6 @@ def _remaining(deadline: float, what: str) -> float:
     if left <= 0:
         raise subprocess.TimeoutExpired(cmd=[what], timeout=0)
     return left
-
-
-def _pg_restore_list(archive: Path, env: dict, timeout: float | None = None) -> str:
-    import subprocess
-
-    return subprocess.run(
-        ["pg_restore", "--list", str(archive)],
-        check=True,
-        capture_output=True,
-        text=True,
-        env=env,
-        timeout=timeout,
-    ).stdout
 
 
 # One entry of a custom-format archive's table of contents, as pg_restore

@@ -636,9 +636,9 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
   assert.doesNotMatch(lib, LEAKS);
   assert.doesNotMatch(lib, /watchPosition/);
   const app = code(appSource());
-  const start = app.indexOf("const useMyLocation");
+  const start = app.indexOf("const locateMe");
   const end = app.indexOf("}, [gate, geoEnv", start);
-  assert.ok(start > 0 && end > start, "the useMyLocation body is found");
+  assert.ok(start > 0 && end > start, "the locateMe body is found");
   assert.doesNotMatch(app.slice(start, end), LEAKS);
   // The whole of App, not only that body (A28, A29): no log, send or other channel anywhere in it.
   // Storage is the one term left out: tabSession() is the sign-in round trip's, on purpose (signIn.ts).
@@ -698,9 +698,10 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /if \(!\(here && pointsRef\.current\.includes\(here\.point\)\)\) setHere\(result\.fix\);/,
     /const lastHere = \(\): LonLat \| null => here\?\.point \?\? \(goStartRef\.current\.kind === "here" \? goStartRef\.current\.point : null\);/,
     // A Mass Ride or Group Ride link (v0.7.0): the others on the route, shared only after the rider says yes there.
-    /^\s*here=\{rideView\?\.rider\?\.point \?\? \(here \? here\.point : null\)\}$/,
+    // The rider's fix first, from its store (app/LiveMap.tsx LiveRiderPoint), then Go's.
+    /^\s*<LiveRiderPoint ride=\{rideRider\} roam=\{null\} fallback=\{here \? here\.point : null\}>$/,
     // A broadcast from Roam (2026-10-22): the same, the roaming rider's fix before Go's.
-    /^\s*here=\{rideView\?\.rider\?\.point \?\? roamRider\?\.point \?\? \(here \? here\.point : null\)\}$/,
+    /^\s*<LiveRiderPoint ride=\{rideRider\} roam=\{roamRider\} fallback=\{here \? here\.point : null\}>$/,
   ];
   for (const rule of allowed) assert.ok(lines.some((line) => rule.test(line)), `still used: ${rule.source}`);
   for (const line of lines) assert.ok(allowed.some((rule) => rule.test(line)), `unexpected use: ${line.trim()}`);
@@ -709,8 +710,12 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)|^\s*routedLoop, copyLink, linkNote, shareImage|const \{ copyLink, linkNote, shareImage,|linkNote: string;|const \{ save, canShare, ready, shareRoute, shareKeep, onShareKeep, shareSaid, linkNote \} = props;|linkNote \? "share-link-note"|const note = linkNote \? " share-link-note" : "";|\{canShare && ready && linkNote && \(|linkNote=\{linkNote\}/;
   for (const line of app.split("\n").filter((l) => /\blinkNote\b/.test(l))) assert.match(line, noteUse, line.trim());
   // The circle round the located point goes to the map's accuracy prop and nowhere else.
-  const circleUse = /const hereCircle =|accuracy=\{riding \? rideCircle : roaming \? \(roamRider \? \{ centre: roamRider\.point, radiusM: roamRider\.accuracyM \} : null\) : hereCircle\}/;
+  const circleUse = /const hereCircle =|^\s*hereCircle=\{hereCircle\}$/;
   for (const line of app.split("\n").filter((l) => /\bhereCircle\b/.test(l))) assert.match(line, circleUse, line.trim());
+  // LiveMap hands it to the map's accuracy prop off the bike, and to nothing else.
+  const live = code(read("../app/LiveMap.tsx"));
+  for (const line of live.split("\n").filter((l) => /\bhereCircle\b/.test(l) && !/^\s*(hereCircle,|hereCircle: )/.test(l)))
+    assert.match(line, /const accuracy = riderFrom \? \(rider \? \{ centre: rider\.point, radiusM: rider\.accuracyM \} : null\) : hereCircle;/, line.trim());
   assert.doesNotMatch(app, /downloadGpx\([^)]*(here|fromHere|linkNote)/);
   assert.doesNotMatch(app, /(encodePlan|linkToCopy)\([^)]*(here|fromHere|linkNote)/);
   assert.doesNotMatch(app, /\.setItem\(/, "App writes no storage itself");
@@ -727,21 +732,21 @@ const body = (text: string, from: string, to: string) => {
 
 test("App: the look-up's answer is placed with the ride read after the wait and the list's choice", () => {
   const app = code(appSource());
-  const useMy = body(app, "const useMyLocation", "}, [gate, geoEnv");
-  const waited = useMy.indexOf("await locate(geoEnv)");
-  const ride = useMy.indexOf("const ride = rideRef.current;");
+  const locateBody = body(app, "const locateMe", "}, [gate, geoEnv");
+  const waited = locateBody.indexOf("await locate(geoEnv)");
+  const ride = locateBody.indexOf("const ride = rideRef.current;");
   assert.ok(waited > 0 && ride > waited, "the ride is read after the wait (S2, AW2)");
   assert.match(
-    useMy,
+    locateBody,
     /placeFix\(result, pointsRef\.current, \{ loop: loopStops\(ride\.preset, ride\.dials\.loop\), choice \}\)/,
     "the fresh points, the fresh loop flag and the choice (S3, AW3)",
   );
   // Plan's From and To put their box away first (Plan streamline, 2026-10-17).
-  assert.match(app, /onLocate: \(choice\) => \{\s*setChanging\(null\);\s*afterPick\.current = variant;\s*void useMyLocation\(choice\);\s*\},/, "App passes the list's choice on (P6)");
+  assert.match(app, /onLocate: \(choice\) => \{\s*setChanging\(null\);\s*afterPick\.current = variant;\s*void locateMe\(choice\);\s*\},/, "App passes the list's choice on (P6)");
   // A press while busy is answered (AW8); a refusal is cleared and set again, so a repeat is said again (N4).
-  assert.match(useMy, /if \(press === null\) \{\s*announce\(FINDING_LOCATION\);\s*return;\s*\}/);
+  assert.match(locateBody, /if \(press === null\) \{\s*announce\(FINDING_LOCATION\);\s*return;\s*\}/);
   assert.match(
-    useMy,
+    locateBody,
     /if \("refuse" in placed\) \{\s*setNotice\(null\);\s*locateNoticeTimer\.current = window\.setTimeout\(\(\) => \{\s*if \(gate\.latest\(press\)\) setNotice\(placed\.refuse\);\s*\}, 150\);\s*return;/,
   );
   // The spoken Copy link text goes with the plan it was about (L4).

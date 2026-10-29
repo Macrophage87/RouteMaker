@@ -22,11 +22,11 @@ export default [
     },
     linterOptions: { reportUnusedDisableDirectives: "off" },
     plugins: { "react-hooks": reactHooks },
-    // Warnings while the existing reports are worked through (the 2026-10-29 review): reported on
-    // every run, failing nothing yet. rules-of-hooks reports only `useMyLocation`, a plain function
-    // named like a hook (App.tsx, app/Planner.tsx); renamed, it can be an error.
+    // rules-of-hooks is an error, so `npm run lint` fails CI on a hook called conditionally or in a
+    // loop (the owner, 2026-10-29). exhaustive-deps stays a warning while the existing reports are
+    // worked through (the 2026-10-29 review): reported on every run, failing nothing yet.
     rules: {
-      "react-hooks/rules-of-hooks": "warn",
+      "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
     },
   },

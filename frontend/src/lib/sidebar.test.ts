@@ -1041,7 +1041,7 @@ test("the skip link and its target stay: #route-planner is the aside, and every 
   assert.match(app.slice(region, app.indexOf("<aside")), /\{status\.kind === "ok" && routeSaid && <p>\{routeSaid\}<\/p>\}/);
   assert.match(app, /<div className="status-shown" aria-hidden="true">/);
   // Go's bar is before the map and the panel, as it is at the top of the screen (reading order = visual order).
-  assert.ok(app.indexOf("<GoTopBar") < app.indexOf("<MapView") && app.indexOf("<MapView") < app.indexOf("<aside"));
+  assert.ok(app.indexOf("<GoTopBar") < app.indexOf("<LiveMap") && app.indexOf("<LiveMap") < app.indexOf("<aside"));
   // "No route yet." is read where it stands, and is not in the live region (recheck N-new-2).
   assert.doesNotMatch(app.slice(region, app.indexOf("<aside")), /No route yet/);
   const shownCopy = app.slice(app.indexOf('<div className="status-shown"'));

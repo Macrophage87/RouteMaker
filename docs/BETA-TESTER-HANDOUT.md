@@ -292,7 +292,7 @@ the route goes to its top by way of its bottom.
 
 - Language: Settings, Display, Language. English and Spanish cover the whole app; 19 more of
   DC's languages cover Go and Ride (Plan stays in English). They are first drafts, not yet
-  checked by native speakers, so the app opens in one only once you pick it there. Tell us
+  checked by native speakers. A phone set to one opens Go and Ride in it; pick another there. Tell us
   about any wording that is wrong.
 - Riding speed: in Settings, from 8 to 30 mph (13 to 48 km/h), if you ride faster or slower than
   the ride type assumes. Times and arrival clocks follow it. Mass Ride and the share bikes keep

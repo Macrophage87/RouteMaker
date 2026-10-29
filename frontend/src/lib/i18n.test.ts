@@ -16,10 +16,11 @@ import {
   markPageLanguage,
   readLanguageChoice,
   rightToLeft,
+  catalogOf,
+  loadLanguage,
   setCatalogForTest,
   setLanguageForTest,
   clockLocale,
-  FROM_DEVICE,
   startLanguage,
   speechLang,
   t,
@@ -37,6 +38,18 @@ import { REPORT_KINDS } from "./report311.ts";
 import { kindLabel, kindShown } from "./report311Log.ts";
 import { CUISINE_WORDS, foodKindText, type FoodPlace } from "./food.ts";
 import { MASS_BANDS } from "../massStyle.js";
+
+test("Spanish is fetched on choosing it, like every other language: no catalog is in the startup script", async () => {
+  assert.equal(catalogOf("es"), null, "not there until loadLanguage");
+  const i18n = readFileSync(new URL("./i18n.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(i18n, /^import .*\.\.\/i18n\//m);
+  assert.match(i18n, /es: \(\) => import\("\.\.\/i18n\/es\.ts"\)\.then\(\(m\) => m\.ES\),/);
+  await loadLanguage("es");
+  assert.equal(catalogOf("es"), ES);
+  // The Featured post page loads it too, before its labels are worded.
+  const post = readFileSync(new URL("../post/main.ts", import.meta.url), "utf8");
+  assert.match(post, /language\(\) === "es" \? loadLanguage\("es"\) : Promise\.resolve\(\)\)\s*\.then\(\(\) => import\("\.\/postPage\.tsx"\)\)/);
+});
 
 const SRC = fileURLToPath(new URL("..", import.meta.url));
 
@@ -104,15 +117,16 @@ test("the language: the rider's choice, else the device's first language the app
   assert.equal(speechLang("en"), "en-US");
 });
 
-test("the app starts in the rider's choice, else the phone's language only for English and Spanish: the drafts wait to be chosen", () => {
+test("the app starts in the rider's choice, else the phone's language, drafts included (the owner, 2026-10-29)", () => {
   assert.equal(startLanguage("", "es"), "es");
   assert.equal(startLanguage("", "en"), "en");
-  assert.equal(startLanguage("", "fr"), "en", "a Claude-drafted language is not turned on by the phone");
-  assert.equal(startLanguage("", "ar"), "en");
+  assert.equal(startLanguage("", "fr"), "fr", "a French phone opens Go and Ride in French, with no Settings step");
+  assert.equal(startLanguage("", "ar"), "ar");
   assert.equal(startLanguage("fr", "en"), "fr", "chosen in Settings, a draft is used");
-  assert.equal(startLanguage("en", "es"), "en");
-  assert.equal(startLanguage("", deviceLanguage(["fr-FR", "es-MX"], FROM_DEVICE)), "es", "a French phone with Spanish second opens in Spanish");
-  assert.equal(startLanguage("", deviceLanguage(["fr-FR"], FROM_DEVICE)), "en");
+  assert.equal(startLanguage("en", "fr"), "en", "a saved English choice wins over a draft phone");
+  assert.equal(startLanguage("es", "ar"), "es");
+  assert.equal(startLanguage("", deviceLanguage(["fr-FR", "es-MX"])), "fr", "the phone's first language the app has");
+  assert.equal(startLanguage("", deviceLanguage(["de-DE"])), "en");
 });
 
 test("arrival clocks: the phone's own 12- or 24-hour clock when it reads the app's language, else the app's language", () => {
@@ -445,4 +459,10 @@ test("Plan is marked English and left to right for the 19 languages, not for Eng
   assert.deepEqual(planLanguageAttributes("en"), {});
   assert.deepEqual(planLanguageAttributes("es"), {});
   for (const lang of ["ar", "fa", "ps", "th", "zh"] as const) assert.deepEqual(planLanguageAttributes(lang), { lang: "en-US", dir: "ltr" });
+});
+
+test("Plan's panel and map bar carry the English mark, so a draft phone's Plan is marked English and left to right", () => {
+  const app = readFileSync(join(SRC, "App.tsx"), "utf8");
+  assert.match(app, /className="plan-map-bar"\s+\{\.\.\.planLanguageAttributes\(\)\}/, "the map bar");
+  assert.match(app, /aria-label=\{t\("Route planner"\)\}\s+\{\.\.\.\(goMode \? \{\} : planLanguageAttributes\(\)\)\}/, "the panel, outside Go");
 });

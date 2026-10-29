@@ -87,7 +87,8 @@ jobs:
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "$VERSION_CODENAME")-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
-          sudo apt-get install -y binutils libproj-dev gdal-bin libgeos-dev luajit lua5.4 "postgresql-client-$PG_MAJOR"
+          # age: the nightly dump is encrypted through it, and the backup tests run the real one.
+          sudo apt-get install -y binutils libproj-dev gdal-bin libgeos-dev luajit lua5.4 age "postgresql-client-$PG_MAJOR"
           # Ahead of /usr/bin, whose pg_wrapper picks the newest client installed,
           # and the runner image may carry a newer one.
           echo "/usr/lib/postgresql/$PG_MAJOR/bin" >> "$GITHUB_PATH"
@@ -111,8 +112,8 @@ jobs:
       - name: Front end
         working-directory: frontend
         run: npm ci && npm run typecheck && npm test && npm run build
-      # The React hooks rules (frontend/eslint.config.js). Warnings for now: they are listed here and
-      # fail nothing; a rule raised to an error fails the step.
+      # The React hooks rules (frontend/eslint.config.js). rules-of-hooks is an error and fails the
+      # step; exhaustive-deps is still a warning, listed here and failing nothing.
       - name: Front end hooks lint
         run: npm --prefix frontend run lint
       # The same tests and build again, the way every beta path runs them: the shared script,
