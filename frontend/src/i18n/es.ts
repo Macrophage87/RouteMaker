@@ -103,6 +103,13 @@ export const ES: Readonly<Record<string, string>> = {
   "{n} feet": "{n} pies",
   "1 mile": "1 milla",
   "{n} miles": "{n} millas",
+  // The planner's figures said with the units in words (lib/format.ts formatDistanceSpoken and its kin).
+  "1 mile ({km} kilometers)": "1 milla ({km} kilómetros)",
+  "{miles} miles ({km} kilometers)": "{miles} millas ({km} kilómetros)",
+  "1 foot ({meters} meters)": "1 pie ({meters} metros)",
+  "{feet} feet ({meters} meters)": "{feet} pies ({meters} metros)",
+  "{time} more": "{time} más",
+  "{time} less": "{time} menos",
   "New route found.": "Se encontró una ruta nueva.",
   "New route found. Make a U-turn.": "Se encontró una ruta nueva. Dé la vuelta en U.",
   "New route found. Keep going ahead.": "Se encontró una ruta nueva. Siga adelante.",
@@ -822,6 +829,10 @@ export const ES: Readonly<Record<string, string>> = {
   "Choose an app to open the GPX file.": "Elija una app para abrir el archivo GPX.",
   "Could not hand the GPX file on. Is an app that opens GPX files installed?":
     "No se pudo pasar el archivo GPX. ¿Tiene instalada una app que abra archivos GPX?",
+  "Choose an app to open the file.": "Elija una app para abrir el archivo.",
+  "Could not hand the file on. Is an app that opens it installed?": "No se pudo pasar el archivo. ¿Tiene instalada una app que lo abra?",
+  "This version of the RouteMaker app cannot hand on this file. Update it, or download it from the website.":
+    "Esta versión de la app RouteMaker no puede pasar este archivo. Actualícela o descárguelo desde el sitio web.",
   "Wahoo connected. Send to Wahoo is now beside Download in the GPX section.":
     "Wahoo conectado. Enviar a Wahoo está ahora junto a Descargar en la sección GPX.",
   "Wahoo not connected: you did not allow it at Wahoo.": "Wahoo sin conectar: no lo permitió en Wahoo.",
@@ -1417,6 +1428,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Plan it?": "¿Planearla?",
   "Plan it": "Planearla",
   "Try again": "Intentar de nuevo",
+  "Route problem": "Problema con la ruta",
   // ---- Errors and notices: what went wrong and what to do (P11; lib/api.ts, lib/appMode.ts, lib/appWorker.ts, lib/roam.ts) ----
   "No route joins these points. Try moving a point or another ride type.": "Ninguna ruta une estos puntos. Mueva un punto o pruebe otro tipo de recorrido.",
   "No route to {place} with this ride type. Try another ride type.": "No hay ruta a {place} con este tipo de recorrido. Pruebe otro tipo de recorrido.",

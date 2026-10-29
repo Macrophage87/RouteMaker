@@ -816,7 +816,7 @@ const SCROLL_BOXES = `(() => { const focusable = 'a[href], button:not([disabled]
   const distance = await p.eval("document.querySelector('.summary .stat-distance dd').textContent");
   const said = await p.eval("window.__said");
   check("routes: the arrow key chooses the next, and the summary shows its figures", JSON.stringify(chosen) === "[false,true,false]" && /7\.2 mi/.test(distance), `${JSON.stringify(chosen)} ${distance}`);
-  check("routes: choosing plans nothing and is announced once, as chosen, with its place", p.routeRequests === requests && said.length === 1 && /^Route 2 of 3 chosen: 7\.2 mi/.test(said[0]) && !/Route planned/.test(said[0]), JSON.stringify(said));
+  check("routes: choosing plans nothing and is announced once, as chosen, with its place", p.routeRequests === requests && said.length === 1 && /^Route 2 of 3 chosen: 7\.2 miles/.test(said[0]) && !/Route planned/.test(said[0]), JSON.stringify(said));
   await p.shot(`${SHOTS}/candidates.png`, await p.eval("(() => { const e = document.querySelector('fieldset.candidates'); e.scrollIntoView({ block: 'start' }); const r = e.getBoundingClientRect(); return { x: Math.max(0, r.left), y: Math.max(0, r.top), width: Math.round(r.width), height: Math.min(Math.round(r.height), innerHeight - Math.max(0, r.top)) }; })()"));
   await p.close();
 }
@@ -1623,7 +1623,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await p.eval("(() => { const h = [...document.querySelectorAll('h3')].find((x) => x.textContent === 'Elevation and climbs'); h.nextElementSibling.querySelector('summary').click(); return true; })()");
   await sleep(300);
   const first = await axNode(p, ".pc-plot");
-  check("chart: the picture is one slider, named for what it shows, its value text the spoken sentence (a path said as the map has it)", first?.role === "slider" && first.name === "Elevation and rolling stress along the route" && /^Mile 0\.0: elevation \d+ ft \(\d+ m\), level, traffic-free path\. Mile around: 0\.6 calm miles per mile, LTS 1 to 2 level\. Next junction to watch: higher stress, mile 1\.2\.$/.test(first.valuetext ?? ""), JSON.stringify(first));
+  check("chart: the picture is one slider, named for what it shows, its value text the spoken sentence (a path said as the map has it)", first?.role === "slider" && first.name === "Elevation and rolling stress along the route" && /^Mile 0\.0: elevation \d+ feet \(\d+ meters\), level, traffic-free path\. Mile around: 0\.6 calm miles per mile, LTS 1 to 2 level\. Next junction to watch: higher stress, mile 1\.2\.$/.test(first.valuetext ?? ""), JSON.stringify(first));
   // Plan streamline (2026-10-17): the summary and the keys are out of sight in Plan too, so both are its description.
   check("chart: its description is the summary, then the key hint", /^Over 2\.9 mi/.test(first?.description ?? "") && /Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift\+C/.test(first?.description ?? ""), (first?.description ?? "").slice(0, 200));
   check("chart: the summary before it, in miles and feet first", /^Over 2\.9 mi \(4\.7 km\), elevation runs from 328 ft \(100 m\) to 408 ft \(124 m\)\./.test(await p.eval("document.querySelector('.pc-summary').textContent")));
@@ -1638,12 +1638,12 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   for (let i = 0; i < 3; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(150);
   const three = await axNode(p, ".pc-plot");
-  check("chart: three Right arrows read Mile 0.3 with its elevation, grade and stress", /^Mile 0\.3: elevation \d+ ft \(\d+ m\), level, traffic-free path\. Mile around: /.test(three?.valuetext ?? ""), three?.valuetext);
+  check("chart: three Right arrows read Mile 0.3 with its elevation, grade and stress", /^Mile 0\.3: elevation \d+ feet \(\d+ meters\), level, traffic-free path\. Mile around: /.test(three?.valuetext ?? ""), three?.valuetext);
   check("chart: and put a marker on the map, hidden from a screen reader (the sentence is the announcement)", await p.eval("(() => { const m = document.querySelector('.scrub-marker'); return !!m && m.getAttribute('aria-hidden') === 'true' && m.tabIndex < 0; })()"));
   for (let i = 0; i < 9; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(150);
   const climb = await axNode(p, ".pc-plot");
-  check("chart: on the climb the sentence says the grade, as Mile 1.2: grade 6%", /^Mile 1\.2: elevation \d+ ft \(\d+ m\), grade 6%, LTS 2\. Mile around: /.test(climb?.valuetext ?? ""), climb?.valuetext);
+  check("chart: on the climb the sentence says the grade, as Mile 1.2: grade 6%", /^Mile 1\.2: elevation \d+ feet \(\d+ meters\), grade 6%, LTS 2\. Mile around: /.test(climb?.valuetext ?? ""), climb?.valuetext);
   await p.shot(`${SHOTS}/chart_stress_focused.png`);
   await p.key("End", "End", 35);
   await sleep(100);
@@ -1655,7 +1655,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   check("chart: a key it takes does not move the focus", await p.eval("document.activeElement?.classList.contains('pc-plot')"), await focused(p));
   await p.key("c", "KeyC", 67);
   await sleep(100);
-  check("chart: C jumps to the next climb (a11y N4)", /^Mile 1\.1: elevation \d+ ft \(\d+ m\), grade 6%, LTS 2\. Mile around: /.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
+  check("chart: C jumps to the next climb (a11y N4)", /^Mile 1\.1: elevation \d+ feet \(\d+ meters\), grade 6%, LTS 2\. Mile around: /.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
   await p.key("Home", "Home", 36);
   for (let i = 0; i < 3; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(100);
@@ -1777,7 +1777,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await sleep(150);
   const elevAx = await axNode(p, ".pc-chart-elevation .pc-plot");
   check("mass chart: and on to the elevation's slider, which says the elevation (feet first) and the grade there",
-    (await p.eval("document.activeElement === document.querySelector('.pc-chart-elevation .pc-plot')")) && elevAx?.name === "Elevation along the route" && /^Mile 1\.2: elevation \d+ ft \(\d+ m\), grade 6%\.$/.test(elevAx.valuetext ?? ""), JSON.stringify(elevAx));
+    (await p.eval("document.activeElement === document.querySelector('.pc-chart-elevation .pc-plot')")) && elevAx?.name === "Elevation along the route" && /^Mile 1\.2: elevation \d+ feet \(\d+ meters\), grade 6%\.$/.test(elevAx.valuetext ?? ""), JSON.stringify(elevAx));
   await p.eval("document.querySelector('.pc-plot').focus(); true");
   await sleep(100);
   await p.key("i", "KeyI", 73);
@@ -4138,7 +4138,10 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await sleep(1500);
   const off = await p.eval(`(() => ({ online: navigator.onLine, bar: document.querySelector('.app-status .app-offline')?.textContent,
     said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) }))()`);
-  check("offline: the installed app's shell opens with no network, from the worker", shell && workers.length === 1, JSON.stringify({ shell, workers: workers.length }));
+  // At least one, not exactly one: after the two navigations above (sw.js is fetched afresh on each),
+  // Chromium can briefly list a second target for the same registration (an installing or redundant
+  // version). Every one listed was taken offline by the loop above.
+  check("offline: the installed app's shell opens with no network, from the worker", shell && workers.length >= 1, JSON.stringify({ shell, workers: workers.length }));
   check("offline: the top of the planner says so, and it is said once, politely",
     off.online === false && /^You are offline\. RouteMaker still opens, and routes you kept for offline open from Save & load\.$/.test(off.bar ?? "") && off.said.filter((t) => t.startsWith("You are offline.")).length === 1, JSON.stringify(off));
 
@@ -4647,8 +4650,11 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   check("go: the reading order follows the screen, top to bottom and left to right on a row", order.count >= 10 && order.bad.length === 0, JSON.stringify(order));
   // Plan from the switch: the full planner and its bottom bar, said politely, kept for the tab.
   await p.eval("window.__said = []; for (const live of document.querySelectorAll('[role=status], [aria-live=polite]')) new MutationObserver(() => { const t = live.textContent.trim(); if (t) window.__said.push(t); }).observe(live, { childList: true, subtree: true, characterData: true }); true");
-  await p.eval("[...document.querySelectorAll('nav.go-top .mode-button')].find((x) => x.textContent === 'Plan').click(); true");
+  await p.eval("(() => { const b = [...document.querySelectorAll('nav.go-top .mode-button')].find((x) => x.textContent === 'Plan'); b.focus(); b.click(); return true; })()");
   await sleep(600);
+  // The button the focus was on goes with Go's bar: Plan's switch takes it, on Plan (the 2026-10-29 a11y review).
+  const planFocus = await p.eval("({ pressed: document.activeElement?.getAttribute('aria-pressed'), name: document.activeElement?.textContent, inSwitch: !!document.activeElement?.closest('.mode-switch') })");
+  check("go: pressing Plan on Go's switch puts the focus on Plan's own switch, on Plan, not the page body", planFocus.inSwitch && planFocus.pressed === "true" && planFocus.name === "Plan", JSON.stringify(planFocus));
   const plan = await p.eval(`({ mode: ${modeNow}, bar: [...document.querySelectorAll('.bar-button')].map((x) => x.textContent.trim()), top: !!document.querySelector('nav.go-top'), tab: sessionStorage.getItem('routemaker.tab-mode'), said: window.__said.slice(), assertive: document.querySelectorAll('[aria-live=assertive]:not(:empty), [role=alert]:not(:empty)').length })`);
   check("go: pressing Plan shows the full planner with its bottom bar, the tab remembers it, and Go's Brief announcements leave the narration out",
     plan.mode === "Plan" && plan.bar.length === 5 && !plan.top && plan.tab === "plan" && !plan.said.some((t) => t.startsWith("Plan: the full planner")) && plan.assertive === 0, JSON.stringify(plan));
@@ -4661,6 +4667,13 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   await p.eval("([...document.querySelectorAll('.mode-switch .mode-button')].find((x) => x.textContent === 'Go' && x.getClientRects().length) ?? { click() { throw new Error('no Go: ' + JSON.stringify([...document.querySelectorAll('.mode-switch')].map((g) => [g.className, g.parentElement?.className, g.getClientRects().length, !!g.closest('[hidden]'), document.querySelector('.panel')?.className]))); } }).click(); true");
   await sleep(500);
   check("go: the choice is remembered across a reload, and Go comes back with the switch", kept === "Plan" && (await p.eval(modeNow)) === "Go", JSON.stringify({ kept }));
+  // And back: Plan's switch goes, Go's bar takes the focus on Go.
+  await p.eval("(() => { const b = [...document.querySelectorAll('.mode-switch .mode-button')].find((x) => x.textContent === 'Plan' && x.getClientRects().length); b.focus(); b.click(); return true; })()");
+  await sleep(500);
+  await p.eval("(() => { const b = [...document.querySelectorAll('.mode-switch .mode-button')].find((x) => x.textContent === 'Go' && x.getClientRects().length); b.focus(); b.click(); return true; })()");
+  await sleep(500);
+  const goFocus = await p.eval("({ pressed: document.activeElement?.getAttribute('aria-pressed'), name: document.activeElement?.textContent, inBar: !!document.activeElement?.closest('nav.go-top .mode-switch') })");
+  check("go: pressing Go on Plan's switch puts the focus on Go's bar, on Go", goFocus.inBar && goFocus.pressed === "true" && goFocus.name === "Go", JSON.stringify(goFocus));
   // Every control within two presses: Go's Settings holds Reports and Save & load above the tabs (P12: no Plan, the switch is beside it).
   await p.eval("document.querySelector('.go-menu').click(); true");
   await sleep(400);

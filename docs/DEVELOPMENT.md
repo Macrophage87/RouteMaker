@@ -235,6 +235,15 @@ caused by a Django the stack does not run.
 In that case `tests/test_native_environment.py` also fails, naming each pin the
 interpreter does not have; it does not run first, so read its failure before
 the others. CI installs the same two files.
+pytest, pytest-django and ruff are pinned exactly in `requirements-dev.txt`
+(no image carries them), so a new ruff rule or format style arrives as a
+Dependabot pull request, not as a red main. CI lints and format-checks
+`src tests scripts mcp`, runs `makemigrations --check` (a model change with no
+migration fails it) and the phone app's Node tests (`mobile/`, which pin parts of
+the front end), and cancels a pull request's older run when a newer push lands.
+`tests/test_mutants_apply.py` runs every `scripts/mutants_*.py --check` (a text
+match, no tests): a change that rewrites a line a mutant targets fails there, and
+re-anchors or drops that mutant in the same change.
 
 Then the database and the suite, from the checkout:
 
@@ -298,6 +307,12 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /
   container of the check `com.docker.compose.project=isect`, and remove them after.
 - `frontend/.npmrc` turns off npm's update notifier, which otherwise asks the
   registry for npm's latest version on every run in a fresh container.
+- `npm run lint` is ESLint with the React hooks rules alone (`eslint.config.js`):
+  a hook called conditionally, and an effect, memo or callback whose dependency
+  list leaves out a value it reads. Both are warnings while the existing reports
+  are worked through, so CI lists them and fails on neither. It parses with
+  Babel's parser, since typescript-eslint does not support the TypeScript the
+  project builds with.
 - `npm run build` typechecks (`tsc --noEmit`) and then builds `dist/`, which
   is not committed; `npm run typecheck` is the first half alone.
 - `npm run dev` serves the UI with hot reload and proxies `/api`, `/tiles` and
@@ -4545,8 +4560,9 @@ near the map centre (`/api/geocode?...&lat=..&lon=..`). What keeps it out of the
   upstream error line (a 502 while the api restarts, a 504) records the whole request; the whole prefix
   is covered (v0.15.0), so a new endpoint with a place in it needs no template change. Every other
   path's upstream errors still reach the host's error log; none of them has a location in a query.
-  tests/test_beta_overlay.py pins the format, both servers' access log, and that every
-  `/api/...?` path in the front end is one of the two.
+  The 311 log's website lookup (`/api/report311/where`) takes its point in a POST body, so no
+  request line carries it. tests/test_beta_overlay.py pins the format, both servers' access log,
+  and that every `/api/...?` path in the front end, digits and underscores included, is covered.
 - **Tile paths** (`/tiles/stress/{z}/{x}/{y}.pbf`) are logged by nginx and gunicorn and show the
   area viewed, to about a mile [2 km] at zoom 14. That is true of any map pan and is
   not a position fix.
@@ -4555,7 +4571,9 @@ Open: Photon's own request logging is unverified (`docker logs photon` after one
 stack; a log4j override if queries show). Whether Valhalla logs a request on an error path (no
 suitable edges, say) is unverified, and so is the app's own log of Valhalla's refusal text (src/core/routing.py logs it
 when a router refuses a route request or a trace_attributes call); `"do_not_track": true` in the route request would be belt and
-braces. A `Permissions-Policy: geolocation=(self)` header at the edge is a separate deploy change.
+braces. The app's pages carry `Permissions-Policy: geolocation=(self), camera=(), microphone=(),
+payment=(), usb=()` (the Caddyfile, and the beta's nginx template the same,
+tests/test_beta_overlay.py), so only the site itself, never a frame, can ask for location.
 
 ## Contraflow on the no-trail graph
 
@@ -4898,6 +4916,22 @@ classifier and `road_*` follow the solo graphs (they are one per way), so on a M
 Ride the junction model reads those streets two-way: it can only overstate a
 junction there. 181 ways (13.8 mi) on the 09-25 extract, 21 of them (0.9 mi) LTS 3
 or worse.
+
+### What a screen reader hears from the planner (the 2026-10-29 a11y review)
+
+- **Units in words.** The route's sentence (`announceRoute`), the re-plan toast's spoken half
+  (`replannedSaid`) and the elevation sliders' value text (`readingAt`, `elevationReading`) use
+  `lib/spokenFigures.ts`: "12.3 miles (19.8 kilometers), 1 hour 5 minutes moving time, climb 340 feet
+  (104 meters)", the same figures as on screen. "mi", "h" and a bare "m" were read as letters or as minutes.
+- **An opened GPX file is said once.** While GpxPanel fits the plan to the file's track (`onFitting`),
+  App holds the route's sentence back, and the round-by-round progress line sits outside the panel's
+  status region. Only the fitted route is said.
+- **A route error is read once.** The error box is a group named by its title, and its words are the
+  alert. App focuses the box (from Go's Where to?, or back from a sheet), and the focus reads only
+  the title, not the whole error a second time.
+- **The Go/Plan switch keeps the focus.** Each mode has its own copy of the switch, so a press removes
+  the button that had the focus. The new mode's switch then focuses its pressed button (`ModeSwitch`,
+  only within a second of the press and only where it shows).
 
 ### The junction list and the description, for a screen reader
 
@@ -6502,6 +6536,17 @@ empty street (the suite's toy extracts, `tests/conftest.py`). On the 2026-10-03 
 overall (6.62 mi of rows, K St to Dupont Circle posted 20 and 25 mph is LTS 3) and 72% north
 of R St; with the corridor about 67% and 99%. Tests: `tests/test_lts_sentinels.py`, and the
 end-to-end pass, refuse and missing-street cases in `tests/test_pipeline_end_to_end.py`.
+
+**The rating rules (review 2026-10-29).** `pipeline.run.assert_rating_rules`, also at
+VALIDATE_SEGMENTS, reads three rules back from the staging table with one query each
+(`pipeline.lts_sentinels`): no `road_urban IS FALSE` road row at tier 1 without an override,
+less those whose tags exempt them from the rural floor (`stress.rural_floor_applies`: closed
+to cars, a separated track); no row a Montgomery 5 set (the agency rule or a `moco-lts5-*`
+row) at anything but 4 with `stress_half`, less a way our own formula puts at Avoid (which
+keeps Avoid, `agency_lts.apply` and `overrides.stress_adjustment`); no row with an MDOT SHA 5 in `stress_ratings`
+still drawn with no `bike_access_reason`, less the ways `prohibited_closures` listed as
+left open. Not run on a resumed attempt, which has no ways. Tests: the rating-rule cases in
+`tests/test_lts_sentinels.py`.
 
 ## Arterial calibration and the override re-match (2026-10-04)
 

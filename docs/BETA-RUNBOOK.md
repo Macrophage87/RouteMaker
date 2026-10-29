@@ -80,8 +80,9 @@ export RM_STATE="$HOME/routemaker-beta-state"
 # on one line, so an existing path stops that command (a `for` loop's status alone would not).
 rm_absent() { ok=1; [ "$#" -gt 0 ] || ok=0; for p in "$@"; do if [ -z "$p" ]; then echo "EMPTY path (an unset variable?): stop and ask the owner" >&2; ok=0; elif [ -e "$p" ] || [ -L "$p" ]; then echo "EXISTS: $p: stop and ask the owner" >&2; ok=0; fi; done; [ "$ok" = 1 ]; }
 rm_absent "$RM_STATE" && mkdir -m 700 "$RM_STATE"
-( umask 077; set -C; cat > "${RM_STATE:?}/vars.sh" ) <<'VARS' && declare -f rm_absent >> "$RM_STATE/vars.sh"   # set -C: never overwrites; the function is added only after a fresh write
+( umask 077; set -C; cat > "${RM_STATE:?}/vars.sh" ) <<'VARS'   # set -C: never overwrites; the function is written as text, so this works in sh as in bash
 export RM_STATE="$HOME/routemaker-beta-state"
+rm_absent() { ok=1; [ "$#" -gt 0 ] || ok=0; for p in "$@"; do if [ -z "$p" ]; then echo "EMPTY path (an unset variable?): stop and ask the owner" >&2; ok=0; elif [ -e "$p" ] || [ -L "$p" ]; then echo "EXISTS: $p: stop and ask the owner" >&2; ok=0; fi; done; [ "$ok" = 1 ]; }
 export RM_SHA=<the 40-character git sha the owner gave you (the bundle's MANIFEST.txt git_sha= matches it)>
 export RM_REPO_URL=<the repository URL the owner gave you>
 export RM_DATA=/data/routemaker
@@ -255,7 +256,7 @@ database initialised with the old one. The required values and what is optional:
 | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI` | **no** | Planning works signed out. Leave empty and there is no sign-in. To enable it the owner adds `https://beta.example.org/auth/callback` to the Discord application and gives you the id and secret; edit `.env`, rerun the gate (`"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env`, which must print "beta compose: ok"), then `beta-compose.sh up -d api`. From v0.7.0 sign-in is on by itself once both keys are set (the Settings line "Sign in with Discord to save routes and sync settings across devices." appears); migration 0020 adds saved settings and routes. Ride links keep anonymous rider dots in the api container's `/dev/shm` (a tmpfs, memory only), so the api needs no volume for them. |
 | `BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID` | no | The beta's database carries **no accounts** (the dump strips them, OWNER-DECISIONS 367.3), so the owner claims instance admin afresh. Set this to the owner's Discord user id only if Discord sign-in is turned on, and have the owner sign in once promptly after the api starts. Otherwise leave it empty. |
 | `WMATA_API_KEY`, `MAPILLARY_ACCESS_TOKEN` | no | v0.7.0 live data. The owner pastes them into `.env` himself (nobody else reads or types them); then `beta-compose.sh up -d api`. Empty: timetable times only, no street photo. Allow outbound `api.wmata.com`, `graph.mapillary.com` and `*.fbcdn.net` from the api: the server fetches the photo's file from Mapillary's image host and serves the browser its own copy, so the CSP's `img-src` stays `'self'` and the browser never contacts Mapillary. Check: a Metro station's card says "live" and "Data: WMATA"; a road panel shows "Photo from <month year>" or "No street photo here." |
-| `DC311_API_KEY` | no | v0.7.0 Ride mode's 311 sent from the server (`core/dc311.py`), read by the api. The owner pastes it himself, only once DC issues one; then `beta-compose.sh up -d api`. Empty: Ride mode opens the phone's text app to 311 instead. Allow outbound `app.311.dc.gov` from the api. Each send needs a 15-minute ticket from `GET /api/report311`, and at most 60 reports an hour leave the server in all. |
+| `DC311_API_KEY` | no | v0.7.0 Ride mode's 311 sent from the server (`core/dc311.py`), read by the api. The owner pastes it himself, only once DC issues one; then `beta-compose.sh up -d api`. Empty: Ride mode opens the phone's text app to 311 instead. Allow outbound `app.311.dc.gov` from the api. Sending is for signed-in riders (signed out, Ride mode texts 311): each send needs a 15-minute ticket for that account from `GET /api/report311`, each account sends at most 10 an hour, and at most 60 reports an hour leave the server in all. |
 | `NPS_API_KEY` | no | v0.7.0 National Park Service closure alerts, read by the **worker** (`refresh_dc_closures`). The owner pastes it himself; then `beta-compose.sh up -d worker`. Empty: the NPS feed is skipped, the DC feeds still run. Allow outbound `developer.nps.gov` from the worker, beside the DC closure hosts below. |
 | `GARMIN_CLIENT_ID`, `GARMIN_CLIENT_SECRET`, `GARMIN_REDIRECT_URI` | no | Garmin Connect (`core/garmin.py`): the Connect Developer Program app's client id and secret from Garmin's developer portal, and `https://beta.example.org/auth/garmin/callback`, which must match the portal's redirect exactly. Empty: Settings offers no Garmin connection. The host must reach `diauth.garmin.com` and `apis.garmin.com` (443). In the portal, point the deregistration notice at `https://beta.example.org/garmin/deregistrations`. Then `beta-compose.sh up -d api`. |
 | `WAHOO_CLIENT_ID`, `WAHOO_CLIENT_SECRET`, `WAHOO_REDIRECT_URI` | no | Wahoo (`core/wahoo.py`): the Wahoo Cloud API app's client id and secret from Wahoo's developer portal, and `https://beta.example.org/auth/wahoo/callback`, which must match the portal's redirect exactly. Empty: Settings offers no Wahoo connection. The host must reach `api.wahooligan.com` (443). Then `beta-compose.sh up -d api`. |
@@ -706,7 +707,8 @@ Prove nothing else changed:
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
 (umask 077; sudo nginx -T > "$RM_STATE/nginx-after.txt" 2>&1)
-diff <(sed 's/[[:space:]]*$//' "$RM_STATE/nginx-before.txt") <(sed 's/[[:space:]]*$//' "$RM_STATE/nginx-after.txt") | grep '^<' | head   # no output: nothing was removed or edited
+(umask 077; sed 's/[[:space:]]*$//' "$RM_STATE/nginx-before.txt" > "$RM_STATE/nginx-before.trim"; sed 's/[[:space:]]*$//' "$RM_STATE/nginx-after.txt" > "$RM_STATE/nginx-after.trim")
+diff "$RM_STATE/nginx-before.trim" "$RM_STATE/nginx-after.trim" | grep '^<' | head   # no output: nothing was removed or edited
 while read -r s; do printf '%s %s\n' "$s" "$(curl -s -o /dev/null -m 10 -w '%{http_code}' "https://$s/" || echo fail)"; done < "$RM_STATE/sites-before.txt" | diff - "$RM_STATE/sites-before-status.txt" && echo "other sites unchanged"
 ```
 
@@ -819,7 +821,8 @@ that the update's `files` replaced has no `previous`: rollback A does not bring 
 (`pre-update-<time>.dump` from `db --update-data`, or `pre-restore-<time>.dump` from `--replace-db`).
 `restore-dump` takes a `pre-rollback` snapshot of what is there first, restores the dump into a
 **fresh** database in one transaction (a failure discards it and leaves the current database
-untouched), and swaps it in by rename. The database as it was stays beside it as
+untouched), and swaps it in by rename. These dumps leave out the tables the nightly backup leaves
+out, so after a restore everyone is signed out and riders connect Garmin or Wahoo again. The database as it was stays beside it as
 `routemaker_before_<time>`; once the beta works, drop it
 (`scripts/beta/beta-compose.sh exec -T postgis dropdb -U routemaker routemaker_before_<time>`). It needs
 free space on `/data` for a second copy of the database (about 1.5 GB):

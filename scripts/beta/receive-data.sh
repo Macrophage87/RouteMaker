@@ -362,6 +362,11 @@ app_is_down() { # nothing may write while the database is replaced
 
 # pg_dump of public and live into DATA_ROOT/backups/pre-<label>-<utc>.dump; prints the path.
 # Not a name the worker's nightly pruning matches (routemaker-<utc>.dump), so it is kept.
+# Without the data of the tables the nightly backup leaves out (config.procrastinate
+# BACKUP_EXCLUDED_TABLES): sessions, client addresses and riders' Garmin and Wahoo tokens. A
+# restore from it signs riders out and asks them to connect those again.
+snapshot_excluded=(cached_membership app_session django_session rate_limit_window stress_tile_cache
+	bikeshare_feed_cache signed_out_send garmin_link wahoo_link)
 snapshot() {
 	local file
 	file="$backups_dir/pre-$1-$(date -u +%Y%m%dT%H%M%SZ).dump"
@@ -369,7 +374,9 @@ snapshot() {
 		die "cannot write $backups_dir (DATA_ROOT/backups is owned by the container uid): run this with sudo, or give --backups-dir"
 	note "safety dump of the current database to $file"
 	# umask 077: the dump holds the beta's own accounts.
-	(umask 077 && bc exec -T postgis pg_dump -U "$pguser" -d "$pgdatabase" --format=custom --no-owner -n public -n "$live_schema" </dev/null >"$file.part") ||
+	local excluded=() table
+	for table in "${snapshot_excluded[@]}"; do excluded+=("--exclude-table-data=*.$table"); done
+	(umask 077 && bc exec -T postgis pg_dump -U "$pguser" -d "$pgdatabase" --format=custom --no-owner -n public -n "$live_schema" "${excluded[@]}" </dev/null >"$file.part") ||
 		{ rm -f "$file.part"; die "pg_dump failed; stopping before anything is replaced"; }
 	[ -s "$file.part" ] || { rm -f "$file.part"; die "the safety dump is empty; stopping before anything is replaced"; }
 	mv "$file.part" "$file"

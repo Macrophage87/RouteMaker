@@ -136,8 +136,11 @@ test("MapView: the credits start collapsed, below the scales", () => {
 });
 
 test("MapView: the junction card is a named dialog, takes the focus only from a marker, and Escape closes it", () => {
-  assert.match(mapView, /focusAfterOpen:\s*false/);
-  assert.match(mapView, /setAttribute\("role", "dialog"\)/);
+  // The junction card's own function: the closure card below it makes the same calls.
+  const card = mapView.slice(mapView.indexOf("function showJunctionCard("), mapView.indexOf("function showClosureCard("));
+  assert.ok(card.length > 0);
+  assert.match(card, /focusAfterOpen:\s*false/);
+  assert.match(card, /setAttribute\("role", "dialog"\)/);
   assert.match(mapView, /setAttribute\("aria-label", cardName\(item\)\)/);
   assert.match(mapView, /setAttribute\("aria-label", CARD_CLOSE_LABEL\)/);
   assert.match(mapView, /if \(takeFocus\) close\?\.focus\(\)/);
@@ -185,7 +188,7 @@ test("App: 'Planning...' is shown but not said, and the route is said once it se
   assert.match(live, /\{status\.kind === "loading" && slow && <p>\{stillPlanningSaid\(preset, dials\)\}<\/p>\}/);
   assert.match(app, /const slow = useLongerThan\(status\.kind === "loading", STILL_PLANNING_AFTER_MS\)/);
   assert.match(live, /routeSaid/);
-  assert.match(app, /useSettled\(status\.kind === "ok" \? announcement : "", ANNOUNCE_SETTLE_MS\)/);
+  assert.match(app, /useSettled\(status\.kind === "ok" && !gpxFitting \? announcement : "", ANNOUNCE_SETTLE_MS\)/);
   // Go's More direct and Calmer (lib/neighbours.ts) join the choice later: a choice is read among them, an arrival from the answer.
   assert.match(app, /announceRoute\(route, routedPoints, chosen \? announceHow\(picked, choice, true\) : announceHow\(answer, choice, false\)\)/);
 });

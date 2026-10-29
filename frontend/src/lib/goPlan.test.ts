@@ -233,7 +233,11 @@ test("Go's Where to? is the destination from the rider's location, in one edit, 
 
 test("the Go/Plan switch: toggle buttons in a named group (Review too for an admin), in Go's bar and Plan's header; a press is remembered as My Go's Open in", () => {
   assert.match(go, /role="group" aria-label=\{MODE_SWITCH_NAME\} aria-describedby=\{hintId\}/);
-  assert.match(go, /className="mode-button" aria-pressed=\{mode === m\} onClick=\{\(\) => onChange\(m\)\}/);
+  assert.match(go, /className="mode-button"\s*aria-pressed=\{mode === m\}\s*onClick=\{\(\) => \{\s*if \(m !== mode\) switchFocus = \{ mode: m, at: Date\.now\(\) \};\s*onChange\(m\);\s*\}\}/);
+  // The pressed button goes with its mode's copy of the switch: the new mode's switch takes the focus, on its pressed
+  // button, only just after a press and only where it shows (the 2026-10-29 a11y review).
+  assert.match(go, /if \(!pending \|\| pending\.mode !== mode \|\| Date\.now\(\) - pending\.at > SWITCH_FOCUS_MS\) return;/);
+  assert.match(go, /if \(!pressed \|\| pressed\.getClientRects\(\)\.length === 0\) return;\s*switchFocus = null;\s*pressed\.focus\(\);\s*\}, \[mode\]\);/);
   assert.match(appFile, /\{!goMode && <ModeSwitch mode=\{mode\} onChange=\{changeMode\} className="panel-mode" modes=\{switchModes\(canReview\)\} \/>\}/);
   assert.match(appFile, /<GoTopBar\s+mode=\{mode\}\s+onMode=\{changeMode\}\s+modes=\{switchModes\(canReview\)\}/);
   // Go's switch offers an admin's Review too, the same views as Plan's (Stephen 2026-10-17).

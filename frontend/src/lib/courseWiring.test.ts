@@ -39,7 +39,19 @@ test("the PDF cue sheets are two more file types in the same choice, with no dev
   // One download button, as before.
   assert.equal(panel.match(/t\("Download \{format\}"/g)?.length, 1);
   // Made through the same checked download, its line said in the same region.
-  assert.match(panel, /const made = cueSheetDocument\(route, kind, vias\);\s*saveFile\(made\.bytes, "application\/pdf", cueSheetFileName\(route, kind\)\);\s*return cueSheetLine\(route, kind, vias, made\.pages\);/);
+  assert.match(panel, /const made = cueSheetDocument\(route, kind, vias\);\s*return \(await keepFile\(made\.bytes, "application\/pdf", cueSheetFileName\(route, kind\), cueSheetLine\(route, kind, vias, made\.pages\)\)\)\.line;/);
+});
+
+test("in the phone app every file of the sheet takes the native path (a WebView downloads nothing): none is a bare download", () => {
+  const panel = read("../GpxPanel.tsx");
+  // saveFile: its definition, keepFile (once handFile answers that this is a browser), the browser's lock-screen
+  // parts (after the phone app's branch), and the three send paths, which check for the phone app themselves.
+  assert.equal(panel.match(/\bsaveFile\(/g)?.length, 1 + 1 + 1 + 3);
+  assert.match(panel, /if \(nativeBridge\(\)\) \{\s*const first = await keepFile\(blobs\[0\]/);
+  assert.match(panel, /const handed = await handFile\(bytes, fileName\);\s*if \(handed === null\) \{\s*saveFile\(body, type, fileName\);/);
+  for (const made of [/keepFile\(writeFit\(course\), "application\/vnd\.ant\.fit"/, /keepFile\(writeTcx\(course\), "application\/vnd\.garmin\.tcx\+xml"/, /keepFile\(blobs\[0\], "image\/png", names\[0\], lockScreenLine\(pages\)\)/, /keepFile\(queue\.blobs\[queue\.next\], "image\/png"/]) {
+    assert.match(panel, made);
+  }
 });
 
 test("Go adds no control: the choices appear only where the page passes the course download, which Go does not", () => {

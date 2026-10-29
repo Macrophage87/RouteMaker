@@ -968,6 +968,8 @@ export function App() {
   const locateReady = locateSupport(geoEnv);
   // The GPX file opened last (GpxPanel), until the plan is cleared.
   const [imported, setImported] = useState<ImportedPlan | null>(null);
+  // Whether GpxPanel is fitting the plan to that file's track, round by round: the route is said once it ends.
+  const [gpxFitting, setGpxFitting] = useState(false);
   // The ride type, the sliders and the opened file as they are now, for the
   // undo history (kept current at once by applyRide, like pointsRef).
   const rideRef = useRef<Ride>({ preset, dials, imported });
@@ -3359,10 +3361,12 @@ export function App() {
     const exact = shareExact();
     let kept: Promise<boolean> | null = null;
     if (exact) {
-      const keep = JSON.stringify(keepFields(shareKeep));
+      // Permanently and Until a date are a signed-in owner's (core.shared_routes.OWNER_KEEPS); signed out, the year.
+      const keepChoice = me.signed_in ? shareKeep : SHARE_KEEP_DEFAULT;
+      const keep = JSON.stringify(keepFields(keepChoice));
       const before = sharedLine.current?.of === exact.of && sharedLine.current.keep === keep ? sharedLine.current : null;
       const id = before?.id ?? newSharedId();
-      const body = before ? null : sharedBody(id, exact.save, shareKeep, previewImageOk(exact.save.line, exact.save.inputs.points, myGo.home, me.signed_in));
+      const body = before ? null : sharedBody(id, exact.save, keepChoice, previewImageOk(exact.save.line, exact.save.inputs.points, myGo.home, me.signed_in));
       if (before || body) {
         link = withSharedId(link, id);
         kept = before?.kept ?? storeShared(origin, body!.json);
@@ -5295,7 +5299,9 @@ export function App() {
   // The route's sentence once it has stood a moment (lib/settle.ts): routes
   // that replace each other quickly are said once, the last. "Planning..." is
   // shown but not said, so a release is one announcement, not two.
-  const settledSaid = useSettled(status.kind === "ok" ? announcement : "", ANNOUNCE_SETTLE_MS);
+  // While an opened GPX file is being fitted, each round's route is held back: the fitted route is said once, at the end
+  // (the a11y review's a11y-5).
+  const settledSaid = useSettled(status.kind === "ok" && !gpxFitting ? announcement : "", ANNOUNCE_SETTLE_MS);
   // While a full plan stands in for Go's first route, the region keeps the first route's sentence: the swap has its
   // own line (lib/progressive.ts betterRouteSaid), said once, and a better route is not read out twice.
   const routeSaid = refinedHeld && answer === refinedHeld.route ? refinedHeld.said : settledSaid;
@@ -6361,7 +6367,7 @@ export function App() {
             <GpxSheet
               {...{
                 nav: sheetNav, shown, routedPoints, routedLoop, federalRoute, points, status, imported,
-                openImported: openImportedChecked, refineImported,
+                openImported: openImportedChecked, refineImported, onFitting: setGpxFitting,
                 // Load route's popup opens this file picker; a file that cannot be opened says why in Save & load.
                 fileInput: (input: HTMLInputElement | null) => {
                   gpxInput.current = input;
@@ -6411,7 +6417,7 @@ export function App() {
                       ready={!!shown}
                       shareRoute={(ride) => void shareRoute(ride)}
                       shareKeep={shareKeep}
-                      onShareKeep={mode === "plan" ? setShareKeep : null}
+                      onShareKeep={mode === "plan" && me.signed_in ? setShareKeep : null}
                       shareSaid={shareSaid}
                       linkNote={linkNote}
                     />

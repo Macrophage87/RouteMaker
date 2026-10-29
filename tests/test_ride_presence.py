@@ -2,8 +2,8 @@
 
 Positions are rounded to 20 m, kept in memory for 2 minutes, never in the database or a log;
 a rider sees the others, not themselves; updates and alerts are limited per token; alerts use the
-plan's lists, merge the same issue near the same spot within 2 minutes, and last 10 minutes or
-until the sender clears them.
+plan's lists, merge the same issue near the same spot within 2 minutes, and last 2 minutes from
+the first report or until the sender clears them.
 """
 
 from __future__ import annotations
@@ -227,6 +227,29 @@ def test_merging_stops_after_2_minutes(clock) -> None:
     assert later["id"] != first["id"]
 
 
+def test_merging_never_keeps_an_alert_past_2_minutes_from_its_first_report(clock) -> None:
+    first = rp.send_alert(RIDE, ME, rp.MASS_RIDE, "spread", "", *SPOT, now=clock)
+    clock.t += rp.ALERT_TTL_S - 10
+    merged = rp.send_alert(RIDE, YOU, rp.MASS_RIDE, "spread", "", *SPOT, now=clock)
+    assert merged["id"] == first["id"] and merged["count"] == 2
+    clock.t += 11
+    assert rp.read(RIDE, THEM, now=clock)["alerts"] == []
+
+
+def test_writes_are_counted_per_ride_and_the_count_goes_with_its_minute(clock, monkeypatch) -> None:
+    monkeypatch.setattr(rp, "RIDE_WRITES_PER_MINUTE", 2)
+    clock.t = 1_000_040.0  # 20 s into a minute
+    rp.post_position(RIDE, ME, *SPOT, now=clock)
+    assert rp.count_write(RIDE, now=clock) == 0
+    assert rp.count_write(RIDE, now=clock) == 0
+    assert rp.count_write(RIDE, now=clock) == 40  # the rest of the minute
+    clock.t += 40
+    assert rp.count_write(RIDE, now=clock) == 0
+    clock.t += rp.RIDE_WRITES_WINDOW_S
+    rp.store().sweep(clock.t)
+    assert "writes" not in rp.store()._rides[RIDE]
+
+
 def test_alert_limits_one_a_minute_and_ten_a_ride(clock) -> None:
     rp.send_alert(RIDE, ME, rp.MASS_RIDE, "spread", "", *SPOT, now=clock)
     with pytest.raises(rp.Refused) as refused:
@@ -258,7 +281,7 @@ def test_medical_and_crash_carry_call_911(clock) -> None:
     assert other["call_911"] is False
 
 
-def test_alerts_last_10_minutes_or_until_the_sender_clears_them(clock) -> None:
+def test_alerts_last_2_minutes_or_until_the_sender_clears_them(clock) -> None:
     sent = rp.send_alert(RIDE, ME, rp.MASS_RIDE, "spread", "", *SPOT, now=clock)
     with pytest.raises(rp.Refused) as refused:
         rp.clear_alert(RIDE, YOU, sent["id"], now=clock)
@@ -382,7 +405,7 @@ def test_the_endpoints_are_limited_per_address_and_writes_per_ride(client, monke
     from core import ratelimit
 
     seen = []
-    refuse = {"ride-write"}
+    refuse = set()
 
     def hit(limit, key):
         seen.append(limit.scope)
@@ -390,12 +413,14 @@ def test_the_endpoints_are_limited_per_address_and_writes_per_ride(client, monke
         return ratelimit.Decision(allowed=allowed, retry_after_s=0 if allowed else 7)
 
     monkeypatch.setattr(ratelimit, "hit", hit)
+    monkeypatch.setattr(rp, "RIDE_WRITES_PER_MINUTE", 0)
     body = json.dumps({"token": ME, "lon": SPOT[0], "lat": SPOT[1]})
     busy = client.post(f"/api/rides/{RIDE}/here", data=body, content_type="application/json")
-    assert busy.status_code == 429 and busy["Retry-After"] == "7"
-    assert seen == ["ride-link", "ride-write"]
+    assert busy.status_code == 429 and int(busy["Retry-After"]) >= 1
+    # The ride's write count is kept with the ride, never as a database row.
+    assert seen == ["ride-link"]
     assert rp.store()._rides == {}
-    refuse.clear()
+    monkeypatch.setattr(rp, "RIDE_WRITES_PER_MINUTE", 15000)
     seen.clear()
     assert client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=YOU).status_code == 200
     assert seen == ["ride-link"]
