@@ -5313,7 +5313,8 @@ Avoid, and the road panel says the formula is used because the 5 is about access
 VALIDATE_SEGMENTS also checks the rating rules over the whole built table
 (`pipeline.run.assert_rating_rules`; review 2026-10-29) and refuses the build, naming up to
 10 way ids, where: a rural road open to cars is LTS 1 with no override row (the rural
-floor); a road Montgomery rates 5 is at any level but 4.5; or a road MDOT SHA bans is still
+floor); a road Montgomery rates 5 is at any level but 4.5 (or Avoid where our own formula says
+Avoid); or a road MDOT SHA bans is still
 drawn with no access reason and is not listed as left open in `agency-prohibited.csv`.
 A refusal means a rating step ran out of order or did not run; look at the way in the
 build's reports before retrying.

@@ -6489,7 +6489,8 @@ VALIDATE_SEGMENTS, reads three rules back from the staging table with one query 
 (`pipeline.lts_sentinels`): no `road_urban IS FALSE` road row at tier 1 without an override,
 less those whose tags exempt them from the rural floor (`stress.rural_floor_applies`: closed
 to cars, a separated track); no row a Montgomery 5 set (the agency rule or a `moco-lts5-*`
-row) at anything but 4 with `stress_half`; no row with an MDOT SHA 5 in `stress_ratings`
+row) at anything but 4 with `stress_half`, less a way our own formula puts at Avoid (which
+keeps Avoid, `agency_lts.apply` and `overrides.stress_adjustment`); no row with an MDOT SHA 5 in `stress_ratings`
 still drawn with no `bike_access_reason`, less the ways `prohibited_closures` listed as
 left open. Not run on a resumed attempt, which has no ways. Tests: the rating-rule cases in
 `tests/test_lts_sentinels.py`.

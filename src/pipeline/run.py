@@ -1797,11 +1797,25 @@ def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
     return read
 
 
+def _own_avoid_kept(stress) -> bool:
+    """A way at Avoid that our own rules (the formula, before any agency's level or row) put
+    at Avoid: an agency's 5 read as 4.5 does not lower it (`agency_lts.apply`,
+    `overrides.stress_adjustment`)."""
+    if stress is None or stress.tier is not Stress.AVOID:
+        return False
+    own = getattr(stress, "formula_tier", None)
+    if own is None:
+        adjustment = getattr(stress, "adjustment", None)
+        own = getattr(adjustment, "computed_tier", None) if adjustment is not None else None
+    return own is not None and int(own) == int(Stress.AVOID)
+
+
 def assert_rating_rules(context: RebuildContext) -> None:
     """The owner's rating rules hold over the whole built table (review 2026-10-29;
-    `pipeline.lts_sentinels`): the rural floor, Montgomery's 5 as 4.5, and MDOT SHA's
-    bans closed or listed. Read from the staging schema, so what is checked is what would be
-    promoted; a rural candidate is dropped where its tags exempt it from the floor."""
+    `pipeline.lts_sentinels`): the rural floor, Montgomery's 5 as 4.5 (Avoid where our own
+    formula says Avoid), and MDOT SHA's bans closed or listed. Read from the staging schema,
+    so what is checked is what would be promoted; a rural candidate is dropped where its tags
+    exempt it from the floor."""
     schema = context.staging_schema
     by_id = context.ways_by_id or {way.osm_id: way for way in context.ways}
     rural = []
@@ -1810,7 +1824,13 @@ def assert_rating_rules(context: RebuildContext) -> None:
         tags = context.class_tags_by_way.get(way_id, way.tags if way is not None else {})
         if rural_floor_applies(tags, urban=False):
             rural.append(way_id)
-    county_five = lts_sentinels.county_five_ways(schema)
+    # A `moco-lts5-*` row keeps Avoid where our own rules already said Avoid
+    # (`overrides.stress_adjustment`'s `own_avoid`), as `agency_lts.apply` does for the layer.
+    county_five = [
+        way_id
+        for way_id in lts_sentinels.county_five_ways(schema)
+        if not _own_avoid_kept(context.stress_by_way.get(way_id))
+    ]
     open_bans = [
         way_id
         for way_id in lts_sentinels.open_ban_ways(schema)

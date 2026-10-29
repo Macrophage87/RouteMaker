@@ -10,6 +10,7 @@ from django.db import connection
 
 from pipeline import lts_sentinels
 from pipeline.lts_sentinels import StreetTiers
+from routemaker.stress import Stress
 
 R_ST = 38.9126
 
@@ -318,11 +319,25 @@ def test_validate_drops_exempt_rural_roads_and_listed_bans(monkeypatch) -> None:
         ways=list(ways.values()),
         class_tags_by_way={},
         agency_prohibited_open={12},
+        stress_by_way={
+            # A `moco-lts5-*` row on a road our formula already puts at Avoid keeps Avoid.
+            7: SimpleNamespace(
+                tier=Stress.AVOID,
+                formula_tier=None,
+                adjustment=SimpleNamespace(computed_tier=Stress.AVOID),
+            ),
+            # One the formula rated LTS 4 does not.
+            8: SimpleNamespace(tier=Stress.AVOID, formula_tier=Stress.LTS4, adjustment=None),
+        },
     )
     monkeypatch.setattr(lts_sentinels, "rural_lts1_ways", lambda schema: [2])
-    monkeypatch.setattr(lts_sentinels, "county_five_ways", lambda schema: [])
+    monkeypatch.setattr(lts_sentinels, "county_five_ways", lambda schema: [7])
     monkeypatch.setattr(lts_sentinels, "open_ban_ways", lambda schema: [12])
     run.assert_rating_rules(context)
+    monkeypatch.setattr(lts_sentinels, "county_five_ways", lambda schema: [7, 8])
+    with pytest.raises(run.ValidationFailed, match=r"^1 way \(8\) rated 5 by Montgomery"):
+        run.assert_rating_rules(context)
+    monkeypatch.setattr(lts_sentinels, "county_five_ways", lambda schema: [])
     monkeypatch.setattr(lts_sentinels, "rural_lts1_ways", lambda schema: [1, 2])
     with pytest.raises(run.ValidationFailed, match=r"^1 way \(1\) on a rural road"):
         run.assert_rating_rules(context)
