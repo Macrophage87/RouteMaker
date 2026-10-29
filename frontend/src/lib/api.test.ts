@@ -462,5 +462,5 @@ test("the refusal's one button switches to Group Ride with trails off, and only 
   const app = await readFile(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(panel, /error\.kind === "mass-outside-dc" && \(\s*<button type="button" onClick=\{onGroupRide\}>\s*\{t\(GROUP_RIDE_NO_TRAILS\)\}/);
   assert.match(panel, /onGroupRide=\{go\.onGroupRideNoTrails\}/);
-  assert.match(app, /onGroupRideNoTrails: \(\) => \{\s*choosePreset\("group-ride", \{ \.\.\.chooseRideType\("group-ride", null, dials\), trailsOff: true \}\);/);
+  assert.match(app, /onGroupRideNoTrails: \(\) => \{\s*choosePreset\("group-ride", \{ \.\.\.chooseRideType\("group-ride", null, dials\), trailsOff: true \}\);\s*\/\/[^\n]*\n\s*sendNow\.current = true;\s*if \(planFirst\) setRouteAsk/);
 });
