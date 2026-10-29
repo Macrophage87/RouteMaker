@@ -482,6 +482,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Wait up, regroup": "انتظار وکړئ، یو ځای شو",
   "Send alert": "خبرتیا لېږل",
   "Sends your location with the alert": "ستاسو ځای له خبرتیا سره لېږي",
+  "Sends your spot to everyone on this ride.": "ستاسو ځای د دې سفر ټولو ته لېږي.",
   "Send to everyone on this ride?": "په دې سفر کې ټولو ته ولېږم؟",
   "Call 911": "911 ته زنګ",
   "You have sent {count} alerts on this ride, the most one phone sends.": "تاسو په دې سفر کې {count} خبرتیاوې لېږلې، چې د یو تلیفون حد دی.",
@@ -1337,6 +1338,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "routes kept for offline": "د آفلاین لپاره ساتل شوې لارې",
   "Reading the routes kept on this device…": "په دې وسیله کې ساتل شوې لارې لوستل کېږي…",
   "Sign out": "وتل",
+  // Sign out everywhere (SignOut.tsx, 2026-10-29): a new draft, for the native speaker's check.
+  "Sign out everywhere": "له هر ځایه وتل",
+  "Sign out on every device, this one too, and disconnect your AI assistant apps?":
+    "له ټولو وسیلو، د دې یوې په ګډون، وځئ او د AI مرستیال اپونه مو بېل کړئ؟",
   "Disconnect": "بېلول",
   "Connect {service}": "{service} نښلول",
   "Disconnect {app}": "{app} بېلول",

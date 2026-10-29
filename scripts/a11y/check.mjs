@@ -5481,7 +5481,7 @@ const failed = results.filter((r) => !r.ok);
 // Ride's More bubbles (#515, 2026-10-26) turn one check into three: two more.
 // Favorite places (2026-10-26) add two: the popout, and Edit's Remove.
 // Go's More > Load route (2026-10-26; it was Saved routes) adds one.
-const EXPECTED = 689;
+const EXPECTED = 691;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

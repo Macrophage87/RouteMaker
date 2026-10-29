@@ -92,7 +92,8 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - What it is used for: the base map's vector style and the tile archive layout
   (`@protomaps/basemaps`, light flavour), served from `/basemap/region.pmtiles`.
 - Publisher: Protomaps (<https://protomaps.com/>); the data in the archive is
-  OpenStreetMap's (above).
+  OpenStreetMap's (above), with Natural Earth (<https://www.naturalearthdata.com/>, public
+  domain) for the low-zoom land, water and boundaries. Acknowledgements credits both.
 - Version: the daily build `20260926` (`PROTOMAPS_BUILD` in `scripts/fetch_basemap.sh`,
   <https://build.protomaps.com/20260926.pmtiles>), cut to the region; retrieved 2026-09-26.
   The style package is `@protomaps/basemaps` 5.7.2 (`frontend/package.json`).
@@ -1265,6 +1266,21 @@ boundaries; core/report_log.py).
   `frontend/src/rail-data/README.md`. What is taken is the fact (which lines stop
   where), not WMATA's text or data, so there is no licence to follow and no credit on
   the map; it is listed here so every source is cited (301).
+
+## Send to Garmin and Send to Wahoo (service APIs; no data taken)
+
+- Credit: on Acknowledgements, as the services the two buttons use: the Garmin Connect
+  Developer Program's Courses API and the Wahoo Fitness Cloud API. No data is read from
+  either for the map or the routes.
+- What it is used for: sending the route shown to the rider's own account, once the rider has
+  connected it in Settings. Garmin gets the line as a course (`core.garmin_courses`); Wahoo
+  gets a FIT course file (`core.wahoo_routes`). A saved route sent again updates the same
+  course or route.
+- Terms: each service's developer agreement (Garmin Connect Developer Program, Wahoo API).
+  Partner terms are re-checked before an integration changes (PLAN.md, Working conventions).
+- Records: the connections are `core.garmin` and `core.wahoo`. Every route sent to Wahoo is
+  remembered on the connection, so deleting the account can take it out of the rider's Wahoo
+  app too (the owner, 2026-10-23).
 
 ## Links the map offers (no data taken)
 

@@ -581,6 +581,8 @@ export const ES: Readonly<Record<string, string>> = {
   // ---- A broadcast's riders and alerts (lib/rideGroup.ts, RideMode.tsx) ----
   "Send alert": "Enviar alerta",
   "Sends your location with the alert": "Envía su ubicación con la alerta",
+  // Draft, to be checked by a native speaker (2026-10-29).
+  "Sends your spot to everyone on this ride.": "Envía su ubicación a todos en este recorrido.",
   "Send to everyone on this ride?": "¿Enviar a todos en este recorrido?",
   "Riders": "Ciclistas",
   "No riders on the route yet": "Aún no hay ciclistas en la ruta",
@@ -763,6 +765,10 @@ export const ES: Readonly<Record<string, string>> = {
   "To stop {number}": "Parada {number}",
   // Settings > Account.
   "Sign out": "Cerrar sesión",
+  // Sign out everywhere (SignOut.tsx, 2026-10-29): a new draft, for the native speaker's check.
+  "Sign out everywhere": "Cerrar sesión en todas partes",
+  "Sign out on every device, this one too, and disconnect your AI assistant apps?":
+    "¿Cerrar sesión en todos los dispositivos, incluido este, y desconectar sus apps de asistente de IA?",
   "Signed in with Discord.": "Sesión iniciada con Discord.",
   "AI assistants": "Asistentes de IA",
   "Assistant apps you allowed to plan routes and add them to My routes, such as Claude on the web or your phone.":

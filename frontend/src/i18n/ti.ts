@@ -482,6 +482,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Wait up, regroup": "ተጸበዩ፣ ንእከብ",
   "Send alert": "መጠንቀቕታ ስደድ",
   "Sends your location with the alert": "ቦታኻ ምስ መጠንቀቕታ ይሰድድ",
+  "Sends your spot to everyone on this ride.": "ቦታኻ ናብ ኩሎም ኣብዚ ጉዕዞ ዘለዉ ይሰድድ።",
   "Send to everyone on this ride?": "ኣብዚ ጉዕዞ ንኹሉ ይለኣኽ?",
   "Call 911": "ናብ 911 ደውል",
   "You have sent {count} alerts on this ride, the most one phone sends.": "ኣብዚ ጉዕዞ {count} መጠንቀቕታታት ሰዲድካ፣ እዚ ካብ ሓደ ስልኪ ዝልኣኽ ዝለዓለ እዩ።",
@@ -1337,6 +1338,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "routes kept for offline": "ብዘይ መስመር ዝተዓቀቡ መንገድታት",
   "Reading the routes kept on this device…": "ኣብዚ መሳርሒ ዝተዓቀቡ መንገድታት ይንበቡ ኣለዉ…",
   "Sign out": "ውጻእ",
+  // Sign out everywhere (SignOut.tsx, 2026-10-29): a new draft, for the native speaker's check.
+  "Sign out everywhere": "ካብ ኩሉ ቦታ ውጻእ",
+  "Sign out on every device, this one too, and disconnect your AI assistant apps?":
+    "ካብ ኩሉ መሳርሒታት፡ እዚ ሓዊስካ፡ ክትወጽእን ናይ AI ሓገዝቲ መተግበሪታትካ ከተቋርጽን ትደሊ ዶ?",
   "Disconnect": "ፈላሊ",
   "Connect {service}": "{service} ኣራኽብ",
   "Disconnect {app}": "{app} ፈላሊ",

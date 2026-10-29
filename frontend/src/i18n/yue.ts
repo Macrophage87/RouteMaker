@@ -482,6 +482,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Wait up, regroup": "等等，集合",
   "Send alert": "傳送提示",
   "Sends your location with the alert": "提示會連埋你嘅位置",
+  "Sends your spot to everyone on this ride.": "會將你嘅位置傳俾呢次騎行嘅所有人。",
   "Send to everyone on this ride?": "傳俾今次踩車嘅所有人？",
   "Call 911": "打911",
   "You have sent {count} alerts on this ride, the most one phone sends.": "你今次踩車已傳送{count}個提示，已到一部手機嘅上限。",
@@ -1337,6 +1338,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "routes kept for offline": "離線儲存嘅路線",
   "Reading the routes kept on this device…": "讀緊呢部裝置儲存嘅路線…",
   "Sign out": "登出",
+  // Sign out everywhere (SignOut.tsx, 2026-10-29): a new draft, for the native speaker's check.
+  "Sign out everywhere": "喺所有裝置登出",
+  "Sign out on every device, this one too, and disconnect your AI assistant apps?":
+    "要喺所有裝置登出（包括呢部），同埋斷開你嘅 AI 助手 app 嗎？",
   "Disconnect": "斷開",
   "Connect {service}": "連接 {service}",
   "Disconnect {app}": "斷開 {app}",
