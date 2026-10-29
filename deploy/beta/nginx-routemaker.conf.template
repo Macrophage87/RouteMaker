@@ -355,9 +355,10 @@ server {
 
     # The rider-facing pages (Caddyfile @frontend): how traffic-stress ratings work
     # (OWNER-DECISIONS 461; frontend/public/about/stress.html) and the rest of the
-    # documentation beside it, with the app's headers and CSP. Exactly these names, as
-    # the Caddyfile lists them; any other /about/ path still reaches the app.
-    location ~ ^/about/((stress|how-it-works|using|accessibility|routing|ride-types|mass-ride|trails|architecture|assistants|acknowledgements)\.html|route-example\.webp)$ {
+    # documentation beside it, with the app's headers and CSP. Any page or image of that
+    # shape is served from frontend/public/about as built, so a new page needs no change
+    # here (nor a sudo re-render); a name that is not there is nginx's 404.
+    location ~ ^/about/[a-z0-9-]+\.(html|webp)$ {
         root @DATA_ROOT@/frontend;
         add_header X-Robots-Tag "noindex, nofollow" always;
         add_header Strict-Transport-Security "max-age=86400" always;
@@ -515,22 +516,16 @@ server {
         return 404;
     }
 
-    # --- reverse look-ups, searches and road panels: a location in the query -----------
-    # /api/reverse?lat=..&lon=.., /api/geocode?q=..&lat=..&lon=.. and
-    # /api/segment-info?lat=..&lon=.. (OWNER-DECISIONS 441a), and /api/street-photo?lon=..&lat=..
-    # (v0.7.0), and from v0.7.0 too /api/junction-suggestions/at?lat=..&lon=..,
-    # /api/stress-suggestions/ticket?way=.., /api/stress-suggestions/mine?way=..,
-    # /api/transit/station-times?lon=..&lat=.., /api/transit/next-vehicle?lon=..&lat=.. (v0.9.0),
-    # /api/bikeshare/docks?bbox=.., /api/closures/map?bbox=.. (v0.12.0), and Review's
-    # /api/review/items?way=.., /api/review/map?west=.., /api/review/next?way=..,
-    # /api/review/road/<way> and /api/review/street-photo?lon=..&lat=.., and the connector's
-    # /api/scenic-roads?lat=..&lon=.. and /api/climbs-near?lat=..&lon=.. from v0.12.3: each holds
-    # a way, a point or the area viewed. An upstream error line (a
-    # 502 while the api restarts on a deploy, a 504, a worker gunicorn killed) records the
-    # request with its query, so these log only `crit` errors, to their own file
-    # (OWNER-DECISIONS 395). This loses their upstream diagnostics; the api's own log still
-    # has its side. The proxy settings are location /'s below, line for line.
-    location ~ ^/api/(reverse|geocode|segment-info|street-photo|junction-suggestions/at|stress-suggestions/ticket|stress-suggestions/mine|transit/station-times|transit/next-vehicle|bikeshare/docks|closures/map|review/items|review/map|review/next|review/road/[0-9]+|review/street-photo|scenic-roads|climbs-near)/?$ {
+    # --- the api: a location in the path or query -------------------------------------
+    # Many api paths carry a way, a point or the area viewed, in the query (/api/reverse,
+    # /api/geocode, /api/segment-info, the transit and bikeshare look-ups, Review's, the
+    # connector's /api/scenic-roads and /api/climbs-near, ...) or in the path itself
+    # (/api/review/road/<way>). An upstream error line (a 502 while the api restarts on a
+    # deploy, a 504, a worker gunicorn killed) records the request with its query, so the whole
+    # of /api/ logs only `crit` errors, to their own file (OWNER-DECISIONS 395): a new endpoint
+    # is covered without a change here. This loses their upstream diagnostics; the api's own
+    # log still has its side. The proxy settings are location /'s below, line for line.
+    location /api/ {
         error_log /var/log/nginx/rmbeta-error.log crit;
         proxy_pass http://rmbeta_api;
         proxy_http_version 1.1;
@@ -549,6 +544,8 @@ server {
     # and Django's DATA_UPLOAD_MAX_MEMORY_SIZE. The proxy settings are location /'s below.
     location ~ ^/api/(shared-routes|me)(/|$) {
         client_max_body_size 5m;
+        # A regex location wins over /api/ above: the same error level as it.
+        error_log /var/log/nginx/rmbeta-error.log crit;
         proxy_pass http://rmbeta_api;
         proxy_http_version 1.1;
         proxy_set_header Connection "";

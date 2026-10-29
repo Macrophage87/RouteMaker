@@ -152,6 +152,8 @@ export interface Said {
 export class Announcer {
   private lastPolite: number | null = null;
   private waiting: Said | null = null;
+  /** The waiting sentence built afresh as it is said (say's `again`). */
+  private again: (() => string | null) | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private readonly deliver: (said: Said) => void;
   private readonly now: () => number;
@@ -170,7 +172,11 @@ export class Announcer {
     this.unschedule = unschedule;
   }
 
-  say(text: string, urgent: boolean, after = false): void {
+  /**
+   * `again`, where given, builds a polite sentence afresh when one held back is said at last (review RIDE-4: a
+   * distance as it is then, not as it was up to POLITE_GAP_MS before); null from it drops the sentence.
+   */
+  say(text: string, urgent: boolean, after = false, again?: () => string | null): void {
     if (!text) return;
     if (urgent) {
       this.drop();
@@ -185,14 +191,18 @@ export class Announcer {
       return;
     }
     this.waiting = { text, urgent: false };
+    this.again = again ?? null;
     if (this.timer === null) {
       this.timer = this.schedule(() => {
         this.timer = null;
         const next = this.waiting;
+        const fresh = this.again;
         this.waiting = null;
-        if (next) {
+        this.again = null;
+        const text = next && fresh ? fresh() : next?.text;
+        if (next && text) {
           this.lastPolite = this.now();
-          this.deliver(next);
+          this.deliver({ ...next, text });
         }
       }, POLITE_GAP_MS - (now - this.lastPolite));
     }
@@ -222,6 +232,7 @@ export class Announcer {
   /** Drop what is waiting (End ride, a re-plan). */
   drop(): void {
     this.waiting = null;
+    this.again = null;
     if (this.timer !== null) this.unschedule(this.timer);
     this.timer = null;
   }

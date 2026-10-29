@@ -2,8 +2,8 @@
 
 Positions are rounded to 20 m, kept in memory for 2 minutes, never in the database or a log;
 a rider sees the others, not themselves; updates and alerts are limited per token; alerts use the
-plan's lists, merge the same issue near the same spot within 2 minutes, and last 10 minutes or
-until the sender clears them.
+plan's lists, merge the same issue near the same spot within 2 minutes, and last 2 minutes from
+the first report or until the sender clears them.
 """
 
 from __future__ import annotations
@@ -227,6 +227,29 @@ def test_merging_stops_after_2_minutes(clock) -> None:
     assert later["id"] != first["id"]
 
 
+def test_merging_never_keeps_an_alert_past_2_minutes_from_its_first_report(clock) -> None:
+    first = rp.send_alert(RIDE, ME, rp.MASS_RIDE, "spread", "", *SPOT, now=clock)
+    clock.t += rp.ALERT_TTL_S - 10
+    merged = rp.send_alert(RIDE, YOU, rp.MASS_RIDE, "spread", "", *SPOT, now=clock)
+    assert merged["id"] == first["id"] and merged["count"] == 2
+    clock.t += 11
+    assert rp.read(RIDE, THEM, now=clock)["alerts"] == []
+
+
+def test_writes_are_counted_per_ride_and_the_count_goes_with_its_minute(clock, monkeypatch) -> None:
+    monkeypatch.setattr(rp, "RIDE_WRITES_PER_MINUTE", 2)
+    clock.t = 1_000_040.0  # 20 s into a minute
+    rp.post_position(RIDE, ME, *SPOT, now=clock)
+    assert rp.count_write(RIDE, now=clock) == 0
+    assert rp.count_write(RIDE, now=clock) == 0
+    assert rp.count_write(RIDE, now=clock) == 40  # the rest of the minute
+    clock.t += 40
+    assert rp.count_write(RIDE, now=clock) == 0
+    clock.t += rp.RIDE_WRITES_WINDOW_S
+    rp.store().sweep(clock.t)
+    assert "writes" not in rp.store()._rides[RIDE]
+
+
 def test_alert_limits_one_a_minute_and_ten_a_ride(clock) -> None:
     rp.send_alert(RIDE, ME, rp.MASS_RIDE, "spread", "", *SPOT, now=clock)
     with pytest.raises(rp.Refused) as refused:
@@ -258,7 +281,7 @@ def test_medical_and_crash_carry_call_911(clock) -> None:
     assert other["call_911"] is False
 
 
-def test_alerts_last_10_minutes_or_until_the_sender_clears_them(clock) -> None:
+def test_alerts_last_2_minutes_or_until_the_sender_clears_them(clock) -> None:
     sent = rp.send_alert(RIDE, ME, rp.MASS_RIDE, "spread", "", *SPOT, now=clock)
     with pytest.raises(rp.Refused) as refused:
         rp.clear_alert(RIDE, YOU, sent["id"], now=clock)
@@ -382,7 +405,7 @@ def test_the_endpoints_are_limited_per_address_and_writes_per_ride(client, monke
     from core import ratelimit
 
     seen = []
-    refuse = {"ride-write"}
+    refuse = set()
 
     def hit(limit, key):
         seen.append(limit.scope)
@@ -390,12 +413,14 @@ def test_the_endpoints_are_limited_per_address_and_writes_per_ride(client, monke
         return ratelimit.Decision(allowed=allowed, retry_after_s=0 if allowed else 7)
 
     monkeypatch.setattr(ratelimit, "hit", hit)
+    monkeypatch.setattr(rp, "RIDE_WRITES_PER_MINUTE", 0)
     body = json.dumps({"token": ME, "lon": SPOT[0], "lat": SPOT[1]})
     busy = client.post(f"/api/rides/{RIDE}/here", data=body, content_type="application/json")
-    assert busy.status_code == 429 and busy["Retry-After"] == "7"
-    assert seen == ["ride-link", "ride-write"]
+    assert busy.status_code == 429 and int(busy["Retry-After"]) >= 1
+    # The ride's write count is kept with the ride, never as a database row.
+    assert seen == ["ride-link"]
     assert rp.store()._rides == {}
-    refuse.clear()
+    monkeypatch.setattr(rp, "RIDE_WRITES_PER_MINUTE", 15000)
     seen.clear()
     assert client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=YOU).status_code == 200
     assert seen == ["ride-link"]
@@ -556,3 +581,133 @@ def test_the_deployed_store_starts_its_sweeper(tmp_path, settings, monkeypatch) 
     settings.RIDE_PRESENCE_DIR = str(tmp_path)
     chosen = rp.store()
     assert started == [chosen]
+
+
+# ---- sealed rides (Stephen 2026-10-29, end-to-end encryption; frontend/src/lib/rideSeal.ts) ----
+
+SEALED_DOT = "A" * 40
+SEALED_ALERT = "B" * 60
+SEALED_PATH = "C" * 4000
+
+
+def test_a_sealed_dot_is_kept_as_sent_and_shows_no_position_or_role(clock) -> None:
+    rp.post_position(RIDE, ME, None, None, now=clock, sealed=SEALED_DOT)
+    clock.t += 30
+    dots = rp.read(RIDE, YOU, now=clock)["dots"]
+    assert dots == [{"sealed": SEALED_DOT, "age_s": 30}]
+    assert rp.read(RIDE, ME, now=clock)["dots"] == []  # still never one's own
+
+
+def test_a_sealed_dot_lives_2_minutes_and_leaving_drops_it(clock) -> None:
+    rp.post_position(RIDE, ME, None, None, now=clock, sealed=SEALED_DOT)
+    clock.t += rp.DOT_TTL_S + 1
+    assert rp.read(RIDE, YOU, now=clock)["dots"] == []
+    assert ME not in rp.store()._rides.get(RIDE, {"riders": {}})["riders"]
+    rp.post_position(RIDE, ME, None, None, now=clock, sealed=SEALED_DOT)
+    rp.leave(RIDE, ME, now=clock)
+    assert rp.read(RIDE, YOU, now=clock)["dots"] == []
+    assert "sealed" not in rp.store()._rides[RIDE]["riders"][ME]
+
+
+def test_a_sealed_dot_keeps_the_limits_and_the_leader_mark(clock) -> None:
+    rp.post_position(RIDE, ME, None, None, now=clock, sealed=SEALED_DOT)
+    with pytest.raises(rp.Refused) as refused:
+        rp.post_position(RIDE, ME, None, None, now=clock, sealed=SEALED_DOT)
+    assert refused.value.status == 429
+    dots = rp.read(RIDE, YOU, now=clock, leader=rp.leader_key(ME))["dots"]
+    assert dots == [{"sealed": SEALED_DOT, "age_s": 0, "leader": True}]
+
+
+def test_a_plain_dot_after_a_sealed_one_drops_the_sealed_text(clock) -> None:
+    rp.post_position(RIDE, ME, None, None, now=clock, sealed=SEALED_DOT)
+    clock.t += rp.MIN_POST_INTERVAL_S
+    rp.post_position(RIDE, ME, *SPOT, now=clock)
+    assert set(rp.read(RIDE, YOU, now=clock)["dots"][0]) == {"lon", "lat", "age_s", "role"}
+
+
+@pytest.mark.parametrize(
+    "sealed", ["", "short", "A" * 39 + "=", "A" * 30 + "+/", 7, ["A" * 40], "A" * 1401]
+)
+def test_a_sealed_value_that_is_not_one_is_refused(clock, sealed) -> None:
+    with pytest.raises(rp.Refused) as refused:
+        rp.post_position(RIDE, ME, None, None, now=clock, sealed=sealed)
+    assert refused.value.status == 400
+
+
+def test_sealed_alerts_are_kept_apart_and_never_merged(clock) -> None:
+    mine = rp.send_alert(RIDE, ME, "", "", "", None, None, now=clock, sealed=SEALED_ALERT)
+    assert set(mine) == {"id", "sealed", "age_s", "mine"} and mine["mine"] is True
+    yours = rp.send_alert(RIDE, YOU, "", "", "", None, None, now=clock, sealed=SEALED_ALERT)
+    assert yours["id"] != mine["id"]
+    seen = rp.read(RIDE, THEM, now=clock)["alerts"]
+    assert [a["sealed"] for a in seen] == [SEALED_ALERT, SEALED_ALERT]
+    assert all(a["mine"] is False for a in seen)
+
+
+def test_sealed_alerts_keep_the_limits_clear_and_go_after_2_minutes(clock) -> None:
+    sent = rp.send_alert(RIDE, ME, "", "", "", None, None, now=clock, sealed=SEALED_ALERT)
+    with pytest.raises(rp.Refused) as refused:
+        rp.send_alert(RIDE, ME, "", "", "", None, None, now=clock, sealed=SEALED_ALERT)
+    assert refused.value.status == 429
+    with pytest.raises(rp.Refused):
+        rp.clear_alert(RIDE, YOU, sent["id"], now=clock)
+    rp.clear_alert(RIDE, ME, sent["id"], now=clock)
+    assert rp.read(RIDE, YOU, now=clock)["alerts"] == []
+    clock.t += rp.ALERT_MIN_INTERVAL_S
+    rp.send_alert(RIDE, ME, "", "", "", None, None, now=clock, sealed=SEALED_ALERT)
+    clock.t += rp.ALERT_TTL_S + 1
+    assert rp.read(RIDE, YOU, now=clock)["alerts"] == []
+
+
+def test_a_plain_alert_never_merges_into_a_sealed_one(clock) -> None:
+    rp.send_alert(RIDE, ME, "", "", "", None, None, now=clock, sealed=SEALED_ALERT)
+    plain = rp.send_alert(RIDE, YOU, "group-ride", "crash", "", *SPOT, now=clock)
+    assert plain["count"] == 1 and plain["label"] == "Crash"
+
+
+def test_a_sealed_path_reaches_only_readers_with_the_leader_key(clock) -> None:
+    rp.post_path(RIDE, ME, None, None, now=clock, sealed=SEALED_PATH)
+    assert "leader_path" not in rp.read(RIDE, YOU, now=clock)
+    clock.t += 5
+    path = rp.read(RIDE, YOU, now=clock, leader=rp.leader_key(ME))["leader_path"]
+    assert path == {"sealed": SEALED_PATH, "age_s": 5}
+    clock.t += rp.PATH_TTL_S
+    assert "leader_path" not in rp.read(RIDE, THEM, now=clock, leader=rp.leader_key(ME))
+
+
+def test_a_sealed_path_is_bounded(clock) -> None:
+    with pytest.raises(rp.Refused) as refused:
+        rp.post_path(RIDE, ME, None, None, now=clock, sealed="C" * (rp.SEALED_PATH_MAX + 1))
+    assert refused.value.status == 400
+
+
+@pytest.mark.django_db
+def test_the_api_takes_sealed_values_in_post_bodies(client, clock, monkeypatch) -> None:
+    monkeypatch.setattr(rp.time, "time", clock)
+
+    def post(path: str, body: dict):
+        return client.post(
+            f"/api/rides/{RIDE}/{path}", data=json.dumps(body), content_type="application/json"
+        )
+
+    assert post("here", {"token": ME, "sealed": SEALED_DOT}).status_code == 200
+    assert post("path", {"token": ME, "sealed": SEALED_PATH}).status_code == 200
+    alert = post("alerts", {"token": ME, "sealed": SEALED_ALERT})
+    assert alert.status_code == 200 and alert.json()["sealed"] == SEALED_ALERT
+    assert post("here", {"token": YOU, "sealed": "not sealed!"}).status_code == 400
+    key = rp.leader_key(ME)
+    r = client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=YOU, HTTP_X_RIDE_LEADER=key).json()
+    assert r["dots"] == [{"sealed": SEALED_DOT, "age_s": 0, "leader": True}]
+    assert r["leader_path"]["sealed"] == SEALED_PATH
+    assert [a["sealed"] for a in r["alerts"]] == [SEALED_ALERT]
+
+
+def test_a_sealed_body_keeps_no_plain_field_sent_beside_it(clock) -> None:
+    rp.post_position(RIDE, ME, *SPOT, role="sweep", now=clock, sealed=SEALED_DOT)
+    rider = rp.store()._rides[RIDE]["riders"][ME]
+    assert not {"lon", "lat", "role"} & set(rider)
+    alert = rp.send_alert(
+        RIDE, ME, "group-ride", "crash", "", *SPOT, now=clock, sealed=SEALED_ALERT
+    )
+    kept = rp.store()._rides[RIDE]["alerts"][0]
+    assert not {"lon", "lat", "kind", "text"} & set(kept) and "label" not in alert

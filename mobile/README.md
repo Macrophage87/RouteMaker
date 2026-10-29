@@ -22,7 +22,11 @@ site makes the FIT course and hands it to `FilesPlugin.java` ("RouteMakerFiles")
 cache and hands it to Garmin Connect when Connect takes it (the manifest's one `<queries>` entry names it),
 otherwise to Android's "Open with" list. Send to Wahoo's file, where Wahoo did not take the route, goes the same way
 but always to the list, for the Wahoo app. A WebView can neither share nor download a file a page makes, so an
-older app without the plugin shows no Send to Garmin button.
+older app without the plugin shows no Send to Garmin button. Every other file the site saves goes to the same
+"Open with" list too (v0.15.0 site and app): Download GPX, the FIT and TCX courses, both PDF cue sheets and the
+lock-screen images, one image per press. The plugin takes `.fit`, `.tcx`, `.gpx`, `.pdf` and `.png` names only;
+an older app refuses a PDF or an image, and the site then says it could not hand the file on, never that it
+was made.
 
 **The share sheet** (v0.12.4 site and app): Android's WebView has no `navigator.share`, so the site hands Share
 route, Share ride and Broadcast's title, text and link to `SharePlugin.java` ("RouteMakerShare"), which opens
@@ -32,8 +36,10 @@ and its Broadcast copies the link instead, for the rider to paste.
 
 **Opening a RouteMaker link in the app** (v0.9.0 app): in any app, Share the link and pick RouteMaker.
 `SharedLink.java` takes the first https link in the shared text and opens it only when it is on the site kept
-on this phone; any other link is refused with a short message. Opening a shared link replaces the page
-shown, a ride in progress included.
+on this phone; any other link is refused with a short message. With the app already open on the site, the
+link is handed to the page (`MainActivity.handToPage`, `frontend/src/lib/rideLinks.ts`): it opens at once, but
+during a ride or Roam the page first asks "Leave your ride to open this link?", and No keeps the ride going.
+A site from before v0.15.0, or a page that is not the site's, gets the link opened in its place as before.
 
 **Links open in the app** (store build, v0.12.6): a tapped link to the site's map, a ride type's address
 (`/mass-ride`, `/group-ride`, ...) or a shared route's `/s/` link opens the store app instead of the browser,

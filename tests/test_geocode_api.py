@@ -234,12 +234,26 @@ class TestSearch:
         body = get(client, SEARCH, q="Bike  Shop", lat="38.9", lon="-77.0").json()
         ((path, params),) = fake.calls
         assert path == "/reverse"
-        assert params["osm_tag"] == "shop:bicycle"
+        assert params["osm_tag"] == ("shop:bicycle",)
         assert (params["lat"], params["lon"]) == (38.9, -77.0)
         assert params["radius"] == geocode.TAG_SEARCH_RADIUS_KM
         assert [r["name"] for r in body["results"]] == ["Near Cycles", "Far Bikes"]
 
-    @pytest.mark.parametrize("q", ["grocery", "Grocery Stores", "groceries", "supermarket"])
+    @pytest.mark.parametrize(
+        "q",
+        [
+            "grocery",
+            "Grocery Stores",
+            "groceries",
+            "supermarket",
+            # The 2026-10-29 review: "near me" and Spanish fell through to a name search.
+            "grocery near me",
+            "Supermarket nearby",
+            "grocery store close to me",
+            "supermercado",
+            "supermercados cerca de mí",
+        ],
+    )
     def test_grocery_lists_the_nearest_supermarkets(self, client, photon, q) -> None:
         """Review SIMPLICITY-1: an errand search finds the nearest grocery."""
         shop = feature(
@@ -248,7 +262,7 @@ class TestSearch:
         fake = photon(answer(shop))
         body = get(client, SEARCH, q=q, lat="38.9", lon="-77.0").json()
         ((path, params),) = fake.calls
-        assert path == "/reverse" and params["osm_tag"] == "shop:supermarket"
+        assert path == "/reverse" and params["osm_tag"] == geocode.GROCERY_TAGS
         assert [r["name"] for r in body["results"]] == ["Market"]
 
     def test_bike_shop_without_a_bias_is_an_ordinary_search(self, client, photon) -> None:
@@ -260,6 +274,13 @@ class TestSearch:
     def test_a_shop_name_with_bike_in_it_is_searched_by_name(self, client, photon) -> None:
         fake = photon(answer())
         get(client, SEARCH, q="bike shop annapolis", lat="38.9", lon="-77.0")
+        assert fake.calls[0][0] == "/api"
+
+    @pytest.mark.parametrize("q", ["near me", "nearby", "cerca"])
+    def test_near_me_alone_is_searched_by_name(self, client, photon, q) -> None:
+        """Only a "near me" after a kind of place is dropped; alone it is the words typed."""
+        fake = photon(answer())
+        get(client, SEARCH, q=q, lat="38.9", lon="-77.0")
         assert fake.calls[0][0] == "/api"
 
     def test_whitespace_is_collapsed_before_it_is_sent(self, client, photon) -> None:
@@ -925,6 +946,30 @@ class TestReverse:
         assert fake.calls == [] and fake_router.calls == []
 
 
+@pytest.mark.parametrize(
+    ("typed", "phrase"),
+    [
+        ("Grocery  near me", "grocery"),
+        ("bike shop nearby", "bike shop"),
+        ("supermarket near by", "supermarket"),
+        ("grocery store close to me", "grocery store"),
+        ("supermercado cerca de mí", "supermercado"),
+        ("supermercados cerca", "supermercados"),
+        # Alone, or not at the end, the words are kept.
+        ("near me", "near me"),
+        ("nearby bakery", "nearby bakery"),
+    ],
+)
+def test_tag_phrase_drops_a_trailing_near_me(typed, phrase) -> None:
+    assert geocode.tag_phrase(typed) == phrase
+
+
+def test_tag_searches_take_the_grocery_words_the_eat_sheet_takes() -> None:
+    """Where to? and the Eat sheet agree (frontend/src/lib/grocery.ts GROCERY_WORDS)."""
+    for word in ("grocery", "groceries", "supermarket", "supermercado", "supermercados"):
+        assert geocode.TAG_SEARCHES[word] == geocode.GROCERY_TAGS
+
+
 class TestEdgeName:
     def test_an_answer_with_no_edges_names_nothing(self) -> None:
         assert geocode.edge_name([]) is None
@@ -1246,6 +1291,16 @@ class TestTransport:
             "location_bias_scale": "0.2",
         }
         assert not {"lat", "lon", "zoom", "location_bias_scale"} & set(plain)
+
+    def test_a_grocery_search_asks_for_each_grocery_tag(self, photon_server) -> None:
+        """The 2026-10-29 review: small grocers and greengrocers, not only supermarkets,
+        each its own osm_tag (Photon lists a place that matches any of them)."""
+        url, seen = photon_server(200, json.dumps(answer()).encode())
+        with override_settings(PHOTON_URL=url):
+            geocode.search("grocery near me", lat=38.9, lon=-77.03, limit=5, lang="en")
+        (path,) = seen
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(path).query)
+        assert query["osm_tag"] == ["shop:supermarket", "shop:grocery", "shop:greengrocer"]
 
     @pytest.mark.parametrize(
         ("status", "body"),
