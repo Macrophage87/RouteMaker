@@ -476,7 +476,7 @@ def test_check_operations_alerts_when_the_transit_schedule_is_about_to_run_out(
     assert exit_code.value.code == 1
     assert "transit: the schedule runs out on" in out.getvalue()
     assert "1 transit schedule to rebuild" in out.getvalue()
-    assert transit.STALE_DAYS == 7 and isinstance(Stub.last_day, date)
+    assert transit.STALE_DAYS == 21 and isinstance(Stub.last_day, date)
 
 
 @db
@@ -683,6 +683,24 @@ def test_the_operations_page_says_so_when_no_job_is_wedged(client) -> None:
     assert 'id="no-wedged-jobs"' in body
     assert "still sending heartbeats" in body and "beating" not in body
     assert 'class="wedged-job"' not in body
+
+
+@db
+def test_the_operations_page_shows_the_transit_alert(client, monkeypatch, tmp_path) -> None:
+    """The timetables' end on the page too, not only in `check_operations`: the same line."""
+    from core import transit
+    from core.models import User
+
+    admin = User.objects.create(discord_user_id=9012, is_instance_admin=True)
+    sign_in(client, admin)
+    monkeypatch.setattr(settings, "TRANSIT_SCHEDULE_PATH", tmp_path / "none.json")
+    assert 'id="transit-schedule-ok"' in client.get(operations_url()).content.decode()
+
+    line = "transit: MARC's timetable runs out on 2026-11-27, 20 day(s) left"
+    monkeypatch.setattr(transit, "schedule_alert", lambda _path: line)
+    body = client.get(operations_url()).content.decode()
+    assert 'class="transit-alert"' in body and "MARC&#x27;s timetable runs out" in body
+    assert 'id="transit-schedule-ok"' not in body
 
 
 # --- Pruning the history ---------------------------------------------------------------
