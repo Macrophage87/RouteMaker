@@ -11,6 +11,7 @@
 import { createElement as h, useEffect, useState, type ReactElement } from "react";
 import { ElevationProfileChart, gradeText, profileEnds } from "./climbCard.ts";
 import { formatClimb, formatDistance } from "./format.ts";
+import { setPanelTrail } from "./trailHighlight.ts";
 
 /** GET /api/trails/{way}/profile (core.api.TrailProfileOut). */
 export interface TrailProfile {
@@ -26,6 +27,8 @@ export interface TrailProfile {
   /** The way's first and last points, [lon, lat]: the chart's left and right ends (older answers have neither). */
   start?: [number, number] | null;
   end?: [number, number] | null;
+  /** The way's line, [lon, lat] from start to end, which the map lights up (older answers have none). */
+  line?: [number, number][] | null;
 }
 
 export type TrailProfileState = { kind: "loading" } | { kind: "ready"; profile: TrailProfile } | { kind: "none" } | { kind: "error" };
@@ -84,8 +87,16 @@ export function TrailProfileView({ way, uid }: { way: number; uid: string }): Re
   useEffect(() => {
     const controller = new AbortController();
     setState({ kind: "loading" });
-    fetchTrailProfile(way, controller.signal).then(setState, () => undefined);
-    return () => controller.abort();
+    fetchTrailProfile(way, controller.signal).then((next) => {
+      if (controller.signal.aborted) return;
+      setState(next);
+      // The section the chart is of, lit up on the map while the panel shows it (lib/trailHighlight.ts).
+      setPanelTrail(next.kind === "ready" ? (next.profile.line ?? null) : null);
+    }, () => undefined);
+    return () => {
+      controller.abort();
+      setPanelTrail(null);
+    };
   }, [way]);
   return h(TrailProfileBody, { state, uid });
 }

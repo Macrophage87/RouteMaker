@@ -1464,6 +1464,36 @@ export function mtbTicksPaint(strong = accessibilityOn()) {
 /** The zoom the not-for-routes line draws from: where the tiles carry the trails (STRESS_ZOOMS.quiet, held equal by a test; the plan: "MTB trails from zoom 12-13"). */
 export const MTB_MIN_ZOOM = 12;
 
+/**
+ * THE TRAILS ZOOMED OUT, in the Mountain Bike ride type alone (the owner, 2026-10-28: "When on Mountain bike mode, you
+ * should generally show the mountain bike trails at any zoom so people can see them."). The tiles carry every
+ * mountain-bike trail from the map's widest zoom, STRESS_ZOOMS.min (core/stress_tiles.py, ZOOMED_OUT_MTB; a test holds
+ * MTB_MODE_MIN_ZOOM equal to it). Below MTB_MIN_ZOOM they draw in a look of their own, one thin solid line in their
+ * level's colour (an unrated trail's brown) with no white edge, ticks or casing: drawn full width, Patapsco's and
+ * Columbia's singletrack merged into dark blobs at z10 (the reason 375 took them out). The routable layers leave the
+ * trails to it there, and from MTB_MIN_ZOOM every layer draws them as before. Every other ride type draws none of them
+ * below MTB_MIN_ZOOM, as before (its filter is false).
+ */
+export const MTB_MODE_MIN_ZOOM = 7;
+export const MTB_OVERVIEW_LAYER_ID = "mtb-trail-overview";
+/** The overview line's width, in px, at z7 and at z11 (and with the accessibility switch). */
+export const MTB_OVERVIEW = { width: [0.75, 1.75], strongWidth: [1.25, 2.5] };
+
+/** The zoom mountain-bike trails show from: every zoom in the Mountain Bike ride type (`routableMtb` set), else MTB_MIN_ZOOM. */
+export function mtbMinZoom(level = routableMtb) {
+  return level !== null && level !== undefined ? MTB_MODE_MIN_ZOOM : MTB_MIN_ZOOM;
+}
+
+/** The overview line's paint: its level's colour (an unrated trail's dark brown), thin, widening a little to z11; wider with the switch. */
+export function mtbOverviewPaint(strong = accessibilityOn()) {
+  const [low, high] = strong ? MTB_OVERVIEW.strongWidth : MTB_OVERVIEW.width;
+  return {
+    // The darker brown in both strengths: the plain one is the contour lines' (lib/topoLines.ts), which Mountain Bike turns on.
+    "line-color": mtbLabelColor(true),
+    "line-width": ["interpolate", ["linear"], ["zoom"], MTB_MODE_MIN_ZOOM, low, MTB_MIN_ZOOM - 1, high],
+  };
+}
+
 /** The unrated trails' line: colour, width and dashes, plain or with the accessibility switch on. */
 export function mtbTrailPaint(strong = accessibilityOn()) {
   return {
@@ -1552,8 +1582,8 @@ export const MTB_LABEL_MIN_ZOOM = 15;
 // The street names' size and halo (the owner, 2026-10-21: "All into stret name style"); its face is already theirs (lib/mapGlyphs.ts).
 export const MTB_LABEL = { font: "Noto Sans Medium", size: 15, halo: "#ffffff", haloWidth: 3.5, padding: 8, spacing: 300, maxAngle: 45 };
 
-/** Every layer of the mountain-bike trail map layer (454): its lines, then its names. */
-export const MTB_LAYER_IDS = [...MTB_LINE_LAYER_IDS, MTB_LABEL_LAYER_ID];
+/** Every layer of the mountain-bike trail map layer (454): its lines, the Mountain Bike ride type's zoomed-out line, then its names. */
+export const MTB_LAYER_IDS = [...MTB_LINE_LAYER_IDS, MTB_OVERVIEW_LAYER_ID, MTB_LABEL_LAYER_ID];
 
 /** Whether a layer id is one of the mountain-bike trail layer's (MTB_LAYER_IDS). */
 export function isMtbLayerId(id) {
@@ -1617,6 +1647,23 @@ export function mtbTrailLayers(sourceId = "stress", when = DEFAULT_WHEN, strong 
   ];
 }
 
+/** The Mountain Bike ride type's zoomed-out line (MTB_OVERVIEW_LAYER_ID), z7-11 only, over the trail layer's lines (none draw there) and under every routable layer. */
+export function mtbOverviewLayers(sourceId = "stress", when = DEFAULT_WHEN, strong = accessibilityOn()) {
+  return [
+    {
+      id: MTB_OVERVIEW_LAYER_ID,
+      type: "line",
+      source: sourceId,
+      "source-layer": STRESS_TILE_LAYER,
+      minzoom: MTB_MODE_MIN_ZOOM,
+      maxzoom: MTB_MIN_ZOOM,
+      layout: { "line-cap": "round", "line-join": "round" },
+      filter: stressFilters(when)[MTB_OVERVIEW_LAYER_ID],
+      paint: mtbOverviewPaint(strong),
+    },
+  ];
+}
+
 /**
  * Each overlay layer's filter in the ride time `when`, by layer id. Each routable layer
  * excludes the mountain-bike trails, which the not-for-routes layers (MTB_LAYER_IDS) draw,
@@ -1637,11 +1684,14 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
   // Every routable filter is ["all", drawnAt(when), <the mountain-bike cut, unless routableMtb>, ...its own clauses].
   // A level (the Mountain Bike ride type, slice 6): the trails up to it are routable, the harder ones are not.
   const upTo = typeof routableMtb === "number" ? routableMtb : null;
-  const hidden = upTo !== null ? [["any", mtbHides, mtbWithin(upTo)]] : routableMtb ? [] : [mtbHides];
+  // Below MTB_MIN_ZOOM the overview line draws them (MTB_OVERVIEW_LAYER_ID), so no routable layer does.
+  const hidden = upTo !== null ? [["any", mtbHides, ["all", mtbWithin(upTo), [">=", ["zoom"], MTB_MIN_ZOOM]]]] : routableMtb ? [] : [mtbHides];
   // The not-for-routes lines: the mountain-bike trails, or nothing once they are routable (or, at a level,
   // only the trails above it). The shared ticks draw every one of them; the grey dashes and their white edge
   // the unrated ones (no `mtb_level`), and each level's white edge and line the trails of that level (456).
   const off = upTo !== null ? [["!", mtbWithin(upTo)]] : routableMtb ? [["boolean", false]] : [];
+  // The overview line: every mountain-bike trail, in the Mountain Bike ride type alone (its layer's zooms are z7-11).
+  filters[MTB_OVERVIEW_LAYER_ID] = upTo !== null ? ["all", drawnAt(when), isMtbTrail] : ["boolean", false];
   filters[MTB_TICKS_LAYER_ID] = ["all", drawnAt(when), isMtbTrail, ...off];
   filters[MTB_TRAIL_LAYER_ID] = ["all", drawnAt(when), isMtbTrail, ["!", ["has", "mtb_level"]], ...off];
   filters[MTB_TRAIL_CASING_LAYER_ID] = filters[MTB_TRAIL_LAYER_ID];
@@ -2299,8 +2349,9 @@ export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHig
  */
 export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   return [
-    // The mountain-bike trails' layer (452a, 454, 456), under every routable layer.
+    // The mountain-bike trails' layer (452a, 454, 456), under every routable layer; zoomed out, the Mountain Bike ride type's line.
     ...mtbTrailLayers(sourceId, when),
+    ...mtbOverviewLayers(sourceId, when),
     // The drawing priority (2026-10-21, `drawPriority`): the busy roads (LTS 3, LTS 4, Avoid) whole, rails, casings,
     // lines and marks, then the calm ways (LTS 1-2) whole over them, each group calmest on top, so a busy road
     // does not paint over the path or the calm street that crosses it.

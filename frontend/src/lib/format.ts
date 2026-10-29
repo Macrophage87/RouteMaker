@@ -111,6 +111,11 @@ export function formatDistanceChange(metres: number): string {
   return `${(m / METRES_PER_MILE).toFixed(1)} mi (${(m / 1000).toFixed(1)} km)`;
 }
 
+/** A change of distance in miles alone, without its sign, for a short line on screen: "0.3 mi" (P3's re-plan toast). */
+export function formatMilesChange(metres: number): string {
+  return `${(Math.abs(metres) / METRES_PER_MILE).toFixed(1)} mi`;
+}
+
 /** How far along a route, miles first: "mile 12.4 (20.0 km)"; under a tenth of a mile, "the start". */
 export function formatMilePost(metres: number): string {
   if (!usable(metres) || metres < FEET_BELOW_M) return t("the start");

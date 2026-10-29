@@ -100,7 +100,7 @@ from .intersections import (
     Movement,
     crossing_groups,
 )
-from .lang import spanish, t, way_es
+from .lang import english, spanish, t, way_said
 from .streets import street_key
 
 METRES_PER_MILE = 1609.344
@@ -1329,6 +1329,9 @@ def ordinal(number: int) -> str:
     """1st, 2nd, 3rd, 4th, ... 11th, 12th, 13th, ... 21st; in Spanish "3.ª" (la salida)."""
     if spanish():
         return f"{number}.ª"
+    if not english():
+        # The other languages put the number in their own sentence (the app's ordinal).
+        return str(number)
     if number % 100 in (11, 12, 13):
         return f"{number}th"
     return f"{number}{ {1: 'st', 2: 'nd', 3: 'rd'}.get(number % 10, 'th') }"
@@ -1437,8 +1440,8 @@ def _in_sentence(street: str) -> str:
     """The street as a sentence names it after "onto" or "on": "the path" for a path
     with no name, "the service road beside East-West Highway", the street itself
     otherwise."""
-    if spanish():
-        return way_es(street) or street
+    if not english():
+        return way_said(street) or street
     return f"the {street}" if _COMMON_WAY.match(street) else street
 
 
@@ -1485,8 +1488,8 @@ def _stretch_sentence(
             lead += _junction_words(event)
     elif same_street_continues:
         lead = t("Continue on {street}", street=_in_sentence(street))
-    elif spanish() and way_es(street):
-        lead = _capital(way_es(street) or street)
+    elif not english() and way_said(street):
+        lead = _capital(way_said(street) or street)
     else:
         lead = _capital(street) if _COMMON_WAY.match(street) else street
     words = tier_words(run.tier, run.facility)
@@ -1537,7 +1540,7 @@ def _capital(text: str) -> str:
 
 def _crossed_road(road: str) -> str:
     """The road a crossing names: as mapped, or CROSS_UNNAMED ("the road") in the language."""
-    return (way_es(road) or road) if spanish() else road
+    return road if english() else (way_said(road) or road)
 
 
 MAX_NAMED_TURNS = 3
