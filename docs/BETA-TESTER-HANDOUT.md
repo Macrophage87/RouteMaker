@@ -301,7 +301,7 @@ the route goes to its top by way of its bottom.
   your other places. One tap rides there. They are kept with your account only.
 - Share live (it was called Broadcast): beside Start ride. Send the link and start riding.
   Whoever opens it sees your dot and the path you take, and can download your route as a GPX
-  file or, if they connected one, send it to Garmin or Wahoo. Nothing needs an account. The
+  file or, if they connected one, send it to Garmin or Wahoo. Following needs no account. The
   live positions are sealed on the phones, and the server keeps them for 2 minutes at most.
 - Share route: anyone can share a link, and it is kept a year after it was last opened. Keep
   shared link "Permanently" or "Until a date" needs you to be signed in, so that you can turn
