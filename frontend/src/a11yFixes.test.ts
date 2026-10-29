@@ -171,7 +171,7 @@ test("the list rows carry their index, so a closing card can give the focus back
 
 test("App: the skip link comes before the map, and the planner can take its focus", () => {
   const skip = app.indexOf('className="skip-link"');
-  assert.ok(skip > 0 && skip < app.indexOf("<MapView"), "before the map in the page");
+  assert.ok(skip > 0 && skip < app.indexOf("<LiveMap"), "before the map in the page");
   assert.match(app, /id="route-planner"\s+tabIndex=\{-1\}/);
   assert.match(app, /skipToPlanner\(event, panelRef\.current\)/);
 });
