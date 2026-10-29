@@ -264,14 +264,14 @@ test("a slow plan is said once, after a few seconds, and why only where it is a 
 
 test("a route chosen from several is said as chosen, not planned, and an arrival says how many others there are", () => {
   const route = { distance_m: 5000, duration_s: 1200, climb_m: 31, preset: "default", intersections: [{ severity: "red" }] } as unknown as RouteResponse;
-  assert.match(announceRoute(route), /^Route planned: 3\.1 mi \(5\.0 km\), 20 min moving time, climb 102 ft \(31 m\)\. 1 very high stress junction\.$/);
+  assert.match(announceRoute(route), /^Route planned: 3\.1 miles \(5\.0 kilometers\), 20 minutes moving time, climb 102 feet \(31 meters\)\. 1 very high stress junction\.$/);
   assert.equal(
     announceRoute(route, [], { chosen: { rank: 2, of: 3 } }),
-    "Route 2 of 3 chosen: 3.1 mi (5.0 km), 20 min moving time, climb 102 ft (31 m). 1 very high stress junction.",
+    "Route 2 of 3 chosen: 3.1 miles (5.0 kilometers), 20 minutes moving time, climb 102 feet (31 meters). 1 very high stress junction.",
   );
   assert.equal(
     announceRoute(route, [], { others: 2 }),
-    "Route planned: 3.1 mi (5.0 km), 20 min moving time, climb 102 ft (31 m). 1 very high stress junction. 2 other routes to choose from, under Routes to choose from.",
+    "Route planned: 3.1 miles (5.0 kilometers), 20 minutes moving time, climb 102 feet (31 meters). 1 very high stress junction. 2 other routes to choose from, under Routes to choose from.",
   );
   assert.equal(announceRoute(route, [], { others: 0 }), announceRoute(route));
   assert.doesNotMatch(announceRoute(route, [], { chosen: { rank: 1, of: 2 }, others: 1 }), /to choose from/, "a choice is not an arrival");

@@ -14,13 +14,13 @@ import { steepGradesSaid } from "./steepGrades.ts";
 import {
   formatClimb,
   formatDistance,
-  formatDuration,
   formatExtra,
   formatRoughDistance,
   formatSpeed,
   AVOID_MAX_SPAN_M,
   SEEK_MAX_SPAN_M,
 } from "./format.ts";
+import { formatClimbSpoken, formatDistanceSpoken, formatDurationSpoken } from "./spokenFigures.ts";
 
 /**
  * The pace the moving time assumes, derived from the answer itself (distance
@@ -291,7 +291,8 @@ export function announceRoute(route: RouteResponse, points: readonly LonLat[] = 
   }
   const figures =
     head +
-    t("{distance}, {time} moving time, climb {climb}.", { distance: formatDistance(route.distance_m), time: formatDuration(route.duration_s), climb: formatClimb(route.climb_m) });
+    // The units in words (the a11y review's a11y-6): "mi", "h" and a bare "m" were read as letters or as minutes.
+    t("{distance}, {time} moving time, climb {climb}.", { distance: formatDistanceSpoken(route.distance_m), time: formatDurationSpoken(route.duration_s), climb: formatClimbSpoken(route.climb_m) });
   const others = !how.chosen && how.others ? othersSaid(how.others) : null;
   // A Mass Ride's rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3, 325: "announced"), after the junctions.
   return [figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), others]
