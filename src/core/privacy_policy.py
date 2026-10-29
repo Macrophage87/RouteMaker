@@ -147,12 +147,12 @@ SECTIONS: list[tuple[str, str]] = [
                 "Other riders on the same ride see an unnamed dot. No account or name is sent: "
                 "your phone makes a new random code for each ride.",
                 "An alert you send keeps your rounded spot for 2 minutes, or until you clear it.",
-                "On Share ride, Broadcast (in Roam too) and a Group Ride link shared from "
+                "On Share ride, Broadcast (in Roam too) and a Group or Mass Ride link shared from "
                 "RouteMaker, your phone encrypts your dot, your alerts and the leader’s path "
                 "before sending them, with a key only the link carries (in the part after #, which "
                 "browsers never send to a server). The server holds them only as scrambled text it "
                 "cannot read; it still sees when a phone on the ride sends or asks, as it does for "
-                "any page. Mass Ride links are not encrypted this way.",
+                "any page. Ride posts written by RouteMaker's server are not encrypted this way.",
                 "Share ride and Broadcast make you the ride leader, shown as a dot from the start "
                 "of your ride. While you ride a shared ride, you and anyone on it who chooses to "
                 "be shown are shown on or off the route, so riders who get separated can find "

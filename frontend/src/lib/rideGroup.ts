@@ -23,14 +23,36 @@ import { QUARTER_MILE, formatDistance } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
 import type { PresetId } from "./presets.ts";
-import { mergeAlerts, openValue, rideSeal, sealValue, sendable, sendableLine, type OpenedAlert, type RideSeal } from "./rideSeal.ts";
+import { mergeAlerts, newRideSecret, openValue, rideSeal, sealValue, sendable, sendableLine, type OpenedAlert, type RideSeal } from "./rideSeal.ts";
 
 export const RIDE_LINK_TYPES: readonly PresetId[] = ["mass-ride", "group-ride"];
 export type RideLinkType = "mass-ride" | "group-ride";
 
 /** A plan link that is a ride: a Mass Ride or Group Ride with a route. */
+export function isRideLinkType(preset: PresetId): preset is RideLinkType {
+  return preset === "mass-ride" || preset === "group-ride";
+}
+
+/**
+ * The plan's ride secret after its ride type changes from `was` to `now` (Stephen 2026-10-29: Group and Mass Ride both
+ * sealed). Kept: on a plan that is not a ride; a link's own (opened here); or the page's own moving into a ride type
+ * from one that is not. Made new, the page's own: none yet, or the page's own moving between the two ride types, which
+ * are different rides. `own`: the page made the secret, not a link opened here.
+ */
+export function presetSecret(
+  was: PresetId,
+  now: PresetId,
+  secret: string | null,
+  own: boolean,
+  make: () => string = newRideSecret,
+): { secret: string | null; own: boolean } {
+  if (!isRideLinkType(now) || was === now) return { secret, own };
+  if (secret !== null && (!isRideLinkType(was) || !own)) return { secret, own };
+  return { secret: make(), own: true };
+}
+
 export function isRideLink(preset: PresetId, points: readonly LonLat[]): preset is RideLinkType {
-  return (preset === "mass-ride" || preset === "group-ride") && points.length >= 2;
+  return isRideLinkType(preset) && points.length >= 2;
 }
 
 /** What the ride's digest is made from: the ride type and the points as the link writes them. */
@@ -687,7 +709,7 @@ export const ALERT_LABEL = t("Send alert");
 export const ALERT_NOTE = t("Sends your location with the alert");
 /**
  * An alert needs its spot, so it always carries it, even from a rider not shown as a dot; on a ride with no key in its
- * link (every Mass Ride, and a Group Ride link without one) the spot is in plain numbers, which anyone who has the
+ * link (an older Group or Mass Ride link, or a ride post's) the spot is in plain numbers, which anyone who has the
  * route can read. So the rider is told before sending (2026-10-29).
  */
 export const ALERT_SPOT_NOTE = t("Sends your spot to everyone on this ride.");

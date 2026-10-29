@@ -1,6 +1,6 @@
 /**
  * End-to-end encryption of a ride's live data (Stephen 2026-10-29, asked "Would E2E encryption be hard/worth it?",
- * then "yes"): on a broadcast (Share ride, Broadcast, Roam's Broadcast) and a Group Ride link shared from the app, each
+ * then "yes"): on a broadcast (Share ride, Broadcast, Roam's Broadcast) and a Group or Mass Ride link shared from the app (Mass Ride too, Stephen 2026-10-29), each
  * phone seals its dot, its alerts and the leader's path before sending, and the server only holds the sealed text for
  * its 2 minutes (core.ride_presence, "sealed").
  *
@@ -12,7 +12,7 @@
  * - What the server did with the plain numbers is done here before sealing: a position is put on the same 20 m grid
  *   (core.ride_presence.rounded) and one outside the map's area is not sent; alerts that the server merged ("2 riders
  *   reported") are merged by each phone as it reads them (`mergeAlerts`, the same rule).
- * - A link with no secret (a Mass Ride, an older link, or one the server wrote for a ride post) is a ride by its points,
+ * - A link with no secret (an older link, or one the server wrote for a ride post) is a ride by its points,
  *   in plain numbers, as before.
  */
 import { insideCoverage, type LonLat } from "./geo.ts";
