@@ -3364,6 +3364,9 @@ in `routing.ATTRIBUTION` and `VOLUME_CREDITS`:
   together**: deleting the rows does not make the credit wrong for the graph
   until the next rebuild, but a rebuild without them should drop the line.
   From v0.9.1 the map reads those rows as LTS 4.5, not Avoid (`agency_lts.row_level`).
+  Since v0.15.0 the file retires every row (the rebuild reads the county's layer,
+  `agency-lts.json`, directly); the credit stays for that layer, and goes only if
+  Montgomery's ratings are no longer installed.
 
 Arlington's Bike Comfort Index is internal comparison only and is never
 credited because nothing of it is published. Alexandria's Transport Streets was
@@ -5397,7 +5400,9 @@ Montgomery's 5 means very high stress, which is our 4.5, not our Avoid (the owne
 high stress, what our 4.5 means."). From v0.9.1 the rebuild uses LTS 4.5 for it, urban and
 rural alike (`agency_lts.READ_AS`), and so for the county's LTS 5 rows loaded as overrides
 (`moco-lts5-*` in `fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json`, about 39 mi
-(63 km) of ways). The road panel shows "Rated LTS 5 by Montgomery County Planning, which
+(63 km) of ways, until v0.15.0 retires them for the live layer: load the file once, with
+`load_access_overrides`, and the next rebuild takes each road's level from the county's
+layer). The road panel shows "Rated LTS 5 by Montgomery County Planning, which
 means very high stress: LTS 4.5 here". The owner's own rows (Darnestown Road's LTS 4, for
 one) still win. Our Avoid stays for roads that are legal but not a real option: motorway-like
 roads, a hand-set Avoid, a side path riders are asked to use, and DDOT's 5.
