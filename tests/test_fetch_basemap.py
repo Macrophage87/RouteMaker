@@ -518,3 +518,12 @@ def test_a_named_keep_directory_that_is_missing_is_refused(host) -> None:
 def test_without_the_default_keep_directory_the_run_only_notes_it(host) -> None:
     result = host.installed()
     assert "no copy of the region is kept" in result.stderr
+
+
+def test_a_named_keep_directory_is_used_in_place_of_the_default(host) -> None:
+    elsewhere = host.tmp / "kept"
+    elsewhere.mkdir()
+    result = host.run(BASEMAP_KEEP_DIR=str(elsewhere))
+    assert result.returncode == 0, result.stderr
+    assert (elsewhere / "region.pmtiles").read_bytes() == b"PMTiles region"
+    assert not (host.root / "backups" / "basemap").exists()

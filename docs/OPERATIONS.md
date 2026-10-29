@@ -3623,8 +3623,8 @@ plain re-run treats the newer archive as stale and goes back to the pinned day.
 build.protomaps.com keeps daily builds for a limited time only, so an old pin
 becomes a 404. A plain run (no `--build`) then does not fail: it keeps a region
 already installed over the same box, then installs our kept copy over the same
-box, and otherwise installs the newest day published in the last 30, so a fresh host, `local-up.sh` or a disaster rebuild
-still gets a base map. Either way it prints a `reminder:` to bump the pin, and it
+box, and otherwise installs the newest day published in the last 30, so a fresh
+host, `local-up.sh` or a disaster rebuild still gets a base map. Either way it prints a `reminder:` to bump the pin, and it
 prints one on every run once the pin is more than 45 days old, which is the cue
 for the refresh above. A day named with `--build` that is gone still fails. Caddy reads
 the files per request, so nothing is restarted: the next request gets the new
