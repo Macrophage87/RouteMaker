@@ -178,10 +178,14 @@ COMPOSE_FILES = ("compose.yaml", "compose.beta.yaml")
 # 436). The one pre-draw command (predraw_stress_tiles) draws both the stress and the Mass Ride tiles.
 TILE_FORMAT_FILES = ("src/core/stress_tiles.py", "src/core/mass_tiles.py")
 FORMAT_VERSION = re.compile(r"(?m)^FORMAT_VERSION\s*=\s*(\S+)")
+# The files auto-release.sh runs from $RM_STATE/cd/bin (its `install`, and its reinstall after a
+# deploy that changes one of them).
 AGENT_FILES = (
     "scripts/beta/auto-release.sh",
     "scripts/beta/cd_logic.py",
     "scripts/beta/receive-data.sh",
+    "scripts/beta/frontend-build.sh",
+    "scripts/beta/alert.sh",
 )
 MIGRATION = re.compile(r"^src/[^/]+/migrations/[^/]+\.py$")
 # A migration that names the live schema reads or reshapes data that comes from home. A

@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -402,8 +403,28 @@ def test_compose_image_changes_and_new_data_paths_stop(diff: str, stops: bool) -
     assert (result["verdict"] == "stop") is stops
 
 
-def test_a_change_to_the_agent_itself_is_noted() -> None:
-    assert _gate({"scripts/beta/auto-release.sh": ("a", "b")})["agent_changed"]
+@pytest.mark.parametrize(
+    "path",
+    [
+        "scripts/beta/auto-release.sh",
+        "scripts/beta/cd_logic.py",
+        "scripts/beta/receive-data.sh",
+        "scripts/beta/frontend-build.sh",
+        "scripts/beta/alert.sh",
+    ],
+)
+def test_a_change_to_the_agent_itself_is_noted(path: str) -> None:
+    assert _gate({path: ("a", "b")})["agent_changed"]
+    assert not _gate({"scripts/beta/smoke-test.sh": ("a", "b")})["agent_changed"]
+
+
+def test_every_file_the_agent_installs_is_an_agent_file() -> None:
+    agent = AGENT.read_text()
+    installed = set(re.findall(r'install -m [0-7]+ "\$here/([^"]+)" "\$cd_dir/bin/', agent))
+    installed.add("auto-release.sh")  # installed as "$self"
+    assert installed == {Path(f).name for f in cd_logic.AGENT_FILES}
+    bin_line = next(line for line in agent.splitlines() if line.startswith("AGENT_BIN="))
+    assert {e.split(":")[0] for e in bin_line.split('"')[1].split()} == installed
 
 
 # --- the rollback plan ---
@@ -617,6 +638,7 @@ STUB_DOCKER = """#!/bin/sh
 echo "docker $*" >> "$STUB_LOG"
 case "$*" in
   "image inspect"*) [ -n "${STUB_HAS_IMAGES:-}" ] && exit 0; exit 1 ;;
+  "image ls"*) [ -n "${STUB_IMAGE_TAGS:-}" ] && printf '%s\n' $STUB_IMAGE_TAGS; exit 0 ;;
   build*)
     if [ -n "${STUB_BUILD_FAIL_ONCE:-}" ] && [ ! -f "$STUB_BUILD_FAIL_ONCE" ]; then
       : > "$STUB_BUILD_FAIL_ONCE"; exit 1
@@ -957,19 +979,32 @@ def test_a_checkout_changed_by_hand_stops_the_agent(beta: Beta) -> None:
     assert "drift" in beta.status()
 
 
-def test_a_build_that_keeps_failing_is_tried_three_times_then_rolled_back(beta: Beta) -> None:
-    # The build runs after the stop (operations r2, 2), so a failed one starts the old release.
+def test_a_build_that_keeps_failing_is_tried_three_times_and_leaves_the_beta_running(
+    beta: Beta,
+) -> None:
+    # The build runs before the stop (review 2026-10-29), so a failed one touches nothing.
     beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
     done = beta.agent("run", STUB_BUILD_RC="1")
     assert done.returncode == 1
-    assert "rolled-back" in beta.status(), done.stdout
+    assert "failed" in beta.status() and "not touched" in beta.status(), done.stdout
     assert (beta.cd / "failed" / "v0.2.0").exists()
     assert beta.head() == beta.v1
     calls = beta.calls()
-    assert calls.count("docker build") == 3
-    _order(calls, "stop api worker", "docker build", "up -d api worker", "smoke --local")
-    assert "pg_dump" not in calls  # nothing past the build ran
+    assert calls.count("docker build -f") == 3
+    assert "stop api worker" not in calls and "pg_dump" not in calls
     assert not (beta.cd / "in-progress").exists()
+
+
+def test_a_pass_stopped_during_the_build_has_nothing_to_roll_back(beta: Beta) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    # What a pass killed in the build leaves: the record, with no step.
+    (beta.cd / "in-progress").write_text(
+        f"tag=v0.2.0\nnew={beta.sha}\nold={beta.v1}\nold_tag=v0.1.0\nsteps=\npid=1\n"
+    )
+    done = beta.agent("run", STUB_RUNNING="postgis")
+    assert done.returncode == 0, done.stdout
+    assert "had not touched the stack" in done.stdout
+    assert "deployed: v0.2.0" in beta.status()
 
 
 def test_a_build_that_fails_once_is_tried_again_and_deploys(beta: Beta) -> None:
@@ -977,7 +1012,7 @@ def test_a_build_that_fails_once_is_tried_again_and_deploys(beta: Beta) -> None:
     done = beta.agent("run", STUB_RUNNING="postgis", STUB_BUILD_FAIL_ONCE=str(beta.tmp / "once"))
     assert done.returncode == 0, done.stdout
     assert "deployed: v0.2.0" in beta.status()
-    assert beta.calls().count("docker build") == 2
+    assert beta.calls().count("docker build -f") == 2
     assert "try 2 of 3" in done.stdout
 
 
@@ -1034,6 +1069,47 @@ def test_a_green_code_release_is_deployed_by_the_runbooks_steps(beta: Beta) -> N
     assert "up-to-date: v0.2.0" in beta.status()
     # the deploy's report outlives the idle pass after it
     assert "result: deployed: v0.2.0" in (beta.cd / "last-release-report.txt").read_text()
+
+
+def test_a_release_that_changes_the_agent_reinstalls_it_after_the_deploy(beta: Beta) -> None:
+    newer = (BETA / "cd_logic.py").read_text() + "\n# a newer agent\n"
+    beta.release("v0.2.0", {"scripts/beta/cd_logic.py": newer})
+    before = (beta.cd / "bin" / "frontend-build.sh").read_text()
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status()
+    assert (beta.cd / "bin" / "cd_logic.py").read_text() == newer
+    assert (beta.cd / "bin" / "FROM").read_text().strip() == beta.sha
+    assert (beta.cd / "bin" / "frontend-build.sh").read_text() == before
+    assert not list((beta.cd / "bin").glob(".*.new"))
+
+
+def test_a_release_that_fails_does_not_reinstall_the_agent(beta: Beta) -> None:
+    installed = (beta.cd / "bin" / "cd_logic.py").read_text()
+    beta.release("v0.2.0", {"scripts/beta/cd_logic.py": installed + "# newer\n"})
+    beta.agent("run", STUB_BUILD_RC="1")
+    assert "failed" in beta.status()
+    assert (beta.cd / "bin" / "cd_logic.py").read_text() == installed
+
+
+def test_a_deploy_prunes_old_images_and_node_modules_but_not_the_previous(beta: Beta) -> None:
+    older = beta.release("v0.1.5", {"src/core/a.py": "x = 0\n"})
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    stale = beta.cd / "node_modules" / ("0" * 64)
+    stale.mkdir(parents=True)
+    os.utime(stale, (time.time() - 40 * 86400,) * 2)
+    fresh = beta.cd / "node_modules" / ("1" * 64)
+    fresh.mkdir()
+    current = beta.node_modules(b"{}\n")
+    later = "f" * 12  # an image loaded from home for a release still to come
+    tags = f"{beta.v1[:12]} {sha[:12]} {older[:12]} {later} latest"
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_IMAGE_TAGS=tags)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status()
+    removed = [line for line in beta.calls().splitlines() if line.startswith("docker image rm")]
+    assert removed == [f"docker image rm {API}:{older[:12]}"]
+    assert "docker builder prune -f --filter until=168h" in beta.calls()
+    assert not stale.exists() and fresh.exists() and current.exists()
 
 
 def test_a_deployed_release_s_files_are_readable_by_the_containers(beta: Beta) -> None:
@@ -1229,6 +1305,47 @@ def test_receive_data_backups_dir_must_be_private_absolute_and_outside_data_root
     assert done.returncode == 2 and "postgis is not running" in done.stderr, done.stderr
 
 
+@needs_git
+def test_receive_data_keeps_the_newest_safety_dumps_of_each_kind(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    (repo / "scripts" / "beta").mkdir(parents=True)
+    (repo / "scripts" / "beta" / "beta-compose.sh").write_text(STUB_COMPOSE)
+    (repo / "scripts" / "beta" / "beta-compose.sh").chmod(0o755)
+    backups = tmp_path / "data" / "backups"
+    backups.mkdir(parents=True)
+    old = []
+    for i in range(4):
+        dump = backups / f"pre-update-2026010{i}T000000Z.dump"
+        dump.write_text("old")
+        os.utime(dump, (time.time() - (10 - i) * 86400,) * 2)
+        old.append(dump)
+    other = backups / "pre-restore-20260101T000000Z.dump"
+    other.write_text("old")
+    os.utime(other, (time.time() - 30 * 86400,) * 2)
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"COMPOSE_PROJECT_NAME=routemaker-beta\nDATA_ROOT={tmp_path / 'data'}\n")
+    env = {
+        **os.environ,
+        "RECEIVE_DATA_REPO": str(repo),
+        "STUB_LOG": str(tmp_path / "calls.log"),
+        "STUB_RUNNING": "postgis",
+    }
+    done = subprocess.run(
+        ["bash", str(BETA / "receive-data.sh"), "--env-file", str(env_file)]
+        + ["snapshot-db", "--label", "update"],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    new = Path(done.stdout.strip())
+    assert new.exists() and new.parent == backups
+    # The new one and the two newest before it stay; other kinds are not touched.
+    assert [d.exists() for d in old] == [False, False, True, True]
+    assert other.exists()
+
+
 # --- the runbook ---
 
 
@@ -1381,7 +1498,7 @@ def test_a_new_lockfile_waits_even_when_the_old_one_has_node_modules(beta: Beta)
     assert "stop api worker" not in beta.calls()
 
 
-def test_a_front_end_release_is_built_after_the_stop_and_installed(beta: Beta) -> None:
+def test_a_front_end_release_is_built_before_the_stop_and_installed(beta: Beta) -> None:
     beta.node_modules(b"{}\n")
     sha = beta.release("v0.2.0", {"frontend/src/x.ts": "export {}\n"})
     done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
@@ -1398,7 +1515,7 @@ def test_a_front_end_release_is_built_after_the_stop_and_installed(beta: Beta) -
         assert flag in build, flag
     # frontend-build.sh's mounts: the whole exported tree, for tests that read beside frontend/
     assert ":/repo:ro" in build and "-w /repo/frontend" in build
-    _order(calls, "stop api worker", build, "pg_dump", "up -d api worker", "smoke --local")
+    _order(calls, build, "stop api worker", "pg_dump", "up -d api worker", "smoke --local")
 
 
 def test_a_front_end_rollback_puts_back_the_page_and_its_build_record(beta: Beta) -> None:
@@ -1855,7 +1972,7 @@ def test_the_handout_and_runbook_say_what_a_deploy_looks_like() -> None:
     assert "IN PROGRESS" in by_hand and "mark-deployed --force" in by_hand
     assert by_hand.index("status") < by_hand.index("mark-deployed --force")
     cd = runbook[runbook.index("## Continuous deployment") :]
-    assert "10-20 minutes" in cd and "a few minutes of downtime" not in cd
+    assert "usually under 5 minutes" in cd and "10-20 minutes" not in cd
     assert "resend the\n  handout" in cd or "resend the handout" in cd
 
 

@@ -1118,16 +1118,15 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    A stop writes its reasons to `$RM_STATE/cd/hold/<tag>` and the agent does nothing else for that
    tag. Ship it by hand ("Shipping an update later", with `pause` first), then `mark-deployed <tag>`.
 6. The deploy. First, with nothing running touched, a `git archive` of the tag into
-   `$RM_STATE/cd/build`. Then the runbook's steps: stop the api and worker; build the api image
-   (`docker build` of that tree, tried 3 times a minute apart, since pip needs the network; skipped
-   if `ghcr.io/macrophage87/routemaker-api:<TAG>` is already on the host because the owner loaded it
-   from home) and, if `frontend/` changed, the front end. The builds come after the stop on
-   purpose: the api build is not capped (BuildKit runs in the daemon), so it uses the memory the api
-   and worker had instead of the other sites' headroom, and the front-end build runs with
-   `--memory 1536m` and `--oom-score-adj 1000`, so a host short of memory kills it first. The cost
-   is downtime: roughly 10-20 minutes per release (the api build, up to 3 tries; the front-end
-   test and build; the snapshot; `/healthz` and the smoke tests), longer when a build fails before
-   the rollback, and much less when the owner has loaded the api image from home. During it nginx
+   `$RM_STATE/cd/build`, then the builds while the beta still runs: the api image (`docker build`
+   of that tree, tried 3 times a minute apart, since pip needs the network; skipped if
+   `ghcr.io/macrophage87/routemaker-api:<TAG>` is already on the host because the owner loaded it
+   from home) and, if `frontend/` changed, the front end (`--memory 1536m` and
+   `--oom-score-adj 1000`, so a host short of memory kills it first; the api build runs in the
+   daemon and is not capped). A build that fails leaves the running release alone and marks the
+   tag failed (`retry <tag>`). Then the runbook's steps, from the stop of the api and worker. The
+   downtime is the stop to the smoke tests (the snapshot, migrations, the start, `/healthz`, the
+   smoke tests, and a minute more when they are retried), usually under 5 minutes. During it nginx
    still serves the page, so testers see it open, but planning a route says "Router unavailable",
    place search and the road information say they are "not available right now", and Sign in
    shows the "Back soon" page (`deploy/beta/502.html`; nginx's bare "502 Bad Gateway" on a site
@@ -1152,14 +1151,14 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    the new front end was installed; start the api and worker; the routers again if they were
    restarted; the step 8 pre-draw after a database restore (a failure there is a warning); the smoke tests. The tag is then marked
    failed (`$RM_STATE/cd/failed/<tag>`) and not tried again until `retry <tag>`. A failure before the
-   stop (exporting the tag's tree) changes nothing and marks the tag failed the same way. If the rollback itself fails,
+   stop (exporting the tag's tree, or a build) changes nothing and marks the tag failed the same way. If the rollback itself fails,
    the agent marks itself BROKEN, stops making passes, and waits for the owner.
 
    **A pass stopped mid-deploy.** Each step is written to `$RM_STATE/cd/in-progress` before it
    runs. If the pass is stopped (systemd's `TimeoutStartSec`, a reboot, `systemctl --user stop`, a
    logout without linger, a kill), the next pass rolls that deploy back from the steps written there,
    if it had touched the stack, and marks the tag failed (`retry <tag>` to try it again); if that
-   rollback fails, BROKEN. A pass stopped before the stop (while exporting the tree) touched nothing:
+   rollback fails, BROKEN. A pass stopped before the stop (while exporting the tree or building) touched nothing:
    the next pass drops the record and carries on. A pass stopped during the pre-draw has already
    recorded the release, so nothing is rolled back. While the agent is paused nothing rolls it back:
    `status` and `pause` say so (`IN PROGRESS`), and `mark-deployed` refuses to drop that record
@@ -1171,8 +1170,13 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    migration still connected fails and leaves the agent BROKEN (it errs closed).
 
 What it never does: touch nginx, use sudo, receive or install a data bundle, touch Photon's index or
-the routing graphs, write outside the checkout, `$RM_DATA/frontend` and `$RM_STATE`, or remove an
-image (the old one stays for rollback C).
+the routing graphs, write outside the checkout, `$RM_DATA/frontend` and `$RM_STATE`, or remove the
+running or the previous release's api image (that one stays for rollback C).
+
+After each deploy it prunes (never failing the pass): api image tags of releases before the
+previous one (only commits the deployed one descends from, so an image loaded for a later release
+stays), Docker's build cache over a week old (`docker builder prune --filter until=168h`), and
+`node_modules` copies for neither the deployed nor the previous lockfile that are over 30 days old.
 
 ### Install (once, by the beta's login user; no sudo)
 
@@ -1283,16 +1287,20 @@ switch over it as in the "Front end only" undo above. Pause the agent first (`pa
 hand rollback replaces the agent's), then `"$A" resume`. A later release (a higher tag) is the
 usual way forward.
 
-**Upgrading the agent.** A release that changes the agent says so in its report; once it is
-deployed, rerun `"$RM_SRC/scripts/beta/auto-release.sh" install` (it keeps the state). Until then the
-installed copy keeps running.
+**Upgrading the agent.** A release that changes the agent's files (`auto-release.sh`, `cd_logic.py`,
+`receive-data.sh`, `frontend-build.sh`, `alert.sh`) says so in its report, and once it is deployed
+the agent copies them from the deployed checkout into `$RM_STATE/cd/bin`, so the next pass runs
+them. The systemd units are written only by `install`: rerun
+`"$RM_SRC/scripts/beta/auto-release.sh" install` (it keeps the state) when a release's notes say
+the units changed, or if the report says the copy failed.
 
 **Disk.** `status` shows the free space on Docker's root and `$RM_STATE`, the number of api
-images (one a release, kept for rollback C), the `<db>_before_<time>` databases automatic restores
-left, and the `node_modules` copies. The agent removes none of the images or databases; the owner
-does, once a release has run well: `docker image rm ghcr.io/macrophage87/routemaker-api:<old TAG>`
-(never the running one or the previous one), `drop database "<db>_before_<time>"` in postgis, and
-old `$RM_STATE/cd/node_modules/<hash>` directories. The agent keeps `RM_CD_KEEP` snapshots.
+images, the `<db>_before_<time>` databases automatic restores left, and the `node_modules` copies.
+Each deploy prunes old api images, build cache and `node_modules` copies (step 6), and the agent
+keeps `RM_CD_KEEP` snapshots. It never drops a database: once a release has run well, the owner
+drops the kept ones, `drop database "<db>_before_<time>"` in postgis. `receive-data.sh` keeps the
+newest 3 of each kind of its own safety dumps in `DATA_ROOT/backups` (`pre-update-*`,
+`pre-restore-*`, `pre-rollback-*`; `RECEIVE_DATA_KEEP`).
 
 **Uninstall:** `"$A" uninstall` stops and removes the timer and units; `rm -rf "$RM_STATE/cd"`
 removes the agent, its logs and its snapshots (owner's say-so: they hold database dumps).
