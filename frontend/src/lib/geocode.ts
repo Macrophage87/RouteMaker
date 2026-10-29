@@ -198,8 +198,10 @@ export function searchUrl(query: string, bias?: LonLat, limit: number = SEARCH_R
   return `/api/geocode?${params.toString()}`;
 }
 
-export function reverseUrl(point: LonLat): string {
+/** `address`: name the point by its street address (house number and street) when one is near (Go's tapped spot). */
+export function reverseUrl(point: LonLat, address = false): string {
   const params = new URLSearchParams({ lat: point[1].toFixed(6), lon: point[0].toFixed(6) });
+  if (address) params.set("address", "true");
   return `/api/reverse?${params.toString()}`;
 }
 
@@ -567,12 +569,16 @@ export function searchSender(
   return (query) => gate.run(() => fetchImpl(searchUrl(query, bias())), true);
 }
 
-/** How a point's name is asked: through the same gate, behind any search. */
+/**
+ * How a point's name is asked: through the same gate, behind any search. `address` asks for the street address
+ * (Go's tapped-spot card; Stephen, 2026-10-29: "provide the address if possible"); route points never do.
+ */
 export function nameSender(
   gate: GeoGate,
   fetchImpl: FetchPlaces = (url) => fetchPlaces(url),
+  address = false,
 ): (point: LonLat) => Promise<GeoResult> {
-  return (point) => gate.run(() => fetchImpl(reverseUrl(point)));
+  return (point) => gate.run(() => fetchImpl(reverseUrl(point, address)));
 }
 
 /**
