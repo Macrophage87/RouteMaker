@@ -3389,8 +3389,10 @@ settled, between networks and between components (`SeekOutOfTime`), against the
 leg's stop less a candidate's least. `refine._seek_leg` looks at the leg's
 deadline before the table and again before the corridor search, and the table
 read runs under `SET LOCAL statement_timeout` (`set_config(..., true)`, as
-`core.stress_tiles.render` does), at most 2.5 s and never past the leg's time; a
-cancelled read is `limited: "time"`, a `SeekError` is `limited: "error"` (logged),
+`core.stress_tiles.render` does), at most 2.5 s and never past the leg's time (since
+v0.15.0 through `routing.plan_cursor(cap_s=...)`, so also never past the plan's own time);
+a cancelled read is `limited: "time"`, a plan replaced by a newer one ends there
+(`PlanCancelled`), a `SeekError` is `limited: "error"` (logged),
 and the plan is answered without the seek. Proved on the mutant that froze the
 host (the clamp removed): `tests/test_trailseek.py` now fails in 20 s, under a
 300 s timeout, with `SeekError: a trail step must cost something, not -6.0`; with
