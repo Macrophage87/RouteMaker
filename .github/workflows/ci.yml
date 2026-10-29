@@ -87,7 +87,8 @@ jobs:
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "$VERSION_CODENAME")-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
-          sudo apt-get install -y binutils libproj-dev gdal-bin libgeos-dev luajit lua5.4 "postgresql-client-$PG_MAJOR"
+          # age: the nightly dump is encrypted through it, and the backup tests run the real one.
+          sudo apt-get install -y binutils libproj-dev gdal-bin libgeos-dev luajit lua5.4 age "postgresql-client-$PG_MAJOR"
           # Ahead of /usr/bin, whose pg_wrapper picks the newest client installed,
           # and the runner image may carry a newer one.
           echo "/usr/lib/postgresql/$PG_MAJOR/bin" >> "$GITHUB_PATH"

@@ -4594,7 +4594,11 @@ body, so no request line holds it), a reverse look-up (`/api/reverse?lat=..&lon=
 near the map centre (`/api/geocode?...&lat=..&lon=..`). What keeps it out of the logs:
 
 - **gunicorn** logs the path without the query (`%(U)s`, docker/api-entrypoint.sh), with the
-  duration (`%(D)s`): that is where a slow route now shows.
+  duration (`%(D)s`): that is where a slow route now shows. Its logger class
+  (`config.access_log.Logger`, src/config/access_log.py) writes a live ride's and a shared route's
+  link id, an assistant's GPX token and a map tile's z/x/y as the route's shape
+  (`/api/rides/:id/here`, `/s/:id`, `/mcp/gpx/:token`, `/tiles/stress/:zxy`), so a log reader
+  can neither open the link later nor follow the map a rider was viewing (v0.15.0).
 - **Valhalla** (401): no Valhalla release RouteMaker has run, 3.5.1 to 3.9.1, reads a
   `long_request` key. Only upstream's config generator and test configs name it, so there is no
   slow-request log that could carry a request's locations. The `long_request` overrides set under
@@ -4607,19 +4611,35 @@ near the map centre (`/api/geocode?...&lat=..&lon=..`). What keeps it out of the
   per-module section is left. Route timing comes from the app's side: the time of the whole plan
   request, not of each router call (gunicorn's `%(D)s`; the beta's nginx `$request_time`; home's
   Caddy keeps no access log).
+- **Home's Caddy** keeps no access log, but its own log still records an error entry when the
+  api is down (a restart or a deploy), and that entry carried the request's URI, query and all,
+  and the client's address. The Caddyfile's global options filter the default log: the entry's
+  `request>uri`, `remote_ip`, `remote_port`, `client_ip` and `headers` are deleted, and the error,
+  status and duration stay (v0.15.0).
+- **PostgreSQL** logs a failed statement's error and nothing of the statement: psycopg2 fills the
+  parameters into the SQL it sends, so the default `STATEMENT:` line held a timed-out plan's route
+  points or a refused Home write. Both compose files start postgis with
+  `log_min_error_statement=panic`, `log_error_verbosity=terse` (no DETAIL, which holds a refused
+  row), `log_statement=none` and `log_min_duration_statement=-1` (v0.15.0).
 - **Beta nginx** (deploy/beta/nginx-routemaker.conf.template): the access log is
-  `rmbeta_noquery`, the path only, with no query string, Referer, client address or tester name.
+  `rmbeta_noquery`, the path only, with no query string, Referer, client address or tester name,
+  and the path is `$rmbeta_logpath`: link ids, the GPX token and tile z/x/y taken out the same way
+  as gunicorn's (v0.15.0).
   Every `/api/` path logs errors at `crit` only, to their own file (a review addition,
   not asked for by name: owner to confirm, and the same for dropping the client address and tester name), because an
   upstream error line (a 502 while the api restarts, a 504) records the whole request; the whole prefix
-  is covered (v0.15.0), so a new endpoint with a place in it needs no template change. Every other
-  path's upstream errors still reach the host's error log; none of them has a location in a query.
+  is covered (v0.15.0), so a new endpoint with a place in it needs no template change. So do
+  `location /` (the tiles, the GPX link) and the share links' `/s/` (v0.15.0). The site's other
+  paths (static files, the base map) still reach the host's error log; none of them has a location
+  or an id in it.
   The 311 log's website lookup (`/api/report311/where`) takes its point in a POST body, so no
   request line carries it. tests/test_beta_overlay.py pins the format, both servers' access log,
-  and that every `/api/...?` path in the front end, digits and underscores included, is covered.
-- **Tile paths** (`/tiles/stress/{z}/{x}/{y}.pbf`) are logged by nginx and gunicorn and show the
-  area viewed, to about a mile [2 km] at zoom 14. That is true of any map pan and is
-  not a position fix.
+  and that every `/api/...?` path in the front end, digits and underscores included, is covered;
+  tests/test_server_logs.py holds nginx's `$rmbeta_logpath` map equal to gunicorn's, and checks
+  Caddy's filter and PostgreSQL's settings.
+- **Tile paths** (`/tiles/stress/{z}/{x}/{y}.pbf`, served to zoom 16, about 2,000 ft [600 m]
+  across) followed the rider's map, so neither access log keeps their z/x/y (v0.15.0): each is
+  logged as `/tiles/stress/:zxy` or `/tiles/mass/:zxy`.
 
 Open: Photon's own request logging is unverified (`docker logs photon` after one search on a dev
 stack; a log4j override if queries show). Whether Valhalla logs a request on an error path (no
@@ -5038,6 +5058,12 @@ and its header). What the panel shows is in `app/`, moved out unchanged:
   Climbs layer's "Show climbs from") goes inside, under that layer's switch; long help goes by
   the legend in the Legend sheet, not in Layers.
 - `app/hooks.ts`: `useNarrow` (and `NARROW`), `useLongerThan`, `useSettled`.
+- `app/LiveMap.tsx`: `LiveMap`, the map with the rider's position and the elevation chart's
+  scrub point read from their own stores (`lib/liveValue.ts`), and `LiveRiderPoint`, the
+  same for a ride group's dot. A GPS fix (about once a second) or a scrub re-renders the map
+  alone, not App and the hidden planner. App keeps a ride's slower parts (the route, the
+  stops, Detour's letters) in `rideView` and re-renders only when they change
+  (`lib/rideViewKept.ts`). Unlike the pass-throughs above, these two read their stores.
 
 Each component is a pass-through: it takes its props under the names App gives them, keeps
 no state and calls no hook (`RouteSummary` keeps its own `useStressStyle()`), and App renders
@@ -8255,6 +8281,22 @@ spot. Until the build host fills it the file is empty and every place reads as b
 `trailMiles.test.ts`, the trail cases in `report311.test.ts` and `navigate.test.ts`, and
 `tests/test_build_trail_miles.py` (which builds from a small made-up extract) check it.
 
+**The 311 log keeps the day, not the time of day (Stephen, 2026-10-29).** Since 2026-10-20 a 311 pick
+is logged (`lib/report311Log.ts`, `core/report_log.py`) rather than texted. Each entry keeps the exact
+spot, because crews need it to find the pothole, and its days: `at` (logged), `changed` and
+`reported` are dates in Washington's time ("2026-10-20", `today`, `dayOf`), never a time, and a new
+id is 16 random hex characters (the ids before began with the time they were made). The checklist
+and the copied report say the day ("Pothole, Oct 20"; "Seen Oct 20."). Two changes to one entry on
+one day are told apart by `rev`, a count of its changes, which a merge compares after the day; a tie
+on both keeps the reported copy, so a check-off is never lost. The API serves each day as noon in
+Washington with its offset (`served`, "2026-10-20T12:00:00-04:00"), because the page of the release
+before reads a bare day as midnight UTC, the evening before; the page reads only the day. An
+older copy is cut to days wherever it is read: on the device as the page opens (both stored copies are
+written back), on the server at each save (`dated`, in `merge_logs`), and the accounts' logs already
+kept by migration 0052, which also makes the row's `updated_at` a date. What goes to DC 311 is
+unchanged in form: the problem's code, the exact spot and the report's words, which now say the day.
+`tests/test_report_log.py` and `report311Log.test.ts` check it.
+
 **Checks (N7).** `corridor.test.ts`, `report311.test.ts`, the trail cases in `navigate.test.ts` and
 `loadTile` in `stressProtocol.test.ts`; the browser suite's Ride mode section checks that the stress
 tiles along the mocked route are kept at z12-14, that one answers the tile loader at once with the
@@ -8552,6 +8594,11 @@ age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
   still on the older build joins a link's ride by its points and does not meet those on the sealed ride. A Group
   Ride's secret comes from the plan as opened (`OPENED_HASH`), so one kept over a sign-in keeps it; a saved or
   kept route the rider opens gets a new one, a link pasted in its own or none.
+- **An alert's spot.** An alert needs its spot, so it carries it on every ride, even from a rider who is not
+  shown as a dot. On a ride without a key that spot is in plain numbers, which anyone who has the route can read,
+  so the alert panel says "Sends your spot to everyone on this ride." where that adds something: no key, and the
+  rider not shown as a dot (`rideGroup.ts alertNote`). Elsewhere the panel keeps its short "Sends your location
+  with the alert."; a screen reader, and the Alert button's description, always get the spot line.
 - Tests: `frontend/src/lib/rideSeal.test.ts` (secret, derivation, sealing, the grid against the server's,
   merging, a sealed ride end to end through `rideGroup.ts`, the page's wiring) and `tests/test_ride_presence.py`
   (sealed dots, alerts and paths kept, limited, marked and dropped as plain ones are).
@@ -8595,8 +8642,10 @@ and place names, agency notices and anything sent to the server or kept on the d
 written. Miles come first in every language.
 
 - Catalogs: `frontend/src/i18n/<language>.ts`, one object from the English phrase to its
-  translation. Spanish (`es.ts`) is in the bundle. The others are fetched before the app starts
-  (`loadLanguage`, called from main.tsx), and the service worker keeps the one a rider uses.
+  translation. Each, Spanish's (`es.ts`) included, is a file of its own fetched before the app
+  starts (`loadLanguage`, called from main.tsx and the Featured post page's `post/main.ts`), so
+  an English reader downloads none. The service worker precaches Spanish's and keeps any other
+  the first time a rider uses it.
 - The language a page opens in (`startLanguage`): the rider's choice (Settings > Display >
   Language, kept on this device), else the phone's language if it is English or Spanish, else
   English. Since v0.15.0 the 19 draft languages are used only once a rider picks one

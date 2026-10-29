@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
-import { t } from "./i18n.ts";
+import { loadLanguage, t } from "./i18n.ts";
 import {
   ANSWERED_HERE_KEY,
   DWELL_M,
@@ -75,6 +75,9 @@ import { PALETTES, contrastRatio } from "../stressStyle.js";
 import { baseSurfaces } from "../testSupport/baseSurfaces.ts";
 import { VISIONS, deltaE2000, simulate } from "../testSupport/colourVision.ts";
 import { readFileSync } from "node:fs";
+
+// Spanish's catalog is fetched on choosing it (lib/i18n.ts loadLanguage), as the app does before it starts.
+await loadLanguage("es");
 
 // An east-west route about 3.4 km long.
 const LINE: LonLat[] = Array.from({ length: 21 }, (_, i) => [-77.04 + i * 0.002, 38.9] as LonLat);
@@ -274,6 +277,21 @@ test("Alert's choices and Other's Speak, Send and Cancel are ride-sized, with no
   assert.match(panel, /className="secondary ride-speak"/);
   assert.match(panel, /<button type="submit">\{t\("Send"\)\}<\/button>/);
   assert.match(panel, /className="ride-alert-kinds"/);
+});
+
+test("on a ride with no key, the alert panel says the spot goes to everyone on the ride, before the rider sends", async () => {
+  const { alertNote, ALERT_NOTE } = await import("./rideGroup.ts");
+  const spot = "Sends your spot to everyone on this ride.";
+  // Plain, and not shown as a dot: the alert is the first time this rider's spot goes out, so the panel says so.
+  assert.deepEqual(alertNote(false, false), { seen: spot, heard: spot });
+  // Shown as a dot already, or sealed with the link's key: the usual short line seen; a screen reader still hears it all.
+  assert.deepEqual(alertNote(false, true), { seen: `${ALERT_NOTE}.`, heard: spot });
+  assert.deepEqual(alertNote(true, false), { seen: `${ALERT_NOTE}.`, heard: spot });
+  // The panel shows the seen line, hidden from a screen reader, which hears the other (the Alert button's description too).
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  assert.match(group, /const note = alertNote\(seal !== null, meShown\);/);
+  assert.match(group, /<span aria-hidden="true">\{note\.seen\}<\/span>\s*<span id=\{`\$\{alertPanel\}-note`\} className="visually-hidden">\s*\{note\.heard\}/);
+  assert.match(group, /aria-describedby=\{`\$\{alertPanel\}-note`\}/);
 });
 
 test("one alert a minute and ten a ride per device", () => {

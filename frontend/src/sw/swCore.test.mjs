@@ -432,6 +432,13 @@ test("a language's catalog (assets/lang-*.js) is lazy: an install does not downl
   assert.equal(ruleFor(get("/assets/lang-am-Gh78.js"), ORIGIN), "lazy");
 });
 
+test("Spanish's catalog, out of the app's script, is still precached: the installed app keeps it offline as before", () => {
+  const names = ["assets/index-1.js", "assets/lang-es-Ab12.js", "assets/lang-fr-Cd34.js"];
+  assert.deepEqual(precacheList(names), ["/assets/index-1.js", "/assets/lang-es-Ab12.js"]);
+  assert.deepEqual(lazyList(names), ["/assets/lang-fr-Cd34.js"]);
+  assert.equal(ruleFor(get("/assets/lang-es-Ab12.js"), ORIGIN), "precache");
+});
+
 test("the federal land, only Mass Ride's, is lazy too; the worker starts once the page has loaded (review fe-perf-6)", () => {
   const names = ["assets/index-1.js", "assets/federal-land-Ef56.json"];
   assert.deepEqual(precacheList(names), ["/assets/index-1.js"]);

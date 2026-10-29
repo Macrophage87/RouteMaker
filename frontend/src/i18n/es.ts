@@ -581,6 +581,8 @@ export const ES: Readonly<Record<string, string>> = {
   // ---- A broadcast's riders and alerts (lib/rideGroup.ts, RideMode.tsx) ----
   "Send alert": "Enviar alerta",
   "Sends your location with the alert": "Envía su ubicación con la alerta",
+  // Draft, to be checked by a native speaker (2026-10-29).
+  "Sends your spot to everyone on this ride.": "Envía su ubicación a todos en este recorrido.",
   "Send to everyone on this ride?": "¿Enviar a todos en este recorrido?",
   "Riders": "Ciclistas",
   "No riders on the route yet": "Aún no hay ciclistas en la ruta",

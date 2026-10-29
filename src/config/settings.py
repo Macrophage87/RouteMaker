@@ -174,6 +174,13 @@ REBUILD_REFERENCE_DIR = DATA_ROOT / "reference"
 # a deploy that changed the fixture changes nothing until it is reinstalled.
 REBUILD_CROSSINGS_FIXTURE = BASE_DIR / "fixtures" / "crossings" / "potomac-anacostia.json"
 BACKUP_DIR = DATA_ROOT / "backups"
+# The public half of the owner's age key pair: every nightly dump is encrypted to the
+# recipients in this file, and the private half never comes to the server, so the server can
+# write a dump but never read one (docs/OPERATIONS.md, "Backups"). In the backups folder by
+# default because that is the one folder the worker mounts. Missing, the dump is refused.
+BACKUP_AGE_RECIPIENTS = Path(
+    os.environ.get("BACKUP_AGE_RECIPIENTS") or BACKUP_DIR / "age-recipients.txt"
+)
 # Tiles: one directory per variant, a dated build directory under each, and a
 # `current` symlink that the serving container mounts. Inside the rebuild
 # container DATA_ROOT is /data, so these are the paths the generated Valhalla
@@ -821,6 +828,9 @@ LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {"plain": {"format": "{asctime} {levelname} {name} {message}", "style": "{"}},
+    # A link's id and a map tile's z/x/y are written as the access logs write them
+    # (config.access_log): Django logs each 4xx and 5xx answer's path under django.request.
+    "filters": {"logged_path": {"()": "config.access_log.PathFilter"}},
     "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
     "root": {"handlers": ["console"], "level": "WARNING"},
     "loggers": {
@@ -829,6 +839,8 @@ LOGGING = {
         # Named at the package, so `config.procrastinate` and anything else this
         # package logs from are covered by one entry.
         "config": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        # No handler of its own: it still reaches the root's, at WARNING.
+        "django.request": {"filters": ["logged_path"]},
     },
 }
 

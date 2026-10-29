@@ -1010,6 +1010,10 @@ anything can run `migrate` (rollback C restores that snapshot), and the app star
    `scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`
    (the same line as rollback A), with `valhalla-offroad valhalla-mtb` added once their tiles are on the host.
    Check with `git diff --stat <old sha>..<new sha> -- valhalla lua`.
+   **v0.15.0 only:** postgis's command (its log settings) and memcached's network change, so recreate those two
+   first, `scripts/beta/beta-compose.sh up -d postgis memcached`, wait until `beta-compose.sh ps` shows postgis
+   healthy and memcached up (the Postgres restart takes the api's database away for a few seconds), and only then
+   run this step's `up -d api worker`.
 9. **Only if `git diff --stat <old sha>..<new sha> -- deploy/beta` lists the nginx template** (owner steps, because
    they use sudo): re-render it into `$RM_STATE`, see the change against the installed file, install it over the site
    file, then `sudo nginx -t && sudo nginx -s reload`, and run the `curl` check from step 9c:
@@ -1554,9 +1558,12 @@ secret like the webhooks: never in chat, the repo or a command line.
   (a new endpoint is covered without a template change), so
   a 502 or 504 there leaves no error-log line; `rmbeta-access.log` still shows the status and the time (about 0 s:
   the api was down; about 75 s: it timed out), and for a 502 the api's own log usually has nothing, because the
-  request never reached it. The time in the nginx and gunicorn logs is the whole request's, not one router call's. Upstream errors on every other (non-`/api/`) path still go to the
-  host's own nginx error log, with the request line (those paths carry no location in a query; a tile path does show
-  the area viewed, as any map pan does).
+  request never reached it. The time in the nginx and gunicorn logs is the whole request's, not one router call's. A
+  ride's or a shared route's link id, the GPX token and a map tile's z/x/y are logged as `:id`, `:token` and `:zxy`
+  (v0.15.0; docs/OPERATIONS.md, "What the server logs keep"), and `/s/` and `location /` (the tiles) log errors at
+  `crit` only too. Upstream errors on the site's other paths (static files, the base map) still go to the host's own
+  nginx error log, with the request line (those paths carry no location or id).
+  PostgreSQL logs a failed statement's error without the statement or its values.
 - **No rebuild runs here.** There is no rebuild container, and `WEEKLY_REBUILD_PAUSED=1` is set so that a rebuild
   worker started by mistake would only record a pause. New routing data always comes from home as a bundle. Expected,
   and not a fault: the worker's schedule still queues the weekly tick, and with no rebuild worker to take it one

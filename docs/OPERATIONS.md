@@ -271,11 +271,14 @@ declining every week with "grow the volume" as the only remedy.
 | What | Kept | Where |
 | --- | --- | --- |
 | Dated tile build directories | Whatever `current` and `previous` point at, plus the build of the run that is in progress | `pipeline.retention.prune_builds`, run by the rebuild task before the disk gate and again on its way out |
-| Database dumps | 7 (`BACKUP_KEEP`) | `pipeline.retention.prune_backups`, run by the backup task after a verified dump |
+| Database dumps | 7 (`BACKUP_KEEP`), and none older than 6½ days (`BACKUP_MAX_AGE`) except the newest, so deleted accounts leave them within the week the privacy page promises; plain `.dump` files from before encryption go once a newer `.dump.age` exists | `pipeline.retention.prune_backups`, run by the backup task every night, whether or not that night's dump succeeded |
+| Pre-update dumps (`pre-<label>-<UTC instant>.dump`, plain) | 3 of each label (`RECEIVE_DATA_KEEP`, `RM_CD_KEEP`), and none older than 6½ days, newest included | `scripts/beta/receive-data.sh` when it takes one; `pipeline.retention.prune_snapshots` nightly in `<DATA_ROOT>/backups`; `scripts/beta/auto-release.sh` on every pass in its own folder |
 | `scheduled_run` rows | 30 days, plus the newest row and the newest successful row per task | `core.runs.prune_run_rows`, run nightly |
 | Finished `procrastinate_jobs` and their events | 30 days | `core.runs.prune_job_rows`, run nightly |
-| `rate_limit_window` rows (keyed client addresses) | 1 day idle, so at most about 30 hours | `core.ratelimit.purge_expired`, run by the six-hourly membership sweep |
+| `rate_limit_window` rows (keyed client addresses, and a keyed account id for Featured routes posts the connector refused for the admin's Home, `CONNECTOR_POST_HOME`) | 1 day idle, so at most about 30 hours | `core.ratelimit.purge_expired`, run by the six-hourly membership sweep |
 | `shared_route` rows (the exact lines Share links open) | 1 year after the link was last opened | `core.shared_routes.prune`, at every share and every open, and nightly by the backup task |
+| `shared_route` rows an assistant app's plan made (`connector_draft` set) | As long as their draft: 24 hours, or until the app is disconnected | Deleted with the draft (the foreign key cascades); `core.shared_routes.expired` refuses them past 24 hours even before that. Links made before v0.15.0 name no draft (migration 0051 cannot tell them from other links), so they keep their old date and expire within 8 days of being made |
+| `connector_draft` rows (an assistant app's unsaved routes, with their points) | 24 hours (`ConnectorDraft.KEPT`), and none once the app is disconnected, the rider signs out everywhere, or the account is banned or deleted | `core.connector.drop_stale_drafts`, at every new draft and by the five-minute degraded-guild sweep; deleting a `connector_grant` deletes its drafts. The GPX link (`/mcp/gpx/<draft id>.<keyed digest>`) works only while its draft is kept and its app connected |
 | `signed_out_send` rows (a device's salted daily hash and the road, for the signed-out suggestion limits) | 24 hours | `core.signed_out_suggestions.prune`, at every signed-out send, and nightly by the backup task |
 
 Three rules are load-bearing rather than incidental:
@@ -302,6 +305,30 @@ A job row still `todo` or `doing` is live state the worker owns and is never
 pruned, whatever its age, and neither is a job a `procrastinate_periodic_defers`
 row still points at — that reference is how the scheduler knows it has already
 fired for a tick.
+
+## What the server logs keep (v0.15.0)
+
+A log is kept for days to months (compose's json-file driver, 10 MB x 5 a container; the
+host's logrotate for nginx), so none of them holds a place a rider was, a route's points or a
+link someone could open later (Stephen 2026-10-29: nothing that could identify a person's
+location stays on the server for more than 2 minutes, except what the rider saves on purpose).
+
+| Log | What it keeps | What it leaves out |
+| --- | --- | --- |
+| PostgreSQL (`docker compose logs postgis`) | the error and its SQLSTATE | the statement (`log_min_error_statement=panic`), its DETAIL, HINT, QUERY and CONTEXT (`log_error_verbosity=terse`); no statement or duration is logged (`log_statement=none`, `log_min_duration_statement=-1`) |
+| gunicorn (`docker compose logs api`) | time, method, path, status, bytes, duration, user agent | the query string, the Referer, the client; link ids, the GPX token and tile z/x/y (`config.access_log.Logger`) |
+| beta nginx (`rmbeta-access.log`) | time, method, path, status, bytes, duration | the same (`$rmbeta_logpath`); upstream errors for `/api/`, `/s/` and `location /` go to `rmbeta-error.log` at `crit` only |
+| home Caddy | Caddy's own messages and error entries (the error, status, duration) | there is no access log; an error entry's URI, client address and headers are filtered out |
+
+A path is logged as its route's shape: `/api/rides/:id/here`, `/api/rides/:id/alerts/:id/clear`,
+`/api/shared-routes/:id`, `/api/me/shared-routes/:id/revoke`, `/s/:id`, `/s/:id/preview.png`,
+`/mcp/gpx/:token`, `/tiles/stress/:zxy`, `/tiles/mass/:zxy`. To find one request, read it by its
+time and status. tests/test_server_logs.py holds nginx's map and gunicorn's list equal.
+
+Each takes effect only when its service is recreated or reloaded: the postgis container (its
+command), the api (the entrypoint), the beta's nginx (re-rendered with
+scripts/beta/render-nginx.sh, `nginx -t`, reload) and home's caddy ("Applying a Caddyfile
+change", below). Lines written before that stay until the log rotates out.
 
 ## The public routing API: its limits, and clearing a client
 
@@ -539,7 +566,9 @@ band, grep `route timing` from the api's log.
   api's workers share it, so a repeat is a hit whichever worker serves it (audit
   S14; the owner signed off a ~16 MB memcached on beta on 2026-10-27).
   compose.beta.yaml runs one (`memcached`, `-m 16`, capped at 24M) and sets the
-  variable itself; compose.yaml leaves it empty. There an answer is stored
+  variable itself; compose.yaml leaves it empty. memcached has no sign-in, so it is on a network
+  of its own, `routecache` (internal), that only the api joins (v0.15.0): no other container on
+  the stack can read the answers. There an answer is stored
   pickled and compressed (zlib level 1), one past
   memcached's 1 MB item limit is not sent, and a memcached that is down, full
   or slow is a miss, never an error: the plan is made (the client gives up
@@ -1505,7 +1534,9 @@ the same whatever the style decides):
   ("Alley cut throughs should only be used if the roads are very problematic
   nearby. Cut down on showing them, and only use them if nessicary. Because
   people don't think of these as intersections, alley dodging is dangerous.",
-  100): 5,263 ways, 390 mi on the box extract.
+  100): 5,263 ways, 390 mi on the box extract. Below z16 the stress layers'
+  filters leave them out (`stressStyle.js` `alleyDrawn`), so the map does not
+  lay them out at all there.
 
   Routing: a way inside a cemetery is **destination-only** - the rebuild writes
   `rm:cemetery=yes`, and the transform (`lua/routemaker_remap.lua`) makes it
@@ -2301,6 +2332,28 @@ reverse cleanly with `migrate core 0048`.
 `0018_junction_suggestions`, so the chain stays linear with one leaf. It reverses cleanly
 (`migrate core 0018` drops the table). `migrate` runs at `up`, as always.
 
+## The 311 log's days (migration 0052, v0.15.0)
+
+Stephen, 2026-10-29: the 311 log keeps the date, not the time of day; the exact spot stays, because
+crews need it to find the pothole. `core/migrations/0052_report311_log_days.py` (after
+`0051_connector_draft_grant`) cuts every kept entry's `at`, `changed` and `reported` in
+`report311_log` to its day in Washington, cuts ids that began with the time they were made to their
+random part, and makes the row's `updated_at` a date (docs/DEVELOPMENT.md, "The 311 log keeps the
+day").
+
+- **The times are gone for good.** Going back (`migrate core 0051`) makes `updated_at` a time
+  again (midnight of each day) but leaves the entries as days. Take a backup before `migrate`
+  (the nightly dump has the table; a fresh one is `pg_dump -Fc -t report311_log`), and keep it
+  only as long as the dumps are kept.
+- **The deploy window.** Between `migrate` and the api's recreation, and after an image rollback,
+  the api of the release before still reads and saves the log: Postgres casts the time it writes
+  to `updated_at` to the day, and its page shows each served day correctly (the API serves a day as
+  noon in Washington).
+- **Rows that api saved** keep its times in their entries until the rider's next save, or the
+  next read of the log (GET `/api/me/report311-log` cuts them and writes the row back). A rider
+  who never opens the log again keeps them; to cut every row at once, run the migration's step
+  again from `manage.py shell` after the old api is gone (`report_log.dated` on each entry).
+
 ## Transit schedule (TRANSIT-ASSIST, v0.6.0)
 
 The Own Bike + 🚆🚌 and Bikeshare + 🚶🚆🚌 ride types read one file:
@@ -2477,18 +2530,98 @@ not already remembered. With under 4 s left the way round is not asked, and the 
 
 ## Backups
 
-`pg_dump -Fc` to `<DATA_ROOT>/backups/routemaker-<UTC instant>.dump`, excluding
+`pg_dump -Fc`, piped straight through `age` to
+`<DATA_ROOT>/backups/routemaker-<UTC instant>.dump.age`, excluding
 the data of every table in `BACKUP_EXCLUDED_TABLES` (`config/procrastinate.py`):
 `cached_membership`, `app_session`, `django_session`, `rate_limit_window`,
 `stress_tile_cache`, `bikeshare_feed_cache`, `signed_out_send`, `garmin_link` and
 `wahoo_link` (riders' encrypted Garmin and Wahoo tokens: a restore asks them to connect
 again). Verified by reading the
-archive's own table of contents back with `pg_restore --list` — an archive with
+archive's own table of contents back with `pg_restore --list` from the same stream
+as it is written — an archive with
 no table data at all is a dump of nothing, which is what a wrong database name
 produces while `pg_dump` exits zero.
 
+**Encrypted to a public key only.** Each dump is encrypted with
+[age](https://age-encryption.org) to the recipients in
+`settings.BACKUP_AGE_RECIPIENTS`, by default `<DATA_ROOT>/backups/age-recipients.txt`
+(`/data/backups/age-recipients.txt` inside `worker`; set `BACKUP_AGE_RECIPIENTS` in the
+worker's environment to move it). That file holds the **public** half of the owner's key
+pair, one `age1...` line. The private half stays on the owner's computer and never comes
+to the server, so the server can write a dump but never read one, and a copy of the
+backups folder (a disk image, a snapshot, a misplaced copy) gives nothing without the
+owner's key. The plain archive exists only in the pipes between `pg_dump`, `age` and
+`pg_restore --list`; it is never written to disk.
+
+- **No recipients file, no dump.** With the file missing, empty, holding something that is
+  not an `age1...` line, or holding a private key (`AGE-SECRET-KEY-...`), the task refuses
+  before it runs anything: no dump, no part file, and the night is a failure that
+  `check_operations` reports. A plain dump in its place is never written.
+- **The file is read on every run**, so it can go in place after a deploy: the next 07:00 UTC
+  run uses it, with no restart.
+- **The dry run:** `docker compose exec -T worker ./manage.py check_backup_encryption`
+  checks the file the way the dump will and has `age` encrypt a few bytes to it. It dumps
+  and writes nothing, prints `ok: ...` or `refused: ...`, and exits non-zero when tonight's
+  dump would be refused.
+- **Plain dumps from before encryption** are removed by the first night's pruning after an
+  encrypted dump exists.
+- **The pre-update dumps stay plain.** `scripts/beta/receive-data.sh` (`snapshot-db`, and the
+  `pre-rollback` dump `restore-dump` takes) and `scripts/beta/auto-release.sh` (its
+  `pre-release` dump) write `pre-<label>-<UTC instant>.dump` before they change the database,
+  and a rollback restores one on the server, which has no private key. So they are not
+  encrypted; instead they are kept at most 6½ days, the newest included, as well as by count.
+  The only one spared is the dump a rollback is about to restore (the one a stopped
+  `auto-release.sh` pass names in `run-snapshot`, or the one `restore-dump` is putting back):
+  a rollback undoes an update within hours, and a database put back a week later would undo
+  a week of riders' changes anyway.
+
+### Setting up the key (the owner, once)
+
+On the owner's computer, with [age](https://age-encryption.org) installed. Make the key pair,
+either as a plain file:
+
+```sh
+age-keygen -o routemaker-backup-key.txt
+```
+
+```sh
+age-keygen -y routemaker-backup-key.txt > age-recipients.txt
+```
+
+or, better, protected with a passphrase (age asks for it twice; it asks again at every
+decryption):
+
+```sh
+age-keygen 2> age-keygen-public.txt | age --passphrase > routemaker-backup-key.age
+```
+
+```sh
+sed -n 's/^Public key: //p' age-keygen-public.txt > age-recipients.txt
+```
+
+Keep the key file on the owner's computer and in a second safe place of the owner's: **a lost
+private key is every backup lost**, and nothing on the server can recover it. Then copy only
+`age-recipients.txt` (one `age1...` line, safe to share) to the server, where `<server>` is how
+the owner reaches the host over ssh:
+
+```sh
+scp age-recipients.txt <server>:age-recipients.txt
+```
+
+On the server, put it where the worker reads it, owned by the containers' uid:
+
+```sh
+sudo install -o 10001 -g 10001 -m 0644 age-recipients.txt <DATA_ROOT>/backups/age-recipients.txt
+```
+
+And, in the checkout, once the release with encryption is deployed, the dry run:
+
+```sh
+docker compose exec -T worker ./manage.py check_backup_encryption
+```
+
 **A file under that name is a dump that was written whole and verified.** It is
-written as `routemaker-<UTC instant>.dump.part` and renamed only once the
+written as `routemaker-<UTC instant>.dump.age.part` and renamed only once the
 listing has been read back and accepted, and the part file is removed on every
 failure path. Before that, only a dump killed by its timeout cleaned up after
 itself: a `pg_dump` that exited non-zero and a dump the verification rejected
@@ -2496,6 +2629,16 @@ both stayed on the volume under the ordinary name — newest by name, so the one
 an operator restoring last night's picks up, and in the second case possibly
 carrying the very rows the exclusion exists to keep off the disk. A stray
 `.part` file is safe to delete; nothing reads one and the pruning ignores them.
+
+**How long they are kept.** The newest seven (`BACKUP_KEEP`), and none older than six and a
+half days (`BACKUP_MAX_AGE`), whatever the count, **except the newest**. The privacy page and
+the delete-account page promise that deleted data leaves the backups within a week, or, if
+backups fail for longer, with the next one that succeeds; the count alone kept that only while
+every night succeeded, because a failed night prunes nothing to make room. The half day covers
+a run that starts late one night and on time a week later. The newest dump is never removed
+for its age: after a week of failed nights it is the only backup there is, so it stays, and
+every night the worker logs a warning naming it, until a dump succeeds. The 26-hour
+`nightly_backup` alert is what has to be answered before that.
 
 Local only, and that is the gap to close next: the plan's S3 upload with SSE-KMS
 and 30-day remote retention is **not built**, so today every copy of the database
@@ -2508,7 +2651,23 @@ takes it.
 
 **Restore into an empty database, before the rest of the stack is up.** That is
 the whole runbook, and the ordering is the only part of it that is difficult to
-get right afterwards.
+get right afterwards. The dump is encrypted and the server cannot open it, so the
+decryption happens on the owner's computer, which holds the private key
+(`routemaker-backup-key.txt` here), and the plain archive is streamed to the
+server over ssh and straight into `pg_restore`: it is not written to disk on
+either side. `<server>` is how the owner reaches the host over ssh,
+`<DATA_ROOT>` is DATA_ROOT from `.env`, and `<checkout>` the folder `compose.yaml` is in. With
+the passphrase-protected key, use `routemaker-backup-key.age` where the commands say
+`routemaker-backup-key.txt`; age asks for the passphrase.
+
+First, on the owner's computer, fetch the dump (it is useless to anyone without the key, so
+it can travel like any other file):
+
+```sh
+scp "<server>:<DATA_ROOT>/backups/routemaker-<instant>.dump.age" .
+```
+
+Then on the server:
 
 ```sh
 export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
@@ -2519,19 +2678,31 @@ sudo sh scripts/prepare_data_root.sh --env-file ./.env
 docker compose up -d --wait postgis     # 3. postgis alone, healthy: no migrate, no worker
 docker compose exec -T postgis dropdb -U routemaker routemaker
 docker compose exec -T postgis createdb -U routemaker -T template0 routemaker
-docker compose exec -T postgis \
-  pg_restore --no-owner -U routemaker -d routemaker \
-  < "$DATA_ROOT/backups/routemaker-<instant>.dump"
+```
+
+Then on the owner's computer, decrypt and restore in one stream:
+
+```sh
+age --decrypt --identity routemaker-backup-key.txt routemaker-<instant>.dump.age | ssh <server> 'cd <checkout> && docker compose exec -T postgis pg_restore --no-owner -U routemaker -d routemaker'
+```
+
+And back on the server:
+
+```sh
 docker compose up -d                    # 4. now the rest
 docker compose run --rm api ./manage.py collectstatic --noinput
 ```
 
+To look inside a dump without restoring it, on the owner's computer:
+`age --decrypt --identity routemaker-backup-key.txt routemaker-<instant>.dump.age | pg_restore --list`
+(which needs a PostgreSQL 16 client there).
+
 `routemaker` everywhere after `-U` and `-d`, and as the database name, is
 `PGUSER` and `PGDATABASE` from `.env`, which ship as that and are the compose
-defaults; substitute your own if you changed them. The redirection is on the
-host because the dump is not visible inside `postgis` — that service binds
-`postgres/` and nothing else, and `backups/` is bound into `worker` — so
-`exec -T` and standard input is how the archive gets there.
+defaults; substitute your own if you changed them. Standard input is how the
+archive gets in because it is decrypted on the owner's computer, and because
+`postgis` binds `postgres/` and nothing else (`backups/` is bound into `worker`),
+so `exec -T` and a pipe is how it reaches `pg_restore`.
 
 Step 3 is `up -d postgis` and not `up -d`, and the difference is measured
 rather than stylistic. Every figure here was measured on this stack's own
@@ -5627,6 +5798,9 @@ Refresh it about once a year: the classes are for drawing, not routing, and chan
   restoring the volume is the host's own procedure.
 - The operations page is at `<DJANGO_ADMIN_PATH>core/scheduledrun/`; it is not
   linked from anywhere public and the admin path is not advertised.
+- **Put the backups' public key in place** before deploying the release that encrypts
+  them: "Backups", "Setting up the key". Without it every nightly dump is refused. A lost
+  private key is every backup lost.
 
 ## Build ids
 

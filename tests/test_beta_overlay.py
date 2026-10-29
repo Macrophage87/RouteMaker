@@ -716,13 +716,14 @@ def test_the_access_log_never_records_a_query_string() -> None:
     fmt = re.search(r"^log_format\s+rmbeta_noquery\s+(.*?);$", full, re.M | re.S)
     assert fmt, "the rmbeta_noquery log format"
     body = fmt.group(1)
-    assert "$uri" in body
+    # The path, with link ids and tile coordinates taken out (tests/test_server_logs.py).
+    assert "$rmbeta_logpath" in body
     # an allowlist, not a denylist: any other variable (a trailing $request, the Authorization
     # header, a cookie, the request body, another way to print the client address) is a leak
     assert set(re.findall(r"\$\w+", body)) == {
         "$time_local",
         "$request_method",
-        "$uri",
+        "$rmbeta_logpath",
         "$server_protocol",
         "$status",
         "$body_bytes_sent",

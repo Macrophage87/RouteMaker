@@ -54,7 +54,7 @@ test("the map, its overlays and the hidden planner are guarded: an error in one 
   assert.deepEqual(guardForProps(left, false), { error: null, failed: false, wasOn: false });
   assert.deepEqual(guardForProps({ error: null, failed: false, wasOn: false }, true), { error: null, failed: false, wasOn: true });
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /<RideGuard on=\{onBike\}>\s*<MapView/);
+  assert.match(app, /<RideGuard on=\{onBike\}>\s*<LiveMap/);
   assert.match(app, /<RideGuard on=\{onBike\}>\s*<RepairStandsOverlay /);
   assert.match(app, /<RideGuard on=\{onBike\}>\s*<aside\s+ref=\{panelRef\}/);
   assert.equal(app.match(/<\/RideGuard>/g)?.length, 3);

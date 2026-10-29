@@ -22,12 +22,15 @@ import {
   walkFeatures,
 } from "./bikeshare.ts";
 import { announceRoute } from "./summary.ts";
-import { setLanguageForTest } from "./i18n.ts";
+import { loadLanguage, setLanguageForTest } from "./i18n.ts";
 import { PRESETS } from "./presets.ts";
 import { BIKESHARE_HILLS, dialFields, fitDials, offersAssist, offersBike, startDials } from "./dials.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
 import { loopView } from "./loop.ts";
 import { appSource } from "../testSupport/appSource.mjs";
+
+// Spanish's catalog is fetched on choosing it (lib/i18n.ts loadLanguage), as the app does before it starts.
+await loadLanguage("es");
 
 const SRC = new URL("../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, SRC), "utf8");
