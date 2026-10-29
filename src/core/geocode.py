@@ -147,7 +147,7 @@ def inside(lon: float, lat: float) -> bool:
 
 def _get(path: str, params: dict) -> dict:
     """GET Photon's `path` with `params`; the one place this module touches Photon."""
-    url = f"{settings.PHOTON_URL.rstrip('/')}{path}?{urllib.parse.urlencode(params)}"
+    url = f"{settings.PHOTON_URL.rstrip('/')}{path}?{urllib.parse.urlencode(params, doseq=True)}"
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=settings.PHOTON_TIMEOUT_S) as response:  # noqa: S310
@@ -279,9 +279,12 @@ def expand_abbreviations(query: str) -> str:
 # shops should be searchable, like restaurants"). Typed with a bias point, they
 # list the nearest places with that OSM tag (Photon's /reverse with osm_tag,
 # docs/api-v1.md "Filter results by tags and values"), nearest first. Groceries
-# too (review SIMPLICITY-1: "grocery" found places named Grocery, not the nearest).
+# too (review SIMPLICITY-1: "grocery" found places named Grocery, not the nearest),
+# small grocers and greengrocers with the supermarkets (the 2026-10-29 review). Each
+# value is the osm_tag filters, any of which a place may match.
+GROCERY_TAGS = ("shop:supermarket", "shop:grocery", "shop:greengrocer")
 TAG_SEARCHES = {
-    phrase: "shop:bicycle"
+    phrase: ("shop:bicycle",)
     for phrase in (
         "bike shop",
         "bike shops",
@@ -295,7 +298,7 @@ TAG_SEARCHES = {
         "bicycle repair",
     )
 } | {
-    phrase: "shop:supermarket"
+    phrase: GROCERY_TAGS
     for phrase in (
         "grocery",
         "groceries",
@@ -303,17 +306,41 @@ TAG_SEARCHES = {
         "grocery stores",
         "supermarket",
         "supermarkets",
+        # Spanish, as the Eat sheet takes them (frontend/src/lib/grocery.ts GROCERY_WORDS).
+        "supermercado",
+        "supermercados",
     )
 }
 # How far a tag search looks around the bias point, in km (about 12 mi).
 TAG_SEARCH_RADIUS_KM = 20
+# Trailing words that only say "near where I am", which a tag search is anyway (the
+# 2026-10-29 review: "grocery near me" fell through to a name search). Longest first.
+NEAR_ME_TAILS = (
+    ("near", "me"),
+    ("close", "to", "me"),
+    ("near", "by"),
+    ("nearby",),
+    ("cerca", "de", "mí"),
+    ("cerca", "de", "mi"),
+    ("cerca",),
+)
+
+
+def tag_phrase(q: str) -> str:
+    """`q` as TAG_SEARCHES keys it: folded, single-spaced, a trailing "near me" dropped."""
+    words = q.casefold().split()
+    for tail in NEAR_ME_TAILS:
+        if len(words) > len(tail) and tuple(words[-len(tail) :]) == tail:
+            words = words[: -len(tail)]
+            break
+    return " ".join(words)
 
 
 def search(
     q: str, *, lat: float | None = None, lon: float | None = None, limit: int, lang: str
 ) -> list[dict]:
     """Places matching `q` inside the coverage box, nearest `lat, lon` first when given."""
-    tag = TAG_SEARCHES.get(" ".join(q.casefold().split()))
+    tag = TAG_SEARCHES.get(tag_phrase(q))
     if tag is not None and lat is not None and lon is not None:
         answer = _get(
             "/reverse",

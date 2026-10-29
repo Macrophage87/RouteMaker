@@ -684,6 +684,20 @@ curl -s -m 10 -o /dev/null -w '%{http_code}\n' https://beta.example.org/   # mus
 `listen [::]` in the other sites (an IPv6-disabled host makes `nginx -t` fail on them, safely).
 The rendered file says at its top which template, stage and git sha it was rendered from.
 
+**Remember the site's shape**, so a later re-render (a release that changes the template) needs no
+flags: `render-nginx.sh` reads `RM_CERT_FULLCHAIN` and `RM_CERT_KEY` from `vars.sh` (above) and these
+from `.env` (or `vars.sh`), each `1` (the default) or `0`, and a flag on the command line still wins.
+Add the lines for the flags given above to `$RM_SRC/.env`:
+
+| Setting | Same as |
+| --- | --- |
+| `BETA_SITE_PASSWORD=0` | `--no-password` (the open beta, since 2026-10-22) |
+| `BETA_NGINX_IPV6=0` | `--no-ipv6` |
+| `BETA_NGINX_401_PAGE=0` | `--no-401-page` |
+| `BETA_NGINX_TLS_INCLUDE=<path>` | `--tls-options-include <path>` |
+
+Then `scripts/beta/render-nginx.sh --stage full --diff "$NGINX_SITE"` must print no change.
+
 If `nginx -t` complains about `http2 on`, the host's nginx is older than 1.25.1: edit the installed file,
 delete the `http2 on;` line and write `listen 443 ssl http2;` and `listen [::]:443 ssl http2;`, then test again.
 
@@ -993,11 +1007,14 @@ anything can run `migrate` (rollback C restores that snapshot), and the app star
    (the same line as rollback A), with `valhalla-offroad valhalla-mtb` added once their tiles are on the host.
    Check with `git diff --stat <old sha>..<new sha> -- valhalla lua`.
 9. **Only if `git diff --stat <old sha>..<new sha> -- deploy/beta` lists the nginx template** (owner steps, because
-   they use sudo): re-render it with the same command and flags as step 9c of the install into `$RM_STATE`, install it
-   over the site file (`sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE"`), then
-   `sudo nginx -t && sudo nginx -s reload`, and run the `curl` check from step 9c. The beta has been open since
-   2026-10-22, so the render takes `--no-password` (plus `--no-401-page` if the installed file used it) and the
-   check expects 200; a render without `--no-password` puts the password back. Without this the beta keeps
+   they use sudo): re-render it into `$RM_STATE`, see the change against the installed file, install it over the site
+   file, then `sudo nginx -t && sudo nginx -s reload`, and run the `curl` check from step 9c:
+   `scripts/beta/render-nginx.sh --stage full --diff "$NGINX_SITE"`, then
+   `RENDER_NGINX_FORCE=1 scripts/beta/render-nginx.sh --stage full --out "$RM_STATE/routemaker-beta.full.conf" && sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE"`.
+   The site's shape comes from the settings the install recorded ("Remember the site's shape" in step 9c:
+   the certificate paths from `vars.sh`, `BETA_SITE_PASSWORD=0` and the rest from `.env`), so no flag has to
+   be retyped; the beta has been open since 2026-10-22, so the check expects 200. Until those settings are
+   recorded, the render needs the install's flags, and one without `--no-password` puts the password back. Without this the beta keeps
    the old log settings, and any other template change, until it is next installed.
    A template change must pass `nginx -t` in CI before it is tagged: `tests/test_beta_nginx_conf.py` renders
    the runbook's variants and has a pinned nginx test them (v0.12.3's robots.txt line failed on the beta).
@@ -1032,14 +1049,15 @@ server detail goes into GitHub or the repository: the agent reads the public rep
 server's user, paths and `RM_SSH_HOST` stay in `vars.sh` here. The local live stack at home is not
 part of it.
 
-**How a release flows.** The change is reviewed and merged to `main`; CI's `test` check goes green on
-that commit; the owner says go; the owner (and only the owner, or someone on the owner's word)
-pushes an **annotated** tag on that commit. Before the tag, at home, on that commit (a tag goes
+**How a release flows.** The change is reviewed and merged to `main`; CI's `test` and `a11y` checks go
+green on that commit; the owner says go; the owner (and only the owner, or someone on the owner's word)
+pushes an **annotated** tag on that commit (a lightweight one, as GitHub's release page makes, is
+taken too when the commit's subject is "Release vX.Y.Z", the release procedure's last commit). Before the tag, at home, on that commit (a tag goes
 live within about 10 minutes, and nothing after it checks what a screen reader hears):
 
-- If `frontend/` changed since the deployed tag, run the browser accessibility check,
-  `scripts/a11y/run.sh <a node_modules for that lockfile>` (offline; docs/DEVELOPMENT.md), and it
-  must pass. CI and the agent run only `npm test`.
+- CI's `a11y` job runs the browser accessibility check (`scripts/a11y/run.sh`; docs/DEVELOPMENT.md)
+  on every push, and the agent deploys a tag only once it is green beside `test`. Run it at home
+  as well when a release changes what a screen reader hears, to see the failures before the tag.
 - If the release changes anything `docs/BETA-TESTER-HANDOUT.md` describes (the skip link, the
   landmarks, the headings, the beta notice and its Beta chip), update the handout in
   the same release and send it to the testers again once the release is deployed.
@@ -1084,9 +1102,10 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 3. `git fetch --tags`, then the highest strict `vX.Y.Z` tag (no `-rc`, no leading zeros) newer than
    the deployed one. Only the highest: if it cannot go, the agent waits for the owner rather than
    deploying an older one.
-4. The tag must be annotated (`git tag -a`), its commit on `origin/main` and descended from the
-   deployed release, and GitHub's `test` check run (by GitHub Actions, on exactly that commit, the
-   newest run) green. The check is an unauthenticated read of the public API, a few calls an hour at
+4. The tag must be annotated (`git tag -a`), or a lightweight one on a commit whose subject is
+   "Release vX.Y.Z" for that tag; its commit on `origin/main` and descended from the deployed
+   release; and GitHub's `test` and `a11y` check runs (by GitHub Actions, on exactly that commit,
+   the newest run of each) green: either one red holds the tag, either one unfinished waits. The check is an unauthenticated read of the public API, a few calls an hour at
    most; a rate limit or a network failure is tried again next pass. Signed tags: the repository has
    none today; setting `RM_CD_REQUIRE_SIGNED_TAGS=1` makes `git verify-tag` a requirement too (the
    server then needs the signer's public key in its keyring).
@@ -1116,16 +1135,15 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    A stop writes its reasons to `$RM_STATE/cd/hold/<tag>` and the agent does nothing else for that
    tag. Ship it by hand ("Shipping an update later", with `pause` first), then `mark-deployed <tag>`.
 6. The deploy. First, with nothing running touched, a `git archive` of the tag into
-   `$RM_STATE/cd/build`. Then the runbook's steps: stop the api and worker; build the api image
-   (`docker build` of that tree, tried 3 times a minute apart, since pip needs the network; skipped
-   if `ghcr.io/macrophage87/routemaker-api:<TAG>` is already on the host because the owner loaded it
-   from home) and, if `frontend/` changed, the front end. The builds come after the stop on
-   purpose: the api build is not capped (BuildKit runs in the daemon), so it uses the memory the api
-   and worker had instead of the other sites' headroom, and the front-end build runs with
-   `--memory 1536m` and `--oom-score-adj 1000`, so a host short of memory kills it first. The cost
-   is downtime: roughly 10-20 minutes per release (the api build, up to 3 tries; the front-end
-   test and build; the snapshot; `/healthz` and the smoke tests), longer when a build fails before
-   the rollback, and much less when the owner has loaded the api image from home. During it nginx
+   `$RM_STATE/cd/build`, then the builds while the beta still runs: the api image (`docker build`
+   of that tree, tried 3 times a minute apart, since pip needs the network; skipped if
+   `ghcr.io/macrophage87/routemaker-api:<TAG>` is already on the host because the owner loaded it
+   from home) and, if `frontend/` changed, the front end (`--memory 1536m` and
+   `--oom-score-adj 1000`, so a host short of memory kills it first; the api build runs in the
+   daemon and is not capped). A build that fails leaves the running release alone and marks the
+   tag failed (`retry <tag>`). Then the runbook's steps, from the stop of the api and worker. The
+   downtime is the stop to the smoke tests (the snapshot, migrations, the start, `/healthz`, the
+   smoke tests, and a minute more when they are retried), usually under 5 minutes. During it nginx
    still serves the page, so testers see it open, but planning a route says "Router unavailable",
    place search and the road information say they are "not available right now", and Sign in
    shows the "Back soon" page (`deploy/beta/502.html`; nginx's bare "502 Bad Gateway" on a site
@@ -1150,14 +1168,14 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    the new front end was installed; start the api and worker; the routers again if they were
    restarted; the step 8 pre-draw after a database restore (a failure there is a warning); the smoke tests. The tag is then marked
    failed (`$RM_STATE/cd/failed/<tag>`) and not tried again until `retry <tag>`. A failure before the
-   stop (exporting the tag's tree) changes nothing and marks the tag failed the same way. If the rollback itself fails,
+   stop (exporting the tag's tree, or a build) changes nothing and marks the tag failed the same way. If the rollback itself fails,
    the agent marks itself BROKEN, stops making passes, and waits for the owner.
 
    **A pass stopped mid-deploy.** Each step is written to `$RM_STATE/cd/in-progress` before it
    runs. If the pass is stopped (systemd's `TimeoutStartSec`, a reboot, `systemctl --user stop`, a
    logout without linger, a kill), the next pass rolls that deploy back from the steps written there,
    if it had touched the stack, and marks the tag failed (`retry <tag>` to try it again); if that
-   rollback fails, BROKEN. A pass stopped before the stop (while exporting the tree) touched nothing:
+   rollback fails, BROKEN. A pass stopped before the stop (while exporting the tree or building) touched nothing:
    the next pass drops the record and carries on. A pass stopped during the pre-draw has already
    recorded the release, so nothing is rolled back. While the agent is paused nothing rolls it back:
    `status` and `pause` say so (`IN PROGRESS`), and `mark-deployed` refuses to drop that record
@@ -1169,8 +1187,13 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    migration still connected fails and leaves the agent BROKEN (it errs closed).
 
 What it never does: touch nginx, use sudo, receive or install a data bundle, touch Photon's index or
-the routing graphs, write outside the checkout, `$RM_DATA/frontend` and `$RM_STATE`, or remove an
-image (the old one stays for rollback C).
+the routing graphs, write outside the checkout, `$RM_DATA/frontend` and `$RM_STATE`, or remove the
+running or the previous release's api image (that one stays for rollback C).
+
+After each deploy it prunes (never failing the pass): api image tags of releases before the
+previous one (only commits the deployed one descends from, so an image loaded for a later release
+stays), Docker's build cache over a week old (`docker builder prune --filter until=168h`), and
+`node_modules` copies for neither the deployed nor the previous lockfile that are over 30 days old.
 
 ### Install (once, by the beta's login user; no sudo)
 
@@ -1192,7 +1215,7 @@ stop the api, fail the build and roll back on every front-end release. Once the 
 it installs `frontend-build.sh` beside the agent, which builds with the whole tree mounted.
 
 `install` checks the user is in the docker group and not root, that the checkout is clean at an
-annotated release tag with the matching `TAG`, copies the agent (`auto-release.sh`, `cd_logic.py`,
+release tag (annotated, or a lightweight one on its "Release vX.Y.Z" commit) with the matching `TAG`, copies the agent (`auto-release.sh`, `cd_logic.py`,
 `receive-data.sh`, `frontend-build.sh`) into `$RM_STATE/cd/bin` (so a release can never change the agent under a pass, and
 a rollback to a release older than the agent still has the agent's no-sudo snapshot and restore),
 records the deployed tag and the beta notice's report link (`--report-url URL|none` if
@@ -1216,6 +1239,7 @@ Optional settings, appended to `vars.sh` like any later decision (never a secret
 | `export RM_CD_DOCKER_FREE_GIB=5` | `3` | GiB that must be free on Docker's root (`docker info`) before a deploy; less, and the release waits |
 | `export RM_CD_REQUIRE_SIGNED_TAGS=1` | `0` | also require a good tag signature |
 | `export RM_CD_KEEP=5` | `3` | release snapshots kept in `$RM_STATE/cd/backups` (each about 200 MB, on `$HOME`'s disk) |
+| `export RM_CD_WAIT_ALERT_MIN=60` | `30` | minutes a release may wait for the same reason (CI not finished, no node_modules, no node image, a failed fetch) before it is posted to the owner (Alerts) |
 | `export RM_CD_GITHUB_REPO=owner/name` | `Macrophage87/RouteMaker` | where the check runs are read |
 
 **Front-end releases need two things on the server**, neither of which the agent ever downloads
@@ -1235,10 +1259,13 @@ Optional settings, appended to `vars.sh` like any later decision (never a secret
 
   If that prints an error instead of an id (a Docker that does not keep the digest through save and load), the
   way left is the one the agent's status offers: the owner approves a `docker pull` of that digest on the server.
-- `node_modules` for the release's lockfile, at `$RM_STATE/cd/node_modules/<sha256 of frontend/package-lock.json>/node_modules`
-  (status prints the exact path). From home, in a checkout at the release with `npm ci` done:
-  `h=$(sha256sum frontend/package-lock.json | cut -c1-64); tar -C frontend -czf - node_modules | ssh "$RM_SSH_HOST" "d=\$HOME/routemaker-beta-state/cd/node_modules/$h; mkdir -p \$d.part && tar -C \$d.part -xzf - && mv -T \$d.part \$d"`.
-  A copy is reused for every release with the same lockfile. There is no download fallback: the
+- `node_modules` for the release's lockfile, at `$RM_STATE/cd/node_modules/<lockfile hash>/node_modules`
+  (status prints the exact path). The hash is `scripts/beta/cd_logic.py lock-hash`: the lockfile's
+  sha256 without its two `version` fields, which every release bumps. From home, in a checkout at
+  the release with `npm ci` done:
+  `h=$(python3 scripts/beta/cd_logic.py lock-hash < frontend/package-lock.json); tar -C frontend -czf - node_modules | ssh "$RM_SSH_HOST" "d=\$HOME/routemaker-beta-state/cd/node_modules/$h; mkdir -p \$d.part && tar -C \$d.part -xzf - && mv -T \$d.part \$d"`.
+  A copy is reused for every release whose dependencies are the same, whatever its version (a
+  copy sent before v0.15.0 sits under the old whole-file hash: send it once more). There is no download fallback: the
   release waits until the copy arrives.
 
 The build is the same as `ship-data.sh --build-frontend`: `npm test`, `tsc --noEmit` and `vite build`
@@ -1277,16 +1304,20 @@ switch over it as in the "Front end only" undo above. Pause the agent first (`pa
 hand rollback replaces the agent's), then `"$A" resume`. A later release (a higher tag) is the
 usual way forward.
 
-**Upgrading the agent.** A release that changes the agent says so in its report; once it is
-deployed, rerun `"$RM_SRC/scripts/beta/auto-release.sh" install` (it keeps the state). Until then the
-installed copy keeps running.
+**Upgrading the agent.** A release that changes the agent's files (`auto-release.sh`, `cd_logic.py`,
+`receive-data.sh`, `frontend-build.sh`, `alert.sh`) says so in its report, and once it is deployed
+the agent copies them from the deployed checkout into `$RM_STATE/cd/bin`, so the next pass runs
+them. The systemd units are written only by `install`: rerun
+`"$RM_SRC/scripts/beta/auto-release.sh" install` (it keeps the state) when a release's notes say
+the units changed, or if the report says the copy failed.
 
 **Disk.** `status` shows the free space on Docker's root and `$RM_STATE`, the number of api
-images (one a release, kept for rollback C), the `<db>_before_<time>` databases automatic restores
-left, and the `node_modules` copies. The agent removes none of the images or databases; the owner
-does, once a release has run well: `docker image rm ghcr.io/macrophage87/routemaker-api:<old TAG>`
-(never the running one or the previous one), `drop database "<db>_before_<time>"` in postgis, and
-old `$RM_STATE/cd/node_modules/<hash>` directories. The agent keeps `RM_CD_KEEP` snapshots.
+images, the `<db>_before_<time>` databases automatic restores left, and the `node_modules` copies.
+Each deploy prunes old api images, build cache and `node_modules` copies (step 6), and the agent
+keeps `RM_CD_KEEP` snapshots. It never drops a database: once a release has run well, the owner
+drops the kept ones, `drop database "<db>_before_<time>"` in postgis. `receive-data.sh` keeps the
+newest 3 of each kind of its own safety dumps in `DATA_ROOT/backups` (`pre-update-*`,
+`pre-restore-*`, `pre-rollback-*`; `RECEIVE_DATA_KEEP`).
 
 **Uninstall:** `"$A" uninstall` stops and removes the timer and units; `rm -rf "$RM_STATE/cd"`
 removes the agent, its logs and its snapshots (owner's say-so: they hold database dumps).
@@ -1346,7 +1377,10 @@ What is posted, each as one short message starting "RouteMaker beta:":
   reported as paused, not stale (above), so it never posts.
 - **Releases:** the release agent posts each deploy, and a rollback, a failure, a hold, an
   interrupted pass, BROKEN, a setting error, checkout drift or a disk stall once per tag (again
-  once a day while it lasts). Idle passes post nothing.
+  once a day while it lasts). A release that has waited over 30 minutes for the same reason (CI
+  not finished, node_modules or the node image not on the host, a failed fetch;
+  `RM_CD_WAIT_ALERT_MIN`) is posted the same way; the planned waits (the deploy window, the
+  nightly backup's slot, a running pre-draw) never are. Idle passes post nothing.
 
 Messages carry release tags, step names, the smoke tests' FAIL lines and `check_operations`' own
 report: no secret, no address and no rider's data. Mentions are switched off in every message.
@@ -1487,13 +1521,13 @@ secret like the webhooks: never in chat, the repo or a command line.
   Exporting `DATA_ROOT`, `TAG` or a `BETA_...` value in your shell changes nothing; edit `.env` and rerun the gate.
 - **Logs:** `scripts/beta/beta-compose.sh logs --tail 100 api`. Access logs carry no query strings or addresses by design:
   the api's gunicorn log and nginx's `/var/log/nginx/rmbeta-access.log` keep the method, the path, the status and the time,
-  with no query string, no client address and no tester name. The paths whose queries hold a place (`/api/reverse`,
-  `/api/geocode`, `/api/segment-info`, `/api/street-photo`, `/api/junction-suggestions/at`,
-  `/api/stress-suggestions/ticket`, `/api/stress-suggestions/mine`, `/api/transit/station-times`, `/api/transit/next-vehicle`, `/api/bikeshare/docks`, `/api/closures/map`,
-  and Review's `/api/review/items`, `/api/review/map`, `/api/review/next`, `/api/review/road/<way>` and `/api/review/street-photo`, and the connector's `/api/scenic-roads` and `/api/climbs-near`) log nginx errors at `crit` only, to `/var/log/nginx/rmbeta-error.log`, so
+  with no query string, no client address and no tester name. Many api paths hold a place in their query or path
+  (`/api/reverse`, `/api/geocode`, `/api/segment-info`, the transit and bikeshare look-ups, Review's, the connector's
+  `/api/scenic-roads`, ...), so every `/api/` path logs nginx errors at `crit` only, to `/var/log/nginx/rmbeta-error.log`
+  (a new endpoint is covered without a template change), so
   a 502 or 504 there leaves no error-log line; `rmbeta-access.log` still shows the status and the time (about 0 s:
   the api was down; about 75 s: it timed out), and for a 502 the api's own log usually has nothing, because the
-  request never reached it. The time in the nginx and gunicorn logs is the whole request's, not one router call's. Upstream errors on every other path still go to the
+  request never reached it. The time in the nginx and gunicorn logs is the whole request's, not one router call's. Upstream errors on every other (non-`/api/`) path still go to the
   host's own nginx error log, with the request line (those paths carry no location in a query; a tile path does show
   the area viewed, as any map pan does).
 - **No rebuild runs here.** There is no rebuild container, and `WEEKLY_REBUILD_PAUSED=1` is set so that a rebuild
