@@ -31,6 +31,8 @@ export const BACK_TO_ROAM = t("Back to roaming.");
 export const STILL_ROAMING_SAID = t("Still roaming. Use End roam to stop.");
 /** Shown on the card before the map has a road near the rider. */
 export const NO_ROAD_YET = t("Looking for the road you're on…");
+/** Only poor GPS fixes for a while (lib/navigate.ts weighFix): the road names wait for a good one. */
+export const ROAM_GPS_WEAK = t("GPS is weak: road names paused.");
 /** No named road near: on an unnamed path, or off the map's roads. */
 export const NO_NAMED_ROAD = t("No named road here");
 /** The rider outside the area the map covers (P11): no roads to read, and nothing to start riding for. */

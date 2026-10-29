@@ -28,6 +28,8 @@ WORDED = [
     "core/workzones.py",
     "core/transit.py",
     "core/bikeshare.py",
+    "core/transit_live.py",
+    "core/wmata_live.py",
 ]
 _PLACE = re.compile(r"\{(\w+)\}")
 
