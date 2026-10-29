@@ -8403,6 +8403,33 @@ none sent is a participant) and answers each dot's `role`. Still no name, token 
   `frontend/src/lib/rideGroup.test.ts` (kept role, the body, the images and layers, colours, names, the key,
   the page's wiring).
 
+## End-to-end encrypted rides (Stephen, 2026-10-29)
+
+A tester asked how location sharing is secured; Stephen asked whether end-to-end encryption was worth it, then
+"yes", for broadcasts and Group Ride. Share ride, Broadcast, Roam's Broadcast and a Group Ride link shared from
+the app now carry a ride secret, `k=` (32 random bytes, base64url), in the link's fragment, which no browser
+sends to a server. `frontend/src/lib/rideSeal.ts` derives two things from it with HKDF-SHA-256: the ride id the
+server knows the ride by (64 hex, one way) and an AES-GCM 256 key the server never sees. Each phone seals its
+dot (`{lon, lat, role}`), alert (`{kind, text, lon, lat}`) and the leader's path (`{route, trail}`) with a fresh
+12-byte nonce, the kind and ride id bound in as associated data, and posts `{token, sealed}` to the same
+`/api/rides/...` endpoints. `core.ride_presence` keeps a sealed value as opaque text with the same 2 minutes,
+per-token limits, leader mark and sweep; it answers `{sealed, age_s}` (dots, with `leader`), `{id, sealed,
+age_s, mine}` (alerts) and `{sealed, age_s}` (the path).
+
+- **What moved to the phone.** The server cannot read a sealed value, so the phone rounds to the 20 m grid
+  (`gridded`, the same arithmetic as `rounded`), sends nothing outside the map's area (`sendable`,
+  `sendableLine`), checks an alert's kind and Other's words, and merges alerts as it reads them (`mergeAlerts`,
+  the server's rule: same kind and words, within 200 m, within 2 minutes of the latest report; one's own stay
+  apart so Clear clears only them). A value that does not open with the ride's key is left out.
+- **Which rides.** A broadcast's secret is made with the leader's token (`App.tsx` `Lead`) and goes in every link
+  for that ride, including those followers pass on. A Group Ride plan's secret (`groupSecret`) is made when a
+  page starts afresh or the rider picks Group Ride, kept in the address bar (on Group Ride only) and in Copy link
+  and Share. A link without one (a Mass Ride, an older link, a ride post the server wrote) is the ride by its
+  points in plain numbers, as before, so everyone who opens the same link is still on one ride.
+- Tests: `frontend/src/lib/rideSeal.test.ts` (secret, derivation, sealing, the grid against the server's,
+  merging, a sealed ride end to end through `rideGroup.ts`, the page's wiring) and `tests/test_ride_presence.py`
+  (sealed dots, alerts and paths kept, limited, marked and dropped as plain ones are).
+
 ## Phone app (v0.8.0)
 
 The owner, 2026-10-16: a standalone app is needed for bikeshare riding with the phone in a pocket,

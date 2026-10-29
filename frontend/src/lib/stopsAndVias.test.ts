@@ -69,7 +69,7 @@ test("a stop's name is kept on its pair: through a move, a switch of kind and ba
   marks.rename(stop, "   ");
   assert.equal(marks.nameOf(stop), undefined, "a blank name takes it away");
   assert.match(src("../App.tsx"), /VIA_MARKS\.rename\(point, name\);\s*setNamesVersion\(\(v\) => v \+ 1\);/);
-  assert.match(src("../App.tsx"), /\}, \[points, preset, dials, namesVersion\]\);/);
+  assert.match(src("../App.tsx"), /\}, \[points, preset, dials, namesVersion, groupSecret\]\);/);
   // A via point never shows a stop name it had before it was switched.
   assert.match(src("../usePlaceNames.ts"), /own: \(point\) => \(VIA_MARKS\.isVia\(point\) \? undefined : VIA_MARKS\.nameOf\(point\)\)/);
   assert.equal(cleanStopName("x".repeat(STOP_NAME_MAX + 9))?.length, STOP_NAME_MAX);

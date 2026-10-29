@@ -309,7 +309,8 @@ import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOpera
 import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { BROADCAST_FOLLOWING, broadcastRideId, isRideLink, leadConsent, leaderKey, newToken, opensIntoRide, roamRideId, type RideLinkType } from "./lib/rideGroup.ts";
+import { BROADCAST_FOLLOWING, isRideLink, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, type RideLinkType } from "./lib/rideGroup.ts";
+import { newRideSecret, secretFrom, withSecret } from "./lib/rideSeal.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
 // With Ride mode's kept tiles behind the network, for dead spots (lib/corridorStore.ts).
@@ -376,6 +377,8 @@ const SHARED_ID = sharedIdFrom(window.location.hash, window.location.search, win
 const SHARED_RIDE = SHARED_ID !== null && rideLinkFrom(window.location.hash, window.location.search);
 // A ride link's leader (Share ride or Broadcast, 2026-10-22): the key that names the sharer's dot, followed on the map.
 const SHARED_LEAD = SHARED_RIDE ? leadKeyFrom(window.location.hash, window.location.search) : null;
+// The ride's secret a link shared as a ride carries (lib/rideSeal.ts): its dots, alerts and path are sealed end to end.
+const SHARED_SECRET = SHARED_RIDE ? secretFrom(window.location.hash) : null;
 // That link itself, as opened (before the address becomes the page's own): those following pass it on, by Broadcast or
 // its QR code, so all who open it follow the same leader (Stephen 2026-10-26: "allow participants to share that same code").
 const SHARED_LINK = SHARED_RIDE && SHARED_LEAD ? passedOnLink(window.location) : null;
@@ -398,6 +401,8 @@ if (new URLSearchParams(window.location.search).has(WAHOO_RETURN_PARAM)) {
 // A broadcast from Roam (Stephen 2026-10-22): the link names a ride with no route and its leader; one who opens it
 // follows the leader's dot, read once here (the plan's own fragment is written over it later).
 const ROAM_FOLLOW = roamLinkFrom(window.location.hash);
+// A Group Ride plan link's secret (lib/rideSeal.ts), read once here likewise: not a broadcast's.
+const PLAN_SECRET = SHARED_RIDE || ROAM_FOLLOW ? null : secretFrom(window.location.hash);
 /** The opened link to pass on: its path, the query's own parameters (the line, ride and leader), and its fragment;
  * nothing a messaging app added on the way (its tracking parameters). */
 function passedOnLink(at: Pick<Location, "origin" | "pathname" | "search" | "hash">): string {
@@ -409,6 +414,8 @@ function passedOnLink(at: Pick<Location, "origin" | "pathname" | "search" | "has
   }
   return `${at.origin}${at.pathname}${kept.size ? `?${kept}` : ""}${at.hash}`;
 }
+/** A ride's leader: the sharer's token, the key the link names its dot by, and the ride's secret (lib/rideSeal.ts). */
+type Lead = { token: string; key: string; secret: string };
 let sharedArrived: () => void = () => {};
 // Its owner turned the link off: the plan it carries is not planned (the first plan after the wait, and that plan
 // again on Try again); the page says so plainly (SHARED_REVOKED).
@@ -1314,17 +1321,27 @@ export function App() {
     if (search !== null) window.history.replaceState(null, "", `${window.location.pathname}${search}${window.location.hash}`);
   }, []);
 
+  // A Group Ride's secret (lib/rideSeal.ts; Stephen 2026-10-29): its link carries it, so the ride is sealed end to end.
+  // A page started afresh has one; a page opened from a link has the link's, or none (a link without one, such as an
+  // older one or a ride post's, is a ride by its points, so all who open it are still on one ride). Picking Group Ride
+  // here makes one where there is none.
+  const [groupSecret, setGroupSecret] = useState<string | null>(() => PLAN_SECRET ?? (PLAN_LINK ? null : newRideSecret()));
+  const presetBefore = useRef(preset);
+  useEffect(() => {
+    if (preset === "group-ride" && presetBefore.current !== "group-ride") setGroupSecret((s) => s ?? newRideSecret());
+    presetBefore.current = preset;
+  }, [preset]);
   // Keep the link in step with the plan, without adding history entries. Exactly encodePlan's
   // fragment, which never holds the weight (313); Copy link builds the same one (linkToCopy).
   useEffect(() => {
-    const hash = encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia));
+    const hash = withSecret(encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia)), preset === "group-ride" ? groupSecret : null);
     writtenHash.current = hash;
     window.history.replaceState(null, "", hash);
     // "Link copied." was about the link before this change (the correctness review's N4).
     linkPresses.current += 1;
     setLinkSaid("");
     setLinkSpoken("");
-  }, [points, preset, dials, namesVersion]);
+  }, [points, preset, dials, namesVersion, groupSecret]);
 
   // A link pasted into this tab, or the back button, changes the fragment
   // without a reload: open the plan it names.
@@ -1338,6 +1355,7 @@ export function App() {
         return;
       }
       const plan = decodePlan(window.location.hash);
+      setGroupSecret(secretFrom(window.location.hash));
       setConfirmedKm(null);
       // Another plan: undo does not reach back into the one before it.
       history.current.clear();
@@ -3321,7 +3339,7 @@ export function App() {
   // Share's link: the plan's inputs, and the exact line's id with that line sent (once per line and keeping).
   // Share as image's QR code makes its link here too.
   const sharedLinkNow = () => {
-    let link = linkToCopy(window.location, points, preset, dials, viaIndices(points, VIA_MARKS.isVia));
+    let link = withSecret(linkToCopy(window.location, points, preset, dials, viaIndices(points, VIA_MARKS.isVia)), preset === "group-ride" ? groupSecret : null);
     const exact = shareExact();
     let kept: Promise<boolean> | null = null;
     if (exact) {
@@ -3348,21 +3366,23 @@ export function App() {
   };
   // The sharer's token and its leader key, made before the press: the share sheet needs the press's own activation,
   // which an await before it would spend. A new pair after each ride shared.
-  const leadPrep = useRef<{ token: string; key: string } | null>(null);
+  // With the ride's secret (lib/rideSeal.ts), which its link carries: the ride is sealed end to end.
+  const leadPrep = useRef<Lead | null>(null);
   const prepareLead = useCallback(() => {
     const token = newToken();
+    const secret = newRideSecret();
     void leaderKey(token).then((key) => {
-      leadPrep.current = { token, key };
+      leadPrep.current = { token, key, secret };
     });
   }, []);
   useEffect(prepareLead, [prepareLead]);
   // The lead each shared line went out with: the same line shared again (to another chat) goes with the same key, so
   // the first link's followers keep their leader.
-  const leads = useRef(new Map<string, { token: string; key: string }>());
+  const leads = useRef(new Map<string, Lead>());
   // The ride link last sent, and the route it was sent for: shared again for that route (the ride started on it, a
   // re-route or a plan made again since), it is that same link (Stephen 2026-10-26: "if you press and share multiple
   // times in the same ride, it's the same link").
-  const rideLinkSent = useRef<{ route: RouteResponse; keep: ShareKeep; link: string; lead: { token: string; key: string } | null; id: string | null } | null>(null);
+  const rideLinkSent = useRef<{ route: RouteResponse; keep: ShareKeep; link: string; lead: Lead | null; id: string | null } | null>(null);
   // A ride ended: its link is not the next ride's.
   const rodeBefore = useRef(riding);
   useEffect(() => {
@@ -3396,7 +3416,7 @@ export function App() {
     const exact = again ? null : now!.exact;
     const sharedId = again ? again.id : (sharedLine.current?.id ?? null);
     const lead = again ? again.lead : ride && kept ? ((sharedId ? leads.current.get(sharedId) : undefined) ?? leadPrep.current) : null;
-    const link = again ? again.link : ride && kept ? asRideLink(now!.link, lead?.key ?? null) : now!.link;
+    const link = again ? again.link : ride && kept ? withSecret(asRideLink(now!.link, lead?.key ?? null), lead?.secret ?? null) : now!.link;
     const file = exact?.file ? gpxShareFile(exact.file.text, exact.file.fileName) : null;
     const content = withGpxFile(nav, shareContent(link, distanceM, presetSaid(preset)), file);
     const outcome = shareLink(nav, content);
@@ -3414,7 +3434,7 @@ export function App() {
         // owner, 2026-10-18: "Maybe make the sharer able to reroute").
         // The sharer leads it (Stephen 2026-10-22): shown as Lead line under the token the link's key names.
         if (lead && sharedId) {
-          leadConsent(await broadcastRideId(sharedId), lead.token);
+          leadConsent((await rideOf({ broadcast: { id: sharedId }, secret: lead.secret })).id, lead.token);
           if (!leads.current.has(sharedId)) {
             leads.current.set(sharedId, lead);
             prepareLead();
@@ -3422,7 +3442,7 @@ export function App() {
           led = true;
         } else unled = true;
         if (led) rideLinkSent.current = { route: rideRoute, keep: shareKeep, link, lead, id: sharedId };
-        const open = { answer: rideRoute, ride: true, own: true, id: sharedId ?? undefined, lead: lead && sharedId ? lead.key : null };
+        const open = { answer: rideRoute, ride: true, own: true, id: sharedId ?? undefined, lead: lead && sharedId ? lead.key : null, secret: lead && sharedId ? lead.secret : null };
         sharedOpenNow.current = open;
         setSharedOpen(open);
       }
@@ -4034,7 +4054,7 @@ export function App() {
   // held to it.
   // `id` and `lead`: a broadcast's shared line and leader key (RideGroup follows the leader; the sharer leads).
   // `name`: the shared route's, for the join sheet's title (BroadcastJoinDialog).
-  const [sharedOpen, setSharedOpen] = useState<{ answer: RouteResponse; ride: boolean; own?: boolean; id?: string; lead?: string | null; name?: string } | null>(null);
+  const [sharedOpen, setSharedOpen] = useState<{ answer: RouteResponse; ride: boolean; own?: boolean; id?: string; lead?: string | null; secret?: string | null; name?: string } | null>(null);
   // The shared ride in a ref too: Broadcast starts the ride from its own press's closure, before the state re-renders.
   const sharedOpenNow = useRef(sharedOpen);
   sharedOpenNow.current = sharedOpen;
@@ -4059,7 +4079,7 @@ export function App() {
         // A broadcast's follower is not asked about closures (Stephen 2026-10-26: "The closure part should be leader
         // only. In general many of these closures aren't always real").
         openSaved(shared, SHARED_OPENED(shared.name), !(SHARED_RIDE && SHARED_LEAD && shared.answer));
-        if (shared.answer) setSharedOpen({ answer: shared.answer, ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD, name: shared.name });
+        if (shared.answer) setSharedOpen({ answer: shared.answer, ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD, secret: SHARED_SECRET, name: shared.name });
       } else {
         setSharedNote(SHARED_GONE);
         announce(SHARED_GONE);
@@ -4236,13 +4256,13 @@ export function App() {
   // Broadcast from Roam (Stephen 2026-10-22: "have it as a tap within roam"): a link to a ride with no route, led by
   // the rider; those who open it follow the rider's dot. The share sheet opens inside the press (no await before it);
   // the rider leads only once the link was sent with its key. Answers what to say, "" for nothing.
-  const [roamBroadcast, setRoamBroadcast] = useState<{ id: string; lead: string; leading: boolean } | null>(() =>
+  const [roamBroadcast, setRoamBroadcast] = useState<{ id: string; lead: string; leading: boolean; secret: string | null } | null>(() =>
     ROAM_FOLLOW ? { ...ROAM_FOLLOW, leading: false } : null,
   );
   // `nav`: the sheet (or Broadcast's QR code, broadcastRoamQr). Following someone's Roam broadcast, their link is passed on.
   const broadcastRoam = async (nav: ShareNavigator | undefined = broadcastNav): Promise<string> => {
     if (roamBroadcast && !roamBroadcast.leading) {
-      const done = await shareLink(nav, { title: ROAM_BROADCAST_TITLE, text: ROAM_BROADCAST_TEXT, url: roamLink(window.location.origin, roamBroadcast.id, roamBroadcast.lead) });
+      const done = await shareLink(nav, { title: ROAM_BROADCAST_TITLE, text: ROAM_BROADCAST_TEXT, url: roamLink(window.location.origin, roamBroadcast.id, roamBroadcast.lead, roamBroadcast.secret) });
       if (done !== "shared") return done === "failed" && !canShare ? BROADCAST_RIDE_COPY_FAILED : shareSaidFor(done);
       return canShare ? "" : BROADCAST_COPIED;
     }
@@ -4250,15 +4270,15 @@ export function App() {
     const lead = mine ? leads.current.get(`roam|${mine.id}`) : leadPrep.current;
     if (!lead) return ROAM_BROADCAST_NOT_READY;
     const id = mine?.id ?? newSharedId();
-    const done = await shareLink(nav, { title: ROAM_BROADCAST_TITLE, text: ROAM_BROADCAST_TEXT, url: roamLink(window.location.origin, id, lead.key) });
+    const done = await shareLink(nav, { title: ROAM_BROADCAST_TITLE, text: ROAM_BROADCAST_TEXT, url: roamLink(window.location.origin, id, lead.key, lead.secret) });
     if (done !== "shared") return done === "failed" && !canShare ? BROADCAST_RIDE_COPY_FAILED : shareSaidFor(done);
     // Again while leading: the sheet was the answer; a copy is said.
     if (mine) return canShare ? "" : BROADCAST_COPIED;
     if (!roamingNow.current) return "";
-    leadConsent(await roamRideId(id), lead.token);
+    leadConsent((await rideOf({ broadcast: { id, roam: true }, secret: lead.secret })).id, lead.token);
     leads.current.set(`roam|${id}`, lead);
     prepareLead();
-    setRoamBroadcast({ id, lead: lead.key, leading: true });
+    setRoamBroadcast({ id, lead: lead.key, leading: true, secret: lead.secret });
     return canShare ? ROAM_BROADCAST_ON : BROADCAST_COPIED;
   };
   // Held in Roam: its link as a QR code (no Start: Roam is going).
@@ -5621,7 +5641,7 @@ export function App() {
   // too (watching from a computer), not only in Go or riding.
   // Following a broadcast whose link this page opened: Broadcast passes that link on (followedLink).
   const passesOn = onShared !== null && !onShared.own && !!onShared.lead && SHARED_LINK !== null && onShared.id === SHARED_ID;
-  const rideBroadcast = onShared?.ride && onShared.id && onShared.lead ? { id: onShared.id, lead: onShared.lead, leading: onShared.own === true } : null;
+  const rideBroadcast = onShared?.ride && onShared.id && onShared.lead ? { id: onShared.id, lead: onShared.lead, leading: onShared.own === true, secret: onShared.secret ?? null } : null;
   // Ride mode's Broadcast: the plan's own route only (its link is the plan's), not Ride the rest's or a detour from Roam; a
   // ride opened from someone else's link only where it is their broadcast, passed on as it is (Stephen 2026-10-26).
   const rideCanBroadcast = !!rideStart && !rideStart.roam && rideStart.route === shown && (!(onShared && !onShared.own) || passesOn);
@@ -5807,6 +5827,7 @@ export function App() {
           getMap={getMap}
           here={rideView?.rider?.point ?? (here ? here.point : null)}
           broadcast={rideBroadcast}
+          secret={rideGroupType === "group-ride" && !onShared ? groupSecret : null}
           riding={riding}
           onRiders={setRideRiders}
           ridersElsewhere={riding && rideCanBroadcast && rideBroadcast !== null}

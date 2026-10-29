@@ -18,6 +18,14 @@ Privacy is the shape of this module:
   Each api process sweeps every ride for this every `SWEEP_S`, so a ride nobody opens again is
   emptied as well.
 
+Sealed rides (Stephen 2026-10-29, end-to-end encryption; frontend/src/lib/rideSeal.ts): a
+broadcast, and a Group Ride link shared from the app, carry a secret in the link's fragment, which
+no browser sends to a server. Each phone seals its dot, its alert and the leader's path with a key
+from that secret before sending, and the ride id is derived from it one way. Here a sealed one is
+opaque text kept exactly as a plain one is (the same 2 minutes, limits and leader mark), but
+nothing in it can be read, rounded or checked: the phones round to the grid, keep to the map's area
+and merge alerts themselves. A ride in plain numbers (a Mass Ride, an older link) is unchanged.
+
 "Memory" across the api's gunicorn workers: each worker is its own process, so a dict in one is
 not seen by the others. The shared store is a directory on a tmpfs (by default /dev/shm, which is
 RAM, never disk), one small JSON file per ride under an exclusive lock. `RIDE_PRESENCE_DIR`
@@ -65,6 +73,11 @@ MIN_PATH_INTERVAL_S = 20
 PATH_MAX_POINTS = 600
 PATHS_PER_RIDE = 3
 PATH_BODY_BYTES = 48 * 1024
+# A sealed dot, alert or path (frontend/src/lib/rideSeal.ts): base64url of the nonce and the
+# ciphertext, at most this long.
+SEALED = re.compile(r"^[A-Za-z0-9_-]{24,}$")
+SEALED_MAX = 1400
+SEALED_PATH_MAX = PATH_BODY_BYTES - 256
 # Alerts live on one ride at a time; a newer one past this drops the oldest.
 LIVE_ALERTS_PER_RIDE = 20
 
@@ -457,7 +470,7 @@ def _prune(state: dict, now: float) -> None:
             continue
         if "at" in rider and now - rider["at"] > DOT_TTL_S:
             # The position goes at 2 minutes; the token's counts stay for the ride's limits.
-            for key in ("lon", "lat", "at", "role"):
+            for key in ("lon", "lat", "at", "role", "sealed"):
                 rider.pop(key, None)
         if "path" in rider and now - rider["path"]["at"] > PATH_TTL_S:
             del rider["path"]
@@ -501,13 +514,29 @@ def _role(role) -> str:
     return role
 
 
+def _sealed(text, most: int) -> str:
+    if not isinstance(text, str) or len(text) > most or not SEALED.match(text):
+        raise Refused(400, "Not a sealed value.")
+    return text
+
+
 def post_position(
-    ride_id: str, token: str, lon, lat, role=None, now: Callable[[], float] = time.time
+    ride_id: str,
+    token: str,
+    lon,
+    lat,
+    role=None,
+    now: Callable[[], float] = time.time,
+    sealed=None,
 ) -> None:
-    """Keep this rider's dot (rounded) and role for 2 minutes."""
+    """Keep this rider's dot (rounded) and role for 2 minutes; or, `sealed`, the dot as its phone
+    sealed it."""
     _check(ride_id, token)
-    spot = _position(lon, lat)
-    role = _role(role)
+    if sealed is not None:
+        fields = {"sealed": _sealed(sealed, SEALED_MAX)}
+    else:
+        spot = _position(lon, lat)
+        fields = {"lon": spot[0], "lat": spot[1], "role": _role(role)}
     t = now()
     with store().ride(ride_id) as state:
         _prune(state, t)
@@ -517,7 +546,9 @@ def post_position(
             raise Refused(
                 429, "Too soon; the next position goes in a few seconds.", MIN_POST_INTERVAL_S
             )
-        rider.update(lon=spot[0], lat=spot[1], at=t, posted=t, role=role)
+        for key in ("lon", "lat", "role", "sealed"):
+            rider.pop(key, None)
+        rider.update(fields, at=t, posted=t)
 
 
 def _line(points, rounding: bool) -> list[list[float]]:
@@ -546,12 +577,22 @@ def _line(points, rounding: bool) -> list[list[float]]:
     return out
 
 
-def post_path(ride_id: str, token: str, route, trail, now: Callable[[], float] = time.time) -> None:
+def post_path(
+    ride_id: str,
+    token: str,
+    route,
+    trail,
+    now: Callable[[], float] = time.time,
+    sealed=None,
+) -> None:
     """Keep this rider's route and ridden path for 2 minutes (a broadcast's leader sends them; a
-    reader sees them only with the link's leader key)."""
+    reader sees them only with the link's leader key); or, `sealed`, both as the phone sealed
+    them."""
     _check(ride_id, token)
-    route_line = _line(route, rounding=False)
-    trail_line = _line(trail, rounding=True)
+    if sealed is not None:
+        kept = {"sealed": _sealed(sealed, SEALED_PATH_MAX)}
+    else:
+        kept = {"route": _line(route, rounding=False), "trail": _line(trail, rounding=True)}
     t = now()
     with store().ride(ride_id) as state:
         _prune(state, t)
@@ -562,7 +603,7 @@ def post_path(ride_id: str, token: str, route, trail, now: Callable[[], float] =
         if "path" not in rider and others >= PATHS_PER_RIDE:
             raise Refused(503, "This ride has too many paths shared right now.")
         rider["path_posted"] = t
-        rider["path"] = {"route": route_line, "trail": trail_line, "at": t}
+        rider["path"] = {**kept, "at": t}
 
 
 def leave(ride_id: str, token: str, now: Callable[[], float] = time.time) -> None:
@@ -572,11 +613,19 @@ def leave(ride_id: str, token: str, now: Callable[[], float] = time.time) -> Non
         _prune(state, now())
         rider = state["riders"].get(token)
         if rider is not None:
-            for key in ("lon", "lat", "at", "role", "path"):
+            for key in ("lon", "lat", "at", "role", "sealed", "path"):
                 rider.pop(key, None)
 
 
 def _alert_out(alert: dict, token: str, t: float) -> dict:
+    if "sealed" in alert:
+        # Sealed: what it is, where and its words only its riders read; they merge reports too.
+        return {
+            "id": alert["id"],
+            "sealed": alert["sealed"],
+            "age_s": max(0, int(t - alert["last"])),
+            "mine": alert["sender"] == token,
+        }
     return {
         "id": alert["id"],
         "kind": alert["kind"],
@@ -616,12 +665,15 @@ def read(ride_id: str, token: str, now: Callable[[], float] = time.time, leader:
         for other, r in state["riders"].items():
             if other == token or "at" not in r:
                 continue
-            dot = {
-                "lon": r["lon"],
-                "lat": r["lat"],
-                "age_s": max(0, int(t - r["at"])),
-                "role": r.get("role", PARTICIPANT),
-            }
+            if "sealed" in r:
+                dot = {"sealed": r["sealed"], "age_s": max(0, int(t - r["at"]))}
+            else:
+                dot = {
+                    "lon": r["lon"],
+                    "lat": r["lat"],
+                    "age_s": max(0, int(t - r["at"])),
+                    "role": r.get("role", PARTICIPANT),
+                }
             if leader and leader_key(other) == leader:
                 dot["leader"] = True
             dots.append(dot)
@@ -631,11 +683,8 @@ def read(ride_id: str, token: str, now: Callable[[], float] = time.time, leader:
             for other, r in state["riders"].items():
                 if other != token and "path" in r and leader_key(other) == leader:
                     p = r["path"]
-                    path = {
-                        "route": p["route"],
-                        "trail": p["trail"],
-                        "age_s": max(0, int(t - p["at"])),
-                    }
+                    path = {k: v for k, v in p.items() if k in ("route", "trail", "sealed")}
+                    path["age_s"] = max(0, int(t - p["at"]))
     answer = {"dots": dots, "alerts": alerts}
     if path is not None:
         answer["leader_path"] = path
@@ -651,18 +700,23 @@ def send_alert(
     lon,
     lat,
     now: Callable[[], float] = time.time,
+    sealed=None,
 ) -> dict:
-    """Send (or merge) an alert to everyone on the ride link. Answers the alert as others see it."""
+    """Send (or merge) an alert to everyone on the ride link. Answers the alert as others see it.
+    `sealed`: the alert as its phone sealed it, kept as it is (its riders merge it, not this)."""
     _check(ride_id, token)
-    found = kind_of(ride_type, kind)
-    if found is None:
-        raise Refused(400, "Not an alert this ride type sends.")
-    text = (text or "").strip() if kind == "other" else ""
-    if kind == "other" and not text:
-        raise Refused(400, "Say what the issue is, in up to 80 characters.")
-    if len(text) > OTHER_TEXT_MAX:
-        raise Refused(400, "Say what the issue is in up to 80 characters.")
-    spot = _position(lon, lat)
+    if sealed is not None:
+        sealed = _sealed(sealed, SEALED_MAX)
+    else:
+        found = kind_of(ride_type, kind)
+        if found is None:
+            raise Refused(400, "Not an alert this ride type sends.")
+        text = (text or "").strip() if kind == "other" else ""
+        if kind == "other" and not text:
+            raise Refused(400, "Say what the issue is, in up to 80 characters.")
+        if len(text) > OTHER_TEXT_MAX:
+            raise Refused(400, "Say what the issue is in up to 80 characters.")
+        spot = _position(lon, lat)
     t = now()
     with store().ride(ride_id) as state:
         _prune(state, t)
@@ -677,8 +731,21 @@ def send_alert(
             raise Refused(429, "One alert a minute; try again shortly.", wait)
         rider["alerts"] = rider.get("alerts", 0) + 1
         rider["alerted"] = t
+        if sealed is not None:
+            alert = {
+                "id": secrets.token_hex(8),
+                "sealed": sealed,
+                "first": t,
+                "last": t,
+                "sender": token,
+                "reporters": [token],
+            }
+            _add_alert(state, alert)
+            return _alert_out(alert, token, t)
         # The same issue near the same spot within 2 minutes is one alert: "2 riders reported".
         for alert in state["alerts"]:
+            if "sealed" in alert:
+                continue
             same = alert["kind"] == kind and (kind != "other" or alert.get("text") == text)
             if (
                 same
@@ -700,10 +767,14 @@ def send_alert(
             "sender": token,
             "reporters": [token],
         }
-        state["alerts"].append(alert)
-        if len(state["alerts"]) > LIVE_ALERTS_PER_RIDE:
-            state["alerts"].remove(min(state["alerts"], key=lambda a: a["last"]))
+        _add_alert(state, alert)
         return _alert_out(alert, token, t)
+
+
+def _add_alert(state: dict, alert: dict) -> None:
+    state["alerts"].append(alert)
+    if len(state["alerts"]) > LIVE_ALERTS_PER_RIDE:
+        state["alerts"].remove(min(state["alerts"], key=lambda a: a["last"]))
 
 
 def clear_alert(
