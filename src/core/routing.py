@@ -135,6 +135,7 @@ from . import (
     novice_walks,
     parallel,
     presets,
+    route_cache,
     route_hazards,
     route_scenic,
     segment_info,
@@ -344,18 +345,21 @@ QUERY_CANCELED = "57014"
 
 
 @contextmanager
-def plan_cursor() -> Iterator:
+def plan_cursor(cap_s: float | None = None) -> Iterator:
     """A cursor for one of the plan's own reads of the segment table, under a statement
-    timeout of the time the plan has left; a read it cancels raises DeadlineExceeded. A
-    plain cursor outside a plan."""
+    timeout of the time the plan has left, or `cap_s` where that is less; a read it cancels
+    raises DeadlineExceeded. Outside a plan, a cursor under `cap_s`, or a plain one."""
     # A plan cancelled meanwhile reads no more (as found by a router call's ask: no poll here).
     check_cancel(poll=False)
     ends = _plan_ends.get()
-    if ends is None:
+    if ends is None and cap_s is None:
         with connection.cursor() as cursor:
             yield cursor
         return
-    left_ms = int((ends - clock()) * 1000)
+    left_s = cap_s if ends is None else ends - clock()
+    if cap_s is not None:
+        left_s = min(left_s, cap_s)
+    left_ms = int(left_s * 1000)
     if left_ms <= 0:
         raise DeadlineExceeded("no time left to read the segment table")
     outer = connection.in_atomic_block
@@ -4039,6 +4043,9 @@ def _plan_rounds(
                 trail_touched=found.touched,
                 trail_strays=dials.trail_strays + tuple(map(_ring_tuple, found.rings)),
             )
+        except PlanCancelled:
+            # A newer plan replaced this one: no round on the ride type's own graph either.
+            raise
         except (NoRoute, DeadlineExceeded, RouterUnavailable):
             # Leaving the strays out left no route, or no time for another round: the plan
             # the ride type makes on its own graph, in what is left of the budget.
@@ -4184,18 +4191,16 @@ def _plan(
     exposure = presets.exposure_for(preset_name, dials.carrying)
     # The approved Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, 307-310, 335), read at
     # request time: empty as shipped.
-    avoid_list = avoid_junctions.approved()
+    # Each of these is read once a request: the answer cache's key read them already where
+    # it was made (`route_cache.approval`).
+    avoid_list = route_cache.avoid_list()
     # A Mass Ride's rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3, 325), read once a plan:
     # empty as shipped, and never read for another ride type (325: "for this mode only").
-    hazard_list = mass_hazards.approved() if preset_name == "mass-ride" else {}
+    hazard_list = route_cache.mass_ride_hazards() if preset_name == "mass-ride" else {}
     # The approved rider ratings of junctions (OWNER-DECISIONS 232), read the same way.
-    from .junction_suggestions import approved_ratings
-
-    junction_ratings = approved_ratings()
+    junction_ratings = route_cache.junction_ratings()
     # The flashing beacons the map has as signals (the owner's and MDOT SHA's), the same way.
-    from .flashing_signals import active as active_beacons
-
-    beacons = active_beacons()
+    beacons = route_cache.beacons()
     # The rider's target distance counts at the top of the slider only.
     target_m = float(dials.target_distance_m) if dials.target_distance_m and maxcalm else None
     when = dials.when or default_when()

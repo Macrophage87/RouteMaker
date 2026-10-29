@@ -52,6 +52,8 @@ worker's memory, like the request it answers.
 
 from __future__ import annotations
 
+import contextvars
+import functools
 import hashlib
 import json
 import logging
@@ -59,6 +61,7 @@ import threading
 import time
 import zlib
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -314,21 +317,78 @@ def _closures_part(now: datetime) -> tuple[str, datetime | None]:
     return digest, upcoming
 
 
-def _approved_part(preset: str) -> list:
-    """The approvals the plan reads at request time."""
-    from . import avoid_junctions, flashing_signals, mass_hazards
+# The approvals one request has read (`approval`), by name: the key and the plan it misses
+# read the same ones, once. None outside `reads_approvals_once`.
+_approvals_read: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "approvals_read", default=None
+)
+
+
+def reads_approvals_once(fn):
+    """`fn` (one route request) with each approval read at most once in it (`approval`)."""
+
+    @functools.wraps(fn)
+    def run(*args, **kwargs):
+        token = _approvals_read.set({})
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            _approvals_read.reset(token)
+
+    return run
+
+
+def approval(name: str, read: Callable[[], object]):
+    """`read()`, the approval `name`, as this request first read it (`reads_approvals_once`);
+    read afresh outside one."""
+    memo = _approvals_read.get()
+    if memo is None:
+        return read()
+    if name not in memo:
+        memo[name] = read()
+    return memo[name]
+
+
+def avoid_list() -> tuple:
+    """The approved Avoid junctions (`avoid_junctions.approved`)."""
+    from . import avoid_junctions
+
+    return approval("avoid", avoid_junctions.approved)
+
+
+def junction_ratings() -> tuple:
+    """The approved rider ratings of junctions (`junction_suggestions.approved_ratings`)."""
     from .junction_suggestions import approved_ratings
 
+    return approval("ratings", approved_ratings)
+
+
+def mass_ride_hazards() -> dict:
+    """A Mass Ride's approved hazards (`mass_hazards.approved`)."""
+    from . import mass_hazards
+
+    return approval("hazards", mass_hazards.approved)
+
+
+def beacons() -> tuple:
+    """The active flashing beacons (`flashing_signals.active`)."""
+    from . import flashing_signals
+
+    return approval("beacons", flashing_signals.active)
+
+
+def _approved_part(preset: str) -> list:
+    """The approvals the plan reads at request time, read as the plan reads them."""
     hazards = []
     if preset == "mass-ride":
-        for way, hazard in sorted(mass_hazards.approved().items()):
+        for way, hazard in sorted(mass_ride_hazards().items()):
             fields = {k: str(v) for k, v in vars(hazard).items() if not k.startswith("_")}
             hazards.append([way, sorted(fields.items())])
     return [
-        [repr(item) for item in avoid_junctions.approved()],
-        [repr(item) for item in approved_ratings()],
+        [repr(item) for item in avoid_list()],
+        [repr(item) for item in junction_ratings()],
         hazards,
-        flashing_signals.digest(),
+        [repr(item) for item in beacons()],
     ]
 
 
