@@ -7246,7 +7246,7 @@ keys (I, the arrows, + and -) work in both modes.
   (`routemaker.accessibility`, `routemaker.ride.bigText`; the mode's is `routemaker.accessMode`), so a rider who
   had only High contrast on keeps it. None of the three syncs with the account (lib/accountSettings.ts). While the
   mode is on, `access-mode` on the page's root brings Go's small text to 15 px (place and ride-type chips, the
-  stress line, Settings' headings, the map's scale).
+  stress line, Settings' headings, the map's scale), and the charts' key, tiers, source lines and data tables (12 px).
 - **Help that changes with the mode.** Off: the search lede and the lone-start hint (shown
   outside More tips) say "For keyboard or screen reader use, turn on accessibility mode
   (the first button on the page, or in More tips)."; in More tips, the keyboard hints and
