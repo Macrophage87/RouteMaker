@@ -845,3 +845,15 @@ class TestTheRidesOwnSettings:
         for _, payload in asked:
             assert payload["exclude_polygons"][0] == closure
             assert len(payload["exclude_polygons"]) == 2
+
+    def test_the_blocked_roads_are_held_to_the_routers_budget_as_the_plans_are(
+        self, monkeypatch
+    ) -> None:
+        from core import workzones
+
+        monkeypatch.setattr(workzones, "plan_zones", lambda *a, **k: None)
+        monkeypatch.setattr(routing, "_over_budget", lambda rings: len(rings) > 1)
+        first = ((-77.045, 38.90), (-77.045, 38.901))
+        last = ((-77.035, 38.90), (-77.035, 38.901))
+        kept = stoporder.ride_exclusions(self.POINTS, routing.Dials(blocked=(first, last)))
+        assert kept == workzones.blocked_rings((last,))

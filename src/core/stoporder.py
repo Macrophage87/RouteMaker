@@ -110,6 +110,9 @@ def ride_exclusions(points: list, dials: routing.Dials) -> list:
     Shared with `core.nearest`."""
     when = dials.when or routing.default_when()
     blocked = work_zones.blocked_rings(dials.blocked)
+    while blocked and routing._over_budget(blocked):
+        # Held to the router's polygon budget as the plan holds them, the latest kept.
+        blocked = blocked[1:]
     zones = work_zones.plan_zones(
         points,
         when,
