@@ -279,19 +279,61 @@ test("Alert's choices and Other's Speak, Send and Cancel are ride-sized, with no
   assert.match(panel, /className="ride-alert-kinds"/);
 });
 
-test("on a ride with no key, the alert panel says the spot goes to everyone on the ride, before the rider sends", async () => {
-  const { alertNote, ALERT_NOTE } = await import("./rideGroup.ts");
-  const spot = "Sends your spot to everyone on this ride.";
-  // Plain, and not shown as a dot: the alert is the first time this rider's spot goes out, so the panel says so.
-  assert.deepEqual(alertNote(false, false), { seen: spot, heard: spot });
-  // Shown as a dot already, or sealed with the link's key: the usual short line seen; a screen reader still hears it all.
-  assert.deepEqual(alertNote(false, true), { seen: `${ALERT_NOTE}.`, heard: spot });
-  assert.deepEqual(alertNote(true, false), { seen: `${ALERT_NOTE}.`, heard: spot });
-  // The panel shows the seen line, hidden from a screen reader, which hears the other (the Alert button's description too).
+test("the alert panel says the spot goes to everyone on the ride, seen and heard alike, before the rider sends", async () => {
+  const mod = await import("./rideGroup.ts");
+  assert.equal(mod.ALERT_SPOT_NOTE, "Sends your spot to everyone on this ride.");
+  // One line for everyone: no shorter seen line that a screen reader does not hear.
+  assert.equal("alertNote" in mod, false);
+  assert.equal("ALERT_NOTE" in mod, false);
   const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
-  assert.match(group, /const note = alertNote\(seal !== null, meShown\);/);
-  assert.match(group, /<span aria-hidden="true">\{note\.seen\}<\/span>\s*<span id=\{`\$\{alertPanel\}-note`\} className="visually-hidden">\s*\{note\.heard\}/);
+  assert.match(group, /<p id=\{`\$\{alertPanel\}-note`\} className="hint">\s*\{ALERT_SPOT_NOTE\}\s*<\/p>/);
+  // The Alert button's description is that same line.
   assert.match(group, /aria-describedby=\{`\$\{alertPanel\}-note`\}/);
+  assert.doesNotMatch(group, /note\.seen|note\.heard/);
+});
+
+test("the dot question's full note says positions are encrypted, not rounded (every ride sealed, sent exact)", async () => {
+  const { CONSENT_NOTE, BROADCAST_CONSENT_NOTE } = await import("./rideGroup.ts");
+  for (const note of [CONSENT_NOTE, BROADCAST_CONSENT_NOTE]) {
+    assert.match(note, /No name; positions are encrypted and gone after 2 minutes\.$/);
+    assert.doesNotMatch(note, /rounded/);
+  }
+  // Each of DC's languages has both notes as written (they go through t() when shown, as a variable, so the catalogs'
+  // own test does not see them); none keeps the old rounded wording's key.
+  for (const lang of ["es", "am", "ar", "bn", "yue", "fa", "fr", "ht", "hi", "id", "ja", "ko", "zh", "ps", "pt", "ru", "th", "ti", "tr", "vi"]) {
+    const catalog = readFileSync(new URL(`../i18n/${lang}.ts`, import.meta.url), "utf8");
+    for (const note of [CONSENT_NOTE, BROADCAST_CONSENT_NOTE]) assert.ok(catalog.includes(JSON.stringify(note)), `${lang}: ${note}`);
+    assert.doesNotMatch(catalog, /positions are rounded/, lang);
+  }
+  assert.match(t(CONSENT_NOTE, undefined, "es"), /cifradas/);
+  assert.match(t(BROADCAST_CONSENT_NOTE, undefined, "es"), /cifradas/);
+});
+
+test("a followed ride link without its key says so and asks for no dot", async () => {
+  const { BROADCAST_NO_KEY, followsWithoutKey } = await import("./rideGroup.ts");
+  assert.equal(BROADCAST_NO_KEY, "This link is missing its ride key. Ask the leader to send it again.");
+  // A follower of a broadcast or Roam link with no k=: an old v0.14 link, or one a chat app cut short.
+  assert.equal(followsWithoutKey({ leading: false, secret: null }), true);
+  assert.equal(followsWithoutKey({ leading: false }), true);
+  assert.equal(followsWithoutKey({ leading: false, secret: "" }), true);
+  // The leader's own page, a follower with the key, and a Group or Mass Ride plan link (no broadcast) are not.
+  assert.equal(followsWithoutKey({ leading: true, secret: null }), false);
+  assert.equal(followsWithoutKey({ leading: false, secret: "a".repeat(43) }), false);
+  assert.equal(followsWithoutKey(null), false);
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  // No ride of its own is made for it, so there is no dot question and nothing is read or sent.
+  assert.match(group, /const keyless = followsWithoutKey\(broadcast\);/);
+  assert.match(group, /useEffect\(\(\) => \{\s*if \(keyless\) return;\s*let live = true;\s*void rideOf\(rideSecret\)/);
+  assert.match(group, /if \(!ride\) return null;/);
+  // A plan link without one still rides under a new key of its own.
+  assert.match(group, /const rideSecret = \(broadcast \? broadcast\.secret : secret\) \?\? ownSecret;/);
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  // Said in place of Following the leader live, on a shared route's ride and in Roam alike, and as the join sheet's title.
+  assert.match(app, /startRideNoted\(keyless \? BROADCAST_NO_KEY : BROADCAST_FOLLOWING\);/);
+  assert.match(app, /announce\(keyless \? BROADCAST_NO_KEY : BROADCAST_FOLLOWING\)/);
+  assert.match(app, /title: keyless \? BROADCAST_NO_KEY : joinTitle\(name\)/);
+  // Where the link does not open into Ride mode (a computer watching), shown as the plan's note and said politely.
+  assert.match(app, /if \(keyless\) \{\s*setSharedNote\(BROADCAST_NO_KEY\);\s*announce\(BROADCAST_NO_KEY\);\s*\}/);
 });
 
 test("one alert a minute and ten a ride per device", () => {
