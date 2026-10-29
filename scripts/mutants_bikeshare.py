@@ -775,12 +775,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "request: bike on any ride type",
         AP,
-        "        elif ("
-        + NL
-        + "            self.bike is not None",
-        "        elif False and ("
-        + NL
-        + "            self.bike is not None",
+        "        elif (" + NL + "            self.bike is not None",
+        "        elif False and (" + NL + "            self.bike is not None",
         API_T,
     ),
     (
@@ -871,7 +867,9 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "nearby: listed by fullness, not distance",
         BS,
-        "    for distance, station in _nearest(snapshot, point):" + NL + "        status = snapshot.status.get(station.station_id)",
+        "    for distance, station in _nearest(snapshot, point):"
+        + NL
+        + "        status = snapshot.status.get(station.station_id)",
         "    for distance, station in sorted(_nearest(snapshot, point), key=lambda t: -(snapshot.status.get(t[1].station_id).fullness or 0)):"
         + NL
         + "        status = snapshot.status.get(station.station_id)",
@@ -881,7 +879,9 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "nearby: no availability feed lists every station",
         BS,
         "    if snapshot.status is None:" + NL + "        return []",
-        "    if snapshot.status is None:" + NL + "        return [NearbyStation(s.station_id, s.name, s.lon, s.lat, 100, 0.0, 1, 0, 0) for s in snapshot.stations]",
+        "    if snapshot.status is None:"
+        + NL
+        + "        return [NearbyStation(s.station_id, s.name, s.lon, s.lat, 100, 0.0, 1, 0, 0) for s in snapshot.stations]",
         NEAR_T,
     ),
     (
@@ -915,22 +915,36 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "chosen: the rider's pick-up is ignored",
         BS,
-        "    if pickup_station:" + NL + "        docks, free = pinned_start(origin, pickup_station, bike, snapshot)",
-        "    if False:" + NL + "        docks, free = pinned_start(origin, pickup_station, bike, snapshot)",
+        "    if pickup_station:"
+        + NL
+        + "        docks, free = pinned_start(origin, pickup_station, bike, snapshot)",
+        "    if False:"
+        + NL
+        + "        docks, free = pinned_start(origin, pickup_station, bike, snapshot)",
         NEAR_T,
     ),
     (
         "chosen: the rider's drop-off is ignored",
         BS,
-        "        if dropoff_station:" + NL + "            ends = pinned_end(dest, dropoff_station, snapshot)",
+        "        if dropoff_station:"
+        + NL
+        + "            ends = pinned_end(dest, dropoff_station, snapshot)",
         "        if False:" + NL + "            ends = pinned_end(dest, dropoff_station, snapshot)",
         NEAR_T,
     ),
     (
         "chosen: a chosen dock that cannot serve is used anyway",
         BS,
-        "    if not _can_start(pick, bike, snapshot):" + NL + "        raise NoBikeshare(" + NL + '            f"The dock you chose, {pick.name}, {_why_not_start(pick, bike)}. Choose another, or "',
-        "    if False:" + NL + "        raise NoBikeshare(" + NL + '            f"The dock you chose, {pick.name}, {_why_not_start(pick, bike)}. Choose another, or "',
+        "    if not _can_start(pick, bike, snapshot):"
+        + NL
+        + "        raise NoBikeshare("
+        + NL
+        + '            f"The dock you chose, {pick.name}, {_why_not_start(pick, bike)}. Choose another, or "',
+        "    if False:"
+        + NL
+        + "        raise NoBikeshare("
+        + NL
+        + '            f"The dock you chose, {pick.name}, {_why_not_start(pick, bike)}. Choose another, or "',
         NEAR_T,
     ),
     (
