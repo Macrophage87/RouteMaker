@@ -79,6 +79,7 @@ import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
 import { ROUTE_NAME_LAYER_ID, ROUTE_NAME_SOURCE_ID, routeNameField, routeNameFeatures, routeNameLayer } from "./lib/routeNames.ts";
 import { addRailStations, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
 import { setRideLabelOrder, type LabelHomes } from "./lib/rideLabelOrder.ts";
+import { RIDE_LABEL_SCALE, RIDE_SCALED_LABEL_LAYERS, scaledTextSize } from "./lib/rideLabelSize.ts";
 import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
 import { STEEP_GRADE_SOURCE, STEEP_ICONS, steepGradeFeatures, steepGradeIcon, steepGradeLayer, steepGradeRepeatLayer, steepIconName } from "./lib/steepGrades.ts";
 import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
@@ -2763,6 +2764,29 @@ export function MapView(props: Props) {
       if (map.getLayoutProperty(RAIL_LAYERS.names, "text-size") !== size) map.setLayoutProperty(RAIL_LAYERS.names, "text-size", size);
       const move = stationNamesTarget(map.getLayersOrder());
       if (move) map.moveLayer(RAIL_LAYERS.names, move.before);
+    };
+    apply();
+    map.on("styledata", apply);
+    return () => {
+      map.off("styledata", apply);
+    };
+  }, [props.rideLabels]);
+  // The map's smaller labels (grades, mile markers, mountain-bike trail names, climbs) larger in a ride by the street
+  // names' share (lib/rideLabelSize.ts), each back to its own size after. They come and go (the route, the trail
+  // layers, a style reload), so this listens throughout, as the station names do.
+  const baseLabelSize = useRef<Record<string, unknown>>({});
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const riding = Boolean(props.rideLabels);
+    const apply = () => {
+      for (const id of RIDE_SCALED_LABEL_LAYERS) {
+        if (!map.getLayer(id)) continue;
+        baseLabelSize.current[id] ??= map.getLayoutProperty(id, "text-size");
+        const base = baseLabelSize.current[id];
+        const want = riding ? scaledTextSize(base, RIDE_LABEL_SCALE) : base;
+        if (JSON.stringify(map.getLayoutProperty(id, "text-size")) !== JSON.stringify(want)) map.setLayoutProperty(id, "text-size", want as never);
+      }
     };
     apply();
     map.on("styledata", apply);

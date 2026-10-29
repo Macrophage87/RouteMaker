@@ -4917,8 +4917,14 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   margin: 2px 0;
 }
 
+/* In a ride it can name the next street ("Then right onto S St NW"): the ride's 20 px for street names (the owner,
+   2026-10-20), never the page's 15 px; Large text sets its own, larger (below). */
+.ride .cue-more {
+  font-size: 20px;
+}
+
 /* A steady card (the UI review, 2026-10-28: it changed height between cues and the map and buttons jumped about 75 px):
-   the instruction in a two-line slot, which RideMode shrinks a long street into (not under 16 px, then "…" on its
+   the instruction in a two-line slot, which RideMode shrinks a long street into (not under 20 px, then "…" on its
    second line); what follows it at most one line, its slot kept when empty. Screen readers have the whole sentence. */
 .ride .cue-next .cue-text {
   height: 3.75rem;
@@ -4960,12 +4966,14 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   padding-left: 1.5em;
 }
 
+/* Each row names a street: at least the ride's 20 px (Large text's 16 pt where larger), the next one larger still. */
 .cue-sheet-list li {
   margin: 2px 0;
+  font-size: max(20px, 1em);
 }
 
-.cue-sheet-next {
-  font-size: 1.25rem;
+.cue-sheet-list li.cue-sheet-next {
+  font-size: max(24px, 1.2em);
   font-weight: 700;
 }
 
