@@ -4807,6 +4807,22 @@ Ride the junction model reads those streets two-way: it can only overstate a
 junction there. 181 ways (13.8 mi) on the 09-25 extract, 21 of them (0.9 mi) LTS 3
 or worse.
 
+### What a screen reader hears from the planner (the 2026-10-29 a11y review)
+
+- **Units in words.** The route's sentence (`announceRoute`), the re-plan toast's spoken half
+  (`replannedSaid`) and the elevation sliders' value text (`readingAt`, `elevationReading`) use
+  `lib/spokenFigures.ts`: "12.3 miles (19.8 kilometers), 1 hour 5 minutes moving time, climb 340 feet
+  (104 meters)", the same figures as on screen. "mi", "h" and a bare "m" were read as letters or as minutes.
+- **An opened GPX file is said once.** While GpxPanel fits the plan to the file's track (`onFitting`),
+  App holds the route's sentence back, and the round-by-round progress line sits outside the panel's
+  status region. Only the fitted route is said.
+- **A route error is read once.** The error box is a group named by its title, and its words are the
+  alert. App focuses the box (from Go's Where to?, or back from a sheet), and the focus reads only
+  the title, not the whole error a second time.
+- **The Go/Plan switch keeps the focus.** Each mode has its own copy of the switch, so a press removes
+  the button that had the focus. The new mode's switch then focuses its pressed button (`ModeSwitch`,
+  only within a second of the press and only where it shows).
+
 ### The junction list and the description, for a screen reader
 
 - Every junction row, group and member is named by one `aria-label`

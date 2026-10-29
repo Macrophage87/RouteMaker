@@ -218,10 +218,19 @@ function GoBikeOptions({ options }: { options: NonNullable<GoRouteControls["opti
 /** A route error: what went wrong and what to do (lib/api.ts routeErrorShown), with one Try again where it can help. */
 function RouteErrorBox({ error, errorRef, retry, goPlace, offline }: { error: RouteError; errorRef: RefObject<HTMLDivElement | null>; retry: () => void; goPlace: string | null; offline: boolean }) {
   const shown = routeErrorShown(error, goPlace, offline);
+  const titleId = useId();
+  // The words are the alert, said once as they come; the box that takes the focus (App: from Go's Where to?, or back
+  // from a sheet) is a group named by its title, so the focus does not read the whole error a second time (the
+  // 2026-10-29 a11y review).
   return (
-    <div ref={errorRef} tabIndex={-1} className={`error error-${error.kind}`} role="alert">
-      <p>
-        {shown.title && <strong>{shown.title}.</strong>} {shown.message}
+    <div ref={errorRef} tabIndex={-1} className={`error error-${error.kind}`} role="group" aria-labelledby={titleId}>
+      {!shown.title && (
+        <span id={titleId} hidden>
+          {t("Route problem")}
+        </span>
+      )}
+      <p role="alert">
+        {shown.title && <strong id={titleId}>{shown.title}.</strong>} {shown.message}
       </p>
       {shown.retry && (
         <button type="button" onClick={retry}>
