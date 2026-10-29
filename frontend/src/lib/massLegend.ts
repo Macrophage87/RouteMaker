@@ -23,8 +23,10 @@ import {
   massBandsSaid,
   capacityRows,
   capacitySummary,
+  FIGURES_DC_ONLY,
   OUTSIDE_DC_FIGURES,
   capacityPair,
+  capacityShortLine,
   capitalise,
   narrowestClause,
   narrowestLines,
@@ -181,7 +183,7 @@ export function CapacityStats({
   // No riders figure (a table without the column): the panel keeps its older look, with no figures.
   if (!summary || summary.minRpm === null) return null;
   const corkerTerm = corkers ? h("div", { key: "corkers", className: "capacity-corkers" }, h("dt", null, corkers.label), h("dd", null, corkers.text)) : null;
-  const pair = capacityPair(summary, route.profile?.flow);
+  const pair = capacityPair(summary, route.profile?.flow, route.profile);
   const term = (line: CapacityLine, className: string) =>
     h("div", { key: line.key, className }, h("dt", null, capitalise(line.label)), h("dd", null, line.text));
   return h(
@@ -196,5 +198,31 @@ export function CapacityStats({
       corkerTerm,
     ),
     summary.outsideM > 0 ? h("p", { className: "hint capacity-outside-dc" }, OUTSIDE_DC_FIGURES) : null,
+  );
+}
+
+/**
+ * Go's capacity in one line (P6 of the 2026-10-28 audit): the narrowest point and the ride's corkers, "Narrowest: 90
+ * riders/min at 0.9 mi · about 8 corkers for 500 riders", then "Figures cover DC only." where part of the route is
+ * outside DC. The four figures (`CapacityStats`) are under Info and in Plan. Shown short, said in full.
+ */
+export function CapacityShort({
+  route,
+  corkers = null,
+}: {
+  route: Pick<RouteResponse, "stress_spans"> & Partial<Pick<RouteResponse, "profile">>;
+  /** The ride's corkers (lib/profileChart.ts `corkerShort`): "about 8 corkers for 500 riders". */
+  corkers?: string | null;
+}): ReactElement | null {
+  const summary = capacitySummary(route.stress_spans);
+  if (!summary || summary.minRpm === null) return null;
+  const line = capacityShortLine(capacityPair(summary, route.profile?.flow, route.profile), corkers);
+  if (!line) return null;
+  return h(
+    "p",
+    { className: "capacity-short" },
+    h("span", { "aria-hidden": "true" }, line.shown),
+    h("span", { className: "visually-hidden" }, line.said),
+    summary.outsideM > 0 ? h("span", { className: "capacity-dc-only" }, ` ${FIGURES_DC_ONLY}`) : null,
   );
 }

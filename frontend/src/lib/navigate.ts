@@ -26,10 +26,11 @@
  * (`replanPoints`), in a POST body, as planning with "Use my location" already sends (395).
  */
 import { METRES_PER_MILE, formatDistance, formatRoughDistance, spokenDistance } from "./format.ts";
-import { language, t } from "./i18n.ts";
+import { fullStop, language, t } from "./i18n.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { AVOID_PLEA } from "./avoidJunctions.ts";
 import { descriptionEntries } from "./routeDescription.ts";
+import { cueParts, shortStreets } from "./cueShown.ts";
 import { mileWords, trailMileAt, type TrailMiles } from "./trailMiles.ts";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import type { JunctionShape } from "./junctionShape.ts";
@@ -44,7 +45,8 @@ export type Verbosity = "full" | "stoker" | "quiet";
 
 export const VERBOSITY_LABELS: Record<Verbosity, string> = {
   full: t("Full: every turn, early and again close to it"),
-  stoker: t("Stoker: each turn once ahead and as it happens, busy crossings, stops"),
+  // Shown as Turns only (it was Stoker; the stored value keeps the old name), so a first-time rider can tell it apart.
+  stoker: t("Turns only: each turn once ahead and as it happens, busy crossings, stops"),
   quiet: t("Quiet: only arrival; ask Where am I? any time"),
 };
 
@@ -116,6 +118,24 @@ export interface CueSheetRow {
   index: number;
   distance: string;
   text: string;
+  /** The row as shown, short (the UI review, 2026-10-28): "0.2 mi (0.3 km) · Left · Church St NW"; screen readers get the rest. */
+  shown: string;
+}
+
+/** How many of the list's rows show on the card; the rest are there for screen readers only. */
+export const CUE_SHEET_SHOWN = 3;
+
+/**
+ * A cue's words cut to the turn and the street it ends on: "Left onto Church Street Northwest." as "Left · Church St NW",
+ * a jog's "Bear left onto the path, then left onto Corregidor St NW" as "Bear left · Corregidor St NW".
+ */
+export function cueShort(text: string): string {
+  const head = cueParts(text).head.replace(/\.$/, "");
+  const first = head.search(/ (?:onto|hacia) /);
+  if (first < 0) return head;
+  const turn = head.slice(0, first).split(", ")[0];
+  const last = head.match(/.* (?:onto|hacia) (.+)$/);
+  return `${turn} · ${last ? last[1] : head.slice(first + 1)}`;
 }
 
 /**
@@ -129,7 +149,12 @@ export function cueSheet(model: RideModel, progressM: number): CueSheetRow[] {
     .slice(0, CUE_SHEET_ROWS)
     .map((c, i) => {
       const distance = formatDistance(c.atM - from);
-      const row = { index: c.index, distance: i === 0 ? t("In {distance}", { distance }) : t("Then in {distance}", { distance }), text: c.text };
+      const row = {
+        index: c.index,
+        distance: i === 0 ? t("In {distance}", { distance }) : t("Then in {distance}", { distance }),
+        text: c.text,
+        shown: `${distance} · ${cueShort(c.rideText ?? c.text)}`,
+      };
       from = c.atM;
       return row;
     });
@@ -239,6 +264,13 @@ export interface Cue {
    * Street, no signal."); a stretch's change or a walk in the app's own words ("Busy road on R Street Northwest.", D14).
    */
   rideText?: string;
+  /**
+   * Ride's card for a run of signalized crossings, in place of its first-comma split (lib/cueShown.ts cueParts, which
+   * cut the API's sentence inside its list of streets): the big line, "4 signals ahead" ("Corkers: 4 signals ahead" on
+   * a Mass Ride), the small one, "Scott Cir, M St, K St +1 · 2 busy", and the sentence a screen reader is given,
+   * the API's with its two brackets as one (the 2026-10-28 audit, P6). The voice keeps the API's sentence.
+   */
+  card?: { head: string; rest: string; said: string };
   movement: TurnMovement | null;
   /** The street the cue turns onto or is on, as the API names it; null where unnamed. */
   street: string | null;
@@ -378,6 +410,8 @@ export interface CircleExit {
 export function ordinal(n: number): string {
   // Spanish: "3.ª" (la salida, feminine).
   if (language() === "es") return `${n}.ª`;
+  // The other languages put the number in their own sentence ("Prenez la sortie {nth}", "{nth}番目の出口").
+  if (language() !== "en") return String(n);
   if ([11, 12, 13].includes(n % 100)) return `${n}th`;
   return `${n}${({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th"}`;
 }
@@ -405,7 +439,25 @@ const SERVICE_WAY = /^(?:service road|alley|parking aisle)\b/;
 /** A way as a sentence names it: "the service road beside East-West Highway", a street's own name as it is. */
 export function wayWords(street: string): string {
   if (language() === "es") return wayWordsEs(street);
+  if (language() !== "en") return wayWordsOther(street);
   return COMMON_WAY.test(street) ? `the ${street}` : street;
+}
+
+/** The API's ways by what they are, as each language's catalog words them (the Spanish has its own rules above). */
+function wayWordsOther(street: string): string {
+  if (street === CROSS_UNNAMED) return t("the road");
+  const lane = /^(.+) (protected )?bike lane$/.exec(street);
+  if (lane) return t(lane[2] ? "the protected bike lane on {street}" : "the bike lane on {street}", { street: lane[1] });
+  const kind = /^(path|sidewalk|service road|alley|parking aisle)\b(?: beside (.+))?/.exec(street);
+  if (!kind) return street;
+  const words = {
+    path: t("the path"),
+    sidewalk: t("the sidewalk"),
+    "service road": t("the service road"),
+    alley: t("the alley"),
+    "parking aisle": t("the parking aisle"),
+  }[kind[1] as "path"];
+  return kind[2] ? t("{way} beside {road}", { way: words, road: kind[2] }) : words;
 }
 
 /** The API's names for a way by what it is, in Spanish: "the service road beside X" as "la vía de servicio junto a X". */
@@ -448,7 +500,7 @@ const CROSSING_CONTROL_ALONE: Partial<Record<NonNullable<NonNullable<Description
  */
 export function crossingWords(street: string | null, control: NonNullable<DescriptionEntry["turn"]>["control"] | undefined): string {
   // In Spanish the API's way names ("service road beside ...") are said in Spanish too; English as it was.
-  const named = street && !isUnnamed(street) ? (language() === "es" ? wayWords(street) : street) : null;
+  const named = street && !isUnnamed(street) ? (language() !== "en" ? wayWords(street) : street) : null;
   const sentence = control ? (named ? CROSSING_CONTROL_WORDS : CROSSING_CONTROL_ALONE)[control] : undefined;
   if (sentence) return t(sentence, named ? { street: named } : undefined);
   return named ? t("Busy crossing at {street}.", { street: named }) : t("Busy crossing.");
@@ -504,7 +556,7 @@ export function stretchWords(kind: "busy" | "calmer" | "unpaved", entry: Pick<De
           ? street ? t("Heavy traffic on {street}.", { street }) : t("Heavy traffic.")
           : street ? t("Busy road on {street}.", { street }) : t("Busy road.");
   if (!entry.surface) return lead;
-  return t("{cue}, {surface}.", { cue: lead.replace(/\.$/, ""), surface: partly ? t("partly unpaved") : t("unpaved") });
+  return t("{cue}, {surface}.", { cue: withoutFullStop(lead), surface: partly ? t("partly unpaved") : t("unpaved") });
 }
 
 /**
@@ -532,6 +584,25 @@ export function endWords(side: ArrivalSide): string {
 }
 
 /** "0.4 to 1.2 mi (0.6 to 1.9 km): Left onto ..." without its position: the part after the first ": ". */
+/** A street as the signals card lists it: the street word short and no quadrant, "Scott Circle Northwest" as "Scott Cir". */
+export function cardStreet(name: string): string {
+  return shortStreets(name.trim()).replace(/ (?:NW|NE|SW|SE)$/, "");
+}
+
+/** Two brackets in a row as one: "(LTS 4) (Very high stress junctions)" as "(LTS 4; very high stress junctions)". */
+export function oneBracket(text: string): string {
+  return text.replace(/\) \((\p{L})/gu, (_, first: string) => `; ${first.toLowerCase()}`);
+}
+
+/** Ride's card for a run of signalized crossings (Cue.card): its count, the first streets and how many are busy roads. */
+export function signalsCard(group: NonNullable<DescriptionEntry["group"]>, sentence: string, mass: boolean): { head: string; rest: string; said: string } {
+  const head = mass ? t("Corkers: {count} signals ahead", { count: group.count }) : t("{count} signals ahead", { count: group.count });
+  const names = group.streets.map(cardStreet).filter((n) => n !== "").join(", ");
+  const more = group.more > 0 ? `${names ? " " : ""}+${group.more}` : "";
+  const busy = group.lts4 > 0 ? t("{count} busy", { count: group.lts4 }) : "";
+  return { head, rest: [`${names}${more}`, busy].filter((p) => p !== "").join(" · "), said: oneBracket(sentence) };
+}
+
 export function sentenceOf(entry: Pick<DescriptionEntry, "text">): string {
   const text = entry.text.trim();
   const at = text.indexOf(": ");
@@ -869,6 +940,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
                 ? ontoWords(entry.street as string)
                 : sentenceOf(entry),
         ...(kind === "hazard" && entry.kind === "junction" && !entry.group ? { rideText: crossingWords(entry.street, entry.turn?.control) } : {}),
+        ...(kind === "hazard" && entry.kind === "junction" && entry.group && entry.group.count > 0 ? { card: signalsCard(entry.group, sentenceOf(entry), route.preset === "mass-ride") } : {}),
         ...(entry.kind === "hazard" ? { rideText: roadHazardWords(entry.text) } : {}),
         // A stretch entered straight on at a flagged junction (D25): Ride's words, not the API's sentence.
         ...(kind === "hazard" && entry.kind === "stretch" ? { rideText: flaggedOntoWords(entry, before) } : {}),
@@ -1000,8 +1072,8 @@ function thenWords(then: JogTurn, crossing = false): string {
 /** A jog's turns without their streets: "Right, then immediately bear left, then immediately left."; "Cross Redland Road, then left." after a crossing. */
 function jogShortWords(cue: Cue): string {
   const lead = cue.cross ? crossWords(cue.cross) : turnWords(cue.movement!, null, false, cue.exit ?? null);
-  const then = (cue.then ?? []).map((turn, n) => thenWords({ ...turn, street: null, stay: false }, n === 0 && cue.cross !== undefined).replace(/\.$/, ""));
-  return lead.replace(/\.$/, "") + then.join("") + ".";
+  const then = (cue.then ?? []).map((turn, n) => withoutFullStop(thenWords({ ...turn, street: null, stay: false }, n === 0 && cue.cross !== undefined)));
+  return withoutFullStop(lead) + then.join("") + fullStop();
 }
 
 /**
@@ -1023,13 +1095,13 @@ function joinJogs(cues: Cue[]): void {
       jog.push(next);
     }
     if (jog.length < 2) continue;
-    const plain = jog.map((cue) => cue.text.replace(/\.$/, ""));
+    const plain = jog.map((cue) => withoutFullStop(cue.text));
     jog.forEach((cue, j) => {
       if (j > 0) cue.joined = true;
       const after = jog.slice(j + 1);
       if (!after.length) return;
       cue.then = after.map((t) => ({ movement: t.movement!, street: t.street, ...(t.exit ? { exit: t.exit } : {}), ...(t.stay ? { stay: true } : {}), ...(t.toward ? { toward: t.toward } : {}) }));
-      cue.text = plain[j] + cue.then.map((t, n) => thenWords(t, n === 0 && cue.cross !== undefined).replace(/\.$/, "")).join("") + ".";
+      cue.text = plain[j] + cue.then.map((t, n) => withoutFullStop(thenWords(t, n === 0 && cue.cross !== undefined))).join("") + fullStop();
     });
     i += jog.length - 1;
   }
@@ -1201,6 +1273,11 @@ export function startState(): RideState {
 /** How far off the line counts as off route for a fix of this accuracy (plan section 4). */
 export function offThreshold(accuracyM: number): number {
   return Math.min(OFF_MAX_M, Math.max(OFF_MIN_M, OFF_ACCURACY_FACTOR * Math.max(accuracyM, 0)));
+}
+
+/** A sentence without its full stop, as each script writes it: ".", the Chinese and Japanese "。", "।", "።". */
+export function withoutFullStop(text: string): string {
+  return text.replace(/[.。।።]$/u, "");
 }
 
 function lowerFirst(text: string): string {
@@ -1563,6 +1640,8 @@ export function toGo(model: RideModel, progressM: number): ToGo {
 }
 
 const COMPASS = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"];
+/** The compass words in the language in force, written out so the phrase lists find them (lib/i18n.test.ts). */
+const compassSaid = () => [t("north"), t("northeast"), t("east"), t("southeast"), t("south"), t("southwest"), t("west"), t("northwest")];
 const COMPASS_ES = ["norte", "noreste", "este", "sureste", "sur", "suroeste", "oeste", "noroeste"];
 
 /** The compass word for the bearing from a to b: "northeast". */
@@ -1572,7 +1651,9 @@ export function compassWord(a: LonLat, b: LonLat): string {
     Math.cos((a[1] * Math.PI) / 180) * Math.sin((b[1] * Math.PI) / 180) -
     Math.sin((a[1] * Math.PI) / 180) * Math.cos((b[1] * Math.PI) / 180) * Math.cos(((b[0] - a[0]) * Math.PI) / 180);
   const bearing = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-  return (language() === "es" ? COMPASS_ES : COMPASS)[Math.round(bearing / 45) % 8];
+  const at = Math.round(bearing / 45) % 8;
+  if (language() === "es") return COMPASS_ES[at];
+  return language() === "en" ? COMPASS[at] : compassSaid()[at];
 }
 
 /**
@@ -1736,7 +1817,7 @@ export function whereAmI(
   // A named trail is "the" trail, with the marker or without: "On the Capital Crescent Trail."
   // In Spanish a lane named after its street brings its own article ("el carril bici de ..."), so not "el el" (D16).
   const way = isTrail(stretch)
-    ? language() === "es" && / bike lane$/.test(stretch.street)
+    ? language() !== "en" && / bike lane$/.test(stretch.street)
       ? wayWords(stretch.street)
       : t("the {trail}", { trail: stretch.street })
     : (wayRidden(stretch) ?? t("the route"));
@@ -1763,6 +1844,47 @@ export function whereAmI(
   if (togo.stop) sentences.push(t("{distance} to stop {number}{arriving}.", { distance: capital(dist(togo.stop.metres)), number: togo.stop.number, arriving: at(togo.stop.seconds) }));
   sentences.push(t("{distance} to the end{arriving}.", { distance: capital(dist(togo.end.metres)), arriving: at(togo.end.seconds) }));
   return sentences.join(" ");
+}
+
+/**
+ * "Where am I?" as shown (the UI review, 2026-10-28: the whole sentence was a six-line box over the map): two short
+ * lines, the street ("N St NW"), then the next cue's distance and street and the arrival clock ("1.0 mi (1.6 km) → New
+ * Jersey Ave NW · 8:06 AM"). The voice and screen readers keep whereAmI's sentence.
+ */
+export function whereAmIShown(
+  model: RideModel,
+  state: RideState,
+  miles: TrailMiles | null = null,
+  arriving: ((seconds: number) => string) | null = null,
+): string[] {
+  if (state.arrived) return [t(ARRIVED_SAID)];
+  if (state.progressM === null) return [t("Finding your place on the route.")];
+  if (state.off) {
+    const back = wayBack(model, state);
+    return back
+      ? [t("Off the planned route."), t("The planned route is {distance} to the {direction}.", { distance: formatDistance(back.metres), direction: back.direction })]
+      : [t("Off the planned route.")];
+  }
+  const progress = state.progressM;
+  const stretch = stretchAt(model, progress);
+  const named = stretch && !isUnnamed(stretch.street) ? shortStreets(stretch.street as string) : null;
+  const mile = named ? trailMileAt(miles, stretch!.street as string, pointAt(model, progress)) : null;
+  const street = named ?? capital(wayRidden(stretch) ?? t("the route"));
+  const lines = [mile ? `${street} · ${mileWords(mile)}` : street];
+  const cue = model.cues.find((c) => ahead(model, c, progress) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
+  const next: string[] = [];
+  if (cue) {
+    // A turn's street, else the named path it leads to, else a jog's next named street; any other cue its short words.
+    const turning = cue.kind === "turn" || cue.kind === "onto";
+    const names = turning ? [cue.toward, cue.street, ...(cue.then ?? []).flatMap((then) => [then.toward, then.street])] : [];
+    const target = names.find((name) => !isUnnamed(name) && !COMMON_WAY.test(name as string));
+    const onto = target ? shortStreets(target) : cueShort(cueWords(cue, false));
+    next.push(isStartUTurn(cue) ? cueShort(cue.text) : `${formatDistance(cue.atM - progress)} → ${onto}`);
+  }
+  const end = toGo(model, progress).end;
+  if (arriving && end.seconds !== null) next.push(arriving(end.seconds));
+  if (next.length) lines.push(next.join(" · "));
+  return lines;
 }
 
 function capital(text: string): string {
@@ -1934,6 +2056,13 @@ export const UTURN_SAID = "Make a U-turn.";
 export const REPLAN_AHEAD = t("New route found. Keep going ahead.");
 /** The end said on arrival (cueSpoken, whereAmI). */
 const ARRIVED_SAID = "You have arrived at the end of the route.";
+/**
+ * The end as the card shows it (the UI review, 2026-10-28): "Arrived: Union Station", the destination's name where the
+ * map has one, with Done under it; still said as ARRIVED_SAID.
+ */
+export function arrivedShown(place: string | null | undefined): string {
+  return place ? t("Arrived: {place}", { place }) : t("Arrived");
+}
 /**
  * Re-routes in a row that may ask for a U-turn before the next one keeps the rider's way (the owner, 2026-10-20:
  * "give two reroutes and on the third time assume that the user wants to stay on that path").

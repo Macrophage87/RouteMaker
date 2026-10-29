@@ -25,6 +25,10 @@ KEYS = (
     "trail_visibility",
     "mtb:scale:uphill",
     "sac_scale",
+    # The two difficulty scales, kept so the panel and the hover card can say which one set the
+    # trail's level (the owner, 2026-10-28): `singletrack.mtb_scale_words`. No line of their own.
+    "mtb:scale",
+    "mtb:scale:imba",
 )
 
 # A kept value is at most this long (a tag is free text; the panel needs a word or two).

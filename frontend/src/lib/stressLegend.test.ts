@@ -86,7 +86,7 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
   assert.ok(hint.includes(everyTrailFrom(STRESS_ZOOMS.quiet)));
   assert.equal(
     everyTrailFrom(12),
-    "Every other path and trail, the short ones too, shows from zoom 12. Mountain-bike trails show from zoom 12 when their layer is on.",
+    "Every other path and trail, the short ones too, shows from zoom 12. Mountain-bike trails show from zoom 12 when their layer is on, and at every zoom in Mountain Bike.",
   );
   // The owner, 2026-10-17: "Both from 12": no where-to-ride view at zoom 12-13 any more (in the country; a city grid
   // has its ladder since 2026-10-23).

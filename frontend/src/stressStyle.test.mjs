@@ -16,6 +16,7 @@ import {
   gapLayers,
   ringLayers,
   mtbTrailLayers,
+  mtbOverviewLayers,
   mtbLabelLayers,
   trailLabelLayers,
   stressOverlayLayers,
@@ -270,7 +271,9 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const trailNames = trailLabelLayers("s").map((l) => l.id);
   assert.deepEqual(trailNames, ["trail-name"]);
   assert.deepEqual(ids.slice(-mass.length - 2, -mass.length - 1), trailNames);
-  assert.deepEqual([...ids].sort(), [...mtb, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...halves, ...trailNames, ...names, ...mass].sort(), "each layer once");
+  const overview = mtbOverviewLayers("s").map((l) => l.id);
+  assert.deepEqual(ids.slice(mtb.length, mtb.length + 1), overview, "Mountain Bike's zoomed-out line (2026-10-28), over the trail layer's and under every routable line");
+  assert.deepEqual([...ids].sort(), [...mtb, ...overview, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...halves, ...trailNames, ...names, ...mass].sort(), "each layer once");
   // A half step's outline under its dash, both over every tier line (458).
   for (let tier = 1; tier <= 4; tier++) assert.ok(ids.indexOf(`stress-half-outline-${tier}`) < ids.indexOf(`stress-half-${tier}`));
   // The mountain-bike layer under everything, so every routable line draws over it.
