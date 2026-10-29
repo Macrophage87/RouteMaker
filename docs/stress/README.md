@@ -7,6 +7,12 @@ what we have currently for now. Just turn that into a number for stress. Let's m
 a set of documentation for all of this." Anything not yet built is marked
 **planned**.
 
+Cites name a file and, where one helps, the symbol (`presets.STRESS_DEFAULT_AT`). A
+`file:line` cite is where the line was when the paragraph was written, and lines move:
+search the file for the symbol or the words quoted beside it. New cites name the symbol,
+not a line. `tests/test_stress_docs.py` checks that every cited file still exists and
+that every `file:line` cite is inside its file.
+
 Riders read a plain-language version of this, linked from the legend and the road
 panel, at `/about/stress.html` (`frontend/public/about/stress.html`; `/about/stress`
 redirects to it).

@@ -35,6 +35,7 @@ import {
   LINK_HAS_HOME_END,
   LINK_HAS_HOME_POINT,
   LINK_HAS_HOME_START,
+  LINK_HOME_NEAR_M,
   locate,
   locateGate,
   locateSupport,
@@ -597,7 +598,19 @@ test("privacy-2: a link with the rider's Home in it says so, as the destination,
   assert.equal(linkLocationNote([here, atHome], [here], home), `${LINK_HAS_LOCATION_START} ${LINK_HAS_HOME_END}`);
   // No Home, or a plan away from it: as before.
   assert.equal(linkLocationNote([here, other], [here], null), LINK_HAS_LOCATION_START);
-  assert.equal(linkLocationNote([other, [-77.02001, 38.92]], [], home), "");
+  assert.equal(linkLocationNote([other, [-77.0235, 38.92]], [], home), "", "300 m away is not the Home");
+});
+
+test("a link starting or ending near the rider's Home, not only at it, says so", () => {
+  const home: LonLat = [-77.02, 38.92];
+  const other: LonLat = [-77.0, 38.95];
+  // About 90 m from the Home: across the street, or a corner picked from the map.
+  const nearHome: LonLat = [-77.021, 38.92];
+  assert.equal(linkLocationNote([nearHome, other], [], home), LINK_HAS_HOME_START);
+  assert.equal(linkLocationNote([other, nearHome], [], home), LINK_HAS_HOME_END);
+  // Just past LINK_HOME_NEAR_M: a park or a restaurant down the road is not the Home.
+  const pastNear: LonLat = [-77.02 - (LINK_HOME_NEAR_M + 10) / (111_320 * Math.cos((38.92 * Math.PI) / 180)), 38.92];
+  assert.equal(linkLocationNote([pastNear, other], [], home), "");
   assert.equal(LINK_HAS_HOME_END, "This link includes your Home as the destination.");
 });
 
@@ -685,9 +698,10 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /if \(!\(here && pointsRef\.current\.includes\(here\.point\)\)\) setHere\(result\.fix\);/,
     /const lastHere = \(\): LonLat \| null => here\?\.point \?\? \(goStartRef\.current\.kind === "here" \? goStartRef\.current\.point : null\);/,
     // A Mass Ride or Group Ride link (v0.7.0): the others on the route, shared only after the rider says yes there.
-    /^\s*here=\{rideView\?\.rider\?\.point \?\? \(here \? here\.point : null\)\}$/,
+    // The rider's fix first, from its store (app/LiveMap.tsx LiveRiderPoint), then Go's.
+    /^\s*<LiveRiderPoint ride=\{rideRider\} roam=\{null\} fallback=\{here \? here\.point : null\}>$/,
     // A broadcast from Roam (2026-10-22): the same, the roaming rider's fix before Go's.
-    /^\s*here=\{rideView\?\.rider\?\.point \?\? roamRider\?\.point \?\? \(here \? here\.point : null\)\}$/,
+    /^\s*<LiveRiderPoint ride=\{rideRider\} roam=\{roamRider\} fallback=\{here \? here\.point : null\}>$/,
   ];
   for (const rule of allowed) assert.ok(lines.some((line) => rule.test(line)), `still used: ${rule.source}`);
   for (const line of lines) assert.ok(allowed.some((rule) => rule.test(line)), `unexpected use: ${line.trim()}`);
@@ -696,8 +710,12 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)|^\s*routedLoop, copyLink, linkNote, shareImage|const \{ copyLink, linkNote, shareImage,|linkNote: string;|const \{ save, canShare, ready, shareRoute, shareKeep, onShareKeep, shareSaid, linkNote \} = props;|linkNote \? "share-link-note"|const note = linkNote \? " share-link-note" : "";|\{canShare && ready && linkNote && \(|linkNote=\{linkNote\}/;
   for (const line of app.split("\n").filter((l) => /\blinkNote\b/.test(l))) assert.match(line, noteUse, line.trim());
   // The circle round the located point goes to the map's accuracy prop and nowhere else.
-  const circleUse = /const hereCircle =|accuracy=\{riding \? rideCircle : roaming \? \(roamRider \? \{ centre: roamRider\.point, radiusM: roamRider\.accuracyM \} : null\) : hereCircle\}/;
+  const circleUse = /const hereCircle =|^\s*hereCircle=\{hereCircle\}$/;
   for (const line of app.split("\n").filter((l) => /\bhereCircle\b/.test(l))) assert.match(line, circleUse, line.trim());
+  // LiveMap hands it to the map's accuracy prop off the bike, and to nothing else.
+  const live = code(read("../app/LiveMap.tsx"));
+  for (const line of live.split("\n").filter((l) => /\bhereCircle\b/.test(l) && !/^\s*(hereCircle,|hereCircle: )/.test(l)))
+    assert.match(line, /const accuracy = riderFrom \? \(rider \? \{ centre: rider\.point, radiusM: rider\.accuracyM \} : null\) : hereCircle;/, line.trim());
   assert.doesNotMatch(app, /downloadGpx\([^)]*(here|fromHere|linkNote)/);
   assert.doesNotMatch(app, /(encodePlan|linkToCopy)\([^)]*(here|fromHere|linkNote)/);
   assert.doesNotMatch(app, /\.setItem\(/, "App writes no storage itself");

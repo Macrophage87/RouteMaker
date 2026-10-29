@@ -482,6 +482,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Wait up, regroup": "Tann, rasanble",
   "Send alert": "Voye alèt",
   "Sends your location with the alert": "Voye kote ou ye ak alèt la",
+  "Sends your spot to everyone on this ride.": "Voye kote ou ye bay tout moun nan woulad sa a.",
   "Send to everyone on this ride?": "Voye bay tout moun nan woulib sa a?",
   "Call 911": "Rele 911",
   "You have sent {count} alerts on this ride, the most one phone sends.": "Ou voye {count} alèt nan woulib sa a, se pi plis yon telefòn ka voye.",
@@ -1337,6 +1338,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "routes kept for offline": "wout ki kenbe pou san entènèt",
   "Reading the routes kept on this device…": "Ap li wout ki kenbe sou aparèy sa a…",
   "Sign out": "Soti nan kont la",
+  // Sign out everywhere (SignOut.tsx, 2026-10-29): a new draft, for the native speaker's check.
+  "Sign out everywhere": "Soti nan kont la toupatou",
+  "Sign out on every device, this one too, and disconnect your AI assistant apps?":
+    "Soti nan kont la sou tout aparèy, sa a tou, epi dekonekte aplikasyon asistan IA ou yo?",
   "Disconnect": "Dekonekte",
   "Connect {service}": "Konekte {service}",
   "Disconnect {app}": "Dekonekte {app}",

@@ -120,6 +120,38 @@ class TestDerivedStaff:
         assert user.is_staff
         assert user._admin_guild_ids == frozenset({1000})
 
+    def test_a_deferred_admin_is_staff_on_first_read(self, guild) -> None:
+        """What `get_user` hands every signed-in request: nothing resolved yet,
+        and the right answer the moment anything asks."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from core.auth_backend import DiscordStandingBackend
+        from core.models import RoleMapping
+
+        user = User.objects.create(discord_user_id=6)
+        member_of(guild, user, permission=RoleMapping.Permission.GUILD_ADMIN)
+        with CaptureQueriesContext(connection) as loaded:
+            resolved = DiscordStandingBackend().get_user(user.pk)
+        assert len(loaded) == 1, "loading the user resolves no standing"
+        assert "_admin_guild_ids" not in vars(resolved)
+
+        assert resolved.is_staff
+        assert resolved._admin_guild_ids == frozenset({1000})
+        assert resolved._member_guild_ids == frozenset({1000})
+        with CaptureQueriesContext(connection) as again:
+            assert resolved.is_staff
+        assert len(again) == 0, "and once resolved it is not resolved again"
+
+    def test_a_user_nothing_deferred_has_no_standing(self, guild) -> None:
+        """Unmarked, the sets read as absent, so every reader's default holds."""
+        from core.models import RoleMapping
+
+        user = User.objects.create(discord_user_id=7)
+        member_of(guild, user, permission=RoleMapping.Permission.GUILD_ADMIN)
+        assert not hasattr(user, "_admin_guild_ids")
+        assert not user.is_staff
+
     def test_a_banned_admin_loses_the_admin(self, guild) -> None:
         """One answer serves both, which is the whole reason staff is derived."""
         from core.auth_backend import attach_standing
@@ -722,6 +754,27 @@ class TestSessionEpochMiddleware:
         after = Session.objects.get(session_key=store.session_key).last_seen_at
         assert after > before, "the idle clock never moves, so every session expires"
         assert hasattr(request.user, "_member_guild_ids"), "standing was never attached"
+
+    def test_a_recent_clock_is_left_alone(self) -> None:
+        """No write for a clock that moved minutes ago: against a 30-day idle
+        lifetime it changes nothing, and every map tile used to pay for it."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from core.middleware import LAST_SEEN_REFRESH
+        from core.models import Session
+
+        user = User.objects.create(discord_user_id=48)
+        seen = timezone.now() - LAST_SEEN_REFRESH + timedelta(minutes=1)
+        store = self.signed_in(user, last_seen_at=seen)
+        request = self.request_for(user, store)
+
+        with CaptureQueriesContext(connection) as queries:
+            assert self.run_middleware(request) == "ok"
+        assert len(queries) == 1, [q["sql"] for q in queries]
+        assert Session.objects.get(session_key=store.session_key).last_seen_at == seen
+        assert request.user.is_authenticated
+        assert "_member_guild_ids" not in vars(request.user), "standing waits for a reader"
 
     def test_a_stale_epoch_ends_the_session(self) -> None:
         """Ban, suspension, deletion and sign-out-everywhere all land here."""

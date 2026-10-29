@@ -109,7 +109,10 @@ import {
   type Verbosity,
 } from "./navigate.ts";
 import { parseTrailMiles } from "./trailMiles.ts";
-import { setLanguageForTest } from "./i18n.ts";
+import { loadLanguage, setLanguageForTest } from "./i18n.ts";
+
+// Spanish's catalog is fetched on choosing it (lib/i18n.ts loadLanguage), as the app does before it starts.
+await loadLanguage("es");
 
 const M_PER_DEG = 111_195;
 const LAT = 38.9;

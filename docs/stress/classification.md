@@ -105,7 +105,7 @@ Whether a bicycle may use a way is decided by the access rules, never by the tie
   (`src/routemaker/trailaccess.py`, `singletrack.py`). Rated singletrack is closed on
   every graph. The mountain-bike class (`rm:no_bicycle=mtb`) is closed on every graph
   but the off-road one, which Gravel and Mountain Goat ride (`OFFROAD_PRESETS`,
-  `src/core/presets.py:653-659`; `src/pipeline/variants.py:61-71`; OWNER-DECISIONS
+  `src/core/presets.py`; `Variant`, `src/pipeline/variants.py`; OWNER-DECISIONS
   291(2)).
 - The standing rule is to **err closed**: when it is unclear whether bikes are allowed,
   the way is closed, and the owner reopens it with evidence through an access override.

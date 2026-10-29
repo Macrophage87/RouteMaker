@@ -64,7 +64,11 @@ test("one following passes on the link they opened, by the sheet or the code; th
 });
 
 test("the review's guards: a link turned off, another keeping or a ride ended is not sent again; asked on a computer", () => {
-  assert.match(app, /if \(rodeBefore\.current && !riding\) rideLinkSent\.current = null;/);
+  assert.match(app, /if \(rodeBefore\.current && !riding\) \{\s*rideLinkSent\.current = null;/);
+  // Nor its lead or the page's Group Ride secret: the next ride is a new ride under a new token and secret.
+  assert.match(app, /if \(!id\.startsWith\("roam\|"\)\) leads\.current\.delete\(id\);/);
+  assert.match(app, /if \(groupSecretOwn\.current\) setGroupSecret\(newRideSecret\(\)\);/);
+  assert.match(app, /setGroupSecret\(newRideSecret\(\)\);\s*\/\/[^\n]*\n\s*forgetAnsweredHere\(\);/);
   assert.match(app, /if \(!riding && !computerOk\.current && askBeforeStart\(looksLikePhone\(\), tabSession\(\)\)\) \{\s*setComputerAsk\("qr"\);/);
   // Only a broadcast whose link this page opened is passed on; any other ride opened from a link has no Broadcast.
   assert.match(app, /const passesOn = onShared !== null && !onShared\.own && !!onShared\.lead && SHARED_LINK !== null && onShared\.id === SHARED_ID;/);

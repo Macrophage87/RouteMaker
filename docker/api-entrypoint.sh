@@ -87,12 +87,19 @@ fi
 # proxy's address on the compose network, the same value on every line.
 # Duration (%(D)s, microseconds) is in because a slow request is the thing
 # these logs are actually read for.
+#
+# The path itself can say too much as well: a live ride's or a shared route's
+# link id, an assistant's GPX token, and the z/x/y of every map tile, which
+# follows the rider's map to a few blocks. config.access_log.Logger writes each
+# of those as its route's shape (/api/rides/:id/here, /tiles/stress/:zxy), so
+# the method, status and timing of every request stay in the log.
 exec gunicorn config.wsgi:application \
     --bind "${GUNICORN_BIND:-0.0.0.0:8000}" \
     --workers "${WEB_CONCURRENCY}" \
     --timeout "${GUNICORN_TIMEOUT:-60}" \
     --graceful-timeout "${GUNICORN_GRACEFUL_TIMEOUT:-30}" \
     --access-logfile - \
+    --logger-class config.access_log.Logger \
     --access-logformat '%(t)s "%(m)s %(U)s" %(s)s %(b)s %(D)s "%(a)s"' \
     --error-logfile - \
     --capture-output

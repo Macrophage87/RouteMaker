@@ -4,8 +4,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { FULL_M, GAP_S, HALT_CAP_S, LEAVE_M, START_M, arrivalClock, atPace, leaveNowArrival, leaveNowArriveMs, paceFactor, paceStart, paceStep, type PaceTrack } from "./arrival.ts";
-import { setLanguageForTest } from "./i18n.ts";
+import { loadLanguage, setLanguageForTest } from "./i18n.ts";
 import { whenAt } from "./rideTime.ts";
+
+// Spanish's catalog is fetched on choosing it (lib/i18n.ts loadLanguage), as the app does before it starts.
+await loadLanguage("es");
 
 const PACE = 5; // metres a second, the plan's
 

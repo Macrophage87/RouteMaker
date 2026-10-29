@@ -82,7 +82,8 @@ OSM = "OpenStreetMap"
 CLASSIFIER = "RouteMaker classifier"
 OWNER = "Owner override"
 # Montgomery County's LTS 5 roads (fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json,
-# OWNER-DECISIONS 181; docs/SOURCES.md) are loaded as adjustments but are the county's
+# OWNER-DECISIONS 181; docs/SOURCES.md; all retired since 2026-10-29, but a database may still
+# hold them until the file is loaded again) were loaded as adjustments but are the county's
 # data, not an owner's rating: their ids all start with this (`agency_lts.ADJUSTMENT_SOURCES`),
 # and the panel names the county as the agency ratings do.
 COUNTY_ADJUSTMENT_PREFIX = "moco-lts5-"

@@ -482,6 +482,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Wait up, regroup": "Esperem, reagrupar",
   "Send alert": "Enviar alerta",
   "Sends your location with the alert": "Envia sua localização com o alerta",
+  "Sends your spot to everyone on this ride.": "Envia sua localização para todos neste passeio.",
   "Send to everyone on this ride?": "Enviar para todos neste pedal?",
   "Call 911": "Ligar para o 911",
   "You have sent {count} alerts on this ride, the most one phone sends.": "Você enviou {count} alertas neste pedal, o máximo para um celular.",
@@ -1337,6 +1338,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "routes kept for offline": "rotas guardadas off-line",
   "Reading the routes kept on this device…": "Lendo as rotas guardadas neste aparelho…",
   "Sign out": "Sair",
+  // Sign out everywhere (SignOut.tsx, 2026-10-29): a new draft, for the native speaker's check.
+  "Sign out everywhere": "Sair em todos os dispositivos",
+  "Sign out on every device, this one too, and disconnect your AI assistant apps?":
+    "Sair em todos os dispositivos, inclusive este, e desconectar seus apps de assistente de IA?",
   "Disconnect": "Desconectar",
   "Connect {service}": "Conectar {service}",
   "Disconnect {app}": "Desconectar {app}",
