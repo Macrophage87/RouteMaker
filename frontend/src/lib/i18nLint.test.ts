@@ -36,7 +36,7 @@ const SAYERS = new Set(["announce", "announceExtra", "setNotice", "setNoticeSayi
 const ALLOWED: readonly { file: string; text: string; why: string }[] = [
   { file: "ReviewMode.tsx", text: "*", why: "the reviewers' screen (signed-in reviewers only), English as the review tools are" },
   { file: "ClosureReview.tsx", text: "*", why: "the reviewers' closure list (signed-in reviewers only), English as the review tools are" },
-  { file: "App.tsx", text: "v", why: "the version's prefix, v0.14.0" },
+  { file: "App.tsx", text: "v", why: "the version's prefix, v0.15.0" },
   { file: "MyRoutes.tsx", text: "GPX", why: "the file format's name" },
   { file: "app/RoutePanel.tsx", text: "GPX", why: "the file format's name" },
   { file: "RailStations.tsx", text: "Metro", why: "the system's name" },
