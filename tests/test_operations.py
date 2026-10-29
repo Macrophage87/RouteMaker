@@ -2205,3 +2205,91 @@ def test_check_operations_reports_a_rebuild_budget_it_could_not_read(settings) -
     assert exit_code.value.code == 1, printed
     assert "config: REBUILD_TIMEOUT_S='10h' is not" in printed
     assert "1 setting(s) invalid" in printed
+
+
+def write_swap_journal(tiles_dir, state: str, job_id: int) -> None:
+    import json
+
+    from pipeline import promotion
+
+    (tiles_dir / promotion.SWAP_JOURNAL).write_text(
+        json.dumps(
+            {
+                "format": 1,
+                "state": state,
+                "build_id": "20261027T080000Z",
+                "job_id": job_id,
+                "before": ["standard: current -> 20261020T080000Z, previous -> no link, no row"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+@db
+def test_unwedge_job_finishes_a_rebuild_that_already_swapped(settings, tmp_path) -> None:
+    """A rebuild killed after its swap (in the reconciliation or the pre-draw). A
+    requeue starts fresh, rebuilds for hours and swaps again, dropping the retired
+    schema a rollback needs; so the row is finished instead, which also clears it
+    for the single-flight checks."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    settings.TILES_DIR = tmp_path
+    job_id = wedged_rebuild()
+    write_swap_journal(tmp_path, "swapped", job_id)
+
+    out = StringIO()
+    call_command("unwedge_job", str(job_id), stdout=out)
+
+    assert job_status(job_id) != "todo", "a rebuild that already swapped was requeued"
+    printed = out.getvalue()
+    assert "already swapped" in printed and "predraw_stress_tiles" in printed
+
+
+@db
+def test_unwedge_job_requeues_a_rebuild_another_job_swapped_before(settings, tmp_path) -> None:
+    from django.core.management import call_command
+
+    settings.TILES_DIR = tmp_path
+    job_id = wedged_rebuild()
+    write_swap_journal(tmp_path, "swapped", job_id + 1000)
+
+    call_command("unwedge_job", str(job_id))
+
+    assert job_status(job_id) == "todo"
+
+
+@db
+def test_unwedge_job_refuses_while_a_swap_is_unrepaired(settings, tmp_path) -> None:
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    settings.TILES_DIR = tmp_path
+    job_id = wedged_rebuild()
+    write_swap_journal(tmp_path, "swapping", job_id)
+
+    with pytest.raises(CommandError) as refused:
+        call_command("unwedge_job", str(job_id))
+
+    assert "neither finished nor undid itself" in str(refused.value)
+    assert "current -> 20261020T080000Z" in str(refused.value)
+    assert job_status(job_id) == "doing"
+
+
+@db
+def test_check_operations_reports_an_interrupted_swap(settings, tmp_path) -> None:
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    settings.TILES_DIR = tmp_path
+    write_swap_journal(tmp_path, "swapping", 1)
+    out = StringIO()
+    with pytest.raises(SystemExit) as exit_code:
+        call_command("check_operations", stdout=out)
+    printed = out.getvalue()
+    assert exit_code.value.code == 1, printed
+    assert "swap: a swap to build 20261027T080000Z" in printed
+    assert "1 interrupted swap" in printed

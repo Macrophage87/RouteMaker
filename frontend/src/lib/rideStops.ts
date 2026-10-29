@@ -66,6 +66,13 @@ export interface RestartStop {
 export const RESTART_HEADING = t("Already done?");
 export const RESTART_LEAD = t("Ticked stops are skipped. Untick one to go back to it.");
 export const RESTART_CONTINUE = "Continue";
+/**
+ * Left unanswered while the rider rides this far (about 650 ft) from where it was asked, the question closes with the
+ * stops as marked (the ride as it is), so it never holds re-routing back or covers the ride for long (the 2026-10-29
+ * review).
+ */
+export const RESTART_AUTO_M = 200;
+export const RESTART_AUTO_SAID = t("Riding on with the stops as marked.");
 
 /** Said as the question shows. */
 export function restartSaid(stops: readonly RestartStop[]): string {

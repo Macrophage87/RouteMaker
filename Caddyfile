@@ -250,6 +250,8 @@
 		encode zstd gzip
 		header Referrer-Policy "same-origin"
 		header X-Content-Type-Options "nosniff"
+		# Location for this site only, never a frame; no camera, microphone, payment or USB.
+		header Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=(), usb=()"
 		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
 		root * /srv/frontend
 		@hashed {

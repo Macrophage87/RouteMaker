@@ -287,22 +287,24 @@ def sweep_sessions(now=None) -> int:
     matters: it names who was signed in and when, for someone who asked to be
     forgotten.
 
+    Django's own expired sessions go too (what `clearsessions` does): nothing can present
+    them, and a signed-out visit to the sign-in page leaves one.
+
     Register this alongside the membership sweep in the worker's task module.
     """
     from django.contrib.sessions.models import Session as DjangoSession
+    from django.db.models import Exists, OuterRef
     from django.utils import timezone
 
     from .models import Session
 
     now = now or timezone.now()
-    live_keys = set(
-        DjangoSession.objects.filter(expire_date__gt=now).values_list("session_key", flat=True)
-    )
+    live = DjangoSession.objects.filter(session_key=OuterRef("session_key"), expire_date__gt=now)
 
     doomed = [
         row.session_key
-        for row in Session.objects.select_related("user")
-        if row.session_key not in live_keys
+        for row in Session.objects.select_related("user").annotate(live=Exists(live)).iterator()
+        if not row.live
         or now - row.created_at >= ABSOLUTE_SESSION_LIFETIME
         or now - row.last_seen_at >= IDLE_SESSION_LIFETIME
         or row.issued_epoch != row.user.session_epoch
@@ -311,4 +313,5 @@ def sweep_sessions(now=None) -> int:
     # Collected first and deleted in one statement, rather than deleted while the
     # cursor that produced them is still open.
     dropped, _ = Session.objects.filter(session_key__in=doomed).delete()
+    DjangoSession.objects.filter(expire_date__lte=now).delete()
     return dropped
