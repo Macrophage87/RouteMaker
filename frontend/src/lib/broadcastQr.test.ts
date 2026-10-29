@@ -37,7 +37,7 @@ test("a hold (a press held, a right-click, the menu key) shows the code, and the
     assert.match(page, /\{BROADCAST_HOLD_HINT\}/);
   }
   assert.match(app, /broadcastRide: \{ onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote \}/);
-  assert.match(app, /const rideCanBroadcast = !!rideStart && !rideStart\.roam && \(rideStart\.route === shown \|\| \(rideStart\.kept === true && !rideStart\.others\)\) && \(!\(onShared && !onShared\.own\) \|\| passesOn\);/);
+  assert.match(app, /const rideCanBroadcast = !!rideStart && !rideStart\.roam && \(rideStart\.route === shown \|\| rideStart\.kept === true\) && \(!rideStart\.follows \|\| !!rideStart\.passOn\);/);
   assert.match(app, /onBroadcastHold=\{rideCanBroadcast \? broadcastQrFromRide : null\}/);
   assert.match(app, /onBroadcastHold=\{roamKeyless \? null : broadcastRoamQr\}/);
   assert.match(app, /<BroadcastQrDialog ask=\{qrAsk\} onClose=\{\(\) => setQrAsk\(null\)\} \/>/);
@@ -79,13 +79,16 @@ test("the review's guards: a link turned off, another keeping or a ride ended is
 test("a resumed ride keeps Share live, its link made from the ride's own plan (Stephen 2026-10-29)", () => {
   // A ride resumed after the page closed, or one whose plan was made again since Start, no longer has the plan shown
   // as its route: Share live stays, sharing the ride itself, not whatever the plan now shows.
-  assert.match(app, /const rideOwnShare = \(\) => \(riding && rideStart\?\.kept && !rideStart\.others && rideStart\.route !== shown \? rideStart : null\);/);
+  assert.match(app, /const rideOwnShare = \(\) => \(riding && rideStart\?\.kept && rideStart\.route !== shown \? rideStart : null\);/);
   assert.match(app, /const shareExact = \(\) => \{\s*const ride = rideOwnShare\(\);\s*if \(ride\) \{[\s\S]*?of: ride\.route,\s*save: planSave\(name, ride\.route, ride\.points, ride\.preset, ride\.dials\),/);
   assert.match(app, /const from = rideOwnShare\(\) \?\? \{ points, preset, dials \};\s*let link = withSecret\(linkToCopy\(window\.location, from\.points, from\.preset, from\.dials,/);
   assert.match(app, /const ownRide = rideOwnShare\(\);\s*const sharedRoute = ownRide\?\.route \?\? shown;\s*if \(!sharedRoute \|\| sharing\.current\)/);
-  // Someone else's ride stays theirs once resumed: kept with it, and no Share live of the rider's own.
-  assert.match(app, /const others = opened !== null && !opened\.own;/);
-  assert.match(app, /keepLeftRide\(\{ route, points: leg\.points, loop: leg\.loop, preset: leg\.preset, dials: rideDialsNow, fixed, destination, others \}/);
+  // A ride opened from someone else's link shares too (Stephen 2026-10-29: "A ride opened should allow sharing too"):
+  // their broadcast's link is kept with the ride and passed on, resumed or not, their leader still leading.
+  // One without its key is never passed on, and no ride of the rider's own is made in its place: no Share live.
+  assert.match(app, /const follows = !!opened && !opened\.own && !!opened\.lead;\s*const passOn = follows && !followedNoKey\(\) \? followedLink\(\) : null;/);
+  assert.match(app, /keepLeftRide\(\{ route, points: leg\.points, loop: leg\.loop, preset: leg\.preset, dials: rideDialsNow, fixed, destination, passOn, follows \}/);
+  assert.match(app, /passingOn=\{passesOn \|\| !!rideStart\.passOn\}/);
   // Resume keeps the ride kept, so the rail still offers it.
   assert.match(app, /setRideStart\(\(before\) => \(\{ \.\.\.left, trip: null, kept: true, n: \(before\?\.n \?\? 0\) \+ 1 \}\)\);/);
 });
