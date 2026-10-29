@@ -5016,9 +5016,11 @@ puts it, at most two presses away.
   map center" (at once), is the destination, routed as a picked one is and said "Destination set: …" (named by `goPlaceName`, the same on the sheet: its coordinates until
   its place name comes; a press on a water, climb or federal-land card's feature, or one that only closes such a card,
   is the card's alone, `featureCardPress`; `goTapSetsEnd`, the owner 2026-10-12; it replaces #95's tap-as-start). Picking a
-  destination with a start plans at once (a location start after its look-up, at most 3 s); Go then shows the routes to choose from open, and the ride types under the
+  destination with a start plans at once (a location start after its look-up, at most 3 s); Go then shows the ride types under the
   route, so Bikeshare is one press, and only a Bikeshare route names its pick-up and drop-off
-  stations (the route's Bikeshare plan).
+  stations (the route's Bikeshare plan). The routes to choose from start closed behind the "N routes" chip, and the
+  station options and the Bikeshare and transit folds come after the time, distance and stress bar (Bikeshare's fold
+  closed), so the half sheet fits one phone screen (the 2026-10-29 review).
 - **Few presses** (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"): from
   opening Go, a typed destination is three taps to riding: Where to?, the place picked, then
   Start ride (the review of #95 counted them); with the Home chip it is two: Home, then Start ride

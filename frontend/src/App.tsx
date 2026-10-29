@@ -48,6 +48,7 @@ import {
   RESET_NOTHING,
   RESET_SAID,
   CLEARED_SAID,
+  GO_CLEARED_SAID,
   CLEAR_FOCUS_WAIT_MS,
   changeSummary,
   legChanges,
@@ -3006,7 +3007,7 @@ export function App() {
     const startDials = modeRef.current === "plan" ? planStartDials(ride.preset, ride.dials) : ride.dials;
     commit([], ride.imported || startDials !== ride.dials ? { ...ride, imported: null, dials: startDials } : undefined);
     // Said, and the focus to the place search, as every other removal hands it on (review a11y-1).
-    announce(CLEARED_SAID);
+    announce(modeRef.current === "go" ? GO_CLEARED_SAID : CLEARED_SAID);
     focusAfterRemove.current = -1;
     // Not kept past the clear's own renders: a route that does not go would leave it for a later edit.
     window.setTimeout(() => {
