@@ -871,8 +871,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "plan: a loop is straightened too",
         RT,
-        "    dodges = None" + NL + "    if not loop:",
-        "    dodges = None" + NL + "    if True:",
+        "    dodges = None\n    if not loop and not quick and not fixed:",
+        "    dodges = None\n    if not quick and not fixed:",
         TP,
     ),
     (
@@ -885,8 +885,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "plan: the answer does not say what was done",
         RT,
-        "    body = _answer(trip, refined, dodges_of=dodges)",
-        "    body = _answer(trip, refined)",
+        "    answered = _answer(trip, refined, dodges_of=dodges)",
+        "    answered = _answer(trip, refined)",
         TP,
     ),
     (
@@ -1410,18 +1410,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "r0 review: candidates dedodged (turned round: r1 passes the answer alone)",
         RT,
-        "            candidate = _answer(found, None, True)" + NL,
-        "            found, _ = dedodge.apply(found, refine_context)"
-        + NL
-        + "            candidate = _answer(found, None, True)"
-        + NL,
+        "            candidate = work_zones.with_work_zones(_answer(found, None, True), zones_plan)\n",
+        "            found, _ = dedodge.apply(found, refine_context)\n            candidate = work_zones.with_work_zones(_answer(found, None, True), zones_plan)\n",
         TD + TP,
     ),
     (
         "r0 review: loop dedodged",
         RT,
-        "    dodges = None" + NL + "    if not loop:" + NL + "        trip, dodges",
-        "    dodges = None" + NL + "    if True:" + NL + "        trip, dodges",
+        "    if not loop and not quick and not fixed:\n        trip, dodges",
+        "    if not quick and not fixed:\n        trip, dodges",
         TD + TP,
     ),
     (
@@ -1456,12 +1453,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "S3 a reading cut short is made of what was read",
         "src/core/junctions.py",
-        "        except cut_short as error:" + NL + "            raise ReadingCutShort(",
-        "        except cut_short as error:"
-        + NL
-        + "            continue"
-        + NL
-        + "            raise ReadingCutShort(",
+        "                later.cancel()\n            raise ReadingCutShort(",
+        "                later.cancel()\n            continue\n            raise ReadingCutShort(",
         ["tests/test_junctions.py"],
     ),
     (

@@ -305,10 +305,6 @@ export function isBike(value: unknown): value is Bike {
   return value === "classic" || value === "ebike";
 }
 
-export function isEnding(value: unknown): value is Ending {
-  return value === "dock" || value === "outside_dock";
-}
-
 /**
  * What the API takes for a target distance (metres): `core.presets.TARGET_DISTANCE_MIN_M`
  * and `TARGET_DISTANCE_MAX_M`, and the ceilings (`DEFAULT_CEILING_RATIO`,

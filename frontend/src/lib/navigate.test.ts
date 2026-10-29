@@ -37,6 +37,8 @@ import {
   REPLAN_BACKOFF_MS,
   REPLAN_GAP_MS,
   ReplanGate,
+  REPLAN_MOVED_M,
+  replanHeld,
   arrivalSideWords,
   compassWord,
   crossingWords,
@@ -693,6 +695,39 @@ test("ReplanGate: one in flight, 30 s apart, 2 min after two failures, online li
   gate.finish(true);
   gate.online();
   assert.equal(gate.begin(REPLAN_GAP_MS + REPLAN_BACKOFF_MS + 1), true, "online: no wait");
+});
+
+test("a re-plan hung past REPLAN_TIMEOUT_MS lets the gate go, and a late answer never frees a newer one", () => {
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(ride, /if \(ended\.current \|\| ticket !== replanTicket\.current\) return;\s*released = true;\s*gate\.finish\(false\);\s*setReplanning\(false\);/);
+  assert.match(ride, /else if \(!released\) gate\.finish\(found !== null\);\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*else if \(found && !voided\(\) && !gate\.busy\) gate\.finish\(true\);/);
+  // Told "No signal" once, at the timeout.
+  assert.match(ride, /if \(!found\) \{\s*\/\/[^\n]*\n\s*if \(released\) return false;/);
+});
+
+test("after a new route, no automatic re-plan until the rider has moved 50 m or been on its line (review RIDE-6)", () => {
+  const from = at(0, 0);
+  assert.equal(REPLAN_MOVED_M, 50);
+  assert.equal(replanHeld(from, at(30, 0)), true, "standing still in a car park");
+  assert.equal(replanHeld(from, at(60, 0)), false);
+  assert.equal(replanHeld(null, at(0, 0)), false, "on the line since");
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(ride, /plan\.current = \{ points, loop: false \};\s*replannedFrom\.current = here;/);
+  assert.match(ride, /if \(!out\.state\.off && out\.state\.offCount === 0 && out\.state\.progressM !== null\) replannedFrom\.current = null;/);
+  assert.match(ride, /out\.state\.goodFix && !replanHeld\(replannedFrom\.current, fix\.point\)\) \{/);
+});
+
+test("a polite cue carries its sentence from where the rider is when it is said (review RIDE-4)", () => {
+  const model = rideModel(lRoute());
+  const { events } = ride(model, "full", 0, 2000);
+  const advance = events.find((e) => e.phase === "advance" && e.cue?.kind === "turn");
+  assert.ok(advance?.respoken);
+  const cue = advance.cue!;
+  assert.equal(advance.respoken(cue.atM - 100), cueSpoken(cue, "advance", 100, true));
+  assert.equal(advance.respoken(cue.atM), null, "at the turn: its now says it");
+  assert.ok(events.filter((e) => e.urgent).every((e) => !e.respoken), "urgent cues are said at once");
+  const src = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(src, /announcer\.current\?\.say\(event\.spoken, event\.urgent, event\.after, again\);/);
 });
 
 test("a loop's start is not its end: arrival comes only at the end of the line", () => {

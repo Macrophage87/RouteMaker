@@ -40,6 +40,8 @@ import {
   stopNames,
 } from "./pointKinds.ts";
 import {
+  RESTART_AUTO_M,
+  RESTART_AUTO_SAID,
   detourButtonName,
   insteadName,
   skipStopName,
@@ -70,7 +72,7 @@ test("a stop's name is kept on its pair: through a move, a switch of kind and ba
   marks.rename(stop, "   ");
   assert.equal(marks.nameOf(stop), undefined, "a blank name takes it away");
   assert.match(src("../App.tsx"), /VIA_MARKS\.rename\(point, name\);\s*setNamesVersion\(\(v\) => v \+ 1\);/);
-  assert.match(src("../App.tsx"), /\}, \[points, preset, dials, namesVersion\]\);/);
+  assert.match(src("../App.tsx"), /\}, \[points, preset, dials, namesVersion, groupSecret\]\);/);
   // A via point never shows a stop name it had before it was switched.
   assert.match(src("../usePlaceNames.ts"), /own: \(point\) => \(VIA_MARKS\.isVia\(point\) \? undefined : VIA_MARKS\.nameOf\(point\)\)/);
   assert.equal(cleanStopName("x".repeat(STOP_NAME_MAX + 9))?.length, STOP_NAME_MAX);
@@ -348,6 +350,19 @@ test("restarting part way lists every stop, the ones behind ticked; none behind 
   assert.equal(restartUnchanged(stops!, new Set()), false);
   assert.equal(restartReplanSaid(stops!, new Set()), "Finding a route back to Stop 1, Union Market.");
   assert.equal(restartReplanSaid(stops!, new Set([1, 3])), "Finding a new route for the stops left.");
+});
+
+test("Already done? left unanswered closes with the stops as marked once the rider has ridden 200 m on, and says so", () => {
+  assert.equal(RESTART_AUTO_M, 200);
+  assert.equal(RESTART_AUTO_SAID, "Riding on with the stops as marked.");
+  const ride = src("../RideMode.tsx");
+  assert.match(ride, /restartOpen\.current = true;\s*restartAt\.current = fix\.point;\s*setRestart\(named\);/);
+  // Checked before re-routing is weighed on the same fix, so re-routing runs again at once.
+  const onFix = ride.slice(ride.indexOf("const onFix = useCallback("));
+  assert.match(
+    onFix,
+    /if \(restartOpen\.current && askedAt && fix\.accuracyM <= POOR_FIX_M && haversineM\(fix\.point, askedAt\) >= RESTART_AUTO_M\) \{\s*restartOpen\.current = false;\s*restartAt\.current = null;\s*setRestart\(null\);\s*notify\(RESTART_AUTO_SAID\);\s*\}\s*const auto = /,
+  );
 });
 
 test("a restart's re-plan keeps the unticked stops, behind or not, and only the via points ahead", () => {

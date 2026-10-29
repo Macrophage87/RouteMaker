@@ -552,8 +552,13 @@ test("loadTile: no signal, an older kept tile answers; one never kept still fail
   assert.deepEqual([...new Uint8Array(data)], [4, 5]);
   assert.deepEqual(k.read, [TILE, `${TILE} any`], "its own generation first, then any after the failure");
   await assert.rejects(() => loadTile(`${TILE}?other`, new AbortController().signal, dead, k.offline));
-  // Without the ride's tiles (no ride), a failure is a failure, as before.
-  await assert.rejects(() => loadTile(TILE, new AbortController().signal, dead));
+  // Without the ride's tiles (no ride), a failure is a failure, as before. A server that is down is
+  // asked again outside a ride, so the back-off runs on a clock the test moves (it took ~27 s real).
+  let clock = 0;
+  const waits: number[] = [];
+  const retry = { now: () => clock, wait: async (ms: number) => { waits.push(ms); clock += ms; } };
+  await assert.rejects(() => loadTile(TILE, new AbortController().signal, dead, undefined, NETWORK_TIMEOUT_MS, retry));
+  assert.ok(waits.length > 0, "it was asked again before failing");
 });
 
 test("loadTile: during a ride a request that hangs is given up after the timeout for a kept tile", async () => {

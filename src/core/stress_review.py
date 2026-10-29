@@ -736,14 +736,6 @@ def _listed_rows():
 # --- The queues -----------------------------------------------------------------------------
 
 
-def change_kind(old: float, new: float, old_closed: bool, new_closed: bool) -> str:
-    if new_closed and not old_closed:
-        return "closed"
-    if old_closed and not new_closed:
-        return "reopened"
-    return f"{old:g}-{new:g}"
-
-
 # The ridden sidewalks' and crosswalks' rules (`routemaker.sidewalks`): their level follows the
 # road beside them, so a level change of theirs is no road's change and stays out of the
 # rebuild's list (the owner, 2026-10-22: the first build with the rule listed 240,260 of them).
