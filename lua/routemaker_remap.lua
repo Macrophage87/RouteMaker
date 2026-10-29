@@ -1173,6 +1173,23 @@ end
 -- Never tightening is the deliberate half of that and is not up for quiet
 -- revision: tightening on a conditional is the one direction that would make
 -- the graph assert a legal claim, which is the thing this project does not do.
+--
+-- The router applies the window (FOLLOWUP-CONDITIONAL-ACCESS; the owner,
+-- 2026-10-29, of Pulaski Highway's one-ways, `bicycle=no` with `bicycle:conditional=
+-- yes @ (Sa-Su dawn-dusk; PH dawn-dusk)`). The static grant above opens the way, and
+-- Valhalla's C++ parser reads the undirected `bicycle:conditional` grant as a timed
+-- restriction: the edge is then open only inside the window, checked against the
+-- request's `date_time` (every plan sends the ride time's representative moment). The
+-- parser cannot read a sun event (dawn, dusk, sunrise, sunset: `timeparsing.cc` calls them
+-- unsupported and drops the whole condition), nor a grant other than `yes`, `designated`,
+-- `private` or `delivery` (`permissive @` reads as a denial), nor more than one rule set. So
+-- for an undirected grant the remap writes `bicycle:conditional` again as one `yes @ (...)`
+-- of the granting branches, each sun event a fixed time that keeps inside the real window
+-- all year in the region (`M.SUN_LATEST` for a start, `M.SUN_EARLIEST` for an end), and
+-- opens the way only where every condition can be so written (`M.router_window`): a grant
+-- the router cannot time stays closed, as unclear access is. A directional conditional
+-- (`bicycle:forward:conditional`), which the parser does not read, is resolved statically
+-- as before.
 M.ACCESS_RANK = {
   no = 1, private = 2, customers = 3, destination = 4,
   permissive = 5, designated = 6, yes = 6,
@@ -1230,6 +1247,54 @@ function M.least_restrictive(base, conditional_value)
   return best
 end
 
+-- Sun events as fixed local times that keep a grant inside its real window every day of the
+-- year here (Baltimore and DC, civil twilight for dawn and dusk, daylight saving included):
+-- the latest each comes, for a window's start, and the earliest, for its end.
+M.SUN_LATEST = { dawn = "07:15", sunrise = "07:45", sunset = "20:40", dusk = "21:10" }
+M.SUN_EARLIEST = { dawn = "05:05", sunrise = "05:35", sunset = "16:40", dusk = "17:10" }
+-- The words Valhalla's condition parser reads: weekdays, holidays (dropped there, never
+-- widening) and months.
+M.ROUTER_WORDS = {
+  Mo = true, Tu = true, We = true, Th = true, Fr = true, Sa = true, Su = true,
+  PH = true, SH = true,
+  Jan = true, Feb = true, Mar = true, Apr = true, May = true, Jun = true,
+  Jul = true, Aug = true, Sep = true, Oct = true, Nov = true, Dec = true,
+}
+-- The grants the router times as allowed (kTimedAllowed); written as `yes`.
+M.ROUTER_GRANTS = { yes = true, designated = true, permissive = true }
+
+local function clock(value)
+  local hours, minutes = value:match("^(%d%d?):(%d%d)$")
+  if not hours then return nil end
+  return string.format("%02d:%s", tonumber(hours), minutes)
+end
+
+--- A grant's condition as Valhalla's parser reads it, or nil where it cannot be: each sun
+-- event in a range a fixed time inside the real window (`SUN_LATEST` at a start,
+-- `SUN_EARLIEST` at an end), and nothing left but weekdays, holidays, months, numbers and
+-- times.
+function M.router_window(condition)
+  if condition == nil then return nil end
+  local ok = true
+  local written = condition:gsub("([%w:]+)%s*%-%s*([%w:]+)", function(first, last)
+    local from_sun, to_sun = M.SUN_LATEST[first:lower()], M.SUN_EARLIEST[last:lower()]
+    if not from_sun and not to_sun then return nil end
+    local from = from_sun or clock(first)
+    local to = to_sun or clock(last)
+    -- Fixed, a window across midnight could hold hours the real one does not.
+    if not from or not to or from >= to then
+      ok = false
+      return nil
+    end
+    return from .. "-" .. to
+  end)
+  if not ok or written:find("[^%w%s:,;%-]") then return nil end
+  for word in written:gmatch("%a+") do
+    if not M.ROUTER_WORDS[word] then return nil end
+  end
+  return written
+end
+
 -- What on a one-way's own tags gives a bicycle the direction against the traffic,
 -- as `pipeline.variants.has_contraflow_tag` reads them: `oneway:bicycle` waived
 -- (or reversed), an `opposite*` cycleway value, a reverse-direction grant.
@@ -1270,12 +1335,37 @@ function M.remap_conditional_access(tags)
   -- one is present for that direction, which is the wiki's own precedence.
   local both = tags["bicycle:conditional"]
   local reverse_closed = M.is_motor_oneway(tags) and not M.speaks_for_reverse(tags)
+  -- An undirected grant alone is the router's to time (see above ACCESS_RANK).
+  local timed = both ~= nil and tags["bicycle:forward:conditional"] == nil
+    and tags["bicycle:backward:conditional"] == nil
+  local written
 
   for _, side in ipairs({ "forward", "backward" }) do
     local key = "bicycle:" .. side
     local conditional = tags[key .. ":conditional"] or both
     if side == "backward" and reverse_closed then conditional = nil end
-    if conditional then
+    if conditional and timed then
+      local base = tags[key] or tags.bicycle
+      local resolved = M.least_restrictive(base, conditional)
+      if resolved and resolved ~= base and M.ROUTER_GRANTS[resolved] then
+        local windows = {}
+        for _, branch in ipairs(M.parse_conditional(conditional)) do
+          if M.ROUTER_GRANTS[branch.value] then
+            windows[#windows + 1] = M.router_window(branch.condition) or false
+          end
+        end
+        local readable = #windows > 0
+        for _, window in ipairs(windows) do
+          if not window then readable = false end
+        end
+        if readable then
+          out[key] = resolved
+          written = "yes @ (" .. table.concat(windows, "; ") .. ")"
+        end
+      elseif resolved and resolved ~= base then
+        out[key] = resolved
+      end
+    elseif conditional then
       -- Nothing is recorded about the condition here. An earlier version wrote
       -- `rm:access_conditional_<side>` for phase 3 to report on, and the entry
       -- point stripped it three lines later, before anything could read it: a
@@ -1289,6 +1379,9 @@ function M.remap_conditional_access(tags)
         out[key] = resolved
       end
     end
+  end
+  if written and written ~= both then
+    out["bicycle:conditional"] = written
   end
 
   return out

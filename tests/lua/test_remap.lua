@@ -1445,5 +1445,32 @@ do
       ~= M.GRADED_LANES)
 end
 
+-- The router applies the window (FOLLOWUP-CONDITIONAL-ACCESS; the owner, 2026-10-29).
+check("a sun event becomes a fixed time inside the real window",
+  M.router_window("Sa-Su dawn-dusk; PH dawn-dusk") == "Sa-Su 07:15-17:10; PH 07:15-17:10")
+check("a time and a sun event mix", M.router_window("Mo-Fr 7:00-dusk") == "Mo-Fr 07:00-17:10")
+check("weekdays and times pass as they are", M.router_window("Sa,Su 07:00-19:00")
+  == "Sa,Su 07:00-19:00")
+check("a fixed overnight window passes", M.router_window("22:00-06:00") == "22:00-06:00")
+check("a window between sun events across midnight cannot be fixed",
+  M.router_window("sunset-sunrise") == nil)
+check("nor can a condition the parser does not read", M.router_window("wet") == nil
+  and M.router_window("Sa dawn+") == nil)
+local timed = M.remap_conditional_access({ bicycle = "no",
+  ["bicycle:conditional"] = "permissive @ (Sa dawn-dusk); no @ (Mo-Fr)" })
+check("an undirected grant is opened and handed to the router as one yes rule",
+  timed["bicycle:forward"] == "permissive" and timed["bicycle:conditional"] == "yes @ (Sa 07:15-17:10)",
+  tostring(timed["bicycle:conditional"]))
+local untimed = M.remap_conditional_access({ bicycle = "no", ["bicycle:conditional"] = "yes @ (wet)" })
+check("a grant the router cannot time is not opened",
+  untimed["bicycle:forward"] == nil and untimed["bicycle:backward"] == nil
+    and untimed["bicycle:conditional"] == nil)
+check("a readable conditional is not rewritten to itself",
+  M.remap_conditional_access({ bicycle = "no", ["bicycle:conditional"] = "yes @ (Sa,Su)" })
+    ["bicycle:conditional"] == nil)
+check("a directional conditional is resolved as before, the router not reading it",
+  M.remap_conditional_access({ bicycle = "no", ["bicycle:forward:conditional"] = "yes @ (wet)" })
+    ["bicycle:forward"] == "yes")
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)
