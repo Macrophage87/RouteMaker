@@ -22,31 +22,32 @@ export type PanelView = "planner" | "layers" | "suggest" | "review" | "gpx" | "s
 /** The planner's own heading, where the focus goes when the Plan button returns to it (OWNER-DECISIONS 392). */
 export const PLANNER_TITLE = "RouteMaker";
 
-/** The sheets' headings (the focus goes to it on open). Go shows Settings as its Menu. */
+/** The sheets' headings (the focus goes to it on open). Go's Settings is Plan's, with its pages above the tabs (P12: it was Go's Menu). */
 export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   layers: t("Layers"),
   // Reports (Stephen, 2026-10-21: "Let's pick a better name than suggest then. Reports?"): the 311 checklist and the
   // ways to suggest a map change.
   suggest: t("Reports"),
   review: "Review",
-  // Save and load (the owner, 2026-10-18: "the files tab (maybe call it save or load)"): files, Save, Share, your routes.
-  gpx: t("Save and load"),
+  // Save & load (the owner, 2026-10-18: "the files tab (maybe call it save or load)"): files, Save, Share, My routes.
+  // One name on its buttons and its heading (P12: it was also "Save and load").
+  gpx: t("Save & load"),
   settings: t("Settings"),
   nearest: t("Nearest"),
-  food: t("Find food"),
-  ride: "Ride",
-  // v0.7.0: Go's Repair (behind More), and Plan's Places to see (Go calls it Sights).
-  repair: t("Repair stands and bike shops"),
+  // Go's and Plan's Eat chips open it (P2): restaurants and cafes, not groceries. Named as the chip (P12).
+  food: t("Eat"),
+  ride: t("Ride"),
+  // v0.7.0: Go's Repair (behind More), and Places to see (Go's More and Plan's map chips). Each sheet is named as
+  // its chip says it (P12).
+  repair: t("Repair"),
   places: t("Places to see"),
   // Go's Edit route (edit-route redesign, Stephen 2026-10-18): Plan's points, from the route card.
   points: t("Edit route"),
 };
 
-/** The Files sheet's name on its buttons (the owner, 2026-10-18), short enough for the bar. */
-export const SAVE_LOAD = t("Save & load");
+/** The Files sheet's name on its buttons and its heading (the owner, 2026-10-18), short enough for the bar. */
+export const SAVE_LOAD = SHEET_TITLES.gpx;
 
-/** Go's Menu (the mockup's Menu sheet): Settings, with Plan, Suggest, GPX and Review above them. */
-export const MENU_TITLE = t("Menu");
 
 export interface BarItem {
   /** The button's own id, for the focus on the way back. */
@@ -68,7 +69,7 @@ export const BAR_ITEMS: readonly BarItem[] = [
   { id: "plan", label: "Plan", opens: "planner", description: t("Shows the planner: the points, the ride settings and the route.") },
   { id: "layers", label: t("Layers"), opens: "layers", description: t("Opens the map layers, their switches and each layer's key.") },
   { id: "suggest", label: t("Reports"), opens: "suggest", description: t("Opens your 311 checklist and the ways to suggest a change to the map.") },
-  { id: "gpx", label: SAVE_LOAD, opens: "gpx", description: t("Opens Save and load: save or share the route, find your routes, or open or export a route file.") },
+  { id: "gpx", label: SAVE_LOAD, opens: "gpx", description: t("Opens Save & load: save or share the route, find My routes, or open or export a route file.") },
   { id: "settings", label: t("Settings"), opens: "settings", description: t("Opens the settings: My Go (Home, ride type), riding, display and your account.") },
 ];
 
@@ -89,6 +90,53 @@ export function barCurrent(item: Pick<BarItem, "id">, view: PanelView): boolean 
 /** The sheets' Back button, in words, not only an arrow (OWNER-DECISIONS 393). */
 export const BACK_LABEL = t("Back to planner");
 
+/**
+ * The destinations that open as a popup on a phone (the owner, 2026-10-28: "Have some of the destinations open as a
+ * popup, which is easier to work with than scroll, or a side panel"): one screen high at most, a title and Close,
+ * over the map; on a computer the same sheet is the panel's side panel, as before. Repair, Places to see and Edit route
+ * stay sheets in the panel.
+ */
+export const POPUP_VIEWS: readonly PanelView[] = ["settings", "ride", "layers", "gpx", "suggest", "nearest", "food"];
+
+/** A popup's way out to the map: Close, or Back to Settings where Go's Settings opened it. */
+export const POPUP_CLOSE = t("Close");
+
+export function popupBackLabel(backLabel: string): string {
+  return backLabel === BACK_LABEL ? POPUP_CLOSE : backLabel;
+}
+
+/** What a popup's Tab can land on (Sidebar.tsx keeps those with a tab stop that show). */
+export const POPUP_FOCUSABLE = "a[href], button, input, select, textarea, summary, [tabindex]";
+
+/**
+ * Where Tab goes at a popup's ends: from the last control to the first, Shift+Tab from the first to the last, and
+ * from outside them (the heading) to the first or last; null leaves it to the browser.
+ */
+export function popupTabWrap(index: number, count: number, backwards: boolean): number | null {
+  if (count === 0) return null;
+  if (index < 0) return backwards ? count - 1 : 0;
+  if (!backwards && index === count - 1) return 0;
+  if (backwards && index === 0) return count - 1;
+  return null;
+}
+
+// What the app says (App.tsx announce) is said again inside an open popup: a modal dialog makes the page behind it
+// inert, and the app's live region there is not read.
+const sayListeners = new Set<(text: string) => void>();
+
+/** Passes the app's last words to the popup open now, if any. */
+export function sayInPopup(text: string): void {
+  for (const listener of sayListeners) listener(text);
+}
+
+/** The open popup's own live region listens here; the function returned stops it. */
+export function listenForPopupSay(listener: (text: string) => void): () => void {
+  sayListeners.add(listener);
+  return () => {
+    sayListeners.delete(listener);
+  };
+}
+
 /** The bottom bar's landmark name: the pages of the panel it switches between. */
 export const BAR_NAME = t("Panel pages");
 
@@ -104,6 +152,16 @@ export const PLANNER_EXTRAS = { zoomNotice: false, highContrastShortcut: false }
 
 /** The line in the Map layers sheet for every ride type but Mass Ride (mockup v3, Layers). */
 export const MASS_RIDE_LAYERS_NOTE = t("Mass Ride has its own layers, such as federal land.");
+
+/**
+ * Reports' line on suggesting a change (P8): the phone's gesture on a phone (`touch`, lib/startOnComputer.ts
+ * looksLikePhone), a computer's right-click on a computer.
+ */
+export function suggestHint(touch: boolean): string {
+  return touch
+    ? t("Press and hold a road, then choose Suggest a change: its traffic stress, a junction, or a Mass Ride hazard. An admin reviews each one before the map changes.")
+    : t("Right-click a road, then choose Suggest a change: its traffic stress, a junction, or a Mass Ride hazard. An admin reviews each one before the map changes.");
+}
 
 /** The Traffic stress section's status line while the stress tiles are checked, or down. */
 export const STRESS_CHECKING = t("Checking the stress map…");
@@ -218,7 +276,7 @@ export function foldTitle(title: string, count: string | number | null): string 
 }
 
 export function stepsCount(n: number): string {
-  return n === 1 ? "1 step" : `${n} steps`;
+  return n === 1 ? t("1 step") : t("{count} steps", { count: n });
 }
 
 /** The route summary's folds open one at a time (Stephen 2026-10-21, Plan scrolling): their shared details name. */
@@ -236,13 +294,13 @@ export const ROUTE_FOLDS = {
   // on a Mass Ride is "Riders per minute, corker load and elevation" (profileChart.ts foldName), three charts.
   // UI-CLEANUP (the owner's choice 7 of 2026-10-11): renamed "Elevation and climbs", with the climbs on the
   // route listed in it, and closed by default on a computer too.
-  elevation: { title: "Elevation and climbs", open: false },
-  facilities: { title: "Stress and facilities", open: false },
-  directions: { title: "Directions", open: false },
-  junctions: { title: "Junctions to watch", open: false },
+  elevation: { title: t("Elevation and climbs"), open: false },
+  facilities: { title: t("Stress and facilities"), open: false },
+  directions: { title: t("Directions"), open: false },
+  junctions: { title: t("Junctions to watch"), open: false },
   // The mockup's "Other routes", closed like the rest (the route shown is the first; a choice is one press in).
-  choices: { title: "Other routes", open: false },
-  water: { title: "Water and restrooms", open: false },
+  choices: { title: t("Other routes"), open: false },
+  water: { title: t("Water and restrooms"), open: false },
 } as const;
 
 /** Whether the route chart's fold starts open: closed everywhere since UI-CLEANUP (the owner's choice 7; it was open beside the map, OWNER-DECISIONS 322). */
@@ -321,12 +379,14 @@ export interface SheetKeyEvent {
 /**
  * A sheet's Escape: back to the planner, unless it was already handled, or it
  * came from a nested dialog (the weight dialog) or the place search's list,
- * whose own Escape it is. True when it went back.
+ * whose own Escape it is. A popup sheet is a dialog itself (`sheet`): its own
+ * Escape is the sheet's. True when it went back.
  */
-export function sheetEscape(event: SheetKeyEvent, onBack: () => void): boolean {
+export function sheetEscape(event: SheetKeyEvent, onBack: () => void, sheet: unknown = null): boolean {
   if (event.key !== "Escape" || event.defaultPrevented) return false;
   const target = event.target;
-  if (target && (target.closest("dialog") || target.getAttribute("role") === "combobox")) return false;
+  const dialog = target?.closest("dialog") ?? null;
+  if (target && ((dialog !== null && dialog !== sheet) || target.getAttribute("role") === "combobox")) return false;
   event.preventDefault();
   onBack();
   return true;

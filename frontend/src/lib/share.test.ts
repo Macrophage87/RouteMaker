@@ -155,7 +155,7 @@ test("Broadcast with no share sheet copies the link, inside the press; a failed 
   assert.deepEqual(copied, ["https://x.test/#p=1&ride=1"], "copied synchronously, while the press's activation holds");
   assert.equal(await outcome, "shared");
   assert.equal(await shareLink(copyShareNavigator(async () => false), shareContent("https://x.test/", 1, "Default")), "failed");
-  assert.match(BROADCAST_COPIED, /^Broadcast link copied\. Paste it to your riders/);
+  assert.match(BROADCAST_COPIED, /^Live link copied\. Paste it to your riders/);
 });
 
 test("App: Broadcast shows everywhere; with no share sheet it copies, and the ride screen, Ride and Roam say so", () => {

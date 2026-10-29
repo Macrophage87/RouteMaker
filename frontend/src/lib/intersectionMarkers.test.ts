@@ -349,8 +349,36 @@ test("the list row and its name carry the cost after the reason", async () => {
   assert.equal(name, `Very high stress, At 3.2 mi (5.2 km): ${left.reason}. Costs 0.45 calm mi (0.73 calm km), more at rush hour`);
   assert.doesNotMatch(name, / [,:.]/);
   const list = readFileSync(new URL("../IntersectionList.tsx", import.meta.url), "utf8");
-  assert.match(list, /<span className="junction-cost">\{item\.costText\}<\/span>/);
-  // The marker's card says it too.
+  assert.match(list, /\{item\.costText && <span className="junction-cost">\{item\.costText\}<\/span>\}/);
+  // The marker's card says it too (where there is one: a Mass Ride's junction may have none).
   const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   assert.match(map, /cost\.textContent = `\$\{item\.costText\}\.`/);
+  assert.match(map, /body\.append\(\.\.\.\(item\.costText \? \[title, reason, cost, where\] : \[title, reason, where\]\)\);/);
+});
+
+test("a Mass Ride's junction says its corkers, not a single rider's calm miles (the 2026-10-28 audit, P6)", () => {
+  const crossing = (m: number, more: Record<string, unknown> = {}) => ({ m, street: "K Street Northwest", severity: "red" as const, control: "signal" as const, lanes: 4, crossed_tier: 4, corkers_needed: true, oneway: false, ...more });
+  const route = {
+    preset: "mass-ride",
+    intersections: [left, { ...left, m: 6000 }, { ...left, m: 7000 }, { ...left, m: 9000 }],
+    profile: {
+      crossings: [
+        crossing(5160),
+        crossing(6010, { control: "none", approach_lanes: 2 }),
+        crossing(7000, { corkers_needed: false }),
+        crossing(5990, { oneway: true }),
+      ],
+    },
+  } as never;
+  const items = junctionItems(route);
+  // A signal's two approaches: 2; the nearest crossing is the one (6010 over 5990), 2 lanes each with no signal: 4.
+  assert.deepEqual(
+    items.map((i) => i.costText),
+    ["Cork this junction: 2 corkers", "Cork this junction: 4 corkers", "No corkers needed here", ""],
+  );
+  assert.ok(items.every((i) => !/calm/.test(i.costText)));
+  // One corker: a one-way road at a signal.
+  assert.equal(junctionItems({ ...(route as object), profile: { crossings: [crossing(5150, { oneway: true })] } } as never)[0].costText, "Cork this junction: 1 corker");
+  // Other ride types keep the cost line.
+  assert.match(junctionItems({ ...(route as object), preset: "group-ride" } as never)[0].costText, /^Costs .* calm mi/);
 });

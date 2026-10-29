@@ -7,6 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import type { ProfileCrossing, RouteProfile, RouteResponse } from "./api.ts";
 import { RIDE_SIZE_DEFAULT, RIDE_SIZE_MAX, RIDE_SIZE_MIN, fitDials, fitRideSize, rideSizeOf } from "./dials.ts";
 import { RIDE_SIZE_LABEL, panelView, rideSizeView } from "./dialsPanel.ts";
@@ -40,6 +41,10 @@ import {
   massSummaries,
   labelBox,
   needLabelPlace,
+  guideLabelPlaces,
+  massLeads,
+  CORKER_METHOD,
+  HOLD_PROPOSAL,
   needSentence,
   readingAt,
   rideNeed,
@@ -278,17 +283,28 @@ test("the ride size's requirement: riders over the longest hold, 5 minutes (128,
 
 test("the requirement's words go where they clear the other labels: left, then middle, then right", () => {
   const text = "100 needed for 500 riders";
-  assert.deepEqual(needLabelPlace(text, 62, [], 30, 356), { x: 32, anchor: "start" });
+  assert.deepEqual(needLabelPlace(text, 62, [], 30, 356), { x: 32, anchor: "start", y: 62 });
   // The narrowest point's words at the start, at nearly the same height: the middle.
   const narrowest = labelBox("Narrowest 55", 30, 66, "start");
-  assert.deepEqual(needLabelPlace(text, 62, [narrowest], 30, 356), { x: 193, anchor: "middle" });
+  assert.deepEqual(needLabelPlace(text, 62, [narrowest], 30, 356), { x: 193, anchor: "middle", y: 62 });
   // Far enough below or above, the left is clear.
   assert.equal(needLabelPlace(text, 40, [narrowest], 30, 356).anchor, "start");
   // Left and middle taken: the right.
   const wide = { x0: 30, x1: 200, y: 62 };
   assert.equal(needLabelPlace(text, 62, [wide], 30, 356).anchor, "end");
-  // Nowhere clear: the left.
-  assert.equal(needLabelPlace(text, 62, [{ x0: 0, x1: 400, y: 62 }], 30, 356).anchor, "start");
+  // Nowhere above the line clear: under it (the 2026-10-28 audit, P6: "Narrowest 90" was over "100 needed...").
+  assert.deepEqual(needLabelPlace(text, 62, [{ x0: 0, x1: 400, y: 62 }], 30, 356), { x: 32, anchor: "start", y: 62 + 11 + 4 });
+  // Nowhere clear at all: above, at the left.
+  assert.deepEqual(needLabelPlace(text, 62, [{ x0: 0, x1: 400, y: 62 }, { x0: 0, x1: 400, y: 77 }], 30, 356), { x: 32, anchor: "start", y: 62 });
+  // The guides' figures: 60 and 120 close together on a tall chart, 60 moved left of 120 rather than over it.
+  const y = (v: number) => 98 - (v / 500) * 82;
+  const placed = guideLabelPlaces([{ at: 60 }, { at: 120 }, { at: 200 }], y, 352);
+  const at = (v: number) => placed.find((p) => p.at === v)!;
+  assert.equal(at(200).x, 352);
+  assert.equal(at(120).x, 352, "120 is a line of type below 200");
+  assert.ok(at(60).x <= at(120).swatchX - 6, "60 left of 120's swatch");
+  // Far apart, each at the right.
+  assert.ok(guideLabelPlaces([{ at: 60 }, { at: 120 }], (v) => 98 - (v / 200) * 82, 352).every((p) => p.x === 352));
   assert.deepEqual(labelBox("abc", 100, 10, "end"), { x0: 100 - (3 * 5.9 + 4), x1: 100, y: 10 });
 });
 
@@ -303,7 +319,7 @@ test("the requirement's sentence: how much of the route is below it, and from wh
   assert.ok(Math.abs(below.metres - 600) <= 30, String(below.metres));
   assert.ok(below.known < 3 * MILE - 300 + 1);
   const words = needSentence(dip, need);
-  assert.match(words ?? "", /^At 500 riders, a road needs about 100 riders per minute for the group to pass a junction within 5 minutes \(the dashed line; the 5-minute hold is a proposal, not yet confirmed\)\. 0\.4 mi \(0\.6 km\) of the route, 13% of what has a figure, is below it, from mile 0\.9\.$/);
+  assert.match(words ?? "", /^At 500 riders, a road needs about 100 riders per minute for the group to pass a junction within 5 minutes \(the dashed line\)\. 0\.4 mi \(0\.6 km\) of the route, 13% of what has a figure, is below it, from mile 0\.9\.$/);
   assert.match(needSentence(profile, need) ?? "", /No part of the route with a figure is below it\.$/);
   assert.match(needSentence(profile, rideNeed(2000)!) ?? "", /about 400 riders per minute .* All of the route with a figure is below it\.$/);
   assert.equal(needSentence({ ...profile, riders_per_min: profile.m.map(() => null) }, need), null);
@@ -391,7 +407,21 @@ test("the corker reading: the corkers and junctions held at once, the ride size 
   const words = corkerSentences(profile, load).join(" ");
   assert.match(words, /The most held at once is 4 corkers holding 2 junctions, with the head around mile 0\.9\./);
   assert.match(words, /About 8 corkers for the ride: the most held at once times 2, as corkers leapfrog to the junctions ahead\./);
-  assert.match(words, /Each junction needing corkers takes one for each approach lane of the busy road, or one an approach at a traffic signal, which already holds the cross traffic \(2 approaches, 1 where the road is one-way; 1 lane where the lanes are not known\)/);
+  // How they are counted is in How these are worked out, not the summary (the 2026-10-28 audit, P6).
+  assert.doesNotMatch(words, /Each junction needing corkers takes/);
+  assert.match(CORKER_METHOD, /^Each junction needing corkers takes one for each approach lane of the busy road, or one an approach at a traffic signal, which already holds the cross traffic \(2 approaches, 1 where the road is one-way; 1 lane where the lanes are not known\)/);
+  const charts = readFileSync(new URL("../MassRideCharts.tsx", import.meta.url), "utf8");
+  const fold = charts.slice(charts.indexOf('<details className="pc-source-fold">'), charts.indexOf('<details className="pc-table-fold">'));
+  assert.match(fold, /\{HOLD_PROPOSAL\}/);
+  assert.match(fold, /\{CORKER_METHOD\}/);
+  assert.equal(HOLD_PROPOSAL, "The 5-minute hold is a proposal, not yet confirmed.");
+  // Each chart leads with one sentence on screen; the rest is for a screen reader.
+  const leads = massLeads(route(), profile, load, 500);
+  assert.equal(leads.corkers.lead, "About 8 corkers for the ride: the most held at once times 2, as corkers leapfrog to the junctions ahead.");
+  assert.match(leads.corkers.more, /^2 major intersections, 2 needing corkers\. At 500 riders the group is about/);
+  assert.match(leads.riders.lead, /^Narrowest/);
+  assert.match(leads.elevation.lead, /^Over 3\.0 mi \(4\.8 km\), elevation runs from/);
+  assert.match(charts, /\{summaries\[c\.key\]\.lead\}\s*\{summaries\[c\.key\]\.more && <span className="visually-hidden"> \{summaries\[c\.key\]\.more\}<\/span>\}/);
   // A bigger ride: a longer group, and the reading says so.
   const big = corkerLoad(profile, 3 * MILE, 2000);
   assert.match(corkerReading(profile, big, 1200), /\(2,000 riders, group about 1\.18 mi \(1\.9 km\) long\)/);
