@@ -1613,7 +1613,9 @@ def test_a_system_whose_feed_ends_inside_the_window_is_left_out_after_it_not_clo
     assert "MARC's timetable ran out on 2026-10-20" in transit.schedule_alert(
         path, date(2026, 10, 25)
     )
-    assert transit.schedule_alert(path, date(2026, 10, 1)) is None
+    # Three weeks ahead the alert starts; before that, nothing.
+    assert "20 day(s) left" in transit.schedule_alert(path, date(2026, 10, 1))
+    assert transit.schedule_alert(path, date(2026, 9, 30)) is None
 
 
 def test_a_metro_gtfs_that_ends_early_gives_way_to_the_typical_timetable(tmp_path) -> None:
