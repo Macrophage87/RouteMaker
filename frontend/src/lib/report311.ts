@@ -19,6 +19,7 @@
  * words add the trail's mile (lib/trailMiles.ts, worked out on the phone): "on Capital Crescent Trail at mile
  * marker 3" where OSM maps a post within 500 ft, else "on Capital Crescent Trail at about mile 3.2".
  */
+import { FEET_PER_METRE } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import { isUnnamed, pointAt, routeJunctions, stretchAt, wayRidden, type RideModel } from "./navigate.ts";
 import { mileWords, trailMileAt, type TrailMiles } from "./trailMiles.ts";
@@ -41,7 +42,7 @@ export const REPORT_KINDS: { kind: ReportKind; label: string }[] = [
  * spot (the old "about 1.2 miles south of ..."), so the report names only the way the rider is on, and
  * the GPS position carries the place.
  */
-export const PLACE_NEAR_M = 500 / 3.28084;
+export const PLACE_NEAR_M = 500 / FEET_PER_METRE;
 
 /** Whether a street name says nothing ("unnamed path"): shared with "Where am I?" (lib/navigate.ts). */
 export { isUnnamed };
