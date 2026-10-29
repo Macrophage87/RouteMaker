@@ -999,7 +999,13 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "if straight_span_m(points) >= refine.REFINE_MAX_SPAN_M and not long_calm:",
         ROUTE,
     ),
-    ("always probe the direct route", G, "        and asked_for_calm\n", "", ROUTE),
+    (
+        "always probe the direct route",
+        G,
+        'probe = preset_name != "mass-ride" and asked_for_calm',
+        'probe = preset_name != "mass-ride"',
+        ROUTE,
+    ),
     (
         "probe from Default",
         G,

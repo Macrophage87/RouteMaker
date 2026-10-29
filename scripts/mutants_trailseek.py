@@ -34,6 +34,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 SEEK = ["tests/test_trailseek.py"]
+# The trail read's timeout is the plan's cursor's (`routing.plan_cursor`).
+READS = ["tests/test_trailseek.py", "tests/test_plan_reads.py"]
 REFINE = ["tests/test_refine.py"]
 PLAN = ["tests/test_route_intersections.py"]
 PRESET_TESTS = ["tests/test_presets.py"]
@@ -537,24 +539,24 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ),
     (
         "table: no statement timeout",
-        TS,
-        """            cursor.execute("SELECT set_config('statement_timeout', %s, true)", [timeout_ms])""",
+        RT,
+        """            cursor.execute("SELECT set_config('statement_timeout', %s, true)", [str(left_ms)])""",
         "            pass",
-        SEEK,
+        READS,
     ),
     (
         "table: the caller's timeout is not put back",
-        TS,
+        RT,
         """                cursor.execute("SELECT set_config('statement_timeout', %s, true)", [previous])""",
         "                pass",
-        SEEK,
+        READS,
     ),
     (
         "table: a cancelled read is not out of time",
-        TS,
-        '== "57014":',
-        '== "00000":',
-        SEEK,
+        RT,
+        "        if _canceled(error):\n            raise DeadlineExceeded",
+        "        if False:\n            raise DeadlineExceeded",
+        READS,
     ),
     (
         "table: the index's predicate not carried",
@@ -691,17 +693,17 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ),
     (
         "V07 table: timeout set session-wide",
-        TS,
-        "cursor.execute(\"SELECT set_config('statement_timeout', %s, true)\", [timeout_ms])",
-        "cursor.execute(\"SELECT set_config('statement_timeout', %s, false)\", [timeout_ms])",
-        SEEK,
+        RT,
+        "cursor.execute(\"SELECT set_config('statement_timeout', %s, true)\", [str(left_ms)])",
+        "cursor.execute(\"SELECT set_config('statement_timeout', %s, false)\", [str(left_ms)])",
+        READS,
     ),
     (
         "V08 table: restore set session-wide",
-        TS,
+        RT,
         "cursor.execute(\"SELECT set_config('statement_timeout', %s, true)\", [previous])",
         "cursor.execute(\"SELECT set_config('statement_timeout', %s, false)\", [previous])",
-        SEEK,
+        READS,
     ),
     (
         "V12 bounds: no clock in components",
