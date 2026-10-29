@@ -339,6 +339,53 @@ test("each of DC's languages has every phrase Go and Ride show, constants passed
   }
 });
 
+/**
+ * Each language's words for left and right, as its turn sentences write them. A sentence on the wrong side sends a rider
+ * the wrong way, so a reviewer's edit that swaps them fails here (the 2026-10-29 review).
+ */
+const LEFT_RIGHT: Record<Exclude<Language, "en">, readonly [RegExp, RegExp]> = {
+  es: [/izquierda/, /derecha/],
+  am: [/ግራ/, /ቀኝ/],
+  ar: [/يسار/, /يمين/],
+  bn: [/বাঁ/, /ডান/],
+  fa: [/چپ/, /راست/],
+  fr: [/gauche/, /droite/],
+  hi: [/बाएँ|बाईं|बाएं|बायें/, /दाएँ|दाईं|दाएं|दायें/],
+  ht: [/goch/, /dwat/],
+  id: [/kiri/, /kanan/],
+  ja: [/左/, /右/],
+  ko: [/왼|좌/, /오른|우회전/],
+  ps: [/کیڼ/, /ښي/],
+  pt: [/esquerda/, /direita/],
+  ru: [/налево|левее|слева|влево|левой|левую/, /направо|правее|справа|вправо|правой|правую/],
+  th: [/ซ้าย/, /ขวา/],
+  ti: [/ጸጋም/, /የማን/],
+  tr: [/(^|\s)sol/i, /(^|\s)sağ/i],
+  vi: [/trái/, /(rẽ|sang|bên) phải/i],
+  yue: [/左/, /右/],
+  zh: [/左/, /右/],
+};
+
+test("no language swaps left and right: each turn sentence keyed left says its left word and not its right, and the reverse", async () => {
+  // Turns, keep-left and keep-right, the side the destination is on, and the end-ride slide (laid out left to right).
+  const sided = Object.keys(ES).filter(
+    (p) =>
+      /^(Left|Right|Bear (left|right)|Keep (left|right))(?![-\w])|on your (left|right)|^Slide it to the right/.test(p) &&
+      /\bleft\b/i.test(p) !== /\bright\b/i.test(p),
+  );
+  assert.ok(sided.length >= 25, `${sided.length} sided phrases`);
+  for (const lang of LANGUAGES.filter((l): l is Exclude<Language, "en"> => l !== "en")) {
+    const catalog = lang === "es" ? ES : await catalogOfFile(lang);
+    const [left, right] = LEFT_RIGHT[lang];
+    for (const english of sided) {
+      const text = catalog[english];
+      if (text === undefined) continue;
+      const [says, not] = /\bleft\b/i.test(english) ? [left, right] : [right, left];
+      assert.ok(says.test(text) && !not.test(text), `${lang}: "${english}" is "${text}"`);
+    }
+  }
+});
+
 test("turn sentences in other scripts: the stop each writes, names as they are, isolated where the page reads right to left", async () => {
   const said = async (lang: Language, words: () => string) => {
     setCatalogForTest(lang, await catalogOfFile(lang));
