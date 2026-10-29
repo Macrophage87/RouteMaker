@@ -2156,7 +2156,7 @@ phone whose share sheet takes files, the GPX file Download GPX would give goes w
   imaging package; glyphs from `scripts/make_preview_glyphs.py`), cached on the row. The line is
   drawn over the base map (`core.preview_basemap`: land, parks, water, roads and paths, rail and a
   few town names, read from `${DATA_ROOT}/basemap/region.pmtiles`, which compose mounts read-only
-  into the API at `/data/basemap`) with "© OpenStreetMap contributors · © Protomaps" on it; Home's circle loses the route but keeps the
+  into the API and the worker at `/data/basemap`) with "© OpenStreetMap contributors · © Protomaps" on it; Home's circle loses the route but keeps the
   map. With no `region.pmtiles` in the directory, or one that cannot be read, the picture has a
   plain background, as before (the directory itself must exist: the beta's bind will not create it). A new `region.pmtiles` (another
   size or time) draws every picture again on its next fetch. Where the
@@ -2167,7 +2167,13 @@ phone whose share sheet takes files, the GPX file Download GPX would give goes w
   (`preview_zone`), so moving Home later never uncovers it. A route shared signed out from Home
   on the device, a link made before previews, and any share that does not say have no image; a
   line too long to draw (past 20,000 px of stroke after thinning to 1,500 points) has none, kept
-  as an empty image so it is not tried again. A turned-off (410) or expired (404) link has no
+  as an empty image so it is not tried again. The picture is drawn when the link is made (or
+  remade): the API queues `draw_share_preview` on the worker's maintenance queue, so a chat app's
+  first fetch finds it kept. The page of tags never draws; it names the image unless the link has
+  none. A fetch of an image not drawn yet (the worker behind or down, or a new `region.pmtiles`)
+  draws it in the request, one such draw at a time in the deployment and never two of one route
+  at once; a fetch that finds a draw running gets 503 with `Retry-After: 5`. A queued draw is not
+  retried and writes no run row: a missed one is drawn by the first fetch. A turned-off (410) or expired (404) link has no
   preview; the image itself is served with an hour's public cache, so a chat app may show it up
   to an hour after the link is turned off. The page varies on `User-Agent` and
   `Sec-Fetch-Mode`. The installed app's worker opens `/s/<id>` as the page. Absolute URLs come
