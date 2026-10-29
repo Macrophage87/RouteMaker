@@ -46,6 +46,15 @@ class TestPage:
         assert "send it yourself" in body
         assert "DC 311" not in body
 
+    def test_it_says_a_ride_in_progress_stays_on_the_device_for_at_most_12_hours(
+        self, client
+    ) -> None:
+        # rideResume.ts RESUME_MAX_MS; a followed ride's link and key are kept with it (#727).
+        _, body, _ = get(client)
+        assert "until End ride or Not now; after 12 hours it is no longer offered" in body
+        resume = (ROOT / "frontend/src/lib/rideResume.ts").read_text()
+        assert "RESUME_MAX_MS = 12 * 60 * 60_000" in resume
+
     def test_every_section_is_a_heading_in_order(self, client) -> None:
         _, body, _ = get(client)
         headings = re.findall(r"<h2>([^<]+)</h2>", body)

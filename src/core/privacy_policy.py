@@ -411,8 +411,12 @@ SECTIONS: list[tuple[str, str]] = [
         + _p(
             "Your browser or the app keeps your settings, Home, weight, offline routes and 311 log "
             "until you clear its storage, and the last few places you picked in search for 30 "
-            "days after each was last picked. The Android app also keeps the site address. It "
-            "has no analytics or crash reporting, and its data is left out of phone backups."
+            "days after each was last picked. A ride in progress (its planned route, not where you "
+            "rode) is kept so it can resume, with the link and key of a ride you follow, until End "
+            "ride or Not now; after 12 hours it is no longer offered, and it is removed the next "
+            "time the app opens. The Android app "
+            "also keeps the site address. It has no analytics or crash reporting, and its data "
+            "is left out of phone backups."
         ),
     ),
     (
