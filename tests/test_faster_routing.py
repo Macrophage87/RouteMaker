@@ -633,6 +633,81 @@ class TestCacheParts:
         settings.ROUTE_CACHE_TTL_S = 0
         assert route_cache.key_for({"points": [], "preset": "default"}, "night", "t", "") is None
 
+    def test_a_request_reads_each_approval_once(self, monkeypatch) -> None:
+        """The key and the plan it misses read the Avoid list, ratings, hazards and beacons
+        once between them; each request reads them afresh."""
+        from core import avoid_junctions, flashing_signals, junction_suggestions, mass_hazards
+
+        reads: list[str] = []
+
+        def reader(name, value):
+            def read():
+                reads.append(name)
+                return value
+
+            return read
+
+        monkeypatch.setattr(avoid_junctions, "approved", reader("avoid", ()))
+        monkeypatch.setattr(junction_suggestions, "approved_ratings", reader("ratings", ()))
+        monkeypatch.setattr(mass_hazards, "approved", reader("hazards", {}))
+        monkeypatch.setattr(flashing_signals, "active", reader("beacons", ()))
+
+        @route_cache.reads_approvals_once
+        def request() -> None:
+            route_cache._approved_part("mass-ride")
+            route_cache.avoid_list()
+            route_cache.junction_ratings()
+            route_cache.mass_ride_hazards()
+            route_cache.beacons()
+
+        request()
+        assert sorted(reads) == ["avoid", "beacons", "hazards", "ratings"]
+        request()
+        assert len(reads) == 8
+        # Outside a request, read every time.
+        route_cache.avoid_list()
+        route_cache.avoid_list()
+        assert reads[-2:] == ["avoid", "avoid"]
+
+    def test_a_call_with_no_time_left_counts_as_failed(self, settings) -> None:
+        """Skipped before it is sent, it is still a call the plan went without."""
+        timings = timing.Timings()
+        token = timing.start(timings)
+        try:
+            with pytest.raises(routing.DeadlineExceeded):
+                routing._call(
+                    next(iter(settings.VALHALLA_UPSTREAMS)),
+                    "route",
+                    {},
+                    routing.Deadline(at=routing.clock() - 1.0, per_call_s=5.0),
+                )
+        finally:
+            timing.stop(token)
+        assert timings.failures == 1
+
+    @pytest.mark.parametrize(
+        "part",
+        [
+            {"calm_search": {"limited": None, "alternates": {"limited": "time"}}},
+            {"dodges": {"limited": "time"}},
+            {"hills_seek": {"limited": None, "climb_seek": {"limited": "time"}}},
+            {"avoid_search": {"decision": "avoided", "alternate": "time"}},
+        ],
+    )
+    def test_an_answer_a_pass_stopped_for_time_is_not_kept(self, part) -> None:
+        body = {"variant": "standard", **part}
+        assert not route_cache.keepable(body, "standard", 0)
+
+    def test_an_answer_whose_passes_stopped_for_other_reasons_is_kept(self) -> None:
+        body = {
+            "variant": "standard",
+            "calm_search": {"limited": None, "alternates": {"limited": None}},
+            "dodges": {"limited": "checks"},
+            "hills_seek": {"limited": None, "climb_seek": {"limited": "no_climbs"}},
+            "avoid_search": {"decision": "avoided"},
+        }
+        assert route_cache.keepable(body, "standard", 0)
+
 
 LOCMEM = "django.core.cache.backends.locmem.LocMemCache"
 
