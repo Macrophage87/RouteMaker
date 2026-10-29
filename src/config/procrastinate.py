@@ -1121,6 +1121,17 @@ def check_saved_route_closures(timestamp: int) -> None:
         run.save(update_fields=["detail"])
 
 
+@app.task(name="draw_share_preview", queue="maintenance")
+def draw_share_preview(route_id: str) -> None:
+    """Draw a shared link's preview image and keep it on the link (core.share_preview), queued
+    when the link is made (the owner, 2026-10-29: "let's do that"), so a chat app's first fetch
+    finds it drawn. A few seconds at most (the drawing is bounded). Not retried, and no run row:
+    an image not drawn here is drawn by the first fetch that asks for it."""
+    from core.share_preview import draw_now
+
+    draw_now(route_id)
+
+
 class BackupVerificationFailed(RuntimeError):
     """The dump on disk is not the dump the task promised."""
 

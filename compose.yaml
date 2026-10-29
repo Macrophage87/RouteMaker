@@ -395,6 +395,9 @@ services:
       # being recreated. Without the bind the check measured this container's
       # writable layer and reported room the rebuild does not have.
       - ${DATA_ROOT}/tiles:/data/tiles:ro
+      # The base map, read by the link preview's picture, which this service draws when a link
+      # is made (config.procrastinate.draw_share_preview, core.preview_basemap) as the api does.
+      - ${DATA_ROOT}/basemap:/data/basemap:ro
     # The same sixty seconds, for the same reason, as the `rebuild` service
     # below: on SIGTERM Procrastinate cancels its side tasks and then calls
     # `unregister_worker`, which is a database round trip, and compose's

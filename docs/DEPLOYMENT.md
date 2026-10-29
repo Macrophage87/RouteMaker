@@ -1071,7 +1071,7 @@ The api binds three directories and writes one of them:
 | --- | --- | --- |
 | `${DATA_ROOT}/static` → `/data/static` | read-write | `collectstatic`, as the deploy step above. Caddy mounts the same directory `:ro` and serves it. |
 | `${DATA_ROOT}/tiles` → `/data/tiles` | **read-only** | the operations page's free-space line, which is a `statvfs` on `settings.TILES_DIR`. |
-| `${DATA_ROOT}/basemap` → `/data/basemap` | **read-only** | the link preview's picture, which draws the base map behind a shared route (`core.preview_basemap`, `settings.BASEMAP_PMTILES`). |
+| `${DATA_ROOT}/basemap` → `/data/basemap` | **read-only** | the link preview's picture, which draws the base map behind a shared route (`core.preview_basemap`, `settings.BASEMAP_PMTILES`). The `worker` binds it too, the same way, since it draws the picture when a link is made (`draw_share_preview`); both must see the same file, as the picture's cache key reads its size and time. |
 
 The tiles bind is read-only and it is there for one reader. The operations page
 is rendered by the `api` service, and its free-space block measures
