@@ -1549,4 +1549,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "በቁልፍ ሰሌዳ፣ የቀስት ቁልፎች ካርታውን ያንቀሳቅሳሉ፤ {addPoint}።",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z የመጨረሻውን ለውጥ ይቀለብሳል፣ Ctrl+Shift+Z ደግሞ ይመልሰዋል።",
   "With two or more stops, Best order puts them in the order that rides best.": "ሁለት ወይም ከዚያ በላይ ማቆሚያዎች ሲኖሩ ምርጥ ቅደም ተከተል ለመንዳት በሚሻለው ቅደም ተከተል ያስቀምጣቸዋል።",
+  "Saved {date}": "የተቀመጠ {date}",
+  "As of {time}.": "እስከ {time} ድረስ።",
+  "Counts may be out of date: as of {time}.": "ቁጥሮቹ ያልተዘመኑ ሊሆኑ ይችላሉ፦ እስከ {time} ድረስ።",
 };

@@ -8,8 +8,9 @@
  * request carries `lang` (lib/api.ts routeRequestBody, the server's routemaker.lang).
  *
  * The language is read once, when the page loads: the rider's choice (Settings > Display > Language,
- * kept on this device like accessibility mode), else the device's own language. Choosing another reloads
- * the page, so the many labels the code builds once at load (module constants) follow it too.
+ * kept on this device like accessibility mode), else the device's own where it is English or Spanish
+ * (startLanguage). Choosing another reloads the page, so the many labels the code builds once at load
+ * (module constants) follow it too.
  */
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
 import { ES } from "../i18n/es.ts";
@@ -147,7 +148,20 @@ export function deviceLanguage(preferred: readonly string[] | undefined = typeof
   return "en";
 }
 
-let current: Language = readLanguageChoice() || deviceLanguage();
+/** The languages a page opens in from the device's alone: English and Spanish, the two the whole app is in. */
+const FROM_DEVICE: ReadonlySet<Language> = new Set<Language>(["en", "es"]);
+
+/**
+ * The language a page opens in: the rider's choice, else the device's where it is English or Spanish, else English.
+ * The 19 draft languages, not yet checked by a native speaker, are used only once the rider picks one in Settings
+ * (the 2026-10-29 review: a French phone opened straight into the draft, turn cues included).
+ */
+export function startLanguage(choice: LanguageChoice = readLanguageChoice(), device: Language = deviceLanguage()): Language {
+  if (choice) return choice;
+  return FROM_DEVICE.has(device) ? device : "en";
+}
+
+let current: Language = startLanguage();
 
 /** The language in force for this page load. */
 export function language(): Language {
@@ -172,6 +186,15 @@ export function voiceTags(lang: Language = current): readonly string[] {
 /** The language's tag for dates and numbers ("es-US", "zh-Hans-CN"). */
 export function locale(lang: Language = current): string {
   return LOCALE[lang];
+}
+
+/**
+ * The tag for a clock time: the device's own (its 12 or 24 hour clock) where the device reads the language in force,
+ * else the language's, so a Spanish page on an English phone says "6:42 p.m." and not "6:42 PM".
+ */
+export function clockLocale(preferred: readonly string[] | undefined = typeof navigator !== "undefined" ? navigator.languages : undefined): string | undefined {
+  const first = preferred?.[0];
+  return first !== undefined && fromTag(first) === current ? undefined : LOCALE[current];
 }
 
 /** The language's full stop, to end a sentence the code joins from parts: "。" in Chinese and Japanese, "।" in Hindi and Bengali, "።" in Amharic and Tigrinya. */
@@ -250,7 +273,7 @@ export function markPageLanguage(doc: Document | undefined = typeof document !==
 /** Keeps the choice and reloads, so every label follows it. */
 export function chooseLanguage(choice: LanguageChoice): void {
   writeLanguageChoice(choice);
-  if ((choice || deviceLanguage()) !== current && typeof location !== "undefined") location.reload();
+  if (startLanguage(choice) !== current && typeof location !== "undefined") location.reload();
 }
 
 /** A language's phrases read back: the exact ones by their words, the ones with {places} as patterns. */

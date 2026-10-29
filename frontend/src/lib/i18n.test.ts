@@ -18,6 +18,8 @@ import {
   rightToLeft,
   setCatalogForTest,
   setLanguageForTest,
+  clockLocale,
+  startLanguage,
   speechLang,
   t,
   voiceTags,
@@ -99,6 +101,28 @@ test("the language: the rider's choice, else the device's first language the app
   assert.equal(deviceLanguage(undefined), "en");
   assert.equal(speechLang("es"), "es-US");
   assert.equal(speechLang("en"), "en-US");
+});
+
+test("the app starts in the rider's choice, else the phone's language only for English and Spanish: the drafts wait to be chosen", () => {
+  assert.equal(startLanguage("", "es"), "es");
+  assert.equal(startLanguage("", "en"), "en");
+  assert.equal(startLanguage("", "fr"), "en", "a Claude-drafted language is not turned on by the phone");
+  assert.equal(startLanguage("", "ar"), "en");
+  assert.equal(startLanguage("fr", "en"), "fr", "chosen in Settings, a draft is used");
+  assert.equal(startLanguage("en", "es"), "en");
+});
+
+test("arrival clocks: the phone's own 12- or 24-hour clock when it reads the app's language, else the app's language", () => {
+  try {
+    setLanguageForTest("en");
+    assert.equal(clockLocale(["en-GB"]), undefined, "an English phone keeps its own clock");
+    assert.equal(clockLocale(["es-MX"]), "en-US");
+    setLanguageForTest("fr");
+    assert.equal(clockLocale(["fr-CA"]), undefined);
+    assert.equal(clockLocale(["en-US"]), "fr", "French chosen on an English phone writes French times");
+  } finally {
+    setLanguageForTest("en");
+  }
 });
 
 test("Spanish turn directions are whole Spanish sentences, the street names as they are", () => {

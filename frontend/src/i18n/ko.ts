@@ -1549,4 +1549,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "키보드에서는 화살표 키로 지도를 옮깁니다. {addPoint}.",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z로 마지막 변경을 취소하고 Ctrl+Shift+Z로 다시 합니다.",
   "With two or more stops, Best order puts them in the order that rides best.": "경유지가 둘 이상이면 최적 순서가 달리기 좋은 순서로 정렬합니다.",
+  "Saved {date}": "{date}에 저장됨",
+  "As of {time}.": "{time} 기준.",
+  "Counts may be out of date: as of {time}.": "수량이 최신이 아닐 수 있습니다: {time} 기준.",
 };

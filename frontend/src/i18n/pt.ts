@@ -1549,4 +1549,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "Pelo teclado, as setas movem o mapa; {addPoint}.",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z desfaz a última mudança e Ctrl+Shift+Z a refaz.",
   "With two or more stops, Best order puts them in the order that rides best.": "Com duas ou mais paradas, Melhor ordem as coloca na ordem que pedala melhor.",
+  "Saved {date}": "Salva em {date}",
+  "As of {time}.": "Às {time}.",
+  "Counts may be out of date: as of {time}.": "Os números podem estar desatualizados: às {time}.",
 };

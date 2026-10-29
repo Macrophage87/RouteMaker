@@ -1549,4 +1549,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "From the keyboard, the arrow keys move the map; {addPoint}.": "キーボードでは矢印キーで地図を移動。{addPoint}。",
   "Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.": "Ctrl+Z で直前の変更を取り消し、Ctrl+Shift+Z でやり直し。",
   "With two or more stops, Best order puts them in the order that rides best.": "立ち寄り先が 2 か所以上あれば、「最適な順番」で走りやすい順に並べます。",
+  "Saved {date}": "{date}に保存",
+  "As of {time}.": "{time}時点。",
+  "Counts may be out of date: as of {time}.": "台数が最新でない可能性があります：{time}時点。",
 };
