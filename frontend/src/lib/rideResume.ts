@@ -34,6 +34,11 @@ export interface LeftRide {
   fixed: boolean;
   /** The destination's name as the map gave it at Start ride, for the question (resumeHeading); none for a loop. */
   destination?: string | null;
+  /**
+   * Opened from someone else's link (a route or ride they shared): resumed, it is still theirs, so it offers no Share
+   * live of its own (Stephen 2026-10-26). Left out by a mid-ride re-route, which keeps the one kept at Start.
+   */
+  others?: boolean;
 }
 
 interface Kept {
@@ -49,6 +54,7 @@ interface Kept {
   dials: Dials;
   fixed: boolean;
   destination?: string;
+  others?: boolean;
 }
 
 interface Store {
@@ -69,6 +75,7 @@ function local(): Store | null {
 export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "isDrawn" | "nameOf">, now: number, store: Store | null = local()): void {
   // A re-route kept mid-ride says no name: the one kept at Start goes on while the ride ends at the same place.
   const destination = ride.loop ? null : (ride.destination ?? keptDestination(ride.points[ride.points.length - 1], store));
+  const others = ride.others ?? keptOthers(store);
   const kept: Kept = {
     v: 1,
     at: now,
@@ -85,6 +92,7 @@ export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "is
     dials: ride.dials,
     fixed: ride.fixed,
     ...(destination ? { destination } : {}),
+    ...(others ? { others } : {}),
   };
   try {
     store?.setItem(RIDE_RESUME_KEY, JSON.stringify(kept));
@@ -102,6 +110,16 @@ function keptDestination(end: LonLat | undefined, store: Store | null): string |
     return end && last && last[0] === end[0] && last[1] === end[1] && typeof was?.destination === "string" ? was.destination : null;
   } catch {
     return null;
+  }
+}
+
+/** Whether the ride already stored was opened from someone else's link. */
+function keptOthers(store: Store | null): boolean {
+  try {
+    const raw = store?.getItem(RIDE_RESUME_KEY);
+    return raw ? (JSON.parse(raw) as Partial<Kept>).others === true : false;
+  } catch {
+    return false;
   }
 }
 
@@ -146,5 +164,6 @@ export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named">, now: 
     dials: kept.dials,
     fixed: kept.fixed === true,
     ...(typeof kept.destination === "string" ? { destination: kept.destination } : {}),
+    ...(kept.others === true ? { others: true } : {}),
   };
 }

@@ -186,7 +186,7 @@ test("App: Share keeps the exact line and attaches the file Download GPX saves; 
   // Only a settled route: while a re-plan is pending the link stays the inputs only.
   assert.match(exact, /if \(!shown \|\| stale \|\| routedPoints !== points\) return null;/);
   const share = app.slice(app.indexOf("const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav): Promise<{ led: boolean; said: string }> => {"), app.indexOf("\n  };\n", app.indexOf("const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav): Promise<{ led: boolean; said: string }> => {")));
-  assert.match(share, /const content = withGpxFile\(nav, shareContent\(link, distanceM, presetSaid\(preset\)\), file\);/);
+  assert.match(share, /const content = withGpxFile\(nav, shareContent\(link, distanceM, presetSaid\(ownRide\?\.preset \?\? preset\)\), file\);/);
   // The link is made in sharedLinkNow, which Share as image's QR code uses too (lib/shareCard.ts).
   assert.match(share, /const now = again \? null : sharedLinkNow\(\);\s*const kept = again \? Promise\.resolve\(true\) : now!\.kept;\s*const exact = again \? null : now!\.exact;/);
   const linkNow = app.slice(app.indexOf("const sharedLinkNow = () => {"), app.indexOf("\n  };\n", app.indexOf("const sharedLinkNow = () => {")));
