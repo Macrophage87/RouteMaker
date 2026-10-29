@@ -1194,7 +1194,7 @@ stop the api, fail the build and roll back on every front-end release. Once the 
 it installs `frontend-build.sh` beside the agent, which builds with the whole tree mounted.
 
 `install` checks the user is in the docker group and not root, that the checkout is clean at an
-annotated release tag with the matching `TAG`, copies the agent (`auto-release.sh`, `cd_logic.py`,
+release tag (annotated, or a lightweight one on its "Release vX.Y.Z" commit) with the matching `TAG`, copies the agent (`auto-release.sh`, `cd_logic.py`,
 `receive-data.sh`, `frontend-build.sh`) into `$RM_STATE/cd/bin` (so a release can never change the agent under a pass, and
 a rollback to a release older than the agent still has the agent's no-sudo snapshot and restore),
 records the deployed tag and the beta notice's report link (`--report-url URL|none` if
