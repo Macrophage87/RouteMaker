@@ -193,8 +193,12 @@ test("App: 'Planning...' is shown but not said, and the route is said once it se
 test("DialsPanel: the slider is named by its label alone, described by its note, and keys wait to rest", () => {
   assert.match(dialsPanel, /<span className="dial-now" aria-hidden="true">/);
   assert.match(dialsPanel, /aria-labelledby=\{nameId\}/);
-  assert.match(dialsPanel, /aria-describedby=\{view\.note \? noteId : undefined\}/);
-  assert.match(dialsPanel, /<p className="hint" id=\{noteId\}>/);
+  // P10: the line shown may be a short form; then the full sentence, behind the row's (i), is the one read.
+  assert.match(dialsPanel, /aria-describedby=\{view\.noteSaid \? saidId : view\.note \? noteId : undefined\}/);
+  assert.match(dialsPanel, /<p className="hint" id=\{noteId\} aria-hidden=\{view\.noteSaid \? "true" : undefined\}>/);
+  // P8: as short bullets, one sentence each, under the same id.
+  assert.match(dialsPanel, /\{view\.noteSaid && <Bullets id=\{saidId\} text=\{view\.noteSaid\} \/>\}/);
+  assert.doesNotMatch(dialsPanel, /How this works/, "one (i) per row, in Settings' style");
   assert.match(dialsPanel, /onKeyUp=\{\(\) => props\.onRelease\(true\)\}/);
   assert.match(dialsPanel, /onPointerUp=\{\(\) => props\.onRelease\(false\)\}/);
   assert.match(dialsPanel, /onBlur=\{\(\) => props\.onRelease\(false\)\}/);
@@ -255,7 +259,7 @@ test("App: Map tools is rendered only in accessibility mode; the toggle is in Po
   assert.match(app, /tools=\{\s*accessMode && !onBike \? \(\s*<MapTools/);
   assert.match(app, /\) : null\s*\}\s*\/>/);
   const tips = app.slice(app.indexOf('className="tips-body more-tips"'), app.indexOf("<InstallOffer idBase=\"tips-install\""));
-  assert.match(tips, /infoHelp\(accessMode\)/);
+  assert.match(tips, /infoHelp\(accessMode, false, touch\)/);
   assert.match(tips, /onClick=\{\(\) => toggleAccessMode\(false\)\}/);
   assert.match(tips, /aria-pressed=\{accessMode\}[\s\S]{0,80}?>\s*\{t\(ACCESS_LABEL\)\}/);
 });

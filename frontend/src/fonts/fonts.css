@@ -36,3 +36,14 @@
     local("AtkinsonHyperlegible-Bold"),
     url("./atkinson-hyperlegible-bold.woff2") format("woff2");
 }
+
+/*
+ * Atkinson Hyperlegible has no Vietnamese letters with two marks (ế, ữ) nor Turkish ğ, ş and İ: a word would mix two
+ * fonts letter by letter. Those two languages read the system stack whole (lib/i18n.ts sets the page's lang). The
+ * other scripts (Arabic, Chinese, Ge'ez and the rest) take the phone's own fonts for their letters already, the
+ * names in Latin letters keeping Atkinson Hyperlegible.
+ */
+:root:lang(vi),
+:root:lang(tr) {
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+}

@@ -45,6 +45,7 @@ import { ROUTE_BOTTOM_LAYER } from "../lib/railLayer.ts";
 import { SHEET_TITLES, type PanelView } from "../lib/sidebar.ts";
 import type { SheetNav } from "./Sheets.tsx";
 import { t } from "../lib/i18n.ts";
+import { hoursText } from "../lib/openingHours.ts";
 
 /** Go's Repair: the nearest repair stands and bike shops, lettered; a row opens its card. */
 export function RepairSheet({ nav, status, items, at, onPick }: { nav: SheetNav; status: string; items: readonly RepairNearby[] | null; at: Date; onPick: (item: RepairNearby) => void }) {
@@ -101,7 +102,7 @@ function SightRow({ result, index, children }: { result: SightResult; index: num
   );
 }
 
-/** Go's Sights: the nearest five, no filters; a row opens its card. */
+/** Go's Places to see: the nearest five, no filters; a row opens its card. */
 export function SightsList({ items, onPick }: { items: readonly SightResult[]; onPick: (result: SightResult) => void }) {
   return (
     <ol role="list" className="nearest-list sights-list" aria-label={t("Places to see")}>
@@ -133,14 +134,17 @@ export interface PlacesSheetProps {
   onGoPick: (result: SightResult) => void;
 }
 
-/** Plan's Places to see (filters, hours, website) and Go's Sights (the nearest five, one tap each). */
+/** Places to see: Plan's with filters, hours and website, Go's the nearest five, one tap each. One name in both, as
+ * their chips say it (P12: Go's was "Sights"). */
 export function PlacesSheet(props: PlacesSheetProps) {
   const { nav, go, status, items, total, onMore, filter, onFilter, canAddStop, onShow, onAddStop, onGoPick } = props;
+  // The hours in words for now ("Open now · closes 5 PM": lib/openingHours.ts).
+  const now = new Date();
   return (
-    <SheetFrame id="sheet-places" title={go ? GO_SIGHTS_TITLE : SHEET_TITLES.places} open={nav.view === "places"} onBack={nav.back} backLabel={nav.backLabel("places")}>
+    <SheetFrame id="sheet-places" title={SHEET_TITLES.places} open={nav.view === "places"} onBack={nav.back} backLabel={nav.backLabel("places")}>
       {!go && (
         <label className="places-filter">
-          Show{" "}
+          {t("Show")}{" "}
           <select value={filter} onChange={(event) => onFilter(event.target.value as PlaceFilter)}>
             <option value="all">{t("All places to see")}</option>
             {CATEGORIES.map((c) => (
@@ -160,19 +164,19 @@ export function PlacesSheet(props: PlacesSheetProps) {
           {items.map((r, i) => (
             <li key={r.place.id}>
               <SightRow result={r} index={i}>
-                {r.place.hours ? ` Hours: ${r.place.hours}.` : ""}
+                {r.place.hours ? ` ${hoursText(r.place.hours, now)}.` : ""}
               </SightRow>
               <span className="actions">
-                <button type="button" className="secondary" aria-label={`Show on map: ${r.place.name}, marker ${placeLetter(i)}`} onClick={() => onShow(r)}>
+                <button type="button" className="secondary" aria-label={t("Show on map: {place}, marker {letter}", { place: r.place.name, letter: placeLetter(i) })} onClick={() => onShow(r)}>
                   {t("Show on map")}
                 </button>
                 {canAddStop && (
-                  <button type="button" className="secondary" aria-label={`Add as stop: ${r.place.name}`} onClick={() => onAddStop(r)}>
+                  <button type="button" className="secondary" aria-label={t("Add as stop: {place}", { place: r.place.name })} onClick={() => onAddStop(r)}>
                     {t("Add as stop")}
                   </button>
                 )}
                 {r.place.website && (
-                  <a className="food-web" href={r.place.website} target="_blank" rel="noopener noreferrer" aria-label={`Website: ${r.place.name} (opens in a new tab)`}>
+                  <a className="food-web" href={r.place.website} target="_blank" rel="noopener noreferrer" aria-label={t("Website: {place} (opens in a new tab)", { place: r.place.name })}>
                     {t("Website")}
                   </a>
                 )}
@@ -183,16 +187,13 @@ export function PlacesSheet(props: PlacesSheetProps) {
       )}
       {!go && items && items.length < total && (
         <button type="button" className="secondary food-more" onClick={onMore}>
-          Show {Math.min(PLACES_PAGE, total - items.length)} more
+          {t("Show {count} more", { count: Math.min(PLACES_PAGE, total - items.length) })}
         </button>
       )}
       {items && items.length > 0 && <p className="hint">{PLACES_NOTE}</p>}
     </SheetFrame>
   );
 }
-
-/** Go's name for the sheet, as its chip says it. */
-export const GO_SIGHTS_TITLE = t("Sights");
 
 /** The views these sheets are, for App's lettered places. */
 export const PLACE_VIEWS: readonly PanelView[] = ["repair", "places"];

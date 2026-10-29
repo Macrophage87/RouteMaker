@@ -30,7 +30,7 @@ test("the closure dialog: a modal, heading focused first, Reroute around them th
   assert.match(dialog, /dialog\.showModal\?\.\(\);\s*headingRef\.current\?\.focus\(\);/);
   // Escape is Cancel.
   assert.match(dialog, /onCancel=\{\(event\) => \{[^}]*event\.preventDefault\(\);\s*onCancel\(\);/);
-  const order = ["{REROUTE_LABEL}", "{anywayLabel(ask.why)}", "{CANCEL_LABEL}"].map((label) => dialog.indexOf(label));
+  const order = ["{rerouteLabel(ask.closures.length)}", "{anywayLabel(ask.why)}", "{CANCEL_LABEL}"].map((label) => dialog.indexOf(label));
   assert.ok(order.every((i) => i > 0), JSON.stringify(order));
   assert.deepEqual(order, [...order].sort((x, y) => x - y));
   assert.match(dialog, /className="primary closure-reroute"/);

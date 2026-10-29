@@ -22,6 +22,7 @@ import {
   liftOpenedInfo,
   requestAfterClose,
   spotActions,
+  ROUTE_HERE_TEXT,
   segmentInfoUrl,
   shownSections,
   shownSummary,
@@ -126,6 +127,15 @@ test("the top row offers start, end and stop as the search does, each unavailabl
   ]);
 });
 
+test("Go with the location as its start: the card's Set as end is open before the plan has a point (2026-10-28)", () => {
+  const row = (count: number, startKnown: boolean) => spotActions(count, false, startKnown).map((a) => `${a.text}${a.unavailable ? ` (${a.unavailable})` : ""}`);
+  assert.deepEqual(row(0, true), ["Set as start", "Set as end", "Add as stop (Set an end first.)"]);
+  assert.deepEqual(row(0, false), ["Set as start", "Set as end (Set a start first.)", "Add as stop (Set a start first.)"]);
+  // A plan with points is as before, whatever Go's start.
+  assert.deepEqual(row(2, true), row(2, false));
+  assert.equal(ROUTE_HERE_TEXT, "Route here");
+});
+
 test("a top-row button places the spot as the search's choice would, and says so", () => {
   const a: [number, number] = [-77.05, 38.9];
   const b: [number, number] = [-77.0, 38.95];
@@ -141,15 +151,20 @@ test("a top-row button places the spot as the search's choice would, and says so
 });
 
 test("the help says where the summary and the details are", () => {
-  assert.match(INFO_HELP, /^Right-click the map \(or press and hold on a phone\) for a short summary/);
+  assert.match(INFO_HELP, /^Right-click the map for the road there/);
   assert.match(INFO_HELP, /Details and sources/);
+  // P8: one short line each, a phone's gesture on a phone, and the keyboard's lines there only in accessibility mode.
+  assert.match(infoHelp(false, false, true)[0], /^Press and hold the map for the road there/);
+  assert.equal(infoHelp(false, false, true).length, 2);
+  assert.ok(infoHelp(true, false, true).some((line) => /press I/.test(line)));
+  for (const line of [...infoHelp(false), ...infoHelp(false, false, true)]) assert.ok((line.match(/\.(\s|$)/g) ?? []).length <= 1, line);
   assert.match(INFO_HELP, /press I for the road at the center/);
   // Map tools and both its actions by name (OWNER-DECISIONS 450), and the screen readers' browse mode (the a11y review's N7).
-  assert.match(infoHelp(false), /press I for the road at the center of the map, or turn on accessibility mode and open Map tools \(by the map's zoom buttons\) for Road info at map center and Add point at map center\./);
+  assert.match(infoHelp(false).join(" "), /press I for the road at the center of the map, or turn on accessibility mode and open Map tools \(by the map's zoom buttons\) for Road info at map center and Add point at map center\./);
   // Off, Map tools is not on the page: the browse-mode clause says it is there in the mode (the a11y review's N2).
-  assert.match(infoHelp(false), /next list item\); in accessibility mode, Map tools works in either\.$/);
+  assert.match(infoHelp(false).join(" "), /next list item\); in accessibility mode, Map tools works in either\.$/);
   assert.match(INFO_HELP, /next list item\); Map tools works in either\.$/);
-  assert.equal(infoHelp(true), INFO_HELP);
+  assert.equal(infoHelp(true).join(" "), INFO_HELP);
   assert.match(INFO_HELP, /open Map tools \(by the map's zoom buttons\) for Road info at map center and Add point at map center/);
   assert.match(INFO_HELP, /With NVDA or JAWS, I reaches the map only in focus mode/);
 });

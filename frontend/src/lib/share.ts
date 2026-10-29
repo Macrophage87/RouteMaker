@@ -16,8 +16,9 @@ export const SHARE_NAME = t("Share route");
 /** Share ride (lib/sharedRoutes.ts RIDE_PARAM): the same link, ridden fixed, with location sharing offered. */
 export const SHARE_RIDE_LABEL = t("Share ride");
 /** Beside Start (Stephen 2026-10-22): Share ride's link, led by the sharer, then the ride. */
-export const BROADCAST_LABEL = t("Broadcast");
-export const BROADCAST_ABOUT = t("Broadcast: send a link and start the ride. You lead: those who open it follow your dot and the path you take.");
+/** Share live (P12: it was "Broadcast", which a first-time rider passed over for Group Ride). */
+export const BROADCAST_LABEL = t("Share live");
+export const BROADCAST_ABOUT = t("Share live: send a link and start the ride. You lead: those who open it follow your dot and the path you take. No account needed.");
 export const SHARE_TITLE = t("RouteMaker route");
 export const SHARE_FAILED = t("Could not open the share sheet. Use Copy link instead.");
 
@@ -46,10 +47,10 @@ export function pickShareNavigator(nav: ShareNavigator | undefined, native: Shar
 }
 
 /** Broadcast where there is no share sheet at all (an older phone app, most computers): the link is copied. */
-export const BROADCAST_COPIED = t("Broadcast link copied. Paste it to your riders: they follow you once they open it.");
+export const BROADCAST_COPIED = t("Live link copied. Paste it to your riders: they follow you once they open it.");
 /** The copy failed: beside Plan's and Go's Broadcast (nothing started), and on the ride and Roam screens. */
 export const BROADCAST_COPY_FAILED = t("Could not copy the link, so the ride did not start.");
-export const BROADCAST_RIDE_COPY_FAILED = t("Could not copy the link. Press Broadcast to try again.");
+export const BROADCAST_RIDE_COPY_FAILED = t("Could not copy the link. Press Share live to try again.");
 
 /**
  * Broadcast's stand-in for a share sheet: "sharing" copies the link (`copy`, Copy link's own method). It is called

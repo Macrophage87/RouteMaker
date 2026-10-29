@@ -4,7 +4,7 @@
  * (Garmin's consent is a page); Garmin sends the rider back to `/?garmin=<outcome>`, which `garminReturnFrom` reads
  * once, so Settings can open and say what happened. Offered only where the server has Garmin's keys.
  */
-import { language, t } from "./i18n.ts";
+import { locale, t } from "./i18n.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
 
 export const CONNECT_PATH = "/auth/garmin/start";
@@ -54,7 +54,7 @@ export function garminSummary(state: Pick<GarminState, "connected" | "connected_
   if (!state.connected) return GARMIN_NOT_CONNECTED;
   const when = state.connected_at ? new Date(state.connected_at) : null;
   return when && !Number.isNaN(when.getTime())
-    ? t("Connected since {date}", { date: when.toLocaleDateString(language() === "es" ? "es-US" : "en-US", { month: "short", day: "numeric" }) })
+    ? t("Connected since {date}", { date: when.toLocaleDateString(locale(), { month: "short", day: "numeric" }) })
     : GARMIN_CONNECTED;
 }
 

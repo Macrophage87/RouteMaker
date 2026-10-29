@@ -58,8 +58,9 @@ export function letterKeyIndex(
   const target = event.target as { tagName?: string; isContentEditable?: boolean; closest?: (selector: string) => unknown } | null | undefined;
   const tag = target?.tagName?.toUpperCase();
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return null;
-  // The map's own keys (I, the arrows) and a dialog's stay theirs.
-  if (target?.closest?.(".map, dialog")) return null;
+  // The map's own keys (I, the arrows) and a dialog's stay theirs; a popup sheet (Sidebar.tsx SheetFrame) is the
+  // list's own sheet, a <dialog> since the popups, so its letters still pick.
+  if (target?.closest?.(".map, dialog:not(.popup-sheet)")) return null;
   if (!/^[a-zA-Z]$/.test(event.key)) return null;
   const index = event.key.toUpperCase().charCodeAt(0) - 65;
   return index < count ? index : null;

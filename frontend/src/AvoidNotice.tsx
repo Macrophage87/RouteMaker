@@ -16,6 +16,7 @@ import type { RouteResponse } from "./lib/api.ts";
 import { AVOID_BACK, AVOID_SHOWING_AROUND, AVOID_SYMBOL, avoidLine, avoidNoticeFor, avoidOfferShort } from "./lib/avoidJunctions.ts";
 import { candidateRoute } from "./lib/candidates.ts";
 import { Icon } from "./Icon.tsx";
+import { t } from "./lib/i18n.ts";
 
 interface Props {
   /** The planner's answer, with its routes to choose from and its way round. */
@@ -58,7 +59,7 @@ export function AvoidNotice({ answer, choice, around, onAround }: Props) {
           </button>
         )}
         <button type="button" className="link alert-details-toggle" aria-expanded={open} aria-controls={`${id}-full`} onClick={() => setOpen(!open)}>
-          Details
+          {t("Details")}
         </button>
       </div>
       {offer && (

@@ -31,6 +31,8 @@ import {
   AVOID_INK,
   AVOID_MIN_WIDTH,
   CHART_TYPE,
+  CORKER_METHOD,
+  HOLD_PROPOSAL,
   FLOW_BANDS,
   FLOW_GUIDES,
   GRADE_BANDS,
@@ -57,7 +59,8 @@ import {
   linear,
   lonLatAt,
   massReadings,
-  massSummaries,
+  massLeads,
+  guideLabelPlaces,
   needLabelPlace,
   placeCrossings,
   positionAfterKey,
@@ -69,6 +72,7 @@ import {
   type RideNeed,
 } from "./lib/profileChart.ts";
 import { RIDE_SIZE_DEFAULT } from "./lib/dials.ts";
+import { t } from "./lib/i18n.ts";
 import { formatSpeed } from "./lib/format.ts";
 import { rideSizeWords } from "./lib/dialsPanel.ts";
 import { AvoidPattern, CrossingMarker, FlowPatterns, GradePatterns, JunctionKey, LEFT, RIGHT, Tables, WIDTH, feet, metres } from "./chartParts.tsx";
@@ -108,7 +112,7 @@ export function MassRideCharts({
   // What a screen reader hears: the keyboard's position only (a11y S3).
   const spoken = useMemo(() => massReadings(route, profile, load, at ?? 0, rideSize), [route, profile, load, at, rideSize]);
   const spokenM = useMemo(() => readingAt(route, profile, at ?? 0, "mass").m, [route, profile, at]);
-  const summaries = useMemo(() => massSummaries(route, profile, load, rideSize), [route, profile, load, rideSize]);
+  const summaries = useMemo(() => massLeads(route, profile, load, rideSize), [route, profile, load, rideSize]);
   const targets = useMemo(() => jumpTargets(profile), [profile]);
   const heard = useRef(onScrub);
   heard.current = onScrub;
@@ -137,7 +141,13 @@ export function MassRideCharts({
   };
   const keys =
     "Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift+C go to the next and previous climb, I and Shift+I to the next and previous intersection. The three charts share one position.";
-  const prompt = "Move along the chart, or use the arrow keys, to read the route at a point.";
+  // A touch screen drags; a keyboard's help is said with each chart (pc-keys) and shown where there is a mouse (P6).
+  const prompt = (
+    <>
+      <span className="pc-prompt-touch">{t("Drag along the chart to read the route at a point.")}</span>
+      <span className="pc-prompt-pointer">{t("Move along the chart, or use the arrow keys, to read the route at a point.")}</span>
+    </>
+  );
 
   const slider = (key: MassChartKey, name: string, height: number, body: ReactNode, defs: ReactNode) => (
     <div
@@ -199,12 +209,16 @@ export function MassRideCharts({
           <h4 className="pc-chart-heading" id={`${uid}-${c.key}-h`}>
             {c.heading}
           </h4>
-          <p className="pc-summary">{summaries[c.key]}</p>
+          {/* One sentence on screen; the rest of the summary for a screen reader, as the picture is hidden from one (P6). */}
+          <p className="pc-summary">
+            {summaries[c.key].lead}
+            {summaries[c.key].more && <span className="visually-hidden"> {summaries[c.key].more}</span>}
+          </p>
           {charts[c.key].picture}
           <p className="pc-readout" aria-hidden="true">
             {active !== null ? shown[c.key] : c.key === "riders" ? prompt : ""}
           </p>
-          <ul className="pc-legend" aria-label={`${c.heading} key`}>
+          <ul className="pc-legend" aria-label={t("{chart} key", { chart: c.heading })}>
             {charts[c.key].legend}
           </ul>
         </div>
@@ -214,13 +228,16 @@ export function MassRideCharts({
         {keys}
       </p>
       <details className="pc-source-fold">
-        <summary>How these are worked out</summary>
+        <summary>{t("How these are worked out")}</summary>
         <p className="hint pc-source">
-          Riders per minute: estimated from road widths (in DC, DC Open Data, Roadway Block, CC BY 4.0, adapted; elsewhere OpenStreetMap) and DC Bike Party counts; indicative (level roads about ±25%; hill adjustment not yet checked). Dashed line: the riders a minute the ride size needs for the group to pass a junction within {RIDE_HOLD_MINUTES} minutes (a proposal). Corker load: the major intersections that cross or join an LTS 3 or worse road, one corker for each approach lane of that road, or one an approach at a traffic signal (2 approaches, 1 on a one-way road; 1 lane where not known), held from when the group's head reaches one until its tail passes; the group's length is the ride size over the riders a road this wide carries at cruise{profile.flow?.cruise_pace_ms ? ` (${formatSpeed(profile.flow.cruise_pace_ms * 3.6)})` : ""}, read at each point. Elevation: USGS 3DEP.
+          {t("Riders per minute: estimated from road widths (in DC, DC Open Data, Roadway Block, CC BY 4.0, adapted; elsewhere OpenStreetMap) and DC Bike Party counts; indicative (level roads about ±25%; hill adjustment not yet checked). Dashed line: the riders a minute the ride size needs for the group to pass a junction within {minutes} minutes.", { minutes: RIDE_HOLD_MINUTES })}{" "}
+          {HOLD_PROPOSAL}{" "}
+          {t("Corker load: the major intersections that cross or join an LTS 3 or worse road, one corker for each approach lane of that road, or one an approach at a traffic signal (2 approaches, 1 on a one-way road; 1 lane where not known), held from when the group's head reaches one until its tail passes; the group's length is the ride size over the riders a road this wide carries at cruise{pace}, read at each point.", { pace: profile.flow?.cruise_pace_ms ? ` (${formatSpeed(profile.flow.cruise_pace_ms * 3.6)})` : "" })}{" "}
+          {CORKER_METHOD} {t("Elevation: USGS 3DEP.")}
         </p>
       </details>
       <details className="pc-table-fold">
-        <summary>Climbs, bottlenecks and intersections as tables</summary>
+        <summary>{t("Climbs, bottlenecks and intersections as tables")}</summary>
         <Tables profile={profile} kind="mass" spans={route.stress_spans} total={total} load={load} />
       </details>
     </div>
@@ -279,15 +296,19 @@ function ridersChart({
   const narrowestY = narrowest ? (narrowest.y - 14 >= L.top + 9 ? narrowest.y - 14 : narrowest.y + 13) : 0;
   const narrowestX = narrowest ? (narrowest.anchor === "start" ? LEFT : narrowest.anchor === "end" ? RIGHT : narrowest.x) : 0;
   const guides = FLOW_GUIDES.filter((g) => g.at < top);
-  // The requirement's words go where they clear the guides' figures and the narrowest point's.
+  // The guides' figures, moved left where two lines run close (lib/profileChart.ts guideLabelPlaces).
+  const guideAt = new Map(guideLabelPlaces(guides, y, RIGHT).map((p) => [p.at, p]));
+  // The requirement's words go where they clear the guides' figures, the narrowest point's words and its caret.
   const needText = line ? `${line.perMin} needed for ${line.riders.toLocaleString("en-US")} riders` : "";
   const needPlace = line
     ? needLabelPlace(
         needText,
         y(line.perMin) - 3,
         [
-          ...guides.map((g) => ({ x0: RIGHT - String(g.at).length * 6.2 - 11, x1: RIGHT, y: y(g.at) - 2 })),
-          ...(narrowest ? [labelBox(narrowest.label, narrowestX, narrowestY, narrowest.anchor)] : []),
+          ...[...guideAt.values()].map((p) => ({ x0: p.swatchX, x1: p.x, y: p.y })),
+          ...(narrowest
+            ? [labelBox(narrowest.label, narrowestX, narrowestY, narrowest.anchor), { x0: narrowest.x - 6, x1: narrowest.x + 6, y: narrowest.y - 2 }]
+            : []),
         ],
         LEFT,
         RIGHT,
@@ -303,10 +324,10 @@ function ridersChart({
         0
       </text>
       <text className="pc-axis-text" x={2} y={(L.top + L.bottom) / 2 - 2}>
-        riders
+        {t("riders")}
       </text>
       <text className="pc-axis-text" x={2} y={(L.top + L.bottom) / 2 + 10}>
-        /min
+        {t("/min")}
       </text>
       <line className="pc-axis" x1={LEFT} y1={L.bottom} x2={RIGHT} y2={L.bottom} />
       {flow.map((shape, i) => (
@@ -333,15 +354,18 @@ function ridersChart({
       })}
       <path className="pc-flow-edge" d={edge} fill="none" />
       {guides.map((g) => {
-        const label = String(g.at);
-        const textW = label.length * 6.2;
+        const place = guideAt.get(g.at);
         return (
           <g key={g.at}>
             <line className={`pc-guide pc-guide-${g.band}`} x1={LEFT} y1={y(g.at)} x2={RIGHT} y2={y(g.at)} />
-            <rect className="pc-guide-swatch" x={RIGHT - textW - 11} y={y(g.at) - 8} width={8} height={5} fill={g.color} />
-            <text x={RIGHT} y={y(g.at) - 2} className="pc-guide-text" textAnchor="end">
-              {label}
-            </text>
+            {place && (
+              <>
+                <rect className="pc-guide-swatch" x={place.swatchX} y={place.y - 6} width={8} height={5} fill={g.color} />
+                <text x={place.x} y={place.y} className="pc-guide-text" textAnchor="end">
+                  {String(g.at)}
+                </text>
+              </>
+            )}
           </g>
         );
       })}
@@ -350,7 +374,7 @@ function ridersChart({
         <g className="pc-need">
           <line className="pc-need-casing" x1={LEFT} y1={y(line.perMin)} x2={RIGHT} y2={y(line.perMin)} />
           <line className="pc-need-line" x1={LEFT} y1={y(line.perMin)} x2={RIGHT} y2={y(line.perMin)} />
-          <text className="pc-need-text" x={needPlace?.x ?? LEFT + 2} y={y(line.perMin) - 3} textAnchor={needPlace?.anchor ?? "start"}>
+          <text className="pc-need-text" x={needPlace?.x ?? LEFT + 2} y={needPlace?.y ?? y(line.perMin) - 3} textAnchor={needPlace?.anchor ?? "start"}>
             {needText}
           </text>
         </g>
@@ -390,7 +414,7 @@ function ridersChart({
             <rect width="14" height="10" fill={`url(#${uid}-avoid)`} />
             <rect x="0.5" y="0.5" width="13" height="9" fill="none" stroke={AVOID_INK} strokeWidth="1" />
           </svg>
-          Marked Avoid (A where narrow): no capacity given
+          {t("Marked Avoid (A where narrow): no capacity given")}
         </li>
       )}
       {line && (
@@ -399,7 +423,7 @@ function ridersChart({
             <path d="M0 5H14" className="pc-need-casing" />
             <path d="M0 5H14" className="pc-need-line" />
           </svg>
-          Dashed line (proposed): about {line.perMin} a minute, what {line.riders.toLocaleString("en-US")} riders need to pass a junction within {RIDE_HOLD_MINUTES} minutes
+          {t("Dashed line (proposed): about {count} a minute, what {riders} riders need to pass a junction within {minutes} minutes", { count: line.perMin, riders: line.riders.toLocaleString("en-US"), minutes: RIDE_HOLD_MINUTES })}
         </li>
       )}
       {narrowest && (
@@ -407,7 +431,7 @@ function ridersChart({
           <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M3 5H21L12 20Z" className="pc-narrowest-key" />
           </svg>
-          Narrowest with the hills (downward triangle)
+          {t("Narrowest with the hills (downward triangle)")}
         </li>
       )}
     </>
@@ -449,10 +473,10 @@ function corkerChart({
       <text className="pc-axis-text" x={2} y={L.top + 4}>
         <tspan x={2}>{top}</tspan>
         <tspan x={2} dy={CHART_TYPE}>
-          corkers
+          {t("corkers")}
         </tspan>
         <tspan x={2} dy={CHART_TYPE}>
-          at once
+          {t("at once")}
         </tspan>
       </text>
       <text className="pc-axis-text" x={2} y={L.bottom}>
@@ -504,7 +528,7 @@ function corkerChart({
     </pattern>
   );
   const legend = !load ? (
-    <li>{profile.crossings ? "The group's length is not known for this answer" : "Intersections were not checked"}, so there is no corker load to draw</li>
+    <li>{profile.crossings ? t("The group's length is not known for this answer, so there is no corker load to draw") : t("Intersections were not checked, so there is no corker load to draw")}</li>
   ) : (
     <>
       <li>
@@ -512,30 +536,30 @@ function corkerChart({
           <path d="M0 10V6H5V2H10V6H14V10Z" className="pc-corker-area" />
           <path d="M0 6H5V2H10V6H14" className="pc-corker-line" fill="none" />
         </svg>
-        Corkers held at once with the group's head at each point ({rideSizeWords(load.riders)})
+        {t("Corkers held at once with the group's head at each point ({size})", { size: rideSizeWords(load.riders) })}
       </li>
       <li>
         <svg width="14" height="10" viewBox="0 0 14 10" aria-hidden="true">
           <path d="M0 5H14" className="pc-corker-half" />
         </svg>
-        Dotted line: {corkerTop(load) / 2} corkers at once, half the chart's height
+        {t("Dotted line: {count} corkers at once, half the chart's height", { count: corkerTop(load) / 2 })}
       </li>
-      {load.partial && <li>Only flagged junctions were found, so the load may be low</li>}
+      {load.partial && <li>{t("Only flagged junctions were found, so the load may be low")}</li>}
       <li>
         <svg width="14" height="10" viewBox="0 0 14 10" aria-hidden="true">
           <path d="M7 0V10" className="pc-tick pc-corker-tick" />
         </svg>
-        Tick: a junction needing corkers
+        {t("Tick: a junction needing corkers")}
       </li>
       {crossings.length > 0 && <JunctionKey />}
-      {noTick && <li>A marker with no tick: no corkers needed</li>}
+      {noTick && <li>{t("A marker with no tick: no corkers needed")}</li>}
       {unchecked.length > 0 && (
         <li>
           <svg width="14" height="10" aria-hidden="true">
             <rect width="14" height="10" className="pc-unchecked-fill" />
             <rect width="14" height="10" fill={`url(#${uid}-unchecked)`} />
           </svg>
-          Hatched grey: not checked for intersections (? where narrow)
+          {t("Hatched grey: not checked for intersections (? where narrow)")}
         </li>
       )}
     </>
