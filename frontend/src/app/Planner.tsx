@@ -53,7 +53,7 @@ export interface PointsSectionProps {
   locating: boolean;
   hereInPlan: boolean;
   here: Fix | null;
-  useMyLocation: (choice?: PlaceChoice) => Promise<void>;
+  locateMe: (choice?: PlaceChoice) => Promise<void>;
   loop: LoopView | null;
   loopHintId: string;
   commitDials: (next: Dials) => void;
@@ -116,7 +116,7 @@ function HintLines({ lines }: { lines: readonly string[] }) {
 }
 
 export function PointsSection(props: PointsSectionProps) {
-  const { pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials, dials, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, preset, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, historyHere, undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive, tips, setTips, tipsId } = props;
+  const { pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, locateMe, loop, loopHintId, commitDials, dials, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, preset, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, historyHere, undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive, tips, setTips, tipsId } = props;
   // A finger as the main pointer: the Info's tips say tap and press and hold, not click (P8).
   const touch = looksLikePhone();
   return (
@@ -223,7 +223,7 @@ export function PointsSection(props: PointsSectionProps) {
         locateReady={locateReady}
         locating={locating}
         locateNote={hereInPlan && here ? approximateHint(here.accuracyM) : ""}
-        useMyLocation={useMyLocation}
+        locateMe={locateMe}
         accessMode={accessMode}
         namer={namer}
         located={located}
@@ -269,7 +269,7 @@ type PointBoxesProps = Pick<
   | "pickPlace"
   | "locateReady"
   | "locating"
-  | "useMyLocation"
+  | "locateMe"
   | "accessMode"
   | "namer"
   | "located"
@@ -292,7 +292,7 @@ type PointBoxesProps = Pick<
  * Start / Destination / Stop choice. It keeps which point a Change opened a box for; App keeps the plan.
  */
 function PointBoxes(props: PointBoxesProps) {
-  const { pointsSearchRef, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, locateNote, useMyLocation, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, orderShown, bestOrder, orderFocused, ordering } = props;
+  const { pointsSearchRef, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, locateNote, locateMe, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, orderShown, bestOrder, orderFocused, ordering } = props;
   // Each stop's grip (lib/pointMover.ts): drag, the arrows, or a press for Up and Down. Only the stops move, as with
   // Best order: the start and the end stay, and a via point goes with the stop it leads to (App.tsx reorderPoint).
   const slots = namePoints(points, VIA_MARKS.isVia, loopVias).flatMap((n, i) => (n.role === "stop" ? [i] : []));
@@ -370,7 +370,7 @@ function PointBoxes(props: PointBoxesProps) {
         onLocate: (choice) => {
           setChanging(null);
           afterPick.current = variant;
-          void useMyLocation(choice);
+          void locateMe(choice);
         },
       }}
     />

@@ -180,7 +180,7 @@ test("an empty plan has Start at current location in Route's place, and From kee
   // Why Route is unavailable is said, not shown (Stephen 2026-10-20: simpler); the button is Plan's bar's (P10).
   assert.match(panel, /<p id=\{routeWhy\} className="visually-hidden plan-route-state">/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /\? \{ onLocate: \(\) => void useMyLocation\("start"\), busy: locating, unavailable: locateReady\.available \? null : locateReady\.reason \}/);
+  assert.match(app, /\? \{ onLocate: \(\) => void locateMe\("start"\), busy: locating, unavailable: locateReady\.available \? null : locateReady\.reason \}/);
   const planner = readFileSync(new URL("../app/Planner.tsx", import.meta.url), "utf8");
   assert.match(planner, /listOnly: variant === "add" \|\| \(variant === "from" && points\.length === 0\),/);
 });

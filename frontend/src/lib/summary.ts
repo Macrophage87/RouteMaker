@@ -306,11 +306,13 @@ export function announceRoute(route: RouteResponse, points: readonly LonLat[] = 
  * where the rider put it. Shown in the route view and said with the route (REBUILD-BUNDLE spec review S4).
  * "End: This point is inside the National Zoo, ... The route goes to the racks." Null where none moved.
  */
-export function movedPointsNote(route: Pick<RouteResponse, "moved_points">, count = 0): string | null {
-  const moved = route.moved_points ?? [];
-  if (moved.length === 0) return null;
-  const n = Math.max(count, ...moved.map((m) => m.index + 1));
-  return moved.map((m) => `${pointName(m.index, n)}: ${m.note}`).join(" ");
+export function movedPointsNote(route: Pick<RouteResponse, "moved_points" | "point_notes">, count = 0): string | null {
+  // With them, the notes on a stop or the end (the API's `point_notes`; the owner, 2026-10-29): "End: This end point
+  // is not typically open to the public, make sure you're authorized to go here." In point order.
+  const noted = [...(route.moved_points ?? []), ...(route.point_notes ?? [])].sort((a, b) => a.index - b.index);
+  if (noted.length === 0) return null;
+  const n = Math.max(count, ...noted.map((m) => m.index + 1));
+  return noted.map((m) => `${pointName(m.index, n)}: ${m.note}`).join(" ");
 }
 
 /**
