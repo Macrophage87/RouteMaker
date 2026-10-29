@@ -4652,13 +4652,19 @@ docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhal
 docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
 ```
 
-Nothing in the rebuild does this, and there is no check that notices it has not
-been done: the symptom is a deployment whose routes disagree with its own
-segment table, which reads like a conflation bug rather than a missed restart.
-Run it after every successful rebuild and after a rollback, which moves the same
-symlink back. Then run the post-swap bicycle-closure probes ("Bicycle closures
-in the tiles", step 3): their `locate` run is also the quickest check that each
-router is serving the new build.
+Nothing in the rebuild does this. The symptom of a missed restart is a
+deployment whose routes disagree with its own segment table, which reads like a
+conflation bug, so `check_operations` checks for it: an hour after a
+`valhalla_upstream` row changed, it asks each router's `/status` for the
+`tileset_last_modified` of the tiles it loaded, compares it with the
+modification time of that variant's `current/tiles.tar`, and prints
+`router: <variant> is not serving build <id> ...` (exit 1) for a router that
+loaded another file. A router that does not answer, or a container that cannot
+see the tiles, is left to the other checks. Run the restart after every
+successful rebuild and after a rollback, which moves the same symlink back.
+Then run the post-swap bicycle-closure probes ("Bicycle closures in the tiles",
+step 3): their `locate` run is also the quickest check that each router is
+serving the new build.
 
 The restart is a few seconds of 502s per variant, taken one at a time. Starting
 the new containers against the new build before stopping the old ones — the

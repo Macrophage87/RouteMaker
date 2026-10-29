@@ -1,10 +1,16 @@
 """Swapping a freshly built segment schema into place.
 
 Ordering matters and is the opposite of the obvious one. The Valhalla upstreams
-are repointed *first* and the schema renamed *second*, so the inconsistency
-window is a live segment table describing the older graph rather than a graph
-nobody is serving. Reconciliation tolerates that direction; it does not tolerate
-the other.
+are repointed *first* and the schema renamed *second*, so that during the swap
+itself the window is a live segment table describing the older graph rather
+than a graph nobody is serving. Reconciliation tolerates that direction; it does
+not tolerate the other.
+
+After the swap the window runs the other way, and for longer: the new table is
+live at once, but valhalla_service does not reload tiles, so the routers serve
+the older graph until they are restarted (docs/OPERATIONS.md, "After a rebuild:
+restart the routers"). `check_operations` reports a router still on an older
+build an hour after the swap.
 
 The rename is three steps, not one: `live` has to move out of the way before
 `staging` can take the name.
