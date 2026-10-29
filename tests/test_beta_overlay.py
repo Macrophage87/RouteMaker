@@ -1784,6 +1784,9 @@ def test_receive_data_installs_the_frontend_and_refuses_a_system_data_root(tmp_p
     assert (data / "frontend" / "index.html").read_text() == "<html>"
     assert (data / "frontend" / "assets" / "app-abc.js").read_text() == "js"
     assert not (data / "frontend" / ".index.html.new").exists()
+    # No api running here: it says the line that writes the routers' settings rows.
+    said = done.stdout + done.stderr
+    assert "exec -T api ./manage.py sync_upstreams" in said
 
     bad_env = tmp_path / "bad.env"
     bad_env.write_text("DATA_ROOT=/data\n")

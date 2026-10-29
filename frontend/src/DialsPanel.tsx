@@ -14,9 +14,9 @@
  * same words again (a11y review of integrate-2). The note under it is its
  * description.
  */
-import { SettingRow, SettingSelect } from "./SettingRow.tsx";
+import { InfoButton, SettingRow, SettingSelect } from "./SettingRow.tsx";
 import { SPEED_HINT, SPEED_LABEL, speedOptions, takesRiderSpeed, type RidingSpeedControl } from "./lib/ridingSpeed.ts";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { PresetId } from "./lib/presets.ts";
 import { BIKESHARE_HILLS, RIDE_SIZE_DEFAULT, WHENS, fitRideSize, offersBike, rideSizeOf, type Bike, type Dials, type When } from "./lib/dials.ts";
 import { BIKES } from "./lib/bikeshare.ts";
@@ -34,6 +34,7 @@ import {
 import { RIDE_SIZE_LABEL, panelView, parseTarget, type SliderView } from "./lib/dialsPanel.ts";
 import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
 import { t } from "./lib/i18n.ts";
+import { sentences } from "./lib/sentences.ts";
 
 interface Props {
   preset: PresetId;
@@ -47,6 +48,10 @@ interface Props {
 
 function Slider(props: {
   label: string;
+  /** Names the slider for code that goes to it (Go's climb figure opens Hills, P3). */
+  dial?: string;
+  /** What its (i) is about, read in the button's name ("About traffic"). */
+  about: string;
   view: SliderView;
   value: number;
   onDraft: (value: number) => void;
@@ -56,16 +61,24 @@ function Slider(props: {
   const id = useId();
   const nameId = `${id}-name`;
   const noteId = `${id}-note`;
+  const saidId = `${id}-said`;
+  const infoId = `${id}-info`;
+  const [info, setInfo] = useState(false);
   const { view } = props;
   const [low, middle, high] = view.ends;
+  // P10: one (i) per row, where there is more than the line shows: the note in full, then the detail.
+  const more = Boolean(view.noteSaid || view.how);
   return (
-    <div className="dial">
-      <label htmlFor={id} className="dial-label">
-        <span id={nameId}>{props.label}</span>
-        <span className="dial-now" aria-hidden="true">
-          {view.words}
-        </span>
-      </label>
+    <div className="dial" data-dial={props.dial}>
+      <div className="dial-head">
+        <label htmlFor={id} className="dial-label">
+          <span id={nameId}>{props.label}</span>
+          <span className="dial-now" aria-hidden="true">
+            {view.words}
+          </span>
+        </label>
+        {more && <InfoButton open={info} onToggle={() => setInfo(!info)} controls={infoId} about={props.about} />}
+      </div>
       <input
         id={id}
         type="range"
@@ -75,7 +88,7 @@ function Slider(props: {
         value={view.scale ? view.scale.toSlider(props.value) : props.value}
         aria-labelledby={nameId}
         aria-valuetext={view.words}
-        aria-describedby={view.note ? noteId : undefined}
+        aria-describedby={view.noteSaid ? saidId : view.note ? noteId : undefined}
         disabled={view.disabled}
         onChange={(event) => {
           const position = Number(event.target.value);
@@ -90,27 +103,48 @@ function Slider(props: {
         <span>{middle}</span>
         <span>{high}</span>
       </div>
+      {/* The short line is shown; where it is a short form, the full sentence (behind the (i)) is the one read. */}
       {view.note && (
-        <p className="hint" id={noteId}>
+        <p className="hint" id={noteId} aria-hidden={view.noteSaid ? "true" : undefined}>
           {view.note}
         </p>
       )}
-      {view.how && <HowThisWorks text={view.how} />}
+      {more && (
+        <DialInfo id={infoId} open={info}>
+          {view.noteSaid && <Bullets id={saidId} text={view.noteSaid} />}
+          {view.how && <Bullets text={view.how} />}
+        </DialInfo>
+      )}
     </div>
   );
 }
 
-/** The detail a description would be too long for (the a11y review's N1): read when opened, not on every focus. */
-function HowThisWorks({ text, about }: { text: string; about?: string }) {
-  // `about`: a suffix read but not shown, so this one does not sound like the others in a list of
-  // controls (the a11y review of wip/trails-off, N4).
+/**
+ * A note behind an (i) as short bullets, one sentence each (P8), or one line where it is one sentence. The words
+ * are the note's own; `id` is what a description points at, so a screen reader still hears the note in full.
+ */
+function Bullets({ text, id }: { text: string; id?: string }) {
+  const lines = sentences(text);
+  if (lines.length < 2) return <p id={id}>{text}</p>;
   return (
-    <details className="how">
-      <summary>
-        {t("How this works")}{about && <span className="visually-hidden">: {about}</span>}
-      </summary>
-      <p className="hint">{text}</p>
-    </details>
+    <ul id={id} className="info-bullets">
+      {lines.map((line) => (
+        <li key={line}>{line}</li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * What a row's (i) opens (P10: one (i) per row, in Settings' style, in place of each detail disclosure): the
+ * detail a description would be too long for (the a11y review's N1), read when opened, not on every focus. It
+ * stays in the page while hidden, so a description that points into it is still read.
+ */
+function DialInfo({ id, open, children }: { id: string; open: boolean; children: ReactNode }) {
+  return (
+    <div id={id} className="hint setting-info dial-info" hidden={!open}>
+      {children}
+    </div>
   );
 }
 
@@ -132,12 +166,16 @@ function NumberDial(props: {
   rule: string;
   hint: string;
   how?: string;
+  /** What its (i) is about, read in the button's name. */
+  about: string;
   parse: (text: string) => number | undefined | null;
   onCommit: (value: number | undefined) => void;
 }) {
   const id = useId();
   const hintId = `${id}-hint`;
   const ruleId = `${id}-rule`;
+  const infoId = `${id}-info`;
+  const [info, setInfo] = useState(false);
   const [text, setText] = useState(props.value);
   const [bad, setBad] = useState(0);
   useEffect(() => {
@@ -155,9 +193,12 @@ function NumberDial(props: {
   };
   return (
     <div className="dial">
-      <label htmlFor={id} className="dial-label">
-        <span>{props.label}</span>
-      </label>
+      <div className="dial-head">
+        <label htmlFor={id} className="dial-label">
+          <span>{props.label}</span>
+        </label>
+        {props.how && <InfoButton open={info} onToggle={() => setInfo(!info)} controls={infoId} about={props.about} />}
+      </div>
       <input
         id={id}
         type="text"
@@ -181,12 +222,16 @@ function NumberDial(props: {
       <p className={bad ? "notice dial-rule" : "dial-rule"} id={ruleId} aria-live="assertive">
         {bad ? `${props.rule}${bad % 2 === 0 ? " " : ""}` : ""}
       </p>
-      {props.how && <HowThisWorks text={props.how} />}
+      {props.how && (
+        <DialInfo id={infoId} open={info}>
+          <Bullets text={props.how} />
+        </DialInfo>
+      )}
     </div>
   );
 }
 
-/** What When changes, in full, behind its How this works. */
+/** What When changes, in full, behind its (i). */
 const WHEN_HOW =
   t("On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.");
 
@@ -236,6 +281,11 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
   };
   const view = panelView(preset, dials, draft);
   const trailsOffHintId = useId();
+  const whenInfoId = useId();
+  const trailsOffInfoId = useId();
+  // Each row's (i) opens and closes on its own, as Settings' rows do.
+  const [whenInfo, setWhenInfo] = useState(false);
+  const [trailsOffInfo, setTrailsOffInfo] = useState(false);
   // What lowering the hardest trail level did to the preferred one, said politely (never a silent clamp),
   // with the ride type and levels it was said of: a change from outside the panel (a link, a ride type, a
   // reset) clears it, so it never speaks of levels no longer shown.
@@ -349,11 +399,12 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
       )}
       {view.assistNote && (
         <p className="hint">
-          {t("Follows e-bike rules and plans at a little more speed. Hills still count: a loaded cargo bike's motor rarely makes a climb easy. With a strong motor, move the hills slider toward Fastest yourself.")}
+          {t("Follows e-bike rules and plans at a little more speed. Hills still count; with a strong motor, move the hills slider toward Fastest yourself.")}
         </p>
       )}
       <Slider
         label={t("Traffic")}
+        about="traffic"
         view={view.traffic}
         value={draft.stress}
         onDraft={(stress) => setDraft({ ...draft, stress })}
@@ -366,6 +417,8 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
       )}
       <Slider
         label={t("Hills")}
+        dial="hills"
+        about="hills"
         view={view.hills}
         value={draft.hills}
         onDraft={(hills) => setDraft({ ...draft, hills })}
@@ -389,6 +442,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
       {view.rideSize && (
         <Slider
           label={RIDE_SIZE_LABEL}
+          about="ride size"
           view={view.rideSize}
           value={rideSizeOf(draft)}
           onDraft={(riders) => setDraft(withRideSize(draft, riders))}
@@ -420,9 +474,14 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
             {option.label}
           </label>
         ))}
-        {/* One line, the rest behind How this works (Plan streamline, Stephen 2026-10-17). */}
-        <p className="hint">{t("Weekend car-free roads, such as Beach Drive and Sligo Creek Parkway, count as paths.")}</p>
-        <HowThisWorks text={WHEN_HOW} about={t("when")} />
+        {/* One line, the rest behind its (i) (Plan streamline, Stephen 2026-10-17; P10, one (i) per row). */}
+        <div className="dial-head">
+          <p className="hint">{t("Weekend car-free roads, such as Beach Drive and Sligo Creek Parkway, count as paths.")}</p>
+          <InfoButton open={whenInfo} onToggle={() => setWhenInfo(!whenInfo)} controls={whenInfoId} about="when" />
+        </div>
+        <DialInfo id={whenInfoId} open={whenInfo}>
+          <Bullets text={WHEN_HOW} />
+        </DialInfo>
       </fieldset>
       {view.target && (
         <NumberDial
@@ -431,31 +490,37 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
           rule={view.target.rule}
           hint={view.target.hint}
           how={view.target.how}
+          about="target distance"
           parse={parseTarget}
           onCommit={(targetDistanceM) => onCommit(withField(dials, "targetDistanceM", targetDistanceM))}
         />
       )}
       {/* The rider and bike weight is in Settings (the owner, 2026-10-18: "somewhere hidden, and probably belongs in settings"). */}
       <div className="dial trails-off">
-        <label className="toggle">
-          {/* aria-disabled, not disabled, when always on (Mass Ride): it stays in the Tab order with its
-              reason in its description, and a press changes nothing (as the loop box does). */}
-          <input
-            type="checkbox"
-            checked={view.trailsOff.checked}
-            aria-disabled={view.trailsOff.locked || undefined}
-            aria-describedby={trailsOffHintId}
-            onChange={(event) => {
-              if (view.trailsOff.locked) return;
-              onCommit({ ...dials, trailsOff: event.target.checked });
-            }}
-          />
-          {view.trailsOff.label}
-        </label>
+        <div className="dial-head">
+          <label className="toggle">
+            {/* aria-disabled, not disabled, when always on (Mass Ride): it stays in the Tab order with its
+                reason in its description, and a press changes nothing (as the loop box does). */}
+            <input
+              type="checkbox"
+              checked={view.trailsOff.checked}
+              aria-disabled={view.trailsOff.locked || undefined}
+              aria-describedby={trailsOffHintId}
+              onChange={(event) => {
+                if (view.trailsOff.locked) return;
+                onCommit({ ...dials, trailsOff: event.target.checked });
+              }}
+            />
+            {view.trailsOff.label}
+          </label>
+          <InfoButton open={trailsOffInfo} onToggle={() => setTrailsOffInfo(!trailsOffInfo)} controls={trailsOffInfoId} about={view.trailsOff.howAbout} />
+        </div>
         <p className="hint" id={trailsOffHintId}>
           {view.trailsOff.hint}
         </p>
-        <HowThisWorks text={view.trailsOff.how} about={view.trailsOff.howAbout} />
+        <DialInfo id={trailsOffInfoId} open={trailsOffInfo}>
+          <Bullets text={view.trailsOff.how} />
+        </DialInfo>
       </div>
       <label className="toggle">
         <input

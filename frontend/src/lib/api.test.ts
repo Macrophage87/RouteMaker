@@ -9,8 +9,10 @@ import {
   describeError,
   parseRetryAfter,
   requestRoute,
+  routeErrorShown,
   type ErrorKind,
 } from "./api.ts";
+import { OFFLINE_SAID } from "./appWorker.ts";
 
 test("each contract status maps to its own kind", () => {
   const cases: Array<[number, unknown, ErrorKind]> = [
@@ -38,6 +40,33 @@ test("every mapped error has a title and a message to show", () => {
     assert.ok(described.title.length > 0, `status ${status} has no title`);
     assert.ok(described.message.length > 0, `status ${status} has no message`);
   }
+});
+
+test("each error says what to do next, with one Try again where it can help (P11)", () => {
+  // No route: Plan's words, and in Go the destination's name and the one step Go has.
+  const none = describeError(422, { error: "No route joins these points on this preset." }, null);
+  assert.equal(none.message, "No route joins these points. Try moving a point or another ride type.");
+  assert.deepEqual(routeErrorShown(none, null), { title: "No route found", message: none.message, retry: false });
+  assert.deepEqual(routeErrorShown(none, "Safeway"), { title: null, message: "No route to Safeway with this ride type. Try another ride type.", retry: false });
+  // The API's own explanation after its plain refusal is kept, in both.
+  const mass = describeError(422, { error: "No route joins these points on this preset. A Mass Ride routes only on roadways." }, null);
+  assert.equal(mass.message, "No route joins these points. Try moving a point or another ride type. A Mass Ride routes only on roadways.");
+  assert.match(routeErrorShown(mass, "Safeway").message, /^No route to Safeway with this ride type\. Try another ride type\. A Mass Ride routes only on roadways\.$/);
+  // Busy: the title says it once, the message what to do.
+  const busy = describeError(503, { error: "busy" }, null);
+  assert.equal(busy.title, "Planner busy");
+  assert.equal(busy.message, "Try again in a moment.");
+  assert.equal(describeError(503, null, "30").message, "Try again in 30 seconds.");
+  assert.equal(routeErrorShown(busy, "Safeway").retry, true);
+  // A refusal of the points: the next step, and Try again.
+  const bad = describeError(400, { error: "boom" }, null);
+  assert.equal(bad.message, "The planner could not use these points: boom. Try another start or destination.");
+  assert.equal(routeErrorShown(bad, null).retry, true);
+  assert.equal(describeError(400, { error: "point 1 is outside the area this map covers" }, null).message, "One of the points is outside the area this map covers. Move it back inside.");
+  // Offline, the planner out of reach is the one offline message.
+  const lost = { kind: "network" as const, status: 0, title: "Can't reach the planner", message: "The request did not get through." };
+  assert.deepEqual(routeErrorShown(lost, null, true), { title: null, message: OFFLINE_SAID, retry: true });
+  assert.equal(routeErrorShown(lost, null).title, "Can't reach the planner");
 });
 
 test("too long is recognised from the message, not from every 400", () => {

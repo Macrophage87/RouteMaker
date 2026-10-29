@@ -19,7 +19,7 @@ test("the GPX section offers the course formats and devices, labelled, and says 
   assert.match(panel, /useEffect\(\(\) => \{\s*setCourseSaid\(null\);\s*setParts\(null\);\s*\}, \[route, choice\.format, choice\.profile\]\);/);
   // A GPX download says its line too, once saved.
   assert.match(panel, /if \(onDownload\) onDownload\(sayCourse\);/);
-  assert.match(read("../App.tsx"), /downloadGpx\(route, at, routedLoop, federalRoute\);\s*said\?\.\(GPX_SAID_ROUTE\);/);
+  assert.match(read("../App.tsx"), /const made = routeGpxFile\(route, at, routedLoop, federalRoute\);\s*save\(made\.text, made\.fileName, GPX_SAID_ROUTE\);/);
   // The section's hidden heading names what it holds now, not GPX alone.
   assert.match(panel, /<h3 id="gpx-heading" className="visually-hidden">\s*\{t\("Route file"\)\}\s*<\/h3>/);
   // The button names the file it saves.

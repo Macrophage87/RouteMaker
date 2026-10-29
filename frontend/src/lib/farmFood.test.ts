@@ -30,10 +30,12 @@ test("farm stands and markets are read, with their own kinds", () => {
   assert.equal(foodKindText(places[1]), "Market");
 });
 
-test("a stand with no hours says they vary by season; mapped hours are kept", () => {
+test("a stand with no hours says they vary by season; mapped hours are said in words", () => {
   const [stand, market, crab] = parseFood(file)!;
+  // A Sunday, 9 AM on the region's clock (lib/openingHours.ts).
+  const sunday = new Date("2026-10-18T09:00:00-04:00");
   assert.equal(foodHoursText(stand), SEASONAL_HOURS);
-  assert.equal(foodHoursText(market), "Hours as mapped: Su 08:30-13:30.");
+  assert.equal(foodHoursText(market, sunday), "Open now · closes 1:30 PM.");
   assert.equal(foodHoursText(crab), "");
   assert.match(foodText({ place: stand, fromCentreM: 1609.344 }), /Apple Barn\. Farm stand\. .* Hours vary by season\.$/);
 });
@@ -54,8 +56,6 @@ test("the list draws the apple beside a farm stand, hidden from screen readers, 
     createElement(FoodFinder, {
       query: "apple",
       onQuery: () => {},
-      scope: "near",
-      onScope: () => {},
       onSearch: () => {},
       busy: false,
       status: "",
@@ -76,5 +76,6 @@ test("the list draws the apple beside a farm stand, hidden from screen readers, 
 test("the Food sheet has a Farm stands chip with the apple", () => {
   const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
   assert.match(sheets, /"Ice cream", "Farm stands"\] as const/);
-  assert.match(sheets, /<Icon name=\{food === "Farm stands" \? "apple" : "food"\} size=\{16\} \/>/);
+  assert.match(sheets, /\{ "Farm stands": "apple", Grocery: "shop" \}/);
+  assert.match(sheets, /<Icon name=\{FOOD_CHIP_ICON\[food\] \?\? "food"\} size=\{16\} \/>/);
 });

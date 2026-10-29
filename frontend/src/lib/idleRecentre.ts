@@ -11,7 +11,8 @@
  * a map card (a stop, a place, a station, a closure, a climb), the road info, and the side menus (Detour, More, the
  * dock, 311, the riders, Alert), so the map then goes back to the rider. Kept open: a menu with words typed or being
  * typed (a Detour search, Alert's Other, its microphone listening), and anything asking (Alert's Send to everyone?, Already
- * done?, a stop's name, the group's question, Resume). Accessibility mode closes nothing on its own: a screen
+ * done?, a stop's name, Resume). The group's question, asked as the ride starts, closes as its No (the 2026-10-28 audit,
+ * P6: it never stays over the ride's buttons). Accessibility mode closes nothing on its own: a screen
  * reader's reading touches nothing. A menu closed with the focus in it hands the focus to its toggle; a map card, to
  * the map.
  */
@@ -24,10 +25,12 @@ export const IDLE_TOUCH_EVENTS = ["pointerdown", "pointerup", "wheel", "keydown"
 
 /**
  * An open panel during a ride or Roam: a toggle shown expanded within the ride's screen or the group bar, the group's
- * question, or an open dialog.
+ * question, an open dialog, or the map's Help panel shown. MapLibre's compact credits (ours at every width, MapView)
+ * are shown with maplibregl-compact-show; their details element carries `open` while folded to the "i", so `[open]`
+ * there held the map off the rider for good (found 2026-10-28 with a ride's Show on map).
  */
 export const RIDE_PANEL_OPEN =
-  '.ride [aria-expanded="true"], .ride-group [aria-expanded="true"], .ride-consent, dialog[open], .maplibregl-ctrl-attrib[open]';
+  '.ride [aria-expanded="true"], .ride-group [aria-expanded="true"], .ride-consent, dialog[open], .maplibregl-ctrl-attrib.maplibregl-compact-show';
 
 /**
  * The follow camera's zoom at a fix: the ride's own after the screen was left alone (`reset`); kept while following

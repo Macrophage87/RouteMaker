@@ -26,6 +26,7 @@ import { formatDistance, formatFeet } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import { hexToRgb, rasterise, type Raster, type Rgb } from "./stationIcons.ts";
 import { t } from "./i18n.ts";
+import { hoursText } from "./openingHours.ts";
 
 /** "p" drinking water; "n" untreated, to filter or treat first. */
 export type WaterSource = "p" | "n";
@@ -179,7 +180,7 @@ export function waterKindLabel(p: WaterPoint): string {
 }
 
 /** The point's details, each a short sentence: what the map's card and the list say after the kind. */
-export function waterDetails(p: WaterPoint): string[] {
+export function waterDetails(p: WaterPoint, at: Date = new Date()): string[] {
   const out: string[] = [];
   if (p.operator === "Throne") out.push(THRONE_DETAIL);
   if (p.approximate) out.push(APPROXIMATE_DETAIL);
@@ -190,7 +191,8 @@ export function waterDetails(p: WaterPoint): string[] {
   if (p.wheelchair === "limited") out.push(t("Partly wheelchair accessible."));
   if (p.wheelchair === "no") out.push(t("Not wheelchair accessible."));
   if (p.seasonal) out.push(p.seasonal === "yes" ? t("Seasonal.") : t("Seasonal: {when}.", { when: p.seasonal }));
-  if (p.hours) out.push(p.hours === "24/7" ? t("Open 24/7.") : t("Hours: {hours}.", { hours: p.hours }));
+  // The hours in words at `at` ("Open now · closes 10 PM."; lib/openingHours.ts), never the raw tag.
+  if (p.hours) out.push(`${hoursText(p.hours, at)}.`);
   return out;
 }
 
@@ -217,6 +219,25 @@ export const THRONE_DETAIL =
 /** For a point placed from the site's street address (the Throne list's units): the pin is the site, not the door. */
 export const APPROXIMATE_DETAIL =
   t("Approximate location: placed from the site's street address, so the unit may be a block or so from the pin.");
+
+/**
+ * A list's Throne and approximate-pin notes, once under the list and short (the 2026-10-28 audit, P7: "the Throne
+ * restroom paragraph repeats on every Throne entry"); a place's own card keeps the full sentences.
+ */
+export const THRONE_SHORT = t("Open with the Throne app or text THRONE to 202-751-3694.");
+export const APPROXIMATE_SHORT = t("Pin is approximate.");
+
+/** Whether a detail is one of the notes a list says once (THRONE_DETAIL, APPROXIMATE_DETAIL), not on each row. */
+export const sheetNoteDetail = (detail: string): boolean => detail === THRONE_DETAIL || detail === APPROXIMATE_DETAIL;
+
+/** The notes a list says once, for the details of its rows: each with its short words and its full sentence. */
+export function sheetNotes(details: ReadonlyArray<readonly string[]>): Array<{ short: string; full: string }> {
+  const all = details.flat();
+  return [
+    ...(all.includes(THRONE_DETAIL) ? [{ short: THRONE_SHORT, full: THRONE_DETAIL }] : []),
+    ...(all.includes(APPROXIMATE_DETAIL) ? [{ short: APPROXIMATE_SHORT, full: APPROXIMATE_DETAIL }] : []),
+  ];
+}
 
 /** The caution for a unit from the Throne hand list, which is not in OpenStreetMap. */
 export const THRONE_CAUTION = t("From Throne Labs and city sources, not OpenStreetMap: check the Throne app before you count on it.");
@@ -305,9 +326,11 @@ export const ON_ROUTE_M = 15;
  * One line of the list, everything in words:
  * "At 4.2 mi (6.8 km): Drinking water, Mile 4 fountain, 200 ft (61 m) off the route. Bottle filler. Free."
  */
-export function waterAlongText(item: WaterAlong): string {
+export function waterAlongText(item: WaterAlong, listed = false, at: Date = new Date()): string {
   const off = item.offM < ON_ROUTE_M ? t("on the route") : t("{distance} off the route", { distance: formatDistance(item.offM) });
-  return [t("At {distance}: {place}, {off}.", { distance: formatDistance(item.alongM), place: waterTitle(item.point), off }), ...waterDetails(item.point)].join(" ");
+  // In a list (`listed`), a Throne's how-to and an approximate pin are said once under it (sheetNotes), not here.
+  const details = waterDetails(item.point, at).filter((d) => !(listed && sheetNoteDetail(d)));
+  return [t("At {distance}: {place}, {off}.", { distance: formatDistance(item.alongM), place: waterTitle(item.point), off }), ...details].join(" ");
 }
 
 /** The list's count line: "3 along your route: 1 with drinking water, 1 untreated water source, 2 restrooms." */

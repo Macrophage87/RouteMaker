@@ -536,6 +536,9 @@ services:
   photon:
     <<: [*restart, *logging]
     image: docker.io/rtuszik/photon-docker:2.4.0@sha256:21549c60f9e6488fff3217e40429a652c4b445f374800333fe32859e47cec293
+    # -max-reverse-results 10, not 1: a kind-of-place search ("grocery", "bike shop";
+    # core.geocode TAG_SEARCHES) asks /reverse for the nearest few, and 1 capped it to one
+    # store (the owner, 2026-10-28, for the Grocery chip). Naming a point still asks for 1.
     command:
       - sh
       - -c
@@ -546,7 +549,7 @@ services:
         fi
         exec java -Xms1g -Xmx1g -jar /photon/photon.jar serve \
           -listen-ip 0.0.0.0 -data-dir /photon/data \
-          -max-results 10 -max-reverse-results 1 -query-timeout 3
+          -max-results 10 -max-reverse-results 10 -query-timeout 3
     environment:
       INITIAL_DOWNLOAD: "False"
       UPDATE_STRATEGY: "DISABLED"

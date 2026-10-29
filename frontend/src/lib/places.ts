@@ -17,6 +17,7 @@
 import { detourOf, projector, type RouteForDetour } from "./food.ts";
 import { formatDistance, formatExtra, milesFigure } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
+import { hoursText } from "./openingHours.ts";
 
 export type PlaceCategory = "museum" | "historic" | "lighthouse" | "garden" | "viewpoint" | "market" | "zoo" | "nature" | "bridge" | "drink";
 
@@ -145,8 +146,8 @@ export function sightHowFar(result: SightResult): string {
   return formatExtra(d.extraM);
 }
 
-/** One place in words: "Point Light. Lighthouse. +0.4 mi (0.6 km) there and back, at 3.1 mi (5.0 km) on your route. Hours: …" */
-export function sightText(result: SightResult): string {
+/** One place in words: "Point Light. Lighthouse. +0.4 mi (0.6 km) there and back, at 3.1 mi (5.0 km) on your route. Open now · closes 5 PM." */
+export function sightText(result: SightResult, at: Date = new Date()): string {
   const { place, detour } = result;
   const where = detour
     ? sightHowFar(result) === "On your route"
@@ -154,7 +155,7 @@ export function sightText(result: SightResult): string {
       : `${sightHowFar(result)} there and back, turning off at ${formatDistance(detour.alongM)} on your route.`
     : `${sightHowFar(result)}.`;
   const parts = [`${place.name}. ${categoryOf(place).one}.`, where];
-  if (place.hours) parts.push(`Hours as mapped: ${place.hours}.`);
+  if (place.hours) parts.push(`${hoursText(place.hours, at)}.`);
   return parts.join(" ");
 }
 

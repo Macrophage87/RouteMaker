@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import { NO_PHOTO_TEXT, fetchStreetPhoto, makePhotoMemo, photoAlt, type PhotoAnswer, type PhotoPath } from "./lib/streetPhoto.ts";
+import { t } from "./lib/i18n.ts";
 
 /** Every road's photo, asked for once a session (a re-render, the road opened again or its row back in view asks nothing). */
 const PHOTOS = makePhotoMemo();
@@ -40,7 +41,7 @@ export function StreetPhotoView({ title, point, wayId, path = "/api/street-photo
     <figure className="road-info-photo">
       <a href={photo.viewer_url} target="_blank" rel="noopener noreferrer">
         <img src={photo.image_url} alt={photoAlt(title, photo)} width={1024} height={768} loading="lazy" referrerPolicy="no-referrer" />
-        <span className="visually-hidden"> (opens Mapillary in a new tab)</span>
+        <span className="visually-hidden"> {t("(opens Mapillary in a new tab)")}</span>
       </a>
       <figcaption className="hint">
         {photo.date_words}

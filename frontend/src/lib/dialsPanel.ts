@@ -69,6 +69,11 @@ export interface SliderView {
   disabled: boolean;
   /** Its description, under it: kept short (DESCRIPTION_MAX_CHARS) where it can be. */
   note?: string;
+  /**
+   * The note in full, where the line shown is its short form (P10): read as the slider's description and shown
+   * behind the row's (i), so nothing is lost by the shorter line.
+   */
+  noteSaid?: string;
   /** The detail, under a "How this works" disclosure, not read on every step. */
   how?: string;
 }
@@ -207,7 +212,18 @@ export function calmNote(stress: number, _preset?: PresetId): string | undefined
   return t("Calm detour: up to about {rate} of extra riding for every mile of busy road (LTS 3) avoided. Twice that for a heavy-traffic road (LTS 4). Three times that for a road best avoided. The route can be many times the straight-line distance. The route summary says how much longer it is.", { rate: formatPerMile(rate) });
 }
 
-/** The top of the traffic slider's "How this works": the order it weighs things in. */
+/**
+ * The note's line as shown (P10): one short line under the slider. The full sentence (`calmNote`) is read as the
+ * slider's description and shown behind its (i).
+ */
+export function calmNoteShort(stress: number, preset?: PresetId): string | undefined {
+  const full = calmNote(stress, preset);
+  if (full === undefined || stress >= STRESS_MAX) return full;
+  const rate = Math.min(calmRate(stress), worthRatio(stress));
+  return t("Calm detour: up to {rate} extra per busy mile avoided.", { rate: formatPerMile(rate) });
+}
+
+/** The top of the traffic slider's (i): the order it weighs things in. */
 export const CALM_HOW =
   t("First it avoids heavy-traffic roads (LTS 4) and very high stress junctions. Then it avoids busy roads (LTS 3) and higher stress junctions. Then it follows the Hills slider. Then it takes the shorter way. A quiet street counts the same as a trail, except on Trailmaxxing and Cargo with passengers, where low-stress streets (LTS 2) count a little extra. Novice and Nervous treats every road as one step busier and goes no further than {novice} times the usual route. Otherwise it goes no further than {target} times your target distance, or {usual} times the usual route when no target is set.", { novice: NOVICE_CEILING_RATIO, target: TARGET_CEILING_RATIO, usual: DEFAULT_CEILING_RATIO });
 
@@ -226,6 +242,14 @@ export const TOLERATE_CALM_NOTE =
   t("At this Traffic setting the calmest route decides; climbing counts as the time it takes.");
 export const AVOID_NOTE =
   t("Climbs cost the time they take, and grades past this one cost more the steeper and longer they are, as do long steep descents on some ride types. Weighed among a few alternative routes for a start and an end up to {span} apart.", { span: formatRoughDistance(AVOID_MAX_SPAN_M) });
+/** Each hills note's one line as shown (P10); the note in full is read and is behind the row's (i). */
+export const HILLS_NOTE_SHORT: ReadonlyMap<string, string> = new Map([
+  [SEEK_NOTE, t("Looks for climbs, on routes up to half again as long.")],
+  [SEEK_CALM_NOTE, t("Climbs only choose between equally calm routes.")],
+  [TOLERATE_NOTE, t("Climbs up to this grade cost only their time.")],
+  [TOLERATE_CALM_NOTE, t("Calmest route decides; climbs cost their time.")],
+  [AVOID_NOTE, t("Grades past this one cost extra.")],
+]);
 /**
  * The Hills slider's help (Stephen, 2026-10-23): "have the rider estimate the steepest they can climb for several
  * minutes without any labored breating using their lowest gears. If they are metric people then say upper end of
@@ -278,7 +302,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
       words: stressWords(draft.stress),
       ends: [t("Traffic tolerant"), t("Balanced"), t("Calm at any cost")],
       disabled: locked,
-      note: locked ? MASS_RIDE_TRAFFIC_NOTE : calmNote(draft.stress, preset),
+      ...shortNote(locked ? MASS_RIDE_TRAFFIC_NOTE : calmNote(draft.stress, preset), locked ? undefined : calmNoteShort(draft.stress, preset)),
       ...(!locked && draft.stress >= STRESS_MAX ? { how: CALM_HOW } : {}),
     },
     warning: warnsTrafficTolerant(preset, draft.stress) ? TRAFFIC_TOLERANT_WARNING : null,
@@ -289,7 +313,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
           words: hillsWords(draft.hills, climbs),
           ends: [t("Avoid hills"), t("Fastest"), t("Seek hills")],
           disabled: false,
-          note: hillsNote,
+          ...shortNote(hillsNote, hillsNote && HILLS_NOTE_SHORT.get(hillsNote)),
           how: HILLS_HOW,
         }
       : {
@@ -302,7 +326,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
             ? [`${LT1_GRADE_MIN_PCT}%`, `${hillsGradePosition(0)}%`, `${LT1_GRADE_MAX_PCT}%`]
             : [`${LT1_GRADE_MIN_PCT}%`, "", `${hillsGradePosition(0)}%`],
           disabled: false,
-          note: hillsNote,
+          ...shortNote(hillsNote, hillsNote && HILLS_NOTE_SHORT.get(hillsNote)),
           how: HILLS_HOW,
         },
     rideSize: offersRideSize(preset) ? rideSizeView(rideSizeOf(draft)) : null,
@@ -323,6 +347,14 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
 export const RIDE_SIZE_LABEL = t("Anticipated ride size (riders)");
 export const RIDE_SIZE_NOTE =
   t("How many riders you expect. It sets the group's length, which the corker load counts over. It does not change the route.");
+/** Its line as shown (P10); RIDE_SIZE_NOTE is read, and is behind the row's (i). */
+export const RIDE_SIZE_NOTE_SHORT = t("Sets group length; route unchanged.");
+
+/** A note and its shown short form: `noteSaid` only where the two differ. */
+function shortNote(note: string | undefined, shown: string | undefined): { note?: string; noteSaid?: string } {
+  if (note === undefined) return {};
+  return shown && shown !== note ? { note: shown, noteSaid: note } : { note };
+}
 
 /** "500 riders", as the slider's value text and the words beside its name. */
 export function rideSizeWords(riders: number): string {
@@ -337,7 +369,7 @@ export function rideSizeView(riders: number): SliderView {
     words: rideSizeWords(riders),
     ends: [RIDE_SIZE_MIN.toLocaleString("en-US"), "", RIDE_SIZE_MAX.toLocaleString("en-US")],
     disabled: false,
-    note: RIDE_SIZE_NOTE,
+    ...shortNote(RIDE_SIZE_NOTE, RIDE_SIZE_NOTE_SHORT),
   };
 }
 

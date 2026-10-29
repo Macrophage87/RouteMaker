@@ -145,6 +145,18 @@ esac
 manifest_value() { sed -n "s/^$1=//p" "$bundle/MANIFEST.txt" | head -n 1; }
 has_part() { grep -qw "$1" <<<"$(manifest_value parts)"; }
 bc() { BETA_ENV_FILE="$env_file" "$repo/scripts/beta/beta-compose.sh" "$@"; }
+# Write each variant's valhalla_upstream row from its tile links (manage.py sync_upstreams), in
+# the api container when it is running; otherwise say the line to run once it is.
+SYNC_UPSTREAMS="scripts/beta/beta-compose.sh exec -T api ./manage.py sync_upstreams"
+sync_upstreams_or_say() {
+	if bc ps --status running --services 2>/dev/null | grep -x api >/dev/null; then
+		note "writing the routers' settings rows from the tile links (manage.py sync_upstreams)"
+		bc exec -T api ./manage.py sync_upstreams </dev/null ||
+			note "WARNING: sync_upstreams failed; run it once the api is up: $SYNC_UPSTREAMS"
+	else
+		note "once the api is up, write the routers' settings rows from the tile links: $SYNC_UPSTREAMS"
+	fi
+}
 
 verify_bundle() { # optional argument: only the files under that prefix (the db step needs only db/)
 	local prefix=${1:-}
@@ -308,6 +320,10 @@ if [ "$command_name" = files ]; then
 		[ -L "$data_root/tiles/$variant/current" ] && trail="$trail valhalla-$variant"
 	done
 	[ -z "$trail" ] || note "and start the trail routers on the new tiles: scripts/beta/beta-compose.sh up -d --force-recreate$trail"
+	# The settings rows the api serves a variant by (core.routing._promoted_row) follow the
+	# links just moved: nothing else on the beta writes them, and without an mtb or offroad row
+	# Mountain Bike, Gravel and Mountain Goat are planned on the standard graph (2026-10-28).
+	sync_upstreams_or_say
 	exit 0
 fi
 
@@ -583,6 +599,9 @@ done <"$bundle/db/row-counts.tsv"
 [ "$fail" = 0 ] || die "the $live_schema schema does not match the bundle; do not start the api. Restore again (--update-data, or --replace-db for a first install)"
 if [ "$update_data" = 1 ]; then
 	note "db update done. Start the api and worker again: scripts/beta/beta-compose.sh up -d api worker"
+	note "then write the routers' settings rows from the tile links: $SYNC_UPSTREAMS"
 else
 	note "db done. Next: scripts/beta/beta-compose.sh run --rm --no-deps migrate ./manage.py migrate --check"
+	# A home dump carries home's rows, which name home's builds, not the beta's links.
+	note "and once the api is up, write the routers' settings rows from the tile links: $SYNC_UPSTREAMS"
 fi

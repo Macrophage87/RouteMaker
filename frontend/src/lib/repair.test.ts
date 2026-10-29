@@ -62,11 +62,12 @@ test("the nearest two stands and two shops, together, nearest first", () => {
   assert.ok(near.every((r, i) => i === 0 || r.metres >= near[i - 1].metres));
 });
 
-test("opening hours: read when simple, null (nothing claimed) when not", () => {
-  const wedNoon = new Date(2026, 9, 14, 12, 0);
-  const sunNoon = new Date(2026, 9, 18, 12, 0);
-  const satLate = new Date(2026, 9, 17, 23, 30);
-  const sunEarly = new Date(2026, 9, 18, 1, 0);
+test("opening hours: read when simple, null (nothing claimed) when not; on the region's clock", () => {
+  // lib/openingHours.ts reads them on DC's clock (EDT in October), whatever zone the test runs in.
+  const wedNoon = new Date("2026-10-14T12:00:00-04:00");
+  const sunNoon = new Date("2026-10-18T12:00:00-04:00");
+  const satLate = new Date("2026-10-17T23:30:00-04:00");
+  const sunEarly = new Date("2026-10-18T01:00:00-04:00");
   assert.equal(openNow("Mo-Sa 10:00-19:00; Su off", wedNoon), true);
   assert.equal(openNow("Mo-Sa 10:00-19:00; Su off", sunNoon), false);
   assert.equal(openNow("24/7", sunNoon), true);
@@ -75,12 +76,13 @@ test("opening hours: read when simple, null (nothing claimed) when not", () => {
   assert.equal(openNow("Sa 22:00-02:00", sunEarly), true);
   assert.equal(openNow("Mo-Fr sunrise-sunset", wedNoon), null);
   assert.equal(openNow("Apr-Oct Mo-Fr 09:00-17:00", wedNoon), null);
-  assert.equal(openNow("PH off; Mo-Fr 09:00-17:00", wedNoon), null);
+  // Holidays are left out (the app does not know them), so the rest is read.
+  assert.equal(openNow("PH off; Mo-Fr 09:00-17:00", wedNoon), true);
 });
 
 test("words: a stand's kit and fee, a shop's hours, US units first with metric in brackets", () => {
   const places = parseRepair(file)!;
-  const at = new Date(2026, 9, 14, 12, 0);
+  const at = new Date("2026-10-14T12:00:00-04:00");
   assert.equal(kitWords("ptc"), "Pump, tools and chain tool");
   assert.equal(kitWords("p"), "Pump");
   assert.equal(kitWords(""), "");
@@ -88,7 +90,8 @@ test("words: a stand's kit and fee, a shop's hours, US units first with metric i
   assert.equal(repairTitle(places[1]), "Repair stand");
   assert.deepEqual(repairDetails(places[0], at), ["Pump and tools.", "Free."]);
   assert.deepEqual(repairDetails(places[1], at), ["Tools not listed."]);
-  assert.deepEqual(repairDetails(places[3], at), ["Open now.", "Hours: Mo-Sa 10:00-19:00; Su off."]);
+  // The hours in words (the 2026-10-28 audit, P7), never the raw tag.
+  assert.deepEqual(repairDetails(places[3], at), ["Open now · closes 7 PM."]);
   assert.deepEqual(repairDetails(places[5], at), ["Hours not listed."]);
   const line = repairText({ place: places[0], metres: 500 }, at);
   assert.match(line, /^Repair stand, Union Station: 0\.3 mi \(0\.5 km\) away\. Pump and tools\. Free\.$/);
@@ -105,16 +108,18 @@ test("the map shows stands only (shops are in the list), and carries no names", 
   assert.ok(geo.features.every((f) => Object.keys(f.properties).every((k) => k === "id")));
 });
 
-test("Go: Metro, Repair and Sights sit behind More, with its expanded state said", () => {
+test("Go: Metro, Repair and Places to see sit behind More, with its expanded state said", () => {
   const go = readFileSync(new URL("../app/Go.tsx", import.meta.url), "utf8");
   const row = go.slice(go.indexOf('aria-label={t("Places")}'), go.indexOf('aria-label={t("More places")}'));
-  assert.ok(!/Metro|Repair|Sights/.test(row), "the main row stays Home, Food, Water, Restroom, More");
+  assert.ok(!/Metro|Repair|Places to see/.test(row), "the main row stays Home, Eat, Water, Restroom, More");
   assert.match(go, /aria-expanded=\{moreOpen\} aria-controls=\{moreId\}/);
   assert.match(go, /id=\{moreId\}[^>]*aria-label=\{t\("More places"\)\} hidden=\{!moreOpen\}/);
-  assert.match(go, /places\.onMetro[\s\S]*Metro[\s\S]*places\.onRepair[\s\S]*Repair[\s\S]*places\.onSights[\s\S]*Sights/);
+  assert.match(go, /places\.onMetro[\s\S]*Metro[\s\S]*places\.onRepair[\s\S]*Repair[\s\S]*places\.onSights[\s\S]*\{t\("Places to see"\)\}/);
+  // One name in Go and Plan (P12: Go's was "Sights").
+  assert.doesNotMatch(go, /t\("Sights"\)/);
   // Metro opens Nearest on its Metro list (the same search, count and WMATA badges as Nearest's own Metro button).
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /onMetro: \(chip\) => \{\s*openView\("nearest", chip\);\s*findNearestHere\("metro"\);/);
+  assert.match(app, /onMetro: \(chip\) => openNearest\("metro", chip\),/);
 });
 
 test("F13. a Repair row is named by its place and distance; its details are its description", () => {

@@ -22,6 +22,7 @@ import {
   type ChartKind,
   type CorkerLoad,
 } from "./lib/profileChart.ts";
+import { t } from "./lib/i18n.ts";
 
 export const WIDTH = 360;
 export const LEFT = 46;
@@ -107,7 +108,7 @@ export function JunctionKey({ orange = true, red = true, dot = true }: { orange?
           <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 2.5 22.5 20.5H1.5Z" fill={SEVERITY_COLOURS.orange.fill} stroke={SEVERITY_COLOURS.orange.stroke} strokeWidth="2" />
           </svg>
-          Higher stress junction (triangle)
+          {t("Higher stress junction (triangle)")}
         </li>
       )}
       {red && (
@@ -115,7 +116,7 @@ export function JunctionKey({ orange = true, red = true, dot = true }: { orange?
           <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 1.5 22.5 12 12 22.5 1.5 12Z" fill={SEVERITY_COLOURS.red.fill} stroke={SEVERITY_COLOURS.red.stroke} strokeWidth="2" />
           </svg>
-          Very high stress junction (diamond)
+          {t("Very high stress junction (diamond)")}
         </li>
       )}
       {dot && (
@@ -123,7 +124,7 @@ export function JunctionKey({ orange = true, red = true, dot = true }: { orange?
           <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="12" cy="12" r="6" className="pc-dot" />
           </svg>
-          Busy road crossed or joined (dot)
+          {t("Busy road crossed or joined (dot)")}
         </li>
       )}
     </>
@@ -156,20 +157,20 @@ export function Tables({
   return (
     <div className="pc-tables">
       {rows.length === 0 ? (
-        <p className="hint">No sustained climbs on this route.</p>
+        <p className="hint">{t("No sustained climbs on this route.")}</p>
       ) : (
         <div className="pc-table-wrap">
           <table className="pc-table">
-            <caption>Climbs, in the order ridden</caption>
+            <caption>{t("Climbs, in the order ridden")}</caption>
             <thead>
               <tr>
-                <th scope="col">Start</th>
-                <th scope="col">Length</th>
-                <th scope="col">Gain</th>
-                <th scope="col">Average grade</th>
-                <th scope="col">Maximum grade</th>
-                <th scope="col">Stress</th>
-                {kind === "mass" && <th scope="col">Capacity drop</th>}
+                <th scope="col">{t("Start")}</th>
+                <th scope="col">{t("Length")}</th>
+                <th scope="col">{t("Gain")}</th>
+                <th scope="col">{t("Average grade")}</th>
+                <th scope="col">{t("Maximum grade")}</th>
+                <th scope="col">{t("Stress")}</th>
+                {kind === "mass" && <th scope="col">{t("Capacity drop")}</th>}
               </tr>
             </thead>
             <tbody>
@@ -191,13 +192,13 @@ export function Tables({
       {calm && (
         <div className="pc-table-wrap">
           <table className="pc-table">
-            <caption>Rolling stress, calm miles per mile over the mile around each point</caption>
+            <caption>{t("Rolling stress, calm miles per mile over the mile around each point")}</caption>
             <thead>
               <tr>
-                <th scope="col">At</th>
-                <th scope="col">Calm miles per mile</th>
-                <th scope="col">Reads as</th>
-                <th scope="col">Junctions to watch since the row before</th>
+                <th scope="col">{t("At")}</th>
+                <th scope="col">{t("Calm miles per mile")}</th>
+                <th scope="col">{t("Reads as")}</th>
+                <th scope="col">{t("Junctions to watch since the row before")}</th>
               </tr>
             </thead>
             <tbody>
@@ -215,16 +216,16 @@ export function Tables({
       )}
       {kind === "mass" &&
         (bottlenecks.length === 0 ? (
-          <p className="hint">No bottlenecks (under 60 riders per minute) where the width is known.</p>
+          <p className="hint">{t("No bottlenecks (under 60 riders per minute) where the width is known.")}</p>
         ) : (
           <div className="pc-table-wrap">
             <table className="pc-table">
-              <caption>Bottlenecks, under 60 riders per minute, in the order ridden</caption>
+              <caption>{t("Bottlenecks, under 60 riders per minute, in the order ridden")}</caption>
               <thead>
                 <tr>
-                  <th scope="col">Start</th>
-                  <th scope="col">Length</th>
-                  <th scope="col">Lowest riders per minute</th>
+                  <th scope="col">{t("Start")}</th>
+                  <th scope="col">{t("Length")}</th>
+                  <th scope="col">{t("Lowest riders per minute")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -241,7 +242,7 @@ export function Tables({
         ))}
       {kind === "mass" &&
         (!checked ? (
-          <p className="hint">Major intersections were not checked for this route.</p>
+          <p className="hint">{t("Major intersections were not checked for this route.")}</p>
         ) : crossings.length === 0 ? (
           <p className="hint">
             {crossingsPartial(profile)
@@ -254,11 +255,11 @@ export function Tables({
               <caption>{crossingCaption(profile)}</caption>
               <thead>
                 <tr>
-                  <th scope="col">At</th>
-                  <th scope="col">Street</th>
-                  <th scope="col">Marker</th>
-                  <th scope="col">Corkers</th>
-                  {load && <th scope="col">Corkers held at once when the head reaches it</th>}
+                  <th scope="col">{t("At")}</th>
+                  <th scope="col">{t("Street")}</th>
+                  <th scope="col">{t("Marker")}</th>
+                  <th scope="col">{t("Corkers")}</th>
+                  {load && <th scope="col">{t("Corkers held at once when the head reaches it")}</th>}
                 </tr>
               </thead>
               <tbody>

@@ -140,7 +140,7 @@ test("before a ride, the route's time ends with when it arrives leaving now, in 
   }
 });
 
-test("the arrival leaving now: a ride, at the time now; not a transit, bikeshare or Mass Ride plan, nor another ride time", () => {
+test("the arrival leaving now: a ride, a Mass Ride too, at the time now; not a transit or bikeshare plan, nor another ride time", () => {
   // Tuesday 2026-10-27, noon in DC (16:00 UTC): a weekday off-peak.
   const now = Date.UTC(2026, 9, 27, 16, 0, 0);
   assert.equal(whenAt(new Date(now)), "weekday_offpeak");
@@ -151,7 +151,8 @@ test("the arrival leaving now: a ride, at the time now; not a transit, bikeshare
   assert.equal(leaveNowArriveMs(ride, now, "night"), null, "Night chosen at noon");
   assert.equal(leaveNowArriveMs({ ...ride, transit: {} }, now, null), null);
   assert.equal(leaveNowArriveMs({ ...ride, bikeshare: {} }, now, null), null);
-  assert.equal(leaveNowArriveMs({ ...ride, preset: "mass-ride" }, now, null), null);
+  // A Mass Ride's arrival shows as any other ride type's (the 2026-10-28 audit, P6).
+  assert.equal(leaveNowArriveMs({ ...ride, preset: "mass-ride" }, now, null), now + ride.duration_s * 1000);
   assert.equal(leaveNowArriveMs(null, now, null), null);
 });
 

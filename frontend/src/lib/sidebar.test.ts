@@ -10,7 +10,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { hillsWords, startDials, type Dials } from "./dials.ts";
 import { hillsShort, rideSummary, rideSummarySpoken, settingsSummary, settingsSummarySpoken, targetShort, trafficShort, whenShort } from "./rideSummary.ts";
-import { NOT_AVAILABLE, calmPercent, heavyMetres, junctionFigure, quickFigures, stressBarKey, stressBarLabel } from "./quickFigures.ts";
+import { NOT_AVAILABLE, busyMetres, calmPercent, calmWayShares, calmWaysLabel, calmWaysText, calmWords, groupRideLine, heavyMetres, turnTotal, junctionFigure, quickFigures, stressBarKey, stressBarLabel, stressPlainParts } from "./quickFigures.ts";
 import {
   BACK_LABEL,
   BAR_ITEMS,
@@ -27,6 +27,7 @@ import {
   RIDE_ACTION_SPOKEN,
   ROUTE_FOLDS,
   chartFoldOpen,
+  SAVE_LOAD,
   SHEET_TITLES,
   copyText,
   focusOnViewChange,
@@ -39,6 +40,10 @@ import {
   rideActionLabel,
   searchLede,
   sheetEscape,
+  popupBackLabel,
+  POPUP_VIEWS,
+  sayInPopup,
+  listenForPopupSay,
   openOnto,
   backFrom,
   stepsCount,
@@ -153,8 +158,12 @@ test("the Ride line is a heading holding a button with aria-expanded, whose word
     html,
     /<span class="ride-line-label">Ride settings<\/span><span class="ride-line-summary" aria-hidden="true"><span class="ride-chip">quiet streets<\/span><span class="ride-chip">now<\/span><\/span><span class="visually-hidden">: quiet streets, now\.<\/span>/,
   );
-  // Shown Adjust or Done, heard Adjust whatever the state: aria-expanded says it (no "Done, expanded": N8).
-  assert.match(html, /<span class="ride-line-action" aria-hidden="true">Adjust<\/span><span class="visually-hidden"> Adjust<\/span>/);
+  // Shown Adjust or Done, heard Adjust whatever the state: aria-expanded says it (no "Done, expanded": N8). Closed,
+  // the word is there once, shown and heard (P10: not "Adjust Adjust"); open, "Done" is shown and "Adjust" heard.
+  assert.match(html, /<span class="ride-line-action"> Adjust<\/span><\/button>/);
+  assert.doesNotMatch(html, /Adjust<\/span><span class="visually-hidden"> Adjust/);
+  const parts = readFileSync(new URL("./sidebarParts.ts", import.meta.url), "utf8");
+  assert.match(parts, /h\("span", \{ key: "shown", className: "ride-line-action", "aria-hidden": "true" \}, rideActionLabel\(open\)\),\s*h\("span", \{ key: "said", className: "visually-hidden" \}, ` \$\{RIDE_ACTION_SPOKEN\}`\),/);
   assert.equal(rideActionLabel(false), "Adjust");
   assert.equal(rideActionLabel(true), "Done");
   assert.equal(RIDE_ACTION_SPOKEN, "Adjust");
@@ -234,17 +243,20 @@ test("the points come first, the how-to is behind Points' Info, Swap and Undo be
   // UI-CLEANUP: behind the Info button in the Points heading's row (the mockup's "Points Swap Loop Edit Info").
   assert.match(
     app,
-    /className="tips-body more-tips" hidden=\{!tips\}>[\s\S]{0,400}\{points\.length > 0 \? <p className="hint">\{editingTips\(accessMode\)\}<\/p> : <p className="hint">\{emptyPlanHint\(preset, loopVias, accessMode\)\}<\/p>\}/,
+    /className="tips-body more-tips" hidden=\{!tips\}>[\s\S]{0,500}<HintLines lines=\{points\.length > 0 \? editingTips\(accessMode, touch\) : emptyPlanHint\(preset, loopVias, accessMode, touch\)\} \/>/,
   );
   assert.match(app, /className="secondary icon-button tips-toggle" aria-expanded=\{tips\} aria-controls=\{tipsId\} onClick=\{\(\) => setTips\(!tips\)\}/);
   // Every existing button is still there: Swap, Undo and Redo in the heading's row, Info last (Plan streamline,
-  // 2026-10-17); Reset and Clear behind the plan panel's More. Add point at map center is in Map tools (450).
+  // 2026-10-17), where Plan's bar is not (P10: the bar holds them in Plan, one set per layout); Reset in the plan
+  // panel, Clear the bar's trash. Add point at map center is in Map tools (450).
   const row = ["swap-points", 'data-history="undo"', 'data-history="redo"', "tips-toggle"].map((t) => app.indexOf(t));
   assert.ok(row.every((i) => i > 0));
   assert.deepEqual(row, [...row].sort((a, b) => a - b));
+  assert.match(app, /\{historyHere && \(\s*<button type="button" className="secondary icon-button" data-history="undo"/);
+  assert.match(src("../App.tsx"), /historyHere: !narrow && !planFirst,/);
   const panel = src("../app/PlanPanel.tsx");
-  assert.ok(panel.indexOf('className="actions plan-reset-clear" hidden={!moreOpen}') > panel.indexOf('aria-label="More: Reset and Clear"'));
-  assert.ok(panel.indexOf("{RESET_LABEL}") < panel.indexOf("{CLEAR_LABEL}"));
+  assert.ok(panel.includes("{RESET_LABEL}"));
+  assert.ok(!panel.includes("{CLEAR_LABEL}"));
   assert.doesNotMatch(app, /className="actions point-add"|ref=\{addRef\}/);
   assert.match(app, /accessMode && !onBike \? \(\s*<MapTools\s+toggleRef=\{toolsToggleRef\}\s+onAddPoint=\{addAtCentre\}/);
   assert.equal(
@@ -441,6 +453,54 @@ test("the stress bar is one image with each share in its name, and a line of tex
   assert.match(app, /<p className="stress-key" aria-hidden="true">/);
 });
 
+test("Go's stress line in plain words (the owner's P1): how calm, the paths and protected lanes, the busy road", () => {
+  // The calm share is LTS 1 and 2 (calmPercent); busy is LTS 3, 4 and Avoid, as the detour notice says "busy roads (LTS 3-4)".
+  assert.equal(calmWords({ "1": 900, "2": 100 }), "All calm");
+  assert.equal(calmWords({ "1": 750, "2": 40, "4": 210 }), "Mostly calm", "the audit's route: LTS 1 75%, LTS 2 4%, LTS 4 21%");
+  assert.equal(calmWords({ "1": 500, "3": 500 }), "Some busy roads");
+  assert.equal(calmWords({ "1": 300, "4": 700 }), "Mostly busy");
+  assert.equal(calmWords({}), null);
+  assert.equal(calmWords({ "1": 1000, "3": 5 }), "All calm", "a few metres where the route meets a road are not said");
+  assert.equal(busyMetres({ "2": 100, "3": 10, "4": 20, "5": 5 }), 35);
+  assert.equal(calmWaysText({ path: 1300, protected: 500 }), "1.1 mi (1.8 km) on paths and protected lanes");
+  assert.equal(calmWaysText({ path: 1300 }), "0.8 mi (1.3 km) on paths");
+  assert.equal(calmWaysText({ protected: 805, path: 3 }), "0.5 mi (0.8 km) on protected lanes");
+  assert.equal(calmWaysText({ lane: 900, none: 300 }), null, "a painted lane is neither");
+  assert.equal(calmWaysText(undefined), null);
+  // Each part left out where it is nothing.
+  assert.deepEqual(stressPlainParts({ stress_m: { "1": 1500, "2": 60, "4": 322 }, facility_m: { path: 1300, protected: 500 } }), [
+    "Mostly calm",
+    "1.1 mi (1.8 km) on paths and protected lanes",
+    "busy road for 0.2 mi (0.3 km)",
+  ]);
+  assert.deepEqual(stressPlainParts({ stress_m: { "1": 1000 }, facility_m: { none: 1000 } }), ["All calm"]);
+  assert.deepEqual(stressPlainParts({ stress_m: {}, facility_m: undefined }), []);
+  // The strip under the bar: the path, then the protected lane, as facilityRows has them; read as words.
+  const shares = calmWayShares([
+    { key: "path", metres: 1300, fraction: 0.6, percent: 60 },
+    { key: "protected", metres: 500, fraction: 0.28, percent: 28 },
+    { key: "lane", metres: 200, fraction: 0.1, percent: 10 },
+    { key: "none", metres: 40, fraction: 0.02, percent: 2 },
+  ]);
+  assert.deepEqual(shares.map((s) => s.key), ["path", "protected"]);
+  assert.equal(calmWaysLabel(shares), "Traffic-free paths: 0.8 mi (1.3 km), 60 percent; Protected bike lanes: 0.3 mi (0.5 km), 28 percent");
+  assert.deepEqual(calmWayShares([{ key: "protected", metres: 0, fraction: 0, percent: 0 }]), []);
+});
+
+test("Go's stress figure: the bar and the strip are one button to the colour key; the shares stay the bar's name", () => {
+  assert.match(app, /<figure className="stress stress-main stress-go" aria-labelledby="stress-figure-caption">/);
+  assert.match(app, /<button type="button" className="stress-key-button" aria-describedby=\{keyHintId\} onClick=\{\(event\) => go\.onKey\?\.\(event\.currentTarget\)\}>\s*\{bar\}\s*\{strip\}/);
+  assert.match(app, /<div className="stress-bar calm-ways" role="img" aria-label=\{calmWaysLabel\(ways\)\}>/);
+  // Shown with " · ", said with commas; at peek said only.
+  assert.match(app, /<span aria-hidden="true">\{parts\.join\(" · "\)\}<\/span>\s*<span className="visually-hidden">\{`\$\{parts\.join\(", "\)\}\.`\}<\/span>/);
+  assert.match(app, /<StressFigure segments=\{segments\} line=\{groupLine\} go=\{\{ route, peek: go\.peek, onKey: go\.onStressKey \}\} \/>/);
+  // A tap opens Layers, its Traffic stress section open (lib/layerSection.ts openAsk).
+  assert.match(app, /onStressKey: \(opener: HTMLButtonElement\) => \{\s*setStressKeyAsk\(\(n\) => n \+ 1\);\s*openView\("layers", opener\);/);
+  assert.match(app, /openAsk=\{stressKeyAsk\}/);
+  const section = readFileSync(new URL("./layerSection.ts", import.meta.url), "utf8");
+  assert.match(section, /useEffect\(\(\) => \{\s*if \(openAsk > 0\) setOpen\(true\);\s*\}, \[openAsk\]\);/);
+});
+
 test("the route's folds: Elevation and climbs, Stress and facilities, Directions, Junctions to watch, Other routes, Water and restrooms", () => {
   assert.equal(foldTitle("Junctions to watch", 4), "Junctions to watch (4)");
   assert.equal(foldTitle("Stress and facilities", null), "Stress and facilities");
@@ -465,7 +525,7 @@ test("the route's folds: Elevation and climbs, Stress and facilities, Directions
   const order = [
     "title={elevationTitle}",
     "title={ROUTE_FOLDS.facilities.title}",
-    "<RouteDescription route={route} fold rideAction={rideAction} federal={federal} />",
+    "<RouteDescription route={route} fold federal={federal} />",
     "<Fold title={ROUTE_FOLDS.junctions.title} count={junctions}",
     "<Fold title={ROUTE_FOLDS.choices.title} count={pickerCount}",
     "title={ROUTE_FOLDS.water.title}",
@@ -552,7 +612,7 @@ test("Directions as a fold: an h3 first, a closed details named with its steps, 
   const component = src("../RouteDescription.tsx");
   const fold = component.slice(component.indexOf("if (fold) {"), component.indexOf('<section className="route-description"'));
   assert.match(fold, /if \(entries\.length === 0\) return null;/, "no \"Directions (0 steps)\"");
-  assert.match(fold, /<Fold\s+title=\{ROUTE_FOLDS\.directions\.title\}\s+count=\{stepsCount\(entries\.length\)\}\s+icon="list"\s+heading=\{ROUTE_FOLDS\.directions\.title\}\s+headingId="route-description-heading"\s+open=\{open\}/);
+  assert.match(fold, /<Fold\s+title=\{ROUTE_FOLDS\.directions\.title\}\s+count=\{stepsCount\(steps\.length\)\}\s+icon="list"\s+heading=\{ROUTE_FOLDS\.directions\.title\}\s+headingId="route-description-heading"\s+open=\{open\}/);
   // The rider's open or closed is remembered (writeOpen), once per change.
   assert.match(fold, /onToggle=\{\(now\) => \{\s*if \(now !== open\) \{\s*setOpen\(now\);\s*writeOpen\(now\);/);
   assert.match(fold, /<ol className="description-list">\{items\}<\/ol>/);
@@ -671,21 +731,30 @@ test("the bottom bar is Plan, Layers, Reports, Save & load and Settings: real bu
 });
 
 test("a sheet: Back is a labelled button, its heading takes the focus, Escape goes back", () => {
-  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Reports", "Review", "Save and load", "Settings", "Nearest", "Find food", "Ride", "Repair stands and bike shops", "Places to see", "Edit route"]);
+  // One name per thing (P12): Save & load as on its buttons, and each place sheet as its chip says it.
+  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Reports", "Review", "Save & load", "Settings", "Nearest", "Eat", "Ride", "Repair", "Places to see", "Edit route"]);
+  assert.equal(SHEET_TITLES.gpx, SAVE_LOAD);
   // In visible words, not only an arrow, so the name and the label are one (OWNER-DECISIONS 393).
   assert.equal(BACK_LABEL, "Back to planner");
   assert.doesNotMatch(sidebar, /aria-label="Back to the planner"/);
-  // A sheet opened from another sheet goes back to it, and says so (Back to Layers, Back to Menu).
-  assert.match(sidebar, /<button type="button" className="sheet-back" onClick=\{onBack\}>[\s\S]*?<\/svg>\s*\{backLabel\}\s*<\/button>/, "Back goes back (NIT A)");
+  // A sheet opened from another sheet goes back to it, and says so (Back to Layers, Back to Settings).
+  assert.match(sidebar, /<button type="button" className=\{label === POPUP_CLOSE && modal \? "sheet-back popup-close" : "sheet-back"\} onClick=\{onBack\}>[\s\S]*?<\/svg>\s*\)\}\s*\{label\}\s*<\/button>/, "Back goes back (NIT A)");
   assert.match(sidebar, /backLabel = BACK_LABEL,/);
-  assert.match(app, /return t\("Back to \{title\}", \{ title: step\.from === "settings" && mode === "go" \? MENU_TITLE : SHEET_TITLES\[step\.from as Exclude<PanelView, "planner">\] \}\);/);
+  // A popup on a phone (the owner, 2026-10-28) says Close where the sheet goes back to the planner or the map.
+  assert.match(sidebar, /const label = modal \? popupBackLabel\(backLabel\) : backLabel;/);
+  assert.equal(popupBackLabel(BACK_LABEL), "Close");
+  assert.equal(popupBackLabel("Close"), "Close");
+  assert.equal(popupBackLabel("Back to Settings"), "Back to Settings");
+  // Go's Settings is Plan's (P12: it was Go's Menu), so a sheet it opened goes Back to Settings in both.
+  assert.match(app, /return t\("Back to \{title\}", \{ title: SHEET_TITLES\[step\.from as Exclude<PanelView, "planner">\] \}\);/);
+  assert.doesNotMatch(app, /MENU_TITLE/);
   assert.match(sidebar, /<h2 id=\{`\$\{id\}-title`\} ref=\{headingRef\} tabIndex=\{-1\}>/);
   assert.match(
     sidebar,
-    /sheetEscape\(\{ key: event\.key, defaultPrevented: event\.defaultPrevented, target: event\.target as HTMLElement, preventDefault: \(\) => event\.preventDefault\(\) \}, onBack\)/,
+    /sheetEscape\(\{ key: event\.key, defaultPrevented: event\.defaultPrevented, target: event\.target as HTMLElement, preventDefault: \(\) => event\.preventDefault\(\) \}, onBack, dialogRef\.current\)/,
   );
   // The error can take the focus (focus() on an element without tabIndex does nothing).
-  assert.match(app, /<div ref=\{errorRef\} tabIndex=\{-1\} className=\{`error error-\$\{status\.error\.kind\}`\} role="alert">/);
+  assert.match(app, /<div ref=\{errorRef\} tabIndex=\{-1\} className=\{`error error-\$\{error\.kind\}`\} role="alert">/);
 });
 
 test("where the focus goes on every change of view (mutation SF1)", () => {
@@ -773,6 +842,39 @@ test("a sheet's Escape: back, except in a dialog, on the place search, or when a
   assert.deepEqual(run(event("Escape", { prevented: true })), stays, "already handled");
   assert.deepEqual(run(event("Escape", { inDialog: true })), stays, "the weight dialog's own Escape");
   assert.deepEqual(run(event("Escape", { role: "combobox" })), stays, "the place search's list");
+  // A popup sheet is a dialog itself: Escape in it is its own, a nested dialog's is still the nested one's.
+  const sheet = {};
+  const inSheet: Fake = { ...event("Escape"), target: { closest: (s: string) => (s === "dialog" ? sheet : null), getAttribute: () => null } };
+  let back = 0;
+  assert.equal(sheetEscape(inSheet, () => back++, sheet), true);
+  assert.equal(back, 1);
+  assert.equal(sheetEscape(event("Escape", { inDialog: true }), () => back++, sheet), false, "a dialog inside the popup");
+});
+
+test("the popups (the owner, 2026-10-28): which destinations, and the app's words said inside the open one", () => {
+  assert.deepEqual(POPUP_VIEWS, ["settings", "ride", "layers", "gpx", "suggest", "nearest", "food"]);
+  for (const id of ["sheet-settings", "sheet-ride", "sheet-layers", "sheet-gpx", "sheet-suggest", "sheet-nearest", "sheet-food"]) {
+    const at = app.indexOf(`id="${id}"`);
+    assert.ok(at > 0, id);
+    assert.match(app.slice(at, app.indexOf(">\n", at) + 1), /\bpopup\b/, `${id} is a popup`);
+  }
+  for (const id of ["sheet-repair", "sheet-places", "sheet-points"]) {
+    const at = app.indexOf(`id="${id}"`);
+    assert.doesNotMatch(app.slice(at, app.indexOf(">\n", at) + 1), /\bpopup\b/, `${id} stays a sheet`);
+  }
+  // A modal on a phone, the panel's side panel on a computer: the one element, so what it holds keeps its state.
+  assert.match(sidebar, /const modal = popup && narrow;/);
+  assert.match(sidebar, /if \(want === "modal"\) dialog\.showModal\?\.\(\);\s*else if \(want === "panel"\) dialog\.show\?\.\(\);/);
+  assert.match(sidebar, /onCancel=\{\(event\) => event\.preventDefault\(\)\}/);
+  assert.match(css, /dialog\.popup-sheet:modal \{[^}]*max-height: calc\(100dvh - 8px\);/);
+  assert.match(css, /dialog\.popup-sheet:not\(:modal\) \{[^}]*position: static;/);
+  const heard: string[] = [];
+  const stop = listenForPopupSay((text) => heard.push(text));
+  sayInPopup("Link copied.");
+  stop();
+  sayInPopup("Not heard.");
+  assert.deepEqual(heard, ["Link copied."]);
+  assert.match(app, /setSaid\(\(s\) => \(\{ text, count: s\.count \+ 1 \}\)\);\s*sayInPopup\(text\);/);
 });
 
 test("the Layers sheet holds the switches in the mockup's order, each section with its own key (the owner, 2026-10-19)", () => {
@@ -958,7 +1060,8 @@ test("on a desktop the points come first, then the Ride line, then the route; on
 test("App dispatches the focus decision to the right element (the mutation re-check's NIT A)", () => {
   const effect = app.slice(app.indexOf("const target = focusOnViewChange("), app.indexOf("}, [view]);", app.indexOf("const target = focusOnViewChange(")));
   // Back: what opened the sheet, if it is still on screen; else the planner's heading.
-  assert.match(effect, /if \(target\.kind === "opener"\) \{\s*const opener = backTo\.current;\s*if \(opener\?\.isConnected && opener\.offsetParent !== null\) opener\.focus\(\);\s*else plannerHeadingRef\.current\?\.focus\(\);/);
+  // P3: after a change in Go's Ride sheet, without scrolling to it: Go's sheet goes back to its totals.
+  assert.match(effect, /if \(target\.kind === "opener"\) \{\s*const opener = backTo\.current;\s*if \(opener\?\.isConnected && opener\.offsetParent !== null\) opener\.focus\(\{ preventScroll: toTotals \}\);\s*else plannerHeadingRef\.current\?\.focus\(\{ preventScroll: toTotals \}\);\s*if \(toTotals\) scrollPanelToTop\(\);/);
   assert.match(effect, /else if \(target\.kind === "error"\) errorRef\.current\?\.focus\(\);/);
   assert.match(effect, /else if \(target\.kind === "plan"\) planButtonRef\.current\?\.focus\(\);/);
   // A sheet: its heading, by the id SheetFrame gives it.
@@ -986,22 +1089,40 @@ test("the bar's current button: the sheet showing, or one opened from it (Sugges
 
 test("the Settings sheet (384): My Go, Riding, Display and Account, most used first (Settings tidy, 2026-10-19); one state, unique ids", () => {
   const sheet = app.slice(app.indexOf('id="sheet-settings"'), app.indexOf("export interface SuggestSheetProps"));
-  assert.match(sheet, /title=\{go \? MENU_TITLE : SHEET_TITLES\.settings\}\s+open=\{nav\.view === "settings"\}\s+onBack=\{nav\.back\}\s+backLabel=\{nav\.backLabel\("settings"\)\}\s+headingRef=\{settingsHeadingRef\}/);
+  // One name in Go and Plan (P12: Go's was "Menu").
+  assert.match(sheet, /title=\{SHEET_TITLES\.settings\}\s+open=\{nav\.view === "settings"\}\s+onBack=\{nav\.back\}\s+backLabel=\{nav\.backLabel\("settings"\)\}\s+popup\s+headingRef=\{settingsHeadingRef\}/);
+  // Three tabs (the owner, 2026-10-28: "Settings = display, riding, account"), each a panel that stays in the page.
+  assert.match(sheet, /<SettingsTabs tab=\{tab\} onTab=\{setTab\} label=\{SHEET_TITLES\.settings\} \/>/);
+  const panels = ["riding", "display", "account"].map((id) => sheet.indexOf(`<div role="tabpanel" id="settings-panel-${id}" aria-labelledby="settings-tab-${id}" className="settings-panel" hidden={tab !== "${id}"}>`));
+  assert.ok(panels.every((i) => i > 0), JSON.stringify(panels));
+  assert.deepEqual(panels, [...panels].sort((a, b) => a - b));
+  const sheets = src("../app/Sheets.tsx");
+  assert.match(sheets, /export const SETTINGS_TABS = \["riding", "display", "account"\] as const;/);
+  assert.match(sheets, /role="tab"\s+id=\{`settings-tab-\$\{id\}`\}\s+className="settings-tab"\s+aria-selected=\{tab === id\}\s+aria-controls=\{`settings-panel-\$\{id\}`\}\s+tabIndex=\{tab === id \? 0 : -1\}/);
+  assert.match(sheets, /event\.key === "ArrowRight"[\s\S]*?event\.key === "ArrowLeft"[\s\S]*?event\.key === "Home"[\s\S]*?event\.key === "End"/);
+  // Back from Garmin or Wahoo, on Account, where its line says what happened.
+  assert.match(sheets, /useState<SettingsTab>\(\(\) => \(garminReturned \|\| wahooReturned \? "account" : "riding"\)\)/);
   // This device's routes moved to Save and load (the owner, 2026-10-18); the install offer has its own heading.
   assert.doesNotMatch(sheet, /settings-device-heading/);
-  const order = ['<MyGoSection controls={myGo} open={nav.view === "settings"} />', ...["settings-ride-heading", "settings-display-heading", "settings-signin-heading"].map((id) => `<h3 id="${id}">`)].map((at) => sheet.indexOf(at));
+  const order = ['<MyGoSection controls={myGo} open={nav.view === "settings"} />', ...["settings-ride-heading", "settings-display-heading", "settings-signin-heading"].map((id) => `<h3 id="${id}" className="visually-hidden">`), "<InstallOffer", 'id="settings-about-heading"'].map((at) => sheet.indexOf(at));
   assert.ok(order.every((i) => i > 0), JSON.stringify(order));
   assert.match(app, /<section aria-labelledby="settings-my-go-heading" className="settings-group my-go">\s*<div className="setting-line">\s*<h3 id="settings-my-go-heading">\{t\("My Go"\)\}<\/h3>/);
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
-  assert.match(sheet, /<section aria-labelledby="settings-display-heading" className="settings-group">\s*<h3 id="settings-display-heading">\{t\("Display"\)\}<\/h3>/);
+  // Each group keeps its heading for a screen reader's heading list; on screen, its tab names it.
+  assert.match(sheet, /<section aria-labelledby="settings-display-heading" className="settings-group">\s*<h3 id="settings-display-heading" className="visually-hidden">\{t\("Display"\)\}<\/h3>/);
   // The sign-in note has its own heading, so heading navigation does not file it under Display.
-  assert.match(sheet, /<h3 id="settings-signin-heading">\{t\("Account"\)\}<\/h3>/);
+  assert.match(sheet, /<h3 id="settings-signin-heading" className="visually-hidden">\{t\("Account"\)\}<\/h3>/);
   assert.match(sheet, /<AccessibilitySwitch\s+idBase="settings-contrast"\s+on=\{accessibilityOn\(\)\}\s+source=\{accessibilitySource\(\)\}\s+paletteFromAddress=\{paletteSetByAddress\(\)\}\s+onChange=\{\(on\) => setAccessibility\(on\)\}/);
   assert.ok(sheet.indexOf("Display") < sheet.indexOf("Sign in with Discord"), "the sign-in note is still there, after the display group");
   assert.match(sheet, /onClick=\{\(e\) => isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)\}/);
   assert.doesNotMatch(app, /sheet-about|aboutHeadingRef|"about"/);
-  // Go's Menu: Plan, Suggest, GPX and an admin's Review above the settings, each a button.
-  assert.match(sheet, /\{go && \(\s*<nav className="menu-pages" aria-label=\{t\("Pages"\)\}>/);
+  // Go's Settings: Reports, Save & load and an admin's Review above the tabs, each a button; no Plan, since the
+  // Go/Plan switch is beside the Settings button (P12).
+  assert.match(sheet, /\{go && \(\s*<nav className="menu-pages" aria-label=\{t\("Pages"\)\}>\s*<button type="button" className="secondary menu-page" onClick=\{\(event\) => menu\.onSuggest\(event\.currentTarget\)\}>/);
+  assert.doesNotMatch(sheet, /menu\.onPlan/);
+  const goTop = src("../app/Go.tsx");
+  assert.match(goTop, /className="icon-button go-menu" onClick=\{\(event\) => onMenu\(event\.currentTarget\)\}>\s*<Icon name="gear" \/>\s*<span className="icon-button-label">\{t\("Settings"\)\}<\/span>/);
+  assert.doesNotMatch(goTop, /t\("Menu"\)/);
   // High contrast is only in Settings now (the mockup's Layers has toggles for the map only).
   const layers = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-gpx"'));
   assert.doesNotMatch(layers, /<AccessibilitySwitch/);
@@ -1029,4 +1150,15 @@ test("Settings (384): theme follows the system, the planner zoom notice stays of
   assert.equal(PLANNER_EXTRAS.highContrastShortcut, false);
   assert.doesNotMatch(css, /data-theme|\.theme-toggle/, "no theme switch: the panel follows prefers-color-scheme");
   assert.match(css, /@media \(prefers-color-scheme: dark\)/);
+});
+
+test("Group Ride's stress line: quiet roads and the turns the directions give (the 2026-10-28 audit, P6)", () => {
+  const leg = (movement: string | null, kind = "stretch") => ({ kind, from_m: 0, to_m: 1, text: "", turn: movement === null ? null : { movement } }) as never;
+  const route = { description: [leg(null), leg("left"), leg("straight"), leg("bear_right"), leg("right"), leg("left", "junction"), leg("uturn")], stress_m: { "1": 950, "2": 0, "4": 50 } } as never;
+  assert.equal(turnTotal(route), 4, "left, bear right, right and the U-turn; straight on and a junction's own turn are not counted");
+  assert.equal(groupRideLine(route), "Quiet roads · 4 turns");
+  assert.equal(groupRideLine({ description: [leg("left")], stress_m: { "1": 80, "3": 20 } } as never), "80% quiet roads · 1 turn");
+  const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /const groupLine = preset === "group-ride" \? groupRideLine\(route\) : null;/);
+  assert.match(panel, /<StressFigure segments=\{segments\} line=\{groupLine\} go=\{\{ route, peek: go\.peek, onKey: go\.onStressKey \}\} \/>/);
 });
