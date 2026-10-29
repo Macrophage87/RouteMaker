@@ -55,9 +55,13 @@ export const SKIP_WAITING = "SKIP_WAITING";
  * page asks, kept then in the build's cache (so a search works offline after one use), and carried
  * into the next build's cache at its install while the file is unchanged.
  */
-/** A language's catalog (vite.config.ts chunkFileNames), its code in group 1. */
+/**
+ * A language's catalog (vite.config.ts chunkFileNames), its code in group 1. Spanish's is precached all the same: it was
+ * in the app's script until it became a file of its own (lib/i18n.ts), so an installed app keeps it offline as before,
+ * downloaded at the install and not before the page starts.
+ */
 export const LANG_ASSET = /^\/assets\/lang-([a-z]+)-[^/]*\.js$/;
-export const LAZY_ASSET = /^\/assets\/(?:(?:food|climbs|federal-land)-[^/]*\.json|lang-[^/]*\.js)$/;
+export const LAZY_ASSET = /^\/assets\/(?:(?:food|climbs|federal-land)-[^/]*\.json|lang-(?!es-)[^/]*\.js)$/;
 
 /** The build's own cache: its assets and its shell. */
 export function buildCache(buildId) {

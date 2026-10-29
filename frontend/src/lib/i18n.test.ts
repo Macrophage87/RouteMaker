@@ -16,6 +16,8 @@ import {
   markPageLanguage,
   readLanguageChoice,
   rightToLeft,
+  catalogOf,
+  loadLanguage,
   setCatalogForTest,
   setLanguageForTest,
   clockLocale,
@@ -38,7 +40,19 @@ import { kindLabel, kindShown } from "./report311Log.ts";
 import { CUISINE_WORDS, foodKindText, type FoodPlace } from "./food.ts";
 import { MASS_BANDS } from "../massStyle.js";
 
-const SRC = fileURLToPath(new URL("..", import.meta.url));
+test("Spanish is fetched on choosing it, like every other language: no catalog is in the startup script", async () => {
+  assert.equal(catalogOf("es"), null, "not there until loadLanguage");
+  const i18n = readFileSync(new URL("./i18n.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(i18n, /^import .*\.\.\/i18n\//m);
+  assert.match(i18n, /es: \(\) => import\("\.\.\/i18n\/es\.ts"\)\.then\(\(m\) => m\.ES\),/);
+  await loadLanguage("es");
+  assert.equal(catalogOf("es"), ES);
+  // The Featured post page loads it too, before its labels are worded.
+  const post = readFileSync(new URL("../post/main.ts", import.meta.url), "utf8");
+  assert.match(post, /language\(\) === "es" \? loadLanguage\("es"\) : Promise\.resolve\(\)\)\s*\.then\(\(\) => import\("\.\/postPage\.tsx"\)\)/);
+});
+
+const SRC =fileURLToPath(new URL("..", import.meta.url));
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

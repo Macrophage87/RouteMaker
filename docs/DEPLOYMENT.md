@@ -1213,7 +1213,12 @@ What the edge does with it (Caddyfile, `@frontend`):
   `max-age=31536000, immutable` - only files that exist, so a 404 is not
   cached for a year. The favicon is cached for a day.
 - The app's responses are compressed (`encode zstd gzip`, in this block only):
-  the main script is about 1.3 MB raw and 370 KB gzipped. Nothing else on the
+  MapLibre's chunk (`maplibre-*.js`) is about 1.1 MB raw and 300 KB gzipped,
+  App's about 1.0 MB and 310 KB, React's about 220 KB and 70 KB (measured at
+  v0.15.0). MapLibre and React are chunks of their own (`frontend/vite.config.ts`,
+  `codeSplitting`), so their names, and a returning rider's copies, last across
+  app releases; `index.html` preloads App's chunks while the language's catalog
+  loads, and Spanish's catalog is a `lang-es-*.js` of its own. Nothing else on the
   site is encoded; `/basemap/*` must not be, since an encoder changes what a
   byte range means (`tests/test_basemap.py`).
 - A `Content-Security-Policy` of `default-src 'self'` with `script-src`,
