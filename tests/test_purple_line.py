@@ -109,3 +109,11 @@ class TestTheSnapshot:
         found = workzones.closures_on(RIDDEN, at=now, now=now)
         (row,) = [r for r in found["closures"] if r["source_key"] == purple_line.SOURCE]
         assert row["road"] == BY_ID["bonifant-west"].road
+
+
+def test_bonifants_guessed_end_is_a_reminder_a_month_ahead() -> None:
+    """Audit 2026-10-29: 2027-03-31 is the line's expected opening, not a date the notices
+    give; `scripts/ddot_advisories.py watch` asks for it to be checked from March 1."""
+    assert BY_ID["bonifant-west"].end_estimated
+    assert not any("Bonifant" in line for line in purple_line.check_due(date(2027, 2, 28)))
+    assert any("Bonifant" in line for line in purple_line.check_due(date(2027, 3, 1)))

@@ -16,7 +16,10 @@ not public: the Theodore Roosevelt Bridge's), changed in the last `--days` days 
 organisations, `ORGS`), reads each one's dated entries
 (`ddot_advisories.page_entries`) and prints those whose link is not yet in the file's `seen`
 list: the day, the project, the title, the advisory's link and the page's. Read each one; add
-a closure for what it closes to bicycles; add its link to `seen` either way.
+a closure for what it closes to bicycles; add its link to `seen` either way. It first prints a
+`CHECK:` line for each hand-kept date due a look: a guessed last day (`end_estimated`) within
+30 days, a file (this one or the Purple Line's) not updated in 45 days, and the deer schedules'
+assumed season or last night coming up.
 
     python scripts/ddot_advisories.py lines WAY [WAY ...]
 
@@ -41,7 +44,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from routemaker import ddot_advisories  # noqa: E402
+from routemaker import ddot_advisories, deer_closures, purple_line  # noqa: E402
 
 ARCGIS = "https://www.arcgis.com/sharing/rest"
 OSM_API = "https://api.openstreetmap.org/api/0.6"
@@ -99,7 +102,19 @@ def site_of(page: dict) -> tuple[str, str]:
     return sites[0].get("title") or site.get("title") or "", site.get("url") or ""
 
 
+def reminders(today: date) -> list[str]:
+    """The hand-kept closures' dates to check: a guessed last day close by, a file not read for
+    a while (`ddot_advisories.reminders`), and the deer schedules' assumed season and end."""
+    return [
+        *ddot_advisories.check_due(today),
+        *purple_line.check_due(today),
+        *deer_closures.check_due(today),
+    ]
+
+
 def watch(days: int) -> int:
+    for line in reminders(date.today()):
+        print(f"CHECK: {line}")
     data = json.loads(ddot_advisories.GEODATA.read_text())
     seen = set(data.get("seen") or [])
     since = date.today() - timedelta(days=days)
