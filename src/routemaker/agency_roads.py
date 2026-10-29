@@ -95,7 +95,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from .geo import Point, distance_to_line, haversine
-from .tags import ONEWAY_JUNCTIONS, is_oneway
+from .tags import ONEWAY_JUNCTIONS, is_oneway, posted_maxspeed
 from .tags import lanes_per_direction as osm_lanes_per_direction
 
 METRES_PER_FOOT = 0.3048
@@ -1665,8 +1665,8 @@ def overlay(
     # Which of the way's directions its traffic runs in, on a one-way.
     travel_forward = out.get("oneway") != "-1"
 
-    # -- posted speed
-    osm_speed = tags.get("maxspeed")
+    # -- posted speed (by direction or as a list too, as the classifier reads it)
+    osm_speed = posted_maxspeed(tags)
     if facts.speed_mph is not None and not (agency in SPEED_FILLS_ONLY and osm_speed):
         out["maxspeed"] = f"{facts.speed_mph} mph"
         sources["maxspeed"] = agency
