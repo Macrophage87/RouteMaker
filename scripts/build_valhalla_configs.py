@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the three Valhalla service configs from upstream's own defaults.
+"""Generate the Valhalla service configs, one a variant, from upstream's own defaults.
 
 Valhalla reads many keys with no default and throws at startup when one is
 absent: valhalla_service alone reads httpd.service.listen, httpd.service.loopback,
@@ -30,10 +30,10 @@ VENDOR = REPO / "valhalla" / "vendor" / "valhalla_build_config.py"
 # The variants differ in their extract, not in their behaviour: variant
 # behaviour belongs in the tags, and nothing in these configs encodes any. But
 # they cannot share a tile directory. valhalla_build_tiles has no tile-directory
-# option on its command line - it reads mjolnir.tile_dir - so three configs
-# naming one directory are three builds overwriting each other, and only the
-# last variant's graph survives. Each variant therefore names its own
-# directory, and the test asserts the three files differ in exactly that.
+# option on its command line - it reads mjolnir.tile_dir - so configs naming
+# one directory are builds overwriting each other, and only the last variant's
+# graph survives. Each variant therefore names its own directory, and the test
+# asserts the files differ in exactly that.
 VARIANTS = ("standard", "no-trail", "ebike", "weekend", "offroad", "mtb")
 
 # Where a variant's served tiles live, as both the rebuild container and the

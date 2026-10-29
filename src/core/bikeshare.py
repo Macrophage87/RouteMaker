@@ -842,19 +842,29 @@ def plan(
                 "right now. Move the destination."
             )
 
+    # Every candidate's walk asked at once on the router pool (`core.parallel`, review
+    # speed-10) and read in order, as they were asked one after another before.
+    from . import parallel
+
+    start_picks = [pick for _, pick in [*docks, *free]]
+    end_picks = [] if use_outside else [pick for _, pick in ends]
+    start_walks = [parallel.submit(services.walk, origin, pick.point) for pick in start_picks]
+    end_walks = [parallel.submit(services.walk, pick.point, dest) for pick in end_picks]
     starts: list[tuple[Pick, WalkLeg]] = []
-    for _, pick in [*docks, *free]:
-        leg = services.walk(origin, pick.point)
+    for pick, future in zip(start_picks, start_walks, strict=True):
+        leg = future.result()
         if leg is not None:
             starts.append((pick, leg))
     if not starts:
+        for future in end_walks:
+            future.cancel()
         raise NoBikeshare("There is no way on foot from the start to a dock that has a bike.")
     finishes: list[tuple[Pick, WalkLeg | None]] = []
     if use_outside:
         finishes.append((Pick("outside_dock", "your destination", dest[0], dest[1]), None))
     else:
-        for _, pick in ends:
-            leg = services.walk(pick.point, dest)
+        for pick, future in zip(end_picks, end_walks, strict=True):
+            leg = future.result()
             if leg is not None:
                 finishes.append((pick, leg))
         if not finishes:
