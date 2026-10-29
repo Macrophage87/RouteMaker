@@ -4727,7 +4727,11 @@ apt-get install -y luajit lua5.4
 
 `lua/vendor/graph_upstream.lua` is Valhalla's own transform at the pinned
 version, checked in so the entry-point contract can be tested against the real
-file. Refresh it with `scripts/vendor_valhalla_lua.sh`; do not edit it.
+file. Refresh it with `scripts/vendor_valhalla_lua.sh [VERSION]`; do not edit it. The
+script fetches it and `valhalla/vendor/valhalla_build_config.py` to a scratch directory,
+checks them (a pinned re-vendor must reproduce the sha256 in each folder's `SHA256SUMS`,
+which the suite also checks) before moving them into place, and then regenerates
+`supported_keys.txt` and the service configs; read the diff.
 
 Setting `CI=1` turns the suite's missing-interpreter skips into failures.
 
