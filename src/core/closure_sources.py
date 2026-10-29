@@ -450,7 +450,9 @@ def refresh(
 ) -> str:
     """Read every source that is due and replace the shared copy. A source that fails
     keeps its last good copy. Nothing starts past `budget_s` (`REFRESH_BUDGET_S`): a source
-    not reached in time keeps its copy and is read next time. Returns a line for the run row."""
+    not reached in time keeps its copy and is read next time. Returns a line for the run row;
+    raises `FeedError` with that line, after saving, where a source has had no good read in
+    its `STALE_AFTER_S`."""
     from . import workzones
     from .models import BikeshareFeedCache
 
@@ -511,7 +513,18 @@ def refresh(
         defaults={"payload": {"feeds": feeds}, "fetched_at": now(), "failed_at": None},
     )
     workzones.forget()
-    return "closures: " + (", ".join(said) if said else "nothing due")
+    line = "closures: " + (", ".join(said) if said else "nothing due")
+    # A source with no good read in `STALE_AFTER_S` fails the run, so the operations page
+    # flags it, as the work zones' refresh does (audit 2026-10-29): its last good copy is
+    # still kept above, and riders are told when it ages out.
+    stale = []
+    for source in sources:
+        when = rules._when((feeds.get(source) or {}).get("read_at"))
+        if when is None or (now() - when).total_seconds() > STALE_AFTER_S[source]:
+            stale.append(source)
+    if stale:
+        raise FeedError(f"{line}; no good read in time: {', '.join(stale)}")
+    return line
 
 
 def status_of(source: str, read_at: datetime | None, now: datetime) -> str:
