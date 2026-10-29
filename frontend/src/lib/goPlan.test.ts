@@ -406,7 +406,7 @@ test("go pick: route from the start Go has, wait while the location is found, el
   assert.match(goDestinationLocating("Union Station"), /^To Union Station: finding your location/);
 });
 
-test("go tap: a tap on the map in Go opens the spot's card, whose big Route here routes there as the tap did (the owner, 2026-10-28)", () => {
+test("go tap: a tap on the map in Go opens the spot's card, whose big Ride here routes there as the tap did (the owner, 2026-10-28)", () => {
   const tap = appFile.slice(appFile.indexOf("const tapMap = useCallback("), appFile.indexOf("const goRouteHere ="));
   // Go: the spot's card (its address and what's near; GoSpotDialog.tsx), after the area check; the Home pick's tap
   // and Plan's taps still go to place. A long press and the card's Road info open the road card.
@@ -414,14 +414,14 @@ test("go tap: a tap on the map in Go opens the spot's card, whose big Route here
   assert.match(tap, /if \(!insideCoverage\(point\)\) \{\s*setNotice\(OUTSIDE_NOTICE\);\s*return;\s*\}\s*setGoSpot\(\{ point \}\);\s*return;\s*\}\s*place\(point\);/);
   assert.match(appFile, /<GoSpotDialog[\s\S]*?onRouteHere=\{goRouteHere\}[\s\S]*?onRoadInfo=\{\(point\) => setRoadInfo\(\{ point, origin: "spot" \}\)\}/);
   const spotCard = src("../GoSpotDialog.tsx");
-  // Route here first, then the address that names the dialog; the focus on Route here.
+  // Ride here first, then the address that names the dialog; the focus on Ride here.
   assert.ok(spotCard.indexOf('className="road-info-route-here"') < spotCard.indexOf("<h2 id={titleId}"));
   assert.match(spotCard, /aria-labelledby=\{titleId\}/);
   assert.match(spotCard, /routeRef\.current\?\.focus\(\);/);
   assert.match(spotCard, /onRouteHere\(request\.point\);\s*close\(\);/);
   assert.doesNotMatch(tap, /goToRef/, "a tap alone never routes");
   assert.match(appFile, /onMapClick=\{onBike \|\| reviewing \? ignore : tapMap\}/);
-  // Route here is the old tap: goTo with the same name and as a pressed destination ("Destination set").
+  // Ride here is the old tap: goTo with the same name and as a pressed destination ("Destination set").
   assert.match(appFile, /const goRouteHere = \(point: LonLat\) => void goToRef\.current\(point, goPlaceName\(namer\.name\(point\)\?\.name, point\), true\);/);
   assert.match(appFile, /onRouteHere=\{mode === "go" \? goRouteHere : undefined\}/);
   // The card's Set as end is open with the location as Go's start, and routes the same way before the plan has a point.
@@ -429,7 +429,7 @@ test("go tap: a tap on the map in Go opens the spot's card, whose big Route here
   assert.match(appFile, /choice === "end" && mode === "go" && points\.length === 0 \? goRouteHere\(point\)/);
   // Map tools' Set destination at map center still places through place, at once.
   assert.match(appFile, /const addAtCentre = \(\) => \{[\s\S]*?place\(\[lng, lat\]\);/);
-  // The card: Route here right under its title, full width, before the other actions; it routes the spot and closes.
+  // The card: Ride here right under its title, full width, before the other actions; it routes the spot and closes.
   const card = src("../RoadInfoDialog.tsx");
   const header = card.indexOf("{infoHeading(state)}");
   const button = card.indexOf('className="road-info-route-here"');
@@ -549,7 +549,7 @@ test("announcements: unset, Go is brief and Plan is full; a choice holds in both
 
 test("announcements: the essentials are always said; only the narration is extra", () => {
   const app = appSource();
-  for (const extra of ["announceExtra(FINDING_LOCATION);", "announceExtra(modeSaid(next));", "announceExtra(`${presetSaid(id)}.`);", 'announceExtra("The map is at your location.");'])
+  for (const extra of ["announceExtra(FINDING_LOCATION);", "announceExtra(modeSaid(next));", "announceExtra(`${presetSaid(id)}.`);", 'announceExtra(t("The map is at your location."));'])
     assert.ok(app.includes(extra), extra);
   // The start Go found, and when it could not, are essentials.
   assert.match(app, /announce\(GO_START_SAID\)/);
