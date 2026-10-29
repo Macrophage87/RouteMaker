@@ -147,6 +147,9 @@ test("wired into Go and Plan (with the warnings), Ride mode and Roam; never in S
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /<WeatherLines report=\{weather\} riding=\{false\}/);
   assert.match(panel, /role="status">\s*\{weatherSaid\(weather/);
+  // Go (the owner's P1): the alerts one line each directly under the totals, the rain with the warnings; Plan has both there.
+  assert.match(panel, /<\/div>\s*\{\/\*[^]*?\*\/\}\s*\{!go\.peek && <WeatherLines report=\{weather\} riding=\{false\} now=\{Date\.now\(\)\} part="alerts" \/>\}/);
+  assert.match(panel, /<WeatherLines report=\{weather\} riding=\{false\} now=\{Date\.now\(\)\} part=\{goMode \? "rain" : "all"\} \/>/);
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /useWeather\(/);
   assert.match(ride, /<WeatherLines report=\{weatherShown\} riding/);
@@ -165,4 +168,6 @@ test("wired into Go and Plan (with the warnings), Ride mode and Roam; never in S
   const rule = css.slice(css.indexOf(".ride-notes .weather-dismiss,"));
   assert.match(rule.slice(0, rule.indexOf("}")), /min-height: 72px/);
   assert.match(css, /\.weather-riding \{\s*display: flex;/);
+  // Severe or Extreme: the error's colours and a red edge.
+  assert.match(css, /\.weather-lines \.weather-alert\.weather-severe,\s*\.weather-lines \.weather-alert\.weather-extreme \{\s*background: var\(--error-bg\);\s*color: var\(--error-text\);\s*border-left: 5px solid #dc2626;/);
 });

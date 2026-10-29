@@ -98,6 +98,32 @@ export async function sendCourse(bytes: Uint8Array<ArrayBuffer>, fileName: strin
   return env.phone ? SENT_SAVED : SENT_SAVED_COMPUTER;
 }
 
+/** The phone app's Download GPX (handGpx): Android's "Open with" list. */
+export const GPX_CHOOSER = t("Choose an app to open the GPX file.");
+export const GPX_HAND_FAILED = t("Could not hand the GPX file on. Is an app that opens GPX files installed?");
+
+/** A name the plugin takes (FilesPlugin.safeName: letters, digits, ".", "_" and "-", ending .gpx): an opened file's
+ * own name may have spaces. */
+export function pluginGpxName(fileName: string): string {
+  const base = fileName.replace(/\.gpx$/i, "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[.-]+|-+$/g, "").slice(0, 100);
+  return `${base || "route"}.gpx`;
+}
+
+/**
+ * Download GPX in the phone app, where a download does nothing (a WebView saves no file a page makes): the file goes
+ * to the RouteMakerFiles plugin with anyApp, as Send to Wahoo's FIT course does, for Android's "Open with" list.
+ * Answers the line to say, or null outside the app (the caller saves it as a download, as before).
+ */
+export async function handGpx(text: string, fileName: string, bridge: CapacitorBridge | null = nativeBridge()): Promise<string | null> {
+  if (!bridge) return null;
+  try {
+    await bridge.nativePromise(FILES_PLUGIN, "openWith", { name: pluginGpxName(fileName), data: toBase64(new TextEncoder().encode(text)), anyApp: true });
+    return GPX_CHOOSER;
+  } catch {
+    return GPX_HAND_FAILED;
+  }
+}
+
 /** Whether fitting the course to the device left anything out: then its line (courseLine) is said too. */
 export function courseTrimmed(course: Pick<Course, "trim">): boolean {
   const t = course.trim;

@@ -35,6 +35,9 @@ import {
   checkClosures,
   closedStretches,
   closureHeading,
+  closureLead,
+  parkNoticesSummary,
+  rerouteLabel,
   spliceDetours,
   thinForCheck,
 } from "./closureCheck.ts";
@@ -219,6 +222,14 @@ test("the dialog names the closures and the choices fit what it was for", () => 
   assert.equal(anywayLabel("ride"), "Ride it anyway");
   assert.equal(anywayLabel("open"), "Ride it anyway");
   assert.equal(anywayLabel("download"), "Download anyway");
+  // P11: "it" for one closure; the lead says what is so at Start ride; park notices behind their count.
+  assert.equal(rerouteLabel(1), "Reroute around it");
+  assert.equal(rerouteLabel(2), "Reroute around them");
+  assert.equal(closureLead("ride"), "Closures on this route now.");
+  assert.equal(closureLead("open"), "Closures on this route now.");
+  assert.equal(parkNoticesSummary(6), "Park notices (6)");
+  const dialog = readFileSync(new URL("../ClosureDialog.tsx", import.meta.url), "utf8");
+  assert.match(dialog, /<details className="closure-notices">\s*<summary className="closure-notices-heading">\{parkNoticesSummary\(ask\.notices\.length\)\}<\/summary>/);
 });
 
 test("only the closed stretches are replaced; the rest stays verbatim", () => {

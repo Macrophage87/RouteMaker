@@ -10,9 +10,9 @@ import type { KeptRoute } from "./offlineRoutes.ts";
 import { PRESETS, isTransit, presetSaid, type PresetId } from "./presets.ts";
 import { t } from "./i18n.ts";
 
+/** The popup's one name, on Plan's bar and on Go's More entry (the owner, 2026-10-26: "Add saved routes in the more
+ * part of the go tab"); P12: Go's entry and title said "Saved routes". */
 export const LOAD_ROUTE = t("Load route");
-/** Go's More entry for the same popup (the owner, 2026-10-26: "Add saved routes in the more part of the go tab"). */
-export const SAVED_ROUTES = t("Saved routes");
 export const LOAD_GPX = t("Open GPX file");
 export const LOAD_CLOSE = t("Close");
 export const LOAD_NONE = t("No saved routes yet. Plan a route and press Save route.");

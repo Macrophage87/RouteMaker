@@ -264,6 +264,52 @@ def restore_upstreams(before: Mapping[str, UpstreamState]) -> None:
                 )
 
 
+def sync_upstreams(tiles_dir: Path, upstreams: Mapping[str, str]) -> dict[str, UpstreamState]:
+    """Make every variant's row say what its tile links say, all of them or none.
+
+    For a deployment that installs builds by moving the links itself and never runs
+    `perform_swap` (the beta: `scripts/beta/receive-data.sh files`). Without it the rows
+    there stayed as its first database load from home left them, with no row for a
+    variant promoted later, and the API serves a twin variant (`core.routing._promoted_row`)
+    only once its row exists: Mountain Bike, Gravel and Mountain Goat were planned on the
+    standard graph with both trail routers up (2026-10-28).
+
+    A variant whose `current` is a link gets `build_id` = its target and
+    `previous_build_id` = `previous`'s (or empty); one with no `current` keeps no row.
+    Refused (FileNotFoundError, nothing written) when the standard graph has no `current`.
+    Idempotent: a row that already matches is not written. Returns the rows as they were.
+    """
+    from core.models import ValhallaUpstream
+
+    found = {variant: tiles.links(tiles_dir, variant) for variant in Variant}
+    if not found[Variant.STANDARD].current:
+        # An unmounted or empty tiles folder, not a deployment with no graphs: syncing it would
+        # delete every row, the standard graph's with them.
+        raise FileNotFoundError(
+            f"{tiles_dir} has no standard/current link; is the tiles folder mounted here?"
+        )
+    before = upstream_states(upstreams)
+    with transaction.atomic():
+        for variant in Variant:
+            state = found[variant]
+            if state.current is None:
+                ValhallaUpstream.objects.filter(variant=variant.value).delete()
+                continue
+            wanted = {
+                "url": upstreams[variant.value],
+                "build_id": state.current,
+                "previous_build_id": state.previous or "",
+            }
+            row = ValhallaUpstream.objects.filter(variant=variant.value).first()
+            if row is None:
+                ValhallaUpstream.objects.create(variant=variant.value, **wanted)
+            elif any(getattr(row, key) != value for key, value in wanted.items()):
+                for key, value in wanted.items():
+                    setattr(row, key, value)
+                row.save(update_fields=[*wanted, "updated_at"])
+    return before
+
+
 def restore_everything(
     tiles_dir: Path,
     links_before: Mapping[Variant, tiles.TileLinks],

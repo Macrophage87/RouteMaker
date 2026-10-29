@@ -14,7 +14,7 @@
  */
 
 import { coordinatesText } from "./geocode.ts";
-import { LOCATE_MESSAGES, type LocateFailure } from "./geolocation.ts";
+import { LOCATE_MESSAGES, iosHomeScreenApp, type LocateFailure, type LocateResult } from "./geolocation.ts";
 import { haversineM, insideCoverage, type LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
 
@@ -176,8 +176,18 @@ export function modeSaid(mode: AppMode): string {
 
 // ---- Go's start (the owner, 2026-10-11 19:53 UTC: "in go, make the current location the starting location by default") ----
 
-/** Where Go's start stands: looking, the rider's location found, not available, or not asked yet. */
-export type GoStart = { kind: "idle" } | { kind: "locating" } | { kind: "here"; point: [number, number]; at: number } | { kind: "none" };
+/**
+ * Where Go's start stands: looking, the rider's location found, not available, or not asked yet. Not available
+ * says why where it matters (P11): the location blocked ("denied"), or found outside the map ("outside").
+ */
+export type GoStart = { kind: "idle" } | { kind: "locating" } | { kind: "here"; point: [number, number]; at: number } | { kind: "none"; why?: GoStartMissing };
+export type GoStartMissing = "denied" | "outside";
+
+/** Go's start not available, and why (goStartLine): from a look-up's answer, the fix outside the map or a denial. */
+export function goStartNone(result: LocateResult): GoStart {
+  if (result.ok) return insideCoverage(result.fix.point) ? { kind: "none" } : { kind: "none", why: "outside" };
+  return result.reason === "denied" ? { kind: "none", why: "denied" } : { kind: "none" };
+}
 
 /**
  * How long a found location stays Go's start (the owner, 2026-10-19: "Go mode sometimes picks a stale current
@@ -203,6 +213,17 @@ export function goStartStale(start: GoStart, now: number = Date.now()): boolean 
 export const GO_START_SAID = t("Start: your current location.");
 /** Said politely (and shown) when the location could not be had: denied, unavailable or timed out. */
 export const GO_START_UNAVAILABLE = t("Current location not available; type a start.");
+/**
+ * Go's start line with the location blocked (P11): the reason and both ways on, on the one line above the start box,
+ * in place of a notice under the sheet. An iPhone Home Screen app has no site settings (geolocation.ts iosHomeScreenApp).
+ */
+export const GO_LOCATION_OFF = iosHomeScreenApp()
+  ? t("Location off. Type a start, or allow location in iPhone Settings.")
+  : t("Location off. Type a start, or allow location in site settings.");
+/** Roam's press with the location blocked: Go stays, and says why in one line (P11). */
+export const ROAM_LOCATION_OFF = iosHomeScreenApp()
+  ? t("Roam needs your location. Allow location in iPhone Settings.")
+  : t("Roam needs your location. Allow location in site settings.");
 
 /**
  * Whether Go asks for the location now: only in Go (never in Plan), once per page, and only while the plan
@@ -220,6 +241,7 @@ export function goStartLine(start: GoStart, firstPointName: string | null): stri
   if (firstPointName !== null) return t("Start: {place}", { place: firstPointName });
   if (start.kind === "here") return t("Start: your current location");
   if (start.kind === "locating") return t("Start: finding your location…");
+  if (start.kind === "none" && start.why === "denied") return GO_LOCATION_OFF;
   return t("Start: none yet; type a start");
 }
 
@@ -293,6 +315,10 @@ export function goDestinationNeedsStart(name: string): string {
  * Go has, else it waits for one. A press on a station, a place's letter or a water stop still opens its card. In
  * Plan a press adds a point as before. This replaces the tap that was the start of a waiting destination (PR #95's
  * follow-up review): with no location, the start is typed in the start box.
+ *
+ * Since 2026-10-28 (the owner: "Put the route here as a big button on top of the card") a tap on the open map in Go
+ * opens the road card first, and its big Route here makes the spot the destination as the tap did (App's tapMap and
+ * goRouteHere): two taps, so a stray tap never plans a ride. Map tools' Set destination at map center still routes at once.
  */
 export function goTapSetsEnd(mode: AppMode): boolean {
   return mode === "go";

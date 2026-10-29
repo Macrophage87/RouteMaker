@@ -17,6 +17,10 @@ export const RIDE_RESUME_KEY = "routemaker.ride-left";
 export const RESUME_MAX_MS = 12 * 60 * 60_000;
 
 export const RESUME_HEADING = t("Resume your ride?");
+/** The question with the ride named where its destination has a name (the UI review, 2026-10-28). */
+export function resumeHeading(destination: string | null | undefined): string {
+  return destination ? t("Resume your ride to {place}?", { place: destination }) : RESUME_HEADING;
+}
 export const RESUME_LEAD = t("The app closed during a ride. Resume picks it up from where you are.");
 export const RESUME_RIDE = t("Resume ride");
 export const RESUME_NOT_NOW = t("Not now");
@@ -28,6 +32,8 @@ export interface LeftRide {
   preset: PresetId;
   dials: Dials;
   fixed: boolean;
+  /** The destination's name as the map gave it at Start ride, for the question (resumeHeading); none for a loop. */
+  destination?: string | null;
 }
 
 interface Kept {
@@ -42,6 +48,7 @@ interface Kept {
   preset: PresetId;
   dials: Dials;
   fixed: boolean;
+  destination?: string;
 }
 
 interface Store {
@@ -60,6 +67,8 @@ function local(): Store | null {
 
 /** Kept at Start ride: the plan's points with their kinds and names, which live on the pairs (lib/pointKinds.ts). */
 export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "isDrawn" | "nameOf">, now: number, store: Store | null = local()): void {
+  // A re-route kept mid-ride says no name: the one kept at Start goes on while the ride ends at the same place.
+  const destination = ride.loop ? null : (ride.destination ?? keptDestination(ride.points[ride.points.length - 1], store));
   const kept: Kept = {
     v: 1,
     at: now,
@@ -75,11 +84,24 @@ export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "is
     preset: ride.preset,
     dials: ride.dials,
     fixed: ride.fixed,
+    ...(destination ? { destination } : {}),
   };
   try {
     store?.setItem(RIDE_RESUME_KEY, JSON.stringify(kept));
   } catch {
     // Full or blocked storage: the ride goes on, only not resumable.
+  }
+}
+
+/** The name kept with the ride already stored, where that ride ends at `end`. */
+function keptDestination(end: LonLat | undefined, store: Store | null): string | null {
+  try {
+    const raw = store?.getItem(RIDE_RESUME_KEY);
+    const was = raw ? (JSON.parse(raw) as Partial<Kept>) : null;
+    const last = was?.points?.[was.points.length - 1];
+    return end && last && last[0] === end[0] && last[1] === end[1] && typeof was?.destination === "string" ? was.destination : null;
+  } catch {
+    return null;
   }
 }
 
@@ -116,5 +138,13 @@ export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named">, now: 
     if (kept.drawn?.includes(i)) p = marks.drawn(p);
     return p;
   });
-  return { route: kept.route, points, loop: kept.loop === true, preset: kept.preset, dials: kept.dials, fixed: kept.fixed === true };
+  return {
+    route: kept.route,
+    points,
+    loop: kept.loop === true,
+    preset: kept.preset,
+    dials: kept.dials,
+    fixed: kept.fixed === true,
+    ...(typeof kept.destination === "string" ? { destination: kept.destination } : {}),
+  };
 }

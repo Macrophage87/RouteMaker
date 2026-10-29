@@ -78,5 +78,7 @@ test("the map shows the plan's lines only without a route for the points, and Pl
   const app = source("../App.tsx");
   // A loop's lines too (none drawn by hand), with its way back to the start (Stephen 2026-10-20).
   assert.match(app, /planLegs=\{riding \|\| reviewing \|\| mode !== "plan" \? null : loopVias \? NO_LEGS : planDrawn\}/);
-  assert.match(app, /\{manual && <p className="plan-bar-manual-badge"><span>\{MANUAL_BADGE\}<\/span><\/p>\}/);
+  // Turned on in a loop, it turns the loop off, and the badge says so (P10): "... straight lines. Loop off."
+  assert.match(app, /\{manual && \(\s*<p className="plan-bar-manual-badge">\s*<span>\s*\{MANUAL_BADGE\}\s*\{manualLoopOff \? `\. \$\{MANUAL_LOOP_OFF\}` : ""\}/);
+  assert.match(app, /setManualLoopOff\(!manual && loopVias\);/);
 });

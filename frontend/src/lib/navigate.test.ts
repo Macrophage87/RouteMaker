@@ -9,6 +9,10 @@ import type { LonLat } from "./geo.ts";
 import { spokenDistance } from "./format.ts";
 import { cueParts } from "./cueShown.ts";
 import {
+  CUE_SHEET_SHOWN,
+  arrivedShown,
+  cueShort,
+  whereAmIShown,
   ADVANCE_MIN_M,
   END_FIX_MAX_AGE_MS,
   END_PART_WAY_M,
@@ -52,6 +56,8 @@ import {
   TRAIL_MARKER_M,
   replanPoints,
   rideModel,
+  cueWords,
+  signalsCard,
   REPLAN_UTURN,
   REPLAN_FOUND,
   REPLAN_REJOIN,
@@ -219,6 +225,36 @@ test("rideModel: a work zone on the route is a hazard cue; the disclaimer line i
   );
   assert.ok(Math.abs(model.cues[0].atM - 600) < 2, `${model.cues[0].atM}`);
   assert.ok(says("stoker", model.cues[0]), "Stoker hears an orange work zone");
+});
+
+test("rideModel: a run of signals is a short card, Corkers on a Mass Ride; the voice keeps the sentence (the 2026-10-28 audit, P6)", () => {
+  const route = lRoute();
+  const sentence =
+    "0.4 to 0.9 mi (0.6 to 1.4 km): 4 crossings with traffic signals (Scott Circle Northwest, M Street Northwest, K Street Northwest, and 1 more), 2 of them heavy-traffic roads (LTS 4) (Very high stress junctions).";
+  const group: DescriptionEntry = {
+    ...stretch(600, 1400, sentence),
+    kind: "junction",
+    tier: null,
+    severity: "red",
+    group: { number: 1, count: 4, lts4: 2, streets: ["Scott Circle Northwest", "M Street Northwest", "K Street Northwest"], more: 1 },
+  };
+  route.description = [...(route.description ?? []).slice(0, 1), group, ...(route.description ?? []).slice(1)];
+  const cue = rideModel(route).cues.find((c) => c.source === "junction")!;
+  assert.deepEqual(cue.card, {
+    head: "4 signals ahead",
+    rest: "Scott Cir, M St, K St +1 · 2 busy",
+    said: "4 crossings with traffic signals (Scott Circle Northwest, M Street Northwest, K Street Northwest, and 1 more), 2 of them heavy-traffic roads (LTS 4; very high stress junctions).",
+  });
+  assert.doesNotMatch(cue.card!.said, /\)\s*\(/, "no two brackets in a row");
+  // The voice is the API's sentence, as before.
+  assert.equal(cueWords(cue, true), "4 crossings with traffic signals (Scott Circle Northwest, M Street Northwest, K Street Northwest, and 1 more), 2 of them heavy-traffic roads.");
+  const mass = rideModel({ ...route, preset: "mass-ride" }).cues.find((c) => c.source === "junction")!;
+  assert.equal(mass.card!.head, "Corkers: 4 signals ahead");
+  // No busy road and none more: the streets alone.
+  assert.equal(signalsCard({ number: 2, count: 2, lts4: 0, streets: ["A Street Southeast", "B Street"], more: 0 }, "2 crossings.", false).rest, "A St, B St");
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(ride, /const cueShown = cue\?\.card \?\? cueParts\(/);
+  assert.match(ride, /<span className="visually-hidden">\{cue\.card\?\.said \?\? cue\.rideText \?\? cue\.text\}<\/span>/);
 });
 
 test("rideModel: a climb in the description is not a cue, and the stretch after it is read against the stretch before", () => {
@@ -2478,4 +2514,29 @@ test("D22(d): a bear at a fork along one way says 'Keep right now.', the advance
   } finally {
     setLanguageForTest("en");
   }
+});
+
+test("the screen's short words (the UI review, 2026-10-28): Where am I? in two lines, the weak-GPS rows, the arrival", () => {
+  const model = rideModel(twoLegs());
+  const { state } = ride(model, "quiet", 0, 400);
+  // The street, then the next cue's distance and street and the arrival clock; the voice's sentence is whereAmI's.
+  assert.deepEqual(whereAmIShown(model, state, null, (s) => `${Math.round(s)} s`), ["A St", "0.4 mi (0.6 km) → B St · 320 s"]);
+  assert.deepEqual(whereAmIShown(model, state), ["A St", "0.4 mi (0.6 km) → B St"]);
+  assert.match(whereAmI(model, state), /^On A Street\. Next, in 0\.4 miles: left onto B Street\./);
+  assert.deepEqual(whereAmIShown(model, { ...state, progressM: null }), ["Finding your place on the route."]);
+  // The weak-GPS list: each row short on screen, its whole sentence kept beside it.
+  const rows = cueSheet(model, 400);
+  assert.equal(rows[0].shown, "0.4 mi (0.6 km) · Stop 1");
+  // The turn is at the stop: nought from the row before.
+  assert.equal(rows[1].shown, "0 ft (0 m) · Left · B St");
+  assert.equal(rows[1].text, "Left onto B Street.");
+  assert.equal(CUE_SHEET_SHOWN, 3);
+  assert.equal(cueShort("Left onto Church Street Northwest."), "Left · Church St NW");
+  assert.equal(cueShort("Right."), "Right");
+  assert.equal(cueShort("Right, then immediately right onto Union Station Drive Northeast."), "Right · Union Station Dr NE");
+  assert.equal(cueShort("Bear left onto the path, then immediately left onto Corregidor Street Northwest, then immediately right onto N Street Northwest."), "Bear left · Corregidor St NW");
+  assert.equal(cueShort("Bear left to stay on Metropolitan Branch Trail."), "Bear left to stay on Metropolitan Branch Trl");
+  // Arrived: the destination's name where the map has one.
+  assert.equal(arrivedShown("Union Station"), "Arrived: Union Station");
+  assert.equal(arrivedShown(null), "Arrived");
 });
