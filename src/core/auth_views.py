@@ -35,6 +35,7 @@ from django.http import (
 from django.utils import timezone
 from django.utils.encoding import iri_to_uri
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods
 
 from . import ratelimit
@@ -46,7 +47,7 @@ from .discord_oauth import (
     scopes_are_minimal,
 )
 from .models import BanTombstone, Session, User
-from .revocation import tombstone
+from .revocation import bump_session_epoch, tombstone
 
 STATE_SESSION_KEY = "discord_login_request"
 # A signed-out visitor's session holds only the login in progress: it lasts as long as that can
@@ -206,11 +207,38 @@ def login_callback(request, exchange=None):
 @require_http_methods(["POST"])
 @ratelimit.rate_limited(ratelimit.SIGN_IN)
 def logout_view(request):
-    """Sign out of this session. Signing out everywhere bumps the epoch instead,
-    which is a different action and belongs on the account page."""
+    """Sign out of this session, on the server: its row and Django's session row both go, so
+    a copy of the cookie kept elsewhere stops working too. Signing out everywhere bumps the
+    epoch instead (`logout_everywhere_view`, below)."""
     if request.session.session_key:
         Session.objects.filter(session_key=request.session.session_key).delete()
     django_logout(request)
+    return HttpResponseRedirect("/")
+
+
+# The form field that keeps this device signed in while every other session ends. Settings' one
+# button leaves it out, so it signs this device out too.
+KEEP_THIS_DEVICE_FIELD = "keep_this_device"
+
+
+@require_http_methods(["POST"])
+@ratelimit.rate_limited(ratelimit.SIGN_IN)
+@csrf_protect
+def logout_everywhere_view(request):
+    """Sign out everywhere: end every session of the signed-in account, and its assistant apps'
+    grants, through the epoch (`revocation.bump_session_epoch`). Only that account's: the user
+    is the session's, never a field of the form. Then "/", which loads signed out."""
+    if not request.user.is_authenticated:
+        return HttpResponseRedirect("/")
+    keep = request.POST.get(KEEP_THIS_DEVICE_FIELD) == "yes"
+    bump_session_epoch(
+        request.user,
+        "signed out everywhere" + (", this device kept" if keep else ""),
+        actor=request.user,
+        keep_session_key=(request.session.session_key or "") if keep else "",
+    )
+    if not keep:
+        django_logout(request)
     return HttpResponseRedirect("/")
 
 

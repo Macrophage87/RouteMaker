@@ -238,7 +238,7 @@ def _audit_worker(action: str, guild, actor=None, detail: str = "") -> None:
     )
 
 
-def bump_session_epoch(user, reason: str, actor=None) -> int:
+def bump_session_epoch(user, reason: str, actor=None, keep_session_key: str = "") -> int:
     """End every one of this person's sessions, and nobody else's.
 
     The counter existed, the middleware read it, and nothing anywhere
@@ -253,17 +253,36 @@ def bump_session_epoch(user, reason: str, actor=None) -> int:
 
     Ban and deletion reach the counter through `User.save()` instead, so that
     every path - the admin, a management command, the deletion flow - gets it
-    without remembering to. This is the *explicit* sign-out-everywhere, and the
-    account page it belongs on arrives with the rest of the account surface; it
-    is here now because the primitive is what ban and deletion are built on.
+    without remembering to. This is the *explicit* sign-out-everywhere, the
+    button beside Sign out in Settings > Account (`auth_views.logout_everywhere_view`).
+
+    `keep_session_key` is the one session to leave signed in, moved to the new
+    epoch; empty, as the button sends it, ends this device's too. Django's own
+    session rows go with ours, so nothing of a session ended here is left in
+    either table.
     """
+    from django.contrib.sessions.models import Session as DjangoSession
+
     from .models import ConnectorGrant, Session, User
 
     user.session_epoch += 1
     User.objects.filter(pk=user.pk).update(session_epoch=user.session_epoch)
-    Session.objects.filter(user=user).delete()
-    # Assistant apps' grants (core.connector) are sign-ins too: signing out everywhere ends them.
+    ended = Session.objects.filter(user=user)
+    if keep_session_key:
+        ended = ended.exclude(session_key=keep_session_key)
+    keys = list(ended.values_list("session_key", flat=True))
+    DjangoSession.objects.filter(session_key__in=keys).delete()
+    Session.objects.filter(session_key__in=keys).delete()
+    if keep_session_key:
+        Session.objects.filter(user=user, session_key=keep_session_key).update(
+            issued_epoch=user.session_epoch
+        )
+    # Assistant apps' grants (core.connector) are sign-ins too: signing out everywhere ends them,
+    # with no separate choice. An app the rider no longer trusts is the reason to press it, and
+    # one they do trust is connected again in a minute.
     ConnectorGrant.objects.filter(user=user).delete()
+    # CALL SITE for core.connector's drop_for_user(user), in review on its own branch: once it
+    # lands, call it here so the drafts and GPX links those apps made end with their grants.
     _audit_user(user, "sign_out_everywhere", actor=actor, detail=reason)
     return user.session_epoch
 

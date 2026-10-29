@@ -1337,6 +1337,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "routes kept for offline": "itinéraires gardés hors ligne",
   "Reading the routes kept on this device…": "Lecture des itinéraires gardés sur cet appareil…",
   "Sign out": "Se déconnecter",
+  // Sign out everywhere (SignOut.tsx, 2026-10-29): a new draft, for the native speaker's check.
+  "Sign out everywhere": "Se déconnecter partout",
+  "Sign out on every device, this one too, and disconnect your AI assistant apps?":
+    "Se déconnecter sur tous les appareils, celui-ci compris, et déconnecter vos applis d'assistant IA ?",
   "Disconnect": "Déconnecter",
   "Connect {service}": "Connecter {service}",
   "Disconnect {app}": "Déconnecter {app}",

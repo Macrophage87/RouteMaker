@@ -292,6 +292,22 @@ test("Settings' Account has Sign out under 'Signed in with Discord.': a form POS
   assert.match(form, /<button type="submit" className="secondary">\s*\{t\("Sign out"\)\}\s*<\/button>/);
 });
 
+test("Sign out everywhere sits beside Sign out: one button, asked once, a form POST to /auth/logout-everywhere with the CSRF token", () => {
+  const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
+  const account = sheets.slice(sheets.indexOf("{myGo.signedIn ? ("), sheets.indexOf(") : signInAvailable ? ("));
+  assert.match(account, /<SignOutForm \/>\s*\{\/\*[^}]*\*\/\}\s*<SignOutEverywhereForm \/>/);
+  const form = readFileSync(new URL("../SignOut.tsx", import.meta.url), "utf8");
+  const everywhere = form.slice(form.indexOf("export function SignOutEverywhereForm"));
+  assert.match(everywhere, /method="post"\s+action="\/auth\/logout-everywhere"/);
+  assert.match(everywhere, /<input type="hidden" name="csrfmiddlewaretoken" value=\{csrfFromCookie\(document\.cookie\) \?\? ""\} \/>/);
+  // Asked once, and nothing is sent unless the rider says yes.
+  assert.match(everywhere, /if \(!window\.confirm\(SIGN_OUT_EVERYWHERE_ASK\)\) event\.preventDefault\(\);/);
+  // One control: no choice of keeping this device or the assistant apps.
+  assert.equal((everywhere.match(/<button\b/g) ?? []).length, 1);
+  assert.doesNotMatch(everywhere, /keep_this_device|type="checkbox"/);
+  assert.match(form, /export const SIGN_OUT_EVERYWHERE = t\("Sign out everywhere"\);/);
+});
+
 test("F15. Go's route chips stay one row at 390 px: Save shown short, no icons, never the actions", () => {
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
   const panel = read("../app/RoutePanel.tsx");
