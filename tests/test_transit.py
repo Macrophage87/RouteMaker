@@ -416,6 +416,14 @@ def test_stops_that_are_not_timepoints_are_interpolated_not_dropped() -> None:
     assert len(light) == 1 and len(light[0]["stops"]) == 5
 
 
+def test_the_build_starts_yesterday_in_washington_whatever_the_hosts_zone() -> None:
+    # 9 pm Eastern is already the next day in UTC: still yesterday's date in Washington.
+    from datetime import UTC
+
+    assert build.default_start(datetime(2026, 10, 30, 1, 0, tzinfo=UTC)) == date(2026, 10, 28)
+    assert build.default_start(at(2026, 10, 29, 0, 30)) == date(2026, 10, 28)
+
+
 def test_a_schedule_about_to_run_out_is_logged_and_alerted(tmp_path, caplog) -> None:
     path = tmp_path / "transit-schedule.json"
     path.write_text(built(date(2026, 9, 28))[0])
@@ -594,6 +602,26 @@ def test_dc_to_baltimore_takes_marc_with_the_bike(schedule) -> None:
     # Light RailLink takes a bike in the weekday rush too (the owner, 2026-10-12: "you can use
     # it unless it's too crowded to do so").
     assert "Light RailLink: no bikes on board at this time." not in out["notes"]
+
+
+def test_a_spanish_plan_says_its_panel_in_spanish(schedule) -> None:
+    """The 2026-10-29 review: the summary, the option rows and the comparison too, not only
+    the steps. The notes the app says itself (SCHEDULED_WORDS) stay as the app looks for them."""
+    from routemaker import lang
+
+    with lang.speaking("es"):
+        plan = plan_bike(schedule, NOMA, BALTIMORE, at(2026, 9, 30, 6, 20))
+        out = transit.block(plan, schedule)
+    assert out["summary"].startswith("Unos ") and "de puerta a puerta" in out["summary"]
+    rows = [o["label"] for o in out["options"]]
+    assert "En bicicleta todo el camino" in rows
+    assert any("MARC hasta " in row for row in rows)
+    assert out["comparison"] is None or "todo el camino" in out["comparison"]
+    assert transit.SCHEDULED_WORDS in out["notes"]
+    # English is as it was.
+    english = transit.block(plan_bike(schedule, NOMA, BALTIMORE, at(2026, 9, 30, 6, 20)), schedule)
+    assert "Ride the whole way" in [o["label"] for o in english["options"]]
+    assert english["summary"].endswith("min door to door, scheduled.")
 
 
 def test_the_light_rail_takes_a_bike_at_rush_hour_and_outside_it(schedule) -> None:
@@ -1561,6 +1589,11 @@ def test_an_expired_schedule_keeps_metro_on_its_typical_timetable(tmp_path) -> N
     before = transit.load(path, date(2026, 9, 1))
     assert [s.id for s in before.systems] == ["wmata-rail"]
     assert "cover September 28 to November 11, 2026." in before.note
+    # The note is worded when read: the same cached schedule says it in Spanish to a Spanish plan.
+    from routemaker import lang
+
+    with lang.speaking("es"):
+        assert "cubren del 28 de septiembre al 11 de noviembre de 2026." in before.note
     # The operator is still told to rebuild it.
     assert "ran out on 2026-11-11" in transit.schedule_alert(path, after_end)
     # Within its window, the file itself.
@@ -1594,6 +1627,9 @@ def test_a_system_whose_feed_ends_inside_the_window_is_left_out_after_it_not_clo
 
     before = transit.load(path, date(2026, 10, 20))
     assert "marc" in [s.id for s in before.systems] and before.note == ""
+    # 1:30 am on the 21st is still the 20th's service day: that night's trains stay planned.
+    owl = transit.load(path, transit.moment_of(at(2026, 10, 21, 1, 30)).service_day)
+    assert "marc" in [s.id for s in owl.systems] and owl.note == ""
     after = transit.load(path, date(2026, 10, 21))
     assert "marc" not in [s.id for s in after.systems]
     assert "wmata-rail" in [s.id for s in after.systems], "the others are still planned"
@@ -1613,7 +1649,9 @@ def test_a_system_whose_feed_ends_inside_the_window_is_left_out_after_it_not_clo
     assert "MARC's timetable ran out on 2026-10-20" in transit.schedule_alert(
         path, date(2026, 10, 25)
     )
-    assert transit.schedule_alert(path, date(2026, 10, 1)) is None
+    # Three weeks ahead the alert starts; before that, nothing.
+    assert "20 day(s) left" in transit.schedule_alert(path, date(2026, 10, 1))
+    assert transit.schedule_alert(path, date(2026, 9, 30)) is None
 
 
 def test_a_metro_gtfs_that_ends_early_gives_way_to_the_typical_timetable(tmp_path) -> None:
