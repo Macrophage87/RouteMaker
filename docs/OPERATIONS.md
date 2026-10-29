@@ -4566,6 +4566,17 @@ What the strip changes besides access, so it is not mistaken for a fault:
   (`bicycle:forward=yes`, `oneway:bicycle=no`, `cycleway=opposite*`) reopens a
   direction. The NO-BIKE-PATHS rules get that for free by using the same mark.
 
+## The Grocery chip needs photon recreated once (v0.14.0)
+
+A kind-of-place search (the Grocery chip, "bike shop"; `core.geocode` TAG_SEARCHES) asks Photon's
+`/reverse` for the nearest few, and Photon now serves up to 10 (`-max-reverse-results 10` in
+`compose.yaml` and `compose.beta.yaml`; it was 1). The flag is in the container's command, which a
+`restart` does not change: after deploying this release, recreate it once with
+`docker compose up -d photon` (with the beta overlay's files on the beta; the beta's CD does it itself, since
+`compose_changed` is set for this release). Its index is kept (it is
+on the host, `${DATA_ROOT}/photon`), so it is back once the JVM is up. Until then nothing fails: the search answers with one
+store at most.
+
 ## Manual mode's heights need the routers restarted once (v0.9.1)
 
 A leg drawn in Plan's manual mode (`straight_legs`, `core.routing._drawn`) takes its elevations from
@@ -6404,6 +6415,33 @@ at most 500 ft (150 m) long; they get `rm:aisle_link` and the remap routes them 
 service roads, as it does aisles tagged `bicycle=yes` (PR #197). Driveways are left out:
 most private ones carry no access tag. The rebuild log's facility line counts them
 ("parking aisles routed as links where a trail ends").
+
+**Short links the trail rules close (v0.14.0, with the next map update).** Every link rule
+above reads footways or parking aisles, so a short `highway=path` the trail rules close
+was never a link: the path and tunnel under Airpark Road to the Percheron Trail (OSM
+971529119 and 971529120, `bicycle=yes`, `surface=unpaved`, the mountain-bike class) was
+closed to every ride type but Mountain Bike. The owner, 2026-10-28, chose "Ride
+paved/unknown, walk dirt". `routemaker.short_links` finds groups of ways, joined at shared
+nodes and 500 ft (150 m) or less together, that touch bicycle-open ways at two nodes or
+more, on two ways or more, one a trail or a public street, and that are closed only for
+the mountain-bike class, a natural surface, an untagged park path, a footpath for walkers,
+poor visibility, a hiking route, `sac_scale=hiking`, a farm track or a working site
+(`trail_closures.SHORT_LINK_REOPENS`). Their reason is lifted. One with a natural surface,
+bad smoothness, a grade 4 or 5 track, poor visibility, a hiking rating or of the
+mountain-bike class gets
+`rm:link_walk` (the remap writes `bicycle=dismount`, and the route says to walk); the rest
+are ridden. A walked one of the mountain-bike class is still ridden on the off-road and
+Mountain Bike graphs, as before, and stays on the mountain-bike layer (so a standard
+route may walk a way the default map does not draw); its "walk your bike" note is said on
+every ride type, since the segment table holds one walk flag. Private, military, secured,
+golf, Zoo, singletrack, CBD, informal and `bicycle=no` ways are never reopened, nor a way
+whose own tags close it (`bicycle=no` or private `access` on a working site's or a farm
+track's way, a footway no bicycle tag opens). Reopened links count as bicycle-open for the
+sidewalk links and trailhead aisles that follow.
+The rebuild log's facility line counts them ("short links reopened (N of them walked)").
+On OSM read 2026-10-28 for 12 sample areas it reopens 17 ways, 15 walked (park paths not
+counted: the sample had no park outlines). Airpark itself sits in a 2,170 ft dirt chain,
+past the bound.
 
 **NPS units.** Tag rules only. A per-park "paved and designated only" rule goes
 in `pipeline.trail_closures.PARK_RULES` after that park's compendium has been

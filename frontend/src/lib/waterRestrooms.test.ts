@@ -319,8 +319,8 @@ test("an out-and-back keeps the nearer pass", () => {
 test("in words: US units first, metric in brackets, every detail said", () => {
   const p: WaterPoint = { id: "w1", lon: 0, lat: 0, toilet: "f", water: "p", name: "Peirce Mill", fee: "no", wheelchair: "yes", seasonal: "summer", hours: "06:00-22:00" };
   assert.equal(
-    waterAlongText({ point: p, alongM: 1609.344 * 4.2, offM: 61 }),
-    "At 4.2 mi (6.8 km): Flush restroom, with drinking water, Peirce Mill, 200 ft (61 m) off the route. Free. Wheelchair accessible. Seasonal: summer. Hours: 06:00-22:00.",
+    waterAlongText({ point: p, alongM: 1609.344 * 4.2, offM: 61 }, false, new Date("2026-10-14T12:00:00-04:00")),
+    "At 4.2 mi (6.8 km): Flush restroom, with drinking water, Peirce Mill, 200 ft (61 m) off the route. Free. Wheelchair accessible. Seasonal: summer. Open now · closes 10 PM.",
   );
   assert.equal(waterAlongText({ point: POINT, alongM: 50, offM: 3 }), "At 160 ft (50 m): Drinking water, on the route.");
   assert.equal(
@@ -334,7 +334,7 @@ test("in words: US units first, metric in brackets, every detail said", () => {
     "Fee to use.",
     "Not wheelchair accessible.",
     "Seasonal.",
-    "Open 24/7.",
+    "Open 24 hours.",
   ]);
   const at = (point: WaterPoint) => ({ point, alongM: 0, offM: 0 });
   assert.equal(
@@ -400,6 +400,21 @@ test("the list: a heading it is labelled by, one item per point, an Add as stop 
   const noRoute = renderToStaticMarkup(createElement(WaterAlongList, { items: null, headingId: "h" }));
   assert.ok(noRoute.includes('<h4 id="h">') && noRoute.includes(WATER_ALONG_NO_ROUTE));
   assert.ok(!renderToStaticMarkup(createElement(WaterAlongList, { items, headingId: "h" })).includes("<button"));
+});
+
+test("the list: the first three, then Show all N; a Throne's how-to once under it (the 2026-10-28 audit, P7)", () => {
+  const items = Array.from({ length: 5 }, (_, i) => ({ point: { ...POINT, id: `n${i}`, operator: "Throne", name: `Unit ${i}` }, alongM: 1609.344 * (i + 1), offM: 0 }));
+  const html = renderToStaticMarkup(createElement(WaterAlongList, { items, onAddStop: () => {}, headingId: "h" }));
+  assert.equal((html.match(/<li /g) ?? []).length, 3);
+  assert.match(html, /<button type="button" class="secondary water-all">Show all 5<\/button>/);
+  // The count line still counts them all.
+  assert.ok(html.includes("5 along your route"));
+  assert.equal(html.split("10-minute limit").length - 1, 1, "the how-to once, not on each row");
+  assert.ok(html.includes("Open with the Throne app or text THRONE to 202-751-3694."));
+  const three = renderToStaticMarkup(createElement(WaterAlongList, { items: items.slice(0, 3), headingId: "h" }));
+  assert.ok(!three.includes("Show all"), "three or fewer: no button");
+  assert.ok(waterAlongText(items[0]).includes(THRONE_DETAIL), "said in full outside a list");
+  assert.ok(!waterAlongText(items[0], true).includes(THRONE_DETAIL));
 });
 
 // --- As MapLibre itself reads the layer ------------------------------------

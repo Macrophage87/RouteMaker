@@ -21,7 +21,7 @@
  */
 import { AVOID_SYMBOL } from "./lib/avoidJunctions.ts";
 import { t } from "./lib/i18n.ts";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { RouteResponse } from "./lib/api.ts";
 import "./routeDescription.css";
 import { FEDERAL_UNCHECKED } from "./lib/federalStops.ts";
@@ -48,6 +48,9 @@ import {
   viewFor,
   writeOpen,
   writeView,
+  isRouteNotice,
+  noticeParts,
+  noticesLine,
 } from "./lib/routeDescription.ts";
 
 /** How long the copy reply waits after clearing, so that it is a change a screen reader says. */
@@ -60,7 +63,6 @@ function copy(text: string): Promise<boolean> {
 export function RouteDescription({
   route,
   fold = false,
-  rideAction = null,
   federal = [],
 }: {
   route: RouteResponse;
@@ -70,9 +72,9 @@ export function RouteDescription({
    * line, the stops on federal land and the parkway stretches; empty elsewhere.
    */
   federal?: readonly string[];
-  /** Ride mode's Start ride, offered with the directions too (WEB-NAV-plan.md Q1, OWNER-DECISIONS 465). */
-  rideAction?: ReactNode;
 }) {
+  // No Start ride here any more (Plan on a phone, P10: one of each control): the route row's Start and Plan's bar
+  // hold it (it was offered with the directions too, WEB-NAV-plan.md Q1, OWNER-DECISIONS 465).
   const [open, setOpen] = useState<boolean>(() => readOpen());
   const [chosen, setChosen] = useState<DescriptionView>(() => readView());
   const choice = hasOverview(route);
@@ -124,7 +126,40 @@ export function RouteDescription({
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   };
 
-  const items = entries.map((entry, i) => {
+  // In the fold, the notices (the feeds not read, the park alerts and advisories that could not be placed) are one
+  // closed line, not the list's first lines: step 1 comes first (P10). The copy and the text file keep them in place.
+  const notices = fold ? entries.filter(isRouteNotice) : [];
+  const steps = fold ? entries.filter((entry) => !isRouteNotice(entry)) : entries;
+  const noticeBlock =
+    notices.length > 0 ? (
+      <details className="route-notices">
+        <summary>
+          {noticesLine(notices.length)}
+          <span aria-hidden="true"> ›</span>
+        </summary>
+        <ul>
+          {notices.map((entry, i) => {
+            const parts = noticeParts(entry.text);
+            return (
+              <li key={i}>
+                {parts.words}
+                {parts.url && (
+                  <>
+                    {" "}
+                    <a href={parts.url} target="_blank" rel="noopener noreferrer">
+                      {parts.site}
+                    </a>
+                  </>
+                )}
+                {entry.citation && <small className="description-citation">{entry.citation}</small>}
+              </li>
+            );
+          })}
+        </ul>
+      </details>
+    ) : null;
+
+  const items = steps.map((entry, i) => {
     const crossings = crossingsOf(entry);
     return (
       <li key={i} className={`description-${entry.kind}`}>
@@ -201,7 +236,6 @@ export function RouteDescription({
       <button type="button" onClick={onDownload}>
         {t("Download as text")}
       </button>
-      {rideAction}
       <span role="status" className="hint description-status">
         {copied === "done" ? t("Copied.") : copied === "failed" ? t("Could not copy. Use Download as text.") : ""}
       </span>
@@ -216,7 +250,7 @@ export function RouteDescription({
     return (
       <Fold
         title={ROUTE_FOLDS.directions.title}
-        count={stepsCount(entries.length)}
+        count={stepsCount(steps.length)}
         icon="list"
         heading={ROUTE_FOLDS.directions.title}
         headingId="route-description-heading"
@@ -240,6 +274,7 @@ export function RouteDescription({
         {hazardBlock(false)}
         {federalBlock(false)}
         {hiddenNote && <p className="hint lanes-hidden">{hiddenNote}</p>}
+        {noticeBlock}
         <ol className="description-list">{items}</ol>
         {actions}
       </Fold>

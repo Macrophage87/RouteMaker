@@ -146,16 +146,16 @@ test("a change of the ride says how the points are renamed, and only when they a
 });
 
 test("the empty-plan hint: start then stops in a loop; the toggle offered only where the ride type has one", () => {
-  const loop = emptyPlanHint("default", true);
+  const loop = emptyPlanHint("default", true).join(" ");
   assert.match(loop, /set a start, then add stops/);
   assert.doesNotMatch(loop, /then an end/);
   // After Clear the toggle stays on, in view under the search (388, 389): say so, and how to turn it off.
   assert.match(loop, /"Make it a loop" is checked, under the search; uncheck it for a ride that ends somewhere else\./);
-  const plain = emptyPlanHint("default", false);
+  const plain = emptyPlanHint("default", false).join(" ");
   assert.match(plain, /set a start, then an end/);
   assert.match(plain, /To finish back at the start, check "Make it a loop" under the search; then each click after the start is a stop\./);
   assert.doesNotMatch(`${loop} ${plain}`, /ride settings|Edit button/, "the toggle is no longer behind the Ride line (388)");
-  const mass = emptyPlanHint("mass-ride", false);
+  const mass = emptyPlanHint("mass-ride", false).join(" ");
   assert.match(mass, /set a start, then an end/);
   assert.doesNotMatch(mass, /loop/i);
   for (const hint of [loop, plain, mass]) {
@@ -193,15 +193,35 @@ test("accessibility mode off: the hints say to turn it on, not to use Map tools 
   for (const hint of [loneStartHint("default", true), loneStartHint("default", false), loneStartHint("mass-ride", false)]) {
     assert.doesNotMatch(hint, /Map tools/);
   }
-  const tips = editingTips();
+  const tips = editingTips().join(" ");
   // In More tips, whose own line says where the switch is, so not here (the spec review's SF4).
-  assert.match(tips, /move the map with the arrow keys and turn on accessibility mode, then use "Add point at map center" in Map tools;/);
+  assert.match(tips, /the arrow keys move the map; turn on accessibility mode, then use "Add point at map center" in Map tools\./);
   assert.doesNotMatch(tips, /first button/);
-  assert.match(editingTips(true), /use "Add point at map center" in Map tools; Ctrl\+Z/);
-  assert.doesNotMatch(editingTips(true), /accessibility mode/);
-  assert.match(emptyPlanHint("default", false), /turn on accessibility mode/);
-  assert.doesNotMatch(emptyPlanHint("default", false), /first button/);
-  assert.doesNotMatch(emptyPlanHint("default", false, true), /accessibility mode/);
+  assert.match(editingTips(true).join(" "), /use "Add point at map center" in Map tools\. Ctrl\+Z/);
+  assert.doesNotMatch(editingTips(true).join(" "), /accessibility mode/);
+  assert.match(emptyPlanHint("default", false).join(" "), /turn on accessibility mode/);
+  assert.doesNotMatch(emptyPlanHint("default", false).join(" "), /first button/);
+  assert.doesNotMatch(emptyPlanHint("default", false, true).join(" "), /accessibility mode/);
+});
+
+test("Plan's tips are short lines, a finger's words on a phone (P8: one 524-character paragraph before)", () => {
+  for (const touch of [false, true]) {
+    for (const lines of [editingTips(false, touch), emptyPlanHint("default", false, false, touch), emptyPlanHint("default", true, true, touch)]) {
+      for (const line of lines) {
+        assert.ok((line.match(/[.?!](\s|$)/g) ?? []).length <= 2, line);
+        assert.ok(line.length <= 160, line);
+      }
+    }
+  }
+  const phone = editingTips(false, true).join(" ");
+  assert.doesNotMatch(phone, /click|Ctrl/i, "no click or shortcut keys on a phone");
+  assert.match(phone, /press and hold the line, then drag it/);
+  assert.match(phone, /A tap on the map adds a via point\./);
+  assert.doesNotMatch(emptyPlanHint("default", false, false, true).join(" "), /click/i);
+  // The keyboard's lines come back in accessibility mode, on a phone too.
+  assert.match(editingTips(true, true).join(" "), /Ctrl\+Z undoes the last change/);
+  // A computer keeps its click, and the named stop's Ctrl+click.
+  assert.match(editingTips().join(" "), /Ctrl\+click/);
 });
 
 test("the toggle's hint with a start alone talks of no end point", () => {

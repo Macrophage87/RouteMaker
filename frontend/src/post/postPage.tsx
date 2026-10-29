@@ -42,6 +42,7 @@ import { readWahoo } from "../lib/wahooLink.ts";
 import { MINIMAP_LABEL, showMinimaps } from "./minimaps.ts";
 import { wireSends } from "./sends.ts";
 import { wirePhotos } from "./photos.ts";
+import { t } from "../lib/i18n.ts";
 
 /** What the server puts in the page (route_posts.page_data). */
 export interface PostData {
@@ -223,7 +224,7 @@ export function PostCharts({ answer, onScrub }: { answer: RouteResponse; onScrub
       {segments.length > 0 && (
         <figure className="stress stress-main" aria-labelledby="post-stress-caption">
           <figcaption id="post-stress-caption" className="visually-hidden">
-            Traffic stress along the route
+            {t("Traffic stress along the route")}
           </figcaption>
           <div className="stress-bar" role="img" aria-label={stressBarLabel(segments)}>
             {segments

@@ -66,7 +66,7 @@ test("the Cargo Bike card's words cover passengers", () => {
 
 test("the picker's group is named for cargo or passengers, and the load buttons use the labels", () => {
   const picker = readFileSync(new URL("./RideTypePicker.tsx", import.meta.url), "utf8");
-  assert.match(picker, /aria-label=\{`\$\{presetSaid\(option\.id\)\}: cargo or passengers`\}/);
+  assert.match(picker, /aria-label=\{t\("\{ride\}: cargo or passengers", \{ ride: presetSaid\(option\.id\) \}\)\}/);
   assert.match(picker, /\{load\.label\}/);
   assert.match(picker, /carrying\.label\.toLowerCase\(\)/);
 });

@@ -93,7 +93,7 @@ export const OFFROAD_MAX_LEVEL = 1;
 
 /** Where the paths and trails the long-distance rule leaves out come back (STRESS_ZOOMS.quiet). */
 export function everyTrailFrom(quiet: number): string {
-  return `Every other path and trail, the short ones too, shows from zoom ${quiet}. Mountain-bike trails show from zoom ${MTB_MIN_ZOOM} when their layer is on.`;
+  return `Every other path and trail, the short ones too, shows from zoom ${quiet}. Mountain-bike trails show from zoom ${MTB_MIN_ZOOM} when their layer is on, and at every zoom in Mountain Bike.`;
 }
 
 /** A planned route is drawn whole at every zoom (OWNER-DECISIONS 391). */

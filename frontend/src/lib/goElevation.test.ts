@@ -31,6 +31,16 @@ test("the compact chart keeps the slider and its words for a screen reader, and 
   }
 });
 
+test("Plan's chart key is behind one Key line, and the prompt names the keys only where there is a keyboard (P10)", () => {
+  const key = chart.indexOf('<details className="pc-key-fold">');
+  assert.ok(key > 0 && key < chart.indexOf('<ul className="pc-legend"') && chart.indexOf('<ul className="pc-tiers"') < chart.indexOf('<details className="pc-source-fold">'));
+  assert.match(chart, /<summary>\{t\("Key"\)\}<\/summary>/);
+  assert.match(chart, /<span className="pc-prompt-keys">\{prompt\}<\/span>\s*<span className="pc-prompt-touch">\{promptTouch\}<\/span>/);
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(css, /@media \(hover: none\) and \(pointer: coarse\) \{\s*\.app:not\(\.access-mode\) \.pc-readout \.pc-prompt-keys \{\s*display: none;/);
+  assert.match(readFileSync(new URL("../App.tsx", import.meta.url), "utf8"), /\$\{accessMode \? " access-mode" : ""\}/);
+});
+
 test("the rolling stress title clears the elevation's bottom label", () => {
   const m = chart.match(/calm: \{ height: (\d+), elevTop: \d+, elevBottom: (\d+), markerY: (\d+),/);
   assert.ok(m);
