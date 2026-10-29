@@ -135,7 +135,8 @@ RIDE_CRYPTO = [
     "planned line is kept on the server like any shared link (see Shared links).",
     "Nightly database backups are encrypted with age to the owner's X25519 public key; the "
     "matching private key is kept on the owner's computer, not on the server, so the server can "
-    "write a backup but never read one.",
+    "write a nightly backup but never read one. The short-lived copies taken just before an "
+    "update are not encrypted: they stay on the server, for at most a week.",
     "RouteMaker is open source (MIT license), so anyone can check this: the ride encryption is "
     "frontend/src/lib/rideSeal.ts in github.com/Macrophage87/RouteMaker.",
 ]
@@ -445,9 +446,9 @@ SECTIONS: list[tuple[str, str]] = [
                 "Shared links: as above.",
                 "Database backups: one a night, encrypted, the last seven kept, so deleted data "
                 "leaves them within a week, or, if backups fail for longer, with the next one "
-                "that succeeds. Copies taken before an update are kept on the server for at most "
-                "a week. Sign-ins, request limits, the Discord role list and Garmin and Wahoo "
-                "connections are left out of them.",
+                "that succeeds. Copies taken just before an update are not encrypted, and are "
+                "kept on the server for at most a week. Sign-ins, request limits, the Discord "
+                "role list and Garmin and Wahoo connections are left out of them.",
                 "Suggestions already decided stay as the map’s history, with nothing linking "
                 "them to you once your account is deleted.",
                 "A note that an account was deleted, and when, under an account number.",

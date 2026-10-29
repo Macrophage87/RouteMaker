@@ -7,6 +7,7 @@ The page is the same for everyone, names no host, and leads with what matters mo
 from __future__ import annotations
 
 import re
+from datetime import timedelta
 from html import escape
 from pathlib import Path
 
@@ -176,7 +177,7 @@ class TestPage:
             "the last seven kept",  # procrastinate.BACKUP_KEEP
             "leaves them within a week",  # procrastinate.BACKUP_MAX_AGE
             "with the next one that succeeds",  # retention.prune_backups keeps the newest
-            "before an update are kept on the server for at most a week",  # prune_snapshots
+            "kept on the server for at most a week",  # prune_snapshots
             "one a night, encrypted",  # procrastinate.perform_backup, through age
             "30 days unused, or after 90 days",  # revocation's idle and absolute lifetimes
             "Sign out everywhere",  # auth_views.logout_everywhere_view
@@ -230,6 +231,17 @@ class TestPage:
         assert len(route_posts.new_ride_key()) == 22
         assert route_posts.RIDE_LINK_TYPES == ("mass-ride", "group-ride")
         assert ride_presence.PLAIN_REFUSED
+
+    def test_only_the_nightly_backups_are_said_to_be_unreadable_by_the_server(self) -> None:
+        # The pre-update copies stay plain for an on-server rollback (pipeline.retention
+        # prune_snapshots), so the policy says so and holds them to the nightly dumps' age.
+        from config import procrastinate
+
+        text = " ".join(privacy_policy.RIDE_CRYPTO)
+        assert "write a nightly backup but never read one" in text
+        assert "copies taken just before an update are not encrypted" in text
+        assert "for at most a week" in text
+        assert procrastinate.BACKUP_MAX_AGE <= timedelta(days=7)
 
     def test_the_encryption_details_are_the_code_s(self) -> None:
         from core import route_posts
