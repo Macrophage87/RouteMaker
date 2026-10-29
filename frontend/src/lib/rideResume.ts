@@ -35,10 +35,11 @@ export interface LeftRide {
   /** The destination's name as the map gave it at Start ride, for the question (resumeHeading); none for a loop. */
   destination?: string | null;
   /**
-   * Opened from someone else's link (a route or ride they shared): resumed, it is still theirs, so it offers no Share
-   * live of its own (Stephen 2026-10-26). Left out by a mid-ride re-route, which keeps the one kept at Start.
+   * Following someone else's broadcast: its link, which Share live passes on once resumed too, its sharer still the
+   * leader (Stephen 2026-10-29: "A ride opened should allow sharing too"). Kept on this device only, as the rest is.
+   * Left out by a mid-ride re-route, which keeps the one kept at Start.
    */
-  others?: boolean;
+  passOn?: string | null;
 }
 
 interface Kept {
@@ -54,7 +55,7 @@ interface Kept {
   dials: Dials;
   fixed: boolean;
   destination?: string;
-  others?: boolean;
+  passOn?: string;
 }
 
 interface Store {
@@ -75,7 +76,7 @@ function local(): Store | null {
 export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "isDrawn" | "nameOf">, now: number, store: Store | null = local()): void {
   // A re-route kept mid-ride says no name: the one kept at Start goes on while the ride ends at the same place.
   const destination = ride.loop ? null : (ride.destination ?? keptDestination(ride.points[ride.points.length - 1], store));
-  const others = ride.others ?? keptOthers(store);
+  const passOn = ride.passOn === undefined ? keptPassOn(store) : ride.passOn;
   const kept: Kept = {
     v: 1,
     at: now,
@@ -92,7 +93,7 @@ export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "is
     dials: ride.dials,
     fixed: ride.fixed,
     ...(destination ? { destination } : {}),
-    ...(others ? { others } : {}),
+    ...(passOn ? { passOn } : {}),
   };
   try {
     store?.setItem(RIDE_RESUME_KEY, JSON.stringify(kept));
@@ -113,13 +114,14 @@ function keptDestination(end: LonLat | undefined, store: Store | null): string |
   }
 }
 
-/** Whether the ride already stored was opened from someone else's link. */
-function keptOthers(store: Store | null): boolean {
+/** The broadcast's link kept with the ride already stored, if it follows one. */
+function keptPassOn(store: Store | null): string | null {
   try {
     const raw = store?.getItem(RIDE_RESUME_KEY);
-    return raw ? (JSON.parse(raw) as Partial<Kept>).others === true : false;
+    const was = raw ? (JSON.parse(raw) as Partial<Kept>).passOn : null;
+    return typeof was === "string" ? was : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -164,6 +166,6 @@ export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named">, now: 
     dials: kept.dials,
     fixed: kept.fixed === true,
     ...(typeof kept.destination === "string" ? { destination: kept.destination } : {}),
-    ...(kept.others === true ? { others: true } : {}),
+    ...(typeof kept.passOn === "string" ? { passOn: kept.passOn } : {}),
   };
 }

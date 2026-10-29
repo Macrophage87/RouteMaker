@@ -58,7 +58,7 @@ test("a ride left too long ago, or unreadable, is not offered and is forgotten; 
 
 test("the page keeps the ride at Start, forgets it at End, and asks at load; nothing goes to the server", () => {
   const app = src("../App.tsx");
-  assert.match(app, /if \(kept\) \{[\s\S]{0,300}?keepLeftRide\(\{ route, points: leg\.points, loop: leg\.loop, preset: leg\.preset, dials: rideDialsNow, fixed, destination, others \}/);
+  assert.match(app, /if \(kept\) \{[\s\S]{0,300}?keepLeftRide\(\{ route, points: leg\.points, loop: leg\.loop, preset: leg\.preset, dials: rideDialsNow, fixed, destination, passOn \}/);
   assert.match(app, /const endRide = useCallback\(\(after: EndedPlan, stats: RideStats\) => \{\s*const \{ start, mode: endedIn \} = rideNow\.current;\s*forgetLeftRide\(\);/);
   assert.match(app, /const \[leftAsk, setLeftAsk\] = useState\(\(\) => leftRide\(VIA_MARKS, Date\.now\(\)\)\);/);
   assert.match(app, /<ResumeRideDialog\s+open=\{leftAsk !== null && !riding && !roaming\}/);
@@ -91,16 +91,17 @@ test("the ride's destination is kept with it, through its re-routes, to name it 
   assert.equal(leftRide(marks, 0, store)?.destination, undefined);
 });
 
-test("a ride opened from someone else's link is still theirs once resumed, through its re-routes; one's own is not", () => {
+test("a ride following someone's broadcast keeps its link to pass on once resumed, through its re-routes; one's own has none", () => {
   const store = memory();
   const marks = new ViaMarks();
   const points: LonLat[] = [[-77, 38.9], [-77.01, 38.9]];
-  keepLeftRide({ route, points, loop: false, preset: "standard", dials, fixed: true, others: true }, marks, 0, store);
-  assert.equal(leftRide(marks, 0, store)?.others, true);
+  const link = "https://x.test/s/abc#ride=1&lead=L&k=K";
+  keepLeftRide({ route, points, loop: false, preset: "standard", dials, fixed: true, passOn: link }, marks, 0, store);
+  assert.equal(leftRide(marks, 0, store)?.passOn, link);
   // A re-route mid-ride (RideMode) says nothing of it: the one kept at Start goes on.
   keepLeftRide({ route, points: [[-77.002, 38.9], [-77.01, 38.9]], loop: false, preset: "standard", dials, fixed: true }, marks, 0, store);
-  assert.equal(leftRide(marks, 0, store)?.others, true);
-  // The next ride, the rider's own, is theirs to share.
-  keepLeftRide({ route, points, loop: false, preset: "standard", dials, fixed: false, others: false }, marks, 0, store);
-  assert.equal(leftRide(marks, 0, store)?.others, undefined);
+  assert.equal(leftRide(marks, 0, store)?.passOn, link);
+  // The next ride, the rider's own, has none.
+  keepLeftRide({ route, points, loop: false, preset: "standard", dials, fixed: false, passOn: null }, marks, 0, store);
+  assert.equal(leftRide(marks, 0, store)?.passOn, undefined);
 });
