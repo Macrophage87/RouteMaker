@@ -3,8 +3,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { cueParts } from "./cueShown.ts";
-import { GAP_PX, PILL_PX, ROUND_PX, WORD_PX, railFit } from "./railFit.ts";
-import { WAKE_LOST, WAKE_SHORT, WAKE_STEPS, WAKE_UNAVAILABLE, phoneKind, wakeSaid } from "./rideOutput.ts";
+import { GAP_PX, ICON_GAP_PX, PILL_PX, ROUND_PX, WORD_PX, railFit } from "./railFit.ts";
+import { RIDE_ICONS_KEY, WAKE_LOST, WAKE_SHORT, WAKE_STEPS, WAKE_UNAVAILABLE, phoneKind, readRideIconsOnly, wakeSaid, writeRideIconsOnly } from "./rideOutput.ts";
 import { ROAD_CLOSED_NAME, ROAD_CLOSED_TEXT } from "./roadClosed.ts";
 import { detourRowShown, type Nearby } from "./nearest.ts";
 import { RESUME_HEADING, resumeHeading } from "./rideResume.ts";
@@ -13,6 +13,7 @@ const source = (path: string) => readFileSync(new URL(path, import.meta.url), "u
 const ride = source("../RideMode.tsx");
 const roam = source("../RoamMode.tsx");
 const css = source("../styles.css");
+const sheets = source("../app/Sheets.tsx");
 
 test("Go round: shown words that say what the press does, which start its name (WCAG 2.5.3)", () => {
   assert.equal(ROAD_CLOSED_TEXT, "Go round");
@@ -78,6 +79,34 @@ test("the side buttons' words: under the round buttons where they fit, else 44 p
   assert.equal(roam.match(/className=\{`ride-round/g)?.length ?? 0, 2);
   // More's bubbles: a column going up from More, not a row along the foot.
   assert.match(css, /\.ride-more-bubbles \{[^}]*flex-direction: column-reverse;/);
+});
+
+test("icons only on the side buttons (Stephen 2026-10-29): off by default, kept on this device, the names unchanged", () => {
+  const kept = new Map<string, string>();
+  const store = { getItem: (key: string) => kept.get(key) ?? null, setItem: (key: string, value: string) => void kept.set(key, value) };
+  assert.equal(readRideIconsOnly(store), false);
+  writeRideIconsOnly(true, store);
+  assert.equal(kept.get(RIDE_ICONS_KEY), "1");
+  assert.equal(readRideIconsOnly(store), true);
+  writeRideIconsOnly(false, store);
+  assert.equal(readRideIconsOnly(store), false);
+  assert.equal(readRideIconsOnly(null), false);
+  // Without words the buttons stay round longer: six round ones need 6 x 56 + 5 x 12 = 396 px, else 44 px circles.
+  assert.equal(railFit(396, 6, 0, true), "under");
+  assert.equal(railFit(395, 6, 0, true), "pill");
+  assert.equal(railFit(396, 6), "pill");
+  assert.ok(ICON_GAP_PX >= GAP_PX);
+  // Ride and Roam mark the rail; the words go from the screen only, each button keeps its aria-label.
+  for (const mode of [ride, roam]) {
+    assert.match(mode, /const railFit = useRailFit\(railRef, iconsOnly\);/);
+    assert.match(mode, /\$\{iconsOnly \? " ride-rail-icons" : ""\}/);
+  }
+  assert.match(css, /\.ride \.ride-rail-icons \.ride-word \{\s*display: none;\s*\}/);
+  assert.match(css, /\.ride-rail-icons\.ride-rail-under \{[^}]*gap: 12px;/);
+  assert.match(css, /\.ride \.ride-rail-icons\.ride-rail-pill \.ride-round,[^{]*\{[^}]*width: 44px;[^}]*border-radius: 50%;/);
+  // One switch in Settings > Display.
+  assert.match(sheets, /<IconsOnlyRow \/>/);
+  assert.match(sheets, /writeRideIconsOnly\(!on\)/);
 });
 
 test("toasts across the map's top, over the side buttons, never cut behind them; their lines kept", () => {

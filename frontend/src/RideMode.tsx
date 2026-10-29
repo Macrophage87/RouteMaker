@@ -151,6 +151,7 @@ import {
   Voice,
   phoneKind,
   toScreenReader,
+  readRideIconsOnly,
   toVoice,
   wakeSaid as wakeWords,
   type CueOutput,
@@ -918,7 +919,9 @@ export function RideMode({
   // and Settings, the last opening the ride's settings under the top row.
   const [moreOpen, setMoreOpen] = useState(false);
   const railRef = useRef<HTMLDivElement>(null);
-  const railFit = useRailFit(railRef);
+  // Icons only (Settings > Display): read as the ride opens; the buttons' names are unchanged either way.
+  const [iconsOnly] = useState(() => readRideIconsOnly());
+  const railFit = useRailFit(railRef, iconsOnly);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPanel = useRef<HTMLDivElement>(null);
   const settingsButton = useRef<HTMLButtonElement>(null);
@@ -2717,7 +2720,7 @@ export function RideMode({
           </div>
         )}
         {/* Each button's word under it, or beside its icon where the map is short (lib/railFit.ts); its name unchanged. */}
-        <div ref={railRef} className={`ride-rail ride-rail-${railFit}`} role="group" aria-label={t("Ride buttons")}>
+        <div ref={railRef} className={`ride-rail ride-rail-${railFit}${iconsOnly ? " ride-rail-icons" : ""}`} role="group" aria-label={t("Ride buttons")}>
           {/* Where am I? with Re-centre in it (the owner, 2026-10-20): highlighted when the map stopped following. */}
           <button
             type="button"

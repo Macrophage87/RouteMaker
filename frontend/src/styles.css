@@ -6723,6 +6723,43 @@ details.fold > summary .icon {
   font-size: 15px;
 }
 
+/* Icons only (Settings > Display, Stephen 2026-10-29: "allow icon only bubbles in settings"): no words on screen, the
+   buttons' names unchanged for screen readers; round buttons with a 12 px gap (lib/railFit.ts ICON_GAP_PX), or 44 px
+   circles where even that is short of room. 311 keeps its number and the dock its time: they are what it shows. */
+.ride .ride-rail-icons .ride-word {
+  display: none;
+}
+
+.ride-rail-icons.ride-rail-under {
+  padding-bottom: 0;
+  gap: 12px;
+}
+
+.ride-rail-icons .ride-more-bubbles {
+  right: calc(100% + 12px);
+  gap: 12px;
+}
+
+.ride-rail-icons.ride-rail-pill .ride-more-bubbles {
+  right: calc(100% + 8px);
+  gap: 6px;
+}
+
+.ride .ride-rail-icons.ride-rail-pill .ride-round,
+.ride .ride-rail-icons.ride-rail-pill .ride-311-button {
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  flex-direction: column;
+  gap: 0;
+  border-radius: 50%;
+}
+
+.ride .ride-rail-icons.ride-rail-pill .ride-311-button {
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
 .ride .ride-round[aria-expanded="true"],
 .ride .ride-round-alert,
 .ride .ride-round-on {

@@ -124,6 +124,32 @@ export function writeRideText(size: RideTextSize, store: KeyValueStore | null = 
   }
 }
 
+// ---- Icons only on the ride's side buttons (Stephen 2026-10-29: "allow icon only bubbles in settings"), kept on this device ----
+
+/**
+ * Off by default: each side button keeps its word (the UI review, 2026-10-28: an unlabelled icon was tapped to see what
+ * it did). On, the words are hidden for more map; each button's name is unchanged, so screen readers say it as before.
+ */
+export const RIDE_ICONS_KEY = "routemaker.ride.iconsOnly";
+export const RIDE_ICONS_LABEL = t("Icons only on ride buttons");
+export const RIDE_ICONS_HELP = t("The buttons beside the map in a ride show their icons without words, for more map. Screen readers still say each button's name. Kept on this device.");
+
+export function readRideIconsOnly(store: KeyValueStore | null = browserStore()): boolean {
+  try {
+    return store?.getItem(RIDE_ICONS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function writeRideIconsOnly(on: boolean, store: KeyValueStore | null = browserStore()): void {
+  try {
+    store?.setItem(RIDE_ICONS_KEY, on ? "1" : "0");
+  } catch {
+    // Blocked site data: the choice holds for this visit only.
+  }
+}
+
 export function toScreenReader(output: CueOutput): boolean {
   return output === "screen-reader" || output === "both";
 }
