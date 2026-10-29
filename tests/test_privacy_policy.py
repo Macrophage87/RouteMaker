@@ -204,6 +204,31 @@ class TestPage:
         assert ratelimit.RETENTION <= timedelta(hours=30)
         assert shared_routes.KEEP == timedelta(days=365)
 
+    def test_the_encryption_is_spelled_out_behind_its_summary(self, client) -> None:
+        # Stephen 2026-10-29: the full technical specification, since nothing is secret but the key.
+        _, body, _ = get(client)
+        ride = body[body.index("<h2>Group and Mass Ride sharing</h2>") :]
+        ride = ride[: ride.index("<h2>", 5)]
+        assert f"<details><summary>{escape(privacy_policy.RIDE_CRYPTO_SUMMARY)}</summary>" in ride
+        for item in privacy_policy.RIDE_CRYPTO:
+            assert escape(item) in ride
+
+    def test_the_encryption_details_are_the_code_s(self) -> None:
+        seal = (ROOT / "frontend/src/lib/rideSeal.ts").read_text()
+        group = (ROOT / "frontend/src/lib/rideGroup.ts").read_text()
+        text = " ".join(privacy_policy.RIDE_CRYPTO)
+        assert "const SECRET_BYTES = 32;" in seal and "32 random bytes" in text
+        assert "const NONCE_BYTES = 12;" in seal and "12-byte nonce" in text
+        assert 'enc.encode("routemaker ride seal v1")' in seal and "routemaker ride seal v1" in text
+        assert 'info: enc.encode("ride id") }, base, 256)' in seal and "256 bits" in text
+        assert 'info: enc.encode("ride key")' in seal
+        assert '{ name: "AES-GCM", length: 256 },\n    false,' in seal and "non-extractable" in text
+        assert "{ dot: 128, alert: 512, path: 4096 }" in seal
+        assert "128 bytes (a dot), 512 bytes (an alert) or 4,096 bytes (a path)" in text
+        assert "additionalData: aad(seal, kind)" in seal and "`${kind}|${seal.ride}`" in seal
+        assert 'export const SECRET_PARAM = "k";' in seal and "k=" in text
+        assert "new Uint8Array(16)" in group and "16 random bytes" in text
+
 
 class TestLinks:
     def test_the_deletion_page_links_here(self, client, db) -> None:
