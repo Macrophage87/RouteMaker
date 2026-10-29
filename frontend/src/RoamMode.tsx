@@ -41,7 +41,7 @@ import type { WaterPoint } from "./lib/waterRestrooms.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
 import { IosLocationHelp } from "./IosLocationHelp.tsx";
-import type { RideFix } from "./lib/navigate.ts";
+import { POOR_FIX_M, weighFix, type GpsWeakness, type RideFix } from "./lib/navigate.ts";
 import { RIDE_TEXT_BUTTON, ScreenWake, phoneKind, toScreenReader, wakeSaid, type RidePrefs, type RideTextSize } from "./lib/rideOutput.ts";
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
 import { useRailFit } from "./lib/railFit.ts";
@@ -72,6 +72,7 @@ import {
   OUTSIDE_MAP,
   ROAM_DETOUR_HELP,
   ROAM_BROADCAST_NAME,
+  ROAM_GPS_WEAK,
   ROAM_NAME,
   ROAM_NEARBY_NAME,
   ROAM_NO_PLACE_311,
@@ -219,6 +220,17 @@ export function RoamMode({
     },
     [say],
   );
+  // The screen lock held or not: shown, and said once each time it changes (as Ride mode's noteWake).
+  const wakeTold = useRef("");
+  const noteWake = useCallback(
+    (held: boolean) => {
+      const note = wake.noteFor(held);
+      if (note && note !== wakeTold.current) say(wakeSaid(note, phone));
+      wakeTold.current = note;
+      setWakeNote(note);
+    },
+    [wake, say, phone],
+  );
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(""), 6_000);
@@ -239,17 +251,26 @@ export function RoamMode({
         setGps(reason === "timeout" ? WAITING_FOR_GPS : LOCATE_MESSAGES[reason]);
       },
     );
-    void wake.hold().then((held) => {
-      const note = wake.noteFor(held);
-      setWakeNote(note);
-      if (note) say(wakeSaid(note, phone));
-    });
+    void wake.hold().then(noteWake);
     headingRef.current?.focus();
     return () => {
       stop();
       void wake.letGo();
     };
-  }, [env, wake, say, phone]);
+  }, [env, wake, noteWake]);
+  // The browser lets the lock go whenever the page is hidden (a pocket lock, an app switch), as in a ride: asked again
+  // when it is in front again, and when the browser lets it go mid-roam (lib/rideOutput.ts ScreenWake.whenLost).
+  useEffect(() => {
+    wake.whenLost(noteWake);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void wake.again().then(noteWake);
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      wake.whenLost(null);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [wake, noteWake]);
 
   // The rider on the map, and the roads ahead worked out again as they move (at most every AHEAD_EVERY_MS).
   const last = useRef<{ at: number; point: LonLat } | null>(null);
@@ -257,9 +278,23 @@ export function RoamMode({
   const saidRoad = useRef<string | null | undefined>(undefined);
   // The heading kept between fixes that give none (lib/roam.ts HeadingTrack), so the card and the arrow hold steady.
   const track = useRef(new HeadingTrack()).current;
+  const headingKept = useRef<number | null>(null);
+  // Poor fixes (POOR_FIX_M, a Wi-Fi or cell guess) move the marker but are not read for roads or said, as Ride's cues;
+  // only poor ones for GPS_WEAK_MS, the rider is told once (ROAM_GPS_WEAK, lib/navigate.ts weighFix).
+  const weakness = useRef<GpsWeakness>({ goodAt: Date.now(), weak: false });
+  const [weakGps, setWeakGps] = useState(false);
   useEffect(() => {
     if (!fix) return;
+    const weighed = weighFix(weakness.current, fix.accuracyM, fix.at);
+    weakness.current = weighed;
+    setWeakGps(weighed.weak);
+    if (weighed.sayNow) say(ROAM_GPS_WEAK);
+    if (fix.accuracyM > POOR_FIX_M) {
+      onView({ point: fix.point, headingDeg: headingKept.current, accuracyM: fix.accuracyM });
+      return;
+    }
     const h = track.step(fix.point, fix.headingDeg);
+    headingKept.current = h;
     setHeading(h);
     onView({ point: fix.point, headingDeg: h, accuracyM: fix.accuracyM });
     // Outside the map (P11): no roads to read; said once, as the card shows it.
@@ -291,6 +326,11 @@ export function RoamMode({
     onFollow(true);
     if (!fixRef.current) {
       answer(gps || WAITING_FOR_GPS);
+      return;
+    }
+    // Only poor fixes a while: the road last read may be behind the rider, so it is not said as where they are.
+    if (weakGps) {
+      answer(ROAM_GPS_WEAK);
       return;
     }
     answer([onRoadSaid(roads?.on ?? null), aheadSaid(roads?.ahead ?? [])].filter(Boolean).join(" "));
@@ -579,7 +619,7 @@ export function RoamMode({
             <SlideToEnd onEnd={onEnd} onTap={slideHint} name={END_ROAM_NAME} />
           </div>
         </div>
-        {gps && <p className="hint ride-gps">{gps}</p>}
+        {(gps || weakGps) && <p className="hint ride-gps">{gps || ROAM_GPS_WEAK}</p>}
         <IosLocationHelp notice={gps} />
         <div className="roam-now">
           {/* The road ridden large; its level beside it, in the map's colours and its words. */}

@@ -346,9 +346,9 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
 /** The ride size slider's name: its unit is in it, so it is said with the number (riders). */
 export const RIDE_SIZE_LABEL = t("Anticipated ride size (riders)");
 export const RIDE_SIZE_NOTE =
-  t("How many riders you expect. It sets the group's length, which the corker load counts over. It does not change the route.");
+  t("How many riders you expect. It sets the group's length, which the corker load counts over, and the route prefers roads wide enough for it.");
 /** Its line as shown (P10); RIDE_SIZE_NOTE is read, and is behind the row's (i). */
-export const RIDE_SIZE_NOTE_SHORT = t("Sets group length; route unchanged.");
+export const RIDE_SIZE_NOTE_SHORT = t("Sets group length; route prefers wide roads.");
 
 /** A note and its shown short form: `noteSaid` only where the two differ. */
 function shortNote(note: string | undefined, shown: string | undefined): { note?: string; noteSaid?: string } {
