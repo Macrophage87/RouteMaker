@@ -82,7 +82,7 @@ test("the nearest list: each row heard with its letter first, no pin (the map na
   );
   assert.match(withAll, /<button type="button" class="secondary show-all">Show all on map<\/button><div class="nearest-list">/);
   assert.match(html, /aria-label="Ride here: Drinking water, Lincoln Park"/);
-  assert.match(html, /Each place is named on the map: a tap on its name, or its letter(&#x27;|')s key \(A for the first\), shows what(&#x27;|')s there\./);
+  assert.match(html, /Tap a place(&#x27;|')s name on the map to see what(&#x27;|')s there\. Ride here plans a route to it/);
 });
 
 test("Show on map and Show all on map are wired (Stephen 2026-10-29): above the sheet, the row's marker marked, Ride and Roam left lettered", () => {

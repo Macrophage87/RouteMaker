@@ -1381,7 +1381,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "খাবার বা নাম",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "OpenStreetMap থেকে: ভরসা করার আগে সময় দেখে নিন। কোনো রেটিং নেই।",
   "Find the nearest water, restroom or Metro": "সবচেয়ে কাছের পানি, টয়লেট বা Metro খুঁজুন",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "প্রতিটি জায়গা মানচিত্রে নাম সহ দেখানো হয়: তার নাম বা অক্ষরের চাবি (প্রথমটির জন্য A) ছুঁলে সেখানে কী আছে দেখায়। এখানে চালান আপনার খোঁজার জায়গা থেকে সেখানে পথ হিসাব করে, আপনার পরিকল্পনার বদলে; পূর্বাবস্থায় ফেরান পরিকল্পনা ফিরিয়ে আনে। থামার জায়গা হিসেবে যোগ করুন পানি বা টয়লেট পরিকল্পনায় রাখে। Metro স্টেশন Metrorail-এর; পথ তালিকাভুক্ত হলে পথ স্টেশনের লিফট ব্যবহার করে।",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "সেখানে কী আছে দেখতে মানচিত্রে জায়গার নাম ছুঁন। এখানে চালান সেখানে পথ হিসাব করে, আপনার পরিকল্পনার বদলে; পূর্বাবস্থায় ফেরান পরিকল্পনা ফিরিয়ে আনে।",
   "Nearest {noun}": "সবচেয়ে কাছের {noun}",
   " of {place}": " {place}-এর জন্য",
   "From:": "থেকে:",

@@ -34,7 +34,7 @@ import { t } from "./i18n.ts";
 
 export const NEAREST_SUMMARY = t("Find the nearest water, restroom or Metro");
 export const NEAREST_HELP =
-  t("Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.");
+  t("Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.");
 
 export interface NearestList {
   kind: NearestKind;
@@ -145,17 +145,18 @@ export function NearestFinder(props: FinderProps): ReactElement {
                 h(
                   "span",
                   { className: "actions" },
+                  // The one main action first and filled, the rest plain after it (the 2026-10-29 review).
+                  h(
+                    "button",
+                    { type: "button", className: "ride-here", "aria-label": t("Ride here: {place}", { place: item.place.title }), onClick: () => onRide(item) },
+                    t("Ride here"),
+                  ),
                   onShow &&
                     h(
                       "button",
                       { type: "button", className: "secondary", "aria-label": t("Show on map: {place}, marker {letter}", { place: item.place.title, letter: placeLetter(index) }), onClick: () => onShow(item, index) },
                       t("Show on map"),
                     ),
-                  h(
-                    "button",
-                    { type: "button", className: "secondary", "aria-label": t("Ride here: {place}", { place: item.place.title }), onClick: () => onRide(item) },
-                    t("Ride here"),
-                  ),
                   addStops &&
                     h(
                       "button",

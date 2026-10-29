@@ -1381,7 +1381,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "Plat ou nom",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "Depuis OpenStreetMap : vérifiez les horaires avant de compter dessus. Pas de notes.",
   "Find the nearest water, restroom or Metro": "Trouver l'eau, les toilettes ou le Metro le plus proche",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "Chaque lieu est nommé sur la carte : toucher son nom, ou la touche de sa lettre (A pour le premier), montre ce qu'il y a. Y aller à vélo calcule un itinéraire depuis l'endroit de la recherche jusqu'à ce lieu, à la place de votre plan ; Annuler rétablit votre plan. Ajouter comme arrêt met l'eau ou des toilettes dans votre plan. Les stations Metro sont celles du Metrorail ; les itinéraires utilisent l'ascenseur de la station quand il est indiqué.",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "Touchez le nom d'un lieu sur la carte pour voir ce qu'il y a. Y aller à vélo calcule un itinéraire jusqu'à ce lieu, à la place de votre plan ; Annuler rétablit votre plan.",
   "Nearest {noun}": "{noun} le plus proche",
   " of {place}": " de {place}",
   "From:": "Depuis :",

@@ -1381,7 +1381,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Food or name": "ምግብ ወይም ስም",
   "From OpenStreetMap: check the hours before you count on them. No ratings.": "ከOpenStreetMap፦ ከማመንዎ በፊት የሥራ ሰዓቱን ያረጋግጡ። ደረጃ የለም።",
   "Find the nearest water, restroom or Metro": "የቅርብ ውሃ፣ መጸዳጃ ወይም Metro ፈልግ",
-  "Each place is named on the map: a tap on its name, or its letter's key (A for the first), shows what's there. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.": "እያንዳንዱ ቦታ በካርታው ላይ በስሙ ይታያል፦ ስሙን ወይም የፊደሉን ቁልፍ (ለመጀመሪያው A) መንካት እዚያ ያለውን ያሳያል። ወደዚህ ንዱ ከፈለጉበት ቦታ እስከዚያ መንገድ ያሰላል፣ በዕቅድዎ ምትክ፤ ቀልብስ ዕቅድዎን ይመልሳል። እንደ ማቆሚያ አክል ውሃውን ወይም መጸዳጃውን በዕቅድዎ ውስጥ ያስገባል። የMetro ጣቢያዎች የMetrorail ናቸው፤ መንገዶች ሲዘረዘሩ መንገዱ የጣቢያውን ሊፍት ይጠቀማል።",
+  "Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.": "በካርታው ላይ የቦታውን ስም መንካት እዚያ ያለውን ያሳያል። ወደዚህ ንዱ እስከዚያ መንገድ ያሰላል፣ በዕቅድዎ ምትክ፤ ቀልብስ ዕቅድዎን ይመልሳል።",
   "Nearest {noun}": "የቅርብ {noun}",
   " of {place}": " ለ{place}",
   "From:": "ከ፦",

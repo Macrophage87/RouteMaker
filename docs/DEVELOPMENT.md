@@ -5036,8 +5036,10 @@ puts it, at most two presses away.
   pin, aria-hidden, with the letter heard first) and on the map (MapView `lettered`: 44 px
   buttons, a pin with the letter, named "B: Drinking water, Garfield Park, 0.3 mi (0.5 km)"),
   while that list's sheet is open; the map fits them in, above a phone's sheet. A marker's tap
-  or the letter's key (not while typing, on the map or in a dialog), and a row of Go's Repair or
-  Sights, opens the place's **stop card**; the rows' own Ride here and Add as stop act at once.
+  or the letter's key (not while typing, on the map or in a dialog), and a row's Show on map in Go's Repair or
+  Places to see, opens the place's **stop card**; the rows' own Ride here and Add as stop act at once. In Go,
+  every place list's row (Eat, Water, Repair, Places to see) has Ride here first and filled, the one main action,
+  with its other buttons plain after it (the 2026-10-29 review).
   Food's numbered circle layer is gone; its list and markers use the letters. The Choose a
   station lists (Plan) are not lettered.
 - **Stop cards** (Stephen 2026-10-19: "when pressing on food or other stops provide information
