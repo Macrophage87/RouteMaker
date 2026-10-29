@@ -2009,7 +2009,7 @@ export function App() {
   const move = useCallback((index: number, point: LonLat) => {
     cancelLocateNotice();
     if (!insideCoverage(point)) {
-      setNotice("That point is outside the area this map covers; it was put back.");
+      setNotice(t("That point is outside the area this map covers; it was put back."));
       setMarkerReset((n) => n + 1);
       return;
     }
@@ -2032,13 +2032,13 @@ export function App() {
     (leg: number, point: LonLat, routed: LonLat[]) => {
       if (!dropStillValid(routed, pointsRef.current)) return;
       if (!insideCoverage(point)) {
-        setNotice("That point is outside the area this map covers; it was put back.");
+        setNotice(t("That point is outside the area this map covers; it was put back."));
         return;
       }
       // The line dragged is a via point (v0.7.0): it shapes the route, with no stop there.
       const next = insertIntoRide(routed, leg, VIA_MARKS.via(point), loopVias);
       if (next === null) {
-        setNotice(`A route can have at most ${MAX_POINTS} points.`);
+        setNotice(t("A route can have at most {count} points.", { count: MAX_POINTS }));
         return;
       }
       setNotice(null);
@@ -2108,7 +2108,7 @@ export function App() {
     // An elevator tapped on the map is the rider's choice: never moved to a quicker way in (lib/stationWayIn.ts).
     if (place.tapped) wayInKept.current.add(lonLatKey(point));
     if (!insideCoverage(point)) {
-      setNotice("That station is outside the area this map covers.");
+      setNotice(t("That station is outside the area this map covers."));
       return;
     }
     if (role === "end" && modeRef.current === "go" && pointsRef.current.length === 0) {
@@ -2118,7 +2118,7 @@ export function App() {
     }
     const edit = stationEdit(pointsRef.current, point, role, loopVias);
     if ("refused" in edit) {
-      if (edit.refused === "cap") setNotice(`A route can have at most ${MAX_POINTS} points.`);
+      if (edit.refused === "cap") setNotice(t("A route can have at most {count} points.", { count: MAX_POINTS }));
       return;
     }
     setNotice(null);
@@ -2128,7 +2128,7 @@ export function App() {
     const loopOff = loopVias && role === "end";
     const ride = rideRef.current;
     commit(edit.next, loopOff ? { ...ride, dials: withLoop(ride.dials, false) } : undefined);
-    announce(loopOff ? `${stationSaid(edit.index, edit.next.length, false)} Loop off.` : stationSaid(edit.index, edit.next.length, loopVias));
+    announce(loopOff ? `${stationSaid(edit.index, edit.next.length, false)} ${t("Loop off.")}` : stationSaid(edit.index, edit.next.length, loopVias));
   }, [commit, announce, loopVias, namer]);
 
   // The road panel's Set as start / Set as end / Add as stop (OWNER-DECISIONS 441n): the spot
@@ -2281,7 +2281,7 @@ export function App() {
     commit([origin, item.place.point], ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
     if (from === "location") setFromHere((prior) => [...prior, origin]);
     setNotice(null);
-    announce(`Planning a route to ${item.place.title}.${had ? " Undo puts your plan back." : ""}`);
+    announce(`${t("Planning a route to {place}.", { place: item.place.title })}${had ? ` ${t("Undo puts your plan back.")}` : ""}`);
   };
   const addNearestStop = (item: Nearby) => {
     namer.remember(item.place.point, item.place.title);
@@ -2459,7 +2459,7 @@ export function App() {
       return;
     }
     commit([point]);
-    announce(`Start: ${found.name}.`);
+    announce(t("Start: {place}.", { place: found.name }));
   };
   // A Go route from `start` to `dest` (through `vias`: a climb's bottom), in one edit, with a loop the rider had
   // on turned off (to a place and no further). `pressed`: the destination is a spot pressed on the map, said as
@@ -2472,7 +2472,7 @@ export function App() {
     commit([start, ...vias, dest], ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
     if (located) setFromHere((prior) => [...prior, start]);
     if (pressed) announce(goTapRoutedSaid(name, located, saysExtra(announceLevelNow.current)));
-    else announceExtra(`Planning a route to ${name} from ${located ? "your location" : "your start"}.`);
+    else announceExtra(located ? t("Planning a route to {place} from your location.", { place: name }) : t("Planning a route to {place} from your start.", { place: name }));
     if (goSheetNow.current === "peek") setGoSheet("half");
     mapRef.current?.flyTo({ center: dest, zoom: Math.max(mapRef.current.getZoom(), 13) });
   };
@@ -2780,7 +2780,7 @@ export function App() {
     // Go's start (the location, before a destination) moves with it.
     if (goStartRef.current.kind === "here" && pointsRef.current.length === 0 && insideCoverage(result.fix.point)) setGoStart(goHereStart(result.fix.point));
     if (!insideCoverage(result.fix.point)) setNotice(LOCATION_OUTSIDE);
-    else announceExtra("The map is at your location.");
+    else announceExtra(t("The map is at your location."));
     flyToInView(result.fix.point, 15);
   };
   // A ride type chip (Go's quick three, or the Ride sheet's): as the ride type dialog picks one.
@@ -2836,7 +2836,7 @@ export function App() {
     const moved = next.indexOf(current[from]);
     const role = namePoints(next, VIA_MARKS.isVia, loopVias)[moved]?.name ?? "";
     const name = fromHere.includes(current[from]) ? YOUR_LOCATION : namer.name(current[from])?.name;
-    announce(name ? `${name} is now ${role}.` : `Moved to ${role}.`);
+    announce(name ? t("{name} is now {role}.", { name, role }) : t("Moved to {role}.", { role }));
   };
   // From the map: the focus stays where it was (on a phone the sheet may be
   // hidden), and the removal is said instead.
@@ -3148,7 +3148,7 @@ export function App() {
   };
   const cancelLong = () => {
     setStatus({ kind: "idle" });
-    setNotice("Not planned. Move or remove points for a shorter ride; any change asks again.");
+    setNotice(t("Not planned. Move or remove points for a shorter ride; any change asks again."));
     // To the points, which are what the rider changes next.
     pointsHeadingRef.current?.focus();
   };
@@ -3510,7 +3510,7 @@ export function App() {
     const plan = decodePlan(kept.plan);
     const hash = dials.rideSize && plan.preset === preset ? encodePlan(plan.points, plan.preset, { ...plan.dials, rideSize: dials.rideSize }, plan.vias, plan.drawn, plan.names) : kept.plan;
     if (window.location.hash !== hash) window.location.hash = hash;
-    announce(`Opening ${kept.title}.`);
+    announce(t("Opening {name}.", { name: kept.title }));
   };
   const startRide = (unlocked = false) => {
     const opener = document.activeElement;
@@ -3654,12 +3654,12 @@ export function App() {
     if (!pending.gpx || !file?.verbatim) {
       savedShown.current = null;
       setSavedNote(null);
-      announce("Planning again around the closures.");
+      announce(t("Planning again around the closures."));
       retry();
       return;
     }
     const stretches = closedStretches(pending.line, pending.closures, pending.index);
-    announce("Finding a way round the closures.");
+    announce(t("Finding a way round the closures."));
     const detours = await Promise.all(
       stretches.map(async ({ before, after }) => {
         const ends: LonLat[] = [
@@ -4785,7 +4785,7 @@ export function App() {
     const n = foodResults?.indexOf(result) ?? -1;
     const show = () => {
       showLettered([result.place.lon, result.place.lat], n);
-      announce(`Showing ${result.place.name} on the map${n >= 0 ? `, marker ${placeLetter(n)}` : ""}.`);
+      announce(n >= 0 ? t("Showing {place} on the map, marker {letter}.", { place: result.place.name, letter: placeLetter(n) }) : t("Showing {place} on the map.", { place: result.place.name }));
     };
     if (!popupShown("food")) return show();
     foodListKept.current = true;
@@ -4870,7 +4870,7 @@ export function App() {
   const showSight = (r: SightResult) => {
     const n = placesShown?.indexOf(r) ?? -1;
     showLettered([r.place.lon, r.place.lat], n);
-    announce(`Showing ${r.place.name} on the map${n >= 0 ? `, marker ${placeLetter(n)}` : ""}.`);
+    announce(n >= 0 ? t("Showing {place} on the map, marker {letter}.", { place: r.place.name, letter: placeLetter(n) }) : t("Showing {place} on the map.", { place: r.place.name }));
   };
   const addSightStop = (r: SightResult) => {
     const point: LonLat = [r.place.lon, r.place.lat];
@@ -4971,7 +4971,7 @@ export function App() {
     void goTo(point, title);
   };
   // A stop's card (lib/stopCard.ts; Stephen 2026-10-19: "provide information on what's there including a link to
-  // the website if available. Then offer a route/detour here", and "don't auto route"): one action, Route here
+  // the website if available. Then offer a route/detour here", and "don't auto route"): one action, Ride here
   // before there is a route and Add as stop (the detour) with one; nothing while riding.
   const routeHereInPlan = (point: LonLat, name: string) => {
     namer.remember(point, name);
@@ -4985,7 +4985,7 @@ export function App() {
     commit([fix, point], ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
     setFromHere((prior) => [...prior, fix]);
     setNotice(null);
-    announce(`Planning a route to ${name}.`);
+    announce(t("Planning a route to {place}.", { place: name }));
   };
   const stopActionNow = useRef<StopActionFor>(() => null);
   stopActionNow.current = (point, name) => {
@@ -5472,7 +5472,7 @@ export function App() {
   const chooseAnnounce = (level: AnnounceLevel) => {
     setAnnounceChoice(level);
     writeAnnounceChoice(level);
-    announce(level === "brief" ? "Screen-reader detail: brief." : "Screen-reader detail: full.");
+    announce(level === "brief" ? t("Screen-reader detail: brief.") : t("Screen-reader detail: full."));
   };
   // A bikeshare ride's station choice (the Points section's, before): under Route, closed, as the mockup has it.
   const stations =

@@ -42,8 +42,8 @@ export function sameRoute(a: Pick<RouteResponse, "geometry" | "distance_m">, b: 
 /** The time a swap adds or saves, in whole minutes: "+2 min", "2 min less", or "" under a minute. */
 function minutesSaid(seconds: number): string {
   const minutes = Math.round(seconds / 60);
-  if (minutes >= 1) return `, +${minutes} min`;
-  if (minutes <= -1) return `, ${-minutes} min less`;
+  if (minutes >= 1) return t(", +{minutes} min", { minutes });
+  if (minutes <= -1) return t(", {minutes} min less", { minutes: -minutes });
   return "";
 }
 
@@ -57,9 +57,9 @@ export function betterRouteSaid(
 ): string | null {
   if (sameRoute(first, full)) return null;
   const extra = minutesSaid(full.duration_s - first.duration_s);
-  if (busyM(full) <= busyM(first) - CALMER_BY_M) return `Found a calmer route${extra}.`;
-  if (full.duration_s <= first.duration_s - QUICKER_BY_S) return `Found a quicker route${extra}.`;
-  return `Found a better route${extra}.`;
+  if (busyM(full) <= busyM(first) - CALMER_BY_M) return t("Found a calmer route{extra}.", { extra });
+  if (full.duration_s <= first.duration_s - QUICKER_BY_S) return t("Found a quicker route{extra}.", { extra });
+  return t("Found a better route{extra}.", { extra });
 }
 
 /** Less climbing than this is not "flatter": 20 ft, or a tenth of the climb before, whichever is more. */

@@ -235,14 +235,22 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     setAsked(true);
     setShareOn(yes);
     share.current = { lastNearAt: null, startedAt: Date.now(), lastPost: 0 };
-    say(yes ? `You are shown as a dot, ${roleLabel(kept.role)}, while ${isBroadcast ? "" : "you are near the route and "}the app is open.` : "You are not shown. You still see the others.");
+    const role = roleLabel(kept.role);
+    const shown = isBroadcast
+      ? t("You are shown as a dot, {role}, while the app is open.", { role })
+      : t("You are shown as a dot, {role}, while you are near the route and the app is open.", { role });
+    say(yes ? shown : t("You are not shown. You still see the others."));
   };
   const changeRole = (role: RideRole) => {
     if (!ride || !consent) return;
     setConsent(keepConsent(ride, consent.answer, Date.now(), undefined, undefined, role));
     // The new role goes with the next position as soon as the server takes one (the consent change re-runs the post).
     share.current.lastPost = postSoonAfter(share.current.lastPost);
-    say(shareOn ? `You are shown as ${roleLabel(role)}; others see it within 15 seconds.` : `Your role is ${roleLabel(role)}, shown when you turn on Show me as a dot.`);
+    say(
+      shareOn
+        ? t("You are shown as {role}; others see it within 15 seconds.", { role: roleLabel(role) })
+        : t("Your role is {role}, shown when you turn on Show me as a dot.", { role: roleLabel(role) }),
+    );
   };
   // A broadcast's follower sees the leader before answering: a token for reading only, which the server keeps
   // nothing of until it posts (core.ride_presence.read).
@@ -442,7 +450,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     }
     const at = me ?? (await currentPosition());
     if (!at) {
-      say("Your location is needed to send an alert; allow it and try again.");
+      say(t("Your location is needed to send an alert; allow it and try again."));
       return;
     }
     const outcome = await sendAlert(origin, ride, token, type, kind.id, otherText, at);
@@ -455,7 +463,11 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     setSent((s) => [...s, Date.now()]);
     setAlertOpen(false);
     setOtherText("");
-    say(outcome.alert.count > 1 ? `Sent: ${kind.label}. ${outcome.alert.count} riders reported.` : `Sent to everyone on this ride: ${kind.label}.`);
+    say(
+      outcome.alert.count > 1
+        ? t("Sent: {alert}. {count} riders reported.", { alert: kind.label, count: outcome.alert.count })
+        : t("Sent to everyone on this ride: {alert}.", { alert: kind.label }),
+    );
     void poll();
   };
   const pick = (kind: AlertKind) => {
@@ -558,7 +570,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
               setConsent(keepConsent(ride, next ? "yes" : "no"));
               setShareOn(next);
               share.current = { lastNearAt: null, startedAt: Date.now(), lastPost: 0 };
-              say(next ? (isBroadcast ? "You are shown as a dot while the app is open." : "You are shown as a dot while you are near the route.") : SHARE_STOPPED_SAID.off);
+              say(next ? (isBroadcast ? t("You are shown as a dot while the app is open.") : t("You are shown as a dot while you are near the route.")) : SHARE_STOPPED_SAID.off);
             }}
           >
             <span className="switch-label">{t("Show me as a dot")}</span>

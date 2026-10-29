@@ -5,7 +5,7 @@
  * the season and hours) and the standing caution that it is volunteers'
  * mapping.
  *
- * The card offers Route here, or Add as stop with a route (lib/stopCard.ts;
+ * The card offers Ride here, or Add as stop with a route (lib/stopCard.ts;
  * Stephen 2026-10-19: "don't auto route"), so the press is the card's alone:
  * it no longer also places a point or sets Go's destination. It closes on the
  * next map click, on its own button and on Escape, does nothing while the
@@ -22,7 +22,7 @@ export interface WaterInteractionOptions {
   visible(): boolean;
   otherPopupOpen(): boolean;
   point(id: string): WaterPoint | undefined;
-  /** The card's Route here or Add as stop (lib/stopCard.ts). */
+  /** The card's Ride here or Add as stop (lib/stopCard.ts). */
   actionFor?: StopActionFor;
 }
 
