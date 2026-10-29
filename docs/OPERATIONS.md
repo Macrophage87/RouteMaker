@@ -435,7 +435,8 @@ band, grep `route timing` from the api's log.
 
 - `ROUTER_PARALLEL_CALLS` (default 3) is the number of router calls one route
   may have in flight at a time: the calm search's wide `/route` asks, the
-  traces of candidate routes and legs, and the delay measure. At 1 every call
+  traces of candidate routes and legs, the delay measure, and a bikeshare
+  plan's walks to and from its candidate docks. At 1 every call
   runs in turn, as before v0.7.0. The pool is one per api worker process, and
   a transit trip's later rides (`api._later_rides`) run on it too rather than
   on a pool of their own; a plan on a pool thread makes its calls in turn. So
