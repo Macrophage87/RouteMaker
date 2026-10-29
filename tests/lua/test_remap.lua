@@ -1456,6 +1456,17 @@ check("a window between sun events across midnight cannot be fixed",
   M.router_window("sunset-sunrise") == nil)
 check("nor can a condition the parser does not read", M.router_window("wet") == nil
   and M.router_window("Sa dawn+") == nil)
+check("a holiday alone, which the parser drops, is not a window",
+  M.router_window("PH dawn-dusk") == nil and M.router_window("PH; SH 08:00-12:00") == nil)
+check("a holiday before a weekday list is read", M.router_window("PH,Sa 08:00-12:00")
+  == "PH,Sa 08:00-12:00")
+check("a grant on holidays alone is not opened",
+  M.remap_conditional_access({ bicycle = "no", ["bicycle:conditional"] = "yes @ (PH dawn-dusk)" })
+    ["bicycle:forward"] == nil)
+local bare = M.remap_conditional_access({ bicycle = "no", ["bicycle:conditional"] = "yes" })
+check("a bare grant with no condition still opens the way unconditionally",
+  bare["bicycle:forward"] == "yes" and bare["bicycle:backward"] == "yes"
+    and bare["bicycle:conditional"] == nil)
 local timed = M.remap_conditional_access({ bicycle = "no",
   ["bicycle:conditional"] = "permissive @ (Sa dawn-dusk); no @ (Mo-Fr)" })
 check("an undirected grant is opened and handed to the router as one yes rule",

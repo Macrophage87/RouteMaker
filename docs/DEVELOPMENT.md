@@ -4689,7 +4689,7 @@ variant and every one-way spelling.
 the undirected `bicycle:conditional` as a timed restriction, so the edge is open
 only inside the window at the request's `date_time` (every plan sends the ride
 time's representative moment: Saturday 9:00 for a weekend ride, Tuesday 8:00 or
-12:00 for a weekday one). The parser drops a condition with a sun event in it,
+12:00 for a weekday one). The parser drops a rule with a sun event in it,
 reads only `yes`, `designated`, `private` and `delivery` as grants (`permissive`
 reads as a denial), and reads one rule set. So for an undirected grant
 `remap_conditional_access` writes `bicycle:conditional` again as one `yes @ (...)`
@@ -4698,7 +4698,11 @@ window every day of the year here (`SUN_LATEST` for a start, `SUN_EARLIEST` for 
 end: dawn 07:15, dusk 17:10, so Pulaski Highway reads `yes @ (Sa-Su 07:15-17:10;
 PH 07:15-17:10)`). A grant whose condition cannot be so written (`wet`, a window
 between sun events across midnight) is not opened at all, as unclear access is
-closed. A directional conditional (`bicycle:forward:conditional`), which the parser
+closed; nor is one on holidays alone (`PH dawn-dusk`), since the parser drops a rule
+that starts with a holiday and a grant with no rule left would reach it as open at
+every hour. A bare grant with no condition opens the way unconditionally, as before.
+A request with no `date_time` (map matching, the stop-order matrix) leaves timed
+restrictions unchecked, so there the way reads open at every hour, as before. A directional conditional (`bicycle:forward:conditional`), which the parser
 does not read, is still resolved statically. A Saturday 9:00 plan should ride Pulaski
 Highway with the traffic and a Tuesday plan should not (not yet checked on built tiles). The fixed times are a
 conservative approximation, short of the real window in summer.

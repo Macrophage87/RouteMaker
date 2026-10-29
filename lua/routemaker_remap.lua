@@ -1181,13 +1181,14 @@ end
 -- restriction: the edge is then open only inside the window, checked against the
 -- request's `date_time` (every plan sends the ride time's representative moment). The
 -- parser cannot read a sun event (dawn, dusk, sunrise, sunset: `timeparsing.cc` calls them
--- unsupported and drops the whole condition), nor a grant other than `yes`, `designated`,
+-- unsupported and drops the rule), nor a grant other than `yes`, `designated`,
 -- `private` or `delivery` (`permissive @` reads as a denial), nor more than one rule set. So
 -- for an undirected grant the remap writes `bicycle:conditional` again as one `yes @ (...)`
 -- of the granting branches, each sun event a fixed time that keeps inside the real window
 -- all year in the region (`M.SUN_LATEST` for a start, `M.SUN_EARLIEST` for an end), and
 -- opens the way only where every condition can be so written (`M.router_window`): a grant
--- the router cannot time stays closed, as unclear access is. A directional conditional
+-- the router cannot time stays closed, as unclear access is, and so does one on holidays
+-- alone, whose rules the parser drops (no rule left would read as open at every hour). A directional conditional
 -- (`bicycle:forward:conditional`), which the parser does not read, is resolved statically
 -- as before.
 M.ACCESS_RANK = {
@@ -1292,7 +1293,15 @@ function M.router_window(condition)
   for word in written:gmatch("%a+") do
     if not M.ROUTER_WORDS[word] then return nil end
   end
-  return written
+  -- The parser drops a rule that starts with a holiday (unless a weekday list follows), and
+  -- a grant left with no rule at all would reach it as no restriction: open at every hour.
+  for rule in written:gmatch("[^;]+") do
+    local head = rule:match("^%s*(%a+)")
+    if not (head == "PH" or head == "SH") or rule:match("^%s*%a+%s*,%s*%u%l%f[^%a]") then
+      return written
+    end
+  end
+  return nil
 end
 
 -- What on a one-way's own tags gives a bicycle the direction against the traffic,
@@ -1348,9 +1357,11 @@ function M.remap_conditional_access(tags)
       local base = tags[key] or tags.bicycle
       local resolved = M.least_restrictive(base, conditional)
       if resolved and resolved ~= base and M.ROUTER_GRANTS[resolved] then
-        local windows = {}
+        local windows, always = {}, false
         for _, branch in ipairs(M.parse_conditional(conditional)) do
           if M.ROUTER_GRANTS[branch.value] then
+            -- A bare value with no condition reads as unconditional, as before.
+            if branch.condition == nil then always = true end
             windows[#windows + 1] = M.router_window(branch.condition) or false
           end
         end
@@ -1358,7 +1369,9 @@ function M.remap_conditional_access(tags)
         for _, window in ipairs(windows) do
           if not window then readable = false end
         end
-        if readable then
+        if always then
+          out[key] = resolved
+        elseif readable then
           out[key] = resolved
           written = "yes @ (" .. table.concat(windows, "; ") .. ")"
         end
