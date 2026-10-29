@@ -313,6 +313,7 @@ def weekly_rebuild(context=None, *, timestamp: int, manual: bool = False) -> Non
             reference_dir=settings.REBUILD_REFERENCE_DIR,
             checked_in_crossings=settings.REBUILD_CROSSINGS_FIXTURE,
             require_agency_lts=not settings.REBUILD_ALLOW_NO_AGENCY_LTS,
+            min_volume_rows=settings.REBUILD_VOLUME_MIN_ROWS,
             deadline=time.monotonic() + REBUILD_TIMEOUT_S,
             job_id=job_id,
             checkpoints=settings.REBUILD_CHECKPOINTS,

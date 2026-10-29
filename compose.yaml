@@ -884,6 +884,9 @@ services:
       # ratings in reference/agency-lts.json (pipeline.agency_ratings). Empty,
       # the default: such a rebuild is refused.
       REBUILD_ALLOW_NO_AGENCY_LTS: ${REBUILD_ALLOW_NO_AGENCY_LTS:-}
+      # The fewest traffic counts reference/volume.json may hold before the
+      # rebuild refuses it (pipeline.run.check_volume_rows). Empty: 10000; 0: off.
+      REBUILD_VOLUME_MIN_ROWS: ${REBUILD_VOLUME_MIN_ROWS:-}
       # The source extract the rebuild produces for itself (docs/OPERATIONS.md,
       # "The source extract"). All four are optional overrides of the defaults
       # in settings: a mirror, the freshness limit, a forced refresh, and a
