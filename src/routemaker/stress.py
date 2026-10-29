@@ -1318,6 +1318,20 @@ def _classify(
                     shoulder_parking,
                     facility="paved shoulder",
                 )
+                if (
+                    FURTH_LANE_NO_CREDIT_MPH <= speed_mph <= DECENT_LANE_MAX_MPH
+                    and lanes < DECENT_LANE_MAX_LANES
+                    and shoulder_width >= DECENT_LANE_MIN_M
+                ):
+                    # The decent lane's credit at 40 mph, so a shoulder never
+                    # rates a road below the same road with a lane of its width
+                    # (the hierarchy above). The owner, 2026-10-29: "a large
+                    # shoulder at 40 mph is actually not that unpleasant to ride
+                    # on", and chose "LTS 3, same as a lane".
+                    shoulder_tier = Stress.LTS3
+                    shoulder_rule = (
+                        f"paved shoulder, decent, {speed_mph:g} mph: a tier below mixed traffic"
+                    )
                 if not oneway and lanes >= PAINTED_LANE_FLOOR_LANES and shoulder_tier < Stress.LTS3:
                     # The painted lane's RL-3 floor, so a shoulder never rates a
                     # road below the same road with a lane (the hierarchy above).
