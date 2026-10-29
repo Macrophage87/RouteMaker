@@ -55,7 +55,7 @@ from . import account_deletion
 PATH = account_deletion.PRIVACY_PATH
 TITLE = "RouteMaker privacy policy"
 # Change with the text: the date a rider reads as when this page last said something new.
-LAST_UPDATED = ("2026-10-26", "October 26, 2026")
+LAST_UPDATED = ("2026-10-29", "October 29, 2026")
 # Unless the deployment sets PRIVACY_CONTACT (an e-mail address or a web address).
 CONTACT = "Questions, or a request about your data: ask the site's owner on Discord."
 CONTACT_LEAD = "Questions, or a request about your data: "
@@ -123,7 +123,8 @@ SECTIONS: list[tuple[str, str]] = [
             "(every 5 minutes), finding which 311 website covers a problem you log, and Group or "
             "Mass Ride sharing. The server answers "
             "and does not store it, except places you choose to save or share and ride sharing "
-            "(below)."
+            "(below). A route planned from where you are is kept in the server’s memory for "
+            "2 minutes at most, so asking for it again is quick, and is then forgotten."
         )
         + _p(
             "A route’s link holds its points, so a route planned from your location carries "

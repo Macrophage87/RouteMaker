@@ -2,7 +2,10 @@
 
 Re-opening a plan, Undo, the Home chip and Go's early start (step 4) ask for the same
 route again within minutes; each used to be a whole plan. An answer is kept here for
-`TTL_S` (10 minutes) and given again for an identical request, so those are instant.
+`TTL_S` (2 minutes) and given again for an identical request, so those are instant. Two
+minutes, not longer, because a re-route in a ride and a "from my location" plan start at the
+rider's live position, which is kept no longer than that (the owner, 2026-10-22 and
+2026-10-29).
 
 **The key** is everything the answer is made from:
 
@@ -65,7 +68,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-TTL_S = 10 * 60
+TTL_S = 2 * 60
 MAX_ENTRIES = 128
 # Points are compared at this many decimal places of a degree: 1e-4 is about 11 m of
 # latitude and 9 m of longitude here.
@@ -92,15 +95,22 @@ _entries: OrderedDict[tuple[str, str], _Entry] = OrderedDict()
 
 
 def ttl_s() -> float:
-    """How long an answer is kept: `settings.ROUTE_CACHE_TTL_S`, `TTL_S` unless set; 0
-    turns the cache off (the test suite, whose tests change the segment table under a
-    plan directly, without the edit generation an edit bumps)."""
+    """How long an answer is kept: `settings.ROUTE_CACHE_TTL_S`, `TTL_S` unless set, and never
+    past `TTL_S`; 0 turns the cache off (the test suite, whose tests change the segment table
+    under a plan directly, without the edit generation an edit bumps)."""
     from django.conf import settings
 
     try:
-        return max(0.0, float(getattr(settings, "ROUTE_CACHE_TTL_S", TTL_S)))
+        return min(float(TTL_S), max(0.0, float(getattr(settings, "ROUTE_CACHE_TTL_S", TTL_S))))
     except (TypeError, ValueError):
         return float(TTL_S)
+
+
+def _drop_expired(now: float) -> None:
+    """Forget every answer past its life (called with `_lock` held), so none waits in a worker's
+    memory for a read or a push to find it."""
+    for slot in [slot for slot, entry in _entries.items() if entry.expires <= now]:
+        del _entries[slot]
 
 
 def clear() -> None:
@@ -215,6 +225,7 @@ def get(key: str, quick: bool = False) -> dict | None:
         return _shared_get(shared, key, kinds)
     now = _clock()
     with _lock:
+        _drop_expired(now)
         for kind in kinds:
             entry = _entries.get((key, kind))
             if entry is None:
@@ -238,7 +249,9 @@ def put(key: str, body: dict, valid_s: float = TTL_S) -> None:
         _shared_put(shared, key, kind, body, ttl)
         return
     with _lock:
-        _entries[(key, kind)] = _Entry(body, _clock() + ttl)
+        now = _clock()
+        _drop_expired(now)
+        _entries[(key, kind)] = _Entry(body, now + ttl)
         _entries.move_to_end((key, kind))
         if kind == FULL:
             # The full plan supersedes its first route.

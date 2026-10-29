@@ -74,6 +74,11 @@ ALERT_MIN_INTERVAL_S = 60
 ALERTS_PER_RIDE = 10
 MERGE_WITHIN_S = 120
 MERGE_WITHIN_M = 200
+# Writes to one ride (positions, paths, alerts), counted in the ride's own state so the count goes
+# with the ride rather than outliving it in the database: MAX_RIDERS_PER_RIDE riders each sending
+# a position every 15 s is 12,000 a minute, so 15,000.
+RIDE_WRITES_PER_MINUTE = 15000
+RIDE_WRITES_WINDOW_S = 60
 # How often each api process sweeps every ride for what has outlived its 2 minutes, so a ride
 # nobody opens again is emptied too, not only one a phone still reads (v0.12.0 end review).
 SWEEP_S = 10
@@ -461,7 +466,29 @@ def _prune(state: dict, now: float) -> None:
                 rider.pop(key, None)
         if "path" in rider and now - rider["path"]["at"] > PATH_TTL_S:
             del rider["path"]
-    state["alerts"] = [a for a in state["alerts"] if now - a["last"] <= ALERT_TTL_S]
+    # An alert lasts 2 minutes from its first report: a merge adds a reporter but never extends
+    # how long the first sender's spot is kept.
+    state["alerts"] = [a for a in state["alerts"] if now - a.get("first", a["last"]) <= ALERT_TTL_S]
+    writes = state.get("writes")
+    if writes and now - writes[0] >= RIDE_WRITES_WINDOW_S:
+        del state["writes"]
+
+
+def count_write(ride_id: str, now: Callable[[], float] = time.time) -> int:
+    """Count one write against the ride: 0 when it may go ahead, else the seconds to wait. The
+    count lives in the ride's state for its one-minute window and goes with the ride."""
+    t = now()
+    window = math.floor(t / RIDE_WRITES_WINDOW_S) * RIDE_WRITES_WINDOW_S
+    with store().ride(ride_id) as state:
+        _prune(state, t)
+        writes = state.get("writes")
+        if not writes or writes[0] != window:
+            writes = [window, 0]
+        writes[1] += 1
+        state["writes"] = writes
+        if writes[1] > RIDE_WRITES_PER_MINUTE:
+            return max(1, math.ceil(window + RIDE_WRITES_WINDOW_S - t))
+    return 0
 
 
 def _rider(state: dict, token: str, now: float) -> dict:
