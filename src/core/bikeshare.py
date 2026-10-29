@@ -164,10 +164,6 @@ def minutes(seconds: float) -> str:
     return f"{whole} min"
 
 
-def bike_words(bike: str) -> str:
-    return "an e-bike" if bike == presets.BIKE_EBIKE else "a classic bike"
-
-
 # --- Candidates -------------------------------------------------------------------
 
 

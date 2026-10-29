@@ -542,6 +542,12 @@ WEEKLY_REBUILD_PAUSED = env_true(os.environ.get("WEEKLY_REBUILD_PAUSED"))
 # true builds without them anyway, with a warning, every way on the formula's tier.
 REBUILD_ALLOW_NO_AGENCY_LTS = env_true(os.environ.get("REBUILD_ALLOW_NO_AGENCY_LTS"))
 
+# The rebuild refuses a REBUILD_REFERENCE_DIR/volume.json with fewer traffic counts
+# in longitude and latitude than this: an empty or misprojected file used to load and
+# leave every road uncounted. The 2026-10-11 install had 53,756 (MDOT SHA, VDOT and
+# DDOT together); 0 turns the check off.
+REBUILD_VOLUME_MIN_ROWS = int(os.environ.get("REBUILD_VOLUME_MIN_ROWS") or "10000")
+
 # Build validation reads two known edges back out of the tiles. The steep edge
 # proves elevation was baked; the derived edge proves the derived tags reached
 # the graph, because a street tagged with a plain painted lane in OSM only

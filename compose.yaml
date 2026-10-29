@@ -68,6 +68,14 @@ x-logging: &logging
       max-size: "10m"
       max-file: "5"
 
+# The images built here (api, worker, migrate: docker/api.Dockerfile; rebuild:
+# docker/pipeline.Dockerfile) run as uid 10001 and need no Linux capability, so they get
+# none, and nothing in them may gain privileges by exec (a setuid binary, file
+# capabilities). The third-party images keep Docker's defaults.
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
 # Everything `config/settings.py` reads from the environment that is not a
 # secret and that every Django process needs the same value of. The four
 # services that import Django settings - api, worker, migrate and rebuild - all
@@ -139,7 +147,7 @@ services:
         limits: { memory: 256M, cpus: "0.5" }
 
   api:
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardened]
     image: ghcr.io/macrophage87/routemaker-api:${TAG}
     build:
       context: .
@@ -338,7 +346,7 @@ services:
   # belongs to the rebuild service, which is the container with the Valhalla
   # binaries and the data mounts.
   worker:
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardened]
     image: ghcr.io/macrophage87/routemaker-api:${TAG}
     build:
       context: .
@@ -416,7 +424,7 @@ services:
   # Django integration ships its schema as migrations, so this one step both
   # creates the schema on a fresh box and upgrades it on an existing one.
   migrate:
-    <<: *logging
+    <<: [*logging, *hardened]
     image: ghcr.io/macrophage87/routemaker-api:${TAG}
     build:
       context: .
@@ -834,7 +842,7 @@ services:
   # out of the way for the plan's swap-time arithmetic to hold - see
   # scripts/check_compose_limits.py, which asserts both figures.
   rebuild:
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardened]
     image: ghcr.io/macrophage87/routemaker-pipeline:${TAG}
     build:
       context: .
@@ -884,6 +892,9 @@ services:
       # ratings in reference/agency-lts.json (pipeline.agency_ratings). Empty,
       # the default: such a rebuild is refused.
       REBUILD_ALLOW_NO_AGENCY_LTS: ${REBUILD_ALLOW_NO_AGENCY_LTS:-}
+      # The fewest traffic counts reference/volume.json may hold before the
+      # rebuild refuses it (pipeline.run.check_volume_rows). Empty: 10000; 0: off.
+      REBUILD_VOLUME_MIN_ROWS: ${REBUILD_VOLUME_MIN_ROWS:-}
       # The source extract the rebuild produces for itself (docs/OPERATIONS.md,
       # "The source extract"). All four are optional overrides of the defaults
       # in settings: a mirror, the freshness limit, a forced refresh, and a

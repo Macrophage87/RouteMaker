@@ -745,21 +745,20 @@ def test_the_access_log_never_records_a_query_string() -> None:
         assert logs == ["/var/log/nginx/rmbeta-access.log rmbeta_noquery"], logs
 
 
-# The api paths whose query carries a place, logged only at `crit` (privacy-6).
-QUERY_PATHS = (
-    "reverse|geocode|segment-info|street-photo|junction-suggestions/at"
-    "|stress-suggestions/ticket|stress-suggestions/mine|transit/station-times|transit/next-vehicle"
-    "|bikeshare/docks|closures/map"
-    "|review/items|review/map|review/next|review/road/[0-9]+|review/street-photo"
-    "|scenic-roads|climbs-near"
-)
+def _matching_api_location(found: dict, path: str) -> str:
+    """The location nginx picks for an /api/ path: the first regex that matches, else /api/."""
+    for spec, body in found.items():
+        if spec.startswith("~") and re.search(spec.split(None, 1)[1], path):
+            return body
+    return found["/api/"]
 
 
-def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings() -> None:
-    """An upstream error line records the request with its query (OWNER-DECISIONS 395)."""
+def test_every_api_path_logs_errors_at_crit_only_with_the_api_proxy_settings() -> None:
+    """An upstream error line records the request with its query (OWNER-DECISIONS 395); the
+    whole of /api/ is covered, so a new endpoint with a place in it needs no template change."""
     full = stage("full")
     found = dict(locations(full))
-    body = found[f"~ ^/api/({QUERY_PATHS})/?$"]
+    body = found["/api/"]
     assert re.findall(r"^\s*error_log\s+(.*?);", body, re.M) == [
         "/var/log/nginx/rmbeta-error.log crit"
     ]
@@ -800,20 +799,21 @@ def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings
         "/api/review/next",
         "/api/review/street-photo",
     }, queried
-    covered = re.compile(rf"/api/({QUERY_PATHS})/?")
-    for path in queried:
-        assert covered.fullmatch(path), path
-    assert not covered.fullmatch("/api/route")
-    # A road's own path names the way in the path itself (Review's card).
-    assert covered.fullmatch("/api/review/road/123")
-    assert not covered.fullmatch("/api/review/road/123/x")
-    assert not covered.fullmatch("/api/review/rulings")
     # The local connector (mcp/routemaker_mcp.py) sends a rider's point in the query too.
     mcp = (REPO / "mcp" / "routemaker_mcp.py").read_text()
     mcp_queried = set(re.findall(r"[\"'](/api/[a-z/-]+)\?", mcp))
     assert {"/api/scenic-roads", "/api/climbs-near"} <= mcp_queried, mcp_queried
-    for path in mcp_queried:
-        assert covered.fullmatch(path), path
+    # Every one of them, a road's own path (Review's card), the bodies' paths and any new one
+    # land in a location that logs only `crit`.
+    for path in (
+        queried
+        | mcp_queried
+        | {"/api/review/road/123", "/api/shared-routes", "/api/me/routes", "/api/new-thing"}
+    ):
+        chosen = _matching_api_location(found, path)
+        assert re.findall(r"^\s*error_log\s+(.*?);", chosen, re.M) == [
+            "/var/log/nginx/rmbeta-error.log crit"
+        ], path
 
 
 CONNECTOR_PATHS = (
@@ -1016,10 +1016,7 @@ def test_json_is_gzipped() -> None:
     assert "application/json" in re.search(r"gzip_types[^;]*;", full).group(0)
 
 
-ABOUT_LOCATION = (
-    r"~ ^/about/((stress|how-it-works|using|accessibility|routing|ride-types|mass-ride|trails"
-    r"|architecture|assistants|acknowledgements)\.html|route-example\.webp)$"
-)
+ABOUT_LOCATION = r"~ ^/about/[a-z0-9-]+\.(html|webp)$"
 
 
 def test_the_template_serves_what_the_caddyfile_serves() -> None:
@@ -1080,19 +1077,26 @@ def test_the_stress_page_and_its_short_paths_are_served_as_the_caddyfile_serves_
     assert by_path["~* ^/about/stress/?$"].strip() == f"return {status} {target};"
 
 
-def test_the_about_location_names_exactly_the_documentation_pages_the_caddyfile_serves() -> None:
+def test_the_about_location_serves_every_documentation_page_the_caddyfile_serves() -> None:
     """The owner, 2026-10-19: the rider-facing documentation under /about/. The template's
-    one location names the same pages as the Caddyfile's @frontend and as frontend/public/about,
-    so a new page cannot be served by one edge and not the other."""
-    pages = re.search(r"\^/about/\(\(([^)]*)\)\\.html\|([^)]*)\)", ABOUT_LOCATION)
-    names = {f"{n}.html" for n in pages.group(1).split("|")} | {
-        n.replace("\\.", ".") for n in pages.group(2).split("|")
-    }
+    one location takes any page of that shape, so every page in frontend/public/about (and the
+    Caddyfile's @frontend, which names them) is served by both edges without a change here."""
+    pattern = ABOUT_LOCATION.split(None, 1)[1]
     frontend = re.search(r"^\s*@frontend path (.+)$", CADDYFILE, re.M).group(1).split()
     caddy = {p.removeprefix("/about/") for p in frontend if p.startswith("/about/")}
     public = Path(__file__).resolve().parent.parent / "frontend" / "public" / "about"
     files = {p.name for p in public.iterdir() if p.is_file()}
-    assert names == caddy == files, (names, caddy, files)
+    assert caddy == files, (caddy, files)
+    for name in files:
+        assert re.search(pattern, f"/about/{name}"), name
+    for other in (
+        "/about/",
+        "/about/stress",
+        "/about/x.html/",
+        "/about/../x.html",
+        "/about/a/b.html",
+    ):
+        assert not re.search(pattern, other), other
 
 
 def test_the_installable_app_is_served_as_the_caddyfile_serves_it() -> None:
@@ -3001,6 +3005,85 @@ def test_the_renderer_can_leave_out_the_password() -> None:
     assert opened.stdout.count("{") == opened.stdout.count("}")
 
 
+@needs_sh
+def test_the_renderer_remembers_the_site_s_shape(tmp_path: Path) -> None:
+    """Review 2026-10-29: a re-render after a template change must not need every install-time
+    flag retyped; forgetting --no-password would put the password back on the open beta."""
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "RM_BETA_HOST=beta.example.org\nBETA_SITE_PASSWORD=0\nBETA_NGINX_IPV6=0\n"
+        "BETA_NGINX_401_PAGE=0\n"
+    )
+    certs = {"RM_CERT_FULLCHAIN": "/c/f.pem", "RM_CERT_KEY": "/c/k.pem"}
+    flags = ["--no-password", "--no-ipv6", "--no-401-page", "--cert-fullchain", "/c/f.pem"]
+    flags += ["--cert-key", "/c/k.pem"]
+    plain = run(
+        "sh",
+        "scripts/beta/render-nginx.sh",
+        "--stage",
+        "full",
+        "--env-file",
+        str(env_file),
+        env=certs,
+    )
+    by_flags = run(
+        "sh",
+        "scripts/beta/render-nginx.sh",
+        "--stage",
+        "full",
+        "--env-file",
+        "/nonexistent",
+        "--server-name",
+        "beta.example.org",
+        *flags,
+    )
+    assert plain.returncode == 0 and by_flags.returncode == 0, plain.stderr + by_flags.stderr
+    assert plain.stdout == by_flags.stdout
+    assert "listen [::]" not in plain.stdout and "auth_basic_user_file" not in plain.stdout
+    assert re.search(r"^\s*ssl_certificate\s+/c/f.pem;", plain.stdout, re.M)
+    # A setting that is neither 1 nor 0 is refused, not guessed.
+    bad = run(
+        "sh",
+        "scripts/beta/render-nginx.sh",
+        "--stage",
+        "full",
+        "--env-file",
+        str(env_file),
+        env={**certs, "BETA_SITE_PASSWORD": "no"},
+    )
+    assert bad.returncode == 2 and "BETA_SITE_PASSWORD" in bad.stderr
+    # --diff: no change from the installed file, then the change shown.
+    installed = tmp_path / "site.conf"
+    installed.write_text(plain.stdout)
+    same = run(
+        "sh",
+        "scripts/beta/render-nginx.sh",
+        "--stage",
+        "full",
+        "--env-file",
+        str(env_file),
+        "--diff",
+        str(installed),
+        env=certs,
+    )
+    assert same.returncode == 0 and same.stdout == "" and "no change" in same.stderr
+    installed.write_text(
+        plain.stdout.replace("proxy_read_timeout 75s;", "proxy_read_timeout 9s;", 1)
+    )
+    changed = run(
+        "sh",
+        "scripts/beta/render-nginx.sh",
+        "--stage",
+        "full",
+        "--env-file",
+        str(env_file),
+        "--diff",
+        str(installed),
+        env=certs,
+    )
+    assert changed.returncode == 1 and "+        proxy_read_timeout 75s;" in changed.stdout
+
+
 def test_the_sign_in_page_says_to_use_a_real_browser() -> None:
     page = (REPO / "deploy" / "beta" / "401.html").read_text()
     assert "rather than inside another app" in page  # re-check a11y N3
@@ -3036,13 +3119,18 @@ def test_every_server_block_sources_the_vars_file_which_holds_no_secret() -> Non
     assert "Every tool call is a fresh shell" in zero and "never a password, key or token" in zero
     assert 'rm_absent "$RM_STATE" && mkdir -m 700 "$RM_STATE"' in zero
     assert "( umask 077; set -C; cat > \"${RM_STATE:?}/vars.sh\" ) <<'VARS'" in zero
-    # re-check 3 ops NIT-A and NIT-B: the function only after a fresh write; no unfilled <...>
-    assert "<<'VARS' && declare -f rm_absent >> \"$RM_STATE/vars.sh\"" in zero
-    assert zero.count("declare -f rm_absent") == 1
+    # re-check 3 ops NIT-A and NIT-B: the function only in a fresh write; no unfilled <...>.
+    # It is written as text inside the heredoc (review 2026-10-29): `declare -f` is bash's,
+    # and under the server's sh it left vars.sh without the function.
+    assert "declare -f" not in RUNBOOK
     assert 'grep -n \'<[^>]*>\' "$RM_STATE/vars.sh" && echo "STOP: fill in' in zero
     heredoc = zero[zero.index("<<'VARS'") : zero.index("\nVARS\n")]
     assert not re.search(r"(?i)(password|secret|token|_key\b|PGPASS|htpasswd)", heredoc), heredoc
-    for line in heredoc.splitlines()[1:]:
+    lines = heredoc.splitlines()[1:]
+    assert sum(line == guard_function() for line in lines) == 1, "the guard is in vars.sh"
+    for line in lines:
+        if line == guard_function():
+            continue
         assert line.startswith("export RM_") or line.startswith("export BETA_API_PORT="), line
     for appended in re.findall(r"echo '(export [A-Z_]+=[^']*)' >> \"\$RM_STATE/vars.sh\"", RUNBOOK):
         # RM_CERT_KEY is the private key's PATH (re-check 3 ops NIT-E), never its content
@@ -3672,6 +3760,32 @@ def test_every_routemaker_service_yields_to_the_hosts_other_sites() -> None:
 
 
 @needs_sh
+@pytest.mark.skipif(shutil.which("dash") is None, reason="needs dash")
+def test_every_runbook_block_is_plain_sh() -> None:
+    """Review 2026-10-29: the server's sh is dash. Every block parses under `dash -n` (a
+    `<...>` placeholder read as a word), and none uses bash's process substitution or
+    `declare`."""
+    blocks = re.findall(r"^( *)```sh\n(.*?)^\1```", RUNBOOK, re.M | re.S)
+    assert len(blocks) >= 30
+    for indent, body in blocks:
+        text = "\n".join(line[len(indent) :] for line in body.splitlines())
+        assert "<(" not in text and "declare " not in text, text[:200]
+        parsed = run("dash", "-n", stdin=re.sub(r"<[A-Za-z][^<>\n]*>", "X", text))
+        assert parsed.returncode == 0, (parsed.stderr, text[:200])
+
+
+@pytest.mark.skipif(shutil.which("dash") is None, reason="needs dash")
+def test_section_0_writes_a_vars_file_that_gives_sh_the_guard(tmp_path: Path) -> None:
+    zero = RUNBOOK[RUNBOOK.index("## 0. Variables") : RUNBOOK.index("## 1. Prerequisites")]
+    block = re.search(r"```sh\n(.*?)```", zero, re.S).group(1)
+    block = block.replace('"$HOME/routemaker-beta-state"', f'"{tmp_path}/state"')
+    block = re.sub(r"<[A-Za-z][^<>\n]*>", "x", block)
+    done = run("dash", "-c", block + '\nrm_absent "$RM_STATE/nope" && echo GUARD-OK')
+    assert done.returncode == 0 and "GUARD-OK" in done.stdout, done.stderr
+    later = run("dash", "-c", f'. "{tmp_path}/state/vars.sh"; rm_absent "$RM_STATE" || echo HELD')
+    assert "HELD" in later.stdout and "EXISTS" in later.stderr, later.stderr
+
+
 def test_rm_absent_refuses_an_empty_argument(tmp_path: Path) -> None:
     """An unset variable must not slip past the guard (`rm_absent "$UNSET" && ...`)."""
     for args in ('""', f'"{tmp_path / "absent"}" ""', ""):

@@ -7563,7 +7563,12 @@ def ride_here(request, ride_id: str):
     return _ride_call(
         request,
         lambda rp: rp.post_position(
-            ride_id, body.get("token", ""), body.get("lon"), body.get("lat"), body.get("role")
+            ride_id,
+            body.get("token", ""),
+            body.get("lon"),
+            body.get("lat"),
+            body.get("role"),
+            sealed=body.get("sealed"),
         ),
     )
 
@@ -7584,7 +7589,11 @@ def ride_path(request, ride_id: str):
     return _ride_call(
         request,
         lambda rp: rp.post_path(
-            ride_id, body.get("token", ""), body.get("route"), body.get("trail")
+            ride_id,
+            body.get("token", ""),
+            body.get("route"),
+            body.get("trail"),
+            sealed=body.get("sealed"),
         ),
     )
 
@@ -7614,6 +7623,7 @@ def ride_alert(request, ride_id: str):
             str(body.get("text", "") or ""),
             body.get("lon"),
             body.get("lat"),
+            sealed=body.get("sealed"),
         ),
     )
 
