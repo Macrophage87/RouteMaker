@@ -483,9 +483,9 @@ export const ES: Readonly<Record<string, string>> = {
   "My Go saved to your account.": "Mi Go se guardó en su cuenta.",
   "My Go was not saved to your account; try again shortly. It still applies here.":
     "Mi Go no se guardó en su cuenta; inténtelo de nuevo en breve. Aún se aplica aquí.",
-  "Default ride type": "Tipo de recorrido predeterminado",
+  "Primary Go method": "Método principal de Go",
   "Ride type": "Tipo de recorrido",
-  "Your ride type. Change it in Settings, under My Go.": "Su tipo de recorrido. Cámbielo en Ajustes, en Mi Go.",
+  "Your primary Go method. Change it in Settings, under My Go.": "Su método principal de Go. Cámbielo en Ajustes, en Mi Go.",
   Common: "Comunes",
   "Every ride type": "Todos los tipos de recorrido",
   "Ride type & settings": "Tipo de recorrido y ajustes",

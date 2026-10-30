@@ -4753,7 +4753,7 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
     savedPopup.open && savedPopup.heading === "Load route" && savedPopup.gpx && savedNamed?.role === "dialog" && savedNamed?.name === "Load route" && savedBack.closed && savedBack.focus === "Load route",
     JSON.stringify({ savedPopup, savedNamed: [savedNamed?.role, savedNamed?.name], savedBack }));
   const own = await axNode(p, ".go-sheet .ride-chips .ride-type-chip");
-  check("go: the first ride type is described as the rider's own, set in Settings", own?.name === "Default" && /^Your ride type\. Change it in Settings, under My Go\.$/.test(own?.description ?? ""), JSON.stringify(own));
+  check("go: the first ride type is described as the rider's own, set in Settings", own?.name === "Default" && /^Your primary Go method\. Change it in Settings, under My Go\.$/.test(own?.description ?? ""), JSON.stringify(own));
   check("go: every control in the top bar and the sheet is 44 px or more each way, and nothing scrolls sideways at 390 px", go.small.length === 0 && !go.scroll, JSON.stringify(go.small));
   const sw = await axNode(p, "nav.go-top .mode-switch");
   const pressed = { ...(await axNode(p, "nav.go-top .mode-button")), pressed: await p.eval("document.querySelector('nav.go-top .mode-button').getAttribute('aria-pressed')") };
@@ -5328,7 +5328,7 @@ async function goPressMap(p, card = null) {
   await p.close();
 }
 /** My Go's ride type picker set to Cargo Bike, as a rider's pick fires it. */
-const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-settings .my-go select')].find((x) => x.closest('label').querySelector('.setting-name').textContent === \"Default ride type\"); s.value = 'cargo'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()";
+const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-settings .my-go select')].find((x) => x.closest('label').querySelector('.setting-name').textContent === \"Primary Go method\"); s.value = 'cargo'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()";
 {
   // Announcements (Settings > Display): Brief in Go unless chosen; Full is kept on this device. Named Screen-reader detail
   // (P5: it was Announcements, and was taken for the ride's How much to say).
