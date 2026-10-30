@@ -74,11 +74,14 @@ def caddy_directives(name: str) -> list[str]:
 
 
 def site_addresses() -> list[str]:
-    """The address line of every site block at the top level of the file."""
+    """The address line of every site block at the top level of the file. A bare `{` is the
+    global options block, which has no address."""
     out = []
     for line in CADDY_TEXT.splitlines():
         stripped = line.strip()
         if line.startswith((" ", "\t")) or stripped.startswith("#") or not stripped.endswith("{"):
+            continue
+        if stripped == "{":
             continue
         out.append(stripped.removesuffix("{").strip())
     return out

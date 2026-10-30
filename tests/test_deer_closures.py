@@ -206,3 +206,14 @@ def test_the_api_takes_the_new_sources() -> None:
         *found(along(LITTLE_BENNETT), at),
     ):
         ClosureNoticeOut(**core_zones.notice_row(notice, at, False))
+
+
+def test_the_assumed_season_and_the_end_of_the_tables_are_reminders() -> None:
+    """Audit 2026-10-29: nothing prompted a check of the assumed Rock Creek season, or next
+    season's dates once these run out (`scripts/ddot_advisories.py watch` prints these)."""
+    assert deer.check_due(date(2026, 10, 20)) == []
+    (assumed,) = deer.check_due(date(2026, 10, 30))
+    assert "assumed" in assumed and "2026-11-10" in assumed
+    assert deer.check_due(date(2027, 2, 15)) == []
+    (end,) = deer.check_due(date(2027, 3, 5))
+    assert "end 2027-03-31" in end

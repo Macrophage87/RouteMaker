@@ -21,11 +21,11 @@ export const SKIP_WAITING = "SKIP_WAITING";
 export const WORKER_URL = "/sw.js";
 export const CHECK_EVERY_MS = 60 * 60_000;
 
-export const UPDATE_READY = "A new version of RouteMaker is ready.";
-export const UPDATE_RELOAD = "Reload";
-export const UPDATE_RELOAD_NAME = "Reload RouteMaker to use the new version";
-export const OFFLINE_SAID = "You are offline. RouteMaker still opens, and routes you kept for offline open from Save & load.";
-export const ONLINE_SAID = "Back online.";
+export const UPDATE_READY = t("A new version of RouteMaker is ready.");
+export const UPDATE_RELOAD = t("Reload");
+export const UPDATE_RELOAD_NAME = t("Reload RouteMaker to use the new version");
+export const OFFLINE_SAID = t("You are offline. RouteMaker still opens, and routes you kept for offline open from Save & load.");
+export const ONLINE_SAID = t("Back online.");
 /** Offline with a route on screen (P11): the route stays, and this one line says so. */
 export const OFFLINE_LAST_ROUTE = t("Offline: showing your last route.");
 

@@ -92,9 +92,11 @@ def test_owner_and_community_rows_keep_their_own_level(adjustment_id):
 
 
 def test_every_county_row_in_the_fixture_loads_as_45():
-    rows = json.loads((OVERRIDES / "2026-10-01-owner-moco-lts5-avoid.json").read_text())["rows"]
+    """Every row the 2026-10-01 file ever loaded, now all under `retire` (review 2026-10-29):
+    one still in a database until the file is loaded again reads as 4.5."""
+    rows = json.loads((OVERRIDES / "2026-10-01-owner-moco-lts5-avoid.json").read_text())["retire"]
     county = [r for r in rows if r["value"]["adjustment_id"].startswith("moco-lts5-")]
-    assert county
+    assert len(county) == 409
     for row in county:
         override = Override(kind="stress", osm_way_id=row["osm_way_id"], value=row["value"])
         adjustment = overrides.stress_adjustment(override, Stress.LTS3)

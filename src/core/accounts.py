@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 
 from django.conf import settings
 
@@ -69,6 +70,10 @@ def _depth(value, level: int = 0) -> int:
     return level
 
 
+# A plan's stops in either form: `q=` (the app's links since v0.15.0) or the older `p=`.
+PLAN_POINTS_RE = re.compile(r"(^|[#&])[pq]=")
+
+
 def settings_problem(data) -> str | None:
     """Why a settings document cannot be kept, or None."""
     if not isinstance(data, dict):
@@ -81,7 +86,9 @@ def settings_problem(data) -> str | None:
     if len(json.dumps(data, separators=(",", ":"))) > SETTINGS_MAX_BYTES:
         return f"Settings are larger than {SETTINGS_MAX_BYTES // 1024} KB."
     plan = data.get("plan")
-    if plan is not None and (not isinstance(plan, str) or len(plan) > HASH_MAX or "p=" in plan):
+    if plan is not None and (
+        not isinstance(plan, str) or len(plan) > HASH_MAX or PLAN_POINTS_RE.search(plan)
+    ):
         # The ride type and dials only: a plan's points are a route, not a setting.
         return "The saved ride type and dials are not in the expected form."
     favorites = data.get("favorites")

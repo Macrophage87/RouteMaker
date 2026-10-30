@@ -3,7 +3,7 @@
  * route should be in too?"). The Share button (no new control) keeps the exact line shown, verbatim like a saved
  * route or an opened GPX file (lib/savedRoutes.ts planSave and gpxSave: points in order, elevations, stops, a
  * planned route's answer or the file's own text), at POST /api/shared-routes (core.shared_routes), and the link it
- * shares carries that line's id beside the plan's inputs: `#p=...&preset=...&route=<id>`. Opened, the link shows
+ * shares carries that line's id beside the plan's inputs: `#q=...&preset=...&route=<id>`. Opened, the link shows
  * the line unchanged, as a saved route opens (App.tsx openSaved): the closure check runs, and "Update route" plans
  * the inputs again with today's map.
  *
@@ -34,6 +34,7 @@ import { ZONE_RADIUS_M } from "./shareCard.ts";
 import type { Home } from "./myGo.ts";
 import type { SaveBody, SavedRoute } from "./savedRoutes.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
+import { leadKeyOfMark, leadMark } from "./linkCode.ts";
 
 /** The link's fragment parameter that names the shared line. */
 export const SHARED_PARAM = "route";
@@ -77,20 +78,26 @@ export const SHARE_RIDE_ABOUT =
  * sharer's dot and nothing else.
  */
 export const LEAD_PARAM = "lead";
-const LEAD_RE = /^[0-9a-f]{32}$/;
 
-/** The link, shared as a ride; with the sharer's leader key, a ride they lead. */
+/**
+ * The link, shared as a ride; with the sharer's leader key (32 hex digits), a ride they lead. The link writes the key
+ * short, 22 base64url characters (lib/linkCode.ts leadMark, 2026-10-29).
+ */
 export function asRideLink(link: string, lead: string | null = null): string {
-  const leader = lead && LEAD_RE.test(lead) ? `&${LEAD_PARAM}=${lead}` : "";
+  const mark = leadMark(lead);
+  const leader = mark ? `&${LEAD_PARAM}=${mark}` : "";
   return `${link}${link.includes("#") ? "&" : "#"}${RIDE_PARAM}=1${leader}`;
 }
 
-/** The leader key of a link shared as a ride (its fragment, or its query sent on from `/s/<id>`), or null. */
+/**
+ * The leader key (32 hex digits, as the server knows it) of a link shared as a ride (its fragment, or its query sent
+ * on from `/s/<id>`), or null. The link's mark in either form: 22 characters, or an older link's 32 hex digits.
+ */
 export function leadKeyFrom(hash: string, search = ""): string | null {
   for (const part of [hash.replace(/^#/, ""), search.replace(/^\?/, "")]) {
     const params = new URLSearchParams(part);
-    const lead = params.get(LEAD_PARAM);
-    if (params.get(RIDE_PARAM) === "1" && lead && LEAD_RE.test(lead)) return lead;
+    const lead = leadKeyOfMark(params.get(LEAD_PARAM));
+    if (params.get(RIDE_PARAM) === "1" && lead) return lead;
   }
   return null;
 }
@@ -106,7 +113,8 @@ export const SHARED_PATH = "/s/";
 /**
  * How long the server keeps a shared line (core.shared_routes.KEEP_CHOICES; the owner, 2026-10-16: "For the 1 year
  * deletion, make this the default. For other users, we can offer "keep permanently" and "delete after <date>"").
- * Chosen beside Share in Plan's More; Go always keeps the default.
+ * Chosen beside Share in Plan's More, signed in only (the server keeps a signed-out link the default year); Go always
+ * keeps the default.
  */
 export type ShareKeepChoice = "year" | "forever" | "until";
 export interface ShareKeep {

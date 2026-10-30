@@ -11,6 +11,7 @@ import { t } from "./i18n.ts";
 
 const DASH = "–";
 export const METRES_PER_MILE = 1609.344;
+export const FEET_PER_MILE = 5280;
 /** The words for the units a rider types in (the target distance, the system weight). */
 export const MILES_WORD = "miles";
 export const POUNDS_WORD = "pounds";
@@ -19,7 +20,9 @@ export const QUARTER_MILE = "a quarter mile (400 m)";
 /** Places to see along a route (v0.7.0, lib/places.ts). */
 export const HALF_MILE = "half a mile (0.8 km)";
 export const FEET_PER_METRE = 3.28084;
-export const KMH_PER_MPH = 1.609344;
+export const METRES_PER_FOOT = 0.3048;
+export const KM_PER_MILE = 1.609344;
+export const KMH_PER_MPH = KM_PER_MILE;
 
 /**
  * Below this a distance is given in feet (and metres): a tenth of a mile, 528
@@ -47,6 +50,11 @@ export function milesFigure(metres: number): string {
   return (metres / METRES_PER_MILE).toFixed(1);
 }
 
+/** Kilometres to one place, the bracketed figure beside the miles: "7.6". */
+export function kmFigure(metres: number): string {
+  return (metres / 1000).toFixed(1);
+}
+
 /**
  * Miles alone, "4.7 mi", only where a field's length cap leaves no room for the metric: a bike computer's course
  * name (TCX caps it at 15 characters). Anywhere with room says `formatDistance`.
@@ -71,7 +79,7 @@ export function milesRange(minMiles: number, maxMiles: number, minM: number, max
  */
 export function formatMileRange(fromM: number, toM: number): string {
   const mi = (m: number) => (m / METRES_PER_MILE).toFixed(1);
-  const km = (m: number) => (m / 1000).toFixed(1);
+  const km = kmFigure;
   // Under a tenth of a mile, describe.py range_words' feet rule: where it starts and how long, in feet
   // ("1.2 mi (1.9 km), for 300 ft (91 m)"). Also where both ends round to the same tenth, which
   // range_words does not check, so "0.6 to 0.6 mi" is never said.
@@ -99,7 +107,7 @@ export function formatMileMarker(metres: number): string {
 }
 
 export function formatMileMarkerUnits(metres: number): string {
-  return `mi (${(metres / 1000).toFixed(1)} km)`;
+  return `mi (${kmFigure(metres)} km)`;
 }
 
 /**
@@ -108,7 +116,7 @@ export function formatMileMarkerUnits(metres: number): string {
  */
 export function formatDistanceChange(metres: number): string {
   const m = Math.abs(metres);
-  return `${(m / METRES_PER_MILE).toFixed(1)} mi (${(m / 1000).toFixed(1)} km)`;
+  return `${(m / METRES_PER_MILE).toFixed(1)} mi (${kmFigure(m)} km)`;
 }
 
 /** A change of distance in miles alone, without its sign, for a short line on screen: "0.3 mi" (P3's re-plan toast). */
@@ -119,7 +127,7 @@ export function formatMilesChange(metres: number): string {
 /** How far along a route, miles first: "mile 12.4 (20.0 km)"; under a tenth of a mile, "the start". */
 export function formatMilePost(metres: number): string {
   if (!usable(metres) || metres < FEET_BELOW_M) return t("the start");
-  return t("mile {mile} ({km} km)", { mile: milesFigure(metres), km: (metres / 1000).toFixed(1) });
+  return t("mile {mile} ({km} km)", { mile: milesFigure(metres), km: kmFigure(metres) });
 }
 
 /** "4.7 mi (7.6 km)"; below a tenth of a mile "500 ft (150 m)". */
@@ -128,7 +136,7 @@ export function formatDistance(metres: number): string {
   if (metres < FEET_BELOW_M) {
     return `${roundShort(metres * FEET_PER_METRE)} ft (${roundShort(metres)} m)`;
   }
-  return `${milesFigure(metres)} mi (${(metres / 1000).toFixed(1)} km)`;
+  return `${milesFigure(metres)} mi (${kmFigure(metres)} km)`;
 }
 
 /**
@@ -143,7 +151,7 @@ export function formatStationDistance(metres: number): string {
     const feet = metres >= 30 ? Math.round((metres * FEET_PER_METRE) / 10) * 10 : Math.round(metres * FEET_PER_METRE);
     return `${feet} ft (${roundShort(metres)} m)`;
   }
-  const metric = metres < 995 ? `${Math.round(metres / 10) * 10} m` : `${(metres / 1000).toFixed(1)} km`;
+  const metric = metres < 995 ? `${Math.round(metres / 10) * 10} m` : `${kmFigure(metres)} km`;
   return `${milesFigure(metres)} mi (${metric})`;
 }
 
@@ -186,14 +194,14 @@ export function formatAxisDistance(metres: number): string {
  */
 export function formatRunMiles(miles: number): string {
   const metres = miles * METRES_PER_MILE;
-  if (miles < 0.5) return `${Math.round(miles * 5280).toLocaleString("en-US")} ft (${(metres / 1000).toFixed(1)} km)`;
+  if (miles < 0.5) return `${Math.round(miles * FEET_PER_MILE).toLocaleString("en-US")} ft (${kmFigure(metres)} km)`;
   return formatDistance(metres);
 }
 
 /** An extra distance inside a sentence, miles first, metric in brackets: "+1.2 mi (1.9 km)". */
 export function formatExtra(metres: number): string {
   if (!usable(metres)) return DASH;
-  return `+${milesFigure(metres)} mi (${(metres / 1000).toFixed(1)} km)`;
+  return `+${milesFigure(metres)} mi (${kmFigure(metres)} km)`;
 }
 
 /**
@@ -205,7 +213,7 @@ export function formatPerMile(ratio: number): string {
   if (!usable(ratio)) return DASH;
   if (ratio < 10) {
     const miles = Math.max(0.1, Math.round(ratio * 10) / 10);
-    return `${miles.toFixed(1)} mi (${((miles * METRES_PER_MILE) / 1000).toFixed(1)} km)`;
+    return `${miles.toFixed(1)} mi (${kmFigure(miles * METRES_PER_MILE)} km)`;
   }
   return formatRoughDistance(ratio * METRES_PER_MILE);
 }
@@ -220,7 +228,7 @@ export function formatGroupLength(metres: number): string {
     const feet = Math.round((metres * FEET_PER_METRE) / 10) * 10;
     return `${feet.toLocaleString("en-US")} ft (${Math.round(metres / 5) * 5} m)`;
   }
-  return `${(metres / METRES_PER_MILE).toFixed(2)} mi (${(metres / 1000).toFixed(1)} km)`;
+  return `${(metres / METRES_PER_MILE).toFixed(2)} mi (${kmFigure(metres)} km)`;
 }
 
 /** A round figure for a limit or a span, in whole units: "31 mi (50 km)". */
@@ -251,7 +259,7 @@ export function formatClimb(metres: number): string {
 export function formatMilesSpelled(metres: number): string {
   if (!usable(metres)) return DASH;
   const miles = (metres / METRES_PER_MILE).toFixed(1);
-  return `${miles} ${miles === "1.0" ? "mile" : "miles"} (${(metres / 1000).toFixed(1)} km)`;
+  return `${miles} ${miles === "1.0" ? "mile" : "miles"} (${kmFigure(metres)} km)`;
 }
 
 /** A speed from km/h: "12 mph (19 km/h)". */

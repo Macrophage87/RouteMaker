@@ -12,7 +12,8 @@ import { fileURLToPath } from "node:url";
 
 const script = fileURLToPath(new URL("../scripts/play-upload.sh", import.meta.url));
 
-test("uploads the bundle and releases it to internal testing with the notes", async () => {
+/** One run of the script against a stand-in for Google; answers the requests it made. */
+async function upload(extraEnv = {}) {
   // A throwaway key made for this test only.
   const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const seen = [];
@@ -43,12 +44,16 @@ test("uploads the bundle and releases it to internal testing with the notes", as
     await new Promise((resolve, reject) =>
       execFile("bash", [script, aab], {
         env: { ...process.env, PLAY_SERVICE_ACCOUNT_JSON: account, PLAY_PACKAGE: "com.example.app",
-               PLAY_NOTES: "RouteMaker v1.2.3", PLAY_API_ROOT: root, RUNNER_TEMP: dir },
+               PLAY_NOTES: "RouteMaker v1.2.3", PLAY_API_ROOT: root, RUNNER_TEMP: dir, ...extraEnv },
       }, (err, stdout, stderr) => (err ? reject(new Error(stderr || err.message)) : resolve(stdout))));
   } finally {
     server.close();
   }
+  return { seen, root, publicKey };
+}
 
+test("uploads the bundle and releases it to internal testing with the notes", async () => {
+  const { seen, root, publicKey } = await upload();
   const app = "/androidpublisher/v3/applications/com.example.app";
   assert.deepEqual(seen.map((s) => `${s.method} ${s.url}`), [
     "POST /token",
@@ -77,6 +82,18 @@ test("uploads the bundle and releases it to internal testing with the notes", as
     track: "internal",
     releases: [{ versionCodes: ["98"], status: "completed", releaseNotes: [{ language: "en-US", text: "RouteMaker v1.2.3" }] }],
   });
+});
+
+test("PLAY_RELEASE_STATUS=draft: a draft release, for an app Play has not yet reviewed; anything else is refused", async () => {
+  const { seen } = await upload({ PLAY_RELEASE_STATUS: "draft" });
+  assert.equal(JSON.parse(seen[3].body).releases[0].status, "draft");
+  const refused = await new Promise((resolve) =>
+    execFile("bash", [script, "app.aab"], {
+      env: { ...process.env, PLAY_SERVICE_ACCOUNT_JSON: "{}", PLAY_PACKAGE: "com.example.app", PLAY_NOTES: "n",
+             PLAY_RELEASE_STATUS: "halted", PLAY_API_ROOT: "http://127.0.0.1:9" },
+    }, (err, stdout, stderr) => resolve({ err, stderr })));
+  assert.ok(refused.err);
+  assert.match(refused.stderr, /PLAY_RELEASE_STATUS must be completed or draft/);
 });
 
 test("a refusal stops the upload and puts Google's reason in the log", async () => {
