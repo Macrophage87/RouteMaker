@@ -48,6 +48,7 @@ FBX = "frontend/src/FacilityBreakdown.tsx"
 RDX = "frontend/src/RouteDescription.tsx"
 SW = "frontend/src/lib/highStressLanesSwitch.ts"
 LEG = "frontend/src/lib/stressLegend.ts"
+SH = "frontend/src/app/Sheets.tsx"
 RC = "frontend/src/lib/routeColours.ts"
 MS = "frontend/src/lib/mapStyle.ts"
 CJ = "frontend/src/lib/credits.json"
@@ -136,7 +137,14 @@ MUTANTS: list[tuple[str, str, str, str, str, list[str]]] = [
         "ts",
         TS,
     ),
-    ("M10 overlay filter hides every tier", SS, "HIGH_STRESS_LANE_MIN_TIER]);", "0]);", "ts", TS),
+    (
+        "M10 overlay filter hides every tier",
+        SS,
+        "HIGH_STRESS_LANE_MIN_TIER]] : [];",
+        "0]] : [];",
+        "ts",
+        TS,
+    ),
     (
         "M11 protected hidden too",
         SS,
@@ -214,40 +222,40 @@ MUTANTS: list[tuple[str, str, str, str, str, list[str]]] = [
     (
         "U1 no unpaved filter on path",
         SS,
-        'if (facility.facility === "path") filter.push(["!=", ["get", "unpaved"], true]);',
-        "",
+        '    if (facility.facility === "path") filter.push(["!=", ["get", "unpaved"], true], ["!", surfaceUnknown]);',
+        '    if (facility.facility === "path") filter.push(["!", surfaceUnknown]);',
         "ts",
         TS,
     ),
     (
         "U2 != becomes ==",
         SS,
-        'filter.push(["!=", ["get", "unpaved"], true]);',
-        'filter.push(["==", ["get", "unpaved"], true]);',
+        '    if (facility.facility === "path") filter.push(["!=", ["get", "unpaved"], true], ["!", surfaceUnknown]);',
+        '    if (facility.facility === "path") filter.push(["==", ["get", "unpaved"], true], ["!", surfaceUnknown]);',
         "ts",
         TS,
     ),
     (
         "U3 filter on every facility",
         SS,
-        'if (facility.facility === "path") filter.push(["!=", ["get", "unpaved"], true]);',
-        'filter.push(["!=", ["get", "unpaved"], true]);',
+        '    if (facility.facility === "path") filter.push(["!=", ["get", "unpaved"], true], ["!", surfaceUnknown]);',
+        '    filter.push(["!=", ["get", "unpaved"], true]);\n    if (facility.facility === "path") filter.push(["!", surfaceUnknown]);',
         "ts",
         TS,
     ),
     (
         "U4 filter reads trail not unpaved",
         SS,
-        'filter.push(["!=", ["get", "unpaved"], true]);',
-        'filter.push(["!=", ["get", "trail"], true]);',
+        '    if (facility.facility === "path") filter.push(["!=", ["get", "unpaved"], true], ["!", surfaceUnknown]);',
+        '    if (facility.facility === "path") filter.push(["!=", ["get", "trail"], true], ["!", surfaceUnknown]);',
         "ts",
         TS,
     ),
     (
         "U5 unknown surface dropped too",
         SS,
-        'filter.push(["!=", ["get", "unpaved"], true]);',
-        'filter.push(["==", ["get", "unpaved"], false]);',
+        '    if (facility.facility === "path") filter.push(["!=", ["get", "unpaved"], true], ["!", surfaceUnknown]);',
+        '    if (facility.facility === "path") filter.push(["==", ["get", "unpaved"], false], ["!", surfaceUnknown]);',
         "ts",
         TS,
     ),
@@ -370,8 +378,8 @@ MUTANTS: list[tuple[str, str, str, str, str, list[str]]] = [
     (
         "C5 tier_words joiner",
         D,
-        'return f"{words}, {extra}" if extra else words',
-        'return f"{words}; {extra}" if extra else words',
+        'return f"{words}, {t(extra)}" if extra else words',
+        'return f"{words}; {t(extra)}" if extra else words',
         "py",
         DESCRIBE,
     ),
@@ -395,7 +403,7 @@ MUTANTS: list[tuple[str, str, str, str, str, list[str]]] = [
     (
         "B3 surface not said in text",
         D,
-        '        words = f"{words}, {surface}"',
+        '        words = f"{words}, {t(surface)}"',
         "        words = words",
         "py",
         DESCRIBE,
@@ -443,17 +451,17 @@ MUTANTS: list[tuple[str, str, str, str, str, list[str]]] = [
     # The switch is shown with or without the stress map now (the a11y review's SF4).
     (
         "B7 switch not drawn",
-        APP,
-        '            <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} />\n',
+        SH,
+        '        <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} massMap={massMap} />\n',
         "",
         "ts",
         TS,
     ),
     (
         "B7b switch back inside the overlay block",
-        APP,
-        '            <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} />\n            {stress === "available" && (\n              <>\n',
-        '            {stress === "available" && (\n              <>\n            <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} />\n',
+        SH,
+        '        <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} massMap={massMap} />\n',
+        '        {stress === "available" && <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} massMap={massMap} />}\n',
         "ts",
         TS,
     ),
@@ -468,8 +476,8 @@ MUTANTS: list[tuple[str, str, str, str, str, list[str]]] = [
     (
         "S1 hint back to 300 characters",
         SW,
-        'Protected lanes and paths always show.";',
-        'Protected lanes and paths always show. Turn this on to draw them on the map and count them in the route bike facilities and description, as before. Kept in this browser.";',
+        't("Painted lanes on heavy-traffic (LTS 4) and best-avoided roads, on the map and in the route.")',
+        't("Painted lanes on heavy-traffic (LTS 4) and best-avoided roads, on the map and in the route. Protected lanes and paths always show. Turn this on to draw them on the map and count them in the route bike facilities and description, as before. Kept in this browser.")',
         "ts",
         TS,
     ),
@@ -501,8 +509,8 @@ MUTANTS: list[tuple[str, str, str, str, str, list[str]]] = [
     (
         "F03 lane cut replaces the ride-time part",
         SS,
-        f'    if (facility.facility === "lane" && !showHighLanes) filter.push({LANE_CUT});',
-        f'    if (facility.facility === "lane" && !showHighLanes) filter.splice(1, 1, {LANE_CUT});',
+        '    filters[facilityLayerId(facility.facility)] = [...filter, ["<", tier, BUSY_MIN_TIER], ...cut];',
+        '    filters[facilityLayerId(facility.facility)] = cut.length ? ["all", ...filter.slice(2), ["<", tier, BUSY_MIN_TIER], ...cut] : [...filter, ["<", tier, BUSY_MIN_TIER], ...cut];',
         "ts",
         TS,
     ),
@@ -558,8 +566,8 @@ MUTANTS: list[tuple[str, str, str, str, str, list[str]]] = [
     (
         "X22 overview hidden text loses its then-clause",
         D,
-        "_stretch_sentence(hidden, start, end, turn, continues, then)",
-        "_stretch_sentence(hidden, start, end, turn, continues)",
+        "_stretch_sentence(hidden, start, end, turn, continues, then, toward)",
+        "_stretch_sentence(hidden, start, end, turn, continues, toward=toward)",
         "py",
         PYALL,
     ),
@@ -614,8 +622,8 @@ MUTANTS: list[tuple[str, str, str, str, str, list[str]]] = [
     (
         "X31 no-trail variant drops the surface",
         G,
-        '            if roadway_only and kind in ROADWAY_ONLY_AS_NONE:\n                kind = "none"\n',
-        '            if roadway_only and kind in ROADWAY_ONLY_AS_NONE:\n                kind = "none"\n            if roadway_only:\n                unpaved = None\n',
+        '        if roadway_only and kind in ROADWAY_ONLY_AS_NONE:\n            kind = "none"\n        classes.append(PieceClass(tier, kind, *rest))',
+        '        if roadway_only and kind in ROADWAY_ONLY_AS_NONE:\n            kind = "none"\n        if roadway_only:\n            rest = [None, *rest[1:]]\n        classes.append(PieceClass(tier, kind, *rest))',
         "py",
         PYALL,
     ),
@@ -689,24 +697,24 @@ MUTANTS: list[tuple[str, str, str, str, str, list[str]]] = [
     (
         "W1 unpaved line keeps the stress colour",
         SS,
-        "...linePaint(byUnpaved(tier.unpavedColor, tier.color), tier.width",
-        "...linePaint(tier.color, tier.width",
+        "...linePaint(byUnpaved(tier.unpavedColor, tier.color, tier.gravelColor), tier.width",
+        "...linePaint(byUnpaved(tier.color, tier.color, tier.gravelColor), tier.width",
         "ts",
         TS,
     ),
     (
         "W2 unpaved casing is the paved one",
         SS,
-        "  const full = byUnpaved(tier.unpavedCasing, tier.casing);",
-        "  const full = tier.casing;",
+        "  const full = byUnpaved(tier.unpavedCasing, tier.casing, tier.gravelCasing);",
+        "  const full = byUnpaved(tier.casing, tier.casing, tier.gravelCasing);",
         "ts",
         TS,
     ),
     (
         "W3 unpaved dots in the paved casing",
         SS,
-        '      "line-color": tier.unpavedCasing,\n      "line-width": unpavedWidth(tier),',
-        '      "line-color": tier.casing,\n      "line-width": unpavedWidth(tier),',
+        '      "line-color": byUnpaved(tier.unpavedCasing, tier.gravelCasing, tier.gravelCasing),',
+        '      "line-color": byUnpaved(tier.casing, tier.gravelCasing, tier.gravelCasing),',
         "ts",
         TS,
     ),
@@ -803,7 +811,7 @@ MUTANTS: list[tuple[str, str, str, str, str, list[str]]] = [
     (
         "G356-3 the overlay has no gap layer",
         SS,
-        "    ...gapLayers(sourceId, when, tiers),\n",
+        "    ...tierGroup(gapLayers(sourceId, when, tiers)),\n",
         "",
         "ts",
         TS,
@@ -876,7 +884,7 @@ MUTANTS: list[tuple[str, str, str, str, str, list[str]]] = [
     (
         "R371-3 the overlay has no ring layer",
         SS,
-        "    ...ringLayers(sourceId, when, tiers),\n",
+        "    ...calmestOnTop(ringLayers(sourceId, when, tiers)),\n",
         "",
         "ts",
         TS,
@@ -966,8 +974,8 @@ MUTANTS: list[tuple[str, str, str, str, str, list[str]]] = [
     (
         "MR19 the gap line ignores the surface",
         SS,
-        '          "line-color": byUnpaved(tier.unpavedGap, tier.gap),',
-        '          "line-color": byUnpaved(tier.gap, tier.gap),',
+        '          "line-color": byUnpaved(tier.unpavedGap, tier.gap, tier.gravelGap),',
+        '          "line-color": byUnpaved(tier.gap, tier.gap, tier.gravelGap),',
         "ts",
         TS,
     ),
@@ -1046,8 +1054,8 @@ MUTANTS: list[tuple[str, str, str, str, str, list[str]]] = [
     (
         "W14 legend ramp one brown",
         LEG,
-        "        seg(i, tier.unpavedColor, widths.line),",
-        "        seg(i, tiers[0].unpavedColor, widths.line),",
+        "        seg(i, gravel ? tier.gravelColor : tier.unpavedColor, widths.line),",
+        "        seg(i, gravel ? tier.gravelColor : tiers[0].unpavedColor, widths.line),",
         "ts",
         TS,
     ),
@@ -1105,8 +1113,8 @@ EQUIVALENT: list[tuple[str, str, str, str, str]] = [
     (
         "X27 PieceClass copy loses unpaved",
         G,
-        "        return (self[0], self[1], self.unpaved)",
-        "        return (self[0], self[1])",
+        "            self[1],\n            self.unpaved,\n            self.lanes,",
+        "            self[1],\n            None,\n            self.lanes,",
         "pickle restores the instance __dict__ after __getnewargs__, so unpaved comes back either way (salience r1's R3)",
     ),
 ]

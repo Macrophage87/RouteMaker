@@ -87,6 +87,17 @@ MAINTENANCE_FINISHED_NEXT_STEPS = (
 )
 
 
+def swapped_next_steps() -> str:
+    """For a rebuild that died after its swap, which is finished instead of requeued."""
+    from config.procrastinate import AFTER_SWAP_BY_HAND, ROUTER_RESTART_NOTICE
+
+    return (
+        "It had already swapped its build in, so it was not requeued: a requeue would "
+        "rebuild from the start and swap again, dropping the retired schema a rollback "
+        f"needs. {ROUTER_RESTART_NOTICE} {AFTER_SWAP_BY_HAND}"
+    )
+
+
 def next_steps(task_name: str, queue_name: str, landed: str = "todo") -> str:
     """The sentence that fits the job that was just put back, or was not.
 
@@ -158,6 +169,8 @@ class Command(BaseCommand):
                 "job on the queue. Watch it instead, or stop the worker first."
             )
 
+        swapped = job.task_name == "weekly_rebuild" and self._already_swapped(job_id)
+
         # The other collision, and it is the one `run_rebuild_now` was written
         # about: Procrastinate's queueing-lock index is partial on
         # `WHERE status = 'todo'`, so moving this row back to `todo` while
@@ -177,6 +190,11 @@ class Command(BaseCommand):
                     "queued job run, or cancel it first."
                 )
 
+        if swapped:
+            # Finished rather than requeued: with an abort requested on it, the retry
+            # function ends a `doing` job instead of putting it back (below), which
+            # clears the row the single-flight checks read without running it again.
+            app.job_manager.cancel_job_by_id(job_id=job_id, abort=True)
         app.job_manager.retry_job_by_id(job_id=job_id, retry_at=timezone.now())
         # Read back rather than assumed. `procrastinate_retry_job_v2` finishes a
         # `doing` job as `failed` instead of requeueing it when an abort has been
@@ -203,7 +221,32 @@ class Command(BaseCommand):
 
         what = "is queued again" if landed == "todo" else f"is now {landed}"
         self.stdout.write(f"job {job_id} ({job.task_name} on the {job.queue_name} queue) {what}.")
+        if swapped:
+            self.stdout.write(swapped_next_steps())
+            return
         self.stdout.write(next_steps(job.task_name, job.queue_name, landed))
+
+    def _already_swapped(self, job_id: int) -> bool:
+        """Whether this rebuild died after its swap; refuses one that died during it.
+
+        Requeued, either would start fresh: rebuild for hours and swap again, which
+        drops the retired schema a rollback needs, and the first stage drops the
+        staging schema an interrupted swap may still need. The swap journal under
+        the tiles directory says which case this is; where the tiles are not
+        mounted there is no journal to read and this answers False.
+        """
+        from django.conf import settings
+
+        from pipeline import promotion
+
+        interrupted = promotion.interrupted_swap(settings.TILES_DIR)
+        if interrupted is not None:
+            raise CommandError(
+                f"job {job_id} was not requeued: "
+                f"{promotion.describe_interrupted_swap(interrupted)}. The rebuild refuses to "
+                "start until that is done, so a requeue would only fail."
+            )
+        return promotion.swapped_job(settings.TILES_DIR) == job_id
 
     def _live_worker(self, job):
         """The job's worker if it is still beating, else None.

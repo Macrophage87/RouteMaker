@@ -24,10 +24,12 @@ asked here, which is "is anything broken right now".
 
 from __future__ import annotations
 
+from django.conf import settings
 from django.contrib import admin
 from django.core.exceptions import PermissionDenied
 from django.template.response import TemplateResponse
 
+from . import transit
 from .admin import site
 from .management.commands.unwedge_job import STALLED_WORKER_TIMEOUT_S
 from .models import ScheduledRun
@@ -105,6 +107,8 @@ class ScheduledRunAdmin(admin.ModelAdmin):
             "disk_headroom_message": (
                 unmeasured_disk_message(headroom) if headroom["status"] == DISK_UNMEASURED else ""
             ),
+            # The transit timetables' end, the same line `check_operations` alerts with.
+            "transit_alert": transit.schedule_alert(settings.TRANSIT_SCHEDULE_PATH),
             "failed_jobs": failed_jobs(RECENT_FAILURES),
             "recent_runs": ScheduledRun.objects.order_by("-started_at")[:RECENT_RUNS],
             **(extra_context or {}),

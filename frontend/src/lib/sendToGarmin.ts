@@ -124,6 +124,28 @@ export async function handGpx(text: string, fileName: string, bridge: CapacitorB
   }
 }
 
+/** The phone app's other files of the Plan file sheet (handFile): FIT and TCX courses, PDF cue sheets, lock-screen images. */
+export const FILE_CHOOSER = t("Choose an app to open the file.");
+export const FILE_HAND_FAILED = t("Could not hand the file on. Is an app that opens it installed?");
+export const FILE_HAND_NONE = t("This version of the RouteMaker app cannot hand on this file. Update it, or download it from the website.");
+
+/**
+ * Download a FIT or TCX course, PDF cue sheet or lock-screen image in the phone app, the way handGpx does GPX: the
+ * bytes go to the RouteMakerFiles plugin with anyApp, for Android's "Open with" list. Answers the line to say first,
+ * FILE_CHOOSER once handed, or null outside the app (the caller saves it as a download, as before). An app from
+ * before the plugin, or one whose plugin refuses the file type, gets a line saying so, never a claim it was made.
+ */
+export async function handFile(bytes: Uint8Array, fileName: string, bridge: CapacitorBridge | null = nativeBridge()): Promise<string | null> {
+  if (!bridge) return null;
+  if (!hasPlugin(bridge)) return FILE_HAND_NONE;
+  try {
+    await bridge.nativePromise(FILES_PLUGIN, "openWith", { name: fileName, data: toBase64(bytes), anyApp: true });
+    return FILE_CHOOSER;
+  } catch {
+    return FILE_HAND_FAILED;
+  }
+}
+
 /** Whether fitting the course to the device left anything out: then its line (courseLine) is said too. */
 export function courseTrimmed(course: Pick<Course, "trim">): boolean {
   const t = course.trim;

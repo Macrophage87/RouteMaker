@@ -261,15 +261,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "words: a mile said as miles",
         HS,
-        "{'mile' if math.isclose(round(miles, 1), 1.0) else 'miles'}",
-        "miles",
+        'mi = t("{n} mile", n=f"{miles:.1f}") if one else t("{n} miles", n=f"{miles:.1f}")',
+        'mi = t("{n} miles", n=f"{miles:.1f}")',
         SEEK,
     ),
     (
         "words: the summit not scaled",
         HS,
-        "to the summit at {point_words(item.summit_m * scale)}",
-        "to the summit at {point_words(item.summit_m)}",
+        "summit=point_words(item.summit_m * scale),",
+        "summit=point_words(item.summit_m),",
         SEEK,
     ),
     (

@@ -13,7 +13,8 @@
  * of the same request, src/core/route_cache.py).
  */
 import type { RouteResponse, RouteResult } from "./api.ts";
-import { METRES_PER_MILE, formatDistanceChange, formatMilesChange } from "./format.ts";
+import { METRES_PER_MILE, formatMilesChange } from "./format.ts";
+import { formatDistanceSpoken, formatDurationSpoken } from "./spokenFigures.ts";
 import { t } from "./i18n.ts";
 
 /** Busy riding (LTS 3, 4 and Avoid) on a route, metres. */
@@ -42,8 +43,8 @@ export function sameRoute(a: Pick<RouteResponse, "geometry" | "distance_m">, b: 
 /** The time a swap adds or saves, in whole minutes: "+2 min", "2 min less", or "" under a minute. */
 function minutesSaid(seconds: number): string {
   const minutes = Math.round(seconds / 60);
-  if (minutes >= 1) return `, +${minutes} min`;
-  if (minutes <= -1) return `, ${-minutes} min less`;
+  if (minutes >= 1) return t(", +{minutes} min", { minutes });
+  if (minutes <= -1) return t(", {minutes} min less", { minutes: -minutes });
   return "";
 }
 
@@ -57,9 +58,9 @@ export function betterRouteSaid(
 ): string | null {
   if (sameRoute(first, full)) return null;
   const extra = minutesSaid(full.duration_s - first.duration_s);
-  if (busyM(full) <= busyM(first) - CALMER_BY_M) return `Found a calmer route${extra}.`;
-  if (full.duration_s <= first.duration_s - QUICKER_BY_S) return `Found a quicker route${extra}.`;
-  return `Found a better route${extra}.`;
+  if (busyM(full) <= busyM(first) - CALMER_BY_M) return t("Found a calmer route{extra}.", { extra });
+  if (full.duration_s <= first.duration_s - QUICKER_BY_S) return t("Found a quicker route{extra}.", { extra });
+  return t("Found a better route{extra}.", { extra });
 }
 
 /** Less climbing than this is not "flatter": 20 ft, or a tenth of the climb before, whichever is more. */
@@ -94,11 +95,14 @@ export function replannedSaid(before: Compared, after: Compared, ride: string | 
   let saidLast = "";
   if (minutes !== 0) {
     shownLast = minutes > 0 ? t("{minutes} min more", { minutes }) : t("{minutes} min less", { minutes: -minutes });
-    saidLast = shownLast;
+    // Said with the units in words (the a11y review's a11y-6): "3 minutes less", not "3 min less".
+    const time = formatDurationSpoken(Math.abs(minutes) * 60);
+    saidLast = minutes > 0 ? t("{time} more", { time }) : t("{time} less", { time });
   } else if (Math.abs(moved) >= METRES_PER_MILE / 20) {
     const more = moved > 0;
     shownLast = more ? t("{distance} more", { distance: formatMilesChange(moved) }) : t("{distance} less", { distance: formatMilesChange(moved) });
-    saidLast = more ? t("{distance} more", { distance: formatDistanceChange(moved) }) : t("{distance} less", { distance: formatDistanceChange(moved) });
+    const distance = formatDistanceSpoken(Math.abs(moved));
+    saidLast = more ? t("{distance} more", { distance }) : t("{distance} less", { distance });
   } else {
     shownLast = t("about the same time");
     saidLast = shownLast;

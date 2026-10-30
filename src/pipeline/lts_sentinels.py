@@ -11,14 +11,23 @@ the installed Roadway Block blocks, and its rows by the blocks the classifier ma
 them to (`segment.attr_sources->'blocks'`), never by OSM way id, which drifts between
 extracts. Lengths are of the segment rows, so a divided stretch counts both carriageways.
 A row counts as LTS 4 at tier 4 or Avoid (5).
+
+And the owner's rating rules read back over the whole table (review 2026-10-29), so a
+regression in the order the rating steps run is refused before promotion rather than left
+to the unit tests: no rural road open to cars at LTS 1 without an override (the rural
+floor), no Montgomery 5 at a level other than 4.5, and no road MDOT SHA bans left open
+for no listed reason.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from django.db import connection
+
+from routemaker import agency_lts
 
 from .schema import validate_schema_name
 
@@ -176,3 +185,107 @@ def stretch_problems(tiers: StretchTiers) -> list[str]:
             "named corridor; load the file that retires it before the rebuild"
         ]
     return []
+
+
+# --- The owner's rating rules over the whole table (review 2026-10-29) ---------------------
+
+# How many way ids a refusal names; the count is always given.
+SAMPLE_WAYS = 10
+
+# Rural road rows at LTS 1 that no override row set. The classifier's tier on a rural road
+# open to cars is raised to LTS 2 after every agency rating (`stress.rural_floor`); the
+# candidates are read back here, and the caller drops those its tags exempt (a road closed to
+# cars, a separated track alongside), which the table does not record.
+_RURAL_LTS1_SQL = """
+SELECT DISTINCT osm_way_id FROM {schema}.segment
+WHERE stress_tier = 1 AND road_urban IS FALSE AND NOT is_trail_class
+  AND stress_adjustment_id IS NULL AND map_class IN ('road', 'alley')
+ORDER BY osm_way_id
+"""
+
+# Montgomery's 5 is our 4.5 (`agency_lts.READ_AS`; the owner, 2026-10-19), from the live
+# layer or from a 2026-10-01 row: a row the county's 5 set, at any other level.
+_COUNTY_FIVE_SQL = """
+SELECT DISTINCT osm_way_id FROM {schema}.segment
+WHERE ((stress_adjustment_id IS NULL AND starts_with(stress_rule, %s))
+       OR starts_with(stress_adjustment_id, %s))
+  AND NOT (stress_tier = 4 AND stress_half)
+ORDER BY osm_way_id
+"""
+
+# A way MDOT SHA's 5 bans (`agency_lts.PROHIBITING_LEVELS`) still drawn as a road and with no
+# access reason at all: the closure did not reach it. The caller drops the ways the closure
+# listed as left open (a path or track, a bridge, an owner's override).
+_OPEN_BAN_SQL = """
+SELECT DISTINCT osm_way_id FROM {schema}.segment
+WHERE stress_ratings -> 'agencies' @> %s::jsonb
+  AND map_class IN ('road', 'alley') AND bike_access_reason IS NULL
+ORDER BY osm_way_id
+"""
+
+
+def _way_ids(sql: str, schema: str, params: Sequence = ()) -> list[int]:
+    schema = validate_schema_name(schema)
+    with connection.cursor() as cursor:
+        cursor.execute(sql.format(schema=schema), list(params))
+        return [int(row[0]) for row in cursor.fetchall()]
+
+
+def rural_lts1_ways(schema: str) -> list[int]:
+    """The rural road ways at LTS 1 with no override row (`_RURAL_LTS1_SQL`)."""
+    return _way_ids(_RURAL_LTS1_SQL, schema)
+
+
+def county_five_prefixes() -> tuple[str, str]:
+    """The rule a Montgomery 5 sets (`agency_lts.apply`) and the ids of its 2026-10-01 rows."""
+    name = agency_lts.AGENCIES["moco"][0]
+    row_prefix = next(p for p, source in agency_lts.ADJUSTMENT_SOURCES if source == "moco")
+    return f"{agency_lts.AGENCY_RULE}: {name} LTS 5", row_prefix
+
+
+def county_five_ways(schema: str) -> list[int]:
+    """The ways a Montgomery 5 set at a level other than 4.5 (`_COUNTY_FIVE_SQL`)."""
+    return _way_ids(_COUNTY_FIVE_SQL, schema, county_five_prefixes())
+
+
+def open_ban_ways(schema: str) -> list[int]:
+    """The ways an MDOT SHA ban left drawn with no access reason (`_OPEN_BAN_SQL`)."""
+    bans = [
+        {"agency": agency, "level": level}
+        for agency, level in agency_lts.PROHIBITING_LEVELS.items()
+    ]
+    found: set[int] = set()
+    for ban in bans:
+        found.update(_way_ids(_OPEN_BAN_SQL, schema, [json.dumps([ban])]))
+    return sorted(found)
+
+
+def _named(ways: Sequence[int]) -> str:
+    shown = ", ".join(str(way) for way in ways[:SAMPLE_WAYS])
+    more = len(ways) - SAMPLE_WAYS
+    if more > 0:
+        shown += f", +{more} more"
+    return f"{len(ways)} way{'s' if len(ways) != 1 else ''} ({shown})"
+
+
+def rating_rule_problems(
+    rural_lts1: Sequence[int], county_five: Sequence[int], open_bans: Sequence[int]
+) -> list[str]:
+    """What is wrong with the table's ratings, in words; empty when every rule holds."""
+    found = []
+    if rural_lts1:
+        found.append(
+            f"{_named(rural_lts1)} on a rural road open to cars came out LTS 1 with no "
+            "override row: the owner's rural floor is LTS 2 (stress.rural_floor)"
+        )
+    if county_five:
+        found.append(
+            f"{_named(county_five)} rated 5 by Montgomery came out at a level other than "
+            "4.5: the county's 5 is our 4.5 (agency_lts.READ_AS)"
+        )
+    if open_bans:
+        found.append(
+            f"{_named(open_bans)} MDOT SHA bans (its 5) are still drawn as roads with no "
+            "access reason and are not listed as left open (reports/agency-prohibited.csv)"
+        )
+    return found

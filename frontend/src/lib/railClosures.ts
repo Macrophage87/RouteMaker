@@ -25,8 +25,6 @@ export interface StationClosure {
 }
 export type RailClosures = ReadonlyMap<string, StationClosure>;
 
-export const NO_CLOSURES: RailClosures = new Map();
-
 function systemOf(closed: Pick<ClosedStation, "system">): "metro" | "marc" | null {
   if (closed.system === "Metro") return "metro";
   if (closed.system === "MARC") return "marc";

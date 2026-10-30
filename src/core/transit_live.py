@@ -34,6 +34,8 @@ import time
 from dataclasses import replace
 from datetime import UTC, datetime
 
+from routemaker.lang import t
+
 from . import presets, transit, wmata_bus, wmata_live, wmata_trains
 
 # The ranking cost of an elevator out on the way (15 min; core.transit.ELEVATOR_OUT_S).
@@ -168,25 +170,38 @@ def skip_closed(plan: transit.Plan, live: wmata_live.Snapshot | None) -> transit
         return plan
     names = list(dict.fromkeys(n for o in plan.options for n in closed_on(o, live)))
     one = len(names) == 1
-    said = f"{_and(names)} {'is' if one else 'are'} closed (WMATA)"
     if not kept:
         # Nothing else to offer: the trips stay, and the rider is told.
-        return replace(
-            plan,
-            notes=[*plan.notes, f"{said}: every trip here takes a bike through {_it(one)}."],
-        )
+        if one:
+            note = t(
+                "{station} is closed (WMATA): every trip here takes a bike through it.",
+                station=names[0],
+            )
+        else:
+            note = t(
+                "{stations} are closed (WMATA): every trip here takes a bike through them.",
+                stations=_and(names),
+            )
+        return replace(plan, notes=[*plan.notes, note])
     chosen = plan.options[plan.chosen].key
     index = next((i for i, o in enumerate(kept) if o.key == chosen), 0)
-    note = f"{said}: trips taking a bike through {'it' if one else 'them'} are left out."
+    if one:
+        note = t(
+            "{station} is closed (WMATA): trips taking a bike through it are left out.",
+            station=names[0],
+        )
+    else:
+        note = t(
+            "{stations} are closed (WMATA): trips taking a bike through them are left out.",
+            stations=_and(names),
+        )
     return replace(plan, options=kept, chosen=index, notes=[*plan.notes, note])
 
 
-def _it(one: bool) -> str:
-    return "it" if one else "them"
-
-
 def _and(names: list[str]) -> str:
-    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+    if len(names) == 1:
+        return names[0]
+    return t("{first} and {last}", first=", ".join(names[:-1]), last=names[-1])
 
 
 def _toward(train: wmata_live.Train, board, alight, live: wmata_live.Snapshot) -> bool:
@@ -429,18 +444,18 @@ def station(point, live: wmata_live.Snapshot | None) -> dict | None:
     if found is None:
         return None
     groups: dict[tuple[str, str], list[wmata_live.Train]] = {}
-    for t in live.trains_at(found):
-        if t.minutes is None or not t.destination:
+    for train in live.trains_at(found):
+        if train.minutes is None or not train.destination:
             continue
-        groups.setdefault((t.line, t.destination), []).append(t)
+        groups.setdefault((train.line, train.destination), []).append(train)
     trains = []
     for (line, toward), group in groups.items():
-        group.sort(key=lambda t: t.minutes)
+        group.sort(key=lambda train: train.minutes)
         trains.append(
             {
                 "line": line,
                 "toward": toward,
-                "minutes": [t.minutes for t in group[:TRAINS_SHOWN]],
+                "minutes": [train.minutes for train in group[:TRAINS_SHOWN]],
                 "when": _when(group),
             }
         )

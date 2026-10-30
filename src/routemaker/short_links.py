@@ -20,7 +20,10 @@ park paths are ridden, dirt and mountain-bike-class links are walked.
 - add up to at most `CHAIN_MAX_M` (about 500 ft) together, the group taken whole, so a link
   stays a link and a park's whole dirt network stays closed;
 - touch bicycle-open ways at two nodes or more, on two ways or more, one of them a trail or
-  a public street.
+  a public street; and one of them a trail where any of its ways is closed for a reason the
+  caller names as trail-only (a farm track's or a working site's: the owner, 2026-10-29,
+  "Keep short farm tracks and working-site links only where they connect to a trail", since
+  they can serve as detours, while one between two streets is the "likely private" case).
 
 Each way found is ridden or walked by its own tags (`walked`): walked where its surface is
 natural, its smoothness bad or its track grade 4 or 5, or its closure says it is a faint or
@@ -119,11 +122,13 @@ def links(
     reasons: Mapping[int, str],
     reopenable: Collection[str],
     closed: Collection[int] = frozenset(),
+    trail_only: Collection[str] = frozenset(),
 ) -> dict[int, bool]:
     """The ways to reopen, each mapped to whether it is walked (`walked`). `ways` is (id,
     tags, node ids, a coordinate per node id, None where the extract has none; only a
     candidate's are read); `reasons` the closures by way; `reopenable` the reasons a link
-    may lift; `closed` other ways nothing reopens (the Zoo's destination-only spur)."""
+    may lift; `closed` other ways nothing reopens (the Zoo's destination-only spur);
+    `trail_only` the reasons lifted only on a link that touches a trail."""
     candidates: dict[int, tuple[dict[str, str], Sequence[int], float]] = {}
     for osm_id, tags, node_ids, coords in ways:
         if osm_id in closed or not is_candidate(tags, reasons.get(osm_id), reopenable):
@@ -138,8 +143,8 @@ def links(
     for osm_id, (_tags, node_ids, _metres) in candidates.items():
         for node in set(node_ids):
             by_node[node].append(osm_id)
-    # The bicycle-open ways at the candidates' nodes: node -> (way id, anchors?).
-    open_at: dict[int, list[tuple[int, bool]]] = defaultdict(list)
+    # The bicycle-open ways at the candidates' nodes: node -> (way id, anchors?, a trail?).
+    open_at: dict[int, list[tuple[int, bool, bool]]] = defaultdict(list)
     for osm_id, tags, node_ids, _coords in ways:
         if osm_id in candidates or osm_id in reasons or osm_id in closed:
             continue
@@ -147,7 +152,7 @@ def links(
             continue
         for node in set(node_ids):
             if node in by_node:
-                open_at[node].append((osm_id, _anchors(tags)))
+                open_at[node].append((osm_id, _anchors(tags), is_trail(tags)))
     found: dict[int, bool] = {}
     seen: set[int] = set()
     for start in candidates:
@@ -166,10 +171,14 @@ def links(
         if sum(candidates[osm_id][2] for osm_id in group) > CHAIN_MAX_M:
             continue
         nodes = {node for osm_id in group for node in candidates[osm_id][1]}
-        touches = [(node, way, anchor) for node in nodes for way, anchor in open_at.get(node, ())]
-        if len({node for node, _w, _a in touches}) < 2 or len({w for _n, w, _a in touches}) < 2:
+        touches = [(node, *touch) for node in nodes for touch in open_at.get(node, ())]
+        if len({t[0] for t in touches}) < 2 or len({t[1] for t in touches}) < 2:
             continue
-        if not any(anchor for _n, _w, anchor in touches):
+        if not any(anchor for _n, _w, anchor, _trail in touches):
+            continue
+        if any(reasons.get(osm_id) in trail_only for osm_id in group) and not any(
+            trail for _n, _w, _a, trail in touches
+        ):
             continue
         for osm_id in group:
             found[osm_id] = walked(candidates[osm_id][0], reasons.get(osm_id))

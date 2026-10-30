@@ -47,16 +47,21 @@ NEAREST_BUDGET_S = stoporder.ORDER_BUDGET_S
 LONG_SPAN_M = stoporder.LONG_SPAN_M
 
 
-def _row(variant: str, origin: list, places: list, costing: dict, deadline) -> list | None:
+def _row(
+    variant: str, origin: list, places: list, costing: dict, deadline, exclude=()
+) -> list | None:
     """(seconds, metres) from `origin` to each place, None for a place the router
     could not reach; None for the whole row if the router gave no matrix."""
     payload = {
-        "sources": [{"lon": origin[0], "lat": origin[1]}],
+        # The rider matched as a plan's start is (`routing.STOP_RADIUS_M`).
+        "sources": [{"lon": origin[0], "lat": origin[1], "radius": routing.STOP_RADIUS_M}],
         "targets": [{"lon": lon, "lat": lat} for lon, lat in places],
         "costing": "bicycle",
         "costing_options": costing,
         "units": "kilometers",
     }
+    if exclude:
+        payload["exclude_polygons"] = list(exclude)
     try:
         answer = stoporder.ask_matrix(variant, payload, deadline)
     except (routing.RouterUnavailable, routing.RouterRefused, routing.DeadlineExceeded) as error:
@@ -100,7 +105,8 @@ def distances(points: list, preset_name: str, dials: routing.Dials, started: flo
     row = None
     if max(straight) <= LONG_SPAN_M:
         variant, costing = stoporder.ride_graph(preset_name, dials)
-        row = _row(variant, origin, places, costing, deadline)
+        exclude = stoporder.ride_exclusions(moved, dials)
+        row = _row(variant, origin, places, costing, deadline, exclude)
     if row is not None and all(cell is None for cell in row):
         # No place reachable at all: the rider is most likely on a piece of the graph
         # the router cannot leave (a snap to an island). Straight lines still offer

@@ -209,8 +209,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "words: 'and N more' loses its count",
         DESCRIBE,
-        'listed = ", ".join(shown) + f" and {more} more"',
-        'listed = ", ".join(shown) + " and more"',
+        'listed = ", ".join(shown) + t(" and {count} more", count=more)',
+        'listed = ", ".join(shown) + t(" and more")',
         TESTS,
     ),
     (
@@ -230,22 +230,22 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "words: all LTS 4 is said as a number",
         DESCRIBE,
-        'return f", all of them {LTS4_ROADS}" if lts4 == count',
-        'return f", all of them {LTS4_ROADS}" if lts4 == count + 1',
+        '    if lts4 == count:\n        return t(f", all of them {LTS4_ROADS}")',
+        '    if lts4 == count + 1:\n        return t(f", all of them {LTS4_ROADS}")',
         TESTS,
     ),
     (
         "words: the severity word is singular",
         DESCRIBE,
-        "({SEVERITY_WORDS[group.severity]} junctions).",
-        "({SEVERITY_WORDS[group.severity]} junction).",
+        'severity = t(f" ({SEVERITY_WORDS[group.severity]} junctions)")',
+        'severity = t(f" ({SEVERITY_WORDS[group.severity]} junction)")',
         TESTS,
     ),
     (
         "words: the severity is left off",
         DESCRIBE,
-        'f"{group_words(group, start_m, end_m)} ({SEVERITY_WORDS[group.severity]} junctions)."',
-        'f"{group_words(group, start_m, end_m)}."',
+        'severity = t(f" ({SEVERITY_WORDS[group.severity]} junctions)")',
+        'severity = ""',
         TESTS,
     ),
     (
@@ -421,15 +421,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "copy: one LTS 4 road without its words",
         DESCRIBE,
-        '        return f", 1 of them a {LTS4_ROAD}"',
-        '        return ", 1 of them an LTS 4 road"',
+        '        return t(f", 1 of them a {LTS4_ROAD}")',
+        '        return t(", 1 of them an LTS 4 road")',
         TESTS,
     ),
     (
         "copy: some LTS 4 roads without 'them'",
         DESCRIBE,
-        'else f", {lts4} of them {LTS4_ROADS}"',
-        'else f", {lts4} of {LTS4_ROADS}"',
+        'return t(f", {{count}} of them {LTS4_ROADS}", count=lts4)',
+        'return t(f", {{count}} of {LTS4_ROADS}", count=lts4)',
         TESTS,
     ),
     (
