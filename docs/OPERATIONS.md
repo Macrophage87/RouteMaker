@@ -3830,8 +3830,9 @@ and `manifest-src` falls back to `default-src 'self'`.
 
 A tester on iOS 26 reported that RouteMaker added to the Home Screen with "Open as
 Web App" never asked for the location and said it was blocked, while the same site in
-a Safari tab could use it. The edge is not the cause: neither nginx nor Caddy sends a
-`Permissions-Policy` header, and the app asks the browser on every press rather than
+a Safari tab could use it. The edge is not the cause: the `Permissions-Policy` header that
+nginx and Caddy send allows location for the site itself (`geolocation=(self)`; docs/DEVELOPMENT.md has the
+whole header), and the app asks the browser on every press rather than
 trusting the Permissions API's state (which, in a Home Screen app, can say "denied"
 while a look-up succeeds). iOS keeps a Home Screen app's location permission apart
 from Safari's, and on iOS 26 it can refuse without a prompt; other web apps report the

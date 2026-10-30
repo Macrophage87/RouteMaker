@@ -788,7 +788,7 @@ coming within 15 minutes or turning heavy, brings them back.</li>
 with no touch, wheel or key and nothing open puts it back on you, following at the ride's zoom (<strong>Where am
 I?</strong> does it at once). The same 30 seconds closes a map card (a stop, place, station, closure or climb), the
 road info and the side menus (Detour, More, the dock, 311, Riders, Send alert), and the map then goes back to you. Kept
-open: a menu you are typing or speaking in (a Detour search, Send alert's Other, its microphone) and anything asking you
+open: a menu you are typing or speaking in (a Detour search, Send alert while its box holds words or Speak listens) and anything asking you
 something (Send alert's Send to everyone?, Already done?, a stop's name, the group's question, Resume your ride?). In
 accessibility mode nothing closes on its own. A map card's close button (X) is 44 px across.</li>
 <li><strong>Off the route</strong>, RouteMaker plans again from where you are, and <strong>Reroute</strong>
@@ -1232,10 +1232,13 @@ leader's dot on the map from the start, and says "Following the leader live. If 
 directions, tap the screen once." (a phone may keep the voice quiet until the first tap). It doesn't start over
 a ride already going or the question about resuming one. On a computer the link opens so you can watch the
 leader, and a link opened in Plan follows the leader too, so someone at home can watch the ride.</li>
-<li>On a phone, once a leader's link has started your ride, one big sheet offers the shared route:
-<strong>Download GPX</strong>, <strong>Send to Garmin</strong> or <strong>Send to Wahoo</strong> where that
-account is connected, and <strong>Just ride</strong>. It is shown once for each ride you join, never to the
-leader. What it sends is not checked for closures: those are the leader's to weigh.</li>
+<li>On a phone, once a leader's link has started your ride, one screen offers the shared route and asks
+whether to <strong>show me as a dot</strong> (below). The route's name, distance and time come first, with
+<strong>Download GPX</strong>, and <strong>Send to Garmin</strong> or <strong>Send to Wahoo</strong> where that
+account is connected; the question sits under them, and Yes or No closes the whole screen (Close, Escape or a tap
+outside count as No). The first route button has the focus, not Close. If you have already answered the question for
+this ride, the route comes alone, with <strong>Just ride</strong> to close it. It is shown once for each ride you
+join, never to the leader. What it sends is not checked for closures: those are the leader's to weigh.</li>
 <li>Only the leader is asked about closures on the route. Riders following a leader's Share ride or Share live link are
 not asked, on opening it or on Start ride.</li>
 <li>While the leader rides with the app open, their phone sends the route it is riding (dashed, so a
@@ -1260,9 +1263,16 @@ Rider off the back; Crash; Mechanical or flat, stopping; Wrong turn; Lost, separ
 Wait up, regroup; and Other. A Mass Ride has Extensive rider spread; Emergency vehicle coming through;
 Aggressive person; Medical emergency or crash; Rerouting, road closed; Lost, separated from the ride;
 and Other. Crash and Medical ask first and offer to call 911.</li>
-<li>In Send alert, Other, on the website where your browser supports it (it does not work in the Android app),
-<strong>Speak</strong> fills the box from what you say; check it, then tap Send. It needs a connection: your browser's maker (such as Google for Chrome or
-Apple for Safari) turns the recording into text.</li>
+<li><strong>Speak</strong>, the wide button at the top of Send alert, opens a box and listens in one press;
+what you say fills the box, and Send sends it (pressed while it still listens, Send waits for your last words). The
+box is not focused while it listens, so no keyboard covers your words. The quick alerts stay listed below, two to a
+row and filled in Send alert's yellow, below a line that sets them off from Send and Cancel, so you can pick one
+instead, which closes the box and drops the words. Closing the panel stops listening. The
+panel's buttons are 56 px tall with 18 px text, and Speak and Send alert are 64 px. Speak shows on the website where
+your browser supports it, and in the Android app, which uses the phone's own speech input (Google's on most phones)
+and listens once; an app version from before this one shows no Speak. It needs a connection: your browser's maker
+(such as Google for Chrome or Apple for Safari), or the phone's speech input in the app, turns the recording into
+text.</li>
 <li>Share ride, Share live (Roam's too), Group Ride and Mass Ride links shared from the app are end-to-end
 encrypted. The link carries a secret after the #, which browsers never send to a server. Each phone
 locks its dot, its alerts and the leader's path with a key made from that secret (AES-256-GCM), so the
@@ -1311,7 +1321,7 @@ from the app's next update.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.15.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.15.1. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
