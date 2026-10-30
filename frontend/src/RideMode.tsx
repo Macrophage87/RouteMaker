@@ -57,6 +57,8 @@ import { requestRoute, type ErrorKind, type RouteResponse } from "./lib/api.ts";
 import { VIA_MARKS, drawnLegs, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
 import {
   SKIP_STOP,
+  RESTART_AUTO_M,
+  RESTART_AUTO_SAID,
   detourButtonName,
   insteadLabel,
   insteadName,
@@ -115,6 +117,8 @@ import {
   nextAction,
   planAfterEnd,
   replanKept,
+  replanHeld,
+  replanFromM,
   skippableVia,
   viaSkipWorth,
   viaSkippedNote,
@@ -147,6 +151,7 @@ import {
   Voice,
   phoneKind,
   toScreenReader,
+  readRideIconsOnly,
   toVoice,
   wakeSaid as wakeWords,
   type CueOutput,
@@ -265,8 +270,9 @@ export const RIDE_STARTED = t("Ride started.");
 export const START_NOTE_MS = 1_500;
 /** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
 export const END_RIDE_NAME = t("End ride");
-/** The least a long instruction shrinks to at normal text, from its own size (styles.css .cue-text, 1.5rem). */
-const CUE_TEXT_MIN_PX = 16;
+/** The least a long instruction shrinks to at normal text, from its own size (styles.css .cue-text, 1.5rem): the ride's
+ *  20 px for street names (the owner, 2026-10-20); longer still, its second line ends in "…". */
+const CUE_TEXT_MIN_PX = 20;
 /** Its words once arrived, filled (the UI review, 2026-10-28); the name goes on with End ride. */
 export const RIDE_DONE_TEXT = t("Done");
 /**
@@ -905,13 +911,17 @@ export function RideMode({
   const statsRef = useRef<RideStats>(resumeStats ? statsPause(resumeStats) : statsStart(Date.now()));
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
+  // Where the last new route was asked from, until the rider is on its line (lib/navigate.ts replanHeld).
+  const replannedFrom = useRef<LonLat | null>(null);
   const settingsId = useId();
   // More, the last side button (closed at Start): it opens a row of bubbles beside it (Stephen 2026-10-26: "Have many
   // of those options just expanded as more bubble buttons, not in settings"): Less traffic, Fewer hills, Skip this stop
   // and Settings, the last opening the ride's settings under the top row.
   const [moreOpen, setMoreOpen] = useState(false);
   const railRef = useRef<HTMLDivElement>(null);
-  const railFit = useRailFit(railRef);
+  // Icons only (Settings > Display): read as the ride opens; the buttons' names are unchanged either way.
+  const [iconsOnly] = useState(() => readRideIconsOnly());
+  const railFit = useRailFit(railRef, iconsOnly);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPanel = useRef<HTMLDivElement>(null);
   const settingsButton = useRef<HTMLButtonElement>(null);
@@ -1141,7 +1151,12 @@ export function RideMode({
   // After the page comes back from the background: say where the rider is once, on the next fix.
   const sayWhereNext = useRef(false);
   const say = useCallback((events: RideEvent[]) => {
-    for (const event of events) announcer.current?.say(event.spoken, event.urgent, event.after);
+    // A cue held back by the throttle is said with the distance as it is then (review RIDE-4), from the rider's place.
+    for (const event of events) {
+      const respoken = event.respoken;
+      const again = respoken && (() => (rideRef.current.progressM === null ? event.spoken : respoken(rideRef.current.progressM)));
+      announcer.current?.say(event.spoken, event.urgent, event.after, again);
+    }
   }, []);
   // A note about the ride itself (no GPS, the screen may sleep, paused): said once, politely, through the
   // rider's outputs, and through the polite region with "neither" chosen, since it changes what the rider
@@ -1199,13 +1214,15 @@ export function RideMode({
       const heading = turnRound ? null : (current.goodFix?.headingDeg ?? null);
       // Two U-turns ridden past: the rider means to stay on this way, so this one sets off ahead whatever turning saves.
       const aheadOnly = uturnAheadOnly(uturns.current, heading);
-      // A re-route: via points close ahead are guides and dropped, stops kept (2026-10-24); the stop the rider
+      // A re-route: every stop and via point still ahead is kept (2026-10-24, 2026-10-27; only the next via point may be
+      // left out, below), a via point the rider rode past beside the line is not (replanFromM); the stop the rider
       // skipped (Skip this stop, or a place chosen instead of it) is left out.
       // The same kept points for the way back below, so its stops keep their numbers in the new plan.
       // A restart part way (`done`, RestartStopsDialog): the stops the rider left unticked, behind or not.
+      const fromM = replanFromM(modelRef.current, current.progressM ?? 0, here);
       const keptPoints = done
         ? restartKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, done)
-        : replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, true).filter((i) => i !== skip);
+        : replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, fromM).filter((i) => i !== skip);
       const left = withoutStop(plan.current.points, keptPoints, here, skip ?? -1);
       // `let`: a re-route that leaves out the next via point (VIA_SKIP_EXTRA_S, below) rides the points without it.
       let points = via ? detourPoints(left, via) : left;
@@ -1242,11 +1259,16 @@ export function RideMode({
           if (prefsRef.current.output === "neither") setPolite((s) => ({ text: note, count: s.count + 1 }));
         }
       };
-      // No answer in REPLAN_TIMEOUT_MS: the rider is told there is no signal, while the request goes on
-      // (the gate stays busy until it settles, so no second one joins it at the server; a late new
-      // route is still taken).
+      // No answer in REPLAN_TIMEOUT_MS: the rider is told there is no signal, and the gate is let go as a failure
+      // (`released`), so a request hung on a half-open connection no longer holds every re-route back: the next
+      // automatic try (after the gate's gap or back-off), the `online` retry and Re-plan from here can start. The
+      // request goes on, and a late new route is still taken unless a newer re-plan has started since (the ticket).
+      let released = false;
       const timer = check ? undefined : window.setTimeout(() => {
         if (ended.current || ticket !== replanTicket.current) return;
+        released = true;
+        gate.finish(false);
+        setReplanning(false);
         setReplanNote(REPLAN_NO_SIGNAL);
         tell(REPLAN_NO_SIGNAL);
       }, REPLAN_TIMEOUT_MS);
@@ -1282,12 +1304,12 @@ export function RideMode({
         // be skipped a little more, for instance if a road is closed, you shouldn't expect a 20 minute detour just to get
         // to the other side. Those are guides. Stops are where you want to end up." and "Sometimes people plan very
         // indirect routes for fun, so it shouldn't skip all of the vias"): where the new route takes more than
-        // VIA_SKIP_EXTRA_S longer to reach it than the planned one would have from the rider's place, it is planned once
-        // more without it. Not for a detour, a held U-turn's check, a restart, or a Calmer or Flatter press (its route is
-        // slower by choice). The second ask is made only when that trips.
+        // VIA_SKIP_EXTRA_S longer to reach it than the planned one would have from the rider's place on it now
+        // (replanFromM), it is planned once more without it. Not for a detour, a held U-turn's check, a restart, or a
+        // Calmer or Flatter press (its route is slower by choice). The second ask is made only when that trips.
         const eased = easing.current?.ticket === ticket;
         const next = result.ok && !via && !check && !done && !eased ? skippableVia(modelRef.current, keptPoints) : null;
-        if (result.ok && next && viaSkipWorth(modelRef.current, current.progressM ?? 0, next.atM, modelOf(result.route, points), 1) && !voided()) {
+        if (result.ok && next && viaSkipWorth(modelRef.current, fromM, next.atM, modelOf(result.route, points), 1) && !voided()) {
           const without = points.filter((_, i) => i !== 1);
           const again = await ask(without);
           if (again.ok) {
@@ -1309,7 +1331,10 @@ export function RideMode({
       }
       window.clearTimeout(timer);
       if (check) checking.current = false;
-      else gate.finish(found !== null);
+      else if (!released) gate.finish(found !== null);
+      // Let go at the timeout and answered late with a route that is still taken (nothing newer since): the back-off
+      // starts afresh.
+      else if (found && !voided() && !gate.busy) gate.finish(true);
       // Road closed pressed while this one was under way: this answer did not leave that road out, so it is
       // dropped (the press voided it) and the ride is planned again from where the rider is now.
       if (!check && closedPending.current && !ended.current) {
@@ -1323,12 +1348,15 @@ export function RideMode({
       if (check && (!found || heading === null || setsOffBack(found.geometry.coordinates, heading))) return false;
       setReplanning(false);
       if (!found) {
+        // Already told "No signal" at the timeout: not said again.
+        if (released) return false;
         const said = failed === "network" ? REPLAN_NO_SIGNAL : REPLAN_FAILED;
         setReplanNote(said);
         tell(said);
         return false;
       }
       plan.current = { points, loop: false };
+      replannedFrom.current = here;
       // The first route, without the picker, during a ride (plan section 4).
       announcer.current?.drop();
       // Turned round (the API keeps a U-turn only where it saves half a mile): said plainly, and the first cue.
@@ -1425,6 +1453,8 @@ export function RideMode({
   // While it is asked, no re-route of its own: the stops it lists are the plan's as it stands (review of #444).
   const restartOpen = useRef(false);
   restartOpen.current = restart !== null;
+  // Where it was asked: ridden RESTART_AUTO_M from there unanswered, it goes on with the stops as marked.
+  const restartAt = useRef<LonLat | null>(null);
   const onFix = useCallback(
     (fix: RideFix) => {
       if (ended.current) return;
@@ -1436,6 +1466,15 @@ export function RideMode({
       if (weighed.sayNow) notify(GPS_WEAK_SAID);
       setGps(weighed.weak ? GPS_WEAK_SAID : "");
       checkCueSheet(lastFixAt.current);
+      // "Already done?" left unanswered while the rider rides on (gloves, the phone on the bars): once they are
+      // RESTART_AUTO_M from where it was asked, it closes with the stops as marked, says so, and re-routing runs again.
+      const askedAt = restartAt.current;
+      if (restartOpen.current && askedAt && fix.accuracyM <= POOR_FIX_M && haversineM(fix.point, askedAt) >= RESTART_AUTO_M) {
+        restartOpen.current = false;
+        restartAt.current = null;
+        setRestart(null);
+        notify(RESTART_AUTO_SAID);
+      }
       const auto = !keepRef.current && !fixedRef.current && !restartOpen.current;
       // Walking to the dock, nothing is placed on the line or taken as off route (lib/rideTrip.ts).
       const wasWalking = tripRef.current.walking;
@@ -1498,6 +1537,7 @@ export function RideMode({
         if (stops) {
           const named = stops.map((s) => (s.name ? s : { ...s, name: stopName?.(plan.current.points[s.index]) }));
           restartOpen.current = true;
+          restartAt.current = fix.point;
           setRestart(named);
           notify(restartSaid(named));
         }
@@ -1522,7 +1562,9 @@ export function RideMode({
       if (out.events.some((e) => e.kind === "back-on-route") || (keepRef.current && !out.state.off)) setKeepPlanned(false);
       // Never from a poor fix: a re-plan from a Wi-Fi guess 300 m out would be wrong at once.
       // Not after "No route found ahead": that route stays up (Re-plan from here still asks again), checked quietly.
-      if (out.state.off && auto && !gate.busy && fix.accuracyM <= POOR_FIX_M && out.state.goodFix) {
+      // On the line again: the next automatic re-plan need not wait for the rider to move (REPLAN_MOVED_M).
+      if (!out.state.off && out.state.offCount === 0 && out.state.progressM !== null) replannedFrom.current = null;
+      if (out.state.off && auto && !gate.busy && fix.accuracyM <= POOR_FIX_M && out.state.goodFix && !replanHeld(replannedFrom.current, fix.point)) {
         const offRoute = uturnStep(uturns.current, { kind: "off-route", now: Date.now() });
         uturns.current = offRoute.state;
         if (offRoute.replan === "ask") void replan(out.state.goodFix.point);
@@ -1627,7 +1669,7 @@ export function RideMode({
     const onOnline = () => {
       gate.online();
       const state = rideRef.current;
-      if (state.off && !keepRef.current && !fixedRef.current && !restartOpen.current && !uturns.current.held && state.goodFix) void replan(state.goodFix.point);
+      if (state.off && !keepRef.current && !fixedRef.current && !restartOpen.current && !uturns.current.held && state.goodFix && !replanHeld(replannedFrom.current, state.goodFix.point)) void replan(state.goodFix.point);
     };
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
@@ -2045,6 +2087,7 @@ export function RideMode({
   const continueRestart = (done: ReadonlySet<number>) => {
     const stops = restart;
     restartOpen.current = false;
+    restartAt.current = null;
     setRestart(null);
     if (!stops || restartUnchanged(stops, done)) return;
     const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
@@ -2196,7 +2239,7 @@ export function RideMode({
       card.style.removeProperty("--cue-fit");
       card.style.removeProperty("--cue-fit-d");
       // The instruction keeps its two-line slot, so the card and the map do not jump between turns (the UI review,
-      // 2026-10-28): a long street shrinks to fit it, never under 16 px; longer still, its second line ends in "…".
+      // 2026-10-28): a long street shrinks to fit it, never under 20 px; longer still, its second line ends in "…".
       const line = card.querySelector<HTMLElement>(".cue-next .cue-text");
       const shown = line?.querySelector<HTMLElement>("[aria-hidden]");
       if (!line || !shown) return;
@@ -2677,7 +2720,7 @@ export function RideMode({
           </div>
         )}
         {/* Each button's word under it, or beside its icon where the map is short (lib/railFit.ts); its name unchanged. */}
-        <div ref={railRef} className={`ride-rail ride-rail-${railFit}`} role="group" aria-label={t("Ride buttons")}>
+        <div ref={railRef} className={`ride-rail ride-rail-${railFit}${iconsOnly ? " ride-rail-icons" : ""}`} role="group" aria-label={t("Ride buttons")}>
           {/* Where am I? with Re-centre in it (the owner, 2026-10-20): highlighted when the map stopped following. */}
           <button
             type="button"

@@ -8,11 +8,10 @@
  * request carries `lang` (lib/api.ts routeRequestBody, the server's routemaker.lang).
  *
  * The language is read once, when the page loads: the rider's choice (Settings > Display > Language,
- * kept on this device like accessibility mode), else the device's own language. Choosing another reloads
- * the page, so the many labels the code builds once at load (module constants) follow it too.
+ * kept on this device like accessibility mode), else the device's own (startLanguage). Choosing another
+ * reloads the page, so the many labels the code builds once at load (module constants) follow it too.
  */
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
-import { ES } from "../i18n/es.ts";
 
 /**
  * The languages (the owner, 2026-10-28: "These are all the languages supported in DC", the city's Language ID
@@ -79,11 +78,12 @@ const VOICE: Record<Language, readonly string[]> = {
 };
 
 /**
- * The catalogs (src/i18n/<language>.ts). Spanish is in the bundle; the others are fetched before the app starts
- * (loadLanguage, main.tsx), so a rider downloads only the one they read. The service worker keeps each on first use (swCore.mjs
- * LAZY_ASSET), and fetches it again across an update for a rider who used it.
+ * The catalogs (src/i18n/<language>.ts), Spanish's too: each is fetched before the app starts (loadLanguage, main.tsx;
+ * the Featured post page's post/main.ts), so a rider downloads only the one they read and an English reader none. The
+ * service worker keeps each on first use (swCore.mjs LAZY_ASSET), and fetches it again across an update for a rider who used it.
  */
 const LOADERS: Partial<Record<Language, () => Promise<Readonly<Record<string, string>>>>> = {
+  es: () => import("../i18n/es.ts").then((m) => m.ES),
   am: () => import("../i18n/am.ts").then((m) => m.CATALOG),
   ar: () => import("../i18n/ar.ts").then((m) => m.CATALOG),
   bn: () => import("../i18n/bn.ts").then((m) => m.CATALOG),
@@ -104,7 +104,7 @@ const LOADERS: Partial<Record<Language, () => Promise<Readonly<Record<string, st
   tr: () => import("../i18n/tr.ts").then((m) => m.CATALOG),
   vi: () => import("../i18n/vi.ts").then((m) => m.CATALOG),
 };
-const CATALOGS: Partial<Record<Language, Readonly<Record<string, string>>>> = { es: ES };
+const CATALOGS: Partial<Record<Language, Readonly<Record<string, string>>>> = {};
 
 function isLanguage(raw: unknown): raw is Language {
   return typeof raw === "string" && (LANGUAGES as readonly string[]).includes(raw);
@@ -147,7 +147,16 @@ export function deviceLanguage(preferred: readonly string[] | undefined = typeof
   return "en";
 }
 
-let current: Language = readLanguageChoice() || deviceLanguage();
+/**
+ * The language a page opens in: the rider's choice, else the device's, drafts included, so a phone in one of DC's
+ * languages opens Go and Ride in it with no Settings step (the owner, 2026-10-29: "It should show it when they open it
+ * ... It's best to make things easy"). Plan stays in English for the drafts (planStaysEnglish).
+ */
+export function startLanguage(choice: LanguageChoice = readLanguageChoice(), device: Language = deviceLanguage()): Language {
+  return choice || device;
+}
+
+let current: Language = startLanguage();
 
 /** The language in force for this page load. */
 export function language(): Language {
@@ -172,6 +181,15 @@ export function voiceTags(lang: Language = current): readonly string[] {
 /** The language's tag for dates and numbers ("es-US", "zh-Hans-CN"). */
 export function locale(lang: Language = current): string {
   return LOCALE[lang];
+}
+
+/**
+ * The tag for a clock time: the device's own (its 12 or 24 hour clock) where the device reads the language in force,
+ * else the language's, so a Spanish page on an English phone says "6:42 p.m." and not "6:42 PM".
+ */
+export function clockLocale(preferred: readonly string[] | undefined = typeof navigator !== "undefined" ? navigator.languages : undefined): string | undefined {
+  const first = preferred?.[0];
+  return first !== undefined && fromTag(first) === current ? undefined : LOCALE[current];
 }
 
 /** The language's full stop, to end a sentence the code joins from parts: "。" in Chinese and Japanese, "।" in Hindi and Bengali, "።" in Amharic and Tigrinya. */
@@ -235,6 +253,14 @@ export function planStaysEnglish(lang: Language = current): boolean {
   return lang !== "en" && lang !== "es";
 }
 
+/**
+ * Whether the server words the route's own sentences (hazards, work zones, signal cards) in this language: English
+ * and Spanish (src/routemaker/lang.py has a catalog for them). For the others the server answers in English (lang.py `speaking`).
+ */
+export function serverWordsIn(lang: Language = current): boolean {
+  return lang === "en" || lang === "es";
+}
+
 /** Plan's English mark (planStaysEnglish), spread onto its containers. */
 export function planLanguageAttributes(lang: Language = current): { lang?: string; dir?: "ltr" } {
   return planStaysEnglish(lang) ? { lang: "en-US", dir: "ltr" } : {};
@@ -250,7 +276,7 @@ export function markPageLanguage(doc: Document | undefined = typeof document !==
 /** Keeps the choice and reloads, so every label follows it. */
 export function chooseLanguage(choice: LanguageChoice): void {
   writeLanguageChoice(choice);
-  if ((choice || deviceLanguage()) !== current && typeof location !== "undefined") location.reload();
+  if (startLanguage(choice) !== current && typeof location !== "undefined") location.reload();
 }
 
 /** A language's phrases read back: the exact ones by their words, the ones with {places} as patterns. */

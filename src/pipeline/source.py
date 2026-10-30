@@ -282,6 +282,23 @@ def curl_command(url: str, partial: Path) -> list[str]:
     return ["curl", "-fsSL", "--retry", "3", "-o", str(partial), url]
 
 
+def checksum_url(url: str) -> str | None:
+    """Where the published MD5 of a download is, or None where none is known.
+
+    Geofabrik publishes `<file>.md5` beside every extract. A mirror named in
+    SOURCE_EXTRACT_URLS may not, so only Geofabrik's own downloads are checked.
+    """
+    return f"{url}.md5" if url.startswith("https://download.geofabrik.de/") else None
+
+
+def file_md5(path: Path) -> str:
+    digest = hashlib.md5(usedforsecurity=False)
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def download(url: str, destination: Path, run: Callable[[Sequence[str]], object]) -> Path:
     """Fetch one extract, through the pipeline's command runner.
 
@@ -297,15 +314,42 @@ def download(url: str, destination: Path, run: Callable[[Sequence[str]], object]
     would read what there is of it and the rebuild would carry on with part of
     Virginia missing. A `.part` from such a run is removed here rather than
     resumed, because it is unknown how much of it is good.
+
+    A Geofabrik download is also checked against the MD5 Geofabrik publishes,
+    fetched first, so a transfer that was cut short or altered on the way is
+    refused rather than read as a smaller region. A mismatch is a
+    `SourceExtractFailed`, which is retried: the usual cause is a new daily file
+    replacing the old one between the two fetches.
     """
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     partial = destination.with_name(destination.name + ".part")
     partial.unlink(missing_ok=True)
+    expected = None
+    published = checksum_url(url)
+    if published is not None:
+        checksum = destination.with_name(destination.name + ".md5.part")
+        checksum.unlink(missing_ok=True)
+        log_command_output(f"downloading {published}", run(curl_command(published, checksum)))
+        try:
+            expected = checksum.read_text(encoding="ascii").split()[0].lower()
+        except (OSError, UnicodeDecodeError, IndexError):
+            expected = ""
+        finally:
+            checksum.unlink(missing_ok=True)
+        if len(expected) != 32:
+            raise SourceExtractFailed(f"{published} did not give an MD5 to check {url} against")
     log_command_output(f"downloading {url}", run(curl_command(url, partial)))
     if not partial.is_file() or partial.stat().st_size == 0:
         partial.unlink(missing_ok=True)
         raise SourceExtractFailed(f"curl left nothing at {partial} for {url}")
+    if expected is not None:
+        actual = file_md5(partial)
+        if actual != expected:
+            partial.unlink(missing_ok=True)
+            raise SourceExtractFailed(
+                f"{url} has MD5 {actual}, not the published {expected}; it was not kept"
+            )
     partial.replace(destination)
     return destination
 

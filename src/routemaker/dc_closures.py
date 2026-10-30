@@ -649,14 +649,30 @@ _TIME = re.compile(
 _OPEN_END = re.compile(r"until further notice|until (?:the )?(?:scene|area|road) is clear", re.I)
 
 
-def _dates(text: str, year: int) -> list[date]:
+# A date written without a year that falls more than this before the day it was posted is
+# next year's: a notice posted on Dec 29 about "Friday, January 1" means the coming one, not
+# the one gone (audit 2026-10-29: it was dated the year before, already over, and dropped).
+ROLLOVER_DAYS = 60
+
+
+def _dates(text: str, year: int, posted: date | None = None) -> list[date]:
+    """The dates in `text`; one without a year takes `year`, or the next where it falls more
+    than `ROLLOVER_DAYS` before `posted`."""
     out = []
     for match in _DATE.finditer(text):
         month = _MONTH_NAMES[match.group("month")[:3].lower()]
+        day = int(match.group("day"))
         try:
-            out.append(date(int(match.group("year") or year), month, int(match.group("day"))))
+            found = date(int(match.group("year") or year), month, day)
+            if (
+                not match.group("year")
+                and posted is not None
+                and found < posted - timedelta(days=ROLLOVER_DAYS)
+            ):
+                found = date(found.year + 1, month, day)
         except ValueError:
             continue
+        out.append(found)
     return out
 
 
@@ -679,8 +695,9 @@ def _at(day: date, hm: tuple[int, int]) -> datetime:
     return datetime(day.year, day.month, day.day, hm[0], hm[1], tzinfo=ZONE).astimezone(UTC)
 
 
-def _year_for(published: datetime | None) -> int:
-    return (_local(published) if published else datetime.now(ZONE)).year
+def _posted_day(published: datetime | None) -> date:
+    """The day an advisory was posted, in DC: the year its dates without one are read in."""
+    return (_local(published) if published else datetime.now(ZONE)).date()
 
 
 def _local(moment: datetime) -> datetime:
@@ -696,9 +713,9 @@ class _Context:
     parking: bool = False
 
 
-def _window(text: str, context: _Context, year: int) -> bool:
+def _window(text: str, context: _Context, posted: date) -> bool:
     """Read the dates and times in `text` into `context`; whether it held a time."""
-    days = _dates(text, year)
+    days = _dates(text, posted.year, posted)
     if days:
         context.day = days[0]
     times = _times(text)
@@ -793,8 +810,8 @@ def read_lines(
     under, and the lines with a segment that had no window or would not parse. Emergency
     No Parking lists are skipped: parking is not a closure to a bicycle."""
     context = _Context()
-    year = _year_for(published)
-    _window(title, context, year)
+    posted = _posted_day(published)
+    _window(title, context, posted)
     segments: list[Segment] = []
     unparsed: list[str] = []
     starts, ends = [], []
@@ -807,11 +824,11 @@ def read_lines(
         if found is None:
             if "parking" in lowered:
                 context.parking = True
-                _window(line, context, year)
+                _window(line, context, posted)
                 continue
             if re.search(r"clos|detour|blocked|restrict", lowered):
                 context.parking = False
-            had_time = _window(line, context, year)
+            had_time = _window(line, context, posted)
             if not had_time and re.search(r"\b(?:from|between)\b.+\b(?:to|and)\b", lowered):
                 if re.search(
                     r"\b(?:street|st|avenue|ave|road|rd|drive|dr|place|pl|bridge|parkway|pkwy|boulevard|blvd|way|circle|court)\b",
@@ -824,7 +841,7 @@ def read_lines(
             continue
         # A window at the end of the line itself ("..., 4:30 am to 1:30 pm") is its own.
         own = _Context(day=context.day)
-        if _times(line) and _window(line, own, year) and own.windowed:
+        if _times(line) and _window(line, own, posted) and own.windowed:
             start, end, windowed = own.start, own.end, True
         else:
             start, end, windowed = context.start, context.end, context.windowed
@@ -1160,7 +1177,7 @@ def _alert_end(sentence: str, published: datetime | None) -> datetime | None:
     if not times:
         return None
     local = _local(published)
-    days = _dates(match.group(1), local.year)
+    days = _dates(match.group(1), local.year, local.date())
     end = _at(days[0] if days else local.date(), times[0])
     if end <= published:
         end += timedelta(days=1)

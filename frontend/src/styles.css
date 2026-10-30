@@ -1438,7 +1438,7 @@ button.secondary {
   color: var(--text);
   border: 1px solid var(--swatch-border);
   border-radius: 10px;
-  text-align: left;
+  text-align: start;
   font-weight: 400;
 }
 
@@ -1530,7 +1530,7 @@ dialog.ride-types::backdrop {
 
 .ride-type-card > button:not(.ride-fav) {
   width: 100%;
-  text-align: left;
+  text-align: start;
   display: grid;
   gap: 4px;
   padding: 12px;
@@ -1581,13 +1581,13 @@ dialog.ride-types::backdrop {
 }
 
 .ride-type-card.has-fav > button:first-child {
-  padding-right: 52px;
+  padding-inline-end: 52px;
 }
 
 .ride-fav {
   position: absolute;
   top: 2px;
-  right: 2px;
+  inset-inline-end: 2px;
   width: 44px;
   height: 44px;
   display: flex;
@@ -1615,7 +1615,7 @@ dialog.ride-types::backdrop {
   display: grid;
   align-content: start;
   gap: 2px;
-  text-align: left;
+  text-align: start;
   min-height: 44px;
 }
 
@@ -1874,7 +1874,7 @@ dialog.go-spot {
   border-radius: 0;
   background: transparent;
   color: var(--text);
-  text-align: left;
+  text-align: start;
   font: inherit;
 }
 
@@ -1969,17 +1969,32 @@ dialog.go-spot {
   border-radius: 50%;
 }
 
-/* The tapped spot itself: a small pin, not a control. */
+/* The tapped spot itself: a big pin, not a control (Stephen, 2026-10-29: "The tapped location is way too small").
+   48 by 62 px, red with a white rim and a white centre and a shadow, so it stands out on an orange road; the
+   tip is on the spot. Above the place pins, which never hide it (it may cover one beside the spot; presses go
+   through to it). */
 .spot-here {
   display: block;
-  width: 18px;
-  height: 18px;
-  border: 3px solid #ffffff;
-  border-radius: 50% 50% 50% 0;
-  background: #b91c1c;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
-  transform: rotate(-45deg);
+  width: 48px;
+  height: 62px;
   pointer-events: none;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+  z-index: 2;
+}
+
+.spot-here svg {
+  display: block;
+  overflow: visible;
+}
+
+.spot-here-body {
+  fill: #b91c1c;
+  stroke: #ffffff;
+  stroke-width: 3;
+}
+
+.spot-here-centre {
+  fill: #ffffff;
 }
 
 /* The top row (OWNER-DECISIONS 441n): real buttons, compact, wrapping on a phone. */
@@ -2406,7 +2421,11 @@ dialog.go-spot {
 .road-info-details > summary {
   cursor: pointer;
   font-weight: 600;
-  min-height: 24px;
+  /* 44 px, as the rest of the panel (the 2026-10-29 a11y review): the road card opens mid-ride on a phone. Padded,
+     not flex, so the summary keeps its disclosure triangle. */
+  box-sizing: border-box;
+  min-height: 44px;
+  padding-block: 10px;
 }
 
 .road-info-body h3 {
@@ -3008,7 +3027,7 @@ button.secondary,
   color: var(--text);
   border: 1px solid var(--swatch-border);
   border-radius: 10px;
-  text-align: left;
+  text-align: start;
   font-weight: 400;
 }
 
@@ -3103,7 +3122,7 @@ button.secondary,
 }
 
 .ride-types .ride-type-card.has-fav > button:first-child {
-  padding-right: 52px;
+  padding-inline-end: 52px;
 }
 
 /* The route summary: the totals line, the bar, the quick figures */
@@ -4714,10 +4733,11 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 }
 
 .ride-summary-figures dd {
-  margin: 0 0 0 auto;
+  margin: 0;
+  margin-inline-start: auto;
   font-size: max(16pt, 1.375rem);
   font-weight: 700;
-  text-align: right;
+  text-align: end;
 }
 
 .ride-summary .stress-key {
@@ -4901,8 +4921,14 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   margin: 2px 0;
 }
 
+/* In a ride it can name the next street ("Then right onto S St NW"): the ride's 20 px for street names (the owner,
+   2026-10-20), never the page's 15 px; Large text sets its own, larger (below). */
+.ride .cue-more {
+  font-size: 20px;
+}
+
 /* A steady card (the UI review, 2026-10-28: it changed height between cues and the map and buttons jumped about 75 px):
-   the instruction in a two-line slot, which RideMode shrinks a long street into (not under 16 px, then "…" on its
+   the instruction in a two-line slot, which RideMode shrinks a long street into (not under 20 px, then "…" on its
    second line); what follows it at most one line, its slot kept when empty. Screen readers have the whole sentence. */
 .ride .cue-next .cue-text {
   height: 3.75rem;
@@ -4944,12 +4970,14 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   padding-left: 1.5em;
 }
 
+/* Each row names a street: at least the ride's 20 px (Large text's 16 pt where larger), the next one larger still. */
 .cue-sheet-list li {
   margin: 2px 0;
+  font-size: max(20px, 1em);
 }
 
-.cue-sheet-next {
-  font-size: 1.25rem;
+.cue-sheet-list li.cue-sheet-next {
+  font-size: max(24px, 1.2em);
   font-weight: 700;
 }
 
@@ -5111,7 +5139,8 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   border-radius: 26px;
 }
 
-.ride button.danger {
+.ride button.danger,
+#sheet-settings button.danger {
   background: transparent;
   color: var(--error-text);
   border-color: var(--error-text);
@@ -5381,18 +5410,18 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 }
 .transit-steps {
   margin: 8px 0;
-  padding-left: 1.6em;
+  padding-inline-start: 1.6em;
 }
 .transit-steps li {
   margin: 0 0 6px;
 }
 .transit-steps li > svg {
-  margin-right: 6px;
+  margin-inline-end: 6px;
   vertical-align: -2px;
 }
 .transit-notes {
   margin: 6px 0;
-  padding-left: 1.2em;
+  padding-inline-start: 1.2em;
 }
 .bikeshare h3 {
   margin: 0 0 6px;
@@ -5974,7 +6003,7 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 
 .go-search .search-icon {
   position: absolute;
-  left: 12px;
+  inset-inline-start: 12px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-muted);
@@ -5984,7 +6013,7 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 .go-search input[type="search"] {
   width: 100%;
   min-height: 48px;
-  padding-left: 40px;
+  padding-inline-start: 40px;
   font-size: 1.05rem;
   border-radius: 999px;
 }
@@ -6680,8 +6709,10 @@ details.fold > summary .icon {
   min-width: 44px;
   height: 44px;
   flex-direction: row;
-  gap: 6px;
-  padding: 0 12px 0 10px;
+  /* Share live, the longest word, keeps the column clear of the map's credits at 320 px with these (2026-10-29): it
+     was 6 px between and 12 px and 10 px a side. */
+  gap: 4px;
+  padding: 0 10px 0 8px;
   border-radius: 22px;
 }
 
@@ -6692,6 +6723,43 @@ details.fold > summary .icon {
   background: none;
   color: inherit;
   font-size: 15px;
+}
+
+/* Icons only (Settings > Display, Stephen 2026-10-29: "allow icon only bubbles in settings"): no words on screen, the
+   buttons' names unchanged for screen readers; round buttons with a 12 px gap (lib/railFit.ts ICON_GAP_PX), or 44 px
+   circles where even that is short of room. 311 keeps its number and the dock its time: they are what it shows. */
+.ride .ride-rail-icons .ride-word {
+  display: none;
+}
+
+.ride-rail-icons.ride-rail-under {
+  padding-bottom: 0;
+  gap: 12px;
+}
+
+.ride-rail-icons .ride-more-bubbles {
+  right: calc(100% + 12px);
+  gap: 12px;
+}
+
+.ride-rail-icons.ride-rail-pill .ride-more-bubbles {
+  right: calc(100% + 8px);
+  gap: 6px;
+}
+
+.ride .ride-rail-icons.ride-rail-pill .ride-round,
+.ride .ride-rail-icons.ride-rail-pill .ride-311-button {
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  flex-direction: column;
+  gap: 0;
+  border-radius: 50%;
+}
+
+.ride .ride-rail-icons.ride-rail-pill .ride-311-button {
+  font-size: 0.8rem;
+  line-height: 1;
 }
 
 .ride .ride-round[aria-expanded="true"],
@@ -6898,7 +6966,7 @@ details.fold > summary .icon {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  text-align: left;
+  text-align: start;
   background: var(--bg-soft);
   color: var(--text);
   border: 1px solid var(--swatch-border);
@@ -7000,7 +7068,7 @@ details.fold > summary .icon {
   display: flex;
   align-items: center;
   gap: 8px;
-  text-align: left;
+  text-align: start;
   background: var(--bg-soft);
   color: var(--text);
   border: 1px solid var(--swatch-border);
@@ -7184,14 +7252,16 @@ details.fold > summary .icon {
 /*
  * Accessibility mode on (lib/accessMode.ts ACCESS_MODE_CLASS, the one shared mode): Go's small text is 15 px at
  * least. The place chips (14 px), the ride-type chips and the stress line (12.75 px), Settings' section headings
- * (12.75 px) and the map's scale (10 px) come up to 1rem; the chips wrap where a row no longer fits.
+ * (12.75 px) and the map's scale (10 px) come up to 1rem; the chips wrap where a row no longer fits. So do the charts'
+ * key, tiers and source lines and their data tables, the charts' text alternative (12 px; the 2026-10-29 a11y review).
  */
 :root.access-mode .panel .go-places .place-chip,
 :root.access-mode .panel .go-sheet .go-places:not(.go-more-row) .place-chip,
 :root.access-mode .panel .go-sheet .ride-chips .chip,
 :root.access-mode .stress-key,
 :root.access-mode #sheet-settings :is(.settings-group, .install-offer) h3,
-:root.access-mode .maplibregl-ctrl-scale {
+:root.access-mode .maplibregl-ctrl-scale,
+:root.access-mode :is(.pc-table, .pc-legend, .pc-tiers, .pc-keys, .pc-source) {
   font-size: max(1rem, 15px);
 }
 
@@ -7295,6 +7365,78 @@ details.fold > summary .icon {
   gap: 4px;
 }
 
+/* A list's Show all on map (Stephen 2026-10-29): one button over the list. */
+.show-all {
+  margin: 4px 0 8px;
+}
+
+/* Named places (Stephen 2026-10-29: "Named, not lettered", "With names in a bubble"): Go's and Plan's lists show
+   each place's name in a bubble, its tail at the spot. The button is at least 44 px tall; a long name is cut. */
+.lettered-marker.named-marker {
+  width: auto;
+  min-width: 44px;
+  max-width: 180px;
+  min-height: 44px;
+  height: auto;
+  padding: 0 0 10px;
+  font: inherit;
+}
+
+.named-bubble {
+  position: relative;
+  display: block;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 5px 10px;
+  border: 2px solid #ffffff;
+  border-radius: 8px;
+  background: #1e3a8a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  color: #ffffff;
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* The tail: a white-edged point under the bubble's middle, its tip on the place. */
+.named-marker::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 12px solid #1e3a8a;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 2px 0 #ffffff);
+}
+
+/* The place a row's Show on map picked: on top of the rest, bigger, with a thicker edge (not its colour alone). */
+/* Over the closure, junction and Avoid markers (3-4), under the cards (5). */
+.lettered-marker.is-shown {
+  z-index: 4;
+}
+
+.named-marker.is-shown .named-bubble {
+  border-width: 3px;
+  background: #c2410c;
+  font-size: 17px;
+}
+
+.named-marker.is-shown::after {
+  border-top-color: #c2410c;
+}
+
+.lettered-marker.is-shown .lettered-pin {
+  border-width: 3px;
+  background: #c2410c;
+}
+
 .lettered-marker:focus-visible {
   outline: 3px solid var(--focus, #1d4ed8);
   outline-offset: 2px;
@@ -7304,12 +7446,24 @@ details.fold > summary .icon {
 @media (forced-colors: active) {
   /* Go's tapped-spot pins (app/spotPins.ts), as the lettered pins. */
   .spot-pin-dot,
-  .spot-pin-label,
-  .spot-here {
+  .spot-pin-label {
     border-color: CanvasText;
     background: Canvas;
     color: CanvasText;
     forced-color-adjust: none;
+  }
+
+  .spot-here {
+    forced-color-adjust: none;
+  }
+
+  .spot-here-body {
+    fill: Canvas;
+    stroke: CanvasText;
+  }
+
+  .spot-here-centre {
+    fill: CanvasText;
   }
 
   .lettered-pin,
@@ -7322,6 +7476,33 @@ details.fold > summary .icon {
 
   .lettered-letter {
     color: CanvasText;
+  }
+
+  .named-bubble {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    forced-color-adjust: none;
+  }
+
+  .named-marker::after {
+    border-top-color: CanvasText;
+    forced-color-adjust: none;
+  }
+
+  .named-marker.is-shown .named-bubble,
+  .lettered-marker.is-shown .lettered-pin {
+    border-color: CanvasText;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .lettered-marker.is-shown .lettered-letter {
+    color: HighlightText;
+  }
+
+  .named-marker.is-shown::after {
+    border-top-color: Highlight;
   }
 }
 
@@ -7377,7 +7558,7 @@ details.fold > summary .icon {
   background: var(--surface, transparent);
   color: inherit;
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -7389,7 +7570,7 @@ details.fold > summary .icon {
 .go-bike-option[aria-pressed="true"]::after {
   content: "Planned" / "";
   flex: none;
-  margin-left: auto;
+  margin-inline-start: auto;
   padding: 0 6px;
   border: 1px solid currentColor;
   border-radius: 999px;
@@ -7414,7 +7595,7 @@ details.fold > summary .icon {
   width: 100%;
   min-height: 44px;
   padding: 6px 10px;
-  text-align: left;
+  text-align: start;
   font: inherit;
   color: var(--text);
   background: var(--bg-soft);
@@ -7709,7 +7890,7 @@ details.fold > summary .icon {
 .ride-alert-banner .call-911 {
   font-weight: 700;
   color: inherit;
-  margin-right: 8px;
+  margin-inline-end: 8px;
 }
 
 .closure-dialog {
@@ -8270,7 +8451,8 @@ summary.closure-notices-heading {
   display: flex;
   gap: 6px;
   align-items: center;
-  min-height: 24px;
+  /* 44 px, as the rest of the panel (the 2026-10-29 a11y review). */
+  min-height: 44px;
   font-size: 0.9em;
 }
 
@@ -8624,6 +8806,7 @@ summary.closure-notices-heading {
 }
 #sheet-settings .account-line {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -8996,7 +9179,7 @@ summary.closure-notices-heading {
   color: var(--text);
   border: 1px solid var(--swatch-border);
   border-radius: 10px;
-  text-align: left;
+  text-align: start;
   font-weight: 400;
 }
 
@@ -9020,7 +9203,7 @@ summary.closure-notices-heading {
 }
 
 .go-route-stops {
-  padding-left: 24px;
+  padding-inline-start: 24px;
   font-size: 0.85rem;
   color: var(--text-muted);
 }
@@ -9438,7 +9621,10 @@ summary.closure-notices-heading {
 
 /* Info's route sources, behind Data sources in Go. */
 .route-credit-fold summary {
-  min-height: 32px;
+  /* 44 px, as the rest of the panel (the 2026-10-29 a11y review); padded, so it keeps its triangle. */
+  box-sizing: border-box;
+  min-height: 44px;
+  padding-block: 10px;
   color: var(--text-muted);
   font-size: 0.9rem;
   cursor: pointer;
@@ -9736,7 +9922,7 @@ summary.closure-notices-heading {
 
 .roam-ahead .roam-tier {
   flex: none;
-  margin-left: 10px;
+  margin-inline-start: 10px;
 }
 
 .ride-large .roam-ahead li {

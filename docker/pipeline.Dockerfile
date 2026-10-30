@@ -22,7 +22,8 @@
 # package names, not Debian ones. Each was checked against packages.ubuntu.com,
 # which is reachable from the environment this was written in.
 #
-# NOT BUILT. See docs/DEPLOYMENT.md.
+# Built at home and on the cloud rebuild box (docs/DEPLOYMENT.md). Transitive Python
+# dependencies are resolved by pip at build time, as in docker/api.Dockerfile.
 
 ARG VALHALLA_IMAGE=ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de
 

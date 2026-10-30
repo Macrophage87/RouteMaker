@@ -157,6 +157,8 @@ class TestSettings:
             [],
             {"home": {"lon": -77.0, "lat": 38.9}},
             {"v": 1, "plan": "#p=-77.0,38.9;-77.1,38.8&preset=default"},
+            {"v": 1, "plan": "#q=nmm2OwmttHqrFtwB&preset=default"},
+            {"v": 1, "plan": "preset=default&q=nmm2OwmttHqrFtwB"},
             {"v": 1, "sections": {"a": {"b": {"c": {"d": 1}}}}},
             {"v": 1, "weight": {"total_kg": 80}},
             {"v": 1, "weight": 80},
@@ -184,6 +186,13 @@ class TestRoutes:
     def test_signed_out_is_401(self, client) -> None:
         assert client.get("/api/me/routes", **addr()).status_code == 401
         assert client.get("/api/me/routes/1", **addr()).status_code == 401
+
+    def test_signed_out_says_so_and_not_my_go(self, client) -> None:
+        """My routes shows the server's words as written, so a save after the sign-in ran out
+        must not talk about My Go."""
+        answer = client.get("/api/me/routes", **addr()).json()
+        assert answer["code"] == "signed_out"
+        assert answer["error"] == "You are signed out. Sign in, then try again."
 
     def test_a_route_is_kept_verbatim_and_read_back(self) -> None:
         client, user, csrf = signed_in()
@@ -217,6 +226,24 @@ class TestRoutes:
             client, "post", "/api/me/routes", route_body(source="gpx", gpx=text, answer=[1]), csrf
         )
         assert refused.status_code == 400
+
+    def test_the_list_leaves_the_heavy_fields_in_the_database(self) -> None:
+        """A route's GPX may be 4 MB and an account keeps 200: listing names reads none of them."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        client, _user, csrf = signed_in()
+        text = '<?xml version="1.0"?>\n<gpx version="1.1"><trk><trkseg/></trk></gpx>\n'
+        send(
+            client, "post", "/api/me/routes", route_body(source="gpx", gpx=text, answer=None), csrf
+        )
+        with CaptureQueriesContext(connection) as queries:
+            listed = client.get("/api/me/routes", **addr()).json()["routes"]
+        assert [r["source"] for r in listed] == ["gpx"]
+        read = [q["sql"] for q in queries if '"saved_route"' in q["sql"]]
+        assert read and not any(
+            f'"saved_route"."{field}"' in sql for sql in read for field in ("gpx", "line", "answer")
+        ), read
 
     def test_a_gpx_file_keeps_the_route_shown_for_it(self) -> None:
         # v0.9.0, "share the exact route": saved with the route shown for it, the file reopens

@@ -52,6 +52,16 @@ test("a hash with neither points nor a ride type still gets the remembered plan"
   assert.equal(planToOpen(storage, "#v=1&xpreset=gravel"), PLAN);
 });
 
+test("a plan with its stops in the short form is remembered, and a short-form link wins over a remembered plan", () => {
+  const short = "#q=nmm2OwmttHqrFtwB&preset=default";
+  const storage = memory();
+  rememberPlan(storage, short);
+  assert.equal(planToOpen(storage, ""), short);
+  rememberPlan(storage, PLAN);
+  assert.equal(planToOpen(storage, short), short);
+  assert.equal(storage.data.has(PLAN_KEY), false);
+});
+
 test("nothing is remembered when there is no plan", () => {
   const storage = memory();
   rememberPlan(storage, "#preset=default");

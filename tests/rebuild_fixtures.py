@@ -10,6 +10,7 @@ own reflection, which is the failure three rounds of review found.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import sqlite3
@@ -1060,8 +1061,19 @@ class FakeBinaries:
             return CommandOutput("", "")
         if name == "curl":
             # `curl -fsSL --retry 3 -o <dest>.part <url>`: the regional extract
-            # download, minus the network.
-            self.download(Path(command[command.index("-o") + 1]))
+            # download, minus the network. Its published MD5 is fetched first, so
+            # the extract is made then, beside it, and the next curl moves it in.
+            output = Path(command[command.index("-o") + 1])
+            staged = output.with_name("staged-" + command[-1].rsplit("/", 1)[-1])
+            if command[-1].endswith(".md5"):
+                staged = staged.with_name(staged.name.removesuffix(".md5"))
+                self.download(staged)
+                digest = hashlib.md5(staged.read_bytes(), usedforsecurity=False).hexdigest()
+                output.write_text(f"{digest}  {staged.name}\n")
+            elif staged.exists():
+                staged.replace(output)
+            else:
+                self.download(output)
             return CommandOutput("", "")
         if name == "osmium":
             # `merge` puts the regional files together and `extract` clips the

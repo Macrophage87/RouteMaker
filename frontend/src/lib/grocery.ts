@@ -2,7 +2,7 @@
  * The Eat sheet's Grocery chip (the owner, 2026-10-28: a "Grocery" chip listing grocery stores and supermarkets
  * nearest the start, in the same rows as the other results). The places to eat (amenity-data/food.json,
  * scripts/build_food.py) hold no shops but farm stands, so the stores come from the geocoder: /api/geocode answers
- * "supermarket" near a point with the places tagged shop=supermarket around it (src/core/geocode.py TAG_SEARCHES),
+ * "supermarket" near a point with the places tagged shop=supermarket, grocery or greengrocer around it (src/core/geocode.py TAG_SEARCHES),
  * here biased on the route's start. They are listed nearest the start first with P2's sorter (lib/geocode.ts
  * nearestFirst), as FoodResults, so the list, the lettered markers, Show on map, Ride here and Add as stop are the
  * Food sheet's own. The geocoder has no opening hours, so a store's row has none.
@@ -12,13 +12,13 @@
 import type { FoodPlace, FoodResult } from "./food.ts";
 import { normaliseQuery } from "./food.ts";
 import { haversineM, insideCoverage, type LonLat } from "./geo.ts";
-import { nearestFirst, type Place } from "./geocode.ts";
+import { kindPhrase, nearestFirst, type Place } from "./geocode.ts";
 import { t } from "./i18n.ts";
 
-/** What the chip asks the geocoder: one of the server's tag searches (shop=supermarket near the bias point). */
+/** What the chip asks the geocoder: one of the server's tag searches (supermarkets and small grocers near the bias point). */
 export const GROCERY_QUERY = "supermarket";
 
-/** The chip's words, typed into Food or name, search for grocery stores too (English and Spanish). */
+/** The chip's words, typed into Food or name, search for grocery stores too (English and Spanish), "near me" or not. */
 const GROCERY_WORDS: ReadonlySet<string> = new Set([
   "grocery",
   "groceries",
@@ -31,10 +31,10 @@ const GROCERY_WORDS: ReadonlySet<string> = new Set([
 ]);
 
 export function isGroceryQuery(query: string): boolean {
-  return GROCERY_WORDS.has(normaliseQuery(query));
+  return GROCERY_WORDS.has(kindPhrase(normaliseQuery(query)));
 }
 
-/** OSM shop values that are a grocery: the server's tag search returns supermarkets; a greengrocer or corner store is one too. */
+/** OSM shop values that are a grocery: the server's tag search returns supermarkets, grocers and greengrocers; a corner store is one too. */
 const GROCERY_SHOPS: ReadonlySet<string> = new Set(["supermarket", "greengrocer", "convenience", "grocery", "food"]);
 
 /** Where the distances are from: the rider's location, the start typed or placed, or (neither known) the map's center. */

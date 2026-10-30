@@ -98,6 +98,13 @@ growing the volume. <strong>{{ disk_headroom.path }}</strong> has
 room for the next rebuild.</p>
 {% endif %}
 
+<h2>Transit schedule</h2>
+{% if transit_alert %}
+<p class="transit-alert">{{ transit_alert }}. This is an alert.</p>
+{% else %}
+<p id="transit-schedule-ok">The installed transit timetables have three weeks or more left, or none is installed.</p>
+{% endif %}
+
 <h2>Failed jobs</h2>
 {% if failed_jobs %}
 <table>

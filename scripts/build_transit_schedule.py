@@ -55,6 +55,7 @@ import sys
 import zipfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 REPO = Path(__file__).resolve().parents[1]
 RAIL_DATA = REPO / "frontend" / "src" / "rail-data"
@@ -602,6 +603,13 @@ def build(
     return doc, report
 
 
+def default_start(now: datetime | None = None) -> date:
+    """Yesterday in Washington, whatever the host's zone: tonight's owl trips run on yesterday's
+    service day until 3 am, and a host on UTC is already "tomorrow" from 8 pm Eastern."""
+    now = now or datetime.now(ZoneInfo("America/New_York"))
+    return now.astimezone(ZoneInfo("America/New_York")).date() - timedelta(days=1)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -614,8 +622,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--date",
         type=date.fromisoformat,
-        default=date.today(),
-        help="the first service day kept (default today)",
+        default=default_start(),
+        help="the first service day kept (default yesterday in Washington)",
     )
     args = parser.parse_args(argv)
     feeds: dict[str, Path] = {}
