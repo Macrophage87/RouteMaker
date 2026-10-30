@@ -1773,4 +1773,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Switch to Group Ride, trails off": "ናብ ናይ ጉጅለ ጉዕዞ ብዘይ መገዲ እግሪ ቀይሩ",
   "See everyone on the ride": "ኣብ ጉዕዞ ዘለዉ ኩሎም ርአ",
   "Everyone": "ኩሎም",
+  // ---- Say where to: Go's Where to? microphone and its lettered places (lib/placeDictation.ts) ----
+  "Say where to": "ናበይ ከም እትኸዱ ተዛረቡ",
+  "Listening. Say a place or an address.": "ይሰምዕ ኣለኹ። ቦታ ወይ ኣድራሻ ተዛረቡ።",
+  "Listening. Say a letter, like B or Bravo.": "ይሰምዕ ኣለኹ። ከም B ወይ Bravo ዝኣመሰለ ፊደል ተዛረቡ።",
+  "Say a letter, like B or Bravo, or tap a place.": "ከም B ወይ Bravo ዝኣመሰለ ፊደል ተዛረቡ፣ ወይ ቦታ ጠውቑ።",
+  "No letter was heard. Tap a place, or tap the microphone and say a letter.": "ዝኾነ ፊደል ኣይተሰምዐን። ቦታ ጠውቑ፣ ወይ ማይክሮፎን ጠዊቕኩም ፊደል ተዛረቡ።",
+  "The microphone is not allowed; allow it in the browser's settings, or type the place.": "ማይክሮፎን ኣይተፈቕደን፤ ኣብ ቅጥዕታት ብራውዘር ፍቐዱሉ፣ ወይ ቦታ ጽሓፉ።",
+  "Nothing was heard. Tap the microphone and try again, or type the place.": "ዋላ ሓንቲ ኣይተሰምዐን። ማይክሮፎን ጠዊቕኩም እንደገና ፈትኑ፣ ወይ ቦታ ጽሓፉ።",
+  "Speech did not work. Type the place instead.": "ዘረባ ኣይሰርሐን። ኣብ ክንዲኡ ቦታ ጽሓፉ።",
 };

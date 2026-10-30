@@ -2235,4 +2235,13 @@ export const ES: Readonly<Record<string, string>> = {
   "Switch to Group Ride, trails off": "Cambiar a Paseo en grupo sin senderos",
   "See everyone on the ride": "Ver a todos en el recorrido",
   "Everyone": "Todos",
+  // ---- Say where to: Go's Where to? microphone and its lettered places (lib/placeDictation.ts) ----
+  "Say where to": "Di adónde vas",
+  "Listening. Say a place or an address.": "Escuchando. Di un lugar o una dirección.",
+  "Listening. Say a letter, like B or Bravo.": "Escuchando. Di una letra, como B o Bravo.",
+  "Say a letter, like B or Bravo, or tap a place.": "Di una letra, como B o Bravo, o toca un lugar.",
+  "No letter was heard. Tap a place, or tap the microphone and say a letter.": "No se oyó ninguna letra. Toca un lugar, o toca el micrófono y di una letra.",
+  "The microphone is not allowed; allow it in the browser's settings, or type the place.": "El micrófono no está permitido; permítelo en la configuración del navegador o escribe el lugar.",
+  "Nothing was heard. Tap the microphone and try again, or type the place.": "No se oyó nada. Toca el micrófono e inténtalo de nuevo, o escribe el lugar.",
+  "Speech did not work. Type the place instead.": "La voz no funcionó. Escribe el lugar.",
 };

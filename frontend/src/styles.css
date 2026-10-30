@@ -6018,6 +6018,58 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   border-radius: 999px;
 }
 
+/* Say where to (lib/placeDictation.ts): the microphone at the box's far end, a full-size target inside it. */
+.go-search.can-say input[type="search"] {
+  padding-inline-end: 52px;
+}
+
+.go-search .say-where {
+  position: absolute;
+  inset-inline-end: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--accent);
+}
+
+/* Listening: filled, so a glance shows the microphone is on. */
+.go-search .say-where[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.go-search .say-where-line {
+  margin: 6px 4px 0;
+}
+
+/* A lettered place's letter, to be said: "B" or "Bravo"; the name and its line beside it. */
+.place-results li.lettered {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  align-items: center;
+}
+
+.place-results .row-letter {
+  grid-row: span 2;
+  min-width: 1.8em;
+  padding: 4px 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-align: center;
+}
+
 .go-search .go-from {
   margin-top: 4px;
 }

@@ -1773,4 +1773,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Switch to Group Ride, trails off": "बिना ट्रेल वाली समूह सवारी पर जाएँ",
   "See everyone on the ride": "सवारी पर सभी को देखें",
   "Everyone": "सभी",
+  // ---- Say where to: Go's Where to? microphone and its lettered places (lib/placeDictation.ts) ----
+  "Say where to": "बताएँ कहाँ जाना है",
+  "Listening. Say a place or an address.": "सुन रहे हैं। कोई जगह या पता बोलें।",
+  "Listening. Say a letter, like B or Bravo.": "सुन रहे हैं। कोई अक्षर बोलें, जैसे B या Bravo।",
+  "Say a letter, like B or Bravo, or tap a place.": "कोई अक्षर बोलें, जैसे B या Bravo, या किसी जगह पर टैप करें।",
+  "No letter was heard. Tap a place, or tap the microphone and say a letter.": "कोई अक्षर सुनाई नहीं दिया। किसी जगह पर टैप करें, या माइक्रोफ़ोन पर टैप करके कोई अक्षर बोलें।",
+  "The microphone is not allowed; allow it in the browser's settings, or type the place.": "माइक्रोफ़ोन की अनुमति नहीं है; ब्राउज़र की सेटिंग में अनुमति दें, या जगह टाइप करें।",
+  "Nothing was heard. Tap the microphone and try again, or type the place.": "कुछ सुनाई नहीं दिया। माइक्रोफ़ोन पर टैप करके फिर से कोशिश करें, या जगह टाइप करें।",
+  "Speech did not work. Type the place instead.": "आवाज़ काम नहीं आई। इसके बजाय जगह टाइप करें।",
 };

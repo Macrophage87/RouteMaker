@@ -13,6 +13,9 @@
  * A pasted map link (Google, Apple, Waze, geo:) or typed coordinates are read as a place
  * (lib/sharedLocation.ts, v0.7.0 "Open shared locations"): it leads the list as one option, and a short
  * link is followed by the server first.
+ *
+ * Go's box has a microphone where speech works (lib/placeDictation.ts, Stephen 2026-10-30): the place said is searched,
+ * the places found are lettered, and "B", "Bravo" or a place's name said picks one.
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import {
@@ -43,9 +46,22 @@ import { FINDING_LOCATION, hereEffectLine, locationMatches, searchStatusWithHere
 import { parseShared, readShared, sharedPlace, SHARED_OPENING } from "./lib/sharedLocation.ts";
 import { watchKeyboard } from "./lib/keyboardLift.ts";
 import { t } from "./lib/i18n.ts";
+import { nativeBridge } from "./lib/nativeShell.ts";
+import {
+  placeDictation,
+  placeSpeechSupported,
+  rowLetter,
+  sayWhereLabel,
+  voiceLine as voiceLineFor,
+  type PlaceDictation,
+  type PlaceListening,
+} from "./lib/placeDictation.ts";
 
 // App.tsx's phone layout, where the panel is a bottom sheet.
 const PHONE = "(max-width: 720px)";
+
+/** How long after the lettered places show it starts listening for a letter (a screen reader says the line first). */
+const ROW_LISTEN_DELAY_MS = 1500;
 
 /** "Use my location" (OWNER-DECISIONS 395): the button beside the search and the "Your location" choice. */
 export interface LocateControl {
@@ -221,6 +237,60 @@ export function PlaceSearch({
   };
   useEffect(() => stopKeyboardWatch, []);
 
+  // Say where to (Go only): the microphone shows where speech works and hears the language in force.
+  const [canSay] = useState(() => variant === "go" && placeSpeechSupported());
+  const [listening, setListening] = useState<PlaceListening>(null);
+  const [voiceNote, setVoiceNote] = useState("");
+  // The words last searched by voice: while the box still holds them, the places found are lettered.
+  const [spoken, setSpoken] = useState<string | null>(null);
+  // The lettered places, for a row named while the list shows (filled each render, below).
+  const letteredNow = useRef<Place[]>([]);
+  const pickNow = useRef<(place: Place) => void>(() => {});
+  const changeNow = useRef<(value: string) => void>(() => {});
+  const dictation = useRef<PlaceDictation | null>(null);
+  if (canSay && dictation.current === null) {
+    dictation.current = placeDictation(
+      {
+        listening: setListening,
+        text: (words) => {
+          setQuery(words);
+          setOpen(true);
+        },
+        search: (words) => {
+          setSpoken(words);
+          changeNow.current(words);
+        },
+        pick: (row) => {
+          // Only a row the rider can see: the box may have been put away while it listened.
+          const place = letteredNow.current[row];
+          if (place && boxShown()) pickNow.current(place);
+        },
+        note: setVoiceNote,
+      },
+      MAX_QUERY_CHARS,
+    );
+  }
+  useEffect(() => () => dictation.current?.abort(), []);
+  // Go hides the box (New destination folded) without unmounting it: speech stops with it.
+  const boxRef = useRef<HTMLDivElement>(null);
+  const boxShown = () => (boxRef.current?.getClientRects().length ?? 0) > 0;
+  const quiet = () => {
+    dictation.current?.abort();
+    setSpoken(null);
+    setVoiceNote("");
+  };
+  const quietNow = useRef(quiet);
+  quietNow.current = quiet;
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!canSay || !box || typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(() => {
+      if (box.getClientRects().length === 0) quietNow.current();
+    });
+    watch.observe(box);
+    return () => watch.disconnect();
+  }, [canSay]);
+
   const { places: found, answeredNow, searching, choices, choice, effect } = searchView({
     query,
     answered,
@@ -262,6 +332,28 @@ export function PlaceSearch({
   const listed: (Place | AsDestination)[] = offersDestination ? offered.flatMap((place) => [place, { destination: place }]) : offered;
   const items: (Place | AsDestination | typeof HERE)[] = showHere ? [HERE, ...listed] : listed;
   const expanded = open && items.length > 0;
+  // Places found for words said: lettered A, B, C, so a letter said picks one.
+  const lettered: Place[] = canSay && spoken !== null && query === spoken && answered === spoken && !empty ? offered : [];
+  letteredNow.current = lettered;
+  // Listen for the letter once the places for the words said are listed; not in the phone app, whose speech input
+  // covers the list while it listens (the rider taps the microphone to say the letter).
+  const askedRow = useRef("");
+  const rowWait = useRef<number | undefined>(undefined);
+  const rowsKey = lettered.map((place) => place.label).join("|");
+  // It waits a moment, so a screen reader's "Listening…" is not heard as the answer.
+  useEffect(() => {
+    if (lettered.length === 0 || !expanded || listening !== null || askedRow.current === rowsKey || nativeBridge()) return;
+    askedRow.current = rowsKey;
+    const wait = (rowWait.current = window.setTimeout(() => {
+      if (boxShown() && letteredNow.current.length > 0) dictation.current?.start(letteredNow.current.map((place) => place.name));
+    }, ROW_LISTEN_DELAY_MS));
+    return () => window.clearTimeout(wait);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per lettered list
+  }, [rowsKey, expanded]);
+  // The list closed (the box lost the focus): no listening for a letter the rider cannot see.
+  useEffect(() => {
+    if (!expanded && listening === "row") dictation.current?.abort();
+  }, [expanded, listening]);
   const listId = `${id}-list`;
   const optionId = (i: number) => `${id}-opt-${i}`;
 
@@ -308,6 +400,9 @@ export function PlaceSearch({
   };
 
   const pick = (place: Place, as?: PlaceChoice) => {
+    dictation.current?.abort();
+    setSpoken(null);
+    setVoiceNote("");
     onPick(place, as ?? boxChoice ?? (variant === "stop" ? "via" : single ? "end" : choice));
     sharedTurn.current += 1;
     setShared(null);
@@ -329,6 +424,20 @@ export function PlaceSearch({
     runner.current?.clear();
     locate?.onLocate(boxChoice ?? choice);
   };
+
+  pickNow.current = pick;
+  changeNow.current = change;
+
+  const sayWhere = () => {
+    // A tap before the letter listen starts is the rider's own: the wait is dropped, not run over it.
+    window.clearTimeout(rowWait.current);
+    if (listening) {
+      dictation.current?.stop();
+      return;
+    }
+    dictation.current?.start(expanded ? lettered.map((place) => place.name) : []);
+  };
+  const voiceLine = voiceLineFor(listening, voiceNote, lettered.length > 0 && expanded);
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     const action = comboboxKey(event.key, {
@@ -359,12 +468,13 @@ export function PlaceSearch({
       setOpen(false);
       setActive(-1);
     } else {
+      if (canSay) quiet();
       change("");
     }
   };
 
   return (
-    <div className={variant === "go" ? "place-search go-search" : "place-search"}>
+    <div ref={boxRef} className={variant === "go" ? (canSay ? "place-search go-search can-say" : "place-search go-search") : "place-search"}>
       {/* Go's Where to? and Add a stop say their names in the box (and Add a stop on the button that opens it). */}
       <label htmlFor={`${id}-input`} className={variant === "go" || variant === "stop" ? "place-search-label visually-hidden" : "place-search-label"}>
         {t(variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "work" ? "Find your Work" : variant === "favorite" ? "Find a place to save" : variant === "start" ? "Start from" : variant === "stop" || variant === "add" ? "Add a stop" : variant === "from" ? (loop ? "Start and finish (loop)" : "From") : variant === "to" ? "To" : "Find a place")}
@@ -391,7 +501,11 @@ export function PlaceSearch({
           t(variant === "go" ? "Where to?" : variant === "start" ? "Type a start" : variant === "stop" || variant === "add" ? "Add a stop" : variant === "from" ? "Search for a start" : variant === "to" ? "Search for a destination" : "A place, an address or a street")
         }
         value={query}
-        onChange={(event) => change(event.target.value)}
+        onChange={(event) => {
+          // Typing takes over from speech: the letters go and the microphone stops.
+          if (canSay) quiet();
+          change(event.target.value);
+        }}
         onPaste={(event) => {
           // A whole map link, longer than the box takes: read before the box cuts it.
           const text = event.clipboardData.getData("text");
@@ -419,6 +533,19 @@ export function PlaceSearch({
           }
         }}
       />
+      {canSay && (
+        <button
+          type="button"
+          className="say-where"
+          aria-label={sayWhereLabel()}
+          aria-pressed={listening !== null}
+          // Before the input's blur, which would close the list first.
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={sayWhere}
+        >
+          <Icon name="mic" size={22} />
+        </button>
+      )}
       {locate && !locate.listOnly && (
         <button
           type="button"
@@ -436,6 +563,11 @@ export function PlaceSearch({
         </button>
       )}
       </div>
+      {canSay && (
+        <p className={voiceLine ? "hint say-where-line" : "visually-hidden"} role="status" aria-live="polite">
+          {voiceLine}
+        </p>
+      )}
       {locate && !locate.listOnly && !locate.support.available && (
         <p id={`${id}-locate-why`} className="hint">
           {locate.support.reason}
@@ -483,11 +615,12 @@ export function PlaceSearch({
               id={optionId(i)}
               role="option"
               aria-selected={i === active}
-              className={i === active ? "active" : undefined}
+              className={[i === active ? "active" : "", lettered.length > 0 ? "lettered" : ""].filter(Boolean).join(" ") || undefined}
               // Before the input's blur, which would close the list first.
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => pick(item)}
             >
+              {lettered.length > 0 && <span className="row-letter">{rowLetter(lettered.indexOf(item))}<span className="visually-hidden">, </span></span>}
               <span className="place-name">
                 {item.name} <span className="place-type">{placeType(item)}</span>
               </span>

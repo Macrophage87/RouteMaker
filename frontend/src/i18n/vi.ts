@@ -1773,4 +1773,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Switch to Group Ride, trails off": "Chuyển sang Đạp theo nhóm không đường mòn",
   "See everyone on the ride": "Xem mọi người trong chuyến đi",
   "Everyone": "Mọi người",
+  // ---- Say where to: Go's Where to? microphone and its lettered places (lib/placeDictation.ts) ----
+  "Say where to": "Nói nơi bạn muốn đến",
+  "Listening. Say a place or an address.": "Đang nghe. Hãy nói một địa điểm hoặc địa chỉ.",
+  "Listening. Say a letter, like B or Bravo.": "Đang nghe. Hãy nói một chữ cái, như B hoặc Bravo.",
+  "Say a letter, like B or Bravo, or tap a place.": "Hãy nói một chữ cái, như B hoặc Bravo, hoặc chạm vào một địa điểm.",
+  "No letter was heard. Tap a place, or tap the microphone and say a letter.": "Không nghe thấy chữ cái nào. Chạm vào một địa điểm, hoặc chạm vào micrô và nói một chữ cái.",
+  "The microphone is not allowed; allow it in the browser's settings, or type the place.": "Micrô không được cho phép; hãy cho phép trong cài đặt trình duyệt, hoặc gõ địa điểm.",
+  "Nothing was heard. Tap the microphone and try again, or type the place.": "Không nghe thấy gì. Chạm vào micrô và thử lại, hoặc gõ địa điểm.",
+  "Speech did not work. Type the place instead.": "Giọng nói không hoạt động. Hãy gõ địa điểm.",
 };
