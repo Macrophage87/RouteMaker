@@ -3,7 +3,7 @@
  "decided": "2026-10-30",
  "decided_by": "the deployment owner",
  "status": "Decided by the owner in conversation on 2026-10-30; not yet loaded. Load with manage.py load_access_overrides (dry run, then --confirm after the owner confirms this file), then rebuild. Remake urban-areas.json with West Virginia in it before that rebuild.",
- "annotations": "West Virginia's Eastern Panhandle, 293 ways. Unposted rural county roads (tertiary and unclassified) that beta rates LTS 4 on the 50 mph rural default, re-rated on WVDOT's 2020 counts as the owner chose: under 500 a day with a count station on the route, LTS 3; 500 to 1,500 a day, or no count station within 2 km, or no WVDOT count at all, LTS 3.5. A way that runs along several count segments takes the busiest of them. Counts read 10% high for 2020. Left at the formula: county roads over 1,500 a day; secondary and primary roads and links; any way with a posted limit; roads mostly inside the Census urban areas, which the remade urban-roads list re-rates (except seven busy county roads kept at LTS 4, and one piece of North Fairfax Boulevard kept at LTS 2).",
+ "annotations": "West Virginia's Eastern Panhandle, 293 ways. Unposted rural county roads (tertiary and unclassified) that beta rates LTS 4 on the 50 mph rural default, re-rated on WVDOT's 2020 counts as the owner chose: under 500 a day with a count station on the route, LTS 3; 500 to 1,500 a day, or no count station within 2 km, or no WVDOT count at all, LTS 3.5. A way that runs along several count segments takes the busiest of them. Counts read 10% high for 2020. Left at the formula: county roads over 1,500 a day; secondary and primary roads and links; any way with a posted limit; roads mostly inside the Census urban areas, which the remade urban-roads list re-rates (except seven busy county roads kept at LTS 4, one piece of North Fairfax Boulevard kept at LTS 2, and WV 9 and US 340 near Kearneysville kept at LTS 4.5 rather than Avoid).",
  "rows": [
   {
    "kind": "stress",
@@ -6056,6 +6056,342 @@
     "highway": "tertiary",
     "length_m": 488.7,
     "line": "-77.853224,39.318075 -77.853001,39.317953 -77.852928,39.317890 -77.852878,39.317792 -77.852836,39.317585 -77.852728,39.317301 -77.852289,39.316633 -77.852159,39.316379 -77.852079,39.316134 -77.852035,39.315927 -77.851982,39.314521 -77.852030,39.314207 -77.852107,39.313934"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 72650907,
+   "value": {
+    "tier": 4,
+    "half": true,
+    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "evidence": "OSM, read 2026-10-30: way 72650907 (version 14), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
+   "fingerprint": {
+    "name": "Frank Buckles Parkway",
+    "highway": "trunk",
+    "length_m": 960.8,
+    "line": "-77.842956,39.309696 -77.843413,39.310468 -77.844255,39.311764 -77.848041,39.317388"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 72650908,
+   "value": {
+    "tier": 4,
+    "half": true,
+    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "evidence": "OSM, read 2026-10-30: way 72650908 (version 11), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
+   "fingerprint": {
+    "name": "Frank Buckles Parkway",
+    "highway": "trunk",
+    "length_m": 46.5,
+    "line": "-77.842751,39.309309 -77.842956,39.309696"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 72650953,
+   "value": {
+    "tier": 4,
+    "half": true,
+    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "evidence": "OSM, read 2026-10-30: way 72650953 (version 24), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
+   "fingerprint": {
+    "name": "Frank Buckles Parkway",
+    "highway": "trunk",
+    "length_m": 1725.0,
+    "line": "-77.838400,39.290114 -77.838834,39.292414 -77.839054,39.293680 -77.839387,39.295257 -77.840583,39.301912 -77.840990,39.304043 -77.841309,39.305462"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 72650954,
+   "value": {
+    "tier": 4,
+    "half": true,
+    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "evidence": "OSM, read 2026-10-30: way 72650954 (version 23), unnamed, ref=US 340;WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
+   "fingerprint": {
+    "name": null,
+    "highway": "trunk",
+    "length_m": 944.4,
+    "line": "-77.839739,39.295872 -77.839022,39.291978 -77.838150,39.287468"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 72650986,
+   "value": {
+    "tier": 4,
+    "half": true,
+    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "evidence": "OSM, read 2026-10-30: way 72650986 (version 10), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
+   "fingerprint": {
+    "name": "Frank Buckles Parkway",
+    "highway": "trunk",
+    "length_m": 46.2,
+    "line": "-77.843163,39.309626 -77.842965,39.309240"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 72650988,
+   "value": {
+    "tier": 4,
+    "half": true,
+    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "evidence": "OSM, read 2026-10-30: way 72650988 (version 20), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
+   "fingerprint": {
+    "name": "Frank Buckles Parkway",
+    "highway": "trunk",
+    "length_m": 1071.2,
+    "line": "-77.841508,39.305407 -77.841393,39.304930 -77.839844,39.296516 -77.839739,39.295872"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 108258952,
+   "value": {
+    "tier": 4,
+    "half": true,
+    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "evidence": "OSM, read 2026-10-30: way 108258952 (version 18), unnamed, ref=US 340, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
+   "fingerprint": {
+    "name": null,
+    "highway": "trunk",
+    "length_m": 439.1,
+    "line": "-77.839346,39.279935 -77.840132,39.278901 -77.840506,39.278497 -77.841210,39.277832 -77.841781,39.277380 -77.842534,39.276892"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 150953542,
+   "value": {
+    "tier": 4,
+    "half": true,
+    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "evidence": "OSM, read 2026-10-30: way 150953542 (version 9), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
+   "fingerprint": {
+    "name": "Frank Buckles Parkway",
+    "highway": "trunk",
+    "length_m": 953.6,
+    "line": "-77.848244,39.317246 -77.845491,39.313156 -77.844037,39.311067 -77.843519,39.310235 -77.843163,39.309626"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 358947420,
+   "value": {
+    "tier": 4,
+    "half": true,
+    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "evidence": "OSM, read 2026-10-30: way 358947420 (version 7), unnamed, ref=US 340, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
+   "fingerprint": {
+    "name": null,
+    "highway": "trunk",
+    "length_m": 757.4,
+    "line": "-77.842318,39.276728 -77.841552,39.277297 -77.840876,39.277861 -77.840457,39.278266 -77.839844,39.278908 -77.839393,39.279474 -77.838965,39.280037 -77.838569,39.280742 -77.838192,39.281567 -77.837890,39.282478"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 522735348,
+   "value": {
+    "tier": 4,
+    "half": true,
+    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "evidence": "OSM, read 2026-10-30: way 522735348 (version 6), unnamed, ref=US 340, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
+   "fingerprint": {
+    "name": null,
+    "highway": "trunk",
+    "length_m": 1260.2,
+    "line": "-77.854088,39.270000 -77.852433,39.271096 -77.851634,39.271561 -77.849351,39.272834 -77.847556,39.273791 -77.845540,39.274937 -77.844069,39.275723 -77.842318,39.276728"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 961619123,
+   "value": {
+    "tier": 4,
+    "half": true,
+    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "evidence": "OSM, read 2026-10-30: way 961619123 (version 6), unnamed, ref=US 340;WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
+   "fingerprint": {
+    "name": null,
+    "highway": "trunk",
+    "length_m": 861.6,
+    "line": "-77.838150,39.287468 -77.837892,39.286093 -77.837787,39.285128 -77.837804,39.284264 -77.837849,39.283825 -77.837954,39.283171 -77.838115,39.282525 -77.838442,39.281579 -77.838735,39.280961 -77.839109,39.280276 -77.839346,39.279935"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 961619125,
+   "value": {
+    "tier": 4,
+    "half": true,
+    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "evidence": "OSM, read 2026-10-30: way 961619125 (version 2), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
+   "fingerprint": {
+    "name": "Frank Buckles Parkway",
+    "highway": "trunk",
+    "length_m": 16.9,
+    "line": "-77.849870,39.319731 -77.849781,39.319595"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 961619126,
+   "value": {
+    "tier": 4,
+    "half": true,
+    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "evidence": "OSM, read 2026-10-30: way 961619126 (version 3), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
+   "fingerprint": {
+    "name": "Frank Buckles Parkway",
+    "highway": "trunk",
+    "length_m": 16.1,
+    "line": "-77.849577,39.319674 -77.849658,39.319804"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 961619127,
+   "value": {
+    "tier": 4,
+    "half": true,
+    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "evidence": "OSM, read 2026-10-30: way 961619127 (version 3), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
+   "fingerprint": {
+    "name": "Frank Buckles Parkway",
+    "highway": "trunk",
+    "length_m": 292.8,
+    "line": "-77.849781,39.319595 -77.848753,39.317998 -77.848244,39.317246"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1005425005,
+   "value": {
+    "tier": 4,
+    "half": true,
+    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "evidence": "OSM, read 2026-10-30: way 1005425005 (version 4), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
+   "fingerprint": {
+    "name": "Frank Buckles Parkway",
+    "highway": "trunk",
+    "length_m": 444.8,
+    "line": "-77.842965,39.309240 -77.842598,39.308502 -77.842300,39.307803 -77.841983,39.306994 -77.841508,39.305407"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1005425006,
+   "value": {
+    "tier": 4,
+    "half": true,
+    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "evidence": "OSM, read 2026-10-30: way 1005425006 (version 5), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
+   "fingerprint": {
+    "name": "Frank Buckles Parkway",
+    "highway": "trunk",
+    "length_m": 446.1,
+    "line": "-77.841309,39.305462 -77.841579,39.306473 -77.841893,39.307412 -77.842307,39.308371 -77.842751,39.309309"
    }
   }
  ]
