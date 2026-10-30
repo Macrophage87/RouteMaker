@@ -112,8 +112,10 @@ test("the rider orders the places after Work: one row up or down, Work staying s
 test("Go: Edit gives each place after Work Move up and Move down, named for the place, none past the ends", () => {
   const go = src("../app/Go.tsx");
   const popout = go.slice(go.indexOf("export function FavoritesPopout"), go.indexOf("export function HomeSetter"));
-  assert.match(popout, /editing && row > 0 &&[\s\S]*?aria-label=\{MOVE_UP_TEXT\(place\)\}/);
-  assert.match(popout, /editing && row < others\.length - 1 &&[\s\S]*?aria-label=\{MOVE_DOWN_TEXT\(place\)\}/);
+  assert.match(popout, /row > 0 \? \([\s\S]*?aria-label=\{MOVE_UP_TEXT\(place\)\}[\s\S]*?\) : \(\s*<span className="go-favorite-move-gap" aria-hidden="true" \/>/);
+  assert.match(popout, /row < others\.length - 1 \? \([\s\S]*?aria-label=\{MOVE_DOWN_TEXT\(place\)\}[\s\S]*?\) : \(\s*<span className="go-favorite-move-gap" aria-hidden="true" \/>/);
+  // Only in Edit, on their own line under the name.
+  assert.match(popout, /\{editing && \(\s*<span className="go-favorite-tools">/);
   // Before Remove, and only for the rest: Home and Work rows have none.
   assert.ok(popout.indexOf("MOVE_DOWN_TEXT(place)") < popout.indexOf('{t("Remove")}<span className="visually-hidden"> {favoriteName(place)}'));
   assert.equal(popout.slice(0, popout.indexOf("others.map")).includes("MOVE_UP_TEXT"), false);
