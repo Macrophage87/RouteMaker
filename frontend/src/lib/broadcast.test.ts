@@ -11,7 +11,6 @@ import {
   PATH_MAX_POINTS,
   PRIVATE_START_M,
   TRAIL_MAX_POINTS,
-  broadcastRideId,
   consentFor,
   extendTrail,
   keepConsent,
@@ -19,7 +18,7 @@ import {
   leaderKey,
   pathDue,
   readRide,
-  rideId,
+  rideOf,
   ridersSaid,
   roleKey,
   routeKeyOf,
@@ -29,9 +28,12 @@ import {
 } from "./rideGroup.ts";
 import { BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, rideLinkFrom } from "./sharedRoutes.ts";
 import { BROADCAST_ABOUT, BROADCAST_LABEL } from "./share.ts";
+import { newRideSecret, rideSeal, sealValue } from "./rideSeal.ts";
 
 const LINE: LonLat[] = Array.from({ length: 21 }, (_, i) => [-77.04 + i * 0.002, 38.9] as LonLat);
 const KEY = "8a83665f3798727f14f92ad0e6c99fda";
+/** KEY as a link writes it: its 16 bytes in base64url. */
+const MARK = "ioNmXzeYcn8U-SrQ5smf2g";
 
 class Memory {
   map = new Map<string, string>();
@@ -53,24 +55,44 @@ test("the leader key is the server's: the first 32 hex digits of the SHA-256 of 
 
 test("a broadcast link carries the leader key beside ride=1, and only a well-formed key is read back", () => {
   const link = asRideLink("https://x.test/s/abc#p=1", KEY);
-  assert.equal(link, `https://x.test/s/abc#p=1&ride=1&lead=${KEY}`);
+  // The key's 16 bytes as 22 base64url characters (2026-10-29, shorter ride links).
+  assert.equal(link, `https://x.test/s/abc#p=1&ride=1&lead=${MARK}`);
   const hash = link.slice(link.indexOf("#"));
   assert.equal(rideLinkFrom(hash), true);
-  assert.equal(leadKeyFrom(hash), KEY);
-  assert.equal(leadKeyFrom("", `?route=x&ride=1&lead=${KEY}`), KEY, "the query sent on from /s/<id>");
-  assert.equal(leadKeyFrom(`#lead=${KEY}`), null, "a leader only on a ride link");
+  assert.equal(leadKeyFrom(hash), KEY, "read back as the 32 hex digits the server knows");
+  assert.equal(leadKeyFrom("", `?route=x&ride=1&lead=${MARK}`), KEY, "the query sent on from /s/<id>");
+  assert.equal(leadKeyFrom(`#lead=${MARK}`), null, "a leader only on a ride link");
   assert.equal(leadKeyFrom("#ride=1&lead=nothex"), null);
+  assert.equal(leadKeyFrom(`#ride=1&lead=${MARK.slice(1)}`), null, "a mark cut short");
   // An older Share ride link, or one shared before the key was ready: a ride with no leader.
   assert.equal(asRideLink("https://x.test/#p=1"), "https://x.test/#p=1&ride=1");
   assert.equal(asRideLink("https://x.test/#p=1", "short"), "https://x.test/#p=1&ride=1");
 });
 
-test("a broadcast is its shared line's ride: the sharer and its openers are on it whatever each one rides", async () => {
-  const a = await broadcastRideId("a".repeat(32));
-  assert.match(a, /^[0-9a-f]{64}$/);
-  assert.equal(a, await broadcastRideId("a".repeat(32)));
-  assert.notEqual(a, await broadcastRideId("b".repeat(32)));
-  assert.notEqual(a, await rideId("group-ride", LINE));
+test("a 32-digit leader mark from an older link still marks the leader", async () => {
+  // A broadcast link as the page wrote it before 2026-10-29: the 32 hex digits, an older 43-character key, p= stops.
+  const old = `#p=-77.04000,38.91000;-77.01000,38.89000&preset=default&v=2&stress=70&hills=0&route=${"a".repeat(32)}&ride=1&lead=${KEY}&k=PxDylHo2sOKC8LqsIUTTezX7o4oj_M4FrMa_DX6QXL8`;
+  assert.equal(leadKeyFrom(old), KEY);
+  assert.equal(leadKeyFrom("", `?route=x&ride=1&lead=${KEY}`), KEY, "the query sent on from /s/<id>");
+  // The same leader, whichever form the link wrote: the X-Ride-Leader header goes in hex as before.
+  assert.equal(leadKeyFrom(`#ride=1&lead=${MARK}`), leadKeyFrom(`#ride=1&lead=${KEY}`));
+  assert.equal(leadKeyFrom(`#ride=1&lead=${KEY.toUpperCase()}`), null, "hex as the server writes it, lower case");
+  const sent: Record<string, string>[] = [];
+  const get = (async (_url: string, init?: RequestInit) => {
+    sent.push(init?.headers as Record<string, string>);
+    return new Response("{}", { status: 404 });
+  }) as typeof fetch;
+  const seal = (await rideSeal("PxDylHo2sOKC8LqsIUTTezX7o4oj_M4FrMa_DX6QXL8"))!;
+  await readRide("https://x.test", seal.ride, "1".repeat(32), get, leadKeyFrom(old), seal);
+  assert.equal(sent[0]["X-Ride-Leader"], KEY);
+});
+
+test("a broadcast is its link's secret's ride: the sharer and its openers are on it whatever each one rides", async () => {
+  const secret = newRideSecret();
+  const a = (await rideOf(secret))!;
+  assert.match(a.id, /^[0-9a-f]{64}$/);
+  assert.equal(a.id, (await rideOf(secret))!.id);
+  assert.notEqual(a.id, (await rideOf(newRideSecret()))!.id);
 });
 
 test("the sharer's answer: shown, as Lead line, under the token the link's key names, even after an earlier share", () => {
@@ -112,12 +134,14 @@ test("the riders line names the ride leader first, with or without the rider's o
   assert.match(ridersSaid(shown, null), /^2 riders on the route\. Ride leader, [\d.]+ mi \([\d.]+ km\) along the route, seen just now\.$/);
 });
 
-test("the leader's path: a reading 15 m or more from the last is added, and the path is capped", () => {
+test("the leader's path: a reading 5 m or more from the last is added, and the path is capped", () => {
   let trail = extendTrail([], [-77, 38.9]);
   trail = extendTrail(trail, [-77.00005, 38.9]); // about 4 m: the same spot
   assert.equal(trail.length, 1);
-  trail = extendTrail(trail, [-77.001, 38.9]);
+  trail = extendTrail(trail, [-77.0001, 38.9]); // about 9 m: a move
   assert.equal(trail.length, 2);
+  trail = extendTrail(trail, [-77.001, 38.9]);
+  assert.equal(trail.length, 3);
   let long: readonly LonLat[] = [];
   for (let i = 0; i < TRAIL_MAX_POINTS + 10; i += 1) long = extendTrail(long, [-77 + i * 0.001, 38.9]);
   assert.equal(long.length, TRAIL_MAX_POINTS);
@@ -130,8 +154,9 @@ test("a follower reads with the link's leader key in a header; others send none"
     seen.push({ ...(init?.headers as Record<string, string>) });
     return new Response(JSON.stringify({ dots: [], alerts: [] }), { status: 200 });
   }) as typeof fetch;
-  await readRide("https://x.test", "a".repeat(64), "1".repeat(32), get, KEY);
-  await readRide("https://x.test", "a".repeat(64), "1".repeat(32), get);
+  const seal = (await rideSeal(newRideSecret()))!;
+  await readRide("https://x.test", seal.ride, "1".repeat(32), get, KEY, seal);
+  await readRide("https://x.test", seal.ride, "1".repeat(32), get, null, seal);
   assert.equal(seen[0]["X-Ride-Leader"], KEY);
   assert.equal("X-Ride-Leader" in seen[1], false);
 });
@@ -166,16 +191,17 @@ test("Share live (it was Broadcast) is one small button beside Start, in Plan an
 test("opening a broadcast follows the leader: in Plan too, the map eased to the leader until the map is moved", () => {
   const app = read("../App.tsx");
   assert.match(app, /const SHARED_LEAD = SHARED_RIDE \? leadKeyFrom\(window\.location\.hash, window\.location\.search\) : null;/);
-  assert.match(app, /const rideBroadcast = onShared\?\.ride && onShared\.id && onShared\.lead \? \{ id: onShared\.id, lead: onShared\.lead, leading: onShared\.own === true \} : null;/);
+  assert.match(app, /const rideBroadcast = onShared\?\.ride && onShared\.id && onShared\.lead \? \{ id: onShared\.id, lead: onShared\.lead, leading: onShared\.own === true, secret: onShared\.secret \?\? null \} : null;/);
   const group = read("../RideGroup.tsx");
-  assert.match(group, /void \(broadcast \? \(broadcast\.roam \? roamRideId\(broadcast\.id\) : broadcastRideId\(broadcast\.id\)\) : rideId\(type, points\)\)/);
+  assert.match(group, /void rideOf\(rideSecret\)\.then\(\(on\) => \{\s*if \(!live \|\| !on\) return;/);
   // Shown as it shares, but a later "No" stands.
   assert.match(group, /if \(leading && kept === null\) kept = keepConsent\(id, "yes", Date\.now\(\), undefined, undefined, "lead"\);/);
   // The leader is posted on or off the route; the follower reads with the key before answering.
   // Off the route only while riding: after End ride the quarter-mile rule and its stop are back.
-  assert.match(group, /const near = \(isBroadcast && \(riding \|\| line\.length === 0\)\) \|\| nearRoute\(line, fix\);/);
+  // Off the route only while riding: a Roam follower watching from home is never sent.
+  assert.match(group, /const near = \(isBroadcast && riding\) \|\| nearRoute\(line, fix\);/);
   // The leader's route and path, sent while riding when due; a follower draws the phone's own over what it saw.
-  assert.match(group, /if \(!leading \|\| !riding \|\| !shareOn \|\| !front \|\| !ride \|\| !token\) return;[\s\S]*?if \(!pathDue\(pathSent\.current\.at, pathSent\.current\.routeKey, routeNowKey, t\)\) return;[\s\S]*?void sendPath\(origin, ride, token, routeNow, ownTrail\)\.then\(\(ok\) => \{\s*if \(!ok && pathSent\.current\.at === t\) pathSent\.current = \{ at: t - PATH_EVERY_MS \+ PATH_MIN_GAP_MS, routeKey: "" \};/);
+  assert.match(group, /if \(!leading \|\| !riding \|\| !shareOn \|\| !front \|\| !ride \|\| !token \|\| heldBack\.current\) return;[\s\S]*?if \(!pathDue\(pathSent\.current\.at, pathSent\.current\.routeKey, routeNowKey, t\)\) return;[\s\S]*?void sendPath\(origin, ride, token, routeNow, ownTrail, fetch, seal\)\.then\(\(ok\) => \{\s*if \(!ok && pathSent\.current\.at === t\) pathSent\.current = \{ at: t - PATH_EVERY_MS \+ PATH_MIN_GAP_MS, routeKey: "" \};/);
   assert.match(group, /const shownTrail = sentPath && sentPath\.trail\.length >= trail\.length \? sentPath\.trail : trail;/);
   assert.match(group, /const kinds = \["dragstart", "zoomstart", "rotatestart"\] as const;/);
   assert.match(group, /anywhere: isBroadcast \}\)/);
@@ -216,11 +242,17 @@ test("a sent line is at most the server's 1500 points, its ends kept, rounded to
 test("a follower's read keeps the leader's sent route and path; a malformed one is left out", async () => {
   const answer = (body: object) =>
     (async () => new Response(JSON.stringify(body), { status: 200 })) as unknown as typeof fetch;
-  const path = { route: [[-77, 38.9], [-76.99, 38.91]], trail: [[-77, 38.9]], age_s: 30 };
-  const got = await readRide("https://x.test", "a".repeat(64), "1".repeat(32), answer({ dots: [], alerts: [], leader_path: path }), KEY);
-  assert.deepEqual(got?.leaderPath, path);
-  const bad = await readRide("https://x.test", "a".repeat(64), "1".repeat(32), answer({ dots: [], alerts: [], leader_path: { route: "x", trail: [] } }), KEY);
+  const seal = (await rideSeal(newRideSecret()))!;
+  const path = { route: [[-77, 38.9], [-76.99, 38.91]], trail: [[-77, 38.9]] };
+  const sealed = await sealValue(seal, "path", path);
+  const got = await readRide("https://x.test", seal.ride, "1".repeat(32), answer({ dots: [], alerts: [], leader_path: { sealed, age_s: 30 } }), KEY, seal);
+  assert.deepEqual(got?.leaderPath, { ...path, age_s: 30 });
+  const malformed = await sealValue(seal, "path", { route: "x", trail: [] });
+  const bad = await readRide("https://x.test", seal.ride, "1".repeat(32), answer({ dots: [], alerts: [], leader_path: { sealed: malformed, age_s: 30 } }), KEY, seal);
   assert.equal(bad?.leaderPath, undefined);
+  // A path in plain numbers (an older page's) is left out.
+  const plain = await readRide("https://x.test", seal.ride, "1".repeat(32), answer({ dots: [], alerts: [], leader_path: { ...path, age_s: 30 } }), KEY, seal);
+  assert.equal(plain?.leaderPath, undefined);
 });
 
 test("the ridden path goes without its first 650 ft (200 m): rides often start at home", () => {
@@ -235,8 +267,9 @@ test("the ridden path goes without its first 650 ft (200 m): rides often start a
 test("on a computer Broadcast asks before the share sheet: Go back sends nothing, Start anyway shares then rides", () => {
   const app = read("../App.tsx");
   const fn = app.slice(app.indexOf("const broadcastRide = () => {"), app.indexOf("\n  };\n", app.indexOf("const broadcastRide = () => {")));
-  // The question comes first, before the voice and the share sheet (review S1).
-  assert.match(fn, /^const broadcastRide = \(\) => \{\s*if \(!computerOk\.current && askBeforeStart\(looksLikePhone\(\), tabSession\(\)\)\) \{\s*setComputerAsk\("broadcast"\);\s*return;\s*\}/);
+  // The question comes first, before the voice and the share sheet (review S1); only a followed link without its
+  // key is said before it (it is never passed on, so there is nothing to ask).
+  assert.match(fn, /^const broadcastRide = \(\) => \{\s*if \(followedNoKey\(\)\) \{[^\n]*\n[^\n]*\n\s*return;\s*\}\s*if \(!computerOk\.current && askBeforeStart\(looksLikePhone\(\), tabSession\(\)\)\) \{\s*setComputerAsk\("broadcast"\);\s*return;\s*\}/);
   assert.ok(fn.indexOf('setComputerAsk("broadcast")') < fn.indexOf("shareRoute(true, broadcastNav)"));
   const dialog = app.slice(app.indexOf("<StartOnComputerDialog"), app.indexOf("<ClosureDialog"));
   assert.match(dialog, /onBack=\{\(\) => setComputerAsk\(null\)\}/);
@@ -292,13 +325,14 @@ test("opensIntoRide: a phone, not over a ride or the Resume question", async () 
 test("App judges a followed broadcast once, when ready, and starts its ride with no closure check (the leader's), or Roam", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /const sharedFollow = sharedOpen\?\.ride === true && !!sharedOpen\.lead && !sharedOpen\.own && shown === sharedOpen\.answer && !stale && rideableRoute\(shown\);/);
-  assert.match(app, /if \(!ready \|\| autoRode\.current\) return;\n\s+autoRode\.current = true;\n\s+if \(!opensIntoRide\(\{ phone: looksLikePhone\(\), onBike, resumeAsked: leftAsk !== null \}\)\) return;/);
+  assert.match(app, /if \(!ready \|\| autoRode\.current\) return;\n\s+autoRode\.current = true;\n[\s\S]*?if \(!opensIntoRide\(\{ phone: looksLikePhone\(\), onBike, resumeAsked: leftAsk !== null \}\)\) \{\n\s+if \(keyless\) \{[^}]*\}\n\s+return;\n\s+\}/);
   assert.match(app, /openSaved\(shared, SHARED_OPENED\(shared\.name\), !\(SHARED_RIDE && SHARED_LEAD && shared\.answer\)\);/);
   assert.match(app, /if \(check\) void checkThen\("open", saved\.line, false, \(\) => \{\}\);/);
   assert.match(app, /if \(!shown \|\| followsBroadcast\(shown\)\) return startRide\(false\);/);
   assert.match(app, /return !!open && open\.ride && !!open\.lead && !open\.own && open\.answer === route;/);
   // Started with no press: it says so, and how to wake a phone's quiet voice (the end review's a11y finding).
-  assert.match(app, /if \(sharedFollow\) \{\n\s+startRideNoted\(BROADCAST_FOLLOWING\);\n[^}]*\} else \{\n\s+startRoam\(\);[^}]*announce\(BROADCAST_FOLLOWING\), START_NOTE_MS\);/);
+  // A link without its ride key says so instead (lib/rideGroup.ts BROADCAST_NO_KEY).
+  assert.match(app, /if \(sharedFollow\) \{\n\s+startRideNoted\(keyless \? BROADCAST_NO_KEY : BROADCAST_FOLLOWING\);\n[^}]*\} else \{\n\s+startRoam\(\);[^}]*announce\(keyless \? BROADCAST_NO_KEY : BROADCAST_FOLLOWING\), START_NOTE_MS\);/);
   assert.match(app, /if \(plan\.verbatim && check\) void checkThen\("open", plan\.verbatim\.track, true/);
   assert.match(app, /if \(!ridingNow\.current && !roamingNow\.current\) return;\n\s+document\.removeEventListener\("click", unlock, true\);\n\s+if \(!window\.speechSynthesis\?\.speaking\) primeRideVoice\(ridePrefsNow\.current\);/);
   assert.match(app, /document\.addEventListener\("click", unlock, true\);/);

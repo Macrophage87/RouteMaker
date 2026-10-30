@@ -435,9 +435,11 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
     # Plus the Redland Road sidewalk link's 1 access row (the owner, 2026-10-21), and
     # Aspen Street NW's 5 stress rows (the owner, 2026-10-25), and the 3rd Avenue dirt
     # path's 1 access row (the owner, 2026-10-27), and the Glenmont path's 1 (2026-10-28).
+    # Less Montgomery's 381 LTS 5 snapshot rows, retired for the live county layer (review
+    # 2026-10-29).
     assert (
         sum(len(d["rows"]) for d in documents.values())
-        == 1785 + 20 - 5 - 23 + 57 + 40 - 2 + 4 - 431 + 6 + 31 - 2 + 1 + 5 + 1 + 1
+        == 1785 + 20 - 5 - 23 + 57 + 40 - 2 + 4 - 431 + 6 + 31 - 2 + 1 + 5 + 1 + 1 - 381
     )
     for name, document in documents.items():
         if name == "2026-10-06-owner-crosswalk-links.json":
@@ -464,8 +466,9 @@ def test_the_override_counts_the_owner_asked_about() -> None:
     # Way's 15 carriageway ways have tier-4 rows there (439b). And 445 cut the
     # east-of-the-Anacostia file from 772 rows to 341, and 445d put 6 back (4 Benning ways,
     # 2 ramps), and 445c's floor took in 31 more Nannie Helen Burroughs ways, and 445f retired 2
-    # Kenilworth Avenue NE rows. Plus Aspen Street NW's 5 (the owner, 2026-10-25).
-    assert kinds.count("stress") == 1551 - 1 + 3 + 10 - 5 - 23 + 15 - 431 + 6 + 31 - 2 + 5
+    # Kenilworth Avenue NE rows. Plus Aspen Street NW's 5 (the owner, 2026-10-25). Less
+    # Montgomery's 381 LTS 5 snapshot rows (review 2026-10-29).
+    assert kinds.count("stress") == 1551 - 1 + 3 + 10 - 5 - 23 + 15 - 431 + 6 + 31 - 2 + 5 - 381
 
 
 def test_the_harford_road_row_is_repointed_at_the_three_ways() -> None:
@@ -514,7 +517,10 @@ def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
     # A retired row carries no fingerprint: it is deleted on load, never re-matched.
     # Plus Aspen Street NW's 5 stress rows (the owner, 2026-10-25), and the 3rd Avenue dirt
     # path's 1 access row (the owner, 2026-10-27), and the Glenmont path's 1 (2026-10-28).
-    assert len(found) == 1785 + 20 + 1 - 5 - 23 + 57 + 40 - 2 - 431 + 6 + 31 - 2 + 1 + 5 + 1 + 1
+    # Less Montgomery's 381 LTS 5 snapshot rows (review 2026-10-29).
+    assert (
+        len(found) == 1785 + 20 + 1 - 5 - 23 + 57 + 40 - 2 - 431 + 6 + 31 - 2 + 1 + 5 + 1 + 1 - 381
+    )
     assert ("access", 50426889) in found and ("stress", 1562097556) in found
 
 

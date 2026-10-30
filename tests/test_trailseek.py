@@ -886,6 +886,40 @@ class TestTheIndexAndTheTimeout:
                 cursor.execute("RESET statement_timeout")
 
 
+class TestThePlansTime:
+    """The read's timeout is the plan's own (`routing.plan_cursor`), held to `timeout_s`."""
+
+    def test_with_none_of_the_plan_left_nothing_is_read(self) -> None:
+        from core import routing
+
+        token = routing._plan_ends.set(routing.clock() - 1.0)
+        try:
+            with pytest.raises(ts.SeekOutOfTime):
+                ts.corridor_segments("live", [[START, END]], 1500.0, True, "weekend")
+        finally:
+            routing._plan_ends.reset(token)
+
+    def test_with_no_time_of_its_own_nothing_is_read(self) -> None:
+        with pytest.raises(ts.SeekOutOfTime):
+            ts.corridor_segments("live", [[START, END]], 1500.0, True, "weekend", timeout_s=0.0)
+
+    def test_a_cancelled_plan_stays_cancelled(self) -> None:
+        from core import routing
+
+        class Cancelled:
+            cancelled = True
+
+            def check(self, poll: bool = True) -> None:
+                raise routing.PlanCancelled("replaced")
+
+        token = routing.watch_cancel(Cancelled())
+        try:
+            with pytest.raises(routing.PlanCancelled):
+                ts.corridor_segments("live", [[START, END]], 1500.0, True, "weekend")
+        finally:
+            routing.unwatch_cancel(token)
+
+
 class TestPointsInTheBand:
     def test_only_the_points_near_the_line_or_the_route(self) -> None:
         near = (START[0] + 0.05, START[1] + 500 / KY)

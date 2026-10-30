@@ -26,7 +26,8 @@ import java.io.IOException;
  * through the app's FileProvider with read access alone. Its type is the provider's answer for the file's
  * extension, as a file manager's would be. Nothing is sent anywhere by the app itself.
  * Send to Wahoo's file (frontend/src/lib/wahooLink.ts handWahooFile) passes anyApp: the "Open with" list only, never
- * Garmin Connect.
+ * Garmin Connect. So do Download GPX (handGpx) and the Plan file sheet's other files (handFile): FIT and TCX
+ * courses, PDF cue sheets and lock-screen PNG images.
  */
 @CapacitorPlugin(name = "RouteMakerFiles")
 public class FilesPlugin extends Plugin {
@@ -42,7 +43,7 @@ public class FilesPlugin extends Plugin {
         String name = safeName(call.getString("name"));
         String data = call.getString("data");
         if (name == null || data == null) {
-            call.reject("A file name ending .fit, .tcx or .gpx and the file's bytes are needed");
+            call.reject("A file name ending .fit, .tcx, .gpx, .pdf or .png and the file's bytes are needed");
             return;
         }
         byte[] bytes;
@@ -83,7 +84,7 @@ public class FilesPlugin extends Plugin {
         }
         boolean direct = target != null;
         if (!direct) {
-            target = Intent.createChooser(viewIntent(uri, type), "Open the course with");
+            target = Intent.createChooser(viewIntent(uri, type), "Open the file with");
             target.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         }
         try {
@@ -114,12 +115,12 @@ public class FilesPlugin extends Plugin {
         return send;
     }
 
-    /** The name the site gave, if it is a plain file name with a course file's extension; else null. */
+    /** The name the site gave, if it is a plain file name with one of the site's file extensions; else null. */
     static String safeName(String name) {
         if (name == null || name.length() > 120 || !name.matches("[A-Za-z0-9._-]+") || name.startsWith(".")) {
             return null;
         }
-        return name.matches(".*\\.(fit|tcx|gpx)") ? name : null;
+        return name.matches(".*\\.(fit|tcx|gpx|pdf|png)") ? name : null;
     }
 
     private File write(String name, byte[] bytes) throws IOException {

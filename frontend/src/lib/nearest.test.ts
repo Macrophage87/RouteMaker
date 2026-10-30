@@ -250,12 +250,14 @@ test("the panel: a fold with three buttons, a status line that is always there, 
   assert.match(renderToStaticMarkup(createElement(NearestFinder, props({ busy: true }))), /aria-disabled="true"/);
 });
 
-test("the list: Show on map first, as Find food's, where the page offers it (the owner, 2026-10-28)", () => {
+test("the list: Show on map, as Find food's, where the page offers it (the owner, 2026-10-28), after the main Ride here (2026-10-29)", () => {
   const shown: number[] = [];
   const html = renderToStaticMarkup(createElement(NearestFinder, props({ list: { kind: "water", items }, onShow: (_item, index) => shown.push(index) })));
   assert.equal((html.match(/>Show on map</g) ?? []).length, 3);
   assert.ok(html.includes('aria-label="Show on map: Place a, marker A"'));
-  assert.ok(html.indexOf(">Show on map<") < html.indexOf(">Ride here<"), "before Ride here");
+  assert.ok(html.indexOf(">Ride here<") < html.indexOf(">Show on map<"), "Ride here first");
+  // Ride here is the row's one filled button; the others are plain (secondary).
+  assert.ok(html.includes('<span class="actions"><button type="button" class="ride-here" aria-label="Ride here: Place a">Ride here</button><button type="button" class="secondary"'));
   assert.ok(!renderToStaticMarkup(createElement(NearestFinder, props({ list: { kind: "water", items } }))).includes("Show on map"), "absent without onShow");
   // App: a phone's popup closes first, its pins kept (letteredOf), as Food's Show on map.
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");

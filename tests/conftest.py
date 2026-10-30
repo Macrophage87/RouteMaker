@@ -8,6 +8,8 @@ substitute engine.
 
 from __future__ import annotations
 
+import functools
+import gc
 import os
 import sys
 from pathlib import Path
@@ -206,6 +208,27 @@ def _no_kept_columns():
     segment_info.forget_columns()
     yield
     segment_info.forget_columns()
+
+
+@functools.cache
+def _opens_osm_files(path: str | None) -> bool:
+    """Whether a test module uses pyosmium, itself or through the fixture builder."""
+    if not path:
+        return False
+    text = Path(path).read_text(encoding="utf-8", errors="replace")
+    return "osmium" in text or "rebuild_fixtures" in text
+
+
+@pytest.fixture(autouse=True)
+def _collect_osm_leftovers(request):
+    """A collection after each test in a module that opens OSM files. CI has aborted inside
+    pyosmium during garbage collection, partway through a run and in a module that opens no
+    OSM file, so some earlier test left a reader or writer behind. Collecting here runs any
+    such object's teardown inside the test that left it, so a crash there names that test
+    (CI sets PYTHONFAULTHANDLER)."""
+    yield
+    if "osmium" in sys.modules and _opens_osm_files(getattr(request.module, "__file__", None)):
+        gc.collect()
 
 
 @pytest.fixture

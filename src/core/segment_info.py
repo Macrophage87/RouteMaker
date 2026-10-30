@@ -82,7 +82,8 @@ OSM = "OpenStreetMap"
 CLASSIFIER = "RouteMaker classifier"
 OWNER = "Owner override"
 # Montgomery County's LTS 5 roads (fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json,
-# OWNER-DECISIONS 181; docs/SOURCES.md) are loaded as adjustments but are the county's
+# OWNER-DECISIONS 181; docs/SOURCES.md; all retired since 2026-10-29, but a database may still
+# hold them until the file is loaded again) were loaded as adjustments but are the county's
 # data, not an owner's rating: their ids all start with this (`agency_lts.ADJUSTMENT_SOURCES`),
 # and the panel names the county as the agency ratings do.
 COUNTY_ADJUSTMENT_PREFIX = "moco-lts5-"
@@ -722,6 +723,12 @@ _USED_WORDS = {
     agency_lts.PAINTED_LANE_USED: "set to LTS 2.5: the agency's rating predates the painted "
     "lane mapped here, but a lane on a road it rated this busy may still be stressful",
 }
+# The formula's tier where a ban was the way's only rating: a ban sets no level
+# (`agency_lts.chosen`).
+BAN_USED_WORDS = (
+    "RouteMaker's formula is used: MDOT SHA's 5 says bicycles are prohibited, which is about "
+    "access, not a stress level"
+)
 
 
 def _level_text(level: object) -> str:
@@ -785,7 +792,13 @@ def rating_rows(row: dict) -> list[dict]:
             agency_lts.FORMULA_USED: CLASSIFIER,
             agency_lts.PAINTED_LANE_USED: CLASSIFIER,
         }.get(used, OWNER)
-        rows.append(_row("Used", _USED_WORDS[used][:1].upper() + _USED_WORDS[used][1:], whose))
+        words = _USED_WORDS[used]
+        if used == agency_lts.FORMULA_USED and all(
+            agency_lts.PROHIBITING_LEVELS.get(r.get("agency")) == float(r["level"])
+            for r in held["agencies"]
+        ):
+            words = BAN_USED_WORDS
+        rows.append(_row("Used", words[:1].upper() + words[1:], whose))
     return rows
 
 
