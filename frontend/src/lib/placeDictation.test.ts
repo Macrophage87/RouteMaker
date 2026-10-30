@@ -179,3 +179,35 @@ test("in the phone app, the app's speech input is used and its words picked from
   await new Promise((r) => setTimeout(r, 0));
   assert.deepEqual(log.pick, [2]);
 });
+
+test("a spelling-alphabet word past the last row may still be a place's name; a hesitation is no row", () => {
+  assert.equal(spokenRow("Hotel", ["Union Market", "Union Station", "Hotel Harrington"]), 2);
+  assert.equal(spokenRow("eh", ROWS), null);
+});
+
+test("words searched have runs of space made one, as the search sends them", () => {
+  const { d, log } = harness();
+  d.start([]);
+  FakeRecognition.last!.heard(" Union  Market ");
+  FakeRecognition.last!.stop();
+  assert.deepEqual(log.search, ["Union Market"]);
+});
+
+test("listening for a letter refused (no tap, Safari) leaves the say-or-tap line, not 'no letter was heard'", () => {
+  const { d, log } = harness();
+  d.start(ROWS);
+  FakeRecognition.last!.fail("not-allowed");
+  assert.deepEqual(log.note.filter(Boolean), []);
+});
+
+test("the phone app's own failure code gives the place's sentence", async () => {
+  const app = {
+    isPluginAvailable: () => true,
+    nativePromise: () => Promise.reject({ code: "no-speech" }),
+  } as unknown as CapacitorBridge;
+  const notes: string[] = [];
+  const d = placeDictation({ listening: () => {}, text: () => {}, search: () => {}, pick: () => {}, note: (s) => notes.push(s) }, 200, {}, app);
+  d.start([]);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(notes.filter(Boolean), [PLACE_NOTHING_HEARD]);
+});

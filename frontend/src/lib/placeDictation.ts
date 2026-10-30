@@ -58,7 +58,7 @@ const PHONETIC: Record<string, string> = {
 
 /** How a recogniser writes a letter said on its own, in English and in Spanish (the app's second language). */
 const LETTER_NAMES: Record<string, string> = {
-  ay: "a", eh: "a", bee: "b", be: "b", see: "c", sea: "c", cee: "c", ce: "c", dee: "d", de: "d", ee: "e", ef: "f",
+  ay: "a", bee: "b", be: "b", see: "c", sea: "c", cee: "c", ce: "c", dee: "d", de: "d", ee: "e", ef: "f",
   eff: "f", efe: "f", gee: "g", ge: "g", aitch: "h", haitch: "h", hache: "h", eye: "i", jay: "j", jota: "j", kay: "k",
   ka: "k", el: "l", ell: "l", ele: "l", em: "m", eme: "m", en: "n", ene: "n", oh: "o", pee: "p", pe: "p", queue: "q",
   cue: "q", cu: "q", are: "r", ar: "r", erre: "r", ess: "s", es: "s", ese: "s", tee: "t", tea: "t", te: "t", you: "u",
@@ -91,10 +91,9 @@ export function spokenRow(words: string, names: readonly string[]): number | nul
     .filter((w) => !AROUND.has(w))
     .join(" ");
   const letter = core.length === 1 && /[a-z]/.test(core) ? core : (PHONETIC[core] ?? LETTER_NAMES[core]);
-  if (letter) {
-    const i = letter.charCodeAt(0) - 97;
-    return i < names.length ? i : null;
-  }
+  // A letter past the last row is no row; its word may still be a place's name ("Hotel").
+  if (letter && letter.charCodeAt(0) - 97 < names.length) return letter.charCodeAt(0) - 97;
+  if (letter && core.length === 1) return null;
   const plainNames = names.map(plain);
   const whole = plainNames.indexOf(said);
   if (whole >= 0) return whole;
@@ -143,18 +142,21 @@ export function placeDictation(hooks: PlaceDictationHooks, max: number, env?: Sp
   };
   return {
     start(rows) {
-      live?.abort();
       const mine = ++session;
+      live?.abort();
       const mode = rows.length > 0 ? "row" : "place";
       let words = "";
       const onEnd = (failed: string | null, code?: string) => {
         if (mine !== session) return;
         end();
         if (failed) {
-          hooks.note(mode === "row" ? t(ROW_MISSED) : failedSentence(code));
+          // Listening for the letter without a tap may be refused (Safari): the line then says to say or tap one.
+          const refused = code === "not-allowed" || code === "service-not-allowed";
+          hooks.note(mode === "row" ? (refused ? "" : t(ROW_MISSED)) : failedSentence(code));
           return;
         }
-        const heard = words.trim();
+        // As a search sends it: runs of space one space, so the lettered list matches the words searched.
+        const heard = words.trim().replace(/\s+/g, " ");
         if (!heard) return;
         const row = mode === "row" ? spokenRow(heard, rows) : null;
         if (row !== null) hooks.pick(row);
