@@ -631,7 +631,7 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.equal(CONSENT_SHORT, "Only while the app is open. No name; gone in 2 min.");
   assert.match(ask, /<span aria-hidden="true">\{t\(CONSENT_SHORT\)\}<\/span>\s*<span id=\{`\$\{id\}-note`\} className="visually-hidden">\s*\{t\(note\)\}/);
   // The count and Send alert while riding only, by default.
-  assert.match(group, /controls = riding, leads = true, askHeld = false, home = null, join = null \}: RideGroupProps\)/);
+  assert.match(group, /controls = riding, leads = true, askHeld = false, home = null, join = null, onDots = null \}: RideGroupProps\)/);
   // One screen, not two (Stephen 2026-10-30): the question waits while a follower's join sheet reads its connections,
   // then asks with the sheet's route and buttons; the sheet closes with the answer.
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
