@@ -81,7 +81,14 @@ export function useSeeEveryone({ getMap, dots, rider, active, follow, onUnfollow
       const { width, height } = map.getContainer().getBoundingClientRect();
       if (dotsOffScreen([me], (at) => map.project(at), openBox(width, height, openPadding(map)))) frame(false);
     }, RIDER_CHECK_MS);
-    return () => window.clearInterval(id);
+    // A turned phone or a panel that changed the map's size: framed again in the new shape.
+    const map = getMap();
+    const refit = () => frame(true);
+    map?.on("resize", refit);
+    return () => {
+      window.clearInterval(id);
+      map?.off("resize", refit);
+    };
   }, [on, getMap, rider, frame]);
   // Following again (Where am I?, the button, the idle recentre): the view ends (lib/seeEveryone.ts everyoneStep).
   useEffect(() => {

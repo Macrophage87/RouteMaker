@@ -12,7 +12,7 @@ test("the open map is the map less the ride's panels", () => {
 
 test("a point out of the open map is found (the view frames again once the rider leaves it)", () => {
   const open = openBox(400, 800, { top: 160, bottom: 120, left: 40, right: 90 });
-  // Every dot in the open part: nothing to offer.
+  // Every point in the open part: nothing out of view.
   assert.equal(dotsOffScreen([[1, 5], [3, 4]], toScreen, open), false);
   // One past the side buttons, one under the ride's card, one off the map: each is out of view.
   assert.equal(dotsOffScreen([[1, 5], [3.5, 5]], toScreen, open), true);
@@ -43,6 +43,8 @@ test("wired: the riders' dots reach App, the button sits on Ride's and Roam's si
   // Always there while another rider's dot is on the map (Stephen 2026-10-30: "Always, when sharing"), never without one.
   assert.match(read("../app/useSeeEveryone.ts"), /const any = active && dots\.length > 0;/);
   assert.match(read("../app/useSeeEveryone.ts"), /return \{ shown: any, on, toggle, stop \};/);
+  // While on, a change of the map's size frames everyone again.
+  assert.match(read("../app/useSeeEveryone.ts"), /map\?\.on\("resize", refit\);[\s\S]*map\?\.off\("resize", refit\);/);
   assert.match(read("../app/useSeeEveryone.ts"), /if \(follow\) dispatch\(\{ kind: "following" \}\);/);
   assert.match(read("../SeeEveryoneButton.tsx"), /if \(!everyone\?\.shown\) return null;/);
   const { readdirSync } = await import("node:fs");

@@ -16,7 +16,7 @@ export function SeeEveryoneButton({ everyone }: { everyone: SeeEveryone | null |
 function EveryoneButton({ everyone }: { everyone: SeeEveryone }) {
   const button = useRef<HTMLButtonElement>(null);
   const focused = useRef(false);
-  // Gone with the focus on it (every dot back in view): the focus goes to the rail's first button, Where am I?.
+  // Gone with the focus on it (the last other rider's dot gone): the focus goes to the rail's first button, Where am I?.
   useLayoutEffect(() => {
     const rail = button.current?.closest(".ride-rail") ?? null;
     return () => {
