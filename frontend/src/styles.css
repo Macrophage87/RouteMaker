@@ -7742,17 +7742,37 @@ details.fold > summary .icon {
 .ride-group > * {
   pointer-events: auto;
 }
+/* Never past the screen's foot (the v0.15.1 review: at 375x667 the larger alert panel ran 160 px off it): the group
+   ends 8 px above the bottom and the open panel scrolls within it. */
+.ride-group {
+  max-height: calc(100dvh - 112px - 8px);
+}
+.app.riding .ride-group {
+  max-height: calc(100dvh - var(--ride-card-bottom, 64px) - 16px);
+}
+.app.roaming .ride-group {
+  max-height: calc(100dvh - var(--roam-card-bottom, 64px) - 16px);
+}
+.ride-alert-panel,
+.ride-riders-panel,
+.ride-alert-banners {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .ride-group-bar {
+  flex: none;
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
-/* Send alert (Stephen 2026-10-27: "make the alert (call it send alert) a larger button"): a ride-sized press. */
+/* Send alert (Stephen 2026-10-27: "make the alert (call it send alert) a larger button", and 2026-10-30 "Make the
+   buttons larger as well"): a ride-sized press. */
 .ride-group-bar .ride-alert-button {
-  min-height: 56px;
-  padding: 0 20px;
-  font-size: 20px;
+  min-height: 64px;
+  padding: 0 22px;
+  font-size: 22px;
   font-weight: 700;
   border-width: 2px;
   /* Yellow (Stephen 2026-10-27: "Make the button yellow"), the same in both themes: near-black on it, 12:1. */
@@ -7797,6 +7817,10 @@ details.fold > summary .icon {
    line, then Yes and No side by side, alike and ride-sized (neither is the one the app would rather). */
 .ride-consent.ask-dialog {
   width: min(400px, calc(100vw - 32px));
+  /* Joining a ride puts the route's buttons above the question: on a short screen the dialog scrolls in itself, so
+     Yes and No stay reachable. */
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
 }
 .ride-consent-head {
   display: flex;
@@ -7806,6 +7830,22 @@ details.fold > summary .icon {
 }
 .ride-consent-head .ride-consent-question {
   margin: 0;
+  font-size: 1.15rem;
+  line-height: 1.3;
+}
+/* Joining a broadcast (RideGroup.tsx ConsentDialog with a join): the route's name and line, its buttons, then the question. */
+.ride-consent-title h2 {
+  margin: 0 0 4px;
+  font-size: 1.4rem;
+  line-height: 1.25;
+}
+.ride-consent .broadcast-join-actions {
+  margin-top: 12px;
+}
+.ride-consent-question.ride-consent-joined {
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
   font-size: 1.15rem;
   line-height: 1.3;
 }
@@ -7826,9 +7866,73 @@ details.fold > summary .icon {
   font-size: 18px;
   font-weight: 700;
 }
-/* Alert's choices, its confirm, and Other's Speak, Send and Cancel: ride-sized targets (Crash calls 911). */
+/* Alert's choices, its confirm, and Speak, Send and Cancel: ride-sized targets (Crash calls 911), larger again
+   (Stephen 2026-10-30: "Make the buttons larger as well"). */
 .ride-alert-panel button {
+  min-height: 56px;
+  font-size: 18px;
+  font-weight: 600;
+}
+/* The quick alerts two to a row, each filling its cell: the whole cell is the press, long names wrap. */
+.ride-alert-panel .ride-alert-kinds {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.ride-alert-kinds button {
+  width: 100%;
+  height: 100%;
+  padding: 8px 10px;
+  line-height: 1.25;
+}
+/* The quick alerts in Send alert's yellow, the same in both themes (near-black on it, 15:1), so they read apart from
+   Send (filled blue) and Cancel (outlined) above them (Stephen 2026-10-30: "Put a separation in either a line or
+   colors between send, cancel and the quick buttons"). */
+.ride-alert-panel .ride-alert-kinds button.secondary {
+  background: #fff3bf;
+  color: #1a1a1a;
+  border: 2px solid #8a6a00;
+}
+/* Speak heads the panel, the largest press in it: one press and the rider says the alert. */
+.ride-alert-panel .ride-speak {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 64px;
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 700;
+}
+/* Listening: the alert colours, the record-light look, so a glance shows the microphone is on. */
+.ride-alert-panel .ride-speak[aria-pressed="true"] {
+  background: var(--error-bg);
+  color: var(--error-text);
+  border: 2px solid var(--error-text);
+}
+/* The words, Send and Cancel, ruled off from the quick alerts so Cancel does not read as one of them. */
+.ride-alert-other {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--text);
+}
+.ride-alert-other label {
+  flex: 1 1 100%;
+}
+.ride-alert-other input {
+  display: block;
+  width: 100%;
   min-height: 48px;
+  margin-top: 4px;
+  font-size: 18px;
+  box-sizing: border-box;
+}
+.ride-alert-other button {
+  flex: 1 1 0;
 }
 /* The rider's role (in the one question, and beside "Show me as a dot") and the key of the roles on the ride. */
 .ride-role {
