@@ -353,8 +353,9 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /
   own colours, which reads `@protomaps/basemaps` from `node_modules` - so
   `npm ci` first. The TypeScript runs through Node's own type stripping, on by
   default from Node 22.18; `tests/test_frontend.py` runs the same files inside
-  pytest, skips on a machine without Node (WSL here) and fails in CI if the
-  Node there is older or missing.
+  pytest and skips on a machine without Node (WSL here); in CI it skips, and the
+  suite runs once, in the "Front end, as the beta builds it" step (the pinned
+  node image).
 - The junction markers (OWNER-DECISIONS 172; an orange triangle for higher stress and a red
   diamond for very high stress, the diamond an octagon until 311) are `lib/intersectionMarkers.ts`
   (what is listed, worded and drawn, tested without a DOM), `IntersectionList.tsx`

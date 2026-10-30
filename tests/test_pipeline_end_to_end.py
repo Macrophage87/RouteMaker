@@ -104,6 +104,7 @@ from rebuild_fixtures import (
 )
 
 from pipeline.borders import SyntheticNodeIds
+from pipeline.extract import close_writer
 from pipeline.rebuild import RebuildFailed, Stage, run_rebuild
 from pipeline.run import RebuildContext, build_handlers
 from pipeline.variants import Variant
@@ -3769,7 +3770,7 @@ def _write_ebike_bridge_extract(path: Path) -> None:
             )
         )
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 def test_the_ebike_bar_is_not_granted_back_by_the_crossings_fixture(
@@ -4337,7 +4338,7 @@ def build_one_road_extract(
                 osmium.osm.mutable.Way(id=way_id, nodes=way_nodes, version=1, tags=way_tags)
             )
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 @pytest.mark.parametrize(

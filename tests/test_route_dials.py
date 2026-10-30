@@ -35,7 +35,7 @@ from routemaker import climbs, hill_cost, ridetime
 pytestmark = pytest.mark.usefixtures("weekday_clock")
 
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 FACILITY_KEYS = {"path", "protected", "lane", "none", "unknown"}
 

@@ -16,7 +16,7 @@ from test_ratelimit import in_one_window
 from core import ratelimit
 from core.api import RouteIn
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 PATH = "/api/coverage"
 
