@@ -1196,6 +1196,13 @@ const isAlley = ["==", ["get", "alley"], true];
 export const ALLEY_MIN_ZOOM = 16;
 
 /**
+ * The routable layers' cut (stressFiltersOf): an alley only from ALLEY_MIN_ZOOM. Below it `byZoom` draws an alley at
+ * nought width and opacity anyway; filtered out, the tile worker does not lay it out in every layer at z14-15 for
+ * nothing (review fe-perf-5).
+ */
+const alleyDrawn = ["any", ["!", isAlley], [">=", ["zoom"], ALLEY_MIN_ZOOM]];
+
+/**
  * A line's `full` value (opacity or width) by zoom: an alley not drawn below
  * ALLEY_MIN_ZOOM and faint from it; a busy road faint, or not drawn, where the
  * rules above say; any other line as it is.
@@ -1707,7 +1714,7 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
   // tiles name as `name`; the cut is the routable layers' all the same).
   filters[TRAIL_LABEL_LAYER_ID] = ["all", drawnAt(when), ...hidden, ["has", "trail_name"]];
   for (const tier of TIER_SHAPES) {
-    const filter = ["all", drawnAt(when), ...hidden, ["==", tierAt(when), tier.tier]];
+    const filter = ["all", drawnAt(when), ...hidden, alleyDrawn, ["==", tierAt(when), tier.tier]];
     // LTS 1's line and edge leave the surface-unknown trails to their own layers.
     const own = tier.tier === 1 ? [...filter, ["!", surfaceUnknown]] : filter;
     filters[`stress-${tier.tier}`] = own;
@@ -1726,7 +1733,7 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
     }
   }
   for (const facility of FACILITIES) {
-    const filter = ["all", drawnAt(when), ...hidden, ["==", facilityAt(when), facility.facility]];
+    const filter = ["all", drawnAt(when), ...hidden, alleyDrawn, ["==", facilityAt(when), facility.facility]];
     // An unpaved trail is not given a path's rails (OWNER-DECISIONS 290: the
     // Lake Accotink singletrack read as "protected bike paths"): it draws as its
     // tier's line and the unpaved mark. A missing "unpaved" is an unknown

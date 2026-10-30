@@ -1,7 +1,10 @@
 # Vendored Valhalla Lua
 
 `graph_upstream.lua` is Valhalla's own `lua/graph.lua`, byte-identical to the
-tag at `VERSION`, fetched by `scripts/vendor_valhalla_lua.sh`.
+tag at `VERSION`, fetched by `scripts/vendor_valhalla_lua.sh`. Its sha256 is in
+`SHA256SUMS`, which the script writes and the test suite checks; re-vendoring the
+pinned version must reproduce it. The script also regenerates `supported_keys.txt`
+and the service configs.
 
 It is checked in rather than fetched at build time for two reasons. The tags a
 tile build produces become a function of this repository instead of whichever

@@ -11,6 +11,7 @@
  */
 import type { ProfileCalm, ProfileClimb, ProfileCrossing, ProfileRange, RouteProfile, RouteResponse, StressSpan } from "./api.ts";
 import { FEET_PER_METRE, METRES_PER_MILE, formatAxisDistance, formatClimb, formatDistance, formatGroupLength } from "./format.ts";
+import { formatClimbSpoken } from "./spokenFigures.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
 import {
@@ -837,7 +838,8 @@ export function readingAt(route: RouteResponse, profile: RouteProfile, metres: n
     parts.push(ridersWords(profile, riders, m, gradePct, need));
     text = `${mileWord(m)}: ${parts.join(", ")}.${crossingClause(profile, m)}`;
   } else {
-    if (elevationM !== null) parts.push(`elevation ${elevationWords(elevationM)}`);
+    // The units in words, as the slider's value is read (the a11y review's a11y-6).
+    if (elevationM !== null) parts.push(`elevation ${formatClimbSpoken(elevationM)}`);
     if (grade) parts.push(grade);
     parts.push(sectionWords(span) ?? "stress not rated");
     const calm = usableCalm(profile);
@@ -1902,11 +1904,11 @@ export const CORKER_METHOD = t("Each junction needing corkers takes one for each
 /** The requirement line's hold, as How these are worked out says it (the 2026-10-28 audit, P6: no longer in the chart's summary). */
 export const HOLD_PROPOSAL = t("The {minutes}-minute hold is a proposal, not yet confirmed.", { minutes: RIDE_HOLD_MINUTES });
 
-/** What the Elevation slider says at a position: "Mile 1.2: elevation 310 ft (94 m), grade 6%." */
+/** What the Elevation slider says at a position: "Mile 1.2: elevation 310 feet (94 meters), grade 6%." */
 export function elevationReading(profile: RouteProfile, metres: number): string {
   const index = nearestIndex(profile.m, metres);
   const e = profile.elevation_m[index];
-  const parts = [e === null || e === undefined ? "elevation not known" : `elevation ${elevationWords(e)}`];
+  const parts = [e === null || e === undefined ? "elevation not known" : `elevation ${formatClimbSpoken(e)}`];
   const grade = gradeWords(profile.grade_pct[index]);
   if (grade) parts.push(grade);
   return `${mileWord(profile.m[index])}: ${parts.join(", ")}.`;

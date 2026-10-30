@@ -16,6 +16,7 @@ and one carrying the whole length of every long route relation touching it.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -41,6 +42,9 @@ class FakeOsmium:
     argument with content derived from its inputs, so a test can assert that the
     clip was taken from the merged file rather than from one state's download.
 
+    The published MD5 of each extract is always written, `write=False` or not: it
+    is the extract's own transfer that those tests are about.
+
     `stderr` is what each command says while doing it, keyed by "curl", "merge"
     or "extract". The real runner captures that stream and hands it back on the
     `CommandOutput`, and what this stage does with it is the subject of the
@@ -59,11 +63,16 @@ class FakeOsmium:
     def __call__(self, command) -> CommandOutput:
         command = list(command)
         self.commands.append(command)
-        if not self.write:
+        if not self.write and not command[-1].endswith(".md5"):
             return self._output(command)
         output = Path(command[command.index("-o") + 1])
         output.parent.mkdir(parents=True, exist_ok=True)
-        if command[0] == "curl":
+        if command[0] == "curl" and command[-1].endswith(".md5"):
+            # What Geofabrik publishes: the MD5 of the file the next curl fetches.
+            name = source.download_name(command[-1]).removesuffix(".md5")
+            digest = hashlib.md5(f"osm:{name}".encode(), usedforsecurity=False).hexdigest()
+            output.write_text(f"{digest}  {name}\n")
+        elif command[0] == "curl":
             output.write_text(f"osm:{source.download_name(command[-1])}")
         else:
             inputs = [
@@ -77,6 +86,10 @@ class FakeOsmium:
 
     def named(self, *first_arguments: str) -> list[list[str]]:
         return [c for c in self.commands if tuple(c[: len(first_arguments)]) == first_arguments]
+
+    def downloads(self) -> list[list[str]]:
+        """The curl runs that fetch an extract, not its published MD5."""
+        return [c for c in self.named("curl") if not c[-1].endswith(".md5")]
 
 
 def age_file(path: Path, days: float) -> None:
@@ -254,7 +267,7 @@ def test_a_download_is_written_to_a_part_name_and_moved_into_place(tmp_path) -> 
     destination = tmp_path / "district-of-columbia-latest.osm.pbf"
 
     assert source.download(url, destination, run) == destination
-    assert run.commands == [
+    assert run.downloads() == [
         [
             "curl",
             "-fsSL",
@@ -296,6 +309,8 @@ def test_a_zero_byte_part_is_not_renamed_into_place(tmp_path) -> None:
     destination = tmp_path / "virginia-latest.osm.pbf"
 
     def touch_and_exit_zero(command) -> CommandOutput:
+        if command[-1].endswith(".md5"):
+            return FakeOsmium()(command)
         Path(command[command.index("-o") + 1]).write_bytes(b"")
         return CommandOutput("", "")
 
@@ -339,6 +354,59 @@ def test_a_part_file_left_by_a_killed_download_is_not_treated_as_a_download(
 
     assert destination.read_text() == "osm:maryland-latest.osm.pbf"
     assert not Path(f"{destination}.part").exists()
+
+
+def test_the_published_md5_is_fetched_before_the_extract(tmp_path) -> None:
+    run = FakeOsmium()
+    url = source.GEOFABRIK_EXTRACTS[0]
+    destination = tmp_path / "district-of-columbia-latest.osm.pbf"
+
+    source.download(url, destination, run)
+
+    assert [c[-1] for c in run.named("curl")] == [f"{url}.md5", url]
+    assert sorted(path.name for path in tmp_path.iterdir()) == [destination.name], (
+        "the checksum file is not left behind"
+    )
+
+
+def test_an_extract_that_does_not_match_its_published_md5_is_not_kept(tmp_path) -> None:
+    """A transfer cut short, or a new daily file between the two fetches: refused,
+    and retried, rather than read as a smaller region."""
+    destination = tmp_path / "virginia-latest.osm.pbf"
+    fake = FakeOsmium()
+
+    def altered(command) -> CommandOutput:
+        fake(command)
+        if not command[-1].endswith(".md5"):
+            Path(command[command.index("-o") + 1]).write_text("half of virginia")
+        return CommandOutput("", "")
+
+    with pytest.raises(source.SourceExtractFailed, match="not the published"):
+        source.download(source.GEOFABRIK_EXTRACTS[2], destination, altered)
+    assert not destination.exists()
+    assert not Path(f"{destination}.part").exists()
+
+
+def test_a_checksum_file_with_no_md5_in_it_is_a_failure(tmp_path) -> None:
+    destination = tmp_path / "virginia-latest.osm.pbf"
+
+    def html_for_the_checksum(command) -> CommandOutput:
+        output = Path(command[command.index("-o") + 1])
+        output.write_text("<html>moved</html>" if command[-1].endswith(".md5") else "osm")
+        return CommandOutput("", "")
+
+    with pytest.raises(source.SourceExtractFailed, match="did not give an MD5"):
+        source.download(source.GEOFABRIK_EXTRACTS[2], destination, html_for_the_checksum)
+    assert not destination.exists()
+
+
+def test_a_mirror_without_published_checksums_is_not_asked_for_one(tmp_path) -> None:
+    run = FakeOsmium()
+    url = "https://mirror.example/virginia-latest.osm.pbf"
+
+    source.download(url, tmp_path / "virginia-latest.osm.pbf", run)
+
+    assert [c[-1] for c in run.named("curl")] == [url]
 
 
 # --- What is merged and clipped ------------------------------------------------
@@ -642,8 +710,8 @@ def test_the_stage_produces_both_files_from_the_three_downloads(tmp_path) -> Non
     assert produced.merged == tmp_path / "extracts" / "merged.osm.pbf"
     assert produced.clipped == tmp_path / "extracts" / "source.osm.pbf"
     assert produced.merged.is_file() and produced.clipped.is_file()
-    assert len(run.named("curl")) == 4
-    assert [c[-1] for c in run.named("curl")] == list(source.GEOFABRIK_EXTRACTS)
+    assert len(run.downloads()) == 4
+    assert [c[-1] for c in run.downloads()] == list(source.GEOFABRIK_EXTRACTS)
     assert len(run.named("osmium", "merge")) == 1
     assert len(run.named("osmium", "extract")) == 1
 
@@ -678,7 +746,7 @@ def test_the_stage_rebuilds_a_stale_extract(tmp_path) -> None:
     again = source.ensure_extract(tmp_path, BBOX, run)
 
     assert again.refreshed
-    assert len(run.named("curl")) == 8, "the four regions again"
+    assert len(run.downloads()) == 8, "the four regions again"
 
 
 def test_the_stage_rebuilds_when_a_refresh_is_forced(tmp_path) -> None:
@@ -689,7 +757,7 @@ def test_the_stage_rebuilds_when_a_refresh_is_forced(tmp_path) -> None:
 
     again = source.ensure_extract(tmp_path, BBOX, run, force=True)
 
-    assert again.refreshed and len(run.named("curl")) == 8
+    assert again.refreshed and len(run.downloads()) == 8
 
 
 def test_the_stage_clips_to_the_region_it_is_given(tmp_path) -> None:

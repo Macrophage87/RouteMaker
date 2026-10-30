@@ -30,6 +30,7 @@ import os
 import re
 import sys
 import time
+import urllib.error
 import urllib.request
 import zipfile
 from datetime import UTC, datetime
@@ -42,16 +43,22 @@ REQUIRED = {"stops.txt", "trips.txt", "stop_times.txt", "routes.txt"}
 
 
 def fetch(url: str, headers: dict[str, str]) -> bytes:
-    last: Exception | None = None
+    last = "no answer"
     for attempt in range(RETRIES):
         try:
             request = urllib.request.Request(url, headers={**headers, "User-Agent": USER_AGENT})
             with urllib.request.urlopen(request, timeout=300) as response:  # noqa: S310 - fixed https URLs
                 return response.read()
+        except urllib.error.HTTPError as error:
+            # The status only: it tells a rejected key (401, 403) from an outage (5xx).
+            last = f"HTTP {error.code}"
+            if 400 <= error.code < 500 and error.code != 429:
+                break  # asking again gets the same refusal
         except Exception as error:  # noqa: BLE001 - retried, then raised
-            last = error
+            last = type(error).__name__  # the error text could echo a header
+        if attempt + 1 < RETRIES:
             time.sleep(5 * (attempt + 1))
-    raise RuntimeError(f"{url}: {type(last).__name__}")  # the error text could echo a header
+    raise RuntimeError(f"{url}: {last}")
 
 
 def main(argv: list[str] | None = None) -> int:

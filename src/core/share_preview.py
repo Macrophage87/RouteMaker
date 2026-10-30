@@ -55,6 +55,14 @@ preview_basemap.MAX_TILES tiles, its points less than a pixel apart dropped. A t
 (410) or an expired one (404) has no preview. The image is served with an hour's public cache,
 so a link turned off can show its old image in a chat app for up to an hour; the page with the
 tags is never cached.
+
+The picture is drawn when the link is made (the owner, 2026-10-29, "let's do that"): making or
+remaking a link queues `draw_later`, which the worker runs (config.procrastinate.
+draw_share_preview), so a chat app's fetch finds it kept. The page of tags never draws: it names
+the image whenever one is kept or not yet tried. A fetch of an image not drawn yet (the worker
+behind, or a base map that changed) draws it there, one draw at a time in the whole deployment
+and never two of one route at once (`_draw_for_fetch`); a fetch that finds a draw running is told
+to try again shortly (503) rather than wait.
 """
 
 from __future__ import annotations
@@ -62,6 +70,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import math
 import re
 import struct
@@ -76,6 +85,8 @@ from django.utils.cache import patch_vary_headers
 from django.views.decorators.http import require_safe
 
 from . import preview_basemap, ratelimit, shared_routes
+
+logger = logging.getLogger(__name__)
 
 METRES_PER_MILE = 1609.344
 FEET_PER_METRE = 3.28084
@@ -673,23 +684,103 @@ def zone_radius_px(zone, scale: float) -> float:
 # ---- The row's preview ----
 
 
+def kept_png(row, zone) -> tuple[bool, bytes | None]:
+    """(known, image) without drawing: whether the row's image for `zone` is settled (kept, kept
+    as none, or none asked for), and the image when there is one."""
+    if not row.preview_image:
+        return True, None
+    if row.preview_key == image_key(row, zone) and row.preview_png is not None:
+        return True, bytes(row.preview_png) or None
+    return False, None
+
+
 def preview_png(row, zone) -> bytes | None:
     """The row's preview image for Home's circle `zone` (row_zone), drawn once and kept on the
     row; None when it has none (the sharer's Home unknown at an end, too little left to draw, or
     too long a stroke), which is kept too (an empty image), so it is not drawn again."""
     from .models import SharedRoute
 
-    if not row.preview_image:
-        return None
+    known, png = kept_png(row, zone)
+    if known:
+        return png
     key = image_key(row, zone)
-    if row.preview_key == key and row.preview_png is not None:
-        return bytes(row.preview_png) or None
     drawn = drawn_route(row.line, route_points(row), zone)
     png = render_png(drawn, stats_line(row)) if drawn is not None else None
     SharedRoute.objects.filter(pk=row.pk, revoked_at__isnull=True).update(
         preview_png=png or b"", preview_key=key
     )
     return png
+
+
+# ---- Drawn when the link is made ----
+
+# The first key of the drawing's advisory locks (core.ratelimit's are 0x524D....): a fetch's
+# draw holds (_DRAW_LOCK, 0), so one runs at a time in the deployment, and every draw holds
+# (_DRAW_LOCK + 1, the route's), so one route is never drawn twice at once. Both are held for
+# a transaction, so they end with it however the draw ends.
+_DRAW_LOCK = 0x53500000
+# How long a fetch that found a draw running is told to wait.
+DRAW_BUSY_RETRY_S = 5
+
+
+def _route_lock(route_id: str) -> tuple[int, int]:
+    value = int(route_id[:8], 16)
+    return _DRAW_LOCK + 1, value - (1 << 32) if value >= 1 << 31 else value
+
+
+def draw_later(row) -> None:
+    """Queue the worker's draw of a link just made, once its row is saved. A link that asks for
+    no image queues nothing; a queue that cannot be reached leaves the draw to the first fetch."""
+    if not row.preview_image:
+        return
+    from django.db import transaction
+
+    route_id = row.pk
+
+    def defer() -> None:
+        from config.procrastinate import draw_share_preview
+
+        try:
+            draw_share_preview.defer(route_id=route_id)
+        except Exception:  # noqa: BLE001 - the link is made; its first fetch draws instead
+            logger.warning("could not queue a link preview's drawing", exc_info=True)
+
+    transaction.on_commit(defer)
+
+
+def draw_now(route_id: str) -> None:
+    """The worker's draw of one link's image (config.procrastinate.draw_share_preview): kept on
+    the row, and nothing when the link is gone or its image already settled. Waits for a fetch
+    drawing the same route, then finds its image kept."""
+    from django.db import connection, transaction
+
+    if not shared_routes.id_ok(route_id):
+        return
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", list(_route_lock(route_id)))
+        row, _status = _live_row(route_id)
+        if row is not None:
+            preview_png(row, row_zone(row))
+
+
+_BUSY = object()
+
+
+def _draw_for_fetch(route_id: str):
+    """A fetch's draw of an image not kept yet: the image, None for none, or _BUSY when another
+    draw is running (any route's from a fetch, or this route's from the worker)."""
+    from django.db import connection, transaction
+
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            for pair in ((_DRAW_LOCK, 0), _route_lock(route_id)):
+                cursor.execute("SELECT pg_try_advisory_xact_lock(%s, %s)", list(pair))
+                if not cursor.fetchone()[0]:
+                    return _BUSY
+        # Read again under the locks: the worker may have kept it meanwhile.
+        row, _status = _live_row(route_id)
+        return preview_png(row, row_zone(row)) if row is not None else None
 
 
 # ---- Views ----
@@ -755,7 +846,9 @@ def share_page(request, route_id: str):
         ("og:url", page_url),
     ]
     zone = row_zone(row)
-    image = preview_png(row, zone) is not None
+    # Named without drawing: kept, or not tried yet (the fetch of the image draws it then).
+    known, png = kept_png(row, zone)
+    image = png is not None if known else True
     if image:
         image_url = request.build_absolute_uri(
             f"/s/{row.pk}/preview.png?v={image_key(row, zone)[:16]}"
@@ -858,9 +951,19 @@ def _varied(response: HttpResponse) -> HttpResponse:
 @require_safe
 @ratelimit.rate_limited(ratelimit.SHARE_PREVIEWS)
 def share_image(request, route_id: str):
-    """GET /s/<id>/preview.png: the preview image, or 404 / 410 with none."""
+    """GET /s/<id>/preview.png: the preview image, or 404 / 410 with none, or 503 while another
+    draw runs."""
     row, status = _live_row(route_id)
-    png = preview_png(row, row_zone(row)) if row is not None else None
+    png = None
+    if row is not None:
+        known, png = kept_png(row, row_zone(row))
+        if not known:
+            png = _draw_for_fetch(row.pk)
+            if png is _BUSY:
+                response = HttpResponse(status=503)
+                response["Retry-After"] = str(DRAW_BUSY_RETRY_S)
+                response["Cache-Control"] = "no-store"
+                return response
     if png is None:
         response = HttpResponse(status=410 if status == 410 else 404)
         response["Cache-Control"] = "no-store"

@@ -7,12 +7,20 @@ deletion and sign-out-everywhere all leave the person signed in.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from django.contrib.auth import logout
 from django.utils import timezone
 
 from . import routing
-from .auth_backend import attach_standing, session_is_current
+from .auth_backend import defer_standing, session_is_current
 from .models import Session
+
+# How stale `last_seen_at` may get before a request writes it again. Against a
+# 30-day idle lifetime (`revocation.IDLE_SESSION_LIFETIME`) a few minutes change
+# nothing, and without it every signed-in request - each map tile among them -
+# paid an UPDATE for a clock that had not moved in any way that mattered.
+LAST_SEEN_REFRESH = timedelta(minutes=5)
 
 
 class RequestClockMiddleware:
@@ -35,7 +43,7 @@ class RequestClockMiddleware:
 
 
 class SessionEpochMiddleware:
-    """Rejects a session issued under a stale epoch, and refreshes its clock."""
+    """Rejects a session issued under a stale epoch, and keeps its idle clock fresh."""
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -54,14 +62,17 @@ class SessionEpochMiddleware:
                     row.delete()
                 logout(request)
             else:
-                # An UPDATE against the primary key rather than `save()`.
-                # `save(update_fields=...)` on a row that has gone since it was
-                # read - swept, or revoked by another request between the SELECT
-                # above and here - raises `DatabaseError("Save with update_fields
-                # did not affect any rows")`, which is a 500 on an ordinary
-                # request for a clock refresh that does not matter. An UPDATE
-                # matching nothing is simply a no-op, which is the right
-                # behaviour when the session it would have touched is gone.
-                Session.objects.filter(pk=row.pk).update(last_seen_at=timezone.now())
-                attach_standing(user)
+                now = timezone.now()
+                if now - row.last_seen_at >= LAST_SEEN_REFRESH:
+                    # An UPDATE against the primary key rather than `save()`.
+                    # `save(update_fields=...)` on a row that has gone since it was
+                    # read - swept, or revoked by another request between the SELECT
+                    # above and here - raises `DatabaseError("Save with update_fields
+                    # did not affect any rows")`, which is a 500 on an ordinary
+                    # request for a clock refresh that does not matter. An UPDATE
+                    # matching nothing is simply a no-op, which is the right
+                    # behaviour when the session it would have touched is gone.
+                    Session.objects.filter(pk=row.pk).update(last_seen_at=now)
+                # Resolved on first read, not here: most requests never ask.
+                defer_standing(user)
         return self.get_response(request)

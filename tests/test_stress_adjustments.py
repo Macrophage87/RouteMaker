@@ -275,6 +275,13 @@ class TestTheOwnersFile:
         (row,) = [r for r in owner_rows() if r["osm_way_id"] == 15561007]
         assert row["value"]["category"] == "speed"
 
+    def test_us_340_is_lts_4_5(self) -> None:
+        """The owner, 2026-10-29, of this rural row: "Make it 4.5"."""
+        (row,) = [r for r in owner_rows() if r["osm_way_id"] == 15561007]
+        assert row["value"]["tier"] == 4
+        assert row["value"]["half"] is True
+        assert "Make it 4.5" in row["reason"]
+
     def test_pennsylvania_avenue_after_the_merge_is_a_sightline(self) -> None:
         penn = [r for r in owner_rows() if r["osm_way_id"] in PENN_AFTER_THE_MERGE]
         assert {r["osm_way_id"] for r in penn} == PENN_AFTER_THE_MERGE

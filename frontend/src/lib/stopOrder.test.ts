@@ -207,6 +207,22 @@ test("the request is the route request's body, without the weight", async () => 
   assert.equal(sent[0].body.stress, dials.stress, "the dials are");
 });
 
+test("the rider's speed and closure choices go with the request, as the plan's (the owner, 2026-10-29)", async () => {
+  let body: Record<string, unknown> = {};
+  const fetchImpl = async (_url: string, init: RequestInit) => {
+    body = JSON.parse(String(init.body));
+    return new Response(JSON.stringify(answer({ order: [0, 1, 2, 3] })), { status: 200 });
+  };
+  await requestStopOrder([S, A, B, E], "default", { ...dials, ridingSpeedKmh: 24, closureBypass: ["c1"], closuresNow: true }, fetchImpl);
+  assert.equal(body.cycling_speed_kmh, 24, "the riding speed");
+  assert.deepEqual(body.closure_bypass, ["c1"], "the closures routed through");
+  assert.equal(body.closures_now, true, "Go's closures in force");
+  await requestStopOrder([S, A, B, E], "default", dials, fetchImpl);
+  assert.equal(body.cycling_speed_kmh, undefined, "no speed set, none sent");
+  assert.equal(body.closure_bypass, undefined);
+  assert.equal(body.closures_now, undefined);
+});
+
 test("a refusal or a lost connection is a sentence to say", async () => {
   const busy = await requestStopOrder([S, A, B, E], "default", dials, async () =>
     new Response(JSON.stringify({ error: "busy" }), { status: 503, headers: { "Retry-After": "5" } }),

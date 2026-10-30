@@ -33,8 +33,9 @@ how long the climb takes at that power:
 - **Time, always.** Over each of the effort model's rising windows (at least 300 m, so a short
   kick averages out as a sprint would) the rider climbs at up to the endurance pace, never
   faster than their flat speed and never slower than V_MIN_MS; at the rider's own weight that
-  power is slower or faster, down to walking pace in low gears. The extra seconds over the flat
-  cost the same as that many seconds of flat riding.
+  power is slower or faster, down to walking pace in low gears, and never faster up a steeper
+  grade than a gentler one. The extra seconds over the flat cost the same as that many seconds
+  of flat riding.
 - **Steepness, past the endurance pace.** Where holding V_MIN_MS takes more, the penalty is
   the window's seconds times (e^(d / FTP_EFOLD) - 1) / (e^((1 - ENDURANCE) / FTP_EFOLD) - 1),
   with d the power needed past the endurance pace as a share of FTP: small just past 65%,
@@ -61,6 +62,7 @@ Racing with a Power Meter").
 from __future__ import annotations
 
 import math
+import threading
 from collections.abc import Sequence
 from functools import lru_cache
 
@@ -170,6 +172,38 @@ def _climb_ms(grade: float, flat_ms: float, lt1_grade: float) -> float:
     return min(flat_ms, max(_speed_ms(round(grade, 4), effort.MASS_KG, round(pace, 1)), V_MIN_MS))
 
 
+# The step of grade a rider other than the standard one is timed at (`_ride_ms`): 0.1%.
+GRADE_STEP = 0.001
+_ride_lock = threading.Lock()
+
+
+def _own_speed_ms(grade: float, mass: float, flat_ms: float, lt1_grade: float) -> float:
+    """A rider of `mass` up `grade`, at the power the standard rider puts out there, no
+    faster than the flat speed and no slower than pushing."""
+    climb_ms = _climb_ms(grade, flat_ms, lt1_grade)
+    need = power_needed_w(grade, effort.MASS_KG, climb_ms)
+    return min(flat_ms, max(_speed_ms(round(grade, 4), mass, round(need, 1)), push_ms(grade)))
+
+
+@lru_cache(maxsize=256)
+def _ride_floor(mass: float, flat_ms: float, lt1_grade: float) -> list[float]:
+    """`_ride_ms`'s speeds for one rider, by GRADE_STEP, filled as far as asked."""
+    return []
+
+
+def _ride_ms(steps: int, mass: float, flat_ms: float, lt1_grade: float) -> float:
+    """A rider of `mass` up `steps` GRADE_STEPs of grade: the slowest of `_own_speed_ms` at
+    this grade and every step below it. Where the standard rider is held at V_MIN_MS, the power
+    it puts out rises with the grade, and a lighter rider at that power would climb a steeper
+    grade faster (a heavier one, near the hold, too); a steeper climb never costs less."""
+    floor = _ride_floor(mass, flat_ms, lt1_grade)
+    with _ride_lock:
+        while len(floor) <= steps:
+            own = _own_speed_ms(len(floor) * GRADE_STEP, mass, flat_ms, lt1_grade)
+            floor.append(min(own, floor[-1]) if floor else own)
+        return floor[steps]
+
+
 def window_cost_s(
     run_m: float,
     grade: float,
@@ -204,11 +238,12 @@ def window_cost_s(
     past = (need / (1.0 + W_PRIME_S / lasting_s) - pace) / ftp
     # (A hair over 0 is the speed's bisection, not an overload.)
     penalty_s = run_m / climb_ms * steepness_rate(past) if past > 1e-6 else 0.0
-    # The rider's own speed at that power, at their weight.
+    # The rider's own speed at that power, at their weight, never faster up this grade than
+    # up a gentler one (`_ride_ms`).
     mass = effort.clamp_mass_kg(mass_kg)
     ride_ms = climb_ms
     if mass != std:
-        ride_ms = min(flat_ms, max(_speed_ms(round(grade, 4), mass, round(need, 1)), push))
+        ride_ms = _ride_ms(math.floor(round(grade / GRADE_STEP, 6)), mass, flat_ms, lt1_grade)
     extra_s = run_m / ride_ms - run_m / flat_ms
     push_s = run_m / push
     if push_s - run_m / flat_ms + push_s * WALK_PENALTY < extra_s + penalty_s:

@@ -116,6 +116,7 @@ from .tags import (
     open_to_buses,
     parse_maxspeed_mph,
     parse_width_m,
+    posted_maxspeed,
     shoulder_width_m,
 )
 
@@ -752,28 +753,40 @@ BUFFER_KEYS = (
 
 
 # A painted lane on a two-way street with this many through lanes each way or
-# more is LTS 3 at least (review RL-3; the owner, 2026-10-16). The words are the
-# mixed-traffic floor's, which `core.segment_info` already says in plain words.
+# more is LTS 3 at least (review RL-3; the owner, 2026-10-16), and so is one on a
+# one-way street wider than URBAN_ONEWAY_MAX_LANES, which keeps the same floor in
+# mixed traffic (review 2026-10-29). The words are the mixed-traffic floor's,
+# which `core.segment_info` already says in plain words.
 PAINTED_LANE_FLOOR_LANES = 2
 PAINTED_LANE_FLOOR = "two-way floor"
+PAINTED_LANE_ONEWAY_FLOOR = "wide one-way floor"
 
 
-def painted_lane_two_way_multilane(
+def multilane_floor(oneway: bool, lanes: int) -> str | None:
+    """The RL-3 floor's words for a street with a painted lane (or a credited
+    shoulder) and `lanes` through lanes a direction, or None where it has none.
+    `oneway` is false on a carriageway of a divided road."""
+    if oneway:
+        return PAINTED_LANE_ONEWAY_FLOOR if lanes > URBAN_ONEWAY_MAX_LANES else None
+    return PAINTED_LANE_FLOOR if lanes >= PAINTED_LANE_FLOOR_LANES else None
+
+
+def painted_lane_multilane(
     tags: dict[str, str], divided: bool = False, lanes: int | None = None
 ) -> bool:
     """Whether a way is a painted lane on a two-way street with
-    `PAINTED_LANE_FLOOR_LANES` or more through lanes each way, the roads the RL-3
-    floor holds at LTS 3. A carriageway of a divided road is two-way. `lanes` is
-    the count the classifier read, where it has one; an untagged count is one
-    lane, which never qualifies."""
+    `PAINTED_LANE_FLOOR_LANES` or more through lanes each way, or on a one-way
+    street with more than URBAN_ONEWAY_MAX_LANES: the roads the RL-3 floor holds
+    at LTS 3. A carriageway of a divided road is two-way. `lanes` is the count
+    the classifier read, where it has one; an untagged count is one lane, which
+    never qualifies."""
     if tags.get("highway", "") in TRAIL_CLASS or tags.get("highway") in MOTOR_ONLY:
         return False
-    if not is_oneway(tags) or divided:
-        values = cycleway_values(tags)
-        if values & PAINTED_CYCLEWAY and not values & SEPARATED_CYCLEWAY:
-            if lanes is None:
-                lanes = lanes_per_direction(tags) or DEFAULT_LANES_PER_DIRECTION
-            return lanes >= PAINTED_LANE_FLOOR_LANES
+    values = cycleway_values(tags)
+    if values & PAINTED_CYCLEWAY and not values & SEPARATED_CYCLEWAY:
+        if lanes is None:
+            lanes = lanes_per_direction(tags) or DEFAULT_LANES_PER_DIRECTION
+        return multilane_floor(is_oneway(tags) and not divided, lanes) is not None
     return False
 
 
@@ -948,7 +961,7 @@ def _fast_expressway_mph(tags: dict[str, str]) -> float | None:
     Posted speed only: never assumed."""
     if tags.get("highway") not in AVOID_HIGHWAY or tags.get("expressway") != "yes":
         return None
-    posted = parse_maxspeed_mph(tags.get("maxspeed"))
+    posted = parse_maxspeed_mph(posted_maxspeed(tags))
     if posted is None or posted < AVOID_MIN_POSTED_MPH:
         return None
     return posted
@@ -1098,8 +1111,9 @@ def _classify(
     if highway in MOTOR_ONLY:
         return StressResult(Stress.LTS4, f"motor-only classification ({highway})")
 
-    speed_mph = parse_maxspeed_mph(tags.get("maxspeed"))
-    if speed_mph is not None and maxspeed_is_unitless(tags.get("maxspeed")):
+    posted = posted_maxspeed(tags)
+    speed_mph = parse_maxspeed_mph(posted)
+    if speed_mph is not None and maxspeed_is_unitless(posted):
         # The number was surveyed; the unit was not. Read as mph, which is the
         # higher-stress reading and the only one that exists on a US sign.
         assumed.append("maxspeed unit")
@@ -1204,13 +1218,18 @@ def _classify(
         if width is not None and parking is True and parking_width_m:
             table_width = width + parking_width_m
         tier, rule = _bike_lane_tier(speed_mph, scored_lanes, table_width, parking)
-        if painted_lane_two_way_multilane(tags, divided, lanes) and tier < Stress.LTS3:
+        floor = (
+            multilane_floor(oneway, lanes) if painted_lane_multilane(tags, divided, lanes) else None
+        )
+        if floor is not None and tier < Stress.LTS3:
             # The owner, 2026-10-16 (review RL-3): a painted lane beside two or
             # more through lanes each way on a two-way street stays LTS 3; the
             # urban single-lane row above is mixed traffic's relief, not the
-            # lane's. Where DDOT or Montgomery rate the road, theirs wins
-            # (`agency_lts`), and the rebuild lists both for the owner.
-            tier, rule = Stress.LTS3, rule + f", {PAINTED_LANE_FLOOR}"
+            # lane's. A one-way of three lanes or more likewise, as it keeps
+            # the floor in mixed traffic (review 2026-10-29). Where DDOT or
+            # Montgomery rate the road, theirs wins (`agency_lts`), and the
+            # rebuild lists both for the owner.
+            tier, rule = Stress.LTS3, rule + f", {floor}"
         if (
             FURTH_LANE_NO_CREDIT_MPH <= speed_mph <= DECENT_LANE_MAX_MPH
             and lanes < DECENT_LANE_MAX_LANES
@@ -1318,11 +1337,26 @@ def _classify(
                     shoulder_parking,
                     facility="paved shoulder",
                 )
-                if not oneway and lanes >= PAINTED_LANE_FLOOR_LANES and shoulder_tier < Stress.LTS3:
+                if (
+                    FURTH_LANE_NO_CREDIT_MPH <= speed_mph <= DECENT_LANE_MAX_MPH
+                    and lanes < DECENT_LANE_MAX_LANES
+                    and shoulder_width >= DECENT_LANE_MIN_M
+                ):
+                    # The decent lane's credit at 40 mph, so a shoulder never
+                    # rates a road below the same road with a lane of its width
+                    # (the hierarchy above). The owner, 2026-10-29: "a large
+                    # shoulder at 40 mph is actually not that unpleasant to ride
+                    # on", and chose "LTS 3, same as a lane".
+                    shoulder_tier = Stress.LTS3
+                    shoulder_rule = (
+                        f"paved shoulder, decent, {speed_mph:g} mph: a tier below mixed traffic"
+                    )
+                floor = multilane_floor(oneway, lanes)
+                if floor is not None and shoulder_tier < Stress.LTS3:
                     # The painted lane's RL-3 floor, so a shoulder never rates a
                     # road below the same road with a lane (the hierarchy above).
                     shoulder_tier = Stress.LTS3
-                    shoulder_rule = shoulder_rule + f", {PAINTED_LANE_FLOOR}"
+                    shoulder_rule = shoulder_rule + f", {floor}"
                 shoulder_table_tier = shoulder_tier
                 if shoulder_tier < tier:
                     tier, rule = shoulder_tier, shoulder_rule

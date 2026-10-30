@@ -253,7 +253,8 @@ test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a r
   // The chip is left out only while the count is on Broadcast: a Group Ride not broadcasting keeps its chip, so its
   // riders panel (who is where, Show me as a dot) can still be opened.
   assert.match(app, /onRiders=\{setRideRiders\}\s*ridersElsewhere=\{riding && rideCanBroadcast && rideBroadcast !== null\}\s*ridersAsk=\{ridersAsk\}/);
-  assert.match(fromRide, /const followed = followedLink\(\);\s*if \(followed\) return \(await passOn\(followed, broadcastNav\)\)\.said;/);
+  assert.match(fromRide, /const followed = followedInRide\(\);\s*if \(followed\) return \(await passOn\(followed, broadcastNav\)\)\.said;/);
+  assert.match(app, /const followedInRide = \(\) => followedLink\(\) \?\? rideStart\?\.passOn \?\? null;/);
   assert.match(app, /broadcasting=\{rideBroadcast\?\.leading === true\}/);
 });
 

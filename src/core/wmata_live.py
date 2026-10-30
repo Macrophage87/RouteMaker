@@ -34,6 +34,7 @@ Every live value the page shows carries `CREDIT` ("Data: WMATA").
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import math
@@ -50,6 +51,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
+
+from routemaker.lang import t
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +154,13 @@ def http_get(url: str, timeout: float) -> bytes:
             body = response.read(MAX_BYTES + 1)
     except urllib.error.HTTPError as error:
         raise Unavailable(f"{path}: HTTP {error.code}") from None
-    except (TimeoutError, urllib.error.URLError, ConnectionError, OSError) as error:
+    except (
+        TimeoutError,
+        urllib.error.URLError,
+        ConnectionError,
+        OSError,
+        http.client.HTTPException,  # a cut-off or garbled reply (IncompleteRead, BadStatusLine)
+    ) as error:
         raise Unavailable(f"{path}: {type(error).__name__}") from None
     if len(body) > MAX_BYTES:
         raise Unavailable(f"{path}: larger than expected")
@@ -712,6 +721,10 @@ class Live:
                     out[name] = future.result(timeout=max(0.1, deadline - time.monotonic()))
                 except FutureTimeout:
                     raise Unavailable(f"{name}: no answer in time") from None
+                except Unavailable:
+                    raise
+                except Exception as error:  # noqa: BLE001 - any other way a reading fails (api-2)
+                    raise Unavailable(f"{name}: {type(error).__name__}") from None
             return out
         finally:
             pool.shutdown(wait=False, cancel_futures=True)
@@ -839,12 +852,12 @@ class SharedBudget:
 
 def elevator_words(station_name: str) -> str:
     """The one-line warning (the owner, 2026-10-13 11:17 UTC)."""
-    return f"Elevator out at {station_name}: carry your bike on the stairs."
+    return t("Elevator out at {station}: carry your bike on the stairs.", station=station_name)
 
 
 def spare_elevator_words(station_name: str) -> str:
     """An elevator out where another street elevator works: said, never ranked down."""
-    return f"A street elevator is out at {station_name}: use another one."
+    return t("A street elevator is out at {station}: use another one.", station=station_name)
 
 
 def train_minutes(train: Train) -> str:
