@@ -8326,7 +8326,7 @@ basic-auth password, which it hands to the WebView for that run and never stores
 builds an address in for a local build; in CI only the store build sets it, and a test build fails
 if its synced config names a site.
 
-Builds: Actions, "Android app" (`.github/workflows/android.yml`). A pull request that touches
+Builds: Actions, "Android app" (`.github/workflows/android.yml`). A pull request into main that touches
 `mobile/` or the workflow runs the app's tests and builds a debug APK (no secrets, no site address);
 by hand (`workflow_dispatch`), `debug` for a sideloaded test APK or `release` for a signed APK and
 Play bundle; a release tag (`vX.Y.Z`) whose `mobile/` changed since the tag before runs the `release`

@@ -21,6 +21,10 @@ pythonpath = ["src"]
 # Django up before any conftest body runs, so the default cannot come from
 # tests/conftest.py.
 DJANGO_SETTINGS_MODULE = "config.test_settings"
+# A passing test's tmp_path is deleted: the rebuild tests write about 155 MB of stand-in
+# elevation tiles each, kept by default for the last three sessions, which filled a
+# shared /tmp when two suites ran at once.
+tmp_path_retention_policy = "failed"
 
 [tool.ruff]
 line-length = 100
