@@ -280,7 +280,11 @@ def _ratings_json(stress: StressResult) -> str | None:
     held = {
         "formula": None if formula is None else int(formula),
         "formula_rule": getattr(stress, "formula_rule", None),
-        "agencies": [{"agency": r.agency, "name": r.name, "level": r.level} for r in ratings],
+        "agencies": [
+            {"agency": r.agency, "name": r.name, "level": r.level}
+            | ({"read_as": r.read_as, "note": r.note} if r.read_as is not None else {})
+            for r in ratings
+        ],
         "used": used,
     }
     if override is not None:
