@@ -809,7 +809,7 @@ export function RideMode({
   riders?: number | null;
   /** More > Riders: the riders panel (who is where, Show me as a dot, your role). */
   onRiders?: (() => void) | null;
-  /** See everyone (lib/seeEveryone.ts): the riders' dots framed together, offered when one is out of view. */
+  /** See everyone (lib/seeEveryone.ts): the riders' dots framed together, offered while any are on the map. */
   everyone?: SeeEveryone | null;
   /** The ride is kept on this device to resume (lib/rideResume.ts): each new route is kept in its place. */
   keepLeft?: boolean;
@@ -2739,7 +2739,7 @@ export function RideMode({
             <Icon name="locate" size={24} />
             <span className="ride-word" aria-hidden="true">{railWord("Locate")}</span>
           </button>
-          {/* See everyone (lib/seeEveryone.ts): only while another rider's dot is out of view, or its view is on. */}
+          {/* See everyone (lib/seeEveryone.ts): there while any other rider's dot is on the map. */}
           <SeeEveryoneButton everyone={everyone} />
           {/* Large text on and off (the owner, 2026-10-20), shown pressed while on. */}
           <button

@@ -1,10 +1,10 @@
 /**
  * See everyone (Stephen 2026-10-30: "When in a sharing mode offer a view where you can see every dot in the viewframe
- * if the default view won't"): in a ride or Roam with other riders' dots (Share live, Group Ride, Mass Ride), a side
- * button shows when the follow camera leaves one or more of them out of the open map (between the ride's card, its
- * bottom panel and its side buttons). Pressed, the map frames the rider and every dot, and keeps doing so as the dots
- * move; pressed again, Where am I?, or a move by hand goes back (the hand move to the idle recentre's 30 s). Hidden
- * whenever every dot is in view, so the ride's buttons stay as they were (Go stays clean: one control, only when needed).
+ * if the default view won't", then "Always, when sharing"): in a ride or Roam with other riders' dots (Share live,
+ * Group Ride, Mass Ride), a side button is there the whole time any dot is on the map, so the view can be chosen
+ * before anyone drifts out of sight. Pressed, the map frames the rider and every dot (within the ride's card, its
+ * bottom panel and its side buttons), and keeps doing so as the dots move and the rider rides on; pressed again,
+ * Where am I?, or a move by hand goes back (the hand move to the idle recentre's 30 s). With no other dots, no button.
  */
 import type { LonLat } from "./geo.ts";
 import type { ScreenBox } from "./detourSearch.ts";
@@ -38,40 +38,15 @@ export function everyoneFrame(dots: readonly LonLat[], rider: LonLat | null): Lo
   return rider ? [...dots, rider] : [...dots];
 }
 
-/** The view on or off, and whether the last check found a dot out of view. */
-export interface EveryoneState {
-  on: boolean;
-  offScreen: boolean;
-}
-
+/** What ends or starts the view. */
 export type EveryoneEvent =
   | { kind: "press" }
   /** The map follows the rider again (Where am I?, the idle recentre). */
   | { kind: "following" }
   | { kind: "hand-move" }
-  | { kind: "checked"; offScreen: boolean }
   | { kind: "dots-gone" };
 
-/**
- * The view's changes. Off by a press or by following again, the last check (made while every dot was framed) is set
- * aside: the button stays until the follow camera's next move checks again, so it never vanishes under the press.
- */
-export function everyoneStep(state: EveryoneState, event: EveryoneEvent): EveryoneState {
-  switch (event.kind) {
-    case "press":
-      return state.on ? { on: false, offScreen: true } : { ...state, on: true };
-    case "following":
-      return state.on ? { on: false, offScreen: true } : state;
-    case "hand-move":
-      return state.on ? { ...state, on: false } : state;
-    case "checked":
-      return state.offScreen === event.offScreen ? state : { ...state, offScreen: event.offScreen };
-    case "dots-gone":
-      return { on: false, offScreen: false };
-  }
-}
-
-/** The button shows: dots on the map, and the view on, or one out of view while the map follows the rider. */
-export function everyoneShown(state: EveryoneState, anyDots: boolean, follow: boolean): boolean {
-  return anyDots && (state.on || (follow && state.offScreen));
+/** The view on (true) or off after `event`: a press turns it over; anything else ends it. */
+export function everyoneStep(on: boolean, event: EveryoneEvent): boolean {
+  return event.kind === "press" ? !on : false;
 }

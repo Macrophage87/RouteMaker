@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
-import { dotsKey, dotsOffScreen, everyoneFrame, everyoneShown, everyoneStep, openBox, type EveryoneState } from "./seeEveryone.ts";
+import { dotsKey, dotsOffScreen, everyoneFrame, everyoneStep, openBox } from "./seeEveryone.ts";
 
 // A flat screen: one degree is 100 px, longitude to the right, latitude up.
 const toScreen = (at: LonLat) => ({ x: at[0] * 100, y: 1000 - at[1] * 100 });
@@ -10,7 +10,7 @@ test("the open map is the map less the ride's panels", () => {
   assert.deepEqual(openBox(400, 800, { top: 160, bottom: 120, left: 40, right: 90 }), { left: 40, top: 160, right: 310, bottom: 680 });
 });
 
-test("See everyone is offered only when a dot is out of the open map", () => {
+test("a point out of the open map is found (the view frames again once the rider leaves it)", () => {
   const open = openBox(400, 800, { top: 160, bottom: 120, left: 40, right: 90 });
   // Every dot in the open part: nothing to offer.
   assert.equal(dotsOffScreen([[1, 5], [3, 4]], toScreen, open), false);
@@ -40,8 +40,9 @@ test("wired: the riders' dots reach App, the button sits on Ride's and Roam's si
   assert.equal(app.match(/onDots=\{setRideDots\}/g)?.length, 2);
   assert.match(app, /const everyone = useSeeEveryone\(\{/);
   for (const mode of ["../RideMode.tsx", "../RoamMode.tsx"]) assert.match(read(mode), /<SeeEveryoneButton everyone=\{everyone\} \/>/);
-  // Only shown while needed: a dot out of view as the map follows the rider, or the view on.
-  assert.match(read("../app/useSeeEveryone.ts"), /shown: everyoneShown\(state, any, follow\)/);
+  // Always there while another rider's dot is on the map (Stephen 2026-10-30: "Always, when sharing"), never without one.
+  assert.match(read("../app/useSeeEveryone.ts"), /const any = active && dots\.length > 0;/);
+  assert.match(read("../app/useSeeEveryone.ts"), /return \{ shown: any, on, toggle, stop \};/);
   assert.match(read("../app/useSeeEveryone.ts"), /if \(follow\) dispatch\(\{ kind: "following" \}\);/);
   assert.match(read("../SeeEveryoneButton.tsx"), /if \(!everyone\?\.shown\) return null;/);
   const { readdirSync } = await import("node:fs");
@@ -51,34 +52,11 @@ test("wired: the riders' dots reach App, the button sits on Ride's and Roam's si
   }
 });
 
-test("the view: offered when a dot is out of view, on by a press, kept on screen as it goes off", () => {
-  let s: EveryoneState = { on: false, offScreen: false };
-  // Every dot in view while following: nothing offered.
-  assert.equal(everyoneShown(s, true, true), false);
-  s = everyoneStep(s, { kind: "checked", offScreen: true });
-  assert.equal(everyoneShown(s, true, true), true);
-  // Pressed: on (the map stops following); framed, its check finds every dot in view, and it stays shown, pressed.
-  s = everyoneStep(s, { kind: "press" });
-  s = everyoneStep(s, { kind: "checked", offScreen: false });
-  assert.deepEqual(s, { on: true, offScreen: false });
-  assert.equal(everyoneShown(s, true, false), true);
-  // Pressed again: off, and still shown as the map goes back to the rider (never gone under the press)...
-  s = everyoneStep(s, { kind: "press" });
-  assert.equal(everyoneShown(s, true, true), true);
-  // ...until the follow camera's next move checks: every dot in view now, so it goes.
-  s = everyoneStep(s, { kind: "checked", offScreen: false });
-  assert.equal(everyoneShown(s, true, true), false);
-});
-
-test("the view ends with Where am I? or the idle recentre, a move by hand, or the last dot gone", () => {
-  const on: EveryoneState = { on: true, offScreen: false };
-  assert.deepEqual(everyoneStep(on, { kind: "following" }), { on: false, offScreen: true });
-  assert.equal(everyoneStep(on, { kind: "hand-move" }).on, false);
-  // Moved by hand, the map does not follow: nothing offered until it does again.
-  assert.equal(everyoneShown(everyoneStep({ on: true, offScreen: true }, { kind: "hand-move" }), true, false), false);
-  assert.deepEqual(everyoneStep(on, { kind: "dots-gone" }), { on: false, offScreen: false });
-  assert.equal(everyoneShown(on, false, false), false);
-  // Following already (off): following changes nothing.
-  const off: EveryoneState = { on: false, offScreen: false };
-  assert.equal(everyoneStep(off, { kind: "following" }), off);
+test("the view: a press turns it on and off; Where am I?, the idle recentre, a move by hand or the last dot gone ends it", () => {
+  assert.equal(everyoneStep(false, { kind: "press" }), true);
+  assert.equal(everyoneStep(true, { kind: "press" }), false);
+  for (const kind of ["following", "hand-move", "dots-gone"] as const) {
+    assert.equal(everyoneStep(true, { kind }), false);
+    assert.equal(everyoneStep(false, { kind }), false);
+  }
 });
