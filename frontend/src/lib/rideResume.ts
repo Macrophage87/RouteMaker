@@ -166,10 +166,10 @@ export function keepLeftRideLeads(link: string, store: Store | null = local()): 
 }
 
 /**
- * The broadcast a resumed ride is on again (Stephen 2026-10-30: she said Yes but her dot and alerts never reached the
- * leader; a page reloaded mid-ride, as a phone does to a page left in the background, resumed the route and dropped
- * the ride): the link it followed, or the one it leads, read as the page reads a link it opens. Null for a ride on
- * no broadcast, or a link without its leader or key (nothing can be read or sent for it).
+ * The broadcast a resumed ride is on again (Stephen 2026-10-30: a follower's Yes reached nobody once her page had
+ * reloaded mid-ride, as a phone does to a page left in the background, and Resume brought back the route alone): the
+ * link it followed, or the one it leads, read as the page reads a link it opens. Null for a ride on no broadcast, or a
+ * link without its leader or key (nothing can be read or sent for it).
  */
 export function resumedBroadcast(left: Pick<LeftRide, "passOn" | "follows" | "leads">): { id: string; lead: string; secret: string; own: boolean } | null {
   const own = !left.follows && !!left.leads;

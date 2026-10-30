@@ -7,6 +7,9 @@ import type { RouteResponse } from "./api.ts";
 import type { Dials } from "./dials.ts";
 import type { LonLat } from "./geo.ts";
 import { ViaMarks } from "./pointKinds.ts";
+import { leaderKey, newToken } from "./rideGroup.ts";
+import { newRideSecret, withSecret } from "./rideSeal.ts";
+import { asRideLink } from "./sharedRoutes.ts";
 import { RESUME_MAX_MS, RIDE_RESUME_KEY, forgetLeftRide, keepLeftRide, keepLeftRideLeads, leftRide, resumedBroadcast } from "./rideResume.ts";
 
 function memory() {
@@ -58,7 +61,7 @@ test("a ride left too long ago, or unreadable, is not offered and is forgotten; 
 
 test("the page keeps the ride at Start, forgets it at End, and asks at load; nothing goes to the server", () => {
   const app = src("../App.tsx");
-  assert.match(app, /if \(kept\) \{[\s\S]{0,300}?keepLeftRide\(\{ route, points: leg\.points, loop: leg\.loop, preset: leg\.preset, dials: rideDialsNow, fixed, destination, passOn, follows, leads \}/);
+  assert.match(app, /if \(kept\) \{[\s\S]{0,300}?keepLeftRide\(\{ route, points: leg\.points, loop: leg\.loop, preset: leg\.preset, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink \}/);
   assert.match(app, /const endRide = useCallback\(\(after: EndedPlan, stats: RideStats\) => \{\s*const \{ start, mode: endedIn \} = rideNow\.current;\s*forgetLeftRide\(\);/);
   assert.match(app, /const \[leftAsk, setLeftAsk\] = useState\(\(\) => leftRide\(VIA_MARKS, Date\.now\(\)\)\);/);
   assert.match(app, /<ResumeRideDialog\s+open=\{leftAsk !== null && !riding && !roaming\}/);
@@ -114,8 +117,6 @@ test("a ride following someone's broadcast keeps its link to pass on once resume
   assert.equal(leftRide(marks, 0, store)?.follows, undefined);
 });
 
-// Stephen 2026-10-30: a follower said Yes on a broadcast, but the leader never saw her dot and alerts never crossed.
-// A page reloaded mid-ride (a phone does this to a page left in the background) resumed the route without the ride.
 test("a resumed ride is on the broadcast it followed or led again: its id, leader and key read from the kept link", () => {
   const store = memory();
   const marks = new ViaMarks();
@@ -152,6 +153,17 @@ test("Resume puts the page back on the kept broadcast; Broadcast from the ride s
   const resume = app.slice(app.indexOf("const resumeLeft = () => {"), app.indexOf("const dropLeft = () => {"));
   assert.match(resume, /const on = resumedBroadcast\(left\);[\s\S]*setSharedOpen\(open\)/);
   assert.match(resume, /answer: left\.route/);
-  assert.match(app, /if \(led && riding && rideStart\?\.kept\) keepLeftRideLeads\(link\);/);
-  assert.match(app, /keepLeftRide\(\{[^}]*passOn, follows, leads \}/);
+  assert.match(app, /if \(led && riding && rideStart\?\.kept\) \{\s*keepLeftRideLeads\(link\);\s*setRideStart\(\(before\) => \(before \? \{ \.\.\.before, leads: link \}/);
+  // End ride then Undo keeps it too: the ride's start carries the link it leads.
+  assert.match(app, /kept, passOn, follows, leads: ledLink, note,/);
+  assert.match(app, /keepLeftRide\(\{[^}]*passOn, follows, leads: ledLink \}/);
+});
+
+test("a link Broadcast makes (its leader's key and the ride's key) reads back as the same leader and key on resume", async () => {
+  const token = newToken();
+  const key = await leaderKey(token);
+  const secret = newRideSecret();
+  const id = "d".repeat(32);
+  const link = withSecret(asRideLink(`https://x.test/s/${id}#q=abc&route=${id}`, key), secret);
+  assert.deepEqual(resumedBroadcast({ leads: link }), { id, lead: key, secret, own: true });
 });

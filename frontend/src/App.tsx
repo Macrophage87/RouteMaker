@@ -1035,6 +1035,8 @@ export function App() {
     passOn?: string | null;
     /** Following someone else's broadcast at all: one without its key offers no Share live (LeftRide.follows). */
     follows?: boolean;
+    /** Leading a broadcast of the rider's own: its link, kept so a resumed or undone ride leads it again (LeftRide.leads). */
+    leads?: string | null;
     /** Said once the ride screen is up: Broadcast's link copied, where there was no share sheet. */
     note?: string;
     n: number;
@@ -3538,7 +3540,10 @@ export function App() {
         } else unled = true;
         if (led) rideLinkSent.current = { route: rideRoute, keep: shareKeep, link, lead, id: sharedId };
         // Broadcast from the ride screen: kept with the ride left going, so a reload mid-ride resumes it led.
-        if (led && riding && rideStart?.kept) keepLeftRideLeads(link);
+        if (led && riding && rideStart?.kept) {
+          keepLeftRideLeads(link);
+          setRideStart((before) => (before ? { ...before, leads: link } : before));
+        }
         const open = { answer: rideRoute, ride: true, own: true, id: sharedId ?? undefined, lead: lead && sharedId ? lead.key : null, secret: lead && sharedId ? lead.secret : null };
         sharedOpenNow.current = open;
         setSharedOpen(open);
@@ -3579,14 +3584,14 @@ export function App() {
     const follows = !!opened && !opened.own && !!opened.lead;
     const passOn = follows && !followedNoKey() ? followedLink() : null;
     // Leading a broadcast already (Broadcast beside Start): its link, so a resumed ride leads it again.
-    const leads = opened?.own && opened.lead && rideLinkSent.current?.route === route ? rideLinkSent.current.link : null;
+    const ledLink = opened?.own && opened.lead && rideLinkSent.current?.route === route ? rideLinkSent.current.link : null;
     const note = rideNote.current;
     rideNote.current = "";
-    setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, kept, passOn, follows, note, n: (before?.n ?? 0) + 1 }));
+    setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, kept, passOn, follows, leads: ledLink, note, n: (before?.n ?? 0) + 1 }));
     if (kept) {
       // The destination's name kept too, so a Resume after a reload can name the ride (the UI review, 2026-10-28).
       const destination = leg.loop ? null : (namer.name(leg.points[leg.points.length - 1])?.name ?? null);
-      keepLeftRide({ route, points: leg.points, loop: leg.loop, preset: leg.preset, dials: rideDialsNow, fixed, destination, passOn, follows, leads }, VIA_MARKS, Date.now());
+      keepLeftRide({ route, points: leg.points, loop: leg.loop, preset: leg.preset, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink }, VIA_MARKS, Date.now());
     }
     else forgetLeftRide();
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
@@ -4345,8 +4350,7 @@ export function App() {
     setResumeStats(null);
     setRideStart((before) => ({ ...left, trip: null, kept: true, n: (before?.n ?? 0) + 1 }));
     keepLeftRide(left, VIA_MARKS, Date.now());
-    // On a broadcast, followed or led: the ride is on it again, its dots, alerts and leader with it (Stephen
-    // 2026-10-30: a reload mid-ride had resumed the route alone, so her Yes reached nobody).
+    // On a broadcast, followed or led: the ride is on it again, its dots, alerts and leader with it (lib/rideResume.ts).
     const on = resumedBroadcast(left);
     if (on) {
       const open = { answer: left.route, ride: true, own: on.own, id: on.id, lead: on.lead, secret: on.secret };
@@ -4355,9 +4359,10 @@ export function App() {
       // The leader's Share live sends the same link again, under the token its key names (kept with the ride's answer).
       if (on.own && left.leads) {
         const link = left.leads;
-        void rideOf(on.secret).then((ride) => {
+        void rideOf(on.secret).then(async (ride) => {
           const token = ride ? consentFor(ride.id)?.token : undefined;
-          if (!token || sharedOpenNow.current !== open) return;
+          // Only the token the link's key names leads it (an answer since forgotten would lead under another key).
+          if (!token || (await leaderKey(token)) !== on.lead || sharedOpenNow.current !== open) return;
           const lead = { token, key: on.lead, secret: on.secret };
           leads.current.set(on.id, lead);
           rideLinkSent.current = { route: left.route, keep: shareKeep, link, lead, id: on.id };
