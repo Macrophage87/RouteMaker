@@ -1,10 +1,9 @@
 /**
  * Speak an alert's words (Stephen 2026-10-22, "Is there a way to enable speech to text and send that?" ... "yes.
- * option 2"): a Speak button in Alert > Other fills the box from the browser's speech recognition; the rider reads
- * it and taps Send, as with typed words. Shown only where the browser has it (Chrome on Android, desktop Chrome and
- * Edge, Safari). The browser's maker turns the clip into text on its servers (Google for Chrome, Apple for
- * Safari), which the privacy page says; nothing is kept
- * here. The button keeps its name; pressed (aria-pressed) while it listens, and a second press stops it.
+ * option 2"; 2026-10-30, moved to the top of Send alert): Speak fills the alert's box from the browser's speech
+ * recognition; the rider reads it and taps Send, as with typed words. Shown only where the browser has it (Chrome on
+ * Android, desktop Chrome and Edge, Safari) or in the phone app (below). The browser's maker turns the clip into text
+ * on its servers (Google for Chrome, Apple for Safari), which the privacy page says; nothing is kept here. The button keeps its name; pressed (aria-pressed) while it listens, and a second press stops it.
  * In the phone app (Stephen 2026-10-30, "Enable text to speech on an android app"): Android's WebView has no speech
  * recognition, so an app with SpeechPlugin.java ("RouteMakerSpeech") opens Android's own speech input (Google's on
  * most phones) over the app, which listens once and hands the words back. That input has the microphone, not the app
