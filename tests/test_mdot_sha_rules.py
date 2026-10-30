@@ -110,6 +110,38 @@ def test_each_rule_reads_shas_level_as_montgomery_would(overrides, expected):
     assert read_as(_stretch(**overrides)) == expected
 
 
+@pytest.mark.parametrize(
+    "overrides, expected",
+    [
+        # 3.5 runs to 15,000 a day inclusive, as the table says.
+        ({"aadt": 15_000}, (3.5, "collector-assumed-35")),
+        ({"level": 2.0, "shoulder_ft": 8, "aadt": 15_000}, (3.5, "shoulder-credit")),
+        ({"level": 2.0, "lanes": 4, "bike_facility": "PROTECTED"}, None),
+    ],
+)
+def test_the_edges_follow_the_table(overrides, expected):
+    assert read_as(_stretch(**overrides)) == expected
+
+
+def test_a_reading_of_shas_level_sets_the_review_spread():
+    from core import stress_review
+
+    held = {
+        "formula": 2,
+        "agencies": [{"agency": "mdot-sha", "name": "MDOT SHA", "level": 4.0, "read_as": 2.5}],
+        "used": "mdot-sha",
+    }
+    rows = stress_review.rating_sources({"ratings": held})
+    sha = next(r for r in rows if r["key"] == "mdot-sha")
+    assert sha["level"] == 2.5 and "rated LTS 4" in sha["name"]
+
+
+def test_a_count_joins_a_record_inventoried_downward():
+    module = _installer()
+    by_route = {FIRST[:12]: [(0.0, 2.0, 9_000)]}
+    assert module.count_for(by_route, FIRST, 1.5, 0.5) == 9_000
+
+
 def test_a_struck_rule_leaves_shas_level():
     enabled = mdot_sha_rules.ENABLED - {"collector-assumed-35"}
     assert read_as(_stretch(), enabled) is None
@@ -219,6 +251,7 @@ def test_the_installer_reads_shas_records_through_the_rules(tmp_path):
         "TOMEASURE": 1.0,
         "SHOULDER_WD_LT": 0,
         "SHOULDER_WD_RT": 0,
+        "BIKE_FACILITY_TYPE": None,
     }
     _write(
         tmp_path / "mdot-lts" / "mdot-lts.geojson",

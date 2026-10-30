@@ -320,7 +320,8 @@ def apply(
     if pick.read_as is None and level < pick.level and result.tier is Stress.AVOID:
         # A level read as a lower one (Montgomery's 5 as 4.5) does not lower the
         # formula's own Avoid (a bike-legal motorway, a side path's road): the
-        # agency's highest level agrees with it. The rating is still recorded.
+        # agency's highest level agrees with it. The rating is still recorded. An owner's
+        # reading (`read_as`) is a level of its own, as an agency's 4 is, and stands.
         return replace(result, agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)))
     tier, half = tier_of(level)
     # The other agencies' levels are in `agency_ratings`, not the rule: the

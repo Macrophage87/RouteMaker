@@ -42,11 +42,11 @@ RULE_WORDS = {
     "collector-assumed-35": "a two-lane collector where SHA assumed 35 mph",
     "slow-street": "a two-lane street at 30 mph or less",
     "city-collector": "a Baltimore City collector where SHA assumed 35 mph",
-    "multilane-or-40": "four or more lanes or a two-lane road posted 40 to 45 mph",
+    "multilane-or-40": "four or more lanes or a two-lane road posted over 35 mph",
     "shoulder-credit": "a two-lane 35 mph road where SHA credited the shoulder",
     "busy-residential": "a 25 mph street carrying 5000 to 15000 cars a day",
     "rural-collector": "a rural collector carrying 1500 or more cars a day",
-    "rural-expressway": "a divided highway posted 55 mph or more",
+    "rural-expressway": "a highway of four or more lanes posted 55 mph or more",
     "second-record": "SHA's record for the other direction of the same road",
 }
 
@@ -86,6 +86,10 @@ class Stretch:
     def painted_lane(self) -> bool:
         return (self.bike_facility or "").lower() == "standard"
 
+    @property
+    def protected_lane(self) -> bool:
+        return (self.bike_facility or "").lower() == "protected"
+
 
 def stretch(properties: Mapping, aadt: int | None, urban: bool) -> Stretch:
     """A record of SHA's layer (its GeoJSON properties) as a `Stretch`."""
@@ -121,7 +125,7 @@ def _rule(s: Stretch) -> tuple[float, str] | None:
         and fc in (4, 5, 6)
         and s.speed_assumed
         and speed == 35
-        and (aadt is None or aadt < 15_000)
+        and (aadt is None or aadt <= 15_000)
     ):
         city = s.county == BALTIMORE_CITY
         return (3.5 if aadt and aadt >= 10_000 else 3.0), (
@@ -135,7 +139,7 @@ def _rule(s: Stretch) -> tuple[float, str] | None:
         return (2.5 if aadt is None or aadt < 7_500 else 3.0), "slow-street"
     # Up: four or more lanes at 30-45 mph, or two lanes posted 40-45 mph, that SHA rates 3
     # or less. Montgomery: 4 on 71-99%. A painted lane is worth half a step.
-    if s.level <= 3 and s.bike_facility != "Protected" and 30 <= speed <= 45:
+    if s.level <= 3 and not s.protected_lane and 30 <= speed <= 45:
         if (lanes or 0) >= 4 or (two_lane and not s.speed_assumed and speed >= 40):
             return (3.5 if s.painted_lane else 4.0), "multilane-or-40"
     # Up: urban two-lane 35 mph roads SHA rates 2 for a 4 ft shoulder. Montgomery gives a
@@ -149,7 +153,7 @@ def _rule(s: Stretch) -> tuple[float, str] | None:
         and (s.shoulder_ft or 0) >= 4
         and not s.painted_lane
     ):
-        if aadt is not None and aadt >= 15_000:
+        if aadt is not None and aadt > 15_000:
             return 4.0, "shoulder-credit"
         return (3.5 if aadt is not None and aadt >= 10_000 else 3.0), "shoulder-credit"
     # Up: 25 mph streets carrying 5,000-15,000 a day that SHA rates 1 or 2: the owner's
@@ -215,6 +219,12 @@ def _segment_distance(p, a, b) -> float:
         return math.hypot(px - ax, py - ay)
     t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
     return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
+def midpoint_lonlat(line) -> tuple[float, float]:
+    """The point halfway along a line of [lon, lat], as (lon, lat)."""
+    x, y = _midpoint(line)
+    return x / _KX, y / _KY
 
 
 def _midpoint(line) -> tuple[float, float]:

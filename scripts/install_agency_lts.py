@@ -249,6 +249,22 @@ def mdot_sha(
             yield out
 
 
+# SHA's fields the owner's rules read (`mdot_sha_rules.stretch`), checked on the layer so a
+# renamed field is refused rather than silently reading every record as SHA published it.
+MDOT_RULE_FIELDS = (
+    "ROUTEID",
+    "FROMMEASURE",
+    "TOMEASURE",
+    "FUNCTIONAL_CLASS",
+    "SPEED_LIMIT",
+    "SPEEDLIMIT_DERIVED",
+    "NUMBER_THRU_LANES",
+    "SHOULDER_WD_LT",
+    "SHOULDER_WD_RT",
+    "BIKE_FACILITY_TYPE",
+)
+
+
 def mdot_counts(path: Path) -> dict[str, list[tuple[float, float, int]]]:
     """SHA's traffic counts by route (route id's first 12 characters): (from, to, AADT)."""
     by_route: dict[str, list[tuple[float, float, int]]] = {}
@@ -266,6 +282,8 @@ def count_for(by_route, route_id: str, start, end) -> int | None:
     """The count whose section overlaps the stretch most, or None."""
     if start is None or end is None:
         return None
+    # A record inventoried against its route's direction runs from the higher milepoint.
+    start, end = sorted((float(start), float(end)))
     best = None
     for lo, hi, aadt in by_route.get(route_id[:12], ()):
         overlap = min(hi, end) - max(lo, start)
@@ -305,12 +323,23 @@ def mdot_readings(records, counts: Path | None, urban_areas: Path | None, rules)
             "tl_2024_us_uac20.geojson); give both, or --mdot-as-published to install SHA's "
             "levels unread"
         )
+    missing = sorted(
+        {field for _, p, _ in records[:1] for field in MDOT_RULE_FIELDS if field not in p}
+    )
+    if missing:
+        raise SystemExit(
+            "mdot-sha: the owner's rules read fields the layer lacks: " + ", ".join(missing)
+        )
     by_route = mdot_counts(counts)
+    if not by_route:
+        raise SystemExit(f"mdot-sha: no usable traffic count in {counts}")
     polygons = urban_polygons(urban_areas)
+    if not polygons:
+        raise SystemExit(f"mdot-sha: no urban area polygon in {urban_areas}")
     stretches, lines = {}, {}
     for fid, p, parts in records:
         line = max(parts, key=len) if parts else []
-        mid = line[len(line) // 2] if line else None
+        mid = mdot_sha_rules.midpoint_lonlat(line) if len(line) > 1 else None
         urban = bool(mid) and mdot_sha_rules.point_in_polygons(mid, polygons)
         route = str(p.get("ROUTEID") or "")
         aadt = count_for(by_route, route, p.get("FROMMEASURE"), p.get("TOMEASURE"))

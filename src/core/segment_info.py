@@ -775,9 +775,9 @@ def rating_rows(row: dict) -> list[dict]:
         elif rating.get("read_as") is not None:
             # The owner's rules over SHA's level (`routemaker.mdot_sha_rules`): SHA's number,
             # and the level the map uses for it, with why.
-            value = (
-                f"LTS {level:g}, {rating.get('note') or 'read as LTS ' + str(rating['read_as'])}"
-            )
+            note = rating.get("note") or f"read as LTS {float(rating['read_as']):g}"
+            words = rule_words(note)
+            value = f"LTS {level:g}, {words[:1].lower()}{words[1:]}"
         elif agency_lts.map_level(str(rating.get("agency")), level) != level:
             # Montgomery's 5: the county's number, and the level the map uses for it.
             value = f"LTS {level:g}, {COUNTY_FIVE_WORDS}"
