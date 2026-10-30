@@ -38,20 +38,48 @@ export function railFit(available: number, buttons: number, large = 0, iconsOnly
   return need <= available ? "under" : "pill";
 }
 
+/** A box on the screen, as getBoundingClientRect gives it. */
+export interface Box {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+/**
+ * How far down the rail the ride group's bar (Send alert and the riders, just under the ride's card) reaches, in px:
+ * the rail starts below it, so its top button (See everyone, while others share) is never under Send alert (the
+ * v0.15.2 end-to-end pass, 2026-10-30: at 390 px Send alert covered its top 24 px). Nothing when there is no bar or
+ * it is beside the rail, not over it.
+ */
+export function barOverlap(rail: Box, bar: Box | null): number {
+  if (!bar || bar.bottom <= bar.top || bar.right <= rail.left || bar.left >= rail.right) return 0;
+  return Math.max(0, Math.ceil(bar.bottom - rail.top));
+}
+
 /** The rail's fit, measured again as its height changes (Large text, the bottom panel) and as buttons come and go. */
 export function useRailFit(rail: RefObject<HTMLElement | null>, iconsOnly = false): RailFit {
   const [fit, setFit] = useState<RailFit>("under");
   useLayoutEffect(() => {
     const element = rail.current;
     if (!element) return;
+    const resized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => measure());
+    let barSeen: Element | null = null;
     const measure = () => {
       // The buttons in the column: a visually hidden hint (1 px) is not one.
       const items = [...element.children].filter((child) => (child as HTMLElement).offsetHeight > 2);
       const large = items.filter((child) => child.matches(".ride-311, .ride-dock")).length;
-      setFit(railFit(element.clientHeight, items.length, large, iconsOnly));
+      // The group's bar over the rail's top: the rail starts below it (barOverlap), with that much less room.
+      const bar = document.querySelector(".ride-group-bar");
+      if (bar && bar !== barSeen) {
+        barSeen = bar;
+        resized?.observe(bar);
+      }
+      const clear = barOverlap(element.getBoundingClientRect(), bar?.getBoundingClientRect() ?? null);
+      element.style.paddingTop = clear > 0 ? `${clear}px` : "";
+      setFit(railFit(element.clientHeight - clear, items.length, large, iconsOnly));
     };
     measure();
-    const resized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     resized?.observe(element);
     const changed = typeof MutationObserver === "undefined" ? null : new MutationObserver(measure);
     changed?.observe(element, { childList: true });
