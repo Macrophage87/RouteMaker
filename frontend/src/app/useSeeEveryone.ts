@@ -2,11 +2,14 @@
  * See everyone's state for App (lib/seeEveryone.ts has the rules): whether the follow camera leaves a dot out of the
  * open map, and the view that frames them all while it is on.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { LonLat } from "../lib/geo.ts";
 import { frameAround, rideOpenPadding } from "../lib/detourSearch.ts";
-import { dotsKey, dotsOffScreen, everyoneFrame, openBox } from "../lib/seeEveryone.ts";
+import { dotsKey, dotsOffScreen, everyoneFrame, everyoneShown, everyoneStep, openBox } from "../lib/seeEveryone.ts";
+
+/** How often the view checks the rider is still in it. */
+export const RIDER_CHECK_MS = 3000;
 
 export interface SeeEveryone {
   /** The button shows: a dot is out of view while the map follows the rider, or the view is on. */
@@ -40,8 +43,8 @@ function openPadding(map: MapLibreMap) {
 }
 
 export function useSeeEveryone({ getMap, dots, rider, active, follow, onUnfollow, onBackToRider }: Options): SeeEveryone {
-  const [on, setOn] = useState(false);
-  const [offScreen, setOffScreen] = useState(false);
+  const [state, dispatch] = useReducer(everyoneStep, { on: false, offScreen: false });
+  const { on } = state;
   const key = dotsKey(dots);
   const dotsNow = useRef(dots);
   dotsNow.current = dots;
@@ -51,17 +54,19 @@ export function useSeeEveryone({ getMap, dots, rider, active, follow, onUnfollow
   useEffect(() => {
     const map = getMap();
     if (!map || !any) {
-      setOffScreen(false);
+      dispatch({ kind: "checked", offScreen: false });
       return;
     }
     const check = () => {
       const { width, height } = map.getContainer().getBoundingClientRect();
-      setOffScreen(dotsOffScreen(dotsNow.current, (at) => map.project(at), openBox(width, height, openPadding(map))));
+      dispatch({ kind: "checked", offScreen: dotsOffScreen(dotsNow.current, (at) => map.project(at), openBox(width, height, openPadding(map))) });
     };
     check();
     map.on("moveend", check);
+    map.on("resize", check);
     return () => {
       map.off("moveend", check);
+      map.off("resize", check);
     };
   }, [getMap, any, key]);
 
@@ -79,7 +84,7 @@ export function useSeeEveryone({ getMap, dots, rider, active, follow, onUnfollow
   useEffect(() => {
     if (!on) return;
     if (!any) {
-      setOn(false);
+      dispatch({ kind: "dots-gone" });
       if (active) onBackToRider();
       return;
     }
@@ -87,20 +92,29 @@ export function useSeeEveryone({ getMap, dots, rider, active, follow, onUnfollow
     // Each new set of places frames again; the callbacks are App's own.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on, any, key]);
+  // The rider rides on while the others wait (a regroup): framed again once the rider leaves the open map.
   useEffect(() => {
-    if (follow) setOn(false);
+    if (!on) return;
+    const id = window.setInterval(() => {
+      const map = getMap();
+      const me = rider();
+      if (!map || !me) return;
+      const { width, height } = map.getContainer().getBoundingClientRect();
+      if (dotsOffScreen([me], (at) => map.project(at), openBox(width, height, openPadding(map)))) frame(false);
+    }, RIDER_CHECK_MS);
+    return () => window.clearInterval(id);
+  }, [on, getMap, rider, frame]);
+  // Following again (Where am I?, the button, the idle recentre): the view ends (lib/seeEveryone.ts everyoneStep).
+  useEffect(() => {
+    if (follow) dispatch({ kind: "following" });
   }, [follow]);
 
   const toggle = useCallback(() => {
-    if (on) {
-      setOn(false);
-      onBackToRider();
-      return;
-    }
-    onUnfollow();
-    setOn(true);
+    dispatch({ kind: "press" });
+    if (on) onBackToRider();
+    else onUnfollow();
   }, [on, onUnfollow, onBackToRider]);
-  const stop = useCallback(() => setOn(false), []);
+  const stop = useCallback(() => dispatch({ kind: "hand-move" }), []);
 
-  return { shown: any && (on || (follow && offScreen)), on, toggle, stop };
+  return { shown: everyoneShown(state, any, follow), on, toggle, stop };
 }

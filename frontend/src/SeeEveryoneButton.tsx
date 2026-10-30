@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react";
 import type { SeeEveryone } from "./app/useSeeEveryone.ts";
 import { Icon } from "./Icon.tsx";
 import { t } from "./lib/i18n.ts";
@@ -9,11 +10,27 @@ import { railWord } from "./lib/railWords.ts";
  */
 export function SeeEveryoneButton({ everyone }: { everyone: SeeEveryone | null | undefined }) {
   if (!everyone?.shown) return null;
+  return <EveryoneButton everyone={everyone} />;
+}
+
+function EveryoneButton({ everyone }: { everyone: SeeEveryone }) {
+  const button = useRef<HTMLButtonElement>(null);
+  const focused = useRef(false);
+  // Gone with the focus on it (every dot back in view): the focus goes to the rail's first button, Where am I?.
+  useLayoutEffect(() => {
+    const rail = button.current?.closest(".ride-rail") ?? null;
+    return () => {
+      if (focused.current) rail?.querySelector<HTMLElement>(".ride-round")?.focus();
+    };
+  }, []);
   return (
     <button
       type="button"
+      ref={button}
       className={`ride-round${everyone.on ? " ride-round-on" : ""}`}
       onClick={everyone.toggle}
+      onFocus={() => (focused.current = true)}
+      onBlur={() => (focused.current = false)}
       aria-pressed={everyone.on}
       aria-label={t("See everyone on the ride")}
       title={t("See everyone on the ride")}

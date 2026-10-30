@@ -37,3 +37,41 @@ export function dotsKey(dots: readonly LonLat[]): string {
 export function everyoneFrame(dots: readonly LonLat[], rider: LonLat | null): LonLat[] {
   return rider ? [...dots, rider] : [...dots];
 }
+
+/** The view on or off, and whether the last check found a dot out of view. */
+export interface EveryoneState {
+  on: boolean;
+  offScreen: boolean;
+}
+
+export type EveryoneEvent =
+  | { kind: "press" }
+  /** The map follows the rider again (Where am I?, the idle recentre). */
+  | { kind: "following" }
+  | { kind: "hand-move" }
+  | { kind: "checked"; offScreen: boolean }
+  | { kind: "dots-gone" };
+
+/**
+ * The view's changes. Off by a press or by following again, the last check (made while every dot was framed) is set
+ * aside: the button stays until the follow camera's next move checks again, so it never vanishes under the press.
+ */
+export function everyoneStep(state: EveryoneState, event: EveryoneEvent): EveryoneState {
+  switch (event.kind) {
+    case "press":
+      return state.on ? { on: false, offScreen: true } : { ...state, on: true };
+    case "following":
+      return state.on ? { on: false, offScreen: true } : state;
+    case "hand-move":
+      return state.on ? { ...state, on: false } : state;
+    case "checked":
+      return state.offScreen === event.offScreen ? state : { ...state, offScreen: event.offScreen };
+    case "dots-gone":
+      return { on: false, offScreen: false };
+  }
+}
+
+/** The button shows: dots on the map, and the view on, or one out of view while the map follows the rider. */
+export function everyoneShown(state: EveryoneState, anyDots: boolean, follow: boolean): boolean {
+  return anyDots && (state.on || (follow && state.offScreen));
+}
