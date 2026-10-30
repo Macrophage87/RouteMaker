@@ -74,7 +74,7 @@ test("the side buttons' words: under the round buttons where they fit, else 44 p
   }
   assert.match(ride, /<span className="ride-word" aria-hidden="true">\{RIDE_SETTINGS_TEXT\}<\/span>/);
   assert.match(ride, /<span className="ride-word" aria-hidden="true">\{EASE_WORD\[which\]\}<\/span>/);
-  assert.match(ride, /aria-label=\{follow \? t\("Where am I\?"\) : t\("Where am I\? The map stopped following you"\)\}/);
+  assert.match(ride, /aria-label=\{follow \|\| everyone\?\.on \? t\("Where am I\?"\) : t\("Where am I\? The map stopped following you"\)\}/);
   assert.equal(roam.match(/className="ride-word"/g)?.length, 3);
   assert.equal(roam.match(/className=\{`ride-round/g)?.length ?? 0, 2);
   // More's bubbles: a column going up from More, not a row along the foot.
