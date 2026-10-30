@@ -1,9 +1,15 @@
 name: CI
 
+# Once per release (owner, 2026-10-28): the release branch's pull request into main and the push
+# to main that merging it makes, which the beta's release agent reads. Pull requests into a
+# release branch merge after a review agent without CI, so they start no run. By hand: Actions,
+# "CI", Run workflow, on any branch.
 on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 # Read-only token: the tests need the checkout and nothing else.
 permissions:
@@ -33,11 +39,13 @@ jobs:
           POSTGRES_USER: routemaker
           POSTGRES_PASSWORD: routemaker
         ports: ["5432:5432"]
+        # Checked over TCP: the image's first-start server listens on the socket only, so a socket
+        # check can pass before the real server is up.
         options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
+          --health-cmd "pg_isready -h 127.0.0.1"
+          --health-interval 2s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 30
 
     env:
       PGHOST: 127.0.0.1
@@ -93,6 +101,20 @@ jobs:
           # and the runner image may carry a newer one.
           echo "/usr/lib/postgresql/$PG_MAJOR/bin" >> "$GITHUB_PATH"
           "/usr/lib/postgresql/$PG_MAJOR/bin/pg_dump" --version | grep -Eq "[[:space:]]$PG_MAJOR\."
+      # A throwaway database: no crash safety (the suite's resets after each transactional test
+      # are mostly commit and fsync cost) and no JIT (it compiles the rebuild's queries on toy
+      # data, slower than running them). Locking, renames and spatial predicates are unchanged.
+      # All four take effect on reload; the check fails the step if one did not.
+      - name: Tune the test database
+        run: |
+          set -eu
+          psql -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET fsync = off" \
+            -c "ALTER SYSTEM SET synchronous_commit = off" \
+            -c "ALTER SYSTEM SET full_page_writes = off" \
+            -c "ALTER SYSTEM SET jit = off" -c "SELECT pg_reload_conf()"
+          for setting in fsync synchronous_commit full_page_writes jit; do
+            test "$(psql -tAc "SHOW $setting")" = off
+          done
       # docker/requirements.txt first: it is the exact pin both images build
       # from, and requirements-dev.txt alone resolves newer packages
       # (tests/test_native_environment.py fails when it does). Green here is
@@ -148,8 +170,9 @@ jobs:
       # smoke test: they are what stops a tuning change from silently redefining
       # what a mass ride is.
       # PYTHONFAULTHANDLER dumps every thread's stack on a native crash, including one during
-      # interpreter shutdown; faulthandler_timeout dumps them for a test stuck 10 minutes.
-      - run: pytest -q -o faulthandler_timeout=600 --durations=30
+      # interpreter shutdown; faulthandler_timeout dumps them for a test stuck 10 minutes, and
+      # faulthandler_exit_on_timeout then ends the run instead of holding it to the job's limit.
+      - run: pytest -q -o faulthandler_timeout=600 -o faulthandler_exit_on_timeout=true --durations=30
         env:
           PYTHONFAULTHANDLER: "1"
       - name: Compose stack rules
