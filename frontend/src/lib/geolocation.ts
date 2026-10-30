@@ -177,7 +177,7 @@ export function cleanAccuracy(accuracy: number): number {
  */
 function attempt(
   api: GeoApi,
-  options: typeof LOCATE_OPTIONS | typeof RETRY_OPTIONS | typeof FRESH_OPTIONS,
+  options: { enableHighAccuracy: boolean; timeout: number; maximumAge: number },
   watchdogMs: number,
   prompt?: { status: Promise<PermissionLike | undefined>; ms: number },
 ): Promise<{ result: LocateResult; watchdog: boolean }> {
@@ -245,8 +245,8 @@ function permissionOf(env: GeoEnv): Promise<PermissionLike | undefined> | undefi
  * tried once more without high accuracy; a look-up the browser never answers
  * (a dismissed prompt) ends as a timeout when the watchdog fires, with no retry,
  * and any later answer is ignored. While the permission prompt is open the first
- * watchdog allows `promptMs`, then restarts when the prompt is answered. With `fresh`, the first try takes no
- * cached fix (FRESH_OPTIONS).
+ * watchdog allows `promptMs`, then restarts when the prompt is answered. With `fresh`, neither try takes a
+ * cached fix (FRESH_OPTIONS), which may be the rough one being replaced.
  */
 export async function locate(
   env: GeoEnv,
@@ -260,7 +260,7 @@ export async function locate(
   const status = permissionOf(env);
   const first = await attempt(api, fresh ? FRESH_OPTIONS : LOCATE_OPTIONS, watchdog.first, status && { status, ms: promptMs });
   if (first.result.ok || first.result.reason !== "timeout" || first.watchdog) return first.result;
-  return (await attempt(api, RETRY_OPTIONS, watchdog.retry)).result;
+  return (await attempt(api, fresh ? { ...RETRY_OPTIONS, maximumAge: 0 } : RETRY_OPTIONS, watchdog.retry)).result;
 }
 
 /**
