@@ -275,6 +275,9 @@ test("Alert's choices, Speak, Send and Cancel are ride-sized, larger again, with
   assert.match(css, /\.ride-alert-panel \.ride-speak \{[^}]*width: 100%;[^}]*min-height: 64px;/);
   assert.match(css, /\.ride-alert-panel \.ride-alert-kinds \{\s*display: grid;\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
   assert.match(css, /\.ride-alert-kinds button \{\s*width: 100%;\s*height: 100%;/);
+  // Send and Cancel ruled off from the quick alerts, and the quick alerts in their own colour (2026-10-30).
+  assert.match(css, /\.ride-alert-other \{[^}]*border-bottom: 2px solid var\(--text\);/);
+  assert.match(css, /\.ride-alert-panel \.ride-alert-kinds button\.secondary \{\s*background: #fff3bf;\s*color: #1a1a1a;/);
   const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
   // Every Alert button is inside the panel: its kinds, the confirm, and Other's form.
   const panel = group.slice(group.indexOf('className="ride-alert-panel"'), group.indexOf("{alerts.length > 0 && ("));
