@@ -4,8 +4,12 @@
  * (where connected) and Just ride. Each does what the GPX sheet's own button does and says what happened here, in the
  * sheet's status region, without the voice (the ride's cues keep it). Escape, a tap outside, Just ride or a screen left
  * alone (lib/idleRecentre.ts) closes it; on close the focus goes back where it was.
+ *
+ * One screen, not two (Stephen 2026-10-30: "put the location consent and the download route on the same screen when
+ * joining a ride"): where the ride also asks "Show me as a dot?", RideGroup's question carries the route and its
+ * buttons (JoinOffer) and this sheet is not shown; it stands alone only where nothing is asked.
  */
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode, type Ref } from "react";
 import type { Made, Said } from "./GpxPanel.tsx";
 import { JOIN_JUST_RIDE, JOIN_OFFER, type JoinAction } from "./lib/broadcastJoin.ts";
 import { IDLE_CLOSE_ATTR } from "./lib/idleRecentre.ts";
@@ -25,6 +29,37 @@ const LABEL: Record<JoinAction, () => string> = {
   wahoo: () => WAHOO_SEND_LABEL,
 };
 
+/**
+ * The route's buttons and what they did, the sheet's own and the dot question's (RideGroup.tsx): each press says its
+ * outcome in a polite status region, without the voice. Mounted afresh with each ask, so nothing said is left over.
+ */
+export function JoinOffer({ ask, onAction, firstRef, children }: { ask: JoinAsk; onAction: (action: JoinAction, said: Said) => void; firstRef?: Ref<HTMLButtonElement>; children?: ReactNode }) {
+  const [said, setSaid] = useState<{ text: string; count: number } | null>(null);
+  const say: Said = (made: Made) => {
+    const text = typeof made === "string" ? made : made.line;
+    setSaid((s) => ({ text, count: (s?.count ?? 0) + 1 }));
+  };
+  return (
+    <>
+      <div className="broadcast-join-actions">
+        {ask.actions.map((action, i) => (
+          <button key={action} type="button" ref={i === 0 ? firstRef : undefined} className="primary" onClick={() => onAction(action, say)}>
+            {LABEL[action]()}
+          </button>
+        ))}
+        {children}
+      </div>
+      <div role="status" aria-live="polite">
+        {said && (
+          <p key={said.count} className="hint broadcast-join-said">
+            {said.text}
+          </p>
+        )}
+      </div>
+    </>
+  );
+}
+
 export function BroadcastJoinDialog({ ask, onAction, onClose }: { ask: JoinAsk | null; onAction: (action: JoinAction, said: Said) => void; onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const firstRef = useRef<HTMLButtonElement>(null);
@@ -32,12 +67,10 @@ export function BroadcastJoinDialog({ ask, onAction, onClose }: { ask: JoinAsk |
   const headingId = useId();
   const leadId = useId();
   const open = ask !== null;
-  const [said, setSaid] = useState<{ text: string; count: number } | null>(null);
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (open && !dialog.open) {
-      setSaid(null);
       opener.current = document.activeElement;
       dialog.showModal?.();
       firstRef.current?.focus();
@@ -46,10 +79,6 @@ export function BroadcastJoinDialog({ ask, onAction, onClose }: { ask: JoinAsk |
       if (opener.current instanceof HTMLElement && opener.current.isConnected) opener.current.focus();
     }
   }, [open]);
-  const say: Said = (made: Made) => {
-    const text = typeof made === "string" ? made : made.line;
-    setSaid((s) => ({ text, count: (s?.count ?? 0) + 1 }));
-  };
   return (
     <dialog
       ref={dialogRef}
@@ -77,23 +106,11 @@ export function BroadcastJoinDialog({ ask, onAction, onClose }: { ask: JoinAsk |
           <p id={leadId} className="visually-hidden">
             {JOIN_OFFER}
           </p>
-          <div className="broadcast-join-actions">
-            {ask.actions.map((action, i) => (
-              <button key={action} type="button" ref={i === 0 ? firstRef : undefined} className="primary" onClick={() => onAction(action, say)}>
-                {LABEL[action]()}
-              </button>
-            ))}
+          <JoinOffer ask={ask} onAction={onAction} firstRef={firstRef}>
             <button type="button" className="secondary" onClick={onClose}>
               {JOIN_JUST_RIDE}
             </button>
-          </div>
-          <div role="status" aria-live="polite">
-            {said && (
-              <p key={said.count} className="hint broadcast-join-said">
-                {said.text}
-              </p>
-            )}
-          </div>
+          </JoinOffer>
         </div>
       )}
     </dialog>
