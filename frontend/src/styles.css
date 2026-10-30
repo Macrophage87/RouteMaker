@@ -10185,6 +10185,14 @@ summary.closure-notices-heading {
   min-height: 44px;
   flex: none;
 }
+/* Edit's Move up and Move down (Stephen 2026-10-30): square 44 px arrows before Remove. */
+.go-favorites-list li > .go-favorite-move {
+  min-width: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .go-favorite {
   flex: 1;
   min-width: 0;

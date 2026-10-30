@@ -153,13 +153,16 @@ import {
   FAVORITES_NOT_LOADED,
   FAVORITES_NOT_SAVED,
   favoriteFromPlace,
+  favoriteMovedSaid,
   favoriteRemovedSaid,
   favoriteSavedSaid,
   favoritesSaver,
   fetchFavoritePlaces,
+  othersOf,
   samePoint,
   saveFavoritePlaces,
   withFavorite,
+  withFavoriteMoved,
   withoutFavorite,
   withWork,
   type FavoritePlace,
@@ -1661,25 +1664,34 @@ export function App() {
   };
   // The whole list saved at once, shown and said at once; a save refused, with nothing changed since, puts back the
   // list the account last confirmed and says so. Before the list is read there is nothing to save to.
-  const keepFavorites = (change: (places: FavoritePlace[]) => FavoritePlace[] | null, said: string) => {
+  const keepFavorites = (change: (places: FavoritePlace[]) => FavoritePlace[] | null, said: string): boolean => {
     const now = favoritePlacesRef.current;
     if (now === null) {
       announce(FAVORITES_NOT_LOADED);
       loadFavorites();
-      return;
+      return false;
     }
     const next = change(now);
     if (next === null) {
       announce(FAVORITES_FULL);
-      return;
+      return false;
     }
     favoritePlacesRef.current = next;
     setFavoritePlaces(next);
     announce(said);
     void favoritesSaving.current?.changed();
+    return true;
   };
   const addFavorite = (place: FavoritePlace) => keepFavorites((places) => (place.work ? withWork(places, place) : withFavorite(places, place)), favoriteSavedSaid(place));
   const removeFavorite = (place: FavoritePlace) => keepFavorites((places) => withoutFavorite(places, place), favoriteRemovedSaid(place));
+  // Edit's Move up and Move down (Stephen 2026-10-30: "order favorites"): said as the popout row it is now in, Home and
+  // Work's two rows counted. False when it did not move (already at an end, or the list changed under the press).
+  const moveFavorite = (place: FavoritePlace, by: -1 | 1): boolean => {
+    const others = othersOf(favoritePlacesRef.current ?? []);
+    const row = others.findIndex((p) => samePoint(p.point, place.point)) + by;
+    if (row < 0 || row >= others.length) return false;
+    return keepFavorites((places) => withFavoriteMoved(places, place, by), favoriteMovedSaid(place, row + 3, others.length + 2));
+  };
   // Saved settings (v0.7.0): the account's win on sign-in; an empty account takes this device's.
   const lastSettings = useRef<SettingsDoc | null>(null);
   // The favorite ride types are saved with the rest (lib/favoriteRides.ts); a star pressed is a change.
@@ -6464,6 +6476,7 @@ export function App() {
                     onFavorite: goFavorite,
                     onAddFavorite: (found, work) => addFavorite(favoriteFromPlace(found, work)),
                     onRemoveFavorite: removeFavorite,
+                    onMoveFavorite: moveFavorite,
                     onFood: (chip) => openView("food", chip),
                     onWater: (chip) => openNearest("water", chip),
                     onRestroom: (chip) => openNearest("restroom", chip),
