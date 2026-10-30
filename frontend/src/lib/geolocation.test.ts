@@ -78,6 +78,33 @@ test("one look-up with the spec's options; success gives lon/lat and the accurac
   assert.ok(LOCATE_WATCHDOG_MS > LOCATE_OPTIONS.timeout, "the app's limit is past the browser's");
 });
 
+test("Go's look-up after a rough fix takes no cached fix; an ordinary one may reuse one up to 30 s old", async () => {
+  const seen: unknown[] = [];
+  const api: GeoApi = {
+    getCurrentPosition: (success, _f, options) => {
+      seen.push(options);
+      success({ coords: { latitude: 38.9, longitude: -77.06, accuracy: 12 } });
+    },
+  };
+  await locate(env(api), undefined, undefined, true);
+  await locate(env(api));
+  assert.deepEqual(seen, [
+    { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 },
+    { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 },
+  ]);
+  // The retry after a timeout takes no cached fix either: that may be the rough one being replaced.
+  const tried: unknown[] = [];
+  const slow: GeoApi = {
+    getCurrentPosition: (success, fail, options) => {
+      tried.push(options);
+      if (tried.length === 1) fail({ code: 3 });
+      else success({ coords: { latitude: 38.9, longitude: -77.06, accuracy: 40 } });
+    },
+  };
+  await locate(env(slow), undefined, undefined, true);
+  assert.deepEqual(tried[1], { enableHighAccuracy: false, timeout: 10_000, maximumAge: 0 });
+});
+
 test("each error is its own result", async () => {
   assert.deepEqual(await locate(env(fails(1))), { ok: false, reason: "denied" });
   assert.deepEqual(await locate(env(fails(2))), { ok: false, reason: "unavailable" });
@@ -653,7 +680,13 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
   // A fifth (routing audit S28): Go's warm look-up while the rider is in Where to?, quiet and around the gate on
   // purpose (the locate button does not look busy, and a Use my location press meanwhile is not dropped), whose fix
   // goes to the dot and Go's start only, as the destination's own look-up's does.
-  assert.equal((app.match(/locate\(/g) ?? []).length, 5, "five look-up paths");
+  // A sixth (the owner, 2026-10-30): Go's look-up again after a rough fix, quiet and around the gate as the warm one
+  // is, whose fix goes to the dot, Go's start and the camera only.
+  assert.equal((app.match(/locate\(/g) ?? []).length, 6, "six look-up paths");
+  const rough = body(app, "const roughTries", "const goStartPick");
+  assert.match(rough, /void locate\(geoEnv, undefined, undefined, true\)\.then\(/);
+  assert.doesNotMatch(rough, /gate\.begin|setLocating/, "never holds the gate or shows the button busy");
+  assert.doesNotMatch(rough, LEAKS);
   const warm = body(app, "const goWarmFix", "const goTo");
   assert.match(warm, /void locate\(geoEnv\)\.then\(/);
   assert.doesNotMatch(warm, LEAKS);
@@ -690,7 +723,12 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /start=\{fromHere\.includes\(points\[0\]\) \? YOUR_LOCATION : goPlaceName\(namer\.name\(points\[0\]\)\?\.name, points\[0\]\)\}/,
     // The note, handed to Plan's From and To boxes (Plan streamline, 2026-10-17).
     /locateNote=\{hereInPlan && here \? approximateHint\(here\.accuracyM\) : ""\}/,
-    /const hereCircle = hereInPlan && here \? \{ centre: here\.point, radiusM: here\.accuracyM \} : null;/,
+    // The circle: also Go's dot's, before a destination (the owner, 2026-10-30), from the same fix.
+    /const goDotCircle = !hereInPlan && here && mode === "go" && points\.length === 0 && goStart\.kind === "here" && goStart\.point === here\.point;/,
+    /const hereCircle = \(hereInPlan \|\| goDotCircle\) && here \? \{ centre: here\.point, radiusM: here\.accuracyM \} : null;/,
+    // Go's look-up again reads only the fix's accuracy, to know whether it is rough (goRoughDue).
+    /const hereRef = useRef\(here\);/,
+    /hereRef\.current = here;/,
     // Search's bias: the point, rounded to about 1 km in searchBiasPoint, never the accuracy or the flag.
     /return searchBiasPoint\(here\?\.point, centre \? \[centre\.lng, centre\.lat\] : undefined, view\);/,
     // Go's Repair and Sights (v0.7.0): the nearest worked out on the device from the location Go has; the point goes nowhere.

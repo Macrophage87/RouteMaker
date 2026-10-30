@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, GO_WARM_AFTER_MS, goWarmDue, goPickStart, goHereStart, goStartStale, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, GO_WARM_AFTER_MS, goWarmDue, goPickStart, goHereStart, goStartStale, goRough, goRoughDue, GO_ROUGH_M, GO_ROUGH_AGAIN_MS, GO_ROUGH_TRIES, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -577,10 +577,35 @@ test("go start: a location found long ago is looked up again before a destinatio
   assert.equal(goStartStale({ kind: "none" }), false);
 });
 
+test("go start: a rough fix is due another look-up after 20 s, a sure one never (the owner, 2026-10-30)", () => {
+  const found = 1_000_000;
+  const here = goHereStart([-77.06, 38.905], found);
+  // A phone's first answer from cell towers: miles out, and it says so in its accuracy.
+  assert.equal(goRough(5_000), true);
+  assert.equal(goRough(GO_ROUGH_M), false, "up to the limit is sure enough");
+  assert.equal(goRough(0), false, "no accuracy given: not counted as rough");
+  assert.equal(goRoughDue(here, 5_000, found + GO_ROUGH_AGAIN_MS - 1), false, "not again at once");
+  assert.equal(goRoughDue(here, 5_000, found + GO_ROUGH_AGAIN_MS), true);
+  assert.equal(goRoughDue(here, 5_000, found - 1), true, "a clock set back is not trusted");
+  assert.equal(goRoughDue(here, 15, found + 60 * 60_000), false, "a sure fix: the page back in view checks it (goStartStale)");
+  assert.equal(goRoughDue({ kind: "none" }, 5_000, found + GO_ROUGH_AGAIN_MS), false);
+  assert.equal(GO_ROUGH_TRIES * GO_ROUGH_AGAIN_MS, 2 * 60_000, "tries for two minutes, then waits for the page back in view");
+});
+
 test("go start: Go looks a stale start up again when the page comes back into view", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /document\.addEventListener\("visibilitychange", onVisible\)/);
   assert.match(app, /if \(!goStartStale\(goStartRef\.current\)\) return;/);
+  // A rough one again every GO_ROUGH_AGAIN_MS while Go shows it, dropped when anything else set the start meanwhile,
+  // and the map moved only when the rider still has the rough dot in view.
+  const rough = app.slice(app.indexOf("const roughTries"), app.indexOf("// A start typed into Go's start box"));
+  assert.match(rough, /window\.setInterval\(\(\) => \{/);
+  assert.match(rough, /return \(\) => window\.clearInterval\(tick\);/);
+  assert.match(rough, /const inGo = \(\) => modeRef\.current === "go" && !onBikeNow\.current && pointsRef\.current\.length === 0;/);
+  assert.match(rough, /if \(document\.visibilityState !== "visible" \|\| !inGo\(\) \|\| roughBusy\.current\) return;/);
+  assert.match(rough, /if \(!inGo\(\) \|\| goStartRef\.current !== was\) return;/);
+  assert.match(rough, /if \(goRough\(result\.fix\.accuracyM\) && result\.fix\.accuracyM >= before\) return;/);
+  assert.match(rough, /if \(mapRef\.current\?\.getBounds\(\)\.contains\(was\.point\)\) flyToInView\(result\.fix\.point, 15\);/);
   assert.doesNotMatch(app, /setGoStart\(\{ kind: "here"/, "every found start is stamped (goHereStart)");
 });
 
