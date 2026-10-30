@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { BikesharePlan, DescriptionEntry, RouteResponse, TransitOption, TransitPlan, TransitStep } from "./api.ts";
 import type { LonLat } from "./geo.ts";
-import { setLanguageForTest } from "./i18n.ts";
+import { loadLanguage, setLanguageForTest } from "./i18n.ts";
 import { RIDE_MAX_M, pointAt, rideModel, startState, step, type RideEvent, type RideFix, type RideState } from "./navigate.ts";
 import {
   REST_ANYWAY_MS,
@@ -34,6 +34,9 @@ import {
   withoutSpare,
   type RideTrip,
 } from "./rideTrip.ts";
+
+// Spanish's catalog is fetched on choosing it (lib/i18n.ts loadLanguage), as the app does before it starts.
+await loadLanguage("es");
 
 const M_PER_DEG = 111_195;
 const LAT = 38.9;

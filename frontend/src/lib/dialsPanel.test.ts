@@ -232,5 +232,5 @@ test("each dial shows one short line, and its full note is read and is behind it
   assert.equal(panelView("default", dials, { ...dials, hills: -40 }).hills.note, "Grades past this one cost extra.");
   const size = rideSizeView(500);
   assert.deepEqual([size.note, size.noteSaid], [RIDE_SIZE_NOTE_SHORT, RIDE_SIZE_NOTE]);
-  assert.equal(RIDE_SIZE_NOTE_SHORT, "Sets group length; route unchanged.");
+  assert.equal(RIDE_SIZE_NOTE_SHORT, "Sets group length; route prefers wide roads.");
 });

@@ -37,7 +37,7 @@ has (bikeshare and bike plus transit included) and every setting (traffic stress
 time, gravel, trails, target distance, rider weight, cargo load and assist, trail levels, the
 bikeshare bike and ending, departure time).
 
-Every planned route is a draft: it comes back with a link, kept for a week, that opens that
+Every planned route is a draft: it comes back with a link, kept for a day, that opens that
 exact route in the app, like a link from the app's Share, so the map, Start ride and the app's own GPX are the
 route the assistant described. Nothing is saved to My routes. Drafts last while the assistant's session does. On the site's connector
 (below), `save_route` puts one in My routes, where it opens like any route you saved yourself; on
@@ -63,9 +63,13 @@ in the Claude phone apps can use it with nothing installed.
 
 On the site, each call answers within one web request (up to a minute), so a long loop is
 planned once per request: the answer says when it stopped early, and asking Claude to revise
-the draft can still fix where it strays from Metro or move its points. Drafts are kept on the site for a week. There is no GPX
-file on the server: `gpx_route` gives a download link instead, which works while the draft is kept
-(on the beta, behind its password).
+the draft can still fix where it strays from Metro or move its points. Drafts are kept on the site for a day
+(24 hours), long enough to plan in the evening and save or download the next morning, and only
+the app that planned one can use it. There is no GPX file on the server: `gpx_route` gives a
+download link instead, which works while the draft is kept (on the beta, behind its password).
+The draft's link goes with the draft and then says the exact line is no longer kept. Disconnecting
+the app in Settings, or signing out everywhere, drops its drafts at once, and their links and GPX
+links stop working.
 
 ### Featured routes posts, for instance admins
 
@@ -94,7 +98,12 @@ standard library only. Add the server to your assistant with these settings:
   local stack. Route links are built from it, so `http://localhost` links open only on that
   computer; use the site's public address to open them on your phone.
 - `ROUTEMAKER_ROUTES_DIR` (optional): where GPX files go; default `~/RouteMaker-routes`.
-- `ROUTEMAKER_BASIC_AUTH` (optional): `user:password` for a site behind a password.
+- `ROUTEMAKER_BASIC_AUTH` (optional): `user:password` for a site behind a password. It is sent
+  only to an `https://` address, or to plain `http://` on this computer (`localhost`); with any other
+  `http://` address the tools refuse to start.
+
+If the address answers with something other than RouteMaker (a sign-in or Wi-Fi portal page, or the
+wrong site), each tool says so and names `ROUTEMAKER_BASE_URL` to check.
 
 ### Claude Desktop on Windows, with the checkout in WSL
 

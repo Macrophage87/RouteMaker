@@ -578,14 +578,27 @@ class TestCacheParts:
         assert route_cache.get("x") is None and route_cache.get("z") is not None
         route_cache.clear()
 
-    def test_never_kept_past_ten_minutes(self, settings, monkeypatch) -> None:
-        settings.ROUTE_CACHE_TTL_S = route_cache.TTL_S
+    def test_never_kept_past_two_minutes(self, settings, monkeypatch) -> None:
+        # A re-route or a "from my location" plan starts at the rider's live position.
+        assert route_cache.TTL_S == 120
+        settings.ROUTE_CACHE_TTL_S = 600  # a setting above the ceiling is held to it
         route_cache.clear()
         now = [0.0]
         monkeypatch.setattr(route_cache, "_clock", lambda: now[0])
         route_cache.put("a", {"provisional": False}, 10_000)
         now[0] += route_cache.TTL_S
         assert route_cache.get("a") is None
+
+    def test_an_expired_answer_goes_at_the_next_put_unread(self, settings, monkeypatch) -> None:
+        settings.ROUTE_CACHE_TTL_S = route_cache.TTL_S
+        route_cache.clear()
+        now = [0.0]
+        monkeypatch.setattr(route_cache, "_clock", lambda: now[0])
+        route_cache.put("a", {"provisional": False})
+        now[0] += route_cache.TTL_S
+        route_cache.put("b", {"provisional": False})
+        assert route_cache.size() == 1
+        route_cache.clear()
 
     def test_a_first_route_is_kept_apart_and_replaced_by_its_full_plan(self, settings) -> None:
         settings.ROUTE_CACHE_TTL_S = route_cache.TTL_S
@@ -601,14 +614,14 @@ class TestCacheParts:
     @pytest.mark.django_db
     def test_kept_no_later_than_a_closure_starts_or_ends(self, settings, monkeypatch) -> None:
         settings.ROUTE_CACHE_TTL_S = route_cache.TTL_S
-        soon = datetime.now(UTC) + timedelta(minutes=3)
+        soon = datetime.now(UTC) + timedelta(minutes=1)
         zone = wz.Zone("z", "md", wz.CLOSED, 0, ((0, 0), (0, 1)), None, None, soon, None)
         found = workzones.Snapshot((zone,), {"md": "current"}, {"md": None})
         monkeypatch.setattr(workzones, "snapshot", lambda now=None: found)
         monkeypatch.setattr(route_cache, "_edits_part", lambda: [1, [], 0])
         monkeypatch.setattr(route_cache, "_approved_part", lambda preset: [])
         key = route_cache.key_for({"points": [[0, 0]], "preset": "default"}, "night", "t", "")
-        assert key is not None and 150 < key.valid_s <= 180
+        assert key is not None and 30 < key.valid_s <= 60
 
     def test_the_request_part_leaves_quick_out_and_rounds_the_points(self) -> None:
         a = route_cache.request_part({"points": [[-77.04001, 38.90001]], "quick": True})
@@ -619,6 +632,81 @@ class TestCacheParts:
     def test_off_at_zero(self, settings) -> None:
         settings.ROUTE_CACHE_TTL_S = 0
         assert route_cache.key_for({"points": [], "preset": "default"}, "night", "t", "") is None
+
+    def test_a_request_reads_each_approval_once(self, monkeypatch) -> None:
+        """The key and the plan it misses read the Avoid list, ratings, hazards and beacons
+        once between them; each request reads them afresh."""
+        from core import avoid_junctions, flashing_signals, junction_suggestions, mass_hazards
+
+        reads: list[str] = []
+
+        def reader(name, value):
+            def read():
+                reads.append(name)
+                return value
+
+            return read
+
+        monkeypatch.setattr(avoid_junctions, "approved", reader("avoid", ()))
+        monkeypatch.setattr(junction_suggestions, "approved_ratings", reader("ratings", ()))
+        monkeypatch.setattr(mass_hazards, "approved", reader("hazards", {}))
+        monkeypatch.setattr(flashing_signals, "active", reader("beacons", ()))
+
+        @route_cache.reads_approvals_once
+        def request() -> None:
+            route_cache._approved_part("mass-ride")
+            route_cache.avoid_list()
+            route_cache.junction_ratings()
+            route_cache.mass_ride_hazards()
+            route_cache.beacons()
+
+        request()
+        assert sorted(reads) == ["avoid", "beacons", "hazards", "ratings"]
+        request()
+        assert len(reads) == 8
+        # Outside a request, read every time.
+        route_cache.avoid_list()
+        route_cache.avoid_list()
+        assert reads[-2:] == ["avoid", "avoid"]
+
+    def test_a_call_with_no_time_left_counts_as_failed(self, settings) -> None:
+        """Skipped before it is sent, it is still a call the plan went without."""
+        timings = timing.Timings()
+        token = timing.start(timings)
+        try:
+            with pytest.raises(routing.DeadlineExceeded):
+                routing._call(
+                    next(iter(settings.VALHALLA_UPSTREAMS)),
+                    "route",
+                    {},
+                    routing.Deadline(at=routing.clock() - 1.0, per_call_s=5.0),
+                )
+        finally:
+            timing.stop(token)
+        assert timings.failures == 1
+
+    @pytest.mark.parametrize(
+        "part",
+        [
+            {"calm_search": {"limited": None, "alternates": {"limited": "time"}}},
+            {"dodges": {"limited": "time"}},
+            {"hills_seek": {"limited": None, "climb_seek": {"limited": "time"}}},
+            {"avoid_search": {"decision": "avoided", "alternate": "time"}},
+        ],
+    )
+    def test_an_answer_a_pass_stopped_for_time_is_not_kept(self, part) -> None:
+        body = {"variant": "standard", **part}
+        assert not route_cache.keepable(body, "standard", 0)
+
+    def test_an_answer_whose_passes_stopped_for_other_reasons_is_kept(self) -> None:
+        body = {
+            "variant": "standard",
+            "calm_search": {"limited": None, "alternates": {"limited": None}},
+            "dodges": {"limited": "checks"},
+            "hills_seek": {"limited": None, "climb_seek": {"limited": "no_climbs"}},
+            "avoid_search": {"decision": "avoided"},
+        }
+        assert route_cache.keepable(body, "standard", 0)
 
 
 LOCMEM = "django.core.cache.backends.locmem.LocMemCache"
@@ -663,10 +751,10 @@ class TestSharedCache:
     ) -> None:
         kept: list = []
         monkeypatch.setattr(shared, "set", lambda name, value, timeout: kept.append(timeout))
-        route_cache.put("a", {"provisional": False}, 179.9)
+        route_cache.put("a", {"provisional": False}, 79.9)
         route_cache.put("b", {"provisional": False}, 0.5)
         route_cache.put("c", {"provisional": False}, 10_000)
-        assert kept == [179, route_cache.TTL_S]
+        assert kept == [79, route_cache.TTL_S]
 
     def test_an_answer_too_large_for_memcached_is_not_sent(self, shared, monkeypatch) -> None:
         monkeypatch.setattr(route_cache, "MAX_SHARED_BYTES", 64)
@@ -761,3 +849,21 @@ class TestCachesSetting:
         # An item stored with pymemcache's pickle flag (1) by anything else is a miss.
         assert serde.deserialize("k", pickle.dumps({"a": 1}), 1) is None
         assert serde.deserialize("k", b"answer", 0) == b"answer"
+
+
+def test_an_expired_answer_is_swept_even_when_nobody_asks_again(settings, monkeypatch) -> None:
+    # A quiet worker keeps no route, and its start, past its 2 minutes (core.weather's sweep).
+    settings.ROUTE_CACHE_TTL_S = route_cache.TTL_S
+    monkeypatch.setattr(route_cache, "_shared", lambda: None)
+    now = [1000.0]
+    timers: list = []
+    monkeypatch.setattr(route_cache, "_clock", lambda: now[0])
+    monkeypatch.setattr(route_cache, "_later", lambda delay, run: timers.append((delay, run)))
+    monkeypatch.setattr(route_cache, "_sweep_due", False)
+    route_cache.clear()
+    route_cache.put("a", {"provisional": False})
+    route_cache.put("b", {"provisional": False}, 30)
+    assert len(timers) == 1 and timers[0][0] == route_cache.TTL_S
+    now[0] += route_cache.TTL_S
+    timers.pop()[1]()
+    assert route_cache.size() == 0 and not timers

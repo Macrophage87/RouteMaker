@@ -1087,18 +1087,43 @@ def test_the_swap_restarts_the_off_road_router_where_it_runs(fake, result) -> No
     assert "compose --profile offroad restart valhalla-mtb" in fake.calls()
 
 
+def backup_excluded_tables() -> list[str]:
+    """config.procrastinate.BACKUP_EXCLUDED_TABLES, read as Python (a regex stopped at the first
+    ")" in a comment inside the tuple and saw only half of it)."""
+    import ast
+
+    tree = ast.parse((REPO / "src" / "config" / "procrastinate.py").read_text())
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "BACKUP_EXCLUDED_TABLES" for t in node.targets
+        ):
+            return list(ast.literal_eval(node.value))
+    raise AssertionError("BACKUP_EXCLUDED_TABLES not found")
+
+
 def test_the_safety_dump_leaves_out_what_the_nightly_backup_leaves_out(fake, result) -> None:
     import re
 
-    source = (REPO / "src" / "config" / "procrastinate.py").read_text()
-    block = re.search(r"BACKUP_EXCLUDED_TABLES = \((.*?)\)", source, re.S)
-    excluded = re.findall(r'"(\w+)"', block.group(1))
-    assert excluded
+    excluded = backup_excluded_tables()
+    assert {"django_session", "app_session", "garmin_link", "wahoo_link"} <= set(excluded)
 
     assert importing(fake, result).returncode == 0
 
     dump = next(line for line in fake.calls().splitlines() if "pg_dump" in line)
     assert sorted(re.findall(r"--exclude-table-data=\*\.(\w+)", dump)) == sorted(excluded)
+
+
+def test_the_beta_s_safety_dumps_leave_out_what_the_nightly_backup_leaves_out() -> None:
+    """receive-data.sh's snapshot (before a release, a data shipment or a rollback)."""
+    import re
+
+    source = (REPO / "scripts" / "beta" / "receive-data.sh").read_text()
+    listed = re.search(r"^snapshot_excluded=\(([^)]*)\)", source, re.M)
+    assert listed and sorted(listed.group(1).split()) == sorted(backup_excluded_tables())
+    body = source[source.index("snapshot() {") :]
+    body = body[: body.index("\n}\n")]
+    dump = next(line for line in body.splitlines() if "pg_dump" in line)
+    assert '"${excluded[@]}"' in dump
 
 
 def test_the_import_refuses_a_stage_inside_the_checkout(fake, result) -> None:

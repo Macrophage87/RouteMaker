@@ -47,11 +47,6 @@ export interface NearbyStationsAnswer {
 /** "0.2 mi (320 m)": the one formatter of units is lib/format.ts. */
 export const stationDistance = formatStationDistance;
 
-/** "2 e-bikes", "1 e-bike", "no e-bikes" (the owner, 2026-10-10: e-bike counts in the station list). */
-export function ebikeCount(ebikes: number): string {
-  return ebikes === 0 ? "no e-bikes" : ebikes === 1 ? "1 e-bike" : `${ebikes} e-bikes`;
-}
-
 /**
  * The counts in words, the map's dock label said (v0.7.0, lib/bikeshareDocks.ts): "7 classic, 2 e-bikes,
  * 2 open docks". `bikes` counts e-bikes too.

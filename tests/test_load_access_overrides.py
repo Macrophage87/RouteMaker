@@ -1067,9 +1067,10 @@ class TestTheRetiringFiles:
         veirs = [r for r in retired if r["value"]["adjustment_id"] == "moco-lts5-veirs-mill-road"]
         assert len(veirs) == 23
         rows = parse_file(text, moco.name)
-        # 386 since 433, 381 since the owner rated Darnestown Road LTS 4 (2026-10-14).
-        assert len(rows) == 381
-        assert not any(r["value"]["adjustment_id"] == "moco-lts5-veirs-mill-road" for r in rows)
+        # 386 since 433, 381 since the owner rated Darnestown Road LTS 4 (2026-10-14), and none
+        # since the live county layer replaced the snapshot (review 2026-10-29).
+        assert rows == []
+        assert len(retired) == 23 + 5 + 381
         assert all("433" in r["reason"] for r in veirs)
 
     def test_darnestown_road_is_the_owners_lts_4_over_the_countys_avoid(self, admin, tmp_path):

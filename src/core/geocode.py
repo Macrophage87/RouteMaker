@@ -91,6 +91,10 @@ SAME_PLACE_M = 300
 
 # How far from the point Photon may look for a place to say it is near, in km.
 REVERSE_RADIUS_KM = 0.25
+# Go's tapped-spot card asks for the spot's street address (Stephen 2026-10-29: "provide
+# the address if possible"): the nearest house number within this, in km (about 130 ft).
+# Further off, the number is a building across the block, and the card keeps the street.
+ADDRESS_RADIUS_KM = 0.04
 # The 311 log's county lookup (`area`) takes any object within this: a county is wide, and a
 # rural road may have nothing Photon knows within REVERSE_RADIUS_KM.
 AREA_RADIUS_KM = 2
@@ -143,7 +147,7 @@ def inside(lon: float, lat: float) -> bool:
 
 def _get(path: str, params: dict) -> dict:
     """GET Photon's `path` with `params`; the one place this module touches Photon."""
-    url = f"{settings.PHOTON_URL.rstrip('/')}{path}?{urllib.parse.urlencode(params)}"
+    url = f"{settings.PHOTON_URL.rstrip('/')}{path}?{urllib.parse.urlencode(params, doseq=True)}"
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=settings.PHOTON_TIMEOUT_S) as response:  # noqa: S310
@@ -275,9 +279,12 @@ def expand_abbreviations(query: str) -> str:
 # shops should be searchable, like restaurants"). Typed with a bias point, they
 # list the nearest places with that OSM tag (Photon's /reverse with osm_tag,
 # docs/api-v1.md "Filter results by tags and values"), nearest first. Groceries
-# too (review SIMPLICITY-1: "grocery" found places named Grocery, not the nearest).
+# too (review SIMPLICITY-1: "grocery" found places named Grocery, not the nearest),
+# small grocers and greengrocers with the supermarkets (the 2026-10-29 review). Each
+# value is the osm_tag filters, any of which a place may match.
+GROCERY_TAGS = ("shop:supermarket", "shop:grocery", "shop:greengrocer")
 TAG_SEARCHES = {
-    phrase: "shop:bicycle"
+    phrase: ("shop:bicycle",)
     for phrase in (
         "bike shop",
         "bike shops",
@@ -291,7 +298,7 @@ TAG_SEARCHES = {
         "bicycle repair",
     )
 } | {
-    phrase: "shop:supermarket"
+    phrase: GROCERY_TAGS
     for phrase in (
         "grocery",
         "groceries",
@@ -299,17 +306,41 @@ TAG_SEARCHES = {
         "grocery stores",
         "supermarket",
         "supermarkets",
+        # Spanish, as the Eat sheet takes them (frontend/src/lib/grocery.ts GROCERY_WORDS).
+        "supermercado",
+        "supermercados",
     )
 }
 # How far a tag search looks around the bias point, in km (about 12 mi).
 TAG_SEARCH_RADIUS_KM = 20
+# Trailing words that only say "near where I am", which a tag search is anyway (the
+# 2026-10-29 review: "grocery near me" fell through to a name search). Longest first.
+NEAR_ME_TAILS = (
+    ("near", "me"),
+    ("close", "to", "me"),
+    ("near", "by"),
+    ("nearby",),
+    ("cerca", "de", "mí"),
+    ("cerca", "de", "mi"),
+    ("cerca",),
+)
+
+
+def tag_phrase(q: str) -> str:
+    """`q` as TAG_SEARCHES keys it: folded, single-spaced, a trailing "near me" dropped."""
+    words = q.casefold().split()
+    for tail in NEAR_ME_TAILS:
+        if len(words) > len(tail) and tuple(words[-len(tail) :]) == tail:
+            words = words[: -len(tail)]
+            break
+    return " ".join(words)
 
 
 def search(
     q: str, *, lat: float | None = None, lon: float | None = None, limit: int, lang: str
 ) -> list[dict]:
     """Places matching `q` inside the coverage box, nearest `lat, lon` first when given."""
-    tag = TAG_SEARCHES.get(" ".join(q.casefold().split()))
+    tag = TAG_SEARCHES.get(tag_phrase(q))
     if tag is not None and lat is not None and lon is not None:
         answer = _get(
             "/reverse",
@@ -393,18 +424,77 @@ def _area(properties: dict, name: str) -> list[str]:
     return rest[:2]
 
 
-def reverse(lat: float, lon: float, *, lang: str) -> list[dict]:
+def street_address(lat: float, lon: float, *, lang: str) -> dict | None:
+    """The nearest house number and street to the point within ADDRESS_RADIUS_KM, as
+    {name: "1234 Franklin Street Northeast", label}, or None. Raises Unavailable when
+    Photon does not answer."""
+    answer = _get(
+        "/reverse",
+        {
+            "lat": lat,
+            "lon": lon,
+            "lang": lang,
+            "limit": 1,
+            "radius": ADDRESS_RADIUS_KM,
+            "layer": "house",
+        },
+    )
+    for feature in answer.get("features", []):
+        if not isinstance(feature, dict) or not isinstance(feature.get("properties"), dict):
+            continue
+        point = _point(feature)
+        if point is None or not inside(*point):
+            continue
+        if haversine(Point(lon, lat), Point(*point)) > ADDRESS_RADIUS_KM * 1000:
+            continue
+        properties = feature["properties"]
+        number, street = _text(properties, "housenumber"), _text(properties, "street")
+        if not number or not street:
+            continue
+        name = f"{number} {street}"
+        return {"name": name, "label": ", ".join([name, *_area(properties, street)])}
+    return None
+
+
+def reverse(lat: float, lon: float, *, lang: str, address: bool = False) -> list[dict]:
     """What the point is on: the named road or trail it snaps to, or failing
     that "near" a place Photon knows. At most one result.
 
+    With `address` (Go's tapped-spot card), a house number within
+    ADDRESS_RADIUS_KM names it instead: "1234 Franklin Street Northeast", kind
+    "address". Route points never ask, since the nearest house to a point on a
+    road is a neighbour's.
+
     Raises Unavailable only when neither the router nor Photon answered.
     """
+    point = {"lon": round(lon, 6), "lat": round(lat, 6)}
+    # Photon not answering the address is not asked again (a second timeout): the
+    # street from the router names it, with no neighbourhood.
+    photon_answered = True
+    try:
+        found = street_address(lat, lon, lang=lang) if address else None
+    except Unavailable:
+        found, photon_answered = None, False
+    if found is not None:
+        return [
+            {
+                **found,
+                **point,
+                "kind": "address",
+                "osm_type": None,
+                "osm_id": None,
+                "osm_key": None,
+                "osm_value": None,
+            }
+        ]
     try:
         edge = edge_name(_locate(lat, lon))
         router_answered = True
     except Unavailable:
         edge, router_answered = None, False
     try:
+        if not photon_answered:
+            raise Unavailable("the geocoder did not answer the address")
         answer = _get(
             "/reverse",
             {"lat": lat, "lon": lon, "lang": lang, "limit": 1, "radius": REVERSE_RADIUS_KM},
@@ -425,7 +515,6 @@ def reverse(lat: float, lon: float, *, lang: str) -> list[dict]:
             raise
         feature = None
     properties = feature["properties"] if feature else {}
-    point = {"lon": round(lon, 6), "lat": round(lat, 6)}
     if edge is not None:
         name = f"near {edge['name']}" if edge["kind"] == "near" else edge["name"]
         return [

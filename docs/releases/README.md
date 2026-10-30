@@ -9,8 +9,7 @@ No server addresses, keys or riders' data.
 
 Every release branch gets one more reviewer before it goes to `main` (the owner, 2026-10-19): a
 check that what the app does matches what the rider documentation says. The pages are
-`frontend/public/about/` (How it works, Ride types, Stress ratings, Architecture,
-Acknowledgements). The reviewer reads the release's changes and, for each one:
+every page under `frontend/public/about/`, not only the ones a change seems to touch. The reviewer reads the release's changes and, for each one:
 
 - finds every statement in those pages it touches, such as a rating rule, a cost, a slider value,
   a ride type, a data source, a closure rule, a control's name or where it sits, or a diagram;

@@ -427,6 +427,8 @@ NOT_DELIVERED_TO_THE_API: dict[str, tuple[str, ...] | None] = {
     # Building without every agency's stress ratings (pipeline.agency_ratings), read
     # by the rebuild task alone.
     "REBUILD_ALLOW_NO_AGENCY_LTS": ("rebuild",),
+    # The floor on traffic counts in volume.json, read by the rebuild task alone.
+    "REBUILD_VOLUME_MIN_ROWS": ("rebuild",),
     # The source extract the rebuild downloads, merges and clips for itself
     # (pipeline.source). Read at FETCH_EXTRACT and nowhere the api runs.
     "SOURCE_EXTRACT_URLS": ("rebuild",),
@@ -448,6 +450,8 @@ NOT_DELIVERED_TO_THE_API: dict[str, tuple[str, ...] | None] = {
     # an empty default - and until then a deployment that has its own tiles
     # reaches the container the same way any other unlisted variable does.
     "ADMIN_BASEMAP_TILE_URL": None,
+    # The public-key file the nightly dump is encrypted to, read by the worker's backup task alone.
+    "BACKUP_AGE_RECIPIENTS": ("worker",),
 }
 
 

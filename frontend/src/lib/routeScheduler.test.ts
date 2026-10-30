@@ -571,7 +571,7 @@ test("a press sent with now goes at once and takes over a slider edit still wait
   assert.equal(ctx.api.calls.length, 2);
 });
 
-test("one deliberate press goes at once: Plan's Route, Try again and a transit pick skip the debounce (routing audit S26)", () => {
+test("one deliberate press goes at once: Plan's Route, Try again, a transit pick and Mass Ride's switch to Group Ride skip the debounce (routing audit S26)", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   // The flag is read and cleared at the top of the route effect, before any early return, so it never carries
   // over to a later edit.
@@ -590,5 +590,7 @@ test("one deliberate press goes at once: Plan's Route, Try again and a transit p
   assert.doesNotMatch(confirm, /now: true|sendNow/);
   const addStop = app.slice(app.indexOf("const goAddStopAt = "), app.indexOf("const goAddStop = "));
   assert.doesNotMatch(addStop, /now: true|sendNow/);
-  assert.equal((app.match(/sendNow\.current = true;/g) ?? []).length, 3, "only Route, the transit pick and the plan kept offline, once back online (P11), set it");
+  const groupRide = app.slice(app.indexOf("onGroupRideNoTrails: () => {"), app.indexOf("routeCard:"));
+  assert.match(groupRide, /sendNow\.current = true;\s*if \(planFirst\) setRouteAsk/);
+  assert.equal((app.match(/sendNow\.current = true;/g) ?? []).length, 4, "only Route, the transit pick, the plan kept offline once back online (P11) and Mass Ride's switch to Group Ride set it");
 });
