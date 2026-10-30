@@ -14,7 +14,7 @@ Stress reaches a route in three layers:
    on a traced route a cost in feet of quiet riding, which the ranking adds in.
 
 Turn, gate, surface and hill costs are sent at every slider position and do not
-depend on the tier (`src/core/presets.py:440-476`).
+depend on the tier (each preset's `_preset(...)` row and `presets.costing`, `src/core/presets.py`).
 
 ## 1. Valhalla: graph tags (`lua/routemaker_remap.lua`)
 
@@ -247,7 +247,7 @@ unchanged.
 
 How the cost is used: in the score at the intersection weight (section 4), as targets
 for exclusion from 0.59 calm mi [0.94 km; 3,100 ft] (`REFINE_MIN_EVENT_FT`,
-`refine.py:111`), and at the top of the slider as part of the top (red) and second
+`refine.py`), and at the top of the slider as part of the top (red) and second
 (orange) figures. Junctions under 0.15 calm mi [0.24 km; 800 ft] count in the score and
 not at the top of the slider.
 

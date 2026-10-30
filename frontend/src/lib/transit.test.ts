@@ -263,7 +263,7 @@ test("each option says its busy riding after its time, and an elevator out in wo
   assert.equal(optionSaid(option, 0), "A. bike 4 minutes, Red Line 18 minutes: about 34 min, 0.4 mi (0.6 km) on busy roads");
   assert.equal(optionText({ ...option, busy_m: 40 }, 0), "A. 🚲 4 min · 🔴 18 min: about 34 min, no busy roads");
   assert.equal(optionText({ ...option, busy_m: null }, 0), "A. 🚲 4 min · 🔴 18 min: about 34 min");
-  assert.equal(busyText(undefined, "busy"), "");
+  assert.equal(busyText(undefined, "shown"), "");
   assert.match(optionSaid({ ...option, elevator_out: true }, 0), /; an elevator is out on the way, so it is ranked lower$/);
 });
 

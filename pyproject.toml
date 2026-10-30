@@ -1,6 +1,6 @@
 [project]
 name = "routemaker"
-version = "0.14.0"
+version = "0.15.0"
 description = "Collaborative bicycle route planning for the Washington, DC metro area"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -32,3 +32,11 @@ extend-exclude = ["*/migrations/*"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+# The beta's release agent runs this with the server's own python3, 3.8 or newer (its
+# docstring): keep `Optional` and friends there, and flag syntax 3.8 cannot run.
+[tool.ruff.per-file-target-version]
+"scripts/beta/cd_logic.py" = "py38"
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/beta/cd_logic.py" = ["UP045", "E501"]

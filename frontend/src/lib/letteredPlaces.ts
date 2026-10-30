@@ -11,6 +11,10 @@
  */
 import type { LonLat } from "./geo.ts";
 import { formatDistance } from "./format.ts";
+import { t } from "./i18n.ts";
+
+/** A list's one button for all its places on the map (Stephen 2026-10-29: "a button to show all the searched on map"). */
+export const SHOW_ALL_ON_MAP = t("Show all on map");
 
 export interface LetteredPlace {
   /** A, B, C...; past Z, AA, AB... (only A to Z have a key). */
@@ -18,6 +22,12 @@ export interface LetteredPlace {
   point: LonLat;
   /** The marker's accessible name: "B: Drinking water, Garfield Park, 0.3 mi (0.5 km)". */
   name: string;
+  /**
+   * The place's name, shown on the marker in a bubble in place of its letter (Stephen 2026-10-29: "Named, not
+   * lettered", "With names in a bubble"): Go's and Plan's lists. Absent: the letter in its pin (a ride's Detour,
+   * Roam's Nearby, Go's bike-share options).
+   */
+  label?: string;
 }
 
 /** The letter for the option at `index` (0 is A); past Z it goes on AA, AB, as a spreadsheet's columns do. */
@@ -36,12 +46,18 @@ export function letteredName(letter: string, title: string, metres: number | nul
   return metres === null ? `${letter}: ${title}` : `${letter}: ${title}, ${formatDistance(metres)}`;
 }
 
-/** The places, lettered in their order. */
-export function letterPlaces<T>(items: readonly T[], of: (item: T) => { point: LonLat; title: string; metres: number | null }): LetteredPlace[] {
+/** The places, lettered in their order; `named`, each marker shows the place's name (`label`). */
+export function letterPlaces<T>(
+  items: readonly T[],
+  of: (item: T) => { point: LonLat; title: string; metres: number | null },
+  named = false,
+): LetteredPlace[] {
   return items.map((item, index) => {
     const { point, title, metres } = of(item);
     const letter = placeLetter(index);
-    return { letter, point, name: letteredName(letter, title, metres) };
+    const place: LetteredPlace = { letter, point, name: letteredName(letter, title, metres) };
+    if (named) place.label = title;
+    return place;
   });
 }
 

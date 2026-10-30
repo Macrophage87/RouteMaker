@@ -1363,7 +1363,7 @@ def test_the_restore_runbook_restores_before_the_rest_of_the_stack_is_up() -> No
     volume and not in the dump - comes after it. This used to pin the error
     counts the prose quotes, which round 10 re-measured as different.
     """
-    commands = snippet_commands(section(OPERATIONS, "## Restoring one"))
+    commands = restore_commands()
     ups = [i for i, tokens in enumerate(commands) if is_up(tokens)]
     assert ups, "the restore runbook never starts the stack"
     assert up_services(commands[ups[0]]) == ["postgis"], (
@@ -1417,6 +1417,26 @@ def command_matches(tokens: list[str], start, pairs, last) -> bool:
     )
 
 
+def restore_commands() -> list[list[str]]:
+    """The restore runbook's commands, with each pipeline and `&&` list split into its
+    commands and an `ssh <server> '...'` wrapper taken off: the dump is decrypted on the
+    owner's computer and streamed over ssh into the server's `pg_restore`, so that one
+    step runs on the server inside a line typed on the owner's computer."""
+    commands = []
+    for tokens in snippet_commands(section(OPERATIONS, "## Restoring one")):
+        current: list[str] = []
+        for token in [token.strip("'\"") for token in tokens]:
+            if token in ("|", "&&"):
+                commands.append(current)
+                current = []
+            elif current == ["ssh"]:
+                current = []  # the host: what follows is the server's command
+            elif token:
+                current.append(token)
+        commands.append(current)
+    return [tokens for tokens in commands if tokens]
+
+
 def snippet_commands(text: str) -> list[list[str]]:
     """Every command line in the text's `sh` blocks, continuations joined and
     comments dropped, as tokens."""
@@ -1439,7 +1459,7 @@ def test_the_restore_runbook_empties_the_images_database_before_restoring() -> N
     postgis/postgis:16-3.4). The runbook drops the database and creates it from
     template0 first, after waiting for the health gate - without `--wait` the
     first command ran before the server's socket existed."""
-    commands = snippet_commands(section(OPERATIONS, "## Restoring one"))
+    commands = restore_commands()
     position = -1
     for step in RESTORE_DATABASE_STEPS:
         found = next(

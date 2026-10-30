@@ -13,6 +13,8 @@ public class FilesPluginTest {
         assertEquals("routemaker-default-1_9mi.fit", FilesPlugin.safeName("routemaker-default-1_9mi.fit"));
         assertEquals("ride.tcx", FilesPlugin.safeName("ride.tcx"));
         assertEquals("ride.gpx", FilesPlugin.safeName("ride.gpx"));
+        assertEquals("routemaker-default-1_9mi-cues.pdf", FilesPlugin.safeName("routemaker-default-1_9mi-cues.pdf"));
+        assertEquals("routemaker-default-1_9mi-lock-1-of-3.png", FilesPlugin.safeName("routemaker-default-1_9mi-lock-1-of-3.png"));
     }
 
     @Test
@@ -23,6 +25,7 @@ public class FilesPluginTest {
         assertNull(FilesPlugin.safeName(".fit"));
         assertNull(FilesPlugin.safeName("ride.html"));
         assertNull(FilesPlugin.safeName("ride.fit.html"));
+        assertNull(FilesPlugin.safeName("ride.svg"));
         assertNull(FilesPlugin.safeName("ride .fit"));
         assertNull(FilesPlugin.safeName("a".repeat(118) + ".fit"));
     }
