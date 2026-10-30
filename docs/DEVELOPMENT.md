@@ -4651,9 +4651,10 @@ Open: Photon's own request logging is unverified (`docker logs photon` after one
 stack; a log4j override if queries show). Whether Valhalla logs a request on an error path (no
 suitable edges, say) is unverified, and so is the app's own log of Valhalla's refusal text (src/core/routing.py logs it
 when a router refuses a route request or a trace_attributes call); `"do_not_track": true` in the route request would be belt and
-braces. The app's pages carry `Permissions-Policy: geolocation=(self), camera=(), microphone=(),
+braces. The app's pages carry `Permissions-Policy: geolocation=(self), camera=(), microphone=(self),
 payment=(), usb=()` (the Caddyfile, and the beta's nginx template the same,
-tests/test_beta_overlay.py), so only the site itself, never a frame, can ask for location.
+tests/test_beta_overlay.py), so only the site itself, never a frame, can ask for location or the microphone
+(Send alert's Speak: Chrome's speech recognition fails "not-allowed" under `microphone=()`).
 
 ## Contraflow on the no-trail graph
 

@@ -264,17 +264,21 @@ test("Roam's broadcast has its own alerts: no route, so no Wrong turn or Rider o
   for (const kind of ROAM_ALERT_KINDS) assert.ok(ALERT_KINDS["group-ride"].includes(kind));
   assert.deepEqual(ROAM_ALERT_KINDS.filter((k) => k.call911).map((k) => k.id), ["crash"]);
   const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
-  assert.match(group, /\{\(broadcast\?\.roam \? ROAM_ALERT_KINDS : ALERT_KINDS\[type\]\)\.map\(\(kind\) => \(/);
+  assert.match(group, /\{\(broadcast\?\.roam \? ROAM_ALERT_KINDS : ALERT_KINDS\[type\]\)\s*\.filter\(/);
 });
 
-test("Alert's choices and Other's Speak, Send and Cancel are ride-sized, with no list bullets (review S3)", () => {
+test("Alert's choices, Speak, Send and Cancel are ride-sized, larger again, with no list bullets (review S3; 2026-10-30)", () => {
   const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
   assert.match(css, /\.ride-alert-kinds \{\s*list-style: none;\s*padding: 0;\s*\}/);
-  assert.match(css, /\.ride-alert-panel button \{\s*min-height: 48px;\s*\}/);
+  assert.match(css, /\.ride-alert-panel button \{\s*min-height: 56px;\s*font-size: 18px;/);
+  // Speak, the panel's first press, is the largest; the quick alerts fill two columns, each cell all press.
+  assert.match(css, /\.ride-alert-panel \.ride-speak \{[^}]*width: 100%;[^}]*min-height: 64px;/);
+  assert.match(css, /\.ride-alert-panel \.ride-alert-kinds \{\s*display: grid;\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
+  assert.match(css, /\.ride-alert-kinds button \{\s*width: 100%;\s*height: 100%;/);
   const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
   // Every Alert button is inside the panel: its kinds, the confirm, and Other's form.
   const panel = group.slice(group.indexOf('className="ride-alert-panel"'), group.indexOf("{alerts.length > 0 && ("));
-  assert.match(panel, /className="secondary ride-speak"/);
+  assert.match(panel, /className="ride-speak"/);
   assert.match(panel, /<button type="submit">\{t\("Send"\)\}<\/button>/);
   assert.match(panel, /className="ride-alert-kinds"/);
 });
@@ -328,13 +332,13 @@ test("a followed ride link without its key says so and asks for no dot", async (
     group,
     /useEffect\(\(\) => \{\s*if \(keyless\) \{\s*\/\/[^\n]*\n\s*setRide\(null\);\s*setSeal\(null\);\s*setConsent\(null\);\s*setAsked\(false\);\s*setShareOn\(false\);\s*setRead\(\{ dots: \[\], alerts: \[\] \}\);\s*return;\s*\}\s*let live = true;\s*void rideOf\(rideSecret\)/,
   );
-  // No ride, so no Send alert; Call 911 stays reachable where Send alert sits, a ride-sized link (56 px, past the 44 px floor).
+  // No ride, so no Send alert; Call 911 stays reachable where Send alert sits, a ride-sized link (64 px, past the 44 px floor).
   const none = group.slice(group.indexOf("if (!ride) {"), group.indexOf("<ConsentDialog open={askNow}"));
   assert.match(none, /if \(!keyless \|\| !controls\) return null;/);
   assert.match(none, /<div className="ride-group">\s*<div className="ride-group-bar">\s*<a className="chip ride-alert-button" href=\{CALL_911_HREF\}>\s*<Icon name="warn" size=\{18\} \/>\s*\{CALL_911\}\s*<\/a>\s*<\/div>\s*<\/div>/);
   assert.doesNotMatch(none, /ALERT_LABEL|<button/);
   const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
-  assert.match(css, /\.ride-group-bar \.ride-alert-button \{\s*min-height: 56px;/);
+  assert.match(css, /\.ride-group-bar \.ride-alert-button \{\s*min-height: 64px;/);
   assert.match(css, /a\.chip \{\s*text-decoration: none;\s*\}/);
   // A plan link without one still rides under a new key of its own.
   assert.match(group, /const rideSecret = \(broadcast \? broadcast\.secret : secret\) \?\? ownSecret;/);
