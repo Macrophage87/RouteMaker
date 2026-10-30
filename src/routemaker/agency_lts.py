@@ -105,6 +105,14 @@ def map_level(agency: str, level: float) -> float:
     return READ_AS.get(agency, {}).get(float(level), level)
 
 
+def used_level(rating: AgencyRating) -> float:
+    """The level the map uses for a rating: the owner's reading of it where one is set
+    (`AgencyRating.read_as`), else `map_level`'s."""
+    if rating.read_as is not None:
+        return rating.read_as
+    return map_level(rating.agency, rating.level)
+
+
 def row_level(adjustment_id: str | None, level: float) -> float:
     """An override row's level as the map uses it: an agency's rating loaded as a row
     (`adjustment_source`; Montgomery's `moco-lts5-*`) reads as that agency's level does
@@ -198,10 +206,13 @@ def source_name(source: str) -> str:
 
 @dataclass(frozen=True)
 class AgencyRating:
-    """One agency's level for one way."""
+    """One agency's level for one way: the level it published, and where the owner's rules
+    read it otherwise (`routemaker.mdot_sha_rules`), the level the map uses and why."""
 
     agency: str
     level: float
+    read_as: float | None = None
+    note: str | None = None
 
     @property
     def name(self) -> str:
@@ -242,7 +253,7 @@ def chosen(ratings: Iterable[AgencyRating]) -> AgencyRating | None:
     stress-averse reading. A ban (`PROHIBITING_LEVELS`) is access, not a level, and
     is never chosen."""
     levels = [r for r in ratings if prohibiting((r,)) is None]
-    ranked = sorted(levels, key=lambda r: (r.rank, -map_level(r.agency, r.level)))
+    ranked = sorted(levels, key=lambda r: (r.rank, -used_level(r)))
     return ranked[0] if ranked else None
 
 
@@ -274,7 +285,7 @@ def apply(
         if not (
             facility_mapped
             and r.agency in SUPERSEDED_WHERE_FACILITY
-            and map_level(r.agency, r.level) > formula_level
+            and used_level(r) > formula_level
         )
     ]
     # Each set-aside rating's reason, appended to the rule: the road panel reads it back
@@ -285,7 +296,7 @@ def apply(
     if pick is None:
         if not ratings:
             return result
-        set_aside_level = max((map_level(r.agency, r.level) for r in aside), default=0)
+        set_aside_level = max((used_level(r) for r in aside), default=0)
         if painted_lane and set_aside_level > PAINTED_LANE_LEVEL > formula_level:
             tier, half = tier_of(PAINTED_LANE_LEVEL)
             return replace(
@@ -305,8 +316,8 @@ def apply(
             formula_rule=result.rule,
             agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)),
         )
-    level = map_level(pick.agency, pick.level)
-    if level < pick.level and result.tier is Stress.AVOID:
+    level = used_level(pick)
+    if pick.read_as is None and level < pick.level and result.tier is Stress.AVOID:
         # A level read as a lower one (Montgomery's 5 as 4.5) does not lower the
         # formula's own Avoid (a bike-legal motorway, a side path's road): the
         # agency's highest level agrees with it. The rating is still recorded.
@@ -315,7 +326,9 @@ def apply(
     # The other agencies' levels are in `agency_ratings`, not the rule: the
     # rule's commas separate the reasons appended after it (`stress.rural_floor`).
     why = f"{AGENCY_RULE}: {pick.name} LTS {pick.level:g}"
-    if level != pick.level:
+    if pick.note:
+        why += f", {pick.note}"
+    elif level != pick.level:
         why += f", {READ_AS_REASON}"
     why = ", ".join([why, *reasons])
     return replace(

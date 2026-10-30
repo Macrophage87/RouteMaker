@@ -2,6 +2,7 @@
 """Install the agency bicycle stress layers the rebuild reads (`pipeline.agency_ratings`).
 
     python scripts/install_agency_lts.py --datasets ~/rmdata/datasets \\
+        --mdot-aadt mdot-sha-aadt.geojson --urban-areas tl_2024_us_uac20.geojson \\
         --out ~/rmdata/reference/agency-lts.json moco ddot mdot-sha
 
 Reads each named agency's layer as `scripts/fetch_agency_layer.py` stored it and
@@ -38,7 +39,11 @@ as they are), 5 "Bicycle access is prohibited by managing roadway agency" (taken
 5; the rebuild reads MDOT's 5 as a ban and closes the road to bicycles,
 `agency_lts.PROHIBITING_LEVELS`, the owner's ruling of 2026-10-19), 9 "missing data"
 (left out). The layer carries a route id and no street name, so its
-rows have no name.
+rows have no name. Each record is read through the owner's rules
+(`routemaker.mdot_sha_rules`, 2026-10-30), which need SHA's traffic counts
+(`--mdot-aadt`) and the Census urban areas (`--urban-areas`); a record a rule reads
+otherwise carries `read_as` and `note` beside SHA's own `level`. `--mdot-as-published`
+installs SHA's levels unread.
 """
 
 from __future__ import annotations
@@ -52,7 +57,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
-from routemaker import agency_roads  # noqa: E402
+from routemaker import agency_roads, mdot_sha_rules  # noqa: E402
 from routemaker.agency_lts import AGENCIES, level_problem  # noqa: E402
 
 # The layer files as `scripts/fetch_agency_layer.py` stored them: <slug>/<slug>.geojson.
@@ -197,7 +202,17 @@ MDOT_LEVELS = {1.0: 1.0, 2.0: 2.0, 3.0: 3.0, 4.0: 4.0, 5.0: 5.0}
 MDOT_NOT_RATED = {0.0: "mdot-sha: shared-use path (0)", 9.0: "mdot-sha: missing data (9)"}
 
 
-def mdot_sha(datasets: Path, dropped: Counter):
+def mdot_sha(
+    datasets: Path,
+    dropped: Counter,
+    counts: Path | None = None,
+    urban_areas: Path | None = None,
+    rules=mdot_sha_rules.ENABLED,
+    read: Counter | None = None,
+):
+    """SHA's records, each read through the owner's rules (`routemaker.mdot_sha_rules`)
+    where `counts` and `urban_areas` are given; as published where `rules` is empty."""
+    records = []
     for index, feature in enumerate(agency_roads.iter_features(layer_path(datasets, "mdot-sha"))):
         p = feature["properties"] or {}
         if MDOT_LEVEL_FIELD not in p:
@@ -217,8 +232,106 @@ def mdot_sha(datasets: Path, dropped: Counter):
                 f"mdot-sha: record {feature_id(p, index)}: {MDOT_LEVEL_FIELD} {level:g} is not "
                 "0 to 5 or 9"
             )
-        for part, line in enumerate(lines_of(feature["geometry"])):
-            yield row("mdot-sha", feature_id(p, index), part, MDOT_LEVELS[level], None, line)
+        records.append((feature_id(p, index), p, list(lines_of(feature["geometry"]))))
+    readings = {}
+    if rules:
+        readings = mdot_readings(records, counts, urban_areas, rules)
+    read = read if read is not None else Counter()
+    for fid, p, lines in records:
+        reading = readings.get(fid)
+        if reading:
+            read[reading[1]] += 1
+        for part, line in enumerate(lines):
+            out = row("mdot-sha", fid, part, MDOT_LEVELS[number(p[MDOT_LEVEL_FIELD])], None, line)
+            if reading:
+                out["read_as"] = reading[0]
+                out["note"] = mdot_sha_rules.words(reading[1], reading[0])
+            yield out
+
+
+def mdot_counts(path: Path) -> dict[str, list[tuple[float, float, int]]]:
+    """SHA's traffic counts by route (route id's first 12 characters): (from, to, AADT)."""
+    by_route: dict[str, list[tuple[float, float, int]]] = {}
+    for feature in agency_roads.iter_features(path):
+        p = feature["properties"] or {}
+        aadt = p.get("AADT")
+        if not aadt or p.get("LOC_ERROR") not in (None, "NO ERROR") or not p.get("ROUTEID"):
+            continue
+        lo, hi = sorted((float(p["BEGIN_SECTION"] or 0), float(p["END_SECTION"] or 0)))
+        by_route.setdefault(str(p["ROUTEID"])[:12], []).append((lo, hi, int(aadt)))
+    return by_route
+
+
+def count_for(by_route, route_id: str, start, end) -> int | None:
+    """The count whose section overlaps the stretch most, or None."""
+    if start is None or end is None:
+        return None
+    best = None
+    for lo, hi, aadt in by_route.get(route_id[:12], ()):
+        overlap = min(hi, end) - max(lo, start)
+        if overlap > -0.005 and (best is None or overlap > best[0]):
+            best = (overlap, aadt)
+    return best[1] if best else None
+
+
+def urban_polygons(path: Path) -> list:
+    """The Census urban areas as (bbox, rings) for `mdot_sha_rules.point_in_polygons`."""
+    polygons = []
+    for feature in agency_roads.iter_features(path):
+        geometry = feature.get("geometry") or {}
+        shapes = (
+            [geometry["coordinates"]]
+            if geometry.get("type") == "Polygon"
+            else geometry.get("coordinates", [])
+            if geometry.get("type") == "MultiPolygon"
+            else []
+        )
+        for rings in shapes:
+            rings = [[tuple(c[:2]) for c in ring] for ring in rings if len(ring) > 3]
+            if not rings:
+                continue
+            xs = [c[0] for c in rings[0]]
+            ys = [c[1] for c in rings[0]]
+            polygons.append(((min(xs), min(ys), max(xs), max(ys)), rings))
+    return polygons
+
+
+def mdot_readings(records, counts: Path | None, urban_areas: Path | None, rules) -> dict:
+    """Each record's (level, rule) where a rule reads it otherwise than SHA published."""
+    if counts is None or urban_areas is None:
+        raise SystemExit(
+            "mdot-sha: the owner's rules (routemaker.mdot_sha_rules) need SHA's traffic counts "
+            "(--mdot-aadt mdot-sha-aadt.geojson) and the Census urban areas (--urban-areas "
+            "tl_2024_us_uac20.geojson); give both, or --mdot-as-published to install SHA's "
+            "levels unread"
+        )
+    by_route = mdot_counts(counts)
+    polygons = urban_polygons(urban_areas)
+    stretches, lines = {}, {}
+    for fid, p, parts in records:
+        line = max(parts, key=len) if parts else []
+        mid = line[len(line) // 2] if line else None
+        urban = bool(mid) and mdot_sha_rules.point_in_polygons(mid, polygons)
+        route = str(p.get("ROUTEID") or "")
+        aadt = count_for(by_route, route, p.get("FROMMEASURE"), p.get("TOMEASURE"))
+        stretches[fid] = mdot_sha_rules.stretch(p, aadt, urban)
+        lines[fid] = (route, line)
+    readings = {}
+    for fid, s in stretches.items():
+        reading = mdot_sha_rules.read_as(s, rules)
+        if reading is not None:
+            readings[fid] = reading
+    if "second-record" in rules:
+        for second, first in mdot_sha_rules.pair_second_records(lines).items():
+            mine, theirs = stretches[second], stretches[first]
+            if 5.0 in (mine.level, theirs.level):
+                continue
+            level = readings.get(first, (theirs.level,))[0]
+            if level != mine.level:
+                readings[second] = (level, "second-record")
+            else:
+                readings.pop(second, None)
+    return readings
 
 
 def row(agency: str, fid, part: int, level: float, name: str | None, line) -> dict:
@@ -244,23 +357,51 @@ def main() -> int:
         default=None,
         help="the DDOT layer's level field, where it is none of DDOT_LEVEL_FIELDS",
     )
+    parser.add_argument(
+        "--mdot-aadt",
+        type=Path,
+        default=None,
+        help="MDOT SHA's traffic counts (mdot-sha-aadt.geojson), for the owner's rules",
+    )
+    parser.add_argument(
+        "--urban-areas",
+        type=Path,
+        default=None,
+        help="the Census urban areas (tl_2024_us_uac20.geojson), for the owner's rules",
+    )
+    parser.add_argument(
+        "--mdot-as-published",
+        action="store_true",
+        help="install SHA's levels as published, without the owner's rules",
+    )
     args = parser.parse_args()
-    rows, dropped = [], Counter()
+    rows, dropped, read = [], Counter(), Counter()
     for agency in args.agencies:
         if agency not in PARSERS:
             parser.error(f"{agency}: no parser yet; its layer's format is not known")
         extra = {"field": args.ddot_field} if agency == "ddot" else {}
+        if agency == "mdot-sha":
+            extra = {
+                "counts": args.mdot_aadt,
+                "urban_areas": args.urban_areas,
+                "rules": frozenset() if args.mdot_as_published else mdot_sha_rules.ENABLED,
+                "read": read,
+            }
         found = list(PARSERS[agency](args.datasets, dropped, **extra))
         if not found:
             # The rebuild refuses a file with an approved agency missing
             # (`pipeline.agency_ratings.load`), so an empty reader is refused here first.
             raise SystemExit(f"{agency}: no usable record in its layer; nothing was written")
         for row in found:
-            problem = level_problem(row["level"])
+            problem = level_problem(row["level"]) or (
+                level_problem(row["read_as"]) if "read_as" in row else None
+            )
             if problem:
                 raise SystemExit(f"{row['id']}: {problem}")
         rows += found
         print(f"{agency}: {len(found)} records")
+    for rule, count in sorted(read.items()):
+        print(f"  mdot-sha read by the owner's rule {rule}: {count} records")
     for reason, count in sorted(dropped.items()):
         print(f"  left out, {reason}: {count}")
     missing = sorted(set(AGENCIES) - set(args.agencies))

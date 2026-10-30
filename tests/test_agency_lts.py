@@ -429,7 +429,7 @@ def test_the_mdot_sha_reader_maps_its_scale(tmp_path):
         ],
     )
     dropped = Counter()
-    rows = list(module.mdot_sha(tmp_path, dropped))
+    rows = list(module.mdot_sha(tmp_path, dropped, rules=frozenset()))
     assert {r["id"]: r["level"] for r in rows} == {
         "mdot-sha-1-0": 2.0,
         "mdot-sha-4-0": 5.0,
@@ -459,7 +459,17 @@ def test_the_installer_writes_all_three_agencies_the_rebuild_requires(tmp_path, 
     monkeypatch.setattr(
         sys,
         "argv",
-        ["x", "--datasets", str(tmp_path), "--out", str(out), "moco", "ddot", "mdot-sha"],
+        [
+            "x",
+            "--datasets",
+            str(tmp_path),
+            "--out",
+            str(out),
+            "--mdot-as-published",
+            "moco",
+            "ddot",
+            "mdot-sha",
+        ],
     )
     assert module.main() == 0
     assert {r["agency"] for r in json.loads(out.read_text())} == {"moco", "ddot", "mdot-sha"}
@@ -474,7 +484,9 @@ def test_the_installer_refuses_an_agency_with_no_usable_record(tmp_path, monkeyp
     _layer(tmp_path, "mdot-lts", [{"OBJECTID": 1, "LTS_ADJUSTED": 0}])
     out = tmp_path / "agency-lts.json"
     monkeypatch.setattr(
-        sys, "argv", ["x", "--datasets", str(tmp_path), "--out", str(out), "mdot-sha"]
+        sys,
+        "argv",
+        ["x", "--datasets", str(tmp_path), "--out", str(out), "--mdot-as-published", "mdot-sha"],
     )
     with pytest.raises(SystemExit, match="mdot-sha: no usable record"):
         module.main()

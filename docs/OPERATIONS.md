@@ -5582,6 +5582,8 @@ installed file goes in:
 ```sh
 export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
 python3 scripts/install_agency_lts.py --datasets ~/rmdata/datasets \
+    --mdot-aadt ~/rmdata/datasets/mdot-sha-aadt/mdot-sha-aadt.geojson \
+    --urban-areas "$DATA_ROOT/reference/inputs/tl_2024_us_uac20.geojson" \
     --out ~/rmdata/agency-lts.json moco ddot mdot-sha
 sudo cp ~/rmdata/agency-lts.json "$DATA_ROOT/reference/agency-lts.json"
 sudo chown 10001:10001 "$DATA_ROOT/reference/agency-lts.json"
@@ -5599,6 +5601,30 @@ scale. The levels on our scale (the script's docstring has the citations):
 | Montgomery County Planning | `LTS_EXIST` | 1, 2, 2.5, 3, 4, 5 (5 is very high stress, used as LTS 4.5 from v0.9.1) | 0.5 "None"; not Existing; sidepaths, trails, parking lots |
 | DDOT (2020) | the first of `DDOT_LEVEL_FIELDS` any record has (`LTS`, `LTS_2020`, ...) | 1 to 4 as they are (a 5 would be Avoid) | 0 and empty |
 | MDOT SHA | `LTS_ADJUSTED` | 1 to 4 as they are; 5, "bicycle access prohibited", closes the road to bicycles (v0.9.1) | 0 (shared-use path), 9 (missing data), empty |
+
+From v0.15.3 MDOT SHA's level is read through the owner's rules
+(`routemaker.mdot_sha_rules`; the owner, 2026-10-30, "Rules in the build"), which is why the
+install needs SHA's traffic counts (`mdot-sha-aadt`, the same download as the classifier's
+Maryland counts) and the Census urban areas. Without both it refuses; `--mdot-as-published`
+installs SHA's levels unread. A review matched 3,000 mi of SHA's layer inside Montgomery to
+the county's own ratings and kept the rules that skeptic agents could not refute (project
+files, reports/md-sha-ratings/). Each is a switch, `mdot_sha_rules.ENABLED`:
+
+| Rule | SHA's level | Read as |
+|---|---|---|
+| `collector-assumed-35`, `city-collector` | 4 on an urban two-lane collector where SHA assumed 35 mph | 3; 3.5 at 10,000-15,000 cars a day |
+| `slow-street` | 4 on an urban two-lane street at 30 mph or less, under 15,000 a day | 2.5; 3 from 7,500 a day |
+| `multilane-or-40` | 3 or less on 4+ lanes at 30-45 mph, or two lanes posted 40-45 | 4; 3.5 with a painted lane |
+| `shoulder-credit` | 2 on an urban two-lane 35 mph road with a 4 ft shoulder | 3; 3.5 at 10,000-15,000; 4 above |
+| `busy-residential` | 1 or 2 on a 25 mph two-lane street at 5,000-15,000 a day, no bike lane | 2.5 (the owner's 1st Street rule) |
+| `rural-collector` | 2 or less on a rural minor collector at 1,500+ a day, speed assumed | 3.5 |
+| `rural-expressway` | 4 on a 4+ lane highway posted 55 mph or more, urban or rural | 4.5 |
+| `second-record` | SHA's record for a road's other direction (route id character 15, "2"), within 130 ft (40 m) of the first | the first direction's level, as read |
+
+SHA's 5 is never read otherwise. The install prints `mdot-sha read by the owner's rule
+<rule>: N records`. Montgomery's rating still wins inside the county. The road panel shows
+SHA's own level and the reading: "LTS 4, read as LTS 3: a two-lane collector where SHA
+assumed 35 mph".
 
 Montgomery's 5 means very high stress, which is our 4.5, not our Avoid (the owner,
 2026-10-19: "5 in our case means technically legal, but not a real option. MoCo's mean very
