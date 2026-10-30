@@ -412,6 +412,67 @@ for (const [label, size] of [["phone", { width: 390, height: 844, mobile: true }
   await p.close();
 }
 
+// ---- Joining a ride (Stephen 2026-10-30: "put the location consent and the download route on the same screen when
+// joining a ride. 2 screens are too much"): a followed broadcast's link opened on a phone starts the ride, and one
+// dialog holds the route's buttons and "Show me as a dot?"; Close and Escape answer No and close it all ----
+{
+  const ORIGIN = `http://127.0.0.1:${PORT}`;
+  const join = async ({ width = 390, height = 844 } = {}) => {
+    const p = await newPage(b, { width, height, mobile: true });
+    await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+    await mock(p, S_DEFAULT);
+    await media(p, {});
+    await b.send("Browser.setPermission", { permission: { name: "geolocation" }, setting: "granted", origin: ORIGIN, browserContextId: p.contextId });
+    const [lon0, lat0] = S_DEFAULT.geometry.coordinates[0];
+    await p.s("Emulation.setGeolocationOverride", { latitude: lat0, longitude: lon0, accuracy: 5 });
+    const hash = hashFor("default", 70);
+    p.sharedRoute = { source: "plan", name: "A friend's ride", line: S_DEFAULT.geometry.coordinates, distance_m: S_DEFAULT.distance_m, inputs: { hash, points: [] }, answer: S_DEFAULT };
+    const id = "b".repeat(32);
+    // The leader's mark and the ride's key: 22 base64url characters each, canonical (lib/linkCode.ts).
+    await p.s("Page.navigate", { url: `${ORIGIN}/?route=${id}${hash}&route=${id}&ride=1&lead=${"B".repeat(21)}A&k=${"C".repeat(21)}A` });
+    await p.waitFor("!!document.querySelector('dialog.ride-consent[open]')", 30000);
+    await sleep(400);
+    return p;
+  };
+  const after = "({ open: [...document.querySelectorAll('dialog[open]')].map((d) => d.className), answers: Object.values(JSON.parse(localStorage.getItem('routemaker.ride-share') ?? '{}')).map((c) => c.answer) })";
+  {
+    const p = await join();
+    const seen = await p.eval(`(() => { const d = document.querySelector('dialog.ride-consent[open]'); return { open: [...document.querySelectorAll('dialog[open]')].length,
+      title: d?.querySelector('h2')?.textContent, question: d?.querySelector('h3')?.textContent, buttons: [...(d?.querySelectorAll('button') ?? [])].map((x) => x.textContent || x.getAttribute('aria-label')),
+      focus: document.activeElement?.textContent }; })()`);
+    await p.escape();
+    await sleep(400);
+    const escaped = await p.eval(after);
+    check("joining a ride: one dialog, the route's title and Download GPX (focused) above Show me as a dot? with Yes and No; Escape answers No and closes it all",
+      seen.open === 1 && seen.title === 'Joined the ride "A friend\'s ride"' && seen.question === "Show me as a dot to others on this ride?" &&
+        JSON.stringify(seen.buttons) === JSON.stringify(["Close: not shown", "Download GPX", "Yes", "No"]) && seen.focus === "Download GPX" &&
+        escaped.open.length === 0 && JSON.stringify(escaped.answers) === JSON.stringify(["no"]),
+      JSON.stringify({ seen, escaped }));
+    await p.close();
+  }
+  {
+    const p = await join();
+    await p.eval("document.querySelector('dialog.ride-consent[open] .ride-consent-close').click(); true");
+    await sleep(400);
+    const closed = await p.eval(after);
+    check("joining a ride: Close answers No and closes the route's buttons with the question; no join sheet follows",
+      closed.open.length === 0 && JSON.stringify(closed.answers) === JSON.stringify(["no"]), JSON.stringify(closed));
+    await p.close();
+  }
+  // At 320 by 568 it fits; squeezed shorter, it scrolls inside itself and Yes and No are still reached.
+  const fits = [];
+  for (const height of [568, 360]) {
+    const p = await join({ width: 320, height });
+    fits.push(await p.eval(`(() => { const d = document.querySelector('dialog.ride-consent[open]'); const r = d.getBoundingClientRect();
+      const [yes, no] = d.querySelectorAll('.ride-consent-choices button'); yes.scrollIntoView({ block: 'nearest' }); const y = yes.getBoundingClientRect();
+      return { height: innerHeight, top: Math.round(r.top), bottom: Math.round(r.bottom), scrolls: d.scrollHeight > d.clientHeight, yes: y.top >= r.top && y.bottom <= r.bottom + 1, no: !!no, wide: d.scrollWidth <= d.clientWidth }; })()`));
+    if (height === 568) await p.shot(`${SHOTS}/join-ride_320.png`);
+    await p.close();
+  }
+  check("joining a ride at 320 px: the dialog fits a 568 px screen, and on a shorter one scrolls inside itself with Yes and No reachable",
+    fits.every((f) => f.top >= 0 && f.bottom <= f.height && f.yes && f.no && f.wide) && !fits[0].scrolls && fits[1].scrolls, JSON.stringify(fits));
+}
+
 // ---- 2. The card from the list: focus stays, Escape closes it ----
 {
   const p = await open();
@@ -5538,7 +5599,8 @@ const failed = results.filter((r) => !r.ok);
 // Ride's More bubbles (#515, 2026-10-26) turn one check into three: two more.
 // Favorite places (2026-10-26) add two: the popout, and Edit's Remove.
 // Go's More > Load route (2026-10-26; it was Saved routes) adds one.
-const EXPECTED = 691;
+// Joining a ride on one screen (2026-10-30) adds three: Escape, Close, and 320 px.
+const EXPECTED = 694;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
