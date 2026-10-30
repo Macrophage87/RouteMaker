@@ -191,7 +191,7 @@ test("the 311 menu ends with its six problems: no full report, since a pick is l
 test("RideMode: round side buttons with names; the bottom panel only when it has something; the dock button on a share bike", () => {
   // Each round button is named for screen readers and keeps its key; Where am I? re-centres too (the owner, 2026-10-20)
   // and says when the map stopped following.
-  assert.match(ride, /onClick=\{findMe\}\s+aria-keyshortcuts="W C"\s+aria-label=\{follow \? t\("Where am I\?"\) : t\("Where am I\? The map stopped following you"\)\}/);
+  assert.match(ride, /onClick=\{findMe\}\s+aria-keyshortcuts="W C"\s+aria-label=\{follow \|\| everyone\?\.on \? t\("Where am I\?"\) : t\("Where am I\? The map stopped following you"\)\}/);
   assert.match(ride, /const findMe = useCallback\(\(\) => \{\s*onFollow\(true\);\s*askWhere\(\);/);
   assert.match(ride, /<Icon name="detour" size=\{24\} \/>/);
   assert.match(ride, /\{shareBike && !ride\.arrived && \(/);
