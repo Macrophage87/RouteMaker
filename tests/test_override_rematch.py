@@ -436,10 +436,11 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
     # Aspen Street NW's 5 stress rows (the owner, 2026-10-25), and the 3rd Avenue dirt
     # path's 1 access row (the owner, 2026-10-27), and the Glenmont path's 1 (2026-10-28).
     # Less Montgomery's 381 LTS 5 snapshot rows, retired for the live county layer (review
-    # 2026-10-29). Plus R and 1st Streets NW's 24 stress rows (the owner, 2026-10-30).
+    # 2026-10-29). Plus R and 1st Streets NW's 24 stress rows (the owner, 2026-10-30), and
+    # West Virginia's 293 county-road stress rows (the owner, 2026-10-30).
     assert (
         sum(len(d["rows"]) for d in documents.values())
-        == 1785 + 20 - 5 - 23 + 57 + 40 - 2 + 4 - 431 + 6 + 31 - 2 + 1 + 5 + 1 + 1 - 381 + 24
+        == 1785 + 20 - 5 - 23 + 57 + 40 - 2 + 4 - 431 + 6 + 31 - 2 + 1 + 5 + 1 + 1 - 381 + 24 + 293
     )
     for name, document in documents.items():
         if name == "2026-10-06-owner-crosswalk-links.json":
@@ -468,8 +469,11 @@ def test_the_override_counts_the_owner_asked_about() -> None:
     # 2 ramps), and 445c's floor took in 31 more Nannie Helen Burroughs ways, and 445f retired 2
     # Kenilworth Avenue NE rows. Plus Aspen Street NW's 5 (the owner, 2026-10-25). Less
     # Montgomery's 381 LTS 5 snapshot rows (review 2026-10-29). Plus R and 1st Streets NW's
-    # 24 (the owner, 2026-10-30).
-    assert kinds.count("stress") == 1551 - 1 + 3 + 10 - 5 - 23 + 15 - 431 + 6 + 31 - 2 + 5 - 381 + 24
+    # 24 (the owner, 2026-10-30). Plus West Virginia's 293 county-road rows (2026-10-30).
+    assert (
+        kinds.count("stress")
+        == 1551 - 1 + 3 + 10 - 5 - 23 + 15 - 431 + 6 + 31 - 2 + 5 - 381 + 24 + 293
+    )
 
 
 def test_the_harford_road_row_is_repointed_at_the_three_ways() -> None:
@@ -519,10 +523,10 @@ def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
     # Plus Aspen Street NW's 5 stress rows (the owner, 2026-10-25), and the 3rd Avenue dirt
     # path's 1 access row (the owner, 2026-10-27), and the Glenmont path's 1 (2026-10-28).
     # Less Montgomery's 381 LTS 5 snapshot rows (review 2026-10-29). Plus R and 1st Streets
-    # NW's 24 stress rows (the owner, 2026-10-30).
+    # NW's 24 stress rows (the owner, 2026-10-30), and West Virginia's 293 county-road rows.
     assert (
         len(found)
-        == 1785 + 20 + 1 - 5 - 23 + 57 + 40 - 2 - 431 + 6 + 31 - 2 + 1 + 5 + 1 + 1 - 381 + 24
+        == 1785 + 20 + 1 - 5 - 23 + 57 + 40 - 2 - 431 + 6 + 31 - 2 + 1 + 5 + 1 + 1 - 381 + 24 + 293
     )
     assert ("access", 50426889) in found and ("stress", 1562097556) in found
 
@@ -682,3 +686,20 @@ def test_the_backfill_script_adds_fingerprints_and_keeps_each_files_indent(tmp_p
     assert written[0]["fingerprint"]["name"] == "Harford Road"
     assert "fingerprint" not in written[1], "a way missing from the extract is listed, not invented"
     assert raw == json.dumps(json.loads(raw), indent=1) + "\n", "the file's own indent is kept"
+
+
+def test_the_west_virginia_county_road_rows_take_only_the_owners_levels() -> None:
+    # The owner, 2026-10-30, "Filtered counts, 3 and 3.5": quiet counted county roads LTS 3,
+    # the rest LTS 3.5; plus the busy county roads held at 4 and one street held at 2.
+    document = json.loads((OVERRIDES / "2026-10-30-owner-wv-county-roads.json").read_text())
+    levels = {
+        "wv-county-road-quiet-lts3": (3, False),
+        "wv-county-road-lts3-5": (3, True),
+        "wv-busy-county-road-lts4": (4, False),
+        "wv-north-fairfax-blvd-lts2": (2, False),
+    }
+    for row in document["rows"]:
+        value = row["value"]
+        assert row["kind"] == "stress"
+        assert (value["tier"], value.get("half", False)) == levels[value["adjustment_id"]]
+        assert value["visibility"] == "hidden"

@@ -4322,6 +4322,14 @@ the first host to run it is the first test of it.
    once per file in order. The installer prints one line a file: VDOT 36,808 count
    lines, DDOT 8,323 (2026-10-11).
 
+   **Remake `urban-areas.json` whenever the coverage grows.** It lists way ids from
+   the extract it was made from, so a state added later reads entirely as rural
+   (50 mph on unposted roads, the rural LTS 2 floor). The 2026-10-30 West Virginia
+   recheck found exactly that: the list was made on 2026-09-25, West Virginia joined
+   in v0.7.0, and beta reads every Martinsburg and Charles Town street as rural. Run
+   the command above with the current extract before the next rebuild; the
+   `2026-10-30-owner-wv-county-roads.json` override file assumes it (fixtures/overrides/README.md).
+
    **Every input path is absolute and inside the container.** A bare
    `tl_2024_us_uac20.geojson` resolves against the image's working directory,
    `/app`, where the file is not and cannot be: the script would exit on a
