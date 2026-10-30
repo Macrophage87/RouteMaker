@@ -142,6 +142,9 @@ You stay responsible for riding safely; the route can be wrong.
 - "Where am I?" (it also re-centres the map on you) says the street you are on, the next turn and the distance to the next stop
   and the end, with the time you should arrive at each. On a long trail away from roads it says the trail and a distance from its last
   junction, for example "On the Capital Crescent Trail, about 1.2 miles northwest of ...".
+- Riding with others (Share live, Group Ride, Mass Ride)? While anyone else's dot is on the map, a "See everyone"
+  side button (two people) sits above "Where am I?". Tap it and the map zooms to fit you and every rider, and keeps
+  them all in view as you spread out; tap it again, or "Where am I?", to go back to following you.
 - Moved the map by hand? Leave the screen alone for 30 seconds and the map goes back to following
   you, at the ride's usual zoom. Map cards, road info and the side menus close on their own after
   the same 30 seconds, unless you are typing in one or accessibility mode is on.
@@ -223,8 +226,8 @@ In Go, the ride type buttons are one row that scrolls sideways: the ride type in
 "Default" (your own ride type), your starred ones, "Own Bike + 🚆🚌" and "Bikeshare + 🚶🚆🚌".
 Cargo and plain Bikeshare are under "Ride type & settings", where every ride type is grouped
 under Common, Transportation, Adventure or Group, with a search box over their names and
-descriptions; picking one closes it. Plan's "Change" ride type list and Settings' "Default ride
-type" have the same groups. Typing "transit",
+descriptions; picking one closes it. Plan's "Change" ride type list and Settings' "Primary Go
+method" have the same groups. Typing "transit",
 "walk", "train" or "bus" finds both transit types. A screen reader says their names in words:
 "Own bike plus train or bus" and "Bikeshare plus walk, train or bus".
 
@@ -298,7 +301,8 @@ the route goes to its top by way of its bottom.
   the ride type assumes. Times and arrival clocks follow it. Mass Ride and the share bikes keep
   their own pace.
 - Favorites (signed in): Go's Home button becomes Favorites, with Home and Work first and then
-  your other places. One tap rides there. They are kept with your account only.
+  your other places, in the order you set with Edit's Move up and Move down. One tap rides there.
+  They are kept with your account only.
 - Share live (it was called Broadcast): beside Start ride. Send the link and start riding.
   Whoever opens it sees your dot and the path you take, and can download your route as a GPX
   file or, if they connected one, send it to Garmin or Wahoo. Following needs no account. The

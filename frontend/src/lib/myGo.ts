@@ -62,7 +62,7 @@ export function goRideChips(myRide: PresetId | null, current: PresetId | null = 
 }
 
 /** The first chip's description: it is the rider's own, set in Settings. */
-export const OWN_RIDE_HINT = t("Your ride type. Change it in Settings, under My Go.");
+export const OWN_RIDE_HINT = t("Your primary Go method. Change it in Settings, under My Go.");
 
 /** The parts of a stored or answered My Go that make sense; anything else is left at its default. */
 export function parseMyGo(raw: unknown): MyGo {
