@@ -323,10 +323,11 @@ destination</strong>.</li>
 <strong>Metro</strong> (the three nearest stations, closed ones marked), <strong>Repair</strong>,
 <strong>Places to see</strong>, <strong>Load route</strong>, <strong>Featured routes</strong> and Change home. The first press of Home asks where home is: search for it or
 tap the map. Signed in, Home is <strong>Favorites</strong> instead. It pops out Home (or Set Home),
-Work (or Set Work), then your other saved places in the order you added them, and one tap rides to one.
+Work (or Set Work), then your other saved places in the order you set, and one tap rides to one.
 Favorites hold 20 places besides Home, Work among them; a spot outside the area the map covers can't be
 saved. <strong>Add a place</strong> searches for one, and <strong>Edit</strong> has Change Home and
-Remove, so More leaves out Change home. Favorites are kept with your account only, never on the device or in a log, and are deleted with it;
+Remove, so More leaves out Change home, and <strong>Move up</strong> and <strong>Move down</strong> for each place
+after Work (Home and Work stay first); the new order is kept with your account. Favorites are kept with your account only, never on the device or in a log, and are deleted with it;
 riding to one puts it in that plan's link, as any destination is. <strong>Load route</strong> opens the same popup as Plan's <strong>Load route</strong>
 (<strong>Sign in with Discord</strong> first when you are signed out, <strong>Open GPX file</strong>, then your
 saved routes and the routes kept on this device); one tap opens a route in Go, ready for <strong>Start ride</strong>.
@@ -684,7 +685,7 @@ Riding (App voice, saying every turn, until you change them); see
 ride; where the browser can't, a line says "Screen may sleep: keep it on.", with the phone's own steps behind
 <strong>How</strong>. Roam shows it too.</li>
 <li>The round buttons down the right edge each have a word under it: <strong>Locate</strong> (Where am I?),
-<strong>Text</strong> (Large text), <strong>Share live</strong>, <strong>Detour</strong>,
+<strong>Everyone</strong> (only while another rider is out of view), <strong>Text</strong> (Large text), <strong>Share live</strong>, <strong>Detour</strong>,
 <strong>Dock</strong> on a bikeshare ride, <strong>311</strong> and <strong>More</strong>. Where the words don't fit, as with Large text on,
 each becomes a pill with its word beside the icon. A screen reader hears each by its full name.</li>
 <li>At an unusual junction, such as a five-way or a left onto a service road, the turn card draws the
@@ -717,6 +718,11 @@ and time off the route, paused or walking is left out.</li>
 <li><strong>Where am I?</strong> says where you are and centers the map on you again. It also says how far the next stop and the end are and when you should
 reach them: "1.2 miles to stop 2, arriving about 6:42 AM."
 <strong>Large text</strong> makes the next turn as big as it fits.</li>
+<li><strong>Everyone</strong>, a two-people button under Locate, shows on a ride or in Roam only while another
+rider's dot (Share live, Group Ride or Mass Ride) is outside the part of the map left clear as it follows you. A tap
+fits you and every dot on the map, and keeps doing so as they move. Tap it again, or Where am I?, to follow you
+again; moving the map by hand ends it too, and 30 seconds left alone then brings the map back to you. While it is
+on, being left alone keeps the view. A screen reader hears it as See everyone on the ride.</li>
 <li><strong>Share live</strong> sends a <strong>Share ride</strong> link, as Share live beside Start does
 (with no share sheet it copies the link and says so, or says it could not), and once it has gone makes you the ride's leader; your ride carries on. Pressing it
 again in the same ride sends the same link, and hold it, right-click it or press Shift+F10 to show that link as a QR code instead (see
@@ -1134,7 +1140,8 @@ keep your settings and routes on every device.</p>
 
 <ul>
 <li><strong>My Go:</strong> <strong>Home</strong> (once set, one line with <strong>Change</strong>) and
-<strong>Default ride type</strong>. Kept with your account when you are signed in, otherwise on
+<strong>Primary Go method</strong>, the ride type Go opens in (Bikeshare or Bikeshare + Metro among them);
+Go's first ride chip is that method. Kept with your account when you are signed in, otherwise on
 this device. The app opens in Go on a phone and in Plan on a computer, a shared route
 included; a tab keeps the view it was last in, and pressing Go or Plan counts for that tab only.</li>
 <li><strong>Riding</strong> and <strong>Display:</strong> cues, large text, rider and bike weight, high
@@ -1321,7 +1328,7 @@ from the app's next update.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.15.1. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.15.2. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
