@@ -232,7 +232,10 @@ search, all behind one Caddy web server.</li>
 <li><strong>Data:</strong> rebuilt weekly from OpenStreetMap and agency data; live feeds read every
 few minutes.</li>
 <li><strong>Privacy:</strong> signed-out plans are never stored; sign-in is through Discord and keeps no
-Discord token.</li>
+Discord token. Live ride sharing from the app is end-to-end encrypted: phones seal their dots, alerts
+and the leader's path with AES-256-GCM, using a key derived by HKDF-SHA-256 from a secret in the link
+after the #, each value padded to a fixed size so its length says little, and the server holds only
+sealed text, for 2 minutes.</li>
 </ul>
 <p class="find"><strong>Looking for something else?</strong> How roads are rated: <a href="/about/stress.html">Stress ratings</a>. Planning from Claude or another assistant: <a href="/about/assistants.html">AI assistants</a>. Every data source and licence: <a href="/about/acknowledgements.html">Acknowledgements</a>.</p>
 </div>
@@ -536,7 +539,7 @@ elevation with GDAL<sup class="cite"><a href="#ref-14" aria-label="source 14">[1
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 880 475" role="img" aria-labelledby="fig-request-t fig-request-d" focusable="false" style="min-width:600px">
 <title id="fig-request-t">What happens when you plan a route</title>
-<desc id="fig-request-d">A sequence between you, the web server, the app server, Valhalla and the database. You ask for a route; the web server passes it to the app server. 1: the app server asks Valhalla for a route with this ride type&#x27;s costing and gets a line and alternatives. 2: it asks which roads were used and gets map-matched road ids. 3: it asks the database for those roads&#x27; stress, facilities and junctions. 4: the calm search asks Valhalla again, avoiding the worst stretches, up to five rounds. 5: it scores the candidates, picks one and writes cues. The route, its stress breakdown and cues go back to you. The whole plan has a 40-second budget and an answer is cached for 10 minutes.</desc>
+<desc id="fig-request-d">A sequence between you, the web server, the app server, Valhalla and the database. You ask for a route; the web server passes it to the app server. 1: the app server asks Valhalla for a route with this ride type&#x27;s costing and gets a line and alternatives. 2: it asks which roads were used and gets map-matched road ids. 3: it asks the database for those roads&#x27; stress, facilities and junctions. 4: the calm search asks Valhalla again, avoiding the worst stretches, up to five rounds. 5: it scores the candidates, picks one and writes cues. The route, its stress breakdown and cues go back to you. The whole plan has a 40-second budget and an answer is cached for 2 minutes.</desc>
 <defs><marker id="ah-request" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <text class="tb" x="60" y="22" text-anchor="middle">You</text>
 <line class="grid" x1="60" y1="32" x2="60" y2="470"/>
@@ -562,13 +565,13 @@ elevation with GDAL<sup class="cite"><a href="#ref-14" aria-label="source 14">[1
 <text class="t" x="420.0" y="348.5" text-anchor="middle">5. score, pick, write cues</text>
 <path class="ard" d="M420,395 L234,395" marker-end="url(#ah-request)"/><text class="ts" x="327.0" y="391.0" text-anchor="middle">route, stress breakdown, cues</text>
 <path class="ard" d="M230,420 L64,420" marker-end="url(#ah-request)"/><text class="ts" x="147.0" y="416.0" text-anchor="middle">shown on the map</text>
-<text class="ts" x="430" y="460" text-anchor="middle">A 40-second budget for the whole plan; an answer is cached for 10 minutes.</text>
+<text class="ts" x="430" y="460" text-anchor="middle">A 40-second budget for the whole plan; an answer is cached for 2 minutes.</text>
 </svg>
 </div>
 <div class="fig-narrow">
 <svg viewBox="0 0 320 704" role="img" aria-labelledby="fig-request-n-t fig-request-n-d" focusable="false">
 <title id="fig-request-n-t">What happens when you plan a route</title>
-<desc id="fig-request-n-d">A sequence between you, the web server, the app server, Valhalla and the database. You ask for a route; the web server passes it to the app server. 1: the app server asks Valhalla for a route with this ride type&#x27;s costing and gets a line and alternatives. 2: it asks which roads were used and gets map-matched road ids. 3: it asks the database for those roads&#x27; stress, facilities and junctions. 4: the calm search asks Valhalla again, avoiding the worst stretches, up to five rounds. 5: it scores the candidates, picks one and writes cues. The route, its stress breakdown and cues go back to you. The whole plan has a 40-second budget and an answer is cached for 10 minutes.</desc>
+<desc id="fig-request-n-d">A sequence between you, the web server, the app server, Valhalla and the database. You ask for a route; the web server passes it to the app server. 1: the app server asks Valhalla for a route with this ride type&#x27;s costing and gets a line and alternatives. 2: it asks which roads were used and gets map-matched road ids. 3: it asks the database for those roads&#x27; stress, facilities and junctions. 4: the calm search asks Valhalla again, avoiding the worst stretches, up to five rounds. 5: it scores the candidates, picks one and writes cues. The route, its stress breakdown and cues go back to you. The whole plan has a 40-second budget and an answer is cached for 2 minutes.</desc>
 <defs><marker id="ah-request-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <text class="tb" x="26" y="18" text-anchor="middle">You</text>
 <text class="tb" x="86" y="38" text-anchor="middle">Web server</text>
@@ -609,7 +612,7 @@ elevation with GDAL<sup class="cite"><a href="#ref-14" aria-label="source 14">[1
 <text class="ts" x="65.6" y="624" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">shown on the map</text>
 <path class="ard" d="M86,636 L30,636" marker-end="url(#ah-request-n)"/>
 <text class="ts" x="160" y="674" text-anchor="middle">A 40-second budget for the whole plan;</text>
-<text class="ts" x="160" y="693" text-anchor="middle">an answer is cached for 10 minutes.</text>
+<text class="ts" x="160" y="693" text-anchor="middle">an answer is cached for 2 minutes.</text>
 </svg>
 </div>
 <figcaption>Solid arrows are requests; dashed arrows are answers. Signed-out plans are never stored.</figcaption>
@@ -620,7 +623,8 @@ elevation with GDAL<sup class="cite"><a href="#ref-14" aria-label="source 14">[1
 <p>Each request has a time budget, a rate limit and a cap on plans in flight, so one busy rider cannot
 slow everyone else. Trips over about 19 mi [30 km] are refined leg by leg. A route can have 2 to 25
 points; very long plans over 93 mi [150 km] ask for confirmation when signed out.</p>
-<p>A plan's answer is kept for up to 10 minutes (not for Bikeshare or transit, whose answers are live), so asking
+<p>A plan's answer is kept for up to 2 minutes, as a "From my location" start is a live location (not at all
+for Bikeshare or transit, whose answers are live), so asking
 for the same route again (Undo, or opening it again) is answered at once. On the beta server the app server's workers share these answers through a small
 memcached kept only in memory (16 MB of answers); if it is down or slow, the route is simply planned again. When
 you change a plan in Go after its first route is shown but while its full plan is still being worked out, the app
@@ -739,7 +743,50 @@ account; a route that starts, ends or stops near its author's Home is refused. F
 browser draws the post's map at 1200 by 630 pixels and sends it to the server. Nothing about the reader is kept:
 the pages are the same for every reader.</li>
 <li><strong>Sharing.</strong> A shared route stores the exact line under a random link, kept for a year
-after it was last opened. Where the route starts, ends or stops near Home, its preview image leaves out the route and pins inside Home's circle and keeps the map there.</li>
+after it was last opened, unless a signed-in sharer picks Permanently or a date; a signed-out link always
+gets the year. Where the route starts, ends or stops near Home, its preview image leaves out the route and pins inside Home's circle and keeps the map there.</li>
+<li><strong>Live ride sharing.</strong> Share ride, Share live, Group Ride and Mass Ride links from the app are
+end-to-end encrypted: the server passes on sealed dots, alerts and the leader's path and, except where it keeps the
+key (below), cannot read them. Nothing
+about the method is secret; only the key is.
+<details class="more"><summary>How the encryption works (technical details)</summary>
+<div class="more-body">
+<ul>
+<li><strong>The key</strong> is 16 random bytes from the browser's cryptographic random source
+(<code>crypto.getRandomValues</code>), or from the server's (Python's <code>secrets</code> module) for a ride
+post's link, written as 22 base64url characters in the link's fragment as <code>k=</code>. An older link's 32-byte,
+43-character key still works. Every ride link carries one. A browser never sends the fragment, the part after #,
+to any server.</li>
+<li><strong>Derivation.</strong> HKDF with SHA-256 (salt "routemaker ride seal v1") derives two things from the key:
+with info "ride id", 256 bits written as 64 hex digits, the name the server knows the live ride by; with info
+"ride key", a 256-bit AES-GCM key that the browser keeps non-extractable (Web Crypto). The ride id cannot be turned
+back into the key.</li>
+<li><strong>Sealing.</strong> Each dot, alert and leader path is written as JSON and padded with spaces to a whole
+number of 128 bytes (a dot), 512 bytes (an alert) or 4,096 bytes (a path), so its size gives away neither a role, an
+alert's kind nor the length of its words. It is then encrypted with AES-256-GCM under a fresh random 12-byte nonce,
+with its kind and the ride id bound in as associated data, so a dot cannot pass as an alert, nor one ride's data as
+another's. What is sent is the nonce, the ciphertext and GCM's 128-bit tag, in base64url.</li>
+<li><strong>Positions.</strong> Each phone sends its position as its GPS measures it, to 6 decimal places of a
+degree (about 4 in [0.1 m]), sealed, and an alert's spot the same way; a leader's route and ridden path go to 5
+decimal places (about 3 ft [1 m]), at most 600 points each. A phone sends nothing outside the map's area, and
+merges matching alerts as it reads them. The server refuses a position or alert that is not sealed.</li>
+<li><strong>Who is who.</strong> Each phone posts under its own random code for the ride (16 random bytes). A
+leader's link also carries <code>lead=</code>, the first 16 bytes of the SHA-256 of the leader's code as 22
+base64url characters (the phone sends the server the same 16 bytes as 32 hex digits), so riders can tell which dot
+is the leader's; only the leader's phone, which holds the code, can post as that dot.</li>
+<li><strong>What the server still sees:</strong> the ride id, each phone's random code, when and how often phones
+send and ask, the padded sizes, each dot's age and which one is the leader's, and the internet address a request
+comes from, as for any page. It cannot read a dot, an alert or the leader's live path, except on a ride whose key
+it made or was given and keeps: a ride post's Group or Mass Ride link, and a ride link an AI assistant app planned or
+opened (kept with that app's draft). A Share ride or Share live link is also a shared route, so its planned line is kept on
+the server like any shared link.</li>
+<li><strong>Backups.</strong> Nightly database backups are encrypted with age to the owner's X25519 public key. The
+private key is kept on the owner's computer, not on the server, so the server can write a backup but never read
+one.</li>
+<li>The ride encryption is <code>frontend/src/lib/rideSeal.ts</code> in the open source repository, for anyone to
+check.</li>
+</ul>
+</div></details></li>
 <li><strong>AI assistants.</strong> RouteMaker has a Model Context Protocol<sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a></sup> server, so an AI
 assistant can find places and plan and revise routes. Through the site's connector, after you sign
 in, it can save routes to your account, and Settings, Account, lists each connected assistant with a Disconnect
@@ -792,7 +839,7 @@ release has short rider-facing notes.</li>
 <p class="next">Next: <a href="/about/acknowledgements.html">Acknowledgements</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.14.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.15.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

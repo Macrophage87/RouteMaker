@@ -707,6 +707,20 @@ def test_baltimore_s_one_way_is_never_used_and_is_reported(forward) -> None:
     assert classify(result.tags, urban=True).oneway is False
 
 
+def test_baltimore_s_speed_never_fills_over_a_directional_posting() -> None:
+    """A posted speed wins over a gap-filler by direction or as a list too, as the
+    classifier reads it (`tags.posted_maxspeed`; review 2026-10-29)."""
+    city = A.WayFacts(agency=A.BALTIMORE_AGENCY, blocks=("b",), speed_mph=25)
+    for tags in (
+        {"highway": "secondary", "maxspeed:forward": "35 mph"},
+        {"highway": "secondary", "maxspeed": "25 mph;35 mph"},
+    ):
+        result = A.overlay(tags, city, length_m=300.0)
+        assert result.tags.get("maxspeed") == tags.get("maxspeed")
+        assert result.sources["maxspeed"] == A.SOURCE_OSM
+        assert result.disagreements == ("maxspeed: agency and OSM differ, OSM's posted speed kept",)
+
+
 def test_baltimore_s_lanes_are_never_used_but_its_speed_fills_a_gap() -> None:
     """OWNER-DECISIONS 223: "Baltimore is a gap-filler only: ... speed where OSM
     has none (184); one-way and lanes are never used (222)." The spec review:

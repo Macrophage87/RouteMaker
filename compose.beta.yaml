@@ -154,6 +154,9 @@ services:
     # missing or down is passed over, and each plan is made as if nothing were kept.
     depends_on:
       memcached: { condition: service_started, required: false }
+    # The compose network every service shares, and `routecache`, which only the api and the
+    # memcached are on (below, at the end of this file).
+    networks: [default, routecache]
     ports:
       - "127.0.0.1:${BETA_API_PORT:-8087}:8000"
     volumes:
@@ -192,6 +195,13 @@ services:
         target: /data/tiles
         read_only: true
         bind: { create_host_path: false }
+      # The base map, for the link preview's picture drawn when the link is made
+      # (config.procrastinate.draw_share_preview), as the api reads it.
+      - type: bind
+        source: ${DATA_ROOT}/basemap
+        target: /data/basemap
+        read_only: true
+        bind: { create_host_path: false }
     memswap_limit: 512M
     deploy:
       resources:
@@ -212,7 +222,9 @@ services:
   # answer was left to which worker took the repeat. Memory only (memcached has no disk and
   # logs nothing at this verbosity), so no route is ever written down. -m 16 caps the
   # answers at 16 MiB, least recently used first out; an answer past memcached's 1 MB item
-  # limit is not sent (core.route_cache). On the compose network only, like the routers.
+  # limit is not sent (core.route_cache). memcached has no sign-in, so it is on a network of
+  # its own that only the api joins (`routecache`, internal: no way out of the host either), not
+  # the compose network every other container shares.
   # Down, full or restarted, it costs only the repeats it would have answered.
   memcached:
     <<: *beta-yield
@@ -221,6 +233,7 @@ services:
     # 16 MiB of answers, 2 threads (six workers' gets and sets of a few hundred KB), at most
     # 64 connections (one a worker thread), no UDP.
     command: ["memcached", "-m", "16", "-t", "2", "-c", "64", "-U", "0"]
+    networks: [routecache]
     logging:
       driver: json-file
       options:
@@ -256,6 +269,16 @@ services:
       - max_parallel_workers_per_gather=1
       - -c
       - random_page_cost=1.1
+      # The base file's logging settings, which this command replaces: a failed statement's
+      # text and values are never written to the log (compose.yaml, postgis).
+      - -c
+      - log_min_error_statement=panic
+      - -c
+      - log_error_verbosity=terse
+      - -c
+      - log_statement=none
+      - -c
+      - log_min_duration_statement=-1
     # Docker's default /dev/shm is 64 MB; parallel queries want more.
     shm_size: 128m
     volumes:
@@ -490,3 +513,9 @@ services:
     deploy:
       resources:
         limits: { memory: 320M, cpus: "1" }
+
+# The api's answer cache and the api, and nothing else (memcached, above). `internal`: Docker
+# gives it no route out of the host.
+networks:
+  routecache:
+    internal: true

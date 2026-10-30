@@ -804,3 +804,56 @@ def test_the_routers_serve_the_matrix() -> None:
     for config in sorted(root.glob("valhalla-*.json")):
         actions = json.loads(config.read_text())["loki"]["actions"]
         assert "sources_to_targets" in actions, config.name
+
+
+class TestTheRidesOwnSettings:
+    """Review 2026-10-29: Best order prices its legs at the plan's own speed, round the
+    closures and the roads the rider marked closed, as the planned route will go."""
+
+    POINTS = [[-77.05, 38.90], [-77.04, 38.90], [-77.03, 38.90], [-77.02, 38.90]]
+
+    def test_the_riders_speed_is_in_the_costing(self, monkeypatch) -> None:
+        monkeypatch.setattr(routing, "_twin_down", lambda variant: True)
+        _, costing = stoporder.ride_graph("default", routing.Dials(cycling_speed_kmh=24.0))
+        assert costing["bicycle"]["cycling_speed"] == 24.0
+        _, own = stoporder.ride_graph("default", routing.Dials())
+        assert own == presets.costing("default", presets.stress_start("default", None), None)
+
+    def test_every_leg_and_the_matrix_leave_out_the_closures_and_blocked_roads(
+        self, monkeypatch
+    ) -> None:
+        from types import SimpleNamespace
+
+        from core import workzones
+
+        closure = [[-77.04, 38.89], [-77.03, 38.89], [-77.03, 38.91], [-77.04, 38.89]]
+        monkeypatch.setattr(
+            workzones, "plan_zones", lambda *a, **k: SimpleNamespace(exclude=[closure])
+        )
+        monkeypatch.setattr(stoporder, "ride_graph", lambda preset, dials: ("standard", {}))
+        asked = []
+
+        def ask(variant, endpoint, payload, deadline):
+            asked.append((endpoint, payload))
+            raise routing.RouterUnavailable("down")
+
+        monkeypatch.setattr(stoporder, "_ask", ask)
+        line = ((-77.045, 38.90), (-77.045, 38.901))
+        answer = stoporder.order(self.POINTS, "default", routing.Dials(blocked=(line,)))
+        assert answer["by"] == stoporder.BY_STRAIGHT_LINE
+        assert [endpoint for endpoint, _ in asked] == ["route", "sources_to_targets"]
+        for _, payload in asked:
+            assert payload["exclude_polygons"][0] == closure
+            assert len(payload["exclude_polygons"]) == 2
+
+    def test_the_blocked_roads_are_held_to_the_routers_budget_as_the_plans_are(
+        self, monkeypatch
+    ) -> None:
+        from core import workzones
+
+        monkeypatch.setattr(workzones, "plan_zones", lambda *a, **k: None)
+        monkeypatch.setattr(routing, "_over_budget", lambda rings: len(rings) > 1)
+        first = ((-77.045, 38.90), (-77.045, 38.901))
+        last = ((-77.035, 38.90), (-77.035, 38.901))
+        kept = stoporder.ride_exclusions(self.POINTS, routing.Dials(blocked=(first, last)))
+        assert kept == workzones.blocked_rings((last,))

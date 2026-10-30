@@ -48,6 +48,7 @@ urlpatterns = [
     path("auth/login", auth_views.login_start, name="login"),
     path("auth/callback", auth_views.login_callback, name="login-callback"),
     path("auth/logout", auth_views.logout_view, name="logout"),
+    path("auth/logout-everywhere", auth_views.logout_everywhere_view, name="logout-everywhere"),
     # Connecting a rider's Garmin account, for Send to Garmin (core.garmin_views).
     path("auth/garmin/start", garmin_views.connect_start, name="garmin-start"),
     path("auth/garmin/callback", garmin_views.connect_callback, name="garmin-callback"),

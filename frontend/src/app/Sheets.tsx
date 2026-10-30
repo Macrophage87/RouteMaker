@@ -16,7 +16,7 @@ import { filterRideGroups, rideSections, rideTypeCount, rideTypeSections, RideTy
 import { RideTypeCards } from "../lib/rideTypeCards.ts";
 import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
 import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForPage, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
-import { SignOutForm } from "../SignOut.tsx";
+import { SignOutEverywhereForm, SignOutForm } from "../SignOut.tsx";
 import { AssistantAppsSetting } from "../AssistantApps.tsx";
 import { GarminSetting, WahooSetting } from "../ConnectionSetting.tsx";
 import { pointName } from "../lib/summary.ts";
@@ -29,7 +29,7 @@ import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { ACCESS_FINE_TUNE, ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { RideSettingsFields } from "../RideMode.tsx";
-import { RIDE_TEXT_HELP, RIDE_TEXT_LABEL, type RideTextSize } from "../lib/rideOutput.ts";
+import { RIDE_ICONS_HELP, RIDE_ICONS_LABEL, RIDE_TEXT_HELP, RIDE_TEXT_LABEL, readRideIconsOnly, writeRideIconsOnly, type RideTextSize } from "../lib/rideOutput.ts";
 import type { RidePrefs } from "../lib/rideOutput.ts";
 import type { RailVisibility } from "../lib/railStations.ts";
 import { RailStationsSection } from "../RailStations.tsx";
@@ -310,6 +310,8 @@ export interface GpxSheetProps {
   onOpenFailed?: () => void;
   onPick?: () => void;
   refineImported: (next: LonLat[]) => void;
+  /** Whether the opened file is being fitted (GpxPanel onFitting): App holds the route's sentence back till it ends. */
+  onFitting?: (fitting: boolean) => void;
   getMap: () => MapLibreMap | null;
   /** Download GPX: the page checks closures first, and an unedited opened file downloads as it came. */
   downloadRoute: (said?: (line: string) => void) => void;
@@ -329,7 +331,7 @@ export interface GpxSheetProps {
 
 /** The GPX sheet. */
 export function GpxSheet(props: GpxSheetProps) {
-  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, fileInput, onOpenFailed, onPick, refineImported, getMap, downloadRoute, downloadCourse, sendToGarmin, sendToWahoo, match, shareControls, routes } = props;
+  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, fileInput, onOpenFailed, onPick, refineImported, onFitting, getMap, downloadRoute, downloadCourse, sendToGarmin, sendToWahoo, match, shareControls, routes } = props;
   return (
     <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")} popup>
       {/* Save and Share first, then My routes to load (in Go, the way to start a saved route), then the files. */}
@@ -348,6 +350,7 @@ export function GpxSheet(props: GpxSheetProps) {
         onOpenFailed={onOpenFailed}
         onPick={onPick}
         onRefine={refineImported}
+        onFitting={onFitting}
         getMap={getMap}
         onDownload={downloadRoute}
         onDownloadCourse={downloadCourse}
@@ -512,6 +515,34 @@ function ContrastRow() {
   );
 }
 
+/** Icons only on the ride's side buttons, kept on this device (lib/rideOutput.ts); a ride reads it as it opens. */
+function IconsOnlyRow() {
+  const [on, setOn] = useState(() => readRideIconsOnly());
+  return (
+    <SettingRow infoId="settings-icons-only-info" about="icons only" info={RIDE_ICONS_HELP} className="icons-only-row">
+      <button
+        type="button"
+        role="switch"
+        className="switch"
+        aria-checked={on}
+        aria-labelledby="settings-icons-only-label"
+        aria-describedby="settings-icons-only-info"
+        onClick={() => {
+          writeRideIconsOnly(!on);
+          setOn(!on);
+        }}
+      >
+        <span id="settings-icons-only-label" className="switch-label">
+          {RIDE_ICONS_LABEL}
+        </span>
+        <span className="switch-state" aria-hidden="true">
+          {on ? t("On") : t("Off")}
+        </span>
+      </button>
+    </SettingRow>
+  );
+}
+
 /** Settings' tabs (the owner, 2026-10-28: "Settings = display, riding, account"; routes stay in Save & load). */
 export const SETTINGS_TABS = ["riding", "display", "account"] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
@@ -661,6 +692,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
             </button>
           </SettingRow>
         </div>
+        {/* Icons only on the ride's side buttons (Stephen 2026-10-29: "allow icon only bubbles in settings"); off by default. */}
+        <IconsOnlyRow />
         {/* How much screen readers are told (the owner, 2026-10-11 20:23 UTC): Brief or Full; unset, Go is brief. Named
             Screen-reader detail (it was Announcements), so it is not taken for the ride's How much to say. */}
         <SettingRow
@@ -702,6 +735,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
                 <Icon name="user" size={16} /> {t("Signed in with Discord.")}
               </p>
               <SignOutForm />
+              {/* Beside Sign out, the one control that ends every sign-in, apps' too (core.auth_views). */}
+              <SignOutEverywhereForm />
               <span className="info-spacer" aria-hidden="true" />
             </div>
           ) : signInAvailable ? (

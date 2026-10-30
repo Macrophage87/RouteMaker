@@ -76,6 +76,37 @@ def parse_maxspeed_mph(value: str | None) -> float | None:
 # The posted-speed keys the router reads (lua/vendor/graph_upstream.lua's
 # `normalize_speed`), all of them a sign in mph here.
 POSTED_SPEED_KEYS = ("maxspeed", "maxspeed:forward", "maxspeed:backward", "maxspeed:advisory")
+# The directional limits, read where a way has no plain `maxspeed` (`posted_maxspeed`).
+DIRECTIONAL_SPEED_KEYS = ("maxspeed:forward", "maxspeed:backward")
+
+
+def _fastest(values: list[str]) -> str | None:
+    """The part of `values`, each perhaps a `;` list, with the highest speed."""
+    best: str | None = None
+    best_mph = -1.0
+    for value in values:
+        for part in value.split(";"):
+            mph = parse_maxspeed_mph(part.strip())
+            if mph is not None and mph > best_mph:
+                best, best_mph = part.strip(), mph
+    return best
+
+
+def posted_maxspeed(tags: dict[str, str]) -> str | None:
+    """The posted speed the classifier reads, as written on the way, or None.
+
+    `maxspeed`, a `;` list read as its largest part (`maxspeed=25;35` is a road
+    posted 35 on part of it, the RL-8 rule for lanes); where it is absent, the
+    higher of `maxspeed:forward` and `maxspeed:backward`, which the router reads
+    too. A way tagged only by direction or as a list was read as unposted and
+    took the class default (review 2026-10-29). A plain `maxspeed` wins over the
+    directional keys because the District's street layer writes its speed there
+    (`agency_roads`), and that record is meant to win over OSM's tags.
+    """
+    plain = tags.get("maxspeed")
+    if plain:
+        return _fastest([plain]) or plain
+    return _fastest([tags[key] for key in DIRECTIONAL_SPEED_KEYS if tags.get(key)])
 
 
 def maxspeed_in_mph_words(value: str | None) -> str | None:

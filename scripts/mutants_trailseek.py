@@ -34,6 +34,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 SEEK = ["tests/test_trailseek.py"]
+# The trail read's timeout is the plan's cursor's (`routing.plan_cursor`).
+READS = ["tests/test_trailseek.py", "tests/test_plan_reads.py"]
 REFINE = ["tests/test_refine.py"]
 PLAN = ["tests/test_route_intersections.py"]
 PRESET_TESTS = ["tests/test_presets.py"]
@@ -297,7 +299,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "seek: busier is fine",
         RF,
-        "            busier = read.exposure_m > _allowance(reference)",
+        "            busier = read.rated_exposure_m > _allowance(reference)",
         "            busier = False",
         REFINE,
     ),
@@ -391,15 +393,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "legs: guard against the whole trip",
         RF,
-        "reference = first_legs[k] if first_legs else incumbent.exposure_m",
-        "reference = first_exposure",
+        "            reference = first_legs[k] if first_legs else incumbent.rated_exposure_m",
+        "            reference = first_exposure",
         REFINE,
     ),
     (
         "legs: guard against what the search left",
         RF,
-        "reference = first_legs[k] if first_legs else incumbent.exposure_m",
-        "reference = incumbent.exposure_m",
+        "            reference = first_legs[k] if first_legs else incumbent.rated_exposure_m",
+        "            reference = incumbent.rated_exposure_m",
         REFINE,
     ),
     (
@@ -537,24 +539,24 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ),
     (
         "table: no statement timeout",
-        TS,
-        """            cursor.execute("SELECT set_config('statement_timeout', %s, true)", [timeout_ms])""",
+        RT,
+        """            cursor.execute("SELECT set_config('statement_timeout', %s, true)", [str(left_ms)])""",
         "            pass",
-        SEEK,
+        READS,
     ),
     (
         "table: the caller's timeout is not put back",
-        TS,
+        RT,
         """                cursor.execute("SELECT set_config('statement_timeout', %s, true)", [previous])""",
         "                pass",
-        SEEK,
+        READS,
     ),
     (
         "table: a cancelled read is not out of time",
-        TS,
-        '== "57014":',
-        '== "00000":',
-        SEEK,
+        RT,
+        "        if _canceled(error):\n            raise DeadlineExceeded",
+        "        if False:\n            raise DeadlineExceeded",
+        READS,
     ),
     (
         "table: the index's predicate not carried",
@@ -566,7 +568,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "table: the rebuild has no seek index",
         "src/pipeline/schema.py",
-        "CREATE INDEX segment_seek_geom_idx ON {schema}.segment USING gist (geometry)"
+        "CREATE INDEX IF NOT EXISTS segment_seek_geom_idx ON {schema}.segment USING gist (geometry)"
         + NL
         + "    WHERE {seek};",
         "",
@@ -619,8 +621,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "seek: the whole trip is not guarded",
         RF,
-        "        if read.exposure_m > _allowance(first_exposure):",
-        "        if False:",
+        '        if read.rated_exposure_m > _allowance(first_exposure):\n            seek["taken"] = False',
+        '        if False:\n            seek["taken"] = False',
         REFINE,
     ),
     (
@@ -691,17 +693,17 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ),
     (
         "V07 table: timeout set session-wide",
-        TS,
-        "cursor.execute(\"SELECT set_config('statement_timeout', %s, true)\", [timeout_ms])",
-        "cursor.execute(\"SELECT set_config('statement_timeout', %s, false)\", [timeout_ms])",
-        SEEK,
+        RT,
+        "cursor.execute(\"SELECT set_config('statement_timeout', %s, true)\", [str(left_ms)])",
+        "cursor.execute(\"SELECT set_config('statement_timeout', %s, false)\", [str(left_ms)])",
+        READS,
     ),
     (
         "V08 table: restore set session-wide",
-        TS,
+        RT,
         "cursor.execute(\"SELECT set_config('statement_timeout', %s, true)\", [previous])",
         "cursor.execute(\"SELECT set_config('statement_timeout', %s, false)\", [previous])",
-        SEEK,
+        READS,
     ),
     (
         "V12 bounds: no clock in components",
@@ -715,8 +717,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "V18 seek: whole-trip guard on best not first",
         RF,
-        "if read.exposure_m > _allowance(first_exposure):",
-        "if read.exposure_m > _allowance(best.exposure_m):",
+        '        if read.rated_exposure_m > _allowance(first_exposure):\n            seek["taken"] = False',
+        '        if read.rated_exposure_m > _allowance(best.rated_exposure_m):\n            seek["taken"] = False',
         REFINE,
     ),
     (
@@ -817,8 +819,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "240A: the worth rule leaves LTS 2 out",
         RF,
-        "        + w.lts3 * read.lts2_weight * read.lts2_m\n",
-        "",
+        "        return self.lts3_m + self.orange_m + self.lts2_weight * self.lts2_m",
+        "        return self.lts3_m + self.orange_m",
         REFINE,
     ),
     (
@@ -857,18 +859,13 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         REFINE,
     ),
     # --- FOLLOWUP-KIDS-PRESET: OWNER-DECISIONS 240 (B) ---
-    (
-        "240B: kids weigh LTS 2 at the quarter",
-        PR,
-        "KIDS_LTS2_WEIGHT = 0.5\n",
-        "KIDS_LTS2_WEIGHT = 0.25\n",
-        PRESET_TESTS + REFINE,
-    ),
+    # Riding with kids is Novice since v0.7.0 (Trailmaxxing's weights read one level up), so
+    # "kids weigh LTS 2 at the quarter" went with KIDS_LTS2_WEIGHT; the mutant below is Novice's.
     (
         "240B: kids take Trailmaxxing's weights",
         PR,
-        "EXPOSURE_KIDS = replace(EXPOSURE_STRESS_AVERSE, lts2=KIDS_LTS2_WEIGHT)",
-        "EXPOSURE_KIDS = EXPOSURE_NOT_IN_CONTROL",
+        "EXPOSURE_NOVICE = replace(EXPOSURE_NOT_IN_CONTROL, shift=1)",
+        "EXPOSURE_NOVICE = EXPOSURE_NOT_IN_CONTROL",
         PRESET_TESTS + REFINE,
     ),
     (
@@ -1108,8 +1105,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "seek: no margin",
         RF,
-        "        return read.score(ctx) < best.score(ctx) - IMPROVEMENT_EPS_S",
-        "        return read.score(ctx) < best.score(ctx)",
+        "        if read.score(ctx) >= best.score(ctx) - IMPROVEMENT_EPS_S:\n            return False",
+        "        if read.score(ctx) >= best.score(ctx):\n            return False",
         REFINE,
     ),
     (
@@ -1178,8 +1175,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "250: lts4 after says before",
         RF,
-        '        info["lts4_after_m"] = round(best.lts4_m, 1)',
-        '        info["lts4_after_m"] = round(sum(ctx.first_lts4), 1)',
+        '    info["lts4_m_after"] = round(best.lts4_m, 1)',
+        '    info["lts4_m_after"] = round(sum(ctx.first_lts4), 1)',
         REFINE,
     ),
     (
