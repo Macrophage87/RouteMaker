@@ -188,10 +188,10 @@ test("P3: one grouping everywhere: Common, Transportation, Adventure, Group (fav
   assert.ok(!starred.find((g) => g.id === "adventure")?.ids.includes("gravel"));
   // A search: its matches, without Common.
   assert.deepEqual(rideTypeSections("mountain").map((g) => [g.id, [...g.ids]]), [["adventure", ["mountain-goat", "mountain-bike"]]]);
-  // Plan's dialog and Settings' Default ride type (option groups) take them.
+  // Plan's dialog and Settings' Primary Go method (option groups) take them.
   assert.match(src("../RideTypePicker.tsx"), /const groups = rideTypeSections\(query, favorites\);/);
   const sheets = src("../app/Sheets.tsx");
-  assert.match(sheets, /label=\{t\("Default ride type"\)\}[\s\S]{0,200}groups=\{rideTypeSections\(\)\}/);
+  assert.match(sheets, /label=\{t\("Primary Go method"\)\}[\s\S]{0,200}groups=\{rideTypeSections\(\)\}/);
   assert.doesNotMatch(sheets, /Go's ride type"\)/);
   assert.match(src("../SettingRow.tsx"), /<optgroup key=\{group\.label\} label=\{group\.label\}>/);
 });
