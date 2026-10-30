@@ -38,26 +38,72 @@ export function railFit(available: number, buttons: number, large = 0, iconsOnly
   return need <= available ? "under" : "pill";
 }
 
+/** A box on the screen, as getBoundingClientRect gives it. */
+export interface Box {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+/**
+ * How far down the rail the ride group's bar (Send alert and the riders, just under the ride's card) reaches, in px:
+ * the rail starts below it, so its top button (See everyone, while others share) is never under Send alert (the
+ * v0.15.2 end-to-end pass, 2026-10-30: at 390 px Send alert covered its top 24 px). Nothing when there is no bar or
+ * it is beside the rail, not over it.
+ */
+export function barOverlap(rail: Box, bar: Box | null): number {
+  if (!bar || bar.bottom <= bar.top || bar.right <= rail.left || bar.left >= rail.right) return 0;
+  return Math.max(0, Math.ceil(bar.bottom - rail.top));
+}
+
 /** The rail's fit, measured again as its height changes (Large text, the bottom panel) and as buttons come and go. */
 export function useRailFit(rail: RefObject<HTMLElement | null>, iconsOnly = false): RailFit {
   const [fit, setFit] = useState<RailFit>("under");
   useLayoutEffect(() => {
     const element = rail.current;
     if (!element) return;
+    const resized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => measure());
+    // The ride groups' bars (a route's and Roam's may both be up), each watched for its size once seen.
+    const barsSeen = new Set<Element>();
+    const bars = () => [...document.querySelectorAll(".ride-group-bar")];
     const measure = () => {
       // The buttons in the column: a visually hidden hint (1 px) is not one.
       const items = [...element.children].filter((child) => (child as HTMLElement).offsetHeight > 2);
       const large = items.filter((child) => child.matches(".ride-311, .ride-dock")).length;
-      setFit(railFit(element.clientHeight, items.length, large, iconsOnly));
+      // A group's bar over the rail's top: the rail starts below it (barOverlap), with that much less room.
+      const box = element.getBoundingClientRect();
+      let clear = 0;
+      for (const bar of bars()) {
+        if (!barsSeen.has(bar)) {
+          barsSeen.add(bar);
+          resized?.observe(bar);
+        }
+        clear = Math.max(clear, barOverlap(box, bar.getBoundingClientRect()));
+      }
+      element.style.paddingTop = clear > 0 ? `${clear}px` : "";
+      setFit(railFit(element.clientHeight - clear, items.length, large, iconsOnly));
     };
     measure();
-    const resized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     resized?.observe(element);
+    // A bar that comes or goes after the rail (the ride group renders outside it, once its ride is settled): measured again.
+    const barsChanged = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => {
+      const now = bars();
+      if (now.length === barsSeen.size && now.every((bar) => barsSeen.has(bar))) return;
+      for (const bar of barsSeen) {
+        if (now.includes(bar)) continue;
+        resized?.unobserve(bar);
+        barsSeen.delete(bar);
+      }
+      measure();
+    });
+    barsChanged?.observe(element.closest(".app") ?? document.body, { childList: true, subtree: true });
     const changed = typeof MutationObserver === "undefined" ? null : new MutationObserver(measure);
     changed?.observe(element, { childList: true });
     return () => {
       resized?.disconnect();
       changed?.disconnect();
+      barsChanged?.disconnect();
     };
   }, [rail, iconsOnly]);
   return fit;
