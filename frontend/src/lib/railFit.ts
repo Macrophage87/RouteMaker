@@ -64,28 +64,46 @@ export function useRailFit(rail: RefObject<HTMLElement | null>, iconsOnly = fals
     const element = rail.current;
     if (!element) return;
     const resized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => measure());
-    let barSeen: Element | null = null;
+    // The ride groups' bars (a route's and Roam's may both be up), each watched for its size once seen.
+    const barsSeen = new Set<Element>();
+    const bars = () => [...document.querySelectorAll(".ride-group-bar")];
     const measure = () => {
       // The buttons in the column: a visually hidden hint (1 px) is not one.
       const items = [...element.children].filter((child) => (child as HTMLElement).offsetHeight > 2);
       const large = items.filter((child) => child.matches(".ride-311, .ride-dock")).length;
-      // The group's bar over the rail's top: the rail starts below it (barOverlap), with that much less room.
-      const bar = document.querySelector(".ride-group-bar");
-      if (bar && bar !== barSeen) {
-        barSeen = bar;
-        resized?.observe(bar);
+      // A group's bar over the rail's top: the rail starts below it (barOverlap), with that much less room.
+      const box = element.getBoundingClientRect();
+      let clear = 0;
+      for (const bar of bars()) {
+        if (!barsSeen.has(bar)) {
+          barsSeen.add(bar);
+          resized?.observe(bar);
+        }
+        clear = Math.max(clear, barOverlap(box, bar.getBoundingClientRect()));
       }
-      const clear = barOverlap(element.getBoundingClientRect(), bar?.getBoundingClientRect() ?? null);
       element.style.paddingTop = clear > 0 ? `${clear}px` : "";
       setFit(railFit(element.clientHeight - clear, items.length, large, iconsOnly));
     };
     measure();
     resized?.observe(element);
+    // A bar that comes or goes after the rail (the ride group renders outside it, once its ride is settled): measured again.
+    const barsChanged = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => {
+      const now = bars();
+      if (now.length === barsSeen.size && now.every((bar) => barsSeen.has(bar))) return;
+      for (const bar of barsSeen) {
+        if (now.includes(bar)) continue;
+        resized?.unobserve(bar);
+        barsSeen.delete(bar);
+      }
+      measure();
+    });
+    barsChanged?.observe(element.closest(".app") ?? document.body, { childList: true, subtree: true });
     const changed = typeof MutationObserver === "undefined" ? null : new MutationObserver(measure);
     changed?.observe(element, { childList: true });
     return () => {
       resized?.disconnect();
       changed?.disconnect();
+      barsChanged?.disconnect();
     };
   }, [rail, iconsOnly]);
   return fit;

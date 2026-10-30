@@ -178,4 +178,7 @@ test("the rail starts below the ride group's bar where the bar is over it, so Se
   // The rail's room shrinks by the overlap, so a full column turns to pills rather than reaching under the bar.
   const src = readFileSync(new URL("./railFit.ts", import.meta.url), "utf8");
   assert.match(src, /setFit\(railFit\(element\.clientHeight - clear, items\.length, large, iconsOnly\)\);/);
+  // Every group bar counts, and one that comes after the rail is measured too.
+  assert.match(src, /document\.querySelectorAll\("\.ride-group-bar"\)/);
+  assert.match(src, /barsChanged\?\.observe\(element\.closest\("\.app"\) \?\? document\.body, \{ childList: true, subtree: true \}\);/);
 });
