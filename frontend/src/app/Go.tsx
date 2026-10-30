@@ -25,6 +25,8 @@ import {
   EDIT_FAVORITES_TEXT,
   FAVORITES_LOADING,
   FAVORITES_TEXT,
+  MOVE_DOWN_TEXT,
+  MOVE_UP_TEXT,
   SET_HOME_TEXT,
   SET_WORK_TEXT,
   WORK_TEXT,
@@ -248,6 +250,8 @@ export interface GoPlaces {
   /** A place searched in the popout: saved as a favorite, or as Work. */
   onAddFavorite: (place: Place, work: boolean) => void;
   onRemoveFavorite: (place: FavoritePlace) => void;
+  /** Edit's Move up (-1) and Move down (1): a place one row along among those after Work; false when it did not move. */
+  onMoveFavorite: (place: FavoritePlace, by: -1 | 1) => boolean;
   onFood: (chip: HTMLButtonElement) => void;
   onWater: (chip: HTMLButtonElement) => void;
   onRestroom: (chip: HTMLButtonElement) => void;
@@ -265,7 +269,8 @@ export interface GoPlaces {
  * The Favorites popout (lib/favoritePlaces.ts; Stephen 2026-10-26: "just have a favorites replace home", "Home and if
  * set work would be the top 2 favorites", "we'd have a popout"): signed in, Go's Favorites chip opens it. One row per
  * place, Home first, then Work, then the rest; a tap rides there. Set Home opens the Home sheet as the Home chip did;
- * Set Work and Add a place open one search box here. Edit shows Change Home, Remove beside each place, and Done.
+ * Set Work and Add a place open one search box here. Edit shows Change Home, Remove beside each place, and Done; the
+ * places after Work also get Move up and Move down (Stephen 2026-10-30: "order favorites"), Home and Work staying first.
  */
 export function FavoritesPopout({
   id,
@@ -305,9 +310,29 @@ export function FavoritesPopout({
     onRide();
   };
   const searchId = useId();
+  // A move re-renders the list with the place in its new row: the focus follows it, to the same arrow, or the other
+  // one when the place is now at the top or the bottom and that arrow is gone.
+  const list = useRef<HTMLUListElement>(null);
+  const focusNext = useRef<string[] | null>(null);
+  useEffect(() => {
+    const keys = focusNext.current;
+    if (keys === null) return;
+    focusNext.current = null;
+    for (const key of keys) {
+      const button = list.current?.querySelector<HTMLButtonElement>(`[data-move="${key}"]`);
+      if (button) {
+        button.focus();
+        return;
+      }
+    }
+  });
+  const move = (place: FavoritePlace, key: string, by: -1 | 1) => {
+    // Only a move made waits for the focus: one refused (the list changed under it) leaves none to steal it later.
+    if (places.onMoveFavorite(place, by)) focusNext.current = by < 0 ? [`${key}:up`, `${key}:down`] : [`${key}:down`, `${key}:up`];
+  };
   return (
     <div id={id} className="go-favorites" role="group" aria-label={FAVORITES_TEXT}>
-      <ul className="go-favorites-list">
+      <ul ref={list} className="go-favorites-list">
         <li>
           {home ? (
             <button type="button" className="go-favorite" onClick={(event) => ride(() => places.onHome(event.currentTarget))}>
@@ -362,26 +387,47 @@ export function FavoritesPopout({
           )}
         </li>
         )}
-        {others.map((place) => (
-          <li key={`${place.point[0]},${place.point[1]}`}>
+        {others.map((place, row) => {
+          const key = `${place.point[0]},${place.point[1]}`;
+          return (
+          <li key={key} className={editing ? "go-favorite-editing" : undefined}>
             <button type="button" className="go-favorite" onClick={() => ride(() => places.onFavorite(place))}>
               <Icon name="star" size={18} />
               <span className="go-favorite-name">{favoriteName(place)}</span>
             </button>
+            {/* Edit (the v0.15.2 review): the arrows and Remove on a line of their own under the name, so a 320 px
+                phone still shows the name; a missing arrow keeps its place, so the others never move under the finger. */}
             {editing && (
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => {
-                  places.onRemoveFavorite(place);
-                  addChip.current?.focus();
-                }}
-              >
-                {t("Remove")}<span className="visually-hidden"> {favoriteName(place)}</span>
-              </button>
+              <span className="go-favorite-tools">
+                {row > 0 ? (
+                  <button type="button" data-move={`${key}:up`} className="secondary icon-button go-favorite-move" aria-label={MOVE_UP_TEXT(place)} title={MOVE_UP_TEXT(place)} onClick={() => move(place, key, -1)}>
+                    <Icon name="up" size={20} />
+                  </button>
+                ) : (
+                  <span className="go-favorite-move-gap" aria-hidden="true" />
+                )}
+                {row < others.length - 1 ? (
+                  <button type="button" data-move={`${key}:down`} className="secondary icon-button go-favorite-move" aria-label={MOVE_DOWN_TEXT(place)} title={MOVE_DOWN_TEXT(place)} onClick={() => move(place, key, 1)}>
+                    <Icon name="down" size={20} />
+                  </button>
+                ) : (
+                  <span className="go-favorite-move-gap" aria-hidden="true" />
+                )}
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    places.onRemoveFavorite(place);
+                    addChip.current?.focus();
+                  }}
+                >
+                  {t("Remove")}<span className="visually-hidden"> {favoriteName(place)}</span>
+                </button>
+              </span>
             )}
           </li>
-        ))}
+          );
+        })}
       </ul>
       {loaded && (
       <div className="chip-row go-favorites-actions">
