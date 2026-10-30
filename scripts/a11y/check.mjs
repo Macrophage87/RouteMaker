@@ -5540,7 +5540,7 @@ const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-s
   const read = () => p.eval(`(() => { const g = document.querySelector('.go-favorites'); const chip = [...document.querySelectorAll('.go-places .place-chip')].find((c) => c.textContent.trim() === 'Favorites');
     return { rows: [...g.querySelectorAll('.go-favorite')].map((r) => r.textContent.trim()), expanded: chip.getAttribute('aria-expanded'), controls: chip.getAttribute('aria-controls') === g.id,
       small: [...g.querySelectorAll('button, input')].filter((e) => e.getClientRects().length && e.getBoundingClientRect().height < 44).map((e) => e.textContent.trim()),
-      remove: [...g.querySelectorAll('li > .secondary, .go-favorite-tools > .secondary')].map((r) => r.textContent.trim()) }; })()`);
+      remove: [...g.querySelectorAll('li > .secondary, .go-favorite-tools > .secondary:not(.go-favorite-move)')].map((r) => r.textContent.trim()) }; })()`);
   const popped = await read();
   const group = await axNode(p, ".go-favorites");
   // Food is Go's Eat chip since P2.
@@ -5550,7 +5550,7 @@ const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-s
   await p.eval("[...document.querySelectorAll('.go-favorites-actions .chip')].find((c) => c.textContent.trim() === 'Edit').click(); true");
   await sleep(200);
   const editing = await read();
-  await p.eval("document.querySelector('.go-favorites li > .secondary, .go-favorite-tools > .secondary').click(); true");
+  await p.eval("document.querySelector('.go-favorites li > .secondary, .go-favorite-tools > .secondary:not(.go-favorite-move)').click(); true");
   await p.waitFor("document.querySelectorAll('.go-favorites .go-favorite').length === 2", 5000);
   const post = p.favoriteRequests.find((r) => r.method === "POST");
   const csrf = post && Object.entries(post.headers).find(([k]) => k.toLowerCase() === "x-csrftoken")?.[1];
