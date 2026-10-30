@@ -35,6 +35,24 @@ SYNTHETIC_RELATION_ID_FLOOR = 2**40
 INTERNAL_PREFIX = "_"
 
 
+def close_writer(writer: osmium.SimpleWriter) -> None:
+    """Close an osmium writer so a failed write can never end the process.
+
+    pyosmium's writer closes itself again when it is freed, and once a write has
+    failed (a full disk, a refused path) that second close throws from a C++
+    destructor, which aborts the interpreter (exit 134) at whatever later moment the
+    garbage collector frees it: in CI, partway through a later test, with the real
+    failure never reported. A writer whose close() fails is therefore kept alive for
+    the rest of the process, and the error raised here, where it happened."""
+    try:
+        writer.close()
+    except BaseException:
+        import ctypes
+
+        ctypes.pythonapi.Py_IncRef(ctypes.py_object(writer))
+        raise
+
+
 @dataclass
 class Way:
     """One way, with its tags and the coordinates of its nodes.
@@ -294,7 +312,7 @@ def write_extract(
                 osmium.osm.mutable.Relation(id=relation_id, members=members, tags=tags, version=1)
             )
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 def iter_segments(

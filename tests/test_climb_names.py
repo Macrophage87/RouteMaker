@@ -12,6 +12,7 @@ from pipeline import climb_layer as cl
 from pipeline import climb_names as names
 from pipeline.climb_layer import SegmentLine
 from pipeline.climb_names import Gazetteer, Landmark, Place
+from pipeline.extract import close_writer
 
 M_PER_DEG = 111_320.0
 LAT0 = 39.0
@@ -255,7 +256,7 @@ def test_read_extract(tmp_path):
             Way(id=13, nodes=[5, 6], tags={"natural": "ridge", "name": "Catoctin Mountain"})
         )
     finally:
-        writer.close()
+        close_writer(writer)
     found = names.read_extract(path, {10, 11, 99})
     assert found.ways == {10: "Foxville Road", 11: "US 15"}
     assert [p.name for p in found.places] == ["Thurmont"]

@@ -18,6 +18,7 @@ import pytest
 from rebuild_fixtures import write_reference_data
 from test_lua_remap import _lua_driver
 
+from pipeline.extract import close_writer
 from pipeline.overrides import Override
 
 BRIDGE = 300
@@ -50,7 +51,7 @@ def _write_bridge_extract(path: Path, **extra: str) -> None:
             )
         )
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 def _extracts(tmp_path, rows, *, legal: bool, source_tags: dict[str, str]):

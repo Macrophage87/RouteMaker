@@ -7,12 +7,15 @@ the parallel lists by hand, in step, which is the one case the code got right.
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import osmium
 import pytest
 
-from pipeline.extract import Way, read_ways, write_extract
+from pipeline.extract import Way, close_writer, read_ways, write_extract
 
 
 def write_pbf(path: Path, nodes: list[tuple[int, float, float]], ways: list[tuple[int, list[int]]]):
@@ -29,7 +32,7 @@ def write_pbf(path: Path, nodes: list[tuple[int, float, float]], ways: list[tupl
                 )
             )
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 def test_a_way_whose_nodes_are_partly_outside_the_clip_keeps_its_node_indices(tmp_path) -> None:
@@ -286,7 +289,7 @@ def test_node_tags_are_merged_onto_source_nodes_and_nothing_else_moves(tmp_path)
             osmium.osm.mutable.Way(id=100, nodes=[1, 2], tags={"highway": "primary"}, version=1)
         )
     finally:
-        writer.close()
+        close_writer(writer)
 
     write_extract(
         source,
@@ -335,7 +338,7 @@ def test_minted_relations_follow_every_source_relation(tmp_path) -> None:
             )
         )
     finally:
-        writer.close()
+        close_writer(writer)
 
     restriction = {"type": "restriction", "restriction": "no_u_turn"}
     members = [("w", 100, "from"), ("n", 2, "via"), ("w", 101, "to")]
@@ -381,3 +384,42 @@ def test_minted_relations_follow_every_source_relation(tmp_path) -> None:
             way_node_ids={},
             new_relations=[(7, members, restriction)],
         )
+
+
+def test_a_writer_whose_close_fails_cannot_end_the_process_later(tmp_path) -> None:
+    """A write that fails (here /dev/full) makes pyosmium's writer throw again when it is
+    freed, from a C++ destructor, which aborts the interpreter (exit 134) wherever the
+    collector happens to be. close_writer raises the error where it happened and keeps the
+    writer from ever being freed, so the process carries on and exits cleanly."""
+    if not Path("/dev/full").exists():
+        pytest.skip("needs /dev/full")
+    script = tmp_path / "full.py"
+    script.write_text(
+        "import gc, osmium\n"
+        "from pipeline.extract import close_writer\n"
+        "w = osmium.SimpleWriter(osmium.io.File('/dev/full', 'opl'), overwrite=True)\n"
+        "try:\n"
+        "    for i in range(1, 2_000_000):\n"
+        "        w.add_node(osmium.osm.mutable.Node(id=i, location=(1, 1),"
+        " tags={'a': 'b' * 500}, version=1))\n"
+        "except Exception:\n"
+        "    pass\n"
+        "try:\n"
+        "    close_writer(w)\n"
+        "except Exception:\n"
+        "    print('close raised')\n"
+        "del w\n"
+        "gc.collect()\n"
+        "print('carried on')\n"
+    )
+    src = Path(__file__).resolve().parents[1] / "src"
+    done = subprocess.run(
+        [sys.executable, str(script)],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTHONPATH": str(src)},
+        check=False,
+        timeout=120,
+    )
+    assert done.returncode == 0, done.stderr[-2000:]
+    assert done.stdout.split() == ["close", "raised", "carried", "on"], done.stdout
