@@ -4526,13 +4526,22 @@ export function App() {
   const [joinAsk, setJoinAsk] = useState<JoinAsk | null>(null);
   // Made once the connections are read, shown once the ride is up.
   const [joinPending, setJoinPending] = useState<{ key: string; ask: JoinAsk } | null>(null);
-  // One popup at a time (the 2026-10-28 audit, P6): from offering the sheet until it is closed (or not shown), the
-  // group's "Show me as a dot?" waits (RideGroup's askHeld), then asks over the ride.
+  // One screen, not two (Stephen 2026-10-30): from offering the sheet until it is up (or not shown), the group's
+  // "Show me as a dot?" waits (RideGroup's askHeld), then asks with the sheet's route and buttons (RideGroup's join).
   const [joinHeld, setJoinHeld] = useState(false);
+  // Held from the offer until the sheet is up, even when its connections are read before the ride is: the question
+  // never opens without the route (the v0.15.1 review). A ride that ends lets go of it, and of a sheet still to come.
+  const joinRode = useRef(false);
+  // Rides ended so far: an offer whose connections come back after its ride ended is dropped (the v0.15.1 review).
+  const ridesEnded = useRef(0);
   useEffect(() => {
-    if (!riding) {
-      setJoinAsk(null);
+    const ended = joinRode.current && !riding;
+    joinRode.current = riding;
+    if (!riding) setJoinAsk(null);
+    if (ended) {
+      ridesEnded.current += 1;
       setJoinHeld(false);
+      setJoinPending(null);
     }
     if (!joinPending || !riding) return;
     setJoinPending(null);
@@ -4549,12 +4558,19 @@ export function App() {
     // Connections are asked only of a rider who may have one (not when the server said signed out).
     const asks = !(meRef.current !== NO_ME && !meRef.current.signed_in);
     setJoinHeld(true);
+    const ride = ridesEnded.current;
     void Promise.all(asks ? [readGarmin(origin), readWahoo(origin)] : [undefined, undefined])
       .then(([garmin, wahoo]) => {
+        // Its ride ended meanwhile: the ended ride let go of the hold, and the next ride is not this one.
+        if (ride !== ridesEnded.current) return;
         const actions = joinActions({ canHandFile: canSendToGarmin(), garmin, wahoo });
         setJoinPending({ key, ask: { title: joinTitle(name), line: joinLine(route), actions } });
       })
-      .catch(() => setJoinHeld(false));
+      .catch(() => ride === ridesEnded.current && setJoinHeld(false));
+  };
+  const closeJoin = () => {
+    setJoinAsk(null);
+    setJoinHeld(false);
   };
   const joinAction = (action: JoinAction, said: Said) => {
     if (action === "gpx") downloadRoute(said);
@@ -5984,8 +6000,10 @@ export function App() {
               controls={riding || (rideBroadcast !== null && !rideBroadcast.leading && !goMode)}
               // The roles are offered to the ride's leader: one who planned it, or shares it; one following another's link is a Participant.
               leads={!(onShared && !onShared.own)}
-              // The follower's join sheet first (BroadcastJoinDialog), then the dot question: one popup at a time.
-              askHeld={joinHeld || joinPending !== null || joinAsk !== null}
+              // The follower's join sheet and the dot question on one screen (Stephen 2026-10-30): the question waits for
+              // the sheet while its connections are read, then asks with the route's buttons above it.
+              askHeld={joinHeld && joinAsk === null}
+              join={riding && joinAsk ? { ask: joinAsk, onAction: joinAction, onClose: closeJoin } : null}
               leaderRoute={rideBroadcast?.leading ? ((riding && rideView ? rideView.route : shown)?.geometry.coordinates as LonLat[] | undefined) : null}
             />
           )}
@@ -6039,10 +6057,8 @@ export function App() {
         }}
       />
       <BroadcastQrDialog ask={qrAsk} onClose={() => setQrAsk(null)} />
-      <BroadcastJoinDialog ask={riding ? joinAsk : null} onAction={joinAction} onClose={() => {
-          setJoinAsk(null);
-          setJoinHeld(false);
-        }} />
+      {/* With a ride's dots (RideGroup), the sheet is theirs: shown with the dot question, or alone. */}
+      <BroadcastJoinDialog ask={riding && !rideGroupLine ? joinAsk : null} onAction={joinAction} onClose={closeJoin} />
       <ClosureDialog ask={closureAsk} onReroute={() => void closureReroute()} onAnyway={closureAnyway} onCancel={closureCancel} />
       <ShareCardDialog
         open={shareCardOpen && shareCardSource !== null && mode !== "go" && !riding}

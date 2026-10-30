@@ -34,6 +34,12 @@ Android's chooser with them as plain text (never to RouteMaker itself). The choo
 was sent, so an opened sheet counts as sent. An older app without the plugin shows no Share route or Share ride,
 and its Broadcast copies the link instead, for the rider to paste.
 
+**Speak in Send alert** (v0.15.1 site and app): Android's WebView has no speech recognition, so the site
+hands the language to `SpeechPlugin.java` ("RouteMakerSpeech"), which opens Android's own speech input (Google's
+on most phones) over the app; it listens once and hands the words back to the alert's box, and nothing is sent
+until Send. That input has the microphone, not the app, so the manifest asks for no `RECORD_AUDIO`. An older app
+without the plugin shows no Speak.
+
 **Opening a RouteMaker link in the app** (v0.9.0 app): in any app, Share the link and pick RouteMaker.
 `SharedLink.java` takes the first https link in the shared text and opens it only when it is on the site kept
 on this phone; any other link is refused with a short message. With the app already open on the site, the
