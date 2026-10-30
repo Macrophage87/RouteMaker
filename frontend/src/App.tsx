@@ -4529,10 +4529,16 @@ export function App() {
   // One screen, not two (Stephen 2026-10-30): from offering the sheet until it is up (or not shown), the group's
   // "Show me as a dot?" waits (RideGroup's askHeld), then asks with the sheet's route and buttons (RideGroup's join).
   const [joinHeld, setJoinHeld] = useState(false);
+  // Held from the offer until the sheet is up, even when its connections are read before the ride is: the question
+  // never opens without the route (the v0.15.1 review). A ride that ends lets go of it, and of a sheet still to come.
+  const joinRode = useRef(false);
   useEffect(() => {
-    if (!riding) {
-      setJoinAsk(null);
+    const ended = joinRode.current && !riding;
+    joinRode.current = riding;
+    if (!riding) setJoinAsk(null);
+    if (ended) {
       setJoinHeld(false);
+      setJoinPending(null);
     }
     if (!joinPending || !riding) return;
     setJoinPending(null);

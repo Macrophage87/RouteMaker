@@ -765,7 +765,7 @@ test("joining a broadcast: the route's buttons and the dot question on one scree
   assert.match(ask, /aria-labelledby=\{join \? `\$\{id\}-title \$\{id\}-q` : `\$\{id\}-q`\}/);
   assert.match(ask, /aria-describedby=\{join \? `\$\{id\}-line \$\{id\}-offer \$\{id\}-note` : `\$\{id\}-note`\}/);
   // The focus starts on the route's first button, not on Close (which answers No).
-  assert.match(ask, /dialog\.showModal\?\.\(\);\s*firstRef\.current\?\.focus\(\);/);
+  assert.match(ask, /\}, \[open\]\);\s*useEffect\(\(\) => \{\s*\/\/[^\n]*\n\s*if \(open && joined\) firstRef\.current\?\.focus\(\);\s*\}, \[open, joined\]\);/);
   assert.match(ask, /<h2 id=\{`\$\{id\}-title`\}>\{join\.ask\.title\}<\/h2>\s*<p id=\{`\$\{id\}-line`\} className="broadcast-join-line">\s*\{join\.ask\.line\}\s*<\/p>/);
   assert.match(ask, /<JoinOffer ask=\{join\.ask\} onAction=\{join\.onAction\} firstRef=\{firstRef\} \/>\s*<h3 id=\{`\$\{id\}-q`\} className="ride-consent-question ride-consent-joined">\s*\{t\(CONSENT_QUESTION\)\}/);
   // No Just ride beside Yes and No: the answer (or Close, Escape, the backdrop: No) closes the sheet with the question.

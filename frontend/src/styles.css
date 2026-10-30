@@ -7798,6 +7798,10 @@ details.fold > summary .icon {
    line, then Yes and No side by side, alike and ride-sized (neither is the one the app would rather). */
 .ride-consent.ask-dialog {
   width: min(400px, calc(100vw - 32px));
+  /* Joining a ride puts the route's buttons above the question: on a short screen the dialog scrolls in itself, so
+     Yes and No stay reachable. */
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
 }
 .ride-consent-head {
   display: flex;
