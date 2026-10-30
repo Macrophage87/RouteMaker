@@ -3,7 +3,7 @@
  "decided": "2026-10-30",
  "decided_by": "the deployment owner",
  "status": "Decided by the owner in conversation on 2026-10-30; not yet loaded. Load with manage.py load_access_overrides (dry run, then --confirm after the owner confirms this file), then rebuild.",
- "annotations": "Q Street, R Street and 1st Street NW, 25 ways. The Q and R Street NW bike-lane corridors and 1st Street NW were rated above what the owner rides them at, and routes left them for busier streets and harder junctions (a westbound trip from 1st St NW took Randolph Pl and a left onto six-lane Florida Ave to avoid R St's LTS 4 block; at stress 90 a westbound R St trip left R at 9th St for S St to avoid its LTS 2.5 blocks). Three adjustments: R St's painted-lane blocks at LTS 2.5 go to the formula's LTS 2; R St's unpainted blocks where DDOT 2020 is above the formula (Georgetown, 28th St to Wisconsin Ave; North Capitol St to Florida Ave) go to LTS 2.5; 1st St NW's unpainted blocks where DDOT 2020 is above the formula, from E St to Bryant St, go to LTS 2.5. Left as they are: Q St west of Dupont Circle (no lane, AADT 8,485, DDOT and formula both LTS 3); Q St 18th St to New Hampshire Ave (34 m, three lanes with a turn pocket, DDOT LTS 4, now LTS 2.5); 1st St NW at Peace Monument Circle to Constitution Ave and Hospital Center Dr to Irving St (four to six lanes, formula LTS 3).",
+ "annotations": "R Street and 1st Street NW, 24 ways (Q Street looked at, unchanged). The Q and R Street NW bike-lane corridors and 1st Street NW were rated above what the owner rides them at, and routes left them for busier streets and harder junctions (a westbound trip from 1st St NW took Randolph Pl and a left onto six-lane Florida Ave to avoid R St's LTS 4 block; at stress 90 a westbound R St trip left R at 9th St for S St to avoid its LTS 2.5 blocks). Three adjustments: R St's painted-lane blocks at LTS 2.5 go to the formula's LTS 2; R St's unpainted blocks where DDOT 2020 is above the formula (Georgetown, 28th St to Wisconsin Ave; North Capitol St to Florida Ave) go to LTS 2.5; 1st St NW's unpainted blocks where DDOT 2020 is above the formula, from E St to Channing St (except L St to New York Ave, below), go to LTS 2.5. Left as they are: Q St west of Dupont Circle (no lane, AADT 8,485, DDOT and formula both LTS 3); Q St 18th St to New Hampshire Ave (34 m, three lanes with a turn pocket, DDOT LTS 4, now LTS 2.5); 1st St NW at Peace Monument Circle to Constitution Ave and Hospital Center Dr to Irving St (four to six lanes, formula LTS 3); 1st St NW L St to New York Ave, way 466352082 (DDOT LTS 4, formula LTS 3, three lanes at New York Ave), left at LTS 4 for the city-wide review rather than lowered below the formula's own rating.",
  "rows": [
   {
    "kind": "stress",
@@ -311,27 +311,6 @@
     "highway": "tertiary",
     "length_m": 138.2,
     "line": "-77.012162,38.902519 -77.012151,38.902965 -77.012169,38.903761"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 466352082,
-   "value": {
-    "tier": 2,
-    "adjustment_id": "first-st-nw-lts2-5",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only",
-    "half": true
-   },
-   "reason": "The owner, 2026-10-30, of 1st Street NW: \"They are causing me to route to much more stressful roads\". DDOT's 2020 layer rates these blocks LTS 3 or 4, the formula LTS 2; no bike lane is recorded in OSM or DC's Roadway Block. The owner: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\" and \"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula.\" Every block here carries about 5,000 cars a day or more (DC Roadway Block AADT 4,949 to 7,520), the line taken for \"higher\", so LTS 2.5.",
-   "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks M St Nw to New York Ave Nw (BLOCKKEY 0dbd587eeb5ce68e87a128b85f0b6e7b): DDOT 2020 LTS 4, formula LTS 3, beta LTS 4, AADT 7520; Banner Ln Nw/Pierce St Nw to M St Nw (BLOCKKEY 2c18be7d8b722c2d760e0d354fcb2ce5): DDOT 2020 LTS 4, formula LTS 3, beta LTS 4, AADT 7520; L St Nw to Banner Ln Nw/Pierce St Nw (BLOCKKEY 1a51e04bef4ed3e2fb60fc795e57f4d0): DDOT 2020 LTS 4, formula LTS 3, beta LTS 4, AADT 7520. OSM, read 2026-10-30: way 466352082 (version 9), 1st Street Northwest, highway=tertiary, cycleway=none.",
-   "fingerprint": {
-    "name": "1st Street Northwest",
-    "highway": "tertiary",
-    "length_m": 271.7,
-    "line": "-77.012169,38.903761 -77.012163,38.906205"
    }
   },
   {
