@@ -22,7 +22,7 @@ const PREVIEW_PORT = Number(arg("--preview-port", "4173"));
 const SHOTS = arg("--shots", "/tmp/a11y-shots");
 mkdirSync(SHOTS, { recursive: true });
 const [SHARD, SHARDS] = arg("--shard", process.env.A11Y_SHARD ?? "1/1").split("/").map(Number);
-if (!(SHARDS >= 1 && SHARD >= 1 && SHARD <= SHARDS)) throw new Error("--shard is I/N, 1 <= I <= N");
+if (!(Number.isInteger(SHARD) && Number.isInteger(SHARDS) && SHARD >= 1 && SHARD <= SHARDS)) throw new Error("--shard is I/N, 1 <= I <= N");
 // Each top-level section is behind `if (mine())`: the sections share no page or state, so every Nth one
 // can run in another browser. Every shard walks every gate, so the split is the same in each.
 let sections = 0;

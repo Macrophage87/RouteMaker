@@ -218,7 +218,9 @@ jobs:
         with:
           name: a11y-count-${{ matrix.shard }}
           path: ${{ runner.temp }}/a11y-shots/a11y-count.txt
-          retention-days: 1
+          if-no-files-found: error
+          # Long enough for "Re-run failed jobs" days later: the a11y job reads every shard's count.
+          retention-days: 14
       - name: Keep the screenshots
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -234,6 +236,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # actions: read for `gh run download` of the shards' counts; contents: read for the checkout.
     permissions:
       actions: read
       contents: read
@@ -252,5 +255,5 @@ jobs:
             total=$((total + $(cat "$RUNNER_TEMP/count-$shard/a11y-count.txt")))
           done
           expected=$(sed -n 's/^const EXPECTED = \([0-9]*\);$/\1/p' scripts/a11y/check.mjs)
-          echo "$total checks ran; $expected expected"
+          echo "$total checks ran; $expected expected (a new section needs if (mine()): docs/DEVELOPMENT.md)"
           test -n "$expected" && test "$total" -eq "$expected"
