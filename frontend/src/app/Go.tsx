@@ -390,32 +390,40 @@ export function FavoritesPopout({
         {others.map((place, row) => {
           const key = `${place.point[0]},${place.point[1]}`;
           return (
-          <li key={key}>
+          <li key={key} className={editing ? "go-favorite-editing" : undefined}>
             <button type="button" className="go-favorite" onClick={() => ride(() => places.onFavorite(place))}>
               <Icon name="star" size={18} />
               <span className="go-favorite-name">{favoriteName(place)}</span>
             </button>
-            {editing && row > 0 && (
-              <button type="button" data-move={`${key}:up`} className="secondary icon-button go-favorite-move" aria-label={MOVE_UP_TEXT(place)} onClick={() => move(place, key, -1)}>
-                <Icon name="up" size={20} />
-              </button>
-            )}
-            {editing && row < others.length - 1 && (
-              <button type="button" data-move={`${key}:down`} className="secondary icon-button go-favorite-move" aria-label={MOVE_DOWN_TEXT(place)} onClick={() => move(place, key, 1)}>
-                <Icon name="down" size={20} />
-              </button>
-            )}
+            {/* Edit (the v0.15.2 review): the arrows and Remove on a line of their own under the name, so a 320 px
+                phone still shows the name; a missing arrow keeps its place, so the others never move under the finger. */}
             {editing && (
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => {
-                  places.onRemoveFavorite(place);
-                  addChip.current?.focus();
-                }}
-              >
-                {t("Remove")}<span className="visually-hidden"> {favoriteName(place)}</span>
-              </button>
+              <span className="go-favorite-tools">
+                {row > 0 ? (
+                  <button type="button" data-move={`${key}:up`} className="secondary icon-button go-favorite-move" aria-label={MOVE_UP_TEXT(place)} title={MOVE_UP_TEXT(place)} onClick={() => move(place, key, -1)}>
+                    <Icon name="up" size={20} />
+                  </button>
+                ) : (
+                  <span className="go-favorite-move-gap" aria-hidden="true" />
+                )}
+                {row < others.length - 1 ? (
+                  <button type="button" data-move={`${key}:down`} className="secondary icon-button go-favorite-move" aria-label={MOVE_DOWN_TEXT(place)} title={MOVE_DOWN_TEXT(place)} onClick={() => move(place, key, 1)}>
+                    <Icon name="down" size={20} />
+                  </button>
+                ) : (
+                  <span className="go-favorite-move-gap" aria-hidden="true" />
+                )}
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    places.onRemoveFavorite(place);
+                    addChip.current?.focus();
+                  }}
+                >
+                  {t("Remove")}<span className="visually-hidden"> {favoriteName(place)}</span>
+                </button>
+              </span>
             )}
           </li>
           );
