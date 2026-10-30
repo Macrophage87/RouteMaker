@@ -27,7 +27,7 @@ import { compileCourse, courseFileName, courseLine, type CourseFormat } from "./
 import { DEFAULT_PROFILE, DEVICE_PROFILES, deviceProfile, type DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { writeFit } from "./lib/fit.ts";
 import { writeTcx } from "./lib/tcx.ts";
-import { SEND_LABEL, browserSendEnv, canSendToGarmin, courseTrimmed, sendCourse, toBase64 } from "./lib/sendToGarmin.ts";
+import { FILE_CHOOSER, SEND_LABEL, browserSendEnv, canSendToGarmin, courseTrimmed, handFile, sendCourse, toBase64 } from "./lib/sendToGarmin.ts";
 import { SENDING, readGarmin, sendDirect } from "./lib/garminLink.ts";
 import { SENDING as WAHOO_SENDING, SEND_LABEL as WAHOO_SEND_LABEL, handWahooFile, readWahoo, sendToWahoo } from "./lib/wahooLink.ts";
 import { cueSheetDocument, cueSheetFileName, cueSheetLine, type CueSheetKind } from "./lib/cueSheetPdf.ts";
@@ -35,6 +35,7 @@ import { lockCancelledLine, lockPartButton, lockPartLine, lockScreenFileNames, l
 import { renderLockScreens } from "./app/lockScreenRender.ts";
 import { InfoButton } from "./SettingRow.tsx";
 import { t } from "./lib/i18n.ts";
+import { nativeBridge } from "./lib/nativeShell.ts";
 
 /** The file line shown; the whole of it is behind its (i). */
 export const FILE_PRIVACY_SHORT = t("A file you open stays in this browser.");
@@ -62,6 +63,8 @@ interface Props {
   onPick?: () => void;
   /** Replace the plan's points with a closer fit to the opened track. */
   onRefine: (points: LonLat[]) => void;
+  /** Told when fitting the plan to an opened track starts and ends, so the page says the fitted route once (a11y-5). */
+  onFitting?: (fitting: boolean) => void;
   getMap: () => MapLibreMap | null;
   /** A Mass Ride's federal-land lines, for the file's description (lib/federalStops.ts, item 239). */
   federal?: readonly string[];
@@ -149,6 +152,21 @@ function saveFile(body: BlobPart, type: string, fileName: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+/**
+ * Save a file of the Plan file sheet: the browser's download, or in the phone app, where a download does nothing,
+ * Android's "Open with" list (lib/sendToGarmin.ts handFile). Answers the line to say: what was made, after the hand
+ * line in the app, or only why it was not handed, so nothing claims a file that was not saved.
+ */
+async function keepFile(body: Uint8Array<ArrayBuffer> | Blob | string, type: string, fileName: string, line: string): Promise<{ line: string; kept: boolean }> {
+  const bytes = typeof body === "string" ? new TextEncoder().encode(body) : body instanceof Blob ? new Uint8Array(await body.arrayBuffer()) : body;
+  const handed = await handFile(bytes, fileName);
+  if (handed === null) {
+    saveFile(body, type, fileName);
+    return { line, kept: true };
+  }
+  return handed === FILE_CHOOSER ? { line: `${handed} ${line}`, kept: true } : { line: handed, kept: false };
+}
+
 /** The PDF cue sheets, by file type (lib/cueSheetPdf.ts). */
 const PRINTS = { "pdf-sheet": "sheet", "pdf-strip": "strip" } as const satisfies Record<string, CueSheetKind>;
 
@@ -181,12 +199,14 @@ async function downloadLockScreens(route: RouteResponse, vias: readonly number[]
   try {
     const { pages, blobs } = await renderLockScreens(route, vias);
     const names = lockScreenFileNames(route, blobs.length);
-    if (blobs.length === 1) {
-      saveFile(blobs[0], "image/png", names[0]);
-      return lockScreenLine(pages);
-    }
+    if (blobs.length === 1) return (await keepFile(blobs[0], "image/png", names[0], lockScreenLine(pages))).line;
     const cues = pages.reduce((n, p) => n + p.cues, 0);
     const queue = (next: number): PartQueue => ({ blobs, names, next, cues });
+    // The phone app: part 1 to the "Open with" list, and the button hands each next part (a WebView shares no files).
+    if (nativeBridge()) {
+      const first = await keepFile(blobs[0], "image/png", names[0], lockPartLine(1, blobs.length, cues));
+      return { line: first.line, queue: first.kept ? queue(1) : null };
+    }
     const files = blobs.map((b, i) => new File([b], names[i], { type: "image/png" }));
     if (typeof navigator.canShare === "function" && navigator.canShare({ files })) {
       try {
@@ -209,20 +229,20 @@ async function downloadLockScreens(route: RouteResponse, vias: readonly number[]
  * (lib/cueSheetPdf.ts), and return the one line saying what was made. Its cues are Ride's; its via points are not
  * cues, as in Ride.
  */
-export function downloadCourse(route: RouteResponse, routedPoints: LonLat[], format: FileFormat, profile: DeviceProfileId): string | Promise<Made> {
+export async function downloadCourse(route: RouteResponse, routedPoints: LonLat[], format: FileFormat, profile: DeviceProfileId): Promise<Made> {
   const vias = viaIndices(routedPoints, VIA_MARKS.isVia);
   if (format === "png-lock") return downloadLockScreens(route, vias);
   if (format === "pdf-sheet" || format === "pdf-strip") {
     const kind = PRINTS[format];
     const made = cueSheetDocument(route, kind, vias);
-    saveFile(made.bytes, "application/pdf", cueSheetFileName(route, kind));
-    return cueSheetLine(route, kind, vias, made.pages);
+    return (await keepFile(made.bytes, "application/pdf", cueSheetFileName(route, kind), cueSheetLine(route, kind, vias, made.pages))).line;
   }
   const course = compileCourse(route, deviceProfile(profile), format, vias, stopNames(routedPoints, VIA_MARKS.nameOf, VIA_MARKS.isVia, route.loop != null));
   const fileName = courseFileName(route, format);
-  if (format === "fit") saveFile(writeFit(course), "application/vnd.ant.fit", fileName);
-  else saveFile(writeTcx(course), "application/vnd.garmin.tcx+xml", fileName);
-  return courseLine(course);
+  const kept = format === "fit"
+    ? await keepFile(writeFit(course), "application/vnd.ant.fit", fileName, courseLine(course))
+    : await keepFile(writeTcx(course), "application/vnd.garmin.tcx+xml", fileName, courseLine(course));
+  return kept.line;
 }
 
 /**
@@ -372,7 +392,7 @@ type Reading = { kind: "idle" } | { kind: "reading"; name: string } | { kind: "e
  * route on screen (gpx.ts). Nothing is sent or saved.
  */
 export function GpxPanel(props: Props) {
-  const { route, routedPoints, points, planStatus, imported, onImport, fileInput, onOpenFailed, onPick, onRefine, getMap, onDownload, onDownloadCourse, onSendToGarmin, onSendToWahoo, loop = false, federal = [] } = props;
+  const { route, routedPoints, points, planStatus, imported, onImport, fileInput, onOpenFailed, onPick, onRefine, onFitting, getMap, onDownload, onDownloadCourse, onSendToGarmin, onSendToWahoo, loop = false, federal = [] } = props;
   // Send to Wahoo is shown only to a rider who connected Wahoo (Settings > Account): nobody else sees a new control.
   const [wahooOn, setWahooOn] = useState(false);
   const wahooOffered = onSendToWahoo !== undefined;
@@ -408,10 +428,11 @@ export function GpxPanel(props: Props) {
     const text = typeof made === "string" ? made : made.line;
     setCourseSaid((s) => ({ text, count: (s?.count ?? 0) + 1 }));
   };
-  const saveNextPart = (queue: PartQueue) => {
-    saveFile(queue.blobs[queue.next], "image/png", queue.names[queue.next]);
+  const saveNextPart = async (queue: PartQueue) => {
     const saved = queue.next + 1;
-    sayCourse({ line: lockPartLine(saved, queue.blobs.length, queue.cues), queue: { ...queue, next: saved } });
+    const made = await keepFile(queue.blobs[queue.next], "image/png", queue.names[queue.next], lockPartLine(saved, queue.blobs.length, queue.cues));
+    // Not handed (the phone app could not): the same part is offered again.
+    sayCourse({ line: made.line, queue: { ...queue, next: made.kept ? saved : queue.next } });
   };
   const input = useRef<HTMLInputElement>(null);
   const [reading, setReading] = useState<Reading>({ kind: "idle" });
@@ -450,6 +471,12 @@ export function GpxPanel(props: Props) {
     setFit(next);
     onRefine(next.points);
   }, [fit, imported, points, planStatus, route, routedPoints, onRefine]);
+  const fitting = fit !== null;
+  useEffect(() => {
+    onFitting?.(fitting);
+    // Gone mid-fit: the page is not left holding the route's sentence back.
+    return () => onFitting?.(false);
+  }, [fitting, onFitting]);
 
   // The file's own line, faint, under the route.
   const reference = imported && showTrack && imported.reference.length >= 2 ? imported.reference : null;
@@ -542,7 +569,7 @@ export function GpxPanel(props: Props) {
   const download = () => {
     // The route was checked when part 1 was made; each further part is saved as it is.
     if (parts && choice.format === "png-lock") {
-      saveNextPart(parts);
+      void saveNextPart(parts);
       return;
     }
     if (choice.format !== "gpx") {
@@ -650,15 +677,6 @@ export function GpxPanel(props: Props) {
                 {sentence}
               </p>
             ))}
-            {fit && ["loading", "waiting", "ok"].includes(planStatus) && (
-              <p className="loading gpx-fitting">
-                {fit.phase === "prune"
-                  ? t("Checking for points the route loops round to reach…")
-                  : fit.rounds === 0
-                    ? t("Routing the plan along the file's track…")
-                    : t("Adding points where the route left the track (round {round} of up to {rounds})…", { round: fit.rounds, rounds: REFINE_ROUNDS })}
-              </p>
-            )}
             {match && pruned && pruned.count > 0 && samePoints(points, pruned.points) && (
               <p className="hint gpx-pruned">{prunedNotice(pruned.count)}</p>
             )}
@@ -672,6 +690,17 @@ export function GpxPanel(props: Props) {
           </div>
         )}
       </div>
+      {/* Fitting's progress, shown but out of the status region: each round is not read out, only the route it ends
+          with (App holds the route's sentence back while it runs; the a11y review's a11y-5). */}
+      {reading.kind === "idle" && imported && fit && ["loading", "waiting", "ok"].includes(planStatus) && (
+        <p className="loading gpx-fitting">
+          {fit.phase === "prune"
+            ? t("Checking for points the route loops round to reach…")
+            : fit.rounds === 0
+              ? t("Routing the plan along the file's track…")
+              : t("Adding points where the route left the track (round {round} of up to {rounds})…", { round: fit.rounds, rounds: REFINE_ROUNDS })}
+        </p>
+      )}
       {imported && imported.reference.length >= 2 && (
         <label className="toggle">
           <input ref={trackSwitchRef} type="checkbox" checked={showTrack} onChange={(event) => setShowTrack(event.target.checked)} />

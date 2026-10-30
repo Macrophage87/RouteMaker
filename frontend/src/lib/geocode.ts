@@ -134,6 +134,30 @@ export function namesQuery(place: Pick<Place, "name" | "label">, query: string):
 }
 
 /**
+ * The words the server answers as a kind of place, nearest the bias point (src/core/geocode.py TAG_SEARCHES, which
+ * a test keeps in step): bike shops and groceries, English and Spanish.
+ */
+export const KIND_SEARCHES: ReadonlySet<string> = new Set([
+  ...["bike", "bicycle"].flatMap((bike) => [`${bike} shop`, `${bike} shops`, `${bike} store`, `${bike} stores`, `${bike} repair`]),
+  ...["grocery", "groceries", "grocery store", "grocery stores", "supermarket", "supermarkets", "supermercado", "supermercados"],
+]);
+
+/** Trailing words that only say "near where I am" (src/core/geocode.py NEAR_ME_TAILS), longest first. */
+const NEAR_ME_TAILS: readonly string[] = ["close to me", "near me", "near by", "nearby", "cerca de mí", "cerca de mi", "cerca"];
+
+/** The query folded and single-spaced, a trailing "near me" dropped (src/core/geocode.py tag_phrase). */
+export function kindPhrase(query: string): string {
+  const words = query.toLowerCase().split(/\s+/).filter((w) => w !== "").join(" ");
+  const tail = NEAR_ME_TAILS.find((t) => words.endsWith(` ${t}`));
+  return tail ? words.slice(0, -tail.length - 1) : words;
+}
+
+/** Whether the query asks for a kind of place (a grocery, a bike shop) rather than a name. */
+export function isKindSearch(query: string): boolean {
+  return KIND_SEARCHES.has(kindPhrase(query));
+}
+
+/**
  * The places found, nearest the route's start first (P2: a rider who searched "grocery" was offered a store 66 minutes
  * away first): those that answer the words by name (`namesQuery`) ahead of the rest, each group by straight-line
  * distance, ties in the server's order. An address ("1600 Pennsylvania") keeps the server's order, which weighs the
@@ -141,8 +165,10 @@ export function namesQuery(place: Pick<Place, "name" | "label">, query: string):
  */
 export function nearestFirst(places: readonly Place[], start: LonLat | null | undefined, query: string): Place[] {
   if (!start || /^\s*\d/.test(query)) return [...places];
+  // A kind of place ("grocery") is nearest first only: a store named "… Grocery" is not put ahead of a nearer one.
+  const kind = isKindSearch(query);
   return places
-    .map((place, i) => ({ place, i, named: namesQuery(place, query), m: haversineM(start, [place.lon, place.lat]) }))
+    .map((place, i) => ({ place, i, named: !kind && namesQuery(place, query), m: haversineM(start, [place.lon, place.lat]) }))
     .sort((a, b) => Number(b.named) - Number(a.named) || a.m - b.m || a.i - b.i)
     .map((r) => r.place);
 }
@@ -198,8 +224,10 @@ export function searchUrl(query: string, bias?: LonLat, limit: number = SEARCH_R
   return `/api/geocode?${params.toString()}`;
 }
 
-export function reverseUrl(point: LonLat): string {
+/** `address`: name the point by its street address (house number and street) when one is near (Go's tapped spot). */
+export function reverseUrl(point: LonLat, address = false): string {
   const params = new URLSearchParams({ lat: point[1].toFixed(6), lon: point[0].toFixed(6) });
+  if (address) params.set("address", "true");
   return `/api/reverse?${params.toString()}`;
 }
 
@@ -567,12 +595,16 @@ export function searchSender(
   return (query) => gate.run(() => fetchImpl(searchUrl(query, bias())), true);
 }
 
-/** How a point's name is asked: through the same gate, behind any search. */
+/**
+ * How a point's name is asked: through the same gate, behind any search. `address` asks for the street address
+ * (Go's tapped-spot card; Stephen, 2026-10-29: "provide the address if possible"); route points never do.
+ */
 export function nameSender(
   gate: GeoGate,
   fetchImpl: FetchPlaces = (url) => fetchPlaces(url),
+  address = false,
 ): (point: LonLat) => Promise<GeoResult> {
-  return (point) => gate.run(() => fetchImpl(reverseUrl(point)));
+  return (point) => gate.run(() => fetchImpl(reverseUrl(point, address)));
 }
 
 /**

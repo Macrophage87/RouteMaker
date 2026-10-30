@@ -148,7 +148,8 @@ export function attachClimbInteraction(map: MapLibreMap, options: ClimbInteracti
   };
 
   const onKey = (event: KeyboardEvent) => {
-    if (event.key === "Escape" && popup) close();
+    // An Escape a sheet or dialog has handled already is not also the card's (as MapView's, review a11y-10).
+    if (event.key === "Escape" && popup && !event.defaultPrevented) close();
   };
   window.addEventListener("keydown", onKey);
   return {

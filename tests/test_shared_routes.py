@@ -3,7 +3,8 @@ line under the link's 128-bit id, and GET /api/shared-routes/{id} gives it back 
 
 Signed out works; nothing of the sharer is kept but, signed in, the account (no address, no
 weight); a taken id is never replaced; a route is at most 2 MB; it is kept a year after it was
-last opened.
+last opened, or, signed in only, permanently or until a date; the links kept are capped per day
+signed out and per account signed in.
 """
 
 from __future__ import annotations
@@ -19,13 +20,14 @@ from django.test import Client
 from django.utils import timezone
 
 from core import ratelimit, shared_routes
-from core.models import SharedRoute
+from core.models import Session, SharedRoute, User
 
 db = pytest.mark.django_db(transaction=True)
 REPO = Path(__file__).resolve().parents[1]
 URL = "/api/shared-routes"
 
 _clients = count(10)
+_users = count(98000)
 
 LINE = [[-77.03651, 38.89768, 12.5], [-77.03012, 38.90011, 14.0], [-77.02101, 38.90455, 16.25]]
 INPUTS = {
@@ -64,6 +66,21 @@ def body(**changes) -> dict:
         "answer": planned(),
         **changes,
     }
+
+
+def signed_in() -> Client:
+    user = User.objects.create(discord_user_id=next(_users))
+    client = Client()
+    client.force_login(user)
+    now = timezone.now()
+    Session.objects.create(
+        session_key=client.session.session_key,
+        user=user,
+        issued_epoch=user.session_epoch,
+        created_at=now,
+        last_seen_at=now,
+    )
+    return client
 
 
 def post(client: Client, payload, **extra):
@@ -141,6 +158,8 @@ class TestSharedRoutes:
             "preview_zone",
             "preview_key",
             "preview_png",
+            # An assistant app's draft link: the draft it goes with (core.connector).
+            "connector_draft",
         }
         assert "198.51.100" not in json.dumps([row.name, row.line, row.inputs, row.answer, row.gpx])
         # A position, an account or anything else not part of a route is refused, not kept.
@@ -260,8 +279,8 @@ class TestSharedRoutes:
 
     def test_the_sharer_may_keep_it_permanently_or_until_a_date(self) -> None:
         """The owner, 2026-10-16: a year is the default; "keep permanently" and "delete after
-        <date>" are the sharer's to pick."""
-        client = Client()
+        <date>" are the signed-in sharer's to pick."""
+        client = signed_in()
         today = timezone.localdate()
         year, forever = body(), body(keep="forever")
         until = body(keep="until", delete_after=(today + timedelta(days=30)).isoformat())
@@ -301,9 +320,43 @@ class TestSharedRoutes:
         """Today, in UTC: the page offers the sharer's own tomorrow or later, which west of UTC
         in the evening is UTC's today."""
         today = timezone.localdate()
-        r = post(Client(), body(keep="until", delete_after=(today - timedelta(days=1)).isoformat()))
+        client = signed_in()
+        r = post(client, body(keep="until", delete_after=(today - timedelta(days=1)).isoformat()))
         assert r.status_code == 400 and r.json()["field"] == "delete_after"
-        assert post(Client(), body(keep="until", delete_after=today.isoformat())).status_code == 201
+        assert post(client, body(keep="until", delete_after=today.isoformat())).status_code == 201
+
+    def test_signed_out_a_link_is_kept_only_the_default_year(self) -> None:
+        tomorrow = (timezone.localdate() + timedelta(days=1)).isoformat()
+        for changes in ({"keep": "forever"}, {"keep": "until", "delete_after": tomorrow}):
+            r = post(Client(), body(**changes))
+            assert r.status_code == 403 and r.json()["field"] == "keep"
+        assert not SharedRoute.objects.exists()
+
+    def test_signed_out_links_are_capped_per_day_for_everyone(self, monkeypatch) -> None:
+        monkeypatch.setattr(shared_routes, "SIGNED_OUT_PER_DAY", 2)
+        for _ in range(2):
+            assert post(Client(), body()).status_code == 201
+        assert post(Client(), body()).status_code == 503
+        # A signed-in sharer is counted on their own.
+        assert post(signed_in(), body()).status_code == 201
+        # A day later the count starts again.
+        SharedRoute.objects.update(
+            created_at=timezone.now() - timedelta(days=2),
+            last_opened_at=timezone.now() - timedelta(days=2),
+        )
+        assert post(Client(), body()).status_code == 201
+
+    def test_an_account_s_working_links_are_capped(self, monkeypatch) -> None:
+        monkeypatch.setattr(shared_routes, "LIVE_PER_OWNER", 2)
+        client = signed_in()
+        for _ in range(2):
+            assert post(client, body()).status_code == 201
+        assert post(client, body()).status_code == 409
+        # A link turned off no longer counts.
+        SharedRoute.objects.filter(pk=SharedRoute.objects.first().pk).update(
+            revoked_at=timezone.now()
+        )
+        assert post(client, body()).status_code == 201
 
     def test_sharing_is_rate_limited_per_client(self) -> None:
         client = Client()

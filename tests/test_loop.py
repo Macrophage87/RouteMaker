@@ -588,11 +588,12 @@ class TestThePlansRules:
 def test_a_dials_loop_defaults_off() -> None:
     assert routing.Dials().loop is False
     # Appended, so earlier positional uses are unchanged; a re-route's heading came after it,
-    # then its keep-going-ahead flag (v0.10.1).
-    assert [f.name for f in dataclasses.fields(routing.Dials)][-3:] == [
+    # then its keep-going-ahead flag (v0.10.1), then Mass Ride's ride size (v0.15.0).
+    assert [f.name for f in dataclasses.fields(routing.Dials)][-4:] == [
         "loop",
         "heading",
         "ahead_only",
+        "ride_size",
     ]
 
 

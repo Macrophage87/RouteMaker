@@ -66,6 +66,8 @@ def test_the_api_access_log_records_no_body_and_no_query() -> None:
 
 
 def test_the_edge_keeps_no_access_log() -> None:
-    """Caddy writes an access log only where a `log` directive asks for one."""
+    """Caddy writes an access log only where a site's `log` directive asks for one. The
+    global options block's `log default` is Caddy's own log (tests/test_server_logs.py)."""
     caddyfile = (REPO / "Caddyfile").read_text()
-    assert not re.search(r"(?m)^\s*log(\s|\{|$)", caddyfile)
+    site = caddyfile.split("{$CADDY_SITE_ADDRESS}", 1)[1]
+    assert not re.search(r"(?m)^\s*log(\s|\{|$)", site)

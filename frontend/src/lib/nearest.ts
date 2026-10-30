@@ -22,7 +22,7 @@
  * lib/nearestFinder.ts.
  */
 import { describeError } from "./api.ts";
-import { dialFields, type Dials } from "./dials.ts";
+import { closureFields, dialFields, type Dials } from "./dials.ts";
 import { detourOf, projector, type RouteForDetour } from "./food.ts";
 import { formatDistance, formatDuration, formatExtra, milesFigure } from "./format.ts";
 import { MAX_POINTS, haversineM, type LonLat } from "./geo.ts";
@@ -142,7 +142,7 @@ type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
 /**
  * Ask the API how far each place is to ride from `from`, on this ride's preset and dials.
- * Neither the weight nor the loop is sent: the distances use neither. Where the rider is
+ * Neither the weight nor the loop is sent: the distances use neither. The riding speed and the closure choices are. Where the rider is
  * goes only in this request, as any point of a route does (OWNER-DECISIONS 395).
  */
 export async function requestNearest(
@@ -178,8 +178,11 @@ export async function requestNearest(
             }
           : {
               preset,
-              ...dialFields({ ...dials, systemWeightKg: undefined, ridingSpeedKmh: undefined, targetDistanceM: undefined, loop: false }),
+              // The riding speed is sent: the times are at the rider's own pace, as the plan's.
+              ...dialFields({ ...dials, systemWeightKg: undefined, targetDistanceM: undefined, loop: false }),
             }),
+        // The closures are left out as the plan leaves them out.
+        ...closureFields(dials),
       }),
     });
   } catch {

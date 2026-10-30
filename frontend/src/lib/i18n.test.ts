@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ES } from "../i18n/es.ts";
 import {
@@ -16,8 +16,12 @@ import {
   markPageLanguage,
   readLanguageChoice,
   rightToLeft,
+  catalogOf,
+  loadLanguage,
   setCatalogForTest,
   setLanguageForTest,
+  clockLocale,
+  startLanguage,
   speechLang,
   t,
   voiceTags,
@@ -34,6 +38,18 @@ import { REPORT_KINDS } from "./report311.ts";
 import { kindLabel, kindShown } from "./report311Log.ts";
 import { CUISINE_WORDS, foodKindText, type FoodPlace } from "./food.ts";
 import { MASS_BANDS } from "../massStyle.js";
+
+test("Spanish is fetched on choosing it, like every other language: no catalog is in the startup script", async () => {
+  assert.equal(catalogOf("es"), null, "not there until loadLanguage");
+  const i18n = readFileSync(new URL("./i18n.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(i18n, /^import .*\.\.\/i18n\//m);
+  assert.match(i18n, /es: \(\) => import\("\.\.\/i18n\/es\.ts"\)\.then\(\(m\) => m\.ES\),/);
+  await loadLanguage("es");
+  assert.equal(catalogOf("es"), ES);
+  // The Featured post page loads it too, before its labels are worded.
+  const post = readFileSync(new URL("../post/main.ts", import.meta.url), "utf8");
+  assert.match(post, /language\(\) === "es" \? loadLanguage\("es"\) : Promise\.resolve\(\)\)\s*\.then\(\(\) => import\("\.\/postPage\.tsx"\)\)/);
+});
 
 const SRC = fileURLToPath(new URL("..", import.meta.url));
 
@@ -99,6 +115,31 @@ test("the language: the rider's choice, else the device's first language the app
   assert.equal(deviceLanguage(undefined), "en");
   assert.equal(speechLang("es"), "es-US");
   assert.equal(speechLang("en"), "en-US");
+});
+
+test("the app starts in the rider's choice, else the phone's language, drafts included (the owner, 2026-10-29)", () => {
+  assert.equal(startLanguage("", "es"), "es");
+  assert.equal(startLanguage("", "en"), "en");
+  assert.equal(startLanguage("", "fr"), "fr", "a French phone opens Go and Ride in French, with no Settings step");
+  assert.equal(startLanguage("", "ar"), "ar");
+  assert.equal(startLanguage("fr", "en"), "fr", "chosen in Settings, a draft is used");
+  assert.equal(startLanguage("en", "fr"), "en", "a saved English choice wins over a draft phone");
+  assert.equal(startLanguage("es", "ar"), "es");
+  assert.equal(startLanguage("", deviceLanguage(["fr-FR", "es-MX"])), "fr", "the phone's first language the app has");
+  assert.equal(startLanguage("", deviceLanguage(["de-DE"])), "en");
+});
+
+test("arrival clocks: the phone's own 12- or 24-hour clock when it reads the app's language, else the app's language", () => {
+  try {
+    setLanguageForTest("en");
+    assert.equal(clockLocale(["en-GB"]), undefined, "an English phone keeps its own clock");
+    assert.equal(clockLocale(["es-MX"]), "en-US");
+    setLanguageForTest("fr");
+    assert.equal(clockLocale(["fr-CA"]), undefined);
+    assert.equal(clockLocale(["en-US"]), "fr", "French chosen on an English phone writes French times");
+  } finally {
+    setLanguageForTest("en");
+  }
 });
 
 test("Spanish turn directions are whole Spanish sentences, the street names as they are", () => {
@@ -248,6 +289,123 @@ test("each of DC's languages has every turn sentence Ride says (the owner, 2026-
   }
 });
 
+/**
+ * Go and Ride, where the 19 languages apply (the owner, 2026-10-28): the screens, the lib modules they import, and the
+ * modules whose words they show through App (route errors, the skip links, Go's re-plan lines, the offline line).
+ */
+const GO_RIDE_SCREENS = ["app/Go.tsx", "RideMode.tsx", "RideGroup.tsx", "RoamMode.tsx", "app/Sheets.tsx"];
+const GO_RIDE_ALSO = [
+  "TransitSummary.tsx",
+  "AvoidNotice.tsx",
+  "lib/accessMode.ts",
+  "lib/skipLink.ts",
+  "lib/neighbours.ts",
+  "lib/progressive.ts",
+  "lib/stopCard.ts",
+  "lib/appWorker.ts",
+  "lib/transit.ts",
+  "lib/avoidJunctions.ts",
+  // Said or shown in Go and Ride through App (the v0.15.0 end review found 30 phrases these held that no catalog had).
+  "App.tsx",
+  "lib/spokenFigures.ts",
+  "lib/rideLinks.ts",
+  "lib/sendToGarmin.ts",
+  "lib/summary.ts",
+];
+
+function goRideFiles(): string[] {
+  const files = new Set([...GO_RIDE_SCREENS, ...GO_RIDE_ALSO]);
+  for (const screen of GO_RIDE_SCREENS) {
+    const dir = join(SRC, screen, "..");
+    for (const m of readFileSync(join(SRC, screen), "utf8").matchAll(/from "(\.[^"]+\.tsx?)"/g)) {
+      const path = relative(SRC, join(dir, m[1])).split("\\").join("/");
+      if (path.startsWith("lib/")) files.add(path);
+    }
+  }
+  return [...files];
+}
+
+/** Every `export const NAME = "..."` in the source, so t(NAME) counts as its phrase. */
+function exportedStrings(): Map<string, string> {
+  const found = new Map<string, string>();
+  for (const path of sources(SRC)) {
+    for (const m of readFileSync(path, "utf8").matchAll(/\bexport const ([A-Z][A-Z0-9_]*) = "((?:[^"\\]|\\.)*)";/g)) found.set(m[1], JSON.parse(`"${m[2]}"`));
+  }
+  return found;
+}
+
+/** The phrases Go and Ride show: t("...") as written, and t(NAME) of an exported constant. */
+function goRidePhrases(): Map<string, string> {
+  const named = exportedStrings();
+  const found = new Map<string, string>();
+  for (const file of goRideFiles()) {
+    const text = readFileSync(join(SRC, file), "utf8");
+    for (const m of text.matchAll(/\bt\("((?:[^"\\]|\\.)*)"/g)) found.set(JSON.parse(`"${m[1]}"`), file);
+    for (const m of text.matchAll(/\bt\(([A-Z][A-Z0-9_]*)[,)]/g)) {
+      const english = named.get(m[1]);
+      if (english !== undefined) found.set(english, file);
+    }
+  }
+  return found;
+}
+
+test("each of DC's languages has every phrase Go and Ride show, constants passed to t() too (the 2026-10-29 review)", async () => {
+  const phrases = goRidePhrases();
+  assert.ok(phrases.size > 900, `${phrases.size} Go and Ride phrases`);
+  assert.ok(phrases.has("Accessibility mode"), "t(ACCESS_LABEL) is resolved to its phrase");
+  for (const lang of LANGUAGES.filter((l) => l !== "en")) {
+    const catalog = lang === "es" ? ES : await catalogOfFile(lang);
+    assert.deepEqual([...phrases].filter(([english]) => !(english in catalog)).map(([english, file]) => `${english} (${file})`), [], lang);
+  }
+});
+
+/**
+ * Each language's words for left and right, as its turn sentences write them. A sentence on the wrong side sends a rider
+ * the wrong way, so a reviewer's edit that swaps them fails here (the 2026-10-29 review).
+ */
+const LEFT_RIGHT: Record<Exclude<Language, "en">, readonly [RegExp, RegExp]> = {
+  es: [/izquierda/, /derecha/],
+  am: [/ግራ/, /ቀኝ/],
+  ar: [/يسار/, /يمين/],
+  bn: [/বাঁ/, /ডান/],
+  fa: [/چپ/, /راست/],
+  fr: [/gauche/, /droite/],
+  hi: [/बाएँ|बाईं|बाएं|बायें/, /दाएँ|दाईं|दाएं|दायें/],
+  ht: [/goch/, /dwat/],
+  id: [/kiri/, /kanan/],
+  ja: [/左/, /右/],
+  ko: [/왼|좌/, /오른|우회전/],
+  ps: [/کیڼ/, /ښي/],
+  pt: [/esquerda/, /direita/],
+  ru: [/налево|левее|слева|влево|левой|левую/, /направо|правее|справа|вправо|правой|правую/],
+  th: [/ซ้าย/, /ขวา/],
+  ti: [/ጸጋም/, /የማን/],
+  tr: [/(^|\s)sol/i, /(^|\s)sağ/i],
+  vi: [/trái/, /(rẽ|sang|bên) phải/i],
+  yue: [/左/, /右/],
+  zh: [/左/, /右/],
+};
+
+test("no language swaps left and right: each turn sentence keyed left says its left word and not its right, and the reverse", async () => {
+  // Turns, keep-left and keep-right, the side the destination is on, and the end-ride slide (laid out left to right).
+  const sided = Object.keys(ES).filter(
+    (p) =>
+      /^(Left|Right|Bear (left|right)|Keep (left|right))(?![-\w])|on your (left|right)|^Slide it to the right/.test(p) &&
+      /\bleft\b/i.test(p) !== /\bright\b/i.test(p),
+  );
+  assert.ok(sided.length >= 25, `${sided.length} sided phrases`);
+  for (const lang of LANGUAGES.filter((l): l is Exclude<Language, "en"> => l !== "en")) {
+    const catalog = lang === "es" ? ES : await catalogOfFile(lang);
+    const [left, right] = LEFT_RIGHT[lang];
+    for (const english of sided) {
+      const text = catalog[english];
+      if (text === undefined) continue;
+      const [says, not] = /\bleft\b/i.test(english) ? [left, right] : [right, left];
+      assert.ok(says.test(text) && !not.test(text), `${lang}: "${english}" is "${text}"`);
+    }
+  }
+});
+
 test("turn sentences in other scripts: the stop each writes, names as they are, isolated where the page reads right to left", async () => {
   const said = async (lang: Language, words: () => string) => {
     setCatalogForTest(lang, await catalogOfFile(lang));
@@ -307,4 +465,10 @@ test("Plan is marked English and left to right for the 19 languages, not for Eng
   assert.deepEqual(planLanguageAttributes("en"), {});
   assert.deepEqual(planLanguageAttributes("es"), {});
   for (const lang of ["ar", "fa", "ps", "th", "zh"] as const) assert.deepEqual(planLanguageAttributes(lang), { lang: "en-US", dir: "ltr" });
+});
+
+test("Plan's panel and map bar carry the English mark, so a draft phone's Plan is marked English and left to right", () => {
+  const app = readFileSync(join(SRC, "App.tsx"), "utf8");
+  assert.match(app, /className="plan-map-bar"\s+\{\.\.\.planLanguageAttributes\(\)\}/, "the map bar");
+  assert.match(app, /aria-label=\{t\("Route planner"\)\}\s+\{\.\.\.\(goMode \? \{\} : planLanguageAttributes\(\)\)\}/, "the panel, outside Go");
 });

@@ -1445,5 +1445,80 @@ do
       ~= M.GRADED_LANES)
 end
 
+-- The router applies the window (FOLLOWUP-CONDITIONAL-ACCESS; the owner, 2026-10-29).
+check("a sun event becomes a fixed time inside the real window",
+  M.router_window("Sa-Su dawn-dusk; PH dawn-dusk") == "Sa-Su 07:15-17:10; PH 07:15-17:10")
+check("a time and a sun event mix", M.router_window("Mo-Fr 7:00-dusk") == "Mo-Fr 07:00-17:10")
+check("weekdays and times pass as they are", M.router_window("Sa,Su 07:00-19:00")
+  == "Sa,Su 07:00-19:00")
+check("a fixed overnight window passes", M.router_window("22:00-06:00") == "22:00-06:00")
+check("a window between sun events across midnight cannot be fixed",
+  M.router_window("sunset-sunrise") == nil)
+check("nor can a condition the parser does not read", M.router_window("wet") == nil
+  and M.router_window("Sa dawn+") == nil)
+check("a holiday alone, which the parser drops, is not a window",
+  M.router_window("PH dawn-dusk") == nil and M.router_window("PH; SH 08:00-12:00") == nil)
+check("a holiday before a weekday list is read", M.router_window("PH,Sa 08:00-12:00")
+  == "PH,Sa 08:00-12:00")
+check("a grant on holidays alone is not opened",
+  M.remap_conditional_access({ bicycle = "no", ["bicycle:conditional"] = "yes @ (PH dawn-dusk)" })
+    ["bicycle:forward"] == nil)
+local bare = M.remap_conditional_access({ bicycle = "no", ["bicycle:conditional"] = "yes" })
+check("a bare grant with no condition still opens the way unconditionally",
+  bare["bicycle:forward"] == "yes" and bare["bicycle:backward"] == "yes"
+    and bare["bicycle:conditional"] == nil)
+local timed = M.remap_conditional_access({ bicycle = "no",
+  ["bicycle:conditional"] = "permissive @ (Sa dawn-dusk); no @ (Mo-Fr)" })
+check("an undirected grant is opened and handed to the router as one yes rule",
+  timed["bicycle:forward"] == "permissive" and timed["bicycle:conditional"] == "yes @ (Sa 07:15-17:10)",
+  tostring(timed["bicycle:conditional"]))
+local untimed = M.remap_conditional_access({ bicycle = "no", ["bicycle:conditional"] = "yes @ (wet)" })
+check("a grant the router cannot time is not opened",
+  untimed["bicycle:forward"] == nil and untimed["bicycle:backward"] == nil
+    and untimed["bicycle:conditional"] == nil)
+check("a readable conditional is not rewritten to itself",
+  M.remap_conditional_access({ bicycle = "no", ["bicycle:conditional"] = "yes @ (Sa,Su)" })
+    ["bicycle:conditional"] == nil)
+check("a directional conditional is resolved as before, the router not reading it",
+  M.remap_conditional_access({ bicycle = "no", ["bicycle:forward:conditional"] = "yes @ (wet)" })
+    ["bicycle:forward"] == "yes")
+-- A cemetery's ways (OWNER-DECISIONS 98): access=destination where their own access is open.
+check("a cemetery path is destination-only",
+  M.remap_way({ highway = "path" }, { cemetery = true }).access == M.CEMETERY_ACCESS)
+check("and so is one with a permissive access",
+  M.remap_way({ highway = "service", access = "yes" }, { cemetery = true }).access
+    == M.CEMETERY_ACCESS)
+check("a stricter access in a cemetery is kept",
+  M.remap_way({ highway = "service", access = "private" }, { cemetery = true }).access == nil)
+check("a way outside one is untouched",
+  M.remap_way({ highway = "path" }, {}).access == nil)
+-- The Zoo spur is opened only where it ends up destination-only (audit 2026-10-29).
+local barred = M.remap_way({ highway = "service", access = "no" }, { destination_only = true })
+check("a destination-only way on access=no is not opened",
+  barred.bicycle == nil and barred.access == nil)
+check("nor on access=agricultural",
+  M.remap_way({ highway = "service", access = "agricultural" },
+    { destination_only = true }).bicycle == nil)
+check("but one on access=private is, its access kept",
+  M.remap_way({ highway = "service", access = "private" }, { destination_only = true }).bicycle
+    == "destination")
+-- A directional vehicle grant, as a plain one.
+check("vehicle:forward=private on a footway closes that direction",
+  M.remap_way({ highway = "footway", ["vehicle:forward"] = "private" }, {})["bicycle:forward"]
+    == "no")
+check("and vehicle:backward=destination under bicycle=no",
+  M.remap_way({ highway = "residential", bicycle = "no", ["vehicle:backward"] = "destination" },
+    {})["bicycle:backward"] == "no")
+check("but not vehicle:forward=no, nor a grant a bicycle:forward speaks over",
+  M.remap_way({ highway = "footway", ["vehicle:forward"] = "no" }, {})["bicycle:forward"] == nil
+    and M.remap_way({ highway = "footway", ["vehicle:forward"] = "private",
+      ["bicycle:forward"] = "yes" }, {})["bicycle:forward"] == nil)
+-- use_sidepath over upstream's own closing access values (audit 2026-10-29).
+for _, access in ipairs({ "agricultural", "forestry", "discouraged", "emergency", "psv" }) do
+  check("use_sidepath on access=" .. access .. " is closed",
+    M.remap_way({ highway = "secondary", bicycle = "use_sidepath", access = access },
+      { stress_tier = 3 }).bicycle == "no")
+end
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)
