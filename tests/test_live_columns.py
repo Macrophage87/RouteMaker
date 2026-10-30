@@ -16,7 +16,7 @@ from django.test.utils import CaptureQueriesContext
 from core import junctions, mtb, routing, segment_info
 from pipeline.schema import MTB_LEVEL_COLUMN, STRESS_HALF_COLUMN
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 
 @pytest.fixture
