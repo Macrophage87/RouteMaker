@@ -39,7 +39,13 @@ test("wired: the riders' dots reach App, the button sits on Ride's and Roam's si
   // Both rides' groups (a route's and Roam's) say where their dots are.
   assert.equal(app.match(/onDots=\{setRideDots\}/g)?.length, 2);
   assert.match(app, /const everyone = useSeeEveryone\(\{/);
-  for (const mode of ["../RideMode.tsx", "../RoamMode.tsx"]) assert.match(read(mode), /<SeeEveryoneButton everyone=\{everyone\} \/>/);
+  for (const mode of ["../RideMode.tsx", "../RoamMode.tsx"]) {
+    const src = read(mode);
+    // First on the rail, above Where am I?, so nothing under it moves as riders come and go.
+    assert.match(src, /role="group" aria-label=\{t\("(?:Ride|Roam) buttons"\)\}>\s*\{\/\*[^]*?\*\/\}\s*<SeeEveryoneButton everyone=\{everyone\} \/>/);
+    // The view is chosen: Where am I? is not shown as "stopped following you" while it is on.
+    assert.match(src, /follow \|\| everyone\?\.on \? t\("Where am I\?"\) : t\("Where am I\? The map stopped following you"\)/);
+  }
   // Always there while another rider's dot is on the map (Stephen 2026-10-30: "Always, when sharing"), never without one.
   assert.match(read("../app/useSeeEveryone.ts"), /const any = active && dots\.length > 0;/);
   assert.match(read("../app/useSeeEveryone.ts"), /return \{ shown: any, on, toggle, stop \};/);

@@ -2726,21 +2726,22 @@ export function RideMode({
         )}
         {/* Each button's word under it, or beside its icon where the map is short (lib/railFit.ts); its name unchanged. */}
         <div ref={railRef} className={`ride-rail ride-rail-${railFit}${iconsOnly ? " ride-rail-icons" : ""}`} role="group" aria-label={t("Ride buttons")}>
+          {/* See everyone (lib/seeEveryone.ts): there while any other rider's dot is on the map, above Where am I? so the
+              rail below it never moves as riders come and go (the rail is anchored at its foot). */}
+          <SeeEveryoneButton everyone={everyone} />
           {/* Where am I? with Re-centre in it (the owner, 2026-10-20): highlighted when the map stopped following. */}
           <button
             type="button"
             ref={whereRef}
-            className={`ride-round${follow ? "" : " ride-round-alert"}`}
+            className={`ride-round${follow || everyone?.on ? "" : " ride-round-alert"}`}
             onClick={findMe}
             aria-keyshortcuts="W C"
-            aria-label={follow ? t("Where am I?") : t("Where am I? The map stopped following you")}
+            aria-label={follow || everyone?.on ? t("Where am I?") : t("Where am I? The map stopped following you")}
             title={t("Where am I?")}
           >
             <Icon name="locate" size={24} />
             <span className="ride-word" aria-hidden="true">{railWord("Locate")}</span>
           </button>
-          {/* See everyone (lib/seeEveryone.ts): there while any other rider's dot is on the map. */}
-          <SeeEveryoneButton everyone={everyone} />
           {/* Large text on and off (the owner, 2026-10-20), shown pressed while on. */}
           <button
             type="button"

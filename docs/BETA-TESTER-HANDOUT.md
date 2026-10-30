@@ -143,7 +143,7 @@ You stay responsible for riding safely; the route can be wrong.
   and the end, with the time you should arrive at each. On a long trail away from roads it says the trail and a distance from its last
   junction, for example "On the Capital Crescent Trail, about 1.2 miles northwest of ...".
 - Riding with others (Share live, Group Ride, Mass Ride)? While anyone else's dot is on the map, a "See everyone"
-  side button (two people) sits under "Where am I?". Tap it and the map zooms to fit you and every rider, and keeps
+  side button (two people) sits above "Where am I?". Tap it and the map zooms to fit you and every rider, and keeps
   them all in view as you spread out; tap it again, or "Where am I?", to go back to following you.
 - Moved the map by hand? Leave the screen alone for 30 seconds and the map goes back to following
   you, at the ride's usual zoom. Map cards, road info and the side menus close on their own after
