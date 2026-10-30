@@ -18,13 +18,16 @@
  * the leader at once, without answering the question, and the map follows the leader (until they move the map, or
  * while they ride themselves, when the ride follows them); the leader's path since the link opened is drawn from
  * the dots this page saw, kept in memory here only.
+ *
+ * Joining one (Stephen 2026-10-30: "2 screens are too much"): the join sheet's route and buttons (BroadcastJoinDialog.tsx)
+ * come on the dot question's screen, Yes or No closing both; with nothing to ask, the sheet is shown alone.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Map as MapLibreMap, MapLayerMouseEvent } from "maplibre-gl";
 import { BroadcastJoinDialog, JoinOffer, type JoinAsk } from "./BroadcastJoinDialog.tsx";
 import type { Said } from "./GpxPanel.tsx";
 import { Icon } from "./Icon.tsx";
-import type { JoinAction } from "./lib/broadcastJoin.ts";
+import { JOIN_OFFER, type JoinAction } from "./lib/broadcastJoin.ts";
 import { t } from "./lib/i18n.ts";
 import type { LonLat } from "./lib/geo.ts";
 import { LEADER_RING, RIDER_LAYERS, ROLE_COLOURS, roleSwatchPoints, showRideDots } from "./lib/rideDotsLayer.ts";
@@ -606,7 +609,8 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
   // The question, asked once the ride is under way (Start ride or Broadcast pressed), never while planning (P6).
   const askNow = riding && !asked && !askHeld;
   // The join sheet with nothing to ask: alone, as before. Asking, it is part of the question.
-  const joinAlone = join && settledFor === rideSecret && !askNow ? join : null;
+  // No ride (none could be made here) asks nothing either: the sheet stands alone then too.
+  const joinAlone = join && settledFor === rideSecret && (!ride || !askNow) ? join : null;
   const joinSheet = <BroadcastJoinDialog ask={joinAlone?.ask ?? null} onAction={(action, said) => joinAlone?.onAction(action, said)} onClose={() => joinAlone?.onClose()} />;
   if (!ride) {
     // A followed link without its key has no ride, so no Send alert; Call 911 stays where Send alert sits (it is
@@ -841,12 +845,15 @@ function ConsentDialog({
   const asking = useRef(open);
   asking.current = open;
   const pressedBackdrop = useRef(false);
+  // Joining: the focus starts on the route's first button, as the join sheet's does, not on Close (which answers No).
+  const firstRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (open && !dialog.open) {
       opener.current = document.activeElement;
       dialog.showModal?.();
+      firstRef.current?.focus();
     } else if (!open && dialog.open) {
       dialog.close();
     }
@@ -861,7 +868,7 @@ function ConsentDialog({
       className="ask-dialog ride-consent"
       data-idle-close
       aria-labelledby={join ? `${id}-title ${id}-q` : `${id}-q`}
-      aria-describedby={`${id}-note`}
+      aria-describedby={join ? `${id}-line ${id}-offer ${id}-note` : `${id}-note`}
       onClose={() => {
         if (asking.current) onAnswer(false);
       }}
@@ -882,7 +889,12 @@ function ConsentDialog({
               // Joining a broadcast: its route and buttons first, then the question, on the one screen.
               <div className="ride-consent-title">
                 <h2 id={`${id}-title`}>{join.ask.title}</h2>
-                <p className="broadcast-join-line">{join.ask.line}</p>
+                <p id={`${id}-line`} className="broadcast-join-line">
+                  {join.ask.line}
+                </p>
+                <p id={`${id}-offer`} className="visually-hidden">
+                  {JOIN_OFFER}
+                </p>
               </div>
             ) : (
               <h2 id={`${id}-q`} className="ride-consent-question">
@@ -895,7 +907,7 @@ function ConsentDialog({
           </div>
           {join && (
             <>
-              <JoinOffer ask={join.ask} onAction={join.onAction} />
+              <JoinOffer ask={join.ask} onAction={join.onAction} firstRef={firstRef} />
               <h3 id={`${id}-q`} className="ride-consent-question ride-consent-joined">
                 {t(CONSENT_QUESTION)}
               </h3>

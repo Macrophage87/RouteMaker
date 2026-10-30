@@ -760,13 +760,16 @@ test("joining a broadcast: the route's buttons and the dot question on one scree
   // The question's dialog carries the join: its title and line, the route's buttons, then the question, named by both.
   assert.match(group, /<ConsentDialog open=\{askNow\} [^\n]*onAnswer=\{answer\} join=\{join\} \/>/);
   assert.match(ask, /aria-labelledby=\{join \? `\$\{id\}-title \$\{id\}-q` : `\$\{id\}-q`\}/);
-  assert.match(ask, /<h2 id=\{`\$\{id\}-title`\}>\{join\.ask\.title\}<\/h2>\s*<p className="broadcast-join-line">\{join\.ask\.line\}<\/p>/);
-  assert.match(ask, /<JoinOffer ask=\{join\.ask\} onAction=\{join\.onAction\} \/>\s*<h3 id=\{`\$\{id\}-q`\} className="ride-consent-question ride-consent-joined">\s*\{t\(CONSENT_QUESTION\)\}/);
+  assert.match(ask, /aria-describedby=\{join \? `\$\{id\}-line \$\{id\}-offer \$\{id\}-note` : `\$\{id\}-note`\}/);
+  // The focus starts on the route's first button, not on Close (which answers No).
+  assert.match(ask, /dialog\.showModal\?\.\(\);\s*firstRef\.current\?\.focus\(\);/);
+  assert.match(ask, /<h2 id=\{`\$\{id\}-title`\}>\{join\.ask\.title\}<\/h2>\s*<p id=\{`\$\{id\}-line`\} className="broadcast-join-line">\s*\{join\.ask\.line\}\s*<\/p>/);
+  assert.match(ask, /<JoinOffer ask=\{join\.ask\} onAction=\{join\.onAction\} firstRef=\{firstRef\} \/>\s*<h3 id=\{`\$\{id\}-q`\} className="ride-consent-question ride-consent-joined">\s*\{t\(CONSENT_QUESTION\)\}/);
   // No Just ride beside Yes and No: the answer (or Close, Escape, the backdrop: No) closes the sheet with the question.
   assert.doesNotMatch(ask, /JOIN_JUST_RIDE/);
   assert.match(group, /say\(yes \? shown : t\("You are not shown\. You still see the others\."\)\);\s*join\?\.onClose\(\);/);
   // Alone only once the ride's answer is read (so never alone and then followed by the question), or with no ride.
-  assert.match(group, /const joinAlone = join && settledFor === rideSecret && !askNow \? join : null;/);
+  assert.match(group, /const joinAlone = join && settledFor === rideSecret && \(!ride \|\| !askNow\) \? join : null;/);
   assert.match(group, /\}\)\.finally\(\(\) => \{\s*if \(live\) setSettledFor\(rideSecret\);\s*\}\);/);
   assert.match(group, /if \(!keyless \|\| !controls\) return joinSheet;/);
 });
