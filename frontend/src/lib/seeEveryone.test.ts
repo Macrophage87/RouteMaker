@@ -44,6 +44,11 @@ test("wired: the riders' dots reach App, the button sits on Ride's and Roam's si
   assert.match(read("../app/useSeeEveryone.ts"), /shown: everyoneShown\(state, any, follow\)/);
   assert.match(read("../app/useSeeEveryone.ts"), /if \(follow\) dispatch\(\{ kind: "following" \}\);/);
   assert.match(read("../SeeEveryoneButton.tsx"), /if \(!everyone\?\.shown\) return null;/);
+  // A press turns the view off back to the rider, or on by letting the map stop following.
+  assert.match(read("../app/useSeeEveryone.ts"), /if \(on\) onBackToRider\(\);\s*else onUnfollow\(\);/);
+  // Detour's Show on map ends the view first, or the next dot move would frame the riders over the place shown.
+  assert.match(app, /const showOnRideMap = useCallback\(\(point: LonLat\) => \{\s*stopEveryone\.current\(\);/);
+  assert.match(app, /stopEveryone\.current = everyone\.stop;/);
   const { readdirSync } = await import("node:fs");
   for (const file of readdirSync(new URL("../i18n/", import.meta.url))) {
     const catalog = read(`../i18n/${file}`);

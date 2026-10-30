@@ -4292,8 +4292,11 @@ export function App() {
   }, [onBike]);
   // A Detour row's Show on map in a ride or Roam (2026-10-28, as Find food's popup): the place and the rider framed in the
   // map the card, the side buttons and the bottom panel leave open, the map's turn kept. The ride has stopped following,
-  // so the idle recentre above (or Where am I?) puts the map back on the rider.
+  // so the idle recentre above (or Where am I?) puts the map back on the rider. See everyone's view ends there, as a
+  // move by hand ends it, or its next dot move would frame the riders again and the place would leave the screen.
+  const stopEveryone = useRef<() => void>(() => {});
   const showOnRideMap = useCallback((point: LonLat) => {
+    stopEveryone.current();
     requestAnimationFrame(() => {
       const map = mapRef.current;
       if (!map) return;
@@ -4322,6 +4325,7 @@ export function App() {
     }, []),
   });
   seeAllNow.current = everyone.on;
+  stopEveryone.current = everyone.stop;
   // No ride is on at load: a ride's entry left by a reload is the page's own again.
   useEffect(() => forgetStaleRideEntry(window), []);
   // A ride left going when the page closed (lib/rideResume.ts): asked once at load. Resume starts it again from where
