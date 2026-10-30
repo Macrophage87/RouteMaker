@@ -1,6 +1,6 @@
 // The panel's icons: the approved UI mockup's own line icons (reports/v0.5.0/ui-mockup.html, 2026-10-11),
 // plus a cargo bike, a bikeshare dock, a downed tree, a text-size "Aa" (the owner's choice 11; the ride's Large text button since 2026-10-20; before that unused once Big text
-// moved to Settings, 2026-10-17), and Plan's map bar's undo, redo and clear, and the points list's grip (drag to reorder, 2026-10-18), and a struck-through elevator for a transit trip through a Metro station whose elevators are out (2026-10-21), and a mountain and a car each with a down arrow for the ride's Flatter and Calmer buttons (the owner, 2026-10-23: "More intuitive"), and a skip mark for the ride's Skip this stop bubble (2026-10-26). Each is drawn with currentColor and hidden from assistive technology: every control that
+// moved to Settings, 2026-10-17), and Plan's map bar's undo, redo and clear, and the points list's grip (drag to reorder, 2026-10-18), and a struck-through elevator for a transit trip through a Metro station whose elevators are out (2026-10-21), and a mountain and a car each with a down arrow for the ride's Flatter and Calmer buttons (the owner, 2026-10-23: "More intuitive"), and a skip mark for the ride's Skip this stop bubble (2026-10-26), and two people for the ride's See everyone (2026-10-30). Each is drawn with currentColor and hidden from assistive technology: every control that
 // shows one also shows its words.
 
 export const ICON_PATHS = {
@@ -19,6 +19,7 @@ export const ICON_PATHS = {
   "x": "<path d=\"M6 6l12 12M18 6 6 18\"/>",
   "chev": "<path d=\"M9 6l6 6-6 6\"/>",
   "down": "<path d=\"M6 9l6 6 6-6\"/>",
+  "up": "<path d=\"M6 15l6-6 6 6\"/>",
   "plus": "<path d=\"M12 5v14M5 12h14\"/>",
   // Work, the second of the Favorites popout's rows (lib/favoritePlaces.ts): a briefcase.
   "work": "<rect x=\"3\" y=\"7\" width=\"18\" height=\"13\" rx=\"2\"/><path d=\"M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3 13h18\"/>",
@@ -43,6 +44,7 @@ export const ICON_PATHS = {
   "flag": "<path d=\"M5 21V4h12l-2.5 4L17 12H5\"/>",
   "file": "<path d=\"M6 3h8l4 4v14H6z\"/><path d=\"M14 3v4h4M9 13h6M9 17h6\"/>",
   "user": "<circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4 21a8 8 0 0 1 16 0\"/>",
+  "users": "<circle cx=\"9\" cy=\"8\" r=\"3.5\"/><path d=\"M2 21a7 7 0 0 1 14 0\"/><path d=\"M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.5a7 7 0 0 1 4 6.5\"/>",
   "clock": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3.5 2\"/>",
   "swap": "<path d=\"M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4\"/>",
   "loop": "<path d=\"M4 12a8 8 0 1 0 2.5-5.8\"/><path d=\"M4 4v4.5h4.5\"/>",
