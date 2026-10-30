@@ -417,7 +417,10 @@ def test_a_writer_whose_close_fails_cannot_end_the_process_later(tmp_path) -> No
         [sys.executable, str(script)],
         capture_output=True,
         text=True,
-        env={**os.environ, "PYTHONPATH": str(src)},
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join(filter(None, [str(src), os.environ.get("PYTHONPATH")])),
+        },
         check=False,
         timeout=120,
     )
