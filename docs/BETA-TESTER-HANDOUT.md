@@ -142,6 +142,9 @@ You stay responsible for riding safely; the route can be wrong.
 - "Where am I?" (it also re-centres the map on you) says the street you are on, the next turn and the distance to the next stop
   and the end, with the time you should arrive at each. On a long trail away from roads it says the trail and a distance from its last
   junction, for example "On the Capital Crescent Trail, about 1.2 miles northwest of ...".
+- Riding with others (Share live, Group Ride, Mass Ride) and someone's dot is off the map? A "See everyone" side
+  button (two people) shows under "Where am I?". Tap it and the map zooms to fit you and every rider, and keeps them
+  all in view; tap it again, or "Where am I?", to go back to following you. It is only there while a dot is out of view.
 - Moved the map by hand? Leave the screen alone for 30 seconds and the map goes back to following
   you, at the ride's usual zoom. Map cards, road info and the side menus close on their own after
   the same 30 seconds, unless you are typing in one or accessibility mode is on.

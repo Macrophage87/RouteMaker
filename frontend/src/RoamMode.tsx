@@ -65,6 +65,8 @@ import {
 } from "./lib/detourSearch.ts";
 import type { RepairPlace } from "./lib/repair.ts";
 import { placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
+import type { SeeEveryone } from "./app/useSeeEveryone.ts";
+import { SeeEveryoneButton } from "./SeeEveryoneButton.tsx";
 import {
   END_ROAM_NAME,
   NO_NAMED_ROAD,
@@ -142,6 +144,7 @@ export function RoamMode({
   onBroadcastHold = null,
   passingOn = false,
   broadcasting = false,
+  everyone = null,
   geoEnv,
 }: {
   getMap: () => RoamMap | null;
@@ -182,6 +185,8 @@ export function RoamMode({
   passingOn?: boolean;
   /** The rider leads a broadcast now. */
   broadcasting?: boolean;
+  /** See everyone (lib/seeEveryone.ts): the riders' dots framed together, offered when one is out of view. */
+  everyone?: SeeEveryone | null;
   geoEnv?: RideGeoEnv;
 }) {
   const env = useRef(geoEnv ?? rideGeoEnv()).current;
@@ -683,6 +688,8 @@ export function RoamMode({
             <Icon name="locate" size={24} />
             <span className="ride-word" aria-hidden="true">{railWord("Locate")}</span>
           </button>
+          {/* See everyone (lib/seeEveryone.ts): only while another rider's dot is out of view, or its view is on. */}
+          <SeeEveryoneButton everyone={everyone} />
           {/* Large text on and off, as in a ride, shown pressed while on. */}
           <button
             type="button"
