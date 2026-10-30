@@ -338,14 +338,15 @@ export function PlaceSearch({
   // Listen for the letter once the places for the words said are listed; not in the phone app, whose speech input
   // covers the list while it listens (the rider taps the microphone to say the letter).
   const askedRow = useRef("");
+  const rowWait = useRef<number | undefined>(undefined);
   const rowsKey = lettered.map((place) => place.label).join("|");
   // It waits a moment, so a screen reader's "Listening…" is not heard as the answer.
   useEffect(() => {
     if (lettered.length === 0 || !expanded || listening !== null || askedRow.current === rowsKey || nativeBridge()) return;
     askedRow.current = rowsKey;
-    const wait = window.setTimeout(() => {
+    const wait = (rowWait.current = window.setTimeout(() => {
       if (boxShown() && letteredNow.current.length > 0) dictation.current?.start(letteredNow.current.map((place) => place.name));
-    }, ROW_LISTEN_DELAY_MS);
+    }, ROW_LISTEN_DELAY_MS));
     return () => window.clearTimeout(wait);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per lettered list
   }, [rowsKey, expanded]);
@@ -428,6 +429,8 @@ export function PlaceSearch({
   changeNow.current = change;
 
   const sayWhere = () => {
+    // A tap before the letter listen starts is the rider's own: the wait is dropped, not run over it.
+    window.clearTimeout(rowWait.current);
     if (listening) {
       dictation.current?.stop();
       return;
