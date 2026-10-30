@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<meta name="description" content="How RouteMaker plans a large group ride in DC by riders per minute, group length, corkers and crossing clearance, and the evidence behind it.">
+<meta name="description" content="How RouteMaker plans a large group ride in DC by carrying capacity (riders per minute), group length, corkers and crossing clearance, and the evidence behind it.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <title>Mass Ride - RouteMaker</title>
 <style>
@@ -207,11 +207,11 @@ carry each minute, and how long will the group hold each crossing?"</p>
 <ul>
 <li>A mass ride is a queueing problem, not a traffic-stress problem. The narrowest point and the
 number of crossings to hold decide how it goes.</li>
-<li>The headline figure is <strong>riders per minute</strong>: about 100 for each 11 ft [3.35 m]
-lane.</li>
+<li>The headline figure is a road's <strong>carrying capacity</strong>: how many riders it carries each
+minute, about 100 for each 11 ft [3.35 m] lane.</li>
 <li>Only the ride's own side of a two-way street counts. Parked cars and door zones do not.</li>
 <li>Three charts follow the route: riders per minute, corker load and elevation.</li>
-<li>The figures in this version are for the District of Columbia only.</li>
+<li>Inside DC only: DC's Roadway Block is the only dataset with measured lane widths.</li>
 <li>The evidence is thin. No study of a real mass ride was found. The model rests on the owner's video
 counts and agrees with published bicycle flow studies. Treat it as about ±25%.</li>
 </ul>
@@ -254,8 +254,13 @@ junctions and hold cross traffic until the last rider has passed.</p>
 <p>Every other ride type asks how stressful each road is for one rider in traffic: the
 <a href="/about/stress.html">Level of Traffic Stress</a> (LTS). A big group fills the lane, so drivers
 wait behind it. What matters instead is capacity, pinch points, busy crossings, corkers and hills.</p>
-<p>The figures in this version are for the District of Columbia only. Outside DC the route still
-plans, but the route list says "Outside DC: no figures yet". For a short summary beside the other
+<p>Mass Ride works inside DC only. Carrying capacity is built from each lane's width, and DC's Roadway
+Block data is the only dataset here with measured lane widths, so a Mass Ride's start, stops and end must be in
+the District. For a point outside it, RouteMaker offers one tap to switch to <strong>Group Ride</strong> with trails
+off, with the same points. The laws for a ride that takes the roadway also differ from one jurisdiction to the
+next. A re-plan during a ride is never refused, so a ride that drifts over the line can still route back.</p>
+<p>A route between points in DC is chosen to leave the District as little as it can; where it still crosses the
+line, the route list says "Outside DC: no figures yet". For a short summary beside the other
 ride types, see <a href="/about/ride-types.html#group">Group ride types</a>.</p>
 
 </div></details>
@@ -540,7 +545,7 @@ fully jammed at the assumed one rider per 15 ft², 1,000 riders on one lane woul
 <h3>What the app does</h3>
 <p>The <strong>Anticipated ride size</strong> slider runs from 100 to 2,000 riders, in steps of 50. It
 starts at 500. It sets the group's length, which drives the corker load and the requirement line on the
-riders chart. It does not change the route<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup>.</p>
+riders chart. Moving it plans the route again, as it now helps choose the route (below)<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup>.</p>
 <p>The group's length is the riders, divided by the riders a second the road carries, times the 7 mph
 [11 km/h] cruise. So the group is shorter on a wide avenue and longer on a narrow street. Where no width
 is known, the route's typical figure stands in, or two 11 ft lanes. On one lane, 1,000 riders come to
@@ -771,10 +776,10 @@ then chose the measured counts as the working model, and the app is built on the
 <details class="more"><summary>More: The paper and the app side by side</summary>
 <div class="more-body">
 
-<div class="table-wrap" tabindex="0" role="region" aria-label="The white paper&#x27;s planning figures and what RouteMaker 0.14.0 does">
+<div class="table-wrap" tabindex="0" role="region" aria-label="The white paper&#x27;s planning figures and what RouteMaker 0.15.0 does">
 <table>
-<caption>The white paper's planning figures and what RouteMaker 0.14.0 does</caption>
-<thead><tr><th scope="col">Topic</th><th scope="col">White paper (grade)</th><th scope="col">RouteMaker 0.14.0</th></tr></thead>
+<caption>The white paper's planning figures and what RouteMaker 0.15.0 does</caption>
+<thead><tr><th scope="col">Topic</th><th scope="col">White paper (grade)</th><th scope="col">RouteMaker 0.15.0</th></tr></thead>
 <tbody>
 <tr><th scope="row">One 11 ft [3.35 m] lane</th><td>About 50 to 120 riders a minute at 6 to 8 mph; 90 as the central value (DERIVED)</td><td>About 100 a minute, from the owner's counts of the bunched state</td></tr>
 <tr><th scope="row">Two lanes, 22 ft [6.7 m]</th><td>About 110 to 245 (DERIVED; not validated)</td><td>About 200</td></tr>
@@ -814,10 +819,22 @@ road and is at most 1 mi [1.6 km] or 25% longer, whichever is more.</li>
 <p>Junction markers work differently too. A crossing of an LTS 3 road gets an orange marker. A crossing
 of an LTS 4 or Avoid road gets a red one. Signalized crossings within about a quarter mile [402 m] of
 each other are listed as one group, such as "6 signalized crossings".</p>
-<p class="note">Today the riders-per-minute figures describe a route. They do not yet choose it.
-Planned, and not built: a time charge for crossing busy roads, sized to the group; flagging and
-penalizing roads too narrow for the chosen ride size; a charge for changing between wide and narrow
-roads; and a capacity drop for sharp turns and poor pavement.</p>
+<p>The riders-per-minute figures now help choose the route, for the ride size you set. A road
+needs a fifth of the riders a minute (the riders chart's dashed line, a 5-minute hold). Where it
+carries less, it costs extra time, up to three times its riding time, and an Avoid road always costs
+the most, so the same road is free for 100 riders and costly for 1,500. Stepping down to a narrower
+road, or back up, costs time too, more for a bigger group, as it tends to scatter the group. Small
+changes, under 15%, do not count. RouteMaker weighs each of the router's routes this way and keeps
+the one that leaves DC least, then the cheapest; the router's own route stays unless another saves more than 5
+seconds. Busier roads are not held
+against a Mass Ride's choice, as a corked ride is judged by what a road carries.</p>
+<p>The router offers other routes only between two points up to 15.5 mi [25 km] apart, or 31 mi [50 km]
+when the Hills slider seeks climbs. With stops or
+via points, or a longer ride, the route is the router's own, and the app only reports what the ride
+size needs and where the route falls short.</p>
+<p class="note">Planned, and not built: a time charge for crossing busy roads, sized to the group; a
+capacity drop for signal waits, sharp turns and poor pavement; Avoid marks for Mass Ride alone; and
+flagging narrow roads on the map.</p>
 
 </div></details>
 <h2 id="width">Usable width</h2>
@@ -1592,7 +1609,7 @@ clears a crossing.</p>
 <p class="next">Next: <a href="/about/assistants.html">AI assistants</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.14.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.15.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

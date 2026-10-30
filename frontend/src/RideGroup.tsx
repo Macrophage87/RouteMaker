@@ -29,8 +29,9 @@ import {
   ALERT_KINDS,
   ROAM_ALERT_KINDS,
   ALERT_LABEL,
-  ALERT_NOTE,
+  ALERT_SPOT_NOTE,
   BROADCAST_CONSENT_NOTE,
+  followsWithoutKey,
   CALL_911,
   CALL_911_HREF,
   CONFIRM_QUESTION,
@@ -53,11 +54,14 @@ import {
   SHARE_STOPPED_SAID,
   alertRefusal,
   alertText,
-  broadcastRideId,
-  roamRideId,
   awayWords,
   clearAlert,
+  answeredHere,
   consentFor,
+  dotHeldBack,
+  markAnsweredHere,
+  nextDwell,
+  type Dwell,
   countText,
   dotName,
   dotSaid,
@@ -74,7 +78,7 @@ import {
   newAlerts,
   project,
   readRide,
-  rideId,
+  rideOf,
   ridersSaid,
   riderTotal,
   roleKey,
@@ -93,13 +97,12 @@ import {
   type RideRole,
   type ShownDot,
 } from "./lib/rideGroup.ts";
+import { newRideSecret, type RideSeal } from "./lib/rideSeal.ts";
 import { browserRideEnv, watchRide } from "./lib/rideWatch.ts";
 import { LISTENING_SAID, SPEAK_LABEL, listenOnce, speechSupported } from "./lib/speechInput.ts";
 
 export interface RideGroupProps {
   type: RideLinkType;
-  /** The link's points: the ride's identity. */
-  points: readonly LonLat[];
   /** The route's line, for "near the route" and "behind you". */
   line: readonly LonLat[];
   getMap: () => MapLibreMap | null;
@@ -107,9 +110,14 @@ export interface RideGroupProps {
   here: LonLat | null;
   /**
    * A broadcast ride: the shared line's id, the link's leader key, and whether this page is the sharer's (who leads).
-   * Null: a Mass Ride or Group Ride by its points, as before.
+   * Null: a Mass Ride or Group Ride.
    */
-  broadcast?: { id: string; lead: string | null; leading: boolean; roam?: boolean } | null;
+  broadcast?: { id: string; lead: string | null; leading: boolean; roam?: boolean; secret?: string | null } | null;
+  /**
+   * A Group or Mass Ride link's secret (lib/rideSeal.ts): the ride is sealed end to end and named by it. A broadcast's
+   * is its own (`broadcast.secret`). With none (an older link), the page rides under a new secret of its own.
+   */
+  secret?: string | null;
   /** This page is riding (Ride mode follows the rider, so the map does not follow the leader). */
   riding?: boolean;
   /** The route this page is riding now, re-routes included (the leader sends it to those following). */
@@ -129,6 +137,8 @@ export interface RideGroupProps {
   leads?: boolean;
   /** Another popup is up or on its way (App.tsx: a follower's join sheet): the question waits until it closes. */
   askHeld?: boolean;
+  /** The rider's saved Home: no dot is sent from near it (lib/rideGroup.ts dotHeldBack). */
+  home?: LonLat | null;
 }
 
 const TICK_MS = 5000;
@@ -137,13 +147,22 @@ function visible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
 }
 
-export function RideGroup({ type, points, line, getMap, here, broadcast = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0, controls = riding, leads = true, askHeld = false }: RideGroupProps) {
+export function RideGroup({ type, line, getMap, here, broadcast = null, secret = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0, controls = riding, leads = true, askHeld = false, home = null }: RideGroupProps) {
   const leading = broadcast?.leading === true;
   const isBroadcast = broadcast !== null;
   // The leader key a follower reads with (the leader needs none: it does not see its own dot).
   const followKey = broadcast && !leading ? broadcast.lead : null;
   const origin = window.location.origin;
   const [ride, setRide] = useState<string | null>(null);
+  // Sealed end to end (lib/rideSeal.ts): the key every read and send goes through; null only until it is made, and
+  // nothing is read or sent until then (Stephen 2026-10-29: "All rides should have a key.").
+  const [seal, setSeal] = useState<RideSeal | null>(null);
+  // A link without a secret (an older one) is a new ride of this page's own, under a secret made here.
+  const [ownSecret] = useState(newRideSecret);
+  const rideSecret = (broadcast ? broadcast.secret : secret) ?? ownSecret;
+  // Following a broadcast whose link lost its key: a ride of this page's own would show no leader, so none is made,
+  // nothing is asked or sent, and App.tsx says the link is missing its key (lib/rideGroup.ts BROADCAST_NO_KEY).
+  const keyless = followsWithoutKey(broadcast);
   const [consent, setConsent] = useState<RideConsent | null>(null);
   const [asked, setAsked] = useState(false);
   // The role picked in the question, before it is answered: Participant, so one tap answers.
@@ -197,6 +216,9 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   const [urgent, setUrgent] = useState({ text: "", count: 0 });
   const [dotInfo, setDotInfo] = useState("");
   const share = useRef({ lastNearAt: null as number | null, startedAt: Date.now(), lastPost: 0 });
+  // Where this rider has stayed, and whether their dot is held back for it (lib/rideGroup.ts dotHeldBack).
+  const dwell = useRef<Dwell | null>(null);
+  const heldBack = useRef(false);
   // The leader's own ridden path, in memory on this phone (sent with the route while riding).
   const [ownTrail, setOwnTrail] = useState<readonly LonLat[]>([]);
   const previousAlerts = useRef<RideAlert[]>([]);
@@ -205,44 +227,71 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   const say = (text: string) => setSaid((s) => ({ text, count: s.count + 1 }));
 
   // The ride, and the rider's answer for it (asked as the ride starts: Start ride or Broadcast, the 2026-10-28 audit P6).
-  const key = broadcast ? `${broadcast.roam ? "roam" : "broadcast"}|${broadcast.id}` : points.map((p) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`).join(";");
   useEffect(() => {
+    if (keyless) {
+      // A keyed follow turned keyless (a link pasted over it): nothing of the ride it was is kept, or shown.
+      setRide(null);
+      setSeal(null);
+      setConsent(null);
+      setAsked(false);
+      setShareOn(false);
+      setRead({ dots: [], alerts: [] });
+      return;
+    }
     let live = true;
-    void (broadcast ? (broadcast.roam ? roamRideId(broadcast.id) : broadcastRideId(broadcast.id)) : rideId(type, points)).then((id) => {
-      if (!live) return;
+    void rideOf(rideSecret).then((on) => {
+      if (!live || !on) return;
+      const { id, seal: sealed } = on;
       setRide(id);
+      setSeal(sealed);
       // The sharer leads: sharing is what they pressed (App.tsx keeps the answer as it shares; kept here too).
       let kept = consentFor(id);
       // A "No" the leader gave later, with Show me as a dot, stands (review: never switched back on by a remount).
       if (leading && kept === null) kept = keepConsent(id, "yes", Date.now(), undefined, undefined, "lead");
       if (leading) window.setTimeout(() => live && say(LEADING_SAID), 150);
-      setConsent(kept);
-      setAsked(kept !== null);
-      setShareOn(kept?.answer === "yes");
+      // A Yes kept from another tab or an earlier visit is asked again, with its role picked, before any dot goes out:
+      // a link opened again later never turns sharing on by itself (2026-10-29).
+      const askAgain = !leading && kept?.answer === "yes" && !answeredHere(id);
+      if (askAgain && kept) setPickedRole(kept.role);
+      setConsent(askAgain ? null : kept);
+      setAsked(kept !== null && !askAgain);
+      setShareOn(kept?.answer === "yes" && !askAgain);
     });
     return () => {
       live = false;
     };
-    // The points' text is the ride's identity; the array itself changes on every render upstream.
+    // The secret is the ride's identity; the type and the broadcast object (made anew upstream) are not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, key, leading]);
+  }, [type, rideSecret, leading, keyless]);
 
   const answer = (yes: boolean) => {
     if (!ride) return;
     // One who follows another's link rides as a Participant (the roles are the leader's to offer; Riders changes it).
     const kept = keepConsent(ride, yes ? "yes" : "no", Date.now(), undefined, undefined, leads ? pickedRole : DEFAULT_ROLE);
+    markAnsweredHere(ride, yes);
+    // A stay before this answer is not this ride's: the meetup is shown from the first fix.
+    dwell.current = null;
+    heldBack.current = false;
     setConsent(kept);
     setAsked(true);
     setShareOn(yes);
     share.current = { lastNearAt: null, startedAt: Date.now(), lastPost: 0 };
-    say(yes ? `You are shown as a dot, ${roleLabel(kept.role)}, while ${isBroadcast ? "" : "you are near the route and "}the app is open.` : "You are not shown. You still see the others.");
+    const role = roleLabel(kept.role);
+    const shown = isBroadcast
+      ? t("You are shown as a dot, {role}, while the app is open.", { role })
+      : t("You are shown as a dot, {role}, while you are near the route and the app is open.", { role });
+    say(yes ? shown : t("You are not shown. You still see the others."));
   };
   const changeRole = (role: RideRole) => {
     if (!ride || !consent) return;
     setConsent(keepConsent(ride, consent.answer, Date.now(), undefined, undefined, role));
     // The new role goes with the next position as soon as the server takes one (the consent change re-runs the post).
     share.current.lastPost = postSoonAfter(share.current.lastPost);
-    say(shareOn ? `You are shown as ${roleLabel(role)}; others see it within 15 seconds.` : `Your role is ${roleLabel(role)}, shown when you turn on Show me as a dot.`);
+    say(
+      shareOn
+        ? t("You are shown as {role}; others see it within 15 seconds.", { role: roleLabel(role) })
+        : t("Your role is {role}, shown when you turn on Show me as a dot.", { role: roleLabel(role) }),
+    );
   };
   // A broadcast's follower sees the leader before answering: a token for reading only, which the server keeps
   // nothing of until it posts (core.ride_presence.read).
@@ -252,7 +301,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   // Seeing the others: every 15 s while the page is in front.
   const poll = useCallback(async () => {
     if (!ride || !token || !visible()) return;
-    const got = await readRide(origin, ride, token, fetch, followKey);
+    const got = await readRide(origin, ride, token, fetch, followKey, seal);
     if (!got) return;
     setRead(got);
     setPolledAt(Date.now());
@@ -267,7 +316,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
         // No vibration here.
       }
     }
-  }, [ride, token, origin, line, followKey]);
+  }, [ride, token, origin, line, followKey, seal]);
   useEffect(() => {
     if (!ride || !token) return;
     void poll();
@@ -308,9 +357,9 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     const t = Date.now();
     // On a broadcast everyone shown is shown on or off the route while they ride: those following go where the leader
     // goes, and riders who get separated find each other. Not riding (the ride ended, or watching), the quarter-mile
-    // rule and its 10-minute stop are back, so a dot never follows anyone home.
-    // A broadcast from Roam has no route: one who said yes is shown while the app is open, riding or not.
-    const near = (isBroadcast && (riding || line.length === 0)) || nearRoute(line, fix);
+    // rule and its 10-minute stop are back. A broadcast from Roam has no route, so one who is not riding is never near:
+    // a follower watching from home is not sent (2026-10-29).
+    const near = (isBroadcast && riding) || nearRoute(line, fix);
     if (near) share.current.lastNearAt = t;
     const stop = shareStop({ on: true, since: consent.since, lastNearAt: share.current.lastNearAt, startedAt: share.current.startedAt }, t);
     if (stop) {
@@ -319,12 +368,47 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
       say(SHARE_STOPPED_SAID[stop]);
       return;
     }
-    if (near && t - share.current.lastPost >= POST_EVERY_MS) {
-      share.current.lastPost = t;
-      void sendPosition(origin, ride, token, fix, consent.role);
+    dwell.current = nextDwell(dwell.current, fix, t);
+    const held = dotHeldBack(dwell.current, fix, t, home);
+    if (held !== heldBack.current) {
+      heldBack.current = held;
+      // Held back: the dot goes now rather than in 2 minutes; sent again as soon as the rider moves on.
+      if (held) void leaveRide(origin, ride, token);
+      else share.current.lastPost = 0;
     }
-    if (leading && near) setOwnTrail((t) => extendTrail(t, fix));
-  }, [fix, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading]);
+    if (near && !held && t - share.current.lastPost >= POST_EVERY_MS) {
+      share.current.lastPost = t;
+      void sendPosition(origin, ride, token, fix, consent.role, fetch, seal);
+    }
+    // Nor the leader's ridden path while the dot is held back: its last point would say where they are.
+    if (leading && near && !held) setOwnTrail((t) => extendTrail(t, fix));
+  }, [fix, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home]);
+
+  // The ride ended: the dot goes, and the next ride on this page asks again (2026-10-29: a Yes is
+  // for the ride it was given for, never the page left open after it).
+  const rodeBefore = useRef(riding);
+  useEffect(() => {
+    const ended = rodeBefore.current && !riding;
+    const resumed = !rodeBefore.current && riding;
+    rodeBefore.current = riding;
+    // The leader riding again (resumed, or started again on the same link) is shown again: sharing is what they pressed.
+    if (resumed && leading && ride && consent?.answer === "yes") {
+      dwell.current = null;
+      heldBack.current = false;
+      setShareOn(true);
+    }
+    if (!ended || !ride) return;
+    // A follower's answer, Yes or No, was for this ride: the next one asks again.
+    if (!leading) {
+      markAnsweredHere(ride, false);
+      setAsked(false);
+    }
+    if (!shareOn) return;
+    setShareOn(false);
+    say(SHARE_STOPPED_SAID.off);
+    // Only riding's changes: the answer read here is the one at that moment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [riding]);
 
   // The leader's route and ridden path, sent again about every 2 minutes and whenever the route changes (Stephen
   // 2026-10-22: "Rebroadcast the route every 2 min or when it changes, not keeping it on the server"), while riding.
@@ -332,17 +416,18 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   const routeNow = leaderRoute ?? line;
   const routeNowKey = routeKeyOf(routeNow);
   useEffect(() => {
-    if (!leading || !riding || !shareOn || !front || !ride || !token) return;
+    // Not while the leader's dot is held back (an hour in one spot, or at Home): the server's copy runs out in 2 minutes.
+    if (!leading || !riding || !shareOn || !front || !ride || !token || heldBack.current) return;
     const t = Date.now();
     if (!pathDue(pathSent.current.at, pathSent.current.routeKey, routeNowKey, t)) return;
     pathSent.current = { at: t, routeKey: routeNowKey };
     // Not taken: tried again in about PATH_MIN_GAP_MS, before the server's 2 minutes run out.
-    void sendPath(origin, ride, token, routeNow, ownTrail).then((ok) => {
+    void sendPath(origin, ride, token, routeNow, ownTrail, fetch, seal).then((ok) => {
       if (!ok && pathSent.current.at === t) pathSent.current = { at: t - PATH_EVERY_MS + PATH_MIN_GAP_MS, routeKey: "" };
     });
     // routeNow is named by its key; ownTrail goes with the next send as it is then.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leading, riding, shareOn, front, ride, token, origin, routeNowKey, now]);
+  }, [leading, riding, shareOn, front, ride, token, origin, routeNowKey, now, seal]);
 
   const me = fix ?? here;
   const meRef = useRef<LonLat | null>(null);
@@ -442,10 +527,10 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     }
     const at = me ?? (await currentPosition());
     if (!at) {
-      say("Your location is needed to send an alert; allow it and try again.");
+      say(t("Your location is needed to send an alert; allow it and try again."));
       return;
     }
-    const outcome = await sendAlert(origin, ride, token, type, kind.id, otherText, at);
+    const outcome = await sendAlert(origin, ride, token, type, kind.id, otherText, at, fetch, seal);
     setConfirming(null);
     setOtherOpen(false);
     if (!outcome.ok) {
@@ -455,7 +540,11 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     setSent((s) => [...s, Date.now()]);
     setAlertOpen(false);
     setOtherText("");
-    say(outcome.alert.count > 1 ? `Sent: ${kind.label}. ${outcome.alert.count} riders reported.` : `Sent to everyone on this ride: ${kind.label}.`);
+    say(
+      outcome.alert.count > 1
+        ? t("Sent: {alert}. {count} riders reported.", { alert: kind.label, count: outcome.alert.count })
+        : t("Sent to everyone on this ride: {alert}.", { alert: kind.label }),
+    );
     void poll();
   };
   const pick = (kind: AlertKind) => {
@@ -484,7 +573,21 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
 
   // The question, asked once the ride is under way (Start ride or Broadcast pressed), never while planning (P6).
   const askNow = riding && !asked && !askHeld;
-  if (!ride) return null;
+  if (!ride) {
+    // A followed link without its key has no ride, so no Send alert; Call 911 stays where Send alert sits (it is
+    // otherwise only on a Crash or Medical alert's banner), a ride-sized press.
+    if (!keyless || !controls) return null;
+    return (
+      <div className="ride-group">
+        <div className="ride-group-bar">
+          <a className="chip ride-alert-button" href={CALL_911_HREF}>
+            <Icon name="warn" size={18} />
+            {CALL_911}
+          </a>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="ride-group">
       <ConsentDialog open={askNow} leads={leads} note={broadcast ? BROADCAST_CONSENT_NOTE : CONSENT_NOTE} role={pickedRole} onRole={setPickedRole} onAnswer={answer} />
@@ -558,7 +661,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
               setConsent(keepConsent(ride, next ? "yes" : "no"));
               setShareOn(next);
               share.current = { lastNearAt: null, startedAt: Date.now(), lastPost: 0 };
-              say(next ? (isBroadcast ? "You are shown as a dot while the app is open." : "You are shown as a dot while you are near the route.") : SHARE_STOPPED_SAID.off);
+              say(next ? (isBroadcast ? t("You are shown as a dot while the app is open.") : t("You are shown as a dot while you are near the route.")) : SHARE_STOPPED_SAID.off);
             }}
           >
             <span className="switch-label">{t("Show me as a dot")}</span>
@@ -570,8 +673,9 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
         {consent && <RolePicker name="ride-role" value={consent.role} onChange={changeRole} />}
       </div>
       <div id={alertPanel} className="ride-alert-panel" hidden={!alertOpen}>
+        {/* One line, seen and heard (the Alert button's description too): the spot goes with every alert. */}
         <p id={`${alertPanel}-note`} className="hint">
-          {ALERT_NOTE}.
+          {ALERT_SPOT_NOTE}
         </p>
         {confirming ? (
           <div role="group" aria-label={CONFIRM_QUESTION} data-idle-hold>

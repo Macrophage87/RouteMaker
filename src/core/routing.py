@@ -105,6 +105,7 @@ from routemaker import (
     hill_cost,
     intersections,
     junction_delay,
+    mass_route,
     mdot_aadt,
     mtbmode,
     ridetime,
@@ -124,6 +125,7 @@ from routemaker.geo import (
     haversine,
     haversine_lonlat,
 )
+from routemaker.lang import t
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
@@ -135,6 +137,7 @@ from . import (
     novice_walks,
     parallel,
     presets,
+    route_cache,
     route_hazards,
     route_scenic,
     segment_info,
@@ -344,18 +347,21 @@ QUERY_CANCELED = "57014"
 
 
 @contextmanager
-def plan_cursor() -> Iterator:
+def plan_cursor(cap_s: float | None = None) -> Iterator:
     """A cursor for one of the plan's own reads of the segment table, under a statement
-    timeout of the time the plan has left; a read it cancels raises DeadlineExceeded. A
-    plain cursor outside a plan."""
+    timeout of the time the plan has left, or `cap_s` where that is less; a read it cancels
+    raises DeadlineExceeded. Outside a plan, a cursor under `cap_s`, or a plain one."""
     # A plan cancelled meanwhile reads no more (as found by a router call's ask: no poll here).
     check_cancel(poll=False)
     ends = _plan_ends.get()
-    if ends is None:
+    if ends is None and cap_s is None:
         with connection.cursor() as cursor:
             yield cursor
         return
-    left_ms = int((ends - clock()) * 1000)
+    left_s = cap_s if ends is None else ends - clock()
+    if cap_s is not None:
+        left_s = min(left_s, cap_s)
+    left_ms = int(left_s * 1000)
     if left_ms <= 0:
         raise DeadlineExceeded("no time left to read the segment table")
     outer = connection.in_atomic_block
@@ -472,17 +478,25 @@ def _own_context(fn):
     return run
 
 
+def _skipped_for_time() -> None:
+    """A check left out because too little of the budget was left for it: counted as a
+    failed router call, so the plan answered without it is not kept in the answer cache
+    (`core.route_cache.keepable`)."""
+    timing.record_call(0.0, True)
+
+
 def _call(variant: str, endpoint: str, payload: dict, deadline: Deadline) -> dict:
     """One router call inside the request's budget."""
-    remaining = deadline.at - clock()
-    if remaining <= 0:
-        raise DeadlineExceeded(f"no time left for {endpoint}")
     url = f"{settings.VALHALLA_UPSTREAMS[variant]}/{endpoint}"
     began = timing.now()
     failed = True
     try:
-        # Inside the try: a cancelled plan's call counts as failed, so its answer is
-        # never kept in the answer cache (`core.route_cache.keepable`).
+        # Inside the try: a cancelled plan's call, and one skipped for want of time,
+        # count as failed, so the answer is never kept in the answer cache
+        # (`core.route_cache.keepable`).
+        remaining = deadline.at - clock()
+        if remaining <= 0:
+            raise DeadlineExceeded(f"no time left for {endpoint}")
         check_cancel()
         answer = _transport(url, payload, min(deadline.per_call_s, remaining))
         failed = False
@@ -1717,6 +1731,9 @@ class Dials:
     # reroutes and on the third time assume that the user wants to stay on that path"): the route
     # that sets off ahead is taken whatever turning round would save (`plan_onward`).
     ahead_only: bool = False
+    # Mass Ride's "Anticipated ride size" (PLAN items 128, 129), riders: the capacity a road
+    # needs, which the route choice prices (`choose_by_capacity`); None: 500.
+    ride_size: int | None = None
 
 
 def _same_pace(options: dict, request: dict) -> dict:
@@ -2104,6 +2121,162 @@ def choose_by_steep(trips: list[dict], price: HillPrice, quiet_cost: float) -> i
 HILLS_EPS_S = 5.0
 
 
+def capacity_stretches(
+    variant: str,
+    costing: dict,
+    trip: dict,
+    when: str,
+    deadline: Deadline,
+    traces: dict | None = None,
+    names: bool = False,
+) -> list[tuple] | None:
+    """A trip's Mass Ride stretches (`_flow_stretches`: metres, usable width, note; with
+    `names` its street name fourth), read as the answer reads them; None where a leg cannot
+    be traced."""
+    prefetch_traces(variant, costing, [trip], deadline, traces)
+    pieces: list[Piece] = []
+    for leg in trip.get("legs") or []:
+        trace = _trace(variant, costing, leg.get("shape", ""), deadline, traces)
+        if trace is None:
+            return None
+        pieces.extend(trace_reading(trace)[0])
+    classes = classify(pieces, when, roadway_only=True)
+    capacity = _has_capacity_column(validate_schema_name(settings.SEGMENT_SCHEMA_LIVE))
+    outside = [_outside_dc(piece) for piece in pieces]
+    found = _flow_stretches([(0, len(pieces))], pieces, classes, capacity, outside)
+    if names:
+        found = _named(found, [(0, len(pieces))], pieces)
+    return found
+
+
+def _mass_capacity(
+    stretches: list[tuple],
+    profile: dict | None,
+    length_m: float,
+    riders: int,
+    choice: dict | None,
+) -> dict | None:
+    """The answer's `mass_capacity`: what the route carries against what the ride size needs,
+    where it falls short, and the corkers it needs (`routemaker.mass_route`); None where it
+    cannot be read (the route is answered without it)."""
+    try:
+        priced = mass_route.price(stretches, riders)
+        narrowest = priced.narrowest_riders_per_min
+        return {
+            "riders": riders,
+            "need_riders_per_min": priced.need_per_min,
+            "hold_minutes": mass_route.HOLD_MINUTES,
+            "narrowest_riders_per_min": None if narrowest is None else round(narrowest),
+            "narrowest_m": None if priced.narrowest_m is None else round(priced.narrowest_m),
+            "below_need_m": round(priced.below_need_m),
+            "capacity_changes": priced.transitions,
+            "capacity_price_s": round(priced.total_s, 1),
+            "narrow_stretches": mass_route.narrow_stretches(stretches, priced.need_per_min),
+            "corkers": mass_route.corker_load(profile, length_m, riders),
+            "choice": choice,
+        }
+    except Exception:  # noqa: BLE001 - the route is answered without its capacity summary
+        logger.warning("the Mass Ride capacity summary could not be built", exc_info=True)
+        return None
+
+
+def _named(stretches: list[tuple], leg_runs: list, pieces: list[Piece]) -> list[tuple]:
+    """`_flow_stretches`' stretches with each one's street name fourth (None on a leg that
+    was not traced, or an unnamed way), for the answer's narrow stretches."""
+    names: list[str | None] = []
+    for run in leg_runs:
+        if isinstance(run, tuple):
+            names.extend(
+                (pieces[i].names[0] if pieces[i].names else None) for i in range(run[0], run[1])
+            )
+        else:
+            names.append(None)
+    return [(*stretch, name) for stretch, name in zip(stretches, names, strict=True)]
+
+
+# The app says it in the rider's language from the answer's `code` (frontend/src/lib/api.ts).
+MASS_RIDE_OUTSIDE_DC = (
+    "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end"
+    " must be in the District. To ride outside DC, switch to Group Ride with trails off."
+)
+
+
+def mass_ride_outside_dc(preset: str | None, points) -> str | None:
+    """The refusal of a Mass Ride with a start, stop or end outside the District, else None
+    (the owner, 2026-10-29: "Don't leave DC on a mass ride. The laws in other jurisdictions are
+    too different for us to accommodate a multi-jurisdiction mass ride.", then chose to refuse
+    its points outside DC). A route between points in DC that still crosses the line plans,
+    with the app's leaves-DC note; `choose_by_capacity` prefers one that stays in."""
+    from .mass_tiles import inside_dc
+
+    if preset != "mass-ride" or all(inside_dc(lon, lat) for lon, lat in points):
+        return None
+    return MASS_RIDE_OUTSIDE_DC
+
+
+# Mass Ride's out-of-DC measure is rounded to this before it decides (`choose_by_capacity`).
+OUTSIDE_DC_STEP_M = 50.0
+
+
+def choose_by_capacity(
+    trips: list[dict],
+    hill_part: Callable[[dict], float],
+    riders: int,
+    variant: str,
+    costing: dict,
+    when: str,
+    deadline: Deadline,
+    traces: dict | None = None,
+) -> tuple[int, dict | None]:
+    """A Mass Ride's choice among the router's routes by road capacity (PLAN "Mass Ride map
+    and mode", items 120-123, 128; `routemaker.mass_route`): the index of the trip that leaves
+    DC least (the owner, 2026-10-29), then whose router cost plus its climbing (`hill_part`)
+    plus its capacity price for a group of `riders` is least, and what was weighed. The
+    router's own route is kept unless another saves more than HILLS_EPS_S. Busier roads are
+    not held against an alternative: a Mass Ride is corked and judged by what a road carries,
+    not its LTS (OWNER-DECISIONS 125, 325). Where the router's own route cannot be read in
+    time, (0, None): the caller chooses as before; an alternative that cannot be read is
+    passed over."""
+    prefetch_traces(variant, costing, trips, deadline, traces)
+    best, best_score, best_outside = 0, None, 0
+    weighed: list[dict] = []
+    for index, trip in enumerate(trips):
+        try:
+            stretches = capacity_stretches(variant, costing, trip, when, deadline, traces)
+        except (DeadlineExceeded, RouterUnavailable):
+            stretches = None
+        except Exception:  # noqa: BLE001 - a reading that fails costs the choice, not the plan
+            logger.warning("a Mass Ride route could not be read for capacity", exc_info=True)
+            stretches = None
+        if stretches is None:
+            if index == 0:
+                return 0, None
+            continue
+        priced = mass_route.price(stretches, riders)
+        score = _router_cost(trip) + hill_part(trip) + priced.total_s
+        # Out of DC least first, whatever the price (the owner, 2026-10-29: "Don't leave DC on a
+        # mass ride"); to the nearest OUTSIDE_DC_STEP_M, so a few metres traced over the line
+        # by a bridge's end decide nothing.
+        outside = round(priced.outside_m / OUTSIDE_DC_STEP_M)
+        weighed.append(
+            {
+                "route": index,
+                "capacity_s": round(priced.total_s, 1),
+                "narrow_s": round(priced.narrow_s, 1),
+                "outside_dc_m": round(priced.outside_m),
+                "transitions": priced.transitions,
+                "below_need_m": round(priced.below_need_m),
+            }
+        )
+        if (
+            best_score is None
+            or outside < best_outside
+            or (outside == best_outside and score < best_score - HILLS_EPS_S)
+        ):
+            best, best_score, best_outside = index, score, outside
+    return best, {"riders": riders, "routes_weighed": weighed, "chosen": best}
+
+
 def _trace(
     variant: str, costing: dict, shape: str, deadline: Deadline, traces: dict | None = None
 ) -> dict | None:
@@ -2298,6 +2471,7 @@ def no_busier_than_middle(
     if variant in TWIN_VARIANTS:
         limit = min(limit, WEEKEND_TIMEOUT_S)
     if limit < MIDDLE_MIN_S:
+        _skipped_for_time()
         return trip, False
     middle_request = {key: value for key, value in request.items() if key != "alternates"} | {
         "costing_options": middle_costing
@@ -3494,11 +3668,11 @@ def _detour(
     asked_for_calm = stress_dial > presets.STRESS_DEFAULT_AT or route_m >= (
         detour_rules.STRONG_RATIO * straight_m
     )
-    if (
-        preset_name != "mass-ride"
-        and asked_for_calm
-        and deadline.at - clock() >= DETOUR_PROBE_MIN_S
-    ):
+    probe = preset_name != "mass-ride" and asked_for_calm
+    if probe and deadline.at - clock() < DETOUR_PROBE_MIN_S:
+        _skipped_for_time()
+        probe = False
+    if probe:
         direct_costing, direct_request, direct_key = _direct_request(request, preset_name, dials)
         # Asked once for a plan and its candidate routes (OWNER-DECISIONS 265).
         asked = (early or {}).pop(direct_key, None)
@@ -3760,6 +3934,55 @@ def move_zoo_points(points: list[list[float]]) -> tuple[list[list[float]], list[
             }
         )
     return out, moved
+
+
+# A stop or the end on a road not open to the public (the owner, 2026-10-29: "It would only be
+# routed to if there's a destination that would use those roads. Basically when you set a
+# destination: This end point is not typically open to the public, make sure you're authorized
+# to go here."). Such roads stay routable as a destination; one the route only passes along
+# says nothing. The reasons are `segment.bike_access_reason`'s (core.segment_info.ACCESS_WORDS):
+# private or no public access (an `access` or `vehicle` of no, private, permit, restricted or
+# military, or `bicycle=private`), a military or secure site, and a farm or forest track with
+# no sign it is public.
+NOT_PUBLIC_REASONS = ("private", "military", "secured", "track")
+NOT_PUBLIC_NOTE = (
+    "This end point is not typically open to the public, make sure you're authorized to go here."
+)
+
+
+def not_public_ends(pieces: list[Piece], leg_runs: list, count: int) -> list[dict]:
+    """The `point_notes` of the stops and the end whose leg finishes on a road not open to the
+    public (NOT_PUBLIC_REASONS): each {index, reason, note}, `index` the point's in the rider's
+    `count` points (leg k ends at point k + 1). The start is not one: it is not a destination.
+    An untraced leg says nothing."""
+    ends: dict[int, int] = {}
+    for k, run in enumerate(leg_runs):
+        if k + 1 >= count or not isinstance(run, tuple) or run[1] <= run[0]:
+            continue
+        way = pieces[run[1] - 1].way_id
+        if way:
+            ends[k + 1] = way
+    if not ends:
+        return []
+    schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    try:
+        if not segment_info.has_columns(schema, "bike_access_reason"):
+            return []
+        with plan_cursor() as cursor:
+            cursor.execute(
+                f"SELECT DISTINCT osm_way_id FROM {schema}.segment "
+                "WHERE osm_way_id = ANY(%s) AND bike_access_reason = ANY(%s)",
+                [sorted(set(ends.values())), list(NOT_PUBLIC_REASONS)],
+            )
+            closed = {int(row[0]) for row in cursor.fetchall()}
+    except Exception:  # noqa: BLE001 - a route is answered without its end notes
+        logger.warning("the not-public end roads could not be read", exc_info=True)
+        return []
+    return [
+        {"index": index, "reason": "not_public", "note": t(NOT_PUBLIC_NOTE)}
+        for index, way in sorted(ends.items())
+        if way in closed
+    ]
 
 
 # A stop the bike cannot be ridden to the door of (the owner, 2026-10-17: "There are some
@@ -4039,6 +4262,9 @@ def _plan_rounds(
                 trail_touched=found.touched,
                 trail_strays=dials.trail_strays + tuple(map(_ring_tuple, found.rings)),
             )
+        except PlanCancelled:
+            # A newer plan replaced this one: no round on the ride type's own graph either.
+            raise
         except (NoRoute, DeadlineExceeded, RouterUnavailable):
             # Leaving the strays out left no route, or no time for another round: the plan
             # the ride type makes on its own graph, in what is left of the budget.
@@ -4184,18 +4410,16 @@ def _plan(
     exposure = presets.exposure_for(preset_name, dials.carrying)
     # The approved Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, 307-310, 335), read at
     # request time: empty as shipped.
-    avoid_list = avoid_junctions.approved()
+    # Each of these is read once a request: the answer cache's key read them already where
+    # it was made (`route_cache.approval`).
+    avoid_list = route_cache.avoid_list()
     # A Mass Ride's rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3, 325), read once a plan:
     # empty as shipped, and never read for another ride type (325: "for this mode only").
-    hazard_list = mass_hazards.approved() if preset_name == "mass-ride" else {}
+    hazard_list = route_cache.mass_ride_hazards() if preset_name == "mass-ride" else {}
     # The approved rider ratings of junctions (OWNER-DECISIONS 232), read the same way.
-    from .junction_suggestions import approved_ratings
-
-    junction_ratings = approved_ratings()
+    junction_ratings = route_cache.junction_ratings()
     # The flashing beacons the map has as signals (the owner's and MDOT SHA's), the same way.
-    from .flashing_signals import active as active_beacons
-
-    beacons = active_beacons()
+    beacons = route_cache.beacons()
     # The rider's target distance counts at the top of the slider only.
     target_m = float(dials.target_distance_m) if dials.target_distance_m and maxcalm else None
     when = dials.when or default_when()
@@ -4521,7 +4745,27 @@ def _plan(
             avoid_gravel,
         )
         trips = trips + sought.trips
-    if fixed:
+    # A Mass Ride chooses among the router's routes by road capacity for its ride size
+    # (`choose_by_capacity`), its climbing priced as the rest of this choice prices it.
+    ride_size = mass_route.fit_ride_size(dials.ride_size)
+    # The router gives alternatives only between two points and on the avoid half
+    # (`AVOID_MAX_SPAN_M`), where a Mass Ride starts: with stops or vias, or a longer span, its
+    # route is the router's own and `mass_capacity` only reports on it.
+    capacity_choice = None
+    if preset_name == "mass-ride" and not fixed and not quick and len(trips) > 1:
+        chosen, capacity_choice = choose_by_capacity(
+            trips,
+            lambda one: hill_s(one, hill_price, _quiet_cost(costing)),
+            ride_size,
+            variant,
+            costing,
+            when,
+            deadline,
+            traces,
+        )
+    if capacity_choice is not None:
+        pass  # chosen by capacity, above
+    elif fixed:
         chosen = 0
     elif climb_seek:
         chosen = choose_climb(trips, presets.seek_distance_ratio(hills_dial))
@@ -4555,7 +4799,9 @@ def _plan(
     trip = trips[chosen]
     kept_middle = False
     trace_costing = costing
-    if avoiding and not quick and not fixed:
+    # Not on a Mass Ride weighed by capacity: the middle's check is by LTS, which would undo
+    # a wider road chosen for the group (OWNER-DECISIONS 125, 325).
+    if avoiding and not quick and not fixed and capacity_choice is None:
         middle_costing = _same_pace(
             presets.costing(preset_name, stress_dial, 0, assist=assist, avoid_gravel=avoid_gravel),
             request,
@@ -5271,6 +5517,12 @@ def _plan(
             "description": described_full,
             "description_overview": described_overview,
             "moved_points": moved_points,
+            # A stop or the end on a road not open to the public (the owner, 2026-10-29).
+            "point_notes": (
+                []
+                if over_budget or len(leg_runs) != len(points) - 1
+                else not_public_ends(pieces, leg_runs, len(asked_points))
+            ),
             "avoid_junctions": avoid_junctions.rows(avoid_found, avoid_scale),
             "avoid_notice": avoid_rules.notice(avoid_found),
             # The known hazards the route rides (v0.10.0): cobbles, rails; [] where none.
@@ -5288,6 +5540,24 @@ def _plan(
             "mass_hazards": (
                 mass_hazards.along(leg_runs, pieces, classes, hazard_list)
                 if preset_name == "mass-ride"
+                else None
+            ),
+            # A Mass Ride's road capacity for its ride size and the corkers it needs
+            # (`routemaker.mass_route`), for the page and the assistants' tool to improve on;
+            # null on other ride types.
+            "mass_capacity": (
+                _mass_capacity(
+                    _named(
+                        _flow_stretches(leg_runs, pieces, classes, capacity, outside_dc),
+                        leg_runs,
+                        pieces,
+                    ),
+                    profile,
+                    max(_trip_length_m(trip), ((profile or {}).get("m") or [0])[-1] or 0, 1),
+                    ride_size,
+                    None if alternate else capacity_choice,
+                )
+                if preset_name == "mass-ride" and not over_budget
                 else None
             ),
             # Novice and Nervous (v0.7.0): the busiest stretch, read on the real levels.

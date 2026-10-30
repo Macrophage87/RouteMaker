@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import type { KeyValueStore } from "./accessMode.ts";
 import type { Place } from "./geocode.ts";
 import {
+  RECENT_PLACES_DAYS,
   RECENT_PLACES_KEY,
   RECENT_PLACES_MAX,
   placeKey,
@@ -83,4 +84,41 @@ test("a refusing or garbled store gives an empty list and does not throw", () =>
     readRecentPlaces(store).map((p) => p.name),
     ["Ok"],
   );
+});
+
+test("a place goes 30 days after it was last picked, from the list and the store", () => {
+  const store = memory();
+  const day = 24 * 60 * 60 * 1000;
+  const t0 = 1_800_000_000_000;
+  rememberRecentPlace(place("Old", 1), store, t0);
+  rememberRecentPlace(place("New", 2), store, t0 + 20 * day);
+  assert.equal(RECENT_PLACES_DAYS, 30);
+  assert.deepEqual(
+    readRecentPlaces(store, t0 + 29 * day).map((p) => p.name),
+    ["New", "Old"],
+  );
+  assert.deepEqual(
+    readRecentPlaces(store, t0 + 31 * day).map((p) => p.name),
+    ["New"],
+  );
+  assert.ok(!store.data.get(RECENT_PLACES_KEY)!.includes("Old"));
+  // Picked again, its 30 days start again; what is handed out carries no time.
+  const again = rememberRecentPlace(place("New", 2), store, t0 + 45 * day);
+  assert.ok(!("at" in again[0]));
+  assert.deepEqual(
+    readRecentPlaces(store, t0 + 70 * day).map((p) => p.name),
+    ["New"],
+  );
+});
+
+test("a list kept before dates were starts its 30 days when first read", () => {
+  const store = memory();
+  const day = 24 * 60 * 60 * 1000;
+  const t0 = 1_800_000_000_000;
+  store.setItem(RECENT_PLACES_KEY, JSON.stringify([place("Before", 4)]));
+  assert.deepEqual(
+    readRecentPlaces(store, t0).map((p) => p.name),
+    ["Before"],
+  );
+  assert.deepEqual(readRecentPlaces(store, t0 + 31 * day), []);
 });

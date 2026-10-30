@@ -142,6 +142,30 @@ def test_union_station_to_dupont_circle_on_a_classic_bike() -> None:
     assert plan["availability"] == "live"
 
 
+def test_the_docks_walks_are_asked_at_once_and_read_in_order(settings) -> None:
+    """Review speed-10: the walks to and from each candidate dock go to the router pool, and
+    the plan is the one the walks asked one after another give."""
+    import threading
+    import time
+
+    class Slow(FakeServices):
+        def walk(self, a, b):
+            # The first walk asked answers last: the order read must not follow the answers.
+            if not self.walks:
+                time.sleep(0.05)
+            self.threads.add(threading.current_thread().name)
+            return super().walk(a, b)
+
+    settings.ROUTER_PARALLEL_CALLS = 1
+    alone, _ = run(UNION, DUPONT)
+    settings.ROUTER_PARALLEL_CALLS = 3
+    slow = Slow(ride_speed_kmh=presets.BIKESHARE_BIKES["classic"].speed_kmh)
+    slow.threads = set()
+    together, _ = run(UNION, DUPONT, services=slow)
+    assert together == alone
+    assert any(name.startswith("router") for name in slow.threads)
+
+
 def test_the_steps_are_plain_words_with_us_units_first() -> None:
     plan = run(UNION, DUPONT)[0]["bikeshare"]
     first, second, third = (s["text"] for s in plan["steps"])
