@@ -133,19 +133,19 @@ jobs:
       - name: Tool versions
         continue-on-error: true
         run: (docker compose version; docker version --format '{{.Server.Version}}'; shellcheck --version) || true
-      # The front end, from the lockfile: typecheck, test and build. Before
-      # pytest because the contrast test reads @protomaps/basemaps from
-      # node_modules; tests/test_frontend.py skips its own run of these node
-      # tests under CI, since this step is that run.
+      # The front end, from the lockfile: install, typecheck and build (`npm run build` is
+      # `tsc --noEmit && vite build`). Before pytest because the contrast test reads
+      # @protomaps/basemaps from node_modules and the licence tests read dist/. The node tests run
+      # once, in the beta-style step below; tests/test_frontend.py skips its own run under CI.
       - name: Front end
         working-directory: frontend
-        run: npm ci && npm run typecheck && npm test && npm run build
+        run: npm ci && npm run build
       # The React hooks rules (frontend/eslint.config.js). rules-of-hooks is an error and fails the
       # step; exhaustive-deps is still a warning, listed here and failing nothing.
       - name: Front end hooks lint
         run: npm --prefix frontend run lint
-      # The same tests and build again, the way every beta path runs them: the shared script,
-      # in the pinned node image, no network, the source mounted read-only. A test that reads
+      # The front-end tests, type check and build the way every beta path runs them: the shared
+      # script, in the pinned node image, no network, the source mounted read-only. A test that reads
       # outside frontend/ without a mount for it fails here, not in the middle of a ship.
       - name: Front end, as the beta builds it
         run: |
