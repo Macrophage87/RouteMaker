@@ -547,3 +547,19 @@ in the database still names it: delete that row in the admin when loading the fi
   5,000 cars a day or more, goes to LTS 2.5 (13 ways; L Street to New York Avenue, where
   the formula itself says LTS 3, is left out). Stress rows, hidden, with fingerprints.
   Load like the others; takes effect on the next rebuild.
+
+- `2026-10-30-owner-wv-county-roads.json`: West Virginia's Eastern Panhandle, 261 ways
+  (about 179 mi). West Virginia has no agency stress layer, and beta rated its unposted
+  rural county roads LTS 4 on the 50 mph rural default with no traffic count. The owner,
+  2026-10-30, chose "Filtered counts, 3 and 3.5" on WVDOT's 2020 segment counts (read 10%
+  high for 2020): tertiary and unclassified roads under 500 a day with a count station on
+  the route go to LTS 3 (75 ways); 500 to 1,500 a day, or no station within 2 km, go to
+  LTS 3.5 (160 ways). Busier roads, secondary and primary roads, posted roads and roads
+  inside the Census urban areas are left to the formula. Also 25 ways of seven busy
+  unposted county roads inside the urban areas (Golf Course, Eagle School, Harlan Springs,
+  Kelly Island, Paynes Ford, Needy and Charles Town Roads, 3,300 to 4,500 a day) held at
+  LTS 4, and one piece of North Fairfax Boulevard (way 158979695) held at LTS 2, for when
+  `urban-areas.json` is remade with West Virginia in it (beta reads every West Virginia
+  road as rural: the list predates West Virginia's joining the map). Stress rows, hidden,
+  with fingerprints. Remake `urban-areas.json`, then load like the others; takes effect
+  on the next rebuild.
