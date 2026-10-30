@@ -1773,4 +1773,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Switch to Group Ride, trails off": "트레일 없는 그룹 라이드로 바꾸기",
   "See everyone on the ride": "라이딩 중인 모두 보기",
   "Everyone": "모두",
+  // ---- Say where to: Go's Where to? microphone and its lettered places (lib/placeDictation.ts) ----
+  "Say where to": "목적지 말하기",
+  "Listening. Say a place or an address.": "듣는 중입니다. 장소나 주소를 말하세요.",
+  "Listening. Say a letter, like B or Bravo.": "듣는 중입니다. B 또는 Bravo처럼 글자를 말하세요.",
+  "Say a letter, like B or Bravo, or tap a place.": "B 또는 Bravo처럼 글자를 말하거나 장소를 탭하세요.",
+  "No letter was heard. Tap a place, or tap the microphone and say a letter.": "글자가 들리지 않았습니다. 장소를 탭하거나, 마이크를 탭하고 글자를 말하세요.",
+  "The microphone is not allowed; allow it in the browser's settings, or type the place.": "마이크가 허용되지 않았습니다. 브라우저 설정에서 허용하거나 장소를 입력하세요.",
+  "Nothing was heard. Tap the microphone and try again, or type the place.": "아무것도 들리지 않았습니다. 마이크를 탭해 다시 시도하거나 장소를 입력하세요.",
+  "Speech did not work. Type the place instead.": "음성 입력이 작동하지 않았습니다. 대신 장소를 입력하세요.",
 };

@@ -1773,4 +1773,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Switch to Group Ride, trails off": "Chanje pou Woulib an gwoup san santye",
   "See everyone on the ride": "Wè tout moun nan woulib la",
   "Everyone": "Tout moun",
+  // ---- Say where to: Go's Where to? microphone and its lettered places (lib/placeDictation.ts) ----
+  "Say where to": "Di ki kote w ap prale",
+  "Listening. Say a place or an address.": "M ap koute. Di yon kote oswa yon adrès.",
+  "Listening. Say a letter, like B or Bravo.": "M ap koute. Di yon lèt, tankou B oswa Bravo.",
+  "Say a letter, like B or Bravo, or tap a place.": "Di yon lèt, tankou B oswa Bravo, oswa peze yon kote.",
+  "No letter was heard. Tap a place, or tap the microphone and say a letter.": "Pa gen lèt ki tande. Peze yon kote, oswa peze mikwofòn nan epi di yon lèt.",
+  "The microphone is not allowed; allow it in the browser's settings, or type the place.": "Mikwofòn nan pa otorize; otorize l nan paramèt navigatè a, oswa tape kote a.",
+  "Nothing was heard. Tap the microphone and try again, or type the place.": "Pa gen anyen ki tande. Peze mikwofòn nan epi eseye ankò, oswa tape kote a.",
+  "Speech did not work. Type the place instead.": "Vwa a pa mache. Tape kote a pito.",
 };

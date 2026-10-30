@@ -1773,4 +1773,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Switch to Group Ride, trails off": "轉用唔行山徑嘅團體踩車",
   "See everyone on the ride": "顯示騎行中嘅所有人",
   "Everyone": "所有人",
+  // ---- Say where to: Go's Where to? microphone and its lettered places (lib/placeDictation.ts) ----
+  "Say where to": "講出目的地",
+  "Listening. Say a place or an address.": "聽緊。請講出地點或者地址。",
+  "Listening. Say a letter, like B or Bravo.": "聽緊。請講出一個字母，例如 B 或者 Bravo。",
+  "Say a letter, like B or Bravo, or tap a place.": "請講出一個字母，例如 B 或者 Bravo，或者撳一個地點。",
+  "No letter was heard. Tap a place, or tap the microphone and say a letter.": "聽唔到字母。請撳一個地點，或者撳咪高峰再講一個字母。",
+  "The microphone is not allowed; allow it in the browser's settings, or type the place.": "咪高峰未獲允許；請喺瀏覽器設定度允許，或者輸入地點。",
+  "Nothing was heard. Tap the microphone and try again, or type the place.": "乜都聽唔到。請撳咪高峰再試，或者輸入地點。",
+  "Speech did not work. Type the place instead.": "語音輸入用唔到。請改為輸入地點。",
 };

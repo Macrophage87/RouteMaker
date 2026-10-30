@@ -1773,4 +1773,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Switch to Group Ride, trails off": "Beralih ke Bersepeda rombongan tanpa trail",
   "See everyone on the ride": "Lihat semua orang di perjalanan",
   "Everyone": "Semua",
+  // ---- Say where to: Go's Where to? microphone and its lettered places (lib/placeDictation.ts) ----
+  "Say where to": "Ucapkan tujuan",
+  "Listening. Say a place or an address.": "Mendengarkan. Ucapkan tempat atau alamat.",
+  "Listening. Say a letter, like B or Bravo.": "Mendengarkan. Ucapkan huruf, seperti B atau Bravo.",
+  "Say a letter, like B or Bravo, or tap a place.": "Ucapkan huruf, seperti B atau Bravo, atau ketuk tempat.",
+  "No letter was heard. Tap a place, or tap the microphone and say a letter.": "Tidak ada huruf yang terdengar. Ketuk tempat, atau ketuk mikrofon lalu ucapkan huruf.",
+  "The microphone is not allowed; allow it in the browser's settings, or type the place.": "Mikrofon tidak diizinkan; izinkan di pengaturan browser, atau ketik tempatnya.",
+  "Nothing was heard. Tap the microphone and try again, or type the place.": "Tidak ada yang terdengar. Ketuk mikrofon dan coba lagi, atau ketik tempatnya.",
+  "Speech did not work. Type the place instead.": "Suara tidak berfungsi. Ketik tempatnya saja.",
 };
