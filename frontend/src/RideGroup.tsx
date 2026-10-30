@@ -105,6 +105,7 @@ import {
 } from "./lib/rideGroup.ts";
 import { newRideSecret, type RideSeal } from "./lib/rideSeal.ts";
 import { browserRideEnv, watchRide } from "./lib/rideWatch.ts";
+import { dotsKey } from "./lib/seeEveryone.ts";
 import { LISTENING_SAID, SPEAK_LABEL, speechSupported } from "./lib/speechInput.ts";
 import { alertDictation } from "./lib/alertDictation.ts";
 
@@ -152,6 +153,8 @@ export interface RideGroupProps {
   join?: { ask: JoinAsk; onAction: (action: JoinAction, said: Said) => void; onClose: () => void } | null;
   /** The rider's saved Home: no dot is sent from near it (lib/rideGroup.ts dotHeldBack). */
   home?: LonLat | null;
+  /** Told where the other riders' dots are as they change, none once gone: App's See everyone (lib/seeEveryone.ts). */
+  onDots?: ((dots: readonly LonLat[]) => void) | null;
 }
 
 const TICK_MS = 5000;
@@ -160,7 +163,7 @@ function visible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
 }
 
-export function RideGroup({ type, line, getMap, here, broadcast = null, secret = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0, controls = riding, leads = true, askHeld = false, home = null, join = null }: RideGroupProps) {
+export function RideGroup({ type, line, getMap, here, broadcast = null, secret = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0, controls = riding, leads = true, askHeld = false, home = null, join = null, onDots = null }: RideGroupProps) {
   const leading = broadcast?.leading === true;
   const isBroadcast = broadcast !== null;
   // The leader key a follower reads with (the leader needs none: it does not see its own dot).
@@ -476,6 +479,18 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
   const meShown = leading || shareOn;
   const riders = riderTotal(dots, meShown);
   const leaderInKey = dots.some((d) => d.leader);
+
+  // Where the dots are, for See everyone (lib/seeEveryone.ts): told as they change, and none once this ride goes.
+  const dotsAt = dots.map((d): LonLat => [d.lon, d.lat]);
+  const dotsAtKey = dotsKey(dotsAt);
+  const onDotsRef = useRef(onDots);
+  onDotsRef.current = onDots;
+  useEffect(() => {
+    onDotsRef.current?.(dotsAt);
+    // The places are named by their key; the array is new each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dotsAtKey]);
+  useEffect(() => () => onDotsRef.current?.([]), []);
 
   // Following the leader: the leader's dot, the path it has taken since this page opened, and the map kept on it.
   const leaderDot = followKey ? (dots.find((d) => d.leader) ?? null) : null;

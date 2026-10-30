@@ -10185,6 +10185,30 @@ summary.closure-notices-heading {
   min-height: 44px;
   flex: none;
 }
+/* Edit's Move up and Move down (Stephen 2026-10-30), then Remove: on their own line under the place's name, so the
+   name keeps the row's width at 320 px. An arrow not offered (top or bottom) leaves a 44 px gap, so the columns stay put. */
+.go-favorites-list li.go-favorite-editing {
+  flex-wrap: wrap;
+}
+.go-favorite-tools {
+  flex-basis: 100%;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.go-favorite-tools > .secondary {
+  min-height: 44px;
+  flex: none;
+}
+.go-favorite-tools > .go-favorite-move,
+.go-favorite-move-gap {
+  min-width: 44px;
+  width: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .go-favorite {
   flex: 1;
   min-width: 0;
