@@ -226,7 +226,7 @@ SECTIONS: list[tuple[str, str]] = [
                 "start at home) about every 2 minutes; the server keeps each only in memory and "
                 "drops it after 2 minutes. Only those with your link see it. The link itself, "
                 "like any shared route, shows where the route starts.",
-                "Speak, in an alert's Other box, uses your browser's speech recognition: the "
+                "Speak, at the top of Send alert, uses your browser's speech recognition: the "
                 "browser's maker (Google for Chrome, Apple for Safari) turns the recording into "
                 "text; in the Android app, the phone's own speech input (Google's on most "
                 "phones) does, and it, not RouteMaker, has the microphone. The words go only "
