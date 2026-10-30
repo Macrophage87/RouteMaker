@@ -19,6 +19,7 @@ export const ICON_PATHS = {
   "x": "<path d=\"M6 6l12 12M18 6 6 18\"/>",
   "chev": "<path d=\"M9 6l6 6-6 6\"/>",
   "down": "<path d=\"M6 9l6 6 6-6\"/>",
+  "up": "<path d=\"M6 15l6-6 6 6\"/>",
   "plus": "<path d=\"M12 5v14M5 12h14\"/>",
   // Work, the second of the Favorites popout's rows (lib/favoritePlaces.ts): a briefcase.
   "work": "<rect x=\"3\" y=\"7\" width=\"18\" height=\"13\" rx=\"2\"/><path d=\"M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3 13h18\"/>",

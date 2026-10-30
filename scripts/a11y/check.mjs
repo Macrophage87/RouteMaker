@@ -4701,10 +4701,12 @@ const MARK_SHARE = "(() => { const s = document.querySelector('#sheet-gpx .share
 }
 
 // ---- UI-CLEANUP (the approved mockup of 2026-10-11): Go and Plan, My Go, the Legend sheet ----
-async function bare({ width = 390, height = 844, mobile = true, hash = "", suggester = false, init = "" } = {}) {
+async function bare({ width = 390, height = 844, mobile = true, hash = "", suggester = false, init = "", places = null } = {}) {
   const p = await newPage(b, { width, height, mobile });
   if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
   await mock(p, S_DEFAULT, { suggester });
+  // The account's favorite places, in place of the mock's one (lib/favoritePlaces.ts).
+  if (places) p.favoritePlaces = { places };
   await media(p, {});
   // Go asks for the location when it opens (its start): answered at once here, so nothing waits on a prompt.
   await b.send("Browser.setPermission", { permission: { name: "geolocation" }, setting: "denied", origin: `http://127.0.0.1:${PORT}`, browserContextId: p.contextId });
@@ -5558,6 +5560,50 @@ const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-s
 }
 
 {
+  // Ordering favorites (Stephen 2026-10-30: "order favorites"): at 320 px, Edit gives each place after Work Move up
+  // and Move down, none past the ends, named for the place and 44 px; Move down saves the new order, says it, and the
+  // focus stays with the moved place.
+  const place = (label, lon) => ({ lon, lat: 38.89, label, work: false });
+  const p = await bare({ width: 320, height: 700, suggester: true, init: "document.cookie = 'csrftoken=favorites-token; path=/';",
+    places: [{ lon: -77.01, lat: 38.9, label: "Office", work: true }, place("Eastern Market", -76.9963), place("Union Market", -76.9971), place("The Wharf", -77.0237)] });
+  await p.waitFor("[...document.querySelectorAll('.go-places .place-chip')].some((c) => c.textContent.trim() === 'Favorites')", 8000);
+  await p.eval("[...document.querySelectorAll('.go-places .place-chip')].find((c) => c.textContent.trim() === 'Favorites').click(); true");
+  await p.waitFor("document.querySelectorAll('.go-favorites .go-favorite').length === 5", 5000);
+  await p.eval("[...document.querySelectorAll('.go-favorites-actions .chip')].find((c) => c.textContent.trim() === 'Edit').click(); true");
+  await sleep(200);
+  const read = () => p.eval(`(() => { const g = document.querySelector('.go-favorites');
+    return { rows: [...g.querySelectorAll('.go-favorite')].map((r) => r.textContent.trim()),
+      moves: [...g.querySelectorAll('.go-favorite-move')].map((m) => m.getAttribute('aria-label')),
+      small: [...g.querySelectorAll('button, input')].filter((e) => e.getClientRects().length && (e.getBoundingClientRect().height < 44 || e.getBoundingClientRect().width < 44)).map((e) => e.getAttribute('aria-label') || e.textContent.trim()),
+      wide: document.documentElement.scrollWidth > document.documentElement.clientWidth || g.scrollWidth > g.clientWidth,
+      focus: document.activeElement?.getAttribute('aria-label') ?? '' }; })()`);
+  const editing = await read();
+  check("favorites order: Edit gives the places after Work Move up and Move down, none past the ends, each 44 px, nothing wider than 320 px",
+    JSON.stringify(editing.moves) === JSON.stringify(["Move down: Eastern Market", "Move up: Union Market", "Move down: Union Market", "Move up: The Wharf"]) && editing.small.length === 0 && !editing.wide,
+    JSON.stringify(editing));
+  await p.eval("document.querySelector('.go-favorite-move[aria-label=\"Move down: Eastern Market\"]').click(); true");
+  await p.waitFor("document.querySelectorAll('.go-favorite')[3]?.textContent.includes('Eastern Market')", 5000);
+  await sleep(300);
+  const moved = await read();
+  const post = p.favoriteRequests.find((r) => r.method === "POST");
+  const said = await p.eval("[...document.querySelectorAll('[role=status], [aria-live]')].map((e) => e.textContent).join(' | ')");
+  check("favorites order: Move down puts the place a row lower, saves that order (POST /api/me/places), says where it is, and keeps the focus on it",
+    JSON.stringify(post?.body?.places?.map((x) => x.label)) === JSON.stringify(["Office", "Union Market", "Eastern Market", "The Wharf"]) &&
+      moved.rows.slice(2).join(",") === "Union Market,Eastern Market,The Wharf" && /Eastern Market moved to 4 of 5\./.test(said) && moved.focus === "Move down: Eastern Market",
+    JSON.stringify({ moved, post: post?.body, said }));
+  // Moved to the bottom, its Move down is gone: the focus goes to its Move up, not the page.
+  await p.eval("document.querySelector('.go-favorite-move[aria-label=\"Move down: Eastern Market\"]').click(); true");
+  await p.waitFor("document.querySelectorAll('.go-favorite')[4]?.textContent.includes('Eastern Market')", 5000);
+  await sleep(300);
+  const last = await read();
+  const saidLast = await p.eval("[...document.querySelectorAll('[role=status], [aria-live]')].map((e) => e.textContent).join(' | ')");
+  check("favorites order: moved to the bottom, its Move down is gone and the focus is on its Move up; said as the last row",
+    last.focus === "Move up: Eastern Market" && !last.moves.includes("Move down: Eastern Market") && /Eastern Market moved to 5 of 5\./.test(saidLast),
+    JSON.stringify({ last, saidLast }));
+  await p.close();
+}
+
+{
   // Share as image on a route that starts at Home (v0.7.0 end review): "Hide the part near Home" is shown and
   // ticked, and the QR code is refused, with its reason as the box's description, while Home is hidden; unticked
   // (the rider chose to show Home), the QR code is no longer refused for Home.
@@ -5600,7 +5646,8 @@ const failed = results.filter((r) => !r.ok);
 // Favorite places (2026-10-26) add two: the popout, and Edit's Remove.
 // Go's More > Load route (2026-10-26; it was Saved routes) adds one.
 // Joining a ride on one screen (2026-10-30) adds three: Escape, Close, and 320 px.
-const EXPECTED = 694;
+// Ordering favorites (2026-10-30) adds three: Edit's arrows at 320 px, a move saved and said, and one to the bottom.
+const EXPECTED = 697;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
