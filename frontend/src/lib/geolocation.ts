@@ -409,9 +409,9 @@ export const LINK_HAS_HOME_POINT = t("This link includes your Home as a point on
  * The note for a link of `points`, given the position point objects (kept in
  * memory by App; empty if none). Identity, not equality: a moved marker is a new
  * array, and only a drag of a location point adds it to the list (movedFromHere).
- * With the rider's `home`, a point at it is said too. Equality here, not identity:
- * a point at the Home's own coordinates is the Home however it came into the plan
- * (the Home chip, Undo, a reload of the address bar).
+ * With the rider's `home`, a point at or near it (LINK_HOME_NEAR_M) is said too.
+ * Distance here, not identity: a point at the Home's coordinates is the Home however
+ * it came into the plan (the Home chip, Undo, a reload of the address bar).
  */
 export function linkLocationNote(points: readonly LonLat[], from: readonly LonLat[], home: LonLat | null = null): string {
   const location =
@@ -419,9 +419,18 @@ export function linkLocationNote(points: readonly LonLat[], from: readonly LonLa
   return [location, linkHomeNote(points, home)].filter(Boolean).join(" ");
 }
 
+/**
+ * How near the Home a point counts as the Home: a start dropped across the street, or a nearby corner picked from the
+ * map, gives the Home away as well as its own coordinates do (Stephen 2026-10-29: only the Home is sensitive; other
+ * starts and ends, such as a park or a restaurant, are not).
+ */
+export const LINK_HOME_NEAR_M = 150;
+
 function linkHomeNote(points: readonly LonLat[], home: LonLat | null): string {
   if (!home) return "";
-  const isHome = (point: LonLat | undefined) => point !== undefined && point[0] === home[0] && point[1] === home[1];
+  const kx = 111_320 * Math.cos((home[1] * Math.PI) / 180);
+  const isHome = (point: LonLat | undefined) =>
+    point !== undefined && Math.hypot((point[0] - home[0]) * kx, (point[1] - home[1]) * 111_320) <= LINK_HOME_NEAR_M;
   if (points.length > 1 && isHome(points[points.length - 1])) return LINK_HAS_HOME_END;
   if (isHome(points[0])) return LINK_HAS_HOME_START;
   return points.some(isHome) ? LINK_HAS_HOME_POINT : "";

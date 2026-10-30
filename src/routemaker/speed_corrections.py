@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .tags import maxspeed_is_unitless, parse_maxspeed_mph
+from .tags import maxspeed_is_unitless, parse_maxspeed_mph, posted_maxspeed
 
 SPEED_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "speed"
 
@@ -71,7 +71,7 @@ def load(directory: Path | None = None) -> dict[int, str]:
 
 def corrected(tags: dict[str, str], speed: str | None) -> tuple[dict[str, str], bool]:
     """The tags the classifier reads, and whether the correction was used. A
-    posted `maxspeed` on the way wins."""
-    if speed is None or tags.get("maxspeed"):
+    posted speed on the way wins, by direction or as a list too (`posted_maxspeed`)."""
+    if speed is None or posted_maxspeed(tags) is not None:
         return tags, False
     return {**tags, "maxspeed": speed}, True

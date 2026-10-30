@@ -72,6 +72,29 @@ def test_each_problem_finds_its_service_or_is_not_sent(dc, settings) -> None:
     assert dc == []
 
 
+_users = iter(range(99100, 99999))
+
+
+def sign_in(client) -> str:
+    """Sign `client` in; the account's digest, as a ticket names it."""
+    from django.utils import timezone
+
+    from core import ratelimit
+    from core.models import Session, User
+
+    user = User.objects.create(discord_user_id=next(_users))
+    client.force_login(user)
+    now = timezone.now()
+    Session.objects.create(
+        session_key=client.session.session_key,
+        user=user,
+        issued_epoch=user.session_epoch,
+        created_at=now,
+        last_seen_at=now,
+    )
+    return ratelimit.client_key(f"user:{user.pk}")
+
+
 @pytest.mark.django_db
 def test_the_endpoints(client, dc, settings) -> None:
     headers = {"HTTP_X_FORWARDED_FOR": "198.51.100.31"}
@@ -82,10 +105,21 @@ def test_the_endpoints(client, dc, settings) -> None:
     assert off.status_code == 503 and off.json()["code"] == "dc311_off"
 
     settings.DC311_API_KEY = "placeholder-not-a-key"
+    # Signed out, the page texts 311: no ticket, and a send is refused.
+    assert client.get("/api/report311").json() == {"enabled": False}
+    signed_out = client.post(
+        "/api/report311",
+        data=json.dumps({"kind": "pothole", **HERE, "ticket": dc311.ticket()}),
+        content_type="application/json",
+        **headers,
+    )
+    assert signed_out.status_code == 401 and signed_out.json()["code"] == "signed_out"
+    who = sign_in(client)
     status = client.get("/api/report311").json()
-    assert status["enabled"] is True and dc311.ticket_ok(status["ticket"])
+    assert status["enabled"] is True and dc311.ticket_ok(status["ticket"], who)
+    assert not dc311.ticket_ok(status["ticket"])
     # On, a send without the page's ticket (or with a forged one) is refused, nothing sent.
-    for ticket in (None, "forged", status["ticket"] + "x"):
+    for ticket in (None, "forged", status["ticket"] + "x", dc311.ticket("someone-else")):
         refused = client.post(
             "/api/report311",
             data=json.dumps({"kind": "pothole", **HERE, "ticket": ticket}),
@@ -112,15 +146,15 @@ def test_the_endpoints(client, dc, settings) -> None:
 def test_a_ticket_is_short_lived(settings, monkeypatch) -> None:
     from django.core import signing
 
-    value = dc311.ticket()
-    assert dc311.ticket_ok(value)
+    value = dc311.ticket("me")
+    assert dc311.ticket_ok(value, "me") and not dc311.ticket_ok(value, "you")
     later = signing.loads
     monkeypatch.setattr(
         signing,
         "loads",
         lambda v, salt, max_age: later(v, salt=salt, max_age=max_age - dc311.TICKET_MAX_AGE_S - 1),
     )
-    assert not dc311.ticket_ok(value)
+    assert not dc311.ticket_ok(value, "me")
     assert dc311.TICKET_MAX_AGE_S <= 30 * 60
 
 
@@ -131,12 +165,35 @@ def test_every_address_together_is_held_to_an_hourly_cap(client, dc, settings, m
     monkeypatch.setattr(dc311, "HOURLY_MAX", 2)
     codes = []
     for n in range(3):
+        sign_in(client)
         ticket = client.get("/api/report311").json()["ticket"]
         r = client.post(
             "/api/report311",
             data=json.dumps({"kind": "pothole", **HERE, "ticket": ticket}),
             content_type="application/json",
             HTTP_X_FORWARDED_FOR=f"198.51.100.{60 + n}",
+        )
+        codes.append(r.status_code)
+    assert codes == [200, 200, 429] and len(dc) == 2
+
+
+@pytest.mark.django_db
+def test_each_account_is_held_to_its_own_quota(client, dc, settings, monkeypatch) -> None:
+    from core import ratelimit
+
+    settings.DC311_API_KEY = "placeholder-not-a-key"
+    monkeypatch.setattr(
+        ratelimit, "REPORT_311_ACCOUNT", ratelimit.Limit("report-311-user", 2, 3600)
+    )
+    sign_in(client)
+    codes = []
+    for n in range(3):
+        ticket = client.get("/api/report311").json()["ticket"]
+        r = client.post(
+            "/api/report311",
+            data=json.dumps({"kind": "pothole", **HERE, "ticket": ticket}),
+            content_type="application/json",
+            HTTP_X_FORWARDED_FOR=f"198.51.100.{70 + n}",
         )
         codes.append(r.status_code)
     assert codes == [200, 200, 429] and len(dc) == 2

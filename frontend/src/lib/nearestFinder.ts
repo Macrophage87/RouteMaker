@@ -29,12 +29,12 @@ import {
 } from "./nearest.ts";
 import { WATER_CAUTION, sheetNoteDetail } from "./waterRestrooms.ts";
 import { SheetNotes } from "./waterLegend.ts";
-import { placeLetter } from "./letteredPlaces.ts";
+import { placeLetter, SHOW_ALL_ON_MAP } from "./letteredPlaces.ts";
 import { t } from "./i18n.ts";
 
 export const NEAREST_SUMMARY = t("Find the nearest water, restroom or Metro");
 export const NEAREST_HELP =
-  t("Each place has a letter, on the map too: a tap on its marker, or its letter's key, is the same as Ride here. Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.");
+  t("Tap a place's name on the map to see what's there. Ride here plans a route to it in place of your plan; Undo puts your plan back.");
 
 export interface NearestList {
   kind: NearestKind;
@@ -61,12 +61,14 @@ export interface FinderProps {
    * first so its lettered pins can be pressed, and the chip opens the same list again. Absent: no button.
    */
   onShow?: (item: Nearby, index: number) => void;
+  /** Show all on map (Stephen 2026-10-29), as Find food's. Absent: no button. */
+  onShowAll?: () => void;
   /** A fold of its own (the default), or the body alone, in the map's Water sheet (UI-CLEANUP), whose heading names it. */
   folded?: boolean;
 }
 
 export function NearestFinder(props: FinderProps): ReactElement {
-  const { from, fromOptions, onFrom, onFind, busy, status, list, canAddStop, onRide, onAddStop, onShow, folded = true } = props;
+  const { from, fromOptions, onFrom, onFind, busy, status, list, canAddStop, onRide, onAddStop, onShow, onShowAll, folded = true } = props;
   // The button last pressed, marked while its search runs (the list, once in, says which it is).
   const [asked, setAsked] = useState<NearestKind | null>(null);
   const chosen = list?.kind ?? (busy ? asked : null);
@@ -111,6 +113,10 @@ export function NearestFinder(props: FinderProps): ReactElement {
             h("span", { className: "visually-hidden" }, status),
           ),
       list !== null &&
+        list.items.length > 1 &&
+        onShowAll &&
+        h("button", { type: "button", className: "secondary show-all", onClick: onShowAll }, SHOW_ALL_ON_MAP),
+      list !== null &&
         list.items.length > 0 &&
         h(
           "div",
@@ -126,8 +132,7 @@ export function NearestFinder(props: FinderProps): ReactElement {
               return h(
                 "li",
                 { key: item.place.id, className: "lettered-row" },
-                // The letter is the map marker's (lib/letteredPlaces.ts): seen in its pin, heard before the place.
-                h("span", { className: "place-letter", "aria-hidden": "true" }, h("span", null, placeLetter(index))),
+                // The map's marker shows the name (Stephen 2026-10-29: "Named, not lettered"); the letter, its key's, is heard.
                 h(
                   "div",
                   { className: "nearest-place" },
@@ -140,17 +145,18 @@ export function NearestFinder(props: FinderProps): ReactElement {
                 h(
                   "span",
                   { className: "actions" },
+                  // The one main action first and filled, the rest plain after it (the 2026-10-29 review).
+                  h(
+                    "button",
+                    { type: "button", className: "ride-here", "aria-label": t("Ride here: {place}", { place: item.place.title }), onClick: () => onRide(item) },
+                    t("Ride here"),
+                  ),
                   onShow &&
                     h(
                       "button",
                       { type: "button", className: "secondary", "aria-label": t("Show on map: {place}, marker {letter}", { place: item.place.title, letter: placeLetter(index) }), onClick: () => onShow(item, index) },
                       t("Show on map"),
                     ),
-                  h(
-                    "button",
-                    { type: "button", className: "secondary", "aria-label": t("Ride here: {place}", { place: item.place.title }), onClick: () => onRide(item) },
-                    t("Ride here"),
-                  ),
                   addStops &&
                     h(
                       "button",

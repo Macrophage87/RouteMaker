@@ -114,6 +114,14 @@ class ToolError(Exception):
     """A refusal to show the model as the tool's answer, not a protocol error."""
 
 
+def finite(value) -> float:
+    """A number argument as a float; "inf", "nan" and their like are not in the expected form."""
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{value!r} is not a finite number")
+    return number
+
+
 # --- Geometry -------------------------------------------------------------------------------
 
 
@@ -278,9 +286,17 @@ class Api:
         if not re.match(r"^https?://", base):
             raise ToolError("ROUTEMAKER_BASE_URL must start with http:// or https://")
         self.base = base
-        # A site behind a password (the beta's nginx gate): "user:password", sent on every request.
+        # A site behind a password (the beta's nginx gate): "user:password", sent on every request,
+        # so only over https, or plain http to this computer.
         basic = os.environ.get("ROUTEMAKER_BASIC_AUTH", "")
         self.basic = "Basic " + base64.b64encode(basic.encode()).decode() if ":" in basic else None
+        host = (urllib.parse.urlsplit(base).hostname or "").lower()
+        local = host in ("localhost", "127.0.0.1", "::1") or host.endswith(".localhost")
+        if self.basic and base.startswith("http://") and not local:
+            raise ToolError(
+                "ROUTEMAKER_BASIC_AUTH is set but ROUTEMAKER_BASE_URL is plain http: use the site's"
+                " https:// address (plain http only for localhost)."
+            )
 
     def _request(self, method: str, path: str, body=None, headers=None, timeout=30):
         data = None if body is None else json.dumps(body, separators=(",", ":")).encode()
@@ -295,7 +311,16 @@ class Api:
             request.add_header(key, value)
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
-                return response.status, json.loads(response.read() or b"null"), response.headers
+                try:
+                    payload = json.loads(response.read() or b"null")
+                except ValueError:
+                    # A wrong address, or a sign-in or captive page answering 200: a setup problem,
+                    # not the assistant's arguments.
+                    raise ToolError(
+                        f"{self.base} did not answer as a RouteMaker site (not JSON);"
+                        " check ROUTEMAKER_BASE_URL"
+                    ) from None
+                return response.status, payload, response.headers
         except urllib.error.HTTPError as error:
             try:
                 payload = json.loads(error.read() or b"null")
@@ -395,7 +420,7 @@ class Api:
     def shared_fragment(self, route_id: str) -> str:
         """A shared route's plan link fragment."""
         fragment = (self.shared_route(route_id).get("inputs") or {}).get("hash") or ""
-        if "p=" not in fragment:
+        if not has_plan_points(fragment):
             raise ToolError("that shared route keeps no plan to continue from (an opened file?)")
         return fragment
 
@@ -536,6 +561,43 @@ def as_point(
     raise ToolError(f"not a point: {value!r}")
 
 
+# The ride types whose link is a live ride (frontend/src/lib/rideGroup.ts `isRideLinkType`). Every
+# ride link carries its ride's key (the owner, 2026-10-29: "All rides should have a key."): 16
+# random bytes, base64url without padding (22 characters; an older link's 43 still open), as the
+# fragment's `k=` (frontend/src/lib/rideSeal.ts).
+RIDE_LINK_TYPES = ("mass-ride", "group-ride")
+RIDE_KEY_RE = re.compile(r"[A-Za-z0-9_-]{22}|[A-Za-z0-9_-]{43}")
+
+
+def new_ride_key() -> str:
+    """A ride's key as rideSeal.ts `newRideSecret` makes one."""
+    return base64.urlsafe_b64encode(secrets.token_bytes(16)).rstrip(b"=").decode("ascii")
+
+
+def ride_key_of(fragment: str) -> str | None:
+    """The ride key a link's fragment carries (rideSeal.ts `secretFrom`), or None."""
+    values = urllib.parse.parse_qs(str(fragment or "").lstrip("#")).get("k") or []
+    return values[0] if values and RIDE_KEY_RE.fullmatch(values[0]) else None
+
+
+def with_ride_key(fragment: str, key: str | None) -> str:
+    """The fragment with `key` as its `k=` (rideSeal.ts `withSecret`), replacing any it had;
+    None takes it out."""
+    lead = "#" if fragment.startswith("#") else ""
+    params = [p for p in fragment.lstrip("#").split("&") if p and not p.startswith("k=")]
+    if key:
+        params.append(f"k={key}")
+    return lead + "&".join(params)
+
+
+def ride_key_for(preset: str, key: str | None) -> str | None:
+    """A ride type's key: the one it had (`key`), else a new one; none for a ride type whose
+    link is not a live ride."""
+    if preset not in RIDE_LINK_TYPES:
+        return None
+    return key if isinstance(key, str) and RIDE_KEY_RE.fullmatch(key) else new_ride_key()
+
+
 def plan_fragment(points, vias, preset: str, dials: dict, sent: dict) -> str:
     """The page's own plan link fragment (frontend/src/lib/planHash.ts `encodePlan`): the
     answer's `dials`, and what only the request carried (`sent`, the POST /api/route body)."""
@@ -571,6 +633,8 @@ def plan_fragment(points, vias, preset: str, dials: dict, sent: dict) -> str:
         parts.append(f"level={sent['mtb_level']}")
     if sent.get("mtb_preferred"):
         parts.append(f"prefer={sent['mtb_preferred']}")
+    if preset == "mass-ride" and sent.get("ride_size"):
+        parts.append(f"riders={sent['ride_size']}")
     return "#" + "&".join(parts)
 
 
@@ -593,6 +657,7 @@ def page_dials(dials: dict, sent: dict) -> dict:
         "ending": sent.get("ending"),
         "mtbLevel": sent.get("mtb_level"),
         "mtbPreferred": sent.get("mtb_preferred"),
+        "rideSize": sent.get("ride_size"),
     }
     kept.update({k: v for k, v in optional.items() if v})
     return kept
@@ -610,6 +675,67 @@ def stress_from_v1(old: float) -> int:
     return STRESS_DEFAULT_AT + round(old - 90)
 
 
+LINK_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+LINK_VALUE = {c: i for i, c in enumerate(LINK_ALPHABET)}
+
+
+def decode_points(text: str) -> list[tuple[float, float]]:
+    """The points a link's `q=` holds (linkCode.ts `decodePoints`): zigzagged whole 1e-5 degrees,
+    longitude then latitude, each after the first as the change from the one before, 5 bits a
+    base64url character, lowest first, with a sixth bit saying another follows. Read up to the
+    first character outside the alphabet or a number left unfinished; a number over 53 bits
+    stops there too."""
+    numbers: list[int] = []
+    z = 0
+    scale = 1
+    for c in text:
+        v = LINK_VALUE.get(c)
+        if v is None:
+            break
+        z += (v % 32) * scale
+        scale *= 32
+        if scale > 2**53:
+            break
+        if v >= 32:
+            continue
+        numbers.append(-(z + 1) // 2 if z % 2 == 1 else z // 2)
+        z = 0
+        scale = 1
+    points = []
+    lon = lat = 0
+    for i in range(0, len(numbers) - 1, 2):
+        lon += numbers[i]
+        lat += numbers[i + 1]
+        points.append((lon / 1e5, lat / 1e5))
+    return points
+
+
+def fragment_points(params: dict) -> list[tuple[float, float]]:
+    """The points a parsed fragment holds, in either form (planHash.ts `linkPoints`): `q=` first,
+    the older `p=` when there is no `q=` or it holds no point."""
+    short = params.get("q")
+    if short:
+        points = decode_points(short[0])
+        if points:
+            return points
+    points = []
+    for pair in ((params.get("p") or [""])[0]).split(";"):
+        try:
+            lon, lat = (float(v) for v in pair.split(","))
+        except ValueError:
+            continue
+        points.append((lon, lat))
+    return points
+
+
+PLAN_POINTS_RE = re.compile(r"(?:^|[#&?])[pq]=[^&]")
+
+
+def has_plan_points(fragment: str) -> bool:
+    """Whether a link's fragment carries stops in either form (`q=` or the older `p=`)."""
+    return bool(PLAN_POINTS_RE.search(str(fragment or "")))
+
+
 def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
     """A plan link's fragment as the page reads it (planHash.ts `decodePlan`): the points, the
     via points, the ride type and POST /api/route's options."""
@@ -619,14 +745,7 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         values = params.get(key)
         return values[0] if values else None
 
-    points = []
-    for pair in (one("p") or "").split(";"):
-        try:
-            lon, lat = (float(v) for v in pair.split(","))
-        except ValueError:
-            continue
-        if inside_coverage((lon, lat)):
-            points.append((lon, lat))
+    points = [point for point in fragment_points(params) if inside_coverage(point)]
     points = points[:MAX_POINTS]  # the page opens the first 25 too
     if len(points) < 2:
         raise ToolError("that link holds no route (it needs at least a start and an end)")
@@ -666,6 +785,7 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         "ending": "outside_dock" if one("ending") == "outside" else None,
         "mtb_level": number("level"),
         "mtb_preferred": number("prefer"),
+        "ride_size": (None if number("riders") is None else min(2000, max(100, number("riders")))),
     }
     if one("targetmi"):
         try:
@@ -1708,6 +1828,65 @@ def route_details(plan: Plan) -> dict:
     if spurs:
         out["via_spurs"] = spurs
     out.update(route_closures(plan))
+    capacity = mass_capacity(answer)
+    if capacity:
+        out["mass_capacity"] = capacity
+    return out
+
+
+def mass_capacity(answer: dict) -> dict | None:
+    """A Mass Ride's road capacity and corker needs, in miles, for an assistant to improve the
+    route on (the owner, 2026-10-29: "allow for things like road capacity and corker
+    requirements for mass rides to be returned so the agents can improve opon them"): what the
+    ride size needs and what the route carries, where it falls short, and the corkers held at
+    once. None off a Mass Ride."""
+    found = answer.get("mass_capacity")
+    if not found:
+        return None
+
+    def mi(metres) -> float | None:
+        return None if metres is None else round(metres / METRES_PER_MILE, 2)
+
+    out: dict = {
+        "riders": found.get("riders"),
+        "needs_riders_per_min": found.get("need_riders_per_min"),
+        "narrowest_riders_per_min": found.get("narrowest_riders_per_min"),
+        "narrowest_at_mi": mi(found.get("narrowest_m")),
+        "miles_below_need": mi(found.get("below_need_m") or 0),
+        "capacity_changes": found.get("capacity_changes"),
+        "narrow_stretches": [
+            {
+                "from_mi": mi(row.get("from_m")),
+                "to_mi": mi(row.get("to_m")),
+                "street": row.get("street"),
+                "riders_per_min": row.get("riders_per_min"),
+                **({"avoid": True} if row.get("avoid") else {}),
+            }
+            for row in found.get("narrow_stretches") or []
+        ],
+        "how_to_improve": (
+            "The planner weighs capacity only between a start and an end up to about 15 mi apart"
+            " (with stops or via points it reports, not chooses). To lift a narrow stretch above"
+            " the need, plan again by way of a wider parallel street and compare the two"
+            " answers; fewer changes of width keep the group together; fewer busy junctions"
+            " need fewer corkers."
+        ),
+    }
+    corkers = found.get("corkers")
+    if corkers:
+        out["corkers"] = {
+            "about": corkers.get("headline"),
+            "at_least": corkers.get("at_least"),
+            "most_held_at_once": corkers.get("most_at_once"),
+            "most_held_at_mi": mi(corkers.get("most_at_once_m")),
+            "junctions": [
+                {"at_mi": mi(j.get("m")), "street": j.get("street"), "corkers": j.get("corkers")}
+                for j in corkers.get("junctions") or []
+            ],
+        }
+    else:
+        out["corkers"] = None
+        out["corkers_note"] = "the intersections were not checked, so the corkers are not known"
     return out
 
 
@@ -1852,6 +2031,14 @@ class Draft:
     name: str
     trim_spurs: bool = True
     intervals: dict | None = None
+    # A Group or Mass Ride's key (`ride_key_for`), kept as the draft is revised.
+    ride_key: str | None = None
+
+    def fragment(self, dials: dict) -> str:
+        """The draft's plan link fragment, with its ride key."""
+        plan = self.plan
+        fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
+        return with_ride_key(fragment, self.ride_key)
 
 
 @dataclass
@@ -2121,6 +2308,17 @@ RIDE_OPTIONS = {
         "enum": ["classic", "ebike"],
         "description": "Bikeshare and Rebalance only.",
     },
+    "ride_size": {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 2000,
+        "description": (
+            "Mass Ride only: the anticipated ride size, riders (default 500). Roads carrying"
+            " fewer riders a minute than it needs (riders / 5) are priced in the route choice;"
+            " the answer's `mass_capacity` says where the route falls short and the corkers it"
+            " needs."
+        ),
+    },
     "ending": {
         "type": "string",
         "enum": ["dock", "outside_dock"],
@@ -2200,6 +2398,7 @@ PASSED_OPTIONS = (
     "trails_off",
     "mtb_level",
     "mtb_preferred",
+    "ride_size",
     "bike",
     "ending",
     "depart_at",
@@ -2742,7 +2941,7 @@ class MemoryDrafts:
     """The drafts of this session (the owner, 2026-10-18: "see a ride, then tell the agent the
     revisions to make and only save it ... when committed"), by id. Held in memory only: nothing
     reaches the site until save_route. The site's own connector keeps them in its database
-    instead (core.connector), with the same two methods."""
+    instead (core.connector), with the same methods."""
 
     def __init__(self):
         self._drafts: dict[str, Draft] = {}
@@ -2760,14 +2959,19 @@ class MemoryDrafts:
                 del self._drafts[next(iter(self._drafts))]
         return draft_id
 
+    def shared(self, draft_id: str, route_id: str) -> None:
+        """The draft's link was kept under `route_id`. Nothing to tie here: on the site's own
+        connector the link goes with the draft."""
+
     def __contains__(self, draft_id) -> bool:
         return draft_id in self._drafts
 
 
-# A draft's exact-route link lasts as long as the draft (a week) and a day more, then the site
-# deletes it (shared_routes keep "until"): a draft often starts at home, and every revision makes
-# one. A route the rider saves is kept in My routes on its own.
-DRAFT_LINK_DAYS = 8
+# The site deletes a draft's exact-route link after the next day at the latest (shared_routes
+# keep "until"): a draft often starts at home, and every revision makes one. On the site's own
+# connector it goes sooner, with its draft (a day, core.models.ConnectorDraft.KEPT). A route the
+# rider saves is kept in My routes on its own.
+DRAFT_LINK_DAYS = 1
 
 
 def draft_link_keep(today: date | None = None) -> dict:
@@ -3026,9 +3230,9 @@ class Server:
         options = {key: args.get(key) for key in PASSED_OPTIONS}
         options["loop"] = bool(args.get("loop"))
         if args.get("target_miles"):
-            options["target_distance_m"] = int(float(args["target_miles"]) * METRES_PER_MILE)
+            options["target_distance_m"] = int(finite(args["target_miles"]) * METRES_PER_MILE)
         if args.get("rider_weight_lb"):
-            options["system_weight_kg"] = round(float(args["rider_weight_lb"]) * KG_PER_LB)
+            options["system_weight_kg"] = round(finite(args["rider_weight_lb"]) * KG_PER_LB)
         return options
 
     def _plan(self, call: Call, points, vias, preset, options, limit) -> Plan:
@@ -3102,11 +3306,22 @@ class Server:
         taken: list[dict] | None = None,
         trim_spurs: bool = True,
         intervals: dict | None = None,
+        ride_key: str | None = None,
     ) -> dict:
-        """Keep the plan as a draft and describe it: nothing is saved or written."""
-        draft_id = self.drafts.put(Draft(plan, dict(options), limit, name, trim_spurs, intervals))
+        """Keep the plan as a draft and describe it: nothing is saved or written. A Group or Mass
+        Ride keeps `ride_key` (a revised draft's, or the opened link's), else gets a new one."""
+        draft = Draft(
+            plan,
+            dict(options),
+            limit,
+            name,
+            trim_spurs,
+            intervals,
+            ride_key_for(plan.preset, ride_key),
+        )
+        draft_id = self.drafts.put(draft)
         dials = self._dials(plan)
-        fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
+        fragment = draft.fragment(dials)
         notes = list(notes)
         # The link opens this exact line in the app, as its Share does, so the map, Start ride
         # and the app's GPX are this route; the plan's inputs ride along for editing.
@@ -3116,6 +3331,7 @@ class Server:
             self.api.share(
                 {"id": route_id, **kept_route(plan, name, fragment, dials), **draft_link_keep()}
             )
+            self.drafts.shared(draft_id, route_id)
             link = f"{self.api.base}/s/{route_id}{fragment}&route={route_id}"
         except ToolError as error:
             notes.append(
@@ -3215,7 +3431,7 @@ class Server:
         out: dict = {"draft_id": draft_id, "name": name, "distance_mi": miles}
         if self.gpx_link is not None:
             out["gpx_link"] = self.gpx_link(draft_id, name)
-            out["note"] = "the link downloads the file; it works while the draft is kept"
+            out["note"] = "the link downloads the file; it works while the draft is kept (a day)"
         elif self.files:
             try:
                 out["gpx_file"] = str(write_gpx(name, draft.plan.line, self.out_dir))
@@ -3252,7 +3468,7 @@ class Server:
             )
         else:
             dials = self._dials(plan)
-            fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
+            fragment = draft.fragment(dials)
             saved = self.api.save(kept_route(plan, name, fragment, dials))
             out["saved"] = {
                 "id": saved.get("id"),
@@ -3281,7 +3497,8 @@ class Server:
                 )
             plan = draft.plan
             dials = self._dials(plan)
-            fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
+            # The post's own key replaces the draft's (core.route_posts.freeze_route).
+            fragment = draft.fragment(dials)
             route = kept_route(plan, draft.name, fragment, dials)
         else:
             follow = args["follow"]
@@ -3340,7 +3557,7 @@ class Server:
         if not shared_id:
             named = urllib.parse.parse_qs(url.query).get("route")
             shared_id = named[0] if named else None
-        has_points = "p" in urllib.parse.parse_qs(fragment)
+        has_points = has_plan_points(fragment)
         shared = None
         if shared_id:
             try:
@@ -3350,12 +3567,12 @@ class Server:
                     raise
         if shared is not None and not has_points:
             fragment = (shared.get("inputs") or {}).get("hash") or ""
-            if "p=" not in fragment:
+            if not has_plan_points(fragment):
                 raise ToolError(
                     "that shared route keeps no plan to continue from (an opened file?)"
                 )
         if not fragment:
-            match = re.search(r"(?:^|[#&?])(p=.*)$", link)
+            match = re.search(r"(?:^|[#&?])([pq]=.*)$", link)
             fragment = match.group(1) if match else ""
         points, vias, preset, options = parse_fragment(fragment)
         limit = args.get("max_miles_from_metro")
@@ -3371,9 +3588,11 @@ class Server:
             sent = request_body(points, vias, preset, options)
             plan = Plan(list(points), list(vias), preset, answer, check, sent)
             name = str(shared.get("name") or "RouteMaker route")
-            return self._draft(plan, options, limit, [], name)
+            return self._draft(plan, options, limit, [], name, ride_key=ride_key_of(fragment))
         plan, notes = self._plan_and_fix(call, points, vias, preset, options, limit, 0)
-        return self._draft(plan, options, limit, notes, "RouteMaker route")
+        return self._draft(
+            plan, options, limit, notes, "RouteMaker route", ride_key=ride_key_of(fragment)
+        )
 
     # revise_route
     def revise_route(self, args: dict, call: Call) -> dict:
@@ -3457,6 +3676,8 @@ class Server:
             taken=taken,
             trim_spurs=trim,
             intervals=intervals,
+            # Mass Ride and Group Ride are different rides: a change between them is a new key.
+            ride_key=draft.ride_key if preset == plan.preset else None,
         )
 
     # plan_route
@@ -3558,8 +3779,8 @@ class Server:
 
     # plan_metro_loop
     def plan_metro_loop(self, args: dict, call: Call) -> dict:
-        target = float(args["target_miles"])
-        limit = float(args.get("max_miles_from_metro") or 5)
+        target = finite(args["target_miles"])
+        limit = finite(args.get("max_miles_from_metro") or 5)
         taken: list[dict] = []
         centre = self._point(args["centre"], taken) if args.get("centre") is not None else DC_CENTRE
         start = self._point(args["start"], taken) if args.get("start") is not None else None
@@ -3690,7 +3911,7 @@ class Server:
             return handler(args or {}, call or Call())
         except KeyError as missing:
             raise ToolError(f"missing argument {missing}") from None
-        except (TypeError, ValueError) as wrong:
+        except (TypeError, ValueError, OverflowError) as wrong:
             raise ToolError(f"an argument is not in the expected form: {wrong}") from None
 
 

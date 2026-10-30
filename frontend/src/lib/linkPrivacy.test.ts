@@ -120,7 +120,7 @@ test("the switches kept in this browser never reach the link", () => {
   }
   assert.deepEqual(
     [...new URLSearchParams(plain.slice(1)).keys()].sort(),
-    ["hills", "p", "preset", "stress", "v"],
+    ["hills", "preset", "q", "stress", "v"],
     "only the plan itself",
   );
 });

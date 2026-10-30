@@ -2638,7 +2638,9 @@ class TestTheFloorsAndAShoulder:
         assert "arterial floor" not in shoulder.rule
 
     @pytest.mark.parametrize("highway", ["secondary", "tertiary"])
-    @pytest.mark.parametrize("speed", ["15 mph", "20 mph", "25 mph", "30 mph"])
+    @pytest.mark.parametrize(
+        "speed", ["15 mph", "20 mph", "25 mph", "30 mph", "35 mph", "40 mph", "45 mph"]
+    )
     @pytest.mark.parametrize("width", ["1.3", "1.4", "2.4", "4.5"])
     @pytest.mark.parametrize("parking", ["no", "parallel"])
     def test_a_shoulder_never_rates_worse_than_the_lane(self, highway, speed, width, parking):
@@ -2649,6 +2651,19 @@ class TestTheFloorsAndAShoulder:
         # Read as a lane of its width: the same tier, on the same table.
         assert shoulder == lane, (shoulder, lane)
         assert shoulder <= bare
+
+    def test_a_wide_shoulder_at_40_mph_is_lts3(self) -> None:
+        """The owner, 2026-10-29: "a large shoulder at 40 mph is actually not
+        that unpleasant to ride on"; he chose "LTS 3, same as a lane"."""
+        road = {"highway": "secondary", "maxspeed": "40 mph", "lanes": "2"}
+        assert classify(road).tier is Stress.LTS4
+        wide = classify({**road, "shoulder": "both", "shoulder:width": "2.4"})
+        assert wide.tier is Stress.LTS3
+        assert "paved shoulder, decent, 40 mph" in wide.rule
+        narrow = {**road, "shoulder": "both", "shoulder:width": "1.3"}
+        assert classify(narrow).tier is Stress.LTS4
+        faster = {**road, "maxspeed": "45 mph", "shoulder": "both", "shoulder:width": "2.4"}
+        assert classify(faster).tier is Stress.LTS4
 
     def test_an_unrideable_shoulder_is_no_provision(self) -> None:
         road = {"highway": "secondary", "lanes": "2", "shoulder": "both", "shoulder:width": "0.5"}

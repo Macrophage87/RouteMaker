@@ -35,3 +35,15 @@ test("no popup close handler reads getElement()", () => {
   }
   assert.ok(seen >= 4, `close handlers found: ${seen}`);
 });
+
+test("one Escape closes one thing: a map card ignores an Escape a sheet or dialog handled, and its own hands the focus back (a11y-10)", () => {
+  for (const name of ["./waterInteraction.ts", "./federalInteraction.ts", "./climbInteraction.ts"]) {
+    const source = readFileSync(new URL(name, import.meta.url), "utf8");
+    const onKey = source.slice(source.indexOf("const onKey = (event: KeyboardEvent) => {"), source.indexOf('window.addEventListener("keydown", onKey);'));
+    assert.match(onKey, /if \(event\.key === "Escape"[^)]*&& !event\.defaultPrevented\) close\(\);/, name);
+  }
+  for (const name of ["./waterInteraction.ts", "./federalInteraction.ts"]) {
+    const source = readFileSync(new URL(name, import.meta.url), "utf8");
+    assert.match(source, /if \(key\.key !== "Escape"\) return;\s*key\.preventDefault\(\);\s*close\(\);\s*map\.getCanvas\(\)\.focus\(\);/, name);
+  }
+});
