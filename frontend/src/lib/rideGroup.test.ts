@@ -638,7 +638,10 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.match(app, /askHeld=\{joinHeld && joinAsk === null\}/);
   assert.match(app, /join=\{riding && joinAsk \? \{ ask: joinAsk, onAction: joinAction, onClose: closeJoin \} : null\}/);
   assert.match(app, /setJoinHeld\(true\);\s*void Promise\.all/);
-  assert.match(app, /\.catch\(\(\) => setJoinHeld\(false\)\)/);
+  assert.match(app, /\.catch\(\(\) => ride === ridesEnded\.current && setJoinHeld\(false\)\)/);
+  // An offer whose connections come back after its ride ended is dropped, so no later ride shows it.
+  assert.match(app, /const ride = ridesEnded\.current;\s*void Promise\.all[\s\S]*?if \(ride !== ridesEnded\.current\) return;/);
+  assert.match(app, /if \(ended\) \{\s*ridesEnded\.current \+= 1;\s*setJoinHeld\(false\);\s*setJoinPending\(null\);/);
   assert.match(app, /const closeJoin = \(\) => \{\s*setJoinAsk\(null\);\s*setJoinHeld\(false\);/);
   assert.match(group, /\{controls && \(\s*<div className="ride-group-bar">/);
   // A role change moves the next post up, and the post sends the consent's (new) role.
