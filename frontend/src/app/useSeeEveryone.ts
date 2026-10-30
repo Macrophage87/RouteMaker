@@ -1,18 +1,18 @@
 /**
- * See everyone's state for App (lib/seeEveryone.ts has the rules): whether the follow camera leaves a dot out of the
- * open map, and the view that frames them all while it is on.
+ * See everyone's state for App (lib/seeEveryone.ts has the rules): the view that frames the rider and every other
+ * rider's dot while it is on.
  */
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { LonLat } from "../lib/geo.ts";
 import { frameAround, rideOpenPadding } from "../lib/detourSearch.ts";
-import { dotsKey, dotsOffScreen, everyoneFrame, everyoneShown, everyoneStep, openBox } from "../lib/seeEveryone.ts";
+import { dotsKey, dotsOffScreen, everyoneFrame, everyoneStep, openBox } from "../lib/seeEveryone.ts";
 
 /** How often the view checks the rider is still in it. */
 export const RIDER_CHECK_MS = 3000;
 
 export interface SeeEveryone {
-  /** The button shows: a dot is out of view while the map follows the rider, or the view is on. */
+  /** The button shows: other riders' dots are on the map (Stephen 2026-10-30: "Always, when sharing"). */
   shown: boolean;
   on: boolean;
   /** On: frames everyone (the map stops following). Off: back to the rider. */
@@ -43,32 +43,11 @@ function openPadding(map: MapLibreMap) {
 }
 
 export function useSeeEveryone({ getMap, dots, rider, active, follow, onUnfollow, onBackToRider }: Options): SeeEveryone {
-  const [state, dispatch] = useReducer(everyoneStep, { on: false, offScreen: false });
-  const { on } = state;
+  const [on, dispatch] = useReducer(everyoneStep, false);
   const key = dotsKey(dots);
   const dotsNow = useRef(dots);
   dotsNow.current = dots;
   const any = active && dots.length > 0;
-
-  // Checked as the map moves (the follow camera's moves included) and as the dots do.
-  useEffect(() => {
-    const map = getMap();
-    if (!map || !any) {
-      dispatch({ kind: "checked", offScreen: false });
-      return;
-    }
-    const check = () => {
-      const { width, height } = map.getContainer().getBoundingClientRect();
-      dispatch({ kind: "checked", offScreen: dotsOffScreen(dotsNow.current, (at) => map.project(at), openBox(width, height, openPadding(map))) });
-    };
-    check();
-    map.on("moveend", check);
-    map.on("resize", check);
-    return () => {
-      map.off("moveend", check);
-      map.off("resize", check);
-    };
-  }, [getMap, any, key]);
 
   const frame = useCallback(
     (instant: boolean) => {
@@ -102,7 +81,14 @@ export function useSeeEveryone({ getMap, dots, rider, active, follow, onUnfollow
       const { width, height } = map.getContainer().getBoundingClientRect();
       if (dotsOffScreen([me], (at) => map.project(at), openBox(width, height, openPadding(map)))) frame(false);
     }, RIDER_CHECK_MS);
-    return () => window.clearInterval(id);
+    // A turned phone or a panel that changed the map's size: framed again in the new shape.
+    const map = getMap();
+    const refit = () => frame(true);
+    map?.on("resize", refit);
+    return () => {
+      window.clearInterval(id);
+      map?.off("resize", refit);
+    };
   }, [on, getMap, rider, frame]);
   // Following again (Where am I?, the button, the idle recentre): the view ends (lib/seeEveryone.ts everyoneStep).
   useEffect(() => {
@@ -116,5 +102,5 @@ export function useSeeEveryone({ getMap, dots, rider, active, follow, onUnfollow
   }, [on, onUnfollow, onBackToRider]);
   const stop = useCallback(() => dispatch({ kind: "hand-move" }), []);
 
-  return { shown: everyoneShown(state, any, follow), on, toggle, stop };
+  return { shown: any, on, toggle, stop };
 }
