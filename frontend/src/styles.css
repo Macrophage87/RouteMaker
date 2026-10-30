@@ -7754,7 +7754,8 @@ details.fold > summary .icon {
   max-height: calc(100dvh - var(--roam-card-bottom, 64px) - 16px);
 }
 .ride-alert-panel,
-.ride-riders-panel {
+.ride-riders-panel,
+.ride-alert-banners {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
