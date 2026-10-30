@@ -230,10 +230,12 @@ jobs:
 
   # The `a11y` check the beta's release agent requires (scripts/beta/cd_logic.py, CHECK_NAMES): green only
   # when every shard passed and their counts add up to check.mjs's EXPECTED, so a section that stopped
-  # running fails here as it did in one browser. always(): a skipped check would read as passed.
+  # running fails here as it did in one browser. It runs whenever a shard failed, not only when all
+  # passed; a cancelled run skips it, and the release agent reads a skipped a11y as red
+  # (cd_logic.ci_verdict: anything but success).
   a11y:
     needs: a11y-shard
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # actions: read for `gh run download` of the shards' counts; contents: read for the checkout.
