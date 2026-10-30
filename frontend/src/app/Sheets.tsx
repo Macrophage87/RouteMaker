@@ -453,10 +453,10 @@ function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean
           </>
         )}
       </div>
-      <SettingRow infoId="settings-go-ride-info" about="Default ride type">
+      <SettingRow infoId="settings-go-ride-info" about="Primary Go method">
         {/* Named for what it is, and grouped as Go's Ride sheet and Plan's dialog group the ride types (P3). */}
         <SettingSelect
-          label={t("Default ride type")}
+          label={t("Primary Go method")}
           value={myGo.ride ?? "default"}
           options={PRESETS.filter((p) => p.id !== "mass-ride").map((p) => [p.id, presetSaid(p.id)] as const)}
           groups={rideTypeSections()}

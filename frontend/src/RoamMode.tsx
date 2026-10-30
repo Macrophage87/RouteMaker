@@ -65,6 +65,8 @@ import {
 } from "./lib/detourSearch.ts";
 import type { RepairPlace } from "./lib/repair.ts";
 import { placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
+import type { SeeEveryone } from "./app/useSeeEveryone.ts";
+import { SeeEveryoneButton } from "./SeeEveryoneButton.tsx";
 import {
   END_ROAM_NAME,
   NO_NAMED_ROAD,
@@ -142,6 +144,7 @@ export function RoamMode({
   onBroadcastHold = null,
   passingOn = false,
   broadcasting = false,
+  everyone = null,
   geoEnv,
 }: {
   getMap: () => RoamMap | null;
@@ -182,6 +185,8 @@ export function RoamMode({
   passingOn?: boolean;
   /** The rider leads a broadcast now. */
   broadcasting?: boolean;
+  /** See everyone (lib/seeEveryone.ts): the riders' dots framed together, offered while any are on the map. */
+  everyone?: SeeEveryone | null;
   geoEnv?: RideGeoEnv;
 }) {
   const env = useRef(geoEnv ?? rideGeoEnv()).current;
@@ -672,12 +677,15 @@ export function RoamMode({
         )}
         {/* Each button's word under it, or beside its icon where the map is short, as Ride mode's (lib/railFit.ts). */}
         <div ref={railRef} className={`ride-rail ride-rail-${railFit}${iconsOnly ? " ride-rail-icons" : ""}`} role="group" aria-label={t("Roam buttons")}>
+          {/* See everyone (lib/seeEveryone.ts): there while any other rider's dot is on the map, above Where am I? so the
+              rail below it never moves as riders come and go (the rail is anchored at its foot). */}
+          <SeeEveryoneButton everyone={everyone} />
           <button
             type="button"
             ref={whereRef}
-            className={`ride-round${follow ? "" : " ride-round-alert"}`}
+            className={`ride-round${follow || everyone?.on ? "" : " ride-round-alert"}`}
             onClick={whereAmI}
-            aria-label={follow ? t("Where am I?") : t("Where am I? The map stopped following you")}
+            aria-label={follow || everyone?.on ? t("Where am I?") : t("Where am I? The map stopped following you")}
             title={t("Where am I?")}
           >
             <Icon name="locate" size={24} />
