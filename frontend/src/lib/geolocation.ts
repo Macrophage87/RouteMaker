@@ -21,7 +21,7 @@ import { language, t } from "./i18n.ts";
 
 /** A high-accuracy look-up, given 10 seconds, that may reuse a fix up to 30 seconds old. */
 export const LOCATE_OPTIONS = { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 } as const;
-/** Go's look-up again after a rough fix (appMode.ts goStartDue): the same, but never the browser's cached fix, which may be that rough one. */
+/** Go's look-up again after a rough fix (appMode.ts goRoughDue): the same, but never the browser's cached fix, which may be that rough one. */
 export const FRESH_OPTIONS = { ...LOCATE_OPTIONS, maximumAge: 0 } as const;
 /** After a timeout, one more try without high accuracy (a phone's GPS is often cold at first); the same press. */
 export const RETRY_OPTIONS = { enableHighAccuracy: false, timeout: 10_000, maximumAge: 30_000 } as const;

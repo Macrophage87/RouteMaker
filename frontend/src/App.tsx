@@ -2504,6 +2504,7 @@ export function App() {
   }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
   // How many times the rough start below has been looked up again (GO_ROUGH_TRIES); the page back in view starts again.
   const roughTries = useRef(0);
+  const roughBusy = useRef(false);
   // Go's start found long ago (the page or the phone app left open since an earlier ride; the owner, 2026-10-19) is
   // looked up again (Go's own look-up, locateForGo), without moving the map, when the page comes back into view, so the first destination picked routes from where the
   // rider is now. A pick while this runs waits on it as on any look-up (settleGoWaiting); a pick with no fresh start
@@ -2537,14 +2538,21 @@ export function App() {
   // moves the map to it once, unless the rider has looked away from the rough dot.
   useEffect(() => {
     const tick = window.setInterval(() => {
-      if (document.visibilityState !== "visible" || modeRef.current !== "go" || pointsRef.current.length > 0) return;
+      // Not in Roam or a ride (their own watch has the location), and one look-up at a time.
+      const inGo = () => modeRef.current === "go" && !onBikeNow.current && pointsRef.current.length === 0;
+      if (document.visibilityState !== "visible" || !inGo() || roughBusy.current) return;
       const was = goStartRef.current;
-      if (was.kind !== "here" || roughTries.current >= GO_ROUGH_TRIES || !goRoughDue(was, hereRef.current?.accuracyM ?? 0)) return;
+      const before = hereRef.current?.accuracyM ?? 0;
+      if (was.kind !== "here" || roughTries.current >= GO_ROUGH_TRIES || !goRoughDue(was, before)) return;
       roughTries.current += 1;
+      roughBusy.current = true;
       void locate(geoEnv, undefined, undefined, true).then((result) => {
+        roughBusy.current = false;
         if (!result.ok || !insideCoverage(result.fix.point)) return;
         // Anything else that set the start meanwhile (Locate, a pick, a typed start) wins.
-        if (modeRef.current !== "go" || pointsRef.current.length > 0 || goStartRef.current !== was) return;
+        if (!inGo() || goStartRef.current !== was) return;
+        // Still rough: kept only when less rough than the dot's (a cell-tower retry can be worse than a Wi-Fi fix).
+        if (goRough(result.fix.accuracyM) && result.fix.accuracyM >= before) return;
         setHere(result.fix);
         setGoStart(goHereStart(result.fix.point));
         if (goRough(result.fix.accuracyM)) return;

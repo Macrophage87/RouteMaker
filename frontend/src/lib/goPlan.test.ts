@@ -601,7 +601,10 @@ test("go start: Go looks a stale start up again when the page comes back into vi
   const rough = app.slice(app.indexOf("const roughTries"), app.indexOf("// A start typed into Go's start box"));
   assert.match(rough, /window\.setInterval\(\(\) => \{/);
   assert.match(rough, /return \(\) => window\.clearInterval\(tick\);/);
-  assert.match(rough, /if \(modeRef\.current !== "go" \|\| pointsRef\.current\.length > 0 \|\| goStartRef\.current !== was\) return;/);
+  assert.match(rough, /const inGo = \(\) => modeRef\.current === "go" && !onBikeNow\.current && pointsRef\.current\.length === 0;/);
+  assert.match(rough, /if \(document\.visibilityState !== "visible" \|\| !inGo\(\) \|\| roughBusy\.current\) return;/);
+  assert.match(rough, /if \(!inGo\(\) \|\| goStartRef\.current !== was\) return;/);
+  assert.match(rough, /if \(goRough\(result\.fix\.accuracyM\) && result\.fix\.accuracyM >= before\) return;/);
   assert.match(rough, /if \(mapRef\.current\?\.getBounds\(\)\.contains\(was\.point\)\) flyToInView\(result\.fix\.point, 15\);/);
   assert.doesNotMatch(app, /setGoStart\(\{ kind: "here"/, "every found start is stamped (goHereStart)");
 });
