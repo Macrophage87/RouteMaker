@@ -337,7 +337,7 @@ test("a followed ride link without its key says so and asks for no dot", async (
   );
   // No ride, so no Send alert; Call 911 stays reachable where Send alert sits, a ride-sized link (64 px, past the 44 px floor).
   const none = group.slice(group.indexOf("if (!ride) {"), group.indexOf("<ConsentDialog open={askNow}"));
-  assert.match(none, /if \(!keyless \|\| !controls\) return null;/);
+  assert.match(none, /if \(!keyless \|\| !controls\) return joinSheet;/);
   assert.match(none, /<div className="ride-group">\s*<div className="ride-group-bar">\s*<a className="chip ride-alert-button" href=\{CALL_911_HREF\}>\s*<Icon name="warn" size=\{18\} \/>\s*\{CALL_911\}\s*<\/a>\s*<\/div>\s*<\/div>/);
   assert.doesNotMatch(none, /ALERT_LABEL|<button/);
   const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
@@ -631,13 +631,15 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.equal(CONSENT_SHORT, "Only while the app is open. No name; gone in 2 min.");
   assert.match(ask, /<span aria-hidden="true">\{t\(CONSENT_SHORT\)\}<\/span>\s*<span id=\{`\$\{id\}-note`\} className="visually-hidden">\s*\{t\(note\)\}/);
   // The count and Send alert while riding only, by default.
-  assert.match(group, /controls = riding, leads = true, askHeld = false, home = null \}: RideGroupProps\)/);
-  // One popup at a time: a follower's join sheet (BroadcastJoinDialog) first, from the offer until it closes, then the dot question.
+  assert.match(group, /controls = riding, leads = true, askHeld = false, home = null, join = null \}: RideGroupProps\)/);
+  // One screen, not two (Stephen 2026-10-30): the question waits while a follower's join sheet reads its connections,
+  // then asks with the sheet's route and buttons; the sheet closes with the answer.
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /askHeld=\{joinHeld \|\| joinPending !== null \|\| joinAsk !== null\}/);
+  assert.match(app, /askHeld=\{joinHeld && joinAsk === null\}/);
+  assert.match(app, /join=\{riding && joinAsk \? \{ ask: joinAsk, onAction: joinAction, onClose: closeJoin \} : null\}/);
   assert.match(app, /setJoinHeld\(true\);\s*void Promise\.all/);
   assert.match(app, /\.catch\(\(\) => setJoinHeld\(false\)\)/);
-  assert.match(app, /onClose=\{\(\) => \{\s*setJoinAsk\(null\);\s*setJoinHeld\(false\);/);
+  assert.match(app, /const closeJoin = \(\) => \{\s*setJoinAsk\(null\);\s*setJoinHeld\(false\);/);
   assert.match(group, /\{controls && \(\s*<div className="ride-group-bar">/);
   // A role change moves the next post up, and the post sends the consent's (new) role.
   assert.match(group, /const changeRole[\s\S]*?keepConsent\(ride, consent\.answer, Date\.now\(\), undefined, undefined, role\)[\s\S]*?share\.current\.lastPost = postSoonAfter\(share\.current\.lastPost\)/);
@@ -753,4 +755,24 @@ test("App: the count and Send alert while riding (or watching a broadcast on a c
   assert.match(app, /controls=\{riding \|\| \(rideBroadcast !== null && !rideBroadcast\.leading && !goMode\)\}/);
   assert.match(app, /leads=\{!\(onShared && !onShared\.own\)\}/);
   assert.match(app, /controls=\{onBike \|\| !goMode\}\s*leads=\{roamBroadcast\.leading\}/);
+});
+
+test("joining a broadcast: the route's buttons and the dot question on one screen, the sheet alone only with nothing to ask", () => {
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  const ask = group.slice(group.indexOf("function ConsentDialog("), group.indexOf("function RolePicker("));
+  // The question's dialog carries the join: its title and line, the route's buttons, then the question, named by both.
+  assert.match(group, /<ConsentDialog open=\{askNow\} [^\n]*onAnswer=\{answer\} join=\{join\} \/>/);
+  assert.match(ask, /aria-labelledby=\{join \? `\$\{id\}-title \$\{id\}-q` : `\$\{id\}-q`\}/);
+  assert.match(ask, /aria-describedby=\{join \? `\$\{id\}-line \$\{id\}-offer \$\{id\}-note` : `\$\{id\}-note`\}/);
+  // The focus starts on the route's first button, not on Close (which answers No).
+  assert.match(ask, /dialog\.showModal\?\.\(\);\s*firstRef\.current\?\.focus\(\);/);
+  assert.match(ask, /<h2 id=\{`\$\{id\}-title`\}>\{join\.ask\.title\}<\/h2>\s*<p id=\{`\$\{id\}-line`\} className="broadcast-join-line">\s*\{join\.ask\.line\}\s*<\/p>/);
+  assert.match(ask, /<JoinOffer ask=\{join\.ask\} onAction=\{join\.onAction\} firstRef=\{firstRef\} \/>\s*<h3 id=\{`\$\{id\}-q`\} className="ride-consent-question ride-consent-joined">\s*\{t\(CONSENT_QUESTION\)\}/);
+  // No Just ride beside Yes and No: the answer (or Close, Escape, the backdrop: No) closes the sheet with the question.
+  assert.doesNotMatch(ask, /JOIN_JUST_RIDE/);
+  assert.match(group, /say\(yes \? shown : t\("You are not shown\. You still see the others\."\)\);\s*join\?\.onClose\(\);/);
+  // Alone only once the ride's answer is read (so never alone and then followed by the question), or with no ride.
+  assert.match(group, /const joinAlone = join && settledFor === rideSecret && \(!ride \|\| !askNow\) \? join : null;/);
+  assert.match(group, /\}\)\.finally\(\(\) => \{\s*if \(live\) setSettledFor\(rideSecret\);\s*\}\);/);
+  assert.match(group, /if \(!keyless \|\| !controls\) return joinSheet;/);
 });

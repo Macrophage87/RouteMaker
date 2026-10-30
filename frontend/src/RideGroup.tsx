@@ -18,10 +18,16 @@
  * the leader at once, without answering the question, and the map follows the leader (until they move the map, or
  * while they ride themselves, when the ride follows them); the leader's path since the link opened is drawn from
  * the dots this page saw, kept in memory here only.
+ *
+ * Joining one (Stephen 2026-10-30: "2 screens are too much"): the join sheet's route and buttons (BroadcastJoinDialog.tsx)
+ * come on the dot question's screen, Yes or No closing both; with nothing to ask, the sheet is shown alone.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Map as MapLibreMap, MapLayerMouseEvent } from "maplibre-gl";
+import { BroadcastJoinDialog, JoinOffer, type JoinAsk } from "./BroadcastJoinDialog.tsx";
+import type { Said } from "./GpxPanel.tsx";
 import { Icon } from "./Icon.tsx";
+import { JOIN_OFFER, type JoinAction } from "./lib/broadcastJoin.ts";
 import { t } from "./lib/i18n.ts";
 import type { LonLat } from "./lib/geo.ts";
 import { LEADER_RING, RIDER_LAYERS, ROLE_COLOURS, roleSwatchPoints, showRideDots } from "./lib/rideDotsLayer.ts";
@@ -135,8 +141,14 @@ export interface RideGroupProps {
   controls?: boolean;
   /** This rider leads the ride (planned it, or shares it): the question offers the roles. One who opened another's link is a Participant, changed in Riders. */
   leads?: boolean;
-  /** Another popup is up or on its way (App.tsx: a follower's join sheet): the question waits until it closes. */
+  /** Another popup is on its way (App.tsx: a follower's join sheet, its connections still being read): the question waits. */
   askHeld?: boolean;
+  /**
+   * A follower's join sheet (BroadcastJoinDialog.tsx), once it is up: one screen with the dot question (Stephen
+   * 2026-10-30: "2 screens are too much"), its route and buttons above the question, Yes or No closing both. With
+   * nothing to ask (answered already, or no ride), the sheet is shown alone. Null: none.
+   */
+  join?: { ask: JoinAsk; onAction: (action: JoinAction, said: Said) => void; onClose: () => void } | null;
   /** The rider's saved Home: no dot is sent from near it (lib/rideGroup.ts dotHeldBack). */
   home?: LonLat | null;
 }
@@ -147,7 +159,7 @@ function visible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
 }
 
-export function RideGroup({ type, line, getMap, here, broadcast = null, secret = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0, controls = riding, leads = true, askHeld = false, home = null }: RideGroupProps) {
+export function RideGroup({ type, line, getMap, here, broadcast = null, secret = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0, controls = riding, leads = true, askHeld = false, home = null, join = null }: RideGroupProps) {
   const leading = broadcast?.leading === true;
   const isBroadcast = broadcast !== null;
   // The leader key a follower reads with (the leader needs none: it does not see its own dot).
@@ -165,6 +177,9 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
   const keyless = followsWithoutKey(broadcast);
   const [consent, setConsent] = useState<RideConsent | null>(null);
   const [asked, setAsked] = useState(false);
+  // The ride's own answer has been read (or there is no ride to read it for): until then a join sheet waits, so it is
+  // not shown alone and then followed by the question.
+  const [settledFor, setSettledFor] = useState<string | null>(null);
   // The role picked in the question, before it is answered: Participant, so one tap answers.
   const [pickedRole, setPickedRole] = useState<RideRole>(DEFAULT_ROLE);
   const [read, setRead] = useState<RideRead>({ dots: [], alerts: [] });
@@ -264,6 +279,8 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
       setConsent(askAgain ? null : kept);
       setAsked(kept !== null && !askAgain);
       setShareOn(kept?.answer === "yes" && !askAgain);
+    }).finally(() => {
+      if (live) setSettledFor(rideSecret);
     });
     return () => {
       live = false;
@@ -289,6 +306,7 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
       ? t("You are shown as a dot, {role}, while the app is open.", { role })
       : t("You are shown as a dot, {role}, while you are near the route and the app is open.", { role });
     say(yes ? shown : t("You are not shown. You still see the others."));
+    join?.onClose();
   };
   const changeRole = (role: RideRole) => {
     if (!ride || !consent) return;
@@ -590,10 +608,15 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
 
   // The question, asked once the ride is under way (Start ride or Broadcast pressed), never while planning (P6).
   const askNow = riding && !asked && !askHeld;
+  // The join sheet with nothing to ask: alone, as before. Asking, it is part of the question.
+  // No ride (none could be made here) asks nothing either: the sheet stands alone then too.
+  const joinAlone = join && settledFor === rideSecret && (!ride || !askNow) ? join : null;
+  const joinSheet = <BroadcastJoinDialog ask={joinAlone?.ask ?? null} onAction={(action, said) => joinAlone?.onAction(action, said)} onClose={() => joinAlone?.onClose()} />;
   if (!ride) {
     // A followed link without its key has no ride, so no Send alert; Call 911 stays where Send alert sits (it is
     // otherwise only on a Crash or Medical alert's banner), a ride-sized press.
-    if (!keyless || !controls) return null;
+    // No ride read (no key, or none could be made here): a join sheet, which a keyless link never offers, stands alone.
+    if (!keyless || !controls) return joinSheet;
     return (
       <div className="ride-group">
         <div className="ride-group-bar">
@@ -607,7 +630,8 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
   }
   return (
     <div className="ride-group">
-      <ConsentDialog open={askNow} leads={leads} note={broadcast ? BROADCAST_CONSENT_NOTE : CONSENT_NOTE} role={pickedRole} onRole={setPickedRole} onAnswer={answer} />
+      <ConsentDialog open={askNow} leads={leads} note={broadcast ? BROADCAST_CONSENT_NOTE : CONSENT_NOTE} role={pickedRole} onRole={setPickedRole} onAnswer={answer} join={join} />
+      {joinSheet}
       {controls && (
       <div className="ride-group-bar">
         {!ridersElsewhere && (
@@ -797,7 +821,23 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
  * outside it and the ride's 30 s untouched (lib/idleRecentre.ts) are all No. The leader is offered the roles; one who
  * follows another's link is a Participant, changed in Riders. Shown short; the full note for a screen reader.
  */
-function ConsentDialog({ open, leads, note, role, onRole, onAnswer }: { open: boolean; leads: boolean; note: string; role: RideRole; onRole: (role: RideRole) => void; onAnswer: (yes: boolean) => void }) {
+function ConsentDialog({
+  open,
+  leads,
+  note,
+  role,
+  onRole,
+  onAnswer,
+  join = null,
+}: {
+  open: boolean;
+  leads: boolean;
+  note: string;
+  role: RideRole;
+  onRole: (role: RideRole) => void;
+  onAnswer: (yes: boolean) => void;
+  join?: RideGroupProps["join"];
+}) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const opener = useRef<Element | null>(null);
   const id = useId();
@@ -805,12 +845,15 @@ function ConsentDialog({ open, leads, note, role, onRole, onAnswer }: { open: bo
   const asking = useRef(open);
   asking.current = open;
   const pressedBackdrop = useRef(false);
+  // Joining: the focus starts on the route's first button, as the join sheet's does, not on Close (which answers No).
+  const firstRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (open && !dialog.open) {
       opener.current = document.activeElement;
       dialog.showModal?.();
+      firstRef.current?.focus();
     } else if (!open && dialog.open) {
       dialog.close();
     }
@@ -824,8 +867,8 @@ function ConsentDialog({ open, leads, note, role, onRole, onAnswer }: { open: bo
       ref={dialogRef}
       className="ask-dialog ride-consent"
       data-idle-close
-      aria-labelledby={`${id}-q`}
-      aria-describedby={`${id}-note`}
+      aria-labelledby={join ? `${id}-title ${id}-q` : `${id}-q`}
+      aria-describedby={join ? `${id}-line ${id}-offer ${id}-note` : `${id}-note`}
       onClose={() => {
         if (asking.current) onAnswer(false);
       }}
@@ -842,13 +885,34 @@ function ConsentDialog({ open, leads, note, role, onRole, onAnswer }: { open: bo
       {open && (
         <>
           <div className="ride-consent-head">
-            <h2 id={`${id}-q`} className="ride-consent-question">
-              {t(CONSENT_QUESTION)}
-            </h2>
+            {join ? (
+              // Joining a broadcast: its route and buttons first, then the question, on the one screen.
+              <div className="ride-consent-title">
+                <h2 id={`${id}-title`}>{join.ask.title}</h2>
+                <p id={`${id}-line`} className="broadcast-join-line">
+                  {join.ask.line}
+                </p>
+                <p id={`${id}-offer`} className="visually-hidden">
+                  {JOIN_OFFER}
+                </p>
+              </div>
+            ) : (
+              <h2 id={`${id}-q`} className="ride-consent-question">
+                {t(CONSENT_QUESTION)}
+              </h2>
+            )}
             <button type="button" className="link icon-button ride-consent-close" aria-label={t("Close: not shown")} onClick={() => dialogRef.current?.close()}>
               <Icon name="x" size={20} />
             </button>
           </div>
+          {join && (
+            <>
+              <JoinOffer ask={join.ask} onAction={join.onAction} firstRef={firstRef} />
+              <h3 id={`${id}-q`} className="ride-consent-question ride-consent-joined">
+                {t(CONSENT_QUESTION)}
+              </h3>
+            </>
+          )}
           <p className="hint">
             <span aria-hidden="true">{t(CONSENT_SHORT)}</span>
             <span id={`${id}-note`} className="visually-hidden">
