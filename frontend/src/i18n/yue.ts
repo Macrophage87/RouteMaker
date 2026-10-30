@@ -652,7 +652,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Closed now · opens {time}": "已休息 · {time}開門",
   "Closed now · opens {time} tomorrow": "已休息 · 聽日{time}開門",
   "Closed now · opens {day} {time}": "已休息 · {day}{time}開門",
-  "Your primary Go method. Change it in Settings, under My Go.": "你喺 Go 嘅主要方式。喺設定入面嘅我嘅Go改。",
+  "Your primary Go method. Change it in Settings, under My Go.": "你喺 Go 嘅主要方式。喺設定入面嘅「我嘅Go」改。",
   "My Go saved to your account.": "「我嘅Go」已儲存到你嘅帳戶。",
   "My Go saved on this device.": "「我嘅Go」已儲存喺呢部裝置。",
   "My Go was not saved to your account; try again shortly. It still applies here.": "「我嘅Go」儲存唔到帳戶；請遲啲再試。喺呢度仍然生效。",

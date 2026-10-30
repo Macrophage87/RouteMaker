@@ -652,7 +652,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Closed now · opens {time}": "अभी बंद · {time} बजे खुलेगा",
   "Closed now · opens {time} tomorrow": "अभी बंद · कल {time} बजे खुलेगा",
   "Closed now · opens {day} {time}": "अभी बंद · {day} {time} बजे खुलेगा",
-  "Your primary Go method. Change it in Settings, under My Go.": "आपका Go का मुख्य तरीका। इसे सेटिंग्स में, मेरा Go के नीचे बदलें।",
+  "Your primary Go method. Change it in Settings, under My Go.": "आपका Go का मुख्य तरीका। इसे सेटिंग्ज़ में, मेरा Go के नीचे बदलें।",
   "My Go saved to your account.": "मेरा Go आपके खाते में सहेजा गया।",
   "My Go saved on this device.": "मेरा Go इस डिवाइस पर सहेजा गया।",
   "My Go was not saved to your account; try again shortly. It still applies here.": "मेरा Go आपके खाते में सहेजा नहीं गया; थोड़ी देर में कोशिश करें। यहाँ यह फिर भी लागू है।",
