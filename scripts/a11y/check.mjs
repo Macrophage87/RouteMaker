@@ -5540,7 +5540,7 @@ const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-s
   const read = () => p.eval(`(() => { const g = document.querySelector('.go-favorites'); const chip = [...document.querySelectorAll('.go-places .place-chip')].find((c) => c.textContent.trim() === 'Favorites');
     return { rows: [...g.querySelectorAll('.go-favorite')].map((r) => r.textContent.trim()), expanded: chip.getAttribute('aria-expanded'), controls: chip.getAttribute('aria-controls') === g.id,
       small: [...g.querySelectorAll('button, input')].filter((e) => e.getClientRects().length && e.getBoundingClientRect().height < 44).map((e) => e.textContent.trim()),
-      remove: [...g.querySelectorAll('li > .secondary')].map((r) => r.textContent.trim()) }; })()`);
+      remove: [...g.querySelectorAll('li > .secondary, .go-favorite-tools > .secondary:not(.go-favorite-move)')].map((r) => r.textContent.trim()) }; })()`);
   const popped = await read();
   const group = await axNode(p, ".go-favorites");
   // Food is Go's Eat chip since P2.
@@ -5550,7 +5550,7 @@ const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-s
   await p.eval("[...document.querySelectorAll('.go-favorites-actions .chip')].find((c) => c.textContent.trim() === 'Edit').click(); true");
   await sleep(200);
   const editing = await read();
-  await p.eval("document.querySelector('.go-favorites li > .secondary').click(); true");
+  await p.eval("document.querySelector('.go-favorites li > .secondary, .go-favorite-tools > .secondary:not(.go-favorite-move)').click(); true");
   await p.waitFor("document.querySelectorAll('.go-favorites .go-favorite').length === 2", 5000);
   const post = p.favoriteRequests.find((r) => r.method === "POST");
   const csrf = post && Object.entries(post.headers).find(([k]) => k.toLowerCase() === "x-csrftoken")?.[1];
@@ -5576,11 +5576,18 @@ const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-s
       moves: [...g.querySelectorAll('.go-favorite-move')].map((m) => m.getAttribute('aria-label')),
       small: [...g.querySelectorAll('button, input')].filter((e) => e.getClientRects().length && (e.getBoundingClientRect().height < 44 || e.getBoundingClientRect().width < 44)).map((e) => e.getAttribute('aria-label') || e.textContent.trim()),
       wide: document.documentElement.scrollWidth > document.documentElement.clientWidth || g.scrollWidth > g.clientWidth,
+      cut: [...g.querySelectorAll('.go-favorite-name')].filter((n) => n.scrollWidth > n.clientWidth + 1).map((n) => n.textContent),
+      ups: new Set([...g.querySelectorAll('.go-favorite-tools')].map((t) => Math.round(t.children[0].getBoundingClientRect().left))).size,
+      downs: new Set([...g.querySelectorAll('.go-favorite-tools')].map((t) => Math.round(t.children[1].getBoundingClientRect().left))).size,
       focus: document.activeElement?.getAttribute('aria-label') ?? '' }; })()`);
   const editing = await read();
   check("favorites order: Edit gives the places after Work Move up and Move down, none past the ends, each 44 px, nothing wider than 320 px",
     JSON.stringify(editing.moves) === JSON.stringify(["Move down: Eastern Market", "Move up: Union Market", "Move down: Union Market", "Move up: The Wharf"]) && editing.small.length === 0 && !editing.wide,
     JSON.stringify(editing));
+  // The v0.15.2 review: at 320 px the names stay whole (the arrows and Remove sit on a line under them), and the arrows
+  // keep their columns at the top and bottom rows, so a second press never lands on the name and starts a ride.
+  check("favorites order: at 320 px in Edit every place's name shows whole, and Move up and Move down keep one column each on every row",
+    editing.cut.length === 0 && editing.ups === 1 && editing.downs === 1, JSON.stringify(editing));
   await p.eval("document.querySelector('.go-favorite-move[aria-label=\"Move down: Eastern Market\"]').click(); true");
   await p.waitFor("document.querySelectorAll('.go-favorite')[3]?.textContent.includes('Eastern Market')", 5000);
   await sleep(300);
@@ -5646,8 +5653,9 @@ const failed = results.filter((r) => !r.ok);
 // Favorite places (2026-10-26) add two: the popout, and Edit's Remove.
 // Go's More > Load route (2026-10-26; it was Saved routes) adds one.
 // Joining a ride on one screen (2026-10-30) adds three: Escape, Close, and 320 px.
-// Ordering favorites (2026-10-30) adds three: Edit's arrows at 320 px, a move saved and said, and one to the bottom.
-const EXPECTED = 697;
+// Ordering favorites (2026-10-30) adds four: Edit's arrows at 320 px, names whole with fixed columns, a move saved and
+// said, and one to the bottom.
+const EXPECTED = 698;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
