@@ -535,3 +535,15 @@ in the database still names it: delete that row in the admin when loading the fi
   Georgia Avenue. The owner, 2026-10-28: "This path was missed from the Glenmont metro".
   Opened with a `bicycle=yes` access row, with a fingerprint. Load like the others; takes
   effect on the next rebuild.
+
+- `2026-10-30-owner-q-r-first-streets-nw.json`: R Street and 1st Street NW, 24 ways
+  (14,670 ft, 4.47 km; Q Street looked at, unchanged), where DDOT's 2020 layer rated
+  blocks above the formula and routes left them for busier streets and harder
+  junctions. The owner, 2026-10-30: "I think formula wins on most of them, but make the
+  higher cars/day ones, 2.5 instead of 2". R Street's painted-lane blocks that sat at
+  LTS 2.5 go to the formula's LTS 2 (seven ways); R Street's unpainted blocks where DDOT
+  is above the formula (Georgetown, and North Capitol Street to Florida Avenue) go to
+  LTS 2.5 (four ways); 1st Street NW from E Street to Channing Street, unpainted, about
+  5,000 cars a day or more, goes to LTS 2.5 (13 ways; L Street to New York Avenue, where
+  the formula itself says LTS 3, is left out). Stress rows, hidden, with fingerprints.
+  Load like the others; takes effect on the next rebuild.
