@@ -79,6 +79,7 @@ import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
 import { ROUTE_NAME_LAYER_ID, ROUTE_NAME_SOURCE_ID, routeNameField, routeNameFeatures, routeNameLayer } from "./lib/routeNames.ts";
 import { addRailStations, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
 import { setRideLabelOrder, type LabelHomes } from "./lib/rideLabelOrder.ts";
+import { RIDE_LABEL_SCALE, RIDE_SCALED_LABEL_LAYERS, scaledTextSize } from "./lib/rideLabelSize.ts";
 import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
 import { STEEP_GRADE_SOURCE, STEEP_ICONS, steepGradeFeatures, steepGradeIcon, steepGradeLayer, steepGradeRepeatLayer, steepIconName } from "./lib/steepGrades.ts";
 import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
@@ -374,6 +375,10 @@ interface Props {
   stopActionFor?: StopActionFor;
   /** A lettered marker pressed: its index in the list. */
   onLettered?: (index: number) => void;
+  /** The lettered place a row's Show on map picked: its marker stands out and above the others. */
+  letteredShown?: number | null;
+  /** Raised by a list's Show all on map: the markers are framed again, all of them in view. */
+  letteredRefit?: number;
   /** A closure card's "Route through anyway" (true) or Undo (false), for this plan (lib/closureMap.ts). */
   onClosureBypass?: (item: ClosureItem, on: boolean) => void;
 }
@@ -2457,47 +2462,77 @@ export function MapView(props: Props) {
       element.type = "button";
       element.className = "lettered-marker";
       element.setAttribute("aria-label", place.name);
-      const pin = document.createElement("span");
-      pin.className = "lettered-pin";
-      pin.setAttribute("aria-hidden", "true");
-      const letter = document.createElement("span");
-      letter.className = "lettered-letter";
-      letter.textContent = place.letter;
-      pin.append(letter);
-      element.append(pin);
+      if (place.label) {
+        // Named (Stephen 2026-10-29: "Named, not lettered", "With names in a bubble"): the place's name in a
+        // bubble whose tail points at the spot; its accessible name still says the letter its key picks.
+        element.classList.add("named-marker");
+        const bubble = document.createElement("span");
+        bubble.className = "named-bubble";
+        bubble.setAttribute("aria-hidden", "true");
+        bubble.textContent = place.label;
+        element.append(bubble);
+      } else {
+        const pin = document.createElement("span");
+        pin.className = "lettered-pin";
+        pin.setAttribute("aria-hidden", "true");
+        const letter = document.createElement("span");
+        letter.className = "lettered-letter";
+        letter.textContent = place.letter;
+        pin.append(letter);
+        element.append(pin);
+      }
       element.addEventListener("click", (event) => {
         // A click on a marker is not a click on the map: it must not add a point.
         event.stopPropagation();
         callbacks.current.onLettered?.(index);
       });
       element.addEventListener("dblclick", (event) => event.stopPropagation());
-      return new maplibregl.Marker({ element, anchor: "bottom" }).setLngLat(place.point).addTo(map);
+      return new maplibregl.Marker({ element, anchor: "bottom" }).setLngLat(place.point);
     });
+    // Added last to first, so where names overlap the list's first (the nearest, or the least detour) is on top.
+    [...letteredMarkers.current].reverse().forEach((marker) => marker.addTo(map));
     // Bring them into view in the part of the map the panel does not cover (App's framePadding: above a phone's
     // sheet as it is now, not a guess at half the map; the 2026-10-28 audit, P7: "pins hide under the sheet"). Room
     // above each pin's point for the pin itself, and at least 120 px of map between the paddings. Not while a ride's
     // camera follows the rider (its Detour list, 2026-10-28): the next fix would take the map straight back; a row's
     // Show on map frames its place instead.
-    if (props.lettered.length > 0 && !callbacks.current.follow) {
-      const lons = props.lettered.map((place) => place.point[0]);
-      const lats = props.lettered.map((place) => place.point[1]);
+    if (!callbacks.current.follow) frameLettered(map, props.lettered);
+  }, [props.lettered]);
+  // The row's Show on map: that marker stands out, above its neighbours.
+  useEffect(() => {
+    letteredMarkers.current.forEach((marker, index) => marker.getElement().classList.toggle("is-shown", index === props.letteredShown));
+  }, [props.lettered, props.letteredShown]);
+  // Show all on map: the same framing again, after the rider has moved the map or a row's Show on map zoomed in.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && props.lettered && props.letteredRefit) frameLettered(map, props.lettered);
+    // Only on the press.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.letteredRefit]);
+  function frameLettered(map: MapLibreMap, lettered: readonly LetteredPlace[]) {
+    if (lettered.length > 0) {
+      const lons = lettered.map((place) => place.point[0]);
+      const lats = lettered.map((place) => place.point[1]);
       const height = map.getContainer().clientHeight;
       const width = map.getContainer().clientWidth;
       const frame = callbacks.current.framePadding();
       // A phone's top bar and Go's Roam button take about the top 115 px; a pin stands 40 px over its point.
       const top = Math.max(frame.top, width < 721 ? 155 : 80);
       const bottom = Math.max(40, Math.min(frame.bottom, height - top - 120));
-      const left = Math.max(50, Math.min(frame.left, width - 170));
-      const right = Math.max(50, Math.min(frame.right, width - left - 120));
+      // A name's bubble reaches up to 80 px either side of its point (styles.css .named-bubble).
+      const side = lettered.some((place) => place.label) ? 90 : 50;
+      const left = Math.max(side, Math.min(frame.left, width - 170));
+      const right = Math.max(side, Math.min(frame.right, width - left - 120));
       map.fitBounds(
         [
           [Math.min(...lons), Math.min(...lats)],
           [Math.max(...lons), Math.max(...lats)],
         ],
-        { padding: { top, left, right, bottom }, maxZoom: 16, duration: 400 },
+        // Named places close in further (to street level), so names a block apart do not sit on each other.
+        { padding: { top, left, right, bottom }, maxZoom: side > 50 ? 18 : 16, duration: 400 },
       );
     }
-  }, [props.lettered]);
+  }
 
   // A click on the summary's list: take the map there and say why.
   useEffect(() => {
@@ -2729,6 +2764,29 @@ export function MapView(props: Props) {
       if (map.getLayoutProperty(RAIL_LAYERS.names, "text-size") !== size) map.setLayoutProperty(RAIL_LAYERS.names, "text-size", size);
       const move = stationNamesTarget(map.getLayersOrder());
       if (move) map.moveLayer(RAIL_LAYERS.names, move.before);
+    };
+    apply();
+    map.on("styledata", apply);
+    return () => {
+      map.off("styledata", apply);
+    };
+  }, [props.rideLabels]);
+  // The map's smaller labels (grades, mile markers, mountain-bike trail names, climbs) larger in a ride by the street
+  // names' share (lib/rideLabelSize.ts), each back to its own size after. They come and go (the route, the trail
+  // layers, a style reload), so this listens throughout, as the station names do.
+  const baseLabelSize = useRef<Record<string, unknown>>({});
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const riding = Boolean(props.rideLabels);
+    const apply = () => {
+      for (const id of RIDE_SCALED_LABEL_LAYERS) {
+        if (!map.getLayer(id)) continue;
+        baseLabelSize.current[id] ??= map.getLayoutProperty(id, "text-size");
+        const base = baseLabelSize.current[id];
+        const want = riding ? scaledTextSize(base, RIDE_LABEL_SCALE) : base;
+        if (JSON.stringify(map.getLayoutProperty(id, "text-size")) !== JSON.stringify(want)) map.setLayoutProperty(id, "text-size", want as never);
+      }
     };
     apply();
     map.on("styledata", apply);

@@ -9,7 +9,7 @@
  * worded and drawn, kept out of the components so it is tested without a DOM.
  */
 import type { JunctionGroupSummary, JunctionWarning, ProfileCrossing, RouteResponse } from "./api.ts";
-import { formatDistance } from "./format.ts";
+import { FEET_PER_MILE, KM_PER_MILE, formatDistance } from "./format.ts";
 import { t } from "./i18n.ts";
 import { corkersFor } from "./profileChart.ts";
 
@@ -33,9 +33,6 @@ export const ICON_PX = 24;
 
 /** The most junctions drawn on the map: a long route may have hundreds, and the list still has them all. */
 export const MAX_ON_MAP = 150;
-
-const FEET_PER_MILE = 5280;
-const KM_PER_MILE = 1.609344;
 
 /**
  * A junction's own cost in calm miles, km in brackets: "0.62 calm mi (1.00 calm km)"

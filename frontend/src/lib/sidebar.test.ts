@@ -665,8 +665,9 @@ test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANU
 });
 
 test("App writes exactly encodePlan's fragment to the address bar, and a new plan clears 'Link copied.'", () => {
-  const writer = app.slice(app.indexOf("// Keep the link in step with the plan"), app.indexOf("}, [points, preset, dials, namesVersion]);"));
-  assert.match(writer, /const hash = encodePlan\(points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\);\s*writtenHash\.current = hash;\s*window\.history\.replaceState\(null, "", hash\);/);
+  const writer = app.slice(app.indexOf("// Keep the link in step with the plan"), app.indexOf("}, [points, preset, dials, namesVersion, groupSecret]);"));
+  // With a Group Ride's secret (lib/rideSeal.ts) on a Group Ride only.
+  assert.match(writer, /const hash = withSecret\(encodePlan\(points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\), isRideLinkType\(preset\) \? groupSecret : null\);\s*writtenHash\.current = hash;\s*window\.history\.replaceState\(null, "", hash\);/);
   assert.equal((writer.match(/replaceState/g) ?? []).length, 1);
   assert.match(writer, /linkPresses\.current \+= 1;\s*setLinkSaid\(""\);/);
   // planDials (the dials with the weight) never reaches the address bar.
@@ -754,7 +755,10 @@ test("a sheet: Back is a labelled button, its heading takes the focus, Escape go
     /sheetEscape\(\{ key: event\.key, defaultPrevented: event\.defaultPrevented, target: event\.target as HTMLElement, preventDefault: \(\) => event\.preventDefault\(\) \}, onBack, dialogRef\.current\)/,
   );
   // The error can take the focus (focus() on an element without tabIndex does nothing).
-  assert.match(app, /<div ref=\{errorRef\} tabIndex=\{-1\} className=\{`error error-\$\{error\.kind\}`\} role="alert">/);
+  // It is a group named by its title, the words inside it the alert, so taking the focus does not read the error twice.
+  assert.match(app, /<div ref=\{errorRef\} tabIndex=\{-1\} className=\{`error error-\$\{error\.kind\}`\} role="group" aria-labelledby=\{titleId\}>/);
+  assert.match(app, /<p role="alert">\s*\{shown\.title && <strong id=\{titleId\}>\{shown\.title\}\.<\/strong>\} \{shown\.message\}\s*<\/p>/);
+  assert.match(app, /\{!shown\.title && \(\s*<span id=\{titleId\} hidden>\s*\{t\("Route problem"\)\}/);
 });
 
 test("where the focus goes on every change of view (mutation SF1)", () => {
@@ -1037,7 +1041,7 @@ test("the skip link and its target stay: #route-planner is the aside, and every 
   assert.match(app.slice(region, app.indexOf("<aside")), /\{status\.kind === "ok" && routeSaid && <p>\{routeSaid\}<\/p>\}/);
   assert.match(app, /<div className="status-shown" aria-hidden="true">/);
   // Go's bar is before the map and the panel, as it is at the top of the screen (reading order = visual order).
-  assert.ok(app.indexOf("<GoTopBar") < app.indexOf("<MapView") && app.indexOf("<MapView") < app.indexOf("<aside"));
+  assert.ok(app.indexOf("<GoTopBar") < app.indexOf("<LiveMap") && app.indexOf("<LiveMap") < app.indexOf("<aside"));
   // "No route yet." is read where it stands, and is not in the live region (recheck N-new-2).
   assert.doesNotMatch(app.slice(region, app.indexOf("<aside")), /No route yet/);
   const shownCopy = app.slice(app.indexOf('<div className="status-shown"'));

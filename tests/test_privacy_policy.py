@@ -7,6 +7,7 @@ The page is the same for everyone, names no host, and leads with what matters mo
 from __future__ import annotations
 
 import re
+from datetime import timedelta
 from html import escape
 from pathlib import Path
 
@@ -38,6 +39,21 @@ class TestPage:
         assert body.index(escape(privacy_policy.WHERE_YOU_ARE)) < first_section
         assert body.index(f'<time datetime="{privacy_policy.LAST_UPDATED[0]}">') < first_section
         assert "Last updated: <time" in body
+
+    def test_it_says_you_send_311_reports_yourself_and_the_server_sends_none(self, client) -> None:
+        # The owner, 2026-10-29: the server's DC 311 send is not working (no key on the site).
+        _, body, _ = get(client)
+        assert "send it yourself" in body
+        assert "DC 311" not in body
+
+    def test_it_says_a_ride_in_progress_stays_on_the_device_for_at_most_12_hours(
+        self, client
+    ) -> None:
+        # rideResume.ts RESUME_MAX_MS; a followed ride's link and key are kept with it (#727).
+        _, body, _ = get(client)
+        assert "until End ride or Not now; after 12 hours it is no longer offered" in body
+        resume = (ROOT / "frontend/src/lib/rideResume.ts").read_text()
+        assert "RESUME_MAX_MS = 12 * 60 * 60_000" in resume
 
     def test_every_section_is_a_heading_in_order(self, client) -> None:
         _, body, _ = get(client)
@@ -174,7 +190,12 @@ class TestPage:
             "24 hours",  # signed_out_suggestions: SignedOutSend
             "about 30 hours",  # ratelimit.RETENTION and the sweep
             "the last seven kept",  # procrastinate.BACKUP_KEEP
+            "leaves them within a week",  # procrastinate.BACKUP_MAX_AGE
+            "with the next one that succeeds",  # retention.prune_backups keeps the newest
+            "kept on the server for less than a week",  # prune_snapshots
+            "one a night, encrypted",  # procrastinate.perform_backup, through age
             "30 days unused, or after 90 days",  # revocation's idle and absolute lifetimes
+            "Sign out everywhere",  # auth_views.logout_everywhere_view
             "Two cookies",  # the session and CSRF cookies
             privacy_policy.CONTACT,
         ):
@@ -188,8 +209,10 @@ class TestPage:
 
         assert ride_presence.DOT_TTL_S == 120 and ride_presence.ALERT_TTL_S == 120
         assert ride_presence.KEEP_S == 120 and ride_presence.PATH_TTL_S == 120
-        assert ride_presence.GRID_M == 20.0
+        # Every ride is sealed: the server rounds nothing, and refuses plain numbers.
+        assert not hasattr(ride_presence, "GRID_M") and not hasattr(ride_presence, "rounded")
         assert procrastinate.BACKUP_KEEP == 7
+        assert procrastinate.BACKUP_MAX_AGE < timedelta(days=7)
         assert {"app_session", "django_session", "rate_limit_window", "cached_membership"} <= set(
             procrastinate.BACKUP_EXCLUDED_TABLES
         )
@@ -197,6 +220,95 @@ class TestPage:
         assert revocation.ABSOLUTE_SESSION_LIFETIME == timedelta(days=90)
         assert ratelimit.RETENTION <= timedelta(hours=30)
         assert shared_routes.KEEP == timedelta(days=365)
+
+    def test_the_encryption_is_spelled_out_behind_its_summary(self, client) -> None:
+        # Stephen 2026-10-29: the full technical specification, since nothing is secret but the key.
+        _, body, _ = get(client)
+        ride = body[body.index("<h2>Group and Mass Ride sharing</h2>") :]
+        ride = ride[: ride.index("<h2>", 5)]
+        assert f"<details><summary>{escape(privacy_policy.RIDE_CRYPTO_SUMMARY)}</summary>" in ride
+        for item in privacy_policy.RIDE_CRYPTO:
+            assert escape(item) in ride
+
+    def test_every_ride_link_carries_a_key_ride_posts_too(self, client) -> None:
+        from core import ride_presence, route_posts
+
+        _, body, _ = get(client)
+        ride = body[body.index("<h2>Group and Mass Ride sharing</h2>") :]
+        ride = ride[: ride.index("<h2>", 5)]
+        text = re.sub(r"<[^>]+>", " ", ride).replace("&#x27;", "'").replace("’", "'")
+        assert "Every ride link carries a key" in text
+        assert "anyone who can read the post can see the dots and alerts of that ride" in text
+        assert "only as scrambled text it cannot read, unless the server keeps" in text
+        assert "a ride post's ride, or a ride an AI assistant app you connected planned" in text
+        assert "not encrypted this way" not in text and "rounded" not in text
+        # The server's own ride links (a ride post's) carry a key as the phone's do.
+        assert len(route_posts.new_ride_key()) == 22
+        assert route_posts.RIDE_LINK_TYPES == ("mass-ride", "group-ride")
+        assert ride_presence.PLAIN_REFUSED
+
+    def test_only_the_nightly_backups_are_said_to_be_unreadable_by_the_server(self) -> None:
+        # The pre-update copies stay plain for an on-server rollback (pipeline.retention
+        # prune_snapshots), and every sweep that drops them keeps them under a week.
+        from config import procrastinate
+
+        text = " ".join(privacy_policy.RIDE_CRYPTO)
+        assert "so the server can write a nightly backup but never read one." in text
+        assert (
+            "The copies taken just before RouteMaker is updated are not encrypted; they stay "
+            "on the server for less than a week."
+        ) in text
+        week = timedelta(days=7)
+        # The nightly sweep runs once a day, so a copy can wait up to a day past its age.
+        assert procrastinate.SNAPSHOT_MAX_AGE + timedelta(days=1) <= week
+        assert (
+            "prune_snapshots(settings.BACKUP_DIR, SNAPSHOT_MAX_AGE)"
+            in (ROOT / "src/config/procrastinate.py").read_text()
+        )
+        # receive-data.sh prunes at each copy it writes; auto-release.sh about every 10 minutes.
+        receive = (ROOT / "scripts/beta/receive-data.sh").read_text()
+        hours = int(re.search(r"^snapshot_max_age_hours=(\d+)$", receive, re.M).group(1))
+        assert timedelta(hours=hours) < week
+        release = (ROOT / "scripts/beta/auto-release.sh").read_text()
+        minutes = re.findall(r"-name 'pre-rollback-\*\.dump' \\\) -mmin \+(\d+)", release)
+        assert minutes and all(
+            timedelta(minutes=int(m)) + timedelta(hours=1) < week for m in minutes
+        )
+
+    def test_the_encryption_details_are_the_code_s(self) -> None:
+        from core import route_posts
+
+        seal = (ROOT / "frontend/src/lib/rideSeal.ts").read_text()
+        group = (ROOT / "frontend/src/lib/rideGroup.ts").read_text()
+        text = " ".join(privacy_policy.RIDE_CRYPTO)
+        # A new key is 16 bytes, 22 characters (the owner, 2026-10-29), as the server makes a ride
+        # post's; an older link's 43 still opens.
+        assert route_posts.RIDE_KEY_BYTES == 16 and "16 random bytes" in text
+        assert "export const SECRET_BYTES = 16;" in seal and "const OLD_SECRET_BYTES = 32;" in seal
+        assert "22 base64url characters" in text and "43 characters, still works" in text
+        assert "lead=, the first 16 bytes of the SHA-256" in text and "32 hex digits" in text
+        assert "const NONCE_BYTES = 12;" in seal and "12-byte nonce" in text
+        assert 'enc.encode("routemaker ride seal v1")' in seal and "routemaker ride seal v1" in text
+        assert 'info: enc.encode("ride id") }, base, 256)' in seal and "256 bits" in text
+        assert 'info: enc.encode("ride key")' in seal
+        assert '{ name: "AES-GCM", length: 256 },\n    false,' in seal and "non-extractable" in text
+        assert "number> = { dot: 128, alert: 512, path: 4096 }" in seal
+        assert "128 bytes (a dot), 512 bytes (an alert) or 4,096 bytes (a path)" in text
+        assert "additionalData: aad(seal, kind)" in seal and "`${kind}|${seal.ride}`" in seal
+        assert 'export const SECRET_PARAM = "k";' in seal and "k=" in text
+        assert "Every ride link carries one" in text
+        # Phones send their position as measured, to the decimals the page seals them at; no grid
+        # or rounding to a coarser spot is claimed.
+        assert "20 m" not in text and "grid" not in text and "round" not in text
+        assert "Math.round(lon * 1e6) / 1e6" in seal and "6 decimal places" in text
+        assert "about 4 in, 0.1 m" in text
+        assert "Math.round(p[0] * 1e5) / 1e5" in group and "5 decimal places" in text
+        assert "about 3 ft, 1 m" in text
+        assert "export const PATH_MAX_POINTS = 600;" in group and "600 points" in text
+        # What the server can read: none of it, but for a ride whose key it keeps.
+        assert "It cannot read a dot, an alert or the leader's live path, except on a ride" in text
+        assert "ride post's Group or Mass Ride link" in text and "AI assistant app" in text
+        assert "new Uint8Array(16)" in group and "16 random bytes" in text
 
 
 class TestLinks:

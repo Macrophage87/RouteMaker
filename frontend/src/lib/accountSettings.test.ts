@@ -36,7 +36,7 @@ class Memory {
 test("the ride type and dials are kept without points, trip picks or the weight", () => {
   const dials = { ...startDials("group-ride"), stress: 85, pickupStation: "s1", systemWeightKg: 90, targetDistanceM: 40000 };
   const plan = planSetting("group-ride", dials);
-  assert.doesNotMatch(plan, /[#&]p=/);
+  assert.doesNotMatch(plan, /(^|[#&])[pq]=/);
   assert.doesNotMatch(plan, /s1|90/);
   const back = planFromSetting(plan);
   assert.equal(back?.preset, "group-ride");
@@ -44,6 +44,7 @@ test("the ride type and dials are kept without points, trip picks or the weight"
   assert.equal(back?.dials.pickupStation, undefined);
   // A value with points is a route, not a setting.
   assert.equal(planFromSetting("#p=-77,38.9;-77.1,38.8&preset=default"), null);
+  assert.equal(planFromSetting("#q=nmm2OwmttHqrFtwB&preset=default"), null, "nor in the short form");
 });
 
 test("the device's settings are read from what it keeps, and an account's are written back", () => {

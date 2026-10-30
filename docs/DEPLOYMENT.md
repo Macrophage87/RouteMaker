@@ -319,7 +319,7 @@ refresh: the last alerts are kept until `worker` holds the new key.
 
 **`DC311_API_KEY`: rotate it with DC 311, then here, then `up -d api`.** The
 owner's Open311 key for sending a ride's 311 report in one tap (v0.7.0,
-`core.dc311`). Optional: empty, the report opens a text to DC 311 instead. Held by
+`core.dc311`). Optional: empty, the report stays in the rider's 311 log; before setting it, put the DC 311 lines back in the privacy policy (`core/privacy_policy.py`). Held by
 `api` alone, sent only to DC's Open311 endpoint and never logged; nothing is
 stored under it. A rotation costs at most the one-tap send until `api` is
 recreated with the new value. `up -d`, not `restart`, as above.
@@ -377,7 +377,10 @@ directory and never sees a compiler.
   `psycopg2-binary` wheel carries its own libpq.
 - **`gunicorn`**, plus the runtime Python set in `docker/requirements.txt`.
 
-Runs as uid 10001, non-root.
+Runs as uid 10001, non-root. Its base is `python:3.11-slim-bookworm` pinned by digest (the
+`PYTHON_IMAGE` argument; `tests/test_images.py` holds its tag to `PYTHON_VERSION` and
+`DEBIAN_SUITE`). Built for every release since v0.8; the transitive Python dependencies are
+still resolved by pip at build time.
 
 ### `docker/pipeline.Dockerfile` — rebuild
 
@@ -464,7 +467,9 @@ lands, that test fails, the row leaves the list, and the test above it demands a
 
 ## `${DATA_ROOT}` and the order it has to be prepared in
 
-Both images run as uid 10001. `${DATA_ROOT}` is a host bind mount, and the
+Both images run as uid 10001, and their services (`api`, `worker`, `migrate`, `rebuild`) drop
+every Linux capability and set `no-new-privileges` (compose.yaml's `x-hardened`); the third-party
+images keep Docker's defaults. `${DATA_ROOT}` is a host bind mount, and the
 processes write into it: the nightly dump into `${DATA_ROOT}/backups`, the
 rebuild into the five directories it binds under `/data` (tiles, extracts,
 reference, its own work directory, and the elevation cache — the timezone
@@ -1066,7 +1071,7 @@ The api binds three directories and writes one of them:
 | --- | --- | --- |
 | `${DATA_ROOT}/static` → `/data/static` | read-write | `collectstatic`, as the deploy step above. Caddy mounts the same directory `:ro` and serves it. |
 | `${DATA_ROOT}/tiles` → `/data/tiles` | **read-only** | the operations page's free-space line, which is a `statvfs` on `settings.TILES_DIR`. |
-| `${DATA_ROOT}/basemap` → `/data/basemap` | **read-only** | the link preview's picture, which draws the base map behind a shared route (`core.preview_basemap`, `settings.BASEMAP_PMTILES`). |
+| `${DATA_ROOT}/basemap` → `/data/basemap` | **read-only** | the link preview's picture, which draws the base map behind a shared route (`core.preview_basemap`, `settings.BASEMAP_PMTILES`). The `worker` binds it too, the same way, since it draws the picture when a link is made (`draw_share_preview`); both must see the same file, as the picture's cache key reads its size and time. |
 
 The tiles bind is read-only and it is there for one reader. The operations page
 is rendered by the `api` service, and its free-space block measures
@@ -1200,14 +1205,20 @@ What the edge does with it (Caddyfile, `@frontend`):
   (the owner, 2026-10-19), served like the stress page and replaced by a rename
   like it; `/about/route-example.webp` is the routing page's example map. Settings links to the first,
   the map's credits to the last. A new page under `about/` has to be added to
-  `@frontend`, the beta template's `/about/` location and the publish command
-  above (`tests/test_deploy_docs.py` and `tests/test_beta_overlay.py` check).
+  `@frontend` and the publish command above (`tests/test_deploy_docs.py` and
+  `tests/test_beta_overlay.py` check); the beta template's `/about/` location
+  serves any `/about/<name>.html` or `.webp` the build has, so it needs no change.
 - `index.html` and `licenses.txt` are `Cache-Control: no-cache`, so a deploy
   is seen on the next load; the files under `assets/` are content-hashed and
   `max-age=31536000, immutable` - only files that exist, so a 404 is not
   cached for a year. The favicon is cached for a day.
 - The app's responses are compressed (`encode zstd gzip`, in this block only):
-  the main script is about 1.3 MB raw and 370 KB gzipped. Nothing else on the
+  MapLibre's chunk (`maplibre-*.js`) is about 1.1 MB raw and 300 KB gzipped,
+  App's about 1.0 MB and 310 KB, React's about 220 KB and 70 KB (measured at
+  v0.15.0). MapLibre and React are chunks of their own (`frontend/vite.config.ts`,
+  `codeSplitting`), so their names, and a returning rider's copies, last across
+  app releases; `index.html` preloads App's chunks while the language's catalog
+  loads, and Spanish's catalog is a `lang-es-*.js` of its own. Nothing else on the
   site is encoded; `/basemap/*` must not be, since an encoder changes what a
   byte range means (`tests/test_basemap.py`).
 - A `Content-Security-Policy` of `default-src 'self'` with `script-src`,
@@ -1567,7 +1578,10 @@ empty cluster looks healthy.
       3), and **abort without starting anything else** if not (the bind-race
       signature).
    5. Start caddy, the four routers, api, worker, rebuild, photon (recreated when
-      COLD, only the stopped ones when WARM).
+      COLD, only the stopped ones when WARM), then valhalla-offroad and
+      valhalla-mtb, each only when `${DATA_ROOT}/tiles/<variant>/current` leads to
+      a readable build (otherwise a log line, never a failed boot: those rides are
+      then planned on the standard graph).
    6. Route, geocode and the stress tile must return 200, and the tile must not
       be empty.
 

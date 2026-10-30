@@ -9,7 +9,7 @@ Every command is copied from those guides; where this document and a guide disag
 is wrong and this document is the newer one, so fix the guide.
 
 Budget for a first pass: an afternoon to the first rebuild, then the rebuild itself (hours; the
-elevation download and four Valhalla tile builds), then an hour for the rest. The checklist can be
+elevation download and six Valhalla tile builds, one per routing graph), then an hour for the rest. The checklist can be
 resumed across that (`--resume`).
 
 ## 0. What you need before you start
@@ -45,7 +45,7 @@ What changes locally:
   its true peak for a DC-region build is unmeasured (`handoff.md` §7), which is why the plan sizes
   the host at 32 GB; 16 GB will probably do, less is a gamble. Disk: 50 GB free for the extract,
   the elevation tiles and two tile sets, and the rebuild refuses to start under 20 GiB.
-- **Time.** The same as on a server; the elevation download and the four tile builds take hours
+- **Time.** The same as on a server; the elevation download and the six tile builds take hours
   wherever they run.
 - **What it cannot tell you.** Whether the certificate is issued, the name resolves, the firewall
   is right, or the sizing holds under real traffic. Everything else in A1 to A6 is the same path.
@@ -178,8 +178,9 @@ python3 scripts/acceptance.py --only A1 A2       # preflight; build; up; wait fo
 ```
 
 A2 builds the two images (minutes) and starts ten services. It waits for `postgis` healthy,
-`migrate` exited 0, `api` healthy, `worker` and `rebuild` running. **The four routers will be
-restarting** until the first rebuild gives them tiles; A2 reports their state without judging it.
+`migrate` exited 0, `api` healthy, `worker` and `rebuild` running. **The four routers a plain `up` starts will be
+restarting** until the first rebuild gives them tiles (the off-road and Mountain Bike routers
+are behind the compose profile `offroad`); A2 reports their state without judging it.
 
 Then the one deploy step the guides put after every build:
 
@@ -234,10 +235,11 @@ On a fresh host this is the runbook's two-phase first rebuild, and the script fo
           --volume-source ddot --volume-year 2024 --aadt-property AADT
   ```
 
-- **Second run** (hours): elevation tiles from 3DEP, the four variant tile builds, validation,
+- **Second run** (hours): elevation tiles from 3DEP, the six variant tile builds (standard,
+  no-trail, ebike, weekend, offroad and mtb), validation,
   the swap. The script polls the run row every minute up to eight hours; `docker compose logs -f
   rebuild` in another terminal shows the stages. When it succeeds the script checks the promotion
-  links, restarts the four routers, sends a canary route to each, and runs `check_operations`.
+  links, restarts the routers that are running, sends a canary route to each, and runs `check_operations`.
 
 If the run fails, `docker compose exec -T worker ./manage.py check_operations` and the operations
 page name the stage and the last twenty lines of the failing command; `docs/OPERATIONS.md`

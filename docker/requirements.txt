@@ -9,8 +9,9 @@
 # Every version here is the version in the repository's `.venv`, which is the
 # interpreter and package set the suite is green against, and every one was
 # confirmed present on PyPI. Transitive dependencies are resolved by pip at
-# build time and are NOT pinned here; a full lock needs a `pip freeze` taken
-# from a real build, which has not happened - see docs/DEPLOYMENT.md.
+# build time and are NOT pinned here. The images are built for every release
+# (docker/api.Dockerfile), so a `pip freeze` from the running api image is
+# where a full lock would start - see docs/DEPLOYMENT.md.
 
 Django==5.2.17
 # The HTTP API: src/core/api.py is a NinjaAPI, served under /api/ (its docs

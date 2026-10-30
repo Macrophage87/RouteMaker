@@ -1960,6 +1960,18 @@ class TestTheSeekLegsOwnDeadline:
         refine._seek_leg(0, {"legs": []}, analysis("o"), 0.0, stop_at, ctx, seek)
         assert read == [1]
 
+    def test_a_plan_cancelled_at_the_table_read_ends_there(self, monkeypatch) -> None:
+        def cancelled(*args, **kwargs):
+            raise routing.PlanCancelled("replaced")
+
+        monkeypatch.setattr(trailseek, "corridor_segments", cancelled)
+        ctx = context(rate=10.0)
+        seek = {"limited": None, "corridors": 0, "asked": 0, "routes": 0, "tried": []}
+        stop_at = routing.clock() + trailseek.SEEK_ROUND_MIN_S + 5.0
+        with pytest.raises(routing.PlanCancelled):
+            refine._seek_leg(0, {"legs": []}, analysis("o"), 0.0, stop_at, ctx, seek)
+        assert seek["limited"] is None
+
 
 class TestLTS4NeverLosesToExtraLTS3:
     """Combined spec review, SF2 (OWNER-DECISIONS 287(1): "LTS 4 still ranks first in the

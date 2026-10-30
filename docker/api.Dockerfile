@@ -8,13 +8,18 @@
 # Debian carries all three, and because pg_dump 16 has to come from the
 # PostgreSQL project's apt repository to match postgis/postgis:16-3.4.
 #
-# NOT BUILT. No Docker daemon runs in the environment this was written in and
-# registries are blocked, so this file has been parsed, its COPY sources checked
-# against the repository and its package names checked as far as a blocked apt
-# index allows - and never built. See docs/DEPLOYMENT.md.
+# Built for every release since v0.8: on the beta by the release agent
+# (scripts/beta/auto-release.sh) and at home by `docker compose build api`. Its
+# direct Python dependencies are pinned (docker/requirements.txt); the transitive
+# ones are still resolved by pip at build time.
 
 ARG PYTHON_VERSION=3.11
 ARG DEBIAN_SUITE=bookworm
+# The base image by digest as well as tag, so a rebuild of the same release gets the same
+# base (review sec-infra-6). Its tag must agree with PYTHON_VERSION and DEBIAN_SUITE
+# (tests/test_images.py). To move it: `docker pull python:3.11-slim-bookworm`, then
+# `docker image inspect -f '{{index .RepoDigests 0}}' python:3.11-slim-bookworm`.
+ARG PYTHON_IMAGE=python:3.11-slim-bookworm@sha256:94a8fee35252d06ab75856f15f12c7bae67b10e8a6da93c7fded82b2610926cd
 # Major 16, to match the server in compose.yaml (postgis/postgis:16-3.4).
 # pg_dump refuses an archive from a server newer than itself, and the nightly
 # backup's `pg_restore --list` readback would be the thing that discovered a
@@ -25,7 +30,7 @@ ARG PG_MAJOR=16
 # --- wheels -------------------------------------------------------------------
 # Everything that might compile happens here and nothing from this stage but the
 # wheel directory reaches the runtime image, so a C toolchain is never shipped.
-FROM python:${PYTHON_VERSION}-slim-${DEBIAN_SUITE} AS wheels
+FROM ${PYTHON_IMAGE} AS wheels
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
@@ -41,7 +46,7 @@ RUN pip wheel --wheel-dir /wheels -r requirements-api.txt
 
 
 # --- runtime ------------------------------------------------------------------
-FROM python:${PYTHON_VERSION}-slim-${DEBIAN_SUITE} AS runtime
+FROM ${PYTHON_IMAGE} AS runtime
 
 ARG DEBIAN_SUITE
 ARG PG_MAJOR
@@ -61,7 +66,9 @@ ENV PYTHONUNBUFFERED=1 \
 # that resolution at build time rather than leaving it to the first request.
 #
 # libpq5 is for pg_dump and pg_restore. Django does not need it: the
-# psycopg2-binary wheel carries its own libpq.
+# psycopg2-binary wheel carries its own libpq. age encrypts the nightly dump
+# to the owner's public key (config.procrastinate.perform_backup), which
+# refuses to dump at all without it.
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates curl gnupg; \
@@ -73,6 +80,7 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         "postgresql-client-${PG_MAJOR}" \
+        age \
         gdal-bin \
         libpq5; \
     apt-get purge -y --auto-remove gnupg; \
@@ -85,7 +93,8 @@ RUN set -eux; \
 RUN set -eux; \
     python -c "import ctypes.util as u, sys; m = [n for n in ('gdal', 'geos_c') if not u.find_library(n)]; sys.exit('GeoDjango cannot resolve: ' + ', '.join(m) if m else 0)"; \
     pg_dump --version | grep -Eq "[[:space:]]${PG_MAJOR}\."; \
-    pg_restore --version | grep -Eq "[[:space:]]${PG_MAJOR}\."
+    pg_restore --version | grep -Eq "[[:space:]]${PG_MAJOR}\."; \
+    age --version
 
 COPY --from=wheels /wheels /wheels
 COPY docker/requirements.txt docker/requirements-api.txt /tmp/

@@ -145,6 +145,8 @@ export const PLANNING_SAID = t("Planning route");
 export const CANCELLED_SAID = t("Routing cancelled. The plan is as you left it.");
 export const RESET_SAID = t("Reset to the route as drawn. Undo brings your changes back.");
 export const CLEARED_SAID = t("Plan cleared. Undo brings it back.");
+/** Go's Clear names the route, as its button does: Go riders never meet the word "plan" (the 2026-10-29 review). */
+export const GO_CLEARED_SAID = t("Route cleared. Undo brings it back.");
 /** How long Clear waits for its route to go before it gives up handing the focus on (review a11y-1). */
 export const CLEAR_FOCUS_WAIT_MS = 1000;
 
