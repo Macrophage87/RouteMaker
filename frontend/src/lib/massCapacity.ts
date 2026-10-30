@@ -13,7 +13,7 @@
  * figure has words (nothing is colour alone).
  */
 import { MASS_BANDS, MASS_WIDE_RUN_MI, bandIndex, massBandsAt } from "../massStyle.js";
-import type { RouteProfile, RouteResponse, StressSpan } from "./api.ts";
+import type { RouteProfile, StressSpan } from "./api.ts";
 import { formatDistance, formatRunMiles, formatSpeedRange } from "./format.ts";
 import { MASS_MIN_ZOOM } from "./mapStyle.ts";
 import { wholePercents } from "./stressBar.ts";
@@ -317,13 +317,6 @@ export function capacityPair(summary: CapacitySummary | null, flow: HillsFlow, s
   // Without the samples (an older API): the two sources as they come, but never the hills above the flat.
   const typicalHills = read ? read.hills : flowTypical !== null && typicalFlat !== null ? Math.min(flowTypical, typicalFlat) : flowTypical;
   return { flat, hills, samePlace, typicalFlat, typicalHills };
-}
-
-/** A route's pair: its sections, and its profile where it has one. */
-export function routeCapacityPair(route: Partial<Pick<RouteResponse, "stress_spans" | "profile">>): CapacityPair | null {
-  const summary = capacitySummary(route.stress_spans);
-  if (!summary) return null;
-  return capacityPair(summary, route.profile?.flow, route.profile);
 }
 
 /** ", at the start" or ", at 0.2 mi (0.3 km) along". */

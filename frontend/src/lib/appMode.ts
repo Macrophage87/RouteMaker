@@ -17,6 +17,7 @@ import { coordinatesText } from "./geocode.ts";
 import { LOCATE_MESSAGES, iosHomeScreenApp, type LocateFailure, type LocateResult } from "./geolocation.ts";
 import { haversineM, insideCoverage, type LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
+import { OLD_POINTS_PARAM, POINTS_PARAM } from "./planHash.ts";
 
 /**
  * Review (the owner, 2026-10-16: "Basically we'd have 3 modes for people who have admin access go/plan/review") is
@@ -134,7 +135,8 @@ export function hasPlanLink(hash: string): boolean {
   if (!body) return false;
   return body.split("&").some((part) => {
     const key = part.split("=")[0];
-    return key === "p" || key === "preset" || key === "loop" || key === "gpx";
+    // Its stops in either form (lib/planHash.ts: `q=` now, `p=` in an older link).
+    return key === POINTS_PARAM || key === OLD_POINTS_PARAM || key === "preset" || key === "loop" || key === "gpx";
   });
 }
 

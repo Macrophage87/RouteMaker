@@ -14,7 +14,7 @@
  * often not read). Show more adds a page and moves the focus to the first new result, so a keyboard
  * rider goes on from where they were.
  */
-import { placeLetter } from "./letteredPlaces.ts";
+import { placeLetter, SHOW_ALL_ON_MAP } from "./letteredPlaces.ts";
 import { createElement as h, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { FOOD_DETOUR_METHOD, FOOD_DETOUR_NOTE, foodHoursText, foodHowFar, foodKindText, FOOD_PAGE, isFarmFood, type FoodResult } from "./food.ts";
 import { ICON_PATHS } from "./iconPaths.ts";
@@ -59,6 +59,8 @@ export interface FoodFinderProps {
   /** Whether there is a plan to add a stop to. */
   canAddStop: boolean;
   onShow: (result: FoodResult) => void;
+  /** Show all on map (Stephen 2026-10-29): every place found, named on the map, framed together. Absent: no button. */
+  onShowAll?: () => void;
   /** Go: Ride here, the place as the destination (the owner's lettered places of 2026-10-11). */
   onRide?: (result: FoodResult) => void;
   onAddStop: (result: FoodResult) => void;
@@ -71,7 +73,7 @@ export interface FoodFinderProps {
 }
 
 export function FoodFinder(props: FoodFinderProps): ReactElement {
-  const { query, onQuery, onSearch, onSearchArea, areaMoved = false, chips, busy, status, results, total, onMore, onRest, canAddStop, onShow, onAddStop, onRide, folded = true, heading = t("Places to eat") } = props;
+  const { query, onQuery, onSearch, onSearchArea, areaMoved = false, chips, busy, status, results, total, onMore, onRest, canAddStop, onShow, onShowAll, onAddStop, onRide, folded = true, heading = t("Places to eat") } = props;
   const at = props.at ?? new Date();
   const list = useRef<HTMLOListElement | null>(null);
   // After Show more: the index of the first new result, whose first button takes the focus.
@@ -129,6 +131,10 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
       areaMoved && onSearchArea && h("button", { type: "button", className: "secondary food-area", "aria-disabled": busy ? true : undefined, onClick: onSearchArea }, FOOD_SEARCH_AREA),
       h("p", { className: statusHidden ? "hint food-status visually-hidden" : "hint food-status", role: "status" }, status),
       results !== null &&
+        results.length > 1 &&
+        onShowAll &&
+        h("button", { type: "button", className: "secondary show-all", onClick: onShowAll }, SHOW_ALL_ON_MAP),
+      results !== null &&
         results.length > 0 &&
         h(
           "div",
@@ -145,8 +151,8 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
                 h(
                   "span",
                   null,
-                  // The letter is the map marker's (lib/letteredPlaces.ts).
-                  h("strong", null, `${placeLetter(i)}. ${r.place.name}`),
+                  // The map's marker shows the name (Stephen 2026-10-29: "Named, not lettered"); the letter, its key's, is heard.
+                  h("strong", null, h("span", { className: "visually-hidden" }, `${placeLetter(i)}. `), r.place.name),
                   // A farm stand or market has the apple (decorative: its kind is in the words beside it).
                   isFarmFood(r.place.kind) &&
                     h("svg", {
@@ -167,17 +173,18 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
                 h(
                   "span",
                   { className: "actions" },
+                  // Go's one main action first and filled, the rest plain after it (the 2026-10-29 review).
+                  onRide &&
+                    h(
+                      "button",
+                      { type: "button", className: "ride-here", "aria-label": t("Ride here: {place}", { place: r.place.name }), onClick: () => onRide(r) },
+                      t("Ride here"),
+                    ),
                   h(
                     "button",
                     { type: "button", className: "secondary", "aria-label": t("Show on map: {place}, marker {letter}", { place: r.place.name, letter: placeLetter(i) }), onClick: () => onShow(r) },
                     t("Show on map"),
                   ),
-                  onRide &&
-                    h(
-                      "button",
-                      { type: "button", className: "secondary", "aria-label": t("Ride here: {place}", { place: r.place.name }), onClick: () => onRide(r) },
-                      t("Ride here"),
-                    ),
                   canAddStop &&
                     h(
                       "button",

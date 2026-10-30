@@ -14,9 +14,13 @@
 #   alert.sh send KEY ID MESSAGE   post MESSAGE unless KEY last posted the same ID (within a day)
 #   alert.sh note MESSAGE          post MESSAGE (no repeat check)
 #   alert.sh clear KEY MESSAGE     KEY is fine: post MESSAGE if KEY had posted, and forget it
-#   alert.sh install [--no-enable] copy this script into $RM_STATE/cd/bin and write a systemd
-#                                  --user timer that runs `watch` about every 10 minutes
-#   alert.sh uninstall             stop and remove that timer (keeps the webhook and state)
+#   alert.sh heartbeat             ping HEALTHCHECK_PING_URL from the beta's .env (an off-host
+#                                  uptime check, such as Healthchecks.io), only while the api's
+#                                  local /healthz answers ok; unset, nothing is pinged
+#   alert.sh install [--no-enable] copy this script into $RM_STATE/cd/bin and write two systemd
+#                                  --user timers: `watch` about every 10 minutes, `heartbeat`
+#                                  every 5
+#   alert.sh uninstall             stop and remove those timers (keeps the webhook and state)
 #
 # Release notes go to a second channel, one riders can read and not post in:
 #   alert.sh set-release-webhook   as set-webhook, into $RM_STATE/release-webhook
@@ -32,12 +36,15 @@
 # the repository's own rider-facing text, with no server address in them.
 #
 # Settings: $RM_STATE/vars.sh, as auto-release.sh reads it (RM_VARS names another file).
+# The heartbeat reads three lines of the checkout's .env (BETA_ENV_FILE names another file):
+# HEALTHCHECK_PING_URL, BETA_API_PORT and RM_BETA_HOST; it never sources the file.
 # CURL names the curl binary [curl]; RM_ALERT_COMPOSE and RM_ALERT_SMOKE stand in for
 # beta-compose.sh and smoke-test.sh (the tests use stubs).
 set -uo pipefail
 export LC_ALL=C
 
 UNIT=routemaker-beta-alert
+HEARTBEAT_UNIT=routemaker-beta-heartbeat
 # Discord refuses a message over 2000 characters.
 MAX_CHARS=1900
 # A failure that lasts is posted again once a day, so a muted channel is not the only record.
@@ -171,6 +178,40 @@ cmd_watch() {
 	return 0
 }
 
+# One value from the beta's .env: the last line naming the key, without quotes. Only that key is
+# read; the file is never sourced (it holds every secret the stack has).
+env_value() {
+	sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "${BETA_ENV_FILE:-$RM_SRC/.env}" 2>/dev/null |
+		tail -n 1 | tr -d '\r' | sed "s/^['\"]//; s/['\"]\$//"
+}
+
+# The off-host uptime check: the service tells the owner when the pings stop, which covers what
+# nothing on this host can report (the host, Docker, the timers or the webhook gone). It pings
+# only while the api answers its own health check, so a dead api stops the pings like a dead host.
+# Exit 0 whether or not it pinged: a missing or odd setting is a line in the journal, not a failure.
+cmd_heartbeat() {
+	local url port host answer code
+	url=$(env_value HEALTHCHECK_PING_URL)
+	[ -n "$url" ] || { echo "alert: no HEALTHCHECK_PING_URL in .env; not pinged"; return 0; }
+	good_webhook "$url" || { echo "alert: HEALTHCHECK_PING_URL is not a plain https:// address; not pinged" >&2; return 0; }
+	port=$(env_value BETA_API_PORT)
+	host=${RM_BETA_HOST:-$(env_value RM_BETA_HOST)}
+	host=${host:-${RM_CD_HOST:-}}
+	[ -n "$host" ] || { echo "alert: no RM_BETA_HOST in .env; not pinged" >&2; return 0; }
+	answer=$("${CURL:-curl}" -sS --max-time 10 -H "Host: $host" "http://127.0.0.1:${port:-8087}/healthz" 2>/dev/null </dev/null) || answer=""
+	case "$answer" in
+		ok*) ;;
+		*) echo "alert: the api's /healthz did not answer ok; not pinged"; return 0 ;;
+	esac
+	# The address goes to curl as a config on standard input, like the webhook: never an argument.
+	code=$(printf 'url = "%s"\n' "$url" | "${CURL:-curl}" -K - -sS --max-time 10 --retry 2 -o /dev/null -w '%{http_code}' 2>/dev/null) || code=000
+	case "$code" in
+		2??) echo "alert: healthy; pinged" ;;
+		*) echo "alert: the uptime check answered HTTP $code; not pinged" >&2 ;;
+	esac
+	return 0
+}
+
 cmd_set_webhook() { # file test-command
 	local url
 	[ -t 0 ] && echo "Paste the webhook address, press Enter, then Ctrl-D:" >&2
@@ -277,21 +318,50 @@ RandomizedDelaySec=60
 [Install]
 WantedBy=timers.target
 UNITEOF
-	echo "installed $bin/alert.sh; units: $unit_dir/$UNIT.service, $unit_dir/$UNIT.timer"
+	cat >"$unit_dir/$HEARTBEAT_UNIT.service" <<UNITEOF
+# Written by scripts/beta/alert.sh install (docs/BETA-RUNBOOK.md, "Alerts").
+[Unit]
+Description=RouteMaker beta: ping the off-host uptime check while the api is healthy
+
+[Service]
+Type=oneshot
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=RM_VARS=$vars
+ExecStart="$bin/alert.sh" heartbeat
+TimeoutStartSec=2min
+UNITEOF
+	cat >"$unit_dir/$HEARTBEAT_UNIT.timer" <<UNITEOF
+# Written by scripts/beta/alert.sh install (docs/BETA-RUNBOOK.md, "Alerts").
+[Unit]
+Description=RouteMaker beta: ping the uptime check every 5 minutes
+
+[Timer]
+OnActiveSec=1min
+OnUnitActiveSec=5min
+AccuracySec=20s
+
+[Install]
+WantedBy=timers.target
+UNITEOF
+	echo "installed $bin/alert.sh; units: $unit_dir/$UNIT.{service,timer}, $unit_dir/$HEARTBEAT_UNIT.{service,timer}"
 	[ -n "$(webhook)" ] || echo "no webhook yet: alert.sh set-webhook, then alert.sh test"
+	[ -n "$(env_value HEALTHCHECK_PING_URL)" ] || echo "no HEALTHCHECK_PING_URL in .env yet: the heartbeat pings nothing until it is there"
 	if [ "$enable" = 1 ]; then
-		systemctl --user daemon-reload && systemctl --user enable --now "$UNIT.timer" || die "systemctl --user could not enable the timer"
-		echo "timer enabled: $(systemctl --user is-active "$UNIT.timer")"
+		systemctl --user daemon-reload && systemctl --user enable --now "$UNIT.timer" "$HEARTBEAT_UNIT.timer" ||
+			die "systemctl --user could not enable the timers"
+		echo "timers enabled: $(systemctl --user is-active "$UNIT.timer" "$HEARTBEAT_UNIT.timer" | tr '\n' ' ')"
 	else
-		echo "not enabled (--no-enable): systemctl --user daemon-reload && systemctl --user enable --now $UNIT.timer"
+		echo "not enabled (--no-enable): systemctl --user daemon-reload && systemctl --user enable --now $UNIT.timer $HEARTBEAT_UNIT.timer"
 	fi
 }
 cmd_uninstall() {
-	local unit_dir=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user
-	systemctl --user disable --now "$UNIT.timer" 2>/dev/null || true
-	rm -f "$unit_dir/$UNIT.service" "$unit_dir/$UNIT.timer"
+	local unit_dir=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user unit
+	for unit in "$UNIT" "$HEARTBEAT_UNIT"; do
+		systemctl --user disable --now "$unit.timer" 2>/dev/null || true
+		rm -f "$unit_dir/$unit.service" "$unit_dir/$unit.timer"
+	done
 	systemctl --user daemon-reload 2>/dev/null || true
-	echo "timer and units removed; $hook_file, $release_hook_file and $state are kept"
+	echo "timers and units removed; $hook_file, $release_hook_file and $state are kept"
 }
 
 main() {
@@ -304,6 +374,7 @@ main() {
 		note) [ $# = 1 ] || die "note MESSAGE"; post "$1"; return 0 ;;
 		clear) cmd_clear "$@" ;;
 		watch) cmd_watch ;;
+		heartbeat) cmd_heartbeat ;;
 		test) post "test message from alert.sh test; alerts reach this channel" ;;
 		set-webhook) cmd_set_webhook "$hook_file" test ;;
 		release-test) post_to "$release_hook_file" set-release-webhook "RouteMaker: test message; release notes reach this channel"; [ $? != 1 ] ;;

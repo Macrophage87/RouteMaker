@@ -94,6 +94,22 @@ def test_a_successful_login_creates_the_user_and_the_session_row(client, monkeyp
     assert row.session_key == client.session.session_key
 
 
+def test_a_signed_out_login_start_keeps_its_session_briefly(client, monkeypatch) -> None:
+    from django.contrib.sessions.models import Session as DjangoSession
+
+    from core.auth_views import PENDING_SESSION_S
+
+    _response, state = start_login(client)
+    row = DjangoSession.objects.get(session_key=client.session.session_key)
+    left = (row.expire_date - timezone.now()).total_seconds()
+    assert 0 < left <= PENDING_SESSION_S < 3600
+    # Signed in, the session lasts the full cookie age again.
+    callback(client, monkeypatch, state=state, user_id=778)
+    row = DjangoSession.objects.get(session_key=client.session.session_key)
+    left = (row.expire_date - timezone.now()).total_seconds()
+    assert left > settings.SESSION_COOKIE_AGE - 3600
+
+
 def test_a_banned_account_cannot_sign_in(client, monkeypatch) -> None:
     from core.models import Session, User
 

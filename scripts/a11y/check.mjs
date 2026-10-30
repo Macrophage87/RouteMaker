@@ -27,6 +27,40 @@ function check(name, ok, detail = "") {
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` - ${detail}` : ""}`);
 }
 
+// The stops a link's fragment holds, as "lon,lat" to 5 decimals: the short q= the app writes since 0bae793c
+// ("Shorter ride links", frontend/src/lib/linkCode.ts decodePoints), or the older p=. Self-contained, so a page
+// evaluates it too: `(${hashStops})(location.hash)`.
+function hashStops(hash) {
+  const params = new URLSearchParams(String(hash).replace(/^#/, ""));
+  const q = params.get("q");
+  if (q === null) return (params.get("p") ?? "").split(";").filter(Boolean);
+  const abc = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  const numbers = [];
+  let z = 0;
+  let scale = 1;
+  for (const c of q) {
+    const v = abc.indexOf(c);
+    if (v < 0) break;
+    z += (v % 32) * scale;
+    scale *= 32;
+    if (v >= 32) continue;
+    numbers.push(z % 2 === 1 ? -(z + 1) / 2 : z / 2);
+    z = 0;
+    scale = 1;
+  }
+  const out = [];
+  let lon = 0;
+  let lat = 0;
+  for (let i = 0; i + 1 < numbers.length; i += 2) {
+    lon += numbers[i];
+    lat += numbers[i + 1];
+    out.push(`${(lon / 1e5).toFixed(5)},${(lat / 1e5).toFixed(5)}`);
+  }
+  return out;
+}
+// The same, in a page: the address bar's stops.
+const HASH_STOPS = `(${hashStops})(location.hash)`;
+
 const CDP_PORT = Number(arg("--cdp", process.env.A11Y_CDP_PORT ?? "9222"));
 const b = await connect(CDP_PORT);
 
@@ -816,7 +850,7 @@ const SCROLL_BOXES = `(() => { const focusable = 'a[href], button:not([disabled]
   const distance = await p.eval("document.querySelector('.summary .stat-distance dd').textContent");
   const said = await p.eval("window.__said");
   check("routes: the arrow key chooses the next, and the summary shows its figures", JSON.stringify(chosen) === "[false,true,false]" && /7\.2 mi/.test(distance), `${JSON.stringify(chosen)} ${distance}`);
-  check("routes: choosing plans nothing and is announced once, as chosen, with its place", p.routeRequests === requests && said.length === 1 && /^Route 2 of 3 chosen: 7\.2 mi/.test(said[0]) && !/Route planned/.test(said[0]), JSON.stringify(said));
+  check("routes: choosing plans nothing and is announced once, as chosen, with its place", p.routeRequests === requests && said.length === 1 && /^Route 2 of 3 chosen: 7\.2 miles/.test(said[0]) && !/Route planned/.test(said[0]), JSON.stringify(said));
   await p.shot(`${SHOTS}/candidates.png`, await p.eval("(() => { const e = document.querySelector('fieldset.candidates'); e.scrollIntoView({ block: 'start' }); const r = e.getBoundingClientRect(); return { x: Math.max(0, r.left), y: Math.max(0, r.top), width: Math.round(r.width), height: Math.min(Math.round(r.height), innerHeight - Math.max(0, r.top)) }; })()"));
   await p.close();
 }
@@ -1569,7 +1603,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     await p.waitFor("!document.querySelector('.place-search')?.textContent.includes('Finding your location')", 15000);
     await sleep(1500);
     const got = await p.eval("({ said: window.__said, rows: document.querySelectorAll('.points > li').length, hash: location.hash })");
-    check("locate: on a two-point plan with Start chosen, Your location replaces the start", chose && /^Your location\s*Replaces the start\./.test(line) && got.said >= 1 && got.rows === 2 && got.hash.startsWith("#p=-77.05020,38.88930;-77.01000,38.89000&"), JSON.stringify({ chose, line, got }));
+    check("locate: on a two-point plan with Start chosen, Your location replaces the start", chose && /^Your location\s*Replaces the start\./.test(line) && got.said >= 1 && got.rows === 2 && JSON.stringify(hashStops(got.hash)) === JSON.stringify(["-77.05020,38.88930", "-77.01000,38.89000"]), JSON.stringify({ chose, line, got }));
     await p.close();
   }
   {
@@ -1623,7 +1657,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await p.eval("(() => { const h = [...document.querySelectorAll('h3')].find((x) => x.textContent === 'Elevation and climbs'); h.nextElementSibling.querySelector('summary').click(); return true; })()");
   await sleep(300);
   const first = await axNode(p, ".pc-plot");
-  check("chart: the picture is one slider, named for what it shows, its value text the spoken sentence (a path said as the map has it)", first?.role === "slider" && first.name === "Elevation and rolling stress along the route" && /^Mile 0\.0: elevation \d+ ft \(\d+ m\), level, traffic-free path\. Mile around: 0\.6 calm miles per mile, LTS 1 to 2 level\. Next junction to watch: higher stress, mile 1\.2\.$/.test(first.valuetext ?? ""), JSON.stringify(first));
+  check("chart: the picture is one slider, named for what it shows, its value text the spoken sentence (a path said as the map has it)", first?.role === "slider" && first.name === "Elevation and rolling stress along the route" && /^Mile 0\.0: elevation \d+ feet \(\d+ meters\), level, traffic-free path\. Mile around: 0\.6 calm miles per mile, LTS 1 to 2 level\. Next junction to watch: higher stress, mile 1\.2\.$/.test(first.valuetext ?? ""), JSON.stringify(first));
   // Plan streamline (2026-10-17): the summary and the keys are out of sight in Plan too, so both are its description.
   check("chart: its description is the summary, then the key hint", /^Over 2\.9 mi/.test(first?.description ?? "") && /Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift\+C/.test(first?.description ?? ""), (first?.description ?? "").slice(0, 200));
   check("chart: the summary before it, in miles and feet first", /^Over 2\.9 mi \(4\.7 km\), elevation runs from 328 ft \(100 m\) to 408 ft \(124 m\)\./.test(await p.eval("document.querySelector('.pc-summary').textContent")));
@@ -1638,12 +1672,12 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   for (let i = 0; i < 3; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(150);
   const three = await axNode(p, ".pc-plot");
-  check("chart: three Right arrows read Mile 0.3 with its elevation, grade and stress", /^Mile 0\.3: elevation \d+ ft \(\d+ m\), level, traffic-free path\. Mile around: /.test(three?.valuetext ?? ""), three?.valuetext);
+  check("chart: three Right arrows read Mile 0.3 with its elevation, grade and stress", /^Mile 0\.3: elevation \d+ feet \(\d+ meters\), level, traffic-free path\. Mile around: /.test(three?.valuetext ?? ""), three?.valuetext);
   check("chart: and put a marker on the map, hidden from a screen reader (the sentence is the announcement)", await p.eval("(() => { const m = document.querySelector('.scrub-marker'); return !!m && m.getAttribute('aria-hidden') === 'true' && m.tabIndex < 0; })()"));
   for (let i = 0; i < 9; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(150);
   const climb = await axNode(p, ".pc-plot");
-  check("chart: on the climb the sentence says the grade, as Mile 1.2: grade 6%", /^Mile 1\.2: elevation \d+ ft \(\d+ m\), grade 6%, LTS 2\. Mile around: /.test(climb?.valuetext ?? ""), climb?.valuetext);
+  check("chart: on the climb the sentence says the grade, as Mile 1.2: grade 6%", /^Mile 1\.2: elevation \d+ feet \(\d+ meters\), grade 6%, LTS 2\. Mile around: /.test(climb?.valuetext ?? ""), climb?.valuetext);
   await p.shot(`${SHOTS}/chart_stress_focused.png`);
   await p.key("End", "End", 35);
   await sleep(100);
@@ -1655,7 +1689,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   check("chart: a key it takes does not move the focus", await p.eval("document.activeElement?.classList.contains('pc-plot')"), await focused(p));
   await p.key("c", "KeyC", 67);
   await sleep(100);
-  check("chart: C jumps to the next climb (a11y N4)", /^Mile 1\.1: elevation \d+ ft \(\d+ m\), grade 6%, LTS 2\. Mile around: /.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
+  check("chart: C jumps to the next climb (a11y N4)", /^Mile 1\.1: elevation \d+ feet \(\d+ meters\), grade 6%, LTS 2\. Mile around: /.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
   await p.key("Home", "Home", 36);
   for (let i = 0; i < 3; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(100);
@@ -1777,7 +1811,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await sleep(150);
   const elevAx = await axNode(p, ".pc-chart-elevation .pc-plot");
   check("mass chart: and on to the elevation's slider, which says the elevation (feet first) and the grade there",
-    (await p.eval("document.activeElement === document.querySelector('.pc-chart-elevation .pc-plot')")) && elevAx?.name === "Elevation along the route" && /^Mile 1\.2: elevation \d+ ft \(\d+ m\), grade 6%\.$/.test(elevAx.valuetext ?? ""), JSON.stringify(elevAx));
+    (await p.eval("document.activeElement === document.querySelector('.pc-chart-elevation .pc-plot')")) && elevAx?.name === "Elevation along the route" && /^Mile 1\.2: elevation \d+ feet \(\d+ meters\), grade 6%\.$/.test(elevAx.valuetext ?? ""), JSON.stringify(elevAx));
   await p.eval("document.querySelector('.pc-plot').focus(); true");
   await sleep(100);
   await p.key("i", "KeyI", 73);
@@ -1792,7 +1826,8 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   const tables = await p.eval(`(() => { const d = document.querySelector('.pc-table-fold'); d.querySelector('summary').click(); const ts = [...d.querySelectorAll('table')]; const rows = (t) => (t ? [...t.querySelectorAll('tbody tr')].map((r) => [...r.children].map((c) => c.textContent).join(' | ')) : []); return { summary: d.querySelector('summary').textContent, captions: ts.map((t) => t.querySelector('caption').textContent), heads: [...ts[0].querySelectorAll('thead th')].map((x) => x.textContent), climb: [...ts[0].querySelectorAll('tbody tr:first-child > *')].map((x) => x.textContent), bottlenecks: rows(ts[1]), rows: rows(ts[2]), crossHeads: [...(ts[2]?.querySelectorAll('thead th') ?? [])].map((x) => x.textContent) }; })()`);
   check("mass chart: the climbs table lists the capacity drop, a bottlenecks table, and a table of every intersection with its marker, corkers and the corkers held at once when the head reaches it", tables.summary === "Climbs, bottlenecks and intersections as tables" && tables.heads.at(-1) === "Capacity drop" && tables.climb.at(-1) === "53% fewer riders, down to 90 a minute" && JSON.stringify(tables.captions) === JSON.stringify(["Climbs, in the order ridden", "Bottlenecks, under 60 riders per minute, in the order ridden", "Major intersections, in the order ridden"]) && JSON.stringify(tables.bottlenecks) === JSON.stringify(["Mile 0.0 | 0.1 mi (0.2 km) | About 55 a minute"]) && tables.rows.length === 7 && tables.rows[0] === "Mile 0.6 | 18th Street Northwest | Higher stress (orange triangle) | 2 needed: 2 approaches, one-way not known; lanes not known, 1 each | 2 at 1 junction" && tables.rows[5] === "Mile 2.1 | Pierce Street | Crosses a busy road (LTS 3), cross traffic stops (dot) | 2 needed: 2 approaches, one-way not known; lanes not known, 1 each | 3 at 2 junctions" && tables.crossHeads.at(-1) === "Corkers held at once when the head reaches it", JSON.stringify(tables));
   // The anticipated ride size (PLAN 128, 129, 139): a slider in the dials, named with its unit and read as riders; moving it
-  // redraws the corker load and the ride's corkers, the link carries it, and nothing is planned again (it never reaches the API).
+  // redraws the corker load and the ride's corkers and the link carries it. Plan asks for no route on its own: the size reaches
+  // the API (ride_size) with the next plan the rider asks for.
   const sizeAt = await p.eval(`(() => { const i = [...document.querySelectorAll('.dial input[type=range]')].find((x) => document.getElementById(x.getAttribute('aria-labelledby'))?.textContent === 'Anticipated ride size (riders)'); if (!i) return null; i.dataset.probe = 'ride-size'; return { min: i.min, max: i.max, step: i.step, value: i.value }; })()`);
   const sizeAx = await axNode(p, "input[data-probe=ride-size]");
   check("mass dials: the ride size slider is named with its unit and says riders, 100 to 2,000 in steps of 50, 500 by default",
@@ -2193,7 +2228,8 @@ async function saidInDialog(p, text) {
   const shutFirst = await infoClosed(p, "true");
   // The 311 checklist in Reports (Stephen, 2026-10-20: "a checklist of what needs to be logged to 311 and which website,
   // by location. Checking archives it."): a heading per website with its Open link, a checkbox per problem whose place
-  // describes it, Copy report; checking it moves it to Archived.
+  // describes it, Copy report; checking it moves it to Archived. The label says the day only (c2e72bfe; Stephen: "Maybe
+  // just put the date in and not exact time").
   await openSheet(p, "Reports");
   const list311 = await p.eval(`(() => { const s = document.querySelector('#sheet-suggest section[aria-labelledby="suggest-311-heading"]'); const g = s?.querySelector('.log311-group'); const a = g?.querySelector('a'); const box = g?.querySelector('input[type=checkbox]');
     return { heading: s?.querySelector('h3')?.textContent, group: g?.querySelector('h4')?.textContent, link: a ? { text: a.textContent, href: a.getAttribute('href'), target: a.target, rel: a.rel } : null,
@@ -2202,9 +2238,9 @@ async function saidInDialog(p, text) {
   await p.eval("document.querySelector('#sheet-suggest .log311-group input[type=checkbox]').click(); true");
   await sleep(300);
   const archived311 = await p.eval(`(() => { const s = document.querySelector('#sheet-suggest .log311'); return { groups: s.querySelectorAll('.log311-group').length, empty: [...s.querySelectorAll('p')].some((x) => x.textContent === 'Nothing to report yet.'), fold: s.querySelector('.log311-archived summary')?.textContent, reported: !!(${newest311})?.reported, focus: document.activeElement?.id, said: s.querySelector('[role=status]')?.textContent }; })()`);
-  check("suggest: Your 311 checklist groups the logged pothole under Washington, DC with Open DC 311 (new tab), a checkbox named by the problem and time and described by its place; checking it archives it, the focus kept in the list (on its heading when none is left) and Pothole archived said",
+  check("suggest: Your 311 checklist groups the logged pothole under Washington, DC with Open DC 311 (new tab), a checkbox named by the problem and day (no time of day) and described by its place; checking it archives it, the focus kept in the list (on its heading when none is left) and Pothole archived said",
     list311.heading === "Your 311 checklist" && list311.group === "Washington, DC" && list311.link?.href === "https://311.dc.gov/citizen/s/" && list311.link.target === "_blank" && /noopener/.test(list311.link.rel) && /\(new tab\)$/.test(list311.link.text) &&
-      /^Pothole, [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} [AP]M$/.test(list311.label ?? "") && /GPS 38\.\d{5}, -77\.\d{5}\./.test(list311.place ?? "") && list311.copy === "Copy report" && list311.small === 0 &&
+      /^Pothole, [A-Z][a-z]{2} \d{1,2}$/.test(list311.label ?? "") && /GPS 38\.\d{5}, -77\.\d{5}\./.test(list311.place ?? "") && list311.copy === "Copy report" && list311.small === 0 &&
       archived311.groups === 0 && archived311.empty && archived311.fold === "Archived (1)" && archived311.reported && archived311.focus === "suggest-311-heading" && archived311.said === "Pothole archived.",
     JSON.stringify({ list311, archived311 }));
   await p.eval("document.querySelector('#sheet-suggest .sheet-back').click(); true");
@@ -2762,7 +2798,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const back = await p.waitFor("location.pathname === '/' && !!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
   const after = await p.eval("({ path: location.pathname, ready: document.readyState, app: !!document.querySelector('#route-planner'), hash: location.hash, kept: (() => { try { return sessionStorage.getItem('routemaker.plan-before-sign-in'); } catch { return 'refused'; } })() })").catch((e) => ({ error: String(e).slice(0, 200) }));
   check("stress page: its Back to the map link reopens the rider's route, as it was, and the kept copy is used once",
-    /[#&]p=/.test(before) && onPage && back && after.hash === before && after.kept === null, JSON.stringify({ before, onPage, back, after }));
+    /[#&][pq]=/.test(before) && onPage && back && after.hash === before && after.kept === null, JSON.stringify({ before, onPage, back, after }));
   // The browser's own Back from the page (not its Back link) also leaves no kept copy, and a plan
   // cleared afterwards does not come back on reload (the correctness re-check's C8).
   // If the first round left the page elsewhere, start this one from the plan again rather than stop the run.
@@ -2775,7 +2811,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.eval("document.querySelector('.stress-page-link a')?.click(); true");
   const onPage2 = await p.waitFor("location.pathname === '/about/stress.html' && !!document.querySelector('a.back')", 20000);
   await p.eval("history.back(); true");
-  const back2 = await p.waitFor("location.pathname === '/' && /[#&]p=/.test(location.hash) && !!document.querySelector('.summary')", 40000);
+  const back2 = await p.waitFor("location.pathname === '/' && /[#&][pq]=/.test(location.hash) && !!document.querySelector('.summary')", 40000);
   await p.eval("history.replaceState(null, '', '/'); true");
   // Any boot error, for a reload that leaves the page blank (a module the browser could not fetch:
   // run.sh's /dev/shm was once too small for the dev server's modules all answered from the cache).
@@ -2786,7 +2822,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await sleep(2000);
   const cleared = await p.eval("({ app: !!document.querySelector('#route-planner'), map: !!document.querySelector('.maplibregl-map'), errors: (window.__bootErrors || []).slice(0, 5), sw: navigator.serviceWorker?.controller?.scriptURL ?? null, scripts: [...document.scripts].map((x) => x.src).filter(Boolean).slice(0, 3), hash: location.hash, kept: (() => { try { return sessionStorage.getItem('routemaker.plan-before-sign-in'); } catch { return 'refused'; } })(), summary: !!document.querySelector('.summary') })");
   check("stress page: after the browser's Back and a cleared plan, a reload does not bring the old plan back",
-    onPage2 && back2 && reloaded && !/[#&]p=/.test(cleared.hash) && cleared.kept === null && !cleared.summary, JSON.stringify({ onPage2, back2, reloaded, cleared }));
+    onPage2 && back2 && reloaded && !/[#&][pq]=/.test(cleared.hash) && cleared.kept === null && !cleared.summary, JSON.stringify({ onPage2, back2, reloaded, cleared }));
   await p.close();
 }
 {
@@ -2852,6 +2888,8 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.s("Page.navigate", { url: `${ORIGIN}/${hash}` });
   if (!(await p.waitFor("!!document.querySelector('.start-ride button')", 40000))) throw new Error("no Start ride button");
   await sleep(800);
+  // The plan as the address bar holds it once shown (the app writes its stops as q= since 0bae793c, not the p= opened).
+  const shownHash = await p.eval("location.hash");
   const regions = "(() => ({ polite: [...document.querySelectorAll('.ride [role=status]')].map((e) => e.textContent.trim()).join(' | '), urgent: [...document.querySelectorAll('.ride [role=alert]')].map((e) => e.textContent.trim()).join(' | ') }))()";
   // Every sentence the ride's regions take, in order (each change counts, as a screen reader hears it).
   await p.eval("(() => { window.__heard = []; const last = new WeakMap(); new MutationObserver(() => { for (const e of document.querySelectorAll('.ride [role=status], .ride [role=alert]')) { const t = e.textContent.trim(); if (t && last.get(e) !== e.textContent) { last.set(e, e.textContent); window.__heard.push((e.getAttribute('role') === 'alert' ? '!' : '') + t); } } }).observe(document.body, { subtree: true, childList: true, characterData: true }); return true; })()");
@@ -3081,7 +3119,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await sleep(1200);
   const tapped = await p.eval("({ hash: location.hash, pins: document.querySelectorAll('.point-marker, .maplibregl-marker:not(.rider-marker)').length, skip: document.querySelector('.skip-link')?.textContent, skipTo: document.querySelector('.skip-link')?.getAttribute('href') })");
   check("ride: a tap on the map changes no plan and sends no request; the skip link goes to Ride mode",
-    tapped.hash === hash && p.routeRequests === tapBefore && tapped.skip === "Skip to ride mode" && tapped.skipTo === "#ride-heading", JSON.stringify({ ...tapped, requests: p.routeRequests - tapBefore }));
+    hashStops(shownHash).length === 2 && tapped.hash === shownHash && p.routeRequests === tapBefore && tapped.skip === "Skip to ride mode" && tapped.skipTo === "#ride-heading", JSON.stringify({ ...tapped, requests: p.routeRequests - tapBefore }));
   await p.eval("document.querySelector('.skip-link').click(); true");
   const skipped = await p.eval("document.activeElement?.id");
   check("ride: the skip link takes the focus to Ride mode's heading", skipped === "ride-heading", String(skipped));
@@ -3097,7 +3135,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   check("ride: off route for over 8 s is said once, assertively, and re-plans once from the rider's position",
     p.routeRequests - before === 1 && first && Math.abs(first[0] - off[0]) < 0.0001 && Math.abs(first[1] - off[1]) < 0.0001 && after.heard.filter((t) => t === "!Off the planned route; finding a new way.").length === 1,
     JSON.stringify({ requests: p.routeRequests - before, first, heard: after.heard.slice(-4) }));
-  check("ride: a re-plan never writes the address bar", after.hash === hash, after.hash);
+  check("ride: a re-plan never writes the address bar", after.hash === shownHash, after.hash);
 
   // 320 px, and the text sizes.
   await p.s("Emulation.setDeviceMetricsOverride", { width: 320, height: 700, deviceScaleFactor: 2, mobile: true });
@@ -3106,9 +3144,11 @@ const levelSlider = `${EDITOR} input[type=range]`;
   check("ride: at 320 px nothing overflows and every ride button is at least 44 px tall", narrowFit.scroll <= narrowFit.w && narrowFit.over.length === 0, JSON.stringify(narrowFit));
   // The scales and credits at the bottom of the screen, left of the side buttons, just above the bottom panel
   // when it shows (the owner, 2026-10-17).
-  const corner = await p.eval("(() => { const c = document.querySelector('.maplibregl-ctrl-bottom-right').getBoundingClientRect(); const sheet = document.querySelector('.ride-controls'); const floor = sheet ? sheet.getBoundingClientRect().top : innerHeight; const rail = document.querySelector('.ride-rail').getBoundingClientRect(); return { bottom: c.bottom, left: c.left, right: c.right, floor, railLeft: rail.left }; })()");
+  const corner = await p.eval("(() => { const c = document.querySelector('.maplibregl-ctrl-bottom-right').getBoundingClientRect(); const sheet = document.querySelector('.ride-controls'); const floor = sheet ? sheet.getBoundingClientRect().top : innerHeight; const rail = document.querySelector('.ride-rail').getBoundingClientRect(); const hits = [...document.querySelectorAll('.ride-rail > *, .ride-rail .ride-word')].filter((b) => b.offsetHeight > 2).filter((b) => { const r = b.getBoundingClientRect(); return r.left < c.right && r.right > c.left && r.top < c.bottom && r.bottom > c.top; }).map((b) => b.textContent); return { bottom: c.bottom, left: c.left, right: c.right, floor, railLeft: rail.left, hits }; })()");
+  // Clear of each side button, not of the rail's whole box: the rail is as wide as its widest button (Share live), and
+  // the credits sit beside the narrower buttons at the bottom (v0.15.0, Share live back on the ride's rail, #725).
   check("ride: the map's scales and credits sit at the bottom left, clear of the side buttons",
-    Math.abs(corner.bottom - corner.floor) <= 2 && corner.left <= 1 && corner.right <= corner.railLeft, JSON.stringify(corner));
+    Math.abs(corner.bottom - corner.floor) <= 2 && corner.left <= 1 && corner.hits.length === 0, JSON.stringify(corner));
   await p.shot(`${SHOTS}/ride_corner_320.png`);
   await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
   await sleep(200);
@@ -3999,7 +4039,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   const third = await p.eval("document.activeElement?.getAttribute('aria-label') ?? ''");
   check("food: Tab goes Show on map, Add as stop, Website for each result", /^Add as stop: Crab place \d+$/.test(second) && /^Website: Crab place \d+ \(opens in a new tab\)$/.test(third), JSON.stringify([second, third]));
   // Add as stop: the plan gets one more point (the link carries it).
-  const pointsIn = () => p.eval("((location.hash.match(/p=([^&]*)/) ?? [])[1] ?? '').split(';').filter(Boolean).length");
+  const pointsIn = () => p.eval(`${HASH_STOPS}.length`);
   const before = await pointsIn();
   await p.eval("document.querySelectorAll('.food-list li button')[1].click(); true");
   await sleep(1500);
@@ -4137,7 +4177,10 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await sleep(1500);
   const off = await p.eval(`(() => ({ online: navigator.onLine, bar: document.querySelector('.app-status .app-offline')?.textContent,
     said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) }))()`);
-  check("offline: the installed app's shell opens with no network, from the worker", shell && workers.length === 1, JSON.stringify({ shell, workers: workers.length }));
+  // At least one, not exactly one: after the two navigations above (sw.js is fetched afresh on each),
+  // Chromium can briefly list a second target for the same registration (an installing or redundant
+  // version). Every one listed was taken offline by the loop above.
+  check("offline: the installed app's shell opens with no network, from the worker", shell && workers.length >= 1, JSON.stringify({ shell, workers: workers.length }));
   check("offline: the top of the planner says so, and it is said once, politely",
     off.online === false && /^You are offline\. RouteMaker still opens, and routes you kept for offline open from Save & load\.$/.test(off.bar ?? "") && off.said.filter((t) => t.startsWith("You are offline.")).length === 1, JSON.stringify(off));
 
@@ -4506,8 +4549,10 @@ const SHARE_STUB = `window.__shared = []; window.__shareMode = "ok"; window.__no
   await sleep(600);
   const sent = await p.eval("({ shared: window.__shared, noActivation: window.__noActivation })");
   const url = sent.shared[0]?.url ?? "";
+  // Shorter ride links (0bae793c): the stops as q=, the leader mark as 22 base64url characters, and the ride's key k=
+  // (16 bytes, 22 characters), which every ride link carries since 2f9d90ff.
   check("share ride: Enter hands the sheet the kept line's link, marked as a ride with the sharer as leader, within the press",
-    sent.noActivation === 0 && sent.shared.length === 1 && /\/s\/[0-9a-f]{32}#.*&route=[0-9a-f]{32}&ride=1&lead=[0-9a-f]{32}$/.test(url), JSON.stringify(sent));
+    sent.noActivation === 0 && sent.shared.length === 1 && /\/s\/[0-9a-f]{32}#q=[A-Za-z0-9_-]+&.*&route=[0-9a-f]{32}&ride=1&lead=[A-Za-z0-9_-]{22}&k=[A-Za-z0-9_-]{22}$/.test(url), JSON.stringify(sent));
   await p.close();
 }
 // MARK_SHARE marks the Save & load sheet's Share (open it first: openSheet(p, "Save & load")).
@@ -4519,11 +4564,26 @@ const MARK_SHARE = "(() => { const s = document.querySelector('#sheet-gpx .share
   const ax = await axNode(p, "#__share");
   const box = await p.eval("(() => { const s = document.getElementById('__share'); if (!s) return null; const r = s.getBoundingClientRect(); return { w: r.width, h: r.height, more: !!document.querySelector('.route-more-body .share-route') }; })()");
   check("share: a button named Share route in the Save & load sheet (no longer behind More), 44 px or more each way", ax?.role === "button" && ax?.name === "Share route" && box && !box.more && box.w >= 44 && box.h >= 44, JSON.stringify({ ax, box }));
-  await p.eval("document.getElementById('__share').focus(); true");
-  await p.tab();
-  await p.tab();
-  await p.tab();
-  check("share: after Share route come Share ride and its Info, then how long the link is kept", await p.eval("!!document.activeElement?.closest('#sheet-gpx .share-keep') && document.activeElement.tagName === 'SELECT'"), await p.eval("document.activeElement?.outerHTML.slice(0, 120)"));
+  // How long the link is kept is chosen only when signed in since e9bef8d6 ("Limit shared routes: owner-only keepings"):
+  // signed out (this page) the order is Share route, Share ride, Info, and no keeping choice; signed in it follows Info.
+  const tabOrder = async (page) => {
+    await page.eval("document.getElementById('__share').focus(); true");
+    const order = [];
+    for (let i = 0; i < 3; i += 1) {
+      await page.tab();
+      order.push(await page.eval("(() => { const e = document.activeElement; return e?.matches('#sheet-gpx .share-ride') ? 'ride' : e?.matches('#sheet-gpx .share-about-button') ? 'info' : e?.closest('#sheet-gpx .share-keep') && e.tagName === 'SELECT' ? 'keep' : (e?.outerHTML.slice(0, 80) ?? ''); })()"));
+    }
+    return { order, keep: await page.eval("!!document.querySelector('#sheet-gpx .share-keep')") };
+  };
+  const signedOut = await tabOrder(p);
+  const q = await open({ init: SHARE_STUB, suggester: true });
+  await openSheet(q, "Save & load");
+  await q.eval(MARK_SHARE);
+  const signedIn = await tabOrder(q);
+  await q.close();
+  check("share: after Share route come Share ride and its Info, then how long the link is kept (signed in; signed out there is no such choice)",
+    JSON.stringify(signedIn.order) === JSON.stringify(["ride", "info", "keep"]) && JSON.stringify(signedOut.order.slice(0, 2)) === JSON.stringify(["ride", "info"]) && signedOut.order[2] !== "keep" && !signedOut.keep,
+    JSON.stringify({ signedIn, signedOut }));
   await p.eval("document.getElementById('__share').focus(); true");
   await p.enter();
   await sleep(600);
@@ -4532,7 +4592,7 @@ const MARK_SHARE = "(() => { const s = document.querySelector('#sheet-gpx .share
   // Share keeps the exact line since v0.7.0 (lib/sharedRoutes.ts): the link is /s/<id> with this page's plan in its
   // fragment and &route=<id> after it, the id the one kept (the mock answers POST /api/shared-routes with 201).
   const sharedId = /^http:\/\/127\.0\.0\.1:\d+\/s\/([0-9a-f]{32})#/.exec(one.url ?? "")?.[1];
-  check("share: Enter hands the sheet this page's link (its plan, and the kept line's id), the title, and a plain US-first text, within the press", sent.noActivation === 0 && sent.shared.length === 1 && !!sharedId &&
+  check("share: Enter hands the sheet this page's link (its plan, and the kept line's id), the title, and a plain US-first text, within the press", sent.noActivation === 0 && sent.shared.length === 1 && !!sharedId && /^#q=[A-Za-z0-9_-]+&/.test(new URL(sent.href).hash) &&
     one.url === `${new URL(sent.href).origin}/s/${sharedId}${new URL(sent.href).hash}&route=${sharedId}` && p.sharedRequests?.[0]?.id === sharedId && one.title === "RouteMaker route" && /^\d[\d.,]* (mi|ft) \(\d[\d.,]* (km|m)\) bike route\. Ride type: Default\.$/.test(one.text ?? "") && !/weight|kg|lb/i.test(JSON.stringify(one)), JSON.stringify(sent));
   const status = "(() => ({ spoken: document.querySelector('.share-controls [role=status]')?.textContent.trim() ?? '', shown: document.querySelector('.share-controls .share-said')?.textContent.trim() ?? '', shared: window.__shared.length, noActivation: window.__noActivation }))()";
   const afterOk = await p.eval(status);
@@ -4646,8 +4706,11 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   check("go: the reading order follows the screen, top to bottom and left to right on a row", order.count >= 10 && order.bad.length === 0, JSON.stringify(order));
   // Plan from the switch: the full planner and its bottom bar, said politely, kept for the tab.
   await p.eval("window.__said = []; for (const live of document.querySelectorAll('[role=status], [aria-live=polite]')) new MutationObserver(() => { const t = live.textContent.trim(); if (t) window.__said.push(t); }).observe(live, { childList: true, subtree: true, characterData: true }); true");
-  await p.eval("[...document.querySelectorAll('nav.go-top .mode-button')].find((x) => x.textContent === 'Plan').click(); true");
+  await p.eval("(() => { const b = [...document.querySelectorAll('nav.go-top .mode-button')].find((x) => x.textContent === 'Plan'); b.focus(); b.click(); return true; })()");
   await sleep(600);
+  // The button the focus was on goes with Go's bar: Plan's switch takes it, on Plan (the 2026-10-29 a11y review).
+  const planFocus = await p.eval("({ pressed: document.activeElement?.getAttribute('aria-pressed'), name: document.activeElement?.textContent, inSwitch: !!document.activeElement?.closest('.mode-switch') })");
+  check("go: pressing Plan on Go's switch puts the focus on Plan's own switch, on Plan, not the page body", planFocus.inSwitch && planFocus.pressed === "true" && planFocus.name === "Plan", JSON.stringify(planFocus));
   const plan = await p.eval(`({ mode: ${modeNow}, bar: [...document.querySelectorAll('.bar-button')].map((x) => x.textContent.trim()), top: !!document.querySelector('nav.go-top'), tab: sessionStorage.getItem('routemaker.tab-mode'), said: window.__said.slice(), assertive: document.querySelectorAll('[aria-live=assertive]:not(:empty), [role=alert]:not(:empty)').length })`);
   check("go: pressing Plan shows the full planner with its bottom bar, the tab remembers it, and Go's Brief announcements leave the narration out",
     plan.mode === "Plan" && plan.bar.length === 5 && !plan.top && plan.tab === "plan" && !plan.said.some((t) => t.startsWith("Plan: the full planner")) && plan.assertive === 0, JSON.stringify(plan));
@@ -4660,6 +4723,13 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   await p.eval("([...document.querySelectorAll('.mode-switch .mode-button')].find((x) => x.textContent === 'Go' && x.getClientRects().length) ?? { click() { throw new Error('no Go: ' + JSON.stringify([...document.querySelectorAll('.mode-switch')].map((g) => [g.className, g.parentElement?.className, g.getClientRects().length, !!g.closest('[hidden]'), document.querySelector('.panel')?.className]))); } }).click(); true");
   await sleep(500);
   check("go: the choice is remembered across a reload, and Go comes back with the switch", kept === "Plan" && (await p.eval(modeNow)) === "Go", JSON.stringify({ kept }));
+  // And back: Plan's switch goes, Go's bar takes the focus on Go.
+  await p.eval("(() => { const b = [...document.querySelectorAll('.mode-switch .mode-button')].find((x) => x.textContent === 'Plan' && x.getClientRects().length); b.focus(); b.click(); return true; })()");
+  await sleep(500);
+  await p.eval("(() => { const b = [...document.querySelectorAll('.mode-switch .mode-button')].find((x) => x.textContent === 'Go' && x.getClientRects().length); b.focus(); b.click(); return true; })()");
+  await sleep(500);
+  const goFocus = await p.eval("({ pressed: document.activeElement?.getAttribute('aria-pressed'), name: document.activeElement?.textContent, inBar: !!document.activeElement?.closest('nav.go-top .mode-switch') })");
+  check("go: pressing Go on Plan's switch puts the focus on Go's bar, on Go", goFocus.inBar && goFocus.pressed === "true" && goFocus.name === "Go", JSON.stringify(goFocus));
   // Every control within two presses: Go's Settings holds Reports and Save & load above the tabs (P12: no Plan, the switch is beside it).
   await p.eval("document.querySelector('.go-menu').click(); true");
   await sleep(400);
@@ -4695,7 +4765,7 @@ async function goWith(permission, { width = 390, height = 844, mobile = true, ha
   const p = await goWith("granted");
   const got = await p.eval("({ line: document.querySelector('.go-start-line')?.textContent.trim(), said: window.__said.slice(), geo: window.__geo, hash: location.hash, change: document.querySelector('.go-change-start')?.getAttribute('aria-expanded'), assertive: document.querySelectorAll('[role=alert]:not(:empty)').length })");
   check("go start: Go opens with the rider's current location as the start, shown and said politely (\"Start: your current location\"), asked once, and the link holds no position yet",
-    got.line === "Start: your current location" && got.said.some((t) => t.includes("Start: your current location.")) && got.geo === 1 && !/p=/.test(got.hash) && got.change === "false" && got.assertive === 0, JSON.stringify(got));
+    got.line === "Start: your current location" && got.said.some((t) => t.includes("Start: your current location.")) && got.geo === 1 && !/[#&][pq]=/.test(got.hash) && got.change === "false" && got.assertive === 0, JSON.stringify(got));
   // Change start: a typed start replaces the location (its box is a labelled combobox).
   await p.eval("document.querySelector('.go-change-start').click(); true");
   await sleep(200);
@@ -4731,9 +4801,9 @@ async function goPick(p, box, text) {
   const waiting = await p.eval(`({ notice: document.querySelector('.go-notice')?.textContent ?? '', hash: location.hash, box: !document.querySelector('.go-start-search').hidden, line: document.querySelector('.go-start-line')?.textContent.trim(), said: window.__said.slice(${saidBefore}) })`);
   await goPick(p, ".go-start-search", "Dupont");
   const routed = await p.waitFor("!!document.querySelector('.go-summary .start-button')", 20000);
-  const after = await p.eval("({ dest: document.querySelector('.go-destination-name')?.textContent ?? '', points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length })");
+  const after = await p.eval(`({ dest: document.querySelector('.go-destination-name')?.textContent ?? '', points: ${HASH_STOPS}.length })`);
   check("go start: with the location denied, a destination picked is kept and said (\"To Union Station. Current location not available; type a start.\"), not made the start; a start typed then plans the route to it",
-    waiting.notice === "To Union Station. Current location not available; type a start." && waiting.said.some((t) => t.includes("To Union Station.")) && !/p=/.test(waiting.hash) && waiting.box && waiting.line === GO_OFF &&
+    waiting.notice === "To Union Station. Current location not available; type a start." && waiting.said.some((t) => t.includes("To Union Station.")) && !/[#&][pq]=/.test(waiting.hash) && waiting.box && waiting.line === GO_OFF &&
       routed && after.dest === "To Union Station" && after.points === 2, JSON.stringify({ waiting, after }));
   await p.close();
 }
@@ -4749,7 +4819,7 @@ async function goPressMap(p, card = null) {
   await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: at[0], y: at[1], button: "left", clickCount: 1 });
   const ROUTE_HERE = "document.querySelector('dialog.go-spot[open] .road-info-route-here')";
   if (!(await p.waitFor(`!!${ROUTE_HERE}`, 5000))) return null;
-  if (card) Object.assign(card, await p.eval(`({ points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length, text: ${ROUTE_HERE}.textContent.trim(), focused: document.activeElement === ${ROUTE_HERE}, height: ${ROUTE_HERE}.getBoundingClientRect().height })`));
+  if (card) Object.assign(card, await p.eval(`({ points: ${HASH_STOPS}.length, text: ${ROUTE_HERE}.textContent.trim(), focused: document.activeElement === ${ROUTE_HERE}, height: ${ROUTE_HERE}.getBoundingClientRect().height })`));
   await p.eval(`${ROUTE_HERE}.focus(); true`);
   await p.enter();
   return at;
@@ -4758,13 +4828,14 @@ async function goPressMap(p, card = null) {
   // The owner, 2026-10-12: "When on Go mode, make it so the location you press is the end." A press on the map is the
   // destination, routed from the location at once, and said ("Destination set: …"; Brief, Go's default, says no more).
   // Since 2026-10-28 (cc1fdf86) the tap opens the spot's card (GoSpotDialog) and its Route here does this: the tap alone routes nothing.
+  // The card's action says Ride here since 178b5223 ("one Ride here": the stop card and Go's spot card now name it as the lists do).
   const p = await goWith("granted");
   const card = {};
   const at = await goPressMap(p, card);
   const routed = await p.waitFor("!!document.querySelector('.go-summary .start-button')", 20000);
-  const after = await p.eval("({ points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean), said: window.__said.slice(-4), assertive: document.querySelectorAll('[role=alert]:not(:empty)').length })");
-  check("go press: a press on the map in Go opens the spot's card with Route here focused and at least 44 px tall; its Route here is the destination, routed from the current location at once (two points) and said politely (\"Destination set: …\")",
-    !!at && card.points === 0 && card.text === "Route here" && card.focused === true && card.height >= 44 && routed && after.points.length === 2 && after.points[0] === "-77.03650,38.90550" && after.said.some((t) => /Destination set: /.test(t)) && !after.said.some((t) => /Planning a route/.test(t)) && after.assertive === 0, JSON.stringify({ at, after }));
+  const after = await p.eval(`({ points: ${HASH_STOPS}, said: window.__said.slice(-4), assertive: document.querySelectorAll('[role=alert]:not(:empty)').length })`);
+  check("go press: a press on the map in Go opens the spot's card with Ride here focused and at least 44 px tall; its Ride here is the destination, routed from the current location at once (two points) and said politely (\"Destination set: …\")",
+    !!at && card.points === 0 && card.text === "Ride here" && card.focused === true && card.height >= 44 && routed && after.points.length === 2 && after.points[0] === "-77.03650,38.90550" && after.said.some((t) => /Destination set: /.test(t)) && !after.said.some((t) => /Planning a route/.test(t)) && after.assertive === 0, JSON.stringify({ at, after }));
   await p.close();
 }
 {
@@ -4782,7 +4853,7 @@ async function goPressMap(p, card = null) {
   await sleep(1200);
   const after = await p.eval(`({ notice: document.querySelector('.go-notice')?.textContent ?? '', hash: location.hash, box: !document.querySelector('.go-start-search').hidden, said: window.__said.slice(${saidBefore}).filter((t) => /^(Destination set|To |Current location)/.test(t)) })`);
   check("go press: with the location denied, a press on the map replaces the waiting destination and is not the start (shown \"To <spot>. Current location not available; type a start.\", said in one line \"Destination set: <spot>. Current location not available; type a start.\", no points yet)",
-    waiting.startsWith("To Union Station.") && !!at && /^To 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(after.notice) && !/p=/.test(after.hash) && after.box &&
+    waiting.startsWith("To Union Station.") && !!at && /^To 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(after.notice) && !/[#&][pq]=/.test(after.hash) && after.box &&
       new Set(after.said.filter((t) => t.startsWith("Destination set"))).size === 1 && /^Destination set: 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(after.said.at(-1)) && !after.said.some((t) => /^To 38\./.test(t)), JSON.stringify({ waiting, at, after }));
   await p.close();
 }
@@ -4803,7 +4874,7 @@ async function goPressMap(p, card = null) {
   const failed = await p.eval(`({ notice: document.querySelector('.go-notice')?.textContent ?? '', hash: location.hash, said: [...new Set(${goLines})] })`);
   check("go press: with no location and a slow look-up, the press is said within a second with what it waits for (\"Destination set: <spot>. Finding your location for the start…\"), then \"Destination set: <spot>. Current location not available; type a start.\" when it fails",
     none && !!at && /^To 38\.\d{4}, -77\.\d{4}: finding your location for the start/.test(slow.notice) && slow.said.length === 1 && /^Destination set: 38\.\d{4}, -77\.\d{4}\. Finding your location for the start…$/.test(slow.said[0]) &&
-      /^To 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(failed.notice) && failed.said.length === 2 && /^Destination set: 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(failed.said[1]) && !/p=/.test(failed.hash),
+      /^To 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(failed.notice) && failed.said.length === 2 && /^Destination set: 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(failed.said[1]) && !/[#&][pq]=/.test(failed.hash),
     JSON.stringify({ none, at, slow, failed }));
   await p.close();
 }
@@ -4831,7 +4902,7 @@ async function goPressMap(p, card = null) {
   const found = await goWith("granted", { init: SAY_LOG + GEO_TWO + FIRST_FAILS(3000) });
   const a = await pressDuringLocate(found);
   const routed = await found.waitFor("!!document.querySelector('.go-summary .start-button')", 20000);
-  const afterFound = await found.eval(`({ points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean), notice: document.querySelector('.go-notice')?.textContent ?? '', said: ${goSaid(a.from)} })`);
+  const afterFound = await found.eval(`({ points: ${HASH_STOPS}, notice: document.querySelector('.go-notice')?.textContent ?? '', said: ${goSaid(a.from)} })`);
   check("go press during Locate: a press while Go's Locate is looking waits on it (said once: \"Destination set: <spot>. Finding your location for the start…\"), and Locate's answer routes it from the location (two points)",
     a.none && !!a.at && a.waiting.said.length === 1 && FINDING.test(a.waiting.said[0]) &&
       routed && afterFound.points.length === 2 && afterFound.points[0] === "-77.03650,38.90550" && !/not available|blocked/.test(afterFound.notice) && afterFound.said.length === 1, JSON.stringify({ a, afterFound }));
@@ -4843,7 +4914,7 @@ async function goPressMap(p, card = null) {
   const afterLost = await lost.eval(`({ notice: document.querySelector('.go-notice')?.textContent ?? '', line: document.querySelector('.go-start-line')?.textContent.trim() ?? '', hash: location.hash, said: ${goSaid(d.from)} })`);
   check("go press during Locate: when Locate's look-up fails, the waiting press is told so in one line with Locate's reason (\"Destination set: <spot>. Your location is blocked for this site. Allow location in the browser's site settings, or type a start.\"), shown, with the start box asking",
     d.none && !!d.at && d.waiting.said.length === 1 && FINDING.test(d.waiting.said[0]) &&
-      /^To 38\.\d{4}, -77\.\d{4}\. Your location is blocked for this site\. Allow location in the browser's site settings, or type a start\.$/.test(afterLost.notice) && afterLost.line === GO_OFF && !/p=/.test(afterLost.hash) &&
+      /^To 38\.\d{4}, -77\.\d{4}\. Your location is blocked for this site\. Allow location in the browser's site settings, or type a start\.$/.test(afterLost.notice) && afterLost.line === GO_OFF && !/[#&][pq]=/.test(afterLost.hash) &&
       afterLost.said.length === 2 && /^Destination set: 38\.\d{4}, -77\.\d{4}\. Your location is blocked for this site\. Allow location in the browser's site settings, or type a start\.$/.test(afterLost.said[1]), JSON.stringify({ d, afterLost }));
   await lost.close();
   // Review of #128: a start typed while Locate looks routes the press from it, and Locate's later answer is its own
@@ -4854,10 +4925,10 @@ async function goPressMap(p, card = null) {
   await sleep(200);
   await goPick(typed, ".go-start-search", "Dupont");
   const routedTyped = await typed.waitFor("!!document.querySelector('.go-summary .start-button')", 20000);
-  const routeTyped = await typed.eval("(location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean)");
+  const routeTyped = await typed.eval(`${HASH_STOPS}`);
   await typed.waitFor("/blocked/.test(document.querySelector('.notice')?.textContent ?? '') || /blocked/.test([...document.querySelectorAll('.notice')].map((e) => e.textContent).join(' '))", 12000);
   await sleep(500);
-  const afterTyped = await typed.eval(`({ notices: [...document.querySelectorAll('.notice')].map((e) => e.textContent.trim()).filter(Boolean), said: ${goSaid(t.from)}, points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean) })`);
+  const afterTyped = await typed.eval(`({ notices: [...document.querySelectorAll('.notice')].map((e) => e.textContent.trim()).filter(Boolean), said: ${goSaid(t.from)}, points: ${HASH_STOPS} })`);
   check("go press during Locate: a start typed meanwhile routes the press from it, and Locate's answer is its own again (\"Your location is blocked for this site…\" shown and said; no \"To <spot>\" line)",
     t.none && !!t.at && routedTyped && routeTyped.length === 2 && routeTyped[0] === "-77.04340,38.90960" && afterTyped.points.length === 2 &&
       afterTyped.notices.includes("Your location is blocked for this site. Allow location in the browser's site settings, or search for a place.") && afterTyped.said.at(-1) === "Your location is blocked for this site. Allow location in the browser's site settings, or search for a place." &&
@@ -4883,7 +4954,7 @@ async function goPressMap(p, card = null) {
   await sleep(300);
   const answered = await p.eval(`({ notices: ${notices}, hash: location.hash })`);
   check("go: leaving Go drops a destination waiting for a start, and its notice (\"To <spot>: finding your location…\") with it, in Plan and back in Go; the look-up's later answer routes nothing",
-    !!at && /^To 38\.\d{4}, -77\.\d{4}: finding your location for the start/.test(waiting) && !/To 38\./.test(inPlan) && !/To 38\./.test(backInGo) && !/To 38\./.test(answered.notices) && !/p=/.test(answered.hash),
+    !!at && /^To 38\.\d{4}, -77\.\d{4}: finding your location for the start/.test(waiting) && !/To 38\./.test(inPlan) && !/To 38\./.test(backInGo) && !/To 38\./.test(answered.notices) && !/[#&][pq]=/.test(answered.hash),
     JSON.stringify({ at, waiting, inPlan, backInGo, answered }));
   await p.close();
 }
@@ -4897,7 +4968,7 @@ async function goPressMap(p, card = null) {
   await sleep(300);
   const waiting = await p.eval("document.querySelector('.go-notice')?.textContent ?? ''");
   const routed = await p.waitFor("!!document.querySelector('.go-summary .start-button')", 20000);
-  const after = await p.eval("({ dest: document.querySelector('.go-destination-name')?.textContent ?? '', points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length })");
+  const after = await p.eval(`({ dest: document.querySelector('.go-destination-name')?.textContent ?? '', points: ${HASH_STOPS}.length })`);
   check("go start: a destination picked while the location is still being found waits (\"To Union Station: finding your location…\") and is routed from the location when it comes",
     locating === "Start: finding your location…" && /^To Union Station: finding your location/.test(waiting) && routed && after.dest === "To Union Station" && after.points === 2, JSON.stringify({ locating, waiting, after }));
   await p.close();
@@ -4932,8 +5003,8 @@ async function goPressMap(p, card = null) {
   taps += 1;
   await sleep(800);
   const riding = await p.eval("({ ride: !!document.querySelector('section.ride') })");
-  check("go flow: from opening Go, a typed destination takes 3 taps to ride (Where to?, the place, then Start ride), with no question or sheet between, and the route options shown at once",
-    routed && riding.ride && taps === 3 && options.rides.includes("Own Bike + 🚆🚌Own bike plus train or bus"), JSON.stringify({ taps, options, riding }));
+  check("go flow: from opening Go, a typed destination takes 3 taps to ride (Where to?, the place, then Start ride), with no question or sheet between, and the ride types shown at once (the routes list starts closed)",
+    routed && riding.ride && taps === 3 && options.routes !== true && options.rides.includes("Own Bike + 🚆🚌Own bike plus train or bus"), JSON.stringify({ taps, options, riding }));
   await p.close();
 }
 
@@ -5056,7 +5127,7 @@ async function goPressMap(p, card = null) {
 {
   // Lettered places (the owner, 2026-10-11 21:04 UTC): the nearest listed are lettered in the list and on the
   // map; a marker's tap or the letter's key opens the place's card (Stephen 2026-10-19: "don't auto route"), whose
-  // Route here (no route yet) or Add as stop (with one) acts. On a tablet's width, where the Nearest sheet is in the
+  // Ride here (no route yet; Route here before 178b5223) or Add as stop (with one) acts. On a tablet's width, where the Nearest sheet is in the
   // side panel beside the map: on a phone it is a popup since 955ba2b8, the map and its markers inert behind it.
   const p = await goWith("granted", { width: 1024, height: 800 });
   if ((await p.eval(modeNow)) !== "Go") {
@@ -5070,33 +5141,37 @@ async function goPressMap(p, card = null) {
     return p.waitFor("document.querySelectorAll('.lettered-marker').length === 3", 20000);
   };
   const shown = await openMetro();
-  const lettered = await p.eval(`({ rows: [...document.querySelectorAll('.nearest-list li')].map((li) => ({ pin: li.querySelector('.place-letter')?.textContent, hidden: li.querySelector('.place-letter')?.getAttribute('aria-hidden'), heard: li.querySelector('.visually-hidden')?.textContent })),
-    markers: [...document.querySelectorAll('.lettered-marker')].map((m) => { const r = m.getBoundingClientRect(); return { tag: m.tagName, name: m.getAttribute('aria-label'), letter: m.textContent, w: Math.round(r.width), h: Math.round(r.height) }; }) })`);
-  const ax = await axNode(p, ".lettered-marker");
-  check("lettered places: the nearest listed are lettered A, B, C in the list (a pin seen, the letter heard first) and on the map, each a 44 px button named letter, place and distance, US units first",
-    shown && JSON.stringify(lettered.rows.map((r) => r.pin)) === '["A","B","C"]' && lettered.rows.every((r, i) => r.hidden === "true" && r.heard === `${"ABC"[i]}: `) &&
-      lettered.markers.every((m, i) => m.tag === "BUTTON" && m.letter === "ABC"[i] && m.name.startsWith(`${"ABC"[i]}: `) && / mi \([0-9.]+ km\)$/.test(m.name) && m.w >= 44 && m.h >= 44) &&
-      ax?.role === "button" && /^A: .+ Metro station, /.test(ax?.name ?? ""), JSON.stringify({ lettered, ax }));
-  await p.eval("document.querySelectorAll('.lettered-marker')[0].click(); true");
+  // Named, not lettered, on the map since #628 (Stephen 2026-10-29): a row has no pin, its letter is heard first; a
+  // marker shows the place's name in a bubble (hidden from the accessibility tree), its accessible name is the letter,
+  // the place and the distance. The markers are added last to first (the nearest on top), so they are read by letter.
+  const lettered = await p.eval(`({ rows: [...document.querySelectorAll('.nearest-list li')].map((li) => { const place = li.querySelector('.nearest-place'); return { pin: !!li.querySelector('.place-letter'), heard: place?.firstElementChild?.matches('.visually-hidden') ? place.firstElementChild.textContent : null, text: place?.textContent ?? '' }; }),
+    markers: [...document.querySelectorAll('.lettered-marker')].map((m) => { const r = m.getBoundingClientRect(); const bubble = m.querySelector('.named-bubble'); return { tag: m.tagName, name: m.getAttribute('aria-label'), seen: bubble?.textContent ?? '', hidden: bubble?.getAttribute('aria-hidden'), w: Math.round(r.width), h: Math.round(r.height) }; }).sort((a, b) => (a.name < b.name ? -1 : 1)) })`);
+  const ax = await axNode(p, '.lettered-marker[aria-label^="A: "]');
+  check("lettered places: the nearest listed are lettered A, B, C in the list (the letter heard first, before the place) and on the map, each a 44 px button showing the place's name and named letter, place and distance, US units first",
+    shown && lettered.rows.length === 3 && lettered.markers.length === 3 &&
+      lettered.markers.every((m, i) => m.tag === "BUTTON" && m.seen.length > 0 && m.hidden === "true" && m.name.startsWith(`${"ABC"[i]}: ${m.seen}, `) && / mi \([0-9.]+ km\)$/.test(m.name) && m.w >= 44 && m.h >= 44) &&
+      lettered.rows.every((r, i) => !r.pin && r.heard === `${"ABC"[i]}: ` && r.text.startsWith(`${"ABC"[i]}: ${lettered.markers[i].seen}`)) &&
+      ax?.role === "button" && /^A: .+ Metro station, [0-9.]+ mi \([0-9.]+ km\)$/.test(ax?.name ?? ""), JSON.stringify({ lettered, ax }));
+  await p.eval(`document.querySelector('.lettered-marker[aria-label^="A: "]').click(); true`);
   await sleep(600);
   const card = await p.eval(`({ title: document.querySelector('.place-popup .place-card strong')?.textContent ?? '', action: document.querySelector('.place-popup .place-card-actions button')?.textContent ?? '',
-    focused: !!document.activeElement?.closest('.place-popup'), routed: !!document.querySelector('.go-summary .start-button'), points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length })`);
-  check("lettered places: a tap on marker A opens its card (name, Route here, the focus in it) and does not route by itself", /Metro station$/.test(card.title) && card.action === "Route here" && card.focused && !card.routed && card.points === 0, JSON.stringify(card));
+    focused: !!document.activeElement?.closest('.place-popup'), routed: !!document.querySelector('.go-summary .start-button'), points: ${HASH_STOPS}.length })`);
+  check("lettered places: a tap on marker A opens its card (name, Ride here, the focus in it) and does not route by itself", /Metro station$/.test(card.title) && card.action === "Ride here" && card.focused && !card.routed && card.points === 0, JSON.stringify(card));
   await p.eval("document.querySelector('.place-popup .place-card-actions button').click(); true");
   const byTap = await p.waitFor("!!document.querySelector('.go-summary .start-button')", 20000);
   const tapped = await p.eval("({ sheet: document.getElementById('sheet-nearest').hidden, dest: document.querySelector('.go-destination-name')?.textContent ?? '', markers: document.querySelectorAll('.lettered-marker').length, card: !!document.querySelector('.place-popup') })");
-  check("lettered places: the card's Route here makes it Go's destination and shows the route (the sheet closes, the markers go, the card closes)", byTap && tapped.sheet && /Metro station$/.test(tapped.dest) && tapped.markers === 0 && !tapped.card, JSON.stringify(tapped));
+  check("lettered places: the card's Ride here makes it Go's destination and shows the route (the sheet closes, the markers go, the card closes)", byTap && tapped.sheet && /Metro station$/.test(tapped.dest) && tapped.markers === 0 && !tapped.card, JSON.stringify(tapped));
   await openMetro();
-  const second = await p.eval("document.querySelectorAll('.lettered-marker')[1].getAttribute('aria-label').replace(/^B: /, '').replace(/, [0-9.]+ mi.*$/, '')");
+  const second = await p.eval(`document.querySelector('.lettered-marker[aria-label^="B: "]').getAttribute('aria-label').replace(/^B: /, '').replace(/, [0-9.]+ mi.*$/, '')`);
   await p.eval("document.getElementById('sheet-nearest-title').focus(); true");
   const saidBefore = await p.eval("window.__said.length");
   await p.key("b", "KeyB", 66);
   await sleep(600);
-  const keyCard = await p.eval(`({ action: document.querySelector('.place-popup .place-card-actions button')?.textContent ?? '', focused: document.activeElement?.textContent ?? '', points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length })`);
+  const keyCard = await p.eval(`({ action: document.querySelector('.place-popup .place-card-actions button')?.textContent ?? '', focused: document.activeElement?.textContent ?? '', points: ${HASH_STOPS}.length })`);
   check("lettered places: the B key opens B's card with the focus on Add as stop (a route is shown), and adds nothing by itself", keyCard.action === "Add as stop" && keyCard.focused === "Add as stop" && keyCard.points === 2, JSON.stringify(keyCard));
   await p.key("Enter", "Enter", 13);
   await sleep(2500);
-  const keyed = await p.eval(`({ sheet: document.getElementById('sheet-nearest').hidden, dest: document.querySelector('.go-destination-name')?.textContent ?? '', points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length, said: window.__said.slice(${saidBefore}) })`);
+  const keyed = await p.eval(`({ sheet: document.getElementById('sheet-nearest').hidden, dest: document.querySelector('.go-destination-name')?.textContent ?? '', points: ${HASH_STOPS}.length, said: window.__said.slice(${saidBefore}) })`);
   // With a route in Go a chip's place is a stop on it since b51ec7f7 ("Keep adding stops by search, in Plan and in
   // Go"): the card's Add as stop adds B, said, and the destination stays A.
   check("lettered places: B's Add as stop puts it on the route shown as a stop, and says so", keyed.sheet && keyed.dest === tapped.dest && keyed.points === 3 && keyed.said.some((t) => t.includes(second)), JSON.stringify({ keyed, second }));
@@ -5122,7 +5197,7 @@ async function goPressMap(p, card = null) {
   await p.eval("[...document.querySelectorAll('.mode-switch .mode-button')].find((x) => x.textContent === 'Go' && x.getClientRects().length).click(); true");
   const listed = await p.waitFor("document.querySelectorAll('.go-bike-option').length === 3 && document.querySelectorAll('.lettered-marker').length === 3", 20000);
   const state = () => p.eval(`({ buttons: [...document.querySelectorAll('.go-bike-option')].map((x) => { const r = x.getBoundingClientRect(); return { pressed: x.getAttribute('aria-pressed'), pin: x.querySelector('.place-letter')?.textContent, h: Math.round(r.height) }; }),
-    markers: [...document.querySelectorAll('.lettered-marker')].map((m) => m.getAttribute('aria-label')), group: document.querySelector('.go-bike-options h3')?.textContent.trim() })`);
+    markers: [...document.querySelectorAll('.lettered-marker')].map((m) => m.getAttribute('aria-label')).sort(), group: document.querySelector('.go-bike-options h3')?.textContent.trim() })`);
   const first = await state();
   const ax = await axNode(p, ".go-bike-option");
   check("go bikeshare options: a Bikeshare route in Go lists its options as buttons lettered A, B, C (44 px), each named by its letter and the option's words, A pressed as the plan shown, and lettered on the map at each pick-up the same",
@@ -5136,7 +5211,8 @@ async function goPressMap(p, card = null) {
   const sentB = JSON.parse(p.routeBodies.at(-1) || "{}");
   check("go bikeshare options: the B key re-plans option B (its pick-up and drop-off stations sent), and the three options stay listed with B now pressed",
     replanned && p.routeRequests > before && sentB.pickup_station === "fx-b" && sentB.dropoff_station === "fx-x" && afterKey.buttons.length === 3 && afterKey.markers.length === 3, JSON.stringify({ afterKey, sentB }));
-  await p.eval("document.querySelectorAll('.lettered-marker')[2].click(); true");
+  // The markers are added last to first since #628 (the first on top), so marker C is found by its name.
+  await p.eval(`document.querySelector('.lettered-marker[aria-label^="C: "]').click(); true`);
   const byMarker = await p.waitFor(`document.querySelector('.go-bike-option[aria-pressed=true] .place-letter')?.textContent === 'C'`, 20000);
   const sentC = JSON.parse(p.routeBodies.at(-1) || "{}");
   await p.eval("document.querySelectorAll('.go-bike-option')[0].click(); true");
@@ -5462,7 +5538,7 @@ const failed = results.filter((r) => !r.ok);
 // Ride's More bubbles (#515, 2026-10-26) turn one check into three: two more.
 // Favorite places (2026-10-26) add two: the popout, and Edit's Remove.
 // Go's More > Load route (2026-10-26; it was Saved routes) adds one.
-const EXPECTED = 689;
+const EXPECTED = 691;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

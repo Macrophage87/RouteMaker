@@ -233,7 +233,11 @@ test("Go's Where to? is the destination from the rider's location, in one edit, 
 
 test("the Go/Plan switch: toggle buttons in a named group (Review too for an admin), in Go's bar and Plan's header; a press is remembered as My Go's Open in", () => {
   assert.match(go, /role="group" aria-label=\{MODE_SWITCH_NAME\} aria-describedby=\{hintId\}/);
-  assert.match(go, /className="mode-button" aria-pressed=\{mode === m\} onClick=\{\(\) => onChange\(m\)\}/);
+  assert.match(go, /className="mode-button"\s*aria-pressed=\{mode === m\}\s*onClick=\{\(\) => \{\s*if \(m !== mode\) switchFocus = \{ mode: m, at: Date\.now\(\) \};\s*onChange\(m\);\s*\}\}/);
+  // The pressed button goes with its mode's copy of the switch: the new mode's switch takes the focus, on its pressed
+  // button, only just after a press and only where it shows (the 2026-10-29 a11y review).
+  assert.match(go, /if \(!pending \|\| pending\.mode !== mode \|\| Date\.now\(\) - pending\.at > SWITCH_FOCUS_MS\) return;/);
+  assert.match(go, /if \(!pressed \|\| pressed\.getClientRects\(\)\.length === 0\) return;\s*switchFocus = null;\s*pressed\.focus\(\);\s*\}, \[mode\]\);/);
   assert.match(appFile, /\{!goMode && <ModeSwitch mode=\{mode\} onChange=\{changeMode\} className="panel-mode" modes=\{switchModes\(canReview\)\} \/>\}/);
   assert.match(appFile, /<GoTopBar\s+mode=\{mode\}\s+onMode=\{changeMode\}\s+modes=\{switchModes\(canReview\)\}/);
   // Go's switch offers an admin's Review too, the same views as Plan's (Stephen 2026-10-17).
@@ -402,7 +406,7 @@ test("go pick: route from the start Go has, wait while the location is found, el
   assert.match(goDestinationLocating("Union Station"), /^To Union Station: finding your location/);
 });
 
-test("go tap: a tap on the map in Go opens the spot's card, whose big Route here routes there as the tap did (the owner, 2026-10-28)", () => {
+test("go tap: a tap on the map in Go opens the spot's card, whose big Ride here routes there as the tap did (the owner, 2026-10-28)", () => {
   const tap = appFile.slice(appFile.indexOf("const tapMap = useCallback("), appFile.indexOf("const goRouteHere ="));
   // Go: the spot's card (its address and what's near; GoSpotDialog.tsx), after the area check; the Home pick's tap
   // and Plan's taps still go to place. A long press and the card's Road info open the road card.
@@ -410,14 +414,14 @@ test("go tap: a tap on the map in Go opens the spot's card, whose big Route here
   assert.match(tap, /if \(!insideCoverage\(point\)\) \{\s*setNotice\(OUTSIDE_NOTICE\);\s*return;\s*\}\s*setGoSpot\(\{ point \}\);\s*return;\s*\}\s*place\(point\);/);
   assert.match(appFile, /<GoSpotDialog[\s\S]*?onRouteHere=\{goRouteHere\}[\s\S]*?onRoadInfo=\{\(point\) => setRoadInfo\(\{ point, origin: "spot" \}\)\}/);
   const spotCard = src("../GoSpotDialog.tsx");
-  // Route here first, then the address that names the dialog; the focus on Route here.
+  // Ride here first, then the address that names the dialog; the focus on Ride here.
   assert.ok(spotCard.indexOf('className="road-info-route-here"') < spotCard.indexOf("<h2 id={titleId}"));
   assert.match(spotCard, /aria-labelledby=\{titleId\}/);
   assert.match(spotCard, /routeRef\.current\?\.focus\(\);/);
   assert.match(spotCard, /onRouteHere\(request\.point\);\s*close\(\);/);
   assert.doesNotMatch(tap, /goToRef/, "a tap alone never routes");
   assert.match(appFile, /onMapClick=\{onBike \|\| reviewing \? ignore : tapMap\}/);
-  // Route here is the old tap: goTo with the same name and as a pressed destination ("Destination set").
+  // Ride here is the old tap: goTo with the same name and as a pressed destination ("Destination set").
   assert.match(appFile, /const goRouteHere = \(point: LonLat\) => void goToRef\.current\(point, goPlaceName\(namer\.name\(point\)\?\.name, point\), true\);/);
   assert.match(appFile, /onRouteHere=\{mode === "go" \? goRouteHere : undefined\}/);
   // The card's Set as end is open with the location as Go's start, and routes the same way before the plan has a point.
@@ -425,7 +429,7 @@ test("go tap: a tap on the map in Go opens the spot's card, whose big Route here
   assert.match(appFile, /choice === "end" && mode === "go" && points\.length === 0 \? goRouteHere\(point\)/);
   // Map tools' Set destination at map center still places through place, at once.
   assert.match(appFile, /const addAtCentre = \(\) => \{[\s\S]*?place\(\[lng, lat\]\);/);
-  // The card: Route here right under its title, full width, before the other actions; it routes the spot and closes.
+  // The card: Ride here right under its title, full width, before the other actions; it routes the spot and closes.
   const card = src("../RoadInfoDialog.tsx");
   const header = card.indexOf("{infoHeading(state)}");
   const button = card.indexOf('className="road-info-route-here"');
@@ -512,9 +516,15 @@ test("go start: App asks once when Go opens, says the start politely, and says w
   assert.match(app, /if \(pointsRef\.current\.length > 0\) return;[\s\S]{0,300}?\} else \{\s*\/\/[^\n]*\n\s*flyToInView\(result\.fix\.point, 15\);\s*announce\(GO_START_SAID\);\s*\}/);
   // Not available: said as why (P11): blocked on the start line (said, not shown twice), off the map as that, else "not available".
   assert.match(app, /const none = goStartNone\(result\);\s*setGoStart\(none\);\s*if \(pointsRef\.current\.length === 0\) \{\s*if \(pending\?\.pressed\) setNoticeSaying\(goDestinationNeedsStart\(pending\.name\), goPressNeedsStartSaid\(pending\.name\)\);\s*else if \(pending\) setNotice\(goDestinationNeedsStart\(pending\.name\)\);[\s\S]{0,300}?else if \(none\.kind === "none" && none\.why === "denied"\) announce\(GO_LOCATION_OFF\);\s*else setNotice\(none\.kind === "none" && none\.why === "outside" \? LOCATION_OUTSIDE : GO_START_UNAVAILABLE\);/);
-  // Go offers the routes to choose from at once; Plan keeps its fold.
+  // The routes to choose from start closed in Go too (the half sheet fits one screen); the chip opens them.
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /const \[routesOpen, setRoutesOpen\] = useState\(mode === "go"\);/);
+  assert.match(panel, /const \[routesOpen, setRoutesOpen\] = useState\(false\);/);
+  // Go's trip time and stress bar come before the station options and the bikeshare and transit folds.
+  const goPart = panel.slice(panel.indexOf("if (goMode) {"));
+  const at = (needle: string) => goPart.indexOf(needle);
+  assert.ok(at('<div className="go-head">') < at("<StressFigure"));
+  for (const later of ["<GoBikeOptions", "{!go.peek && bikeshareFold}", "{!go.peek && transitFold}"]) assert.ok(at("<StressFigure") < at(later), later);
+  assert.match(panel, /<Fold title=\{t\("Bikeshare plan"\)\} open=\{!goMode\}/);
 });
 
 // ---- Announcements, Brief or Full (the owner, 2026-10-11 20:23 UTC) ----
@@ -539,7 +549,7 @@ test("announcements: unset, Go is brief and Plan is full; a choice holds in both
 
 test("announcements: the essentials are always said; only the narration is extra", () => {
   const app = appSource();
-  for (const extra of ["announceExtra(FINDING_LOCATION);", "announceExtra(modeSaid(next));", "announceExtra(`${presetSaid(id)}.`);", 'announceExtra("The map is at your location.");'])
+  for (const extra of ["announceExtra(FINDING_LOCATION);", "announceExtra(modeSaid(next));", "announceExtra(`${presetSaid(id)}.`);", 'announceExtra(t("The map is at your location."));'])
     assert.ok(app.includes(extra), extra);
   // The start Go found, and when it could not, are essentials.
   assert.match(app, /announce\(GO_START_SAID\)/);

@@ -22,7 +22,7 @@
  * reach it; written with createElement so a test renders it.
  */
 import { createElement as h, useSyncExternalStore, type ReactElement } from "react";
-import { formatClimb } from "./format.ts";
+import { METRES_PER_FOOT, formatClimb } from "./format.ts";
 import { t } from "./i18n.ts";
 
 export const TOPO_LINES_LABEL = t("Topo lines");
@@ -82,9 +82,8 @@ export const TOPO_WIDTHS = {
   index: [10, 0.8, 13, 1.1, 15, 1.5, 18, 2.4] as const,
 };
 
-const FOOT_M = 0.3048;
 /** Short, read on every focus; the spacings through lib/format.ts, feet first. */
-export const TOPO_LINES_HINT = t("Contours every {coarse}, {middle} at zoom 13, {fine} from 14.", { coarse: formatClimb(100 * FOOT_M), middle: formatClimb(40 * FOOT_M), fine: formatClimb(20 * FOOT_M) });
+export const TOPO_LINES_HINT = t("Contours every {coarse}, {middle} at zoom 13, {fine} from 14.", { coarse: formatClimb(100 * METRES_PER_FOOT), middle: formatClimb(40 * METRES_PER_FOOT), fine: formatClimb(20 * METRES_PER_FOOT) });
 export const TOPO_LINES_UNAVAILABLE_HINT = t("Not available on this server yet.");
 
 type Expr = unknown[];
@@ -165,12 +164,12 @@ export function topoLayers(visible = true): Record<string, unknown>[] {
  */
 export function topoLabelExpression(): Expr {
   const grouped = (value: Expr) => ["number-format", value, { locale: "en-US", "max-fraction-digits": 0 }];
-  return ["concat", grouped(ele), " ft (", grouped(["round", ["*", ele, 0.3048]]), " m)"];
+  return ["concat", grouped(ele), " ft (", grouped(["round", ["*", ele, METRES_PER_FOOT]]), " m)"];
 }
 
 /** The same label, worked out here, for the tests and any text alternative. */
 export function topoLabel(feet: number): string {
-  return formatClimb(feet * FOOT_M);
+  return formatClimb(feet * METRES_PER_FOOT);
 }
 
 /** The archive's source: credited for its look (USGS 3DEP is already in the map's credits). */
