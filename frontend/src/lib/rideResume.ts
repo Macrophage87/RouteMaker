@@ -11,6 +11,8 @@ import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 import type { ViaMarks } from "./pointKinds.ts";
 import { t } from "./i18n.ts";
+import { secretFrom } from "./rideSeal.ts";
+import { leadKeyFrom, rideLinkFrom, sharedIdFrom } from "./sharedRoutes.ts";
 
 export const RIDE_RESUME_KEY = "routemaker.ride-left";
 /** A ride left longer than this is not offered: a day's ride, not yesterday's. */
@@ -42,6 +44,11 @@ export interface LeftRide {
   passOn?: string | null;
   /** Following someone else's broadcast, its link passed on or not (one without its key is not): never the rider's own. */
   follows?: boolean;
+  /**
+   * Leading a broadcast of the rider's own: its link, so a resumed ride is that broadcast again and its riders still
+   * see the leader (Stephen 2026-10-30). Kept on this device only, never sent. Left out by a re-route, which keeps it.
+   */
+  leads?: string | null;
 }
 
 interface Kept {
@@ -59,6 +66,7 @@ interface Kept {
   destination?: string;
   passOn?: string;
   follows?: boolean;
+  leads?: string;
 }
 
 interface Store {
@@ -82,6 +90,8 @@ export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "is
   const was = ride.passOn === undefined ? keptFollow(store) : null;
   const passOn = was ? was.passOn : (ride.passOn ?? null);
   const follows = was ? was.follows : ride.follows === true;
+  // Kept through a re-route (which says nothing of either link), never into a new ride, which names its own.
+  const leads = ride.leads !== undefined ? ride.leads : ride.passOn === undefined ? keptLeads(store) : null;
   const kept: Kept = {
     v: 1,
     at: now,
@@ -100,6 +110,7 @@ export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "is
     ...(destination ? { destination } : {}),
     ...(passOn ? { passOn } : {}),
     ...(follows ? { follows } : {}),
+    ...(leads ? { leads } : {}),
   };
   try {
     store?.setItem(RIDE_RESUME_KEY, JSON.stringify(kept));
@@ -129,6 +140,51 @@ function keptFollow(store: Store | null): { passOn: string | null; follows: bool
   } catch {
     return { passOn: null, follows: false };
   }
+}
+
+/** The broadcast link the ride already stored leads, if any. */
+function keptLeads(store: Store | null): string | null {
+  try {
+    const raw = store?.getItem(RIDE_RESUME_KEY);
+    const was = raw ? (JSON.parse(raw) as Partial<Kept>) : null;
+    return typeof was?.leads === "string" ? was.leads : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A broadcast started during the ride (Share live): its link kept with the ride left going, so Resume leads it again. */
+export function keepLeftRideLeads(link: string, store: Store | null = local()): void {
+  try {
+    const raw = store?.getItem(RIDE_RESUME_KEY);
+    if (!raw) return;
+    const was = JSON.parse(raw) as Kept;
+    store?.setItem(RIDE_RESUME_KEY, JSON.stringify({ ...was, leads: link }));
+  } catch {
+    // Full or blocked storage: the ride goes on, only resumed without its broadcast.
+  }
+}
+
+/**
+ * The broadcast a resumed ride is on again (Stephen 2026-10-30: she said Yes but her dot and alerts never reached the
+ * leader; a page reloaded mid-ride, as a phone does to a page left in the background, resumed the route and dropped
+ * the ride): the link it followed, or the one it leads, read as the page reads a link it opens. Null for a ride on
+ * no broadcast, or a link without its leader or key (nothing can be read or sent for it).
+ */
+export function resumedBroadcast(left: Pick<LeftRide, "passOn" | "follows" | "leads">): { id: string; lead: string; secret: string; own: boolean } | null {
+  const own = !left.follows && !!left.leads;
+  const link = own ? left.leads : left.follows ? left.passOn : null;
+  if (!link) return null;
+  let url: URL;
+  try {
+    url = new URL(link);
+  } catch {
+    return null;
+  }
+  const id = sharedIdFrom(url.hash, url.search, url.pathname);
+  const lead = rideLinkFrom(url.hash, url.search) ? leadKeyFrom(url.hash, url.search) : null;
+  const secret = secretFrom(url.hash);
+  return id && lead && secret ? { id, lead, secret, own } : null;
 }
 
 /** Taken away at End ride, at Not now, and when a ride starts that is not kept. */
@@ -174,5 +230,6 @@ export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named">, now: 
     ...(typeof kept.destination === "string" ? { destination: kept.destination } : {}),
     ...(typeof kept.passOn === "string" ? { passOn: kept.passOn } : {}),
     ...(kept.follows === true ? { follows: true } : {}),
+    ...(typeof kept.leads === "string" ? { leads: kept.leads } : {}),
   };
 }

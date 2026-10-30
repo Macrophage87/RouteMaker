@@ -300,7 +300,7 @@ import { BroadcastJoinDialog, type JoinAsk } from "./BroadcastJoinDialog.tsx";
 import { joinActions, joinKey, joinLine, joinShown, joinTitle, keepJoinShown, showJoin, type JoinAction } from "./lib/broadcastJoin.ts";
 import { canSendToGarmin, handGpx } from "./lib/sendToGarmin.ts";
 import { ResumeRideDialog } from "./ResumeRideDialog.tsx";
-import { forgetLeftRide, keepLeftRide, leftRide } from "./lib/rideResume.ts";
+import { forgetLeftRide, keepLeftRide, keepLeftRideLeads, leftRide, resumedBroadcast } from "./lib/rideResume.ts";
 import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
 import { LOAD_ROUTE, withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
@@ -319,7 +319,7 @@ import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOpera
 import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, followsWithoutKey, forgetAnsweredHere, isRideLink, isRideLinkType, presetSecret, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, type RideLinkType } from "./lib/rideGroup.ts";
+import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, forgetAnsweredHere, isRideLink, isRideLinkType, presetSecret, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -3537,6 +3537,8 @@ export function App() {
           led = true;
         } else unled = true;
         if (led) rideLinkSent.current = { route: rideRoute, keep: shareKeep, link, lead, id: sharedId };
+        // Broadcast from the ride screen: kept with the ride left going, so a reload mid-ride resumes it led.
+        if (led && riding && rideStart?.kept) keepLeftRideLeads(link);
         const open = { answer: rideRoute, ride: true, own: true, id: sharedId ?? undefined, lead: lead && sharedId ? lead.key : null, secret: lead && sharedId ? lead.secret : null };
         sharedOpenNow.current = open;
         setSharedOpen(open);
@@ -3576,13 +3578,15 @@ export function App() {
     // Following someone's broadcast: its link, for Share live to pass on, a resumed ride too.
     const follows = !!opened && !opened.own && !!opened.lead;
     const passOn = follows && !followedNoKey() ? followedLink() : null;
+    // Leading a broadcast already (Broadcast beside Start): its link, so a resumed ride leads it again.
+    const leads = opened?.own && opened.lead && rideLinkSent.current?.route === route ? rideLinkSent.current.link : null;
     const note = rideNote.current;
     rideNote.current = "";
     setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, kept, passOn, follows, note, n: (before?.n ?? 0) + 1 }));
     if (kept) {
       // The destination's name kept too, so a Resume after a reload can name the ride (the UI review, 2026-10-28).
       const destination = leg.loop ? null : (namer.name(leg.points[leg.points.length - 1])?.name ?? null);
-      keepLeftRide({ route, points: leg.points, loop: leg.loop, preset: leg.preset, dials: rideDialsNow, fixed, destination, passOn, follows }, VIA_MARKS, Date.now());
+      keepLeftRide({ route, points: leg.points, loop: leg.loop, preset: leg.preset, dials: rideDialsNow, fixed, destination, passOn, follows, leads }, VIA_MARKS, Date.now());
     }
     else forgetLeftRide();
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
@@ -4341,6 +4345,25 @@ export function App() {
     setResumeStats(null);
     setRideStart((before) => ({ ...left, trip: null, kept: true, n: (before?.n ?? 0) + 1 }));
     keepLeftRide(left, VIA_MARKS, Date.now());
+    // On a broadcast, followed or led: the ride is on it again, its dots, alerts and leader with it (Stephen
+    // 2026-10-30: a reload mid-ride had resumed the route alone, so her Yes reached nobody).
+    const on = resumedBroadcast(left);
+    if (on) {
+      const open = { answer: left.route, ride: true, own: on.own, id: on.id, lead: on.lead, secret: on.secret };
+      sharedOpenNow.current = open;
+      setSharedOpen(open);
+      // The leader's Share live sends the same link again, under the token its key names (kept with the ride's answer).
+      if (on.own && left.leads) {
+        const link = left.leads;
+        void rideOf(on.secret).then((ride) => {
+          const token = ride ? consentFor(ride.id)?.token : undefined;
+          if (!token || sharedOpenNow.current !== open) return;
+          const lead = { token, key: on.lead, secret: on.secret };
+          leads.current.set(on.id, lead);
+          rideLinkSent.current = { route: left.route, keep: shareKeep, link, lead, id: on.id };
+        });
+      }
+    }
     setFollow(true);
     setRideView(null);
     setRiding(true);
