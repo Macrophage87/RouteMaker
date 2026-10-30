@@ -847,13 +847,13 @@ function ConsentDialog({
   const pressedBackdrop = useRef(false);
   // Joining: the focus starts on the route's first button, as the join sheet's does, not on Close (which answers No).
   const firstRef = useRef<HTMLButtonElement>(null);
+  const joined = join !== null;
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (open && !dialog.open) {
       opener.current = document.activeElement;
       dialog.showModal?.();
-      firstRef.current?.focus();
     } else if (!open && dialog.open) {
       dialog.close();
     }
@@ -862,6 +862,10 @@ function ConsentDialog({
       opener.current = null;
     }
   }, [open]);
+  useEffect(() => {
+    // Also when the route comes into a question already open (declared after the effect that opens it, so it runs after).
+    if (open && joined) firstRef.current?.focus();
+  }, [open, joined]);
   return (
     <dialog
       ref={dialogRef}
