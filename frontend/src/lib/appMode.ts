@@ -211,6 +211,25 @@ export function goStartStale(start: GoStart, now: number = Date.now()): boolean 
   return !(age >= 0 && age <= GO_START_MAX_AGE_MS);
 }
 
+/**
+ * A fix less sure than this is rough (the owner, 2026-10-30: Go's dot sat miles from where he was). A phone's first
+ * answer can come from cell towers or Wi-Fi before the GPS has a lock, a mile or more out. Go still shows it, with its
+ * accuracy circle, but looks again after GO_ROUGH_AGAIN_MS, without the browser's cached fix, until the fix is sure.
+ */
+export const GO_ROUGH_M = 1_000;
+export const GO_ROUGH_AGAIN_MS = 20_000;
+
+/** Whether a fix's accuracy (the browser's radius, metres; 0 when it gave none) makes it rough. */
+export function goRough(accuracyM: number): boolean {
+  return accuracyM > GO_ROUGH_M;
+}
+
+/** Whether Go's start is due another look-up: found too long ago (goStartStale), or rough and GO_ROUGH_AGAIN_MS old. */
+export function goStartDue(start: GoStart, accuracyM: number, now: number = Date.now()): boolean {
+  if (goStartStale(start, now)) return true;
+  return start.kind === "here" && goRough(accuracyM) && now - start.at >= GO_ROUGH_AGAIN_MS;
+}
+
 /** Said politely when the location becomes the start, and shown on Go's start line. */
 export const GO_START_SAID = t("Start: your current location.");
 /** Said politely (and shown) when the location could not be had: denied, unavailable or timed out. */

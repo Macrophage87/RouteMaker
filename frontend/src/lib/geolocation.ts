@@ -21,6 +21,8 @@ import { language, t } from "./i18n.ts";
 
 /** A high-accuracy look-up, given 10 seconds, that may reuse a fix up to 30 seconds old. */
 export const LOCATE_OPTIONS = { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 } as const;
+/** Go's look-up again after a rough fix (appMode.ts goStartDue): the same, but never the browser's cached fix, which may be that rough one. */
+export const FRESH_OPTIONS = { ...LOCATE_OPTIONS, maximumAge: 0 } as const;
 /** After a timeout, one more try without high accuracy (a phone's GPS is often cold at first); the same press. */
 export const RETRY_OPTIONS = { enableHighAccuracy: false, timeout: 10_000, maximumAge: 30_000 } as const;
 /**
@@ -175,7 +177,7 @@ export function cleanAccuracy(accuracy: number): number {
  */
 function attempt(
   api: GeoApi,
-  options: typeof LOCATE_OPTIONS | typeof RETRY_OPTIONS,
+  options: typeof LOCATE_OPTIONS | typeof RETRY_OPTIONS | typeof FRESH_OPTIONS,
   watchdogMs: number,
   prompt?: { status: Promise<PermissionLike | undefined>; ms: number },
 ): Promise<{ result: LocateResult; watchdog: boolean }> {
@@ -243,18 +245,20 @@ function permissionOf(env: GeoEnv): Promise<PermissionLike | undefined> | undefi
  * tried once more without high accuracy; a look-up the browser never answers
  * (a dismissed prompt) ends as a timeout when the watchdog fires, with no retry,
  * and any later answer is ignored. While the permission prompt is open the first
- * watchdog allows `promptMs`, then restarts when the prompt is answered.
+ * watchdog allows `promptMs`, then restarts when the prompt is answered. With `fresh`, the first try takes no
+ * cached fix (FRESH_OPTIONS).
  */
 export async function locate(
   env: GeoEnv,
   watchdog: { first: number; retry: number } = { first: LOCATE_WATCHDOG_MS, retry: RETRY_WATCHDOG_MS },
   promptMs: number = PROMPT_WATCHDOG_MS,
+  fresh = false,
 ): Promise<LocateResult> {
   if (!env.isSecureContext) return { ok: false, reason: "insecure" };
   const api = env.geolocation;
   if (!api) return { ok: false, reason: "unsupported" };
   const status = permissionOf(env);
-  const first = await attempt(api, LOCATE_OPTIONS, watchdog.first, status && { status, ms: promptMs });
+  const first = await attempt(api, fresh ? FRESH_OPTIONS : LOCATE_OPTIONS, watchdog.first, status && { status, ms: promptMs });
   if (first.result.ok || first.result.reason !== "timeout" || first.watchdog) return first.result;
   return (await attempt(api, RETRY_OPTIONS, watchdog.retry)).result;
 }

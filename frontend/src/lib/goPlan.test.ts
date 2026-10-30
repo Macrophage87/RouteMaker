@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, GO_WARM_AFTER_MS, goWarmDue, goPickStart, goHereStart, goStartStale, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, GO_WARM_AFTER_MS, goWarmDue, goPickStart, goHereStart, goStartStale, goRough, goStartDue, GO_ROUGH_M, GO_ROUGH_AGAIN_MS, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -577,10 +577,29 @@ test("go start: a location found long ago is looked up again before a destinatio
   assert.equal(goStartStale({ kind: "none" }), false);
 });
 
-test("go start: Go looks a stale start up again when the page comes back into view", () => {
+test("go start: a rough fix is due another look-up after 20 s, a sure one only once stale (the owner, 2026-10-30)", () => {
+  const found = 1_000_000;
+  const here = goHereStart([-77.06, 38.905], found);
+  // A phone's first answer from cell towers: miles out, and it says so in its accuracy.
+  assert.equal(goRough(5_000), true);
+  assert.equal(goRough(GO_ROUGH_M), false, "up to the limit is sure enough");
+  assert.equal(goRough(0), false, "no accuracy given: not counted as rough");
+  assert.equal(goStartDue(here, 5_000, found + GO_ROUGH_AGAIN_MS - 1), false, "not again at once");
+  assert.equal(goStartDue(here, 5_000, found + GO_ROUGH_AGAIN_MS), true);
+  assert.equal(goStartDue(here, 15, found + GO_ROUGH_AGAIN_MS), false, "a sure fix waits until stale");
+  assert.equal(goStartDue(here, 15, found + GO_START_MAX_AGE_MS + 1), true);
+  assert.equal(goStartDue({ kind: "none" }, 5_000, found + GO_START_MAX_AGE_MS + 1), false);
+});
+
+test("go start: Go looks a stale or rough start up again when the page comes back into view and while it stays there", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /document\.addEventListener\("visibilitychange", onVisible\)/);
-  assert.match(app, /if \(!goStartStale\(goStartRef\.current\)\) return;/);
+  assert.match(app, /const tick = window\.setInterval\(onVisible, GO_ROUGH_AGAIN_MS\);/);
+  assert.match(app, /window\.clearInterval\(tick\);/);
+  assert.match(app, /if \(!goStartDue\(was, hereRef\.current\?\.accuracyM \?\? 0\)\) return;/);
+  assert.match(app, /const result = await locateForGo\(true, rough\);/);
+  // A stale start that cannot be found again is no longer drawn as the current location.
+  assert.match(app, /if \(goStartStale\(goStartRef\.current\)\) setGoStart\(goStartNone\(result\)\);/);
   assert.doesNotMatch(app, /setGoStart\(\{ kind: "here"/, "every found start is stamped (goHereStart)");
 });
 

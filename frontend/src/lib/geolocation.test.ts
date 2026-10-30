@@ -78,6 +78,22 @@ test("one look-up with the spec's options; success gives lon/lat and the accurac
   assert.ok(LOCATE_WATCHDOG_MS > LOCATE_OPTIONS.timeout, "the app's limit is past the browser's");
 });
 
+test("Go's look-up after a rough fix takes no cached fix; an ordinary one may reuse one up to 30 s old", async () => {
+  const seen: unknown[] = [];
+  const api: GeoApi = {
+    getCurrentPosition: (success, _f, options) => {
+      seen.push(options);
+      success({ coords: { latitude: 38.9, longitude: -77.06, accuracy: 12 } });
+    },
+  };
+  await locate(env(api), undefined, undefined, true);
+  await locate(env(api));
+  assert.deepEqual(seen, [
+    { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 },
+    { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 },
+  ]);
+});
+
 test("each error is its own result", async () => {
   assert.deepEqual(await locate(env(fails(1))), { ok: false, reason: "denied" });
   assert.deepEqual(await locate(env(fails(2))), { ok: false, reason: "unavailable" });
@@ -664,7 +680,8 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
   assert.match(fresh, /if \(!result\.ok \|\| !insideCoverage\(result\.fix\.point\)\) return null;/);
   assert.doesNotMatch(fresh, LEAKS);
   const go = body(app, "const locateForGo", "const goTo");
-  assert.match(go, /const press = gate\.begin\(\);[\s\S]*await locate\(geoEnv\);\s*if \(!gate\.finish\(press\)\) return null;/);
+  // Go's timed look-up after a rough fix takes no cached fix (fresh); the gate and the rest are the same.
+  assert.match(go, /const press = gate\.begin\(\);[\s\S]*await locate\(geoEnv, undefined, undefined, fresh\);\s*if \(!gate\.finish\(press\)\) return null;/);
   assert.doesNotMatch(body(app, "const locateForGo", "const goToPlace"), LEAKS);
   const nearest = body(app, "const findNearest", "const rideToNearest");
   assert.match(nearest, /const press = gate\.begin\(\);[\s\S]*await locate\(geoEnv\);\s*gate\.finish\(press\);/);
@@ -690,7 +707,12 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /start=\{fromHere\.includes\(points\[0\]\) \? YOUR_LOCATION : goPlaceName\(namer\.name\(points\[0\]\)\?\.name, points\[0\]\)\}/,
     // The note, handed to Plan's From and To boxes (Plan streamline, 2026-10-17).
     /locateNote=\{hereInPlan && here \? approximateHint\(here\.accuracyM\) : ""\}/,
-    /const hereCircle = hereInPlan && here \? \{ centre: here\.point, radiusM: here\.accuracyM \} : null;/,
+    // The circle: also Go's dot's, before a destination (the owner, 2026-10-30), from the same fix.
+    /const goDotCircle = !hereInPlan && here && mode === "go" && points\.length === 0 && goStart\.kind === "here" && goStart\.point === here\.point;/,
+    /const hereCircle = \(hereInPlan \|\| goDotCircle\) && here \? \{ centre: here\.point, radiusM: here\.accuracyM \} : null;/,
+    // Go's timed look-up reads only the fix's accuracy, to know whether it is rough (goStartDue).
+    /const hereRef = useRef\(here\);/,
+    /hereRef\.current = here;/,
     // Search's bias: the point, rounded to about 1 km in searchBiasPoint, never the accuracy or the flag.
     /return searchBiasPoint\(here\?\.point, centre \? \[centre\.lng, centre\.lat\] : undefined, view\);/,
     // Go's Repair and Sights (v0.7.0): the nearest worked out on the device from the location Go has; the point goes nowhere.
