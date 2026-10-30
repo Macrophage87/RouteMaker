@@ -637,8 +637,11 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /askHeld=\{joinHeld && joinAsk === null\}/);
   assert.match(app, /join=\{riding && joinAsk \? \{ ask: joinAsk, onAction: joinAction, onClose: closeJoin \} : null\}/);
-  assert.match(app, /setJoinHeld\(true\);\s*void Promise\.all/);
-  assert.match(app, /\.catch\(\(\) => setJoinHeld\(false\)\)/);
+  assert.match(app, /setJoinHeld\(true\);\s*const ride = ridesEnded\.current;\s*void Promise\.all/);
+  assert.match(app, /\.catch\(\(\) => ride === ridesEnded\.current && setJoinHeld\(false\)\)/);
+  // An offer whose connections come back after its ride ended is dropped, so no later ride shows it.
+  assert.match(app, /const ride = ridesEnded\.current;\s*void Promise\.all[\s\S]*?if \(ride !== ridesEnded\.current\) return;/);
+  assert.match(app, /if \(ended\) \{\s*ridesEnded\.current \+= 1;\s*setJoinHeld\(false\);\s*setJoinPending\(null\);/);
   assert.match(app, /const closeJoin = \(\) => \{\s*setJoinAsk\(null\);\s*setJoinHeld\(false\);/);
   assert.match(group, /\{controls && \(\s*<div className="ride-group-bar">/);
   // A role change moves the next post up, and the post sends the consent's (new) role.
@@ -765,7 +768,7 @@ test("joining a broadcast: the route's buttons and the dot question on one scree
   assert.match(ask, /aria-labelledby=\{join \? `\$\{id\}-title \$\{id\}-q` : `\$\{id\}-q`\}/);
   assert.match(ask, /aria-describedby=\{join \? `\$\{id\}-line \$\{id\}-offer \$\{id\}-note` : `\$\{id\}-note`\}/);
   // The focus starts on the route's first button, not on Close (which answers No).
-  assert.match(ask, /dialog\.showModal\?\.\(\);\s*firstRef\.current\?\.focus\(\);/);
+  assert.match(ask, /\}, \[open\]\);\s*useEffect\(\(\) => \{\s*\/\/[^\n]*\n\s*if \(open && joined\) firstRef\.current\?\.focus\(\);\s*\}, \[open, joined\]\);/);
   assert.match(ask, /<h2 id=\{`\$\{id\}-title`\}>\{join\.ask\.title\}<\/h2>\s*<p id=\{`\$\{id\}-line`\} className="broadcast-join-line">\s*\{join\.ask\.line\}\s*<\/p>/);
   assert.match(ask, /<JoinOffer ask=\{join\.ask\} onAction=\{join\.onAction\} firstRef=\{firstRef\} \/>\s*<h3 id=\{`\$\{id\}-q`\} className="ride-consent-question ride-consent-joined">\s*\{t\(CONSENT_QUESTION\)\}/);
   // No Just ride beside Yes and No: the answer (or Close, Escape, the backdrop: No) closes the sheet with the question.

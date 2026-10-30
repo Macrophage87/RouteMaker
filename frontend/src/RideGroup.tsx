@@ -105,7 +105,8 @@ import {
 } from "./lib/rideGroup.ts";
 import { newRideSecret, type RideSeal } from "./lib/rideSeal.ts";
 import { browserRideEnv, watchRide } from "./lib/rideWatch.ts";
-import { LISTENING_SAID, SPEAK_LABEL, listenOnce, speechSupported } from "./lib/speechInput.ts";
+import { LISTENING_SAID, SPEAK_LABEL, speechSupported } from "./lib/speechInput.ts";
+import { alertDictation } from "./lib/alertDictation.ts";
 
 export interface RideGroupProps {
   type: RideLinkType;
@@ -197,43 +198,39 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
   // 2026-10-30: "autotranscribe what you are saying. then you could either send that or a quick response"): one press
   // opens the box and listens, the words fill it, Send sends them, or a quick alert below is sent instead.
   const [canSpeak] = useState(() => speechSupported());
-  const stopListening = useRef<(() => void) | null>(null);
   const [listening, setListening] = useState(false);
   const speakButton = useRef<HTMLButtonElement>(null);
-  // Send pressed while listening: the words are finished first (stop keeps them), then they go (below, after send).
-  const [sendWhenHeard, setSendWhenHeard] = useState(false);
+  // lib/alertDictation.ts: Send while listening finishes the words and sends them once; an abort un-presses Speak at
+  // once and drops anything heard after it. The send is this render's (a ref), so it sees the ride as it is now.
+  const sendHeard = useRef<(words: string) => void>(() => {});
+  const [dictation] = useState(() =>
+    alertDictation(
+      { text: setOtherText, listening: setListening, send: (words) => sendHeard.current(words), failed: (sentence) => say(sentence) },
+      OTHER_MAX,
+    ),
+  );
   const speak = () => {
     if (listening) {
-      stopListening.current?.();
+      dictation.stop();
       return;
     }
     setOtherOpen(true);
-    // Said words go after any typed already.
-    const typed = otherText.trim();
-    const stop = listenOnce(
-      (text) => setOtherText(typed ? `${typed} ${text}`.slice(0, OTHER_MAX) : text),
-      (failed) => {
-        stopListening.current = null;
-        abortListening.current = null;
-        setListening(false);
-        if (failed) say(failed);
-      },
-      OTHER_MAX,
-    );
-    if (!stop) return;
-    stopListening.current = stop.stop;
-    abortListening.current = stop.abort;
-    setListening(true);
+    // Said words go after any typed already. The cue is said first, so less of it reaches the microphone.
     say(LISTENING_SAID);
+    dictation.start(otherText);
   };
-  // Closed or gone: dropped, not finished, so no late words land in a closed box.
-  const abortListening = useRef<(() => void) | null>(null);
-  useEffect(() => () => abortListening.current?.(), []);
+  // Gone, or the panel closed: the speech is dropped and the box emptied, so no stale words greet the next alert.
+  useEffect(() => () => dictation.abort(), [dictation]);
   useEffect(() => {
-    if (otherOpen && alertOpen) return;
-    abortListening.current?.();
-    setSendWhenHeard(false);
-  }, [otherOpen, alertOpen]);
+    if (alertOpen) return;
+    dictation.abort();
+    setOtherOpen(false);
+    setOtherText("");
+  }, [alertOpen, dictation]);
+  // The box closed (Cancel, a quick alert, a send): the speech is dropped; the words stay for a failed send.
+  useEffect(() => {
+    if (!otherOpen) dictation.abort();
+  }, [otherOpen, dictation]);
   const [sent, setSent] = useState<number[]>([]);
   const [said, setSaid] = useState({ text: "", count: 0 });
   const [urgent, setUrgent] = useState({ text: "", count: 0 });
@@ -544,7 +541,7 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
     };
   }, [getMap, line]);
 
-  const send = async (kind: AlertKind) => {
+  const send = async (kind: AlertKind, words: string = otherText) => {
     if (!ride || !token) return;
     const refusal = alertRefusal(sent, Date.now());
     if (refusal) {
@@ -556,7 +553,7 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
       say(t("Your location is needed to send an alert; allow it and try again."));
       return;
     }
-    const outcome = await sendAlert(origin, ride, token, type, kind.id, otherText, at, fetch, seal);
+    const outcome = await sendAlert(origin, ride, token, type, kind.id, words, at, fetch, seal);
     setConfirming(null);
     setOtherOpen(false);
     if (!outcome.ok) {
@@ -564,24 +561,24 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
       return;
     }
     setSent((s) => [...s, Date.now()]);
+    // The words themselves, not "Other": a rider who cannot see the box hears what went (spoken words included).
+    const shown = kind.id === "other" ? words.trim() : kind.label;
     setAlertOpen(false);
     setOtherText("");
     say(
       outcome.alert.count > 1
-        ? t("Sent: {alert}. {count} riders reported.", { alert: kind.label, count: outcome.alert.count })
-        : t("Sent to everyone on this ride: {alert}.", { alert: kind.label }),
+        ? t("Sent: {alert}. {count} riders reported.", { alert: shown, count: outcome.alert.count })
+        : t("Sent to everyone on this ride: {alert}.", { alert: shown }),
     );
     void poll();
   };
-  useEffect(() => {
-    if (!sendWhenHeard || listening) return;
-    setSendWhenHeard(false);
-    if (otherText.trim()) void send(OTHER_KIND);
-    // Runs once listening ends; the words and send are this render's, read then.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sendWhenHeard, listening]);
+  sendHeard.current = (words) => void send(OTHER_KIND, words);
   const pick = (kind: AlertKind) => {
-    // A quick alert picked instead of the words: the box closes (closing it drops any speech), the quick alert goes.
+    // A quick alert picked instead of the words: the speech is dropped and the box closes, the quick alert goes.
+    if (kind.id !== "other") {
+      dictation.abort();
+      setOtherText("");
+    }
     setOtherOpen(kind.id === "other");
     if (kind.id === "other") return;
     if (kind.confirm) setConfirming(kind);
@@ -743,10 +740,8 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
                 className="ride-alert-other"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (listening) {
-                    setSendWhenHeard(true);
-                    stopListening.current?.();
-                  } else if (otherText.trim()) void send(OTHER_KIND);
+                  if (listening) dictation.finishAndSend();
+                  else if (otherText.trim()) void send(OTHER_KIND);
                 }}
               >
                 <label>
@@ -759,7 +754,9 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
                   type="button"
                   className="secondary"
                   onClick={() => {
+                    dictation.abort();
                     setOtherOpen(false);
+                    setOtherText("");
                     // Cancel goes with the box; the rider's place stays at Speak, not the top of the page.
                     speakButton.current?.focus();
                   }}
@@ -847,13 +844,13 @@ function ConsentDialog({
   const pressedBackdrop = useRef(false);
   // Joining: the focus starts on the route's first button, as the join sheet's does, not on Close (which answers No).
   const firstRef = useRef<HTMLButtonElement>(null);
+  const joined = join !== null;
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (open && !dialog.open) {
       opener.current = document.activeElement;
       dialog.showModal?.();
-      firstRef.current?.focus();
     } else if (!open && dialog.open) {
       dialog.close();
     }
@@ -862,6 +859,10 @@ function ConsentDialog({
       opener.current = null;
     }
   }, [open]);
+  useEffect(() => {
+    // Also when the route comes into a question already open (declared after the effect that opens it, so it runs after).
+    if (open && joined) firstRef.current?.focus();
+  }, [open, joined]);
   return (
     <dialog
       ref={dialogRef}

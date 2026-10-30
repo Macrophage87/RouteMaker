@@ -7742,7 +7742,26 @@ details.fold > summary .icon {
 .ride-group > * {
   pointer-events: auto;
 }
+/* Never past the screen's foot (the v0.15.1 review: at 375x667 the larger alert panel ran 160 px off it): the group
+   ends 8 px above the bottom and the open panel scrolls within it. */
+.ride-group {
+  max-height: calc(100dvh - 112px - 8px);
+}
+.app.riding .ride-group {
+  max-height: calc(100dvh - var(--ride-card-bottom, 64px) - 16px);
+}
+.app.roaming .ride-group {
+  max-height: calc(100dvh - var(--roam-card-bottom, 64px) - 16px);
+}
+.ride-alert-panel,
+.ride-riders-panel,
+.ride-alert-banners {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .ride-group-bar {
+  flex: none;
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
@@ -7798,6 +7817,10 @@ details.fold > summary .icon {
    line, then Yes and No side by side, alike and ride-sized (neither is the one the app would rather). */
 .ride-consent.ask-dialog {
   width: min(400px, calc(100vw - 32px));
+  /* Joining a ride puts the route's buttons above the question: on a short screen the dialog scrolls in itself, so
+     Yes and No stay reachable. */
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
 }
 .ride-consent-head {
   display: flex;
