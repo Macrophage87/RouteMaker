@@ -61,7 +61,7 @@ from . import account_deletion
 PATH = account_deletion.PRIVACY_PATH
 TITLE = "RouteMaker privacy policy"
 # Change with the text: the date a rider reads as when this page last said something new.
-LAST_UPDATED = ("2026-10-29", "October 29, 2026")
+LAST_UPDATED = ("2026-10-30", "October 30, 2026")
 # Unless the deployment sets PRIVACY_CONTACT (an e-mail address or a web address).
 CONTACT = "Questions, or a request about your data: ask the site's owner on Discord."
 CONTACT_LEAD = "Questions, or a request about your data: "

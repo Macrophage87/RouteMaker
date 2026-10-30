@@ -125,7 +125,8 @@ export function listenOnce(
 
 /**
  * The phone app's speech input: it covers the app while it listens and ends by itself (or the rider backs out of it),
- * so stop has nothing to do; abort (the box closed meanwhile) drops whatever it hands back.
+ * so stop has nothing to do; abort (the box closed meanwhile) ends it at once, as the browser's does, and drops
+ * whatever it hands back.
  */
 function listenInApp(app: CapacitorBridge, onText: (text: string) => void, onEnd: (failed: string | null) => void, max: number) {
   let dropped = false;
@@ -145,7 +146,9 @@ function listenInApp(app: CapacitorBridge, onText: (text: string) => void, onEnd
   return {
     stop: () => {},
     abort: () => {
+      if (dropped) return;
       dropped = true;
+      onEnd(null);
     },
   };
 }

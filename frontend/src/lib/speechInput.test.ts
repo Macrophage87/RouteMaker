@@ -106,9 +106,17 @@ test("the app's speech input: a failure says what to do instead; a closed box dr
   const late: (string | null)[] = [];
   const listening = listenOnce((t) => texts.push(t), (f) => late.push(f), 80, {}, appBridge([SPEECH_INPUT_PLUGIN], () => Promise.resolve({ text: "too late" })).bridge)!;
   listening.abort();
+  listening.abort();
   await settle();
   assert.deepEqual(texts, []);
-  assert.deepEqual(late, []);
+  assert.deepEqual(late, [null], "ended once, at the abort, so Speak is not left pressed");
+});
+
+test("every failure code the app's speech input sends is one the page has words for", () => {
+  const java = readFileSync(new URL("../../../mobile/android/app/src/main/java/org/routemaker/phone/SpeechPlugin.java", import.meta.url), "utf8");
+  const codes = [...java.matchAll(/return "([a-z-]+)";/g), ...java.matchAll(/call\.reject\("[^"]*", "([a-z-]+)"/g)].map((m) => m[1]);
+  assert.ok(codes.includes("unavailable") && codes.includes("no-speech"));
+  for (const code of codes) assert.ok(code === "other" || Object.hasOwn(SPEECH_FAILED, code), code);
 });
 
 test("the words fill the box as they come, cut to the alert's 80 characters, and a stop ends it", () => {
