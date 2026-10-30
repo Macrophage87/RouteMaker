@@ -193,6 +193,7 @@ class TestFixedWindow:
         start on the minute, so unpinned, a run that straddled one let a second budget
         through ("assert 10 == 5", CI 2026-10)."""
         instant = "(timestamptz '2026-09-26 12:00:00+00' + interval '30 seconds')"
+        assert ratelimit._HIT.count("clock_timestamp()") == 2
         monkeypatch.setattr(ratelimit, "_HIT", ratelimit._HIT.replace("clock_timestamp()", instant))
         # Three times the budget: enough to contend, and few enough connections
         # that a suite running beside other suites on the same server does not

@@ -1,9 +1,10 @@
 name: CI
 
-# Once per release (owner, 2026-10-28): the release branch's pull request into main and the push
-# to main that merging it makes, which the beta's release agent reads. Pull requests into a
-# release branch merge after a review agent without CI, so they start no run. By hand: Actions,
-# "CI", Run workflow, on any branch.
+# Pull requests into main (in practice the release branch's, owner 2026-10-28, and Dependabot's) and
+# the push to main that merging one makes, which the beta's release agent reads. Pull requests into
+# a release branch merge after a review agent without CI, so they start no run. By hand: Actions,
+# "CI", Run workflow, on any branch but not on a tagged main commit: the release agent reads the
+# newest `test` there, so a cancelled manual run would hold the release.
 on:
   push:
     branches: [main]
@@ -112,7 +113,12 @@ jobs:
             -c "ALTER SYSTEM SET synchronous_commit = off" \
             -c "ALTER SYSTEM SET full_page_writes = off" \
             -c "ALTER SYSTEM SET jit = off" -c "SELECT pg_reload_conf()"
+          # The reload is a signal: give the server a moment to act on it before failing.
           for setting in fsync synchronous_commit full_page_writes jit; do
+            for _ in 1 2 3 4 5; do
+              [ "$(psql -tAc "SHOW $setting")" = off ] && break
+              sleep 1
+            done
             test "$(psql -tAc "SHOW $setting")" = off
           done
       # docker/requirements.txt first: it is the exact pin both images build
