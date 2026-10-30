@@ -289,7 +289,7 @@ caused by a Django the stack does not run.
 In that case `tests/test_native_environment.py` also fails, naming each pin the
 interpreter does not have; it does not run first, so read its failure before
 the others. CI installs the same two files.
-pytest, pytest-django and ruff are pinned exactly in `requirements-dev.txt`
+pytest, pytest-django, pytest-xdist and ruff are pinned exactly in `requirements-dev.txt`
 (no image carries them), so a new ruff rule or format style arrives as a
 Dependabot pull request, not as a red main. CI lints and format-checks
 `src tests scripts mcp`, runs `makemigrations --check` (a model change with no
@@ -308,6 +308,10 @@ Then the database and the suite, from the checkout:
 sudo sh scripts/devdb.sh
 PGDATABASE=routemaker_dev .venv/bin/python -m pytest tests/ -q -p no:randomly
 ```
+
+Add `-n 2` (or `-n 4`, as CI does) to spread the suite over that many processes: each
+gets its own test database, so the run takes a fraction of the time; each worker
+holds its own copy of the suite, so a low-memory machine wants fewer.
 
 `devdb.sh` starts cluster 16 if it is down, and creates the `routemaker` role,
 the `routemaker` database and the PostGIS extension if any is missing; under

@@ -178,7 +178,9 @@ jobs:
       # PYTHONFAULTHANDLER dumps every thread's stack on a native crash, including one during
       # interpreter shutdown; faulthandler_timeout dumps them for a test stuck 10 minutes, and
       # faulthandler_exit_on_timeout then ends the run instead of holding it to the job's limit.
-      - run: pytest -q -o faulthandler_timeout=600 -o faulthandler_exit_on_timeout=true --durations=30
+      # Four workers, one per runner CPU, each with its own test database (test_routemaker_gw0..3);
+      # worksteal hands a finished worker the rest of a slower one's tests.
+      - run: pytest -q -n 4 --dist worksteal -o faulthandler_timeout=600 -o faulthandler_exit_on_timeout=true --durations=30
         env:
           PYTHONFAULTHANDLER: "1"
       - name: Compose stack rules
