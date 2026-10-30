@@ -7748,11 +7748,12 @@ details.fold > summary .icon {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
-/* Send alert (Stephen 2026-10-27: "make the alert (call it send alert) a larger button"): a ride-sized press. */
+/* Send alert (Stephen 2026-10-27: "make the alert (call it send alert) a larger button", and 2026-10-30 "Make the
+   buttons larger as well"): a ride-sized press. */
 .ride-group-bar .ride-alert-button {
-  min-height: 56px;
-  padding: 0 20px;
-  font-size: 20px;
+  min-height: 64px;
+  padding: 0 22px;
+  font-size: 22px;
   font-weight: 700;
   border-width: 2px;
   /* Yellow (Stephen 2026-10-27: "Make the button yellow"), the same in both themes: near-black on it, 12:1. */
@@ -7826,9 +7827,62 @@ details.fold > summary .icon {
   font-size: 18px;
   font-weight: 700;
 }
-/* Alert's choices, its confirm, and Other's Speak, Send and Cancel: ride-sized targets (Crash calls 911). */
+/* Alert's choices, its confirm, and Speak, Send and Cancel: ride-sized targets (Crash calls 911), larger again
+   (Stephen 2026-10-30: "Make the buttons larger as well"). */
 .ride-alert-panel button {
+  min-height: 56px;
+  font-size: 18px;
+  font-weight: 600;
+}
+/* The quick alerts two to a row, each filling its cell: the whole cell is the press, long names wrap. */
+.ride-alert-panel .ride-alert-kinds {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.ride-alert-kinds button {
+  width: 100%;
+  height: 100%;
+  padding: 8px 10px;
+  line-height: 1.25;
+}
+/* Speak heads the panel, the largest press in it: one press and the rider says the alert. */
+.ride-alert-panel .ride-speak {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 64px;
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 700;
+}
+/* Listening: the alert colours, the record-light look, so a glance shows the microphone is on. */
+.ride-alert-panel .ride-speak[aria-pressed="true"] {
+  background: var(--error-bg);
+  color: var(--error-text);
+  border: 2px solid var(--error-text);
+}
+.ride-alert-other {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.ride-alert-other label {
+  flex: 1 1 100%;
+}
+.ride-alert-other input {
+  display: block;
+  width: 100%;
   min-height: 48px;
+  margin-top: 4px;
+  font-size: 18px;
+  box-sizing: border-box;
+}
+.ride-alert-other button {
+  flex: 1 1 0;
 }
 /* The rider's role (in the one question, and beside "Show me as a dot") and the key of the roles on the ride. */
 .ride-role {
