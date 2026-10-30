@@ -637,7 +637,7 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /askHeld=\{joinHeld && joinAsk === null\}/);
   assert.match(app, /join=\{riding && joinAsk \? \{ ask: joinAsk, onAction: joinAction, onClose: closeJoin \} : null\}/);
-  assert.match(app, /setJoinHeld\(true\);\s*void Promise\.all/);
+  assert.match(app, /setJoinHeld\(true\);\s*const ride = ridesEnded\.current;\s*void Promise\.all/);
   assert.match(app, /\.catch\(\(\) => ride === ridesEnded\.current && setJoinHeld\(false\)\)/);
   // An offer whose connections come back after its ride ended is dropped, so no later ride shows it.
   assert.match(app, /const ride = ridesEnded\.current;\s*void Promise\.all[\s\S]*?if \(ride !== ridesEnded\.current\) return;/);
