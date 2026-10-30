@@ -1768,4 +1768,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Mass Ride stays in DC": "Mass Ride tetap di DC",
   "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.": "Mass Ride dikalibrasi dengan data jalan yang hanya tersedia di dalam DC, jadi titik awal, perhentian, dan tujuannya harus berada di Distrik. Untuk bersepeda ke luar DC, beralih ke Bersepeda rombongan tanpa jalur trail.",
   "Switch to Group Ride, trails off": "Beralih ke Bersepeda rombongan tanpa trail",
+  "See everyone on the ride": "Lihat semua orang di perjalanan",
+  "Everyone": "Semua",
 };

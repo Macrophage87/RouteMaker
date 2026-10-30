@@ -226,6 +226,7 @@ import { ADD_AS_STOP, ROUTE_HERE, type StopActionFor, type StopCardWords } from 
 import { foodWords, nearbyWords, repairWords, sightWords } from "./lib/stopWords.ts";
 import { foodSpotPlaces, metroSpotPlaces, repairSpotPlaces, sightSpotPlaces, spotFarLine, spotNearby, waterSpotPlaces } from "./lib/spotNearby.ts";
 import { useSpotPins } from "./app/spotPins.ts";
+import { useSeeEveryone } from "./app/useSeeEveryone.ts";
 import { ScenicOverlay } from "./app/ScenicOverlay.tsx";
 import { readScenicLayer, saveScenicLayer, scenicShown, scenicStatus } from "./lib/scenicLayer.ts";
 import {
@@ -1055,6 +1056,8 @@ export function App() {
   const followNow = useRef(follow);
   followNow.current = follow;
   const movedByHand = useRef(false);
+  // See everyone is on (below): the map frames the riders by choice, so a screen left alone keeps that view.
+  const seeAllNow = useRef(false);
   const [followReset, setFollowReset] = useState(0);
   // Track-up by default in a ride (v0.7.0, "Go riding fixes" item 1); the ride settings' switch is the
   // option, kept on this device. Turning the map never moves the keyboard focus.
@@ -4264,7 +4267,7 @@ export function App() {
     if (!onBike) return undefined;
     movedByHand.current = false;
     return watchIdleRecentre(window, {
-      away: () => !followNow.current || movedByHand.current,
+      away: () => (!followNow.current && !seeAllNow.current) || movedByHand.current,
       panelOpen: () => document.querySelector(RIDE_PANEL_OPEN) !== null,
       // The cards and side menus close first, but never in accessibility mode (lib/idleRecentre.ts).
       closePanels: () => !accessModeNow.current && closeIdlePanels(document),
@@ -4289,6 +4292,24 @@ export function App() {
       map.fitBounds(frameAround(rider ? [point, rider] : [point]), { padding, bearing: map.getBearing(), maxZoom: 17, duration: still ? 0 : 400 });
     });
   }, [rideRider, roamRider]);
+  // See everyone (lib/seeEveryone.ts, Stephen 2026-10-30): the other riders' dots, framed with the rider on request
+  // when the follow camera leaves some out. While on, the idle recentre leaves the view be.
+  const [rideDots, setRideDots] = useState<readonly LonLat[]>([]);
+  const riderNow = useCallback(() => rideRider.get()?.point ?? roamRider.get()?.point ?? null, [rideRider, roamRider]);
+  const everyone = useSeeEveryone({
+    getMap,
+    dots: rideDots,
+    rider: riderNow,
+    active: onBike,
+    follow,
+    onUnfollow: useCallback(() => setFollow(false), []),
+    onBackToRider: useCallback(() => {
+      movedByHand.current = false;
+      setFollow(true);
+      setFollowReset((n) => n + 1);
+    }, []),
+  });
+  seeAllNow.current = everyone.on;
   // No ride is on at load: a ride's entry left by a reload is the page's own again.
   useEffect(() => forgetStaleRideEntry(window), []);
   // A ride left going when the page closed (lib/rideResume.ts): asked once at load. Resume starts it again from where
@@ -5881,7 +5902,10 @@ export function App() {
         screenReaderRide={onBike && ridePrefs.output === "screen-reader"}
         headingUp={headingUp}
         onFollowBroken={() => setFollow(false)}
-        onRiderMoved={() => (movedByHand.current = true)}
+        onRiderMoved={() => {
+          movedByHand.current = true;
+          everyone.stop();
+        }}
         followReset={followReset}
         junctionFocus={junctionFocus}
         scrubFrom={scrubPoint}
@@ -5975,6 +5999,7 @@ export function App() {
               home={myGo.home?.point ?? null}
               riding={onBike}
               leaderRoute={null}
+              onDots={setRideDots}
               controls={onBike || !goMode}
               leads={roamBroadcast.leading}
             />
@@ -5993,6 +6018,7 @@ export function App() {
               home={myGo.home?.point ?? null}
               secret={rideGroupType !== null && !onShared ? groupSecret : null}
               riding={riding}
+              onDots={setRideDots}
               onRiders={setRideRiders}
               ridersElsewhere={riding && rideCanBroadcast && rideBroadcast !== null}
               ridersAsk={ridersAsk}
@@ -6298,6 +6324,7 @@ export function App() {
           passingOn={passesOn || !!rideStart.passOn}
           broadcasting={rideBroadcast?.leading === true}
           riders={rideCanBroadcast && rideBroadcast && rideGroupLine ? rideRiders : null}
+          everyone={everyone}
           onRiders={rideCanBroadcast && rideGroupLine ? () => setRidersAsk((n) => n + 1) : null}
           keepLeft={rideStart.kept === true}
           startNote={rideStart.note}
@@ -6328,6 +6355,7 @@ export function App() {
           onBroadcast={roamKeyless ? null : () => broadcastRoam()}
           onBroadcastHold={roamKeyless ? null : broadcastRoamQr}
           passingOn={roamBroadcast !== null && !roamBroadcast.leading}
+          everyone={everyone}
           broadcasting={roamBroadcast?.leading === true}
         />
       )}

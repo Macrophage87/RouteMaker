@@ -1,0 +1,51 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import type { LonLat } from "./geo.ts";
+import { dotsKey, dotsOffScreen, everyoneFrame, openBox } from "./seeEveryone.ts";
+
+// A flat screen: one degree is 100 px, longitude to the right, latitude up.
+const toScreen = (at: LonLat) => ({ x: at[0] * 100, y: 1000 - at[1] * 100 });
+
+test("the open map is the map less the ride's panels", () => {
+  assert.deepEqual(openBox(400, 800, { top: 160, bottom: 120, left: 40, right: 90 }), { left: 40, top: 160, right: 310, bottom: 680 });
+});
+
+test("See everyone is offered only when a dot is out of the open map", () => {
+  const open = openBox(400, 800, { top: 160, bottom: 120, left: 40, right: 90 });
+  // Every dot in the open part: nothing to offer.
+  assert.equal(dotsOffScreen([[1, 5], [3, 4]], toScreen, open), false);
+  // One past the side buttons, one under the ride's card, one off the map: each is out of view.
+  assert.equal(dotsOffScreen([[1, 5], [3.5, 5]], toScreen, open), true);
+  assert.equal(dotsOffScreen([[1, 5], [1, 9]], toScreen, open), true);
+  assert.equal(dotsOffScreen([[1, 5], [-2, 5]], toScreen, open), true);
+  // No dots: nothing out of view.
+  assert.equal(dotsOffScreen([], toScreen, open), false);
+});
+
+test("the frame holds every dot and the rider", () => {
+  assert.deepEqual(everyoneFrame([[1, 2], [3, 4]], [5, 6]), [[1, 2], [3, 4], [5, 6]]);
+  assert.deepEqual(everyoneFrame([[1, 2]], null), [[1, 2]]);
+});
+
+test("the same dots in a new array keep their key; a moved dot changes it", () => {
+  assert.equal(dotsKey([[1, 2], [3, 4]]), dotsKey([[1, 2], [3, 4]]));
+  assert.notEqual(dotsKey([[1, 2], [3, 4]]), dotsKey([[1, 2], [3, 4.0001]]));
+});
+
+test("wired: the riders' dots reach App, the button sits on Ride's and Roam's side buttons, and every language has its words", async () => {
+  const { readFileSync } = await import("node:fs");
+  const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+  const app = read("../App.tsx");
+  // Both rides' groups (a route's and Roam's) say where their dots are.
+  assert.equal(app.match(/onDots=\{setRideDots\}/g)?.length, 2);
+  assert.match(app, /const everyone = useSeeEveryone\(\{/);
+  for (const mode of ["../RideMode.tsx", "../RoamMode.tsx"]) assert.match(read(mode), /<SeeEveryoneButton everyone=\{everyone\} \/>/);
+  // Only shown while needed: a dot out of view as the map follows the rider, or the view on.
+  assert.match(read("../app/useSeeEveryone.ts"), /shown: any && \(on \|\| \(follow && offScreen\)\)/);
+  assert.match(read("../SeeEveryoneButton.tsx"), /if \(!everyone\?\.shown\) return null;/);
+  const { readdirSync } = await import("node:fs");
+  for (const file of readdirSync(new URL("../i18n/", import.meta.url))) {
+    const catalog = read(`../i18n/${file}`);
+    for (const phrase of ["See everyone on the ride", "Everyone"]) assert.match(catalog, new RegExp(`"${phrase}":`), `${file}: ${phrase}`);
+  }
+});
