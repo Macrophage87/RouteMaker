@@ -690,15 +690,15 @@ def test_the_backfill_script_adds_fingerprints_and_keeps_each_files_indent(tmp_p
 
 def test_the_west_virginia_county_road_rows_take_only_the_owners_levels() -> None:
     # The owner, 2026-10-30, "Filtered counts, 3 and 3.5": quiet counted county roads LTS 3,
-    # the rest LTS 3.5; plus the busy county roads held at 4, one street held at 2, and WV 9
-    # near Kearneysville held at 4.5 ("LTS 4.5").
+    # the rest LTS 3.5; plus the busy county roads held at 4, one street held at 2, and the WV 9
+    # bypass east of Charles Town held at 4.5 ("LTS 4.5").
     document = json.loads((OVERRIDES / "2026-10-30-owner-wv-county-roads.json").read_text())
     levels = {
         "wv-county-road-quiet-lts3": (3, False),
         "wv-county-road-lts3-5": (3, True),
         "wv-busy-county-road-lts4": (4, False),
         "wv-north-fairfax-blvd-lts2": (2, False),
-        "wv-9-kearneysville-lts4-5": (4, True),
+        "wv-9-charles-town-bypass-lts4-5": (4, True),
     }
     for row in document["rows"]:
         value = row["value"]

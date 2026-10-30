@@ -560,8 +560,8 @@ in the database still names it: delete that row in the admin when loading the fi
   urban areas. Also 24 ways of seven busy unposted county roads inside the urban areas
   (Golf Course, Eagle School, Harlan Springs, Kelly Island, Paynes Ford, Needy and Charles
   Town Roads, 3,300 to 4,500 a day) held at LTS 4, and one piece of North Fairfax
-  Boulevard (way 158979695) held at LTS 2, and 16 ways of WV 9 and US 340 near
-  Kearneysville (posted 60 mph, farmland inside the Hagerstown urban area) held at LTS 4.5
+  Boulevard (way 158979695) held at LTS 2, and 16 ways of the WV 9 and US 340
+  bypass east of Charles Town (posted 60 mph, farmland inside the Hagerstown urban area) held at LTS 4.5
   rather than Avoid (the owner, 2026-10-30: "LTS 4.5"), for when `urban-areas.json` is remade with West
   Virginia in it (beta reads every West Virginia road as rural: the list predates West
   Virginia's joining the map). Stress rows, hidden, with fingerprints. Remake

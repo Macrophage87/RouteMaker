@@ -3,7 +3,7 @@
  "decided": "2026-10-30",
  "decided_by": "the deployment owner",
  "status": "Decided by the owner in conversation on 2026-10-30; not yet loaded. Load with manage.py load_access_overrides (dry run, then --confirm after the owner confirms this file), then rebuild. Remake urban-areas.json with West Virginia in it before that rebuild.",
- "annotations": "West Virginia's Eastern Panhandle, 293 ways. Unposted rural county roads (tertiary and unclassified) that beta rates LTS 4 on the 50 mph rural default, re-rated on WVDOT's 2020 counts as the owner chose: under 500 a day with a count station on the route, LTS 3; 500 to 1,500 a day, or no count station within 2 km, or no WVDOT count at all, LTS 3.5. A way that runs along several count segments takes the busiest of them. Counts read 10% high for 2020. Left at the formula: county roads over 1,500 a day; secondary and primary roads and links; any way with a posted limit; roads mostly inside the Census urban areas, which the remade urban-roads list re-rates (except seven busy county roads kept at LTS 4, one piece of North Fairfax Boulevard kept at LTS 2, and WV 9 and US 340 near Kearneysville kept at LTS 4.5 rather than Avoid).",
+ "annotations": "West Virginia's Eastern Panhandle, 309 ways. Unposted rural county roads (tertiary and unclassified) that beta rates LTS 4 on the 50 mph rural default, re-rated on WVDOT's 2020 counts as the owner chose: under 500 a day with a count station on the route, LTS 3; 500 to 1,500 a day, or no count station within 2 km, or no WVDOT count at all, LTS 3.5. A way that runs along several count segments takes the busiest of them. Counts read 10% high for 2020. Left at the formula: county roads over 1,500 a day; secondary and primary roads and links; any way with a posted limit; roads mostly inside the Census urban areas, which the remade urban-roads list re-rates (except seven busy county roads kept at LTS 4, one piece of North Fairfax Boulevard kept at LTS 2, and the WV 9 and US 340 bypass east of Charles Town kept at LTS 4.5 rather than Avoid).",
  "rows": [
   {
    "kind": "stress",
@@ -6064,13 +6064,13 @@
    "value": {
     "tier": 4,
     "half": true,
-    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "adjustment_id": "wv-9-charles-town-bypass-lts4-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "reason": "The owner, 2026-10-30, of the WV 9 and US 340 bypass east of Charles Town and Ranson (posted 60 mph, four lanes, divided; put to him as \"WV 9 near Kearneysville\", the stretch through farmland inside the urban area): asked whether it should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
    "evidence": "OSM, read 2026-10-30: way 72650907 (version 14), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
    "fingerprint": {
     "name": "Frank Buckles Parkway",
@@ -6085,13 +6085,13 @@
    "value": {
     "tier": 4,
     "half": true,
-    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "adjustment_id": "wv-9-charles-town-bypass-lts4-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "reason": "The owner, 2026-10-30, of the WV 9 and US 340 bypass east of Charles Town and Ranson (posted 60 mph, four lanes, divided; put to him as \"WV 9 near Kearneysville\", the stretch through farmland inside the urban area): asked whether it should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
    "evidence": "OSM, read 2026-10-30: way 72650908 (version 11), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
    "fingerprint": {
     "name": "Frank Buckles Parkway",
@@ -6106,13 +6106,13 @@
    "value": {
     "tier": 4,
     "half": true,
-    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "adjustment_id": "wv-9-charles-town-bypass-lts4-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "reason": "The owner, 2026-10-30, of the WV 9 and US 340 bypass east of Charles Town and Ranson (posted 60 mph, four lanes, divided; put to him as \"WV 9 near Kearneysville\", the stretch through farmland inside the urban area): asked whether it should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
    "evidence": "OSM, read 2026-10-30: way 72650953 (version 24), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
    "fingerprint": {
     "name": "Frank Buckles Parkway",
@@ -6127,13 +6127,13 @@
    "value": {
     "tier": 4,
     "half": true,
-    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "adjustment_id": "wv-9-charles-town-bypass-lts4-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "reason": "The owner, 2026-10-30, of the WV 9 and US 340 bypass east of Charles Town and Ranson (posted 60 mph, four lanes, divided; put to him as \"WV 9 near Kearneysville\", the stretch through farmland inside the urban area): asked whether it should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
    "evidence": "OSM, read 2026-10-30: way 72650954 (version 23), unnamed, ref=US 340;WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
    "fingerprint": {
     "name": null,
@@ -6148,13 +6148,13 @@
    "value": {
     "tier": 4,
     "half": true,
-    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "adjustment_id": "wv-9-charles-town-bypass-lts4-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "reason": "The owner, 2026-10-30, of the WV 9 and US 340 bypass east of Charles Town and Ranson (posted 60 mph, four lanes, divided; put to him as \"WV 9 near Kearneysville\", the stretch through farmland inside the urban area): asked whether it should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
    "evidence": "OSM, read 2026-10-30: way 72650986 (version 10), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
    "fingerprint": {
     "name": "Frank Buckles Parkway",
@@ -6169,13 +6169,13 @@
    "value": {
     "tier": 4,
     "half": true,
-    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "adjustment_id": "wv-9-charles-town-bypass-lts4-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "reason": "The owner, 2026-10-30, of the WV 9 and US 340 bypass east of Charles Town and Ranson (posted 60 mph, four lanes, divided; put to him as \"WV 9 near Kearneysville\", the stretch through farmland inside the urban area): asked whether it should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
    "evidence": "OSM, read 2026-10-30: way 72650988 (version 20), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
    "fingerprint": {
     "name": "Frank Buckles Parkway",
@@ -6190,13 +6190,13 @@
    "value": {
     "tier": 4,
     "half": true,
-    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "adjustment_id": "wv-9-charles-town-bypass-lts4-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "reason": "The owner, 2026-10-30, of the WV 9 and US 340 bypass east of Charles Town and Ranson (posted 60 mph, four lanes, divided; put to him as \"WV 9 near Kearneysville\", the stretch through farmland inside the urban area): asked whether it should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
    "evidence": "OSM, read 2026-10-30: way 108258952 (version 18), unnamed, ref=US 340, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
    "fingerprint": {
     "name": null,
@@ -6211,13 +6211,13 @@
    "value": {
     "tier": 4,
     "half": true,
-    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "adjustment_id": "wv-9-charles-town-bypass-lts4-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "reason": "The owner, 2026-10-30, of the WV 9 and US 340 bypass east of Charles Town and Ranson (posted 60 mph, four lanes, divided; put to him as \"WV 9 near Kearneysville\", the stretch through farmland inside the urban area): asked whether it should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
    "evidence": "OSM, read 2026-10-30: way 150953542 (version 9), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
    "fingerprint": {
     "name": "Frank Buckles Parkway",
@@ -6232,13 +6232,13 @@
    "value": {
     "tier": 4,
     "half": true,
-    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "adjustment_id": "wv-9-charles-town-bypass-lts4-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "reason": "The owner, 2026-10-30, of the WV 9 and US 340 bypass east of Charles Town and Ranson (posted 60 mph, four lanes, divided; put to him as \"WV 9 near Kearneysville\", the stretch through farmland inside the urban area): asked whether it should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
    "evidence": "OSM, read 2026-10-30: way 358947420 (version 7), unnamed, ref=US 340, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
    "fingerprint": {
     "name": null,
@@ -6253,13 +6253,13 @@
    "value": {
     "tier": 4,
     "half": true,
-    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "adjustment_id": "wv-9-charles-town-bypass-lts4-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "reason": "The owner, 2026-10-30, of the WV 9 and US 340 bypass east of Charles Town and Ranson (posted 60 mph, four lanes, divided; put to him as \"WV 9 near Kearneysville\", the stretch through farmland inside the urban area): asked whether it should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
    "evidence": "OSM, read 2026-10-30: way 522735348 (version 6), unnamed, ref=US 340, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
    "fingerprint": {
     "name": null,
@@ -6274,13 +6274,13 @@
    "value": {
     "tier": 4,
     "half": true,
-    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "adjustment_id": "wv-9-charles-town-bypass-lts4-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "reason": "The owner, 2026-10-30, of the WV 9 and US 340 bypass east of Charles Town and Ranson (posted 60 mph, four lanes, divided; put to him as \"WV 9 near Kearneysville\", the stretch through farmland inside the urban area): asked whether it should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
    "evidence": "OSM, read 2026-10-30: way 961619123 (version 6), unnamed, ref=US 340;WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
    "fingerprint": {
     "name": null,
@@ -6295,13 +6295,13 @@
    "value": {
     "tier": 4,
     "half": true,
-    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "adjustment_id": "wv-9-charles-town-bypass-lts4-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "reason": "The owner, 2026-10-30, of the WV 9 and US 340 bypass east of Charles Town and Ranson (posted 60 mph, four lanes, divided; put to him as \"WV 9 near Kearneysville\", the stretch through farmland inside the urban area): asked whether it should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
    "evidence": "OSM, read 2026-10-30: way 961619125 (version 2), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
    "fingerprint": {
     "name": "Frank Buckles Parkway",
@@ -6316,13 +6316,13 @@
    "value": {
     "tier": 4,
     "half": true,
-    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "adjustment_id": "wv-9-charles-town-bypass-lts4-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "reason": "The owner, 2026-10-30, of the WV 9 and US 340 bypass east of Charles Town and Ranson (posted 60 mph, four lanes, divided; put to him as \"WV 9 near Kearneysville\", the stretch through farmland inside the urban area): asked whether it should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
    "evidence": "OSM, read 2026-10-30: way 961619126 (version 3), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
    "fingerprint": {
     "name": "Frank Buckles Parkway",
@@ -6337,13 +6337,13 @@
    "value": {
     "tier": 4,
     "half": true,
-    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "adjustment_id": "wv-9-charles-town-bypass-lts4-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "reason": "The owner, 2026-10-30, of the WV 9 and US 340 bypass east of Charles Town and Ranson (posted 60 mph, four lanes, divided; put to him as \"WV 9 near Kearneysville\", the stretch through farmland inside the urban area): asked whether it should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
    "evidence": "OSM, read 2026-10-30: way 961619127 (version 3), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
    "fingerprint": {
     "name": "Frank Buckles Parkway",
@@ -6358,13 +6358,13 @@
    "value": {
     "tier": 4,
     "half": true,
-    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "adjustment_id": "wv-9-charles-town-bypass-lts4-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "reason": "The owner, 2026-10-30, of the WV 9 and US 340 bypass east of Charles Town and Ranson (posted 60 mph, four lanes, divided; put to him as \"WV 9 near Kearneysville\", the stretch through farmland inside the urban area): asked whether it should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
    "evidence": "OSM, read 2026-10-30: way 1005425005 (version 4), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
    "fingerprint": {
     "name": "Frank Buckles Parkway",
@@ -6379,13 +6379,13 @@
    "value": {
     "tier": 4,
     "half": true,
-    "adjustment_id": "wv-9-kearneysville-lts4-5",
+    "adjustment_id": "wv-9-charles-town-bypass-lts4-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of WV 9 and US 340 near Kearneysville (posted 60 mph, four lanes, divided): asked whether this stretch should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
+   "reason": "The owner, 2026-10-30, of the WV 9 and US 340 bypass east of Charles Town and Ranson (posted 60 mph, four lanes, divided; put to him as \"WV 9 near Kearneysville\", the stretch through farmland inside the urban area): asked whether it should be LTS 4.5 or Avoid once the urban-roads list includes West Virginia (it lies inside the Hagerstown Census urban area, where an expressway posted 50 mph or more is Avoid, but runs through farmland), he answered \"LTS 4.5\". Beta rates it LTS 4.5 now, as a rural expressway; this keeps it there.",
    "evidence": "OSM, read 2026-10-30: way 1005425006 (version 5), Frank Buckles Parkway, ref=WV 9, highway=trunk, maxspeed=60 mph. Census 2020 urban areas (TIGERweb): inside the Hagerstown, MD--WV--PA--VA Urban Area. Beta's stress tiles, read 2026-10-30: LTS 4.5.",
    "fingerprint": {
     "name": "Frank Buckles Parkway",
