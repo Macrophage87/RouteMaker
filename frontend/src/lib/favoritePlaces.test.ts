@@ -10,6 +10,7 @@ import {
   SAVE_SPOT_TEXT,
   favoriteFromPlace,
   favoritePlacesBody,
+  favoriteMovedSaid,
   favoriteRemovedSaid,
   favoriteSavedSaid,
   fetchFavoritePlaces,
@@ -17,6 +18,7 @@ import {
   parseFavoritePlaces,
   saveFavoritePlaces,
   withFavorite,
+  withFavoriteMoved,
   withWork,
   withoutFavorite,
   workOf,
@@ -86,6 +88,44 @@ test("each change is said in words", () => {
   assert.deepEqual(favoriteFromPlace({ lon: -77.01, lat: 38.9, name: "Office" }, true), office);
 });
 
+test("the rider orders the places after Work: one row up or down, Work staying second, the ends as they were", () => {
+  const cafe: FavoritePlace = { point: [-77.03, 38.92], label: "Cafe" };
+  const park: FavoritePlace = { point: [-77.04, 38.93], label: "Park" };
+  const list = [market, office, cafe, park];
+  assert.deepEqual(othersOf(withFavoriteMoved(list, park, -1)), [market, park, cafe]);
+  assert.deepEqual(othersOf(withFavoriteMoved(list, market, 1)), [cafe, market, park]);
+  assert.deepEqual(workOf(withFavoriteMoved(list, market, 1)), office);
+  // Already first or last, or not a favorite: unchanged.
+  assert.deepEqual(withFavoriteMoved(list, market, -1), list);
+  assert.deepEqual(withFavoriteMoved(list, park, 1), list);
+  assert.deepEqual(withFavoriteMoved(list, { point: [-76, 39], label: "Elsewhere" }, -1), list);
+  // Work is not among the rows that move.
+  assert.deepEqual(withFavoriteMoved(list, office, 1), list);
+  // The order is what is saved: the body keeps it.
+  assert.deepEqual(
+    favoritePlacesBody(withFavoriteMoved([cafe, park], park, -1)).places.map((p) => p.label),
+    ["Park", "Cafe"],
+  );
+  assert.equal(favoriteMovedSaid(park, 2, 3), "Park moved to 2 of 3.");
+});
+
+test("Go: Edit gives each place after Work Move up and Move down, named for the place, none past the ends", () => {
+  const go = src("../app/Go.tsx");
+  const popout = go.slice(go.indexOf("export function FavoritesPopout"), go.indexOf("export function HomeSetter"));
+  assert.match(popout, /row > 0 \? \([\s\S]*?aria-label=\{MOVE_UP_TEXT\(place\)\}[\s\S]*?\) : \(\s*<span className="go-favorite-move-gap" aria-hidden="true" \/>/);
+  assert.match(popout, /row < others\.length - 1 \? \([\s\S]*?aria-label=\{MOVE_DOWN_TEXT\(place\)\}[\s\S]*?\) : \(\s*<span className="go-favorite-move-gap" aria-hidden="true" \/>/);
+  // Only in Edit, on their own line under the name.
+  assert.match(popout, /\{editing && \(\s*<span className="go-favorite-tools">/);
+  // Before Remove, and only for the rest: Home and Work rows have none.
+  assert.ok(popout.indexOf("MOVE_DOWN_TEXT(place)") < popout.indexOf('{t("Remove")}<span className="visually-hidden"> {favoriteName(place)}'));
+  assert.equal(popout.slice(0, popout.indexOf("others.map")).includes("MOVE_UP_TEXT"), false);
+  const app = src("../App.tsx");
+  assert.match(app, /onMoveFavorite: moveFavorite/);
+  assert.match(app, /return keepFavorites\(\(places\) => withFavoriteMoved\(places, place, by\), favoriteMovedSaid\(place, row \+ 3, others\.length \+ 2\)\)/);
+  // A refused move leaves no focus waiting to be taken later.
+  assert.match(popout, /if \(places\.onMoveFavorite\(place, by\)\) focusNext\.current =/);
+});
+
 test("GET and POST /api/me/places: signed out or failed is null; a save sends the CSRF token", async () => {
   const answer = (status: number, body: unknown) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
   assert.equal(await fetchFavoritePlaces("https://x", answer(401, { error: "Sign in" })), null);
@@ -118,7 +158,7 @@ test("App, the road panel and the ride summary: Save to Favorites, signed in onl
   // Not before the account's list is read (it would replace the list), nor outside the map, nor at Home.
   assert.match(app, /if \(!me\.signed_in \|\| favoritePlaces === null \|\| !destination \|\| !insideCoverage\(destination\) \|\| \(myGo\.home && samePoint\(myGo\.home\.point, destination\)\)\) return null;/);
   // No save before the list is read: the rider is told, and it is read again.
-  assert.match(app, /if \(now === null\) \{\s*announce\(FAVORITES_NOT_LOADED\);\s*loadFavorites\(\);\s*return;/);
+  assert.match(app, /if \(now === null\) \{\s*announce\(FAVORITES_NOT_LOADED\);\s*loadFavorites\(\);\s*return false;/);
   assert.match(app, /start && !start\.loop && start\.points\.length >= 2/);
   assert.match(src("../RoadInfoDialog.tsx"), /\{SAVE_SPOT_TEXT\}/);
   assert.match(src("../RideSummaryCard.tsx"), /\{SAVE_SPOT_TEXT\}/);
