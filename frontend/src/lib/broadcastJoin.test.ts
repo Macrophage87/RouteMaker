@@ -97,7 +97,8 @@ test("handGpx: in the phone app the GPX file goes to Android's Open with list; i
 
 test("App: the sheet comes only from a followed broadcast's own start, over that ride, with the GPX sheet's own actions", () => {
   assert.match(app, /if \(sharedFollow\) \{\s*startRideNoted\(keyless \? BROADCAST_NO_KEY : BROADCAST_FOLLOWING\);\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*if \(!keyless && sharedOpen\?\.id && sharedOpen\.lead\) offerJoin\(/);
-  assert.match(app, /<BroadcastJoinDialog ask=\{riding \? joinAsk : null\}/);
+  // With a ride's dots, RideGroup shows it (with the dot question, or alone); App only where there are none.
+  assert.match(app, /<BroadcastJoinDialog ask=\{riding && !rideGroupLine \? joinAsk : null\} onAction=\{joinAction\} onClose=\{closeJoin\} \/>/);
   assert.match(app, /if \(action === "gpx"\) downloadRoute\(said\);\s*else if \(action === "garmin"\) sendToGarminRoute\(said\);\s*else sendToWahooRoute\(said\);/);
   // No closure question over a followed ride: the leader's to weigh.
   assert.match(app, /if \(shown && followsBroadcast\(shown\)\) return proceed\(\);/);
