@@ -301,7 +301,8 @@ the route goes to its top by way of its bottom.
   the ride type assumes. Times and arrival clocks follow it. Mass Ride and the share bikes keep
   their own pace.
 - Favorites (signed in): Go's Home button becomes Favorites, with Home and Work first and then
-  your other places. One tap rides there. They are kept with your account only.
+  your other places, in the order you set with Edit's Move up and Move down. One tap rides there.
+  They are kept with your account only.
 - Share live (it was called Broadcast): beside Start ride. Send the link and start riding.
   Whoever opens it sees your dot and the path you take, and can download your route as a GPX
   file or, if they connected one, send it to Garmin or Wahoo. Following needs no account. The
