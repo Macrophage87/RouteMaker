@@ -228,7 +228,9 @@ SECTIONS: list[tuple[str, str]] = [
                 "like any shared route, shows where the route starts.",
                 "Speak, in an alert's Other box, uses your browser's speech recognition: the "
                 "browser's maker (Google for Chrome, Apple for Safari) turns the recording into "
-                "text. The words go only into the box until you tap Send.",
+                "text; in the Android app, the phone's own speech input (Google's on most "
+                "phones) does, and it, not RouteMaker, has the microphone. The words go only "
+                "into the box until you tap Send.",
             ]
         )
         + _details(RIDE_CRYPTO_SUMMARY, RIDE_CRYPTO),
