@@ -2,7 +2,9 @@
  * Joining a broadcast (Stephen 2026-10-28: "For joining a broadcast ride also add the ability to download the gpx, or
  * send to garmin/wahoo if connected. Have this be just a big popup when you join"): once a followed broadcast's link
  * has started the ride on its own (lib/rideGroup.ts opensIntoRide), one big sheet (BroadcastJoinDialog.tsx) offers the
- * broadcast's route as a GPX file, to Garmin and to Wahoo where the rider connected them, and Just ride.
+ * broadcast's route as a GPX file, to Garmin and to Wahoo where the rider connected them, and Just ride. Where the
+ * ride also asks "Show me as a dot?", the offer is on that question's screen instead, with no Just ride (Stephen
+ * 2026-10-30: "put the location consent and the download route on the same screen when joining a ride").
  *
  * Shown once per joined ride: the ride's link and leader are kept on this device when it shows, so a reload or a
  * resumed ride does not show it again. Never to the leader (the page that shared it does not follow it).
