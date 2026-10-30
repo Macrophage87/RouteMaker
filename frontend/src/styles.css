@@ -7846,6 +7846,14 @@ details.fold > summary .icon {
   padding: 8px 10px;
   line-height: 1.25;
 }
+/* The quick alerts in Send alert's yellow, the same in both themes (near-black on it, 15:1), so they read apart from
+   Send (filled blue) and Cancel (outlined) above them (Stephen 2026-10-30: "Put a separation in either a line or
+   colors between send, cancel and the quick buttons"). */
+.ride-alert-panel .ride-alert-kinds button.secondary {
+  background: #fff3bf;
+  color: #1a1a1a;
+  border: 2px solid #8a6a00;
+}
 /* Speak heads the panel, the largest press in it: one press and the rider says the alert. */
 .ride-alert-panel .ride-speak {
   display: flex;
@@ -7870,8 +7878,8 @@ details.fold > summary .icon {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--text);
 }
 .ride-alert-other label {
   flex: 1 1 100%;
