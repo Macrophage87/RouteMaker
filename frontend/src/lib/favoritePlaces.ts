@@ -3,7 +3,8 @@
  * favorites replace home"; "Home and if set work would be the top 2 favorites"; "we'd have a popout").
  *
  * Signed in, Go's Home chip is a Favorites chip that pops out the rider's places: Home first, then Work once it is
- * set, then the rest in the order they were added. One tap on a row rides there. Signed out, Home stays its own chip
+ * set, then the rest in the rider's order (added last; Edit's Move up and Move down change it, Stephen 2026-10-30:
+ * "order favorites"). One tap on a row rides there. Signed out, Home stays its own chip
  * and nothing here applies.
  *
  * Saved to the account only (GET and POST /api/me/places; core.models.MyGo.places), never on the device or in a
@@ -92,7 +93,7 @@ export function workOf(places: readonly FavoritePlace[]): FavoritePlace | null {
   return places.find((p) => p.work) ?? null;
 }
 
-/** The places after Home and Work, in the order they were added. */
+/** The places after Home and Work, in the rider's order. */
 export function othersOf(places: readonly FavoritePlace[]): FavoritePlace[] {
   return places.filter((p) => !p.work);
 }
@@ -123,12 +124,34 @@ export function withoutFavorite(places: readonly FavoritePlace[], place: Favorit
   return places.filter((p) => !samePoint(p.point, place.point));
 }
 
+/**
+ * The list with a place (not Work, which stays second) one row up (-1) or down (1) among the rest. At the top or the
+ * bottom already, or not in the list, it is the list as it was. A moved list has Work first (where Work sits in the
+ * list is not shown or kept: the popout lists it second either way).
+ */
+export function withFavoriteMoved(places: readonly FavoritePlace[], place: FavoritePlace, by: -1 | 1): FavoritePlace[] {
+  const others = othersOf(places);
+  const from = others.findIndex((p) => samePoint(p.point, place.point));
+  const to = from + by;
+  if (from < 0 || to < 0 || to >= others.length) return [...places];
+  [others[from], others[to]] = [others[to], others[from]];
+  const work = workOf(places);
+  return work ? [work, ...others] : others;
+}
+
+export const MOVE_UP_TEXT = (place: FavoritePlace) => t("Move up: {place}", { place: favoriteName(place) });
+export const MOVE_DOWN_TEXT = (place: FavoritePlace) => t("Move down: {place}", { place: favoriteName(place) });
+
 /** Said once a place is saved, or removed. */
 export function favoriteSavedSaid(place: FavoritePlace): string {
   return place.work ? t("Work set to {name}.", { name: favoriteName(place) }) : t("{name} saved to Favorites.", { name: favoriteName(place) });
 }
 export function favoriteRemovedSaid(place: FavoritePlace): string {
   return place.work ? t("Work cleared.") : t("{name} removed from Favorites.", { name: favoriteName(place) });
+}
+/** Said once a place is moved: the popout row it is now in, of all its rows (Home's and Work's among them). */
+export function favoriteMovedSaid(place: FavoritePlace, row: number, rows: number): string {
+  return t("{name} moved to {row} of {rows}.", { name: favoriteName(place), row, rows });
 }
 
 type Fetch = typeof fetch;
