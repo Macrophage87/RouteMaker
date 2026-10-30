@@ -2,7 +2,8 @@
  * Restarting a ride part way (Stephen 2026-10-24: "let people pick the stops that are already done, with the logical
  * defaults selected and continue the rest"): asked once, at the ride's first fix, where it is past a stop. Each stop is
  * a checkbox, the ones behind the rider ticked; Continue rides the rest. The platform's modal <dialog>, as Start ride on
- * a computer's is: Continue takes the focus, Escape is Continue with the ticks as they are.
+ * a computer's is: Continue takes the focus, Escape is Continue with the ticks as they are. Left unanswered while the
+ * rider rides on (lib/rideStops.ts RESTART_AUTO_M), RideMode closes it with the stops as marked and says so.
  */
 import { useEffect, useId, useRef, useState } from "react";
 import { RESTART_CONTINUE, RESTART_HEADING, RESTART_LEAD, stopWords, type RestartStop } from "./lib/rideStops.ts";

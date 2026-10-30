@@ -13,6 +13,7 @@ import type { ClosedStation, RouteResponse, StressSpan, TransitOption, TransitPl
 import type { Dials } from "./dials.ts";
 import { formatDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
+import { t } from "./i18n.ts";
 import { isTransit, presetSaid, type PresetId } from "./presets.ts";
 import { stressShares } from "./profileChart.ts";
 import { routeSections, usableSpans, type RouteSection } from "./routeColours.ts";
@@ -24,30 +25,30 @@ export function transitOf(route: Pick<RouteResponse, "transit"> | null | undefin
 
 /** The route's door-to-door time as the totals show it: "about 28 min". */
 export function transitTime(plan: TransitPlan): string {
-  return `about ${plan.minutes} min`;
+  return t("about {minutes} min", { minutes: plan.minutes });
 }
 
 /** The total's name: live where a departure is WMATA's prediction, scheduled where the trip rides transit. */
 export function transitTimeName(plan: Pick<TransitPlan, "scheduled" | "live_times">): string {
-  if (plan.live_times) return "Door-to-door time, with live departures";
-  return plan.scheduled ? "Door-to-door time, scheduled" : "Door-to-door time";
+  if (plan.live_times) return t("Door-to-door time, with live departures");
+  return plan.scheduled ? t("Door-to-door time, scheduled") : t("Door-to-door time");
 }
 
 /** The list's name, which a screen reader announces with the list. */
-export const STEPS_LABEL = "Steps, in order";
+export const STEPS_LABEL = t("Steps, in order");
 /**
  * The options' list's name (the owner, 2026-10-12: riding directly there always). Stephen, 2026-10-21: "order by time
  * to get there with a penalty for time taken on busy roads and intersections", each row saying its busy riding,
  * "which should explain why they might not be in complete order".
  */
-export const OPTIONS_LABEL = "Trips, best first, counting busy roads";
+export const OPTIONS_LABEL = t("Trips, best first, counting busy roads");
 /** The legend's words for the rides: each is coloured by traffic stress, as the route is. */
-export const RIDES_LEGEND = "Every ride is coloured by traffic stress, as on the route, and a thin solid line is a ride whose streets could not be read in time.";
+export const RIDES_LEGEND = t("Every ride is coloured by traffic stress, as on the route, and a thin solid line is a ride whose streets could not be read in time.");
 /**
  * Said under every transit plan: the timetables carry only the closures an agency published in them. The API's own
  * note (core/transit.py SCHEDULED_WORDS), said here once, not also in the notes (P11).
  */
-export const TRACK_WORK = "Scheduled service: check for track work and service alerts before you go.";
+export const TRACK_WORK = t("Scheduled service: check for track work and service alerts before you go.");
 
 /** The API's notes the times paragraph says itself (TRACK_WORK, liveTimesText): core/transit.py SCHEDULED_WORDS, LIVE_WORDS. */
 const SAID_IN_TIMES = [/^Scheduled service: check for track work/, /^Departures marked live are WMATA's predictions/];
@@ -82,12 +83,17 @@ const TYPICAL_CREDIT = /\(typical service\)/;
  * published timetables, Metro's typical service (from its credit), or both.
  */
 export function timesFromText(plan: Pick<TransitPlan, "credits" | "day_type" | "holiday">): string {
-  const day = `${plan.day_type === "weekday" ? "weekday" : plan.day_type}${plan.holiday ? " (a holiday)" : ""}`;
+  const dayWord = { weekday: t("weekday"), saturday: t("saturday"), sunday: t("sunday") }[plan.day_type] ?? plan.day_type;
+  const day = plan.holiday ? t("{day} (a holiday)", { day: dayWord }) : dayWord;
   const typical = plan.credits.filter((credit) => TYPICAL_CREDIT.test(credit)).length;
-  const metro = (when: string) => `Metro's times are its typical ${when}service from wmata.com, not a timetable: its wait is half the usual time between trains.`;
-  if (typical > 0 && typical === plan.credits.length) return metro(`${day} `);
-  const published = `Times are from each system's published timetables for this ${day}: where trains or buses come every 15 minutes or less, the wait is half the time between them; otherwise it is the time to the next one.`;
-  return typical > 0 ? `${published} ${metro("")}` : published;
+  if (typical > 0 && typical === plan.credits.length)
+    return t("Metro's times are its typical {day} service from wmata.com, not a timetable: its wait is half the usual time between trains.", { day });
+  const published = t(
+    "Times are from each system's published timetables for this {day}: where trains or buses come every 15 minutes or less, the wait is half the time between them; otherwise it is the time to the next one.",
+    { day },
+  );
+  const metro = t("Metro's times are its typical service from wmata.com, not a timetable: its wait is half the usual time between trains.");
+  return typical > 0 ? `${published} ${metro}` : published;
 }
 
 /**
@@ -95,11 +101,11 @@ export function timesFromText(plan: Pick<TransitPlan, "credits" | "day_type" | "
  * buses), or that none are.
  */
 export function liveTimesText(plan: Pick<TransitPlan, "live" | "steps">): string {
-  if (!plan.live) return "Not live arrivals.";
+  if (!plan.live) return t("Not live arrivals.");
   const bus = plan.steps.some((s) => s.mode === "bus" && s.live);
   const train = plan.steps.some((s) => s.mode !== "bus" && s.live);
-  const what = bus && train ? "next trains and buses" : bus ? "next buses" : "next trains";
-  return `Times marked live are WMATA's ${what}.`;
+  if (bus && train) return t("Times marked live are WMATA's next trains and buses.");
+  return bus ? t("Times marked live are WMATA's next buses.") : t("Times marked live are WMATA's next trains.");
 }
 
 /** Whether an option's row shows its legs as marks: a trip with a transit leg (Stephen, 2026-10-12). */
@@ -116,12 +122,12 @@ export function optionText(
   index: number,
 ): string {
   const what = marked(option) ? legsText(option.legs ?? []) : option.label;
-  return `${String.fromCharCode(65 + index)}. ${what}${hopWords(option)}: about ${option.minutes} min${busyText(option.busy_m, "busy")}`;
+  return `${String.fromCharCode(65 + index)}. ${what}${hopWords(option)}: ${t("about {minutes} min", { minutes: option.minutes })}${busyText(option.busy_m, "shown")}`;
 }
 
 /** Novice and Nervous's hop past the busy stretch (v0.11.0): ", skips the busy stretch", on screen and said. */
 function hopWords(option: Pick<TransitOption, "hop">): string {
-  return option.hop ? ", skips the busy stretch" : "";
+  return option.hop ? t(", skips the busy stretch") : "";
 }
 
 /**
@@ -129,15 +135,16 @@ function hopWords(option: Pick<TransitOption, "hop">): string {
  * ", 0.4 mi (0.6 km) busy" on screen, "on busy roads" said; ", no busy roads" under a tenth of a mile (a crossing,
  * a driveway); nothing where it is not known.
  */
-export function busyText(busyM: number | null | undefined, words: string): string {
+export function busyText(busyM: number | null | undefined, how: "shown" | "said"): string {
   if (busyM == null || !Number.isFinite(busyM)) return "";
-  if (busyM < NO_BUSY_M) return ", no busy roads";
-  return `, ${formatDistance(busyM)} ${words}`;
+  if (busyM < NO_BUSY_M) return t(", no busy roads");
+  const distance = formatDistance(busyM);
+  return how === "shown" ? t(", {distance} busy", { distance }) : t(", {distance} on busy roads", { distance });
 }
 const NO_BUSY_M = 160;
 
 /** Said with an option whose row shows the elevator icon (`TransitOption.elevator_out`). */
-export const ELEVATOR_OUT_SAID = "an elevator is out on the way, so it is ranked lower";
+export const ELEVATOR_OUT_SAID = t("an elevator is out on the way, so it is ranked lower");
 
 /** The same option in words: "B. walk 4 minutes, Red Line 18 minutes, walk 3 minutes: about 25 min". */
 export function optionSaid(
@@ -146,12 +153,12 @@ export function optionSaid(
 ): string {
   const what = marked(option) ? legsSaid(option.legs ?? []) : option.label;
   const elevator = option.elevator_out ? `; ${ELEVATOR_OUT_SAID}` : "";
-  return `${String.fromCharCode(65 + index)}. ${what}${hopWords(option)}: about ${option.minutes} min${busyText(option.busy_m, "on busy roads")}${elevator}`;
+  return `${String.fromCharCode(65 + index)}. ${what}${hopWords(option)}: ${t("about {minutes} min", { minutes: option.minutes })}${busyText(option.busy_m, "said")}${elevator}`;
 }
 
 /** What is said when an option is chosen. */
 export function optionChosenSaid(option: Pick<TransitOption, "label" | "minutes">): string {
-  return `Planning ${option.label}, about ${option.minutes} min.`;
+  return t("Planning {option}, about {minutes} min.", { option: option.label, minutes: option.minutes });
 }
 
 /** The option the rider chose, held for one trip (its start and end), so a new trip starts from the quickest. */
@@ -168,16 +175,16 @@ export function withTransitOption(dials: Dials, preset: PresetId, pick: TransitP
 
 /** A station closed for the day, in words: "Camden Station, closed: no MARC weekend service". */
 export function closedName(station: Pick<ClosedStation, "name" | "reason">): string {
-  return `${station.name}, closed: ${station.reason}`;
+  return t("{station}, closed: {reason}", { station: station.name, reason: station.reason });
 }
 
 /** What a screen reader hears when the plan arrives: the total, scheduled, and the comparison. Brief. */
 export function transitSaid(route: Pick<RouteResponse, "transit">): string | null {
   const plan = transitOf(route);
   if (!plan) return null;
-  const parts = [`${presetSaid(plan.mode)} planned: ${plan.summary}`];
+  const parts = [t("{ride} planned: {summary}", { ride: presetSaid(plan.mode), summary: plan.summary })];
   if (plan.comparison) parts.push(plan.comparison);
-  if (plan.bike_blackout) parts.push("Bikes aren't allowed on Metro today.");
+  if (plan.bike_blackout) parts.push(t("Bikes aren't allowed on Metro today."));
   return parts.join(" ");
 }
 
@@ -273,7 +280,7 @@ export function stepStressSaid(step: Pick<TransitStep, "mode" | "route_line" | "
   const spans = step.route_line ? routeSpans : rideSections(step) ? step.stress_spans : null;
   if (!usableSpans(spans)) return null;
   const shares = stressShares(spans, 0);
-  return shares ? `Traffic stress along it: ${shares}.` : null;
+  return shares ? t("Traffic stress along it: {shares}.", { shares }) : null;
 }
 
 export function transitFeatures(plan: TransitPlan | null): TransitFeatureCollection {
@@ -313,10 +320,10 @@ export function transitMarkers(plan: TransitPlan | null): TransitMarker[] {
     const [lon, lat] = middle(step.coordinates);
     const lines = step.lines.join(" or ");
     const bus = step.mode === "bus";
-    const badge = bus ? "Bus" : (step.system ?? "Train");
+    const badge = bus ? t("Bus") : (step.system ?? t("Train"));
     const sameName = !bus && lines.toLowerCase() === badge.toLowerCase();
-    const named = bus ? `Bus ${lines}` : sameName ? badge : `${badge}, ${lines}`;
-    out.push({ lon, lat, badge, label: step.to ? `${named}, to ${step.to}` : named });
+    const named = bus ? t("Bus {lines}", { lines }) : sameName ? badge : `${badge}, ${lines}`;
+    out.push({ lon, lat, badge, label: step.to ? t("{named}, to {stop}", { named, stop: step.to }) : named });
   }
   return out;
 }

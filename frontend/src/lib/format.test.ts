@@ -4,6 +4,9 @@ import assert from "node:assert/strict";
 import {
   AVOID_MAX_SPAN_M,
   FEET_BELOW_M,
+  FEET_PER_MILE,
+  KM_PER_MILE,
+  METRES_PER_FOOT,
   METRES_PER_MILE,
   SEEK_MAX_SPAN_M,
   formatClimb,
@@ -18,6 +21,7 @@ import {
   formatRunMiles,
   formatSeconds,
   formatSpeed,
+  kmFigure,
   milesFigure,
 } from "./format.ts";
 
@@ -108,7 +112,8 @@ test("nothing in the app writes a unit but this module", async () => {
         if (name !== "rail-data" && name !== "licences" && name !== "i18n") walk(path);
         continue;
       }
-      if (!/\.(ts|tsx)$/.test(name) || /\.test\./.test(name) || name === "format.ts") continue;
+      // spokenFigures.ts is this module's figures in words for a screen reader, US units first as here.
+      if (!/\.(ts|tsx)$/.test(name) || /\.test\./.test(name) || name === "format.ts" || name === "spokenFigures.ts") continue;
       readFileSync(path, "utf8").split("\n").forEach((line, i) => {
         const code = line
           .replace(/\/\/.*$/, "")
@@ -124,6 +129,32 @@ test("nothing in the app writes a unit but this module", async () => {
   };
   walk(root);
   assert.deepEqual(offenders, []);
+});
+
+test("the conversion factors are this module's alone: no other copy of a mile, a foot or a kilometre to drift", async () => {
+  const { readdirSync, readFileSync, statSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const root = new URL("..", import.meta.url).pathname;
+  const offenders: string[] = [];
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) {
+        if (name !== "rail-data" && name !== "licences" && name !== "i18n") walk(path);
+        continue;
+      }
+      if (!/\.(ts|tsx|js|mjs)$/.test(name) || /\.test\./.test(name) || name === "format.ts") continue;
+      readFileSync(path, "utf8").split("\n").forEach((line, i) => {
+        if (/\b(1609\.344|1\.609344|3\.28084|0\.3048|5280)\b/.test(line.replace(/\/\/.*$/, ""))) offenders.push(`${path}:${i + 1}: ${line.trim()}`);
+      });
+    }
+  };
+  walk(root);
+  assert.deepEqual(offenders, []);
+  assert.equal(kmFigure(7600), "7.6");
+  assert.equal(FEET_PER_MILE, 5280);
+  assert.ok(Math.abs(METRES_PER_FOOT * FEET_PER_MILE - METRES_PER_MILE) < 1e-9);
+  assert.ok(Math.abs(KM_PER_MILE * 1000 - METRES_PER_MILE) < 1e-9);
 });
 
 test("the map's scale shows miles and feet over kilometres and metres", async () => {

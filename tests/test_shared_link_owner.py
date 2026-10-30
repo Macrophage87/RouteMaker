@@ -453,3 +453,84 @@ class TestHomeFollowUps:
         assert SharedRoute.objects.get(pk=again).preview_zone is not None
         save_home(None)
         assert SharedRoute.objects.get(pk=again).preview_zone is None
+
+
+def queued_draws(*route_ids: str) -> list[str]:
+    """Which of `route_ids` have a draw queued (the job table outlives a test's flush)."""
+    from procrastinate.contrib.django.models import ProcrastinateJob
+
+    queued = {
+        job.args["route_id"]
+        for job in ProcrastinateJob.objects.filter(task_name="draw_share_preview")
+    }
+    return [r for r in route_ids if r in queued]
+
+
+@db
+class TestDrawnWhenMade:
+    """The image is drawn by the worker when the link is made (the owner, 2026-10-29), the page
+    of tags never draws, and a fetch draws one not kept yet, one at a time."""
+
+    def test_making_or_remaking_a_link_queues_its_draw(self) -> None:
+        client, _, csrf = signed_in()
+        rid = share(client)
+        assert queued_draws(rid) == [rid]
+        fresh = post(client, f"/api/me/shared-routes/{rid}/regenerate", csrf).json()["id"]
+        assert queued_draws(rid, fresh) == [rid, fresh]
+
+    def test_a_link_with_no_image_queues_nothing(self) -> None:
+        rid = share(Client(), preview_image=False)
+        assert queued_draws(rid) == []
+
+    def test_the_worker_keeps_the_image_and_fetches_never_draw_it_again(self, monkeypatch) -> None:
+        from config.procrastinate import draw_share_preview
+
+        rid = share(Client())
+        draw_share_preview.func(route_id=rid)
+        row = SharedRoute.objects.get(pk=rid)
+        assert png_size(bytes(row.preview_png)) == (1200, 630)
+
+        def no_drawing(*_args, **_kwargs):
+            raise AssertionError("drawn again")
+
+        monkeypatch.setattr(share_preview, "render_png", no_drawing)
+        page = Client().get(f"/s/{rid}", **CRAWLER, **addr()).content.decode()
+        assert 'property="og:image"' in page
+        r = Client().get(f"/s/{rid}/preview.png", **CRAWLER, **addr())
+        assert r.status_code == 200 and r.content == bytes(row.preview_png)
+        # A link gone or never kept is nothing to the worker.
+        draw_share_preview.func(route_id="0" * 32)
+        draw_share_preview.func(route_id="nonsense")
+
+    def test_the_page_names_an_image_not_drawn_yet_without_drawing_it(self, monkeypatch) -> None:
+        rid = share(Client())
+
+        def no_drawing(*_args, **_kwargs):
+            raise AssertionError("the page drew the image")
+
+        monkeypatch.setattr(share_preview, "render_png", no_drawing)
+        page = Client().get(f"/s/{rid}", **CRAWLER, **addr()).content.decode()
+        assert 'property="og:image"' in page and "summary_large_image" in page
+        assert SharedRoute.objects.get(pk=rid).preview_png is None
+
+    def test_a_fetch_finding_a_draw_running_is_told_to_try_again(self) -> None:
+        from django.db import connections
+
+        rid = share(Client())
+        other = connections.create_connection("default")
+        try:
+            # Another fetch's draw (any route), then the worker's draw of this route.
+            for pair in ((share_preview._DRAW_LOCK, 0), share_preview._route_lock(rid)):
+                with other.cursor() as cursor:
+                    cursor.execute("SELECT pg_advisory_lock(%s, %s)", list(pair))
+                r = Client().get(f"/s/{rid}/preview.png", **CRAWLER, **addr())
+                assert r.status_code == 503 and r["Retry-After"] == "5"
+                assert SharedRoute.objects.get(pk=rid).preview_png is None
+                with other.cursor() as cursor:
+                    cursor.execute("SELECT pg_advisory_unlock(%s, %s)", list(pair))
+        finally:
+            other.close()
+        # Free again, the fetch draws it and keeps it.
+        r = Client().get(f"/s/{rid}/preview.png", **CRAWLER, **addr())
+        assert r.status_code == 200
+        assert bytes(SharedRoute.objects.get(pk=rid).preview_png) == r.content
