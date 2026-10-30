@@ -114,7 +114,7 @@ export function rideSections(
 /**
  * One grouping everywhere (P3): Go's Ride sheet's sections (rideSections) as a list of groups, each under its
  * heading: the favorites (where there are any), Common, then Transportation, Adventure and Group less those. Plan's
- * ride type dialog shows them so, and Settings' Default ride type as the select's option groups (no favorites).
+ * ride type dialog shows them so, and Settings' Primary Go method as the select's option groups (no favorites).
  */
 export function rideTypeSections(query = "", favorites: readonly PresetId[] = [], presets: readonly PresetOption[] = PRESETS): RideGroup[] {
   const sections = rideSections(query, presets, favorites);

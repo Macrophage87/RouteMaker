@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { cueParts } from "./cueShown.ts";
-import { GAP_PX, ICON_GAP_PX, PILL_PX, ROUND_PX, WORD_PX, railFit } from "./railFit.ts";
+import { GAP_PX, ICON_GAP_PX, PILL_PX, ROUND_PX, WORD_PX, barOverlap, railFit } from "./railFit.ts";
 import { RIDE_ICONS_KEY, WAKE_LOST, WAKE_SHORT, WAKE_STEPS, WAKE_UNAVAILABLE, phoneKind, readRideIconsOnly, wakeSaid, writeRideIconsOnly } from "./rideOutput.ts";
 import { ROAD_CLOSED_NAME, ROAD_CLOSED_TEXT } from "./roadClosed.ts";
 import { detourRowShown, type Nearby } from "./nearest.ts";
@@ -74,7 +74,7 @@ test("the side buttons' words: under the round buttons where they fit, else 44 p
   }
   assert.match(ride, /<span className="ride-word" aria-hidden="true">\{RIDE_SETTINGS_TEXT\}<\/span>/);
   assert.match(ride, /<span className="ride-word" aria-hidden="true">\{EASE_WORD\[which\]\}<\/span>/);
-  assert.match(ride, /aria-label=\{follow \? t\("Where am I\?"\) : t\("Where am I\? The map stopped following you"\)\}/);
+  assert.match(ride, /aria-label=\{follow \|\| everyone\?\.on \? t\("Where am I\?"\) : t\("Where am I\? The map stopped following you"\)\}/);
   assert.equal(roam.match(/className="ride-word"/g)?.length, 3);
   assert.equal(roam.match(/className=\{`ride-round/g)?.length ?? 0, 2);
   // More's bubbles: a column going up from More, not a row along the foot.
@@ -163,4 +163,22 @@ test("Resume names the ride where it can, and its buttons are full-size targets"
   assert.equal(resumeHeading("Union Station"), "Resume your ride to Union Station?");
   assert.equal(resumeHeading(null), RESUME_HEADING);
   assert.match(css, /\.resume-ride-dialog \.closure-choices button \{\s*min-height: 44px;/);
+});
+
+test("the rail starts below the ride group's bar where the bar is over it, so Send alert never covers its top button", () => {
+  const rail = { top: 200, bottom: 760, left: 322, right: 378 };
+  // The 390 px case from the v0.15.2 end-to-end pass: Send alert at y 230-294 over the rail's right column.
+  assert.equal(barOverlap(rail, { top: 230, bottom: 294, left: 180, right: 378 }), 94);
+  // No bar, a bar above the rail, or a bar left of it: nothing to clear.
+  assert.equal(barOverlap(rail, null), 0);
+  assert.equal(barOverlap(rail, { top: 120, bottom: 190, left: 180, right: 378 }), 0);
+  assert.equal(barOverlap(rail, { top: 230, bottom: 294, left: 10, right: 300 }), 0);
+  // A hidden bar measures nothing.
+  assert.equal(barOverlap(rail, { top: 0, bottom: 0, left: 0, right: 0 }), 0);
+  // The rail's room shrinks by the overlap, so a full column turns to pills rather than reaching under the bar.
+  const src = readFileSync(new URL("./railFit.ts", import.meta.url), "utf8");
+  assert.match(src, /setFit\(railFit\(element\.clientHeight - clear, items\.length, large, iconsOnly\)\);/);
+  // Every group bar counts, and one that comes after the rail is measured too.
+  assert.match(src, /document\.querySelectorAll\("\.ride-group-bar"\)/);
+  assert.match(src, /barsChanged\?\.observe\(element\.closest\("\.app"\) \?\? document\.body, \{ childList: true, subtree: true \}\);/);
 });

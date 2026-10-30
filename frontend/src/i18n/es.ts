@@ -483,9 +483,9 @@ export const ES: Readonly<Record<string, string>> = {
   "My Go saved to your account.": "Mi Go se guardó en su cuenta.",
   "My Go was not saved to your account; try again shortly. It still applies here.":
     "Mi Go no se guardó en su cuenta; inténtelo de nuevo en breve. Aún se aplica aquí.",
-  "Default ride type": "Tipo de recorrido predeterminado",
+  "Primary Go method": "Método principal de Go",
   "Ride type": "Tipo de recorrido",
-  "Your ride type. Change it in Settings, under My Go.": "Su tipo de recorrido. Cámbielo en Ajustes, en Mi Go.",
+  "Your primary Go method. Change it in Settings, under My Go.": "Su método principal de Go. Cámbielo en Ajustes, en Mi Go.",
   Common: "Comunes",
   "Every ride type": "Todos los tipos de recorrido",
   "Ride type & settings": "Tipo de recorrido y ajustes",
@@ -1476,6 +1476,9 @@ export const ES: Readonly<Record<string, string>> = {
   "{name} saved to Favorites.": "Se guardó {name} en Favoritos.",
   "Work cleared.": "Trabajo borrado.",
   "{name} removed from Favorites.": "Se quitó {name} de Favoritos.",
+  "Move up: {place}": "Subir: {place}",
+  "Move down: {place}": "Bajar: {place}",
+  "{name} moved to {row} of {rows}.": "{name} pasó al puesto {row} de {rows}.",
   "Your location is blocked for this site. Allow location in the browser's site settings, or search for a place.": "Su ubicación está bloqueada para este sitio. Permita la ubicación en la configuración del sitio del navegador, o busque un lugar.",
   "Your location is blocked for this Home Screen app. Check Location in iPhone Settings, or search for a place.": "Su ubicación está bloqueada para esta app de la pantalla de inicio. Revise Localización en Configuración del iPhone, o busque un lugar.",
   "How to turn location on": "Cómo activar la ubicación",
@@ -2230,4 +2233,6 @@ export const ES: Readonly<Record<string, string>> = {
   "Mass Ride stays in DC": "Paseo masivo se queda en DC",
   "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.": "Paseo masivo está calibrado con datos de calles que solo existen dentro de DC, así que su inicio, paradas y llegada deben estar en el Distrito. Para ir fuera de DC, cambie a Paseo en grupo sin senderos.",
   "Switch to Group Ride, trails off": "Cambiar a Paseo en grupo sin senderos",
+  "See everyone on the ride": "Ver a todos en el recorrido",
+  "Everyone": "Todos",
 };

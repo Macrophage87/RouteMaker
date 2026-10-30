@@ -111,9 +111,10 @@ test("the ride over: no listener and no timer is left", () => {
 test("wired: a ride or Roam watches, a move by hand marks the map away, and the reset takes the zoom back", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /if \(!onBike\) return undefined;\s+movedByHand\.current = false;\s+return watchIdleRecentre\(window,/);
-  assert.match(app, /away: \(\) => !followNow\.current \|\| movedByHand\.current/);
+  // See everyone's view (lib/seeEveryone.ts) is chosen: left alone, it stays.
+  assert.match(app, /away: \(\) => \(!followNow\.current && !seeAllNow\.current\) \|\| movedByHand\.current/);
   assert.match(app, /panelOpen: \(\) => document\.querySelector\(RIDE_PANEL_OPEN\) !== null/);
-  assert.match(app, /onRiderMoved=\{\(\) => \(movedByHand\.current = true\)\}\s+followReset=\{followReset\}/);
+  assert.match(app, /onRiderMoved=\{\(\) => \{\s+movedByHand\.current = true;\s+everyone\.stop\(\);\s+\}\}\s+followReset=\{followReset\}/);
   const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   assert.match(map, /followZoom\(reset, following\.current, map\.getZoom\(\), FOLLOW_ZOOM\)/);
   assert.match(map, /map\.on\("movestart", moved\);/);
