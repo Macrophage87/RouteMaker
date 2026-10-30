@@ -59,7 +59,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
   const [full, setFull] = useState(false);
   // Favorites (Stephen 2026-10-19): starred ride types first, under their own heading (lib/favoriteRides.ts).
   const favorites = useFavoriteRides();
-  // The same groups as Go's Ride sheet and Settings' Default ride type (P3): favorites, Common, then the rest.
+  // The same groups as Go's Ride sheet and Settings' Primary Go method (P3): favorites, Common, then the rest.
   const groups = rideTypeSections(query, favorites);
   // One screen in the popup (the owner, 2026-10-28), as Go's Ride sheet has it: favorites and Common open, the rest
   // in their groups, folded (the one in use opens its group); a search shows every match flat.
