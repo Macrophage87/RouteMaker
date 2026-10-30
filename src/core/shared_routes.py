@@ -17,9 +17,12 @@ Nothing of the rider is kept but, signed in, the account (`owner`, below): no ad
 limit keys on a salted hash, `core.ratelimit`), and no weight (OWNER-DECISIONS 313):
 `public_answer` takes the rider's system weight and the effort figure weighed with it out of a
 planned route's answer. A row is kept a year after it was last opened (`KEEP`), then deleted at the
-next share or open; the sharer may instead keep it permanently or until a date (`KEEP_CHOICES`; the
-owner, 2026-10-16: "For the 1 year deletion, make this the default. For other users, we can offer
-"keep permanently" and "delete after <date>""). The whole body is at most `MAX_BYTES`. Models:
+next share or open; a signed-in sharer may instead keep it permanently or until a date
+(`KEEP_CHOICES`; the owner, 2026-10-16: "For the 1 year deletion, make this the default. For other
+users, we can offer "keep permanently" and "delete after <date>""). Signed out, a link is always
+kept the default year, since nobody could turn it off. The whole body is at most `MAX_BYTES`, and
+the links kept are limited (`quota_problem`): `SIGNED_OUT_PER_DAY` signed-out links a day for the
+whole deployment, and `LIVE_PER_OWNER` working links per account. Models:
 `core.models.SharedRoute`; endpoints in `core.api`.
 
 Shared signed in, the row names its owner (and nothing else of them), who alone can turn the link
@@ -28,6 +31,9 @@ keeping, the old one turned off), from My routes in Plan. A turned-off link stay
 with its route cleared and is kept permanently, so its link keeps saying it was turned off
 (`REVOKED`, 410) rather than planning its points again once the row was gone. The link's preview,
 for chat apps that fetch it: `core.share_preview`.
+
+A link an assistant app's plan made (core.connector) goes with its draft (`connector_draft`): a
+day, or less if the app is disconnected. Then it is "no longer kept", as any expired link is.
 """
 
 from __future__ import annotations
@@ -51,6 +57,12 @@ DEFAULT_NAME = "Shared route"
 # `delete_after`. The page offers tomorrow or later in the sharer's own time zone, so the server
 # (UTC) accepts today or later: a sharer west of UTC in the evening is already on UTC's tomorrow.
 KEEP_CHOICES = ("year", "forever", "until")
+# The keepings only a signed-in owner, who can turn the link off, may choose.
+OWNER_KEEPS = ("forever", "until")
+# Links kept signed out in the last day, all riders together: many times a busy day's sharing.
+SIGNED_OUT_PER_DAY = 500
+# One account's links still working: far more than anyone shares by hand.
+LIVE_PER_OWNER = 500
 SOURCES = ("plan", "gpx")
 KEYS = frozenset(
     {"id", "name", "source", "line", "distance_m", "inputs", "answer", "gpx"}
@@ -66,25 +78,57 @@ def prune(now=None) -> int:
     from django.db.models import Q
     from django.utils import timezone
 
-    from .models import SharedRoute
+    from .models import ConnectorDraft, SharedRoute
 
     now = now or timezone.now()
     deleted, _ = SharedRoute.objects.filter(
         Q(keep="year", last_opened_at__lt=now - KEEP)
         | Q(keep="until", delete_after__lt=timezone.localdate(now))
+        | Q(connector_draft__isnull=False, created_at__lt=now - ConnectorDraft.KEPT)
     ).delete()
     return deleted
 
 
 def expired(row, now) -> bool:
-    """Whether a kept row is past its keeping, as `prune` reads it."""
+    """Whether a kept row is past its keeping, as `prune` reads it. An assistant's draft link
+    lasts as long as its draft (`ConnectorDraft.KEPT`), whatever its keeping says."""
     from django.utils import timezone
 
+    from .models import ConnectorDraft
+
+    if row.connector_draft_id is not None and row.created_at < now - ConnectorDraft.KEPT:
+        return True
     if row.keep == "forever":
         return False
     if row.keep == "until":
         return row.delete_after is None or row.delete_after < timezone.localdate(now)
     return row.last_opened_at < now - KEEP
+
+
+def quota_problem(owner, keep: str, now) -> tuple[int, str, str | None] | None:
+    """Why this share cannot be kept now, as (status, message, field), or None. `owner` is the
+    signed-in account, or None."""
+    from .models import SharedRoute
+
+    if owner is None:
+        if keep in OWNER_KEEPS:
+            return 403, "Sign in to keep a shared route permanently or until a date.", "keep"
+        # New rows have last_opened_at == created_at, so the index on it bounds the count.
+        day = now - timedelta(days=1)
+        recent = SharedRoute.objects.filter(
+            owner__isnull=True, last_opened_at__gte=day, created_at__gte=day
+        )
+        if recent.count() >= SIGNED_OUT_PER_DAY:
+            return 503, "Too many routes were shared today; sign in, or try tomorrow.", None
+        return None
+    live = SharedRoute.objects.filter(owner=owner, revoked_at__isnull=True)
+    if live.count() >= LIVE_PER_OWNER:
+        return (
+            409,
+            f"You have {LIVE_PER_OWNER} shared links; turn some off in My routes to share more.",
+            None,
+        )
+    return None
 
 
 def revoke(row, now) -> None:
@@ -128,6 +172,8 @@ def regenerate(row, now):
             owner=row.owner,
             preview_image=row.preview_image,
             preview_zone=row.preview_zone,
+            # An assistant's draft link: the new one goes with the same draft.
+            connector_draft_id=row.connector_draft_id,
         )
         revoke(row, now)
     return fresh

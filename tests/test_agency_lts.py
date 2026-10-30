@@ -621,3 +621,38 @@ def test_a_set_aside_rating_gives_way_to_the_next_agency() -> None:
 def test_a_mapped_facility_does_not_set_aside_a_current_agency() -> None:
     result = agency_lts.apply(FORMULA, [AgencyRating("moco", 2)], facility_mapped=True)
     assert result.tier is Stress.LTS2
+
+
+def test_the_ddot_set_aside_reads_the_tags_the_formula_read(tmp_path, monkeypatch):
+    """Review 2026-10-29: a lane only the District's street layer records (the overlay) set
+    the formula's tier but not DDOT's set-aside, which read the way's raw OSM tags."""
+    from test_review_rl_ratings import LANE, PLAIN, SIX_LANE, stage_context
+
+    from pipeline import run as run_module
+    from pipeline.rebuild import Stage
+    from pipeline.run import build_handlers
+    from routemaker import agency_roads
+
+    context = stage_context(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        run_module.agency_ratings,
+        "ratings_by_way",
+        lambda ways, entries, features, ratings: {PLAIN: [AgencyRating("ddot", 4)]},
+    )
+    context.road_facts_by_way = {
+        PLAIN: agency_roads.WayFacts(agency=agency_roads.DC_AGENCY, blocks=("block-1",))
+    }
+    overlaid = agency_roads.Overlay(tags={**SIX_LANE, **LANE}, sources={})
+    monkeypatch.setattr(
+        run_module.conflation,
+        "overlay_road_facts",
+        lambda ways, facts, divided, separate: {PLAIN: overlaid},
+    )
+    build_handlers(context, load_overrides=lambda: [])[Stage.CLASSIFY_STRESS]()
+    result = context.stress_by_way[PLAIN]
+    # The formula's LTS 3 (the lane on a wide two-way street) stands; DDOT's 2020 level, from
+    # before the lane, is set aside and kept for the panel.
+    assert result.formula_tier is Stress.LTS3
+    assert result.tier is Stress.LTS3
+    assert agency_lts.set_aside(result.rule) == {"ddot"}
+    assert result.agency_ratings == (AgencyRating("ddot", 4),)

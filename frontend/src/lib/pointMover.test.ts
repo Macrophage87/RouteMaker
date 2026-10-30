@@ -103,7 +103,7 @@ test("App: only stops move, each with the via points leading to it, as one edit;
   assert.match(app, /const split = stopsOnly\(current, VIA_MARKS\.isVia, loopVias\);/);
   assert.match(app, /if \(a < 1 \|\| b < 1 \|\| a === b\) return;/);
   assert.match(app, /const next = withVias\(reorder\(split\.points\.map\(\(_, i\) => i\), a, b\), split\);\s*commit\(next\);\s*if \(by !== "drag"\) return;/);
-  assert.match(app, /announce\(name \? `\$\{name\} is now \$\{role\}\.` : `Moved to \$\{role\}\.`\);/);
+  assert.match(app, /announce\(name \? t\("\{name\} is now \{role\}\.", \{ name, role \}\) : t\("Moved to \{role\}\.", \{ role \}\)\);/);
   assert.match(app, /const slots = namePoints\(points, VIA_MARKS\.isVia, loopVias\)\.flatMap\(\(n, i\) => \(n\.role === "stop" \? \[i\] : \[\]\)\);/);
   assert.match(app, /const mover = usePointMover\(slots, \(from, to, by\) => reorderPoint\(slots\[from\], slots\[to\], by\), points\);/);
   assert.match(app, /warnings=\{pointWarnings\}\s+mover=\{mover\}\s+slots=\{slots\}/);

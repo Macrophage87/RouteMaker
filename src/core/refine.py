@@ -1430,6 +1430,7 @@ def _router_alternates(trip, best, first_exposure, stop_at, ctx: Context, info: 
     alt_stop = stop_at - ALTERNATES_ROUND_RESERVE_S
     given = ctx.router_trips
     if given is None and alt_stop - routing.clock() < ALTERNATES_MIN_S:
+        routing._skipped_for_time()
         return best, trip
     found = {"given": 0, "ranked": 0, "taken": False, "limited": None}
     info["alternates"] = found
@@ -2021,6 +2022,9 @@ def _seek_leg(
         logger.warning("the trail seek's table read ran past its time")
         seek["limited"] = "time"
         return None
+    except routing.PlanCancelled:
+        # A newer plan replaced this one: the plan ends here, not without the seek.
+        raise
     except Exception:  # noqa: BLE001 - a plan is answered without the seek
         logger.warning("the trail seek could not read the segment table", exc_info=True)
         seek["limited"] = "table"

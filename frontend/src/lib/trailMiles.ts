@@ -18,7 +18,7 @@
  * A trail is matched by name (`trailKey`: case, "&" and punctuation aside), the route's street name and the
  * road panel's title being the way's OSM name, as the file's are.
  */
-import { formatDistance, METRES_PER_MILE } from "./format.ts";
+import { FEET_PER_METRE, formatDistance, METRES_PER_MILE } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
 
@@ -53,9 +53,9 @@ export interface TrailMiles {
 }
 
 /** A posted marker this near (500 ft, about 0.1 mi) is named; farther, the computed mile is said. */
-export const MARKER_NEAR_M = 500 / 3.28084;
+export const MARKER_NEAR_M = 500 / FEET_PER_METRE;
 /** A point farther than this (200 ft, 60 m) from a trail's line is not on it (a branch, a parallel road). */
-export const LINE_NEAR_M = 200 / 3.28084;
+export const LINE_NEAR_M = 200 / FEET_PER_METRE;
 /** With no line, a posted marker this near (half a mile) is still named, as "near mile marker 3". */
 export const MARKER_FAR_M = METRES_PER_MILE / 2;
 

@@ -23,7 +23,7 @@ import { formatDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import { encodePlan } from "./planHash.ts";
 import type { PresetId } from "./presets.ts";
-import { t } from "./i18n.ts";
+import { locale, t } from "./i18n.ts";
 
 /** At most this many routes kept by the rider; the last ride is one more, replaced by the next. */
 export const MAX_KEPT = 10;
@@ -79,15 +79,16 @@ export function keepOffered(standalone: boolean, inTab: boolean = KEEP_IN_BROWSE
 }
 
 /**
- * The key a route is kept and looked up under: the routed plan's link, without Mass Ride's ride size
- * (never sent to the planner: App.tsx plans from the dials without it), so a keep, the last ride,
- * Settings' Open and the planner's offline lookup all agree.
+ * The key a route is kept and looked up under: the routed plan's link, Mass Ride's ride size with it (the
+ * planner chooses a Mass Ride's route by it: core.routing choose_by_capacity), so a keep, the last ride,
+ * Settings' Open and the planner's offline lookup all agree, and a route kept at one size never answers another.
  */
 export function keptPlanKey(points: readonly LonLat[], preset: PresetId, dials: Dials, vias: readonly number[] = []): string {
-  const { rideSize: _unsent, ...sent } = dials;
   // The via points too (v0.7.0): a kept route opens with each point's kind.
   // Never a stop's own name: renaming a stop asks for no new route.
-  return encodePlan(points, preset, sent, vias, undefined, new Map());
+  // The stops in the older `p=` form: it is a key on this device, never a link, and the routes kept before the
+  // shorter `q=` (2026-10-29) are found by it still. Opened, it reads as any older link does.
+  return encodePlan(points, preset, dials, vias, undefined, new Map(), "p");
 }
 
 /** The kept answer for a plan with no network: a kept route of that plan first, else the last ride's. */
@@ -182,7 +183,7 @@ export function routeTitle(start: string | undefined, end: string | undefined, l
 export function keptDate(savedAt: number, now: number = Date.now()): string {
   const at = new Date(savedAt);
   const sameYear = at.getFullYear() === new Date(now).getFullYear();
-  return at.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
+  return at.toLocaleDateString(locale(), { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
 }
 
 /** "12 MB", "800 KB": a rough size, for the Settings list. */

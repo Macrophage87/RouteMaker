@@ -53,6 +53,9 @@ class Closure:
     first_day: date
     last_day: date
     lines: tuple[tuple[tuple[float, float], ...], ...]
+    # The last day is a guess ("for the duration of the project" read to the project's
+    # expected end): `reminders` asks for it to be checked before it comes.
+    end_estimated: bool = False
 
     @property
     def start(self) -> datetime:
@@ -85,6 +88,7 @@ def parse(data: Mapping) -> tuple[list[Closure], str]:
                 first_day=date.fromisoformat(row["first_day"]),
                 last_day=date.fromisoformat(row["last_day"]),
                 lines=lines,
+                end_estimated=bool(row.get("end_estimated")),
             )
         )
     return out, str(data.get("updated") or "")
@@ -100,6 +104,41 @@ def updated() -> str:
     """The day the file last changed: the source's "read at", so the route cache's key stays
     the same until it does."""
     return _loaded()[1]
+
+
+# A hand-read file not changed in this many days is labelled stale (its closures still stand,
+# their heads-ups say they may be out of date); a guessed last day this near is a reminder to
+# check it (audit 2026-10-29: a closure on a guessed end dropped out silently, and the file
+# never looked old, however long since it was read).
+STALE_DAYS = 45
+WARN_DAYS = 30
+
+
+def stale(updated: str, today: date) -> bool:
+    """Whether a hand-read file last changed on `updated` (ISO) is past `STALE_DAYS`."""
+    try:
+        return (today - date.fromisoformat(updated)).days > STALE_DAYS
+    except ValueError:
+        return True
+
+
+def reminders(name: str, closures, updated: str, today: date) -> list[str]:
+    """What to check in a hand-read file (`scripts/ddot_advisories.py watch` prints them): a
+    guessed last day within `WARN_DAYS`, and the file not changed in `STALE_DAYS`."""
+    out = [
+        f"{name}: {c.road} ends {c.last_day.isoformat()} by estimate; check it is still right"
+        for c in closures
+        if c.end_estimated and today <= c.last_day <= today + timedelta(days=WARN_DAYS)
+    ]
+    if stale(updated, today):
+        out.append(f"{name}: not updated since {updated or 'never'}; read the source again")
+    return out
+
+
+def check_due(today: date) -> list[str]:
+    """This file's `reminders`."""
+    closures, updated = _loaded()
+    return reminders("DDOT advisories", closures, updated, today)
 
 
 def zones_of(closure: Closure, source: str = SOURCE) -> list[wz.Zone]:

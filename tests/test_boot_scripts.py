@@ -387,6 +387,31 @@ class StartStackTests(FakeHost):
         self.assertLess(first_run, calls.index(stops[0]))
         self.assertTrue(self.status().startswith("OK"))
 
+    def trail_tiles(self, variant: str) -> None:
+        build = self.data / "tiles" / variant / "build-1"
+        build.mkdir(parents=True)
+        (self.data / "tiles" / variant / "current").symlink_to("build-1")
+
+    def test_a_trail_router_starts_only_once_its_tiles_are_here(self) -> None:
+        self.trail_tiles("mtb")
+        done = self.run_script()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.ups(), ALL_SERVICES + ["valhalla-mtb"])
+        self.assertIn("valhalla-offroad: no promoted tiles", done.stdout)
+        mtb = next(c for c in self.calls() if c.endswith(" valhalla-mtb"))
+        self.assertIn("--force-recreate", mtb)
+
+    def test_a_running_trail_router_is_left_alone_on_a_warm_stack(self) -> None:
+        self.trail_tiles("offroad")
+        self.trail_tiles("mtb")
+        self.warm()
+        with (self.fake / "ps.txt").open("a") as ps:
+            ps.write("valhalla-offroad running \n")
+        done = self.run_script()
+        self.assertEqual(done.returncode, 0, done.stdout)
+        self.assertEqual(self.ups(), ["valhalla-mtb"])
+        self.assertIn("valhalla-offroad already running", done.stdout)
+
     def test_every_compose_call_names_the_env_file_and_project(self) -> None:
         self.run_script()
         compose = [c for c in self.calls() if c.startswith("compose")]
@@ -918,6 +943,21 @@ class StaticChecks(unittest.TestCase):
         assert order is not None
         self.assertEqual(resident, set(order.group(1).split()))
 
+    def test_the_trail_routers_are_every_profiled_router(self) -> None:
+        services = yaml.safe_load((REPO / "compose.yaml").read_text())["services"]
+        profiled = {
+            name
+            for name, svc in services.items()
+            if name.startswith("valhalla-") and "offroad" in (svc.get("profiles") or [])
+        }
+        script = SCRIPT.read_text()
+        trail = re.search(r"TRAIL_ROUTERS=\((.*?)\)", script, re.S)
+        assert trail is not None
+        self.assertEqual(profiled, set(trail.group(1).split()))
+        for name in profiled:
+            variant = name.removeprefix("valhalla-")
+            self.assertIn(f"${{DATA_ROOT}}/tiles/{variant}:", json.dumps(services[name]))
+
     def test_no_plain_up_or_docker_desktop_reset_in_the_scripts(self) -> None:
         for path in (SCRIPT, INSTALL):
             code = "\n".join(
@@ -954,7 +994,7 @@ class StaticChecks(unittest.TestCase):
             assert m is not None, name
             return m.group(1).split()
 
-        start = array("START_ORDER")
+        start = array("START_ORDER") + array("TRAIL_ROUTERS")
         slow = [s for s in start if s in array("SLOW_SERVICES")]
         self.assertTrue(slow)
         sanity = default("SANE_TRIES") * default("EXEC_TIMEOUT_S") + (

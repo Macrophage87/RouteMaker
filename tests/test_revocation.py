@@ -473,6 +473,19 @@ class TestTheSessionSweep:
         assert sweep_sessions() == 0
         assert Session.objects.count() == 1
 
+    def test_expired_django_sessions_go(self, guild_admin) -> None:
+        from django.contrib.sessions.models import Session as DjangoSession
+        from django.utils import timezone
+
+        from core.revocation import sweep_sessions
+
+        self.row(guild_admin, key="live-one")
+        DjangoSession.objects.create(
+            session_key="gone", session_data="", expire_date=timezone.now() - timedelta(minutes=1)
+        )
+        assert sweep_sessions() == 0
+        assert list(DjangoSession.objects.values_list("session_key", flat=True)) == ["live-one"]
+
     def test_an_orphan_goes(self, guild_admin) -> None:
         from core.models import Session
         from core.revocation import sweep_sessions

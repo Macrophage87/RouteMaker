@@ -52,9 +52,9 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 
-from django.db import OperationalError, connection, transaction
-
 from pipeline.schema import SEEK_INDEX_PREDICATE, trails_predicate
+
+from . import routing
 
 # The calm rate (metres of detour accepted per metre of LTS 3 avoided) from
 # which a plan also seeks trails: the rate at the slider's old top, 100.
@@ -657,31 +657,21 @@ def corridor_segments(
     box. With the facility column the query carries the seek index's own
     predicate (`pipeline.schema.SEEK_INDEX_PREDICATE`, `segment_seek_geom_idx`),
     which the planner can then prove; without it the trail rule is the
-    overview index's. It runs under a statement timeout of `timeout_s`; one that
-    runs past it raises SeekOutOfTime."""
+    overview index's. It runs under a statement timeout of `timeout_s`, or what is left
+    of the plan where that is less (`routing.plan_cursor`); one that runs past it raises
+    SeekOutOfTime."""
     query = corridor_query(schema, guide, width_m, has_facility, when, avoid_unpaved)
     if query is None:
         return []
     sql, params = query
-    timeout_ms = str(max(1, math.ceil(timeout_s * 1000)))
-    outer = connection.in_atomic_block
     try:
-        with transaction.atomic(), connection.cursor() as cursor:
-            previous = None
-            if outer:
-                # Inside a caller's transaction the setting would outlive this read.
-                cursor.execute("SELECT current_setting('statement_timeout')")
-                previous = cursor.fetchone()[0]
-            # Local to this transaction, as the tiles' (`core.stress_tiles.render`).
-            cursor.execute("SELECT set_config('statement_timeout', %s, true)", [timeout_ms])
+        with routing.plan_cursor(cap_s=timeout_s) as cursor:
             cursor.execute(sql, params)
             rows = cursor.fetchall()
-            if previous is not None:
-                cursor.execute("SELECT set_config('statement_timeout', %s, true)", [previous])
-    except OperationalError as error:
-        if getattr(error.__cause__, "sqlstate", None) == "57014":  # query_canceled
-            raise SeekOutOfTime(f"the trail table read ran past {timeout_ms} ms") from error
+    except routing.PlanCancelled:
         raise
+    except routing.DeadlineExceeded as error:
+        raise SeekOutOfTime("the trail table read ran out of time") from error
     return [_parse_line(row[0]) for row in rows]
 
 

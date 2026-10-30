@@ -137,6 +137,10 @@ test("spot address: the geocoder's name and the rest of its label; never coordin
     heading: "Connecticut Avenue Northwest",
     area: "Dupont Circle, Washington",
   });
+  assert.deepEqual(spotAddress(ok("1250 Franklin Street Northeast", "1250 Franklin Street Northeast, Edgewood, Washington")), {
+    heading: "1250 Franklin Street Northeast",
+    area: "Edgewood, Washington",
+  });
   assert.deepEqual(spotAddress(ok("near White House", "near White House, Ward 2, Washington")), { heading: "Near White House", area: "Ward 2, Washington" });
   assert.deepEqual(spotAddress({ ok: false, status: 0 }, "Scott Circle"), { heading: "Scott Circle", area: "" });
   assert.deepEqual(spotAddress({ ok: false, status: 503 }), { heading: DROPPED_PIN, area: "" });
