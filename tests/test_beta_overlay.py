@@ -1059,9 +1059,13 @@ def test_the_content_security_policy_is_the_caddyfiles_verbatim() -> None:
 
 
 def test_the_pages_carry_the_caddyfiles_permissions_policy() -> None:
-    """privacy-7: location for the site itself only, and nothing the app never asks for."""
+    """privacy-7: location and the microphone for the site itself only, and nothing the app never asks for.
+
+    The microphone is Send alert's Speak (Stephen 2026-10-30): Chrome's speech recognition needs the page allowed it,
+    so microphone=() would make Speak fail with "not-allowed"; (self) still keeps it from any frame.
+    """
     caddy = re.search(r'header Permissions-Policy "([^"]+)"', CADDYFILE).group(1)
-    assert "geolocation=(self)" in caddy and "camera=()" in caddy and "microphone=()" in caddy
+    assert "geolocation=(self)" in caddy and "camera=()" in caddy and "microphone=(self)" in caddy
     by_path = dict(locations(stage("full")))
     for path in ("= /", "= /index.html", ABOUT_LOCATION):
         assert f'add_header Permissions-Policy "{caddy}" always;' in by_path[path], path
