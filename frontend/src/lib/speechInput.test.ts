@@ -152,33 +152,28 @@ test("a failure says what to do instead", () => {
   for (const said of Object.values(SPEECH_FAILED)) assert.match(said, /type the issue/i, "each says what to do instead");
 });
 
-test("Speak heads the alert panel: one press opens the box and listens; the quick alerts stay below (2026-10-30)", () => {
+test("Speak heads the alert panel: Speak, then the box once opened, then the quick alerts (2026-10-30)", () => {
+  // The listening itself is lib/alertDictation.test.ts; this is the panel's order and wiring.
   const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
   const panel = group.slice(group.indexOf('className="ride-alert-panel"'), group.indexOf("{alerts.length > 0 && ("));
-  // Speak first, then the box (only once opened), then the quick alerts, all in the one branch past the confirm.
   const speakAt = panel.indexOf('className="ride-speak"');
   const boxAt = panel.indexOf("{otherOpen && (");
   const kindsAt = panel.indexOf('<ul role="list" className="ride-alert-kinds">');
   assert.ok(speakAt > 0 && speakAt < boxAt && boxAt < kindsAt, "Speak, then the box, then the quick alerts");
   assert.match(panel, /\{canSpeak && \(\s*<button type="button" ref=\{speakButton\} className="ride-speak" aria-pressed=\{listening\} onClick=\{speak\}[^>]*>[\s\S]*?\{SPEAK_LABEL\}/);
-  // Pressing Speak opens the box; while listening the box is not focused, so no keyboard covers the words.
-  assert.match(group, /const speak = \(\) => \{\s*if \(listening\) \{\s*stopListening\.current\?\.\(\);\s*return;\s*\}\s*setOtherOpen\(true\);/);
+  // No keyboard over the words while listening; Other is not listed again with the box open.
   assert.match(panel, /autoFocus=\{!listening\}/);
-  // With the box open, Other is not listed again; a quick alert picked instead closes the box, which drops the speech.
   assert.match(panel, /\.filter\(\(kind\) => !\(otherOpen && kind\.id === "other"\)\)/);
-  assert.match(group, /const pick = \(kind: AlertKind\) => \{[^}]*setOtherOpen\(kind\.id === "other"\);/);
-  // Said words go after typed ones; closing the box or the panel aborts (no late words in a closed box).
-  assert.match(group, /\(text\) => setOtherText\(typed \? `\$\{typed\} \$\{text\}`\.slice\(0, OTHER_MAX\) : text\)/);
-  assert.match(group, /if \(otherOpen && alertOpen\) return;\s*abortListening\.current\?\.\(\);\s*setSendWhenHeard\(false\);/);
-  // Send while listening finishes the words first (stop keeps them), then sends them, not a half-heard guess.
-  assert.match(panel, /if \(listening\) \{\s*setSendWhenHeard\(true\);\s*stopListening\.current\?\.\(\);\s*\} else if \(otherText\.trim\(\)\) void send\(OTHER_KIND\);/);
-  assert.match(group, /if \(!sendWhenHeard \|\| listening\) return;\s*setSendWhenHeard\(false\);\s*if \(otherText\.trim\(\)\) void send\(OTHER_KIND\);[\s\S]*?\}, \[sendWhenHeard, listening\]\);/);
-  // Cancel goes with the box, so focus returns to Speak.
-  assert.match(panel, /setOtherOpen\(false\);\s*\/\/[^\n]*\n\s*speakButton\.current\?\.focus\(\);/);
-  assert.match(group, /say\(LISTENING_SAID\)/);
+  // Send while listening finishes the words; Cancel drops them, empties the box and puts focus back on Speak.
+  assert.match(panel, /if \(listening\) dictation\.finishAndSend\(\);/);
+  assert.match(panel, /dictation\.abort\(\);\s*setOtherOpen\(false\);\s*setOtherText\(""\);[\s\S]*?speakButton\.current\?\.focus\(\);/);
+  // Closing the panel drops the speech and empties the box; a quick alert picked drops them too.
+  assert.match(group, /if \(alertOpen\) return;\s*dictation\.abort\(\);\s*setOtherOpen\(false\);\s*setOtherText\(""\);/);
+  assert.match(group, /if \(kind\.id !== "other"\) \{\s*dictation\.abort\(\);\s*setOtherText\(""\);/);
+  // The cue is said before listening starts; the Sent line says the words, not "Other".
+  assert.match(group, /say\(LISTENING_SAID\);\s*dictation\.start\(otherText\);/);
+  assert.match(group, /const shown = kind\.id === "other" \? words\.trim\(\) : kind\.label;/);
   assert.equal(LISTENING_SAID, "Listening. Say the issue, then tap Send.");
-  // Nothing is sent until Send: the words only fill the box.
-  assert.doesNotMatch(group.slice(group.indexOf("const speak = () => {"), group.indexOf("const abortListening")), /send\(/);
   const bar = group.slice(group.indexOf('className="ride-group-bar"'), group.indexOf("id={ridersPanel}"));
   assert.doesNotMatch(bar, /ride-speak/);
 });
