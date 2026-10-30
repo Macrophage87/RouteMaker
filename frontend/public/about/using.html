@@ -788,7 +788,7 @@ coming within 15 minutes or turning heavy, brings them back.</li>
 with no touch, wheel or key and nothing open puts it back on you, following at the ride's zoom (<strong>Where am
 I?</strong> does it at once). The same 30 seconds closes a map card (a stop, place, station, closure or climb), the
 road info and the side menus (Detour, More, the dock, 311, Riders, Send alert), and the map then goes back to you. Kept
-open: a menu you are typing or speaking in (a Detour search, Send alert's Other, its microphone) and anything asking you
+open: a menu you are typing or speaking in (a Detour search, Send alert while its box holds words or Speak listens) and anything asking you
 something (Send alert's Send to everyone?, Already done?, a stop's name, the group's question, Resume your ride?). In
 accessibility mode nothing closes on its own. A map card's close button (X) is 44 px across.</li>
 <li><strong>Off the route</strong>, RouteMaker plans again from where you are, and <strong>Reroute</strong>
@@ -1260,9 +1260,15 @@ Rider off the back; Crash; Mechanical or flat, stopping; Wrong turn; Lost, separ
 Wait up, regroup; and Other. A Mass Ride has Extensive rider spread; Emergency vehicle coming through;
 Aggressive person; Medical emergency or crash; Rerouting, road closed; Lost, separated from the ride;
 and Other. Crash and Medical ask first and offer to call 911.</li>
-<li>In Send alert, Other, on the website where your browser supports it (it does not work in the Android app),
-<strong>Speak</strong> fills the box from what you say; check it, then tap Send. It needs a connection: your browser's maker (such as Google for Chrome or
-Apple for Safari) turns the recording into text.</li>
+<li><strong>Speak</strong>, the wide button at the top of Send alert, opens a box and listens in one press;
+what you say fills the box, and Send sends it (pressed while it still listens, Send waits for your last words). The
+box is not focused while it listens, so no keyboard covers your words. The quick alerts stay listed below, two to a
+row, so you can pick one instead, which closes the box and drops the words. Closing the panel stops listening. The
+panel's buttons are 56 px tall with 18 px text, and Speak and Send alert are 64 px. Speak shows on the website where
+your browser supports it, and in the Android app, which uses the phone's own speech input (Google's on most phones)
+and listens once; an app version from before this one shows no Speak. It needs a connection: your browser's maker
+(such as Google for Chrome or Apple for Safari), or the phone's speech input in the app, turns the recording into
+text.</li>
 <li>Share ride, Share live (Roam's too), Group Ride and Mass Ride links shared from the app are end-to-end
 encrypted. The link carries a secret after the #, which browsers never send to a server. Each phone
 locks its dot, its alerts and the leader's path with a key made from that secret (AES-256-GCM), so the

@@ -753,36 +753,37 @@ about the method is secret; only the key is.
 <div class="more-body">
 <figure id="fig-ride-seal" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
-<svg viewBox="0 0 760 512" role="img" aria-labelledby="fig-ride-seal-t fig-ride-seal-d" focusable="false" style="min-width:547px">
+<svg viewBox="0 0 760 528" role="img" aria-labelledby="fig-ride-seal-t fig-ride-seal-d" focusable="false" style="min-width:547px">
 <title id="fig-ride-seal-t">How live ride sharing is encrypted</title>
-<desc id="fig-ride-seal-d">Three columns: your phone, the RouteMaker server and riders&#x27; phones. The ride link carries a key after the #, which goes from your phone to riders by text or chat and is never sent to a server. Your phone: 1, makes a key of 16 random bytes; 2, derives from it, with HKDF, a ride id that the server knows the ride by and an AES-256 key that never leaves the phone; 3, pads each position to a fixed size and encrypts it with AES-GCM and a fresh nonce, binding in the ride id and kind; 4, pauses after an hour in one spot or at your saved Home. The server holds the ride id and sealed text for 2 minutes. It can see the ride id, each phone&#x27;s random code, timing, the padded size and which dot is the leader&#x27;s. It cannot see the key, positions, alerts or the leader&#x27;s live path, and it refuses any position or alert that is not encrypted. Riders&#x27; phones: 5, read the same key from the link, giving the same ride id and AES key; 6, fetch the sealed dots by ride id; 7, open and check them, which fails if the text was changed or came from another ride or kind; 8, draw the dots, GPS-accurate, with merged alerts. Padded sizes: a dot 128 bytes, an alert 512, a path 4,096. Anyone holding the whole link can read a ride; a ride post&#x27;s link, and one an AI assistant made, keep their key on the server.</desc>
+<desc id="fig-ride-seal-d">Your phone, the RouteMaker server and riders&#x27; phones, in that order. The ride link carries a key after the #, which goes from your phone to riders by text or chat and is never sent to a server. Your phone: 1, makes a key of 16 random bytes (128 bits), except that the server makes the key for a ride post&#x27;s link and for one an AI assistant made; 2, derives from it, with HKDF, a ride id that the server knows the ride by and an AES-256 key that stays on phones unless the server made the key; 3, pads each position up to a whole multiple of its fixed size and encrypts it with AES-GCM and a fresh nonce, binding in the ride id and kind; 4, pauses after an hour in one spot or at your saved Home. The server holds the ride id and sealed text for 2 minutes. It can see the ride id, each phone&#x27;s random code, timing, the padded size and which dot is the leader&#x27;s. It cannot see the key, positions, alerts or the leader&#x27;s live path, and it refuses any position or alert that is not encrypted. Riders&#x27; phones: 5, read the same key from the link, giving the same ride id and AES key; 6, fetch the sealed dots by ride id; 7, open and check them, which fails if the text was changed or came from another ride or kind; 8, draw the dots, GPS-accurate, with merged alerts. Each is padded up to a whole multiple of its size: a dot 128 bytes, an alert 512, a path 4,096. Anyone holding the whole link can read a ride; a ride post&#x27;s link, and one an AI assistant made, keep their key on the server.</desc>
 <defs><marker id="ah-ride-seal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <path class="ard" d="M125,86 C125,50 160,30 200,30"/>
 <path class="ard" d="M560,30 C600,30 635,50 635,84" marker-end="url(#ah-ride-seal)"/>
 <rect class="bxa" x="200" y="8" width="360" height="46" rx="6"/>
 <text class="tb" x="380.0" y="27.5" text-anchor="middle">Ride link …#k=22-character key</text>
 <text class="ts" x="380.0" y="43.5" text-anchor="middle">Sent by text or chat. Browsers never send the part after #.</text>
-<rect class="bxa" x="10" y="88" width="230" height="330" rx="6"/>
+<rect class="bxa" x="10" y="88" width="230" height="346" rx="6"/>
 <text class="tb" x="125" y="110" text-anchor="middle">Your phone</text>
-<rect class="bx" x="265" y="88" width="230" height="330" rx="6"/>
+<rect class="bx" x="265" y="88" width="230" height="346" rx="6"/>
 <text class="tb" x="380" y="110" text-anchor="middle">RouteMaker server</text>
-<rect class="bxa" x="520" y="88" width="230" height="330" rx="6"/>
+<rect class="bxa" x="520" y="88" width="230" height="346" rx="6"/>
 <text class="tb" x="635" y="110" text-anchor="middle">Riders&#x27; phones</text>
 <text class="tb" x="22" y="138" text-anchor="start">1  Make a key</text>
-<text class="ts" x="22" y="154" text-anchor="start">16 random bytes (128 bits),</text>
-<text class="ts" x="22" y="170" text-anchor="start">put in the link after #</text>
-<text class="tb" x="22" y="198.0" text-anchor="start">2  Derive two values (HKDF)</text>
-<text class="ts" x="22" y="214.0" text-anchor="start">Ride id: the name the server</text>
-<text class="ts" x="22" y="230.0" text-anchor="start">knows the ride by</text>
-<text class="ts" x="22" y="246.0" text-anchor="start">AES-256 key: never leaves</text>
-<text class="ts" x="22" y="262.0" text-anchor="start">the phone</text>
-<text class="tb" x="22" y="290.0" text-anchor="start">3  Seal each position</text>
-<text class="ts" x="22" y="306.0" text-anchor="start">Pad to a fixed size, encrypt</text>
-<text class="ts" x="22" y="322.0" text-anchor="start">(AES-GCM, fresh nonce), bind</text>
-<text class="ts" x="22" y="338.0" text-anchor="start">in the ride id and kind</text>
-<text class="tb" x="22" y="366.0" text-anchor="start">4  Pause when it matters</text>
-<text class="ts" x="22" y="382.0" text-anchor="start">After an hour in one spot,</text>
-<text class="ts" x="22" y="398.0" text-anchor="start">or at your saved Home</text>
+<text class="ts" x="22" y="154" text-anchor="start">16 random bytes, in the link</text>
+<text class="ts" x="22" y="170" text-anchor="start">after # (the server makes it</text>
+<text class="ts" x="22" y="186" text-anchor="start">for ride posts, assistant links)</text>
+<text class="tb" x="22" y="214.0" text-anchor="start">2  Derive two values (HKDF)</text>
+<text class="ts" x="22" y="230.0" text-anchor="start">Ride id: the name the server</text>
+<text class="ts" x="22" y="246.0" text-anchor="start">knows the ride by</text>
+<text class="ts" x="22" y="262.0" text-anchor="start">AES-256 key: stays on phones,</text>
+<text class="ts" x="22" y="278.0" text-anchor="start">unless the server made it</text>
+<text class="tb" x="22" y="306.0" text-anchor="start">3  Seal each position</text>
+<text class="ts" x="22" y="322.0" text-anchor="start">Pad up to a multiple of its</text>
+<text class="ts" x="22" y="338.0" text-anchor="start">size, encrypt (AES-GCM, fresh</text>
+<text class="ts" x="22" y="354.0" text-anchor="start">nonce), bind in ride id and kind</text>
+<text class="tb" x="22" y="382.0" text-anchor="start">4  Pause when it matters</text>
+<text class="ts" x="22" y="398.0" text-anchor="start">After an hour in one spot,</text>
+<text class="ts" x="22" y="414.0" text-anchor="start">or at your saved Home</text>
 <text class="tb" x="277" y="138" text-anchor="start">Holds for 2 minutes</text>
 <text class="ts" x="277" y="154" text-anchor="start">Ride id and sealed text only</text>
 <text class="tb" x="277" y="182.0" text-anchor="start">Can see</text>
@@ -808,78 +809,79 @@ about the method is secret; only the key is.
 <text class="ts" x="532" y="334.0" text-anchor="start">alerts, on the map</text>
 <path class="ar" d="M241,330 L263,330" marker-end="url(#ah-ride-seal)"/>
 <path class="ar" d="M496,330 L518,330" marker-end="url(#ah-ride-seal)"/>
-<rect class="bx" x="10" y="432" width="740" height="72" rx="6"/>
-<text class="tb" x="26" y="456" text-anchor="start">Padded sizes</text>
-<text class="ts" x="26" y="474" text-anchor="start">dot 128 B · alert 512 B · path 4,096 B,</text>
-<text class="ts" x="26" y="490" text-anchor="start">so size gives away no role or alert kind</text>
-<text class="tb" x="390" y="456" text-anchor="start">Who can read a ride</text>
-<text class="ts" x="390" y="474" text-anchor="start">Anyone holding the whole link. A ride post&#x27;s link, and</text>
-<text class="ts" x="390" y="490" text-anchor="start">one an AI assistant made, keep their key on the server.</text>
+<rect class="bx" x="10" y="448" width="740" height="72" rx="6"/>
+<text class="tb" x="26" y="472" text-anchor="start">Padded to multiples of</text>
+<text class="ts" x="26" y="490" text-anchor="start">dot 128 B · alert 512 B · path 4,096 B,</text>
+<text class="ts" x="26" y="506" text-anchor="start">so size gives away no role or alert kind</text>
+<text class="tb" x="390" y="472" text-anchor="start">Who can read a ride</text>
+<text class="ts" x="390" y="490" text-anchor="start">Anyone holding the whole link. A ride post&#x27;s link, and</text>
+<text class="ts" x="390" y="506" text-anchor="start">one an AI assistant made, keep their key on the server.</text>
 </svg>
 </div>
 <div class="fig-narrow">
-<svg viewBox="0 0 320 1408" role="img" aria-labelledby="fig-ride-seal-n-t fig-ride-seal-n-d" focusable="false">
+<svg viewBox="0 0 320 1428" role="img" aria-labelledby="fig-ride-seal-n-t fig-ride-seal-n-d" focusable="false">
 <title id="fig-ride-seal-n-t">How live ride sharing is encrypted</title>
-<desc id="fig-ride-seal-n-d">Three columns: your phone, the RouteMaker server and riders&#x27; phones. The ride link carries a key after the #, which goes from your phone to riders by text or chat and is never sent to a server. Your phone: 1, makes a key of 16 random bytes; 2, derives from it, with HKDF, a ride id that the server knows the ride by and an AES-256 key that never leaves the phone; 3, pads each position to a fixed size and encrypts it with AES-GCM and a fresh nonce, binding in the ride id and kind; 4, pauses after an hour in one spot or at your saved Home. The server holds the ride id and sealed text for 2 minutes. It can see the ride id, each phone&#x27;s random code, timing, the padded size and which dot is the leader&#x27;s. It cannot see the key, positions, alerts or the leader&#x27;s live path, and it refuses any position or alert that is not encrypted. Riders&#x27; phones: 5, read the same key from the link, giving the same ride id and AES key; 6, fetch the sealed dots by ride id; 7, open and check them, which fails if the text was changed or came from another ride or kind; 8, draw the dots, GPS-accurate, with merged alerts. Padded sizes: a dot 128 bytes, an alert 512, a path 4,096. Anyone holding the whole link can read a ride; a ride post&#x27;s link, and one an AI assistant made, keep their key on the server.</desc>
+<desc id="fig-ride-seal-n-d">Your phone, the RouteMaker server and riders&#x27; phones, in that order. The ride link carries a key after the #, which goes from your phone to riders by text or chat and is never sent to a server. Your phone: 1, makes a key of 16 random bytes (128 bits), except that the server makes the key for a ride post&#x27;s link and for one an AI assistant made; 2, derives from it, with HKDF, a ride id that the server knows the ride by and an AES-256 key that stays on phones unless the server made the key; 3, pads each position up to a whole multiple of its fixed size and encrypts it with AES-GCM and a fresh nonce, binding in the ride id and kind; 4, pauses after an hour in one spot or at your saved Home. The server holds the ride id and sealed text for 2 minutes. It can see the ride id, each phone&#x27;s random code, timing, the padded size and which dot is the leader&#x27;s. It cannot see the key, positions, alerts or the leader&#x27;s live path, and it refuses any position or alert that is not encrypted. Riders&#x27; phones: 5, read the same key from the link, giving the same ride id and AES key; 6, fetch the sealed dots by ride id; 7, open and check them, which fails if the text was changed or came from another ride or kind; 8, draw the dots, GPS-accurate, with merged alerts. Each is padded up to a whole multiple of its size: a dot 128 bytes, an alert 512, a path 4,096. Anyone holding the whole link can read a ride; a ride post&#x27;s link, and one an AI assistant made, keep their key on the server.</desc>
 <defs><marker id="ah-ride-seal-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bxa" x="8" y="8" width="304" height="64" rx="6"/>
 <text class="tb" x="160.0" y="35.5" text-anchor="middle">Ride link …#k=22-character key</text>
 <text class="ts" x="160.0" y="55.5" text-anchor="middle">Browsers never send the part after #.</text>
-<rect class="bxa" x="8" y="88" width="304" height="392" rx="6"/>
+<rect class="bxa" x="8" y="88" width="304" height="412" rx="6"/>
 <text class="tb" x="160" y="114" text-anchor="middle">Your phone</text>
 <text class="tb" x="22" y="142" text-anchor="start">1  Make a key</text>
-<text class="ts" x="22" y="162" text-anchor="start">16 random bytes (128 bits),</text>
-<text class="ts" x="22" y="182" text-anchor="start">put in the link after #</text>
-<text class="tb" x="22" y="217.0" text-anchor="start">2  Derive two values (HKDF)</text>
-<text class="ts" x="22" y="237.0" text-anchor="start">Ride id: the name the server</text>
-<text class="ts" x="22" y="257.0" text-anchor="start">knows the ride by</text>
-<text class="ts" x="22" y="277.0" text-anchor="start">AES-256 key: never leaves</text>
-<text class="ts" x="22" y="297.0" text-anchor="start">the phone</text>
-<text class="tb" x="22" y="332.0" text-anchor="start">3  Seal each position</text>
-<text class="ts" x="22" y="352.0" text-anchor="start">Pad to a fixed size, encrypt</text>
-<text class="ts" x="22" y="372.0" text-anchor="start">(AES-GCM, fresh nonce), bind</text>
-<text class="ts" x="22" y="392.0" text-anchor="start">in the ride id and kind</text>
-<text class="tb" x="22" y="427.0" text-anchor="start">4  Pause when it matters</text>
-<text class="ts" x="22" y="447.0" text-anchor="start">After an hour in one spot,</text>
-<text class="ts" x="22" y="467.0" text-anchor="start">or at your saved Home</text>
-<path class="ar" d="M160,484 L160,508" marker-end="url(#ah-ride-seal-n)"/>
-<rect class="bx" x="8" y="512" width="304" height="332" rx="6"/>
-<text class="tb" x="160" y="538" text-anchor="middle">RouteMaker server</text>
-<text class="tb" x="22" y="566" text-anchor="start">Holds for 2 minutes</text>
-<text class="ts" x="22" y="586" text-anchor="start">Ride id and sealed text only</text>
-<text class="tb" x="22" y="621.0" text-anchor="start">Can see</text>
-<text class="ts" x="22" y="641.0" text-anchor="start">Ride id, each phone&#x27;s random</text>
-<text class="ts" x="22" y="661.0" text-anchor="start">code, timing, padded size,</text>
-<text class="ts" x="22" y="681.0" text-anchor="start">which dot is the leader&#x27;s</text>
-<text class="tb" x="22" y="716.0" text-anchor="start">Cannot see</text>
-<text class="ts" x="22" y="736.0" text-anchor="start">The key, positions, alerts,</text>
-<text class="ts" x="22" y="756.0" text-anchor="start">the leader&#x27;s live path</text>
-<text class="tb" x="22" y="791.0" text-anchor="start">Refuses</text>
-<text class="ts" x="22" y="811.0" text-anchor="start">Any position or alert that</text>
-<text class="ts" x="22" y="831.0" text-anchor="start">is not encrypted</text>
-<path class="ar" d="M160,848 L160,872" marker-end="url(#ah-ride-seal-n)"/>
-<rect class="bxa" x="8" y="876" width="304" height="312" rx="6"/>
-<text class="tb" x="160" y="902" text-anchor="middle">Riders&#x27; phones</text>
-<text class="tb" x="22" y="930" text-anchor="start">5  Read the link&#x27;s key</text>
-<text class="ts" x="22" y="950" text-anchor="start">Same key, same ride id,</text>
-<text class="ts" x="22" y="970" text-anchor="start">same AES key</text>
-<text class="tb" x="22" y="1005.0" text-anchor="start">6  Fetch sealed dots</text>
-<text class="ts" x="22" y="1025.0" text-anchor="start">by ride id</text>
-<text class="tb" x="22" y="1060.0" text-anchor="start">7  Open and check</text>
-<text class="ts" x="22" y="1080.0" text-anchor="start">Fails if the text was changed,</text>
-<text class="ts" x="22" y="1100.0" text-anchor="start">or came from another ride or kind</text>
-<text class="tb" x="22" y="1135.0" text-anchor="start">8  Draw the dots</text>
-<text class="ts" x="22" y="1155.0" text-anchor="start">GPS-accurate, with merged</text>
-<text class="ts" x="22" y="1175.0" text-anchor="start">alerts, on the map</text>
-<rect class="bx" x="8" y="1204" width="304" height="196" rx="6"/>
-<text class="tb" x="22" y="1230" text-anchor="start">Padded sizes</text>
-<text class="ts" x="22" y="1250" text-anchor="start">dot 128 B · alert 512 B ·</text>
-<text class="ts" x="22" y="1270" text-anchor="start">path 4,096 B, so size gives</text>
-<text class="ts" x="22" y="1290" text-anchor="start">away no role or alert kind</text>
-<text class="tb" x="22" y="1322" text-anchor="start">Who can read a ride</text>
-<text class="ts" x="22" y="1342" text-anchor="start">Anyone with the whole link. Ride</text>
-<text class="ts" x="22" y="1362" text-anchor="start">posts and assistant links keep</text>
-<text class="ts" x="22" y="1382" text-anchor="start">their key on the server.</text>
+<text class="ts" x="22" y="162" text-anchor="start">16 random bytes, in the link</text>
+<text class="ts" x="22" y="182" text-anchor="start">after # (the server makes it</text>
+<text class="ts" x="22" y="202" text-anchor="start">for ride posts, assistant links)</text>
+<text class="tb" x="22" y="237.0" text-anchor="start">2  Derive two values (HKDF)</text>
+<text class="ts" x="22" y="257.0" text-anchor="start">Ride id: the name the server</text>
+<text class="ts" x="22" y="277.0" text-anchor="start">knows the ride by</text>
+<text class="ts" x="22" y="297.0" text-anchor="start">AES-256 key: stays on phones,</text>
+<text class="ts" x="22" y="317.0" text-anchor="start">unless the server made it</text>
+<text class="tb" x="22" y="352.0" text-anchor="start">3  Seal each position</text>
+<text class="ts" x="22" y="372.0" text-anchor="start">Pad up to a multiple of its</text>
+<text class="ts" x="22" y="392.0" text-anchor="start">size, encrypt (AES-GCM, fresh</text>
+<text class="ts" x="22" y="412.0" text-anchor="start">nonce), bind in ride id and kind</text>
+<text class="tb" x="22" y="447.0" text-anchor="start">4  Pause when it matters</text>
+<text class="ts" x="22" y="467.0" text-anchor="start">After an hour in one spot,</text>
+<text class="ts" x="22" y="487.0" text-anchor="start">or at your saved Home</text>
+<path class="ar" d="M160,504 L160,528" marker-end="url(#ah-ride-seal-n)"/>
+<rect class="bx" x="8" y="532" width="304" height="332" rx="6"/>
+<text class="tb" x="160" y="558" text-anchor="middle">RouteMaker server</text>
+<text class="tb" x="22" y="586" text-anchor="start">Holds for 2 minutes</text>
+<text class="ts" x="22" y="606" text-anchor="start">Ride id and sealed text only</text>
+<text class="tb" x="22" y="641.0" text-anchor="start">Can see</text>
+<text class="ts" x="22" y="661.0" text-anchor="start">Ride id, each phone&#x27;s random</text>
+<text class="ts" x="22" y="681.0" text-anchor="start">code, timing, padded size,</text>
+<text class="ts" x="22" y="701.0" text-anchor="start">which dot is the leader&#x27;s</text>
+<text class="tb" x="22" y="736.0" text-anchor="start">Cannot see</text>
+<text class="ts" x="22" y="756.0" text-anchor="start">The key, positions, alerts,</text>
+<text class="ts" x="22" y="776.0" text-anchor="start">the leader&#x27;s live path</text>
+<text class="tb" x="22" y="811.0" text-anchor="start">Refuses</text>
+<text class="ts" x="22" y="831.0" text-anchor="start">Any position or alert that</text>
+<text class="ts" x="22" y="851.0" text-anchor="start">is not encrypted</text>
+<path class="ar" d="M160,868 L160,892" marker-end="url(#ah-ride-seal-n)"/>
+<rect class="bxa" x="8" y="896" width="304" height="312" rx="6"/>
+<text class="tb" x="160" y="922" text-anchor="middle">Riders&#x27; phones</text>
+<text class="tb" x="22" y="950" text-anchor="start">5  Read the link&#x27;s key</text>
+<text class="ts" x="22" y="970" text-anchor="start">Same key, same ride id,</text>
+<text class="ts" x="22" y="990" text-anchor="start">same AES key</text>
+<text class="tb" x="22" y="1025.0" text-anchor="start">6  Fetch sealed dots</text>
+<text class="ts" x="22" y="1045.0" text-anchor="start">by ride id</text>
+<text class="tb" x="22" y="1080.0" text-anchor="start">7  Open and check</text>
+<text class="ts" x="22" y="1100.0" text-anchor="start">Fails if the text was changed,</text>
+<text class="ts" x="22" y="1120.0" text-anchor="start">or came from another ride or kind</text>
+<text class="tb" x="22" y="1155.0" text-anchor="start">8  Draw the dots</text>
+<text class="ts" x="22" y="1175.0" text-anchor="start">GPS-accurate, with merged</text>
+<text class="ts" x="22" y="1195.0" text-anchor="start">alerts, on the map</text>
+<rect class="bx" x="8" y="1224" width="304" height="196" rx="6"/>
+<text class="tb" x="22" y="1250" text-anchor="start">Padded to multiples of</text>
+<text class="ts" x="22" y="1270" text-anchor="start">dot 128 B · alert 512 B ·</text>
+<text class="ts" x="22" y="1290" text-anchor="start">path 4,096 B, so size gives</text>
+<text class="ts" x="22" y="1310" text-anchor="start">away no role or alert kind</text>
+<text class="tb" x="22" y="1342" text-anchor="start">Who can read a ride</text>
+<text class="ts" x="22" y="1362" text-anchor="start">Anyone with the whole link. Ride</text>
+<text class="ts" x="22" y="1382" text-anchor="start">posts and assistant links keep</text>
+<text class="ts" x="22" y="1402" text-anchor="start">their key on the server.</text>
 </svg>
 </div>
 <figcaption>Phones seal every dot, alert and path before it leaves; the server passes on sealed text it cannot read.</figcaption>
