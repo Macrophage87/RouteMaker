@@ -7864,11 +7864,14 @@ details.fold > summary .icon {
   color: var(--error-text);
   border: 2px solid var(--error-text);
 }
+/* The words, Send and Cancel, ruled off from the quick alerts so Cancel does not read as one of them. */
 .ride-alert-other {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
 }
 .ride-alert-other label {
   flex: 1 1 100%;

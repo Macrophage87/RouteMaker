@@ -184,6 +184,9 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
   const [canSpeak] = useState(() => speechSupported());
   const stopListening = useRef<(() => void) | null>(null);
   const [listening, setListening] = useState(false);
+  const speakButton = useRef<HTMLButtonElement>(null);
+  // Send pressed while listening: the words are finished first (stop keeps them), then they go (below, after send).
+  const [sendWhenHeard, setSendWhenHeard] = useState(false);
   const speak = () => {
     if (listening) {
       stopListening.current?.();
@@ -212,7 +215,9 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
   const abortListening = useRef<(() => void) | null>(null);
   useEffect(() => () => abortListening.current?.(), []);
   useEffect(() => {
-    if (!otherOpen || !alertOpen) abortListening.current?.();
+    if (otherOpen && alertOpen) return;
+    abortListening.current?.();
+    setSendWhenHeard(false);
   }, [otherOpen, alertOpen]);
   const [sent, setSent] = useState<number[]>([]);
   const [said, setSaid] = useState({ text: "", count: 0 });
@@ -550,11 +555,18 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
     );
     void poll();
   };
+  useEffect(() => {
+    if (!sendWhenHeard || listening) return;
+    setSendWhenHeard(false);
+    if (otherText.trim()) void send(OTHER_KIND);
+    // Runs once listening ends; the words and send are this render's, read then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sendWhenHeard, listening]);
   const pick = (kind: AlertKind) => {
-    // A quick alert picked while listening: the speech is dropped, the quick alert is what goes.
-    abortListening.current?.();
-    if (kind.id === "other") setOtherOpen(true);
-    else if (kind.confirm) setConfirming(kind);
+    // A quick alert picked instead of the words: the box closes (closing it drops any speech), the quick alert goes.
+    setOtherOpen(kind.id === "other");
+    if (kind.id === "other") return;
+    if (kind.confirm) setConfirming(kind);
     else void send(kind);
   };
 
@@ -697,7 +709,7 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
         ) : (
           <>
             {canSpeak && (
-              <button type="button" className="ride-speak" aria-pressed={listening} onClick={speak} data-idle-hold={listening || undefined}>
+              <button type="button" ref={speakButton} className="ride-speak" aria-pressed={listening} onClick={speak} data-idle-hold={listening || undefined}>
                 <Icon name="mic" size={24} />
                 {SPEAK_LABEL}
               </button>
@@ -707,7 +719,10 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
                 className="ride-alert-other"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (otherText.trim()) void send({ id: "other", label: "Other" });
+                  if (listening) {
+                    setSendWhenHeard(true);
+                    stopListening.current?.();
+                  } else if (otherText.trim()) void send(OTHER_KIND);
                 }}
               >
                 <label>
@@ -716,7 +731,15 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
                   <input type="text" maxLength={OTHER_MAX} value={otherText} onChange={(e) => setOtherText(e.target.value)} autoFocus={!listening} />
                 </label>
                 <button type="submit">{t("Send")}</button>
-                <button type="button" className="secondary" onClick={() => setOtherOpen(false)}>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    setOtherOpen(false);
+                    // Cancel goes with the box; the rider's place stays at Speak, not the top of the page.
+                    speakButton.current?.focus();
+                  }}
+                >
                   {t("Cancel")}
                 </button>
               </form>
@@ -899,6 +922,9 @@ function LeaderSwatch() {
     </svg>
   );
 }
+
+/** The typed or spoken alert: its words go with it (lib/rideGroup.ts sendAlert). */
+const OTHER_KIND: AlertKind = { id: "other", label: "Other" };
 
 /** One position for an alert when the page has none: asked once, never watched. */
 function currentPosition(): Promise<LonLat | null> {
