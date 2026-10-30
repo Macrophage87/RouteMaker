@@ -4308,7 +4308,7 @@ export function App() {
     });
   }, [rideRider, roamRider]);
   // See everyone (lib/seeEveryone.ts, Stephen 2026-10-30): the other riders' dots, framed with the rider on request
-  // when the follow camera leaves some out. While on, the idle recentre leaves the view be.
+  // whenever other riders share their dots. While on, the idle recentre leaves the view be.
   const [rideDots, setRideDots] = useState<readonly LonLat[]>([]);
   const riderNow = useCallback(() => rideRider.get()?.point ?? roamRider.get()?.point ?? null, [rideRider, roamRider]);
   const everyone = useSeeEveryone({
