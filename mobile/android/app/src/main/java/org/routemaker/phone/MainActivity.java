@@ -28,6 +28,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(RideCompatPlugin.class);
         registerPlugin(FilesPlugin.class);
         registerPlugin(SharePlugin.class);
+        registerPlugin(SpeechPlugin.class);
         JSONObject json = SiteStore.readConfig(this);
         String address = SiteStore.address(this, json);
         if (json == null) {
