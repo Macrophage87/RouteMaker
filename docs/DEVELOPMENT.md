@@ -8033,6 +8033,13 @@ and from the I key on the junction, none away from it, and that the legend has n
 `run.sh` starts Chromium), so it can run beside another browser:
 `A11Y_CDP_PORT=9847 node scripts/a11y/check.mjs --port 5847`.
 
+`--shard I/N` (or `A11Y_SHARD=I/N` to `run.sh`) runs every Nth top-level section, from the Ith:
+each section is behind `if (mine())` and shares no page or state with another, so a new section
+needs the same prefix. A shard writes its check count to `a11y-count.txt` in the shots directory
+and skips the `EXPECTED` comparison; CI runs three shards on three runners (`a11y-shard`), and its
+`a11y` job is green only when all three passed and their counts add up to `EXPECTED`. Run alone, as
+at home, the check runs every section and compares with `EXPECTED` itself.
+
 ## Junction suggestions and junction overrides (FOLLOWUP-STRESS-SUGGEST, OWNER-DECISIONS 232)
 
 "In some times the road is fine, but the intersection can be especially dangerous." The road
