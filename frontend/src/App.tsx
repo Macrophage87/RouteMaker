@@ -4339,7 +4339,9 @@ export function App() {
   useEffect(() => forgetStaleRideEntry(window), []);
   // A ride left going when the page closed (lib/rideResume.ts): asked once at load. Resume starts it again from where
   // the rider is (the voice unlocked inside the press); its first fix past a stop asks which are done.
-  const [leftAsk, setLeftAsk] = useState(() => leftRide(VIA_MARKS, Date.now()));
+  // Not over a ride link opened to follow (Stephen 2026-10-30: "when a ride was in progress, it discarded the ride share
+  // and asked to restart the ride"): the link is what the rider tapped, so it joins that ride; Resume would drop it.
+  const [leftAsk, setLeftAsk] = useState(() => (SHARED_RIDE && SHARED_LEAD ? null : leftRide(VIA_MARKS, Date.now())));
   const resumeLeft = () => {
     const left = leftAsk;
     setLeftAsk(null);

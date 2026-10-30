@@ -167,3 +167,8 @@ test("a link Broadcast makes (its leader's key and the ride's key) reads back as
   const link = withSecret(asRideLink(`https://x.test/s/${id}#q=abc&route=${id}`, key), secret);
   assert.deepEqual(resumedBroadcast({ leads: link }), { id, lead: key, secret, own: true });
 });
+
+test("a ride link opened to follow joins that ride: no Resume question for a ride left going takes its place", () => {
+  const app = src("../App.tsx");
+  assert.match(app, /useState\(\(\) => \(SHARED_RIDE && SHARED_LEAD \? null : leftRide\(VIA_MARKS, Date\.now\(\)\)\)\)/);
+});
