@@ -375,7 +375,7 @@ def test_the_tools_link_carries_the_ride_size_on_a_mass_ride_only():
 # ---- The answer, through the API -------------------------------------------------------------
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 class TestTheAnswer:
     @pytest.fixture
     def planned(self, monkeypatch, segment_schemas):

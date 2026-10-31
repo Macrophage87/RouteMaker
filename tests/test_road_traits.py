@@ -226,7 +226,7 @@ class TestAnOwnerOverrideDoesNotChangeTheRoad:
         assert after.graph_oneway is True
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 class TestTheTableCarriesThem:
     def test_the_columns_are_declared_nullable_in_the_ddl(self) -> None:
         ddl = schema.SEGMENT_DDL
