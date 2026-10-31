@@ -764,6 +764,13 @@ test("a dot says why the junction is major: a busy road crossed or joined, and i
   assert.equal(crossingMarkerWords({ ...base, severity: "red" }), "Very high stress (red diamond)");
 });
 
+test("a dot names a half-step road as the route says it: LTS 3.5", () => {
+  const base: ProfileCrossing = { m: 0, street: "Wisconsin Avenue", severity: null, control: "signal", lanes: 4, crossed_tier: 3, kind: "crossing", corkers_needed: true };
+  assert.equal(crossingMarkerWords({ ...base, crossed_half: true }), "Crosses a busy road (LTS 3.5), traffic signal (dot)");
+  assert.equal(crossingMarkerWords({ ...base, crossed_tier: 2, crossed_half: true }), "Crosses a busy road (LTS 2.5), traffic signal (dot)");
+  assert.equal(crossingMarkerWords({ ...base, crossed_half: false }), "Crosses a busy road (LTS 3), traffic signal (dot)");
+});
+
 test("a path rated Avoid is Avoid in the strip key, the shares and the slider, beside an ordinary path (r4 a11y A-SF1)", () => {
   const sections = [
     { from_m: 0, to_m: 400, tier: 1, facility: "path" as const, unpaved: false },
