@@ -7582,39 +7582,11 @@ def report311_send(request):
 # address (a whole ride's phones can share one carrier address) and per ride, by keyed digest.
 
 
-def ride_writes_limited(view):
-    """Count a write against its ride (ride_presence.count_write, in the ride's own state, so the
-    count is gone with the ride); a path that is not a ride id is left to the view's 404
-    uncounted."""
-
-    @wraps(view)
-    def wrapped(request, *args, **kwargs):
-        from . import ride_presence
-
-        ride_id = str(kwargs.get("ride_id", ""))
-        if ride_presence.RIDE_ID.match(ride_id):
-            try:
-                wait = ride_presence.count_write(ride_id)
-            except ride_presence.Refused as refused:
-                return _stress_error(refused.status, refused.message)
-            if wait:
-                out = _stress_error(429, "This ride is busy; try again shortly.")
-                out["Retry-After"] = str(wait)
-                return out
-        return view(request, *args, **kwargs)
-
-    return wrapped
-
-
 # decorate_view wraps in order, so the last is outermost: a foreign page is refused before it
-# is counted, and a write is counted against its address before its ride.
+# is counted against its address. A write is counted against its ride inside the write itself,
+# under the ride's one lock (ride_presence._counted).
 RIDE_READ_GUARDS = (ratelimit.rate_limited(ratelimit.RIDE_LINKS), same_site_editor, errors_as_json)
-RIDE_WRITE_GUARDS = (
-    ride_writes_limited,
-    ratelimit.rate_limited(ratelimit.RIDE_LINKS),
-    same_site_editor,
-    errors_as_json,
-)
+RIDE_WRITE_GUARDS = RIDE_READ_GUARDS
 
 
 def _ride_call(request, fn):

@@ -55,6 +55,7 @@ import {
   OTHER_MAX,
   POLL_EVERY_MS,
   POST_EVERY_MS,
+  POST_SLACK_MS,
   RIDE_ROLES,
   ROLE_QUESTION,
   SHARE_STOPPED_SAID,
@@ -189,7 +190,7 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
   const [settledFor, setSettledFor] = useState<string | null>(null);
   // The role picked in the question, before it is answered: Participant, so one tap answers.
   const [pickedRole, setPickedRole] = useState<RideRole>(DEFAULT_ROLE);
-  const [read, setRead] = useState<RideRead>({ dots: [], alerts: [] });
+  const [read, setRead] = useState<RideRead>({ dots: [], alerts: [], paceMs: POLL_EVERY_MS });
   const [polledAt, setPolledAt] = useState(Date.now());
   const [now, setNow] = useState(Date.now());
   const [fix, setFix] = useState<LonLat | null>(null);
@@ -267,7 +268,7 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
       setConsent(null);
       setAsked(false);
       setShareOn(false);
-      setRead({ dots: [], alerts: [] });
+      setRead({ dots: [], alerts: [], paceMs: POLL_EVERY_MS });
       return;
     }
     let live = true;
@@ -333,12 +334,14 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
   const [watchToken] = useState(newToken);
   const token = consent?.token ?? (broadcast ? watchToken : null);
 
-  // Seeing the others: every 10 s while the page is in front.
+  // Seeing the others: every 5 s while the page is in front, or at the slower pace the server sets for a very big ride.
+  const [pace, setPace] = useState(POLL_EVERY_MS);
   const poll = useCallback(async () => {
     if (!ride || !token || !visible()) return;
     const got = await readRide(origin, ride, token, fetch, followKey, seal);
     if (!got) return;
     setRead(got);
+    setPace(got.paceMs);
     setPolledAt(Date.now());
     const fresh = newAlerts(previousAlerts.current, got.alerts);
     previousAlerts.current = got.alerts;
@@ -355,18 +358,22 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
   useEffect(() => {
     if (!ride || !token) return;
     void poll();
-    const id = window.setInterval(() => void poll(), POLL_EVERY_MS);
     const tick = window.setInterval(() => setNow(Date.now()), TICK_MS);
     const onShow = () => {
       if (visible()) void poll();
     };
     document.addEventListener("visibilitychange", onShow);
     return () => {
-      window.clearInterval(id);
       window.clearInterval(tick);
       document.removeEventListener("visibilitychange", onShow);
     };
   }, [ride, token, poll]);
+  // Apart from the first read: a new pace sets the next reads, without reading again at once.
+  useEffect(() => {
+    if (!ride || !token) return;
+    const id = window.setInterval(() => void poll(), pace);
+    return () => window.clearInterval(id);
+  }, [ride, token, poll, pace]);
 
   // Sharing your own dot: only while sharing and in front.
   const [front, setFront] = useState(visible());
@@ -421,13 +428,13 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
       if (held) void leaveRide(origin, ride, token);
       else share.current.lastPost = 0;
     }
-    if (near && !held && t - share.current.lastPost >= POST_EVERY_MS) {
+    if (near && !held && t - share.current.lastPost >= Math.max(POST_EVERY_MS, pace) - POST_SLACK_MS) {
       share.current.lastPost = t;
       void sendPosition(origin, ride, token, fix, consent.role, fetch, seal);
     }
     // Nor the leader's ridden path while the dot is held back: its last point would say where they are.
     if (leading && near && !held) setOwnTrail((t) => extendTrail(t, fix));
-  }, [ownFix, front, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home]);
+  }, [ownFix, front, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home, pace]);
 
   // The ride ended: the dot goes, and the next ride on this page asks again (2026-10-29: a Yes is
   // for the ride it was given for, never the page left open after it).

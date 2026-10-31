@@ -36,6 +36,10 @@ import {
   nearRoute,
   newToken,
   POST_EVERY_MS,
+  POST_SLACK_MS,
+  MIN_POST_GAP_MS,
+  SLOWEST_PACE_MS,
+  paceMs,
   postSoonAfter,
   project,
   readRide,
@@ -145,7 +149,7 @@ test("ages are said in words", () => {
 
 test("dots are drawn within a quarter mile of the route only, aged since the poll", () => {
   const dots = [
-    { lon: -77.03, lat: 38.9, age_s: 5 }, // newer than one poll (10 s): pulses
+    { lon: -77.03, lat: 38.9, age_s: 3 }, // newer than one poll (5 s): pulses
     { lon: -77.03, lat: 38.9025, age_s: 40 }, // about 280 m off
     { lon: -77.03, lat: 38.906, age_s: 5 }, // about 670 m off
     { lon: -77.02, lat: 38.9, age_s: 118 },
@@ -333,7 +337,7 @@ test("a followed ride link without its key says so and asks for no dot", async (
   // A keyed follow turned keyless (a pasted link) keeps nothing of the ride it was: no stale ride, key, answer or dots.
   assert.match(
     group,
-    /useEffect\(\(\) => \{\s*if \(keyless\) \{\s*\/\/[^\n]*\n\s*setRide\(null\);\s*setSeal\(null\);\s*setConsent\(null\);\s*setAsked\(false\);\s*setShareOn\(false\);\s*setRead\(\{ dots: \[\], alerts: \[\] \}\);\s*return;\s*\}\s*let live = true;\s*void rideOf\(rideSecret\)/,
+    /useEffect\(\(\) => \{\s*if \(keyless\) \{\s*\/\/[^\n]*\n\s*setRide\(null\);\s*setSeal\(null\);\s*setConsent\(null\);\s*setAsked\(false\);\s*setShareOn\(false\);\s*setRead\(\{ dots: \[\], alerts: \[\], paceMs: POLL_EVERY_MS \}\);\s*return;\s*\}\s*let live = true;\s*void rideOf\(rideSecret\)/,
   );
   // No ride, so no Send alert; Call 911 stays reachable where Send alert sits, a ride-sized link (64 px, past the 44 px floor).
   const none = group.slice(group.indexOf("if (!ride) {"), group.indexOf("<ConsentDialog open={askNow}"));
@@ -646,11 +650,11 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.match(group, /\{controls && \(\s*<div className="ride-group-bar">/);
   // A role change moves the next post up, and the post sends the consent's (new) role.
   assert.match(group, /const changeRole[\s\S]*?keepConsent\(ride, consent\.answer, Date\.now\(\), undefined, undefined, role\)[\s\S]*?share\.current\.lastPost = postSoonAfter\(share\.current\.lastPost\)/);
-  assert.match(group, /\}, \[ownFix, front, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home\]\);/);
+  assert.match(group, /\}, \[ownFix, front, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home, pace\]\);/);
   // Held back (an hour in one spot, or at Home): the dot goes at once, and none is sent until the rider moves on.
   assert.match(group, /const held = dotHeldBack\(dwell\.current, fix, t, home\);/);
   assert.match(group, /if \(held\) void leaveRide\(origin, ride, token\);/);
-  assert.match(group, /if \(near && !held && t - share\.current\.lastPost >= POST_EVERY_MS\)/);
+  assert.match(group, /if \(near && !held && t - share\.current\.lastPost >= Math\.max\(POST_EVERY_MS, pace\) - POST_SLACK_MS\)/);
   // A kept Yes from another tab is asked again; a ride that ends stops the dot and asks again next ride.
   assert.match(group, /const askAgain = !leading && kept\?\.answer === "yes" && !answeredHere\(id\);/);
   assert.match(group, /setShareOn\(kept\?\.answer === "yes" && !askAgain\);/);
@@ -715,9 +719,14 @@ test("review: on an out-and-back the pass nearest the last place along the route
 });
 
 test("review: a role change posts as soon as the server takes a position, with the new role", async () => {
-  // Posted 3 s ago: the next goes at 7 s (the server's minimum), not 10 s; never posted: at once.
-  const moved = postSoonAfter(100_000);
-  assert.equal(moved + POST_EVERY_MS, 107_000);
+  // The next goes a second after the server's minimum (3 s at any pace), at 5 s; at a big ride's slower pace,
+  // later, never sooner. Never posted: at once.
+  assert.equal(postSoonAfter(100_000) + POST_EVERY_MS - POST_SLACK_MS, 100_000 + MIN_POST_GAP_MS + 1_000);
+  for (const pace of [POST_EVERY_MS, 10_000, SLOWEST_PACE_MS]) {
+    assert.ok(postSoonAfter(100_000) + Math.max(POST_EVERY_MS, pace) - POST_SLACK_MS >= 100_000 + MIN_POST_GAP_MS + 1_000);
+  }
+  // A steady post at any pace is at least 1.5 s past the server's minimum.
+  assert.ok(POST_EVERY_MS - POST_SLACK_MS - MIN_POST_GAP_MS >= 1_500);
   assert.ok(103_000 - postSoonAfter(0) >= POST_EVERY_MS);
   const store = new Memory();
   keepConsent("r9", "yes", 0, store);
@@ -778,4 +787,17 @@ test("joining a broadcast: the route's buttons and the dot question on one scree
   assert.match(group, /const joinAlone = join && settledFor === rideSecret && \(!ride \|\| !askNow\) \? join : null;/);
   assert.match(group, /\}\)\.finally\(\(\) => \{\s*if \(live\) setSettledFor\(rideSecret\);\s*\}\);/);
   assert.match(group, /if \(!keyless \|\| !controls\) return joinSheet;/);
+});
+
+test("the dots go every 5 s, or at the slower pace the server sets for a very big ride", () => {
+  // Stephen 2026-10-31: "15 seconds is not enough to see slowdowns"; the server's read says the pace (every_s).
+  assert.equal(POST_EVERY_MS, 5_000);
+  assert.equal(paceMs(undefined), 5_000);
+  assert.equal(paceMs(10), 10_000);
+  assert.equal(paceMs(1), 5_000, "never faster than 5 s");
+  assert.equal(paceMs(600), SLOWEST_PACE_MS, "never slower than 15 s");
+  assert.equal(paceMs("10"), 5_000);
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  assert.match(group, /setPace\(got\.paceMs\);/);
+  assert.match(group, /const id = window\.setInterval\(\(\) => void poll\(\), pace\);\s*return \(\) => window\.clearInterval\(id\);\s*\}, \[ride, token, poll, pace\]\);/);
 });

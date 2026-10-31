@@ -8803,6 +8803,12 @@ path the leader takes, with no account.
   minutes or when the route changes), an alert, and a rider's token and counts (`KEEP_S`). Each
   api process sweeps every ride every `SWEEP_S`. The limits (posting and polling intervals, riders
   per ride, rides, path size) are the module's constants. A request over them gets a 429.
+- Pace (v0.16.1): dots and reads go every 5 s on a ride of up to 300 riders, 10 s up to 1,000 and
+  15 s beyond (`pace_s`, at most `MAX_RIDERS_PER_RIDE` 1,500). Each write rewrites the ride's whole
+  file under its one lock, so the cost of a write grows with the riders in it. Each read answers
+  the pace as `every_s`, and the phone follows it (`paceMs`). A read takes the lock shared and
+  writes the file only to drop what has expired, or to stamp the phone's poll once a minute
+  (`POLL_STAMP_S`). A write is counted against the ride in the same locked turn.
 - Sealed rides (v0.15.0): every ride link carries a secret in its fragment, and each phone seals
   what it sends. The server keeps the sealed text and cannot read it, and refuses plain numbers
   ("End-to-end encrypted rides", above).
