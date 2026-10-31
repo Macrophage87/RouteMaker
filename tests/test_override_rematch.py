@@ -762,7 +762,9 @@ def test_the_virginia_rows_take_only_the_owners_levels() -> None:
     ways = [row["osm_way_id"] for row in document["rows"]]
     assert len(ways) == len(set(ways)), "one row per way"
     assert not {("stress", way) for way in ways} & elsewhere, "no way rated in another file"
-    count = {"va-ffx-posted-35-two-lane": 0, "va-ffx-posted-35-quiet": 0}
+    count = {"two-lane": 0, "quiet": 0}
+    # One adjustment id per level: the loader refuses rows of one id that disagree.
+    ids: dict[str, set[float]] = {}
     for row in document["rows"]:
         value, evidence = row["value"], row["evidence"]
         level = value["tier"] + (0.5 if value.get("half") else 0.0)
@@ -772,12 +774,16 @@ def test_the_virginia_rows_take_only_the_owners_levels() -> None:
             assert level == 1.5 and "Beta's road panel" in evidence and ": LTS 2," in evidence
             assert "under 1,000 vehicles a day" in evidence and "no VDOT count" in evidence
             continue
-        count[value["adjustment_id"]] += 1
+        ids.setdefault(value["adjustment_id"], set()).add(level)
+        group = "two-lane" if value["adjustment_id"].startswith("va-ffx-posted-35-two-lane-") else "quiet"
+        assert value["adjustment_id"].startswith(f"va-ffx-posted-35-{group}-lts")
+        count[group] += 1
         assert "posted 35 mph" in evidence and "no maxspeed tag" in evidence
         aadts = re.search(r"VDOT AADT on the blocks along it: ([0-9, ]+) \(", evidence)
         busiest = max(int(a.replace(",", "")) for a in aadts.group(1).split(", "))
         expected = 4.0 if busiest >= 5_000 else 3.5 if busiest > 1_500 else 2.5
         assert level == expected, (row["osm_way_id"], busiest, level)
-        was = 3 if value["adjustment_id"] == "va-ffx-posted-35-two-lane" else 2
+        was = 3 if group == "two-lane" else 2
         assert f": LTS {was}," in evidence
-    assert count == {"va-ffx-posted-35-two-lane": 43, "va-ffx-posted-35-quiet": 28}
+    assert count == {"two-lane": 43, "quiet": 28}
+    assert all(len(levels) == 1 for levels in ids.values()), ids

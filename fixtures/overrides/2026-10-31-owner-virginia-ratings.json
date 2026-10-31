@@ -11,7 +11,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -32,7 +32,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -53,7 +53,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -73,7 +73,7 @@
    "osm_way_id": 8827785,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -93,7 +93,7 @@
    "osm_way_id": 8829810,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -114,7 +114,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -134,7 +134,7 @@
    "osm_way_id": 8834829,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -155,7 +155,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -176,7 +176,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -197,7 +197,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -217,7 +217,7 @@
    "osm_way_id": 8843281,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -238,7 +238,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -258,7 +258,7 @@
    "osm_way_id": 28767865,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -278,7 +278,7 @@
    "osm_way_id": 28767867,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -298,7 +298,7 @@
    "osm_way_id": 108693691,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -319,7 +319,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -340,7 +340,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -361,7 +361,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -381,7 +381,7 @@
    "osm_way_id": 172860076,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -402,7 +402,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -423,7 +423,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -443,7 +443,7 @@
    "osm_way_id": 233086809,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -464,7 +464,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -484,7 +484,7 @@
    "osm_way_id": 315396161,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -504,7 +504,7 @@
    "osm_way_id": 315396162,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -524,7 +524,7 @@
    "osm_way_id": 583853600,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -544,7 +544,7 @@
    "osm_way_id": 589533559,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -565,7 +565,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -586,7 +586,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -606,7 +606,7 @@
    "osm_way_id": 680793884,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -626,7 +626,7 @@
    "osm_way_id": 697661763,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -646,7 +646,7 @@
    "osm_way_id": 697661764,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -667,7 +667,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -688,7 +688,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -708,7 +708,7 @@
    "osm_way_id": 756218019,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -728,7 +728,7 @@
    "osm_way_id": 833614373,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -748,7 +748,7 @@
    "osm_way_id": 917855031,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -768,7 +768,7 @@
    "osm_way_id": 1136952432,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -788,7 +788,7 @@
    "osm_way_id": 1464270284,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -808,7 +808,7 @@
    "osm_way_id": 1474614148,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -828,7 +828,7 @@
    "osm_way_id": 1480026418,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -849,7 +849,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -869,7 +869,7 @@
    "osm_way_id": 1543202075,
    "value": {
     "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
+    "adjustment_id": "va-ffx-posted-35-two-lane-lts4",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -890,7 +890,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -911,7 +911,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -932,7 +932,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -953,7 +953,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -974,7 +974,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -995,7 +995,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1016,7 +1016,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1037,7 +1037,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1058,7 +1058,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1079,7 +1079,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1100,7 +1100,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1121,7 +1121,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1142,7 +1142,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1163,7 +1163,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1184,7 +1184,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1205,7 +1205,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1226,7 +1226,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1247,7 +1247,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1268,7 +1268,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1289,7 +1289,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1310,7 +1310,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1331,7 +1331,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1352,7 +1352,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1373,7 +1373,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1394,7 +1394,7 @@
    "value": {
     "tier": 2,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts2-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1415,7 +1415,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1436,7 +1436,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
@@ -1457,7 +1457,7 @@
    "value": {
     "tier": 3,
     "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
+    "adjustment_id": "va-ffx-posted-35-quiet-lts3-5",
     "category": "other",
     "visibility": "hidden",
     "annotation_status": "approved",
