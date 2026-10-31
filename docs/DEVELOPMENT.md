@@ -831,8 +831,17 @@ exactly these breaks (one more fails, and so does one fewer):
 | LTS 1 | #9ed3ac | #2f5d47 | (solid) | 0 | 4.42:1 |
 | LTS 2 | #57a06c | #1a2638 | #7a8fa3 | 0.21 | 4.82:1 |
 | LTS 3 | #f3c81a | #f28c28, ringed #1c1917 | the edge | 0.25 | 7.13:1 |
-| LTS 4 | #f28c28 | #c81e1e, ringed #1c1917 | the edge | 0.26 | 3.05:1 |
-| Avoid | #d42020 | #111111 | the edge | 0.97 | 3.20:1 |
+| LTS 4 | #e3261c | #560a0e | the edge | 0.35 | 3:1 by its edge |
+| Avoid | #d6008f | #ffffff, ringed #1c1917 | the edge | 1.32 | 3:1 by its ring |
+
+**2026-10-31** (the owner: "today's orange should be 3.5 with 4 at some sort of red and 4.5
+darkred", and Avoid on the map the route's magenta): the old LTS 4 (#f28c28 on #c81e1e,
+ringed) is now 3.5's look, and the half steps have colours of their own in this palette and the
+warm one (`HALF_PALETTES`; docs/stress/drawing.md, "Half steps"). The breaks this moved are in
+defaultConflicts.ts: LTS 3 and 3.5 on their edges, LTS 4 against Avoid in grey (1.07:1) and for a
+deuteranope (1.09:1), the protected-lane rail 13.4 from the magenta; LTS 3 against LTS 4 for a
+deuteranope (23.2 now) and LTS 4's greyscale order are no longer reported. The rows above and
+the 371 notes below are as they were before, where they name LTS 4's orange.
 
 **371** (the owner, on the final preview: "Apply both"): the near-black ring and the
 yellow #f3c81a are applied. The ring (#1c1917, a pixel outside the edge) is drawn on the
