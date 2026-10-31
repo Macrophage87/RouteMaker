@@ -16,7 +16,7 @@
 Django==5.2.17
 # The HTTP API: src/core/api.py is a NinjaAPI, served under /api/ (its docs
 # assets are collected into the Caddy-served volume).
-django-ninja==1.7.0
+django-ninja==1.7.1
 # GeoDjango's PostGIS backend. The binary wheel bundles its own libpq, so the
 # image needs no libpq for Django itself - it needs one for pg_dump.
 psycopg2-binary==2.9.13
@@ -26,7 +26,7 @@ psycopg2-binary==2.9.13
 psycopg==3.3.6
 # The worker. Its Django integration ships the job schema as migrations, which
 # is why `migrate` is the only step that creates and upgrades it.
-procrastinate==3.9.0
+procrastinate==3.10.0
 # routemaker.gpx reads GPX tracks (the reference fixtures today). GPX is XML from
 # outside this repository, so it is parsed with defusedxml only: no fallback.
 defusedxml==0.7.1
@@ -34,7 +34,7 @@ defusedxml==0.7.1
 # api image as well as the pipeline one: the maintenance worker imports
 # `pipeline.retention`, so `pipeline` is an importable package in that image and
 # an import that reaches `pipeline.extract` must not die on a missing module.
-osmium==4.3.1
+osmium==4.3.2
 # core.garmin and core.wahoo encrypt riders' Garmin and Wahoo tokens with AES-GCM (the kept
 # third-party credentials). Ships as a binary wheel, so the image build compiles nothing.
 cryptography==46.0.3
