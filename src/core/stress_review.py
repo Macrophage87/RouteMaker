@@ -812,19 +812,23 @@ def rating_sources(
     held = row.get("ratings") if isinstance(row.get("ratings"), dict) else {}
     out: list[dict] = []
 
-    def add(key: str, level, is_pending: bool = False) -> None:
+    def add(key: str, level, is_pending: bool = False, read_as=None) -> None:
         if level is None or any(s["key"] == key for s in out):
             return
-        # An agency's level as the map uses it (Montgomery's 5 is our 4.5), so the spread and
+        # An agency's level as the map uses it (Montgomery's 5 is our 4.5; MDOT SHA's and DDOT's
+        # as the owner's rules read them, `mdot_sha_rules`, `ddot_rules`), so the spread and
         # "Use this level" compare like with like; its own level stays in the name.
         raw = float(level)
-        level = float(agency_lts.map_level(key, raw))
+        level = float(read_as) if read_as is not None else float(agency_lts.map_level(key, raw))
         name = source_name(key) + (f" (rated LTS {raw:g})" if level != raw else "")
         out.append({"key": key, "name": name, "level": level, "pending": is_pending})
 
     adjusted = bool(row.get("adjustment")) or str(row.get("rule") or "").startswith("override:")
     formula = held.get("formula")
-    if formula is None:
+    if formula is not None:
+        # The formula's tier is written whole, its half step beside it (`pipeline.writers`).
+        formula = float(formula) + (0.5 if held.get("formula_half") is True else 0)
+    else:
         formula = row.get("computed")
     if (
         formula is None
@@ -834,7 +838,7 @@ def rating_sources(
         formula = row.get("step")
     add(FORMULA, formula)
     for rating in held.get("agencies") or []:
-        add(str(rating.get("agency")), rating.get("level"))
+        add(str(rating.get("agency")), rating.get("level"), read_as=rating.get("read_as"))
     override = held.get("override")
     if isinstance(override, dict):
         add(str(override.get("source")), override.get("level"))

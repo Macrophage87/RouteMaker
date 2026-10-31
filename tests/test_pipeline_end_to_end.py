@@ -104,6 +104,7 @@ from rebuild_fixtures import (
 )
 
 from pipeline.borders import SyntheticNodeIds
+from pipeline.extract import close_writer
 from pipeline.rebuild import RebuildFailed, Stage, run_rebuild
 from pipeline.run import RebuildContext, build_handlers
 from pipeline.variants import Variant
@@ -3769,7 +3770,7 @@ def _write_ebike_bridge_extract(path: Path) -> None:
             )
         )
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 def test_the_ebike_bar_is_not_granted_back_by_the_crossings_fixture(
@@ -4337,7 +4338,7 @@ def build_one_road_extract(
                 osmium.osm.mutable.Way(id=way_id, nodes=way_nodes, version=1, tags=way_tags)
             )
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 @pytest.mark.parametrize(
@@ -5062,14 +5063,15 @@ def test_the_districts_lane_widths_reach_the_mass_ride_column(workspace, states)
 def reference_road_block(speed_mph: int) -> dict:
     """Way 100's block (named as the way is, so it conflates), standing in for the owner's
     reference LTS 4 road: two lanes each way and a busy count, so 30 mph is LTS 4 and 25 mph
-    LTS 3 (stress.urban_two_way_floor)."""
+    LTS 3 (stress.urban_two_way_floor). The count stays under the 12,000 a day from which a
+    city street held at 3 goes up (stress.busy_road_steps, the Virginia review)."""
     return street_block(
         "dc-ct",
         {
             "speed_mph": {"ob": speed_mph},
             "lanes": {"ib": 2, "ob": 2},
             "way": "both",
-            "aadt": 20000,
+            "aadt": 10000,
             "aadt_year": 2020,
             "parking_lanes": 0,
         },

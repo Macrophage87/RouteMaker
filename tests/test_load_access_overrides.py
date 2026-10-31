@@ -1296,3 +1296,19 @@ class TestTheAspenStreetFile:
         for row in rows:
             assert row.kind == "stress"
             assert (row.value["tier"], row.value["half"]) == (2, True)
+
+
+@pytest.mark.parametrize(
+    "path",
+    sorted((REPO / "fixtures" / "overrides").glob("*.json")),
+    ids=lambda path: path.name,
+)
+def test_every_override_file_passes_the_loaders_checks(path) -> None:
+    """A file the rebuild will be loaded from is checked here, not first on the PC: the
+    2026-10-31 Virginia file shared one adjustment id across two levels and the loader
+    refused it at the dry run before the v0.16.0 rebuild."""
+    from core.management.commands.load_access_overrides import parse_file, parse_retired
+
+    text = path.read_text()
+    parse_file(text, path.name)
+    parse_retired(text, path.name)

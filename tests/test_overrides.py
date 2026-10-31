@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from rebuild_fixtures import write_reference_data
 
+from pipeline.extract import close_writer
 from pipeline.overrides import (
     Override,
     OverrideRefused,
@@ -306,7 +307,7 @@ def _write_access_extract(path: Path) -> None:
             )
         )
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 def _inject_through_the_real_stages(tmp_path, rows, legality=(), context_out=None):
