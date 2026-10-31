@@ -246,7 +246,7 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 
 ## VDOT posted speed limits
 
-- Credit: `VDOT`
+- Credit: the `VDOT` credit above (one publisher, one credit).
 - Dataset: **VDOT Posted Speed Limits on State-Maintained Roads**, ArcGIS item
   `4a41cef6e60e4ba09ac545fdf62c27a3`, layer
   <https://services.arcgis.com/p5v98VHDX9Atv3l7/arcgis/rest/services/VDOT_Posted_Speed_Limits/FeatureServer/0>
