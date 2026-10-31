@@ -337,3 +337,29 @@ test("App judges a followed broadcast once, when ready, and starts its ride with
   assert.match(app, /if \(!ridingNow\.current && !roamingNow\.current\) return;\n\s+document\.removeEventListener\("click", unlock, true\);\n\s+if \(!window\.speechSynthesis\?\.speaking\) primeRideVoice\(ridePrefsNow\.current\);/);
   assert.match(app, /document\.addEventListener\("click", unlock, true\);/);
 });
+
+test("an alert that does not go says why on screen, not only to a screen reader (2026-10-31)", () => {
+  const group = read("../RideGroup.tsx");
+  // Each refusal is kept for the panel as well as said.
+  assert.match(group, /if \(refusal\) \{\s*setSendError\(refusal\);\s*say\(refusal\);/);
+  assert.match(group, /setSendError\(why\);\s*say\(why\);/);
+  assert.match(group, /if \(!outcome\.ok\) \{\s*setSendError\(outcome\.message\);\s*say\(outcome\.message\);/);
+  // Shown in the open panel, cleared on a send that went and when the panel is opened again.
+  assert.match(group, /\{sendError && <p className="ride-alert-error">\{sendError\}<\/p>\}/);
+  assert.match(group, /setSendError\(""\);\s*setSent/);
+  assert.match(group, /setSendError\(""\);\s*setAlertOpen\(!alertOpen\);/);
+});
+
+test("a shared dot goes from the ride's own position while riding, never from a second watch (2026-10-31)", async () => {
+  const { sharedFix } = await import("./rideGroup.ts");
+  // Riding: the ride's position, even when this page has no watch of its own (inside the Android app it went silent).
+  assert.deepEqual(sharedFix(true, [-77.03, 38.89], null), [-77.03, 38.89]);
+  assert.equal(sharedFix(true, null, [-77.03, 38.89]), null);
+  // Watching (Plan, a computer): the page's own watch.
+  assert.deepEqual(sharedFix(false, [-77.0, 38.0], [-77.03, 38.89]), [-77.03, 38.89]);
+  const group = read("../RideGroup.tsx");
+  // The page's own watch only while not riding; the dot goes from sharedFix, and only in front.
+  assert.match(group, /if \(!shareOn \|\| !front \|\| !ride \|\| !token \|\| riding\) return;\s*return watchRide\(browserRideEnv\(\)/);
+  assert.match(group, /const ownFix = sharedFix\(riding, here, fix\);/);
+  assert.match(group, /if \(!shareOn \|\| !front \|\| !ownFix \|\| !ride \|\| !token \|\| !consent\) return;/);
+});

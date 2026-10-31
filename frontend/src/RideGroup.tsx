@@ -94,6 +94,7 @@ import {
   sendPosition,
   shareStop,
   postSoonAfter,
+  sharedFix,
   shownDots,
   type AlertKind,
   type RideAlert,
@@ -197,6 +198,8 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
   const [confirming, setConfirming] = useState<AlertKind | null>(null);
   const [otherText, setOtherText] = useState("");
   const [otherOpen, setOtherOpen] = useState(false);
+  // Why the last alert did not go, shown in the panel as well as said: a sighted rider saw nothing before (2026-10-31).
+  const [sendError, setSendError] = useState("");
   // Speak (lib/speechInput.ts): only where the browser turns speech into text. It heads the alert panel (Stephen
   // 2026-10-30: "autotranscribe what you are saying. then you could either send that or a quick response"): one press
   // opens the box and listens, the words fill it, Send sends them, or a quick alert below is sent instead.
@@ -368,18 +371,27 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
   }, []);
   useEffect(() => {
     if (!shareOn || !front || !ride || !token) return;
-    // Ride mode's one watcher (lib/rideWatch.ts), while sharing and in front only; a refusal turns sharing off.
-    const stopWatch = watchRide(browserRideEnv(), (f) => setFix(f.point), (why) => {
-      if (why === "denied" || why === "unsupported" || why === "insecure") setShareOn(false);
-    });
     return () => {
-      stopWatch();
       // In the background, or turned off: the dot goes at once rather than in 2 minutes.
       void leaveRide(origin, ride, token);
     };
   }, [shareOn, front, ride, token, origin]);
+  // While riding, the dot is the ride's own position (`here`, Ride mode's one watch: the phone app's GPS in the app). A
+  // second watch of the page's own went silent or was refused inside the Android app, and in a browser a second watch
+  // can wait on a fix the first already took, so no dot went out at all (2026-10-31: "she can't see mine"). Not riding
+  // (watching from Plan or a computer), this page watches for itself, while sharing and in front only; a refusal turns
+  // sharing off.
   useEffect(() => {
-    if (!shareOn || !fix || !ride || !token || !consent) return;
+    if (!shareOn || !front || !ride || !token || riding) return;
+    return watchRide(browserRideEnv(), (f) => setFix(f.point), (why) => {
+      if (why === "denied" || why === "unsupported" || why === "insecure") setShareOn(false);
+    });
+  }, [shareOn, front, ride, token, riding]);
+  const ownFix = sharedFix(riding, here, fix);
+  useEffect(() => {
+    // Only in front: the app's ride goes on with the screen locked, and the dot does not (the promise made at Yes).
+    if (!shareOn || !front || !ownFix || !ride || !token || !consent) return;
+    const fix = ownFix;
     const t = Date.now();
     // On a broadcast everyone shown is shown on or off the route while they ride: those following go where the leader
     // goes, and riders who get separated find each other. Not riding (the ride ended, or watching), the quarter-mile
@@ -408,7 +420,7 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
     }
     // Nor the leader's ridden path while the dot is held back: its last point would say where they are.
     if (leading && near && !held) setOwnTrail((t) => extendTrail(t, fix));
-  }, [fix, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home]);
+  }, [ownFix, front, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home]);
 
   // The ride ended: the dot goes, and the next ride on this page asks again (2026-10-29: a Yes is
   // for the ride it was given for, never the page left open after it).
@@ -455,7 +467,7 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leading, riding, shareOn, front, ride, token, origin, routeNowKey, now, seal]);
 
-  const me = fix ?? here;
+  const me = ownFix ?? here;
   const meRef = useRef<LonLat | null>(null);
   meRef.current = me;
   // A broadcast from Roam has no route: places are said from you in a straight line (lib/rideGroup.ts awayWords).
@@ -560,21 +572,26 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
     if (!ride || !token) return;
     const refusal = alertRefusal(sent, Date.now());
     if (refusal) {
+      setSendError(refusal);
       say(refusal);
       return;
     }
     const at = me ?? (await currentPosition());
     if (!at) {
-      say(t("Your location is needed to send an alert; allow it and try again."));
+      const why = t("Your location is needed to send an alert; allow it and try again.");
+      setSendError(why);
+      say(why);
       return;
     }
     const outcome = await sendAlert(origin, ride, token, type, kind.id, words, at, fetch, seal);
     setConfirming(null);
     setOtherOpen(false);
     if (!outcome.ok) {
+      setSendError(outcome.message);
       say(outcome.message);
       return;
     }
+    setSendError("");
     setSent((s) => [...s, Date.now()]);
     // The words themselves, not "Other": a rider who cannot see the box hears what went (spoken words included).
     const shown = kind.id === "other" ? words.trim() : kind.label;
@@ -653,7 +670,10 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
             <span aria-hidden="true">{riders}</span>
           </button>
         )}
-        <button type="button" className="chip ride-alert-button" aria-expanded={alertOpen} data-idle-close aria-controls={alertPanel} aria-describedby={`${alertPanel}-note`} onClick={() => setAlertOpen(!alertOpen)}>
+        <button type="button" className="chip ride-alert-button" aria-expanded={alertOpen} data-idle-close aria-controls={alertPanel} aria-describedby={`${alertPanel}-note`} onClick={() => {
+            setSendError("");
+            setAlertOpen(!alertOpen);
+          }}>
           <Icon name="warn" size={18} />
           {ALERT_LABEL}
         </button>
@@ -730,6 +750,8 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
         <p id={`${alertPanel}-note`} className="hint">
           {ALERT_SPOT_NOTE}
         </p>
+        {/* Said already (the status line); shown here so a rider who sees the screen knows it did not go. */}
+        {sendError && <p className="ride-alert-error">{sendError}</p>}
         {confirming ? (
           <div role="group" aria-label={CONFIRM_QUESTION} data-idle-hold>
             <p>

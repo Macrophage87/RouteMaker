@@ -536,6 +536,15 @@ export interface ShareState {
 
 export type ShareStop = "off" | "left-route" | "ride-over" | null;
 
+/**
+ * The position a shared dot is sent from: while riding, the ride's own (Ride mode's one watch, the phone app's GPS in
+ * the app), else this page's own watch. A second watch beside the ride's went silent or was refused inside the Android
+ * app, so no dot went out (2026-10-31).
+ */
+export function sharedFix(riding: boolean, ridePosition: LonLat | null, ownWatch: LonLat | null): LonLat | null {
+  return riding ? ridePosition : ownWatch;
+}
+
 /** Why sharing has stopped, or null while it goes on (the app being closed or hidden stops it outright). */
 export function shareStop(state: ShareState, now: number): ShareStop {
   if (!state.on) return "off";
