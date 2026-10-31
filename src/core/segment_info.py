@@ -42,7 +42,7 @@ from routemaker import (
     trail_facts,
 )
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
-from routemaker.stress import RURAL_EXPRESSWAY_PREFIX, USE_SIDEPATH_RULE
+from routemaker.stress import FAST_MULTILANE_PREFIX, RURAL_EXPRESSWAY_PREFIX, USE_SIDEPATH_RULE
 
 # How far from the spot a way may be and still be the one the rider meant: a
 # right-click on a drawn road lands within a few metres of its centre line at
@@ -611,6 +611,11 @@ def _rule_words(rule: str) -> str:
         posted = _SPEED.search(rule)
         where = f", posted {posted.group(0)}" if posted else ""
         return f"Rural highway-like road{where}: high stress, but often no way around"
+    if rule.startswith(FAST_MULTILANE_PREFIX):
+        # LTS 4.5 (the owner's urban 55 mph rule, 2026-10-30).
+        posted = _SPEED.search(rule)
+        where = f", posted {posted.group(0)}" if posted else ""
+        return f"Multilane highway{where}: high stress"
     if rule.startswith("legal but avoid"):
         posted = _SPEED.search(rule)
         return "Avoid: highway-like road" + (f", posted {posted.group(0)}" if posted else "")
