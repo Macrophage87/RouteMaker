@@ -749,11 +749,10 @@ export const ES: Readonly<Record<string, string>> = {
     "Modo de accesibilidad desactivado: el alto contraste y el texto grande están desactivados, y Herramientas del mapa está oculto.",
   // ---- Fitting the phone (the owner, 2026-10-27: "use shorter words so it all fits") ----
   // Ride's light corner and the route's light marks (lib/lightTimes.ts).
-  "Civil twilight begins": "Comienza el crepúsculo civil",
-  "Civil twilight ends": "Termina el crepúsculo civil",
+  "Dawn": "Alba",
+  "Dusk": "Anochecer",
   Sunrise: "Amanecer",
   Sunset: "Atardecer",
-  Twilight: "Crepúsculo",
   "{head}, after you arrive": "{head}, después de llegar",
   "{head} near {mile}": "{head} cerca de {mile}",
   "{mark}, where you will be near {mile}": "{mark}, donde estará cerca de {mile}",
