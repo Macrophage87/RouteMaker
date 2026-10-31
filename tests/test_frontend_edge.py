@@ -48,6 +48,7 @@ DOC_PAGES = (
     "mass-ride",
     "trails",
     "architecture",
+    "android-beta",
     "assistants",
     "acknowledgements",
 )
