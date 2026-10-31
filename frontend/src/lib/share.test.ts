@@ -187,11 +187,21 @@ test("Share live: where the share sheet fails, the link is copied instead and th
     assert.deepEqual(await run("TypeError"), { outcome: "shared", copied: [content.url], told: [false, true] });
     // The rider closed the sheet: nothing copied, nothing started.
     assert.deepEqual(await run("AbortError"), { outcome: "cancelled", copied: [], told: [false] });
+    assert.deepEqual(await run("InvalidStateError"), { outcome: "cancelled", copied: [], told: [false] });
     // The copy failed too: a failure, as before.
     assert.deepEqual(await run("NotAllowedError", false), { outcome: "failed", copied: [content.url], told: [false] });
+    // A sheet that throws at once is copied too; canShare is the sheet's own (withGpxFile asks it).
+    const copied: string[] = [];
+    const throwing = sheetOrCopyNavigator({ share: () => { throw Object.assign(new Error("x"), { name: "TypeError" }); }, canShare: () => true }, async (t) => (copied.push(t), true), () => {});
+    assert.equal(await shareLink(throwing, content), "shared");
+    assert.deepEqual(copied, [content.url]);
+    assert.equal(throwing.canShare?.({ url: content.url }), true);
+    assert.equal(sheetOrCopyNavigator({ share: async () => {} }, async () => true, () => {}).canShare, undefined);
   } finally {
     console.warn = warn;
   }
+  // Roam's QR hold never reads an earlier press's copy.
+  assert.match(app, /const broadcastRoam = async \(nav: ShareNavigator \| undefined = broadcastNav\): Promise<string> => \{\s*\/\/[^\n]*\n\s*sheetCopied\.current = false;/);
 });
 
 test("App: Broadcast shows everywhere; with no share sheet it copies, and the ride screen, Ride and Roam say so", () => {

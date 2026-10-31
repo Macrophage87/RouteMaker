@@ -3562,7 +3562,9 @@ export function App() {
     // A ride link carries its own leader's secret, never the plan's (a Group Ride's): one without a leader carries none.
     const link = again ? again.link : ride && kept ? (lead ? withSecret(asRideLink(now!.link, lead.key), lead.secret) : withoutSecret(asRideLink(now!.link))) : now!.link;
     const file = exact?.file ? gpxShareFile(exact.file.text, exact.file.fileName) : null;
-    const content = withGpxFile(nav, shareContent(link, distanceM, presetSaid(ownRide?.preset ?? preset)), file);
+    // A ride's link goes alone (2026-10-31, phone Chrome: "could not open the share sheet"): Chrome on Android shares
+    // only some file types and may refuse the sheet over a GPX file; those who open it are offered the GPX there.
+    const content = ride ? shareContent(link, distanceM, presetSaid(ownRide?.preset ?? preset)) : withGpxFile(nav, shareContent(link, distanceM, presetSaid(ownRide?.preset ?? preset)), file);
     const outcome = shareLink(nav, content);
     let said: string;
     try {
@@ -4482,6 +4484,8 @@ export function App() {
   const roamKeyless = followsWithoutKey(roamBroadcast);
   // `nav`: the sheet (or Broadcast's QR code, broadcastRoamQr). Following someone's Roam broadcast, their link is passed on.
   const broadcastRoam = async (nav: ShareNavigator | undefined = broadcastNav): Promise<string> => {
+    // A QR hold passes its own `nav`: never said as copied after an earlier press's copy.
+    sheetCopied.current = false;
     if (roamBroadcast && !roamBroadcast.leading) {
       // A link without its key is never passed on: those it reached could not see the leader either.
       if (roamKeyless) return BROADCAST_NO_KEY;
