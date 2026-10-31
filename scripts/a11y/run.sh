@@ -5,6 +5,7 @@
 #
 #   scripts/a11y/run.sh NODE_MODULES_DIR [SHOTS_DIR]
 #
+# A11Y_SHARD=I/N runs one of N shards (check.mjs --shard), as CI does on N runners.
 # NODE_MODULES_DIR is a frontend node_modules installed from this lockfile. Vite
 # writes its caches into node_modules and next to its config, so it runs on a
 # copy of the frontend (and of NODE_MODULES_DIR) under $TMPDIR; the source tree
@@ -56,4 +57,5 @@ docker run -d --name "$name-chrome" --network "container:$name-vite" --shm-size 
   /ms-playwright/chromium-1208/chrome-linux64/chrome --headless=new --no-sandbox --disable-gpu \
   --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader \
   --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir=/tmp/chrome about:blank >/dev/null
-docker exec "$name-vite" node /w/scripts/a11y/check.mjs --port 5173 --preview-port 4173 --cdp 9222 --shots /shots
+docker exec "$name-vite" node /w/scripts/a11y/check.mjs --port 5173 --preview-port 4173 --cdp 9222 --shots /shots \
+  --shard "${A11Y_SHARD:-1/1}"

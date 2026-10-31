@@ -1671,7 +1671,7 @@ def test_a_metro_gtfs_that_ends_early_gives_way_to_the_typical_timetable(tmp_pat
 
 # --- POST /api/route and GET /api/transit/closures ----------------------------------------------
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 
 @pytest.fixture

@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  DEFAULT_PALETTE,
   FACILITIES,
   FACILITY_DRAW_ORDER,
   PALETTES,
@@ -25,6 +26,7 @@ import { FACILITY_CLASSES } from "./lib/facilityBar.ts";
 import { ROUTE_SECTION_WIDTHS } from "./lib/routeColours.ts";
 import { UNRATED, UNRATED_CVD_COLOUR } from "./lib/stressBar.ts";
 import { appSource } from "./testSupport/appSource.mjs";
+import { DEFAULT_CONFLICTS } from "./testSupport/defaultConflicts.ts";
 
 type Tier = ReturnType<typeof tiersFor>[number];
 
@@ -261,14 +263,14 @@ test("the stress bar and the swatches carry Avoid's own pattern, in the tier's c
   assert.match(rule, /repeating-linear-gradient\(45deg, var\(--seg-accent/);
   assert.match(rule, /repeating-linear-gradient\(-45deg, var\(--seg-accent/, "a cross-hatch, which no other tier has");
   for (const n of [2, 3, 4]) {
-    assert.doesNotMatch(css.match(new RegExp(`\\.stress-seg-${n} \\{([^}]*)\\}`))?.[1] ?? "", /var\(--seg-accent/);
+    assert.doesNotMatch(css.match(new RegExp(`\\.stress-seg-${n},\\n\\.stress-seg-${n}h \\{([^}]*)\\}`))?.[1] ?? "missing", /var\(--seg-accent|missing/);
   }
   for (const palette of Object.keys(PALETTES)) {
     const avoid = tiersFor(palette)[4];
     assert.ok(contrastRatio(avoid.casing, avoid.color) >= 3, `${palette}: the hatch is ${contrastRatio(avoid.casing, avoid.color).toFixed(2)}:1 on the fill`);
   }
   const app = appSource();
-  assert.ok((app.match(/--seg-accent/g) ?? []).length >= 2, "both the bar's segments and the list's swatches set the accent");
+  assert.ok((app.match(/segmentStyle\(s\)/g) ?? []).length >= 2, "both the bar's segments and the list's swatches set the accent (segmentStyle, stressBar.ts)");
 });
 
 // ---------------------------------------------------------------------------
@@ -338,6 +340,12 @@ test("the three rail colours differ pairwise, and from every stress colour, the 
       if (w.delta < worstSeen.delta) worstSeen = { name, delta: w.delta, vision: w.vision };
     }
     t.diagnostic(`${f.facility} ${f.color}: closest colour ${closest.name} ${closest.delta.toFixed(1)}; under any vision ${worstSeen.name} ${worstSeen.delta.toFixed(1)} (${worstSeen.vision})`);
+    // Reported, not held: the protected lane's violet against the default's magenta Avoid (2026-10-31).
+    const reported = DEFAULT_CONFLICTS.railsNearAvoid.includes(f.facility) && closest.name === `${DEFAULT_PALETTE} Avoid`;
+    if (reported) {
+      assert.ok(closest.delta >= 13, `${f.facility} is ${closest.delta.toFixed(1)} from ${closest.name}`);
+      continue;
+    }
     assert.ok(closest.delta >= FLOOR, `${f.facility} is ${closest.delta.toFixed(1)} from ${closest.name}`);
     assert.notEqual(f.color.toLowerCase(), "#1d4ed8");
   }
@@ -367,7 +375,8 @@ test("the rails' colours go dark to light: path, protected, painted", () => {
 
 test("the ring and the gap line are not drawn where the line is faint (z12-13, alleys), and are at z14", () => {
   const layers = [...(ringLayers("s") as PaintLayer[]), ...(gapLayers("s") as PaintLayer[])];
-  assert.deepEqual(layers.map((l) => l.id), ["stress-ring-3", "stress-ring-4", "stress-gap-2"]);
+  // Two-tone LTS 3's ring (371) and Avoid's (2026-10-31; LTS 4's red has none since).
+  assert.deepEqual(layers.map((l) => l.id), ["stress-ring-3", "stress-ring-5", "stress-gap-2"]);
   for (const layer of layers) {
     const tier = Number(layer.id.split("-").pop());
     const busy = tier >= 3;

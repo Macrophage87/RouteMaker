@@ -168,6 +168,19 @@ export function formatRadius(metres: number): string {
 }
 
 /**
+ * A rough location's radius said as "about" a figure (Go's start line for a rough fix, appMode.ts goStartLine): miles to
+ * a tenth below a mile, whole miles from there; kilometres to a tenth below 2 km, whole from there. So 1,200 m is
+ * "0.7 mi (1.2 km)", 3,000 m "2 mi (3 km)" and 16 km "10 mi (16 km)"; below a tenth of a mile as formatRadius says it.
+ */
+export function formatAboutRadius(metres: number): string {
+  if (!usable(metres) || metres < FEET_BELOW_M) return formatRadius(metres);
+  const miles = metres / METRES_PER_MILE;
+  const mi = miles < 0.95 ? miles.toFixed(1) : String(Math.round(miles));
+  const km = metres < 1_950 ? String(Number((metres / 1000).toFixed(1))) : String(Math.round(metres / 1000));
+  return `${mi} mi (${km} km)`;
+}
+
+/**
  * A set distance in whole feet, metres in brackets, whatever its size: "1,000 ft (305 m)". For a figure
  * chosen in feet (the water list's reach), which formatDistance would say as "0.2 mi (0.3 km)".
  */

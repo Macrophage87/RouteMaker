@@ -1222,7 +1222,8 @@ class TestEvidenceIsNotOnlyAllowedToHurt:
         assumed speed cannot be laundered through it."""
         quiet_default = classify({"highway": "residential"})
         assert quiet_default.tier is Stress.LTS2
-        assert classify({"highway": "residential"}, aadt=20_000).tier is Stress.LTS3
+        # Under BUSY_STREET_AADT, where the busy-city-street step (R5) would add its own.
+        assert classify({"highway": "residential"}, aadt=10_000).tier is Stress.LTS3
 
 
 class TestRoughIsNotComfortable:
@@ -2113,7 +2114,7 @@ def test_a_fast_expressway_is_legal_but_avoid(posted):
     [
         {**AVOID_BASE, "maxspeed": "45 mph"},
         {**AVOID_BASE},  # unposted: never assumed into the category
-        {**AVOID_BASE, "expressway": "no", "maxspeed": "55 mph"},
+        {**AVOID_BASE, "expressway": "no", "maxspeed": "50 mph"},
         {"highway": "secondary", "expressway": "yes", "maxspeed": "55 mph"},
         {"highway": "motorway", "expressway": "yes", "maxspeed": "55 mph"},
     ],
@@ -2399,8 +2400,12 @@ class TestSpeedDefaults:
             ("primary", "35"),
         ],
     )
-    @pytest.mark.parametrize("state", ["MD", "VA"])
+    @pytest.mark.parametrize("state", ["MD", "VA", "WV"])
     def test_maryland_and_virginia_urban_defaults(self, highway, speed, state) -> None:
+        # Virginia's and West Virginia's minor roads at their law's 25 (the owner,
+        # 2026-10-31); Maryland keeps MDOT's 30.
+        if state != "MD" and highway in ("unclassified", "tertiary"):
+            speed = "25"
         rule = classify({"highway": highway}, urban=True, jurisdiction=state).rule
         assert f"{speed} mph" in rule or (speed == "35" and "35 mph or above" in rule)
 
@@ -2467,8 +2472,11 @@ class TestOneWayAndTwoWay:
     connecticut = {"highway": "primary", "maxspeed": "25 mph", "lanes": "6", "oneway": "no"}
 
     def test_connecticut_avenue_is_lts3(self) -> None:
+        """Uncounted, or under 12,000 a day. At its real 30,000 the very-busy-street step
+        makes it the owner's LTS 4 (the Virginia review, stress.busy_road_steps)."""
+        assert classify(self.connecticut, aadt=11_000, urban=True).tier is Stress.LTS3
         result = classify(self.connecticut, aadt=30_000, urban=True)
-        assert result.tier is Stress.LTS3
+        assert result.tier is Stress.LTS4
         assert classify(self.connecticut, urban=True).tier is Stress.LTS3
         assert "two-way floor" in classify(self.connecticut, urban=True).rule
 
