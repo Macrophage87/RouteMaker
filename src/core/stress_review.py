@@ -816,8 +816,8 @@ def rating_sources(
         if level is None or any(s["key"] == key for s in out):
             return
         # An agency's level as the map uses it (Montgomery's 5 is our 4.5; MDOT SHA's and DDOT's
-        # as the owner's rules read them, `mdot_sha_rules`, `ddot_rules`), so the spread and "Use this
-        # level" compare like with like; its own level stays in the name.
+        # as the owner's rules read them, `mdot_sha_rules`, `ddot_rules`), so the spread and
+        # "Use this level" compare like with like; its own level stays in the name.
         raw = float(level)
         level = float(read_as) if read_as is not None else float(agency_lts.map_level(key, raw))
         name = source_name(key) + (f" (rated LTS {raw:g})" if level != raw else "")
