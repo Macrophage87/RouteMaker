@@ -1584,8 +1584,8 @@ class TestTimeOfDay:
             (Road(4), Control.SIGNAL),
             (Road(4), Control.ALL_STOP),
             (Road(3), Control.STOP),
-            (Road(3, half=True), Control.NONE),
         ):
+            # A 3.5 road takes the rush factor halfway (tests/test_junction_half_steps.py).
             j = junction(crossed=(crossed,), control=control)
             assert m.assess(j, when="weekday_rush").time_factor == 1.25, (crossed, control)
 

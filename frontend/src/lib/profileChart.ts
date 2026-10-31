@@ -1077,7 +1077,9 @@ export function crossingMarkerWords(crossing: ProfileCrossing): string {
   if (crossing.severity === "red") return "Very high stress (red diamond)";
   if (crossing.severity === "orange") return "Higher stress (orange triangle)";
   const what = crossing.kind === "joining" ? "Joins a busy road" : "Crosses a busy road";
-  const tier = tierWords(crossing.crossed_tier);
+  // A half step is said as the route's spans say it (2026-10-30): "LTS 3.5".
+  const t = crossing.crossed_tier;
+  const tier = crossing.crossed_half === true && t !== null && t < 5 ? `LTS ${t + 0.5}` : tierWords(t);
   return `${what}${tier ? ` (${tier})` : ""}, ${CONTROL_WORDS[crossing.control] ?? "control not known"} (dot)`;
 }
 

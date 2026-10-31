@@ -1098,6 +1098,9 @@ class IntersectionOut(Schema):
             " the junction read a multi-lane road by its traffic, not its bike lane."
         )
     )
+    crossed_half: bool = Field(
+        default=False, description="The road is a half step above `crossed_tier` (2.5, 3.5, 4.5)."
+    )
     movement: Literal["left", "straight", "right"]
     control: Literal["signal", "stop", "cross_stop", "all_stop", "none"]
     kind: str
@@ -1136,6 +1139,9 @@ class JunctionDebugOut(Schema):
     movement: Literal["left", "straight", "right"]
     control: Literal["signal", "stop", "cross_stop", "all_stop", "none"]
     crossed_tier: int | None
+    crossed_half: bool = Field(
+        default=False, description="The road is a half step above `crossed_tier` (2.5, 3.5, 4.5)."
+    )
     cost_ft: int
     calm_mi: float
     calm_km: float
@@ -1463,6 +1469,9 @@ class DescriptionCrossingOut(Schema):
     street: str | None = Field(description="The crossed street, as mapped; null if unnamed.")
     severity: Literal["orange", "red"] | None = None
     crossed_tier: int | None = None
+    crossed_half: bool = Field(
+        default=False, description="The road is a half step above `crossed_tier` (2.5, 3.5, 4.5)."
+    )
     text: str = Field(
         description='One sentence: "At 1.1 mi (1.8 km): Cross 17th Street Northwest (LTS 4) '
         'at a signal (Very high stress junction)."'
@@ -1656,6 +1665,9 @@ class ProfileCrossingOut(Schema):
     lanes: int | None = Field(description="Lanes of the street, both directions, if known.")
     crossed_tier: int | None = Field(
         description="The tier of the road that makes it major: crossed, or joined (`kind`)."
+    )
+    crossed_half: bool = Field(
+        default=False, description="The road is a half step above `crossed_tier` (2.5, 3.5, 4.5)."
     )
     kind: Literal["flagged", "crossing", "joining"] = Field(
         default="flagged",

@@ -265,7 +265,7 @@ def _by_traffic(road: Road, junction: Junction) -> Road:
         # Nothing mapped and the rider's road is the busier on the map: the rider has
         # the right of way (`crossing_ft`), and does not wait for this road's gaps.
         return road
-    return replace(road, tier=tier, half=False, map_tier=road.tier)
+    return replace(road, tier=tier, half=False, map_tier=road.tier, map_half=road.half)
 
 
 def by_traffic(junction: Junction) -> Junction:
@@ -541,6 +541,8 @@ class Road:
     # Where the junction reads the road by its traffic (`by_traffic`), the tier the map
     # gives it, which the event still names; None where it is `tier`.
     map_tier: int | None = field(default=None, compare=False)
+    # And whether the map gives it a half step there (`map_tier`'s `half`).
+    map_half: bool = field(default=False, compare=False)
 
     @property
     def level(self) -> float:
@@ -656,6 +658,8 @@ class Event:
     untimed_ft: float | None = field(default=None, compare=False)
     # The junction's mapped signal is a flashing beacon (`Junction.beacon`).
     beacon: bool = field(default=False, compare=False)
+    # The crossed road is a half step above `crossed_tier` on the map (2.5, 3.5, 4.5).
+    crossed_half: bool = field(default=False, compare=False)
 
 
 def _untimed(event: Event) -> float:
@@ -912,6 +916,13 @@ TIER_NOUNS = {
     4: "heavy-traffic road (LTS 4)",
     5: "road best avoided (Avoid)",
 }
+# A half step is said as the route's spans say it (2026-10-30: "LTS 3.5"), by the
+# lower level's noun except 2.5, the first level counted busy (`Road.busy`).
+HALF_TIER_NOUNS = {
+    2: "busy road (LTS 2.5)",
+    3: "busy road (LTS 3.5)",
+    4: "heavy-traffic road (LTS 4.5)",
+}
 
 
 def describe_road(road: Road | None) -> str:
@@ -927,6 +938,8 @@ def describe_road(road: Road | None) -> str:
     if road.speed_mph:
         kmh = round(road.speed_mph * KMH_PER_MPH)
         parts.append(f"{round(road.speed_mph)} mph ({kmh} km/h)")
+    if not parts and road.half and road.tier in HALF_TIER_NOUNS:
+        return HALF_TIER_NOUNS[road.tier]
     if not parts and road.tier in TIER_NOUNS:
         return TIER_NOUNS[road.tier]
     parts.append("road")
@@ -977,6 +990,89 @@ def reason_of(kind: str, road: Road | None, control: Control, beacon: bool = Fal
     return f"{KIND_WORDS.get(kind, 'Junction with')} {_article(noun)} {noun}, {words}"
 
 
+# --- Half steps at a junction (the owner, 2026-10-31) -------------------------
+#
+# A half-step road's base costs are the midpoints of its two levels' (`_table`, 461a),
+# but the weights that switch on at a whole level do not split: the severe tier's speed
+# and lane factors, the unsignalised rush-hour factor and its gap-wait floor, the 45 mph
+# stopgap and the merge's assumed lanes all start at LTS 4 (`severe`), so a 3.5 road took
+# LTS 3's and sat about a third of the way to LTS 4 at rush hour, not half. The owner,
+# 2026-10-31, picked "Midpoint fix plus wording": a junction whose cost is about a 2.5 or
+# 3.5 road costs the midpoint of the junction's whole cost, ride time included, with that
+# road read at the level below and at the level above. 4.5 stays LTS 4's (461a: as LTS 4,
+# which equals Avoid's at a junction). Only roads at the cost's road's own half step are
+# split, so the rider's own different half step still decides who has the right of way. A
+# 2.5 road's fixed costs (an all-way stop, a priority-side pass, a right off it) halve with
+# it, since LTS 2 costs nothing here. The time factor reported is the two readings' mean.
+SPLIT_HALF_TIERS = frozenset({2, 3})
+
+
+def _whole(junction: Junction, about: Road, up: bool) -> Junction:
+    """The junction with `about` read as a whole level, the one below it or above, and with
+    it every road at the same half step (the rider's own included), so two 3.5 roads stay
+    level with each other and neither gains the right of way in one reading only."""
+    step = 1 if up else 0
+
+    def swap(road: Road) -> Road:
+        if road.half and road.tier == about.tier:
+            return replace(road, tier=(road.tier or 0) + step, half=False)
+        return road
+
+    return replace(
+        junction,
+        incoming=swap(junction.incoming),
+        outgoing=swap(junction.outgoing),
+        crossed=tuple(swap(r) for r in junction.crossed),
+        links=tuple(swap(r) for r in junction.links),
+    )
+
+
+def _timed(junction: Junction, when: str | None, floors: bool) -> tuple[float, float, float]:
+    """A junction's cost at the ride time, its cost with no ride time (same caps) and the
+    time factor applied: 0 for a quiet-street junction (LTS 2 costs nothing here, 461a).
+    `floors`: the gap-wait floor and the signalised left's box-turn cap apply too."""
+    cost, kind, about = cost_of(junction)
+    if kind == "neighbourhood" or about is None:
+        return 0.0, 0.0, 1.0
+    # 468a, 469c-469e: a busy-road junction costs more at rush hour, less at the
+    # weekend and at night.
+    factor = time_factor(when, about.urban, junction.control, severe(about))
+    untimed = min(cost, MAX_CROSSING_FT)
+    cost = min(cost * factor, MAX_CROSSING_FT)
+    if not floors:
+        return cost, untimed, factor
+    gap_wait = (
+        when == ridetime.WEEKDAY_RUSH
+        and severe(about)
+        and junction.control in GIVE_WAY_CONTROLS
+        and kind in GAP_WAIT_KINDS
+    )
+    if gap_wait:
+        # Rarely an opening at rush hour: never less than ten minutes' riding (a divided
+        # road's median refuge still takes its credit when the carriageways merge).
+        cost = max(cost, UNSIGNALISED_RUSH_MIN_FT)
+    if kind == "left_from" and junction.control is Control.SIGNAL:
+        # The box turn is the way out at any hour (468: "box-turn cap at
+        # signals"), so rush hour cannot lift a signalised left above it.
+        cost = min(cost, BOX_TURN_CAP_FT)
+        untimed = min(untimed, BOX_TURN_CAP_FT)
+    return cost, untimed, factor
+
+
+def priced(
+    junction: Junction, about: Road, when: str | None, floors: bool = True
+) -> tuple[float, float, float]:
+    """`_timed`, with a 2.5 or 3.5 road the cost is about priced at the midpoint of the
+    junction read with it a level below and a level above (`SPLIT_HALF_TIERS`)."""
+    if not (about.half and about.tier in SPLIT_HALF_TIERS):
+        return _timed(junction, when, floors)
+    low = _timed(_whole(junction, about, up=False), when, floors)
+    high = _timed(_whole(junction, about, up=True), when, floors)
+    cost = (low[0] + high[0]) / 2
+    untimed = (low[1] + high[1]) / 2
+    return cost, untimed, (low[2] + high[2]) / 2
+
+
 def assess(junction: Junction, group: bool = False, when: str | None = None) -> Event | None:
     """The event at one junction, or None where there is nothing to say.
 
@@ -997,33 +1093,11 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
         # is fixed, as a person set it.
         model = cost
         if kind != "neighbourhood" and about is not None:
-            model = min(
-                cost * time_factor(when, about.urban, junction.control, severe(about)),
-                MAX_CROSSING_FT,
-            )
+            model = priced(junction, about, when, floors=False)[0]
         return rated(junction, kind, about, model, group)
     if kind == "neighbourhood" or about is None:
         return None
-    # 468a, 469c-469e: a busy-road junction costs more at rush hour, less at the
-    # weekend and at night.
-    factor = time_factor(when, about.urban, junction.control, severe(about))
-    untimed = min(cost, MAX_CROSSING_FT)
-    cost = min(cost * factor, MAX_CROSSING_FT)
-    gap_wait = (
-        when == ridetime.WEEKDAY_RUSH
-        and severe(about)
-        and junction.control in GIVE_WAY_CONTROLS
-        and kind in GAP_WAIT_KINDS
-    )
-    if gap_wait:
-        # Rarely an opening at rush hour: never less than ten minutes' riding (a divided
-        # road's median refuge still takes its credit when the carriageways merge).
-        cost = max(cost, UNSIGNALISED_RUSH_MIN_FT)
-    if kind == "left_from" and junction.control is Control.SIGNAL:
-        # The box turn is the way out at any hour (468: "box-turn cap at
-        # signals"), so rush hour cannot lift a signalised left above it.
-        cost = min(cost, BOX_TURN_CAP_FT)
-        untimed = min(untimed, BOX_TURN_CAP_FT)
+    cost, untimed, factor = priced(junction, about, when)
     # Said only where the hour moved the cost by a foot or more.
     band = when if abs(cost - untimed) >= 1.0 else None
     assumed = speed_assumed(about) and junction.control is not Control.SIGNAL
@@ -1060,6 +1134,7 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
             time_band=band,
             untimed_ft=untimed,
             beacon=junction.beacon,
+            crossed_half=_named_half(about),
         )
     cap = MARKED_CROSSING_MAX_SEVERITY if marked else None
     severity = _at_most(severity_of(cost), cap)
@@ -1087,12 +1162,18 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
         time_band=band,
         untimed_ft=untimed,
         beacon=junction.beacon,
+        crossed_half=_named_half(about),
     )
 
 
 def _named_tier(road: Road) -> int | None:
     """The tier an event names: the map's, where the junction read the road by its traffic."""
     return road.tier if road.map_tier is None else road.map_tier
+
+
+def _named_half(road: Road) -> bool:
+    """Whether the road an event names is a half step on the map (`_named_tier`)."""
+    return road.half if road.map_tier is None else road.map_half
 
 
 def rated(
@@ -1144,6 +1225,7 @@ def rated(
         road_lanes=about.lanes,
         rating=level,
         beacon=junction.beacon,
+        crossed_half=_named_half(about),
     )
 
 
@@ -1629,6 +1711,8 @@ class Major:
     # a divided road's busier carriageway): the chart's per-lane rule (PLAN item 139:
     # one corker an approach lane where no signal holds the cross traffic).
     approach_lanes: int | None = None
+    # The road that makes it major is a half step above `crossed_tier` on the map.
+    crossed_half: bool = False
 
     @property
     def road_names(self) -> frozenset[str]:
@@ -1675,6 +1759,7 @@ def majors_of_events(events: Sequence[Event]) -> list[Major]:
             e.road_oneway,
             e.road_divided,
             e.road_lanes,
+            e.crossed_half,
         )
         for e in events
         if e.flagged
@@ -1768,6 +1853,7 @@ def major_crossings(junctions: Sequence[Junction], events: Sequence[Event]) -> l
                     road.oneway,
                     False,
                     road.lanes,
+                    _named_half(road),
                 ),
             )
             break
