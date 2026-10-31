@@ -6076,12 +6076,13 @@ export function App() {
       </RideGuard>
       {roamBroadcast && (roamBroadcast.leading ? onBike : !rideGroupLine) && (
         <LiveRiderPoint ride={rideRider} roam={roamRider} fallback={here ? here.point : null}>
-          {(riderHere) => (
+          {(riderHere, riderLive) => (
             <RideGroup
               type="group-ride"
               line={NO_POINTS}
               getMap={getMap}
               here={riderHere}
+              livePoint={riderLive}
               broadcast={{ ...roamBroadcast, roam: true }}
               home={myGo.home?.point ?? null}
               riding={onBike}
@@ -6095,12 +6096,13 @@ export function App() {
       )}
       {rideGroupLine && (
         <LiveRiderPoint ride={rideRider} roam={null} fallback={here ? here.point : null}>
-          {(riderHere) => (
+          {(riderHere, riderLive) => (
             <RideGroup
               type={rideGroupType ?? "group-ride"}
               line={rideGroupLine}
               getMap={getMap}
               here={riderHere}
+              livePoint={riderLive}
               broadcast={rideBroadcast}
               home={myGo.home?.point ?? null}
               secret={rideGroupType !== null && !onShared ? groupSecret : null}

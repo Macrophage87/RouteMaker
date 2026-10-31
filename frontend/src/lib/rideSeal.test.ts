@@ -264,7 +264,7 @@ test("on a sealed ride the server is sent no position, role, route or words, and
   // Without the key: nothing opens.
   const stranger = (await rideSeal(newRideSecret()))!;
   const none = await readRide("https://x", id, "3".repeat(32), fetcher, null, stranger);
-  assert.deepEqual(none, { dots: [], alerts: [] });
+  assert.deepEqual(none, { dots: [], alerts: [], paceMs: 5_000 });
 });
 
 test("a sealed alert of a kind the ride type does not send, or Other with no words, is not sent", async () => {
@@ -296,7 +296,7 @@ test("the phone never sends a position in plain: without a ride's key nothing is
   assert.deepEqual(calls, [], "no request at all");
   // And with the key, a dot in plain numbers on the server (an older page's) is not shown.
   const seal = (await rideSeal(newRideSecret()))!;
-  assert.deepEqual(await readRide("https://x", seal.ride, token, fetcher, null, seal), { dots: [], alerts: [] });
+  assert.deepEqual(await readRide("https://x", seal.ride, token, fetcher, null, seal), { dots: [], alerts: [], paceMs: 5_000 });
   // Nothing in the phone's code posts a position, a path or an alert outside a sealed body.
   const group = readFileSync(new URL("./rideGroup.ts", import.meta.url), "utf8");
   assert.doesNotMatch(group, /lon: p\[0\], lat: p\[1\]/);
