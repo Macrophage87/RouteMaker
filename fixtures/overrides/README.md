@@ -567,17 +567,18 @@ in the database still names it: delete that row in the admin when loading the fi
   Virginia's joining the map). Stress rows, hidden, with fingerprints. Remake
   `urban-areas.json`, then load like the others; takes effect on the next rebuild.
 
-- `2026-10-31-owner-virginia-ratings.json`: Northern Virginia, 71 ways (about 24 mi), from
+- `2026-10-31-owner-virginia-ratings.json`: Northern Virginia, 32 ways (about 16 mi), from
   the Virginia ratings recheck. The owner, 2026-10-31: "Let's go with all these". P4:
-  two-lane Fairfax County streets the county posts at 35 mph and OSM carries no speed for,
-  counted above 1,500 a day and rated LTS 3, go to LTS 3.5 below 5,000 a day and LTS 4
-  from 5,000 (43 ways). P8: such streets rated LTS 2 go to 2.5 at 1,500 a day or less,
-  and follow P4 above it (28 ways). A way along several count blocks takes the busiest.
-  Owner rows rather than build rules because Fairfax County's GIS data is all rights
-  reserved: the rows cite the fact and copy no data. R2 (Arlington's calmest uncounted
-  streets at LTS 1.5) is held back while Arlington's Bike Comfort Index has no licence.
-  P3 and P6 (county-posted 25 mph streets) were withdrawn the same day ("Let the formula
-  decide") once Virginia's urban default became 25 mph. Left out: ways the reviewed blocks
-  cover less than half of, and ways OSM tags with a speed limit, one-way, or with other
-  than two lanes. Stress rows, hidden, with fingerprints. Load like the others; takes
-  effect on the next rebuild.
+  two-lane Fairfax County streets VDOT's speed limit records post at 35 mph and OSM
+  carries no speed for, counted above 1,500 a day and rated LTS 3, go to LTS 3.5 below
+  5,000 a day and LTS 4 from 5,000 (26 ways). P8: such streets rated LTS 2 go to 2.5 at
+  1,500 a day or less, and follow P4 above it (6 ways). A way along several count blocks
+  takes the busiest. Only ways VDOT's own speed limit layer confirms at 35 mph are kept
+  (docs/SOURCES.md, "VDOT posted speed limits"): Fairfax County's layer, which first
+  showed the 35, is all rights reserved, and on 16 of its 71 ways VDOT records 25 or 30.
+  R2 (Arlington's calmest uncounted streets at LTS 1.5) is held back while Arlington's
+  Bike Comfort Index has no licence. P3 and P6 (county-posted 25 mph streets) were
+  withdrawn the same day ("Let the formula decide") once Virginia's urban default became
+  25 mph. Left out: ways the reviewed blocks cover less than half of, and ways OSM tags
+  with a speed limit, one-way, or with other than two lanes. Stress rows, hidden, with
+  fingerprints. Load like the others; takes effect on the next rebuild.

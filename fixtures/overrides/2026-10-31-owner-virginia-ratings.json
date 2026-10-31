@@ -3,50 +3,8 @@
  "decided": "2026-10-31",
  "decided_by": "the deployment owner",
  "status": "Decided by the owner in conversation on 2026-10-31; not yet loaded. Load with manage.py load_access_overrides (dry run, then --confirm after the owner confirms this file), then rebuild.",
- "annotations": "Northern Virginia, 71 ways (about 24 mi), from the Virginia ratings recheck (thread \"Recheck Virginia road ratings\"). P4 at LTS 3.5: 19 ways (7.4 mi); P4 at LTS 4: 24 ways (6.9 mi); P8 at LTS 2.5: 20 ways (8.5 mi); P8 at LTS 3.5: 8 ways (1.6 mi). P4 and P8 are two-lane Fairfax County streets the county posts at 35 mph that OpenStreetMap carries no speed for; a way along several count blocks takes the busiest. P3 and P6 (county-posted 25 mph streets) were withdrawn the same day by the owner (\"Let the formula decide\") once Virginia's urban default became 25 mph. Left out: ways the reviewed blocks cover less than half of; P4 and P8 ways OSM tags with a speed limit (the mapped sign is not overruled here), one-way, or with other than two lanes; and points where the road panel found an unnamed or differently named way, another rating than the review saw, or a bike lane. R2 (Arlington's calmest uncounted residential streets at LTS 1.5) is held back: it rests on Arlington's Bike Comfort Index, which has no licence yet.",
+ "annotations": "Northern Virginia, 32 ways (about 16 mi), from the Virginia ratings recheck (thread \"Recheck Virginia road ratings\"). P4 at LTS 3.5: 8 ways (5.2 mi); P4 at LTS 4: 18 ways (5.4 mi); P8 at LTS 2.5: 5 ways (4.6 mi); P8 at LTS 3.5: 1 way (0.6 mi). P4 and P8 are two-lane Fairfax County streets VDOT's speed limit records post at 35 mph that OpenStreetMap carries no speed for; a way along several count blocks takes the busiest. P3 and P6 (county-posted 25 mph streets) were withdrawn the same day by the owner (\"Let the formula decide\") once Virginia's urban default became 25 mph. Left out: ways the reviewed blocks cover less than half of; P4 and P8 ways OSM tags with a speed limit (the mapped sign is not overruled here), one-way, or with other than two lanes; and points where the road panel found an unnamed or differently named way, another rating than the review saw, or a bike lane. R2 (Arlington's calmest uncounted residential streets at LTS 1.5) is held back: it rests on Arlington's Bike Comfort Index, which has no licence yet. Only ways VDOT's own speed limit layer confirms at 35 mph are kept (the v0.16.0 scope review): Fairfax County's layer, which first showed the 35, is all rights reserved, and on 16 of its 71 ways VDOT records 25 or 30 mph.",
  "rows": [
-  {
-   "kind": "stress",
-   "osm_way_id": 8812235,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 4,300 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8812235 (version 13), Old Lee Highway, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
-   "fingerprint": {
-    "name": "Old Lee Highway",
-    "highway": "tertiary",
-    "length_m": 238.0,
-    "line": "-77.239031,38.875900 -77.239395,38.875852 -77.239780,38.875764 -77.240115,38.875621 -77.240358,38.875467 -77.241295,38.874785"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8815963,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 3,400 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8815963 (version 17), Center Harbor Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
-   "fingerprint": {
-    "name": "Center Harbor Road",
-    "highway": "tertiary",
-    "length_m": 659.0,
-    "line": "-77.337823,38.981072 -77.338138,38.980935 -77.338339,38.980820 -77.338548,38.980689 -77.338867,38.980446 -77.339354,38.979879 -77.339602,38.979661 -77.339748,38.979562 -77.339994,38.979406 -77.340293,38.979259 -77.340796,38.979081 -77.341231,38.978974 -77.341722,38.978903 -77.341987,38.978886 -77.342520,38.978884 -77.342983,38.978935 -77.343392,38.979029 -77.343798,38.979150 -77.344279,38.979346"
-   }
-  },
   {
    "kind": "stress",
    "osm_way_id": 8817866,
@@ -59,8 +17,8 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 2,300 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8817866 (version 44), Springvale Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-674N (Fairfax County). VDOT AADT on the blocks along it: 2,300 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8817866 (version 44), Springvale Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
    "fingerprint": {
     "name": "Springvale Road",
     "highway": "tertiary",
@@ -79,8 +37,8 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 8,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8827785 (version 6), Browns Mill Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-675E (Fairfax County). VDOT AADT on the blocks along it: 8,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8827785 (version 6), Browns Mill Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
    "fingerprint": {
     "name": "Browns Mill Road",
     "highway": "tertiary",
@@ -99,34 +57,13 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 3,500, 5,100 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8829810 (version 10), Newington Forest Avenue, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-6100E (Fairfax County). VDOT AADT on the blocks along it: 3,500, 5,100 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8829810 (version 10), Newington Forest Avenue, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
    "fingerprint": {
     "name": "Newington Forest Avenue",
     "highway": "tertiary",
     "length_m": 434.0,
     "line": "-77.240145,38.743686 -77.239961,38.743222 -77.239872,38.742855 -77.239810,38.742407 -77.239789,38.742074 -77.239795,38.741678 -77.239829,38.741434 -77.239978,38.740963 -77.240139,38.740625 -77.240398,38.740241 -77.240678,38.739983"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8830811,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 3,100 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8830811 (version 6), South Penderbrook Drive, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
-   "fingerprint": {
-    "name": "South Penderbrook Drive",
-    "highway": "tertiary",
-    "length_m": 1194.5,
-    "line": "-77.354437,38.865002 -77.354472,38.865154 -77.354548,38.865254 -77.354658,38.865358 -77.354815,38.865449 -77.354992,38.865504 -77.355470,38.865500 -77.355697,38.865528 -77.355963,38.865615 -77.356178,38.865747 -77.356276,38.865836 -77.356366,38.865948 -77.357101,38.867125 -77.357326,38.867422 -77.357627,38.867720 -77.357831,38.867875 -77.358287,38.868150 -77.358525,38.868259 -77.358870,38.868385 -77.359346,38.868499 -77.359790,38.868552 -77.361110,38.868648 -77.361352,38.868687 -77.361533,38.868738 -77.361705,38.868807 -77.361865,38.868892 -77.362020,38.869000 -77.362188,38.869157 -77.362323,38.869341 -77.362416,38.869553 -77.362490,38.869799 -77.362923,38.871362 -77.362934,38.871605 -77.362880,38.871868"
    }
   },
   {
@@ -140,76 +77,13 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 6,100 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8834829 (version 18), Pole Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-622E (Fairfax County). VDOT AADT on the blocks along it: 6,100 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8834829 (version 18), Pole Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
    "fingerprint": {
     "name": "Pole Road",
     "highway": "tertiary",
     "length_m": 758.0,
     "line": "-77.113462,38.732012 -77.113919,38.731881 -77.119050,38.730573 -77.120266,38.730248 -77.121761,38.729878"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8837281,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 1,600 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8837281 (version 6), Thompson Road, highway=tertiary, oneway=no, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Thompson Road",
-    "highway": "tertiary",
-    "length_m": 727.7,
-    "line": "-77.409101,38.905439 -77.409608,38.905531 -77.409810,38.905544 -77.410084,38.905518 -77.412672,38.905005 -77.413137,38.904900 -77.414011,38.904736 -77.414686,38.904631 -77.417272,38.904122"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8838176,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 2,700 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8838176 (version 8), Glen Carlyn Drive, highway=tertiary, lanes=2, no maxspeed tag.",
-   "fingerprint": {
-    "name": "Glen Carlyn Drive",
-    "highway": "tertiary",
-    "length_m": 111.2,
-    "line": "-77.137778,38.854974 -77.138075,38.854593 -77.138294,38.854366 -77.138419,38.854281 -77.138582,38.854223"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8839300,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 2,700 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8839300 (version 10), Glen Carlyn Drive, highway=tertiary, lanes=2, no maxspeed tag.",
-   "fingerprint": {
-    "name": "Glen Carlyn Drive",
-    "highway": "tertiary",
-    "length_m": 95.0,
-    "line": "-77.138582,38.854223 -77.138713,38.854218 -77.138886,38.854243 -77.139308,38.854429 -77.139583,38.854530"
    }
   },
   {
@@ -223,8 +97,8 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 7,100 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8843281 (version 19), Southrun Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-6070E (Fairfax County). VDOT AADT on the blocks along it: 7,100 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8843281 (version 19), Southrun Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
    "fingerprint": {
     "name": "Southrun Road",
     "highway": "tertiary",
@@ -244,8 +118,8 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 2,400 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8843773 (version 7), Field Encampment Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-8352E (Fairfax County). VDOT AADT on the blocks along it: 2,400 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 8843773 (version 7), Field Encampment Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
    "fingerprint": {
     "name": "Field Encampment Road",
     "highway": "tertiary",
@@ -264,8 +138,8 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 8,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 28767865 (version 4), Browns Mill Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-675E (Fairfax County). VDOT AADT on the blocks along it: 8,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 28767865 (version 4), Browns Mill Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
    "fingerprint": {
     "name": "Browns Mill Road",
     "highway": "tertiary",
@@ -284,8 +158,8 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 8,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 28767867 (version 9), Browns Mill Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-675E (Fairfax County). VDOT AADT on the blocks along it: 8,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 28767867 (version 9), Browns Mill Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
    "fingerprint": {
     "name": "Browns Mill Road",
     "highway": "tertiary",
@@ -304,34 +178,13 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 6,700 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 108693691 (version 9), Old Lee Road, highway=tertiary, oneway=no, no lanes tag (one lane each way assumed), no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-661N (Fairfax County). VDOT AADT on the blocks along it: 6,700 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 108693691 (version 9), Old Lee Road, highway=tertiary, oneway=no, no lanes tag (one lane each way assumed), no maxspeed tag.",
    "fingerprint": {
     "name": "Old Lee Road",
     "highway": "tertiary",
     "length_m": 828.1,
     "line": "-77.469932,38.882376 -77.470104,38.882323 -77.470290,38.882199 -77.470393,38.882067 -77.470444,38.881921 -77.470571,38.880936 -77.470653,38.879884 -77.470704,38.879474 -77.470834,38.878728 -77.470993,38.877983 -77.471070,38.877784 -77.471295,38.877345 -77.472067,38.875940 -77.472229,38.875710 -77.472514,38.875414"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 112714298,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 2,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 112714298 (version 5), McNair Farms Drive, highway=unclassified, lanes=2, oneway=no, no maxspeed tag.",
-   "fingerprint": {
-    "name": "McNair Farms Drive",
-    "highway": "unclassified",
-    "length_m": 92.2,
-    "line": "-77.408746,38.948352 -77.408801,38.948547 -77.408954,38.948841 -77.409060,38.948967 -77.409193,38.949090"
    }
   },
   {
@@ -346,75 +199,13 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 2,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 141669636 (version 11), Old Mount Vernon Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-623N (Fairfax County). VDOT AADT on the blocks along it: 2,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 141669636 (version 11), Old Mount Vernon Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
    "fingerprint": {
     "name": "Old Mount Vernon Road",
     "highway": "tertiary",
     "length_m": 1789.4,
     "line": "-77.096143,38.716156 -77.096686,38.712523 -77.097037,38.710280 -77.097102,38.710004 -77.097500,38.708926 -77.097661,38.708600 -77.097763,38.708449 -77.098380,38.707709 -77.098589,38.707401 -77.098839,38.706907 -77.099049,38.706388 -77.099261,38.706053 -77.099316,38.705934 -77.099319,38.705824 -77.099289,38.705703 -77.099005,38.704743 -77.099000,38.704616 -77.099041,38.704409 -77.099258,38.704028 -77.099715,38.703292 -77.100070,38.702667 -77.101155,38.700888"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 171861015,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 2,900 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 171861015 (version 13), Westbranch Drive, highway=tertiary, lanes=2, no maxspeed tag.",
-   "fingerprint": {
-    "name": "Westbranch Drive",
-    "highway": "tertiary",
-    "length_m": 143.7,
-    "line": "-77.222630,38.926149 -77.222669,38.926009 -77.222632,38.925869 -77.222541,38.925766 -77.222004,38.925331 -77.221927,38.925205 -77.221925,38.925070"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 172860076,
-   "value": {
-    "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 5,300 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 172860076 (version 4), Oakton Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
-   "fingerprint": {
-    "name": "Oakton Road",
-    "highway": "tertiary",
-    "length_m": 307.6,
-    "line": "-77.322286,38.869481 -77.323350,38.869508 -77.325007,38.869502 -77.325330,38.869526 -77.325827,38.869603"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 173873654,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 3,500 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 173873654 (version 13), River Birch Road, highway=tertiary, oneway=no, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "River Birch Road",
-    "highway": "tertiary",
-    "length_m": 273.4,
-    "line": "-77.417848,38.951167 -77.417933,38.951264 -77.417995,38.951368 -77.418106,38.951627 -77.418128,38.951739 -77.418120,38.952016 -77.418045,38.952258 -77.417918,38.952462 -77.417716,38.952693 -77.417057,38.953316"
    }
   },
   {
@@ -429,8 +220,8 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 2,600 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 174213263 (version 9), Utterback Store Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-717N (Fairfax County). VDOT AADT on the blocks along it: 2,600 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 174213263 (version 9), Utterback Store Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
    "fingerprint": {
     "name": "Utterback Store Road",
     "highway": "tertiary",
@@ -449,34 +240,13 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 7,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 233086809 (version 7), Burke Station Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-652N (Fairfax County). VDOT AADT on the blocks along it: 7,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 233086809 (version 7), Burke Station Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
    "fingerprint": {
     "name": "Burke Station Road",
     "highway": "tertiary",
     "length_m": 1085.3,
     "line": "-77.288292,38.836139 -77.288303,38.835267 -77.288341,38.834415 -77.288375,38.834310 -77.288435,38.834202 -77.288761,38.833794 -77.288812,38.833673 -77.288826,38.833446 -77.288752,38.832397 -77.288601,38.830886 -77.288482,38.829379 -77.288389,38.827829 -77.288317,38.827242 -77.288272,38.826487"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 237202561,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 2,100 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 237202561 (version 4), Compton Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Compton Road",
-    "highway": "tertiary",
-    "length_m": 51.5,
-    "line": "-77.464773,38.820360 -77.465224,38.820661"
    }
   },
   {
@@ -490,73 +260,13 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 7,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 315396161 (version 7), Balls Hill Road, highway=tertiary, lanes=2, no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-686N (Fairfax County). VDOT AADT on the blocks along it: 7,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 315396161 (version 7), Balls Hill Road, highway=tertiary, lanes=2, no maxspeed tag.",
    "fingerprint": {
     "name": "Balls Hill Road",
     "highway": "tertiary",
     "length_m": 402.8,
     "line": "-77.195122,38.950147 -77.194900,38.948086 -77.194679,38.946542"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 315396162,
-   "value": {
-    "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 7,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 315396162 (version 10), Balls Hill Road, highway=tertiary, lanes=2, no maxspeed tag.",
-   "fingerprint": {
-    "name": "Balls Hill Road",
-    "highway": "tertiary",
-    "length_m": 471.0,
-    "line": "-77.194679,38.946542 -77.194456,38.944501 -77.194394,38.944110 -77.194177,38.942324"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 583853600,
-   "value": {
-    "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 4,400, 7,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 583853600 (version 9), Balls Hill Road, highway=tertiary, lanes=2, no maxspeed tag.",
-   "fingerprint": {
-    "name": "Balls Hill Road",
-    "highway": "tertiary",
-    "length_m": 1277.7,
-    "line": "-77.194177,38.942324 -77.194032,38.940919 -77.193833,38.939286 -77.193830,38.939185 -77.193886,38.938991 -77.193921,38.938931 -77.194574,38.938178 -77.195286,38.937282 -77.195994,38.936498 -77.196490,38.935859 -77.197102,38.935160 -77.197562,38.934581 -77.198473,38.933496 -77.199254,38.932578 -77.199531,38.932306 -77.199655,38.932207"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 589533559,
-   "value": {
-    "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 5,900 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 589533559 (version 6), Glen Carlyn Drive, highway=tertiary, lanes=2, no maxspeed tag.",
-   "fingerprint": {
-    "name": "Glen Carlyn Drive",
-    "highway": "tertiary",
-    "length_m": 91.0,
-    "line": "-77.139752,38.854597 -77.140354,38.854958 -77.140522,38.855142"
    }
   },
   {
@@ -571,8 +281,8 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 2,600 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 590884776 (version 6), Legato Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-656N (Fairfax County). VDOT AADT on the blocks along it: 2,600 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 590884776 (version 6), Legato Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
    "fingerprint": {
     "name": "Legato Road",
     "highway": "tertiary",
@@ -592,8 +302,8 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 2,300 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 590884816 (version 6), Walker Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-603E (Fairfax County). VDOT AADT on the blocks along it: 2,300 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 590884816 (version 6), Walker Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
    "fingerprint": {
     "name": "Walker Road",
     "highway": "tertiary",
@@ -612,8 +322,8 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 7,100 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 680793884 (version 2), Southrun Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-6070E (Fairfax County). VDOT AADT on the blocks along it: 7,100 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 680793884 (version 2), Southrun Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
    "fingerprint": {
     "name": "Southrun Road",
     "highway": "tertiary",
@@ -632,8 +342,8 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 5,800 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 697661763 (version 5), Gambrill Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-640E (Fairfax County). VDOT AADT on the blocks along it: 5,800 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 697661763 (version 5), Gambrill Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
    "fingerprint": {
     "name": "Gambrill Road",
     "highway": "tertiary",
@@ -652,8 +362,8 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 5,800 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 697661764 (version 2), Gambrill Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-640E (Fairfax County). VDOT AADT on the blocks along it: 5,800 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 697661764 (version 2), Gambrill Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
    "fingerprint": {
     "name": "Gambrill Road",
     "highway": "tertiary",
@@ -673,34 +383,13 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 2,600 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 698705951 (version 5), Legato Road, highway=unclassified, no lanes tag (one lane each way assumed), no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-656N (Fairfax County). VDOT AADT on the blocks along it: 2,600 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 698705951 (version 5), Legato Road, highway=unclassified, no lanes tag (one lane each way assumed), no maxspeed tag.",
    "fingerprint": {
     "name": "Legato Road",
     "highway": "unclassified",
     "length_m": 152.7,
     "line": "-77.363959,38.866512 -77.363745,38.866283 -77.363617,38.866080 -77.363556,38.865915 -77.363372,38.865238"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 698787699,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 3,500 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 698787699 (version 3), River Birch Road, highway=tertiary, oneway=no, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "River Birch Road",
-    "highway": "tertiary",
-    "length_m": 95.2,
-    "line": "-77.416294,38.949111 -77.416177,38.949311 -77.416117,38.949536 -77.416119,38.949775 -77.416161,38.949938"
    }
   },
   {
@@ -714,8 +403,8 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 5,800 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 756218019 (version 7), Gambrill Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-640E (Fairfax County). VDOT AADT on the blocks along it: 5,800 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 756218019 (version 7), Gambrill Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
    "fingerprint": {
     "name": "Gambrill Road",
     "highway": "tertiary",
@@ -734,33 +423,13 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 6,700 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 833614373 (version 3), Old Lee Road, highway=tertiary, oneway=no, no lanes tag (one lane each way assumed), no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-661N (Fairfax County). VDOT AADT on the blocks along it: 6,700 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 833614373 (version 3), Old Lee Road, highway=tertiary, oneway=no, no lanes tag (one lane each way assumed), no maxspeed tag.",
    "fingerprint": {
     "name": "Old Lee Road",
     "highway": "tertiary",
     "length_m": 710.8,
     "line": "-77.461979,38.884368 -77.463229,38.883980 -77.464362,38.883691 -77.466277,38.883218 -77.469792,38.882410"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 917855031,
-   "value": {
-    "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 6,900 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 917855031 (version 7), River Birch Road, highway=tertiary, oneway=no, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "River Birch Road",
-    "highway": "tertiary",
-    "length_m": 142.9,
-    "line": "-77.419802,38.948162 -77.420048,38.948137 -77.420768,38.947988 -77.421422,38.947930"
    }
   },
   {
@@ -774,8 +443,8 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 2,000, 2,500, 4,100, 4,400, 5,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 1136952432 (version 1), Newington Forest Avenue, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-6100E (Fairfax County). VDOT AADT on the blocks along it: 2,000, 2,500, 4,100, 4,400, 5,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 1136952432 (version 1), Newington Forest Avenue, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
    "fingerprint": {
     "name": "Newington Forest Avenue",
     "highway": "tertiary",
@@ -794,8 +463,8 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 6,100 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 1464270284 (version 1), Pole Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-622E (Fairfax County). VDOT AADT on the blocks along it: 6,100 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 1464270284 (version 1), Pole Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
    "fingerprint": {
     "name": "Pole Road",
     "highway": "tertiary",
@@ -814,33 +483,13 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 5,800 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 1474614148 (version 3), Gambrill Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-640E (Fairfax County). VDOT AADT on the blocks along it: 5,800 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 1474614148 (version 3), Gambrill Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
    "fingerprint": {
     "name": "Gambrill Road",
     "highway": "tertiary",
     "length_m": 108.3,
     "line": "-77.231809,38.753115 -77.231833,38.752915 -77.231915,38.752589 -77.232020,38.752364 -77.232132,38.752183"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 1480026418,
-   "value": {
-    "tier": 4,
-    "adjustment_id": "va-ffx-posted-35-two-lane",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 7,200 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 1480026418 (version 1), Old Centreville Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
-   "fingerprint": {
-    "name": "Old Centreville Road",
-    "highway": "tertiary",
-    "length_m": 87.2,
-    "line": "-77.447071,38.815622 -77.446636,38.816329"
    }
   },
   {
@@ -855,8 +504,8 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 3,400 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 1500312034 (version 1), Center Harbor Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-7410E (Fairfax County). VDOT AADT on the blocks along it: 3,400 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 1500312034 (version 1), Center Harbor Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
    "fingerprint": {
     "name": "Center Harbor Road",
     "highway": "tertiary",
@@ -875,55 +524,13 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street the county posts at 35 mph, counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build (its GIS data is all rights reserved); the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 5,800 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 1543202075 (version 1), Gambrill Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P4: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records), counted above 1,500 a day, was rated LTS 3 because OpenStreetMap carries no speed limit for it and the formula read a lower default. The formula with the posted 35 gives LTS 4 (35 mph mixed traffic, no low-volume relief above 1,500); on the streets where Fairfax County's bike map and this classifier agree, such streets sit between LTS 3 and LTS 4. So LTS 3.5 below 5,000 a day and LTS 4 from 5,000; a way along several count blocks takes the busiest. Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-640E (Fairfax County). VDOT AADT on the blocks along it: 5,800 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 3, 30 mph (48 km/h), mixed traffic. OSM, read 2026-10-31: way 1543202075 (version 1), Gambrill Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
    "fingerprint": {
     "name": "Gambrill Road",
     "highway": "tertiary",
     "length_m": 150.7,
     "line": "-77.232483,38.754837 -77.232408,38.754723 -77.232324,38.754541 -77.232179,38.753895 -77.232129,38.753719 -77.232049,38.753532"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8802587,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 4,400 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic. OSM, read 2026-10-31: way 8802587 (version 13), Pinnacle Drive, highway=residential, lanes=2, oneway=no, no maxspeed tag.",
-   "fingerprint": {
-    "name": "Pinnacle Drive",
-    "highway": "residential",
-    "length_m": 280.6,
-    "line": "-77.229164,38.922306 -77.229253,38.921175 -77.229247,38.921006 -77.229214,38.920850 -77.229149,38.920681 -77.228773,38.919844"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8808454,
-   "value": {
-    "tier": 2,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 60 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic, light traffic, a rural road open to cars, so rated at least LTS 2. OSM, read 2026-10-31: way 8808454 (version 4), Balmoral Terrace, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Balmoral Terrace",
-    "highway": "residential",
-    "length_m": 164.6,
-    "line": "-77.426558,38.784371 -77.426875,38.784271 -77.427138,38.784219 -77.427400,38.784214 -77.427618,38.784233 -77.427824,38.784277 -77.428103,38.784394 -77.428318,38.784526"
    }
   },
   {
@@ -938,118 +545,13 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 860, 1,600 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic. OSM, read 2026-10-31: way 8809798 (version 14), Hunt Road, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records) was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-671N (Fairfax County). VDOT AADT on the blocks along it: 860, 1,600 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic. OSM, read 2026-10-31: way 8809798 (version 14), Hunt Road, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
    "fingerprint": {
     "name": "Hunt Road",
     "highway": "residential",
     "length_m": 1003.0,
     "line": "-77.339769,38.894286 -77.340527,38.893130 -77.342006,38.890430 -77.342274,38.889856 -77.342315,38.889565 -77.342311,38.889345 -77.342095,38.886041 -77.342120,38.885850 -77.342183,38.885696"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8812563,
-   "value": {
-    "tier": 2,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 80 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic, light traffic, a rural road open to cars, so rated at least LTS 2. OSM, read 2026-10-31: way 8812563 (version 6), Weymouth Hill Road, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Weymouth Hill Road",
-    "highway": "residential",
-    "length_m": 245.0,
-    "line": "-77.418734,38.785038 -77.418729,38.784879 -77.418756,38.784524 -77.418833,38.784231 -77.418933,38.784016 -77.419268,38.783495 -77.419335,38.783330 -77.419397,38.783044 -77.419464,38.782943"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8815995,
-   "value": {
-    "tier": 2,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 130 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic, light traffic, a rural road open to cars, so rated at least LTS 2. OSM, read 2026-10-31: way 8815995 (version 6), Cannon Fort Drive, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Cannon Fort Drive",
-    "highway": "residential",
-    "length_m": 373.4,
-    "line": "-77.426692,38.787050 -77.426698,38.786792 -77.426598,38.786284 -77.426593,38.786100 -77.426617,38.785925 -77.426757,38.785325 -77.426757,38.785030 -77.426724,38.784821 -77.426668,38.784628 -77.426558,38.784371 -77.426247,38.783777"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8819085,
-   "value": {
-    "tier": 2,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 970 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 30 mph (48 km/h), mixed traffic, light traffic. OSM, read 2026-10-31: way 8819085 (version 12), Leigh Mill Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
-   "fingerprint": {
-    "name": "Leigh Mill Road",
-    "highway": "tertiary",
-    "length_m": 865.2,
-    "line": "-77.273892,38.991081 -77.274113,38.990786 -77.274207,38.990624 -77.274304,38.990370 -77.274330,38.990219 -77.274345,38.989703 -77.274336,38.987056 -77.274384,38.983715 -77.274384,38.983473 -77.274350,38.983379"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8825331,
-   "value": {
-    "tier": 2,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 1,300 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 30 mph (48 km/h), mixed traffic, light traffic. OSM, read 2026-10-31: way 8825331 (version 12), Ferry Landing Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
-   "fingerprint": {
-    "name": "Ferry Landing Road",
-    "highway": "tertiary",
-    "length_m": 1608.0,
-    "line": "-77.101155,38.700888 -77.101238,38.700815 -77.101299,38.700791 -77.101419,38.700783 -77.101773,38.700915 -77.103864,38.701850 -77.104000,38.701923 -77.106456,38.702998 -77.106858,38.703161 -77.107652,38.703519 -77.111191,38.704979 -77.111476,38.705102 -77.111807,38.705268 -77.114886,38.706609 -77.116966,38.707511 -77.117357,38.707654"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8825537,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 1,900 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic. OSM, read 2026-10-31: way 8825537 (version 5), Patterson Road, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Patterson Road",
-    "highway": "residential",
-    "length_m": 234.2,
-    "line": "-77.201758,38.903114 -77.201923,38.903715 -77.202028,38.903931 -77.202113,38.904055 -77.202244,38.904206 -77.202507,38.904436 -77.202662,38.904535 -77.203000,38.904713 -77.203025,38.904777 -77.202977,38.904854"
    }
   },
   {
@@ -1064,34 +566,13 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 1,200 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 30 mph (48 km/h), mixed traffic, light traffic. OSM, read 2026-10-31: way 8826137 (version 33), Utterback Store Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records) was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-717N (Fairfax County). VDOT AADT on the blocks along it: 1,200 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 30 mph (48 km/h), mixed traffic, light traffic. OSM, read 2026-10-31: way 8826137 (version 33), Utterback Store Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
    "fingerprint": {
     "name": "Utterback Store Road",
     "highway": "tertiary",
     "length_m": 3512.9,
     "line": "-77.321005,39.030216 -77.321008,39.030067 -77.320964,39.029822 -77.320804,39.029472 -77.320731,39.029223 -77.320735,39.029100 -77.320771,39.028942 -77.322216,39.024832 -77.322392,39.024307 -77.322604,39.023569 -77.322836,39.022917 -77.324439,39.016130 -77.324579,39.015450 -77.324937,39.014359 -77.325209,39.013620 -77.325754,39.012027 -77.325963,39.011055 -77.326034,39.010808 -77.326189,39.010438 -77.327084,39.008936 -77.327176,39.008697 -77.327250,39.008557 -77.327618,39.007928 -77.327690,39.007836 -77.328085,39.007115 -77.328443,39.006526 -77.328948,39.005777 -77.329110,39.005489 -77.329723,39.004553 -77.329814,39.004314 -77.329842,39.003930 -77.329813,39.002810 -77.329621,39.000829 -77.329553,38.999784"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8830822,
-   "value": {
-    "tier": 2,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 1,300 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic. OSM, read 2026-10-31: way 8830822 (version 3), Fairfax Farms Road, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Fairfax Farms Road",
-    "highway": "residential",
-    "length_m": 127.5,
-    "line": "-77.348115,38.863936 -77.347564,38.864070 -77.347018,38.864223 -77.346859,38.864295 -77.346770,38.864369"
    }
   },
   {
@@ -1106,8 +587,8 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 430, 740 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 30 mph (48 km/h), mixed traffic, light traffic. OSM, read 2026-10-31: way 8831127 (version 12), Hunter Station Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records) was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-677E (Fairfax County). VDOT AADT on the blocks along it: 430, 740 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 30 mph (48 km/h), mixed traffic, light traffic. OSM, read 2026-10-31: way 8831127 (version 12), Hunter Station Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
    "fingerprint": {
     "name": "Hunter Station Road",
     "highway": "tertiary",
@@ -1127,202 +608,13 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 330 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 30 mph (48 km/h), mixed traffic, light traffic. OSM, read 2026-10-31: way 8832837 (version 14), Old Mill Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records) was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-624E (Fairfax County). VDOT AADT on the blocks along it: 330 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 30 mph (48 km/h), mixed traffic, light traffic. OSM, read 2026-10-31: way 8832837 (version 14), Old Mill Road, highway=tertiary, lanes=2, oneway=no, no maxspeed tag.",
    "fingerprint": {
     "name": "Old Mill Road",
     "highway": "tertiary",
     "length_m": 381.3,
     "line": "-77.096602,38.713093 -77.098093,38.713424 -77.100157,38.713949 -77.100802,38.714100"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8834481,
-   "value": {
-    "tier": 2,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 80 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic, light traffic, a rural road open to cars, so rated at least LTS 2. OSM, read 2026-10-31: way 8834481 (version 6), Detwiller Drive, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Detwiller Drive",
-    "highway": "residential",
-    "length_m": 259.2,
-    "line": "-77.420829,38.785760 -77.421011,38.785528 -77.421111,38.785277 -77.421137,38.785147 -77.421116,38.784844 -77.421019,38.784576 -77.420992,38.784451 -77.421035,38.784225 -77.421111,38.784085 -77.421510,38.783602"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8835904,
-   "value": {
-    "tier": 2,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 70 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic, light traffic, a rural road open to cars, so rated at least LTS 2. OSM, read 2026-10-31: way 8835904 (version 5), Tutley Terrace, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Tutley Terrace",
-    "highway": "residential",
-    "length_m": 132.5,
-    "line": "-77.422354,38.786970 -77.422580,38.786663 -77.422752,38.786479 -77.423004,38.786287 -77.423342,38.786082"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8838522,
-   "value": {
-    "tier": 2,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 240, 730, 770, 1,500 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic. OSM, read 2026-10-31: way 8838522 (version 22), Kentland Drive, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Kentland Drive",
-    "highway": "residential",
-    "length_m": 1541.5,
-    "line": "-77.357817,39.026599 -77.357519,39.026610 -77.355766,39.026142 -77.355121,39.026073 -77.354768,39.025993 -77.353871,39.025762 -77.353716,39.025709 -77.353500,39.025580 -77.353394,39.025491 -77.353316,39.025376 -77.352664,39.024577 -77.351757,39.023489 -77.350117,39.021443 -77.348653,39.019699 -77.347542,39.018409 -77.346756,39.017410 -77.346669,39.017332 -77.346470,39.017221 -77.346228,39.017163 -77.346073,39.017164"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8839972,
-   "value": {
-    "tier": 2,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 80 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic, light traffic, a rural road open to cars, so rated at least LTS 2. OSM, read 2026-10-31: way 8839972 (version 5), Clifton Quarry Drive, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Clifton Quarry Drive",
-    "highway": "residential",
-    "length_m": 249.3,
-    "line": "-77.418954,38.787387 -77.418976,38.787219 -77.419045,38.787114 -77.419169,38.786974 -77.419381,38.786786 -77.420140,38.786343 -77.420341,38.786205 -77.420507,38.786069 -77.420829,38.785760"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8840386,
-   "value": {
-    "tier": 2,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 110 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic, light traffic, a rural road open to cars, so rated at least LTS 2. OSM, read 2026-10-31: way 8840386 (version 6), Beckwith Lane, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Beckwith Lane",
-    "highway": "residential",
-    "length_m": 146.3,
-    "line": "-77.416567,38.786523 -77.416934,38.786222 -77.417028,38.786098 -77.417109,38.785931 -77.417152,38.785789 -77.417176,38.785532 -77.417165,38.785358"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8843531,
-   "value": {
-    "tier": 2,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 80 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic, light traffic, a rural road open to cars, so rated at least LTS 2. OSM, read 2026-10-31: way 8843531 (version 6), Quigg Street, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Quigg Street",
-    "highway": "residential",
-    "length_m": 256.9,
-    "line": "-77.417165,38.785358 -77.417114,38.785162 -77.417050,38.785026 -77.416926,38.784877 -77.415961,38.784123 -77.415473,38.783698 -77.415295,38.783635"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8845899,
-   "value": {
-    "tier": 2,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 60 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic, light traffic, a rural road open to cars, so rated at least LTS 2. OSM, read 2026-10-31: way 8845899 (version 5), Union Ridge Road, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Union Ridge Road",
-    "highway": "residential",
-    "length_m": 150.5,
-    "line": "-77.421033,38.787779 -77.421161,38.787765 -77.421282,38.787729 -77.421824,38.787476 -77.422132,38.787246 -77.422354,38.786970"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 31650810,
-   "value": {
-    "tier": 2,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 90 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic. OSM, read 2026-10-31: way 31650810 (version 10), Rock Hill Road, highway=residential, oneway=no, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Rock Hill Road",
-    "highway": "residential",
-    "length_m": 101.0,
-    "line": "-77.417465,38.965843 -77.417244,38.966014 -77.417031,38.966110 -77.416761,38.966169 -77.416433,38.966175"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 38698503,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 3,100 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic. OSM, read 2026-10-31: way 38698503 (version 15), Spring Hill Road, highway=residential, oneway=no, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Spring Hill Road",
-    "highway": "residential",
-    "length_m": 296.2,
-    "line": "-77.241951,38.927986 -77.242222,38.927890 -77.243663,38.927503 -77.244512,38.927201 -77.245089,38.926939"
    }
   },
   {
@@ -1337,55 +629,13 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 770 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic, light traffic, a rural road open to cars, so rated at least LTS 2. OSM, read 2026-10-31: way 46350356 (version 11), Bull Run Drive, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records) was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-2548N (Fairfax County). VDOT AADT on the blocks along it: 770 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic, light traffic, a rural road open to cars, so rated at least LTS 2. OSM, read 2026-10-31: way 46350356 (version 11), Bull Run Drive, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
    "fingerprint": {
     "name": "Bull Run Drive",
     "highway": "residential",
     "length_m": 1028.9,
     "line": "-77.487652,38.810719 -77.487471,38.810284 -77.487255,38.809984 -77.487072,38.809684 -77.487021,38.809496 -77.487016,38.809400 -77.487033,38.809253 -77.487699,38.806086 -77.487765,38.805868 -77.488062,38.805447 -77.488188,38.805310 -77.488539,38.804844 -77.489579,38.803695 -77.490377,38.802772 -77.490518,38.802640 -77.490869,38.802393"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 228765416,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 3,900 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic. OSM, read 2026-10-31: way 228765416 (version 4), Penderbrook Drive, highway=residential, oneway=no, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Penderbrook Drive",
-    "highway": "residential",
-    "length_m": 317.4,
-    "line": "-77.362880,38.871868 -77.360539,38.871681 -77.360275,38.871693 -77.360030,38.871734 -77.359780,38.871801 -77.359484,38.871940 -77.359339,38.872033"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 352331572,
-   "value": {
-    "tier": 2,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 1,300 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 30 mph (48 km/h), mixed traffic, light traffic. OSM, read 2026-10-31: way 352331572 (version 9), Mervis Way, highway=unclassified, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Mervis Way",
-    "highway": "unclassified",
-    "length_m": 130.1,
-    "line": "-77.221427,38.912563 -77.221327,38.912679 -77.221162,38.912827 -77.221045,38.912878 -77.220625,38.912965 -77.220538,38.913007 -77.220480,38.913055 -77.220328,38.913238 -77.220334,38.913264"
    }
   },
   {
@@ -1400,76 +650,13 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 1,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 30 mph (48 km/h), mixed traffic, light traffic. OSM, read 2026-10-31: way 552192143 (version 11), Beach Mill Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street posted at 35 mph (VDOT's speed limit records) was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row: the build does not yet read VDOT's speed limit layer.",
+   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 35 mph on SC-603E (Fairfax County). VDOT AADT on the blocks along it: 1,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 30 mph (48 km/h), mixed traffic, light traffic. OSM, read 2026-10-31: way 552192143 (version 11), Beach Mill Road, highway=tertiary, no lanes tag (one lane each way assumed), no maxspeed tag.",
    "fingerprint": {
     "name": "Beach Mill Road",
     "highway": "tertiary",
     "length_m": 968.8,
     "line": "-77.315331,39.030701 -77.315058,39.030778 -77.314082,39.030981 -77.313896,39.031003 -77.313699,39.030998 -77.313632,39.030985 -77.313409,39.030887 -77.312975,39.030572 -77.312857,39.030506 -77.312647,39.030435 -77.311193,39.030302 -77.310327,39.030193 -77.309580,39.030187 -77.308274,39.029989 -77.305655,39.029778 -77.305127,39.029748 -77.305013,39.029714 -77.304956,39.029626 -77.304952,39.029536 -77.305004,39.029321"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 698329025,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 3,900 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic. OSM, read 2026-10-31: way 698329025 (version 3), North Shore Drive, highway=residential, lanes=2, oneway=no, no maxspeed tag.",
-   "fingerprint": {
-    "name": "North Shore Drive",
-    "highway": "residential",
-    "length_m": 26.0,
-    "line": "-77.328191,38.962410 -77.328209,38.962567 -77.328171,38.962637"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 698705880,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 4,700 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic. OSM, read 2026-10-31: way 698705880 (version 2), Old Centreville Road, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Old Centreville Road",
-    "highway": "residential",
-    "length_m": 260.2,
-    "line": "-77.434060,38.827908 -77.434128,38.828024 -77.434129,38.828098 -77.434010,38.828369 -77.433616,38.828932 -77.432836,38.829979"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 698705940,
-   "value": {
-    "tier": 3,
-    "half": true,
-    "adjustment_id": "va-ffx-posted-35-quiet",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\". P8: a two-lane Fairfax County street the county posts at 35 mph was rated LTS 2 because OpenStreetMap carries no speed limit for it and the formula read a lower default. At 1,500 a day or less the formula's low-volume relief takes the posted 35 to 2.5, not 2; above 1,500 it follows P4 (3.5 below 5,000 a day, 4 from 5,000; a way along several count blocks takes the busiest). Kept as an owner row because Fairfax County's posted speeds cannot be copied into the build; the fact is cited.",
-   "evidence": "Fairfax County's bicycle level-of-stress layer (ActiveFairfax), read 2026-10-30: posted 35 mph. VDOT AADT on the blocks along it: 2,000 (the busiest is used). Beta's road panel (/api/segment-info), read 2026-10-31: LTS 2, 25 mph (40 km/h), mixed traffic. OSM, read 2026-10-31: way 698705940 (version 2), Fair Ridge Drive, highway=residential, no lanes tag (one lane each way assumed), no maxspeed tag.",
-   "fingerprint": {
-    "name": "Fair Ridge Drive",
-    "highway": "residential",
-    "length_m": 93.9,
-    "line": "-77.373191,38.865855 -77.372970,38.865928 -77.372730,38.866073 -77.372639,38.866144 -77.372429,38.866419"
    }
   }
  ]
