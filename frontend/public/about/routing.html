@@ -631,27 +631,39 @@ Quiet streets meeting quiet streets cost almost nothing.</p>
 <p>Junctions costing at least 800 ft [244 m] are marked orange in the route description, and
 those costing at least 3,100 ft [945 m] are marked red. Each warning describes the road, the
 movement and the control in words.</p>
-<p>Where the road you cross, join or turn across is at a half step, LTS 2.5 or 3.5, the
-junction costs halfway between what it would cost with that road a level calmer and a level
+<p>Where the road you cross, join or turn across is at a half step, LTS 2.5 or 3.5 (on the map,
+or by its traffic as below), the junction costs halfway between what it would cost with that road a level calmer and a level
 busier, at every hour, rush hour included, just as a stretch of such a road costs halfway
 between its two levels. So rush hour's doubling and its 1.86 calm mi [3.0 km] floor for giving
 way to an LTS 4 road reach an LTS 3.5 road halfway. LTS 2 costs nothing at a junction, so a
 2.5 road costs half of what an LTS 3 road would, even at an all-way stop. If your own road is
 at the same half step, it is read the same way, so neither road gains the right of way. A 4.5
-road is priced as LTS 4. A road the junction reads by its traffic (below) is priced at that
-whole level. The route description gives the half step after the road's name, as in
+road is priced as LTS 4. The route description gives the road's half step on the map after its name, as in
 "(LTS 3.5)". The time lost at the junction (see
 <a href="#junction-time">Time lost at junctions</a>) is not split.</p>
-<p>Where you give way to a road with two or more through lanes each way (three or
-more on a one-way), at a stop sign on your side or where nothing is mapped and your road is no busier, the
-junction reads that road by its traffic, not by its bike lane: a painted lane does nothing for a rider waiting
-for a gap. It is read as LTS 3 above 20 mph [32 km/h] and LTS 4 from 30 mph [48 km/h], from Furth's table for
-sharing the lane<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a></sup>, unless a traffic count shows 8,000 vehicles a day or fewer and its speed is under
-35 mph [56 km/h], which keeps it at LTS 3.
-This only ever raises a junction's cost. Signals, all-way stops, a road closed to cars at your ride's time, the
-two-lane halves of a divided road and Mass Ride are read as before, and riding straight on along such a road is not
-giving way to it. The warning still names the road's level on the map, and gives its lanes and speed:
-"Crossing a 4-lane 30 mph (48 km/h) road, stop sign on your side".</p>
+<p>Every road at a junction (the roads you cross, join or turn off, and your own road, which decides
+who has the right of way) is read by its traffic, not by its bike lane: a painted or protected lane does nothing
+for a rider waiting for a gap in the traffic beside it. Where that reading is busier than the road's level
+on the map, the junction uses it, at every control, signals and all-way stops included. It never makes a
+road calmer.</p>
+<ul>
+<li>A road with two or more through lanes each way (three or more on a one-way) is read as LTS 3 above
+20 mph [32 km/h] and LTS 4 from 30 mph [48 km/h], from Furth's table for sharing the lane<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a></sup>, unless a
+traffic count shows 8,000 vehicles a day or fewer and its speed is under 35 mph [56 km/h], which keeps it at
+LTS 3.</li>
+<li>A road with one lane each way, or a one-way of one or two lanes, is read as the map rates riding in
+its traffic with no bike lane: LTS 1 at 20 mph [32 km/h] or less, 2 at 25 mph [40 km/h], 3 at 30 mph
+[48 km/h] and 4 from 35 mph [56 km/h]. A traffic count of 1,500 vehicles a day or fewer makes it a level
+calmer (up to 35 mph [56 km/h]), more than 1,500 makes a 20 mph [32 km/h] road LTS 2, and 8,000 or more
+makes it a level busier. An LTS 2 road is 2.5 from 5,000 a day, and a two-way LTS 3 road in a town is 3.5
+from 12,000 and LTS 4 from 20,000.</li>
+</ul>
+<p>A narrower road with no posted speed, a road with no speed mapped, a road closed to cars at your ride's
+time and Mass Ride keep the map's level. A divided road's carriageway is read with the whole road's count.
+Elsewhere, a left turn off a protected lane mapped on a busy road costs what the same left off the road does, and an
+agency's or the owner's low rating of a road for riding along it no longer makes its junctions cheaper. The
+warning still names the road's level on the map, and gives its lanes and speed: "Crossing a 4-lane 30 mph
+(48 km/h) road, stop sign on your side".</p>
 <p>The control at a junction (a signal, a stop sign or none) comes from OpenStreetMap<sup class="cite"><a href="#ref-12" aria-label="source 12">[12]</a></sup>.
 The traffic signal lists of the District, Maryland's State Highway
 Administration and Alexandria fill the gaps: a junction where the agency lists a signal and
