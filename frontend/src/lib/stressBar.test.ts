@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stressSegments } from "./stressBar.ts";
+import { segmentClass, segmentStyle, stressSegments } from "./stressBar.ts";
 import { appSource } from "../testSupport/appSource.mjs";
 
 const sample = { "1": 1800, "2": 0, "3": 2630, "4": 1040, unknown: 10 };
@@ -104,7 +104,8 @@ test("Avoid in the route panel's bar is the route's magenta in every palette, wi
   assert.match(body, /repeating-linear-gradient\(45deg, var\(--seg-accent/);
   assert.match(body, /repeating-linear-gradient\(-45deg, var\(--seg-accent/);
   // And App gives the bar's segments their accent.
-  assert.match(appSource(), /stress-seg-\$\{s\.key\}[\s\S]{0,200}"--seg-accent" as string\]: s\.casing/);
+  assert.match(appSource(), /stress-seg \$\{segmentClass\(s\)\}`\}\s*style=\{\{ width: `\$\{s\.fraction \* 100\}%`, \.\.\.segmentStyle\(s\) \}\}/);
+  assert.equal(segmentStyle({ color: "#000000", casing: "#111111" })["--seg-accent"], "#111111");
 });
 
 test("a route with no Avoid lists Avoid at 0% in the palette's own colour, the magenta only where the palette's Avoid is it (397 \"only if a route uses it\"; r4 spec S-SF1; 2026-10-31)", async () => {
@@ -128,5 +129,84 @@ test("a route with no Avoid lists Avoid at 0% in the palette's own colour, the m
     } finally {
       setAccessibility(false, { remember: false });
     }
+  }
+});
+
+// The owner, 2026-10-31 ("Yes, own colours in bar"): "The bar under a route, the ride summary and post pages get the
+// half-step colours, so a 3.5 stretch is orange there too."
+const span = (from_m: number, to_m: number, tier: number | null, half?: boolean) => ({ from_m, to_m, tier, facility: null, ...(half ? { half } : {}) });
+const halfSpans = [span(0, 400, 1), span(400, 500, 1, true), span(500, 700, 2, true), span(700, 900, 3), span(900, 1500, 3, true), span(1500, 1700, 4, true), span(1700, 1800, 5), span(1800, 1850, null)];
+
+test("a 3.5 stretch is orange in the bar, as on the line", async () => {
+  const { spanClass } = await import("./routeColours.ts");
+  // stress_m counts the 3.5 as LTS 3; the sections say it is a half step.
+  const segments = stressSegments({ "1": 500, "2": 200, "3": 800, "4": 200, "5": 100, unknown: 50 }, halfSpans);
+  const bar = segments.find((s) => s.key === "3h")!;
+  assert.equal(bar.color, "#f28c28", "the default palette's 3.5 orange");
+  assert.equal(bar.color, spanClass(span(900, 1500, 3, true)).color, "the route line's colour for it");
+  assert.equal(bar.metres, 600);
+  assert.equal(segments.find((s) => s.key === "3")!.metres, 200, "LTS 3 holds only the whole-level stretch");
+});
+
+test("every level in the bar is the route line's colour for it, half steps too, in the default and the colour-blind-friendly palettes", async () => {
+  const { routeClasses } = await import("./routeColours.ts");
+  const { setAccessibility } = await import("../stressStyle.js");
+  for (const on of [false, true]) {
+    setAccessibility(on, { remember: false });
+    try {
+      const classes = new Map(routeClasses().map((c) => [c.key as string, c]));
+      const segments = stressSegments({}, halfSpans);
+      for (const key of ["1", "1h", "2h", "3", "3h", "4h", "5", "unknown"]) {
+        const seg = segments.find((s) => s.key === key)!;
+        assert.equal(seg.color, classes.get(key)!.color, `${on ? "colour-blind" : "default"} ${key}`);
+        if (key.endsWith("h")) {
+          // The colour-blind palette's cue that is not colour: the next level's dash, as the line has it.
+          assert.equal(seg.dash, classes.get(key)!.halfDash, `${key}'s dash`);
+          assert.equal(seg.dashOutline, classes.get(key)!.halfOutline, `${key}'s dash outline`);
+          assert.equal(segmentClass(seg).includes("stress-seg-dashed"), on, `${key} dashed only where it has no colour of its own`);
+        }
+      }
+    } finally {
+      setAccessibility(false, { remember: false });
+    }
+  }
+});
+
+test("half steps sit after their lower level in the bar, and only those ridden are listed", () => {
+  const keys = stressSegments({}, [span(0, 100, 2), span(100, 300, 3, true), span(300, 400, 4)]).map((s) => s.key);
+  assert.deepEqual(keys, ["1", "2", "3", "3h", "4", "5", "unknown"]);
+  // No sections (an older API or answer): the whole-level totals, as before.
+  assert.deepEqual(stressSegments(sample, undefined).map((s) => s.key), ["1", "2", "3", "4", "5", "unknown"]);
+  assert.deepEqual(stressSegments(sample, []).map((s) => s.metres), stressSegments(sample).map((s) => s.metres));
+});
+
+test("the bar's key and screen-reader text name a half step (LTS 3.5)", async () => {
+  const { stressBarKey, stressBarLabel } = await import("./quickFigures.ts");
+  const segments = stressSegments({}, [span(0, 400, 3), span(400, 1000, 3, true)]);
+  assert.equal(stressBarKey(segments), "LTS 3: 40%, LTS 3.5: 60%");
+  assert.equal(stressBarLabel(segments), "LTS 3, for experienced cyclists: 40 percent; LTS 3.5, stressful even for experienced cyclists: 60 percent");
+});
+
+test("a dashed half step's stripe takes the segment's own dash colours (styles.css .stress-seg-dashed)", async () => {
+  assert.deepEqual(segmentStyle({ color: "#111111", casing: "#222222", dash: "#123456", dashOutline: "#ffffff" }), {
+    backgroundColor: "#111111",
+    "--seg-accent": "#222222",
+    "--seg-dash": "#123456",
+    "--seg-dash-outline": "#ffffff",
+  });
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(css, /\n\.stress-seg-dashed \{[^}]*var\(--seg-dash\)[^}]*var\(--seg-dash-outline, transparent\)/);
+  // A half step keeps its lower level's pattern.
+  for (const level of [2, 3, 4]) assert.match(css, new RegExp(`\\n\\.stress-seg-${level},\\n\\.stress-seg-${level}h \\{`));
+});
+
+test("the post page's bar is built from the answer's sections, and it and the ride summary draw half steps as the panel does", async () => {
+  const { readFileSync } = await import("node:fs");
+  const post = readFileSync(new URL("../post/postPage.tsx", import.meta.url), "utf8");
+  assert.match(post, /stressSegments\(answer\.stress_m, answer\.stress_spans\)/);
+  const summary = readFileSync(new URL("../RideSummaryCard.tsx", import.meta.url), "utf8");
+  for (const [name, source] of [["post", post], ["summary", summary]]) {
+    assert.match(source, /className=\{`stress-seg \$\{segmentClass\(s\)\}`\}\s*style=\{\{ width: `\$\{s\.fraction \* 100\}%`, \.\.\.segmentStyle\(s\) \}\}/, name);
   }
 });

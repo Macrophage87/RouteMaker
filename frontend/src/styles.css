@@ -491,17 +491,44 @@ progress.planning {
   height: 100%;
 }
 
-/* Patterns as well as colours, so the bar reads in greyscale too. */
-.stress-seg-2 {
-  background-image: repeating-linear-gradient(90deg, transparent 0 6px, rgba(255, 255, 255, 0.35) 6px 8px);
+/* Patterns as well as colours, so the bar reads in greyscale too. A half step
+   (1h-4h, stressBar.ts) keeps its lower level's pattern, in its own colour, as
+   the map draws one over its lower level's pattern. */
+.stress-seg-2,
+.stress-seg-2h {
+  --seg-pattern: repeating-linear-gradient(90deg, transparent 0 6px, rgba(255, 255, 255, 0.35) 6px 8px);
+  background-image: var(--seg-pattern);
 }
 
-.stress-seg-3 {
-  background-image: repeating-linear-gradient(45deg, transparent 0 4px, rgba(255, 255, 255, 0.3) 4px 6px);
+.stress-seg-3,
+.stress-seg-3h {
+  --seg-pattern: repeating-linear-gradient(45deg, transparent 0 4px, rgba(255, 255, 255, 0.3) 4px 6px);
+  background-image: var(--seg-pattern);
 }
 
-.stress-seg-4 {
-  background-image: repeating-linear-gradient(-45deg, transparent 0 3px, rgba(255, 255, 255, 0.28) 3px 4px);
+.stress-seg-4,
+.stress-seg-4h {
+  --seg-pattern: repeating-linear-gradient(-45deg, transparent 0 3px, rgba(255, 255, 255, 0.28) 3px 4px);
+  background-image: var(--seg-pattern);
+}
+
+/* A half step in the colour-blind-friendly palette (HALF_DASHED): its lower
+   level's colour and pattern with the next level's dash along the middle, as on
+   the route line (HALF_STEP_DASH 1.5 on, 4.5 off; 4.5 Avoid's dash-dot), over
+   an outline where the dash has one (--seg-dash-outline, HALF_OUTLINES). */
+.stress-seg-dashed {
+  --seg-dash-image: repeating-linear-gradient(90deg, var(--seg-dash) 0 3px, transparent 3px 12px);
+  --seg-dash-under: repeating-linear-gradient(90deg, var(--seg-dash-outline, transparent) 0 5px, transparent 5px 12px);
+  background-image: var(--seg-dash-image), var(--seg-dash-under), var(--seg-pattern, none);
+  background-size: 100% 4px, 100% 6px, auto;
+  background-position: 0 50%, -1px 50%, 0 0;
+  background-repeat: no-repeat, no-repeat, repeat;
+}
+
+.stress-seg-4h.stress-seg-dashed {
+  --seg-dash-image: repeating-linear-gradient(90deg, var(--seg-dash) 0 10px, transparent 10px 12px, var(--seg-dash) 12px 13px, transparent 13px 15px);
+  /* The dash-dot's gaps are a pixel, so its outline is one band. */
+  --seg-dash-under: linear-gradient(var(--seg-dash-outline, transparent), var(--seg-dash-outline, transparent));
 }
 
 /* Avoid (OWNER-DECISIONS 274): a cross-hatch in --seg-accent, a pattern no

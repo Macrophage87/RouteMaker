@@ -178,8 +178,8 @@ export function StressZoomNotes({
 
 // ---- The legend itself (moved out of App.tsx so a test renders it) ----------
 
-/** The legend's first line: what "LTS" is, said once in plain words (the a11y review's N2). */
-export const LTS_MEANS = "LTS is Level of Traffic Stress, from 1 (calmest) to 4 (heavy traffic); Avoid is legal but best avoided.";
+/** The legend's first line: what "LTS" is, said once in plain words (the a11y review's N2), to 4.5 as its rows go (2026-10-30). Not translated, as the rows are not. */
+export const LTS_MEANS = "LTS is Level of Traffic Stress, in half steps from 1 (calmest) to 4.5 (heaviest traffic); Avoid is legal but best avoided.";
 
 /**
  * The rider-facing page on how the ratings work (OWNER-DECISIONS 461: "Something that can be
