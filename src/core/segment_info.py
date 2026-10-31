@@ -773,8 +773,8 @@ def rating_rows(row: dict) -> list[dict]:
         if agency_lts.PROHIBITING_LEVELS.get(rating.get("agency")) == level:
             value = PROHIBITED_LEVEL_WORDS
         elif rating.get("read_as") is not None:
-            # The owner's rules over SHA's level (`routemaker.mdot_sha_rules`): SHA's number,
-            # and the level the map uses for it, with why.
+            # The owner's rules over SHA's or DDOT's level (`routemaker.mdot_sha_rules`,
+            # `routemaker.ddot_rules`): the agency's number, and the level the map uses, with why.
             note = rating.get("note") or f"read as LTS {float(rating['read_as']):g}"
             words = rule_words(note)
             value = f"LTS {level:g}, {words[:1].lower()}{words[1:]}"

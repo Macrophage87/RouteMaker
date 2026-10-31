@@ -5637,7 +5637,7 @@ SHA's 5 is never read otherwise. The install prints `mdot-sha read by the owner'
 SHA's own level and the reading: "LTS 4, read as LTS 3: a two-lane collector where SHA
 assumed 35 mph".
 
-From v0.15.3 DDOT's 2020 level is read through the owner's rules too
+From v0.16.0 DDOT's 2020 level is read through the owner's rules too
 (`routemaker.ddot_rules`; the owner, 2026-10-31, "I agree with these"). They need nothing
 installed: each reads what the formula read on the way at rebuild time (its level, DC's
 traffic count, the through lanes, the bike facility), inside `agency_lts.apply`. A review
@@ -5650,7 +5650,7 @@ lane decides it. Each is a switch, `ddot_rules.ENABLED`:
 |---|---|---|
 | `busy-road-at-1` | DDOT 1, formula 3+ (a roadway rated with the path or lane beside it) | 3 from 6,000 a day; 3.5 at 15,000+ on 3+ lanes; 4 at 30,000+; 2.5 below 6,000 |
 | `counted-street-at-1` | DDOT 1, formula 2, no lane | 2 from 3,000 a day; 2.5 from 9,000, or from 6,000 on 3+ lanes |
-| `busy-two-lane`, `busy-multilane` | DDOT 2, formula 3+, no lane | 2.5 at 4,500-8,000; 3 from 8,000; 3.5 on 4+ lanes from 10,000 (and DDOT 3, formula 4, from 10,000) |
+| `busy-two-lane`, `busy-multilane` | DDOT 2, formula 3+, no lane | 2.5 at 4,500-8,000; 3 from 8,000; 3.5 on 4+ lanes from 10,000 |
 | `street-under-3000`, `street-3000-8000`, `street-over-8000` | DDOT 3 or 4, formula 2 or less, no lane | 2; 2.5 (the owner's 1st Street rule); 3 |
 | `arterial-by-count`, `two-lane-by-count` | DDOT 4, formula 3 | 4-5 lanes: 3 below 8,000, 3.5 to 15,000, DDOT's 4 above; 6+ lanes: 3 below 10,000; 2-3 lanes: 3, 3.5 at 15,000+ on two lanes, DDOT's 4 at 20,000+ (15,000+ on three) |
 | `quiet-counted` | DDOT 2, formula 1, counted at 1,200 a day or less | 1.5 (uncounted quiet streets keep DDOT's 2) |

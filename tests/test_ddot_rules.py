@@ -90,9 +90,7 @@ def test_a_struck_rule_leaves_ddot_as_it_is() -> None:
 
 
 def test_the_road_panel_says_why_ddot_was_read_otherwise() -> None:
-    bridge = StressResult(
-        Stress.LTS3, "four lanes", (), volume_aadt=45_334, lanes=2, oneway=False
-    )
+    bridge = StressResult(Stress.LTS3, "four lanes", (), volume_aadt=45_334, lanes=2, oneway=False)
     result = agency_lts.apply(bridge, [AgencyRating("ddot", 1)])
     assert result.tier is Stress.LTS4
     (held,) = result.agency_ratings
@@ -111,3 +109,88 @@ def test_only_ddot_is_read_by_these_rules() -> None:
 def test_every_rule_has_words_without_commas() -> None:
     assert ddot_rules.ENABLED == frozenset(ddot_rules.RULE_WORDS)
     assert all("," not in words for words in ddot_rules.RULE_WORDS.values())
+
+
+@pytest.mark.parametrize(
+    ("block", "expected"),
+    [
+        # Each threshold, on both sides.
+        (dict(ddot=1, formula=3, aadt=30_000, lanes=4), 4.0),
+        (dict(ddot=1, formula=3, aadt=29_999, lanes=4), 3.5),
+        (dict(ddot=1, formula=3, aadt=15_000, lanes=3), 3.5),
+        (dict(ddot=1, formula=3, aadt=14_999, lanes=3), 3.0),
+        (dict(ddot=1, formula=3, aadt=15_000, lanes=2), 3.0),
+        (dict(ddot=1, formula=3, aadt=6_000, lanes=2), 3.0),
+        (dict(ddot=1, formula=3, aadt=5_999, lanes=2), 2.5),
+        (dict(ddot=1, formula=2, aadt=9_000, lanes=2), 2.5),
+        (dict(ddot=1, formula=2, aadt=8_999, lanes=2), 2.0),
+        (dict(ddot=1, formula=2, aadt=6_000, lanes=3), 2.5),
+        (dict(ddot=1, formula=2, aadt=5_999, lanes=3), 2.0),
+        (dict(ddot=1, formula=2, aadt=3_000, lanes=2), 2.0),
+        (dict(ddot=1, formula=2, aadt=2_999, lanes=2), None),
+        (dict(ddot=2, formula=1, aadt=1_200, lanes=2), 1.5),
+        (dict(ddot=2, formula=1, aadt=1_201, lanes=2), None),
+        (dict(ddot=2, formula=3, aadt=10_000, lanes=4), 3.5),
+        (dict(ddot=2, formula=3, aadt=9_999, lanes=4), 3.0),
+        (dict(ddot=2, formula=3, aadt=8_000, lanes=2), 3.0),
+        (dict(ddot=2, formula=3, aadt=7_999, lanes=2), 2.5),
+        (dict(ddot=2, formula=3, aadt=4_500, lanes=2), 2.5),
+        (dict(ddot=2, formula=3, aadt=4_499, lanes=2), None),
+        (dict(ddot=3, formula=2, aadt=8_000, lanes=2), None),  # 3 is DDOT's own
+        (dict(ddot=4, formula=2, aadt=8_000, lanes=2), 3.0),
+        (dict(ddot=4, formula=2, aadt=7_999, lanes=2), 2.5),
+        (dict(ddot=4, formula=2, aadt=3_000, lanes=2), 2.5),
+        (dict(ddot=4, formula=2, aadt=2_999, lanes=2), 2.0),
+        (dict(ddot=4, formula=3, aadt=10_000, lanes=6), None),
+        (dict(ddot=4, formula=3, aadt=9_999, lanes=6), 3.0),
+        (dict(ddot=4, formula=3, aadt=15_000, lanes=4), None),
+        (dict(ddot=4, formula=3, aadt=14_999, lanes=4), 3.5),
+        (dict(ddot=4, formula=3, aadt=8_000, lanes=4), 3.5),
+        (dict(ddot=4, formula=3, aadt=7_999, lanes=4), 3.0),
+        (dict(ddot=4, formula=3, aadt=20_000, lanes=2), None),
+        (dict(ddot=4, formula=3, aadt=19_999, lanes=2), 3.5),
+        (dict(ddot=4, formula=3, aadt=15_000, lanes=2), 3.5),
+        (dict(ddot=4, formula=3, aadt=14_999, lanes=2), 3.0),
+        (dict(ddot=4, formula=3, aadt=15_000, lanes=3), None),
+        (dict(ddot=4, formula=1, aadt=9_000, lanes=3, painted_lane=True), 3.0),
+        (dict(ddot=4, formula=1, aadt=8_999, lanes=3, painted_lane=True), 2.5),
+        (dict(ddot=4, formula=1, aadt=15_000, lanes=3, painted_lane=True), 3.5),
+        (dict(ddot=4, formula=1, aadt=9_000, lanes=2, painted_lane=True), 2.5),
+        (dict(ddot=4, formula=1, aadt=8_999, lanes=2, painted_lane=True), 2.0),
+    ],
+)
+def test_each_threshold_falls_where_the_table_puts_it(block, expected) -> None:
+    assert level(**block) == expected
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        # DDOT 3 under a formula 4: no rule was proposed, the formula's 4 stands
+        # (Connecticut Ave NW is the owner's LTS 4).
+        dict(ddot=3, formula=4, aadt=20_000, lanes=4),
+        # DDOT 2 under a formula half step calmer: not a stale DDOT 3 or 4.
+        dict(ddot=2, formula=1.5, aadt=9_000, lanes=2),
+        # A painted lane at DDOT's own calmer level: nothing to say.
+        dict(ddot=2, formula=3, aadt=4_000, lanes=2, painted_lane=True),
+    ],
+)
+def test_no_rule_reads_a_block_the_review_did_not_propose(block) -> None:
+    assert ddot_rules.read_as(Block(**block)) is None
+
+
+def test_a_struck_painted_lane_rule_falls_back_to_the_older_painted_lane_level() -> None:
+    thomas_circle = StressResult(
+        Stress.LTS1, "painted lane", (), volume_aadt=24_499, lanes=3, oneway=True
+    )
+    struck = ddot_rules.ENABLED - {"painted-lane"}
+    from unittest import mock
+
+    with mock.patch.object(ddot_rules, "ENABLED", struck):
+        result = agency_lts.apply(
+            thomas_circle,
+            [AgencyRating("ddot", 4)],
+            facility_mapped=True,
+            painted_lane=True,
+        )
+    assert (int(result.tier), result.half) == (2, True)

@@ -210,7 +210,8 @@ def source_name(source: str) -> str:
 @dataclass(frozen=True)
 class AgencyRating:
     """One agency's level for one way: the level it published, and where the owner's rules
-    read it otherwise (`routemaker.mdot_sha_rules`), the level the map uses and why."""
+    read it otherwise (`routemaker.mdot_sha_rules`, `routemaker.ddot_rules`), the level the
+    map uses and why."""
 
     agency: str
     level: float
@@ -302,7 +303,8 @@ def apply(
     bike path or lane on the way) an agency in SUPERSEDED_WHERE_FACILITY rating it above the
     formula is not used; with
     `painted_lane` too, a set-aside level above PAINTED_LANE_LEVEL raises a calmer formula tier
-    to PAINTED_LANE_LEVEL. A ban (`PROHIBITING_LEVELS`) is recorded but sets no tier;
+    to PAINTED_LANE_LEVEL, except for DDOT, whose painted lanes `ddot_rules` reads by the
+    traffic beside them. A ban (`PROHIBITING_LEVELS`) is recorded but sets no tier;
     `pipeline.agency_ratings` closes the way instead."""
     formula_level = int(result.tier) + (0.5 if getattr(result, "half", False) else 0)
     ratings = tuple(

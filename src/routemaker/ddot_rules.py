@@ -36,7 +36,7 @@ RULE_WORDS = {
     "quiet-counted": "a counted street under 1200 cars a day",
     "street-under-3000": "a street with no bike lane under 3000 cars a day",
     "street-3000-8000": "a street with no bike lane carrying 3000 to 8000 cars a day",
-    "street-over-8000": "a two-lane street with no bike lane over 8000 cars a day",
+    "street-over-8000": "a street with no bike lane over 8000 cars a day",
     "arterial-by-count": "a four- or five-lane road rated by its traffic count",
     "two-lane-by-count": "a two- or three-lane road rated by its traffic count",
     "busy-road-at-1": "a busy roadway DDOT rated with the path or lane beside it",
@@ -106,7 +106,9 @@ def _rule(b: Block) -> tuple[float, str] | None:
             # 2026-10-13, and the formula's 1 comes mostly from no count), but a measured
             # quiet street is half a step calmer.
             return (1.5, "quiet-counted") if a <= 1_200 else None
-        if f <= 2:
+        if d >= 3 and f <= 2:
+            # DDOT 3 or 4 on a street the formula reads 2 or calmer: by count (the owner's
+            # 1st Street rule, 2026-10-30).
             if a >= 8_000:
                 return 3.0, "street-over-8000"
             if a >= 3_000:
@@ -142,19 +144,20 @@ def _rule(b: Block) -> tuple[float, str] | None:
         if a >= 8_000:
             return 3.0, "busy-two-lane"
         return (2.5, "busy-two-lane") if a >= 4_500 else None
-    if d == 3 and f >= 4 and a >= 10_000:
-        return 3.5, "busy-multilane"
+    # Elsewhere DDOT's calmer level stands: the review proposed no rule for DDOT 3 under a
+    # formula 4, and lowering the formula's 4 there could pull Connecticut Ave NW (the owner's
+    # LTS 4) down to 3.5.
     return None
 
 
-def read_as(b: Block, enabled: Iterable[str] = ENABLED) -> tuple[float, str] | None:
+def read_as(b: Block, enabled: Iterable[str] | None = None) -> tuple[float, str] | None:
     """The level DDOT's rating is read as and the rule's id, or None where DDOT's own level
-    stands. A painted lane's reading is kept even where it comes out at DDOT's own level:
-    it is what decides the way, so the facility set-aside (`agency_lts.apply`) must not."""
+    stands. Where DDOT is above the formula, a painted lane's reading is kept even at DDOT's
+    own level: it decides the way, so the facility set-aside (`agency_lts.apply`) must not."""
     found = _rule(b)
-    if found is None or found[1] not in set(enabled):
+    if found is None or found[1] not in set(ENABLED if enabled is None else enabled):
         return None
-    if found[0] == b.ddot and found[1] != "painted-lane":
+    if found[0] == b.ddot and not (found[1] == "painted-lane" and b.ddot > b.formula):
         return None
     return found
 
