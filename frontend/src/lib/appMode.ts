@@ -234,6 +234,20 @@ export function goRoughDue(start: GoStart, accuracyM: number, now: number = Date
   return age < 0 || age >= GO_ROUGH_AGAIN_MS;
 }
 
+/**
+ * Whether Go looks its rough start up again now: the fix is due (goRoughDue) and fewer than GO_ROUGH_TRIES look-ups
+ * have been made since the count last started (a sure fix, or the page back in view), so a phone that never gets a
+ * GPS lock stops after two minutes rather than looking every 20 s for as long as Go is open (test-strength S6).
+ */
+export function goRoughAgain(start: GoStart, accuracyM: number, tries: number, now: number = Date.now()): boolean {
+  return tries < GO_ROUGH_TRIES && goRoughDue(start, accuracyM, now);
+}
+
+/** The look-ups counted once one again has given Go its fix: a sure fix starts the count again, a rough one keeps it. */
+export function goRoughTriesAfter(tries: number, accuracyM: number): number {
+  return goRough(accuracyM) ? tries : 0;
+}
+
 /** Said politely when the location becomes the start, and shown on Go's start line. */
 export const GO_START_SAID = t("Start: your current location.");
 /** Said politely (and shown) when the location could not be had: denied, unavailable or timed out. */

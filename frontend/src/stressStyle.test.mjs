@@ -44,6 +44,7 @@ import {
   tiersFor,
   currentTiers,
   furthTiers,
+  halfStep,
 } from "./stressStyle.js";
 import { DEFAULT_CONFLICTS } from "./testSupport/defaultConflicts.ts";
 import * as spec from "@maplibre/maplibre-gl-style-spec";
@@ -844,4 +845,30 @@ test("a 1.5 trail whose surface is not mapped keeps its surface-unknown dashes: 
   const halves = (properties) => [...halfRingLayers("stress"), ...halfStepLayers("stress")].filter((layer) => draws(layer, properties, 16)).map((layer) => layer.id);
   assert.deepEqual(halves({ tier: 1, half: true, facility: "path", trail: true }), [], "surface not mapped");
   assert.deepEqual(halves({ tier: 1, half: true, facility: "path", trail: true, unpaved: false }).sort(), ["stress-half-1", "stress-half-outline-1", "stress-half-ring-1"]);
+});
+
+test("a half step's ring is never drawn on an unpaved way, in every palette, the switch off and on (test-strength S7)", () => {
+  let unpavedDrawn = 0;
+  let ringed = 0;
+  for (const palette of Object.keys(PALETTES)) {
+    for (const strong of [false, true]) {
+      const tiers = tiersFor(palette, strong);
+      for (const layer of halfRingLayers("stress", undefined, tiers)) {
+        const tier = Number(layer.id.slice("stress-half-ring-".length));
+        const ring = halfStep(tier, tiers).ring;
+        const paved = { tier, half: true, unpaved: false };
+        const unpaved = { tier, half: true, unpaved: true };
+        if (ring && draws(layer, paved, 16)) {
+          ringed += 1;
+          assert.equal(paintValue(layer, "line-color", paved, 16), ring, `${palette} ${tier}.5 paved: its ring`);
+        }
+        if (!draws(layer, unpaved, 16)) continue;
+        unpavedDrawn += 1;
+        const colour = paintValue(layer, "line-color", unpaved, 16);
+        assert.ok(colour === "rgba(0, 0, 0, 0)" || (typeof colour === "object" && colour.a === 0), `${palette}${strong ? " strong" : ""} ${tier}.5 unpaved: no ring (${JSON.stringify(colour)})`);
+      }
+    }
+  }
+  assert.ok(ringed >= 4, "the default's 3.5 and 4.5 rings are drawn on paved ways, the switch off and on");
+  assert.ok(unpavedDrawn > 0, "the ring layers reach unpaved half steps, so their colour is what keeps the ring off");
 });

@@ -272,7 +272,7 @@ import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type
 import { letterKeyIndex, letterPlaces, placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
 import { detourShownSaid, frameAround, rideOpenPadding } from "./lib/detourSearch.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
-import { GO_LOCATION_OFF, goStartSaid, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_PICK_LOOK_MS, goHereStart, goRough, goRoughDue, GO_ROUGH_AGAIN_MS, GO_ROUGH_TRIES, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { GO_LOCATION_OFF, goStartSaid, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_PICK_LOOK_MS, goHereStart, goRough, goRoughAgain, goRoughTriesAfter, GO_ROUGH_AGAIN_MS, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { ReviewMode } from "./ReviewMode.tsx";
 import type { ListKey } from "./lib/review.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type Home, type MyGo } from "./lib/myGo.ts";
@@ -930,7 +930,7 @@ export function App() {
   // point came from the location is whether its object is in `fromHere` (linkLocationNote); a drag of
   // such a point adds the moved one too (movedFromHere), so the note stays.
   const [here, setHere] = useState<Fix | null>(null);
-  // For Go's look-up again after a rough fix (goRoughDue), which reads the fix's accuracy outside a render.
+  // For Go's look-up again after a rough fix (goRoughAgain), which reads the fix's accuracy outside a render.
   const hereRef = useRef(here);
   hereRef.current = here;
   // Every point that came from a look-up, or a drag of one, for the link note (the start may be an earlier
@@ -2546,7 +2546,7 @@ export function App() {
       if (document.visibilityState !== "visible" || !inGo() || roughBusy.current) return;
       const was = goStartRef.current;
       const before = hereRef.current?.accuracyM ?? 0;
-      if (was.kind !== "here" || roughTries.current >= GO_ROUGH_TRIES || !goRoughDue(was, before)) return;
+      if (was.kind !== "here" || !goRoughAgain(was, before, roughTries.current)) return;
       roughTries.current += 1;
       roughBusy.current = true;
       void locate(geoEnv, undefined, undefined, true).then((result) => {
@@ -2558,8 +2558,8 @@ export function App() {
         if (goRough(result.fix.accuracyM) && result.fix.accuracyM >= before) return;
         setHere(result.fix);
         setGoStart(goHereStart(result.fix.point));
+        roughTries.current = goRoughTriesAfter(roughTries.current, result.fix.accuracyM);
         if (goRough(result.fix.accuracyM)) return;
-        roughTries.current = 0;
         if (mapRef.current?.getBounds().contains(was.point)) flyToInView(result.fix.point, 15);
       });
     }, GO_ROUGH_AGAIN_MS);
