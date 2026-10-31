@@ -5637,6 +5637,30 @@ SHA's 5 is never read otherwise. The install prints `mdot-sha read by the owner'
 SHA's own level and the reading: "LTS 4, read as LTS 3: a two-lane collector where SHA
 assumed 35 mph".
 
+From v0.16.0 DDOT's 2020 level is read through the owner's rules too
+(`routemaker.ddot_rules`; the owner, 2026-10-31, "I agree with these"). They need nothing
+installed: each reads what the formula read on the way at rebuild time (its level, DC's
+traffic count, the through lanes, the bike facility), inside `agency_lts.apply`. A review
+read 3,553 random DC blocks from the road panel, calibrated each level where DDOT and the
+formula agree, and kept the rules skeptic agents could not refute (project files,
+reports/dc-ratings-audit/). A block with no count keeps DDOT's level, except where a painted
+lane decides it. Each is a switch, `ddot_rules.ENABLED`:
+
+| Rule | DDOT vs the formula | Read as |
+|---|---|---|
+| `busy-road-at-1` | DDOT 1, formula 3+ (a roadway rated with the path or lane beside it) | 3 from 6,000 a day; 3.5 at 15,000+ on 3+ lanes; 4 at 30,000+; 2.5 below 6,000 |
+| `counted-street-at-1` | DDOT 1, formula 2, no lane | 2 from 3,000 a day; 2.5 from 9,000, or from 6,000 on 3+ lanes |
+| `busy-two-lane`, `busy-multilane` | DDOT 2, formula 3+, no lane | 2.5 at 4,500-8,000; 3 from 8,000; 3.5 on 4+ lanes from 10,000 |
+| `street-under-3000`, `street-3000-8000`, `street-over-8000` | DDOT 3 or 4, formula 2 or less, no lane | 2; 2.5 (the owner's 1st Street rule); 3 |
+| `arterial-by-count`, `two-lane-by-count` | DDOT 4, formula 3 | 4-5 lanes: 3 below 8,000, 3.5 to 15,000, DDOT's 4 above; 6+ lanes: 3 below 10,000; 2-3 lanes: 3, 3.5 at 15,000+ on two lanes, DDOT's 4 at 20,000+ (15,000+ on three) |
+| `quiet-counted` | DDOT 2, formula 1, counted at 1,200 a day or less | 1.5 (uncounted quiet streets keep DDOT's 2) |
+| `painted-lane` | a painted lane where DDOT and the formula differ | 2 below 9,000 a day, 2.5 above, on one or two lanes; on 3+ lanes 2.5, 3 from 9,000, 3.5 from 15,000; never above DDOT where DDOT is the higher. Replaces the 2026-10-21 "painted lane at 2.5" rule for DDOT |
+
+A protected lane or path on the way still sets DDOT's higher level aside for the formula's,
+and DDOT's 5 stays Avoid. The road panel shows DDOT's own level and the reading: "LTS 1,
+read as LTS 4: a busy roadway DDOT rated with the path or lane beside it". The next
+rebuild's stress-change report lists every way the rules moved.
+
 Montgomery's 5 means very high stress, which is our 4.5, not our Avoid (the owner,
 2026-10-19: "5 in our case means technically legal, but not a real option. MoCo's mean very
 high stress, what our 4.5 means."). From v0.9.1 the rebuild uses LTS 4.5 for it, urban and
