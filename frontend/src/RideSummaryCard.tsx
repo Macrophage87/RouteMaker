@@ -10,7 +10,7 @@
  */
 import { useEffect, useId, useRef, useState } from "react";
 import { stressBarKey, stressBarLabel } from "./lib/quickFigures.ts";
-import { stressSegments } from "./lib/stressBar.ts";
+import { segmentClass, segmentStyle, stressSegments } from "./lib/stressBar.ts";
 import { elevationSpan, summaryRows, type RideStats } from "./lib/rideStats.ts";
 import { METRES_PER_MILE, formatClimb, formatDistance, formatDuration } from "./lib/format.ts";
 import { t } from "./lib/i18n.ts";
@@ -186,8 +186,8 @@ export function RideSummaryCard({
                     .map((s) => (
                       <span
                         key={s.key}
-                        className={`stress-seg stress-seg-${s.key}`}
-                        style={{ width: `${s.fraction * 100}%`, backgroundColor: s.color, ["--seg-accent" as string]: s.casing }}
+                        className={`stress-seg ${segmentClass(s)}`}
+                        style={{ width: `${s.fraction * 100}%`, ...segmentStyle(s) }}
                       />
                     ))}
                 </div>

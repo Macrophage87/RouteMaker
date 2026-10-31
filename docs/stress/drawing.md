@@ -67,29 +67,39 @@ Other rules:
 - Mountain-bike trails draw in their own not-for-routes look from z14 (`MTB_TRAIL`,
   `:880-905`; OWNER-DECISIONS 452a, 454).
 
-## Half steps (441r-441v, 458-458b, 460.1) **built**
+## Half steps (441r-441v, 458-458b, 460.1; own colours 2026-10-30/31) **built**
 
 Tiles keep `tier` an integer, so a half step is the lower tier plus `half: true`
-(`core/stress_tiles.py`, ETag letter `h`). Drawn by `halfStepLayers` in
-`frontend/src/stressStyle.js`: one dash layer and one outline layer per lower level
-(1-4), over every tier line.
+(`core/stress_tiles.py`, ETag letter `h`); the route's sections say `half: true` too
+(`core.routing.stress_spans`, `StressSpanOut.half`). Drawn by `halfRingLayers` (with the rings,
+under the facility rails) and `halfStepLayers` (an outline and a line per lower level, 1-4, over
+every tier line) in `frontend/src/stressStyle.js`.
 
 - **Below zoom 15**, a half step draws exactly as its lower level (460.1: "The level
   below makes more sense"). 1.5 looks like LTS 1.
-- **From zoom 15**, a half step keeps the lower level's whole look: base color, casing,
-  width and its own pattern (441v). Over it goes a dash in the next level's **base
-  color** (441u), using Option A, sparse blocks (458):
-  - 1.5, 2.5, 3.5: dash [1.5, 4.5] at full line width, in the base color of LTS 2, 3 or
-    4 (1.5's dash is LTS 2's `#57a06c` in the default palette and blue in CVD, 458a);
-  - 4.5: Avoid's dash-dot [5, 1, 0.5, 1] at LTS 4's width, in Avoid's base color (the
-    darker red, 441s-441t). It is never drawn as Avoid (441k).
-- **Low-contrast dashes get a thin outline** on the dash only (458b): default palette
-  3.5 (LTS 4's orange on LTS 3's yellow, about 1.5:1) and CVD 4.5 (Avoid's blue-black on
-  LTS 4's dark red, about 1.6:1). The outline is at least 3:1 against both the dash and
-  the line (`HALF_OUTLINES`: `#1c1917` and `#ffffff`), checked in
-  `frontend/src/halfSteps.test.ts` and in the browser a11y suite (section 22). The
-  outline is a layer under the dash, a pixel wider each side, with the dash pattern
-  scaled to its own width; the other half steps' outline layers are transparent.
+- **From zoom 15, in the default and warm palettes**, a paved half step has colours of its own
+  (`HALF_PALETTES`; the owner, 2026-10-30: "There's definitely room in the color spectrum where we
+  are drawing routes to include half steps", and 2026-10-31: "today's orange should be 3.5 with 4 at
+  some sort of red and 4.5 darkred"): its own line and edge over its lower level's width and
+  pattern, and its own ring where it has one. Default: 1.5 `#6fc48a` on `#2f5d47`, 2.5 `#9fb83a`
+  on `#1a2638`, 3.5 `#f28c28` on `#c81e1e` ringed (the old LTS 4 look), 4.5 `#560a0e` on
+  `#e3261c` ringed (the reverse of LTS 4, `#e3261c` on `#560a0e`). An unpaved half step keeps
+  its level's brown or grey, and a trail whose surface is not mapped keeps its dashes (376). The
+  route draws its sections in the same colours (`routeColours.ts`, classes `1h`-`4h`), and both
+  legends list each half step after its level.
+- **In the colour-blind-friendly palette** (`HALF_DASHED`; the owner, 2026-10-31: "keep dashes
+  with the same rules") no in-between colour is far enough from both neighbours for every colour
+  vision, so a half step keeps the lower level's whole look - base color, casing, width and its own
+  pattern (441v) - and over it goes a dash in the next level's **base color** (441u), using
+  Option A, sparse blocks (458), on the map and on the route (`routeHalfLayers`):
+  - 1.5, 2.5, 3.5: dash [1.5, 4.5] at full line width, in the base color of LTS 2, 3 or 4;
+  - 4.5: Avoid's dash-dot [5, 1, 0.5, 1] at LTS 4's width, in Avoid's base color. It is never
+    drawn as Avoid (441k).
+- **A low-contrast dash gets a thin outline** on the dash only (458b): the colour-blind palette's
+  4.5 (Avoid's blue-black on LTS 4's dark red, about 1.6:1), white, at least 3:1 against both the
+  dash and the line (`HALF_OUTLINES`), checked in `frontend/src/halfSteps.test.ts` and in the
+  browser a11y suite (section 22). The outline is a layer under the dash, a pixel wider each
+  side, with the dash pattern scaled to its own width; the route has one too.
 - Drawing rules use the lower level (461a), so painted-lane hiding follows the lower
   level: a 3.5 road shows its lane, and a 4.5 road hides it.
 - The road panel always shows the exact step and its words (441k-441l).

@@ -207,9 +207,21 @@ the z12-13 ride layer's calm runs (`trail_routes.is_calm_candidate`,
 | "Not used by a mass ride", Avoid label | no | no | no | **no** (441k) |
 | Map color and dash, painted-lane hiding (drawing) | lower level | lower level | lower level (lane drawn) | lower level (lane hidden, as LTS 4) |
 
-The junction values are base costs. The speed, lane, volume and rural factors and the
-cap apply afterwards, as for whole levels, and the orange and red thresholds (800 and
-3,100 ft [244 and 945 m]) are unchanged. Junctions read 4.5 like 4 (tier 5 is 4 there).
+The junction values are base costs. The orange and red thresholds (800 and 3,100 ft
+[244 and 945 m]) are unchanged. Junctions read 4.5 like 4 (tier 5 is 4 there).
+
+A junction whose cost is about a 2.5 or 3.5 road costs the midpoint of the junction's
+whole cost with that road read a level below and a level above, ride time included
+(the owner, 2026-10-31, "Midpoint fix plus wording"; `intersections.priced`). The
+weights that start at a whole LTS 4 (the severe tier's speed and lane factors, the 45 mph
+stopgap, the merge's assumed lanes, rush hour's x2.0 and its 9,840 ft [3.0 km] gap-wait
+floor) so reach a 3.5 road halfway. A road whose traffic reads busier than its map
+level is priced at that traffic level instead (docs/stress/intersections.md section 2),
+whole or half. Only roads at that same half step are split (a rider on a 3.5 road crossing another
+3.5 road still gives way), so the rider's own different half step still decides who has
+the right of way. A 2.5 road's small fixed costs (an all-way stop, passing it with
+priority, a right off it) halve, since LTS 2 costs nothing at a junction. The junction's words say the half step as the route's sections do
+("LTS 3.5"; `crossed_half` in the API).
 
 ### Parked
 

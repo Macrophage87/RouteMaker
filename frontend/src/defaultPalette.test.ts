@@ -8,6 +8,7 @@ import { LIGHT } from "@protomaps/basemaps";
 import {
   ACCESSIBILITY_PALETTE,
   DEFAULT_PALETTE,
+  HALF_PALETTES,
   PALETTES,
   PALETTE_LINK_NAMES,
   contrastRatio,
@@ -45,13 +46,17 @@ test("the default is the two-tone palette, the warm one is still there, and the 
   assert.equal(resolvePalette("?palette=warm", false), "blended", "warm by address");
   assert.equal(ACCESSIBILITY_PALETTE, "cvd");
   assert.equal(PALETTE_LINK_NAMES.cvd, "cool");
-  // The owner's colours, as 351 lists them (LTS 4's edge is #c81e1e, which 292 chose over #d42020; reported).
+  // The owner's colours, as 351 lists them; LTS 4 and Avoid as 2026-10-31 redrew them ("today's orange should
+  // be 3.5 with 4 at some sort of red and 4.5 darkred"; Avoid the route's magenta).
   assert.deepEqual(PALETTES.twotone[1], { color: "#9ed3ac", casing: "#2f5d47" }, "LTS 1's softer edge (357)");
   assert.deepEqual(PALETTES.twotone[2], { color: "#57a06c", casing: "#1a2638", gap: "#7a8fa3" }, "LTS 2's blue edge and gaps (356)");
   // 371: the yellow #f3c81a (#f2c21b before), and the rings.
   assert.deepEqual(PALETTES.twotone[3], { color: "#f3c81a", casing: "#f28c28", ring: "#1c1917" });
-  assert.deepEqual(PALETTES.twotone[4], { color: "#f28c28", casing: "#c81e1e", ring: "#1c1917" });
-  assert.deepEqual(PALETTES.twotone[5], { color: "#d42020", casing: "#111111", legendRing: "#9aa0a6" });
+  assert.deepEqual(PALETTES.twotone[4], { color: "#e3261c", casing: "#560a0e" });
+  assert.deepEqual(PALETTES.twotone[5], { color: "#d6008f", casing: "#ffffff", ring: "#1c1917" });
+  // Today's LTS 4 look is 3.5's (HALF_PALETTES).
+  assert.deepEqual(HALF_PALETTES.twotone[3], { color: "#f28c28", casing: "#c81e1e", ring: "#1c1917" });
+  assert.deepEqual(HALF_PALETTES.twotone[4], { color: "#560a0e", casing: "#e3261c", ring: "#1c1917" });
 });
 
 test("held: ink rises strictly from LTS 1 to Avoid (283) and harshness from LTS 1 to Avoid (292, 356), plain and strong", (t) => {
@@ -84,7 +89,8 @@ test("held: every tier is 3:1 on the base map and the light panel, LTS 3 and LTS
     assert.deepEqual(failures, [], strong ? "strong" : "plain");
     const onEdge = tiers.filter((x) => x.tier >= 3 && contrastRatio(x.color, x.casing) < 3).map((x) => x.short);
     t.diagnostic(`${strong ? "strong" : "plain"}: ` + tiers.map((x) => `${x.short} line on edge ${contrastRatio(x.color, x.casing).toFixed(2)}:1, worst on the map ${Math.min(...SURFACES.map((u) => legible(x, u))).toFixed(2)}:1`).join("; "));
-    assert.deepEqual(onEdge, [...DEFAULT_CONFLICTS.lineOnEdgeBelowThreeToOne]);
+    // The whole levels' (the half steps' are held on the route, stressContrast.test.ts).
+    assert.deepEqual(onEdge, DEFAULT_CONFLICTS.lineOnEdgeBelowThreeToOne.filter((short) => !short.includes(".")));
   }
   // The ring itself: 3:1 or more from every surface and from the edge it rings.
   for (const tier of (tiersFor(DEFAULT_PALETTE) as Tier[]).filter((x) => x.ring)) {

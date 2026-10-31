@@ -71,6 +71,7 @@ Contents:
 - [Deploying v0.8.1](#deploying-v081)
 - [Deploying v0.8.2](#deploying-v082)
 - [Deploying v0.9.0](#deploying-v090)
+- [Deploying v0.16.0](#deploying-v0160)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -1564,8 +1565,11 @@ LTS 1 and 2 are as they were in colour (their edges changed with items 356 and
 Two readings were built for the owner to choose between, and since item 351
 ("2 tone is better", "Make two-tone the default") the default is `twotone` (the
 first colour as the line, the second as its casing: LTS 3 yellow #f2c21b on
-orange #f28c28, LTS 4 orange on red #c81e1e, both ringed in near-black #1c1917 since item
-371, which also lightened the yellow to #f3c81a; Avoid red #d42020 on #111111),
+orange #f28c28, ringed in near-black #1c1917 since item 371, which also lightened the yellow
+to #f3c81a; since 2026-10-31, "today's orange should be 3.5 with 4 at some sort of red and 4.5
+darkred": LTS 4 red #e3261c on a near-black red #560a0e, and Avoid the route's magenta #d6008f
+on white, ringed; the half steps have colours of their own, `HALF_PALETTES`: 1.5 #6fc48a,
+2.5 #9fb83a, 3.5 the old LTS 4's orange on red #c81e1e, ringed, 4.5 #560a0e on #e3261c, ringed),
 which needs no address parameter. `blended`, the default before (LTS 3 amber,
 #bf730b, over a dark amber-brown casing, #45290a; LTS 4 a saturated red,
 #c80018, over white; Avoid a near-black, #14040a, over a coral-red casing,
@@ -4322,6 +4326,23 @@ the first host to run it is the first test of it.
    once per file in order. The installer prints one line a file: VDOT 36,808 count
    lines, DDOT 8,323 (2026-10-11).
 
+   **Remake `urban-areas.json` whenever the coverage grows.** It lists way ids from
+   the extract it was made from, so a state added later reads entirely as rural
+   (50 mph on unposted roads, the rural LTS 2 floor). The 2026-10-30 West Virginia
+   recheck found exactly that: the list was made on 2026-09-25, West Virginia joined
+   in v0.7.0, and beta reads every Martinsburg and Charles Town street as rural. Remake
+   it with the current extract before the next rebuild, with `--extract` and
+   `--urban-areas` only: the command above also rewrites `volume.json` from just the
+   `--volume` pairs it names, which drops MDOT SHA's counts (and the 10,000-row minimum
+   does not catch it, with about 45,000 rows left). The
+   `2026-10-30-owner-wv-county-roads.json` override file assumes it (fixtures/overrides/README.md).
+
+   ```sh
+   docker compose exec -T rebuild python3 scripts/install_reference_data.py \
+       --data-root /data --extract /data/extracts/source.osm.pbf \
+       --urban-areas /data/reference/inputs/tl_2024_us_uac20.geojson </dev/null
+   ```
+
    **Every input path is absolute and inside the container.** A bare
    `tl_2024_us_uac20.geojson` resolves against the image's working directory,
    `/app`, where the file is not and cannot be: the script would exit on a
@@ -4457,16 +4478,23 @@ Since the calibration (OWNER-DECISIONS 101-143) the classifier reads three
 things beyond the tags, and none of them comes from the reference install:
 
 - **The states, from the rebuild's own extract.** Each unposted way takes its
-  state's speed default (the District's 20 mph, 15 in alleys; Maryland's and
-  Virginia's 25/30/35 in urban areas). The states are built each run from the
+  state's speed default (the District's 20 mph, 15 in alleys; Maryland's,
+  Virginia's and West Virginia's 25/30/35 in urban areas; WV's law, 17C-6-1, has
+  Virginia's figures). The states are built each run from the
   `boundary=administrative`, `admin_level=4` relations in the *merged* extract
   (`pipeline.states`; the owner, item 137: "From our OSM data
   (Recommended)"), not from the `jurisdiction` table, which stays the admin's
-  and is empty on a fresh deployment. The merged extract holds only the three
-  Geofabrik states, so the District, Maryland and Virginia close and West
-  Virginia's and Pennsylvania's relations do not: their ways inside the
-  coverage take the old class tables, and the log says so ("state WV: ... do
-  not close and were dropped").
+  and is empty on a fresh deployment. The merged extract holds the District,
+  Maryland, Virginia and West Virginia (`pipeline.source`); a relation that does
+  not close is dropped, its ways take the old class tables (urban unclassified
+  and tertiary at 30 mph and primary at 40, not WV's 25 and 35), and the log
+  says so ("state WV: ... do not close and were dropped", then "no way placed in
+  WV"). After each rebuild, read the `way states:` log line and check that WV
+  has a count (tens of thousands of ways); if it reads none, the WV law and
+  urban defaults did not apply, and the rebuild should not be swapped in before
+  the owner hears about it.
+  A state with 1,000 or more placed ways and none in `urban-areas.json` stops the
+  rebuild: the list was made without it, and its towns would read as rural.
 - **`fixtures/cbd/`** (the DDOT CBD boundary, the federal exemptions and the
   Architect of the Capitol's polygon) and **`fixtures/speed/`** (curated speed
   limits, OWNER-DECISIONS 131), both baked into the pipeline image
@@ -5169,7 +5197,7 @@ proxy cannot reach the service.
    | Line | What to look for |
    |---|---|
    | `.../mdot-sha-aadt.geojson: N count lines from mdot-sha (state)` (installer) | some thousands for the box |
-   | `MDOT SHA counts shared with N opposite carriageways` | in the hundreds: each divided Maryland road's second carriageway, which conflation alone leaves uncounted (`conflation.share_with_carriageways`; Maryland's counts only) |
+   | `counts shared with N opposite carriageways (<agencies that shared>)` | in the hundreds: each divided road's second carriageway, which conflation alone leaves uncounted (`conflation.share_with_carriageways`; every installed agency's counts since v0.16.0, Maryland's only before) |
    | `volume conflation: N matched, ...` | N up by the Maryland roads against the last rebuild |
 
    ```sh
@@ -5582,6 +5610,8 @@ installed file goes in:
 ```sh
 export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
 python3 scripts/install_agency_lts.py --datasets ~/rmdata/datasets \
+    --mdot-aadt ~/rmdata/datasets/mdot-sha-aadt/mdot-sha-aadt.geojson \
+    --urban-areas "$DATA_ROOT/reference/inputs/tl_2024_us_uac20.geojson" \
     --out ~/rmdata/agency-lts.json moco ddot mdot-sha
 sudo cp ~/rmdata/agency-lts.json "$DATA_ROOT/reference/agency-lts.json"
 sudo chown 10001:10001 "$DATA_ROOT/reference/agency-lts.json"
@@ -5599,6 +5629,60 @@ scale. The levels on our scale (the script's docstring has the citations):
 | Montgomery County Planning | `LTS_EXIST` | 1, 2, 2.5, 3, 4, 5 (5 is very high stress, used as LTS 4.5 from v0.9.1) | 0.5 "None"; not Existing; sidepaths, trails, parking lots |
 | DDOT (2020) | the first of `DDOT_LEVEL_FIELDS` any record has (`LTS`, `LTS_2020`, ...) | 1 to 4 as they are (a 5 would be Avoid) | 0 and empty |
 | MDOT SHA | `LTS_ADJUSTED` | 1 to 4 as they are; 5, "bicycle access prohibited", closes the road to bicycles (v0.9.1) | 0 (shared-use path), 9 (missing data), empty |
+
+From v0.16.0 MDOT SHA's level is read through the owner's rules
+(`routemaker.mdot_sha_rules`; the owner, 2026-10-30, "Rules in the build"), which is why the
+install needs SHA's traffic counts (`mdot-sha-aadt`, the same download as the classifier's
+Maryland counts) and the Census urban areas. Without both it refuses; `--mdot-as-published`
+installs SHA's levels unread. A review matched 3,000 mi of SHA's layer inside Montgomery to
+the county's own ratings and kept the rules that skeptic agents could not refute (project
+files, reports/md-sha-ratings/). Each is a switch, `mdot_sha_rules.ENABLED`:
+
+| Rule | SHA's level | Read as |
+|---|---|---|
+| `collector-assumed-35`, `city-collector` | 4 on an urban two-lane collector where SHA assumed 35 mph | 3; 3.5 at 10,000-15,000 cars a day |
+| `slow-street` | 4 on an urban two-lane street at 30 mph or less, under 15,000 a day | 2.5; 3 from 7,500 a day |
+| `multilane-or-40` | 3 or less on 4+ lanes at 30-45 mph, or two lanes posted 40-45 | 4; 3.5 with a painted lane |
+| `shoulder-credit` | 2 on an urban two-lane 35 mph road with a 4 ft shoulder | 3; 3.5 at 10,000-15,000; 4 above |
+| `busy-residential` | 1 or 2 on a 25 mph two-lane street at 5,000-15,000 a day, no bike lane | 2.5 (the owner's 1st Street rule) |
+| `rural-collector` | 2 or less on a rural minor collector at 1,500+ a day, speed assumed | 3.5 |
+| `rural-expressway` | 4 on a 4+ lane highway posted 55 mph or more, urban or rural | 4.5 |
+| `busy-rural-two-lane` | 4 on a rural two- or three-lane principal arterial (functional class 2-3) at 18,000+ a day, no bike facility | 4.5 (the formula's busy rural highway rule, so US-15 reads the same in Virginia; the owner, 2026-10-31) |
+| `second-record` | SHA's record for a road's other direction (route id character 15, "2"), within 130 ft (40 m) of the first | the first direction's level, as read |
+
+SHA's 5 is never read otherwise. The install prints `mdot-sha read by the owner's rule
+<rule>: N records`. Montgomery's rating still wins inside the county. The road panel shows
+SHA's own level and the reading: "LTS 4, read as LTS 3: a two-lane collector where SHA
+assumed 35 mph".
+
+From v0.16.0 DDOT's 2020 level is read through the owner's rules too
+(`routemaker.ddot_rules`; the owner, 2026-10-31, "I agree with these"). They need nothing
+installed: each reads what the formula read on the way at rebuild time (its level, DC's
+traffic count, the through lanes, the bike facility), inside `agency_lts.apply`. A review
+read 3,553 random DC blocks from the road panel, calibrated each level where DDOT and the
+formula agree, and kept the rules skeptic agents could not refute (project files,
+reports/dc-ratings-audit/). A block with no count keeps DDOT's level, except where a painted
+lane decides it. Each is a switch, `ddot_rules.ENABLED`:
+
+| Rule | DDOT vs the formula | Read as |
+|---|---|---|
+| `busy-road-at-1` | DDOT 1, formula 3+ (a roadway rated with the path or lane beside it) | 3 from 6,000 a day; 3.5 at 15,000+ on 3+ lanes; 4 at 30,000+; 2.5 below 6,000 |
+| `counted-street-at-1` | DDOT 1, formula 2, no lane | 2 from 3,000 a day; 2.5 from 9,000, or from 6,000 on 3+ lanes |
+| `busy-two-lane`, `busy-multilane` | DDOT 2, formula 3+, no lane | 2.5 at 4,500-8,000; 3 from 8,000; 3.5 on 4+ lanes from 10,000 |
+| `street-under-3000`, `street-3000-8000`, `street-over-8000` | DDOT 3 or 4, formula 2 or less, no lane | 2; 2.5 (the owner's 1st Street rule); 3 |
+| `arterial-by-count`, `two-lane-by-count` | DDOT 4, formula 3 | 4-5 lanes: 3 below 8,000, 3.5 to 15,000, DDOT's 4 above; 6+ lanes: 3 below 10,000; 2-3 lanes: 3, 3.5 at 15,000+ on two lanes, DDOT's 4 at 20,000+ (15,000+ on three) |
+| `quiet-counted` | DDOT 2, formula 1, counted at 1,200 a day or less | 1.5 (uncounted quiet streets keep DDOT's 2) |
+| `painted-lane` | a painted lane where DDOT and the formula differ | 2 below 9,000 a day, 2.5 above, on one or two lanes; on 3+ lanes 2.5, 3 from 9,000, 3.5 from 15,000; never above DDOT where DDOT is the higher. Replaces the 2026-10-21 "painted lane at 2.5" rule for DDOT |
+
+Where the formula reads a half step (a busy street at 2.5, a busy city street at 3.5), each
+rule takes the formula's whole level, and the reading stays between DDOT's level and the
+formula's half step, except a painted lane's, which goes by the traffic beside it as above.
+
+A protected lane or path on the way still sets DDOT's higher level aside for the formula's,
+and DDOT's 5 stays Avoid. The road panel shows DDOT's own level and the reading: "LTS 1,
+read as LTS 4: a busy roadway DDOT rated with the path or lane beside it (DDOT 2020 LTS 1 and
+formula LTS 3 on 45334 cars a day and 4 through lanes)", the rule and the facts it read. The next
+rebuild's stress-change report lists every way the rules moved.
 
 Montgomery's 5 means very high stress, which is our 4.5, not our Avoid (the owner,
 2026-10-19: "5 in our case means technically legal, but not a real option. MoCo's mean very
@@ -6406,9 +6490,10 @@ rebuild that refuses to run without `agency-lts.json`. At home, in order, with `
   read its `ddot: level read from <field>` line); without it the rebuild and
   `send-inputs.sh` refuse. And `counties.geojson` (`install_reference_data.py --counties`)
   for Review's Area column and the stress change report.
-- [ ] **Recommended, urban areas:** remake `urban-areas.json` from the current extract
-  (`install_reference_data.py` with `--extract` and the urban-area layer, as in "First
-  rebuild on a fresh host"). A way newer than the list reads as rural, and a rural expressway posted 50 mph or
+- [ ] **Required since v0.16.0, urban areas:** remake `urban-areas.json` from the current extract
+  (the 2026-09-25 list has no West Virginia way, and the rebuild now stops on that)
+  (`install_reference_data.py` with `--extract` and `--urban-areas` only, never the
+  `--volume` pairs; "Deploying v0.16.0"). A way newer than the list reads as rural, and a rural expressway posted 50 mph or
   more is now LTS 4.5, so a newly split urban expressway would come out LTS 4.5, not Avoid.
 - [ ] **The rebuild** (or "Rebuilding on the cloud box"): the extract is remade once, for the
   new clip ("The source extract"). Read the `agency stress ratings` lines (no
@@ -6455,6 +6540,48 @@ front-end release" (below). No new settings: live Metrobus and train positions r
   deleting or banning the account deletes it. Behind the
   beta's password gate the MCP server (not the site) needs `ROUTEMAKER_BASIC_AUTH` as well: the key travels in its
   own header.
+
+## Deploying v0.16.0
+
+The ratings recalibration: owner rules for MDOT SHA and DDOT's levels, the same rating rules in
+every state (West Virginia's speed law), busy-street half steps, counts on both carriageways of
+divided roads, and three owner override files. No migration, no `lua/` change, no new download.
+The tag deploys the code on beta's old data (new colours, old ratings); the ratings arrive with
+the data. At home, in order, with `</dev/null` on every docker command:
+
+- [ ] **Tag and images.** Once `test` and `a11y` are green on `main`, the owner tags v0.16.0
+  (annotated). Then, before the weekly rebuild (Tuesday 08:00 UTC) or with it paused: tag the
+  running images for a rollback, `docker compose build api rebuild`, and once no rebuild job
+  is queued or running `docker compose up -d --no-deps --no-build api worker rebuild`. Then
+  the front end. The tag also starts a Play internal-testing build, though the app did not
+  change; it can be ignored.
+- [ ] **Urban areas first.** Remake `urban-areas.json` with `--extract` and `--urban-areas`
+  only ("First rebuild on a fresh host", the command under "Remake `urban-areas.json`"),
+  never with the `--volume` pairs, which would drop Maryland's counts. The `urban ways`
+  count it prints should rise from the 2026-09-25 list. Without it the rebuild stops: the
+  list has no West Virginia way.
+- [ ] **`agency-lts.json` again, on the PC.** The MDOT SHA rules exist only as the `read_as`
+  fields the v0.16.0 installer writes; an older file loads without a word and ships SHA's
+  published levels. Reinstall `moco ddot mdot-sha` with `--mdot-aadt` and `--urban-areas`
+  ("Agency stress ratings (agency-lts.json)"), read its `read by the owner's rule` lines, then
+  copy it into `$DATA_ROOT/reference/` (sudo cp, chown 10001:10001, chmod 644).
+- [ ] **The three override files, one at a time, each only after the owner confirms that
+  file:** `2026-10-30-owner-q-r-first-streets-nw.json`, `2026-10-30-owner-wv-county-roads.json`
+  (after the urban list), `2026-10-31-owner-virginia-ratings.json`. Dry run first, then
+  `--confirm` ("A deploy that changes the crossings fixture or loads access overrides", step 3).
+  No way in them is in an earlier file, so each dry run shows only creates.
+- [ ] **Rebuild** (`run_rebuild_now`, or `send-inputs.sh` for the cloud box). In the log:
+  `counts shared with N opposite carriageways (ddot, mdot-sha, vdot)`, the agency-ratings
+  `changed tier` lines, and West Virginia in the `state polygons from <pbf>: DC, MD, VA, WV` line.
+- [ ] **Before the swap**, the stress-change report (whole levels only; expect large West
+  Virginia moves from the urban list, and DC second carriageways moving from the 2020 Roadway
+  Block count to DDOT's 2024 count) and Review's changed-roads lists, which show the half
+  steps the report does not. Then swap, restart the routers, and check a road panel: an SHA
+  road and a DDOT-rated DC block each show a "read as" line.
+- [ ] **Beta's data:** pause the agent, `ship-data.sh`, then `receive-data.sh verify`, `files`
+  and `db --update-data`, the pre-draw, the router restarts and `sync_upstreams`, the smoke
+  test, and resume the agent. Build the data at the tagged commit: `receive-data.sh` checks the
+  bundle's commit.
 
 ## Deploying a planner and front-end release: rollback points and verification
 
@@ -8326,7 +8453,7 @@ basic-auth password, which it hands to the WebView for that run and never stores
 builds an address in for a local build; in CI only the store build sets it, and a test build fails
 if its synced config names a site.
 
-Builds: Actions, "Android app" (`.github/workflows/android.yml`). A pull request that touches
+Builds: Actions, "Android app" (`.github/workflows/android.yml`). A pull request into main that touches
 `mobile/` or the workflow runs the app's tests and builds a debug APK (no secrets, no site address);
 by hand (`workflow_dispatch`), `debug` for a sideloaded test APK or `release` for a signed APK and
 Play bundle; a release tag (`vX.Y.Z`) whose `mobile/` changed since the tag before runs the `release`

@@ -289,12 +289,15 @@ caused by a Django the stack does not run.
 In that case `tests/test_native_environment.py` also fails, naming each pin the
 interpreter does not have; it does not run first, so read its failure before
 the others. CI installs the same two files.
-pytest, pytest-django and ruff are pinned exactly in `requirements-dev.txt`
+pytest, pytest-django, pytest-xdist and ruff are pinned exactly in `requirements-dev.txt`
 (no image carries them), so a new ruff rule or format style arrives as a
 Dependabot pull request, not as a red main. CI lints and format-checks
 `src tests scripts mcp`, runs `makemigrations --check` (a model change with no
 migration fails it) and the phone app's Node tests (`mobile/`, which pin parts of
 the front end), and cancels a pull request's older run when a newer push lands.
+It runs on every pull request into main (in practice the release branch's, and
+Dependabot's), on the push to main, and by hand (Actions, "CI", Run workflow);
+pull requests into a release branch start no run.
 `tests/test_mutants_apply.py` runs every `scripts/mutants_*.py --check` (a text
 match, no tests): a change that rewrites a line a mutant targets fails there, and
 re-anchors or drops that mutant in the same change.
@@ -305,6 +308,10 @@ Then the database and the suite, from the checkout:
 sudo sh scripts/devdb.sh
 PGDATABASE=routemaker_dev .venv/bin/python -m pytest tests/ -q -p no:randomly
 ```
+
+Add `-n 2` (or `-n 4`, as CI does) to spread the suite over that many processes: each
+gets its own test database, so the run takes a fraction of the time; each worker
+holds its own copy of the suite, so a low-memory machine wants fewer.
 
 `devdb.sh` starts cluster 16 if it is down, and creates the `routemaker` role,
 the `routemaker` database and the PostGIS extension if any is missing; under
@@ -346,8 +353,9 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /
   own colours, which reads `@protomaps/basemaps` from `node_modules` - so
   `npm ci` first. The TypeScript runs through Node's own type stripping, on by
   default from Node 22.18; `tests/test_frontend.py` runs the same files inside
-  pytest, skips on a machine without Node (WSL here) and fails in CI if the
-  Node there is older or missing.
+  pytest and skips on a machine without Node (WSL here); in CI it skips, and the
+  suite runs once, in the "Front end, as the beta builds it" step (the pinned
+  node image).
 - The junction markers (OWNER-DECISIONS 172; an orange triangle for higher stress and a red
   diamond for very high stress, the diamond an octagon until 311) are `lib/intersectionMarkers.ts`
   (what is listed, worded and drawn, tested without a DOM), `IntersectionList.tsx`
@@ -823,8 +831,17 @@ exactly these breaks (one more fails, and so does one fewer):
 | LTS 1 | #9ed3ac | #2f5d47 | (solid) | 0 | 4.42:1 |
 | LTS 2 | #57a06c | #1a2638 | #7a8fa3 | 0.21 | 4.82:1 |
 | LTS 3 | #f3c81a | #f28c28, ringed #1c1917 | the edge | 0.25 | 7.13:1 |
-| LTS 4 | #f28c28 | #c81e1e, ringed #1c1917 | the edge | 0.26 | 3.05:1 |
-| Avoid | #d42020 | #111111 | the edge | 0.97 | 3.20:1 |
+| LTS 4 | #e3261c | #560a0e | the edge | 0.35 | 3:1 by its edge |
+| Avoid | #d6008f | #ffffff, ringed #1c1917 | the edge | 1.32 | 3:1 by its ring |
+
+**2026-10-31** (the owner: "today's orange should be 3.5 with 4 at some sort of red and 4.5
+darkred", and Avoid on the map the route's magenta): the old LTS 4 (#f28c28 on #c81e1e,
+ringed) is now 3.5's look, and the half steps have colours of their own in this palette and the
+warm one (`HALF_PALETTES`; docs/stress/drawing.md, "Half steps"). The breaks this moved are in
+defaultConflicts.ts: LTS 3 and 3.5 on their edges, LTS 4 against Avoid in grey (1.07:1) and for a
+deuteranope (1.09:1), the protected-lane rail 13.4 from the magenta; LTS 3 against LTS 4 for a
+deuteranope (23.2 now) and LTS 4's greyscale order are no longer reported. The 371 notes below
+are history: where they name LTS 4's orange, that is 3.5's look now.
 
 **371** (the owner, on the final preview: "Apply both"): the near-black ring and the
 yellow #f3c81a are applied. The ring (#1c1917, a pixel outside the edge) is drawn on the
@@ -4130,12 +4147,13 @@ the failure this produced.
   are Maryland's alone. The installer reads the year from the layer's fields
   (`routemaker.mdot_aadt.current_year`: the newest `AADT_<year>` plus one) where
   no `--volume-year` is typed, and leaves out rows whose `LOC_ERROR` says the
-  line is misplaced. And the rebuild gives a divided road's second carriageway
-  the count conflation gave the first (`conflation.share_with_carriageways`):
+  line is misplaced. The rebuild gives a divided road's second carriageway the
+  count conflation gave the first (`conflation.share_with_carriageways`):
   exclusivity along a count line otherwise leaves one carriageway uncounted, and
   MD 185 north of Chevy Chase Circle, the case 429 is about, is two
-  carriageways. VDOT's and DDOT's counts are not shared that way, so no tier the
-  owner has already seen moves.
+  carriageways. That began as Maryland's alone; since the owner's 2026-10-31
+  same-rules-everywhere decision it covers VDOT's and DDOT's counts too, so the
+  two halves of one divided road in Virginia or DC no longer rate apart.
 
   One `--volume-source` flag sets two things, through `SOURCE_TIERS`. `source`
   is the **precedence tier** — `locality`, `state`, `osm` — and it is the only
@@ -8025,6 +8043,13 @@ and from the I key on the junction, none away from it, and that the legend has n
 `scripts/a11y/check.mjs` reads the debugging port from `A11Y_CDP_PORT` (default 9222, as
 `run.sh` starts Chromium), so it can run beside another browser:
 `A11Y_CDP_PORT=9847 node scripts/a11y/check.mjs --port 5847`.
+
+`--shard I/N` (or `A11Y_SHARD=I/N` to `run.sh`) runs every Nth top-level section, from the Ith:
+each section is behind `if (mine())` and shares no page or state with another, so a new section
+needs the same prefix. A shard writes its check count to `a11y-count.txt` in the shots directory
+and skips the `EXPECTED` comparison; CI runs three shards on three runners (`a11y-shard`), and its
+`a11y` job is green only when all three passed and their counts add up to `EXPECTED`. Run alone, as
+at home, the check runs every section and compares with `EXPECTED` itself.
 
 ## Junction suggestions and junction overrides (FOLLOWUP-STRESS-SUGGEST, OWNER-DECISIONS 232)
 
