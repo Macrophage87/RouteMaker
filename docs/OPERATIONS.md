@@ -71,6 +71,7 @@ Contents:
 - [Deploying v0.8.1](#deploying-v081)
 - [Deploying v0.8.2](#deploying-v082)
 - [Deploying v0.9.0](#deploying-v090)
+- [Deploying v0.16.0](#deploying-v0160)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -4329,9 +4330,18 @@ the first host to run it is the first test of it.
    the extract it was made from, so a state added later reads entirely as rural
    (50 mph on unposted roads, the rural LTS 2 floor). The 2026-10-30 West Virginia
    recheck found exactly that: the list was made on 2026-09-25, West Virginia joined
-   in v0.7.0, and beta reads every Martinsburg and Charles Town street as rural. Run
-   the command above with the current extract before the next rebuild; the
+   in v0.7.0, and beta reads every Martinsburg and Charles Town street as rural. Remake
+   it with the current extract before the next rebuild, with `--extract` and
+   `--urban-areas` only: the command above also rewrites `volume.json` from just the
+   `--volume` pairs it names, which drops MDOT SHA's counts (and the 10,000-row minimum
+   does not catch it, with about 45,000 rows left). The
    `2026-10-30-owner-wv-county-roads.json` override file assumes it (fixtures/overrides/README.md).
+
+   ```sh
+   docker compose exec -T rebuild python3 scripts/install_reference_data.py \
+       --data-root /data --extract /data/extracts/source.osm.pbf \
+       --urban-areas /data/reference/inputs/tl_2024_us_uac20.geojson
+   ```
 
    **Every input path is absolute and inside the container.** A bare
    `tl_2024_us_uac20.geojson` resolves against the image's working directory,
@@ -6519,6 +6529,48 @@ front-end release" (below). No new settings: live Metrobus and train positions r
   deleting or banning the account deletes it. Behind the
   beta's password gate the MCP server (not the site) needs `ROUTEMAKER_BASIC_AUTH` as well: the key travels in its
   own header.
+
+## Deploying v0.16.0
+
+The ratings recalibration: owner rules for MDOT SHA and DDOT's levels, the same rating rules in
+every state (West Virginia's speed law), busy-street half steps, counts on both carriageways of
+divided roads, and three owner override files. No migration, no `lua/` change, no new download.
+The tag deploys the code on beta's old data (new colours, old ratings); the ratings arrive with
+the data. At home, in order, with `</dev/null` on every docker command:
+
+- [ ] **Tag and images.** Once `test` and `a11y` are green on `main`, the owner tags v0.16.0
+  (annotated). Then, before the weekly rebuild (Tuesday 08:00 UTC) or with it paused: tag the
+  running images for a rollback, `docker compose build api rebuild`, and once no rebuild job
+  is queued or running `docker compose up -d --no-deps --no-build api worker rebuild`. Then
+  the front end. The tag also starts a Play internal-testing build, though the app did not
+  change; it can be ignored.
+- [ ] **Urban areas first.** Remake `urban-areas.json` with `--extract` and `--urban-areas`
+  only ("First rebuild on a fresh host", the command under "Remake `urban-areas.json`"),
+  never with the `--volume` pairs, which would drop Maryland's counts. The `urban ways`
+  count it prints should rise from the 2026-09-25 list. Without it the rebuild stops: the
+  list has no West Virginia way.
+- [ ] **`agency-lts.json` again, on the PC.** The MDOT SHA rules exist only as the `read_as`
+  fields the v0.16.0 installer writes; an older file loads without a word and ships SHA's
+  published levels. Reinstall `moco ddot mdot-sha` with `--mdot-aadt` and `--urban-areas`
+  ("Agency stress ratings (agency-lts.json)"), read its `read by the owner's rule` lines, then
+  copy it into `$DATA_ROOT/reference/` (sudo cp, chown 10001:10001, chmod 644).
+- [ ] **The three override files, one at a time, each only after the owner confirms that
+  file:** `2026-10-30-owner-q-r-first-streets-nw.json`, `2026-10-30-owner-wv-county-roads.json`
+  (after the urban list), `2026-10-31-owner-virginia-ratings.json`. Dry run first, then
+  `--confirm` ("A deploy that changes the crossings fixture or loads access overrides", step 3).
+  No way in them is in an earlier file, so each dry run shows only creates.
+- [ ] **Rebuild** (`run_rebuild_now`, or `send-inputs.sh` for the cloud box). In the log:
+  `counts shared with N opposite carriageways (ddot, mdot-sha, vdot)`, the agency-ratings
+  `changed tier` lines, and West Virginia among the placed states.
+- [ ] **Before the swap**, the stress-change report (whole levels only; expect large West
+  Virginia moves from the urban list, and DC second carriageways moving from the 2020 Roadway
+  Block count to DDOT's 2024 count) and Review's changed-roads lists, which show the half
+  steps the report does not. Then swap, restart the routers, and check a road panel: an SHA
+  road and a DDOT-rated DC block each show a "read as" line.
+- [ ] **Beta's data:** pause the agent, `ship-data.sh`, then `receive-data.sh verify`, `files`
+  and `db --update-data`, the pre-draw, the router restarts and `sync_upstreams`, the smoke
+  test, and resume the agent. Build the data at the tagged commit: `receive-data.sh` checks the
+  bundle's commit.
 
 ## Deploying a planner and front-end release: rollback points and verification
 
