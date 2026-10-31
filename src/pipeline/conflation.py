@@ -497,7 +497,8 @@ def conflate(
     """Attach agency features to OSM ways.
 
     `along_counts` adds the second pass (`_along_counts`) for the ways no single count line
-    was a candidate for; it only adds matches, never changes or rejects one. It reads only
+    was a candidate for; it never changes or rejects a first-pass match, and lists a way it
+    refuses for a claimed stretch in `rejected`, as the first pass does. It reads only
     the lines of `along_agencies` (None: every line); the owner approved it for VDOT's counts.
     Its ways are ranked before any claims, as the first pass's are, so the input order
     decides nothing.
@@ -644,12 +645,7 @@ def conflate(
         )
     )
     for way_id, feature, coverage, _distance, spans in found:
-        # All the stretches or none: tried on copies of the lines' own claims first.
-        trial = {fid: list(claimed.get(fid, ())) for fid, _span in spans}
-        if not all(_claim(trial, fid, span) for fid, span in spans):
-            continue
-        claimed.update(trial)
-        matched[way_id] = Match(
+        match = Match(
             osm_way_id=way_id,
             feature_id=feature.feature_id,
             aadt=feature.aadt,
@@ -658,6 +654,15 @@ def conflate(
             score=coverage,
             agency=feature.agency,
         )
+        # All the stretches or none: tried on copies of the lines' own claims first. A way
+        # refused here is rejected as in the first pass, so `share_with_carriageways` can
+        # still give the other carriageway of a divided road its share.
+        trial = {fid: list(claimed.get(fid, ())) for fid, _span in spans}
+        if not all(_claim(trial, fid, span) for fid, span in spans):
+            rejected.append((way_id, match))
+            continue
+        claimed.update(trial)
+        matched[way_id] = match
         used_features.add(feature.feature_id)
 
     unmatched = [f.feature_id for f in features if f.feature_id not in used_features]

@@ -7,7 +7,7 @@ busy-street half step the owner set for every state the same day
 
 from __future__ import annotations
 
-from pipeline.conflation import AgencyFeature, conflate
+from pipeline.conflation import AgencyFeature, conflate, share_with_carriageways
 from routemaker.stress import (
     BUSY_RURAL_HIGHWAY_RULE,
     BUSY_STREET_RULE,
@@ -125,6 +125,19 @@ class TestCountsAlongAStreet:
         assert 2 in conflate([(2, beside)], [line]).matched, "alone, it would take it"
         result = conflate([(1, street), (2, beside)], [line])
         assert 1 in result.matched and 2 not in result.matched
+
+    def test_the_other_carriageway_it_refuses_still_gets_its_share(self) -> None:
+        """Both carriageways of a divided street bend the same way: one takes the count, the
+        other is refused the claimed stretch, and is listed so it can share the count."""
+        north = BENT_STREET
+        south = [(lon, lat - 0.0001) for lon, lat in BENT_STREET]
+        line = feature("f1", LONG_LINE, 9_000)
+        result = conflate([(1, north), (2, south)], [line])
+        assert 1 in result.matched and 2 not in result.matched
+        assert 2 in {way for way, _match in result.rejected}
+        names = {1: "Main Street", 2: "Main Street"}
+        shared = share_with_carriageways(result, {1, 2}, names, ("vdot",))
+        assert shared[2].aadt == 9_000
 
     def test_which_of_two_bent_streets_takes_it_does_not_hang_on_their_order(self) -> None:
         near = BENT_STREET

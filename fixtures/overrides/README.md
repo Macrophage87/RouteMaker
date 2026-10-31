@@ -567,12 +567,16 @@ in the database still names it: delete that row in the admin when loading the fi
   Virginia's joining the map). Stress rows, hidden, with fingerprints. Remake
   `urban-areas.json`, then load like the others; takes effect on the next rebuild.
 
-- `2026-10-31-owner-virginia-ratings.json`: Northern Virginia, 132 ways (about 31 mi), from
+- `2026-10-31-owner-virginia-ratings.json`: Northern Virginia, 93 ways (about 22 mi), from
   the Virginia ratings recheck. The owner, 2026-10-31: "Let's go with all these". P4:
-  two-lane Fairfax County streets the county posts at 35 mph and OSM carries no speed for,
-  counted above 1,500 a day and rated LTS 3, go to LTS 3.5 below 5,000 a day and LTS 4
-  from 5,000 (43 ways). P8: such streets rated LTS 2 go to 2.5 at 1,500 a day or less,
-  and follow P4 above it (28 ways). A way along several count blocks takes the busiest.
+  two-lane Fairfax County streets VDOT's speed limit records post at 35 mph and OSM
+  carries no speed for, counted above 1,500 a day and rated LTS 3, go to LTS 3.5 below
+  5,000 a day and LTS 4 from 5,000 (26 ways). P8: such streets rated LTS 2 go to 2.5 at
+  1,500 a day or less, and follow P4 above it (6 ways). A way along several count blocks
+  takes the busiest. Only ways VDOT's own speed limit layer posts at 35 mph are kept (the
+  owner, 2026-10-31: "Keep 32, cite VDOT"; docs/SOURCES.md, "VDOT posted speed limits"):
+  of the 71 ways Fairfax County's layer showed at 35, VDOT posts 35 on 32, 25 or 30 on
+  16, has no record within 20 m on 19 and mixed zones on 4, and those 39 are dropped.
   R2, the owner's pick "Only the calmest to 1.5": Arlington residential streets with no
   VDOT count and no bike lane, rated LTS 2, that Arlington's Bike Comfort Index shows
   under 1,000 a day at an 85th-percentile 23 mph or less, go to LTS 1.5 (61 ways). Owner
