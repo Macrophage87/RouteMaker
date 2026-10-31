@@ -263,14 +263,14 @@ test("the stress bar and the swatches carry Avoid's own pattern, in the tier's c
   assert.match(rule, /repeating-linear-gradient\(45deg, var\(--seg-accent/);
   assert.match(rule, /repeating-linear-gradient\(-45deg, var\(--seg-accent/, "a cross-hatch, which no other tier has");
   for (const n of [2, 3, 4]) {
-    assert.doesNotMatch(css.match(new RegExp(`\\.stress-seg-${n} \\{([^}]*)\\}`))?.[1] ?? "", /var\(--seg-accent/);
+    assert.doesNotMatch(css.match(new RegExp(`\\.stress-seg-${n},\\n\\.stress-seg-${n}h \\{([^}]*)\\}`))?.[1] ?? "missing", /var\(--seg-accent|missing/);
   }
   for (const palette of Object.keys(PALETTES)) {
     const avoid = tiersFor(palette)[4];
     assert.ok(contrastRatio(avoid.casing, avoid.color) >= 3, `${palette}: the hatch is ${contrastRatio(avoid.casing, avoid.color).toFixed(2)}:1 on the fill`);
   }
   const app = appSource();
-  assert.ok((app.match(/--seg-accent/g) ?? []).length >= 2, "both the bar's segments and the list's swatches set the accent");
+  assert.ok((app.match(/segmentStyle\(s\)/g) ?? []).length >= 2, "both the bar's segments and the list's swatches set the accent (segmentStyle, stressBar.ts)");
 });
 
 // ---------------------------------------------------------------------------
