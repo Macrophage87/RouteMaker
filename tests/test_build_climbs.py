@@ -22,6 +22,7 @@ from django.core.management.base import CommandError
 from django.db import connection
 
 from pipeline import climb_layer
+from pipeline.extract import close_writer
 
 db = pytest.mark.django_db(transaction=True)
 
@@ -61,7 +62,7 @@ def extract(path, ways=None, nodes=None) -> None:
         for way_id, tags in sorted((ways or {}).items()):
             writer.add_way(Way(id=way_id, nodes=[1, 2], tags=tags))
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 def ramp_tile(root) -> None:

@@ -17,7 +17,7 @@ import pytest
 from django.conf import settings
 from django.db import connection
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def insert_segment(schema: str, way_id: int, ordinal: int, tier: int) -> None:

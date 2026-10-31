@@ -32,8 +32,8 @@ draws as a marker on the route.
 ## 2. Which roads count
 
 A junction costs something only if it involves a **busy road**, meaning tier 3 or
-higher (`BUSY_TIER = 3`, `:60`), after a multi-lane road the rider gives way to is read
-by its traffic (below). Where two neighborhood streets (LTS 1 or 2) meet,
+higher (`BUSY_TIER = 3`, `:60`), after every road at the junction is read by its
+traffic (below). Where two neighborhood streets (LTS 1 or 2) meet,
 nothing is charged. `cost_of` gives a stop sign or an all-way stop there a token 0.002
 calm mi [3 m; 10 ft] (`NEIGHBOURHOOD_STOP_FT`, `:91`, used at `:577-580`), but such a
 junction makes no event (`assess`, `:706-707`), and a route's junction cost is the sum of
@@ -43,25 +43,57 @@ sign when it is safe. Tier 5 (Avoid) is priced as tier 4: every table gives tier
 tier 4 value (`:70`, `:76`, `:216`, `:233`, `:238`), and the severe tier of section 3
 takes both (`SEVERE_MIN_TIER = 4`, `:151`).
 
-**A road the rider gives way to is read by its traffic** (`by_traffic`, `traffic_tier`).
-A road's tier is the stress of riding along it, and a painted lane lowers it; a rider
-waiting at a stop sign to cross it, or to turn onto it, gets nothing from that lane, only
-gaps in its through lanes. The owner, 2026-10-26, of Sheridan St NW across Piney Branch
-Rd NW (a stop on Sheridan, none on Piney Branch, which is LTS 2 for its bike lanes): "a
-busy 2 lane each way road ... this intersection should be weighted much more highly." So
-where the rider gives way (a stop sign on their side, or nothing mapped and the rider's
-road no busier on the map), a multi-lane road (two or more through lanes each way, or three
-or more on a one-way) is read at the tier its traffic alone gives it, when that is higher:
-Furth's mixed-traffic multi-lane row, LTS 3 above 20 mph and LTS 4 from 30 mph [48 km/h],
-but LTS 3 at 30 mph where a count shows 8,000 vehicles a day or fewer (the classifier's
-busy-street figure; from 35 mph [56 km/h] it is LTS 4 whatever the count). It never
-lowers a road. Signals, all-way stops, a road closed to cars at the ride's time, a
-two-lane one-way, a divided road's two-lane carriageways (crossed one direction at a time,
-with a refuge between), riding straight on from one multi-lane road into the next, and
-the Mass Ride reading are left alone. The event still names the road's tier on the map; its words give the lanes and
-speed ("Crossing a 4-lane 30 mph (48 km/h) road, stop sign on your side"). Piney Branch
-at Sheridan is now red: 0.85 calm mi [1.37 km; 4,500 ft], and at weekday rush hour 1.86
-calm mi [3.0 km; 9,840 ft], the floor for any unsignalized LTS 4 crossing (section 7).
+**Every road at a junction is read by its traffic** (`by_traffic`, `traffic_level`).
+A road's tier is the stress of riding along it, and a bike lane, painted or protected,
+lowers it. A rider crossing the road, turning onto it or turning left across it gets
+nothing from that lane, only gaps in its through traffic. The owner, 2026-10-26, of
+Sheridan St NW across Piney Branch Rd NW (LTS 2 for its bike lanes): "a busy 2 lane each
+way road ... this intersection should be weighted much more highly"; then 2026-10-31: "a
+protected bike lane on a busy road is just as hard to cross. Would it make more sense to
+just switch to something like: traffic volume, speed, number of lanes to cross, and
+intersection type?", picking "Traffic only, everywhere". So every road at a junction (the
+roads crossed, joined and turned off, and the rider's own for who has the right of way) is
+read at the level its traffic alone gives it, when that is higher than its map level, at
+every control; the control then prices it as sections 3 to 7 say. It never lowers a road.
+
+- **Two or more through lanes each way, or three or more on a one-way:** Furth's
+  mixed-traffic multi-lane row, LTS 3 above 20 mph and LTS 4 from 30 mph [48 km/h], but LTS
+  3 at 30 mph where a count shows 8,000 vehicles a day or fewer (from 35 mph [56 km/h] it is
+  LTS 4 whatever the count). There is no urban relief here: those are the lanes to cross.
+- **One lane each way, or a one-way of one or two lanes** (crossed in one gap of one
+  direction's traffic): the classifier's own single-lane mixed-traffic reading with its count
+  (`stress.single_lane_traffic_level`, pinned against the classifier in
+  tests/test_junction_traffic.py): LTS 1 at 20 mph or less (LTS 2 there above 1,500 a
+  day), LTS 2 at 25 mph, 3 at 30, 4 from 35; a count of 1,500 or
+  fewer a day one level lower (to 35 mph), 8,000 or more one level higher; 2.5 from 5,000 a
+  day at LTS 2; and in a city two-way street at LTS 3, 3.5 from 12,000 and 4 from 20,000.
+
+A narrower road with no posted speed (the classifier read its own street default there,
+such as 25 mph on a residential street, which the table does not keep; the statutory
+default it does keep, Maryland's 30 in town or 50 to 55 in the country, would rate a quiet
+street busy), a road with no speed at all, a road closed to cars at the ride's time, and the
+Mass Ride reading keep the map's level. Where the rider's own road cannot be read by its traffic (no posted
+speed) and nothing controls the junction, a tie for the right of
+way with a road only its traffic raised goes to the
+rider, as the map has it: an unposted LTS 3 road does not give way to a bike-lane side
+street its traffic lifted to LTS 3, while a road whose traffic outranks the rider's still
+makes the rider stop. A turn off the rider's own road is read the same
+way, so a left off a protected lane on a busy road costs what the same left off the road
+does. And a junction is priced by traffic even where an agency or the owner rated the road
+low for riding along it: those ratings no longer lower a junction. A divided road's
+carriageway is read as a one-way of its own lanes, with the road's two-way count: unlike
+the classifier, which reads the whole road as two-way, the city steps at 12,000 and 20,000
+a day do not apply to it (the median refuge credit, section 4, then counts the two
+carriageways once). A protected lane mapped as a way of its own is a path, not part of the
+road: it has no speed and keeps its map level, and the road beside it, which carries no
+lane credit, is read by its own traffic. The segment table does not keep the road
+class, so a quiet arterial's LTS 3 floor comes only from the map. The event still names the
+road's level on the map; its words give the lanes and speed ("Crossing a 4-lane 30 mph (48
+km/h) road, stop sign on your side"). Piney Branch at Sheridan is red: 0.85 calm mi [1.37
+km; 4,500 ft], and at weekday rush hour 1.86 calm mi [3.0 km; 9,840 ft], the floor for any
+unsignalized LTS 4 crossing (section 7). A 35 mph road with one lane each way and a
+protected lane, LTS 1 on the map, now costs what the same road with no lane does: the same
+red crossing from a stop, and a signalised crossing at the LTS 4 price.
 
 ## 3. Crossing a busy road, from the stopped side
 
@@ -273,9 +305,11 @@ Everything above is built. These points are not settled:
   implemented, because the router data does not carry those tags (`:229-232`).
 - **The classifier's default speeds** (decision 469): 469 asks that the classifier read
   the same statutory defaults wherever it needs a speed. It does in the District (20 mph
-  [32 km/h]). In Maryland's and Virginia's urban areas it still reads the MDOT imputation
-  by road class, 25 to 35 mph [40 to 56 km/h] (`MD_VA_URBAN_DEFAULT_MPH`,
-  `src/routemaker/stress.py:207-222`), and outside them one table for both states. Moving
+  [32 km/h]). In Maryland's urban areas it still reads the MDOT imputation by road
+  class, 25 to 35 mph [40 to 56 km/h] (`MD_URBAN_DEFAULT_MPH`); Virginia's and West
+  Virginia's read the same with minor roads at their law's 25 (`VA_WV_URBAN_DEFAULT_MPH`;
+  both in `URBAN_DEFAULT_MPH`, `src/routemaker/stress.py`), and outside urban areas one
+  table for every state. Moving
   it would change tiers on many roads, so it waits for the owner. Only the junction cost
   reads the statutory figures ([classification.md](classification.md)).
 - **Calm miles and "rush hour" in the interface** (decisions 467 and 468a): each

@@ -1700,7 +1700,9 @@ def test_a_marker_that_does_not_match_the_deployed_release_is_broken(beta: Beta)
 
 
 def _hold_the_lock(beta: Beta, seconds: str) -> subprocess.Popen:
-    holder = subprocess.Popen(["flock", str(beta.cd / "lock"), "sleep", seconds])
+    # -o: `sleep` does not inherit the lock, so killing flock releases it. Without it the
+    # orphaned `sleep 30` held the lock on, and the 3 s phase below waited out all 30.
+    holder = subprocess.Popen(["flock", "-o", str(beta.cd / "lock"), "sleep", seconds])
     for _ in range(100):
         probe = subprocess.run(["flock", "-n", str(beta.cd / "lock"), "true"], check=False)
         if probe.returncode != 0:
