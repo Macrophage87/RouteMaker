@@ -39,6 +39,8 @@ import {
   POST_SLACK_MS,
   MIN_POST_GAP_MS,
   SLOWEST_PACE_MS,
+  FASTEST_PACE_MS,
+  postDue,
   paceMs,
   postSoonAfter,
   project,
@@ -649,12 +651,12 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.match(app, /const closeJoin = \(\) => \{\s*setJoinAsk\(null\);\s*setJoinHeld\(false\);/);
   assert.match(group, /\{controls && \(\s*<div className="ride-group-bar">/);
   // A role change moves the next post up, and the post sends the consent's (new) role.
-  assert.match(group, /const changeRole[\s\S]*?keepConsent\(ride, consent\.answer, Date\.now\(\), undefined, undefined, role\)[\s\S]*?share\.current\.lastPost = postSoonAfter\(share\.current\.lastPost\)/);
+  assert.match(group, /const changeRole[\s\S]*?keepConsent\(ride, consent\.answer, Date\.now\(\), undefined, undefined, role\)[\s\S]*?share\.current\.lastPost = postSoonAfter\(share\.current\.lastPost, pace\)/);
   assert.match(group, /\}, \[ownFix, front, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home, pace\]\);/);
   // Held back (an hour in one spot, or at Home): the dot goes at once, and none is sent until the rider moves on.
   assert.match(group, /const held = dotHeldBack\(dwell\.current, fix, t, home\);/);
   assert.match(group, /if \(held\) void leaveRide\(origin, ride, token\);/);
-  assert.match(group, /if \(near && !held && t - share\.current\.lastPost >= Math\.max\(POST_EVERY_MS, pace\) - POST_SLACK_MS\)/);
+  assert.match(group, /if \(near && !held && postDue\(t, share\.current\.lastPost, pace\)\)/);
   // A kept Yes from another tab is asked again; a ride that ends stops the dot and asks again next ride.
   assert.match(group, /const askAgain = !leading && kept\?\.answer === "yes" && !answeredHere\(id\);/);
   assert.match(group, /setShareOn\(kept\?\.answer === "yes" && !askAgain\);/);
@@ -719,15 +721,23 @@ test("review: on an out-and-back the pass nearest the last place along the route
 });
 
 test("review: a role change posts as soon as the server takes a position, with the new role", async () => {
-  // The next goes a second after the server's minimum (3 s at any pace), at 5 s; at a big ride's slower pace,
-  // later, never sooner. Never posted: at once.
-  assert.equal(postSoonAfter(100_000) + POST_EVERY_MS - POST_SLACK_MS, 100_000 + MIN_POST_GAP_MS + 1_000);
-  for (const pace of [POST_EVERY_MS, 10_000, SLOWEST_PACE_MS]) {
-    assert.ok(postSoonAfter(100_000) + Math.max(POST_EVERY_MS, pace) - POST_SLACK_MS >= 100_000 + MIN_POST_GAP_MS + 1_000);
-  }
-  // A steady post at any pace is at least 1.5 s past the server's minimum.
-  assert.ok(POST_EVERY_MS - POST_SLACK_MS - MIN_POST_GAP_MS >= 1_500);
-  assert.ok(103_000 - postSoonAfter(0) >= POST_EVERY_MS);
+  // The next goes a second after the server's minimum (1 s at any pace), and never later than at the ride's pace.
+  // Never posted: at once.
+  const due = (pace: number) => {
+    let t = 100_000;
+    while (!postDue(t, postSoonAfter(100_000, pace), pace)) t += 50;
+    return t - 100_000;
+  };
+  assert.equal(due(POST_EVERY_MS), MIN_POST_GAP_MS + 1_000);
+  assert.equal(due(SLOWEST_PACE_MS), MIN_POST_GAP_MS + 1_000);
+  assert.equal(due(FASTEST_PACE_MS), MIN_POST_GAP_MS + 1_000);
+  // A steady post at the fastest pace is still a second past the server's minimum, which is the server's own.
+  assert.ok(FASTEST_PACE_MS - POST_SLACK_MS - MIN_POST_GAP_MS >= 1_000);
+  const server = readFileSync(new URL("../../../src/core/ride_presence.py", import.meta.url), "utf8");
+  assert.match(server, new RegExp(`^MIN_POST_INTERVAL_S = ${MIN_POST_GAP_MS / 1000}$`, "m"));
+  assert.match(server, new RegExp(`^PACE_S = \\(\\(20, ${FASTEST_PACE_MS / 1000}\\), \\(300, ${POST_EVERY_MS / 1000}\\)`, "m"));
+  assert.match(server, new RegExp(`^SLOWEST_PACE_S = ${SLOWEST_PACE_MS / 1000}$`, "m"));
+  assert.ok(postDue(103_000, postSoonAfter(0), POST_EVERY_MS));
   const store = new Memory();
   keepConsent("r9", "yes", 0, store);
   const kept = keepConsent("r9", "yes", 1, store, undefined, "corker");
@@ -789,15 +799,18 @@ test("joining a broadcast: the route's buttons and the dot question on one scree
   assert.match(group, /if \(!keyless \|\| !controls\) return joinSheet;/);
 });
 
-test("the dots go every 5 s, or at the slower pace the server sets for a very big ride", () => {
-  // Stephen 2026-10-31: "15 seconds is not enough to see slowdowns"; the server's read says the pace (every_s).
+test("the dots go at the pace the server sets: 2 s on a ride of 20 sharing, 5 s, slower on a very big ride", () => {
+  // Stephen 2026-10-31: "15 seconds is not enough to see slowdowns", "If we limit to maybe 20 people at once, how
+  // low could that get?"; the server's read says the pace (every_s).
   assert.equal(POST_EVERY_MS, 5_000);
   assert.equal(paceMs(undefined), 5_000);
+  assert.equal(paceMs(2), 2_000);
   assert.equal(paceMs(10), 10_000);
-  assert.equal(paceMs(1), 5_000, "never faster than 5 s");
+  assert.equal(paceMs(1), FASTEST_PACE_MS, "never faster than 2 s");
   assert.equal(paceMs(600), SLOWEST_PACE_MS, "never slower than 15 s");
   assert.equal(paceMs("10"), 5_000);
   const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
   assert.match(group, /setPace\(got\.paceMs\);/);
-  assert.match(group, /const id = window\.setInterval\(\(\) => void poll\(\), pace\);\s*return \(\) => window\.clearInterval\(id\);\s*\}, \[ride, token, poll, pace\]\);/);
+  assert.match(group, /const id = window\.setInterval\(\(\) => void poll\(\), pace\);\s*const tick = window\.setInterval\(\(\) => setNow\(Date\.now\(\)\), shareOn \? Math\.min\(TICK_MS, pace \/ 2\) : TICK_MS\);[\s\S]*?\}, \[ride, token, poll, pace, shareOn\]\);/);
+  assert.match(group, /if \(near && !held && postDue\(t, share\.current\.lastPost, pace\)\) \{/);
 });

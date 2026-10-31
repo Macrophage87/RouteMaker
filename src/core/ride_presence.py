@@ -59,21 +59,29 @@ from random import SystemRandom
 # How long a dot lives after its last reading (the plan: "kept only in server memory for 2
 # minutes"; the front end draws it gone at the same age).
 DOT_TTL_S = 120
-# How often a phone sends its dot and asks for the others: every 5 s on an ordinary ride, slower on
-# a very big one (Stephen 2026-10-31: "15 seconds is not enough to see slowdowns", "Make as cheap
-# as possible and try to get it down", "settle where it makes sense"). Each write rewrites the
+# How often a phone sends its dot and asks for the others: every 2 s while 20 or fewer share
+# (Stephen 2026-10-31, "If we limit to maybe 20 people at once, how low could that get?": below 2 s
+# the dot moves less than its GPS wanders), every 5 s up to 300, slower on a very big ride
+# (Stephen 2026-10-31: "15 seconds is not enough to see slowdowns", "Make as cheap as possible and
+# try to get it down", "settle where it makes sense"). Each write rewrites the
 # ride's whole file under its one lock, and its cost grows with the riders in it (measured
 # 2026-10-31 on tmpfs: about 0.03 ms at 50 riders, 1 ms at 300, 3 ms at 1,000, 10 ms at 3,000;
 # the size of a dot hardly counts), so the pace keeps the lock well under half busy. The read
 # answer carries the pace ("every_s") and the phone follows it.
-PACE_S = ((300, 5), (1000, 10))
+PACE_S = ((20, 2), (300, 5), (1000, 10))
 SLOWEST_PACE_S = 15
-# A position sooner than this after the last is refused (429), at any pace.
-MIN_POST_INTERVAL_S = 3
+# One who only watches (no dot of its own: on a big ride, most riders while its marshals share,
+# Stephen 2026-10-31) reads no faster than this: each read is a request to the api (about 1 ms of
+# its CPU measured, before nginx), so 1,000 watching at 5 s is some 200 a second.
+WATCH_PACE_S = 5
+# A position sooner than this after the last is refused (429), at any pace: well under the 2 s
+# pace, so a post held up on a phone's network is not refused when the next arrives quickly (the
+# ride's own write count and the address limit bound a phone that posts this often).
+MIN_POST_INTERVAL_S = 0.5
 # A device asks for the dots no sooner than this (429).
-MIN_POLL_INTERVAL_S = 3
+MIN_POLL_INTERVAL_S = 1
 # The most anything is kept: a token (and its counts) is forgotten this long after its phone last
-# read or sent anything; a phone in front reads every 5 to 15 s, so its limits hold while it rides.
+# read or sent anything; a phone in front reads every 2 to 15 s, so its limits hold while it rides.
 KEEP_S = 120
 # How often a read writes the ride's own note that its phone still reads (well inside KEEP_S).
 POLL_STAMP_S = 60
@@ -570,12 +578,10 @@ def post_position(ride_id: str, token: str, sealed, now: Callable[[], float] = t
         _counted(state, t)
         rider = _rider(state, token, t)
         last = rider.get("posted", 0)
-        # The 5 s pace's floor on every ride: a bigger ride is slowed by the pace its reads say,
-        # never by refusing the posts of phones that have not read the new pace yet.
+        # One floor on every ride: a bigger ride is slowed by the pace its reads say, never by
+        # refusing the posts of phones that have not read the new pace yet.
         if t - last < MIN_POST_INTERVAL_S:
-            raise Refused(
-                429, "Too soon; the next position goes in a few seconds.", MIN_POST_INTERVAL_S
-            )
+            raise Refused(429, "Too soon; the next position goes in a few seconds.", 1)
         rider.update(sealed=kept, at=t, posted=t)
 
 
@@ -659,7 +665,11 @@ def read(ride_id: str, token: str, now: Callable[[], float] = time.time, leader:
                 dot["leader"] = True
             dots.append(dot)
         alerts = [_alert_out(a, token, t) for a in state["alerts"] if "sealed" in a]
-        every = pace_s(len(state["riders"]))
+        # The pace counts the dots shared, not every token kept (an alert's sender, one whose
+        # dot has gone): 20 marshals sharing stay at 2 s when a watcher sends an alert.
+        every = pace_s(sum(1 for r in state["riders"].values() if "sealed" in r))
+        if rider is None or "sealed" not in rider:
+            every = max(every, WATCH_PACE_S)
         path = None
         if leader:
             for other, r in state["riders"].items():
@@ -684,7 +694,7 @@ def read(ride_id: str, token: str, now: Callable[[], float] = time.time, leader:
 # Each process's own note of when a token last read, for the poll limit between the ride's
 # written stamps (POLL_STAMP_S), kept only as long as the limit (MIN_POLL_INTERVAL_S). A phone's
 # reads may reach any worker, so between stamps the limit holds per process: with W workers a
-# token can read about W times in 3 s, still within the address limit (ratelimit.RIDE_LINKS).
+# token can read about W times a second, still within the address limit (ratelimit.RIDE_LINKS).
 _polls: dict[tuple[str, str], float] = {}
 _polls_lock = threading.Lock()
 POLLS_KEPT = 20000

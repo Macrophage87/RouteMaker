@@ -146,7 +146,7 @@ def test_dots_come_in_a_fresh_order_on_every_read(clock, monkeypatch) -> None:
 
 def test_updates_are_limited_per_token(clock) -> None:
     rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
-    clock.t += rp.MIN_POST_INTERVAL_S - 1
+    clock.t += rp.MIN_POST_INTERVAL_S - 0.5
     with pytest.raises(rp.Refused) as refused:
         rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
     assert refused.value.status == 429
@@ -585,8 +585,9 @@ def test_the_endpoints_are_limited_per_address_and_writes_per_ride(client, monke
     monkeypatch.setattr(rp, "RIDE_WRITES_PER_MINUTE", 0)
     busy = _post(client, RIDE, "here", {"token": ME, "sealed": SEALED_DOT})
     assert busy.status_code == 429 and int(busy["Retry-After"]) >= 1
-    # The ride's write count is kept with the ride, never as a database row.
-    assert seen == ["ride-link"]
+    # The ride's write count is kept with the ride, never as a database row; a write counts
+    # against the address's own write limit.
+    assert seen == ["ride-post"]
     assert rp.store()._rides == {}
     monkeypatch.setattr(rp, "RIDE_WRITES_PER_MINUTE", 7500)
     seen.clear()
@@ -594,11 +595,15 @@ def test_the_endpoints_are_limited_per_address_and_writes_per_ride(client, monke
     assert seen == ["ride-link"]
     refuse.add("ride-link")
     assert client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=YOU).status_code == 429
-    # Generous: a whole ride's phones can share one carrier address (30 riders at 5 s)...
-    assert ratelimit.RIDE_LINKS.requests >= 30 * 2 * 60 // rp.PACE_S[0][1]
+    # Generous: a whole ride's phones can share one carrier address: 20 marshals at 2 s and 100
+    # watching at 5 s read...
+    marshals, fastest = rp.PACE_S[0]
+    assert ratelimit.RIDE_LINKS.requests >= marshals * 60 // fastest + 100 * 60 // rp.WATCH_PACE_S
+    # ...and the 20 marshals post, with room for alerts...
+    assert ratelimit.RIDE_POSTS.requests >= marshals * 60 // fastest + 60
     # ...yet one address cannot make a full ride of riders in a dot's 2 minutes.
     assert (
-        ratelimit.RIDE_LINKS.requests * rp.KEEP_S // ratelimit.RIDE_LINKS.window_s
+        ratelimit.RIDE_POSTS.requests * rp.KEEP_S // ratelimit.RIDE_POSTS.window_s
         < rp.MAX_RIDERS_PER_RIDE
     )
 
@@ -619,33 +624,38 @@ def test_the_api_reads_the_leader_key_from_its_header(client, clock, monkeypatch
     assert r.json()["dots"][0]["leader"] is True
 
 
-def test_the_pace_is_5_s_and_slower_only_on_a_very_big_ride(clock, monkeypatch) -> None:
-    """Stephen 2026-10-31: "15 seconds is not enough to see slowdowns", "try to get it down". An
-    ordinary ride goes every 5 s; the ride's lock sets a slower pace past 300 and 1,000 riders, and
-    the read says the pace so the phones follow it."""
-    assert [rp.pace_s(n) for n in (1, 300, 301, 1000, 1001, rp.MAX_RIDERS_PER_RIDE)] == [
-        5,
-        5,
-        10,
-        10,
-        15,
-        15,
-    ]
+def test_the_pace_is_2_s_on_a_small_ride_and_slower_only_on_a_big_one(clock, monkeypatch) -> None:
+    """Stephen 2026-10-31: "15 seconds is not enough to see slowdowns", "try to get it down", "If
+    we limit to maybe 20 people at once, how low could that get?". A ride of up to 20 sharing goes
+    every 2 s, one up to 300 every 5 s; the ride's lock sets a slower pace past 300 and 1,000
+    riders, and the read says the pace so the phones follow it."""
+    sizes = (1, 20, 21, 300, 301, 1000, 1001, rp.MAX_RIDERS_PER_RIDE)
+    assert [rp.pace_s(n) for n in sizes] == [2, 2, 5, 5, 10, 10, 15, 15]
     rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
-    assert rp.read(RIDE, YOU, now=clock)["every_s"] == 5
-    clock.t += 3
+    # The one sharing reads at the ride's pace; one only watching, at 5 s.
+    assert rp.read(RIDE, ME, now=clock)["every_s"] == 2
+    assert rp.read(RIDE, YOU, now=clock)["every_s"] == rp.WATCH_PACE_S == 5
+    clock.t += 2
     rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
     # A big ride: the read says the slower pace, and a phone that has not read it yet is not
-    # refused for posting at 5 s (only the 3 s floor holds, on every ride).
-    monkeypatch.setattr(rp, "PACE_S", ((0, 5), (1, 10)))
-    clock.t += 3
-    rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
+    # refused for posting at 2 s (only the 1 s floor holds, on every ride).
+    monkeypatch.setattr(rp, "PACE_S", ((0, 2), (1, 10)))
     clock.t += 2
+    rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
+    clock.t += 0.25
     with pytest.raises(rp.Refused) as refused:
         rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
-    assert refused.value.retry_after_s == rp.MIN_POST_INTERVAL_S == 3
-    clock.t += 3
+    assert rp.MIN_POST_INTERVAL_S == 0.5 and refused.value.retry_after_s == 1
+    clock.t += 1
     assert rp.read(RIDE, YOU, now=clock)["every_s"] == 10
+    assert rp.read(RIDE, ME, now=clock)["every_s"] == 10
+    # The pace counts dots, not tokens: 20 sharing and a watcher who sends an alert stay at 2 s.
+    monkeypatch.setattr(rp, "PACE_S", ((1, 2), (300, 5)))
+    clock.t += rp.ALERT_MIN_INTERVAL_S
+    rp.send_alert(RIDE, THEM, SEALED_DOT, now=clock)
+    rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
+    assert rp.read(RIDE, ME, now=clock)["every_s"] == 2
+    assert rp.read(RIDE, THEM, now=clock)["every_s"] == rp.WATCH_PACE_S
     # Positions at that pace fit the ride's own write count.
     assert rp.MAX_RIDERS_PER_RIDE * 60 // rp.SLOWEST_PACE_S <= rp.RIDE_WRITES_PER_MINUTE
     assert max(most * 60 // every for most, every in rp.PACE_S) <= rp.RIDE_WRITES_PER_MINUTE

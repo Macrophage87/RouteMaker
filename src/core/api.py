@@ -7586,7 +7586,8 @@ def report311_send(request):
 # is counted against its address. A write is counted against its ride inside the write itself,
 # under the ride's one lock (ride_presence._counted).
 RIDE_READ_GUARDS = (ratelimit.rate_limited(ratelimit.RIDE_LINKS), same_site_editor, errors_as_json)
-RIDE_WRITE_GUARDS = RIDE_READ_GUARDS
+# Writes have their own, smaller, address limit (ratelimit.RIDE_POSTS: they make riders).
+RIDE_WRITE_GUARDS = (ratelimit.rate_limited(ratelimit.RIDE_POSTS), same_site_editor, errors_as_json)
 
 
 def _ride_call(request, fn):

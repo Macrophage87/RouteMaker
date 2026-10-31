@@ -12,7 +12,7 @@
  *   answers), Lead line, Sweep or Corker, kept with the answer and changeable beside "Show me as a dot". The
  *   role goes with each position and comes back on each dot; still no name. It is self-declared: a ride link
  *   has no sign-in, so a role says what the rider chose, nothing more.
- * - Your dot is sent about every 5 s (slower on a very big ride: the server sets the pace) while the app is open and in front (never in the background), and only
+ * - Your dot is sent about every 2 s on a ride of 20 or fewer, 5 s on a bigger one (slower on a very big ride: the server sets the pace) while the app is open and in front (never in the background), and only
  *   while you are within a quarter mile (400 m) of the route line. Sharing ends when you turn it off, close
  *   the app, are off the route for 10 minutes, or 12 hours after the ride's start (your answer).
  * - Dots show their age: under 30 s solid (with a brief pulse ring when a new reading lands), 30-90 s faded,
@@ -237,28 +237,35 @@ export const CONSENT_NO = "No";
 
 export const NEAR_ROUTE_M = 400;
 export const OFF_ROUTE_STOP_MS = 10 * 60_000;
-// Every 5 s on an ordinary ride (Stephen 2026-10-31: "15 seconds is not enough to see slowdowns", "try to get it
-// down"); a very big ride is paced slower by the server, whose read says the pace (core.ride_presence.pace_s), so
-// the dot and the reads follow it, 5 to 15 s.
+// Every 2 s while 20 or fewer share (Stephen 2026-10-31: "If we limit to maybe 20 people at once, how low could that
+// get?"), every 5 s up to 300 ("15 seconds is not enough to see slowdowns", "try to get it down"), and slower on a very
+// big ride: the server's read says the pace (core.ride_presence.pace_s), and the dot and the reads follow it, 2 to
+// 15 s. Until the first read, the ordinary 5 s.
 export const POST_EVERY_MS = 5_000;
 export const POLL_EVERY_MS = 5_000;
+export const FASTEST_PACE_MS = 2_000;
 export const SLOWEST_PACE_MS = 15_000;
 /** A post due within this of its pace still goes (the page's tick does not land on the pace exactly). */
-export const POST_SLACK_MS = 500;
+export const POST_SLACK_MS = 250;
 /** The soonest the server takes another position from the same rider, at any pace (core.ride_presence.MIN_POST_INTERVAL_S). */
-export const MIN_POST_GAP_MS = 3_000;
+export const MIN_POST_GAP_MS = 500;
 /** A role change's post goes this long after the server's soonest, for the network's own delays. */
 export const ROLE_POST_MARGIN_MS = 1_000;
 
-/** The read's pace (`every_s`) in ms, within 5 to 15 s; an answer without one is the ordinary 5 s. */
+/** The read's pace (`every_s`) in ms, within 2 to 15 s; an answer without one is the ordinary 5 s. */
 export function paceMs(everyS: unknown): number {
   const ms = typeof everyS === "number" && Number.isFinite(everyS) ? everyS * 1000 : POST_EVERY_MS;
-  return Math.min(SLOWEST_PACE_MS, Math.max(POST_EVERY_MS, ms));
+  return Math.min(SLOWEST_PACE_MS, Math.max(FASTEST_PACE_MS, ms));
 }
 
-/** After a role change: the last post moved back so the next goes a second after the server will take it (at 5 s). */
-export function postSoonAfter(lastPost: number): number {
-  return lastPost - (POST_EVERY_MS - POST_SLACK_MS - MIN_POST_GAP_MS - ROLE_POST_MARGIN_MS);
+/** Whether a post is due at `t` at the ride's pace. */
+export function postDue(t: number, lastPost: number, pace: number): boolean {
+  return t - lastPost >= pace - POST_SLACK_MS;
+}
+
+/** After a role change: the last post moved back so the next goes at least a second after the server will take one, and never later than at the pace. */
+export function postSoonAfter(lastPost: number, pace: number = POST_EVERY_MS): number {
+  return Math.min(lastPost, lastPost + MIN_POST_GAP_MS + ROLE_POST_MARGIN_MS - (pace - POST_SLACK_MS));
 }
 
 const M_PER_DEG = 111_195;

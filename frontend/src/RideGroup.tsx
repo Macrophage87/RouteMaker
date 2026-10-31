@@ -54,8 +54,7 @@ import {
   NOT_FOLLOWING_SAID,
   OTHER_MAX,
   POLL_EVERY_MS,
-  POST_EVERY_MS,
-  POST_SLACK_MS,
+  postDue,
   RIDE_ROLES,
   ROLE_QUESTION,
   SHARE_STOPPED_SAID,
@@ -318,11 +317,14 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
     say(yes ? shown : t("You are not shown. You still see the others."));
     join?.onClose();
   };
+  // How often to read and send the dot: the server's pace for this ride (lib/rideGroup.ts paceMs).
+  const [pace, setPace] = useState(POLL_EVERY_MS);
+  const lastReadAt = useRef(0);
   const changeRole = (role: RideRole) => {
     if (!ride || !consent) return;
     setConsent(keepConsent(ride, consent.answer, Date.now(), undefined, undefined, role));
     // The new role goes with the next position as soon as the server takes one (the consent change re-runs the post).
-    share.current.lastPost = postSoonAfter(share.current.lastPost);
+    share.current.lastPost = postSoonAfter(share.current.lastPost, pace);
     say(
       shareOn
         ? t("You are shown as {role}; others see it within 15 seconds.", { role: roleLabel(role) })
@@ -334,10 +336,10 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
   const [watchToken] = useState(newToken);
   const token = consent?.token ?? (broadcast ? watchToken : null);
 
-  // Seeing the others: every 5 s while the page is in front, or at the slower pace the server sets for a very big ride.
-  const [pace, setPace] = useState(POLL_EVERY_MS);
+  // Seeing the others while the page is in front: at the pace the server sets (2 s on a ride of 20 or fewer, 5 s, slower on a very big ride).
   const poll = useCallback(async () => {
     if (!ride || !token || !visible()) return;
+    lastReadAt.current = Date.now();
     const got = await readRide(origin, ride, token, fetch, followKey, seal);
     if (!got) return;
     setRead(got);
@@ -358,22 +360,24 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
   useEffect(() => {
     if (!ride || !token) return;
     void poll();
-    const tick = window.setInterval(() => setNow(Date.now()), TICK_MS);
     const onShow = () => {
-      if (visible()) void poll();
+      // Not again within a second of the last read (the server would refuse it).
+      if (visible() && Date.now() - lastReadAt.current >= 1_000) void poll();
     };
     document.addEventListener("visibilitychange", onShow);
-    return () => {
-      window.clearInterval(tick);
-      document.removeEventListener("visibilitychange", onShow);
-    };
+    return () => document.removeEventListener("visibilitychange", onShow);
   }, [ride, token, poll]);
-  // Apart from the first read: a new pace sets the next reads, without reading again at once.
+  // Apart from the first read: a new pace sets the next reads, without reading again at once. While sharing, the tick
+  // that sends a still rider's dot runs at least twice a pace; only watching, every 5 s.
   useEffect(() => {
     if (!ride || !token) return;
     const id = window.setInterval(() => void poll(), pace);
-    return () => window.clearInterval(id);
-  }, [ride, token, poll, pace]);
+    const tick = window.setInterval(() => setNow(Date.now()), shareOn ? Math.min(TICK_MS, pace / 2) : TICK_MS);
+    return () => {
+      window.clearInterval(id);
+      window.clearInterval(tick);
+    };
+  }, [ride, token, poll, pace, shareOn]);
 
   // Sharing your own dot: only while sharing and in front.
   const [front, setFront] = useState(visible());
@@ -428,7 +432,7 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
       if (held) void leaveRide(origin, ride, token);
       else share.current.lastPost = 0;
     }
-    if (near && !held && t - share.current.lastPost >= Math.max(POST_EVERY_MS, pace) - POST_SLACK_MS) {
+    if (near && !held && postDue(t, share.current.lastPost, pace)) {
       share.current.lastPost = t;
       void sendPosition(origin, ride, token, fix, consent.role, fetch, seal);
     }
