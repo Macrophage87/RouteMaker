@@ -1212,9 +1212,9 @@ unchanged, and the map marks it only on a route that rides it.
 ## Used inside the project only (no credit)
 
 These are shown nowhere: no tile, route, fixture or page carries their data
-(OWNER-DECISIONS 152, 155, 162). An owner override row may cite one as the reason for the
-owner's rating, without copying its data (the owner, 2026-10-31: "Research is fair use, we
-aren't sharing their data verbatim, just referencing").
+(OWNER-DECISIONS 152, 155, 162). An owner override row may cite one as evidence for the owner's
+rating, never copying its data verbatim (the owner, 2026-10-31: "Research is fair use, we
+aren't sharing their data verbatim, just referencing. Keep them").
 
 - Arlington County's Bike Comfort Index: internal comparison only, held outside the
   repository, while Arlington's terms are pending; cited by the owner's Virginia rows
