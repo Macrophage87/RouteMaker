@@ -42,7 +42,14 @@ from routemaker import (
     trail_facts,
 )
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
-from routemaker.stress import RURAL_EXPRESSWAY_PREFIX, USE_SIDEPATH_RULE
+from routemaker.stress import (
+    BUSY_RURAL_HIGHWAY_RULE,
+    BUSY_STREET_RULE,
+    FAST_MULTILANE_PREFIX,
+    RURAL_EXPRESSWAY_PREFIX,
+    USE_SIDEPATH_RULE,
+    VERY_BUSY_STREET_RULE,
+)
 
 # How far from the spot a way may be and still be the one the rider meant: a
 # right-click on a drawn road lands within a few metres of its centre line at
@@ -567,6 +574,9 @@ _MIXED_PARTS = {
     "shoulder read as a lane": "the shoulder read as a bike lane",
     "narrow rural road": "a narrow or winding rural road",
     "rural road floor": "a rural road open to cars, so rated at least LTS 2",
+    BUSY_STREET_RULE: "a busy city street, so half a level higher",
+    VERY_BUSY_STREET_RULE: "a very busy city street, so a level higher",
+    BUSY_RURAL_HIGHWAY_RULE: "a busy two-lane rural highway, so half a level higher",
     agency_lts.READ_AS_REASON: COUNTY_FIVE_WORDS,
 }
 _TRAIL_KINDS = {
@@ -611,6 +621,11 @@ def _rule_words(rule: str) -> str:
         posted = _SPEED.search(rule)
         where = f", posted {posted.group(0)}" if posted else ""
         return f"Rural highway-like road{where}: high stress, but often no way around"
+    if rule.startswith(FAST_MULTILANE_PREFIX):
+        # LTS 4.5 (the owner's urban 55 mph rule, 2026-10-30).
+        posted = _SPEED.search(rule)
+        where = f", posted {posted.group(0)}" if posted else ""
+        return f"Multilane highway{where}: high stress"
     if rule.startswith("legal but avoid"):
         posted = _SPEED.search(rule)
         return "Avoid: highway-like road" + (f", posted {posted.group(0)}" if posted else "")
@@ -772,6 +787,12 @@ def rating_rows(row: dict) -> list[dict]:
         level = float(rating["level"])
         if agency_lts.PROHIBITING_LEVELS.get(rating.get("agency")) == level:
             value = PROHIBITED_LEVEL_WORDS
+        elif rating.get("read_as") is not None:
+            # The owner's rules over SHA's or DDOT's level (`routemaker.mdot_sha_rules`,
+            # `routemaker.ddot_rules`): the agency's number, and the level the map uses, with why.
+            note = rating.get("note") or f"read as LTS {float(rating['read_as']):g}"
+            words = rule_words(note)
+            value = f"LTS {level:g}, {words[:1].lower()}{words[1:]}"
         elif agency_lts.map_level(str(rating.get("agency")), level) != level:
             # Montgomery's 5: the county's number, and the level the map uses for it.
             value = f"LTS {level:g}, {COUNTY_FIVE_WORDS}"
@@ -782,7 +803,7 @@ def rating_rows(row: dict) -> list[dict]:
         rows.append(_row(f"{rating['name']} rates it", value, rating["name"]))
     formula = held.get("formula")
     if formula is not None:
-        value = tier_text(int(formula))
+        value = tier_text(int(formula), held.get("formula_half") is True)
         if held.get("formula_rule"):
             value += f" ({rule_words(str(held['formula_rule']))})"
         rows.append(_row("RouteMaker's formula", value, CLASSIFIER))

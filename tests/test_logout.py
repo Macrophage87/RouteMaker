@@ -13,7 +13,7 @@ from django.utils import timezone
 
 from core.models import Session, User
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 _ids = count(98100)
 _clients = count(20)
