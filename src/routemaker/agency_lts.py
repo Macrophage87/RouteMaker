@@ -28,6 +28,7 @@ import io
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 
+from . import ddot_rules
 from .stress import Stress, StressResult
 
 # How local an agency is. Lower wins: a county's rating over a state's.
@@ -67,7 +68,9 @@ FORMULA_USED = "formula"
 # newer than the rating, but paint on a road the agency found stressful may still be a higher
 # stress lane, so the way takes LTS 2.5 rather than the formula's calmer tier (the owner,
 # 2026-10-21: "In some cases where it might be the case that it's a higher stress bike lane,
-# let's put them at 2.5"). A protected lane or a path keeps the formula's tier.
+# let's put them at 2.5"). A protected lane or a path keeps the formula's tier. For DDOT this
+# gave way on 2026-10-31 to the owner's painted-lane rule, by the traffic beside the lane
+# (`ddot_rules.painted_lane_level`; his R Street call: "formula wins on most of them").
 PAINTED_LANE_LEVEL = 2.5
 PAINTED_LANE_REASON = "a painted lane on a road the agency rated higher: LTS 2.5"
 PAINTED_LANE_USED = "painted lane"
@@ -257,6 +260,33 @@ def chosen(ratings: Iterable[AgencyRating]) -> AgencyRating | None:
     return ranked[0] if ranked else None
 
 
+def read_ddot(
+    rating: AgencyRating,
+    result: StressResult,
+    formula_level: float,
+    facility_mapped: bool,
+    painted_lane: bool,
+) -> AgencyRating:
+    """DDOT's 2020 rating as the owner's rules read it against what the formula read on the
+    way (`ddot_rules`, 2026-10-31); any other rating, or one already read, as it is."""
+    if rating.agency != ddot_rules.AGENCY or rating.read_as is not None:
+        return rating
+    found = ddot_rules.read_as(
+        ddot_rules.Block(
+            ddot=float(rating.level),
+            formula=formula_level,
+            aadt=result.volume_aadt,
+            lanes=ddot_rules.total_lanes(result.lanes, result.oneway),
+            painted_lane=painted_lane,
+            protected=facility_mapped and not painted_lane,
+        )
+    )
+    if found is None:
+        return rating
+    level, rule = found
+    return replace(rating, read_as=level, note=ddot_rules.words(rule, level))
+
+
 def apply(
     result: StressResult,
     ratings: Iterable[AgencyRating],
@@ -274,17 +304,22 @@ def apply(
     `painted_lane` too, a set-aside level above PAINTED_LANE_LEVEL raises a calmer formula tier
     to PAINTED_LANE_LEVEL. A ban (`PROHIBITING_LEVELS`) is recorded but sets no tier;
     `pipeline.agency_ratings` closes the way instead."""
-    ratings = tuple(ratings)
     formula_level = int(result.tier) + (0.5 if getattr(result, "half", False) else 0)
+    ratings = tuple(
+        read_ddot(r, result, formula_level, facility_mapped, painted_lane) for r in ratings
+    )
     # Set aside only where the old layer rates the way above the formula: a lane built since
     # makes a road calmer, never busier, and where the agency is the calmer of the two its
-    # rating stands (RL-3, the owner, 2026-10-16: "defer to local government ratings").
+    # rating stands (RL-3, the owner, 2026-10-16: "defer to local government ratings"). A
+    # rating the owner's rules already read (`ddot_rules`) has taken the facility into
+    # account and stands.
     usable = [
         r
         for r in ratings
         if not (
             facility_mapped
             and r.agency in SUPERSEDED_WHERE_FACILITY
+            and r.read_as is None
             and used_level(r) > formula_level
         )
     ]
@@ -297,7 +332,13 @@ def apply(
         if not ratings:
             return result
         set_aside_level = max((used_level(r) for r in aside), default=0)
-        if painted_lane and set_aside_level > PAINTED_LANE_LEVEL > formula_level:
+        # Replaced for DDOT by the owner's painted-lane rule (`ddot_rules`, 2026-10-31), which
+        # reads the lane by the traffic beside it; this stands only with that rule struck.
+        if (
+            painted_lane
+            and "painted-lane" not in ddot_rules.ENABLED
+            and set_aside_level > PAINTED_LANE_LEVEL > formula_level
+        ):
             tier, half = tier_of(PAINTED_LANE_LEVEL)
             return replace(
                 result,
