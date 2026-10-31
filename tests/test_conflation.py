@@ -977,13 +977,23 @@ class TestThePreparedMeasureChangesTheCostAndNothingElse:
         assert compared > 800 and partial > 50, "the region exercises partial overlaps"
 
     def test_conflate_equals_the_exhaustive_computation(self) -> None:
+        """The oracle is the single-line pass; the counts-along pass is measured below."""
         ways, features = self.region()
-        result = conflate(ways, features)
+        result = conflate(ways, features, along_counts=False)
         matched, rejected, unmatched = reference_conflate(ways, features)
         assert len(matched) > 80 and len(rejected) > 60
         assert result.matched == matched
         assert result.rejected == rejected
         assert result.unmatched_features == unmatched
+
+    def test_the_counts_along_pass_only_adds_matches(self) -> None:
+        ways, features = self.region()
+        first = conflate(ways, features, along_counts=False)
+        both = conflate(ways, features, along_agencies=None)
+        assert both.rejected == first.rejected
+        assert {k: both.matched[k] for k in first.matched} == first.matched
+        assert len(both.matched) > len(first.matched)
+        assert set(both.unmatched_features) <= set(first.unmatched_features)
 
     def test_a_probe_is_measured_against_the_segments_near_it_only(self, monkeypatch) -> None:
         """A 100 m way lying on the middle of a 500-vertex line: each probe
