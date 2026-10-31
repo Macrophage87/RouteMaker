@@ -382,6 +382,40 @@ class TestByTraffic:
         plain_left = replace(left, incoming=plain)
         assert m.assess(left).cost_ft == m.assess(plain_left).cost_ft > 0
 
+    def test_an_unposted_rider_road_is_weighed_against_the_maps_level(self) -> None:
+        # v0.16.0 release review: straight on along an unposted LTS 3 road (read at its map
+        # level), nothing mapped, across a 30 mph side street with a bike lane (LTS 2 on the
+        # map, 3 by its traffic). Both are read the same way, the map's: the rider's road is
+        # the busier, and has the right of way, as before traffic reading.
+        rider = Road(3, lanes=1, oneway=False, default_speed_mph=30.0)
+        side = Road(2, speed_mph=30, lanes=1, oneway=False)
+        j = junction(incoming=rider, outgoing=rider, crossed=(side,), control=Control.NONE)
+        assert m.cost_of(m.by_traffic(j))[0] == m.PRIORITY_SIDE_FT
+        # But an unposted street never outranks a busy road its bike lane made calm on the
+        # map: a 45 mph four-lane road with a protected lane (LTS 1 on the map, 4 by its
+        # traffic) is crossed or joined from the stopped side, as from a posted street.
+        quiet = Road(2, lanes=1, oneway=False, default_speed_mph=30.0)
+        posted_quiet = replace(quiet, speed_mph=25.0)
+        arterial = Road(1, speed_mph=45, lanes=2, oneway=False)
+        for movement, outgoing in ((Movement.STRAIGHT, None), (Movement.LEFT, arterial)):
+            crossed = (arterial,) if outgoing is None else ()
+
+            def at(street, movement=movement, outgoing=outgoing, crossed=crossed):
+                return junction(
+                    incoming=street,
+                    outgoing=outgoing or street,
+                    crossed=crossed,
+                    movement=movement,
+                    control=Control.NONE,
+                )
+
+            unposted = m.cost_of(m.by_traffic(at(quiet)))[0]
+            assert unposted == m.cost_of(m.by_traffic(at(posted_quiet)))[0] > 1_000
+        # A rider's road read by its traffic is weighed against the side street's traffic.
+        posted = replace(rider, speed_mph=30.0)
+        k = replace(j, incoming=posted, outgoing=posted)
+        assert m.cost_of(m.by_traffic(k))[0] > m.PRIORITY_SIDE_FT
+
     def test_a_three_lane_one_way_is_multilane(self) -> None:
         assert m.traffic_tier(replace(self.PINEY_BRANCH, lanes=3, oneway=True)) == 4
 

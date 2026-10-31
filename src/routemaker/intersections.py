@@ -764,7 +764,9 @@ def _table(table: dict[int, float], road: Road) -> float:
     return table[_tier(road)]
 
 
-def crossing_ft(road: Road, control: Control, rider_tier: float | None) -> float:
+def crossing_ft(
+    road: Road, control: Control, rider_tier: float | None, rider_read: bool = True
+) -> float:
     """Straight across `road` (busy) from the rider's road.
 
     The big cost is the STOPPED side against free-flowing traffic; at a signal
@@ -778,7 +780,11 @@ def crossing_ft(road: Road, control: Control, rider_tier: float | None) -> float
     # traffic is the one facing the sign.
     if control is Control.CROSS_STOP:
         return PRIORITY_SIDE_FT
-    if control is Control.NONE and rider_tier is not None and rider_tier > road.level:
+    if (
+        control is Control.NONE
+        and rider_tier is not None
+        and _rider_busier(rider_tier, road, rider_read)
+    ):
         return PRIORITY_SIDE_FT
     return min(_table(STOPPED_CROSSING_FT, road) * scale(road, stopped_side=True), MAX_CROSSING_FT)
 
@@ -846,11 +852,11 @@ def cost_of(junction: Junction) -> tuple[float, str, Road | None]:
         # Entering a busy road from a quieter one, or from the stopped side:
         # the stopped side's crossing cost, by the movement.
         factor = MOVEMENT_FACTOR_ONTO[j.movement.value]
-        base = crossing_ft(j.outgoing, j.control, _rider(j.incoming))
+        base = crossing_ft(j.outgoing, j.control, _rider(j.incoming), _read(j.incoming))
         take(min(base * factor, MAX_CROSSING_FT), f"{j.movement.value}_onto", j.outgoing)
     for road in (r for r in j.crossed if r.busy):
         if j.movement is Movement.STRAIGHT:
-            value = crossing_ft(road, j.control, _rider(j.incoming))
+            value = crossing_ft(road, j.control, _rider(j.incoming), _read(j.incoming))
             if marked_unsignalised(j):
                 value *= MARKED_CROSSING_FACTOR
             # On a busy road of its own the rider only meets a side street's
@@ -862,7 +868,8 @@ def cost_of(junction: Junction) -> tuple[float, str, Road | None]:
             )
         elif j.movement is Movement.LEFT and not j.incoming.busy and not j.outgoing.busy:
             # A left from a quiet street across one busy road to a quiet one beyond.
-            value = crossing_ft(road, j.control, _rider(j.incoming)) * MOVEMENT_FACTOR_ONTO["left"]
+            value = crossing_ft(road, j.control, _rider(j.incoming), _read(j.incoming))
+            value *= MOVEMENT_FACTOR_ONTO["left"]
             take(min(value, MAX_CROSSING_FT), "left_across", road)
     if j.slip_lane:
         # About the busiest road the channel leaves or joins.
@@ -874,6 +881,24 @@ def cost_of(junction: Junction) -> tuple[float, str, Road | None]:
         # "rolls through when safe", priced near zero.
         cost = NEIGHBOURHOOD_STOP_FT if j.control in {Control.STOP, Control.ALL_STOP} else 0.0
     return cost, kind, about
+
+
+def _read(road: Road) -> bool:
+    """Whether the rider's road can be read by its traffic (`traffic_level`)."""
+    return traffic_level(road) is not None
+
+
+def _rider_busier(rider: float, road: Road, rider_read: bool) -> bool:
+    """Whether the rider's road outranks `road` for the right of way. Both are read by their
+    traffic; where the rider's road cannot be (no posted speed on a narrow road), a tie
+    with a road only its traffic raised goes to the rider, as the map has it, so an unposted
+    LTS 3 road does not give way to a bike-lane side street its traffic lifted to LTS 3
+    (v0.16.0 release review). A road whose traffic outranks the rider's still does."""
+    if rider > road.level:
+        return True
+    if rider_read or rider < road.level or road.map_tier is None:
+        return False
+    return rider > road.map_tier + (0.5 if road.map_half and road.map_tier < 5 else 0.0)
 
 
 def _rider(road: Road) -> float | None:
