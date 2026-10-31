@@ -578,7 +578,9 @@ in the database still names it: delete that row in the admin when loading the fi
   under 1,000 a day at an 85th-percentile 23 mph or less, go to LTS 1.5 (61 ways). Owner
   rows rather than build rules because Fairfax County's GIS data is all rights reserved
   and the Bike Comfort Index has no licence yet: the rows cite the facts and copy no
-  data. P3 and P6 (county-posted 25 mph streets) were withdrawn the same day ("Let the
+  data verbatim. The R2 rows cite the Bike Comfort Index as evidence (the owner, 2026-10-31:
+  "Research is fair use, we aren't sharing their data verbatim, just referencing. Keep
+  them"). P3 and P6 (county-posted 25 mph streets) were withdrawn the same day ("Let the
   formula decide") once Virginia's urban default became 25 mph. Left out: ways the
   reviewed blocks cover less than half of, and P4 and P8 ways OSM tags with a speed limit,
   one-way, or with other than two lanes. Stress rows, hidden, with fingerprints. Load like
