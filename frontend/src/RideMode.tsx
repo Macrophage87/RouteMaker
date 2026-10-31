@@ -2418,6 +2418,7 @@ export function RideMode({
       const stack = top.classList.contains("ride-top-stack");
       if (tight) top.classList.remove("ride-corner-tight");
       if (stack) top.classList.remove("ride-top-stack");
+      top.style.removeProperty("--ride-top-fit");
       const row = getComputedStyle(top);
       const room = top.clientWidth - parseFloat(row.paddingLeft) - parseFloat(row.paddingRight);
       const buttons = [...actions.children] as HTMLElement[];
@@ -2430,12 +2431,13 @@ export function RideMode({
       // the other only where even the smallest does not fit.
       top.classList.add("ride-corner-tight");
       let fit = 1;
-      top.style.removeProperty("--ride-top-fit");
       while (actions.scrollWidth > actions.clientWidth + 1 && fit > TOP_FIT_MIN + 0.001) {
         fit = Math.max(TOP_FIT_MIN, Math.round((fit - TOP_FIT_STEP) * 100) / 100);
         top.style.setProperty("--ride-top-fit", String(fit));
       }
       const overflows = actions.scrollWidth > actions.clientWidth + 1;
+      // Stacked, each has the whole row: its words at full size again.
+      if (overflows) top.style.removeProperty("--ride-top-fit");
       if (!tight) top.classList.remove("ride-corner-tight");
       if (stack) top.classList.add("ride-top-stack");
       setCornerFits(need <= room);
