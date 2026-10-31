@@ -680,7 +680,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Move up: {place}": "پورته یې کړئ: {place}",
   "Move down: {place}": "ښکته یې کړئ: {place}",
   "{name} moved to {row} of {rows}.": "{name} د {rows} څخه {row} ته ولېږدول شو.",
-  "Dawn": "سهار",
+  "Dawn": "سپېده",
   "Sunrise": "لمر ختل",
   "Sunset": "لمر لوېدل",
   "Dusk": "ماښام",
