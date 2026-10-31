@@ -10,6 +10,7 @@ import itertools
 
 import pytest
 
+from routemaker.intersections import Control, Junction, Movement, Road, assess, traffic_level
 from routemaker.stress import classify, single_lane_traffic_level
 
 SPEEDS = (20, 25, 30, 35, 40, 45, 50)
@@ -27,10 +28,15 @@ def test_the_single_lane_reading_is_the_classifiers(speed, aadt, oneway, urban) 
     assert single_lane_traffic_level(speed, oneway, aadt, urban) == (result.tier, result.half)
 
 
-@pytest.mark.parametrize("aadt", [None, 1_000, 9_000])
-def test_a_protected_lane_is_not_in_the_reading(aadt) -> None:
-    # The same street with a protected lane rates calmer to ride along, never to cross.
-    base = {"highway": "residential", "maxspeed": "35 mph", "lanes": "2"}
-    ridden = classify(base | {"cycleway:both": "track"}, aadt=aadt)
-    crossed = single_lane_traffic_level(35, False, aadt, True)
-    assert crossed >= (ridden.tier, ridden.half)
+@pytest.mark.parametrize("urban", [True, False])
+def test_an_unposted_quiet_street_keeps_its_map_level(urban) -> None:
+    # Maryland's statutory 30 in town and 50 out of it are not what the classifier read on a
+    # residential street (its own 25), so the junction does not guess: the map stands.
+    quiet = Road(1, lanes=1, oneway=False, default_speed_mph=30.0 if urban else 50.0, urban=urban)
+    assert traffic_level(quiet) is None
+    assert (
+        assess(
+            Junction(0.0, -77.0, 38.9, Movement.STRAIGHT, Road(1), Road(1), (quiet,), Control.STOP)
+        )
+        is None
+    )

@@ -20,7 +20,7 @@ from routemaker import ridetime
 from routemaker.intersections import Control, Junction, Movement, Road
 
 QUIET = Road(2)
-LTS3 = Road(3, speed_mph=35, lanes=2)
+LTS3 = Road(3, speed_mph=25, lanes=2)  # LTS 3 by its traffic too (`by_traffic`)
 LTS4 = Road(4, speed_mph=40, lanes=3)
 ONEWAY_LTS3 = Road(3, speed_mph=30, lanes=2, oneway=True)
 

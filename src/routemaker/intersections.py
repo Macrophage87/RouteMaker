@@ -238,9 +238,10 @@ GAP_WAIT_KINDS = frozenset({"crossing", "left_onto", "straight_onto", "left_acro
 #   direction"): the classifier's own single-lane reading with its count
 #   (`stress.single_lane_traffic_level`), half steps included.
 #
-# A road with no speed (posted or statutory) or closed to cars at the ride's time keeps its
-# map level, as does the Mass Ride reading (the road's own tier, 396). The road class is
-# not in the segment table, so a quiet arterial's LTS 3 floor is the map's alone.
+# A narrower road with no posted speed, a road with no speed at all, or one closed to cars
+# at the ride's time keeps its map level, as does the Mass Ride reading (the road's own
+# tier, 396). The road class is not in the segment table, so a quiet arterial's LTS 3
+# floor is the map's alone.
 TRAFFIC_MULTILANE_EACH_WAY = 2
 TRAFFIC_MULTILANE_ONEWAY = 3
 TRAFFIC_BUSY_MPH = 20.0  # above this, multi-lane mixed traffic is LTS 3
@@ -259,15 +260,20 @@ def traffic_level(road: Road) -> tuple[int, bool] | None:
         return None
     lanes = road.lanes or 1
     if lanes >= (TRAFFIC_MULTILANE_ONEWAY if road.oneway else TRAFFIC_MULTILANE_EACH_WAY):
+        # The 2026-10-26 rule, which reads a statutory default where nothing is posted.
         if speed <= TRAFFIC_BUSY_MPH:
             return 2, False
         if speed < TRAFFIC_HEAVY_MPH:
             return 3, False
         quiet = road.aadt is not None and road.aadt <= TRAFFIC_QUIET_AADT
         return (3 if quiet and speed < TRAFFIC_ANY_COUNT_MPH else 4), False
-    tier, half = single_lane_traffic_level(
-        speed, road.oneway, road.aadt, road.urban, speed_assumed=road.speed_mph is None
-    )
+    if road.speed_mph is None:
+        # Unposted: the classifier read its own default for the street (25 mph on a
+        # residential street, a narrow rural lane's 25), which the table does not keep;
+        # the statutory default it does keep (Maryland's 30 in town, 50 to 55 out of it)
+        # would rate a quiet street busy. The map's level stands.
+        return None
+    tier, half = single_lane_traffic_level(road.speed_mph, road.oneway, road.aadt, road.urban)
     return int(tier), half
 
 
