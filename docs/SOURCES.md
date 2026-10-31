@@ -244,6 +244,19 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   of accuracy, timeliness or completeness"), the portal's terms as for the counts above.
   Fetched at rebuild time; size and sha256: the download's README, to be copied here.
 
+## VDOT posted speed limits
+
+- Credit: `VDOT`
+- Dataset: **VDOT Posted Speed Limits on State-Maintained Roads**, ArcGIS item
+  `4a41cef6e60e4ba09ac545fdf62c27a3`, layer
+  <https://services.arcgis.com/p5v98VHDX9Atv3l7/arcgis/rest/services/VDOT_Posted_Speed_Limits/FeatureServer/0>
+  ("Posted Speed Limits on VDOT maintained highways in Virginia. Updated weekly."), shown
+  on VDOT's own Speed Limits Map. Not read by the build: queried 2026-10-31 at the
+  midpoint of each Fairfax way in `fixtures/overrides/2026-10-31-owner-virginia-ratings.json`
+  (within 20 m), and only ways it posts at 35 mph keep a row, each citing the one limit
+  and route (the owner, 2026-10-31: "Keep 32, cite VDOT"). Licence: VDOT's portal
+  disclaimer, as for the counts above.
+
 ## Maryland traffic counts (MDOT SHA)
 
 - Credit: `State of Maryland (MDOT SHA)`
