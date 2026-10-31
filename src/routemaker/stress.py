@@ -361,7 +361,12 @@ UNPAVED_RURAL_DEFAULT_MPH = 30.0
 # at 25 mph instead of the statutory default, which is LTS 2 on the single-lane
 # row; the rural floor below keeps it from LTS 1. Region-wide ("We can do region
 # wide. The goal is also to find the long distance quiet roads"). A posted limit
-# or a count is evidence about the road and always outranks it.
+# always outranks it, and so does a count above VOLUME_QUIET. A quiet count no longer
+# switches it off (the Virginia review's R4, the owner, 2026-10-31: "Let's go with all
+# these"): VDOT counts nearly every state secondary, so a count showing a narrow road is
+# quiet had left it at LTS 3 (the 50 mph default's 4, eased a step by the count) while
+# its uncounted twins were LTS 2 - about 324 mi of Fauquier, Culpeper, Orange and west
+# Loudoun roads under 500 a day.
 NARROW_RURAL_ROAD_MPH = 25.0
 NARROW_ROAD_HIGHWAY = frozenset({"unclassified", "tertiary", "tertiary_link", "road"})
 # 18 ft: two 9 ft lanes, the narrowest two-lane road with room to pass a rider
@@ -1205,6 +1210,63 @@ def classify(
     fast = fast_multilane(tags, divided, separate_facility)
     if fast is not None and (result.tier < Stress.LTS4 or not result.half):
         return replace(result, tier=Stress.LTS4, half=True, rule=f"{fast} (Furth: {result.rule})")
+    return busy_road_steps(result, tags, urban, separate_facility)
+
+
+# The Virginia ratings review (thread "Recheck Virginia road ratings", the owner,
+# 2026-10-31: "Let's go with all these"). Calibrated on the blocks where Arlington's Bike
+# Comfort Index or Fairfax County's bike map agree with this classifier, and the owner's
+# own DC ratings (1st Street NW, two lanes at 20-25 mph, about 7,500 a day: LTS 2.5, with
+# his line at about 5,000 a day), then put to three skeptics each. Each is a half step or
+# a step on a mixed-traffic road with no bike provision and a count in hand, so the count,
+# not a default, is what moves it.
+#
+# P2 (a two-lane street at 5,000 to 7,999 a day is LTS 2.5) is the busy-street half step
+# in `_classify` (BUSY_STREET_MIN_AADT), which the owner set for every state the same day.
+# R5 (everywhere; the owner reopened item 296's "no volume lift"): a two-way city street
+# held at LTS 3 that carries BUSY_STREET_AADT or more is LTS 3.5, and from
+# VERY_BUSY_STREET_AADT LTS 4 (Arlington's Wilson Blvd and S Jefferson St, Alexandria's
+# Beauregard St; US-1 Patrick and Henry Sts at 38,000-45,000 a day). Not where a side path
+# is mapped beside it, which the router sends riders to instead.
+BUSY_STREET_AADT = 12_000
+VERY_BUSY_STREET_AADT = 20_000
+BUSY_STREET_RULE = "busy city street"
+VERY_BUSY_STREET_RULE = "very busy city street"
+# P7 (everywhere outside urban areas): a two-lane primary or trunk road carrying
+# BUSY_RURAL_HIGHWAY_AADT or more is LTS 4.5, as busy as the rural expressways the owner
+# set there (US-15 Leesburg to Point of Rocks, VA-9, US-340; US-15 runs on into Maryland,
+# which reads the same).
+BUSY_RURAL_HIGHWAY_AADT = 18_000
+BUSY_RURAL_HIGHWAY = frozenset({"primary", "trunk"})
+BUSY_RURAL_HIGHWAY_RULE = "busy two-lane rural highway"
+
+
+def busy_road_steps(
+    result: StressResult,
+    tags: dict[str, str],
+    urban: bool,
+    separate_facility: bool = False,
+) -> StressResult:
+    """The Virginia review's count-driven steps (P7, R5) over the Furth tier."""
+    aadt = result.volume_aadt
+    if aadt is None or result.oneway or not result.rule.startswith("mixed traffic"):
+        return result
+    lanes = result.lanes or DEFAULT_LANES_PER_DIRECTION
+    if urban and result.tier is Stress.LTS3 and not separate_facility:
+        if aadt >= VERY_BUSY_STREET_AADT:
+            return replace(
+                result, tier=Stress.LTS4, half=False, rule=f"{result.rule}, {VERY_BUSY_STREET_RULE}"
+            )
+        if aadt >= BUSY_STREET_AADT:
+            return replace(result, half=True, rule=f"{result.rule}, {BUSY_STREET_RULE}")
+    if (
+        not urban
+        and result.tier is Stress.LTS4
+        and tags.get("highway") in BUSY_RURAL_HIGHWAY
+        and lanes <= 1
+        and aadt >= BUSY_RURAL_HIGHWAY_AADT
+    ):
+        return replace(result, half=True, rule=f"{result.rule}, {BUSY_RURAL_HIGHWAY_RULE}")
     return result
 
 

@@ -491,8 +491,12 @@ def conflate(
     bearing_tolerance_deg: float = BEARING_TOLERANCE_DEG,
     min_overlap: float = MIN_OVERLAP_FRACTION,
     max_separation_m: float = MAX_SEPARATION_M,
+    along_counts: bool = True,
 ) -> ConflationResult:
     """Attach agency features to OSM ways.
+
+    `along_counts` adds the second pass (`_along_counts`) for the ways no single count line
+    was a candidate for; it only adds matches, never changes or rejects one.
 
     One count may reach several ways along a corridor and may not reach two ways
     lying alongside each other. See `_claim` for where that line is drawn.
@@ -608,8 +612,125 @@ def conflate(
         matched[way_id] = match
         used_features.add(feature.feature_id)
 
+    # The ways no single count line was a candidate for at all (`_along_counts`).
+    contested = {way_id for _overlap, way_id, *_rest in candidates}
+    for entry in ways if along_counts else ():
+        way_id, coordinates, *rest = entry
+        if way_id in contested or (rest and rest[0]) or len(coordinates) < 2:
+            continue
+        found = _along_counts(
+            coordinates,
+            features,
+            index,
+            prepared,
+            claimed,
+            bearing_tolerance_deg,
+            min_overlap,
+            max_separation_m,
+        )
+        if found is None:
+            continue
+        feature, coverage = found
+        matched[way_id] = Match(
+            osm_way_id=way_id,
+            feature_id=feature.feature_id,
+            aadt=feature.aadt,
+            source=feature.source,
+            year=feature.year,
+            score=coverage,
+            agency=feature.agency,
+        )
+        used_features.add(feature.feature_id)
+
     unmatched = [f.feature_id for f in features if f.feature_id not in used_features]
     return ConflationResult(matched=matched, rejected=rejected, unmatched_features=unmatched)
+
+
+# The Virginia ratings review (the owner, 2026-10-31, "Let's go with all these", item R1):
+# Fairfax's counted quiet streets were LTS 1 on 1,101 mi and LTS 2 on 486 mi of the same
+# kind, the difference being whether the count reached the way at all. Two things kept it
+# off. The bearing gate above reads a way end to end, so a curving subdivision street
+# (Falstaff Road, way 61242835: 0.58 of it along one count line) points nowhere near the
+# line it follows. And a way that runs past several count lines - OSM and VDOT break a
+# street at different junctions - is under half covered by each (Victoria Road, way
+# 8813727: 0.36, 0.20, 0.20 and 0.17 of it), so none of them is a candidate.
+#
+# So a way no count line was a candidate for is measured again the way `conflate_blocks`
+# measures a block layer: probe by probe, against the count line it runs along there,
+# with the heading taken locally. The lines that win `MIN_BLOCK_PROBES` of its probes are
+# the ones it lies along; where they between them cover `min_overlap` of the way, the way
+# takes the highest of their counts (of the best-ranked source among them), the
+# stress-averse reading of a street whose stretches were counted differently. Each line's
+# stretch is claimed as in the first pass, so a way lying alongside one that already took
+# that stretch - the other carriageway, a frontage road - still does not.
+def _along_counts(
+    coordinates: Sequence[tuple[float, float]],
+    features: Sequence[AgencyFeature],
+    index: _FeatureIndex,
+    prepared: list[_PreparedFeature | None],
+    claimed: dict[str, list[tuple[float, float]]],
+    bearing_tolerance_deg: float,
+    min_overlap: float,
+    max_separation_m: float,
+) -> tuple[AgencyFeature, float] | None:
+    """The count a way left without a candidate takes from the lines it runs along, with
+    how much of it they cover, or None. Records the stretches it claims."""
+    near = index.near(coordinates)
+    if not near:
+        return None
+    probes, headings = _probes_with_headings(coordinates, max_separation_m)
+    box = _bounds(coordinates)
+    best: list[tuple[float, int] | None] = [None] * len(probes)
+    alongs: dict[int, list[float]] = {}
+    positions: list[list[float]] = [[] for _ in probes]
+    for position in near:
+        if prepared[position] is None:
+            prepared[position] = _PreparedFeature(features[position].coordinates, max_separation_m)
+        measured = prepared[position].measure(probes, box)
+        if measured is None:
+            continue
+        for slot, (distance, along, heading) in enumerate(measured):
+            if distance > max_separation_m:
+                continue
+            delta = bearing_delta(headings[slot], heading)
+            if min(delta, 180.0 - delta) > bearing_tolerance_deg:
+                continue
+            if best[slot] is None or (distance, position) < best[slot]:
+                best[slot] = (distance, position)
+                positions[slot] = [along]
+    for slot, choice in enumerate(best):
+        if choice is not None:
+            alongs.setdefault(choice[1], []).extend(positions[slot])
+    lying_along = {
+        position: spots
+        for position, spots in alongs.items()
+        if len(spots) >= min(MIN_BLOCK_PROBES, len(probes))
+    }
+    covered = sum(len(spots) for spots in lying_along.values()) / len(probes)
+    if not lying_along or covered < min_overlap:
+        return None
+    spans = {position: (min(spots), max(spots)) for position, spots in lying_along.items()}
+    # All the stretches or none: tried on copies of the lines' own claims first.
+    trial = {
+        features[position].feature_id: list(claimed.get(features[position].feature_id, ()))
+        for position in spans
+    }
+    for position, span in spans.items():
+        if not _claim(trial, features[position].feature_id, span):
+            return None
+    claimed.update(trial)
+
+    def precedence(feature: AgencyFeature) -> int:
+        try:
+            return SOURCE_PRECEDENCE.index(feature.source)
+        except ValueError:
+            return len(SOURCE_PRECEDENCE)
+
+    chosen = min(
+        (features[position] for position in lying_along),
+        key=lambda feature: (precedence(feature), -feature.aadt, feature.feature_id),
+    )
+    return chosen, min(1.0, covered)
 
 
 def share_with_carriageways(
