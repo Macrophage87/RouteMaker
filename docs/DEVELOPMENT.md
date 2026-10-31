@@ -841,7 +841,7 @@ warm one (`HALF_PALETTES`; docs/stress/drawing.md, "Half steps"). The breaks thi
 defaultConflicts.ts: LTS 3 and 3.5 on their edges, LTS 4 against Avoid in grey (1.07:1) and for a
 deuteranope (1.09:1), the protected-lane rail 13.4 from the magenta; LTS 3 against LTS 4 for a
 deuteranope (23.2 now) and LTS 4's greyscale order are no longer reported. The rows above and
-the 371 notes below are as they were before, where they name LTS 4's orange.
+XX
 
 **371** (the owner, on the final preview: "Apply both"): the near-black ring and the
 yellow #f3c81a are applied. The ring (#1c1917, a pixel outside the edge) is drawn on the
