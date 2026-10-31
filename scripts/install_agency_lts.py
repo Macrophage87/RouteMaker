@@ -245,7 +245,8 @@ def mdot_sha(
             out = row("mdot-sha", fid, part, MDOT_LEVELS[number(p[MDOT_LEVEL_FIELD])], None, line)
             if reading:
                 out["read_as"] = reading[0]
-                out["note"] = mdot_sha_rules.words(reading[1], reading[0])
+                level_read, rule, record = reading
+                out["note"] = mdot_sha_rules.words(rule, level_read, record)
             yield out
 
 
@@ -315,7 +316,8 @@ def urban_polygons(path: Path) -> list:
 
 
 def mdot_readings(records, counts: Path | None, urban_areas: Path | None, rules) -> dict:
-    """Each record's (level, rule) where a rule reads it otherwise than SHA published."""
+    """Each record's (level, rule, stretch) where a rule reads it otherwise than SHA
+    published; the stretch is the record as the rule read it, for the panel's facts."""
     if counts is None or urban_areas is None:
         raise SystemExit(
             "mdot-sha: the owner's rules (routemaker.mdot_sha_rules) need SHA's traffic counts "
@@ -349,7 +351,7 @@ def mdot_readings(records, counts: Path | None, urban_areas: Path | None, rules)
     for fid, s in stretches.items():
         reading = mdot_sha_rules.read_as(s, rules)
         if reading is not None:
-            readings[fid] = reading
+            readings[fid] = (*reading, s)
     if "second-record" in rules:
         for second, first in mdot_sha_rules.pair_second_records(lines).items():
             mine, theirs = stretches[second], stretches[first]
@@ -357,7 +359,7 @@ def mdot_readings(records, counts: Path | None, urban_areas: Path | None, rules)
                 continue
             level = readings.get(first, (theirs.level,))[0]
             if level != mine.level:
-                readings[second] = (level, "second-record")
+                readings[second] = (level, "second-record", mine)
             else:
                 readings.pop(second, None)
     return readings

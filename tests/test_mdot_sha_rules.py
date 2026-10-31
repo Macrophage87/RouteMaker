@@ -372,7 +372,10 @@ class TestBusyRuralTwoLane:
         [
             {"aadt": 17_999},
             {"aadt": 25_000, "urban": True},
-            {"aadt": 25_000, "lanes": 4},
+            {"aadt": 25_000, "lanes": 4, "speed_mph": 50},
+            {"aadt": 25_000, "lanes": None},
+            {"aadt": 25_000, "bike_facility": "Standard"},
+            {"aadt": None},
             {"aadt": 25_000, "functional_class": 4},
             {"aadt": 25_000, "level": 3.0},
         ],
@@ -381,6 +384,23 @@ class TestBusyRuralTwoLane:
         found = read_as(_stretch(**(self.US_15 | overrides)))
         assert found is None or found[1] != "busy-rural-two-lane"
 
+    @pytest.mark.parametrize("overrides", [{"lanes": 3}, {"aadt": 18_000}, {"functional_class": 2}])
+    def test_three_lanes_the_gate_itself_and_class_2_are_taken(self, overrides) -> None:
+        found = read_as(_stretch(**(self.US_15 | {"aadt": 20_000} | overrides)))
+        assert found == (4.5, "busy-rural-two-lane")
+
     def test_it_has_its_own_switch(self) -> None:
         enabled = ENABLED - {"busy-rural-two-lane"}
         assert read_as(_stretch(**self.US_15, aadt=20_000), enabled) is None
+
+
+def test_the_panel_note_states_the_facts_the_rule_read():
+    s = _stretch(**TestBusyRuralTwoLane.US_15, aadt=21_000)
+    note = mdot_sha_rules.words("busy-rural-two-lane", 4.5, s)
+    assert note == (
+        "read as LTS 4.5: a rural two-lane highway carrying 18000 or more cars a day "
+        "(SHA's record: rural 2 lanes 55 mph posted 21000 cars a day (MDOT SHA count))"
+    )
+    assert "," not in note
+    assumed = mdot_sha_rules.words("collector-assumed-35", 3.0, _stretch())
+    assert assumed.endswith("(SHA's record: urban 2 lanes 35 mph assumed no count)")
