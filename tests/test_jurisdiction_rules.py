@@ -115,3 +115,32 @@ def test_smoothing_knows_the_busy_street_gates():
 
     assert crosses_volume_gate(6_000, 4_000)
     assert crosses_volume_gate(9_500, 8_500)
+
+
+def test_a_20_mph_street_stays_2_5_past_8000_a_day():
+    street = {"highway": "residential"}
+    for aadt in (7_999, 8_000, 25_000):
+        result = classify(street, aadt=aadt, jurisdiction="DC")
+        assert (result.tier, result.half) == (Stress.LTS2, True), aadt
+
+
+def test_smoothing_knows_the_busy_road_gates():
+    from pipeline.aadt_smoothing import crosses_volume_gate
+
+    assert crosses_volume_gate(11_000, 13_000)  # busy city street, 12,000
+    assert crosses_volume_gate(17_000, 19_000)  # busy rural two-lane, 18,000
+    assert crosses_volume_gate(19_000, 21_000)  # very busy city street, 20,000
+    assert not crosses_volume_gate(13_000, 14_000)
+
+
+def test_a_covered_state_with_no_placed_way_is_named():
+    from pipeline.states import unplaced_states
+
+    placed = {1: "DC", 2: "MD", 3: "VA"}
+    assert unplaced_states(placed) == ["WV"]
+    assert unplaced_states(placed | {4: "WV"}) == []
+
+
+def test_a_kmh_limit_reads_as_a_whole_mph():
+    road = {"highway": "primary", "maxspeed": "90 km/h", "lanes": "4"}
+    assert classify(road, urban=False).rule.startswith("multilane highway posted 56 mph")

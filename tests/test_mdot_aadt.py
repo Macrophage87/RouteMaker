@@ -171,6 +171,35 @@ class TestBothCarriageways:
         assert set(added) == {other}
         assert added[other].aadt == 39141 and added[other].agency == agency
 
+    def test_a_road_counted_along_several_lines_reaches_both_carriageways(self) -> None:
+        # Three VDOT count lines along the road, none covering half of either
+        # carriageway: the counts-along pass places them, and the carriageway
+        # whose claim fails still takes the road's count.
+        ways = [carriageway(1, WEST), carriageway(2, EAST)]
+        lines = [
+            AgencyFeature(
+                feature_id=f"vdot-{i}",
+                coordinates=[
+                    (MIDDLE[0][0], 38.9700 + 0.003 * i),
+                    (MIDDLE[0][0], 38.9730 + 0.003 * i),
+                ],
+                aadt=20_000 + i,
+                source="state",
+                year=2024,
+                agency="vdot",
+            )  # fmt: skip
+            for i in range(3)
+        ]
+        result = conflate(
+            [(w.osm_id, w.coordinates, False) for w in ways], lines, along_agencies={"vdot"}
+        )
+        added = share_with_carriageways(
+            result, divided.carriageways(ways), {w.osm_id: w.name for w in ways}, {"vdot"}
+        )
+        assert set(result.matched) | set(added) == {1, 2}
+        (other,) = set(added)
+        assert added[other].aadt == result.matched[({1, 2} - {other}).pop()].aadt
+
     def test_an_agency_left_off_the_list_is_left_as_conflation_placed_it(self) -> None:
         ways = [carriageway(1, WEST), carriageway(2, EAST)]
         _result, added = self.shared(ways, "vdot")

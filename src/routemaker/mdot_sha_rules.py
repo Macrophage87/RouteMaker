@@ -33,6 +33,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from itertools import pairwise
 
+from routemaker.stress import BUSY_STREET_MIN_AADT
+
 # Maryland's county code for Baltimore City, the first two characters of a route id.
 BALTIMORE_CITY = "24"
 
@@ -170,7 +172,7 @@ def _rule(s: Stretch) -> tuple[float, str] | None:
         and two_lane
         and speed <= 25
         and aadt is not None
-        and 5_000 <= aadt <= 15_000
+        and BUSY_STREET_MIN_AADT <= aadt <= 15_000
         and not s.bike_facility
     ):
         return 2.5, "busy-residential"

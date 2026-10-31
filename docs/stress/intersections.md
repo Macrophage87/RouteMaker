@@ -273,9 +273,11 @@ Everything above is built. These points are not settled:
   implemented, because the router data does not carry those tags (`:229-232`).
 - **The classifier's default speeds** (decision 469): 469 asks that the classifier read
   the same statutory defaults wherever it needs a speed. It does in the District (20 mph
-  [32 km/h]). In Maryland's and Virginia's urban areas it still reads the MDOT imputation
-  by road class, 25 to 35 mph [40 to 56 km/h] (`MD_VA_URBAN_DEFAULT_MPH`,
-  `src/routemaker/stress.py:207-222`), and outside them one table for both states. Moving
+  [32 km/h]). In Maryland's urban areas it still reads the MDOT imputation by road
+  class, 25 to 35 mph [40 to 56 km/h] (`MD_URBAN_DEFAULT_MPH`); Virginia's and West
+  Virginia's read the same with minor roads at their law's 25 (`VA_WV_URBAN_DEFAULT_MPH`;
+  both in `URBAN_DEFAULT_MPH`, `src/routemaker/stress.py`), and outside urban areas one
+  table for every state. Moving
   it would change tiers on many roads, so it waits for the owner. Only the junction cost
   reads the statutory figures ([classification.md](classification.md)).
 - **Calm miles and "rush hour" in the interface** (decisions 467 and 468a): each

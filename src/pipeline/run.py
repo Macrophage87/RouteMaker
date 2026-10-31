@@ -2575,6 +2575,15 @@ def build_handlers(
             # Terminal, like a refused override: a fifth attempt reads the
             # same extract and finds the same boundaries.
             raise ValidationFailed(str(missing)) from missing
+        # A covered state that placed no way (West Virginia's relation may not
+        # close in the extract): its speed law and urban defaults apply nowhere.
+        for state in states.unplaced_states(state_of):
+            logger.warning(
+                "no way placed in %s: its boundary did not close, so its speed law "
+                "and urban defaults do not apply and its ways read the old class tables "
+                '(docs/OPERATIONS.md, "The states, from the rebuild\'s own extract")',
+                state,
+            )
         # A state none of whose ways is in the urban list was left out when the
         # list was made, and every town in it would read as rural.
         unlisted = states.states_without_urban(state_of, reference.urban_way_ids)

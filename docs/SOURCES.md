@@ -1245,7 +1245,7 @@ aren't sharing their data verbatim, just referencing. Keep them").
 Where no limit is posted, junction cost reads the state's own law
 (`routemaker.stress.statutory_default_mph`). The rating reads DC's figures directly; in
 Maryland, Virginia and West Virginia towns it reads figures by road class
-(`MD_VA_URBAN_DEFAULT_MPH`, `VA_WV_URBAN_DEFAULT_MPH`) drawn from these laws:
+(`MD_URBAN_DEFAULT_MPH`, `VA_WV_URBAN_DEFAULT_MPH`) drawn from these laws:
 
 - DC: 20 mph on all streets, 15 in alleys (DDOT, "Speeding laws, fines and safety tips",
   ddot.dc.gov/page/speeding-laws-fines-and-safety-tips).

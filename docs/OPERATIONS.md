@@ -4486,8 +4486,13 @@ things beyond the tags, and none of them comes from the reference install:
   (Recommended)"), not from the `jurisdiction` table, which stays the admin's
   and is empty on a fresh deployment. The merged extract holds the District,
   Maryland, Virginia and West Virginia (`pipeline.source`); a relation that does
-  not close is dropped, its ways take the old class tables (for WV the same
-  figures), and the log says so ("state WV: ... do not close and were dropped").
+  not close is dropped, its ways take the old class tables (urban unclassified
+  and tertiary at 30 mph and primary at 40, not WV's 25 and 35), and the log
+  says so ("state WV: ... do not close and were dropped", then "no way placed in
+  WV"). After each rebuild, read the `way states:` log line and check that WV
+  has a count (tens of thousands of ways); if it reads none, the WV law and
+  urban defaults did not apply, and the rebuild should not be swapped in before
+  the owner hears about it.
   A state with 1,000 or more placed ways and none in `urban-areas.json` stops the
   rebuild: the list was made without it, and its towns would read as rural.
 - **`fixtures/cbd/`** (the DDOT CBD boundary, the federal exemptions and the

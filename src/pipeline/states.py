@@ -64,6 +64,20 @@ def states_without_urban(
     return sorted(s for s, n in totals.items() if n >= min_ways and not urban.get(s))
 
 
+# Every state the merged extract covers (`pipeline.source.GEOFABRIK_REGIONS`).
+# One of these that places no way still lets the rebuild run (only
+# REQUIRED_STATES refuse), but its law and its urban defaults then apply nowhere,
+# which the rebuild says out loud (`unplaced_states`).
+COVERED_STATES = ("DC", "MD", "VA", "WV")
+
+
+def unplaced_states(state_of: dict[int, str], covered: Sequence[str] = COVERED_STATES) -> list[str]:
+    """The covered states not one way was placed in: a boundary relation that
+    did not close (`ring` drops it), so its ways read the old class tables."""
+    placed = set(state_of.values())
+    return [s for s in covered if s not in placed]
+
+
 class StatesMissing(RuntimeError):
     """A required state's polygon is not in the extract, or placed no way."""
 
