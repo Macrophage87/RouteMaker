@@ -789,7 +789,9 @@ on the ride summary or on a Bikeshare or transit leg.</li>
 server: no track, times or distances, only what was planned. Each new plan during the ride replaces it, and End ride
 removes it. If the app closes during a ride, opening it again within 12 hours of the route's last change asks, for example,
 "Resume your ride to Union Station?": <strong>Resume ride</strong> which starts the ride again from where you are, or <strong>Not now</strong>, which
-forgets it; Escape only puts the question off until the app next opens. Roam, Ride the rest, a Roam detour and
+forgets it; Escape only puts the question off until the app next opens. A resumed ride rejoins the shared ride it
+was on, followed or led, so dots and alerts carry on; a leader leads again only while the link and its key are the
+same. Opening the app from a leader's link skips the question and joins that ride. Roam, Ride the rest, a Roam detour and
 Bikeshare or transit legs cannot be resumed yet.</li>
 <li><strong>Weather</strong> is checked once the ride knows where you are on the route, and every 5 minutes, along the rest of
 the route. A new alert is said once ("Weather alert: Severe Thunderstorm Warning until 6:45 PM.", with "until" only where
@@ -1244,7 +1246,7 @@ leader's dot, which has a wide ring round it. You see it at once, before you ans
 yourself. On a phone, a link with its leader goes straight into Ride mode, or Roam for a link shared live from Roam, with the
 leader's dot on the map from the start, and says "Following the leader live. If you hear no
 directions, tap the screen once." (a phone may keep the voice quiet until the first tap). It doesn't start over
-a ride already going or the question about resuming one. On a computer the link opens so you can watch the
+a ride already going; a kept ride's question about resuming is skipped and the link joins. On a computer the link opens so you can watch the
 leader, and a link opened in Plan follows the leader too, so someone at home can watch the ride.</li>
 <li>On a phone, once a leader's link has started your ride, one screen offers the shared route and asks
 whether to <strong>show me as a dot</strong> (below). The route's name, distance and time come first, with
