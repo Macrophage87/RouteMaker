@@ -57,6 +57,7 @@ import {
   routeJunctions,
   TRAIL_MARKER_M,
   replanPoints,
+  onHalfStep,
   rideModel,
   cueWords,
   signalsCard,
@@ -207,6 +208,21 @@ test("rideModel: a cue for the turn, the flagged crossing and the end; none for 
   assert.equal(turn.text, "Left onto B Street.");
   assert.ok(Math.abs(turn.atM - 1000) < 2, `${turn.atM}`);
   assert.ok(Math.abs(model.lengthM - 2000) < 2);
+});
+
+test("rideModel keeps the route's half-step sections along the line, for the ride summary's stress bar", () => {
+  const spans = [
+    { from_m: 0, to_m: 1500, tier: 1, facility: null },
+    { from_m: 1500, to_m: 2000, tier: 1, facility: null, half: true },
+  ] as RouteResponse["stress_spans"];
+  const model = rideModel({ ...lRoute(), stress_spans: spans });
+  assert.equal(model.halves?.length, 1);
+  assert.equal(model.halves![0].tier, 1);
+  assert.ok(Math.abs(model.halves![0].fromM - 1500) < 2 && Math.abs(model.halves![0].toM - 2000) < 2, JSON.stringify(model.halves));
+  assert.equal(onHalfStep(model, 1700, 1), true);
+  assert.equal(onHalfStep(model, 1000, 1), false);
+  // No half steps, or an older API: none kept.
+  assert.equal(rideModel(lRoute()).halves, undefined);
 });
 
 test("rideModel: a work zone on the route is a hazard cue; the disclaimer line is not a cue", () => {

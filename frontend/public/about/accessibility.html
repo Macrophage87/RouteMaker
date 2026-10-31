@@ -347,11 +347,11 @@ alone: each level has its own dash pattern and width.</p>
 <text class="ts" x="450" y="107" text-anchor="start">short dashes</text>
 <text class="tb" x="10" y="145" text-anchor="start">LTS 4</text>
 <line x1="110" y1="140" x2="430" y2="140" class="halo" stroke="#1c1917" stroke-width="12" stroke-dasharray="32 4" stroke-linecap="butt" opacity="0.25"/>
-<line x1="110" y1="140" x2="430" y2="140" stroke="#f28c28" stroke-width="10" stroke-dasharray="32 4" stroke-linecap="butt"/>
+<line x1="110" y1="140" x2="430" y2="140" stroke="#e3261c" stroke-width="10" stroke-dasharray="32 4" stroke-linecap="butt"/>
 <text class="ts" x="450" y="145" text-anchor="start">long dashes</text>
 <text class="tb" x="10" y="183" text-anchor="start">Avoid</text>
 <line x1="110" y1="178" x2="430" y2="178" class="halo" stroke="#1c1917" stroke-width="15.0" stroke-dasharray="18 5 3 5" stroke-linecap="butt" opacity="0.25"/>
-<line x1="110" y1="178" x2="430" y2="178" stroke="#111111" stroke-width="13.0" stroke-dasharray="18 5 3 5" stroke-linecap="butt"/>
+<line x1="110" y1="178" x2="430" y2="178" stroke="#d6008f" stroke-width="13.0" stroke-dasharray="18 5 3 5" stroke-linecap="butt"/>
 <text class="ts" x="450" y="183" text-anchor="start">dash and dot, thickest</text>
 </svg>
 </div>
@@ -375,11 +375,11 @@ alone: each level has its own dash pattern and width.</p>
 <text class="tb" x="10" y="210" text-anchor="start">LTS 4</text>
 <text class="ts" x="84" y="210" text-anchor="start">long dashes</text>
 <line x1="10" y1="232" x2="310" y2="232" class="halo" stroke="#1c1917" stroke-width="12" stroke-dasharray="32 4" stroke-linecap="butt" opacity="0.25"/>
-<line x1="10" y1="232" x2="310" y2="232" stroke="#f28c28" stroke-width="10" stroke-dasharray="32 4" stroke-linecap="butt"/>
+<line x1="10" y1="232" x2="310" y2="232" stroke="#e3261c" stroke-width="10" stroke-dasharray="32 4" stroke-linecap="butt"/>
 <text class="tb" x="10" y="272" text-anchor="start">Avoid</text>
 <text class="ts" x="84" y="272" text-anchor="start">dash and dot, thickest</text>
 <line x1="10" y1="294" x2="310" y2="294" class="halo" stroke="#1c1917" stroke-width="15.0" stroke-dasharray="18 5 3 5" stroke-linecap="butt" opacity="0.25"/>
-<line x1="10" y1="294" x2="310" y2="294" stroke="#111111" stroke-width="13.0" stroke-dasharray="18 5 3 5" stroke-linecap="butt"/>
+<line x1="10" y1="294" x2="310" y2="294" stroke="#d6008f" stroke-width="13.0" stroke-dasharray="18 5 3 5" stroke-linecap="butt"/>
 </svg>
 </div>
 <figcaption>The map's own dash patterns, drawn larger here. Each road's level is also said in words in its road panel.</figcaption>
@@ -658,9 +658,11 @@ reading touches nothing. A menu that closes with the focus in it hands the focus
 it to the map.</li>
 <li><strong>End ride</strong> is a slider, so it isn't ended by a stray tap; the arrow keys or End move
 it too.</li>
-<li><strong>End ride</strong> and <strong>Go round</strong> have larger text, and stay on one line on
-the narrowest phones; off the route, <strong>Reroute</strong> and <strong>Keep going</strong> sit just under them, as
-big. The round buttons down the right edge have a word under each (Locate, Text, Share live, Detour, 311, More, and Everyone above Locate while other riders' dots are on the map, shown pressed while its view is on), and a
+<li><strong>End ride</strong> and <strong>Go round</strong> share the top row, with larger text. Where their
+words do not fit on one line, they go onto two lines inside each button; where a single word is still too wide,
+the words get smaller, to half size at most; only where even that does not fit does one go under the other, at
+full size. Off the route, <strong>Reroute</strong> and <strong>Keep going</strong> sit just under them, at the
+same full size. The round buttons down the right edge have a word under each (Locate, Text, Share live, Detour, 311, More, and Everyone above Locate while other riders' dots are on the map, shown pressed while its view is on), and a
 screen reader hears each by its full name, such as "Go round: road closed ahead".</li>
 <li>When a ride ends, "Ride ended." is said and the focus goes to <strong>Done</strong>; the figures
 follow on the <strong>ride summary</strong> card. The elevation chart and the stress bar, under <strong>Details</strong>, each have a text
@@ -701,7 +703,7 @@ and screen reader names.</p>
 <p class="next">Next: <a href="/about/ride-types.html">Ride types</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.15.2. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.16.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

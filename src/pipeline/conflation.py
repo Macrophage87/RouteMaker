@@ -491,8 +491,17 @@ def conflate(
     bearing_tolerance_deg: float = BEARING_TOLERANCE_DEG,
     min_overlap: float = MIN_OVERLAP_FRACTION,
     max_separation_m: float = MAX_SEPARATION_M,
+    along_counts: bool = True,
+    along_agencies: Collection[str] | None = ("vdot",),
 ) -> ConflationResult:
     """Attach agency features to OSM ways.
+
+    `along_counts` adds the second pass (`_along_counts`) for the ways no single count line
+    was a candidate for; it never changes or rejects a first-pass match, and lists a way it
+    refuses for a claimed stretch in `rejected`, as the first pass does. It reads only
+    the lines of `along_agencies` (None: every line); the owner approved it for VDOT's counts.
+    Its ways are ranked before any claims, as the first pass's are, so the input order
+    decides nothing.
 
     One count may reach several ways along a corridor and may not reach two ways
     lying alongside each other. See `_claim` for where that line is drawn.
@@ -608,8 +617,145 @@ def conflate(
         matched[way_id] = match
         used_features.add(feature.feature_id)
 
+    # The ways no single count line was a candidate for at all (`_along_counts`).
+    contested = {way_id for _overlap, way_id, *_rest in candidates}
+    found = []
+    for entry in ways if along_counts else ():
+        way_id, coordinates, *rest = entry
+        if way_id in contested or (rest and rest[0]) or len(coordinates) < 2:
+            continue
+        along = _along_counts(
+            coordinates,
+            features,
+            index,
+            prepared,
+            along_agencies,
+            bearing_tolerance_deg,
+            min_overlap,
+            max_separation_m,
+        )
+        if along is not None:
+            found.append((way_id, *along))
+    found.sort(
+        key=lambda item: (
+            _precedence(item[1]),
+            -item[2],
+            item[3],
+            item[0],
+        )
+    )
+    for way_id, feature, coverage, _distance, spans in found:
+        match = Match(
+            osm_way_id=way_id,
+            feature_id=feature.feature_id,
+            aadt=feature.aadt,
+            source=feature.source,
+            year=feature.year,
+            score=coverage,
+            agency=feature.agency,
+        )
+        # All the stretches or none: tried on copies of the lines' own claims first. A way
+        # refused here is rejected as in the first pass, so `share_with_carriageways` can
+        # still give the other carriageway of a divided road its share.
+        trial = {fid: list(claimed.get(fid, ())) for fid, _span in spans}
+        if not all(_claim(trial, fid, span) for fid, span in spans):
+            rejected.append((way_id, match))
+            continue
+        claimed.update(trial)
+        matched[way_id] = match
+        used_features.add(feature.feature_id)
+
     unmatched = [f.feature_id for f in features if f.feature_id not in used_features]
     return ConflationResult(matched=matched, rejected=rejected, unmatched_features=unmatched)
+
+
+def _precedence(feature: AgencyFeature) -> int:
+    try:
+        return SOURCE_PRECEDENCE.index(feature.source)
+    except ValueError:
+        return len(SOURCE_PRECEDENCE)
+
+
+# The Virginia ratings review (the owner, 2026-10-31, "Let's go with all these", item R1):
+# Fairfax's counted quiet streets were LTS 1 on 1,101 mi and LTS 2 on 486 mi of the same
+# kind, the difference being whether the count reached the way at all. Two things kept it
+# off. The bearing gate above reads a way end to end, so a curving subdivision street
+# (Falstaff Road, way 61242835: 0.58 of it along one count line) points nowhere near the
+# line it follows. And a way that runs past several count lines - OSM and VDOT break a
+# street at different junctions - is under half covered by each (Victoria Road, way
+# 8813727: 0.36, 0.20, 0.20 and 0.17 of it), so none of them is a candidate.
+#
+# So a way no count line was a candidate for is measured again the way `conflate_blocks`
+# measures a block layer: probe by probe, against the count line it runs along there,
+# with the heading taken locally. The lines that win `MIN_BLOCK_PROBES` of its probes are
+# the ones it lies along; where they between them cover `min_overlap` of the way, the way
+# takes the highest of their counts (of the best-ranked source among them), the
+# stress-averse reading of a street whose stretches were counted differently. Each line's
+# stretch is claimed as in the first pass, so a way lying alongside one that already took
+# that stretch - the other carriageway, a frontage road - still does not.
+def _along_counts(
+    coordinates: Sequence[tuple[float, float]],
+    features: Sequence[AgencyFeature],
+    index: _FeatureIndex,
+    prepared: list[_PreparedFeature | None],
+    agencies: Collection[str] | None,
+    bearing_tolerance_deg: float,
+    min_overlap: float,
+    max_separation_m: float,
+) -> tuple[AgencyFeature, float, float, list[tuple[str, tuple[float, float]]]] | None:
+    """The count a way left without a candidate would take from the lines it runs along:
+    the line, how much of the way they cover, the mean probe distance, and each line's
+    stretch to claim; or None. Claims nothing (`conflate` ranks the ways first)."""
+    near = [
+        position
+        for position in index.near(coordinates)
+        if agencies is None or features[position].agency in agencies
+    ]
+    if not near:
+        return None
+    probes, headings = _probes_with_headings(coordinates, max_separation_m)
+    box = _bounds(coordinates)
+    best: list[tuple[float, int] | None] = [None] * len(probes)
+    alongs: dict[int, list[float]] = {}
+    positions: list[list[float]] = [[] for _ in probes]
+    for position in near:
+        if prepared[position] is None:
+            prepared[position] = _PreparedFeature(features[position].coordinates, max_separation_m)
+        measured = prepared[position].measure(probes, box)
+        if measured is None:
+            continue
+        for slot, (distance, along, heading) in enumerate(measured):
+            if distance > max_separation_m:
+                continue
+            delta = bearing_delta(headings[slot], heading)
+            if min(delta, 180.0 - delta) > bearing_tolerance_deg:
+                continue
+            if best[slot] is None or (distance, position) < best[slot]:
+                best[slot] = (distance, position)
+                positions[slot] = [along]
+    distances: dict[int, list[float]] = {}
+    for slot, choice in enumerate(best):
+        if choice is not None:
+            alongs.setdefault(choice[1], []).extend(positions[slot])
+            distances.setdefault(choice[1], []).append(choice[0])
+    lying_along = {
+        position: spots
+        for position, spots in alongs.items()
+        if len(spots) >= min(MIN_BLOCK_PROBES, len(probes))
+    }
+    covered = sum(len(spots) for spots in lying_along.values()) / len(probes)
+    if not lying_along or covered < min_overlap:
+        return None
+    spans = [
+        (features[position].feature_id, (min(spots), max(spots)))
+        for position, spots in sorted(lying_along.items())
+    ]
+    near_by = [d for position in lying_along for d in distances[position]]
+    chosen = min(
+        (features[position] for position in lying_along),
+        key=lambda feature: (_precedence(feature), -feature.aadt, feature.feature_id),
+    )
+    return chosen, min(1.0, covered), sum(near_by) / len(near_by), spans
 
 
 def share_with_carriageways(
@@ -637,10 +783,9 @@ def share_with_carriageways(
     Each carriageway then carries the road's count, which is a statement about
     the road, not a doubled volume: nothing sums counts across ways.
 
-    Limited to `agencies` because widening it to the counts already installed
-    (DDOT, VDOT) would move tiers on divided roads the owner has already seen
-    rated; that is a separate change for the owner to ask for. Returns the
-    added matches by way id; `result` is not changed.
+    Limited to `agencies`; the rebuild passes every installed agency's (the owner,
+    2026-10-31: VDOT's and DDOT's too, as MDOT SHA's since OWNER-DECISIONS 429).
+    Returns the added matches by way id; `result` is not changed.
     """
     wanted = frozenset(agencies)
     pairs = frozenset(carriageway_ids)

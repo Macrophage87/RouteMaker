@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FACILITIES, contrastRatio, currentTiers, setAccessibility } from "../stressStyle.js";
+import { FACILITIES, HALF_STEP_DASH, HALF_STEP_TOP_DASH, contrastRatio, currentTiers, scaledDash, setAccessibility } from "../stressStyle.js";
 import type { StressSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import {
@@ -10,6 +10,7 @@ import {
   ROUTE_AVOID_MARK_DASH,
   ROUTE_BLUE,
   ROUTE_CASING_PLAIN,
+  ROUTE_SECTION_WIDTHS,
   routeClasses,
   routeLegend,
   routeMarkDash,
@@ -20,7 +21,7 @@ import {
   spanClass,
 } from "./routeColours.ts";
 import { UNRATED } from "./stressBar.ts";
-import { ROUTE_AVOID_LAYER_ID, routeAvoidLayer } from "./mapGlue.ts";
+import { ROUTE_AVOID_LAYER_ID, routeAvoidLayer, routeHalfLayers } from "./mapGlue.ts";
 import { readFileSync } from "node:fs";
 
 // A straight line east along 38.9 N, one vertex every 0.001 degrees (~86.6 m).
@@ -60,8 +61,15 @@ test("Avoid is magenta on the route in every palette, over a near-black halo 3:1
       setAccessibility(false, { remember: false });
     }
   }
-  // The map's own Avoid roads keep the palette's colour: only the route is repainted.
-  assert.notEqual(currentTiers().find((t) => t.tier === 5)?.color, ROUTE_AVOID_MAGENTA);
+  // The map's own Avoid roads keep the palette's colour: the default's is the same magenta since the owner's
+  // pick of 2026-10-31, the colour-blind-friendly palette's its own blue-black.
+  assert.equal(currentTiers().find((t) => t.tier === 5)?.color, ROUTE_AVOID_MAGENTA);
+  setAccessibility(true, { remember: false });
+  try {
+    assert.notEqual(currentTiers().find((t) => t.tier === 5)?.color, ROUTE_AVOID_MAGENTA);
+  } finally {
+    setAccessibility(false, { remember: false });
+  }
   assert.equal(routeLegend([span(0, 100, 2), span(100, 200, 3)]).some((r) => r.key === "5"), false, "no Avoid entry on a route without Avoid");
   assert.equal(routeLegend([span(0, 100, 2), span(100, 200, 5)]).find((r) => r.key === "5")?.color, ROUTE_AVOID_MAGENTA);
 });
@@ -122,10 +130,10 @@ test("a paved Avoid section carries the white dash-dot, in every palette; nothin
   assert.match(swatch, /strokeDasharray=\{routeMarkDash\(row\.width\)\}/);
 });
 
-test("the legend's classes are traffic-free, the five tiers, the five unpaved browns, the five gravel greys, the Mass Ride's four bands and Avoid, then not rated", () => {
+test("the legend's classes are traffic-free, the five tiers with the half steps between them, the five unpaved browns, the five gravel greys, the Mass Ride's four bands and Avoid, then not rated", () => {
   assert.deepEqual(
     routeClasses().map((c) => c.key),
-    ["path", "1", "2", "3", "4", "5", "u1", "u2", "u3", "u4", "u5", "g1", "g2", "g3", "g4", "g5", "m0", "m1", "m2", "m3", "mavoid", "unknown"],
+    ["path", "1", "1h", "2", "2h", "3", "3h", "4", "4h", "5", "u1", "u2", "u3", "u4", "u5", "g1", "g2", "g3", "g4", "g5", "m0", "m1", "m2", "m3", "mavoid", "unknown"],
   );
   for (const c of routeClasses()) assert.ok(c.short && c.label && /^#[0-9a-f]{6}$/i.test(c.color), c.key);
 });
@@ -209,4 +217,70 @@ test("with sections the casing is the route's blue and the one-colour line is hi
   assert.deepEqual(routePaint(false, false), { lineOpacity: 1, sectionOpacity: 0, haloOpacity: 0, casingColor: ROUTE_CASING_PLAIN });
   assert.deepEqual(routePaint(true, true), { lineOpacity: 0, sectionOpacity: 0.45, haloOpacity: 0.45, casingColor: ROUTE_BLUE });
   assert.equal(routePaint(false, true).lineOpacity, 0.45);
+});
+
+test("a half step is a section of its own, in its own colour between its two levels (2026-10-30, 2026-10-31)", () => {
+  const half = (tier: number, extra: Partial<StressSpan> = {}): StressSpan => ({ ...span(0, 100, tier), half: true, ...extra });
+  // The default palette: 3.5 is today's orange, 4.5 a dark red.
+  assert.equal(spanClass(half(3)).key, "3h");
+  assert.equal(spanClass(half(3)).color, "#f28c28");
+  assert.equal(spanClass(half(4)).color, "#560a0e");
+  assert.equal(spanClass(half(3)).short, "LTS 3.5");
+  assert.equal(spanClass(half(1)).label, "Probably comfortable for older children");
+  for (const tier of [1, 2, 3, 4]) {
+    const c = spanClass(half(tier));
+    assert.notEqual(c.color, spanClass(span(0, 100, tier)).color, `${tier}.5 differs from ${tier}`);
+    assert.notEqual(c.color, spanClass(span(0, 100, tier + 1)).color, `${tier}.5 differs from ${tier + 1}`);
+    assert.equal(c.halfDash, undefined, "no dash where it has a colour of its own");
+    assert.ok(c.width > spanClass(span(0, 100, tier)).width && c.width < spanClass(span(0, 100, tier + 1)).width);
+  }
+  // A path, Avoid and an unpaved half step keep their own classes.
+  assert.equal(spanClass(half(2, { facility: "path" })).key, "path");
+  assert.equal(spanClass(half(2, { unpaved: true, rough: true })).key, "u2");
+  // Sections split where the half changes, and the legend lists the half step between its levels.
+  const spans = [span(0, 100, 3), { ...span(100, 200, 3), half: true }, span(200, 300, 4)];
+  assert.deepEqual(routeSections(LINE, spans)?.map((s) => s.key), ["3", "3h", "4"]);
+  assert.deepEqual(routeLegend(spans).map((r) => r.key), ["3", "3h", "4"]);
+  // An older API (no `half`) draws as before.
+  assert.equal(spanClass(span(0, 100, 3)).key, "3");
+});
+
+test("in the colour-blind-friendly palette a half step keeps its level's colour with the next level's dash over it, on the route as on the map", () => {
+  setAccessibility(true, { remember: false });
+  try {
+    const half = { ...span(0, 100, 2), half: true };
+    const c = spanClass(half);
+    assert.equal(c.key, "2h");
+    assert.equal(c.color, spanClass(span(0, 100, 2)).color);
+    assert.equal(c.halfDash, spanClass(span(0, 100, 3)).color);
+    const features = sectionFeatures(routeSections(LINE, [span(0, 500, 1), { ...span(500, 1000, 4), half: true }])).features;
+    assert.deepEqual(features.map((f) => [f.properties.key, f.properties.half]), [["1", false], ["4h", true]]);
+    assert.equal(features[1].properties.halfDash, currentTiers().find((t) => t.tier === 5)?.color, "4.5's dash is Avoid's colour (441s)");
+  } finally {
+    setAccessibility(false, { remember: false });
+  }
+  // The route's half-step layers: 1.5 to 3.5 in the sparse dash, 4.5 in Avoid's dash-dot (441s) over its
+  // white outline (458b, as the map's; the review of #780), a pixel wider each side with the dash scaled to it.
+  const layers = routeHalfLayers();
+  const top = ROUTE_SECTION_WIDTHS["4h"];
+  assert.deepEqual(layers.map((l) => [l.id, l.paint["line-dasharray"]]), [
+    ["route-half", HALF_STEP_DASH],
+    ["route-half-top-outline", scaledDash(HALF_STEP_TOP_DASH, top, top + 2)],
+    ["route-half-top", HALF_STEP_TOP_DASH],
+  ]);
+  assert.match(JSON.stringify(layers[2].filter), /"4h"/);
+  assert.deepEqual(layers[1].paint["line-color"], ["get", "halfOutline"]);
+  setAccessibility(true, { remember: false });
+  try {
+    const outlined = sectionFeatures(routeSections(LINE, [{ ...span(0, 1000, 4), half: true }])).features[0].properties;
+    assert.equal(outlined.halfOutline, "#ffffff");
+    assert.ok(contrastRatio(outlined.halfOutline, outlined.halfDash) >= 3 && contrastRatio(outlined.halfOutline, outlined.color) >= 3);
+    const plainDash = sectionFeatures(routeSections(LINE, [{ ...span(0, 1000, 2), half: true }])).features[0].properties;
+    assert.equal(plainDash.halfOutline, "rgba(0, 0, 0, 0)", "no outline where the dash is 3:1 from its line");
+  } finally {
+    setAccessibility(false, { remember: false });
+  }
+  // Off, no feature carries a dash.
+  const plain = sectionFeatures(routeSections(LINE, [{ ...span(0, 1000, 4), half: true }])).features;
+  assert.equal(plain[0].properties.half, false);
 });
