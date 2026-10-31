@@ -143,6 +143,8 @@ export function parsePlusCode(text: string, reference: LonLat = COVERAGE_CENTRE)
   if (!m) return null;
   const code = m[1].toUpperCase();
   if (!isValidPlusCode(code)) return null;
+  // Digits only ("22+22", "2345+67") are more likely numbers than a code: a real one nearly always has a letter.
+  if (!/[A-Z]/.test(code)) return null;
   // A short code needs its last digits, or it is a whole region; a full code with padding is a region too.
   if (!isFullPlusCode(code) && code.endsWith(SEPARATOR)) return null;
   if (code.includes(PADDING)) return null;

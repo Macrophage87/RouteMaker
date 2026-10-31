@@ -88,4 +88,6 @@ test("a code typed in the box: the place, its code as its name, a town after it 
   assert.equal(parsePlusCode("VXQ7+"), null);
   assert.equal(parsePlusCode("1600 Pennsylvania Ave"), null);
   assert.equal(parsePlusCode("C++ meetup"), null);
+  // Numbers alone are searched, not read as a code.
+  for (const text of ["22+22", "45+67", "2345+67"]) assert.equal(parsePlusCode(text), null, text);
 });

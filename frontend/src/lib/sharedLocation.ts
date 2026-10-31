@@ -46,7 +46,7 @@ const MARK = String.raw`(°|º|˚|deg\b)?`;
 // Seven groups each: letter before, sign, degrees, degree mark, minutes, seconds, letter after.
 const LETTER_FIRST = String.raw`([NSEW])\s*()${DEG}\s*${MARK}${MIN_SEC}()`;
 const LETTER_LAST = String.raw`()([-+])?${DEG}\s*${MARK}${MIN_SEC}\s*([NSEW])?`;
-const DMS = [LETTER_FIRST, LETTER_LAST].map((one) => new RegExp(String.raw`^\s*${one}\s*[,;/]?\s*${one}\s*$`, "i"));
+const DMS = [LETTER_FIRST, LETTER_LAST].map((one) => new RegExp(String.raw`^\s*${one}(?:\s*[,;/]\s*|\s+|(?<=[^\d.\s]))${one}\s*$`, "i"));
 const SHORT_HOSTS: Record<string, string> = { "maps.app.goo.gl": "/", "goo.gl": "/maps/", "maps.apple": "/" };
 
 const valid = (lat: number, lon: number): boolean =>
@@ -82,6 +82,8 @@ function dmsHalf(part: string[]): { value: number; axis: "lat" | "lon" | null } 
   if (!hemi && !mark) return null;
   if (hemi && sign) return null;
   if (min !== undefined && !mark && !hemi) return null;
+  // A letter first with a bare whole number ("E 4 N 5") is more likely words than a place.
+  if (before && !mark && min === undefined && !deg.includes(".")) return null;
   const m = min === undefined ? 0 : Number(min);
   const s = sec === undefined ? 0 : Number(sec);
   if (m >= 60 || s >= 60) return null;

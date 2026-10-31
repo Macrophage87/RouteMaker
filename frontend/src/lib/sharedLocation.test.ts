@@ -138,7 +138,10 @@ test("latitude and longitude in degrees, minutes and seconds, as GPS units and m
     near(parseCoordinates(text)!, LINCOLN, eps);
   }
   // Not coordinates: plain numbers with no mark or letter, minutes past 59, two latitudes, a sign and a letter.
-  for (const text of [`38 53 21 77 3 0`, `38° 61' N, 77° 3' W`, `38° N 39° S`, `-38° N, 77° W`, `12 34`, `1600 Pennsylvania Ave`]) {
+  // Halves are never split inside a number (review): with no sign or letter, the second is east, as written.
+  near(parseCoordinates(`38°53' 77°03'`)!, [77.05, 38.88333], eps);
+  near(parseCoordinates(`38 deg 77 deg`)!, [77, 38], eps);
+  for (const text of [`E 4 N 5`, `S 1 E 1`, `38 53 21 77 3 0`, `38° 61' N, 77° 3' W`, `38° N 39° S`, `-38° N, 77° W`, `12 34`, `1600 Pennsylvania Ave`]) {
     assert.equal(parseCoordinates(text), null, text);
   }
 });
