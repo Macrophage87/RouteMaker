@@ -4614,8 +4614,8 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   white-space: normal;
 }
 
-/* Only where one word alone is wider than its half (Russian at 200% text on a small phone) do they go one above the
-   other, so no word is cut (RideMode measures it). */
+/* Where one word alone is wider than its half, RideMode makes the words smaller until it fits; only where even half size
+   does not fit do they go one above the other, so no word is cut. */
 .ride-top.ride-top-stack .ride-top-actions {
   flex-wrap: wrap;
 }
@@ -4664,7 +4664,8 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 1.2rem;
+  /* Made smaller in the top row only where a word does not fit (RideMode's --ride-top-fit, the owner, 2026-10-31). */
+  font-size: calc(1.2rem * var(--ride-top-fit, 1));
   font-weight: 700;
 }
 
@@ -4689,10 +4690,13 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 
 /* On the narrowest phones (320 px) the two keep one line at a slightly smaller size; the slide's text stays clear of its thumb. */
 @media (max-width: 359px) {
-  .ride .ride-road-closed,
-  .ride .ride-end,
   .ride .ride-off-button {
     font-size: 1rem;
+  }
+
+  .ride .ride-road-closed,
+  .ride .ride-end {
+    font-size: calc(1rem * var(--ride-top-fit, 1));
   }
 
   .ride .ride-slide-text {

@@ -270,6 +270,10 @@ export const rideVoice = new Voice(rideSpeech());
 export const RIDE_STARTED = t("Ride started.");
 /** How long after the start its note (startNote) is said: after "Ride started.". */
 export const START_NOTE_MS = 1_500;
+/** The top row's words made smaller a step at a time where a word does not fit (the owner, 2026-10-31), to at most half size. */
+const TOP_FIT_STEP = 0.05;
+const TOP_FIT_MIN = 0.5;
+
 /** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
 export const END_RIDE_NAME = t("End ride");
 /** The least a long instruction shrinks to at normal text, from its own size (styles.css .cue-text, 1.5rem): the ride's
@@ -2399,8 +2403,8 @@ export function RideMode({
   const topRef = useRef<HTMLDivElement>(null);
   const [cornerFits, setCornerFits] = useState(true);
   // End ride and Go round share one line, their words on two lines inside each where need be (the owner, 2026-10-31:
-  // "end ride and go around should share a line"); one goes under the other only where a single word is wider than
-  // the room it would have (a long language at a large text size on a small phone), so no word is ever cut.
+  // "end ride and go around should share a line"), and smaller where a single word is wider than the room it would
+  // have; one goes under the other only where even half size does not fit, so no word is ever cut.
   const [stacked, setStacked] = useState(false);
   const lightKey = light ? light.shown.join("|") : "";
   useLayoutEffect(() => {
@@ -2420,8 +2424,17 @@ export function RideMode({
       const between = parseFloat(getComputedStyle(actions).columnGap) || 0;
       const need =
         heading.scrollWidth + (parseFloat(row.columnGap) || 0) + buttons.reduce((sum, b) => sum + b.offsetWidth, 0) + between * Math.max(0, buttons.length - 1);
-      // Then tight, on one line: wider than the row only where a word does not fit in its button.
+      // Then tight, on one line: wider than the row only where a word does not fit in its button. There the words are
+      // made smaller, a step at a time, until they fit (the owner, 2026-10-31: "Reduce the font size in that case.
+      // Unlike the turns, people would read what that says and know what it means beforehand"); they go one above
+      // the other only where even the smallest does not fit.
       top.classList.add("ride-corner-tight");
+      let fit = 1;
+      top.style.removeProperty("--ride-top-fit");
+      while (actions.scrollWidth > actions.clientWidth + 1 && fit > TOP_FIT_MIN + 0.001) {
+        fit = Math.max(TOP_FIT_MIN, Math.round((fit - TOP_FIT_STEP) * 100) / 100);
+        top.style.setProperty("--ride-top-fit", String(fit));
+      }
       const overflows = actions.scrollWidth > actions.clientWidth + 1;
       if (!tight) top.classList.remove("ride-corner-tight");
       if (stack) top.classList.add("ride-top-stack");
