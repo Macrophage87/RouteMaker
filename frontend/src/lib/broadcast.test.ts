@@ -368,6 +368,6 @@ test("a shared dot goes from the ride's own position while riding, never from a 
   assert.equal((app.match(/\{\(riderHere, riderLive\) => \(\s*<RideGroup/g) ?? []).length, 2);
   assert.equal((app.match(/here=\{riderHere\}\s*livePoint=\{riderLive\}/g) ?? []).length, 2);
   // Hidden, turned off or gone: the dot is dropped at once.
-  assert.match(group, /if \(!shareOn \|\| !front \|\| !ride \|\| !token\) return;\s*return \(\) => \{\s*\/\/[^\n]*\n\s*void leaveRide\(origin, ride, token\);\s*\};\s*\}, \[shareOn, front, ride, token, origin\]\);/);
+  assert.match(group, /if \(!shareOn \|\| !front \|\| !ride \|\| !token\) return;\s*return \(\) => \{\s*\/\/[^\n]*\n\s*void leaveRide\(origin, ride, token\);\s*forgetSent\(\);\s*\};\s*\}, \[shareOn, front, ride, token, origin\]\);/);
   assert.match(group, /if \(!shareOn \|\| !front \|\| !ownFix \|\| !ride \|\| !token \|\| !consent\) return;/);
 });

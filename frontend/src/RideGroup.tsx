@@ -85,6 +85,9 @@ import {
   newAlerts,
   project,
   readRide,
+  meCounted,
+  NOT_SENT,
+  type SentDot,
   rideOf,
   ridersSaid,
   riderTotal,
@@ -162,8 +165,6 @@ export interface RideGroupProps {
 }
 
 const TICK_MS = 5000;
-/** How long others see a dot after its last send (lib/rideGroup.ts freshness: gone after 2 minutes). */
-const DOT_SHOWN_MS = 120_000;
 
 function visible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
@@ -323,8 +324,14 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
   // How often to read and send the dot: the server's pace for this ride (lib/rideGroup.ts paceMs).
   const [pace, setPace] = useState(POLL_EVERY_MS);
   const lastReadAt = useRef(0);
-  // When the server last took this rider's dot (0: not since it was held back, or never).
-  const [sentAt, setSentAt] = useState(0);
+  // When the server last took this rider's dot, and on which ride (lib/rideGroup.ts meCounted). `sentGen` moves on
+  // whenever the dot is dropped, so a send still in flight then does not count the rider again.
+  const sentDot = useRef<SentDot>(NOT_SENT);
+  const sentGen = useRef(0);
+  const forgetSent = () => {
+    sentGen.current += 1;
+    sentDot.current = NOT_SENT;
+  };
   const changeRole = (role: RideRole) => {
     if (!ride || !consent) return;
     setConsent(keepConsent(ride, consent.answer, Date.now(), undefined, undefined, role));
@@ -397,6 +404,7 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
     return () => {
       // In the background, or turned off: the dot goes at once rather than in 2 minutes.
       void leaveRide(origin, ride, token);
+      forgetSent();
     };
   }, [shareOn, front, ride, token, origin]);
   // While riding, the dot is the ride's own live position (`livePoint`, Ride mode's or Roam's one watch: the phone app's GPS in the app). A
@@ -435,18 +443,20 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
       // Held back: the dot goes now rather than in 2 minutes; sent again as soon as the rider moves on.
       if (held) {
         void leaveRide(origin, ride, token);
-        setSentAt(0);
+        forgetSent();
       }
       else share.current.lastPost = 0;
     }
     if (near && !held && postDue(t, share.current.lastPost, pace)) {
       share.current.lastPost = t;
+      const gen = sentGen.current;
       void sendPosition(origin, ride, token, fix, consent.role, fetch, seal).then((ok) => {
-        if (ok) setSentAt(Date.now());
+        if (ok && gen === sentGen.current) sentDot.current = { ride, at: Date.now() };
       });
     }
     // Nor the leader's ridden path while the dot is held back: its last point would say where they are.
-    if (leading && near && !held) setOwnTrail((t) => extendTrail(t, fix));
+    // Only while riding: where the leader was before the ride is never part of the path sent with it.
+    if (leading && riding && near && !held) setOwnTrail((t) => extendTrail(t, fix));
   }, [ownFix, front, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home, pace]);
 
   // The ride ended: the dot goes, and the next ride on this page asks again (2026-10-29: a Yes is
@@ -517,7 +527,7 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
   // Everyone on the ride, the leader and this rider (where the others see them) included.
   // Counted only once the server took this rider's dot, as long as the others see it (Stephen 2026-10-31: a follower
   // whose dot never went counted 2 on their own screen while the leader saw 1).
-  const meShown = (leading || shareOn) && sentAt > 0 && now - sentAt <= DOT_SHOWN_MS;
+  const meShown = meCounted(sentDot.current, ride, (leading || shareOn) && front, now);
   const riders = riderTotal(dots, meShown);
   const leaderInKey = dots.some((d) => d.leader);
 
