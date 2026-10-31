@@ -615,6 +615,7 @@ class TestRouteProfile:
                 "control": "signal",
                 "lanes": 4,
                 "crossed_tier": 3,
+                "crossed_half": False,
                 "kind": "flagged",
                 "corkers_needed": True,
                 "oneway": None,
