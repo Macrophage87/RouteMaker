@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from pipeline.extract import close_writer
 from routemaker import divided
 
 # About 20 m of latitude and longitude here.
@@ -396,7 +397,7 @@ def test_the_rebuild_writes_the_restrictions_into_every_graph(tmp_path) -> None:
         for way_id, refs, tags in sorted(WAYS):
             writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=refs, tags=tags, version=1))
     finally:
-        writer.close()
+        close_writer(writer)
     reference_dir = write_reference_data(tmp_path)
     context = RebuildContext(
         source_pbf=source_pbf,

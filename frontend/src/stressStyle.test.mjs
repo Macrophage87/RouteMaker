@@ -22,6 +22,7 @@ import {
   stressOverlayLayers,
   unpavedLayers,
   halfStepLayers,
+  halfRingLayers,
   unknownSurfaceLayers,
   UNKNOWN_SURFACE_DASH,
   UNPAVED_DASH,
@@ -43,7 +44,9 @@ import {
   tiersFor,
   currentTiers,
   furthTiers,
+  halfStep,
 } from "./stressStyle.js";
+import { DEFAULT_CONFLICTS } from "./testSupport/defaultConflicts.ts";
 import * as spec from "@maplibre/maplibre-gl-style-spec";
 
 // These tests assert the default palette's tiers, which is what the module
@@ -251,8 +254,8 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const unknown = unknownSurfaceLayers("s").map((l) => l.id);
   assert.deepEqual(unknown, ["stress-unknown-casing", "stress-unknown"], "the surface-unknown trail's edge, then its line (OWNER-DECISIONS 376)");
   assert.deepEqual(gaps, ["stress-gap-2"], "LTS 2's own gap colour (OWNER-DECISIONS 356)");
-  const rings = ringLayers("s").map((l) => l.id);
-  assert.deepEqual(rings, ["stress-ring-3", "stress-ring-4"], "two-tone LTS 3 and 4's ring (OWNER-DECISIONS 371)");
+  const rings = [...ringLayers("s"), ...halfRingLayers("s")].map((l) => l.id);
+  assert.deepEqual(rings, ["stress-ring-3", "stress-ring-5", "stress-half-ring-1", "stress-half-ring-2", "stress-half-ring-3", "stress-half-ring-4"], "two-tone LTS 3's ring (OWNER-DECISIONS 371) and Avoid's, and each half step's (2026-10-31)");
   const mass = massLayers("s").map((l) => l.id);
   const mtb = mtbTrailLayers("s").map((l) => l.id);
   assert.deepEqual(
@@ -282,7 +285,7 @@ test("the overlay is added casings first: every casing under every tier", () => 
   assert.ok(Math.max(...casings.map((c) => ids.indexOf(c))) < ids.indexOf("stress-unknown-casing"), "after every casing");
   // The Mass Ride's layers (massStyle.js) are drawn over every stress layer, in their own order.
   assert.deepEqual(ids.slice(-mass.length), mass);
-  // The rings under everything, so a rail still shows over them.
+  // The rings under everything, the half steps' too (the review of #780: a 3.5 ring hid the painted lane), so a rail still shows over them.
   assert.ok(Math.max(...rings.map((r) => ids.indexOf(r))) < Math.min(...rails.map((r) => ids.indexOf(r))));
   // The gap line lies over its casing and under its dashes.
   assert.ok(ids.indexOf("stress-casing-2") < ids.indexOf("stress-gap-2") && ids.indexOf("stress-gap-2") < ids.indexOf("stress-2"));
@@ -492,7 +495,7 @@ test("the overlay has no layer for a road a bicycle may not use: the base map sh
   // the tiles, and no layer waits for them.
   assert.ok(stressOverlayLayers("stress").every((l) => !/barred|expressway/.test(l.id)));
   const us340 = { tier: 5 };
-  assert.deepEqual(Object.keys(drawnAtZoom(us340, 14)).sort(), ["stress-5", "stress-casing-5"]);
+  assert.deepEqual(Object.keys(drawnAtZoom(us340, 14)).sort(), ["stress-5", "stress-casing-5", "stress-ring-5"]);
 });
 
 test("busy roads are faint at z12-13 and solid from z14; quiet streets and paths are never faint", () => {
@@ -545,6 +548,13 @@ test("Avoid is told from LTS 4 at a glance, faint or solid, in every palette", (
     // red a protanope sees as near-black, which a luminance ratio of 1.8 would
     // have meant a brighter red that crowds LTS 3.
     const floor = palette === "cvd" ? 1.4 : 1.8;
+    // The default's red LTS 4 and magenta Avoid (2026-10-31) are reported, not held: their edges differ instead.
+    if (palette === DEFAULT_PALETTE && DEFAULT_CONFLICTS.avoidLts4GreyUnderFloor) {
+      assert.ok(contrastRatio(avoid.color, lts4.color) < floor);
+      assert.ok(contrastRatio(avoid.casing, lts4.casing) >= 3, "the edges are 3:1 apart");
+      assert.ok(avoid.ring && !lts4.ring, "and Avoid alone is ringed");
+      continue;
+    }
     assert.ok(contrastRatio(avoid.color, lts4.color) >= floor, `${palette}: ${contrastRatio(avoid.color, lts4.color).toFixed(2)}:1`);
   }
 });
@@ -563,10 +573,10 @@ test("the colours are in one place: LTS 1 and 2 as they were, two readings of th
   // Two-tone: the first colour the line, the second its casing.
   // 371: the yellow a shade lighter (#f2c21b before).
   assert.deepEqual([twotone[3].color, twotone[3].casing], ["#f3c81a", "#f28c28"]);
-  // LTS 4's red casing is a shade deeper than Avoid's red line, so LTS 3's gaps are no harsher than
-  // LTS 4's (OWNER-DECISIONS 292; stressSalience.test.ts).
-  assert.deepEqual([twotone[4].color, twotone[4].casing], ["#f28c28", "#c81e1e"]);
-  assert.deepEqual([twotone[5].color, twotone[5].casing], ["#d42020", "#111111"]);
+  // 2026-10-31: "today's orange should be 3.5 with 4 at some sort of red and 4.5 darkred"; Avoid the
+  // route's magenta. LTS 4's near-black red edge keeps LTS 3's gaps no harsher than LTS 4's (292).
+  assert.deepEqual([twotone[4].color, twotone[4].casing], ["#e3261c", "#560a0e"]);
+  assert.deepEqual([twotone[5].color, twotone[5].casing], ["#d6008f", "#ffffff"]);
   assert.equal(DEFAULT_PALETTE, "twotone");
   assert.equal(paletteFrom("?palette=twotone"), "twotone");
   assert.equal(paletteFrom("?x=1&palette=blended"), "blended");
@@ -829,4 +839,36 @@ test("the overlay draws each tier group calmest on top, so a busy road does not 
     const order = [5, 4, 3, 2, 1].map((tier) => ids.indexOf(`${kind}-${tier}`));
     assert.deepEqual([...order].sort((a, b) => a - b), order, `${kind}: Avoid lowest, LTS 1 on top`);
   }
+});
+
+test("a 1.5 trail whose surface is not mapped keeps its surface-unknown dashes: no half-step layer draws over it (376; the review of #780)", () => {
+  const halves = (properties) => [...halfRingLayers("stress"), ...halfStepLayers("stress")].filter((layer) => draws(layer, properties, 16)).map((layer) => layer.id);
+  assert.deepEqual(halves({ tier: 1, half: true, facility: "path", trail: true }), [], "surface not mapped");
+  assert.deepEqual(halves({ tier: 1, half: true, facility: "path", trail: true, unpaved: false }).sort(), ["stress-half-1", "stress-half-outline-1", "stress-half-ring-1"]);
+});
+
+test("a half step's ring is never drawn on an unpaved way, in every palette, the switch off and on (test-strength S7)", () => {
+  let unpavedDrawn = 0;
+  let ringed = 0;
+  for (const palette of Object.keys(PALETTES)) {
+    for (const strong of [false, true]) {
+      const tiers = tiersFor(palette, strong);
+      for (const layer of halfRingLayers("stress", undefined, tiers)) {
+        const tier = Number(layer.id.slice("stress-half-ring-".length));
+        const ring = halfStep(tier, tiers).ring;
+        const paved = { tier, half: true, unpaved: false };
+        const unpaved = { tier, half: true, unpaved: true };
+        if (ring && draws(layer, paved, 16)) {
+          ringed += 1;
+          assert.equal(paintValue(layer, "line-color", paved, 16), ring, `${palette} ${tier}.5 paved: its ring`);
+        }
+        if (!draws(layer, unpaved, 16)) continue;
+        unpavedDrawn += 1;
+        const colour = paintValue(layer, "line-color", unpaved, 16);
+        assert.ok(colour === "rgba(0, 0, 0, 0)" || (typeof colour === "object" && colour.a === 0), `${palette}${strong ? " strong" : ""} ${tier}.5 unpaved: no ring (${JSON.stringify(colour)})`);
+      }
+    }
+  }
+  assert.ok(ringed >= 4, "the default's 3.5 and 4.5 rings are drawn on paved ways, the switch off and on");
+  assert.ok(unpavedDrawn > 0, "the ring layers reach unpaved half steps, so their colour is what keeps the ring off");
 });

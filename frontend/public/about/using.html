@@ -307,6 +307,14 @@ the lines on the map and press <strong>Start ride</strong><sup class="cite"><a h
 Tapping the empty box lists the places you picked recently, once there are some. Results come nearest the
 route's start first (a place whose name matches your words before the rest), each with its area and how far it is in a
 straight line: "Dupont Circle, Washington · 0.3 mi (0.5 km)". An address keeps the order the search gives it.</li>
+<li><strong>Say where to:</strong> tap the microphone in Where to? and say a place to search for it. In English
+and Spanish the places found are lettered A, B, C: say a letter, its spelling-alphabet word (Alfa, Bravo) or the
+place's name to route there (the website listens again by itself; in the Android app, tap the microphone again).
+Anything else keeps the list and says no letter was heard. In other languages, tap a place. It shows only where speech input works, needs a connection, and is hidden in Haitian Creole,
+Pashto and Tigrinya.</li>
+<li><strong>A rough first location</strong>, such as one from Wi-Fi or a cell tower more than 0.6 mi [1 km] out, shows
+a big circle around your dot. Go looks again every 20 seconds, up to six times, and moves the map to you once it is sure, if the rough dot is still on screen. The start line says how rough, such as "Start: your location,
+within about 2 mi (3 km)", and a screen reader hears it. It stops once you pick a destination.</li>
 <li><strong>A tap on the map</strong> opens a card for that spot, marked by a big red pin: <strong>Ride here</strong> at the top, which
 plans a route there in place of any destination before it, then the spot's address (the nearest house number
 within 130 ft [40 m], else the street), its area and how far away it is,
@@ -350,8 +358,8 @@ Ride, or when the <strong>When</strong> chosen isn't the time it is now, such as
 <li><strong>The route sheet</strong> ends with <strong>Start ride</strong> and <strong>Share live</strong>,
 kept at its bottom edge however far the sheet is pulled up; it is Go's only Start ride. A plain line says how the
 route rides, such as "Mostly calm · 1.1 mi on paths and protected lanes · busy road for 0.2 mi", over a bar of its
-stress levels and a slim strip for its traffic-free paths and protected lanes; pressing them opens Layers at the
-Traffic stress key, and a screen reader hears every level's share. A National Weather Service alert is one line under
+stress levels, half steps ridden in their own colors, and a slim strip for its traffic-free paths and protected lanes; pressing them opens Layers at the
+Traffic stress key, and a screen reader hears every level's share, half steps included. A National Weather Service alert is one line under
 the totals, red for a Severe or Extreme one. <strong>Details</strong> has the rest, with the sources behind
 <strong>Data sources</strong>. The time, distance and stress bar come first, before any Bikeshare stations; Go's
 Bikeshare fold and its routes list start closed (the routes chip opens it), so the half sheet fits one phone screen.
@@ -576,8 +584,11 @@ facilities</strong>, <strong>Directions</strong> (with <strong>Full detail</stro
 download as text, and the route's notices in one closed line before step 1, such as "8 alerts on this
 route"), <strong>Junctions to watch</strong>, <strong>Other routes</strong> (up to three
 more at the top of the traffic slider) and <strong>Water and restrooms</strong> along the way. Each
-starts closed, and opening one of them closes the one that was open. A line under the time gives sunrise or sunset when it falls during the ride or within
+starts closed, and opening one of them closes the one that was open. A line under the time gives dawn and sunrise, or sunset and dusk, when the first of them still ahead
+falls during the ride or within
 about an hour of arriving, worked out on your device<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>.
+Dawn and dusk are civil dawn and civil dusk, when the sun's center is 6 degrees below the horizon:
+about half an hour before sunrise and after sunset in the DC area.
 On a screen at least 1200 px wide, the route's results (its totals, Start ride, GPX, Link and these folds)
 sit in their own card on the right of the map, and the planner on the left keeps the points, the ride type,
 its settings and the Route button. On the map, the route line carries the name of each street or path it follows, in Plan, Go and
@@ -599,7 +610,7 @@ which isn't asked again in that tab.</p>
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 316" role="img" aria-labelledby="fig-use-ride-t fig-use-ride-d" focusable="false" style="min-width:547px">
 <title id="fig-use-ride-t">The ride screen</title>
-<desc id="fig-use-ride-d">The ride screen has End ride and Go round across the top; End ride is a slider so a stray tap won&#x27;t end it. Below them is the turn card with the next turn and how far it is. Round buttons down the map&#x27;s right edge, each with a word under it: Locate (Where am I?), Text (Large text), Share live, Detour, 311 and More. Near sunrise or sunset, a line gives the time and how long until it.</desc>
+<desc id="fig-use-ride-d">The ride screen has End ride and Go round across the top; End ride is a slider so a stray tap won&#x27;t end it. Below them is the turn card with the next turn and how far it is. Round buttons down the map&#x27;s right edge, each with a word under it: Locate (Where am I?), Text (Large text), Share live, Detour, 311 and More. Near dawn or dusk, a line gives dawn and sunrise, or sunset and dusk, and how long until each.</desc>
 <defs><marker id="ah-use-ride" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect x="250" y="8" width="260" height="300" rx="18" class="bx"/>
 <rect class="bxa" x="262" y="20" width="236" height="30" rx="6"/>
@@ -637,7 +648,7 @@ which isn't asked again in that tab.</p>
 <div class="fig-narrow">
 <svg viewBox="0 0 320 542" role="img" aria-labelledby="fig-use-ride-n-t fig-use-ride-n-d" focusable="false">
 <title id="fig-use-ride-n-t">The ride screen</title>
-<desc id="fig-use-ride-n-d">The ride screen has End ride and Go round across the top; End ride is a slider so a stray tap won&#x27;t end it. Below them is the turn card with the next turn and how far it is. Round buttons down the map&#x27;s right edge, each with a word under it: Locate (Where am I?), Text (Large text), Share live, Detour, 311 and More. Near sunrise or sunset, a line gives the time and how long until it.</desc>
+<desc id="fig-use-ride-n-d">The ride screen has End ride and Go round across the top; End ride is a slider so a stray tap won&#x27;t end it. Below them is the turn card with the next turn and how far it is. Round buttons down the map&#x27;s right edge, each with a word under it: Locate (Where am I?), Text (Large text), Share live, Detour, 311 and More. Near dawn or dusk, a line gives dawn and sunrise, or sunset and dusk, and how long until each.</desc>
 <defs><marker id="ah-use-ride-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect x="10" y="8" width="300" height="370" rx="18" class="bx"/>
 <rect class="bxa" x="22" y="22" width="276" height="38" rx="6"/>
@@ -1332,7 +1343,7 @@ from the app's next update.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.15.2. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.16.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

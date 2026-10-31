@@ -19,7 +19,7 @@ from django.utils import timezone
 
 from core.models import MyGo, Session, User
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 URL = "/api/me/go"
 _ids = count(91000)

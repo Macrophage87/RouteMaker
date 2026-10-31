@@ -15,7 +15,7 @@ from core.models import BikeshareFeedCache
 from routemaker import deer_closures
 from routemaker import workzones as wz
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 DATA = Path(__file__).resolve().parent / "data" / "closures"
 # The day of the sample AlertDC feed; the MPD sample is for an event on Sep 7.
 NOW = datetime(2026, 10, 15, 19, 0, tzinfo=UTC)

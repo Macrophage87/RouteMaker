@@ -17,7 +17,7 @@ from django.utils import timezone
 from core.api import FAVORITE_PLACES_MAX
 from core.models import MyGo, Session, User
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 URL = "/api/me/places"
 _ids = count(93000)

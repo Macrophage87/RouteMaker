@@ -245,7 +245,7 @@ file handed on. `mobile/test/config.test.mjs` holds the permission list and the 
 
 ## Building
 
-**Workflow** (`.github/workflows/android.yml`): on a pull request that touches `mobile/` or the
+**Workflow** (`.github/workflows/android.yml`): on a pull request into main that touches `mobile/` or the
 workflow, a debug build only; by hand (Run workflow), debug or release; on a release tag (`vX.Y.Z`)
 whose `mobile/` changed since the tag before, the release build, uploaded to Play (below); no other push. Node 22, JDK
 21, the runner's Android SDK; `npm ci`, `npm test`, `npx cap sync android`, a check that the synced
@@ -372,7 +372,7 @@ Such an APK names the server: keep it off public places. `ROUTEMAKER_APP_ID` set
 - `test/`: `npm test` (node's test runner): the config, the manifest, the workflow (its triggers, no
   repository variables, no address), the first-launch screen's labels, the bridge guard, and the
   compatibility layer in a stand-in page. `./gradlew testDebugUnitTest` runs `SiteAddressTest` (needs
-  the Android SDK); the workflow runs both on each pull request that touches `mobile/`. The site's bridge is tested in
+  the Android SDK); the workflow runs both on each pull request into main that touches `mobile/`. The site's bridge is tested in
   `frontend/src/lib/nativeShell.test.ts`.
 
 Plugin versions are pinned in `package.json`. `@capacitor-community/background-geolocation` 1.2.26
