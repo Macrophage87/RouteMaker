@@ -775,7 +775,11 @@ def test_the_virginia_rows_take_only_the_owners_levels() -> None:
             assert "under 1,000 vehicles a day" in evidence and "no VDOT count" in evidence
             continue
         ids.setdefault(value["adjustment_id"], set()).add(level)
-        group = "two-lane" if value["adjustment_id"].startswith("va-ffx-posted-35-two-lane-") else "quiet"
+        group = (
+            "two-lane"
+            if value["adjustment_id"].startswith("va-ffx-posted-35-two-lane-")
+            else "quiet"
+        )
         assert value["adjustment_id"].startswith(f"va-ffx-posted-35-{group}-lts")
         count[group] += 1
         assert "posted 35 mph" in evidence and "no maxspeed tag" in evidence
