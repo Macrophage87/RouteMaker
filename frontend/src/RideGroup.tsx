@@ -54,7 +54,7 @@ import {
   NOT_FOLLOWING_SAID,
   OTHER_MAX,
   POLL_EVERY_MS,
-  POST_EVERY_MS,
+  postDue,
   RIDE_ROLES,
   ROLE_QUESTION,
   SHARE_STOPPED_SAID,
@@ -94,6 +94,7 @@ import {
   sendPosition,
   shareStop,
   postSoonAfter,
+  sharedFix,
   shownDots,
   type AlertKind,
   type RideAlert,
@@ -151,6 +152,8 @@ export interface RideGroupProps {
    * nothing to ask (answered already, or no ride), the sheet is shown alone. Null: none.
    */
   join?: { ask: JoinAsk; onAction: (action: JoinAction, said: Said) => void; onClose: () => void } | null;
+  /** The ride's or Roam's live position only (never a one-off located spot): the shared dot goes from it while riding. */
+  livePoint?: LonLat | null;
   /** The rider's saved Home: no dot is sent from near it (lib/rideGroup.ts dotHeldBack). */
   home?: LonLat | null;
   /** Told where the other riders' dots are as they change, none once gone: App's See everyone (lib/seeEveryone.ts). */
@@ -163,7 +166,7 @@ function visible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
 }
 
-export function RideGroup({ type, line, getMap, here, broadcast = null, secret = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0, controls = riding, leads = true, askHeld = false, home = null, join = null, onDots = null }: RideGroupProps) {
+export function RideGroup({ type, line, getMap, here, livePoint = null, broadcast = null, secret = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0, controls = riding, leads = true, askHeld = false, home = null, join = null, onDots = null }: RideGroupProps) {
   const leading = broadcast?.leading === true;
   const isBroadcast = broadcast !== null;
   // The leader key a follower reads with (the leader needs none: it does not see its own dot).
@@ -186,7 +189,7 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
   const [settledFor, setSettledFor] = useState<string | null>(null);
   // The role picked in the question, before it is answered: Participant, so one tap answers.
   const [pickedRole, setPickedRole] = useState<RideRole>(DEFAULT_ROLE);
-  const [read, setRead] = useState<RideRead>({ dots: [], alerts: [] });
+  const [read, setRead] = useState<RideRead>({ dots: [], alerts: [], paceMs: POLL_EVERY_MS });
   const [polledAt, setPolledAt] = useState(Date.now());
   const [now, setNow] = useState(Date.now());
   const [fix, setFix] = useState<LonLat | null>(null);
@@ -197,6 +200,12 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
   const [confirming, setConfirming] = useState<AlertKind | null>(null);
   const [otherText, setOtherText] = useState("");
   const [otherOpen, setOtherOpen] = useState(false);
+  // Why the last alert did not go, shown in the panel as well as said: a sighted rider saw nothing before (2026-10-31).
+  const [sendError, setSendError] = useState("");
+  // Closed by any way (Close, idle close, a send), the last refusal goes with it.
+  useEffect(() => {
+    if (!alertOpen) setSendError("");
+  }, [alertOpen]);
   // Speak (lib/speechInput.ts): only where the browser turns speech into text. It heads the alert panel (Stephen
   // 2026-10-30: "autotranscribe what you are saying. then you could either send that or a quick response"): one press
   // opens the box and listens, the words fill it, Send sends them, or a quick alert below is sent instead.
@@ -258,7 +267,7 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
       setConsent(null);
       setAsked(false);
       setShareOn(false);
-      setRead({ dots: [], alerts: [] });
+      setRead({ dots: [], alerts: [], paceMs: POLL_EVERY_MS });
       return;
     }
     let live = true;
@@ -308,11 +317,14 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
     say(yes ? shown : t("You are not shown. You still see the others."));
     join?.onClose();
   };
+  // How often to read and send the dot: the server's pace for this ride (lib/rideGroup.ts paceMs).
+  const [pace, setPace] = useState(POLL_EVERY_MS);
+  const lastReadAt = useRef(0);
   const changeRole = (role: RideRole) => {
     if (!ride || !consent) return;
     setConsent(keepConsent(ride, consent.answer, Date.now(), undefined, undefined, role));
     // The new role goes with the next position as soon as the server takes one (the consent change re-runs the post).
-    share.current.lastPost = postSoonAfter(share.current.lastPost);
+    share.current.lastPost = postSoonAfter(share.current.lastPost, pace);
     say(
       shareOn
         ? t("You are shown as {role}; others see it within 15 seconds.", { role: roleLabel(role) })
@@ -324,12 +336,14 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
   const [watchToken] = useState(newToken);
   const token = consent?.token ?? (broadcast ? watchToken : null);
 
-  // Seeing the others: every 15 s while the page is in front.
+  // Seeing the others while the page is in front: at the pace the server sets (2 s on a ride of 20 or fewer, 5 s, slower on a very big ride).
   const poll = useCallback(async () => {
     if (!ride || !token || !visible()) return;
+    lastReadAt.current = Date.now();
     const got = await readRide(origin, ride, token, fetch, followKey, seal);
     if (!got) return;
     setRead(got);
+    setPace(got.paceMs);
     setPolledAt(Date.now());
     const fresh = newAlerts(previousAlerts.current, got.alerts);
     previousAlerts.current = got.alerts;
@@ -346,40 +360,56 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
   useEffect(() => {
     if (!ride || !token) return;
     void poll();
-    const id = window.setInterval(() => void poll(), POLL_EVERY_MS);
-    const tick = window.setInterval(() => setNow(Date.now()), TICK_MS);
     const onShow = () => {
-      if (visible()) void poll();
+      // Not again within a second of the last read (the server would refuse it).
+      if (visible() && Date.now() - lastReadAt.current >= 1_000) void poll();
     };
     document.addEventListener("visibilitychange", onShow);
+    return () => document.removeEventListener("visibilitychange", onShow);
+  }, [ride, token, poll]);
+  // Apart from the first read: a new pace sets the next reads, without reading again at once. While sharing, the tick
+  // that sends a still rider's dot runs at least twice a pace; only watching, every 5 s.
+  useEffect(() => {
+    if (!ride || !token) return;
+    const id = window.setInterval(() => void poll(), pace);
+    const tick = window.setInterval(() => setNow(Date.now()), shareOn ? Math.min(TICK_MS, pace / 2) : TICK_MS);
     return () => {
       window.clearInterval(id);
       window.clearInterval(tick);
-      document.removeEventListener("visibilitychange", onShow);
     };
-  }, [ride, token, poll]);
+  }, [ride, token, poll, pace, shareOn]);
 
-  // Sharing your own dot: a position watch only while sharing and in front.
+  // Sharing your own dot: only while sharing and in front.
   const [front, setFront] = useState(visible());
   useEffect(() => {
     const onVis = () => setFront(visible());
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
+  // No setup: its cleanup is the point. Hidden, turned off or gone, the dot is dropped at once (never left 2 minutes).
   useEffect(() => {
     if (!shareOn || !front || !ride || !token) return;
-    // Ride mode's one watcher (lib/rideWatch.ts), while sharing and in front only; a refusal turns sharing off.
-    const stopWatch = watchRide(browserRideEnv(), (f) => setFix(f.point), (why) => {
-      if (why === "denied" || why === "unsupported" || why === "insecure") setShareOn(false);
-    });
     return () => {
-      stopWatch();
       // In the background, or turned off: the dot goes at once rather than in 2 minutes.
       void leaveRide(origin, ride, token);
     };
   }, [shareOn, front, ride, token, origin]);
+  // While riding, the dot is the ride's own live position (`livePoint`, Ride mode's or Roam's one watch: the phone app's GPS in the app). A
+  // second watch of the page's own went silent or was refused inside the Android app, and in a browser a second watch
+  // can wait on a fix the first already took, so no dot went out at all (2026-10-31: "she can't see mine"). Not riding
+  // (watching from Plan or a computer), this page watches for itself, while sharing and in front only; a refusal turns
+  // sharing off.
   useEffect(() => {
-    if (!shareOn || !fix || !ride || !token || !consent) return;
+    if (!shareOn || !front || !ride || !token || riding) return;
+    return watchRide(browserRideEnv(), (f) => setFix(f.point), (why) => {
+      if (why === "denied" || why === "unsupported" || why === "insecure") setShareOn(false);
+    });
+  }, [shareOn, front, ride, token, riding]);
+  const ownFix = sharedFix(riding, livePoint, fix);
+  useEffect(() => {
+    // Only in front: the app's ride goes on with the screen locked, and the dot does not (the promise made at Yes).
+    if (!shareOn || !front || !ownFix || !ride || !token || !consent) return;
+    const fix = ownFix;
     const t = Date.now();
     // On a broadcast everyone shown is shown on or off the route while they ride: those following go where the leader
     // goes, and riders who get separated find each other. Not riding (the ride ended, or watching), the quarter-mile
@@ -402,13 +432,13 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
       if (held) void leaveRide(origin, ride, token);
       else share.current.lastPost = 0;
     }
-    if (near && !held && t - share.current.lastPost >= POST_EVERY_MS) {
+    if (near && !held && postDue(t, share.current.lastPost, pace)) {
       share.current.lastPost = t;
       void sendPosition(origin, ride, token, fix, consent.role, fetch, seal);
     }
     // Nor the leader's ridden path while the dot is held back: its last point would say where they are.
     if (leading && near && !held) setOwnTrail((t) => extendTrail(t, fix));
-  }, [fix, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home]);
+  }, [ownFix, front, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home, pace]);
 
   // The ride ended: the dot goes, and the next ride on this page asks again (2026-10-29: a Yes is
   // for the ride it was given for, never the page left open after it).
@@ -455,7 +485,7 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leading, riding, shareOn, front, ride, token, origin, routeNowKey, now, seal]);
 
-  const me = fix ?? here;
+  const me = ownFix ?? here;
   const meRef = useRef<LonLat | null>(null);
   meRef.current = me;
   // A broadcast from Roam has no route: places are said from you in a straight line (lib/rideGroup.ts awayWords).
@@ -560,21 +590,26 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
     if (!ride || !token) return;
     const refusal = alertRefusal(sent, Date.now());
     if (refusal) {
+      setSendError(refusal);
       say(refusal);
       return;
     }
     const at = me ?? (await currentPosition());
     if (!at) {
-      say(t("Your location is needed to send an alert; allow it and try again."));
+      const why = t("Your location is needed to send an alert; allow it and try again.");
+      setSendError(why);
+      say(why);
       return;
     }
     const outcome = await sendAlert(origin, ride, token, type, kind.id, words, at, fetch, seal);
     setConfirming(null);
     setOtherOpen(false);
     if (!outcome.ok) {
+      setSendError(outcome.message);
       say(outcome.message);
       return;
     }
+    setSendError("");
     setSent((s) => [...s, Date.now()]);
     // The words themselves, not "Other": a rider who cannot see the box hears what went (spoken words included).
     const shown = kind.id === "other" ? words.trim() : kind.label;
@@ -653,7 +688,10 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
             <span aria-hidden="true">{riders}</span>
           </button>
         )}
-        <button type="button" className="chip ride-alert-button" aria-expanded={alertOpen} data-idle-close aria-controls={alertPanel} aria-describedby={`${alertPanel}-note`} onClick={() => setAlertOpen(!alertOpen)}>
+        <button type="button" className="chip ride-alert-button" aria-expanded={alertOpen} data-idle-close aria-controls={alertPanel} aria-describedby={`${alertPanel}-note`} onClick={() => {
+            setSendError("");
+            setAlertOpen(!alertOpen);
+          }}>
           <Icon name="warn" size={18} />
           {ALERT_LABEL}
         </button>
@@ -730,6 +768,8 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
         <p id={`${alertPanel}-note`} className="hint">
           {ALERT_SPOT_NOTE}
         </p>
+        {/* Said already (the status line); shown here so a rider who sees the screen knows it did not go. */}
+        {sendError && <p className="ride-alert-error">{sendError}</p>}
         {confirming ? (
           <div role="group" aria-label={CONFIRM_QUESTION} data-idle-hold>
             <p>
