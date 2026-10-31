@@ -8,6 +8,7 @@ import { encodePlan } from "./planHash.ts";
 import { linkToCopy } from "./sidebar.ts";
 import {
   BROADCAST_COPIED,
+  sheetOrCopyNavigator,
   SHARE_FAILED,
   copyShareNavigator,
   pickShareNavigator,
@@ -160,12 +161,49 @@ test("Broadcast with no share sheet copies the link, inside the press; a failed 
   assert.match(BROADCAST_COPIED, /^Live link copied\. Paste it to your riders/);
 });
 
+test("Share live: where the share sheet fails, the link is copied instead and the ride is led (phone Chrome, 2026-10-31)", async () => {
+  // Stephen 2026-10-31: "On a browser, could not open the share sheet". Before, a sheet that failed left nothing shared.
+  const content = shareContent("https://x.test/#p=1&ride=1", 1, "Default");
+  const run = async (sheetError: string | null, copyOk = true) => {
+    const opened: string[] = [];
+    const copied: string[] = [];
+    const told: boolean[] = [];
+    const sheet = {
+      share: (d: { url: string }) => {
+        opened.push(d.url);
+        return sheetError ? Promise.reject(Object.assign(new Error(sheetError), { name: sheetError })) : Promise.resolve();
+      },
+    };
+    const nav = sheetOrCopyNavigator(sheet, async (text) => (copied.push(text), copyOk), (c) => told.push(c));
+    const outcome = shareLink(nav, content);
+    assert.deepEqual(opened, [content.url], "the sheet is opened synchronously, inside the press");
+    return { outcome: await outcome, copied, told };
+  };
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    assert.deepEqual(await run(null), { outcome: "shared", copied: [], told: [false] });
+    assert.deepEqual(await run("NotAllowedError"), { outcome: "shared", copied: [content.url], told: [false, true] });
+    assert.deepEqual(await run("TypeError"), { outcome: "shared", copied: [content.url], told: [false, true] });
+    // The rider closed the sheet: nothing copied, nothing started.
+    assert.deepEqual(await run("AbortError"), { outcome: "cancelled", copied: [], told: [false] });
+    // The copy failed too: a failure, as before.
+    assert.deepEqual(await run("NotAllowedError", false), { outcome: "failed", copied: [content.url], told: [false] });
+  } finally {
+    console.warn = warn;
+  }
+});
+
 test("App: Broadcast shows everywhere; with no share sheet it copies, and the ride screen, Ride and Roam say so", () => {
-  assert.ok(app.includes("const broadcastNav = useMemo<ShareNavigator | undefined>(() => (canShare ? shareNav : copyShareNavigator((text) => copyText(text, navigator.clipboard, selectionCopy))), [canShare, shareNav]);"));
-  assert.match(app, /if \(led\) return canShare \? ROAM_BROADCAST_ON : BROADCAST_COPIED;/);
-  assert.match(app, /return canShare \? ROAM_BROADCAST_ON : BROADCAST_COPIED;\n  \};/);
+  assert.ok(app.includes("const copy = (text: string) => copyText(text, navigator.clipboard, selectionCopy);"));
+  assert.ok(app.includes("return canShare && shareNav ? sheetOrCopyNavigator(shareNav, copy, (copied) => (sheetCopied.current = copied)) : copyShareNavigator(copy);"));
+  // Said after the sheet; the copy's line where there is no sheet or the sheet failed and the link was copied.
+  assert.ok(app.includes("const broadcastSaid = (sheet: string) => (canShare && !sheetCopied.current ? sheet : BROADCAST_COPIED);"));
+  assert.match(app, /if \(led\) return broadcastSaid\(ROAM_BROADCAST_ON\);/);
+  assert.match(app, /return broadcastSaid\(ROAM_BROADCAST_ON\);\n  \};/);
   // Roam pressed again while leading: a copy is said (a sheet is its own answer).
-  assert.match(app, /if \(mine\) return canShare \? "" : BROADCAST_COPIED;/);
+  assert.match(app, /if \(mine\) return broadcastSaid\(""\);/);
+  assert.doesNotMatch(app, /canShare \? (""|ROAM_BROADCAST_ON) : BROADCAST_COPIED/);
   // A failed copy says so, not "share sheet".
   assert.match(app, /said === SHARE_FAILED \? \(canShare \? BROADCAST_SHARE_FAILED : BROADCAST_COPY_FAILED\) : said/);
   assert.match(app, /said === SHARE_FAILED \? \(canShare \? BROADCAST_RIDE_FAILED : BROADCAST_RIDE_COPY_FAILED\) : said/);

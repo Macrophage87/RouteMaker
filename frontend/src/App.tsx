@@ -183,7 +183,7 @@ import {
   type PanelView,
   type ViewCause,
 } from "./lib/sidebar.ts";
-import { BROADCAST_COPIED, BROADCAST_COPY_FAILED, BROADCAST_RIDE_COPY_FAILED, SHARE_FAILED, canShareLink, copyShareNavigator, pickShareNavigator, shareContent, shareLink, shareSaidFor, withGpxFile, type ShareNavigator } from "./lib/share.ts";
+import { BROADCAST_COPIED, BROADCAST_COPY_FAILED, BROADCAST_RIDE_COPY_FAILED, SHARE_FAILED, canShareLink, copyShareNavigator, sheetOrCopyNavigator, pickShareNavigator, shareContent, shareLink, shareSaidFor, withGpxFile, type ShareNavigator } from "./lib/share.ts";
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
 import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
@@ -877,7 +877,14 @@ export function App() {
   const [canShare] = useState(() => canShareLink(shareNav, window.location.href));
   // Broadcast is on the page everywhere (Stephen 2026-10-26: "I don't seem to be able to broadcast rides"; in the app
   // it was hidden): with no share sheet, its link is copied instead (lib/share.ts copyShareNavigator).
-  const broadcastNav = useMemo<ShareNavigator | undefined>(() => (canShare ? shareNav : copyShareNavigator((text) => copyText(text, navigator.clipboard, selectionCopy))), [canShare, shareNav]);
+  // Where the sheet fails, Share live copies its link instead (lib/share.ts sheetOrCopyNavigator): `sheetCopied` says so.
+  const sheetCopied = useRef(false);
+  const broadcastNav = useMemo<ShareNavigator | undefined>(() => {
+    const copy = (text: string) => copyText(text, navigator.clipboard, selectionCopy);
+    return canShare && shareNav ? sheetOrCopyNavigator(shareNav, copy, (copied) => (sheetCopied.current = copied)) : copyShareNavigator(copy);
+  }, [canShare, shareNav]);
+  // What Share live says once its link went: `sheet` after the sheet, the copy's line where the link was copied.
+  const broadcastSaid = (sheet: string) => (canShare && !sheetCopied.current ? sheet : BROADCAST_COPIED);
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
   const [crosshair, setCrosshair] = useState({ button: false, canvas: false });
@@ -3985,7 +3992,7 @@ export function App() {
   const passOn = async (link: string, nav: ShareNavigator | undefined): Promise<{ sent: boolean; said: string }> => {
     const done = await shareLink(nav, shareContent(link, null, presetSaid(preset)));
     if (done !== "shared") return { sent: false, said: done === "failed" && !canShare ? BROADCAST_RIDE_COPY_FAILED : shareSaidFor(done) };
-    return { sent: true, said: canShare ? "" : BROADCAST_COPIED };
+    return { sent: true, said: broadcastSaid("") };
   };
   // Broadcast (Stephen 2026-10-22: "a small button next to start ... You then get a share screen and send it"): Share
   // ride's link, led by the sharer, then the ride starts as Start's does. The voice is unlocked inside the press, as
@@ -4016,7 +4023,7 @@ export function App() {
     void shareRoute(true, broadcastNav).then(({ led, said }) => {
       if (led) {
         // With no share sheet the link was copied: the ride screen says so, for the rider to paste it.
-        startRideNoted(canShare ? "" : BROADCAST_COPIED);
+        startRideNoted(broadcastSaid(""));
       } else if (said) setBroadcastNote((n) => ({ text: said === SHARE_FAILED ? (canShare ? BROADCAST_SHARE_FAILED : BROADCAST_COPY_FAILED) : said, count: n.count + 1 }));
     });
   };
@@ -4029,7 +4036,7 @@ export function App() {
     const followed = followedInRide();
     if (followed) return (await passOn(followed, broadcastNav)).said;
     const { led, said } = await shareRoute(true, broadcastNav);
-    if (led) return canShare ? ROAM_BROADCAST_ON : BROADCAST_COPIED;
+    if (led) return broadcastSaid(ROAM_BROADCAST_ON);
     if (said === BROADCAST_NO_LEAD) return BROADCAST_RIDE_NO_LEAD;
     return said === SHARE_FAILED ? (canShare ? BROADCAST_RIDE_FAILED : BROADCAST_RIDE_COPY_FAILED) : said;
   };
@@ -4480,7 +4487,7 @@ export function App() {
       if (roamKeyless) return BROADCAST_NO_KEY;
       const done = await shareLink(nav, { title: ROAM_BROADCAST_TITLE, text: ROAM_BROADCAST_TEXT, url: roamLink(window.location.origin, roamBroadcast.id, roamBroadcast.lead, roamBroadcast.secret) });
       if (done !== "shared") return done === "failed" && !canShare ? BROADCAST_RIDE_COPY_FAILED : shareSaidFor(done);
-      return canShare ? "" : BROADCAST_COPIED;
+      return broadcastSaid("");
     }
     const mine = roamBroadcast?.leading ? roamBroadcast : null;
     const lead = mine ? leads.current.get(`roam|${mine.id}`) : leadPrep.current;
@@ -4489,14 +4496,14 @@ export function App() {
     const done = await shareLink(nav, { title: ROAM_BROADCAST_TITLE, text: ROAM_BROADCAST_TEXT, url: roamLink(window.location.origin, id, lead.key, lead.secret) });
     if (done !== "shared") return done === "failed" && !canShare ? BROADCAST_RIDE_COPY_FAILED : shareSaidFor(done);
     // Again while leading: the sheet was the answer; a copy is said.
-    if (mine) return canShare ? "" : BROADCAST_COPIED;
+    if (mine) return broadcastSaid("");
     if (!roamingNow.current) return "";
     const on = await rideOf(lead.secret);
     if (on) leadConsent(on.id, lead.token);
     leads.current.set(`roam|${id}`, lead);
     prepareLead();
     setRoamBroadcast({ id, lead: lead.key, leading: true, secret: lead.secret });
-    return canShare ? ROAM_BROADCAST_ON : BROADCAST_COPIED;
+    return broadcastSaid(ROAM_BROADCAST_ON);
   };
   // Held in Roam: its link as a QR code (no Start: Roam is going).
   const broadcastRoamQr = async (): Promise<string> => {
