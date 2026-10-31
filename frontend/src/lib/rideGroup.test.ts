@@ -55,6 +55,9 @@ import {
   shownDots,
   type RideAlert,
   type RideRole,
+  meCounted,
+  NOT_SENT,
+  DOT_SHOWN_S,
 } from "./rideGroup.ts";
 import { newRideSecret, openValue, rideSeal, sealValue } from "./rideSeal.ts";
 import {
@@ -655,7 +658,14 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.match(group, /\}, \[ownFix, front, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home, pace\]\);/);
   // Held back (an hour in one spot, or at Home): the dot goes at once, and none is sent until the rider moves on.
   assert.match(group, /const held = dotHeldBack\(dwell\.current, fix, t, home\);/);
-  assert.match(group, /if \(held\) void leaveRide\(origin, ride, token\);/);
+  assert.match(group, /if \(held\) \{\s*void leaveRide\(origin, ride, token\);\s*forgetSent\(\);/);
+  // This rider counts themself only while the server has their dot (a follower whose dot never went counted 2); a
+  // send still in flight when the dot is dropped does not count them again.
+  assert.match(group, /const gen = sentGen\.current;\s*void sendPosition\(origin, ride, token, fix, consent\.role, fetch, seal\)\.then\(\(ok\) => \{\s*if \(ok && gen === sentGen\.current\) sentDot\.current = \{ ride, at: Date\.now\(\) \};/);
+  assert.match(group, /void leaveRide\(origin, ride, token\);\s*forgetSent\(\);\s*\};\s*\}, \[shareOn, front, ride, token, origin\]\);/);
+  assert.match(group, /const meShown = meCounted\(sentDot\.current, ride, \(leading \|\| shareOn\) && front, now\);/);
+  // The leader's path holds only what was ridden.
+  assert.match(group, /if \(leading && riding && near && !held\) setOwnTrail/);
   assert.match(group, /if \(near && !held && postDue\(t, share\.current\.lastPost, pace\)\)/);
   // A kept Yes from another tab is asked again; a ride that ends stops the dot and asks again next ride.
   assert.match(group, /const askAgain = !leading && kept\?\.answer === "yes" && !answeredHere\(id\);/);
@@ -663,7 +673,7 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.match(group, /if \(!shareOn\) return;\s*setShareOn\(false\);/);
   assert.match(group, /markAnsweredHere\(ride, yes\);\s*\/\/[^\n]*\n\s*dwell\.current = null;/);
   // Held back, the leader's path is neither grown nor sent.
-  assert.match(group, /if \(leading && near && !held\) setOwnTrail/);
+  assert.match(group, /if \(leading && riding && near && !held\) setOwnTrail/);
   assert.match(group, /!token \|\| heldBack\.current\) return;/);
   assert.match(group, /<\/button>\s*\)\}\s*\{consent && <RolePicker name="ride-role" value=\{consent\.role\} onChange=\{changeRole\} \/>\}\s*<\/div>/);
   assert.match(group, /sendPosition\(origin, ride, token, fix, consent\.role, fetch, seal\)/);
@@ -813,4 +823,16 @@ test("the dots go at the pace the server sets: 2 s on a ride of 20 sharing, 5 s,
   assert.match(group, /setPace\(got\.paceMs\);/);
   assert.match(group, /const id = window\.setInterval\(\(\) => void poll\(\), pace\);\s*const tick = window\.setInterval\(\(\) => setNow\(Date\.now\(\)\), shareOn \? Math\.min\(TICK_MS, pace \/ 2\) : TICK_MS\);[\s\S]*?\}, \[ride, token, poll, pace, shareOn\]\);/);
   assert.match(group, /if \(near && !held && postDue\(t, share\.current\.lastPost, pace\)\) \{/);
+});
+
+test("a rider counts themself only while the server has their dot, on this ride (Stephen 2026-10-31)", () => {
+  const t = 1_000_000;
+  const sent = { ride: "r1", at: t };
+  assert.equal(meCounted(NOT_SENT, "r1", true, t), false, "never sent: not counted");
+  assert.equal(meCounted(sent, "r1", true, t + 5_000), true);
+  assert.equal(meCounted(sent, "r1", true, t + DOT_SHOWN_S * 1000), true, "as long as the others see it");
+  assert.equal(meCounted(sent, "r1", true, t + DOT_SHOWN_S * 1000 + 1), false, "gone for the others: gone here");
+  assert.equal(meCounted(sent, "r2", true, t + 5_000), false, "another ride's dot");
+  assert.equal(meCounted(sent, "r1", false, t + 5_000), false, "sharing off");
+  assert.equal(meCounted(sent, null, true, t + 5_000), false);
 });
