@@ -16,7 +16,7 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of the Q and R Street corridors: \"I think the ratings on the Q and R corridors are way too high and they are causing routing issues\" and \"I don't think these numbers reflect the painted bike lanes.\" Shown that these painted-lane blocks sat at LTS 2.5 (the 2026-10-21 rule: DDOT's 2020 layer rates them LTS 3, the formula LTS 2) while the blocks either side, with the same lane, one travel lane, 25 mph and similar traffic, are LTS 2, he answered \"I think formula wins on most of them\". The formula's LTS 2 is used.",
+   "reason": "Painted bike lane, one travel lane, 25 mph, 3,942 cars a day (DC Roadway Block AADT). Under 9,000 cars a day a painted lane on one travel lane is LTS 2, the level the map gives the blocks either side with the same lane and similar traffic; DDOT's 2020 layer rates this block LTS 3, which nothing seen on the street sets apart from those blocks. LTS 2, the formula's. Approved by the owner 2026-10-30 (\"I don't think these numbers reflect the painted bike lanes\", \"I think formula wins on most of them\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks 15Th St Nw to 16Th St Nw (BLOCKKEY 317e3a77c0d2b7b2c7afeff31e02ef38): DDOT 2020 LTS 3, formula LTS 2, beta LTS 2.5, AADT 3942. OSM, read 2026-10-30: way 1048115901 (version 8), R Street Northwest, highway=secondary, cycleway=lane.",
    "fingerprint": {
     "name": "R Street Northwest",
@@ -36,7 +36,7 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of the Q and R Street corridors: \"I think the ratings on the Q and R corridors are way too high and they are causing routing issues\" and \"I don't think these numbers reflect the painted bike lanes.\" Shown that these painted-lane blocks sat at LTS 2.5 (the 2026-10-21 rule: DDOT's 2020 layer rates them LTS 3, the formula LTS 2) while the blocks either side, with the same lane, one travel lane, 25 mph and similar traffic, are LTS 2, he answered \"I think formula wins on most of them\". The formula's LTS 2 is used.",
+   "reason": "Painted bike lane, one travel lane, 25 mph, 2,494 cars a day (DC Roadway Block AADT). Under 9,000 cars a day a painted lane on one travel lane is LTS 2, the level the map gives the blocks either side with the same lane and similar traffic; DDOT's 2020 layer rates this block LTS 3, which nothing seen on the street sets apart from those blocks. LTS 2, the formula's. Approved by the owner 2026-10-30 (\"I don't think these numbers reflect the painted bike lanes\", \"I think formula wins on most of them\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks 6Th St Nw to Marion St Nw/Rhode Island Ave Nw (BLOCKKEY 4267c841f7eff0456aa29aba74f741f4): DDOT 2020 LTS 3, formula LTS 2, beta LTS 2.5, AADT 2494. OSM, read 2026-10-30: way 1194857921 (version 5), R Street Northwest, highway=tertiary, cycleway=lane.",
    "fingerprint": {
     "name": "R Street Northwest",
@@ -56,7 +56,7 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of the Q and R Street corridors: \"I think the ratings on the Q and R corridors are way too high and they are causing routing issues\" and \"I don't think these numbers reflect the painted bike lanes.\" Shown that these painted-lane blocks sat at LTS 2.5 (the 2026-10-21 rule: DDOT's 2020 layer rates them LTS 3, the formula LTS 2) while the blocks either side, with the same lane, one travel lane, 25 mph and similar traffic, are LTS 2, he answered \"I think formula wins on most of them\". The formula's LTS 2 is used.",
+   "reason": "Painted bike lane, one travel lane, 25 mph, 4,625 cars a day (DC Roadway Block AADT). Under 9,000 cars a day a painted lane on one travel lane is LTS 2, the level the map gives the blocks either side with the same lane and similar traffic; DDOT's 2020 layer rates this block LTS 3, which nothing seen on the street sets apart from those blocks. LTS 2, the formula's. Approved by the owner 2026-10-30 (\"I don't think these numbers reflect the painted bike lanes\", \"I think formula wins on most of them\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks 10Th St Nw to 11Th St Nw (BLOCKKEY e2cf5669cf185460e6f99f73044f9628): DDOT 2020 LTS 3, formula LTS 2, beta LTS 2.5, AADT 4625. OSM, read 2026-10-30: way 696198840 (version 13), R Street Northwest, highway=secondary, cycleway=lane.",
    "fingerprint": {
     "name": "R Street Northwest",
@@ -76,7 +76,7 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of the Q and R Street corridors: \"I think the ratings on the Q and R corridors are way too high and they are causing routing issues\" and \"I don't think these numbers reflect the painted bike lanes.\" Shown that these painted-lane blocks sat at LTS 2.5 (the 2026-10-21 rule: DDOT's 2020 layer rates them LTS 3, the formula LTS 2) while the blocks either side, with the same lane, one travel lane, 25 mph and similar traffic, are LTS 2, he answered \"I think formula wins on most of them\". The formula's LTS 2 is used.",
+   "reason": "Painted bike lane, one travel lane, 25 mph, 4,625 cars a day (DC Roadway Block AADT). Under 9,000 cars a day a painted lane on one travel lane is LTS 2, the level the map gives the blocks either side with the same lane and similar traffic; DDOT's 2020 layer rates this block LTS 3, which nothing seen on the street sets apart from those blocks. LTS 2, the formula's. Approved by the owner 2026-10-30 (\"I don't think these numbers reflect the painted bike lanes\", \"I think formula wins on most of them\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks Marion St Nw/Rhode Island Ave Nw to 7Th St Nw (BLOCKKEY 11194ab71036099ad05363405f4599b9): DDOT 2020 LTS 3, formula LTS 2, beta LTS 2.5, AADT 4625. OSM, read 2026-10-30: way 1050810615 (version 5), R Street Northwest, highway=tertiary, cycleway=lane.",
    "fingerprint": {
     "name": "R Street Northwest",
@@ -96,7 +96,7 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of the Q and R Street corridors: \"I think the ratings on the Q and R corridors are way too high and they are causing routing issues\" and \"I don't think these numbers reflect the painted bike lanes.\" Shown that these painted-lane blocks sat at LTS 2.5 (the 2026-10-21 rule: DDOT's 2020 layer rates them LTS 3, the formula LTS 2) while the blocks either side, with the same lane, one travel lane, 25 mph and similar traffic, are LTS 2, he answered \"I think formula wins on most of them\". The formula's LTS 2 is used.",
+   "reason": "Painted bike lane, one travel lane, 25 mph, 4,625 cars a day (DC Roadway Block AADT). Under 9,000 cars a day a painted lane on one travel lane is LTS 2, the level the map gives the blocks either side with the same lane and similar traffic; DDOT's 2020 layer rates this block LTS 3, which nothing seen on the street sets apart from those blocks. LTS 2, the formula's. Approved by the owner 2026-10-30 (\"I don't think these numbers reflect the painted bike lanes\", \"I think formula wins on most of them\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks Marion St Nw/Rhode Island Ave Nw to 7Th St Nw (BLOCKKEY 11194ab71036099ad05363405f4599b9): DDOT 2020 LTS 3, formula LTS 2, beta LTS 2.5, AADT 4625. OSM, read 2026-10-30: way 1112011042 (version 3), R Street Northwest, highway=tertiary, cycleway=lane.",
    "fingerprint": {
     "name": "R Street Northwest",
@@ -116,7 +116,7 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of the Q and R Street corridors: \"I think the ratings on the Q and R corridors are way too high and they are causing routing issues\" and \"I don't think these numbers reflect the painted bike lanes.\" Shown that these painted-lane blocks sat at LTS 2.5 (the 2026-10-21 rule: DDOT's 2020 layer rates them LTS 3, the formula LTS 2) while the blocks either side, with the same lane, one travel lane, 25 mph and similar traffic, are LTS 2, he answered \"I think formula wins on most of them\". The formula's LTS 2 is used.",
+   "reason": "Painted bike lane, one travel lane, 25 mph, 4,625 cars a day (DC Roadway Block AADT). Under 9,000 cars a day a painted lane on one travel lane is LTS 2, the level the map gives the blocks either side with the same lane and similar traffic; DDOT's 2020 layer rates this block LTS 3, which nothing seen on the street sets apart from those blocks. LTS 2, the formula's. Approved by the owner 2026-10-30 (\"I don't think these numbers reflect the painted bike lanes\", \"I think formula wins on most of them\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks Vermont Ave Nw to 13Th St Nw (BLOCKKEY e7efc35f632a1427f03b7dfc77859c7e): DDOT 2020 LTS 3, formula LTS 2, beta LTS 2.5, AADT 4625. OSM, read 2026-10-30: way 696198839 (version 12), R Street Northwest, highway=secondary, cycleway=lane.",
    "fingerprint": {
     "name": "R Street Northwest",
@@ -136,7 +136,7 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-30, of the Q and R Street corridors: \"I think the ratings on the Q and R corridors are way too high and they are causing routing issues\" and \"I don't think these numbers reflect the painted bike lanes.\" Shown that these painted-lane blocks sat at LTS 2.5 (the 2026-10-21 rule: DDOT's 2020 layer rates them LTS 3, the formula LTS 2) while the blocks either side, with the same lane, one travel lane, 25 mph and similar traffic, are LTS 2, he answered \"I think formula wins on most of them\". The formula's LTS 2 is used.",
+   "reason": "Painted bike lane, one travel lane, 25 mph, 3,942 cars a day (DC Roadway Block AADT). Under 9,000 cars a day a painted lane on one travel lane is LTS 2, the level the map gives the blocks either side with the same lane and similar traffic; DDOT's 2020 layer rates this block LTS 3, which nothing seen on the street sets apart from those blocks. LTS 2, the formula's. Approved by the owner 2026-10-30 (\"I don't think these numbers reflect the painted bike lanes\", \"I think formula wins on most of them\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks 13Th St Nw to 14Th St Nw (BLOCKKEY 5697dd80f677b054e728f613f40c0602): DDOT 2020 LTS 3, formula LTS 2, beta LTS 2.5, AADT 3942; Johnson Ave Nw to 15Th St Nw (BLOCKKEY 8caa3ff8bc027b8993b29fa007d4af57): DDOT 2020 LTS 3, formula LTS 2, beta LTS 2.5, AADT 3942; 14Th St Nw to Johnson Ave Nw (BLOCKKEY 5597b433da273bea49c3851825df4c8f): DDOT 2020 LTS 3, formula LTS 2, beta LTS 2.5, AADT 3942. OSM, read 2026-10-30: way 1044606411 (version 7), R Street Northwest, highway=secondary, cycleway=lane.",
    "fingerprint": {
     "name": "R Street Northwest",
@@ -157,7 +157,7 @@
     "display": "route_only",
     "half": true
    },
-   "reason": "The owner, 2026-10-30, of the blocks of R Street NW with no painted lane: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\", and of the one block DDOT rates LTS 4 (1st St NW to Florida Ave): \"Same with the one 4. It's definitely higher stress, but not enough to consider avoiding.\" LTS 2.5, between DDOT's 2020 rating and the formula's.",
+   "reason": "No painted bike lane, no DC traffic count; DDOT's 2020 layer rates it LTS 3, the formula LTS 2. Without a lane it is more stressful than the painted blocks at the formula's 2, so the level goes half way between DDOT's 3 and the formula's 2: LTS 2.5. Approved by the owner 2026-10-30 (\"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks 29Th St Nw to 30Th St Nw (BLOCKKEY 766ea2e69108a20759120ceceb60791c): DDOT 2020 LTS 3, formula LTS 2, beta LTS 3, AADT none; 28Th St Nw to 29Th St Nw (BLOCKKEY a978cadc1663e4200ae117737d7743d5): DDOT 2020 LTS 3, formula LTS 2, beta LTS 3, AADT none; 30Th St Nw to Avon Pl Nw (BLOCKKEY 34d507c2c982efc1b9356a8a571c4bbc): DDOT 2020 LTS 3, formula LTS 2, beta LTS 3, AADT none; Avon Pl Nw to Lovers Ln Nw (BLOCKKEY 1d28c433a580bacbb89f76b2df698982): DDOT 2020 LTS 3, formula LTS 2, beta LTS 3, AADT none. OSM, read 2026-10-30: way 1232007498 (version 5), R Street Northwest, highway=residential, cycleway=none.",
    "fingerprint": {
     "name": "R Street Northwest",
@@ -178,7 +178,7 @@
     "display": "route_only",
     "half": true
    },
-   "reason": "The owner, 2026-10-30, of the blocks of R Street NW with no painted lane: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\", and of the one block DDOT rates LTS 4 (1st St NW to Florida Ave): \"Same with the one 4. It's definitely higher stress, but not enough to consider avoiding.\" LTS 2.5, between DDOT's 2020 rating and the formula's.",
+   "reason": "No painted bike lane, no DC traffic count; DDOT's 2020 layer rates it LTS 3, the formula LTS 2. Without a lane it is more stressful than the painted blocks at the formula's 2, so the level goes half way between DDOT's 3 and the formula's 2: LTS 2.5. Approved by the owner 2026-10-30 (\"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks Lovers Ln Nw to 31St St Nw (BLOCKKEY 93c2e789f952ed7aea7a0c85b31ad020): DDOT 2020 LTS 3, formula LTS 2, beta LTS 3, AADT none; 32Nd St Nw to Wisconsin Ave Nw (BLOCKKEY 26f621150e1fa94a511bc4ec4468c517): DDOT 2020 LTS 3, formula LTS 2, beta LTS 3, AADT none; 31St St Nw to 32Nd St Nw (BLOCKKEY c37a19fb56f12212c0fff4d37ac83e8f): DDOT 2020 LTS 3, formula LTS 2, beta LTS 3, AADT none; Avon Pl Nw to Lovers Ln Nw (BLOCKKEY 1d28c433a580bacbb89f76b2df698982): DDOT 2020 LTS 3, formula LTS 2, beta LTS 3, AADT none. OSM, read 2026-10-30: way 6058586 (version 21), R Street Northwest, highway=residential, cycleway=none.",
    "fingerprint": {
     "name": "R Street Northwest",
@@ -199,7 +199,7 @@
     "display": "route_only",
     "half": true
    },
-   "reason": "The owner, 2026-10-30, of the blocks of R Street NW with no painted lane: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\", and of the one block DDOT rates LTS 4 (1st St NW to Florida Ave): \"Same with the one 4. It's definitely higher stress, but not enough to consider avoiding.\" LTS 2.5, between DDOT's 2020 rating and the formula's.",
+   "reason": "No painted bike lane, 2,206 cars a day (DC Roadway Block AADT); DDOT's 2020 layer rates it LTS 3, the formula LTS 2. Without a lane it is more stressful than the painted blocks at the formula's 2, so the level goes half way between DDOT's 3 and the formula's 2: LTS 2.5. Approved by the owner 2026-10-30 (\"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks R St Ne/North Capitol St Bn to 1St St Nw (BLOCKKEY a8c9173f3177a459e27774c1638372f7): DDOT 2020 LTS 3, formula LTS 2, beta LTS 3, AADT 2206. OSM, read 2026-10-30: way 6058583 (version 24), R Street Northwest, highway=tertiary, cycleway=shared_lane.",
    "fingerprint": {
     "name": "R Street Northwest",
@@ -220,7 +220,7 @@
     "display": "route_only",
     "half": true
    },
-   "reason": "The owner, 2026-10-30, of the blocks of R Street NW with no painted lane: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\", and of the one block DDOT rates LTS 4 (1st St NW to Florida Ave): \"Same with the one 4. It's definitely higher stress, but not enough to consider avoiding.\" LTS 2.5, between DDOT's 2020 rating and the formula's.",
+   "reason": "No painted bike lane, 2,206 cars a day (DC Roadway Block AADT); DDOT's 2020 layer rates it LTS 4, the formula LTS 2. It is the one block DDOT rates LTS 4, between 1st St NW and Florida Ave: without a lane it is more stressful than the formula's 2, but at 2,206 cars a day it is no road to avoid, so it takes the LTS 2.5 of R Street's other unpainted blocks. Approved by the owner 2026-10-30 (\"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\", and of this block: \"definitely higher stress, but not enough to consider avoiding\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks 1St St Nw to Florida Ave Nw (BLOCKKEY 56502e2dad88c9051bf44f281242084e): DDOT 2020 LTS 4, formula LTS 2, beta LTS 4, AADT 2206. OSM, read 2026-10-30: way 662782160 (version 4), R Street Northwest, highway=tertiary, cycleway=shared_lane.",
    "fingerprint": {
     "name": "R Street Northwest",
@@ -241,7 +241,7 @@
     "display": "route_only",
     "half": true
    },
-   "reason": "The owner, 2026-10-30, of 1st Street NW: \"They are causing me to route to much more stressful roads\". DDOT's 2020 layer rates these blocks LTS 3 or 4, the formula LTS 2; no bike lane is recorded in OSM or DC's Roadway Block. The owner: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\" and \"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula.\" Every block here carries about 5,000 cars a day or more (DC Roadway Block AADT 4,949 to 7,520), the line taken for \"higher\", so LTS 2.5.",
+   "reason": "No bike lane (none in OSM or DC's Roadway Block), two travel lanes, 20 to 25 mph, 5,540 cars a day (DC Roadway Block AADT); DDOT's 2020 layer rates it LTS 3, the formula LTS 2. At about 5,000 cars a day or more a street with no lane is busier than the formula's LTS 2 streets but slow and two-lane, not an LTS 3 or 4 road: LTS 2.5. Approved by the owner 2026-10-30 (\"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks E St Nw to F St Nw (BLOCKKEY d79593c67a15ef42ba09df3105bdc44f): DDOT 2020 LTS 3, formula LTS 2, beta LTS 3, AADT 5540. OSM, read 2026-10-30: way 1370070360 (version 5), 1st Street Northwest, highway=tertiary, cycleway=none.",
    "fingerprint": {
     "name": "1st Street Northwest",
@@ -262,7 +262,7 @@
     "display": "route_only",
     "half": true
    },
-   "reason": "The owner, 2026-10-30, of 1st Street NW: \"They are causing me to route to much more stressful roads\". DDOT's 2020 layer rates these blocks LTS 3 or 4, the formula LTS 2; no bike lane is recorded in OSM or DC's Roadway Block. The owner: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\" and \"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula.\" Every block here carries about 5,000 cars a day or more (DC Roadway Block AADT 4,949 to 7,520), the line taken for \"higher\", so LTS 2.5.",
+   "reason": "No bike lane (none in OSM or DC's Roadway Block), two travel lanes, 20 to 25 mph, 7,520 cars a day (DC Roadway Block AADT); DDOT's 2020 layer rates it LTS 3, the formula LTS 2. At about 5,000 cars a day or more a street with no lane is busier than the formula's LTS 2 streets but slow and two-lane, not an LTS 3 or 4 road: LTS 2.5. Approved by the owner 2026-10-30 (\"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks I St Nw to K St Nw (BLOCKKEY 31209d8381acfb6981c3b412a08dadfd): DDOT 2020 LTS 3, formula LTS 2, beta LTS 3, AADT 7520. OSM, read 2026-10-30: way 1123820539 (version 10), 1st Street Northwest, highway=tertiary, cycleway=none.",
    "fingerprint": {
     "name": "1st Street Northwest",
@@ -283,7 +283,7 @@
     "display": "route_only",
     "half": true
    },
-   "reason": "The owner, 2026-10-30, of 1st Street NW: \"They are causing me to route to much more stressful roads\". DDOT's 2020 layer rates these blocks LTS 3 or 4, the formula LTS 2; no bike lane is recorded in OSM or DC's Roadway Block. The owner: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\" and \"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula.\" Every block here carries about 5,000 cars a day or more (DC Roadway Block AADT 4,949 to 7,520), the line taken for \"higher\", so LTS 2.5.",
+   "reason": "No bike lane (none in OSM or DC's Roadway Block), two travel lanes, 20 to 25 mph, 7,520 cars a day (DC Roadway Block AADT); DDOT's 2020 layer rates it LTS 4, the formula LTS 2. At about 5,000 cars a day or more a street with no lane is busier than the formula's LTS 2 streets but slow and two-lane, not an LTS 3 or 4 road: LTS 2.5. Approved by the owner 2026-10-30 (\"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks H St Nw to I St Nw (BLOCKKEY 834db0e6a9bd46b6765cfdca7a141000): DDOT 2020 LTS 4, formula LTS 2, beta LTS 4, AADT 7520. OSM, read 2026-10-30: way 493044663 (version 7), First Street Northwest, highway=tertiary, cycleway=no.",
    "fingerprint": {
     "name": "First Street Northwest",
@@ -304,7 +304,7 @@
     "display": "route_only",
     "half": true
    },
-   "reason": "The owner, 2026-10-30, of 1st Street NW: \"They are causing me to route to much more stressful roads\". DDOT's 2020 layer rates these blocks LTS 3 or 4, the formula LTS 2; no bike lane is recorded in OSM or DC's Roadway Block. The owner: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\" and \"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula.\" Every block here carries about 5,000 cars a day or more (DC Roadway Block AADT 4,949 to 7,520), the line taken for \"higher\", so LTS 2.5.",
+   "reason": "No bike lane (none in OSM or DC's Roadway Block), two travel lanes, 20 to 25 mph, 7,520 cars a day (DC Roadway Block AADT); DDOT's 2020 layer rates it LTS 4, the formula LTS 2. At about 5,000 cars a day or more a street with no lane is busier than the formula's LTS 2 streets but slow and two-lane, not an LTS 3 or 4 road: LTS 2.5. Approved by the owner 2026-10-30 (\"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks K St Nw to L St Nw (BLOCKKEY d8330417ae55c6b8ee8fd671c5020601): DDOT 2020 LTS 4, formula LTS 2, beta LTS 4, AADT 7520. OSM, read 2026-10-30: way 131520219 (version 22), 1st Street Northwest, highway=tertiary, cycleway=none.",
    "fingerprint": {
     "name": "1st Street Northwest",
@@ -325,7 +325,7 @@
     "display": "route_only",
     "half": true
    },
-   "reason": "The owner, 2026-10-30, of 1st Street NW: \"They are causing me to route to much more stressful roads\". DDOT's 2020 layer rates these blocks LTS 3 or 4, the formula LTS 2; no bike lane is recorded in OSM or DC's Roadway Block. The owner: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\" and \"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula.\" Every block here carries about 5,000 cars a day or more (DC Roadway Block AADT 4,949 to 7,520), the line taken for \"higher\", so LTS 2.5.",
+   "reason": "No bike lane (none in OSM or DC's Roadway Block), two travel lanes, 20 to 25 mph, 7,520 cars a day (DC Roadway Block AADT); DDOT's 2020 layer rates it LTS 4, the formula LTS 2. At about 5,000 cars a day or more a street with no lane is busier than the formula's LTS 2 streets but slow and two-lane, not an LTS 3 or 4 road: LTS 2.5. Approved by the owner 2026-10-30 (\"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks New York Ave Nw to N St Nw (BLOCKKEY c616c38ce4589c46f5e7f2af3ea01741): DDOT 2020 LTS 4, formula LTS 2, beta LTS 4, AADT 7520. OSM, read 2026-10-30: way 1436652771 (version 1), 1st Street Northwest, highway=tertiary, cycleway=none.",
    "fingerprint": {
     "name": "1st Street Northwest",
@@ -346,7 +346,7 @@
     "display": "route_only",
     "half": true
    },
-   "reason": "The owner, 2026-10-30, of 1st Street NW: \"They are causing me to route to much more stressful roads\". DDOT's 2020 layer rates these blocks LTS 3 or 4, the formula LTS 2; no bike lane is recorded in OSM or DC's Roadway Block. The owner: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\" and \"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula.\" Every block here carries about 5,000 cars a day or more (DC Roadway Block AADT 4,949 to 7,520), the line taken for \"higher\", so LTS 2.5.",
+   "reason": "No bike lane (none in OSM or DC's Roadway Block), two travel lanes, 20 to 25 mph, 7,520 cars a day (DC Roadway Block AADT); DDOT's 2020 layer rates it LTS 4, the formula LTS 2. At about 5,000 cars a day or more a street with no lane is busier than the formula's LTS 2 streets but slow and two-lane, not an LTS 3 or 4 road: LTS 2.5. Approved by the owner 2026-10-30 (\"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks New York Ave Nw to N St Nw (BLOCKKEY c616c38ce4589c46f5e7f2af3ea01741): DDOT 2020 LTS 4, formula LTS 2, beta LTS 4, AADT 7520. OSM, read 2026-10-30: way 535563684 (version 6), 1st Street Northwest, highway=tertiary, cycleway=none.",
    "fingerprint": {
     "name": "1st Street Northwest",
@@ -367,7 +367,7 @@
     "display": "route_only",
     "half": true
    },
-   "reason": "The owner, 2026-10-30, of 1st Street NW: \"They are causing me to route to much more stressful roads\". DDOT's 2020 layer rates these blocks LTS 3 or 4, the formula LTS 2; no bike lane is recorded in OSM or DC's Roadway Block. The owner: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\" and \"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula.\" Every block here carries about 5,000 cars a day or more (DC Roadway Block AADT 4,949 to 7,520), the line taken for \"higher\", so LTS 2.5.",
+   "reason": "No bike lane (none in OSM or DC's Roadway Block), two travel lanes, 20 to 25 mph, 7,520 cars a day (DC Roadway Block AADT); DDOT's 2020 layer rates it LTS 4, the formula LTS 2. At about 5,000 cars a day or more a street with no lane is busier than the formula's LTS 2 streets but slow and two-lane, not an LTS 3 or 4 road: LTS 2.5. Approved by the owner 2026-10-30 (\"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks Bates St Nw to Q St Nw (BLOCKKEY 8f4522b490d82147c688937a0f5c267d): DDOT 2020 LTS 4, formula LTS 2, beta LTS 4, AADT 7520; N St Nw to O St Nw (BLOCKKEY c6695f20a0e0dda2ad9a24bf6459e8de): DDOT 2020 LTS 4, formula LTS 2, beta LTS 4, AADT 7520; P St Nw to Bates St Nw (BLOCKKEY 196456265cdce81b763fb0af6461d134): DDOT 2020 LTS 4, formula LTS 2, beta LTS 4, AADT 7520; O St Nw to P St Nw (BLOCKKEY f6a69bbd09219d51c726455bfd464cbc): DDOT 2020 LTS 4, formula LTS 2, beta LTS 4, AADT 7520. OSM, read 2026-10-30: way 296359781 (version 16), 1st Street Northwest, highway=tertiary, cycleway=none.",
    "fingerprint": {
     "name": "1st Street Northwest",
@@ -388,7 +388,7 @@
     "display": "route_only",
     "half": true
    },
-   "reason": "The owner, 2026-10-30, of 1st Street NW: \"They are causing me to route to much more stressful roads\". DDOT's 2020 layer rates these blocks LTS 3 or 4, the formula LTS 2; no bike lane is recorded in OSM or DC's Roadway Block. The owner: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\" and \"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula.\" Every block here carries about 5,000 cars a day or more (DC Roadway Block AADT 4,949 to 7,520), the line taken for \"higher\", so LTS 2.5.",
+   "reason": "No bike lane (none in OSM or DC's Roadway Block), two travel lanes, 20 to 25 mph, 7,520 cars a day (DC Roadway Block AADT); DDOT's 2020 layer rates it LTS 4, the formula LTS 2. At about 5,000 cars a day or more a street with no lane is busier than the formula's LTS 2 streets but slow and two-lane, not an LTS 3 or 4 road: LTS 2.5. Approved by the owner 2026-10-30 (\"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks Q St Nw to Florida Ave Nw (BLOCKKEY 97e9617d17960c8ba57dd60913f1adf3): DDOT 2020 LTS 4, formula LTS 2, beta LTS 4, AADT 7520. OSM, read 2026-10-30: way 483241819 (version 5), 1st Street Northwest, highway=tertiary, cycleway=none.",
    "fingerprint": {
     "name": "1st Street Northwest",
@@ -409,7 +409,7 @@
     "display": "route_only",
     "half": true
    },
-   "reason": "The owner, 2026-10-30, of 1st Street NW: \"They are causing me to route to much more stressful roads\". DDOT's 2020 layer rates these blocks LTS 3 or 4, the formula LTS 2; no bike lane is recorded in OSM or DC's Roadway Block. The owner: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\" and \"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula.\" Every block here carries about 5,000 cars a day or more (DC Roadway Block AADT 4,949 to 7,520), the line taken for \"higher\", so LTS 2.5.",
+   "reason": "No bike lane (none in OSM or DC's Roadway Block), two travel lanes, 20 to 25 mph, 7,520 cars a day (DC Roadway Block AADT); DDOT's 2020 layer rates it LTS 4, the formula LTS 2. At about 5,000 cars a day or more a street with no lane is busier than the formula's LTS 2 streets but slow and two-lane, not an LTS 3 or 4 road: LTS 2.5. Approved by the owner 2026-10-30 (\"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks Seaton Pl Nw to T St Nw (BLOCKKEY 6b845dfed6c9244a0a1fada4d76aa037): DDOT 2020 LTS 4, formula LTS 2, beta LTS 4, AADT 7520; S St Nw to Seaton Pl Nw (BLOCKKEY a561caa6fe3c8fa1983f18d81164a853): DDOT 2020 LTS 4, formula LTS 2, beta LTS 4, AADT 7520; Florida Ave Nw to R St Nw (BLOCKKEY 7185539e384a4f3066b66c7e60887a6b): DDOT 2020 LTS 4, formula LTS 2, beta LTS 4, AADT 7520; Randolph Pl Nw to S St Nw (BLOCKKEY 6940132bbde170648de51b7829d84a97): DDOT 2020 LTS 4, formula LTS 2, beta LTS 4, AADT 7520; R St Nw to Randolph Pl Nw (BLOCKKEY 49d0d981017f827b13645471ff132f4c): DDOT 2020 LTS 4, formula LTS 2, beta LTS 4, AADT 7520. OSM, read 2026-10-30: way 352828409 (version 10), 1st Street Northwest, highway=tertiary, cycleway=none.",
    "fingerprint": {
     "name": "1st Street Northwest",
@@ -430,7 +430,7 @@
     "display": "route_only",
     "half": true
    },
-   "reason": "The owner, 2026-10-30, of 1st Street NW: \"They are causing me to route to much more stressful roads\". DDOT's 2020 layer rates these blocks LTS 3 or 4, the formula LTS 2; no bike lane is recorded in OSM or DC's Roadway Block. The owner: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\" and \"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula.\" Every block here carries about 5,000 cars a day or more (DC Roadway Block AADT 4,949 to 7,520), the line taken for \"higher\", so LTS 2.5.",
+   "reason": "No bike lane (none in OSM or DC's Roadway Block), two travel lanes, 20 to 25 mph, 4,949 cars a day (DC Roadway Block AADT); DDOT's 2020 layer rates it LTS 4, the formula LTS 2. At about 5,000 cars a day or more a street with no lane is busier than the formula's LTS 2 streets but slow and two-lane, not an LTS 3 or 4 road: LTS 2.5. Approved by the owner 2026-10-30 (\"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks W St Nw to Adams St Nw (BLOCKKEY 58bb1c2d8b8ef6e33af0be5cd15ba161): DDOT 2020 LTS 4, formula LTS 2, beta LTS 4, AADT 4949; Adams St Nw to Bryant St Nw (BLOCKKEY 79d508b4496c95b40feafab88733d94d): DDOT 2020 LTS 4, formula LTS 2, beta LTS 4, AADT 4949. OSM, read 2026-10-30: way 345074765 (version 5), 1st Street Northwest, highway=tertiary, cycleway=none.",
    "fingerprint": {
     "name": "1st Street Northwest",
@@ -451,7 +451,7 @@
     "display": "route_only",
     "half": true
    },
-   "reason": "The owner, 2026-10-30, of 1st Street NW: \"They are causing me to route to much more stressful roads\". DDOT's 2020 layer rates these blocks LTS 3 or 4, the formula LTS 2; no bike lane is recorded in OSM or DC's Roadway Block. The owner: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\" and \"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula.\" Every block here carries about 5,000 cars a day or more (DC Roadway Block AADT 4,949 to 7,520), the line taken for \"higher\", so LTS 2.5.",
+   "reason": "No bike lane (none in OSM or DC's Roadway Block), two travel lanes, 20 to 25 mph, 4,949 cars a day (DC Roadway Block AADT); DDOT's 2020 layer rates it LTS 3, the formula LTS 2. At about 5,000 cars a day or more a street with no lane is busier than the formula's LTS 2 streets but slow and two-lane, not an LTS 3 or 4 road: LTS 2.5. Approved by the owner 2026-10-30 (\"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks V St Nw to W St Nw (BLOCKKEY e9b2356d7cd9a48a6898b3db56d9a32b): DDOT 2020 LTS 3, formula LTS 2, beta LTS 3, AADT 4949; U St Nw to V St Nw (BLOCKKEY d37cd7539bfc41c6b0b491dcc818c667): DDOT 2020 LTS 3, formula LTS 2, beta LTS 3, AADT 4949. OSM, read 2026-10-30: way 345074764 (version 6), 1st Street Northwest, highway=tertiary, cycleway=none.",
    "fingerprint": {
     "name": "1st Street Northwest",
@@ -472,7 +472,7 @@
     "display": "route_only",
     "half": true
    },
-   "reason": "The owner, 2026-10-30, of 1st Street NW: \"They are causing me to route to much more stressful roads\". DDOT's 2020 layer rates these blocks LTS 3 or 4, the formula LTS 2; no bike lane is recorded in OSM or DC's Roadway Block. The owner: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\" and \"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula.\" Every block here carries about 5,000 cars a day or more (DC Roadway Block AADT 4,949 to 7,520), the line taken for \"higher\", so LTS 2.5.",
+   "reason": "No bike lane (none in OSM or DC's Roadway Block), two travel lanes, 20 to 25 mph, 4,949 cars a day (DC Roadway Block AADT); DDOT's 2020 layer rates it LTS 3, the formula LTS 2. At about 5,000 cars a day or more a street with no lane is busier than the formula's LTS 2 streets but slow and two-lane, not an LTS 3 or 4 road: LTS 2.5. Approved by the owner 2026-10-30 (\"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks Rhode Island Ave Nw to Thomas St Nw (BLOCKKEY 9db7d55c3b17b7bcffbb2a0516f9a501): DDOT 2020 LTS 3, formula LTS 2, beta LTS 3, AADT 4949; Thomas St Nw to U St Nw (BLOCKKEY b602b261fa0a6346771b3e12a6c1aaf8): DDOT 2020 LTS 3, formula LTS 2, beta LTS 3, AADT 4949. OSM, read 2026-10-30: way 799538365 (version 7), 1st Street Northwest, highway=tertiary, cycleway=none.",
    "fingerprint": {
     "name": "1st Street Northwest",
@@ -493,7 +493,7 @@
     "display": "route_only",
     "half": true
    },
-   "reason": "The owner, 2026-10-30, of 1st Street NW: \"They are causing me to route to much more stressful roads\". DDOT's 2020 layer rates these blocks LTS 3 or 4, the formula LTS 2; no bike lane is recorded in OSM or DC's Roadway Block. The owner: \"The unpainted parts where DDOT is at 3 and we'ld be at 2, let's make 2.5\" and \"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula.\" Every block here carries about 5,000 cars a day or more (DC Roadway Block AADT 4,949 to 7,520), the line taken for \"higher\", so LTS 2.5.",
+   "reason": "No bike lane (none in OSM or DC's Roadway Block), two travel lanes, 20 to 25 mph, 4,949 cars a day (DC Roadway Block AADT); DDOT's 2020 layer rates it LTS 3, the formula LTS 2. At about 5,000 cars a day or more a street with no lane is busier than the formula's LTS 2 streets but slow and two-lane, not an LTS 3 or 4 road: LTS 2.5. Approved by the owner 2026-10-30 (\"I think formula wins on most of them, but make the higher cars/day ones, 2.5 instead of 2 if that's the formula\").",
    "evidence": "Beta's road panel (/api/segment-info), read 2026-10-30, at points along DC Roadway Block blocks Bryant St Nw to Channing St Nw (BLOCKKEY e87b1191ea08130e055cc682aa802b0c): DDOT 2020 LTS 3, formula LTS 2, beta LTS 3, AADT 4949. OSM, read 2026-10-30: way 275400512 (version 5), 1st Street Northwest, highway=tertiary, cycleway=none.",
    "fingerprint": {
     "name": "1st Street Northwest",

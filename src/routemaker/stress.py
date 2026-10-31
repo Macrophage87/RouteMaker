@@ -1244,7 +1244,7 @@ VERY_BUSY_STREET_RULE = "very busy city street"
 # P7 (everywhere outside urban areas): a two-lane primary or trunk road carrying
 # BUSY_RURAL_HIGHWAY_AADT or more is LTS 4.5, as busy as the rural expressways the owner
 # set there (US-15 Leesburg to Point of Rocks, VA-9, US-340; US-15 runs on into Maryland,
-# which reads the same).
+# which reads the same: `mdot_sha_rules` "busy-rural-two-lane" on SHA-rated roads).
 BUSY_RURAL_HIGHWAY_AADT = 18_000
 BUSY_RURAL_HIGHWAY = frozenset({"primary", "trunk"})
 BUSY_RURAL_HIGHWAY_RULE = "busy two-lane rural highway"

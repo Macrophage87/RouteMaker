@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, GO_WARM_AFTER_MS, goWarmDue, goPickStart, goHereStart, goStartStale, goRough, goRoughDue, GO_ROUGH_M, GO_ROUGH_AGAIN_MS, GO_ROUGH_TRIES, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, goStartSaid, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, GO_WARM_AFTER_MS, goWarmDue, goPickStart, goHereStart, goStartStale, goRough, goRoughAgain, goRoughDue, goRoughTriesAfter, GO_ROUGH_M, GO_ROUGH_AGAIN_MS, GO_ROUGH_TRIES, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, goStartSaid, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -618,6 +618,36 @@ test("go start: a rough fix is due another look-up after 20 s, a sure one never 
   assert.equal(goRoughDue(here, 15, found + 60 * 60_000), false, "a sure fix: the page back in view checks it (goStartStale)");
   assert.equal(goRoughDue({ kind: "none" }, 5_000, found + GO_ROUGH_AGAIN_MS), false);
   assert.equal(GO_ROUGH_TRIES * GO_ROUGH_AGAIN_MS, 2 * 60_000, "tries for two minutes, then waits for the page back in view");
+});
+
+test("go start: a fix that stays rough is looked up again GO_ROUGH_TRIES times and then no more; a sure fix starts the count again (test-strength S6)", () => {
+  // App's tick, every GO_ROUGH_AGAIN_MS for an hour, on a phone that never gets a lock: each look-up finds a rough fix
+  // again, stamped when it came, and the count is kept (goRoughTriesAfter).
+  const point: [number, number] = [-77.06, 38.905];
+  let at = 0;
+  let tries = 0;
+  let lookups = 0;
+  for (let now = GO_ROUGH_AGAIN_MS; now <= 60 * 60_000; now += GO_ROUGH_AGAIN_MS) {
+    if (!goRoughAgain(goHereStart(point, at), 5_000, tries, now)) continue;
+    tries += 1;
+    lookups += 1;
+    at = now;
+    tries = goRoughTriesAfter(tries, 4_000);
+  }
+  assert.equal(lookups, GO_ROUGH_TRIES);
+  const start = goHereStart(point, at);
+  const due = at + GO_ROUGH_AGAIN_MS;
+  assert.equal(goRoughAgain(start, 5_000, GO_ROUGH_TRIES, due), false, "at the cap: no more");
+  assert.equal(goRoughAgain(start, 5_000, GO_ROUGH_TRIES - 1, due), true, "one under it: once more");
+  assert.equal(goRoughAgain(start, 15, 0, due), false, "a sure fix is not looked up again");
+  assert.equal(goRoughAgain(start, 5_000, 0, due - 1), false, "not before it is due");
+  assert.equal(goRoughTriesAfter(3, 15), 0, "a sure fix starts the count again");
+  assert.equal(goRoughTriesAfter(3, 5_000), 3, "a rough one keeps it");
+  // App asks these, and keeps the count they give.
+  const rough = app.slice(app.indexOf("const roughTries"), app.indexOf("// A start typed into Go's start box"));
+  assert.match(rough, /if \(was\.kind !== "here" \|\| !goRoughAgain\(was, before, roughTries\.current\)\) return;\s*roughTries\.current \+= 1;/);
+  assert.match(rough, /setGoStart\(goHereStart\(result\.fix\.point\)\);\s*roughTries\.current = goRoughTriesAfter\(roughTries\.current, result\.fix\.accuracyM\);/);
+  assert.match(rough, /const refresh = async \(\) => \{\s*roughTries\.current = 0;/, "the page back in view starts the count again");
 });
 
 test("go start: Go looks a stale start up again when the page comes back into view", () => {

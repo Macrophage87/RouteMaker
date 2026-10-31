@@ -170,7 +170,14 @@ function withSwitches(accessibility: boolean, lanes: boolean, body: () => void):
 test("the legend's first line says what LTS is, in plain words (the a11y review's N2)", () => {
   const html = legendHtml();
   assert.ok(html.startsWith(`<p class="hint lts-means">${LTS_MEANS}</p>`), html.slice(0, 120));
-  assert.match(LTS_MEANS, /^LTS is Level of Traffic Stress, from 1 \(calmest\) to 4 \(heavy traffic\)/);
+  assert.match(LTS_MEANS, /^LTS is Level of Traffic Stress, in half steps from 1 \(calmest\) to 4\.5 \(heaviest traffic\); Avoid/);
+});
+
+test("the legend's first line goes as high as its rows do (4.5), not 1 to 4", () => {
+  const html = legendHtml();
+  assert.ok(html.includes("LTS 4.5"), "the legend lists 4.5");
+  assert.doesNotMatch(LTS_MEANS, /to 4 \(/);
+  assert.match(LTS_MEANS, /from 1 \(calmest\) to 4\.5 /);
 });
 
 test("each tier's swatch draws its casing, then its line with its dash, at the map's widths, plain and strong", () => {

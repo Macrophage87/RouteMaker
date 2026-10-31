@@ -175,9 +175,9 @@ class TestRuralFloor:
         assert rural_floor(result, tags, urban=False) is result
 
 
-def _bendy(bends: int, leg_m: float = 300.0, radius_m: float = 40.0):
+def _bendy(bends: int, leg_m: float = 300.0, radius_m: float = 40.0, pieces: int = 6):
     """A road of straight legs joined by `bends` rounded turns of `radius_m`,
-    alternating left and right, ~60 degrees each."""
+    alternating left and right, ~60 degrees each, each drawn in `pieces`."""
     lon, lat, heading = -77.2, 39.2, 0.0
     kx = 111_320.0 * math.cos(math.radians(lat))
     line = [(lon, lat)]
@@ -191,7 +191,6 @@ def _bendy(bends: int, leg_m: float = 300.0, radius_m: float = 40.0):
     step(leg_m)
     for i in range(bends):
         turn = math.radians(60) * (1 if i % 2 else -1)
-        pieces = 6
         arc = radius_m * abs(turn)
         for _ in range(pieces):
             heading += turn / pieces
@@ -249,6 +248,23 @@ class TestGravelBends:
     def test_the_limit_is_100_m(self):
         assert tight_bends(_bendy(3, radius_m=80.0)) == 3
         assert tight_bends(_bendy(3, radius_m=130.0)) == 0
+
+    def test_the_limit_is_100_m_drawn_smoothly(self):
+        # Drawn in 30 pieces, so no vertex's turn stands in for the curve's.
+        assert tight_bends(_bendy(3, radius_m=95.0, pieces=30)) == 3
+        assert tight_bends(_bendy(3, radius_m=105.0, pieces=30)) == 0
+
+    def test_two_bends_are_enough(self):
+        # 2 bends in about 1,525 m: one per 760 m, under the 800 m spacing.
+        assert bends_slow_traffic(_bendy(2, leg_m=480.0), GRAVEL)
+
+    def test_two_bends_spread_past_800_m_apart_are_not(self):
+        # 2 bends in about 1,705 m: one per 850 m.
+        assert not bends_slow_traffic(_bendy(2, leg_m=540.0), GRAVEL)
+
+    def test_a_paved_one_lane_road_is_not_narrow_by_its_lanes(self):
+        result = rural({"highway": "unclassified", "lanes": "1", "surface": "asphalt"})
+        assert NARROW_ROAD_RULE not in result.rule
 
     def test_one_long_sweeper_is_one_bend_however_it_is_drawn(self):
         # A 270 degree curve near the limit, drawn with a vertex every 13 m: its

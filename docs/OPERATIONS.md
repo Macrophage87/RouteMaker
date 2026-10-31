@@ -5647,6 +5647,7 @@ files, reports/md-sha-ratings/). Each is a switch, `mdot_sha_rules.ENABLED`:
 | `busy-residential` | 1 or 2 on a 25 mph two-lane street at 5,000-15,000 a day, no bike lane | 2.5 (the owner's 1st Street rule) |
 | `rural-collector` | 2 or less on a rural minor collector at 1,500+ a day, speed assumed | 3.5 |
 | `rural-expressway` | 4 on a 4+ lane highway posted 55 mph or more, urban or rural | 4.5 |
+| `busy-rural-two-lane` | 4 on a rural two- or three-lane principal arterial (functional class 2-3) at 18,000+ a day, no bike facility | 4.5 (the formula's busy rural highway rule, so US-15 reads the same in Virginia; the owner, 2026-10-31) |
 | `second-record` | SHA's record for a road's other direction (route id character 15, "2"), within 130 ft (40 m) of the first | the first direction's level, as read |
 
 SHA's 5 is never read otherwise. The install prints `mdot-sha read by the owner's rule
@@ -5673,9 +5674,14 @@ lane decides it. Each is a switch, `ddot_rules.ENABLED`:
 | `quiet-counted` | DDOT 2, formula 1, counted at 1,200 a day or less | 1.5 (uncounted quiet streets keep DDOT's 2) |
 | `painted-lane` | a painted lane where DDOT and the formula differ | 2 below 9,000 a day, 2.5 above, on one or two lanes; on 3+ lanes 2.5, 3 from 9,000, 3.5 from 15,000; never above DDOT where DDOT is the higher. Replaces the 2026-10-21 "painted lane at 2.5" rule for DDOT |
 
+Where the formula reads a half step (a busy street at 2.5, a busy city street at 3.5), each
+rule takes the formula's whole level, and the reading stays between DDOT's level and the
+formula's half step, except a painted lane's, which goes by the traffic beside it as above.
+
 A protected lane or path on the way still sets DDOT's higher level aside for the formula's,
 and DDOT's 5 stays Avoid. The road panel shows DDOT's own level and the reading: "LTS 1,
-read as LTS 4: a busy roadway DDOT rated with the path or lane beside it". The next
+read as LTS 4: a busy roadway DDOT rated with the path or lane beside it (DDOT 2020 LTS 1 and
+formula LTS 3 on 45334 cars a day and 4 through lanes)", the rule and the facts it read. The next
 rebuild's stress-change report lists every way the rules moved.
 
 Montgomery's 5 means very high stress, which is our 4.5, not our Avoid (the owner,

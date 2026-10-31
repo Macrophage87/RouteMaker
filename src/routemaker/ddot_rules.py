@@ -24,6 +24,7 @@ Pure: nothing here reads a file or the network.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -86,7 +87,27 @@ def painted_lane_level(aadt: int | None, lanes: int | None) -> float:
 
 
 def _rule(b: Block) -> tuple[float, str] | None:
-    d, f, a, lanes = b.ddot, b.formula, b.aadt, b.lanes
+    found = _by_whole_level(b)
+    if found is None or found[1] == "painted-lane":
+        return found
+    level, rule = found
+    d, f = b.ddot, b.formula
+    # The rules were calibrated on the formula's whole levels; a half step (a busy street at
+    # 2.5, `stress`) takes its whole level's rule, and the reading stays between DDOT's level
+    # and the formula's half step (a painted lane's returned above, by its traffic). (On whole
+    # levels a rule may read past the formula, as at Memorial Bridge; a half step is already the
+    # formula's busier reading, so not past it.)
+    if d > f:
+        level = min(max(level, f), d)
+    elif f != math.floor(f):
+        level = min(level, f)
+    return level, rule
+
+
+def _by_whole_level(b: Block) -> tuple[float, str] | None:
+    d, a, lanes = b.ddot, b.aadt, b.lanes
+    f = b.formula
+    fw = math.floor(f)
     if d == f or d >= 5 or f >= 5 or b.protected:
         # A protected lane or path on the way: the formula already decides where DDOT is
         # higher (`agency_lts.SUPERSEDED_WHERE_FACILITY`), and DDOT's calmer level stands.
@@ -103,12 +124,12 @@ def _rule(b: Block) -> tuple[float, str] | None:
     if a is None:
         return None
     if d > f:
-        if d == 2 and f == 1:
+        if d == 2 and fw == 1:
             # Quiet two-way streets: DDOT's 2 stands (LTS 1 is "something kids can go on",
             # 2026-10-13, and the formula's 1 comes mostly from no count), but a measured
             # quiet street is half a step calmer.
             return (1.5, "quiet-counted") if a <= 1_200 else None
-        if d >= 3 and f <= 2:
+        if d >= 3 and fw <= 2:
             # DDOT 3 or 4 on a street the formula reads 2 or calmer: by count (the owner's
             # 1st Street rule, 2026-10-30).
             if a >= 8_000:
@@ -116,7 +137,7 @@ def _rule(b: Block) -> tuple[float, str] | None:
             if a >= 3_000:
                 return 2.5, "street-3000-8000"
             return 2.0, "street-under-3000"
-        if d == 4 and f == 3 and lanes is not None:
+        if d == 4 and fw == 3 and lanes is not None:
             if lanes >= 6:
                 return None if a >= 10_000 else (3.0, "arterial-by-count")
             if lanes >= 4:
@@ -128,7 +149,7 @@ def _rule(b: Block) -> tuple[float, str] | None:
             return (3.5 if a >= 15_000 else 3.0), "two-lane-by-count"
         return None
     # DDOT calmer than the formula.
-    if d == 1 and f >= 3:
+    if d == 1 and fw >= 3:
         if a >= 30_000:
             return 4.0, "busy-road-at-1"
         if a >= 15_000 and (lanes or 0) >= 3:
@@ -136,11 +157,12 @@ def _rule(b: Block) -> tuple[float, str] | None:
         if a >= 6_000:
             return 3.0, "busy-road-at-1"
         return 2.5, "busy-road-at-1"
-    if d == 1 and f == 2:
+    if d == 1 and fw == 2:
         if a >= 9_000 or ((lanes or 0) >= 3 and a >= 6_000):
             return 2.5, "counted-street-at-1"
         return (2.0, "counted-street-at-1") if a >= 3_000 else None
-    if d == 2 and f >= 3:
+    if d == 2 and f > 2:
+        # Formula 2.5 too (capped at 2.5 in `_rule`): DDOT's 2 under a busy street.
         if (lanes or 0) >= 4 and a >= 10_000:
             return 3.5, "busy-multilane"
         if a >= 8_000:
@@ -164,6 +186,21 @@ def read_as(b: Block, enabled: Iterable[str] | None = None) -> tuple[float, str]
     return found
 
 
-def words(rule: str, level: float) -> str:
-    """The road panel's note: "read as LTS 2.5: a street with no bike lane carrying ..."."""
-    return f"read as LTS {level:g}: {RULE_WORDS[rule]}"
+def words(rule: str, level: float, block: Block | None = None) -> str:
+    """The road panel's note: the rule and the facts it read on this block (the owner,
+    2026-10-31: "cite the logic in the decision"), e.g. "read as LTS 4: a busy roadway DDOT
+    rated with the path or lane beside it (DDOT 2020 LTS 1 and formula LTS 3 on 45334 cars a
+    day and 4 through lanes)". No commas (`agency_lts.apply`)."""
+    text = f"read as LTS {level:g}: {RULE_WORDS[rule]}"
+    if block is None:
+        return text
+    facts = [f"DDOT 2020 LTS {block.ddot:g} and formula LTS {block.formula:g}"]
+    if block.aadt is not None:
+        facts.append(f"{block.aadt} cars a day")
+    if block.lanes is not None:
+        facts.append(f"{block.lanes} through lane{'s' if block.lanes != 1 else ''}")
+    if block.painted_lane:
+        facts.append("a painted bike lane")
+    return (
+        f"{text} ({facts[0]} on {' and '.join(facts[1:])})" if facts[1:] else f"{text} ({facts[0]})"
+    )

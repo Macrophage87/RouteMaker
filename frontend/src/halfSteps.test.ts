@@ -15,6 +15,7 @@ import {
   PALETTES,
   SOLID_DASH,
   contrastRatio,
+  relativeLuminance,
   halfStep,
   halfStepLayers,
   scaledDash,
@@ -49,15 +50,19 @@ test("in the colour-blind-friendly palette each half step's dash is the next lev
 test("in the other palettes each half step has its own line, edge and ring, over its lower level's width and pattern (2026-10-30, 2026-10-31)", () => {
   const solid = PALETTE_NAMES.filter((p) => !HALF_DASHED.has(p));
   assert.deepEqual(solid.sort(), ["blended", "twotone"]);
-  for (const palette of solid) {
-    const tiers = tiersFor(palette) as (Tier & { dash: number[] | null; casingExtra: number })[];
+  for (const palette of solid) for (const strong of [false, true]) {
+    const tiers = tiersFor(palette, strong) as (Tier & { dash: number[] | null; casingExtra: number })[];
     for (let tier = 1; tier <= 4; tier++) {
       const half = halfStep(tier, tiers);
       const lower = tiers.find((t) => t.tier === tier)!;
       const own = (HALF_PALETTES as Record<string, Record<number, { color: string; casing: string; ring?: string }>>)[palette][tier];
       assert.equal(half.solid, true);
       assert.equal(half.color, own.color);
-      assert.equal(half.outline, own.casing, "its edge is drawn as the outline layer");
+      // The switch pushes 1.5's edge to black or white as LTS 1's is (strongerCasing); 2.5 and up keep theirs, as
+      // LTS 2 and the busy levels do (test-strength S7).
+      const edge = strong && tier === 1 ? (relativeLuminance(own.casing) < 0.5 ? "#000000" : "#ffffff") : own.casing;
+      assert.equal(half.outline, edge, `${palette}${strong ? " strong" : ""} ${tier}.5: its edge is drawn as the outline layer`);
+      if (strong && tier === 1) assert.notEqual(half.outline, own.casing, "the switch strengthens 1.5's edge");
       assert.equal(half.ring, own.ring ?? null);
       assert.equal(half.width, lower.width);
       assert.equal(half.outlineWidth, lower.width + lower.casingExtra);
