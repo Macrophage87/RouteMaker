@@ -218,7 +218,7 @@ DC_ALLEY_MPH = 15.0
 # classes, and every class outside the urban areas, keep the tables above: the
 # rural figures are the states' statutory ones, which the rural references
 # depend on, and the owner's answer was about the urban roads in question.
-MD_VA_URBAN_DEFAULT_MPH = {
+MD_URBAN_DEFAULT_MPH = {
     "residential": 25.0,
     "unclassified": 30.0,
     "tertiary": 30.0,
@@ -234,10 +234,16 @@ MD_VA_URBAN_DEFAULT_MPH = {
 # (the owner, 2026-10-31: the same rules everywhere, the state's own law where it
 # differs). An agency's posted figure, where the map has one, outranks both.
 VA_WV_URBAN_DEFAULT_MPH = {
-    **MD_VA_URBAN_DEFAULT_MPH,
+    **MD_URBAN_DEFAULT_MPH,
     "unclassified": 25.0,
     "tertiary": 25.0,
     "tertiary_link": 25.0,
+}
+# Each state's urban table, by `speed_zone`'s answer.
+URBAN_DEFAULT_MPH = {
+    "MD": MD_URBAN_DEFAULT_MPH,
+    "VA": VA_WV_URBAN_DEFAULT_MPH,
+    "WV": VA_WV_URBAN_DEFAULT_MPH,
 }
 # The statutory defaults themselves, which the junction model prices an
 # unposted road at (OWNER-DECISIONS 469, 469a). The classifier above reads
@@ -1090,7 +1096,7 @@ def fast_multilane(
     per_direction = lanes_per_direction(tags)
     if not divided and (is_oneway(tags) or per_direction is None or per_direction < 2):
         return None
-    return f"{FAST_MULTILANE_PREFIX} {posted:g} mph"
+    return f"{FAST_MULTILANE_PREFIX} {round(posted):g} mph"
 
 
 def _fast_expressway_mph(tags: dict[str, str]) -> float | None:
@@ -1242,6 +1248,20 @@ BUSY_RURAL_HIGHWAY_AADT = 18_000
 BUSY_RURAL_HIGHWAY = frozenset({"primary", "trunk"})
 BUSY_RURAL_HIGHWAY_RULE = "busy two-lane rural highway"
 
+# Every count at which the classifier can move a way, as the first count on the
+# busier side (a `> X` gate is X + 1). `pipeline.aadt_smoothing` reads it to say
+# when a street's median moved the level; a new count gate goes here too.
+VOLUME_GATES = (
+    VOLUME_QUIET + 1,
+    BUSY_STREET_MIN_AADT,
+    VOLUME_BUSY,
+    URBAN_TWO_WAY_BUSY_AADT + 1,
+    BUSY_PAINTED_LANE_AADT,
+    BUSY_STREET_AADT,
+    BUSY_RURAL_HIGHWAY_AADT,
+    VERY_BUSY_STREET_AADT,
+)
+
 
 def busy_road_steps(
     result: StressResult,
@@ -1318,11 +1338,8 @@ def _classify(
     if zone == "DC":
         speed_mph = DC_ALLEY_MPH if tags.get("service") == "alley" else DC_DEFAULT_MPH
         assumed.append("maxspeed")
-    elif zone == "MD" and urban and highway in MD_VA_URBAN_DEFAULT_MPH:
-        speed_mph = MD_VA_URBAN_DEFAULT_MPH[highway]
-        assumed.append("maxspeed")
-    elif zone in ("VA", "WV") and urban and highway in VA_WV_URBAN_DEFAULT_MPH:
-        speed_mph = VA_WV_URBAN_DEFAULT_MPH[highway]
+    elif urban and highway in URBAN_DEFAULT_MPH.get(zone or "", {}):
+        speed_mph = URBAN_DEFAULT_MPH[zone][highway]
         assumed.append("maxspeed")
     elif speed_mph is None:
         table = DEFAULT_MAXSPEED_MPH_URBAN if urban else DEFAULT_MAXSPEED_MPH_RURAL
@@ -1719,7 +1736,8 @@ def _classify(
     # `busy-residential` rule and the District's rows (1st St NW, 2026-10-30:
     # "make the higher cars/day ones, 2.5"), so Virginia and West Virginia read it
     # too (the owner, 2026-10-31): a two-lane street at LTS 2 carrying
-    # BUSY_STREET_MIN_AADT or more, below VOLUME_BUSY, is 2.5. And a painted lane
+    # BUSY_STREET_MIN_AADT or more is 2.5 (with no upper bound: a 20 mph street the
+    # high-volume step leaves at LTS 2 stays 2.5 past VOLUME_BUSY). And a painted lane
     # does not make a street of BUSY_PAINTED_LANE_AADT or more calmer than 2.5.
     half = False
     if aadt is not None and tier <= Stress.LTS2 and not separate_facility:
@@ -1731,7 +1749,7 @@ def _classify(
             tier is Stress.LTS2
             and not has_facility
             and scored_lanes <= 1
-            and BUSY_STREET_MIN_AADT <= aadt < VOLUME_BUSY
+            and aadt >= BUSY_STREET_MIN_AADT
         ):
             half, rule = True, rule + ", busy street"
 

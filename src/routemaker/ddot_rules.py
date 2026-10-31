@@ -27,6 +27,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from routemaker.stress import BUSY_PAINTED_LANE_AADT
+
 AGENCY = "ddot"
 
 # The rules, by id, with the words the road panel shows after "read as LTS n:". No commas:
@@ -79,8 +81,8 @@ def painted_lane_level(aadt: int | None, lanes: int | None) -> float:
     same level whatever the traffic, which this corrects."""
     a = aadt or 0
     if (lanes or 0) >= 3:
-        return 2.5 if a < 9_000 else 3.0 if a < 15_000 else 3.5
-    return 2.0 if a < 9_000 else 2.5
+        return 2.5 if a < BUSY_PAINTED_LANE_AADT else 3.0 if a < 15_000 else 3.5
+    return 2.0 if a < BUSY_PAINTED_LANE_AADT else 2.5
 
 
 def _rule(b: Block) -> tuple[float, str] | None:

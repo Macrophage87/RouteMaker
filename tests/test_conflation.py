@@ -990,7 +990,10 @@ class TestThePreparedMeasureChangesTheCostAndNothingElse:
         ways, features = self.region()
         first = conflate(ways, features, along_counts=False)
         both = conflate(ways, features, along_agencies=None)
-        assert both.rejected == first.rejected
+        # The along pass adds rejections only for the ways whose claim failed,
+        # after the single-line pass's own (so `share_with_carriageways` sees them).
+        assert both.rejected[: len(first.rejected)] == first.rejected
+        assert not {w for w, _m in both.rejected[len(first.rejected) :]} & set(both.matched)
         assert {k: both.matched[k] for k in first.matched} == first.matched
         assert len(both.matched) > len(first.matched)
         assert set(both.unmatched_features) <= set(first.unmatched_features)
