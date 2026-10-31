@@ -178,7 +178,7 @@ test("Share live (it was Broadcast) is one small button beside Start, in Plan an
   assert.match(app, /broadcastRide: \{ onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote \},/);
   // The voice unlocked within the press; the ride starts only once the link was sent and its line kept.
   const fn = app.slice(app.indexOf("const broadcastRide = () => {"), app.indexOf("\n  };\n", app.indexOf("const broadcastRide = () => {")));
-  assert.match(fn, /\}\s*primeRideVoice\(ridePrefs\);[\s\S]*void shareRoute\(true, broadcastNav\)\.then\(\(\{ led, said \}\) => \{\s*if \(led\) \{[^}]*startRideNoted\(canShare \? "" : BROADCAST_COPIED\);\s*\} else if \(said\) setBroadcastNote/);
+  assert.match(fn, /\}\s*primeRideVoice\(ridePrefs\);[\s\S]*void shareRoute\(true, broadcastNav\)\.then\(\(\{ led, said \}\) => \{\s*if \(led\) \{[^}]*startRideNoted\(broadcastSaid\(""\)\);\s*\} else if \(said\) setBroadcastNote/);
   // What went wrong is shown and said beside the button.
   assert.match(panel, /<p className="hint broadcast-note" role="status">/);
   // The same line shared again goes with the same leader key; the ride starts with the sharer free to re-route.
