@@ -65,6 +65,7 @@ import {
   routeUnpavedLayer,
   routeAvoidLayer,
   routeDashLayers,
+  routeHalfLayers,
   solidRouteFilter,
   setMassMode,
   setOverlayFade,
@@ -1430,6 +1431,8 @@ export function MapView(props: Props) {
       map.addLayer(routeUnpavedLayer(ROUTE_STRESS_SOURCE) as never);
       // The white dash-dot over a paved Avoid section (397): magenta is not the only thing that says Avoid.
       map.addLayer(routeAvoidLayer(ROUTE_STRESS_SOURCE) as never);
+      // A half step's dash in the colour-blind-friendly palette (the owner, 2026-10-31: "keep dashes with the same rules").
+      for (const layer of routeHalfLayers(ROUTE_STRESS_SOURCE)) map.addLayer(layer as never);
       map.addLayer({
         id: "route-line",
         type: "line",

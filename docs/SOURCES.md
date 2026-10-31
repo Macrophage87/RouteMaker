@@ -244,6 +244,19 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   of accuracy, timeliness or completeness"), the portal's terms as for the counts above.
   Fetched at rebuild time; size and sha256: the download's README, to be copied here.
 
+## VDOT posted speed limits
+
+- Credit: the `VDOT` credit above (one publisher, one credit).
+- Dataset: **VDOT Posted Speed Limits on State-Maintained Roads**, ArcGIS item
+  `4a41cef6e60e4ba09ac545fdf62c27a3`, layer
+  <https://services.arcgis.com/p5v98VHDX9Atv3l7/arcgis/rest/services/VDOT_Posted_Speed_Limits/FeatureServer/0>
+  ("Posted Speed Limits on VDOT maintained highways in Virginia. Updated weekly."), shown
+  on VDOT's own Speed Limits Map. Not read by the build: queried 2026-10-31 at the
+  midpoint of each Fairfax way in `fixtures/overrides/2026-10-31-owner-virginia-ratings.json`
+  (within 20 m), and only ways it posts at 35 mph keep a row, each citing the one limit
+  and route (the owner, 2026-10-31: "Keep 32, cite VDOT"). Licence: VDOT's portal
+  disclaimer, as for the counts above.
+
 ## Maryland traffic counts (MDOT SHA)
 
 - Credit: `State of Maryland (MDOT SHA)`
@@ -396,7 +409,8 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Dataset: **Bicycle Level of Traffic Stress**, item
   `fb903d1ffbc84b219bdb47629bd02b82`, retrieved 2026-10-01, sha256
   `89be5b63b86a69329d696e999565ac1a498ffed5a8bdf736d277f24a89a7505e`; its LTS 5 roads
-  are loaded as Avoid (OWNER-DECISIONS 181).
+  are loaded as LTS 4.5 (OWNER-DECISIONS 181, read as 4.5 since the owner's
+  2026-10-19 call; Darnestown Road is an owner row at 4).
 - Publisher: Montgomery County Planning Department (M-NCPPC).
 - Licence: open with attribution ("please provide attribution to the Montgomery
   County Planning Department"), recorded verbatim in `fixtures/datasets/README.md`.
@@ -1210,11 +1224,14 @@ unchanged, and the map marks it only on a route that rides it.
 
 ## Used inside the project only (no credit)
 
-These are shown nowhere: no tile, route, fixture or page carries anything read from
-them (OWNER-DECISIONS 152, 155, 162).
+These are shown nowhere: no tile, route, fixture or page carries their data
+(OWNER-DECISIONS 152, 155, 162). An owner override row may cite one as evidence for the owner's
+rating, never copying its data verbatim (the owner, 2026-10-31: "Research is fair use, we
+aren't sharing their data verbatim, just referencing. Keep them").
 
 - Arlington County's Bike Comfort Index: internal comparison only, held outside the
-  repository, while Arlington's terms are pending.
+  repository, while Arlington's terms are pending; cited by the owner's Virginia rows
+  (`fixtures/overrides/2026-10-31-owner-virginia-ratings.json`, R2).
 - Arlington County's Intersection Points
   (<https://arlgis.arlingtonva.us/arcgis/rest/services/Open_Data/od_Intersection_Points/FeatureServer/0>),
   319 signalised intersections (2026-10-19): installable as a signal list
@@ -1222,6 +1239,24 @@ them (OWNER-DECISIONS 152, 155, 162).
   item says only "Please review the Arlington County data disclaimer").
 - MDOT's Road Separated Bike Routes web map: check-only (its terms bar trip-planning
   use).
+
+## Default speed limits (state law; facts, no credit)
+
+Where no limit is posted, junction cost reads the state's own law
+(`routemaker.stress.statutory_default_mph`). The rating reads DC's figures directly; in
+Maryland, Virginia and West Virginia towns it reads figures by road class
+(`MD_URBAN_DEFAULT_MPH`, `VA_WV_URBAN_DEFAULT_MPH`) drawn from these laws:
+
+- DC: 20 mph on all streets, 15 in alleys (DDOT, "Speeding laws, fines and safety tips",
+  ddot.dc.gov/page/speeding-laws-fines-and-safety-tips).
+- Maryland: Transportation 21-801.1 (MDOT SHA, roads.maryland.gov): business district 30;
+  residential 30, or 35 divided; elsewhere 50, or 55 divided.
+- Virginia: Code of Virginia 46.2-870 to 46.2-878 and 46.2-1300 (VDOT, vdot.virginia.gov):
+  25 in business and residence districts, 55 elsewhere, 35 on a road that is not surface
+  treated.
+- West Virginia: W. Va. Code 17C-6-1(b) (code.wvlegislature.gov/17c-6-1/, read 2026-10-30):
+  25 in a business or residence district, 55 on open country highways; no separate unpaved
+  figure.
 
 ## 311 websites (the 311 checklist; facts, no credit)
 

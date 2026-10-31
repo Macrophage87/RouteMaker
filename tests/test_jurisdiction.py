@@ -8,7 +8,7 @@ import pytest
 from django.contrib.gis.geos import LineString, MultiPolygon, Polygon
 from django.db import connection
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def box(west: float, east: float, south: float = 38.88, north: float = 38.92) -> MultiPolygon:
