@@ -145,7 +145,7 @@ test("ages are said in words", () => {
 
 test("dots are drawn within a quarter mile of the route only, aged since the poll", () => {
   const dots = [
-    { lon: -77.03, lat: 38.9, age_s: 5 },
+    { lon: -77.03, lat: 38.9, age_s: 2 }, // newer than one poll (5 s): pulses
     { lon: -77.03, lat: 38.9025, age_s: 40 }, // about 280 m off
     { lon: -77.03, lat: 38.906, age_s: 5 }, // about 670 m off
     { lon: -77.02, lat: 38.9, age_s: 118 },
@@ -715,9 +715,9 @@ test("review: on an out-and-back the pass nearest the last place along the route
 });
 
 test("review: a role change posts as soon as the server takes a position, with the new role", async () => {
-  // Posted 3 s ago: the next goes at 10 s (the server's minimum), not 15 s; never posted: at once.
+  // Posted 3 s ago: the next goes at 4 s (the server's minimum), not 5 s; never posted: at once.
   const moved = postSoonAfter(100_000);
-  assert.equal(moved + POST_EVERY_MS, 110_000);
+  assert.equal(moved + POST_EVERY_MS, 104_000);
   assert.ok(103_000 - postSoonAfter(0) >= POST_EVERY_MS);
   const store = new Memory();
   keepConsent("r9", "yes", 0, store);

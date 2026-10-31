@@ -12,7 +12,7 @@
  *   answers), Lead line, Sweep or Corker, kept with the answer and changeable beside "Show me as a dot". The
  *   role goes with each position and comes back on each dot; still no name. It is self-declared: a ride link
  *   has no sign-in, so a role says what the rider chose, nothing more.
- * - Your dot is sent about every 15 s while the app is open and in front (never in the background), and only
+ * - Your dot is sent about every 5 s while the app is open and in front (never in the background), and only
  *   while you are within a quarter mile (400 m) of the route line. Sharing ends when you turn it off, close
  *   the app, are off the route for 10 minutes, or 12 hours after the ride's start (your answer).
  * - Dots show their age: under 30 s solid (with a brief pulse ring when a new reading lands), 30-90 s faded,
@@ -237,10 +237,11 @@ export const CONSENT_NO = "No";
 
 export const NEAR_ROUTE_M = 400;
 export const OFF_ROUTE_STOP_MS = 10 * 60_000;
-export const POST_EVERY_MS = 15_000;
-export const POLL_EVERY_MS = 15_000;
+// Every 5 s (Stephen 2026-10-31: "15 seconds is not enough to see slowdowns").
+export const POST_EVERY_MS = 5_000;
+export const POLL_EVERY_MS = 5_000;
 /** The soonest the server takes another position from the same rider (core.ride_presence.MIN_POST_INTERVAL_S). */
-export const MIN_POST_GAP_MS = 10_000;
+export const MIN_POST_GAP_MS = 4_000;
 
 /** After a role change: the last post moved back so the next goes as soon as the server will take it. */
 export function postSoonAfter(lastPost: number): number {
