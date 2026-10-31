@@ -66,6 +66,36 @@ export function copyShareNavigator(copy: (text: string) => Promise<boolean>): Sh
   };
 }
 
+/**
+ * Share live's sheet where the browser has one, with the copy as its fallback (Stephen 2026-10-31, phone Chrome: "On a
+ * browser, could not open the share sheet"): the sheet is opened inside the press as ever, and where it fails (not
+ * closed by the rider) the link is copied instead, so the ride is led all the same and the rider pastes it. `onCopied`
+ * is told, for the page to say the link was copied. The sheet's error goes to the console, for a phone's remote debug.
+ */
+export function sheetOrCopyNavigator(sheet: ShareNavigator, copy: (text: string) => Promise<boolean>, onCopied: (copied: boolean) => void): ShareNavigator {
+  return {
+    canShare: typeof sheet.canShare === "function" ? (data) => sheet.canShare!(data) : undefined,
+    share: (data) => {
+      onCopied(false);
+      let pending: Promise<void>;
+      try {
+        pending = typeof sheet.share === "function" ? sheet.share(data) : Promise.reject(new Error("No share sheet"));
+      } catch (error) {
+        pending = Promise.reject(error);
+      }
+      return Promise.resolve(pending).catch((error: unknown) => {
+        const name = (error as { name?: unknown } | null)?.name;
+        if (typeof name === "string" && SILENT_ERRORS.has(name)) throw error;
+        console.warn("Share live: the share sheet failed, copying the link instead", error);
+        return copy(data.url).then((done) => {
+          if (!done) throw error;
+          onCopied(true);
+        });
+      });
+    },
+  };
+}
+
 /** Whether to show Share: the browser has navigator.share and, where it can say, can share a link. */
 export function canShareLink(nav: ShareNavigator | undefined, url: string): boolean {
   if (typeof nav?.share !== "function") return false;
