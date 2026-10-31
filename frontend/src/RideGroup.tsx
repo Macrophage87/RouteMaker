@@ -333,7 +333,7 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
   const [watchToken] = useState(newToken);
   const token = consent?.token ?? (broadcast ? watchToken : null);
 
-  // Seeing the others: every 5 s while the page is in front.
+  // Seeing the others: every 10 s while the page is in front.
   const poll = useCallback(async () => {
     if (!ride || !token || !visible()) return;
     const got = await readRide(origin, ride, token, fetch, followKey, seal);

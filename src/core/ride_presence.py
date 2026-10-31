@@ -58,13 +58,14 @@ from random import SystemRandom
 # How long a dot lives after its last reading (the plan: "kept only in server memory for 2
 # minutes"; the front end draws it gone at the same age).
 DOT_TTL_S = 120
-# A device sends its position about every 5 s (Stephen 2026-10-31: "15 seconds is not enough to
-# see slowdowns"); one sooner than this is refused (429).
-MIN_POST_INTERVAL_S = 4
-# A device asks for the dots about every 5 s; one sooner than this is refused (429).
+# A device sends its position about every 10 s (Stephen 2026-10-31: "15 seconds is not enough to
+# see slowdowns", "Go to the minimum unlikely to cause issues": 5 s measured to roughly halve
+# the riders one ride's file lock carries, so 10 s); one sooner than this is refused (429).
+MIN_POST_INTERVAL_S = 7
+# A device asks for the dots about every 10 s; one sooner than this is refused (429).
 MIN_POLL_INTERVAL_S = 3
 # The most anything is kept: a token (and its counts) is forgotten this long after its phone last
-# read or sent anything; a phone in front reads every 5 s, so its limits hold while it rides.
+# read or sent anything; a phone in front reads every 10 s, so its limits hold while it rides.
 KEEP_S = 120
 # Bounds on memory, whatever a client sends.
 MAX_RIDERS_PER_RIDE = 3000
@@ -91,8 +92,8 @@ ALERT_MIN_INTERVAL_S = 60
 ALERTS_PER_RIDE = 10
 # Writes to one ride (positions, paths, alerts), counted in the ride's own state so the count goes
 # with the ride rather than outliving it in the database: MAX_RIDERS_PER_RIDE riders each sending
-# a position every 5 s is 36,000 a minute, so 45,000.
-RIDE_WRITES_PER_MINUTE = 45000
+# a position every 10 s is 18,000 a minute, so 22,500.
+RIDE_WRITES_PER_MINUTE = 22500
 RIDE_WRITES_WINDOW_S = 60
 # How often each api process sweeps every ride for what has outlived its 2 minutes, so a ride
 # nobody opens again is emptied too, not only one a phone still reads (v0.12.0 end review).
@@ -537,7 +538,7 @@ def read(ride_id: str, token: str, now: Callable[[], float] = time.time, leader:
         if rider is not None:
             if t - rider.get("polled", 0) < MIN_POLL_INTERVAL_S:
                 raise Refused(
-                    429, "Too soon; the dots update every 5 seconds.", MIN_POLL_INTERVAL_S
+                    429, "Too soon; the dots update every 10 seconds.", MIN_POLL_INTERVAL_S
                 )
             rider["polled"] = t
         dots = []

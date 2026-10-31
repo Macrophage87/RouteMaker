@@ -146,7 +146,7 @@ def test_dots_come_in_a_fresh_order_on_every_read(clock, monkeypatch) -> None:
 
 def test_updates_are_limited_per_token(clock) -> None:
     rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
-    clock.t += 5
+    clock.t += rp.MIN_POST_INTERVAL_S - 1
     with pytest.raises(rp.Refused) as refused:
         rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
     assert refused.value.status == 429
@@ -540,14 +540,14 @@ def test_the_endpoints_are_limited_per_address_and_writes_per_ride(client, monke
     # The ride's write count is kept with the ride, never as a database row.
     assert seen == ["ride-link"]
     assert rp.store()._rides == {}
-    monkeypatch.setattr(rp, "RIDE_WRITES_PER_MINUTE", 45000)
+    monkeypatch.setattr(rp, "RIDE_WRITES_PER_MINUTE", 22500)
     seen.clear()
     assert client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=YOU).status_code == 200
     assert seen == ["ride-link"]
     refuse.add("ride-link")
     assert client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=YOU).status_code == 429
     # Generous: a whole ride's phones can share one carrier address.
-    assert ratelimit.RIDE_LINKS.requests >= 1800
+    assert ratelimit.RIDE_LINKS.requests >= 900
 
 
 def test_a_foreign_page_is_refused(client) -> None:
