@@ -350,9 +350,10 @@ change it.</li>
     <ol>
       <li><strong>Speed.</strong> The posted speed limit, and in the City of Alexandria
       the limit the city records for the street. Where none is mapped, it uses the
-      legal default in the District, 20 mph [32 km/h]. In Maryland's and
-      Virginia's towns and cities it uses Maryland DOT's estimates by road type, 25 to
-      35 mph [40 to 56 km/h], and outside them 50 to 55 mph [80 to 89 km/h] on through
+      legal default in the District, 20 mph [32 km/h]. In Maryland's, Virginia's and
+      West Virginia's towns and cities it uses Maryland DOT's estimates by road type, 25 to
+      35 mph [40 to 56 km/h]. Virginia's and West Virginia's minor through streets take those states'
+      own law, 25 mph [40 km/h], where Maryland's estimate is 30 mph [48 km/h]. Outside towns it uses 50 to 55 mph [80 to 89 km/h] on through
       roads. Where in doubt it assumes the faster figure. Each state's legal default
       limits are used only for junction costs (see <a href="#junctions">Junction
       warnings</a>).</li>
@@ -490,7 +491,7 @@ change it.</li>
 <tr><th scope="row">MDOT SHA<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup></th><td>Maryland state roads outside Montgomery County (inside it, the county's rating wins)</td><td>1 to 4</td><td>The same level, except where a rule below reads it again from SHA's own road type, speed, lanes, shoulders, bike lane and traffic count, and whether the road is urban, from the next map update. Urban means inside a Census urban area.</td></tr>
 <tr><th scope="row">MDOT SHA</th><td></td><td>4 on an urban two-lane collector where SHA assumed 35 mph [56 km/h], up to 15,000 cars a day</td><td>LTS 3; 3.5 at 10,000 to 15,000 cars a day</td></tr>
 <tr><th scope="row">MDOT SHA</th><td></td><td>4 on an urban two-lane street at 30 mph [48 km/h] or less, under 15,000 cars a day</td><td>LTS 2.5; 3 from 7,500 cars a day</td></tr>
-<tr><th scope="row">MDOT SHA</th><td></td><td>3 or less on four or more lanes at 30 to 45 mph [48 to 72 km/h], or two lanes posted 40 to 45 mph [64 to 72 km/h], without a protected bike lane</td><td>LTS 4; 3.5 with a painted bike lane</td></tr>
+<tr><th scope="row">MDOT SHA</th><td></td><td>3 or less on four or more lanes at 30 to 45 mph [48 to 72 km/h], or two lanes posted 40 to 45 mph [64 to 72 km/h], without a protected bike lane (a two-lane road with a painted bike lane at 40 mph [64 km/h] that SHA rates 3 keeps its 3)</td><td>LTS 4; 3.5 with a painted bike lane</td></tr>
 <tr><th scope="row">MDOT SHA</th><td></td><td>2 on an urban two-lane 35 mph [56 km/h] road with shoulders 4 ft [1.2 m] or wider on both sides and no painted bike lane</td><td>LTS 3; 3.5 at 10,000 to 15,000 cars a day; 4 above 15,000</td></tr>
 <tr><th scope="row">MDOT SHA</th><td></td><td>1 or 2 on an urban two-lane street at 25 mph [40 km/h] or less, carrying 5,000 to 15,000 cars a day, with no bike lane or other bike marking</td><td>LTS 2.5</td></tr>
 <tr><th scope="row">MDOT SHA</th><td></td><td>2 or less on a rural minor collector carrying 1,500 or more cars a day, where SHA assumed the speed</td><td>LTS 3.5</td></tr>
@@ -707,8 +708,8 @@ change it.</li>
     
     <p>Where no speed limit is mapped, "town" means inside a 2020 Census urban area<sup class="cite"><a href="#ref-15" aria-label="source 15">[15]</a></sup>, and the
     District's default is its legal 20 mph [32 km/h]<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a></sup>. An unpaved rural road is read at no
-    more than 30 mph [48 km/h], and a narrow or winding rural road with no traffic count at 25 mph
-    [40 km/h]. Gravel counts as winding with at least two bends tighter than a 330 ft [100 m] radius, at least
+    more than 30 mph [48 km/h], and a narrow or winding rural road with no traffic count, or one of
+    1,500 vehicles a day or fewer, at 25 mph [40 km/h]. Gravel counts as winding with at least two bends tighter than a 330 ft [100 m] radius, at least
     one every half mile [800 m], since bends, not the surface, slow drivers on gravel; one-lane gravel counts as
     narrow. Other straight gravel stays at 30 mph [48 km/h].</p>
     <figure id="fig-mixed" class="has-narrow">
@@ -816,6 +817,8 @@ change it.</li>
     <p>A paved shoulder at least 4 ft [1.2 m] wide is read like a bike lane, and never worse than having
     none. On a road with one lane each way and no bike facility, traffic counts<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup> move the
     level: 1,500 vehicles a day or fewer lowers it one level, and 8,000 or more raises it one level.
+    Such a street left at LTS 2 that carries 5,000 to 7,999 vehicles a day is LTS 2.5. A painted
+    lane, or a shoulder read as one, on a street carrying 9,000 or more is never calmer than LTS 2.5.
     Without a bike facility, trunk, primary and secondary roads are at least LTS 3, and tertiary roads
     at least LTS 2.</p>
   </div></details>
@@ -823,7 +826,7 @@ change it.</li>
 
   <section>
     <h2 id="special">Special cases</h2>
-<p>A few kinds of road get a rule of their own: rural roads are never LTS 1, rural expressways are LTS 4.5, motorways and some side-path roads are Avoid, and some DC park paths are open to bikes.</p>
+<p>A few kinds of road get a rule of their own: rural roads are never LTS 1, rural expressways and fast multilane highways are LTS 4.5, motorways and some side-path roads are Avoid, and some DC park paths are open to bikes.</p>
 <details class="more"><summary>More: Special cases</summary>
 <div class="more-body">
     
@@ -836,6 +839,12 @@ change it.</li>
       <li><strong>Rural expressways are LTS 4.5.</strong> A posted 50 mph [80 km/h] or faster expressway
       outside a town is very high stress, but often there is no way around it. The same road in a town
       is Avoid.</li>
+      <li><strong>Fast multilane highways are LTS 4.5.</strong> A trunk or primary road posted 55 mph
+      [89 km/h] or faster, with two or more lanes each way or divided, is LTS 4.5 in a town or out,
+      wherever RouteMaker's own formula rates the road (Maryland's highway agency rates its four-lane
+      55 mph [89 km/h] roads the same way). Ramps, roads tagged as expressways
+      (the rule above) and roads with a separated bike track on them or beside them keep their own
+      rating.</li>
       <li><strong>Motorways</strong> are closed to bikes unless signed open. One signed open to bikes is
       Avoid.</li>
       <li><strong>"Use the side path" roads</strong> (OpenStreetMap's <code>bicycle=use_sidepath</code>)
@@ -1061,7 +1070,7 @@ hiking trails are left out. A crosswalk over a slip lane adds a wait to the rout
 <div class="more-body">
     
     <p>Where no speed limit is mapped, junction costs use the legal default limit of
-    the District, Maryland or Virginia (see <a href="#sources">Sources</a>).</p>
+    the District, Maryland, Virginia or West Virginia (see <a href="#sources">Sources</a>).</p>
     <p>A road you give way to (at a stop sign on your side, or where nothing is mapped and your road is
     no busier) with two or more through lanes each way, or three or more on a one-way, is priced by its
     traffic rather than its bike lane where that is higher: LTS 3 above 20 mph [32 km/h], and LTS 4 from 30
@@ -1233,7 +1242,8 @@ hiking trails are left out. A crosswalk over a slip lane adds a wait to the rout
       Department of Transportation (DDOT), frequently asked questions on the District's
       20 mph [32 km/h] default speed limit; Maryland Transportation Article 21-801.1, from the Maryland State
       Highway Administration (MDOT SHA); Code of Virginia 46.2-870 to 46.2-878 and
-      46.2-1300, from the Virginia Department of Transportation (VDOT). The web
+      46.2-1300, from the Virginia Department of Transportation (VDOT); W. Va. Code 17C-6-1, from the
+      West Virginia Legislature. The web
       addresses are in the full list of sources linked under "Why our ratings differ
       from the studies".</li>
       <li>The method: Mekuria, Furth and Nixon, "Low-Stress Bicycling and Network
