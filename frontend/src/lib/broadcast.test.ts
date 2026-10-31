@@ -348,6 +348,7 @@ test("an alert that does not go says why on screen, not only to a screen reader 
   assert.match(group, /\{sendError && <p className="ride-alert-error">\{sendError\}<\/p>\}/);
   assert.match(group, /setSendError\(""\);\s*setSent/);
   assert.match(group, /setSendError\(""\);\s*setAlertOpen\(!alertOpen\);/);
+  assert.match(group, /useEffect\(\(\) => \{\s*if \(!alertOpen\) setSendError\(""\);\s*\}, \[alertOpen\]\);/);
 });
 
 test("a shared dot goes from the ride's own position while riding, never from a second watch (2026-10-31)", async () => {
@@ -360,6 +361,14 @@ test("a shared dot goes from the ride's own position while riding, never from a 
   const group = read("../RideGroup.tsx");
   // The page's own watch only while not riding; the dot goes from sharedFix, and only in front.
   assert.match(group, /if \(!shareOn \|\| !front \|\| !ride \|\| !token \|\| riding\) return;\s*return watchRide\(browserRideEnv\(\)/);
-  assert.match(group, /const ownFix = sharedFix\(riding, here, fix\);/);
+  assert.match(group, /const ownFix = sharedFix\(riding, livePoint, fix\);/);
+  // The live point is the ride's or Roam's own, never the one-off located spot shown as the rider's place.
+  const live = read("../app/LiveMap.tsx");
+  assert.match(live, /const live = riding\?\.point \?\? roaming\?\.point \?\? null;\s*return children\(live \?\? fallback, live\);/);
+  const app = read("../App.tsx");
+  assert.equal((app.match(/\{\(riderHere, riderLive\) => \(\s*<RideGroup/g) ?? []).length, 2);
+  assert.equal((app.match(/here=\{riderHere\}\s*livePoint=\{riderLive\}/g) ?? []).length, 2);
+  // Hidden, turned off or gone: the dot is dropped at once.
+  assert.match(group, /if \(!shareOn \|\| !front \|\| !ride \|\| !token\) return;\s*return \(\) => \{\s*\/\/[^\n]*\n\s*void leaveRide\(origin, ride, token\);\s*\};\s*\}, \[shareOn, front, ride, token, origin\]\);/);
   assert.match(group, /if \(!shareOn \|\| !front \|\| !ownFix \|\| !ride \|\| !token \|\| !consent\) return;/);
 });

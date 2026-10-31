@@ -152,6 +152,8 @@ export interface RideGroupProps {
    * nothing to ask (answered already, or no ride), the sheet is shown alone. Null: none.
    */
   join?: { ask: JoinAsk; onAction: (action: JoinAction, said: Said) => void; onClose: () => void } | null;
+  /** The ride's or Roam's live position only (never a one-off located spot): the shared dot goes from it while riding. */
+  livePoint?: LonLat | null;
   /** The rider's saved Home: no dot is sent from near it (lib/rideGroup.ts dotHeldBack). */
   home?: LonLat | null;
   /** Told where the other riders' dots are as they change, none once gone: App's See everyone (lib/seeEveryone.ts). */
@@ -164,7 +166,7 @@ function visible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
 }
 
-export function RideGroup({ type, line, getMap, here, broadcast = null, secret = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0, controls = riding, leads = true, askHeld = false, home = null, join = null, onDots = null }: RideGroupProps) {
+export function RideGroup({ type, line, getMap, here, livePoint = null, broadcast = null, secret = null, riding = false, leaderRoute = null, onRiders = null, ridersElsewhere = false, ridersAsk = 0, controls = riding, leads = true, askHeld = false, home = null, join = null, onDots = null }: RideGroupProps) {
   const leading = broadcast?.leading === true;
   const isBroadcast = broadcast !== null;
   // The leader key a follower reads with (the leader needs none: it does not see its own dot).
@@ -200,6 +202,10 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
   const [otherOpen, setOtherOpen] = useState(false);
   // Why the last alert did not go, shown in the panel as well as said: a sighted rider saw nothing before (2026-10-31).
   const [sendError, setSendError] = useState("");
+  // Closed by any way (Close, idle close, a send), the last refusal goes with it.
+  useEffect(() => {
+    if (!alertOpen) setSendError("");
+  }, [alertOpen]);
   // Speak (lib/speechInput.ts): only where the browser turns speech into text. It heads the alert panel (Stephen
   // 2026-10-30: "autotranscribe what you are saying. then you could either send that or a quick response"): one press
   // opens the box and listens, the words fill it, Send sends them, or a quick alert below is sent instead.
@@ -362,13 +368,14 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
     };
   }, [ride, token, poll]);
 
-  // Sharing your own dot: a position watch only while sharing and in front.
+  // Sharing your own dot: only while sharing and in front.
   const [front, setFront] = useState(visible());
   useEffect(() => {
     const onVis = () => setFront(visible());
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
+  // No setup: its cleanup is the point. Hidden, turned off or gone, the dot is dropped at once (never left 2 minutes).
   useEffect(() => {
     if (!shareOn || !front || !ride || !token) return;
     return () => {
@@ -376,7 +383,7 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
       void leaveRide(origin, ride, token);
     };
   }, [shareOn, front, ride, token, origin]);
-  // While riding, the dot is the ride's own position (`here`, Ride mode's one watch: the phone app's GPS in the app). A
+  // While riding, the dot is the ride's own live position (`livePoint`, Ride mode's or Roam's one watch: the phone app's GPS in the app). A
   // second watch of the page's own went silent or was refused inside the Android app, and in a browser a second watch
   // can wait on a fix the first already took, so no dot went out at all (2026-10-31: "she can't see mine"). Not riding
   // (watching from Plan or a computer), this page watches for itself, while sharing and in front only; a refusal turns
@@ -387,7 +394,7 @@ export function RideGroup({ type, line, getMap, here, broadcast = null, secret =
       if (why === "denied" || why === "unsupported" || why === "insecure") setShareOn(false);
     });
   }, [shareOn, front, ride, token, riding]);
-  const ownFix = sharedFix(riding, here, fix);
+  const ownFix = sharedFix(riding, livePoint, fix);
   useEffect(() => {
     // Only in front: the app's ride goes on with the screen locked, and the dot does not (the promise made at Yes).
     if (!shareOn || !front || !ownFix || !ride || !token || !consent) return;
