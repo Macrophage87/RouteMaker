@@ -93,15 +93,13 @@ def _rule(b: Block) -> tuple[float, str] | None:
     level, rule = found
     d, f = b.ddot, b.formula
     # The rules were calibrated on the formula's whole levels; a half step (a busy street at
-    # 2.5, `stress`) takes its whole level's rule. Where DDOT is higher the reading stays
-    # between the formula's level and DDOT's, as on whole levels. Where DDOT is calmer and the
-    # formula has a half step, the reading is never below that step: it is the owner's "make
-    # the higher cars/day ones, 2.5" (2026-10-30), and a busier street must not read calmer
-    # than a quieter one.
+    # 2.5, `stress`) takes its whole level's rule, and the reading stays between DDOT's level
+    # and the formula's half step. (On whole levels a rule may read past the formula, as at
+    # Memorial Bridge; a half step is already the formula's busier reading, so not past it.)
     if d > f:
         level = min(max(level, f), d)
     elif f != math.floor(f):
-        level = max(level, f)
+        level = min(level, f)
     return level, rule
 
 
@@ -163,6 +161,7 @@ def _by_whole_level(b: Block) -> tuple[float, str] | None:
             return 2.5, "counted-street-at-1"
         return (2.0, "counted-street-at-1") if a >= 3_000 else None
     if d == 2 and f > 2:
+        # Formula 2.5 too (capped at 2.5 in `_rule`): DDOT's 2 under a busy street.
         if (lanes or 0) >= 4 and a >= 10_000:
             return 3.5, "busy-multilane"
         if a >= 8_000:
@@ -186,6 +185,21 @@ def read_as(b: Block, enabled: Iterable[str] | None = None) -> tuple[float, str]
     return found
 
 
-def words(rule: str, level: float) -> str:
-    """The road panel's note: "read as LTS 2.5: a street with no bike lane carrying ..."."""
-    return f"read as LTS {level:g}: {RULE_WORDS[rule]}"
+def words(rule: str, level: float, block: Block | None = None) -> str:
+    """The road panel's note: the rule and the facts it read on this block (the owner,
+    2026-10-31: "cite the logic in the decision"), e.g. "read as LTS 4: a busy roadway DDOT
+    rated with the path or lane beside it (DDOT 2020 LTS 1 and formula LTS 3 on 45334 cars a
+    day and 4 through lanes)". No commas (`agency_lts.apply`)."""
+    text = f"read as LTS {level:g}: {RULE_WORDS[rule]}"
+    if block is None:
+        return text
+    facts = [f"DDOT 2020 LTS {block.ddot:g} and formula LTS {block.formula:g}"]
+    if block.aadt is not None:
+        facts.append(f"{block.aadt} cars a day")
+    if block.lanes is not None:
+        facts.append(f"{block.lanes} through lane{'s' if block.lanes != 1 else ''}")
+    if block.painted_lane:
+        facts.append("a painted bike lane")
+    return (
+        f"{text} ({facts[0]} on {' and '.join(facts[1:])})" if facts[1:] else f"{text} ({facts[0]})"
+    )
