@@ -42,6 +42,8 @@ import {
   placeLabelPaint,
   unpavedLayers,
   halfStepLayers,
+  halfRingLayers,
+  scaledDash,
   HALF_STEP_DASH,
   HALF_STEP_TOP_DASH,
   UNPAVED_DASH,
@@ -74,7 +76,7 @@ import { MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./ma
 import { setDcMaskVisibility } from "./dcBoundary.ts";
 import type { RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
-import { ROUTE_AVOID_MARK_DASH, routeCorridorPaint, overlayFade, routeClasses, routePaint, routeSections, sectionFeatures, usesCapacity, type RouteClassKey, type RouteSection } from "./routeColours.ts";
+import { ROUTE_AVOID_MARK_DASH, ROUTE_SECTION_WIDTHS, routeCorridorPaint, overlayFade, routeClasses, routePaint, routeSections, sectionFeatures, usesCapacity, type RouteClassKey, type RouteSection } from "./routeColours.ts";
 import { transitRideLines, transitRideSections } from "./transit.ts";
 
 /** The parts of a MapLibre map these use. */
@@ -213,7 +215,7 @@ export function setStressPalette(
   when: When = DEFAULT_WHEN,
   tiers: ReturnType<typeof currentTiers> = currentTiers(),
 ): void {
-  const layers = [...ringLayers(STRESS_SOURCE_ID, when, tiers), ...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...gapLayers(STRESS_SOURCE_ID, when, tiers), ...unknownSurfaceLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers), ...unpavedLayers(STRESS_SOURCE_ID, when, tiers), ...halfStepLayers(STRESS_SOURCE_ID, when, tiers)];
+  const layers = [...ringLayers(STRESS_SOURCE_ID, when, tiers), ...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...gapLayers(STRESS_SOURCE_ID, when, tiers), ...unknownSurfaceLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers), ...unpavedLayers(STRESS_SOURCE_ID, when, tiers), ...halfRingLayers(STRESS_SOURCE_ID, when, tiers), ...halfStepLayers(STRESS_SOURCE_ID, when, tiers)];
   // The Mass Ride layers' casings are a pixel wider with the accessibility switch (massStyle.js).
   const mass = massLayers(STRESS_SOURCE_ID, STRESS_TILE_LAYER, accessibilityOn()).filter((l: { type: string }) => l.type === "line");
   for (const layer of [...layers, ...mass] as Array<{ id: string; paint: Record<string, unknown> }>) {
@@ -226,7 +228,7 @@ export function setStressPalette(
     if (layer.id === "stress-unknown-casing") map.setPaintProperty(layer.id, "line-dasharray", layer.paint["line-dasharray"]);
     // A half step's pattern: its own colours over its level's pattern, or the dash and its outline (the dash's
     // pattern in its own width, which the switch changes), as the palette has it (stressStyle.js, halfStep).
-    if (layer.id.startsWith("stress-half-")) map.setPaintProperty(layer.id, "line-dasharray", layer.paint["line-dasharray"]);
+    if (layer.id.startsWith("stress-half-") && "line-dasharray" in layer.paint) map.setPaintProperty(layer.id, "line-dasharray", layer.paint["line-dasharray"]);
   }
   for (const facility of FACILITIES) {
     // The calm tiers' rails and the busy tiers' (stressStyle.js, facilityLayerId).
@@ -343,16 +345,19 @@ export function routeUnpavedLayer(sourceId: string = ROUTE_STRESS_SOURCE_ID) {
  * its own and no feature carries a dash.
  */
 export function routeHalfLayers(sourceId: string = ROUTE_STRESS_SOURCE_ID) {
+  const top = ROUTE_SECTION_WIDTHS["4h"];
   return [
-    { id: "route-half", keys: ["1h", "2h", "3h"], dash: HALF_STEP_DASH },
-    { id: "route-half-top", keys: ["4h"], dash: HALF_STEP_TOP_DASH },
-  ].map(({ id, keys, dash }) => ({
+    { id: "route-half", keys: ["1h", "2h", "3h"], dash: HALF_STEP_DASH, colour: "halfDash", extra: 0 },
+    // 4.5's dash is too close to its line (458b): its outline under it, a pixel each side, the dash scaled to it.
+    { id: "route-half-top-outline", keys: ["4h"], dash: scaledDash(HALF_STEP_TOP_DASH, top, top + 2) as number[], colour: "halfOutline", extra: 2 },
+    { id: "route-half-top", keys: ["4h"], dash: HALF_STEP_TOP_DASH, colour: "halfDash", extra: 0 },
+  ].map(({ id, keys, dash, colour, extra }) => ({
     id,
     type: "line" as const,
     source: sourceId,
     filter: ["all", ["==", ["get", "half"], true], ["in", ["get", "key"], ["literal", keys]]],
     layout: { "line-join": "round" as const },
-    paint: { "line-color": ["get", "halfDash"], "line-width": ["get", "width"], "line-dasharray": [...(dash as number[])], "line-opacity": 0 },
+    paint: { "line-color": ["get", colour], "line-width": extra ? ["+", ["get", "width"], extra] : ["get", "width"], "line-dasharray": [...(dash as number[])], "line-opacity": 0 },
   }));
 }
 

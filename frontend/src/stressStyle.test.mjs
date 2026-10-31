@@ -22,6 +22,7 @@ import {
   stressOverlayLayers,
   unpavedLayers,
   halfStepLayers,
+  halfRingLayers,
   unknownSurfaceLayers,
   UNKNOWN_SURFACE_DASH,
   UNPAVED_DASH,
@@ -252,8 +253,8 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const unknown = unknownSurfaceLayers("s").map((l) => l.id);
   assert.deepEqual(unknown, ["stress-unknown-casing", "stress-unknown"], "the surface-unknown trail's edge, then its line (OWNER-DECISIONS 376)");
   assert.deepEqual(gaps, ["stress-gap-2"], "LTS 2's own gap colour (OWNER-DECISIONS 356)");
-  const rings = ringLayers("s").map((l) => l.id);
-  assert.deepEqual(rings, ["stress-ring-3", "stress-ring-5"], "two-tone LTS 3's ring (OWNER-DECISIONS 371) and Avoid's (2026-10-31)");
+  const rings = [...ringLayers("s"), ...halfRingLayers("s")].map((l) => l.id);
+  assert.deepEqual(rings, ["stress-ring-3", "stress-ring-5", "stress-half-ring-1", "stress-half-ring-2", "stress-half-ring-3", "stress-half-ring-4"], "two-tone LTS 3's ring (OWNER-DECISIONS 371) and Avoid's, and each half step's (2026-10-31)");
   const mass = massLayers("s").map((l) => l.id);
   const mtb = mtbTrailLayers("s").map((l) => l.id);
   assert.deepEqual(
@@ -283,7 +284,7 @@ test("the overlay is added casings first: every casing under every tier", () => 
   assert.ok(Math.max(...casings.map((c) => ids.indexOf(c))) < ids.indexOf("stress-unknown-casing"), "after every casing");
   // The Mass Ride's layers (massStyle.js) are drawn over every stress layer, in their own order.
   assert.deepEqual(ids.slice(-mass.length), mass);
-  // The rings under everything, so a rail still shows over them.
+  // The rings under everything, the half steps' too (the review of #780: a 3.5 ring hid the painted lane), so a rail still shows over them.
   assert.ok(Math.max(...rings.map((r) => ids.indexOf(r))) < Math.min(...rails.map((r) => ids.indexOf(r))));
   // The gap line lies over its casing and under its dashes.
   assert.ok(ids.indexOf("stress-casing-2") < ids.indexOf("stress-gap-2") && ids.indexOf("stress-gap-2") < ids.indexOf("stress-2"));
@@ -436,7 +437,7 @@ test("a road closed to cars now has no half step, even one whose own tier is 1 (
       .sort();
   const road = { tier: 1, half: true, facility: "none", car_free: "weekend" };
   assert.deepEqual(halves("weekend", road), [], "closed to cars: a path at 1, as the router has it");
-  assert.deepEqual(halves("weekday_offpeak", road), ["stress-half-1", "stress-half-outline-1", "stress-half-ring-1"]);
+  assert.deepEqual(halves("weekday_offpeak", road), ["stress-half-1", "stress-half-outline-1"]);
   assert.deepEqual(halves("weekend", { ...road, tier: 3 }), []);
 });
 
@@ -837,4 +838,10 @@ test("the overlay draws each tier group calmest on top, so a busy road does not 
     const order = [5, 4, 3, 2, 1].map((tier) => ids.indexOf(`${kind}-${tier}`));
     assert.deepEqual([...order].sort((a, b) => a - b), order, `${kind}: Avoid lowest, LTS 1 on top`);
   }
+});
+
+test("a 1.5 trail whose surface is not mapped keeps its surface-unknown dashes: no half-step layer draws over it (376; the review of #780)", () => {
+  const halves = (properties) => [...halfRingLayers("stress"), ...halfStepLayers("stress")].filter((layer) => draws(layer, properties, 16)).map((layer) => layer.id);
+  assert.deepEqual(halves({ tier: 1, half: true, facility: "path", trail: true }), [], "surface not mapped");
+  assert.deepEqual(halves({ tier: 1, half: true, facility: "path", trail: true, unpaved: false }).sort(), ["stress-half-1", "stress-half-outline-1", "stress-half-ring-1"]);
 });

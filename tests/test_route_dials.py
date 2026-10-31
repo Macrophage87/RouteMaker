@@ -2284,6 +2284,8 @@ class TestStressSpansThroughThePlan:
             "unpaved": None,
             "rough": None,
             "rpm": None,
+            "outside_dc": None,
+            "half": None,
         }
         assert spans[-1] == {
             "from_m": 2200,
@@ -2293,6 +2295,8 @@ class TestStressSpansThroughThePlan:
             "unpaved": None,
             "rough": None,
             "rpm": None,
+            "outside_dc": None,
+            "half": None,
         }
 
 

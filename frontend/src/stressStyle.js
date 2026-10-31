@@ -161,8 +161,8 @@ export const PALETTES = {
 /**
  * A half step's own colours (the owner, 2026-10-30: "There's definitely room in the color spectrum
  * where we are drawing routes to include half steps"), by palette and the half step's lower level:
- * its line, its casing (the route's halo, 3:1 from the line) and the near-black ring where the level
- * below has one. 1.5 and 2.5 are in-between greens, 3.5 is the default palette's old LTS 4 (orange on
+ * its line, its casing (the route's halo, 3:1 from the line but for the default's 3.5, the two-tone reading
+ * kept from the old LTS 4, inside its ring) and a near-black ring where it needs one. 1.5 and 2.5 are in-between greens, 3.5 is the default palette's old LTS 4 (orange on
  * red, ringed) and 4.5 a dark red on LTS 4's red, ringed, the reverse of LTS 4 (2026-10-31). From HALF_STEP_MIN_ZOOM the map draws a
  * paved half step in these over its lower level's pattern, and the route draws its sections in them
  * (routeColours.ts). The colour-blind-friendly palette has none (`HALF_DASHED`): no in-between colour
@@ -1771,7 +1771,8 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
       // A half step's dash (441r-441v, 458): the feature's own tier is this one (not a road closed to cars
       // now, which draws as a path at 1, even one whose own tier is 1: the router drops its half then, review
       // CH-5) and it carries the half.
-      const half = [...filter, ["==", ["get", "tier"], tier.tier], ["!", carFreeNow(when)], isHalfStep];
+      // LTS 1's leaves the surface-unknown trails to their own dashed look (`own`, 376), as its line does.
+      const half = [...own, ["==", ["get", "tier"], tier.tier], ["!", carFreeNow(when)], isHalfStep];
       filters[`stress-half-ring-${tier.tier}`] = half;
       filters[`stress-half-outline-${tier.tier}`] = half;
       filters[`stress-half-${tier.tier}`] = half;
@@ -2107,6 +2108,35 @@ export function scaledDash(dash, width, wider) {
   return dash.map((part) => Math.round(((part * width) / wider) * 1000) / 1000);
 }
 
+/**
+ * A half step's own ring (HALF_PALETTES: 3.5's and 4.5's in the default), a pixel each side of its edge, from
+ * HALF_STEP_MIN_ZOOM; transparent where it has none, and on an unpaved way. Its own layer, as the level below
+ * may have no ring (LTS 4 under 4.5), and drawn with the rings, under the facility rails, so a 3.5 road still
+ * shows its painted lane (461a; stressOverlayLayers).
+ */
+export function halfRingLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
+  const filters = stressFilters(when);
+  return tiers
+    .filter((t) => t.tier < 5)
+    .map((tier) => {
+      const half = halfStep(tier.tier, tiers);
+      const ring = half.ring ? ["case", ["==", ["get", "unpaved"], true], "rgba(0, 0, 0, 0)", half.ring] : "rgba(0, 0, 0, 0)";
+      return {
+        id: `stress-half-ring-${tier.tier}`,
+        type: "line",
+        source: sourceId,
+        "source-layer": STRESS_TILE_LAYER,
+        minzoom: HALF_STEP_MIN_ZOOM,
+        filter: filters[`stress-half-ring-${tier.tier}`],
+        paint: {
+          "line-color": ring,
+          "line-width": half.outlineWidth + 2,
+          "line-opacity": byZoom(1, 0, tier.tier >= BUSY_MIN_TIER),
+        },
+      };
+    });
+}
+
 export function halfStepLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   const filters = stressFilters(when);
   const layers = [];
@@ -2116,22 +2146,6 @@ export function halfStepLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers =
     const outlineWidth = half.outlineWidth;
     // A half step in its own colours is paved only: an unpaved one keeps its level's brown or grey and dots.
     const paved = (colour) => (half.solid ? ["case", ["==", ["get", "unpaved"], true], "rgba(0, 0, 0, 0)", colour] : colour);
-    // The half step's own ring (HALF_PALETTES: 3.5's and 4.5's in the default), a pixel each side of its edge;
-    // transparent where it has none. Its own layer, as the level below may have no ring (LTS 4 under 4.5).
-    layers.push({
-      id: `stress-half-ring-${tier.tier}`,
-      type: "line",
-      source: sourceId,
-      "source-layer": STRESS_TILE_LAYER,
-      minzoom: HALF_STEP_MIN_ZOOM,
-      filter: filters[`stress-half-ring-${tier.tier}`],
-      paint: {
-        "line-color": half.ring ? paved(half.ring) : "rgba(0, 0, 0, 0)",
-        "line-width": outlineWidth + 2,
-        "line-opacity": byZoom(1, 0, busy),
-        "line-dasharray": SOLID_DASH,
-      },
-    });
     layers.push({
       id: `stress-half-outline-${tier.tier}`,
       type: "line",
@@ -2453,7 +2467,8 @@ export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, ti
     // The drawing priority (2026-10-21, `drawPriority`): the busy roads (LTS 3, LTS 4, Avoid) whole, rails, casings,
     // lines and marks, then the calm ways (LTS 1-2) whole over them, each group calmest on top, so a busy road
     // does not paint over the path or the calm street that crosses it.
-    ...calmestOnTop(ringLayers(sourceId, when, tiers)),
+    // The rings, the half steps' with them (halfRingLayers), under the rails.
+    ...calmestOnTop([...ringLayers(sourceId, when, tiers), ...halfRingLayers(sourceId, when, tiers)]),
     ...facilityLayers(sourceId, when, highStressLanesOn(), true),
     ...tierGroup(stressCasingLayers(sourceId, when, tiers)),
     ...tierGroup(gapLayers(sourceId, when, tiers)),

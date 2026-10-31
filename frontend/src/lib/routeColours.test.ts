@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FACILITIES, HALF_STEP_DASH, HALF_STEP_TOP_DASH, contrastRatio, currentTiers, setAccessibility } from "../stressStyle.js";
+import { FACILITIES, HALF_STEP_DASH, HALF_STEP_TOP_DASH, contrastRatio, currentTiers, scaledDash, setAccessibility } from "../stressStyle.js";
 import type { StressSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import {
@@ -10,6 +10,7 @@ import {
   ROUTE_AVOID_MARK_DASH,
   ROUTE_BLUE,
   ROUTE_CASING_PLAIN,
+  ROUTE_SECTION_WIDTHS,
   routeClasses,
   routeLegend,
   routeMarkDash,
@@ -258,10 +259,27 @@ test("in the colour-blind-friendly palette a half step keeps its level's colour 
   } finally {
     setAccessibility(false, { remember: false });
   }
-  // The route's half-step layers: 1.5 to 3.5 in the sparse dash, 4.5 in Avoid's dash-dot (441s).
+  // The route's half-step layers: 1.5 to 3.5 in the sparse dash, 4.5 in Avoid's dash-dot (441s) over its
+  // white outline (458b, as the map's; the review of #780), a pixel wider each side with the dash scaled to it.
   const layers = routeHalfLayers();
-  assert.deepEqual(layers.map((l) => [l.id, l.paint["line-dasharray"]]), [["route-half", HALF_STEP_DASH], ["route-half-top", HALF_STEP_TOP_DASH]]);
-  assert.match(JSON.stringify(layers[1].filter), /"4h"/);
+  const top = ROUTE_SECTION_WIDTHS["4h"];
+  assert.deepEqual(layers.map((l) => [l.id, l.paint["line-dasharray"]]), [
+    ["route-half", HALF_STEP_DASH],
+    ["route-half-top-outline", scaledDash(HALF_STEP_TOP_DASH, top, top + 2)],
+    ["route-half-top", HALF_STEP_TOP_DASH],
+  ]);
+  assert.match(JSON.stringify(layers[2].filter), /"4h"/);
+  assert.deepEqual(layers[1].paint["line-color"], ["get", "halfOutline"]);
+  setAccessibility(true, { remember: false });
+  try {
+    const outlined = sectionFeatures(routeSections(LINE, [{ ...span(0, 1000, 4), half: true }])).features[0].properties;
+    assert.equal(outlined.halfOutline, "#ffffff");
+    assert.ok(contrastRatio(outlined.halfOutline, outlined.halfDash) >= 3 && contrastRatio(outlined.halfOutline, outlined.color) >= 3);
+    const plainDash = sectionFeatures(routeSections(LINE, [{ ...span(0, 1000, 2), half: true }])).features[0].properties;
+    assert.equal(plainDash.halfOutline, "rgba(0, 0, 0, 0)", "no outline where the dash is 3:1 from its line");
+  } finally {
+    setAccessibility(false, { remember: false });
+  }
   // Off, no feature carries a dash.
   const plain = sectionFeatures(routeSections(LINE, [{ ...span(0, 1000, 4), half: true }])).features;
   assert.equal(plain[0].properties.half, false);

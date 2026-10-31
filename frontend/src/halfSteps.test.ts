@@ -113,7 +113,7 @@ test("every outline is at least 3:1 from both its dash and its line (458b)", () 
 
 test("the half-step layers start at street level: a dash and its outline a pixel wider each side, or a half step's own line and edge", () => {
   const cvd = halfStepLayers("s", undefined, tiersFor("cvd")) as Layer[];
-  assert.equal(cvd.length, 12, "a ring, an outline and a line for each of 1.5 to 4.5");
+  assert.equal(cvd.length, 8, "an outline and a line for each of 1.5 to 4.5 (their rings are halfRingLayers, under the rails)");
   for (const layer of cvd) assert.equal(layer.minzoom, HALF_STEP_MIN_ZOOM);
   const outline = cvd.find((l) => l.id === "stress-half-outline-4")!;
   const dash = cvd.find((l) => l.id === "stress-half-4")!;

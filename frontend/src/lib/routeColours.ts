@@ -67,6 +67,8 @@ export interface RouteClass {
    * (HALF_STEP_DASH, MapView's route-half layer), where the half step has no colour of its own; absent elsewhere.
    */
   halfDash?: string;
+  /** The outline under that dash where it is too close to its line (458b: the colour-blind palette's 4.5). */
+  halfOutline?: string;
 }
 
 /**
@@ -203,7 +205,7 @@ export function routeClasses(): readonly RouteClass[] {
         width,
         haloWidth: width + ROUTE_HALO_EXTRA,
         ...(ring ? { ring, ringWidth: width + 2 * ROUTE_HALO_EXTRA } : {}),
-        ...(half.solid ? {} : { halfDash: half.color }),
+        ...(half.solid ? {} : { halfDash: half.color, ...(half.outline ? { halfOutline: half.outline } : {}) }),
       };
     }),
     // Unpaved, in the one brown ramp, light to dark (OWNER-DECISIONS 302): the
@@ -334,6 +336,7 @@ export interface RouteSection {
   mark?: string;
   dash?: readonly number[];
   halfDash?: string;
+  halfOutline?: string;
   coordinates: LonLat[];
 }
 
@@ -406,7 +409,7 @@ export function routeSections(
     if (previous && previous.key === cls.key) {
       previous.coordinates.push(...points.slice(1));
     } else if (points.length >= 2) {
-      sections.push({ key: cls.key, color: cls.color, halo: cls.halo, width: cls.width, haloWidth: cls.haloWidth, ...(cls.ring ? { ring: cls.ring, ringWidth: cls.ringWidth } : {}), ...(cls.mark ? { mark: cls.mark } : {}), ...(cls.dash ? { dash: cls.dash } : {}), ...(cls.halfDash ? { halfDash: cls.halfDash } : {}), coordinates: points });
+      sections.push({ key: cls.key, color: cls.color, halo: cls.halo, width: cls.width, haloWidth: cls.haloWidth, ...(cls.ring ? { ring: cls.ring, ringWidth: cls.ringWidth } : {}), ...(cls.mark ? { mark: cls.mark } : {}), ...(cls.dash ? { dash: cls.dash } : {}), ...(cls.halfDash ? { halfDash: cls.halfDash } : {}), ...(cls.halfOutline ? { halfOutline: cls.halfOutline } : {}), coordinates: points });
     }
   });
   return sections.length > 0 ? sections : null;
@@ -436,6 +439,7 @@ export function sectionFeatures(sections: readonly RouteSection[] | null) {
         // A half step's dash in the colour-blind-friendly palette (MapView's route-half layer draws only these).
         half: section.halfDash !== undefined,
         halfDash: section.halfDash ?? "rgba(0, 0, 0, 0)",
+        halfOutline: section.halfOutline ?? "rgba(0, 0, 0, 0)",
       },
       geometry: { type: "LineString" as const, coordinates: section.coordinates },
     })),

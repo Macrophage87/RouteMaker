@@ -892,6 +892,20 @@ class StressSpanOut(Schema):
             "Ride on a table built before the column, which the map then draws by stress."
         ),
     )
+    outside_dc: bool | None = Field(
+        default=None,
+        description=(
+            "A Mass Ride's only (OWNER-DECISIONS 427): true on a section outside the District,"
+            " where capacity figures are not given (`rpm` null); null elsewhere."
+        ),
+    )
+    half: bool | None = Field(
+        default=None,
+        description=(
+            "A half step (OWNER-DECISIONS 461a): true where the section is half a level above"
+            " `tier`, drawn in the half step's own colour (2026-10-30); null on a whole level."
+        ),
+    )
 
 
 class DialsOut(Schema):
