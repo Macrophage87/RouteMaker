@@ -129,8 +129,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "busier rider road priority edge",
         INTERSECTIONS,
-        "rider_tier is not None and rider_tier > road.level:",
-        "rider_tier is not None and rider_tier >= road.level:",
+        "    if rider > road.level:\n        return True\n",
+        "    if rider >= road.level:\n        return True\n",
         PURE,
     ),
     (

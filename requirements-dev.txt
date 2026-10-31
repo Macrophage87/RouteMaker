@@ -10,6 +10,9 @@ defusedxml
 # or changes its format turns CI red with no code change. Dependabot proposes the bumps.
 pytest==9.2.0
 pytest-django==4.14.0
+# CI runs the suite on the runner's four CPUs (`-n 4`); each worker gets its own test database.
+pytest-xdist==3.8.0
+execnet==2.1.2
 ruff==0.17.3
 pyyaml
 osmium

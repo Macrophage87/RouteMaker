@@ -22,6 +22,7 @@ from django.contrib.gis.geos import MultiPolygon, Polygon
 
 from pipeline import source as source_module
 from pipeline.elevation import HGT_1ARCSEC_SIDE, TileName
+from pipeline.extract import close_writer
 from pipeline.run import ADMIN_AND_TIMEZONE_TABLES
 from pipeline.tiles import CommandOutput
 
@@ -116,7 +117,7 @@ def build_toy_extract(path: Path, *, changed: bool = False) -> None:
             )
         )
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 # The long trails' extract (OWNER-DECISIONS 375, 378; mutation review SF1 of
@@ -245,7 +246,7 @@ def build_long_trails_extract(path: Path) -> None:
                 osmium.osm.mutable.Relation(id=relation_id, members=members, tags=tags, version=1)
             )
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 def box(west: float, east: float, south: float = 38.85, north: float = 38.95) -> MultiPolygon:
@@ -326,7 +327,7 @@ def build_named_bridge_extract(
             )
         )
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 def write_reference_data(
@@ -425,7 +426,7 @@ def build_parallel_extract(path: Path, *, road_id: int, trail_id: int) -> None:
             node_ids, tags = ways[way_id]
             writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=node_ids, version=1, tags=tags))
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 WEEKEND_CLOSED_ID = 600
@@ -598,7 +599,7 @@ def build_dials_extract(path: Path, singletrack_tags: dict[str, str] | None = No
             node_ids, tags = ways[way_id]
             writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=node_ids, version=1, tags=tags))
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 SECURED_ROAD_ID = 3000
@@ -662,7 +663,7 @@ def build_secured_extract(path: Path) -> None:
             node_ids, tags = ways[way_id]
             writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=node_ids, version=1, tags=tags))
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 QUARRY_TRACK_ID = 3200
@@ -741,7 +742,7 @@ def build_works_extract(path: Path) -> None:
             node_ids, tags = ways[way_id]
             writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=node_ids, version=1, tags=tags))
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 # A golf course's ways (owner report 2026-10-21, Woodmont Country Club: plain `highway=path`
@@ -803,7 +804,7 @@ def build_golf_extract(path: Path) -> None:
             node_ids, tags = ways[way_id]
             writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=node_ids, version=1, tags=tags))
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 PARALLEL_COUNT = {
@@ -937,7 +938,7 @@ def add_state_boundaries(source: Path, destination: Path, boxes=None) -> None:
         for r in sorted(relations, key=lambda o: o.id):
             writer.add_relation(r)
     finally:
-        writer.close()
+        close_writer(writer)
     partial.replace(destination)
 
 
@@ -1311,4 +1312,4 @@ def build_contraflow_extract(path: Path) -> None:
             node_ids, tags = ways[way_id]
             writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=node_ids, version=1, tags=tags))
     finally:
-        writer.close()
+        close_writer(writer)

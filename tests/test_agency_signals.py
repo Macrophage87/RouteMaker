@@ -19,7 +19,7 @@ from rebuild_fixtures import REPO
 
 from pipeline import agency_signals
 from pipeline.agency_signals import Signal
-from pipeline.extract import Way
+from pipeline.extract import Way, close_writer
 
 ORIGIN = (-77.0, 38.9)
 M_PER_DEG_LAT = 111_320.0
@@ -199,7 +199,7 @@ def test_the_extracts_signals_are_read_inside_the_box(tmp_path) -> None:
                 osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags=tags, version=1)
             )
     finally:
-        writer.close()
+        close_writer(writer)
     box = agency_signals.bounds([signal()], margin_m=100)
     assert set(agency_signals.read_osm_signals(path, box)) == {1, 2}
 

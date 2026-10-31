@@ -29,6 +29,15 @@ def pytest_configure() -> None:
     django.setup()
 
 
+def pytest_collection_finish(session) -> None:
+    """Everything alive after collection (about 700k objects: modules, test items, their
+    parameters) is moved out of the collector's reach. A full collection after a test then
+    walks only what tests made since, so `_collect_osm_leftovers` costs milliseconds instead
+    of about 0.4 s a test, which was ten minutes of CI over its 1,600 tests."""
+    gc.collect()
+    gc.freeze()
+
+
 @pytest.fixture(autouse=True)
 def _no_long_trail_sentinels(settings):
     """The rebuild's long-trail sentinels name real W&OD and C&O ways and

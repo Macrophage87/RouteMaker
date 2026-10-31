@@ -13,7 +13,7 @@ from test_dedodge import Graph, Unit, at, key, leg_of, metres_of
 
 from core import dedodge, presets, routing
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 pytestmark = [pytest.mark.usefixtures("weekday_clock"), db]
 

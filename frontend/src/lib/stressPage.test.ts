@@ -66,8 +66,8 @@ const MAP_WORDS = [
   "On the map: a thin, solid light green line with a dark green edge.",
   "On the map: long green dashes with a dark blue edge.",
   "On the map: short yellow dashes on orange, with a black edge.",
-  "On the map: very long orange dashes on red, with a black edge, in a wider line.",
-  "On the map: red dashes and dots on black, the widest line.",
+  "On the map: very long red dashes on a dark red edge, in a wider line.",
+  "On the map: magenta dashes and dots on a white edge with a black ring, the widest line, so no red means Avoid.",
 ];
 
 test("every swatch is hidden from a screen reader, and each level is named in the road panel's words beside it", () => {
@@ -89,7 +89,7 @@ test("each level is said whole, with a stop after its name and its map color in 
     assert.doesNotMatch(item, /Map legend:/);
     // The accessibility review's SF2: the color of each swatch in words, for a pilot's "the orange one".
     assert.ok(item.endsWith(MAP_WORDS[i]), `${i}: ${item}`);
-    assert.match(item, /On the map: [^.]*\b(green|blue|yellow|orange|red|black)\b[^.]*\.$/, item);
+    assert.match(item, /On the map: [^.]*\b(green|blue|yellow|orange|red|black|magenta)\b[^.]*\.$/, item);
   });
   assert.match(text, /The High contrast switch/, "the control's own label (accessibilitySwitch.ts)");
   assert.doesNotMatch(text, /accessibility switch/i, "Accessibility mode (455) does not change the colors");
