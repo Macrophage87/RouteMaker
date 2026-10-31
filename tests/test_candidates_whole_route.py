@@ -16,7 +16,7 @@ from test_route_api import LAT, VERTICES, encode_polyline6, good_body, post
 
 from core import presets, refine, routing, trailseek
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 pytestmark = [pytest.mark.usefixtures("weekday_clock"), db]
 
 # The ways of the fixture's road (tests/test_longcalm_api.py, `segments`), by

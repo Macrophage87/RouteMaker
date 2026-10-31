@@ -340,6 +340,11 @@ export interface RideModel {
   cues: Cue[];
   /** The stretches, to name the street the rider is on: [from, to) along the line, with the API's street and tier. */
   stretches: { fromM: number; toM: number; street: string | null; tier: number | null; facility: DescriptionEntry["facility"] }[];
+  /**
+   * The route's half-step sections (the API's `stress_spans` with `half: true`), [from, to) along the line with their
+   * lower level, so the ride summary's stress bar shows a 3.5 as the route line draws it. Absent where there are none.
+   */
+  halves?: { fromM: number; toM: number; tier: number }[];
   /** Metres per second at the route's own pace (distance over moving time), for time to go. */
   paceMs: number | null;
   /**
@@ -981,7 +986,15 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
   cues.push({ index: cues.length, kind: "end", atM: lengthM, text: endWords(route.arrival_side), movement: null, street: null, severity: null, tier: null, stop: null, ...(farSide ? { farSide } : {}) });
   const paceMs = route.distance_m > 0 && route.duration_s > 0 ? route.distance_m / route.duration_s : null;
   const timeline = timelineOf(route.time_marks, lengthM, route.duration_s);
-  return { coordinates, along, lengthM, cues, stretches, paceMs, ...(timeline ? { timeline } : {}), ...(vias.length ? { passes } : {}) };
+  const halves = (route.stress_spans ?? [])
+    .filter((s) => s.half === true && s.tier !== null && s.tier < 5)
+    .map((s) => ({ fromM: toLine(s.from_m), toM: toLine(s.to_m), tier: s.tier as number }));
+  return { coordinates, along, lengthM, cues, stretches, paceMs, ...(timeline ? { timeline } : {}), ...(vias.length ? { passes } : {}), ...(halves.length ? { halves } : {}) };
+}
+
+/** Whether `progressM` is on a half step above `tier` (the model's `halves`). */
+export function onHalfStep(model: RideModel, progressM: number, tier: number): boolean {
+  return !!model.halves?.some((h) => h.tier === tier && progressM >= h.fromM && progressM < h.toM);
 }
 
 /**

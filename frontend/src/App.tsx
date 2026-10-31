@@ -272,7 +272,7 @@ import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type
 import { letterKeyIndex, letterPlaces, placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
 import { detourShownSaid, frameAround, rideOpenPadding } from "./lib/detourSearch.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
-import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_PICK_LOOK_MS, goHereStart, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { GO_LOCATION_OFF, goStartSaid, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_PICK_LOOK_MS, goHereStart, goRough, goRoughAgain, goRoughTriesAfter, GO_ROUGH_AGAIN_MS, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { ReviewMode } from "./ReviewMode.tsx";
 import type { ListKey } from "./lib/review.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type Home, type MyGo } from "./lib/myGo.ts";
@@ -930,6 +930,9 @@ export function App() {
   // point came from the location is whether its object is in `fromHere` (linkLocationNote); a drag of
   // such a point adds the moved one too (movedFromHere), so the note stays.
   const [here, setHere] = useState<Fix | null>(null);
+  // For Go's look-up again after a rough fix (goRoughAgain), which reads the fix's accuracy outside a render.
+  const hereRef = useRef(here);
+  hereRef.current = here;
   // Every point that came from a look-up, or a drag of one, for the link note (the start may be an earlier
   // one than `here`). Not capped: a few points of memory, and a cap could drop a start still in the plan.
   const [fromHere, setFromHere] = useState<LonLat[]>([]);
@@ -2086,7 +2089,9 @@ export function App() {
   }, [gate, geoEnv, announce, commit]);
   const hereInPlan = here !== null && points.includes(here.point);
   // The accuracy circle: the located point's while it is in the plan; during a ride, the rider's.
-  const hereCircle = hereInPlan && here ? { centre: here.point, radiusM: here.accuracyM } : null;
+  // In Go before a destination, the start's (the dot, youDot below): a rough fix shows how rough (the owner, 2026-10-30).
+  const goDotCircle = !hereInPlan && here && mode === "go" && points.length === 0 && goStart.kind === "here" && goStart.point === here.point;
+  const hereCircle = (hereInPlan || goDotCircle) && here ? { centre: here.point, radiusM: here.accuracyM } : null;
 
   const move = useCallback((index: number, point: LonLat) => {
     cancelLocateNotice();
@@ -2494,17 +2499,22 @@ export function App() {
       } else {
         // Go opens on the rider (the owner, 2026-10-17): the location, centred above the sheet.
         flyToInView(result.fix.point, 15);
-        announce(GO_START_SAID);
+        // A rough fix says how rough: the circle's edge is off the screen at this zoom (a11y review, finding 4).
+        announce(goStartSaid(result.fix.accuracyM));
       }
     })();
     // Once per page, when Go is first shown (locateForGo reads only refs and stable setters).
   }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  // How many times the rough start below has been looked up again (GO_ROUGH_TRIES); the page back in view starts again.
+  const roughTries = useRef(0);
+  const roughBusy = useRef(false);
   // Go's start found long ago (the page or the phone app left open since an earlier ride; the owner, 2026-10-19) is
   // looked up again (Go's own look-up, locateForGo), without moving the map, when the page comes back into view, so the first destination picked routes from where the
   // rider is now. A pick while this runs waits on it as on any look-up (settleGoWaiting); a pick with no fresh start
   // looks it up itself (goPickAction).
   useEffect(() => {
     const refresh = async () => {
+      roughTries.current = 0;
       if (document.visibilityState !== "visible" || modeRef.current !== "go" || pointsRef.current.length > 0) return;
       if (!goStartStale(goStartRef.current)) return;
       // Quiet: the rider did not ask, so nothing is said (a pick meanwhile says its own words).
@@ -2524,6 +2534,37 @@ export function App() {
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
     // locateForGo reads only refs and stable setters, as the opening look-up's does.
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // A rough start (GO_ROUGH_M: a phone's cell-tower or Wi-Fi fix, miles out; the owner, 2026-10-30) is looked up again
+  // every GO_ROUGH_AGAIN_MS while Go shows it, at most GO_ROUGH_TRIES times, without the browser's cached fix. Quiet and
+  // around the gate, as the warm look-up is (goWarmFix), so a pick or Locate meanwhile is never dropped. A sure fix
+  // moves the map to it once, unless the rider has looked away from the rough dot.
+  useEffect(() => {
+    const tick = window.setInterval(() => {
+      // Not in Roam or a ride (their own watch has the location), and one look-up at a time.
+      const inGo = () => modeRef.current === "go" && !onBikeNow.current && pointsRef.current.length === 0;
+      if (document.visibilityState !== "visible" || !inGo() || roughBusy.current) return;
+      const was = goStartRef.current;
+      const before = hereRef.current?.accuracyM ?? 0;
+      if (was.kind !== "here" || !goRoughAgain(was, before, roughTries.current)) return;
+      roughTries.current += 1;
+      roughBusy.current = true;
+      void locate(geoEnv, undefined, undefined, true).then((result) => {
+        roughBusy.current = false;
+        if (!result.ok || !insideCoverage(result.fix.point)) return;
+        // Anything else that set the start meanwhile (Locate, a pick, a typed start) wins.
+        if (!inGo() || goStartRef.current !== was) return;
+        // Still rough: kept only when less rough than the dot's (a cell-tower retry can be worse than a Wi-Fi fix).
+        if (goRough(result.fix.accuracyM) && result.fix.accuracyM >= before) return;
+        setHere(result.fix);
+        setGoStart(goHereStart(result.fix.point));
+        roughTries.current = goRoughTriesAfter(roughTries.current, result.fix.accuracyM);
+        if (goRough(result.fix.accuracyM)) return;
+        if (mapRef.current?.getBounds().contains(was.point)) flyToInView(result.fix.point, 15);
+      });
+    }, GO_ROUGH_AGAIN_MS);
+    return () => window.clearInterval(tick);
+    // locate, the refs and flyToInView (refs and the DOM only) are the same for the page.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // A start typed into Go's start box: the plan's first point, in place of the location.
   const goStartPick = (found: Place) => {
@@ -6522,7 +6563,7 @@ export function App() {
                   rides={goRides}
                   notice={notice}
                   route={points.length > 1 || status.kind !== "idle" ? routeSection : null}
-                  startLine={goStartLine(goStart, points.length > 0 ? (namer.name(points[0])?.name ?? "the point on the map") : null)}
+                  startLine={goStartLine(goStart, points.length > 0 ? (namer.name(points[0])?.name ?? "the point on the map") : null, goStart.kind === "here" && here?.point === goStart.point ? here.accuracyM : 0)}
                   startMissing={goStart.kind === "none" && points.length === 0}
                   onStartPick={goStartPick}
                 />

@@ -18,7 +18,7 @@ from test_ratelimit import in_one_window
 from core import ratelimit, segment_info
 from routemaker import facility, flow
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 INFO = "/api/segment-info"
 # Connecticut Avenue NW at Dupont Circle's north side, roughly.

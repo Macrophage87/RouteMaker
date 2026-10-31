@@ -940,7 +940,10 @@ def street_name_of(event) -> str | None:
     return _event_name(event)
 
 
-def _crossed(tier: int | None) -> str:
+def _crossed(tier: int | None, half: bool = False) -> str:
+    if half and tier in (2, 3, 4):
+        # Said as the route's spans say a half step ("LTS 3.5"); 2.5 is busy (`Road.busy`).
+        return f" (LTS {tier + 0.5})"
     return {3: " (LTS 3)", 4: " (LTS 4)", 5: " (Avoid)"}.get(tier or 0, "")
 
 
@@ -987,7 +990,9 @@ _POINT_OTHER = "Pass a junction with"
 def _point_sentence(event, at_m: float) -> str:
     name = _event_name(event)
     verb = _POINT_VERBS.get(event.kind, _POINT_OTHER)
-    what = (name if name else t("a busy road")) + _crossed(event.crossed_tier)
+    what = (name if name else t("a busy road")) + _crossed(
+        event.crossed_tier, getattr(event, "crossed_half", False)
+    )
     control = _control_words(event.control, True, getattr(event, "beacon", False))
     said = t(f"{verb} {{what}}", what=what)
     return t(
@@ -1081,6 +1086,7 @@ def group_crossings(group: CrossingGroup, scale: float = 1.0) -> list[dict]:
                 "street": _event_name(event),
                 "severity": event.severity,
                 "crossed_tier": event.crossed_tier,
+                "crossed_half": getattr(event, "crossed_half", False),
                 "text": _point_sentence(event, at_m),
             }
         )

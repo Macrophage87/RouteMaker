@@ -16,7 +16,8 @@
 import { coordinatesText } from "./geocode.ts";
 import { LOCATE_MESSAGES, iosHomeScreenApp, type LocateFailure, type LocateResult } from "./geolocation.ts";
 import { haversineM, insideCoverage, type LonLat } from "./geo.ts";
-import { t } from "./i18n.ts";
+import { formatAboutRadius } from "./format.ts";
+import { fullStop, t } from "./i18n.ts";
 import { OLD_POINTS_PARAM, POINTS_PARAM } from "./planHash.ts";
 
 /**
@@ -211,6 +212,42 @@ export function goStartStale(start: GoStart, now: number = Date.now()): boolean 
   return !(age >= 0 && age <= GO_START_MAX_AGE_MS);
 }
 
+/**
+ * A fix less sure than this is rough (the owner, 2026-10-30: Go's dot sat miles from where he was). A phone's first
+ * answer can come from cell towers or Wi-Fi before the GPS has a lock, a mile or more out. Go still shows it, with its
+ * accuracy circle, but looks again every GO_ROUGH_AGAIN_MS, without the browser's cached fix, up to GO_ROUGH_TRIES
+ * times (two minutes; then the page coming back into view starts the count again).
+ */
+export const GO_ROUGH_M = 1_000;
+export const GO_ROUGH_AGAIN_MS = 20_000;
+export const GO_ROUGH_TRIES = 6;
+
+/** Whether a fix's accuracy (the browser's radius, metres; 0 when it gave none) makes it rough. */
+export function goRough(accuracyM: number): boolean {
+  return accuracyM > GO_ROUGH_M;
+}
+
+/** Whether Go's start is a rough fix found GO_ROUGH_AGAIN_MS or more ago (a clock set back counts too, as goStartStale). */
+export function goRoughDue(start: GoStart, accuracyM: number, now: number = Date.now()): boolean {
+  if (start.kind !== "here" || !goRough(accuracyM)) return false;
+  const age = now - start.at;
+  return age < 0 || age >= GO_ROUGH_AGAIN_MS;
+}
+
+/**
+ * Whether Go looks its rough start up again now: the fix is due (goRoughDue) and fewer than GO_ROUGH_TRIES look-ups
+ * have been made since the count last started (a sure fix, or the page back in view), so a phone that never gets a
+ * GPS lock stops after two minutes rather than looking every 20 s for as long as Go is open (test-strength S6).
+ */
+export function goRoughAgain(start: GoStart, accuracyM: number, tries: number, now: number = Date.now()): boolean {
+  return tries < GO_ROUGH_TRIES && goRoughDue(start, accuracyM, now);
+}
+
+/** The look-ups counted once one again has given Go its fix: a sure fix starts the count again, a rough one keeps it. */
+export function goRoughTriesAfter(tries: number, accuracyM: number): number {
+  return goRough(accuracyM) ? tries : 0;
+}
+
 /** Said politely when the location becomes the start, and shown on Go's start line. */
 export const GO_START_SAID = t("Start: your current location.");
 /** Said politely (and shown) when the location could not be had: denied, unavailable or timed out. */
@@ -236,12 +273,25 @@ export function shouldAskGoStart(state: { mode: AppMode; asked: boolean; pointCo
 }
 
 /**
- * Go's start line: the plan's own first point when there is one (from the link or typed: it replaces
- * the location), else the location, else what is happening.
+ * Go's start line for a rough fix (goRough): how rough, miles first, since at Go's opening zoom the accuracy circle's
+ * edge is off the screen and the map only takes a tint (the v0.16.0 a11y review, finding 4).
  */
-export function goStartLine(start: GoStart, firstPointName: string | null): string {
+export function goRoughStartLine(accuracyM: number): string {
+  return t("Start: your location, within about {distance}", { distance: formatAboutRadius(accuracyM) });
+}
+
+/** Said politely when the location becomes Go's start: GO_START_SAID, or for a rough fix how rough. */
+export function goStartSaid(accuracyM: number): string {
+  return goRough(accuracyM) ? goRoughStartLine(accuracyM) + fullStop() : GO_START_SAID;
+}
+
+/**
+ * Go's start line: the plan's own first point when there is one (from the link or typed: it replaces
+ * the location), else the location (with how rough, when the fix's `accuracyM` is rough), else what is happening.
+ */
+export function goStartLine(start: GoStart, firstPointName: string | null, accuracyM: number = 0): string {
   if (firstPointName !== null) return t("Start: {place}", { place: firstPointName });
-  if (start.kind === "here") return t("Start: your current location");
+  if (start.kind === "here") return goRough(accuracyM) ? goRoughStartLine(accuracyM) : t("Start: your current location");
   if (start.kind === "locating") return t("Start: finding your location…");
   if (start.kind === "none" && start.why === "denied") return GO_LOCATION_OFF;
   return t("Start: none yet; type a start");

@@ -375,6 +375,8 @@ class TestAnswer:
                 "unpaved": None,
                 "rough": None,
                 "rpm": None,
+                "outside_dc": None,
+                "half": None,
             },
             {
                 "from_m": 900,
@@ -384,6 +386,8 @@ class TestAnswer:
                 "unpaved": None,
                 "rough": None,
                 "rpm": None,
+                "outside_dc": None,
+                "half": None,
             },
             {
                 "from_m": 1300,
@@ -393,6 +397,8 @@ class TestAnswer:
                 "unpaved": None,
                 "rough": None,
                 "rpm": None,
+                "outside_dc": None,
+                "half": None,
             },
             {
                 "from_m": 1700,
@@ -402,6 +408,8 @@ class TestAnswer:
                 "unpaved": None,
                 "rough": None,
                 "rpm": None,
+                "outside_dc": None,
+                "half": None,
             },
         ]
         # The sections agree with the totals.
@@ -842,6 +850,8 @@ class TestStressBreakdown:
                 "unpaved": None,
                 "rough": None,
                 "rpm": None,
+                "outside_dc": None,
+                "half": None,
             }
         ]
         # And the facility breakdown, which must sum to the same distance
@@ -1810,6 +1820,8 @@ class TestTimeBudget:
                 "unpaved": None,
                 "rough": None,
                 "rpm": None,
+                "outside_dc": None,
+                "half": None,
             }
         ]
         assert any("past its" in r.message and "trace" in r.message for r in caplog.records)

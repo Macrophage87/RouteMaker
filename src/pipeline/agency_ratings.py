@@ -2,7 +2,9 @@
 
 The installed file is `<reference>/agency-lts.json`: one row per agency record,
 `{"id", "agency", "level", "name", "coordinates"}`, the level already on our scale
-(1 to 5 in half steps; an agency's "no rating" dropped by the installer).
+(1 to 5 in half steps; an agency's "no rating" dropped by the installer), and on an MDOT
+SHA row the owner's rules read otherwise (`routemaker.mdot_sha_rules`), `read_as` (the
+level the map uses) and `note` (why, for the road panel).
 `scripts/install_agency_lts.py` writes it.
 
 The weekly rebuild requires it (`required=True`): a file that is absent or empty, or
@@ -57,7 +59,8 @@ class AgencyRatingsMissing(FileNotFoundError):
 
 
 INSTALL = (
-    "scripts/install_agency_lts.py --datasets <DATA_ROOT>/datasets --out "
+    "scripts/install_agency_lts.py --datasets <DATA_ROOT>/datasets --mdot-aadt <counts> "
+    "--urban-areas <urban areas> --out "
     "<DATA_ROOT>/reference/agency-lts.json moco ddot mdot-sha (docs/OPERATIONS.md, "
     '"Agency stress ratings (agency-lts.json)"), or set REBUILD_ALLOW_NO_AGENCY_LTS=1 to '
     "build without them"
@@ -108,7 +111,10 @@ def load(
             # the installer (OWNER-DECISIONS 152, 155). Alexandria publishes no
             # rating (`agency_lts.AGENCIES`), so a row naming it is refused too.
             raise AgencyRatingsInvalid(f"{path}: record {row['id']}: unknown agency {agency!r}")
-        problem = level_problem(level)
+        read_as = row.get("read_as")
+        problem = level_problem(level) or (
+            level_problem(float(read_as)) if read_as is not None else None
+        )
         if problem:
             raise AgencyRatingsInvalid(f"{path}: record {row['id']}: {problem}")
         features.append(
@@ -118,7 +124,12 @@ def load(
                 facts=agency_roads.RoadFacts(agency=agency, name=row.get("name")),
             )
         )
-        ratings[row["id"]] = AgencyRating(agency, level)
+        ratings[row["id"]] = AgencyRating(
+            agency,
+            level,
+            read_as=None if read_as is None else float(read_as),
+            note=row.get("note"),
+        )
     return tuple(features), ratings
 
 
