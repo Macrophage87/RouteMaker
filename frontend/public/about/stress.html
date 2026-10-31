@@ -352,8 +352,8 @@ change it.</li>
       the limit the city records for the street. Where none is mapped, it uses the
       legal default in the District, 20 mph [32 km/h]. In Maryland's, Virginia's and
       West Virginia's towns and cities it uses Maryland DOT's estimates by road type, 25 to
-      35 mph [40 to 56 km/h], except that Virginia's and West Virginia's minor roads (unclassified
-      and tertiary) take their law's 25 mph [40 km/h] where Maryland's estimate is 30 mph [48 km/h], and outside them 50 to 55 mph [80 to 89 km/h] on through
+      35 mph [40 to 56 km/h]. Virginia's and West Virginia's minor through streets take those states'
+      own law, 25 mph [40 km/h], where Maryland's estimate is 30 mph [48 km/h]. Outside towns it uses 50 to 55 mph [80 to 89 km/h] on through
       roads. Where in doubt it assumes the faster figure. Each state's legal default
       limits are used only for junction costs (see <a href="#junctions">Junction
       warnings</a>).</li>
@@ -841,7 +841,8 @@ change it.</li>
       is Avoid.</li>
       <li><strong>Fast multilane highways are LTS 4.5.</strong> A trunk or primary road posted 55 mph
       [89 km/h] or faster, with two or more lanes each way or divided, is LTS 4.5 in a town or out,
-      in every state, as Maryland's own highway ratings are read. Ramps, roads tagged as expressways
+      wherever RouteMaker's own formula rates the road (Maryland's highway agency rates its four-lane
+      55 mph [89 km/h] roads the same way). Ramps, roads tagged as expressways
       (the rule above) and roads with a separated bike track on them or beside them keep their own
       rating.</li>
       <li><strong>Motorways</strong> are closed to bikes unless signed open. One signed open to bikes is
@@ -1069,7 +1070,7 @@ hiking trails are left out. A crosswalk over a slip lane adds a wait to the rout
 <div class="more-body">
     
     <p>Where no speed limit is mapped, junction costs use the legal default limit of
-    the District, Maryland or Virginia (see <a href="#sources">Sources</a>).</p>
+    the District, Maryland, Virginia or West Virginia (see <a href="#sources">Sources</a>).</p>
     <p>A road you give way to (at a stop sign on your side, or where nothing is mapped and your road is
     no busier) with two or more through lanes each way, or three or more on a one-way, is priced by its
     traffic rather than its bike lane where that is higher: LTS 3 above 20 mph [32 km/h], and LTS 4 from 30
@@ -1241,7 +1242,8 @@ hiking trails are left out. A crosswalk over a slip lane adds a wait to the rout
       Department of Transportation (DDOT), frequently asked questions on the District's
       20 mph [32 km/h] default speed limit; Maryland Transportation Article 21-801.1, from the Maryland State
       Highway Administration (MDOT SHA); Code of Virginia 46.2-870 to 46.2-878 and
-      46.2-1300, from the Virginia Department of Transportation (VDOT). The web
+      46.2-1300, from the Virginia Department of Transportation (VDOT); W. Va. Code 17C-6-1, from the
+      West Virginia Legislature. The web
       addresses are in the full list of sources linked under "Why our ratings differ
       from the studies".</li>
       <li>The method: Mekuria, Furth and Nixon, "Low-Stress Bicycling and Network
