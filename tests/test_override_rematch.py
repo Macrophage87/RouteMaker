@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -438,7 +439,7 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
     # Less Montgomery's 381 LTS 5 snapshot rows, retired for the live county layer (review
     # 2026-10-29). Plus R and 1st Streets NW's 24 stress rows (the owner, 2026-10-30), and
     # West Virginia's 309 county-road stress rows (the owner, 2026-10-30), and Northern
-    # Virginia's 157 (the owner, 2026-10-31).
+    # Virginia's 132 (the owner, 2026-10-31).
     assert (
         sum(len(d["rows"]) for d in documents.values())
         == 1785
@@ -460,7 +461,7 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
         - 381
         + 24
         + 309
-        + 157
+        + 132
     )
     for name, document in documents.items():
         if name == "2026-10-06-owner-crosswalk-links.json":
@@ -490,10 +491,10 @@ def test_the_override_counts_the_owner_asked_about() -> None:
     # Kenilworth Avenue NE rows. Plus Aspen Street NW's 5 (the owner, 2026-10-25). Less
     # Montgomery's 381 LTS 5 snapshot rows (review 2026-10-29). Plus R and 1st Streets NW's
     # 24 (the owner, 2026-10-30). Plus West Virginia's 309 county-road rows (2026-10-30).
-    # Plus Northern Virginia's 157 (2026-10-31).
+    # Plus Northern Virginia's 132 (2026-10-31).
     assert (
         kinds.count("stress")
-        == 1551 - 1 + 3 + 10 - 5 - 23 + 15 - 431 + 6 + 31 - 2 + 5 - 381 + 24 + 309 + 157
+        == 1551 - 1 + 3 + 10 - 5 - 23 + 15 - 431 + 6 + 31 - 2 + 5 - 381 + 24 + 309 + 132
     )
 
 
@@ -545,7 +546,7 @@ def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
     # path's 1 access row (the owner, 2026-10-27), and the Glenmont path's 1 (2026-10-28).
     # Less Montgomery's 381 LTS 5 snapshot rows (review 2026-10-29). Plus R and 1st Streets
     # NW's 24 stress rows (the owner, 2026-10-30), and West Virginia's 309 county-road rows,
-    # and Northern Virginia's 157 (2026-10-31).
+    # and Northern Virginia's 132 (2026-10-31).
     assert (
         len(found)
         == 1785
@@ -567,7 +568,7 @@ def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
         - 381
         + 24
         + 309
-        + 157
+        + 132
     )
     assert ("access", 50426889) in found and ("stress", 1562097556) in found
 
@@ -752,16 +753,31 @@ def test_the_virginia_rows_take_only_the_owners_levels() -> None:
     # The owner, 2026-10-31, "Let's go with all these" (P4, P8) and "Only the calmest to 1.5"
     # (R2); P3 and P6 withdrawn ("Let the formula decide").
     document = json.loads((OVERRIDES / "2026-10-31-owner-virginia-ratings.json").read_text())
-    levels = {
-        "va-ffx-posted-35-two-lane": {(3, True), (4, False)},
-        "va-ffx-posted-35-quiet": {(2, True), (3, True), (4, False)},
-        "va-arl-calmest-uncounted-lts1-5": {(1, True)},
+    elsewhere = {
+        (row["kind"], row["osm_way_id"])
+        for path in OVERRIDES.glob("*.json")
+        if path.name != "2026-10-31-owner-virginia-ratings.json"
+        for row in json.loads(path.read_text()).get("rows", [])
     }
     ways = [row["osm_way_id"] for row in document["rows"]]
     assert len(ways) == len(set(ways)), "one row per way"
+    assert not {("stress", way) for way in ways} & elsewhere, "no way rated in another file"
+    count = {"va-ffx-posted-35-two-lane": 0, "va-ffx-posted-35-quiet": 0}
     for row in document["rows"]:
-        value = row["value"]
-        assert row["kind"] == "stress" and row["fingerprint"]["length_m"] > 0
-        assert (value["tier"], value.get("half", False)) in levels[value["adjustment_id"]]
-        assert value["visibility"] == "hidden"
-        assert "Bike Comfort Index" not in row["evidence"] or "under 1,000" in row["evidence"]
+        value, evidence = row["value"], row["evidence"]
+        level = value["tier"] + (0.5 if value.get("half") else 0.0)
+        assert row["kind"] == "stress" and value["visibility"] == "hidden"
+        assert row["fingerprint"]["length_m"] > 0
+        if value["adjustment_id"] == "va-arl-calmest-uncounted-lts1-5":
+            assert level == 1.5 and "Beta's road panel" in evidence and ": LTS 2," in evidence
+            assert "under 1,000 vehicles a day" in evidence and "no VDOT count" in evidence
+            continue
+        count[value["adjustment_id"]] += 1
+        assert "posted 35 mph" in evidence and "no maxspeed tag" in evidence
+        aadts = re.search(r"VDOT AADT on the blocks along it: ([0-9, ]+) \(", evidence)
+        busiest = max(int(a.replace(",", "")) for a in aadts.group(1).split(", "))
+        expected = 4.0 if busiest >= 5_000 else 3.5 if busiest > 1_500 else 2.5
+        assert level == expected, (row["osm_way_id"], busiest, level)
+        was = 3 if value["adjustment_id"] == "va-ffx-posted-35-two-lane" else 2
+        assert f": LTS {was}," in evidence
+    assert count == {"va-ffx-posted-35-two-lane": 43, "va-ffx-posted-35-quiet": 28}
