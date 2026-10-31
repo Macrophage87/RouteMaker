@@ -169,7 +169,7 @@ def test_nothing_names_a_server(name: str) -> None:
 
 
 def test_the_android_guide_keeps_its_three_steps_on_the_first_screen() -> None:
-    """No docs menu above the steps, so step 1 is in view on a phone; it still leads back to the map."""
+    """No docs menu above the steps, so step 1 is in view on a phone; it still leads to the map."""
     page = read("android-beta")
     assert '<nav class="docs"' not in page
     assert len(re.findall(r"<li><strong>", page)) == 3
