@@ -1229,8 +1229,9 @@ def classify(
 # a step on a mixed-traffic road with no bike provision and a count in hand, so the count,
 # not a default, is what moves it.
 #
-# P2 (a two-lane street at LTS 2 carrying 5,000 or more a day is LTS 2.5) is the busy-street half step
-# in `_classify` (BUSY_STREET_MIN_AADT), which the owner set for every state the same day.
+# P2 (a two-lane street at LTS 2 carrying 5,000 or more a day is LTS 2.5) is the
+# busy-street half step in `_classify` (BUSY_STREET_MIN_AADT), which the owner set for
+# every state the same day.
 # R5 (everywhere; the owner reopened item 296's "no volume lift"): a two-way city street
 # held at LTS 3 that carries BUSY_STREET_AADT or more is LTS 3.5, and from
 # VERY_BUSY_STREET_AADT LTS 4 (Arlington's Wilson Blvd and S Jefferson St, Alexandria's
