@@ -194,3 +194,28 @@ def test_a_struck_painted_lane_rule_falls_back_to_the_older_painted_lane_level()
             painted_lane=True,
         )
     assert (int(result.tier), result.half) == (2, True)
+
+
+@pytest.mark.parametrize(
+    ("block", "expected"),
+    [
+        # A busy street the formula reads 2.5 (5,000 to 7,999 a day): the 1st Street NW case.
+        (dict(ddot=4, formula=2.5, aadt=7_520, lanes=2), 2.5),
+        (dict(ddot=3, formula=2.5, aadt=6_000, lanes=2), 2.5),
+        (dict(ddot=1, formula=2.5, aadt=6_000, lanes=2), 2.5),
+        (dict(ddot=2, formula=2.5, aadt=6_000, lanes=2), 2.5),
+        # DDOT 4 over an arterial the formula reads 3.5: by count, never below the formula.
+        (dict(ddot=4, formula=3.5, aadt=6_890, lanes=4), 3.5),
+        # DDOT 1 under a formula 3.5: as at 3, a bridge at 45,000 a day reads 4.
+        (dict(ddot=1, formula=3.5, aadt=45_000, lanes=4), 4.0),
+        (dict(ddot=1, formula=3.5, aadt=5_000, lanes=2), 3.5),
+    ],
+)
+def test_a_formula_half_step_reads_ddot_by_its_whole_levels_rule(block, expected) -> None:
+    assert level(**block) == expected
+
+
+def test_a_busier_street_never_reads_calmer_than_a_quieter_one() -> None:
+    quieter = level(ddot=1, formula=2, aadt=4_000, lanes=2)
+    busier = level(ddot=1, formula=2.5, aadt=7_520, lanes=2)
+    assert quieter == 2.0 and busier == 2.5

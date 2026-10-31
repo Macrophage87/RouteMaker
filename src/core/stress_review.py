@@ -825,7 +825,10 @@ def rating_sources(
 
     adjusted = bool(row.get("adjustment")) or str(row.get("rule") or "").startswith("override:")
     formula = held.get("formula")
-    if formula is None:
+    if formula is not None:
+        # The formula's tier is written whole, its half step beside it (`pipeline.writers`).
+        formula = float(formula) + (0.5 if held.get("formula_half") is True else 0)
+    else:
         formula = row.get("computed")
     if (
         formula is None
