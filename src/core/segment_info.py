@@ -803,7 +803,7 @@ def rating_rows(row: dict) -> list[dict]:
         rows.append(_row(f"{rating['name']} rates it", value, rating["name"]))
     formula = held.get("formula")
     if formula is not None:
-        value = tier_text(int(formula))
+        value = tier_text(int(formula), held.get("formula_half") is True)
         if held.get("formula_rule"):
             value += f" ({rule_words(str(held['formula_rule']))})"
         rows.append(_row("RouteMaker's formula", value, CLASSIFIER))

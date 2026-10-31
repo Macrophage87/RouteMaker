@@ -989,7 +989,7 @@ class TestThePreparedMeasureChangesTheCostAndNothingElse:
     def test_the_counts_along_pass_only_adds_matches(self) -> None:
         ways, features = self.region()
         first = conflate(ways, features, along_counts=False)
-        both = conflate(ways, features)
+        both = conflate(ways, features, along_agencies=None)
         assert both.rejected == first.rejected
         assert {k: both.matched[k] for k in first.matched} == first.matched
         assert len(both.matched) > len(first.matched)

@@ -349,6 +349,7 @@ def apply(
                 rule=", ".join([result.rule, *reasons, PAINTED_LANE_REASON]),
                 formula_tier=result.tier,
                 formula_rule=result.rule,
+                formula_half=result.half,
                 agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)),
                 unsmoothed_tier=None,
             )
@@ -357,6 +358,7 @@ def apply(
             rule=", ".join([result.rule, *reasons]),
             formula_tier=result.tier,
             formula_rule=result.rule,
+            formula_half=result.half,
             agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)),
         )
     level = used_level(pick)
@@ -382,6 +384,7 @@ def apply(
         rule=why,
         formula_tier=result.tier,
         formula_rule=result.rule,
+        formula_half=result.half,
         agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)),
         # A tier set afresh drops the smoothing record, as an override row does.
         unsmoothed_tier=None,

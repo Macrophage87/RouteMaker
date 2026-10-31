@@ -492,11 +492,15 @@ def conflate(
     min_overlap: float = MIN_OVERLAP_FRACTION,
     max_separation_m: float = MAX_SEPARATION_M,
     along_counts: bool = True,
+    along_agencies: Collection[str] | None = ("vdot",),
 ) -> ConflationResult:
     """Attach agency features to OSM ways.
 
     `along_counts` adds the second pass (`_along_counts`) for the ways no single count line
-    was a candidate for; it only adds matches, never changes or rejects one.
+    was a candidate for; it only adds matches, never changes or rejects one. It reads only
+    the lines of `along_agencies` (None: every line); the owner approved it for VDOT's counts.
+    Its ways are ranked before any claims, as the first pass's are, so the input order
+    decides nothing.
 
     One count may reach several ways along a corridor and may not reach two ways
     lying alongside each other. See `_claim` for where that line is drawn.
@@ -614,23 +618,37 @@ def conflate(
 
     # The ways no single count line was a candidate for at all (`_along_counts`).
     contested = {way_id for _overlap, way_id, *_rest in candidates}
+    found = []
     for entry in ways if along_counts else ():
         way_id, coordinates, *rest = entry
         if way_id in contested or (rest and rest[0]) or len(coordinates) < 2:
             continue
-        found = _along_counts(
+        along = _along_counts(
             coordinates,
             features,
             index,
             prepared,
-            claimed,
+            along_agencies,
             bearing_tolerance_deg,
             min_overlap,
             max_separation_m,
         )
-        if found is None:
+        if along is not None:
+            found.append((way_id, *along))
+    found.sort(
+        key=lambda item: (
+            _precedence(item[1]),
+            -item[2],
+            item[3],
+            item[0],
+        )
+    )
+    for way_id, feature, coverage, _distance, spans in found:
+        # All the stretches or none: tried on copies of the lines' own claims first.
+        trial = {fid: list(claimed.get(fid, ())) for fid, _span in spans}
+        if not all(_claim(trial, fid, span) for fid, span in spans):
             continue
-        feature, coverage = found
+        claimed.update(trial)
         matched[way_id] = Match(
             osm_way_id=way_id,
             feature_id=feature.feature_id,
@@ -644,6 +662,13 @@ def conflate(
 
     unmatched = [f.feature_id for f in features if f.feature_id not in used_features]
     return ConflationResult(matched=matched, rejected=rejected, unmatched_features=unmatched)
+
+
+def _precedence(feature: AgencyFeature) -> int:
+    try:
+        return SOURCE_PRECEDENCE.index(feature.source)
+    except ValueError:
+        return len(SOURCE_PRECEDENCE)
 
 
 # The Virginia ratings review (the owner, 2026-10-31, "Let's go with all these", item R1):
@@ -668,14 +693,19 @@ def _along_counts(
     features: Sequence[AgencyFeature],
     index: _FeatureIndex,
     prepared: list[_PreparedFeature | None],
-    claimed: dict[str, list[tuple[float, float]]],
+    agencies: Collection[str] | None,
     bearing_tolerance_deg: float,
     min_overlap: float,
     max_separation_m: float,
-) -> tuple[AgencyFeature, float] | None:
-    """The count a way left without a candidate takes from the lines it runs along, with
-    how much of it they cover, or None. Records the stretches it claims."""
-    near = index.near(coordinates)
+) -> tuple[AgencyFeature, float, float, list[tuple[str, tuple[float, float]]]] | None:
+    """The count a way left without a candidate would take from the lines it runs along:
+    the line, how much of the way they cover, the mean probe distance, and each line's
+    stretch to claim; or None. Claims nothing (`conflate` ranks the ways first)."""
+    near = [
+        position
+        for position in index.near(coordinates)
+        if agencies is None or features[position].agency in agencies
+    ]
     if not near:
         return None
     probes, headings = _probes_with_headings(coordinates, max_separation_m)
@@ -698,9 +728,11 @@ def _along_counts(
             if best[slot] is None or (distance, position) < best[slot]:
                 best[slot] = (distance, position)
                 positions[slot] = [along]
+    distances: dict[int, list[float]] = {}
     for slot, choice in enumerate(best):
         if choice is not None:
             alongs.setdefault(choice[1], []).extend(positions[slot])
+            distances.setdefault(choice[1], []).append(choice[0])
     lying_along = {
         position: spots
         for position, spots in alongs.items()
@@ -709,28 +741,16 @@ def _along_counts(
     covered = sum(len(spots) for spots in lying_along.values()) / len(probes)
     if not lying_along or covered < min_overlap:
         return None
-    spans = {position: (min(spots), max(spots)) for position, spots in lying_along.items()}
-    # All the stretches or none: tried on copies of the lines' own claims first.
-    trial = {
-        features[position].feature_id: list(claimed.get(features[position].feature_id, ()))
-        for position in spans
-    }
-    for position, span in spans.items():
-        if not _claim(trial, features[position].feature_id, span):
-            return None
-    claimed.update(trial)
-
-    def precedence(feature: AgencyFeature) -> int:
-        try:
-            return SOURCE_PRECEDENCE.index(feature.source)
-        except ValueError:
-            return len(SOURCE_PRECEDENCE)
-
+    spans = [
+        (features[position].feature_id, (min(spots), max(spots)))
+        for position, spots in sorted(lying_along.items())
+    ]
+    near_by = [d for position in lying_along for d in distances[position]]
     chosen = min(
         (features[position] for position in lying_along),
-        key=lambda feature: (precedence(feature), -feature.aadt, feature.feature_id),
+        key=lambda feature: (_precedence(feature), -feature.aadt, feature.feature_id),
     )
-    return chosen, min(1.0, covered)
+    return chosen, min(1.0, covered), sum(near_by) / len(near_by), spans
 
 
 def share_with_carriageways(

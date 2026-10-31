@@ -597,6 +597,8 @@ class StressResult:
     # information in the tab when viewing the road"). Empty where none did.
     formula_tier: Stress | None = None
     formula_rule: str | None = None
+    # Whether the formula's own level (`formula_tier`) was a half step above it.
+    formula_half: bool = False
     agency_ratings: tuple = ()
 
     @property

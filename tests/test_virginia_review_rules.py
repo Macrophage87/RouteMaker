@@ -88,19 +88,21 @@ class TestNarrowRoadWithAQuietCount:
         assert NARROW_ROAD_RULE not in busy.rule
 
 
-# An east-west street at 38.90 that bends north half way, and the count line along it.
-BENT_STREET = [(-77.0200, 38.9000), (-77.0150, 38.9000), (-77.0150, 38.9050)]
+# A street that runs east along a count line for 610 m, then turns north for 500 m: end
+# to end it points north-east, 39 degrees off the line it follows.
+BENT_STREET = [(-77.0200, 38.9000), (-77.0130, 38.9000), (-77.0130, 38.9045)]
+LONG_LINE = [(-77.0250, 38.90001), (-77.0100, 38.90001)]
 
 
-def feature(fid: str, coords, aadt: int) -> AgencyFeature:
-    return AgencyFeature(fid, coords, aadt, "state", 2025, "vdot")
+def feature(fid: str, coords, aadt: int, agency: str = "vdot") -> AgencyFeature:
+    return AgencyFeature(fid, coords, aadt, "state", 2025, agency)
 
 
 class TestCountsAlongAStreet:
     def test_a_street_that_bends_takes_the_count_it_runs_along(self) -> None:
-        """End to end the street points north-east, 45 degrees off both of its legs, so the
-        whole-line bearing gate refused it (Falstaff Road, Fairfax, way 61242835)."""
-        line = feature("f1", [(-77.0201, 38.90001), (-77.0150, 38.90001), (-77.0150, 38.9051)], 320)
+        """The whole-line bearing gate refuses it (Falstaff Road, Fairfax, way 61242835)."""
+        line = feature("f1", LONG_LINE, 320)
+        assert conflate([(1, BENT_STREET)], [line], along_counts=False).matched == {}
         assert conflate([(1, BENT_STREET)], [line]).matched[1].aadt == 320
 
     def test_a_street_past_several_count_lines_takes_the_highest(self) -> None:
@@ -111,18 +113,51 @@ class TestCountsAlongAStreet:
             feature("b", [(-77.0130, 38.90001), (-77.0065, 38.90001)], 480),
             feature("c", [(-77.0065, 38.90001), (-77.0000, 38.90001)], 390),
         ]
+        assert conflate([(1, street)], lines, along_counts=False).matched == {}
         match = conflate([(1, street)], lines).matched[1]
         assert match.aadt == 480 and match.score > 0.9
 
     def test_a_street_alongside_one_that_took_the_count_still_does_not(self) -> None:
         """The other carriageway, or a frontage road, wants the same stretch."""
-        street = [(-77.0200, 38.9000), (-77.0000, 38.9000)]
-        beside = [(-77.0200, 38.90013), (-77.0150, 38.90013), (-77.0150, 38.90063)]
-        line = feature("f1", [(-77.0201, 38.90001), (-76.9999, 38.90001)], 5_000)
+        street = [(-77.0250, 38.9000), (-77.0100, 38.9000)]
+        beside = [(-77.0200, 38.90013), (-77.0130, 38.90013), (-77.0130, 38.9045)]
+        line = feature("f1", LONG_LINE, 5_000)
+        assert 2 in conflate([(2, beside)], [line]).matched, "alone, it would take it"
         result = conflate([(1, street), (2, beside)], [line])
         assert 1 in result.matched and 2 not in result.matched
+
+    def test_which_of_two_bent_streets_takes_it_does_not_hang_on_their_order(self) -> None:
+        near = BENT_STREET
+        far = [(lon, lat + 0.0001) for lon, lat in BENT_STREET]
+        line = feature("f1", LONG_LINE, 900)
+        one = conflate([(1, near), (2, far)], [line]).matched
+        other = conflate([(2, far), (1, near)], [line]).matched
+        assert set(one) == set(other) == {1}
+
+    def test_only_vdot_counts_are_read_this_way(self) -> None:
+        line = feature("f1", LONG_LINE, 320, agency="mdot")
+        assert conflate([(1, BENT_STREET)], [line]).matched == {}
 
     def test_a_cross_street_takes_nothing(self) -> None:
         cross = [(-77.0100, 38.8990), (-77.0100, 38.9010)]
         line = feature("f1", [(-77.0200, 38.9000), (-77.0000, 38.9000)], 5_000)
         assert conflate([(1, cross)], [line]).matched == {}
+
+
+def test_the_road_panel_shows_the_formulas_half_step_where_an_agency_is_used() -> None:
+    """Where Arlington's or Fairfax's twin streets are rated by an agency, the panel's formula
+    line still reads 2.5, not 2 beside "half a level higher"."""
+    import json
+
+    from core import segment_info
+    from pipeline import writers
+    from routemaker import agency_lts
+    from routemaker.agency_lts import AgencyRating
+
+    formula = classify(RESIDENTIAL, aadt=6_000, aadt_source="vdot", jurisdiction="VA")
+    result = agency_lts.apply(formula, [AgencyRating("ddot", 3)])
+    assert result.formula_half is True
+    held = json.loads(writers._ratings_json(result))
+    rows = segment_info.rating_rows({"stress_ratings": json.dumps(held)})
+    line = next(row["value"] for row in rows if row["label"] == "RouteMaker's formula")
+    assert line.startswith("LTS 2.5")
