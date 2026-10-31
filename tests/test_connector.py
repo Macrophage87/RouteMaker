@@ -28,7 +28,7 @@ from core.models import (
     SharedRoute,
 )
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 REDIRECT = "https://claude.ai/api/mcp/auth_callback"
 # The route API's planner stand-in, used by name below.

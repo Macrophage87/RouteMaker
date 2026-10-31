@@ -28,7 +28,7 @@ test("1. track-up by default, the ride settings' switch remembered on this devic
 });
 
 test("6. an End ride button always in view, labelled End ride with its icon, one tap; the ride's summary with Done and Undo", () => {
-  const top = ride.slice(ride.indexOf('className={light && cornerFits ? "ride-top"'), ride.indexOf('className={light && cornerFits ? "ride-top"') + 2400);
+  const top = ride.slice(ride.indexOf("<div ref={topRef} className="), ride.indexOf("<div ref={topRef} className=") + 2400);
   assert.match(top, /<h2 id="ride-heading"/);
   // The owner, 2026-10-16 ("add a method of ending navigation"): the visible words are End ride, so its name is too.
   // Once arrived it is a filled Done (the UI review, 2026-10-28), still named End ride after its words.
@@ -128,7 +128,7 @@ test("F1. Start unlocks the voice synchronously in the press, before the closure
 });
 
 test("Ride settings in reach: More at the end of the side buttons opens them just under the top row (the owner, 2026-10-18; More 2026-10-24)", () => {
-  const top = ride.slice(ride.indexOf('className={light && cornerFits ? "ride-top"'), ride.indexOf("{ride.arrived ? (\n          <>"));
+  const top = ride.slice(ride.indexOf("<div ref={topRef} className="), ride.indexOf("{ride.arrived ? (\n          <>"));
   // The top row: End ride, then Road closed ahead (the owner, 2026-10-19: "switch end ride and road closed"); Settings is no longer there.
   assert.doesNotMatch(top, /RIDE_SETTINGS_TEXT/);
   assert.ok(top.indexOf("END_RIDE_NAME") > 0 && top.indexOf("END_RIDE_NAME") < top.indexOf("ROAD_CLOSED_NAME"));
@@ -161,9 +161,23 @@ test("Ride settings in reach: More at the end of the side buttons opens them jus
   assert.match(css, /\.ride-top\.ride-corner-tight \.ride-heading \{\s*position: absolute;/);
   assert.match(ride, /setCornerFits\(need <= room\);/);
   // "Ride mode" itself is never shown, only said (the owner, 2026-10-20: "People know it's ride mode anyway").
-  assert.match(ride, /className=\{light && cornerFits \? "ride-top" : "ride-top ride-corner-tight"\}/);
+  assert.match(ride, /className=\{`\$\{light && cornerFits \? "ride-top" : "ride-top ride-corner-tight"\}/);
   // Then the two buttons share the whole row (the owner, 2026-10-20).
-  assert.match(css, /\.ride-top\.ride-corner-tight \.ride-top-actions > \* \{\s*flex: 1 1 auto;\s*white-space: nowrap;/);
+  assert.match(css, /\.ride-top\.ride-corner-tight \.ride-top-actions > \* \{\s*flex: 1 1 auto;\s*min-width: min-content;/);
+  // End ride and Go round on one line (the owner, 2026-10-31: "end ride and go around should share a line"): the
+  // row never wraps, the words wrap inside each button, and only a word wider than its button stacks them, measured.
+  assert.match(css, /\.ride-top-actions \{\s*display: flex;\s*flex-wrap: nowrap;/);
+  assert.match(css, /\.ride-top\.ride-corner-tight \.ride-slide-text \{\s*white-space: normal;/);
+  assert.match(css, /\.ride-top\.ride-top-stack \.ride-top-actions \{\s*flex-wrap: wrap;/);
+  assert.match(ride, /const overflows = actions\.scrollWidth > actions\.clientWidth \+ 1;/);
+  // A word too wide for its half makes the words smaller, a step at a time to half size, before they stack (the
+  // owner, 2026-10-31: "Reduce the font size in that case").
+  assert.match(ride, /while \(actions\.scrollWidth > actions\.clientWidth \+ 1 && fit > TOP_FIT_MIN \+ 0\.001\) \{\s*fit = Math\.max\(TOP_FIT_MIN, Math\.round\(\(fit - TOP_FIT_STEP\) \* 100\) \/ 100\);\s*top\.style\.setProperty\("--ride-top-fit", String\(fit\)\);/);
+  assert.match(ride, /const TOP_FIT_MIN = 0\.5;/);
+  assert.match(css, /font-size: calc\(1\.2rem \* var\(--ride-top-fit, 1\)\);/);
+  assert.match(css, /font-size: calc\(1rem \* var\(--ride-top-fit, 1\)\);/);
+  assert.match(ride, /setStacked\(overflows\);/);
+  assert.match(ride, /\$\{stacked \? " ride-top-stack" : ""\}/);
   assert.match(ride, /\{light && !cornerFits && \(\s*<p className="ride-light-below" aria-hidden="true">/);
 });
 
@@ -189,7 +203,7 @@ test("End ride in Plan keeps the plan and its routes; part way it starts where t
 });
 
 test("End ride is slid until the rider has arrived (the owner, 2026-10-19: \"Add a swipe confirmation on ending the ride unless at the destination\")", () => {
-  const top = ride.slice(ride.indexOf('className={light && cornerFits ? "ride-top"'), ride.indexOf("{ride.arrived ? (\n          <>"));
+  const top = ride.slice(ride.indexOf("<div ref={topRef} className="), ride.indexOf("{ride.arrived ? (\n          <>"));
   assert.match(top, /\{ride\.arrived \? \(\s*<button type="button" className="primary ride-end ride-done" onClick=\{end\}>[\s\S]*?\) : \(\s*<SlideToEnd onEnd=\{end\} onTap=\{slideHint\} \/>/);
   const slide = ride.slice(ride.indexOf("function SlideToEnd("), ride.indexOf("/** A live region"));
   // A native range, named End ride, so arrows and a screen reader's adjust gestures move it; the end ends the ride.

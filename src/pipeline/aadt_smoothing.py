@@ -122,15 +122,11 @@ class SmoothingReport:
 
 def crosses_volume_gate(raw: int, smoothed: int) -> bool:
     """Whether the two counts fall either side of a volume threshold of the
-    classifier, so the replacement can have moved the tier. The gates as
-    `routemaker.stress` writes them: quiet is `<= VOLUME_QUIET` (so 1,501 is
-    the first count that is not), busy is `>= VOLUME_BUSY`, and the urban
-    two-way floor is `> URBAN_TWO_WAY_BUSY_AADT` (so 8,001 is the first count
-    over it)."""
-    from routemaker.stress import URBAN_TWO_WAY_BUSY_AADT, VOLUME_BUSY, VOLUME_QUIET
+    classifier, so the replacement can have moved the tier: any of
+    `routemaker.stress.VOLUME_GATES`, each the first count on its busier side."""
+    from routemaker.stress import VOLUME_GATES
 
-    gates = (VOLUME_QUIET + 1, VOLUME_BUSY, URBAN_TWO_WAY_BUSY_AADT + 1)
-    return any((raw >= gate) != (smoothed >= gate) for gate in gates)
+    return any((raw >= gate) != (smoothed >= gate) for gate in VOLUME_GATES)
 
 
 def _project(lon: float, lat: float, lat0: float) -> tuple[float, float]:
