@@ -825,3 +825,17 @@ test("the strip keeps a section's roughness, so gravel is keyed grey and dirt br
   assert.deepEqual(sections.map((s) => s.rough), [true, false]);
   assert.deepEqual(stripKey(sections).map((s) => spanClass(s).key), ["g2", "u2"]);
 });
+
+test("the strip keeps a half step: drawn and said in its own class, between its two levels (the review of #780)", () => {
+  const spans: StressSpan[] = [
+    { from_m: 0, to_m: 300, tier: 3, facility: "none" },
+    { from_m: 300, to_m: 600, tier: 3, facility: "none", half: true },
+    { from_m: 600, to_m: 1000, tier: 4, facility: "none" },
+  ];
+  const strip = stripSections(spans, 1000);
+  assert.equal(strip[1].half, true);
+  assert.equal(spanClass(strip[1]).key, "3h");
+  assert.equal(sectionWords(strip[1]), "LTS 3.5");
+  assert.equal(sectionWords({ tier: 3, facility: "none", half: true, unpaved: true, rough: true }), "dirt, LTS 3", "an unpaved half step is drawn in its level's brown");
+  assert.deepEqual(stripKey(strip).map((s) => spanClass(s).key), ["3", "3h", "4"]);
+});

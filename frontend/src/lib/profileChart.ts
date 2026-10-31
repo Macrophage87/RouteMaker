@@ -210,7 +210,7 @@ export function tierAt(spans: readonly StressSpan[] | undefined, metres: number)
  * rated Avoid (only an access override makes one) is said "Avoid", as it is drawn, never
  * "traffic-free path" (r4 accessibility, A-SF1).
  */
-export function sectionWords(span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved" | "rough">> | null | undefined): string | null {
+export function sectionWords(span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved" | "rough" | "half">> | null | undefined): string | null {
   if (!span) return null;
   const path = span.facility === "path" && span.tier !== 5;
   if (span.unpaved === true) {
@@ -221,6 +221,8 @@ export function sectionWords(span: Pick<StressSpan, "tier" | "facility"> & Parti
     return tier ? `${surface}, ${tier}` : null;
   }
   if (path) return "traffic-free path";
+  // A paved half step is said as it is drawn, in its own class (2026-10-30): "LTS 3.5".
+  if (span.half === true && span.tier !== null && span.tier < 5) return `LTS ${span.tier + 0.5}`;
   return tierWords(span.tier);
 }
 
@@ -582,6 +584,8 @@ export interface StripSection {
   unpaved: boolean | null;
   /** On an unpaved section, whether it is rough (brown) or gravel (grey; 2026-10-21); null where not said. */
   rough: boolean | null;
+  /** A half step (2026-10-30): drawn in its own class, as on the map. */
+  half?: boolean;
 }
 
 /** The route's stress sections for the strip, clipped to the axis; unknown stays a section of its own. */
@@ -589,7 +593,7 @@ export function stripSections(spans: readonly StressSpan[] | undefined, length: 
   if (!spans) return [];
   return spans
     .filter((s) => s.to_m > s.from_m && s.from_m < length)
-    .map((s) => ({ from_m: Math.max(0, s.from_m), to_m: Math.min(length, s.to_m), tier: s.tier, facility: s.facility ?? null, unpaved: s.unpaved ?? null, rough: s.rough ?? null }));
+    .map((s) => ({ from_m: Math.max(0, s.from_m), to_m: Math.min(length, s.to_m), tier: s.tier, facility: s.facility ?? null, unpaved: s.unpaved ?? null, rough: s.rough ?? null, ...(s.half ? { half: true } : {}) }));
 }
 
 /** The strip key's entries: the first section of each of the map's classes the strip shows (routeColours.ts spanClass), in the key's order (`sectionRank`). */
@@ -872,9 +876,10 @@ export function busyPlaces(spans: readonly StressSpan[] | undefined, max = 3): {
 }
 
 /** A stress section's place in the key's order (`stripKey`): a path first, then the tiers, each unpaved after its paved tier; a path rated Avoid is Avoid. */
-function sectionRank(span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved" | "rough">>): number {
-  // Gravel before dirt (the map legend's order).
-  return (span.facility === "path" && span.tier !== 5 ? 0 : (span.tier ?? 99)) + (span.unpaved === true ? (span.rough === false ? 0.3 : 0.5) : 0);
+function sectionRank(span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved" | "rough" | "half">>): number {
+  // Gravel before dirt (the map legend's order); a paved half step between its two levels.
+  const surface = span.unpaved === true ? (span.rough === false ? 0.3 : 0.5) : span.half === true && span.tier !== null && span.tier < 5 ? 0.4 : 0;
+  return (span.facility === "path" && span.tier !== 5 ? 0 : (span.tier ?? 99)) + surface;
 }
 
 /**

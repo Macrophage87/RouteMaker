@@ -1564,8 +1564,11 @@ LTS 1 and 2 are as they were in colour (their edges changed with items 356 and
 Two readings were built for the owner to choose between, and since item 351
 ("2 tone is better", "Make two-tone the default") the default is `twotone` (the
 first colour as the line, the second as its casing: LTS 3 yellow #f2c21b on
-orange #f28c28, LTS 4 orange on red #c81e1e, both ringed in near-black #1c1917 since item
-371, which also lightened the yellow to #f3c81a; Avoid red #d42020 on #111111),
+orange #f28c28, ringed in near-black #1c1917 since item 371, which also lightened the yellow
+to #f3c81a; since 2026-10-31, "today's orange should be 3.5 with 4 at some sort of red and 4.5
+darkred": LTS 4 red #e3261c on a near-black red #560a0e, and Avoid the route's magenta #d6008f
+on white, ringed; the half steps have colours of their own, `HALF_PALETTES`: 1.5 #6fc48a,
+2.5 #9fb83a, 3.5 the old LTS 4's orange on red #c81e1e, ringed, 4.5 #560a0e on #e3261c, ringed),
 which needs no address parameter. `blended`, the default before (LTS 3 amber,
 #bf730b, over a dark amber-brown casing, #45290a; LTS 4 a saturated red,
 #c80018, over white; Avoid a near-black, #14040a, over a coral-red casing,
