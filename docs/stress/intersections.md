@@ -71,7 +71,10 @@ A narrower road with no posted speed (the classifier read its own street default
 such as 25 mph on a residential street, which the table does not keep; the statutory
 default it does keep, Maryland's 30 in town or 50 to 55 in the country, would rate a quiet
 street busy), a road with no speed at all, a road closed to cars at the ride's time, and the
-Mass Ride reading keep the map's level. A turn off the rider's own road is read the same
+Mass Ride reading keep the map's level. Where the rider's own road cannot be read by its traffic (no posted
+speed), the right of way weighs it against the other road's map level, so both are read
+the same way and an unposted arterial does not give way to a side street only its traffic
+raised. A turn off the rider's own road is read the same
 way, so a left off a protected lane on a busy road costs what the same left off the road
 does. And a junction is priced by traffic even where an agency or the owner rated the road
 low for riding along it: those ratings no longer lower a junction. A divided road's

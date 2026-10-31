@@ -382,6 +382,20 @@ class TestByTraffic:
         plain_left = replace(left, incoming=plain)
         assert m.assess(left).cost_ft == m.assess(plain_left).cost_ft > 0
 
+    def test_an_unposted_rider_road_is_weighed_against_the_maps_level(self) -> None:
+        # v0.16.0 release review: straight on along an unposted LTS 3 road (read at its map
+        # level), nothing mapped, across a 30 mph side street with a bike lane (LTS 2 on the
+        # map, 3 by its traffic). Both are read the same way, the map's: the rider's road is
+        # the busier, and has the right of way, as before traffic reading.
+        rider = Road(3, lanes=1, oneway=False, default_speed_mph=30.0)
+        side = Road(2, speed_mph=30, lanes=1, oneway=False)
+        j = junction(incoming=rider, outgoing=rider, crossed=(side,), control=Control.NONE)
+        assert m.cost_of(m.by_traffic(j))[0] == m.PRIORITY_SIDE_FT
+        # A rider's road read by its traffic is weighed against the side street's traffic.
+        posted = replace(rider, speed_mph=30.0)
+        k = replace(j, incoming=posted, outgoing=posted)
+        assert m.cost_of(m.by_traffic(k))[0] > m.PRIORITY_SIDE_FT
+
     def test_a_three_lane_one_way_is_multilane(self) -> None:
         assert m.traffic_tier(replace(self.PINEY_BRANCH, lanes=3, oneway=True)) == 4
 
