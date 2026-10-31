@@ -2502,7 +2502,7 @@ def build_handlers(
             logger.info(
                 "counts shared with %d opposite carriageways (%s)",
                 len(shared),
-                ", ".join(sorted(Counter(m.agency for m in shared.values()))) or "none",
+                ", ".join(sorted({m.agency for m in shared.values()})) or "none",
             )
         # The agency street blocks next: their count (DC's Roadway Block AADT,
         # 2020) fills where no count layer reached the way and never replaces
