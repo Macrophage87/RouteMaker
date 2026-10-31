@@ -4468,16 +4468,18 @@ Since the calibration (OWNER-DECISIONS 101-143) the classifier reads three
 things beyond the tags, and none of them comes from the reference install:
 
 - **The states, from the rebuild's own extract.** Each unposted way takes its
-  state's speed default (the District's 20 mph, 15 in alleys; Maryland's and
-  Virginia's 25/30/35 in urban areas). The states are built each run from the
+  state's speed default (the District's 20 mph, 15 in alleys; Maryland's,
+  Virginia's and West Virginia's 25/30/35 in urban areas; WV's law, 17C-6-1, has
+  Virginia's figures). The states are built each run from the
   `boundary=administrative`, `admin_level=4` relations in the *merged* extract
   (`pipeline.states`; the owner, item 137: "From our OSM data
   (Recommended)"), not from the `jurisdiction` table, which stays the admin's
-  and is empty on a fresh deployment. The merged extract holds only the three
-  Geofabrik states, so the District, Maryland and Virginia close and West
-  Virginia's and Pennsylvania's relations do not: their ways inside the
-  coverage take the old class tables, and the log says so ("state WV: ... do
-  not close and were dropped").
+  and is empty on a fresh deployment. The merged extract holds the District,
+  Maryland, Virginia and West Virginia (`pipeline.source`); a relation that does
+  not close is dropped, its ways take the old class tables (for WV the same
+  figures), and the log says so ("state WV: ... do not close and were dropped").
+  A state with 1,000 or more placed ways and none in `urban-areas.json` stops the
+  rebuild: the list was made without it, and its towns would read as rural.
 - **`fixtures/cbd/`** (the DDOT CBD boundary, the federal exemptions and the
   Architect of the Capitol's polygon) and **`fixtures/speed/`** (curated speed
   limits, OWNER-DECISIONS 131), both baked into the pipeline image
@@ -6467,7 +6469,8 @@ rebuild that refuses to run without `agency-lts.json`. At home, in order, with `
   read its `ddot: level read from <field>` line); without it the rebuild and
   `send-inputs.sh` refuse. And `counties.geojson` (`install_reference_data.py --counties`)
   for Review's Area column and the stress change report.
-- [ ] **Recommended, urban areas:** remake `urban-areas.json` from the current extract
+- [ ] **Required since v0.16.0, urban areas:** remake `urban-areas.json` from the current extract
+  (the 2026-09-25 list has no West Virginia way, and the rebuild now stops on that)
   (`install_reference_data.py` with `--extract` and the urban-area layer, as in "First
   rebuild on a fresh host"). A way newer than the list reads as rural, and a rural expressway posted 50 mph or
   more is now LTS 4.5, so a newly split urban expressway would come out LTS 4.5, not Avoid.

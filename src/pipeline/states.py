@@ -55,10 +55,6 @@ CHUNK = 50_000
 MIN_WAYS_FOR_URBAN_CHECK = 1_000
 
 
-class UrbanListStale(RuntimeError):
-    """A state's ways are all missing from the urban list."""
-
-
 def states_without_urban(
     state_of: dict[int, str], urban_way_ids, min_ways: int = MIN_WAYS_FOR_URBAN_CHECK
 ) -> list[str]:

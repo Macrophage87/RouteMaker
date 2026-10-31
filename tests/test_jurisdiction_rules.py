@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from pipeline.states import states_without_urban
-from routemaker.stress import Stress, classify, statutory_default_mph
+from routemaker.stress import classify, statutory_default_mph
 
 
 class TestWestVirginiaSpeedLaw:
@@ -19,16 +19,21 @@ class TestWestVirginiaSpeedLaw:
         gravel = {"surface": "gravel"}
         assert statutory_default_mph(gravel, "WV", urban=False, divided=False) == 55.0
 
-    def test_an_unposted_town_street_reads_as_in_virginia(self):
-        tags = {"highway": "tertiary"}
-        wv = classify(tags, urban=True, jurisdiction="WV")
-        va = classify(tags, urban=True, jurisdiction="VA")
+    # A town primary with a painted lane: read at 35 mph from the MD/VA/WV urban
+    # table, not the generic urban table's 40 that WV took before.
+    LANED_PRIMARY = {"highway": "primary", "cycleway": "lane"}
+
+    def test_an_unposted_town_primary_reads_as_in_virginia(self):
+        wv = classify(self.LANED_PRIMARY, urban=True, jurisdiction="WV")
+        va = classify(self.LANED_PRIMARY, urban=True, jurisdiction="VA")
+        unknown = classify(self.LANED_PRIMARY, urban=True, jurisdiction="PA")
         assert (wv.tier, wv.rule) == (va.tier, va.rule)
-        assert wv.tier is Stress.LTS3
+        assert "35 mph" in wv.rule and "40 mph" in unknown.rule
 
     def test_a_zone_tag_names_west_virginia(self):
-        tags = {"highway": "tertiary", "maxspeed:type": "US-WV:urban"}
-        assert classify(tags, urban=True).tier is Stress.LTS3
+        tags = {**self.LANED_PRIMARY, "maxspeed:type": "US-WV:urban"}
+        wv = classify(self.LANED_PRIMARY, urban=True, jurisdiction="WV")
+        assert classify(tags, urban=True).rule == wv.rule
 
 
 class TestUrbanListCoversEveryState:
