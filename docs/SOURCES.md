@@ -1224,6 +1224,24 @@ them (OWNER-DECISIONS 152, 155, 162).
 - MDOT's Road Separated Bike Routes web map: check-only (its terms bar trip-planning
   use).
 
+## Default speed limits (state law; facts, no credit)
+
+Where no limit is posted, junction cost reads the state's own law
+(`routemaker.stress.statutory_default_mph`). The rating reads DC's figures directly; in
+Maryland, Virginia and West Virginia towns it reads figures by road class
+(`MD_VA_URBAN_DEFAULT_MPH`, `VA_WV_URBAN_DEFAULT_MPH`) drawn from these laws:
+
+- DC: 20 mph on all streets, 15 in alleys (DDOT, "Speeding laws, fines and safety tips",
+  ddot.dc.gov/page/speeding-laws-fines-and-safety-tips).
+- Maryland: Transportation 21-801.1 (MDOT SHA, roads.maryland.gov): business district 30;
+  residential 30, or 35 divided; elsewhere 50, or 55 divided.
+- Virginia: Code of Virginia 46.2-870 to 46.2-878 and 46.2-1300 (VDOT, vdot.virginia.gov):
+  25 in business and residence districts, 55 elsewhere, 35 on a road that is not surface
+  treated.
+- West Virginia: W. Va. Code 17C-6-1(b) (code.wvlegislature.gov/17c-6-1/, read 2026-10-30):
+  25 in a business or residence district, 55 on open country highways; no separate unpaved
+  figure.
+
 ## 311 websites (the 311 checklist; facts, no credit)
 
 The 311 checklist (frontend/src/lib/report311Log.ts JURISDICTIONS) names, for each place, the
