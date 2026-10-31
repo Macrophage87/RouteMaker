@@ -44,6 +44,7 @@ import {
   currentTiers,
   furthTiers,
 } from "./stressStyle.js";
+import { DEFAULT_CONFLICTS } from "./testSupport/defaultConflicts.ts";
 import * as spec from "@maplibre/maplibre-gl-style-spec";
 
 // These tests assert the default palette's tiers, which is what the module
@@ -252,7 +253,7 @@ test("the overlay is added casings first: every casing under every tier", () => 
   assert.deepEqual(unknown, ["stress-unknown-casing", "stress-unknown"], "the surface-unknown trail's edge, then its line (OWNER-DECISIONS 376)");
   assert.deepEqual(gaps, ["stress-gap-2"], "LTS 2's own gap colour (OWNER-DECISIONS 356)");
   const rings = ringLayers("s").map((l) => l.id);
-  assert.deepEqual(rings, ["stress-ring-3", "stress-ring-4"], "two-tone LTS 3 and 4's ring (OWNER-DECISIONS 371)");
+  assert.deepEqual(rings, ["stress-ring-3", "stress-ring-5"], "two-tone LTS 3's ring (OWNER-DECISIONS 371) and Avoid's (2026-10-31)");
   const mass = massLayers("s").map((l) => l.id);
   const mtb = mtbTrailLayers("s").map((l) => l.id);
   assert.deepEqual(
@@ -435,7 +436,7 @@ test("a road closed to cars now has no half step, even one whose own tier is 1 (
       .sort();
   const road = { tier: 1, half: true, facility: "none", car_free: "weekend" };
   assert.deepEqual(halves("weekend", road), [], "closed to cars: a path at 1, as the router has it");
-  assert.deepEqual(halves("weekday_offpeak", road), ["stress-half-1", "stress-half-outline-1"]);
+  assert.deepEqual(halves("weekday_offpeak", road), ["stress-half-1", "stress-half-outline-1", "stress-half-ring-1"]);
   assert.deepEqual(halves("weekend", { ...road, tier: 3 }), []);
 });
 
@@ -492,7 +493,7 @@ test("the overlay has no layer for a road a bicycle may not use: the base map sh
   // the tiles, and no layer waits for them.
   assert.ok(stressOverlayLayers("stress").every((l) => !/barred|expressway/.test(l.id)));
   const us340 = { tier: 5 };
-  assert.deepEqual(Object.keys(drawnAtZoom(us340, 14)).sort(), ["stress-5", "stress-casing-5"]);
+  assert.deepEqual(Object.keys(drawnAtZoom(us340, 14)).sort(), ["stress-5", "stress-casing-5", "stress-ring-5"]);
 });
 
 test("busy roads are faint at z12-13 and solid from z14; quiet streets and paths are never faint", () => {
@@ -545,6 +546,13 @@ test("Avoid is told from LTS 4 at a glance, faint or solid, in every palette", (
     // red a protanope sees as near-black, which a luminance ratio of 1.8 would
     // have meant a brighter red that crowds LTS 3.
     const floor = palette === "cvd" ? 1.4 : 1.8;
+    // The default's red LTS 4 and magenta Avoid (2026-10-31) are reported, not held: their edges differ instead.
+    if (palette === DEFAULT_PALETTE && DEFAULT_CONFLICTS.avoidLts4GreyUnderFloor) {
+      assert.ok(contrastRatio(avoid.color, lts4.color) < floor);
+      assert.ok(contrastRatio(avoid.casing, lts4.casing) >= 3, "the edges are 3:1 apart");
+      assert.ok(avoid.ring && !lts4.ring, "and Avoid alone is ringed");
+      continue;
+    }
     assert.ok(contrastRatio(avoid.color, lts4.color) >= floor, `${palette}: ${contrastRatio(avoid.color, lts4.color).toFixed(2)}:1`);
   }
 });
@@ -563,10 +571,10 @@ test("the colours are in one place: LTS 1 and 2 as they were, two readings of th
   // Two-tone: the first colour the line, the second its casing.
   // 371: the yellow a shade lighter (#f2c21b before).
   assert.deepEqual([twotone[3].color, twotone[3].casing], ["#f3c81a", "#f28c28"]);
-  // LTS 4's red casing is a shade deeper than Avoid's red line, so LTS 3's gaps are no harsher than
-  // LTS 4's (OWNER-DECISIONS 292; stressSalience.test.ts).
-  assert.deepEqual([twotone[4].color, twotone[4].casing], ["#f28c28", "#c81e1e"]);
-  assert.deepEqual([twotone[5].color, twotone[5].casing], ["#d42020", "#111111"]);
+  // 2026-10-31: "today's orange should be 3.5 with 4 at some sort of red and 4.5 darkred"; Avoid the
+  // route's magenta. LTS 4's near-black red edge keeps LTS 3's gaps no harsher than LTS 4's (292).
+  assert.deepEqual([twotone[4].color, twotone[4].casing], ["#e3261c", "#560a0e"]);
+  assert.deepEqual([twotone[5].color, twotone[5].casing], ["#d6008f", "#ffffff"]);
   assert.equal(DEFAULT_PALETTE, "twotone");
   assert.equal(paletteFrom("?palette=twotone"), "twotone");
   assert.equal(paletteFrom("?x=1&palette=blended"), "blended");

@@ -683,6 +683,9 @@ test("repaint wiring: the route's sections are cut again in the palette in use, 
       "route-casing line-color",
       "route-unpaved line-opacity",
       "route-avoid line-opacity",
+      // A half step's dash in the colour-blind-friendly palette (2026-10-31), 1.5 to 3.5 and 4.5's dash-dot.
+      "route-half line-opacity",
+      "route-half-top line-opacity",
       // A Mass Ride's dashed sections (OWNER-DECISIONS 327), one layer a dashed class (its Avoid
       // is the route's magenta with the dash-dot mark, 397, so it has no dash layer of its own).
       "route-dash-m0 line-opacity",

@@ -516,3 +516,14 @@ test("Settings links once to the documentation hub, which is a page of the app's
     "both go to a bare /, where planToOpen reads the kept plan",
   );
 });
+
+test("the legend lists each half step after its level, with its words and when the map shows it (2026-10-30)", () => {
+  const html = renderToStaticMarkup(createElement(StressLegend, { facilities: new Set(), zoom: 15, shown: true }));
+  const names = [...html.matchAll(/<span class="stress-name">([^<]+)<\/span>/g)].map((m) => m[1]);
+  assert.deepEqual(names.slice(0, 9), ["LTS 1", "LTS 1.5", "LTS 2", "LTS 2.5", "LTS 3", "LTS 3.5", "LTS 4", "LTS 4.5", "Avoid"]);
+  assert.match(html, /Stressful even for experienced cyclists/);
+  assert.equal((html.match(/class="half-step"/g) ?? []).length, 4);
+  // The default draws 3.5 in today's orange on its red edge.
+  assert.match(html, /stroke="#f28c28"/);
+  assert.match(html, /Half steps show from zoom 15/);
+});

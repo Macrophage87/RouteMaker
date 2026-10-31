@@ -10,17 +10,20 @@
  * stress map gives the same class, from the shared tokens (stressStyle.js), so
  * a change to the map's palette reaches the route too.
  */
-import { ACCESSIBILITY_PALETTE, FACILITIES, currentPalette, currentTiers, styleKey } from "../stressStyle.js";
+import { ACCESSIBILITY_PALETTE, FACILITIES, currentPalette, currentTiers, halfStep, styleKey } from "../stressStyle.js";
 import { MASS_AVOID, MASS_BANDS, bandIndex, dashInWidths } from "../massStyle.js";
 import type { StressSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { unrated } from "./stressBar.ts";
+import { STEP_WORDS } from "./stepWords.ts";
 import { ROUTE_AVOID_HALO, ROUTE_AVOID_MAGENTA, ROUTE_AVOID_MARK, ROUTE_AVOID_MARK_DASH } from "./avoidColour.ts";
 
 export { ROUTE_AVOID_HALO, ROUTE_AVOID_MAGENTA, ROUTE_AVOID_MARK, ROUTE_AVOID_MARK_DASH } from "./avoidColour.ts";
 
 export type MassClassKey = "m0" | "m1" | "m2" | "m3" | "mavoid";
-export type RouteClassKey = "path" | "1" | "2" | "3" | "4" | "5" | "u1" | "u2" | "u3" | "u4" | "u5" | "g1" | "g2" | "g3" | "g4" | "g5" | "unknown" | MassClassKey;
+/** A half step's class (OWNER-DECISIONS 461a; the owner, 2026-10-30): its lower level's key and "h". */
+export type HalfClassKey = "1h" | "2h" | "3h" | "4h";
+export type RouteClassKey = "path" | "1" | "2" | "3" | "4" | "5" | HalfClassKey | "u1" | "u2" | "u3" | "u4" | "u5" | "g1" | "g2" | "g3" | "g4" | "g5" | "unknown" | MassClassKey;
 
 /** A Mass Ride's classes (massStyle.js): the capacity bands, and a stretch marked Avoid with no capacity colour. */
 export const MASS_CLASS_KEYS: readonly MassClassKey[] = ["m0", "m1", "m2", "m3", "mavoid"];
@@ -59,6 +62,11 @@ export interface RouteClass {
   mark?: string;
   /** A Mass Ride class's dash, in line widths (the cue besides colour); absent for a solid line. */
   dash?: readonly number[];
+  /**
+   * A half step's dash over its section in the colour-blind-friendly palette, in the next level's colour
+   * (HALF_STEP_DASH, MapView's route-half layer), where the half step has no colour of its own; absent elsewhere.
+   */
+  halfDash?: string;
 }
 
 /**
@@ -76,6 +84,11 @@ export const ROUTE_SECTION_WIDTHS: Readonly<Record<RouteClassKey, number>> = {
   "3": 5,
   "4": 5.5,
   "5": 6,
+  // A half step: halfway between its two levels' widths.
+  "1h": 4.25,
+  "2h": 4.75,
+  "3h": 5.25,
+  "4h": 5.75,
   // Unpaved: the tier's own width (OWNER-DECISIONS 302: the same ladder).
   u1: 4,
   u2: 4.5,
@@ -170,6 +183,29 @@ export function routeClasses(): readonly RouteClass[] {
       haloWidth: ROUTE_SECTION_WIDTHS[String(tier.tier) as RouteClassKey] + ROUTE_HALO_EXTRA,
       ...(tier.ring ? { ring: tier.ring, ringWidth: ROUTE_SECTION_WIDTHS[String(tier.tier) as RouteClassKey] + 2 * ROUTE_HALO_EXTRA } : {}),
     })),
+    // The half steps (the owner, 2026-10-30: "There's definitely room in the color spectrum where we are
+    // drawing routes to include half steps"), each after its lower level: its own colour, casing and ring
+    // (stressStyle.js HALF_PALETTES), or in the colour-blind-friendly palette its lower level's look with
+    // the next level's dash over it, as the map draws one (HALF_DASHED).
+    ...tiers.filter((tier: { tier: number }) => tier.tier < 5).map((tier: { tier: number; color: string; casing: string; ring?: string }) => {
+      const key = `${tier.tier}h` as HalfClassKey;
+      const step = String(tier.tier + 0.5);
+      // Never null: every level below Avoid has a step above it.
+      const half = halfStep(tier.tier, tiers)!;
+      const width = ROUTE_SECTION_WIDTHS[key];
+      const ring = half.solid ? half.ring : tier.ring;
+      return {
+        key,
+        short: `LTS ${step}`,
+        label: STEP_WORDS[step],
+        color: half.solid ? half.color : tier.color,
+        halo: half.solid ? half.outline : tier.casing,
+        width,
+        haloWidth: width + ROUTE_HALO_EXTRA,
+        ...(ring ? { ring, ringWidth: width + 2 * ROUTE_HALO_EXTRA } : {}),
+        ...(half.solid ? {} : { halfDash: half.color }),
+      };
+    }),
     // Unpaved, in the one brown ramp, light to dark (OWNER-DECISIONS 302): the
     // tier's width, its unpaved casing as the halo, and the dotted mark over it
     // (MapView's route-unpaved layer) as the cue that is not colour.
@@ -228,7 +264,17 @@ export function routeClasses(): readonly RouteClass[] {
       haloWidth: ROUTE_SECTION_WIDTHS.unknown + ROUTE_HALO_EXTRA,
     },
   ];
-  return drawn.map(avoidOnTheRoute);
+  return interleaveHalfSteps(drawn).map(avoidOnTheRoute);
+}
+
+/** The paved levels in the legend's order, each half step after its lower level: 1, 1.5, 2 ... 4.5, Avoid. */
+const PAVED_ORDER: readonly RouteClassKey[] = ["1", "1h", "2", "2h", "3", "3h", "4", "4h", "5"];
+
+function interleaveHalfSteps(drawn: RouteClass[]): RouteClass[] {
+  const paved = PAVED_ORDER.map((key) => drawn.find((c) => c.key === key)).filter((c): c is RouteClass => c !== undefined);
+  const first = drawn.findIndex((c) => PAVED_ORDER.includes(c.key));
+  const rest = drawn.filter((c) => !PAVED_ORDER.includes(c.key));
+  return [...rest.slice(0, first), ...paved, ...rest.slice(first)];
 }
 
 /** The classes by key, built once per look of the tiers (styleKey) rather than once per section. */
@@ -248,7 +294,7 @@ function classByKey(key: RouteClassKey): RouteClass | undefined {
  * tier, and unknown without one. An unknown surface (null, or an older API) is drawn as paved.
  */
 export function spanClass(
-  span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved" | "rough" | "rpm" | "outside_dc">>,
+  span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved" | "rough" | "rpm" | "outside_dc" | "half">>,
   capacity = false,
 ): RouteClass {
   // A Mass Ride's section (`capacity`: the route's sections carry riders per minute, usesCapacity): by
@@ -270,6 +316,9 @@ export function spanClass(
   // as the route chart draws it, in the Avoid magenta, not the path's violet (r3 correctness, N3).
   if (span.tier === 5) return classByKey("5") as RouteClass;
   if (span.facility === "path") return classByKey("path") as RouteClass;
+  // A paved half step (the API's `half: true`, core.routing.stress_spans) in its own class; an unpaved one
+  // took its level's brown or grey above.
+  if (span.half === true && span.tier !== null && span.tier < 5) return classByKey(`${span.tier}h` as HalfClassKey) as RouteClass;
   const tier = classByKey(String(span.tier) as RouteClassKey);
   return span.tier !== null && tier ? tier : (classByKey("unknown") as RouteClass);
 }
@@ -284,6 +333,7 @@ export interface RouteSection {
   ringWidth?: number;
   mark?: string;
   dash?: readonly number[];
+  halfDash?: string;
   coordinates: LonLat[];
 }
 
@@ -356,7 +406,7 @@ export function routeSections(
     if (previous && previous.key === cls.key) {
       previous.coordinates.push(...points.slice(1));
     } else if (points.length >= 2) {
-      sections.push({ key: cls.key, color: cls.color, halo: cls.halo, width: cls.width, haloWidth: cls.haloWidth, ...(cls.ring ? { ring: cls.ring, ringWidth: cls.ringWidth } : {}), ...(cls.mark ? { mark: cls.mark } : {}), ...(cls.dash ? { dash: cls.dash } : {}), coordinates: points });
+      sections.push({ key: cls.key, color: cls.color, halo: cls.halo, width: cls.width, haloWidth: cls.haloWidth, ...(cls.ring ? { ring: cls.ring, ringWidth: cls.ringWidth } : {}), ...(cls.mark ? { mark: cls.mark } : {}), ...(cls.dash ? { dash: cls.dash } : {}), ...(cls.halfDash ? { halfDash: cls.halfDash } : {}), coordinates: points });
     }
   });
   return sections.length > 0 ? sections : null;
@@ -383,6 +433,9 @@ export function sectionFeatures(sections: readonly RouteSection[] | null) {
         // The white dash-dot over a paved Avoid section (MapView's route-avoid layer draws only these).
         avoid: section.mark !== undefined,
         mark: section.mark ?? "rgba(0, 0, 0, 0)",
+        // A half step's dash in the colour-blind-friendly palette (MapView's route-half layer draws only these).
+        half: section.halfDash !== undefined,
+        halfDash: section.halfDash ?? "rgba(0, 0, 0, 0)",
       },
       geometry: { type: "LineString" as const, coordinates: section.coordinates },
     })),

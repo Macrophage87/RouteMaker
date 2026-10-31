@@ -325,8 +325,8 @@ for (const { name, on } of REACHABLE) {
       const classes = routeClasses();
       assert.equal(
         classes.length,
-        22,
-        "the traffic-free path, five tiers, five unpaved browns (OWNER-DECISIONS 302), five gravel greys (2026-10-21), the four Mass Ride capacity bands and its Avoid (325-327) and the unrated",
+        26,
+        "the traffic-free path, five tiers and four half steps (2026-10-30), five unpaved browns (OWNER-DECISIONS 302), five gravel greys (2026-10-21), the four Mass Ride capacity bands and its Avoid (325-327) and the unrated",
       );
       const failures: string[] = [];
       for (const c of classes) {
@@ -368,8 +368,14 @@ test("a halo is dark under the light classes and white under the dark ones (neve
   for (const { name, on } of REACHABLE) {
     withSwitch(on, () => {
       for (const c of routeClasses()) {
-        // No exemption now: the route's Avoid is one magenta in every palette over a near-black halo
-        // (OWNER-DECISIONS 397, which replaced the default palette's near-black on its own red casing).
+        // The route's Avoid is one magenta in every palette over a near-black halo (OWNER-DECISIONS 397,
+        // which replaced the default palette's near-black on its own red casing). One exemption: the default's
+        // 4.5, a dark red on LTS 4's red, the reverse of LTS 4 (the owner's "4.5 darkred", 2026-10-31), held to
+        // 3:1 from its halo above and ringed in near-black outside it.
+        if (name === DEFAULT_PALETTE && c.key === "4h") {
+          assert.ok(contrastRatio(c.color, c.halo) >= FLOOR && c.ring !== undefined, c.short);
+          continue;
+        }
         assert.equal(relativeLuminance(c.halo) < 0.5, relativeLuminance(c.color) > 0.14, `${c.short}: ${c.color} on ${c.halo}`);
         assert.notEqual(c.halo, ROUTE_BLUE);
       }
