@@ -1095,7 +1095,7 @@ class IntersectionOut(Schema):
     crossed_tier: int | None = Field(
         description=(
             "The crossed road's LTS on the map, 1-5; null if unknown. Below 3 only where"
-            " the junction read a multi-lane road by its traffic, not its bike lane."
+            " the junction read the road by its traffic, not its bike lane."
         )
     )
     crossed_half: bool = Field(

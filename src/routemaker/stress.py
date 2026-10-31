@@ -1264,6 +1264,38 @@ VOLUME_GATES = (
 )
 
 
+def single_lane_traffic_level(
+    speed_mph: float,
+    oneway: bool | None,
+    aadt: int | None,
+    urban: bool | None,
+    speed_assumed: bool = False,
+) -> tuple[Stress, bool]:
+    """The tier and half step `_classify` gives a street of one through lane a direction
+    with no bike provision of any kind: Furth's single-lane row, the volume gate, the
+    busy-street half step and `busy_road_steps`' R5, from the facts the segment table
+    keeps (`speed_assumed`: the speed is the statutory default, which a low count may
+    relieve). What a junction reads such a road by (the owner, 2026-10-31: "a protected
+    bike lane on a busy road is just as hard to cross"; `intersections.traffic_level`).
+    The road class is not kept, so the arterial and collector floors are not read here.
+    Pinned against `classify` in tests/test_junction_traffic.py."""
+    tier, _ = _mixed_traffic_tier(speed_mph, 1)
+    if aadt is not None:
+        if aadt <= VOLUME_QUIET and tier > Stress.LTS1 and (speed_mph <= 35 or speed_assumed):
+            tier = Stress(tier - 1)
+        elif aadt >= VOLUME_BUSY and tier < Stress.LTS4:
+            tier = Stress(tier + 1)
+        elif speed_mph <= MID_VOLUME_MAX_MPH and aadt > VOLUME_QUIET and tier is Stress.LTS1:
+            tier = Stress.LTS2
+    half = aadt is not None and tier is Stress.LTS2 and aadt >= BUSY_STREET_MIN_AADT
+    if urban is not False and not oneway and aadt is not None and tier is Stress.LTS3:
+        if aadt >= VERY_BUSY_STREET_AADT:
+            return Stress.LTS4, False
+        if aadt >= BUSY_STREET_AADT:
+            return Stress.LTS3, True
+    return tier, half
+
+
 def busy_road_steps(
     result: StressResult,
     tags: dict[str, str],
