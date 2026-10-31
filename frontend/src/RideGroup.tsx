@@ -10,7 +10,8 @@
  * spot, a vibration, and an assertive announcement at once (alerts are essentials, said even at Brief).
  *
  * Privacy: the watch runs only while the rider shares and the page is in front, and stops when it is hidden;
- * a position is sent only within a quarter mile of the route, in a POST body, and kept nowhere on the device.
+ * a position is sent only within a quarter mile of the route (on a broadcast, anywhere), in a POST body, and kept nowhere
+ * on the device.
  *
  * A broadcast (Share ride or Broadcast, Stephen 2026-10-22: "the ride leader is the person who shared. Opening the
  * link will follow the leader and share the path"): the ride is the shared line's id. The sharer leads: shown from
@@ -161,6 +162,8 @@ export interface RideGroupProps {
 }
 
 const TICK_MS = 5000;
+/** How long others see a dot after its last send (lib/rideGroup.ts freshness: gone after 2 minutes). */
+const DOT_SHOWN_MS = 120_000;
 
 function visible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
@@ -320,6 +323,8 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
   // How often to read and send the dot: the server's pace for this ride (lib/rideGroup.ts paceMs).
   const [pace, setPace] = useState(POLL_EVERY_MS);
   const lastReadAt = useRef(0);
+  // When the server last took this rider's dot (0: not since it was held back, or never).
+  const [sentAt, setSentAt] = useState(0);
   const changeRole = (role: RideRole) => {
     if (!ride || !consent) return;
     setConsent(keepConsent(ride, consent.answer, Date.now(), undefined, undefined, role));
@@ -411,11 +416,10 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
     if (!shareOn || !front || !ownFix || !ride || !token || !consent) return;
     const fix = ownFix;
     const t = Date.now();
-    // On a broadcast everyone shown is shown on or off the route while they ride: those following go where the leader
-    // goes, and riders who get separated find each other. Not riding (the ride ended, or watching), the quarter-mile
-    // rule and its 10-minute stop are back. A broadcast from Roam has no route, so one who is not riding is never near:
-    // a follower watching from home is not sent (2026-10-29).
-    const near = (isBroadcast && riding) || nearRoute(line, fix);
+    // On a broadcast everyone who said Yes is shown on or off the route while the page is in front, riding or not, as
+    // the question and the switch say (Stephen 2026-10-31: "Shown while their page is open"; a follower watching from a
+    // computer was counted on their own screen but never sent). Other rides keep the quarter-mile rule and its stop.
+    const near = isBroadcast || nearRoute(line, fix);
     if (near) share.current.lastNearAt = t;
     const stop = shareStop({ on: true, since: consent.since, lastNearAt: share.current.lastNearAt, startedAt: share.current.startedAt }, t);
     if (stop) {
@@ -429,12 +433,17 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
     if (held !== heldBack.current) {
       heldBack.current = held;
       // Held back: the dot goes now rather than in 2 minutes; sent again as soon as the rider moves on.
-      if (held) void leaveRide(origin, ride, token);
+      if (held) {
+        void leaveRide(origin, ride, token);
+        setSentAt(0);
+      }
       else share.current.lastPost = 0;
     }
     if (near && !held && postDue(t, share.current.lastPost, pace)) {
       share.current.lastPost = t;
-      void sendPosition(origin, ride, token, fix, consent.role, fetch, seal);
+      void sendPosition(origin, ride, token, fix, consent.role, fetch, seal).then((ok) => {
+        if (ok) setSentAt(Date.now());
+      });
     }
     // Nor the leader's ridden path while the dot is held back: its last point would say where they are.
     if (leading && near && !held) setOwnTrail((t) => extendTrail(t, fix));
@@ -506,7 +515,9 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
   // The key: the ride leader under "Ride leader" only, the others by role (lib/rideGroup.ts roleKey).
   const roleRows = roleKey(dots);
   // Everyone on the ride, the leader and this rider (where the others see them) included.
-  const meShown = leading || shareOn;
+  // Counted only once the server took this rider's dot, as long as the others see it (Stephen 2026-10-31: a follower
+  // whose dot never went counted 2 on their own screen while the leader saw 1).
+  const meShown = (leading || shareOn) && sentAt > 0 && now - sentAt <= DOT_SHOWN_MS;
   const riders = riderTotal(dots, meShown);
   const leaderInKey = dots.some((d) => d.leader);
 

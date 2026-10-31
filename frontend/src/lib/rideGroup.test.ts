@@ -655,7 +655,10 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.match(group, /\}, \[ownFix, front, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home, pace\]\);/);
   // Held back (an hour in one spot, or at Home): the dot goes at once, and none is sent until the rider moves on.
   assert.match(group, /const held = dotHeldBack\(dwell\.current, fix, t, home\);/);
-  assert.match(group, /if \(held\) void leaveRide\(origin, ride, token\);/);
+  assert.match(group, /if \(held\) \{\s*void leaveRide\(origin, ride, token\);\s*setSentAt\(0\);/);
+  // This rider counts themself only while the server has their dot (a follower whose dot never went counted 2).
+  assert.match(group, /void sendPosition\(origin, ride, token, fix, consent\.role, fetch, seal\)\.then\(\(ok\) => \{\s*if \(ok\) setSentAt\(Date\.now\(\)\);/);
+  assert.match(group, /const meShown = \(leading \|\| shareOn\) && sentAt > 0 && now - sentAt <= DOT_SHOWN_MS;/);
   assert.match(group, /if \(near && !held && postDue\(t, share\.current\.lastPost, pace\)\)/);
   // A kept Yes from another tab is asked again; a ride that ends stops the dot and asks again next ride.
   assert.match(group, /const askAgain = !leading && kept\?\.answer === "yes" && !answeredHere\(id\);/);
