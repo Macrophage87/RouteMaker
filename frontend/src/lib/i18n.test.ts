@@ -311,6 +311,8 @@ const GO_RIDE_ALSO = [
   "lib/rideLinks.ts",
   "lib/sendToGarmin.ts",
   "lib/summary.ts",
+  // Go's Where to? microphone (PlaceSearch.tsx, which is Plan's too, so only this module's phrases).
+  "lib/placeDictation.ts",
 ];
 
 function goRideFiles(): string[] {

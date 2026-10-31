@@ -20,7 +20,7 @@ from core import routing
 
 pytestmark = pytest.mark.usefixtures("weekday_clock")
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 
 def routes(fake) -> list[dict]:

@@ -8,7 +8,7 @@ import pytest
 from django.test import override_settings
 from test_accounts import addr
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 PATH = "/.well-known/assetlinks.json"
 PRINT = ":".join(["AB"] * 32)
 

@@ -1064,8 +1064,8 @@ pushes an **annotated** tag on that commit (a lightweight one, as GitHub's relea
 taken too when the commit's subject is "Release vX.Y.Z", the release procedure's last commit). Before the tag, at home, on that commit (a tag goes
 live within about 10 minutes, and nothing after it checks what a screen reader hears):
 
-- CI's `a11y` job runs the browser accessibility check (`scripts/a11y/run.sh`; docs/DEVELOPMENT.md)
-  on every push, and the agent deploys a tag only once it is green beside `test`. Run it at home
+- CI's `a11y` job runs the browser accessibility check (`scripts/a11y/run.sh`, in three shards;
+  docs/DEVELOPMENT.md) on every push, and the agent deploys a tag only once it is green beside `test`. Run it at home
   as well when a release changes what a screen reader hears, to see the failures before the tag.
 - If the release changes anything `docs/BETA-TESTER-HANDOUT.md` describes (the skip link, the
   landmarks, the headings, the beta notice and its Beta chip), update the handout in

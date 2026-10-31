@@ -19,6 +19,8 @@ from pathlib import Path
 import pytest
 from rebuild_fixtures import REPO, build_toy_extract
 
+from pipeline.extract import close_writer
+
 SCRIPT = REPO / "scripts" / "install_reference_data.py"
 
 # Where a hand-built bridge way sits: on the Key Bridge, inside the region the
@@ -892,7 +894,7 @@ def build_l_shaped_extract(path: Path) -> None:
             )
         )
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 def polygon_file(tmp_path: Path, name: str, west: float, east: float, south: float, north: float):

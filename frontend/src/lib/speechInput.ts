@@ -79,11 +79,12 @@ export const SPEECH_OTHER_FAILED = "Speech did not work. Type the issue instead.
 
 /**
  * Listen once: each result's words (cut to `max` characters) go to `onText` as they come; `onEnd` gets null when it
- * stopped on its own or was stopped, else the sentence to say. Answers a stop function, or null where unsupported.
+ * stopped on its own or was stopped, else the sentence to say and the failure's code ("no-speech", "not-allowed"), so a
+ * box other than Send alert's can say its own sentence. Answers a stop function, or null where unsupported.
  */
 export function listenOnce(
   onText: (text: string) => void,
-  onEnd: (failed: string | null) => void,
+  onEnd: (failed: string | null, code?: string) => void,
   max: number,
   env: SpeechEnv | undefined = browserEnv(),
   app: CapacitorBridge | null = nativeBridge(),
@@ -97,6 +98,7 @@ export function listenOnce(
   rec.continuous = false;
   rec.maxAlternatives = 1;
   let failed: string | null = null;
+  let code: string | undefined;
   rec.onresult = (event) => {
     const words = Array.from(event.results, (r) => r[0]?.transcript ?? "").join("").trim();
     onText(words.slice(0, max));
@@ -104,8 +106,9 @@ export function listenOnce(
   rec.onerror = (event) => {
     if (event.error === "aborted") return;
     failed = SPEECH_FAILED[event.error ?? ""] ?? SPEECH_OTHER_FAILED;
+    code = event.error;
   };
-  rec.onend = () => onEnd(failed);
+  rec.onend = () => onEnd(failed, code);
   try {
     rec.start();
   } catch {
@@ -128,7 +131,7 @@ export function listenOnce(
  * so stop has nothing to do; abort (the box closed meanwhile) ends it at once, as the browser's does, and drops
  * whatever it hands back.
  */
-function listenInApp(app: CapacitorBridge, onText: (text: string) => void, onEnd: (failed: string | null) => void, max: number) {
+function listenInApp(app: CapacitorBridge, onText: (text: string) => void, onEnd: (failed: string | null, code?: string) => void, max: number) {
   let dropped = false;
   app.nativePromise(SPEECH_INPUT_PLUGIN, "listen", { lang: heardIn() }).then(
     (got) => {
@@ -140,7 +143,8 @@ function listenInApp(app: CapacitorBridge, onText: (text: string) => void, onEnd
     (error: unknown) => {
       if (dropped) return;
       const code = (error as { code?: unknown } | null)?.code;
-      onEnd(typeof code === "string" && Object.hasOwn(SPEECH_FAILED, code) ? SPEECH_FAILED[code] : SPEECH_OTHER_FAILED);
+      const known = typeof code === "string" && Object.hasOwn(SPEECH_FAILED, code);
+      onEnd(known ? SPEECH_FAILED[code] : SPEECH_OTHER_FAILED, known ? code : undefined);
     },
   );
   return {
