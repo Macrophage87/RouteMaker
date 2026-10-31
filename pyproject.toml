@@ -1,6 +1,6 @@
 [project]
 name = "routemaker"
-version = "0.15.2"
+version = "0.16.0"
 description = "Collaborative bicycle route planning for the Washington, DC metro area"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -21,6 +21,10 @@ pythonpath = ["src"]
 # Django up before any conftest body runs, so the default cannot come from
 # tests/conftest.py.
 DJANGO_SETTINGS_MODULE = "config.test_settings"
+# A passing test's tmp_path is deleted: the rebuild tests write about 155 MB of stand-in
+# elevation tiles each, kept by default for the last three sessions, which filled a
+# shared /tmp when two suites ran at once.
+tmp_path_retention_policy = "failed"
 
 [tool.ruff]
 line-length = 100

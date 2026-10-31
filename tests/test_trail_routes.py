@@ -12,6 +12,7 @@ import pytest
 from django.db import connection, utils
 
 from pipeline import calm_roads, trail_routes
+from pipeline.extract import close_writer
 from pipeline.run import ValidationFailed, assert_calm_runs, assert_long_trails
 from pipeline.schema import CALM_PATH_GAP_M, TRAIL_RUN_GAP_M
 from pipeline.writers import segment_row, write_segments
@@ -58,58 +59,62 @@ def test_the_levels_are_the_schemas() -> None:
 
 def write_extract(path) -> None:
     writer = osmium.SimpleWriter(str(path))
-    for node_id in (1, 2):
-        writer.add_node(
-            osmium.osm.mutable.Node(id=node_id, location=(-77.0 + node_id / 100, 38.9), version=1)
-        )
-    for way_id in range(1, 14):
-        writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=[1, 2], version=1))
-    relations = [
-        (
-            {"type": "route", "route": "bicycle", "network": "lcn", "name": "Local Loop"},
-            [("w", 1, ""), ("w", 2, "")],
-        ),
-        (
-            {"type": "route", "route": "bicycle", "network": "ncn", "name": "Alpha Route"},
-            [("w", 2, ""), ("n", 1, "")],
-        ),
-        (
-            {"type": "route", "route": "hiking", "network": "nwn", "name": "Beta Walk"},
-            [("w", 3, "")],
-        ),
-        ({"type": "route", "route": "hiking", "network": "lwn"}, [("w", 4, "")]),
-        ({"type": "route", "route": "mtb", "network": "rcn"}, [("w", 5, "")]),
-        ({"type": "network", "route": "bicycle", "network": "ncn"}, [("w", 6, "")]),
-        # A walking route that is a mountain-bike route as well (Fort Circle Park).
-        ({"type": "route", "route": "hiking;mtb", "network": "rwn"}, [("w", 7, "")]),
-        # A local route's name and a national route's on one way: the national one's.
-        (
-            {"type": "route", "route": "bicycle", "network": "lcn", "name": "Local"},
-            [("w", 8, "")],
-        ),
-        (
-            {"type": "route", "route": "bicycle", "network": "ncn", "name": "National"},
-            [("w", 8, "")],
-        ),
-        # The C&O towpath: on USBR 50 (ncn) and in a mountain-bike route too.
-        (
-            {"type": "route", "route": "bicycle", "network": "ncn", "name": "USBR 50"},
-            [("w", 9, "")],
-        ),
-        ({"type": "route", "route": "mtb", "name": "Towpath Loop"}, [("w", 9, "")]),
-        # An international route counts; a regional one does not.
-        ({"type": "route", "route": "bicycle", "network": "icn"}, [("w", 10, "")]),
-        ({"type": "route", "route": "bicycle", "network": "rcn"}, [("w", 11, "")]),
-        # A national route that is a mountain-bike route as well: still national.
-        ({"type": "route", "route": "bicycle;mtb", "network": "ncn"}, [("w", 12, "")]),
-        # A walking route mistagged with a bicycle network: not a national bicycle route.
-        ({"type": "route", "route": "hiking", "network": "ncn"}, [("w", 13, "")]),
-    ]
-    for relation_id, (tags, members) in enumerate(relations, start=1):
-        writer.add_relation(
-            osmium.osm.mutable.Relation(id=relation_id, members=members, tags=tags, version=1)
-        )
-    writer.close()
+    try:
+        for node_id in (1, 2):
+            writer.add_node(
+                osmium.osm.mutable.Node(
+                    id=node_id, location=(-77.0 + node_id / 100, 38.9), version=1
+                )
+            )
+        for way_id in range(1, 14):
+            writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=[1, 2], version=1))
+        relations = [
+            (
+                {"type": "route", "route": "bicycle", "network": "lcn", "name": "Local Loop"},
+                [("w", 1, ""), ("w", 2, "")],
+            ),
+            (
+                {"type": "route", "route": "bicycle", "network": "ncn", "name": "Alpha Route"},
+                [("w", 2, ""), ("n", 1, "")],
+            ),
+            (
+                {"type": "route", "route": "hiking", "network": "nwn", "name": "Beta Walk"},
+                [("w", 3, "")],
+            ),
+            ({"type": "route", "route": "hiking", "network": "lwn"}, [("w", 4, "")]),
+            ({"type": "route", "route": "mtb", "network": "rcn"}, [("w", 5, "")]),
+            ({"type": "network", "route": "bicycle", "network": "ncn"}, [("w", 6, "")]),
+            # A walking route that is a mountain-bike route as well (Fort Circle Park).
+            ({"type": "route", "route": "hiking;mtb", "network": "rwn"}, [("w", 7, "")]),
+            # A local route's name and a national route's on one way: the national one's.
+            (
+                {"type": "route", "route": "bicycle", "network": "lcn", "name": "Local"},
+                [("w", 8, "")],
+            ),
+            (
+                {"type": "route", "route": "bicycle", "network": "ncn", "name": "National"},
+                [("w", 8, "")],
+            ),
+            # The C&O towpath: on USBR 50 (ncn) and in a mountain-bike route too.
+            (
+                {"type": "route", "route": "bicycle", "network": "ncn", "name": "USBR 50"},
+                [("w", 9, "")],
+            ),
+            ({"type": "route", "route": "mtb", "name": "Towpath Loop"}, [("w", 9, "")]),
+            # An international route counts; a regional one does not.
+            ({"type": "route", "route": "bicycle", "network": "icn"}, [("w", 10, "")]),
+            ({"type": "route", "route": "bicycle", "network": "rcn"}, [("w", 11, "")]),
+            # A national route that is a mountain-bike route as well: still national.
+            ({"type": "route", "route": "bicycle;mtb", "network": "ncn"}, [("w", 12, "")]),
+            # A walking route mistagged with a bicycle network: not a national bicycle route.
+            ({"type": "route", "route": "hiking", "network": "ncn"}, [("w", 13, "")]),
+        ]
+        for relation_id, (tags, members) in enumerate(relations, start=1):
+            writer.add_relation(
+                osmium.osm.mutable.Relation(id=relation_id, members=members, tags=tags, version=1)
+            )
+    finally:
+        close_writer(writer)
 
 
 def test_the_extracts_route_relations_are_read_by_member_way(tmp_path) -> None:

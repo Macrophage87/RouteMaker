@@ -19,7 +19,7 @@ from django.utils import timezone
 from core import accounts
 from core.models import AccountSettings, SavedRoute, SavedRouteVersion, Session, User
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 # A real planner answer (test_route_api's standard route): a kept answer is read as RouteOut.
 ANSWER = json.loads((Path(__file__).parent / "data" / "route_answer.json").read_text())
 

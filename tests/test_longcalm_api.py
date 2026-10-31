@@ -24,7 +24,7 @@ from test_route_api import (
 from core import api, presets, ratelimit, refine, routing
 from routemaker import grade_stress
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 pytestmark = [pytest.mark.usefixtures("weekday_clock"), db]
 

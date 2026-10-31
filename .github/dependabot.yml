@@ -3,37 +3,74 @@
 # the phone app's Gradle libraries, the Dockerfiles' and compose files' base images, and
 # the CI actions (pinned by commit). Each is a pull request for CI and the owner to read;
 # nothing merges by itself.
+#
+# Minor and patch updates come as one pull request per ecosystem and directory each week; a major
+# update keeps its own, so one that breaks something does not hold the rest back. No automatic
+# rebase: each push to main used to rebase every open update, and each rebase is a CI run on main's
+# queue (27 at once after v0.15.1). Comment "@dependabot rebase" on one to bring it up to date.
 version: 2
 updates:
   - package-ecosystem: pip
     directory: /docker
     schedule:
       interval: weekly
+    rebase-strategy: disabled
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
   - package-ecosystem: pip
     directory: /
     schedule:
       interval: weekly
+    rebase-strategy: disabled
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
   - package-ecosystem: npm
     directory: /frontend
     schedule:
       interval: weekly
+    rebase-strategy: disabled
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
   - package-ecosystem: npm
     directory: /mobile
     schedule:
       interval: weekly
+    rebase-strategy: disabled
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
   - package-ecosystem: gradle
     directory: /mobile/android
     schedule:
       interval: weekly
+    rebase-strategy: disabled
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
   - package-ecosystem: docker
     directory: /docker
     schedule:
       interval: weekly
+    rebase-strategy: disabled
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
   - package-ecosystem: docker-compose
     directory: /
     schedule:
       interval: weekly
+    rebase-strategy: disabled
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    rebase-strategy: disabled
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
