@@ -2568,6 +2568,15 @@ def build_handlers(
             # Terminal, like a refused override: a fifth attempt reads the
             # same extract and finds the same boundaries.
             raise ValidationFailed(str(missing)) from missing
+        # A state none of whose ways is in the urban list was left out when the
+        # list was made, and every town in it would read as rural.
+        unlisted = states.states_without_urban(state_of, reference.urban_way_ids)
+        if unlisted:
+            raise ValidationFailed(
+                f"no way in {', '.join(unlisted)} is in urban-areas.json, so its towns "
+                "would read as rural: remake it from this extract "
+                '(docs/OPERATIONS.md, "Remake urban-areas.json whenever the coverage grows")'
+            )
         # Each count the volume gates read is its street's median where the street
         # disagrees (OWNER-DECISIONS 285, 296), after the states are known
         # because a street is smoothed within its own jurisdiction.
