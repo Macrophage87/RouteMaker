@@ -47,6 +47,27 @@ STATE_PRIORITY = ("MD", "VA", "WV", "PA", "DE", "DC")
 CHUNK = 50_000
 
 
+# A state with at least this many placed ways and not one of them in the urban
+# list was left out when the list was made: West Virginia's towns read as rural
+# for that reason (urban-areas.json was made 2026-09-25, before WV joined), which
+# gave Martinsburg's streets the rural defaults. Real coverage has towns in every
+# state it reaches.
+MIN_WAYS_FOR_URBAN_CHECK = 1_000
+
+
+class UrbanListStale(RuntimeError):
+    """A state's ways are all missing from the urban list."""
+
+
+def states_without_urban(
+    state_of: dict[int, str], urban_way_ids, min_ways: int = MIN_WAYS_FOR_URBAN_CHECK
+) -> list[str]:
+    """The states with at least `min_ways` placed ways and none in `urban_way_ids`."""
+    totals: Counter = Counter(state_of.values())
+    urban: Counter = Counter(s for way_id, s in state_of.items() if way_id in urban_way_ids)
+    return sorted(s for s, n in totals.items() if n >= min_ways and not urban.get(s))
+
+
 class StatesMissing(RuntimeError):
     """A required state's polygon is not in the extract, or placed no way."""
 

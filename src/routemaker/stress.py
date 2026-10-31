@@ -245,6 +245,13 @@ MD_STATUTORY_OTHER_MPH = (50.0, 55.0)
 VA_STATUTORY_URBAN_MPH = 25.0
 VA_STATUTORY_OTHER_MPH = 55.0
 VA_STATUTORY_UNPAVED_MPH = 35.0
+# West Virginia, W. Va. Code 17C-6-1(b): 25 in a business or residence district,
+# 55 on open country highways, with no separate figure for an unpaved road. The
+# same figures as Virginia, so West Virginia is read as Virginia is, in the
+# classifier's urban table too (the owner, 2026-10-31: the rules are to be the
+# same everywhere unless the law or the road differs).
+WV_STATUTORY_URBAN_MPH = 25.0
+WV_STATUTORY_OTHER_MPH = 55.0
 
 
 def statutory_default_mph(
@@ -259,6 +266,8 @@ def statutory_default_mph(
     if zone == "VA":
         district = VA_STATUTORY_URBAN_MPH if urban else VA_STATUTORY_OTHER_MPH
         return min(district, VA_STATUTORY_UNPAVED_MPH) if is_unpaved(tags) else district
+    if zone == "WV":
+        return WV_STATUTORY_URBAN_MPH if urban else WV_STATUTORY_OTHER_MPH
     return None
 
 
@@ -1099,7 +1108,7 @@ def classify(
 ) -> StressResult:
     """Classify one way: its Furth tier, or "legal but avoid" where the rule says so.
 
-    `jurisdiction` is the state the way lies in ("DC", "MD", "VA"), for the
+    `jurisdiction` is the state the way lies in ("DC", "MD", "VA", "WV"), for the
     speed a way with no posted limit is read at (`default_speed_mph`).
     `divided` says a one-way way is one carriageway of a two-way road
     (`routemaker.divided`): it is scored as the two-way road it is.
@@ -1199,7 +1208,7 @@ def _classify(
     if zone == "DC":
         speed_mph = DC_ALLEY_MPH if tags.get("service") == "alley" else DC_DEFAULT_MPH
         assumed.append("maxspeed")
-    elif zone in ("MD", "VA") and urban and highway in MD_VA_URBAN_DEFAULT_MPH:
+    elif zone in ("MD", "VA", "WV") and urban and highway in MD_VA_URBAN_DEFAULT_MPH:
         speed_mph = MD_VA_URBAN_DEFAULT_MPH[highway]
         assumed.append("maxspeed")
     elif speed_mph is None:

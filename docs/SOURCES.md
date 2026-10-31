@@ -396,7 +396,8 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Dataset: **Bicycle Level of Traffic Stress**, item
   `fb903d1ffbc84b219bdb47629bd02b82`, retrieved 2026-10-01, sha256
   `89be5b63b86a69329d696e999565ac1a498ffed5a8bdf736d277f24a89a7505e`; its LTS 5 roads
-  are loaded as Avoid (OWNER-DECISIONS 181).
+  are loaded as LTS 4.5 (OWNER-DECISIONS 181, read as 4.5 since the owner's
+  2026-10-19 call; Darnestown Road is an owner row at 4).
 - Publisher: Montgomery County Planning Department (M-NCPPC).
 - Licence: open with attribution ("please provide attribution to the Montgomery
   County Planning Department"), recorded verbatim in `fixtures/datasets/README.md`.
