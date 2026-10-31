@@ -9,15 +9,15 @@
  *   gap in the fixes is not all taken as riding.
  * - Climbing: the planned route's elevation profile over the stretch ridden along it (fixes carry no reliable
  *   height); off the route, or across a re-plan, nothing is added.
- * - Traffic stress: the metres ridden along the route on each tier of the stretch the rider was on.
+ * - Traffic stress: the metres ridden along the route on each tier of the stretch the rider was on, a half step on its own.
  * - Elevation (the owner, 2026-10-20: "Show elevation too!"): the profile's height where the rider was on the route,
  *   every ELEVATION_STEP_M of the ride's distance, for the summary's chart.
  */
 import { formatClimb, formatDistance, formatDuration, formatSpeed } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
-import { POOR_FIX_M, stretchAt, type RideFix, type RideModel, type RideState } from "./navigate.ts";
+import { POOR_FIX_M, onHalfStep, stretchAt, type RideFix, type RideModel, type RideState } from "./navigate.ts";
 import type { RouteProfile } from "./api.ts";
-import type { StressKey, StressMetres } from "./stressBar.ts";
+import type { BarKey, BarMetres } from "./stressBar.ts";
 
 /** Moved at least this far from the last counted fix before a step counts (GPS wander while stopped). */
 export const MOVE_MIN_M = 8;
@@ -39,8 +39,8 @@ export interface RideStats {
   distanceM: number;
   movingMs: number;
   climbM: number;
-  /** Metres ridden along the route on each tier. */
-  stressM: StressMetres;
+  /** Metres ridden along the route on each tier, a half step under its own key ("3h"), as the route line draws it. */
+  stressM: BarMetres;
   /** Heights along the ride (metres along its distance, metres up), for the chart. */
   elevation: { atM: number; m: number }[];
   /** The last counted fix: where, when, and where along which route. */
@@ -114,8 +114,11 @@ export function statsStep(
     const along = progressM - last.progressM;
     if (along > 0 && along <= stepM + ALONG_SLACK_M) {
       next.climbM = stats.climbM + profileGain(profile, last.progressM, progressM);
-      const tier = stretchAt(model, (last.progressM + progressM) / 2)?.tier ?? null;
-      const key = (tier !== null && tier >= 1 && tier <= 5 ? String(Math.round(tier)) : "unknown") as StressKey;
+      const mid = (last.progressM + progressM) / 2;
+      const tier = stretchAt(model, mid)?.tier ?? null;
+      const level = tier !== null && tier >= 1 && tier <= 5 ? Math.round(tier) : null;
+      // A half step's own key where the route's sections put one here, as the line draws it.
+      const key = (level === null ? "unknown" : level < 5 && onHalfStep(model, mid, level) ? `${level}h` : String(level)) as BarKey;
       next.stressM = { ...stats.stressM, [key]: (stats.stressM[key] ?? 0) + stepM };
     }
   }

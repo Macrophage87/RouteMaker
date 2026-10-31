@@ -34,7 +34,7 @@ import { withClearRoadLabels } from "../stressStyle.js";
 import { ElevationChart } from "../ElevationChart.tsx";
 import { tripRoute } from "../lib/tripRides.ts";
 import { usableProfile } from "../lib/profileChart.ts";
-import { stressSegments } from "../lib/stressBar.ts";
+import { segmentClass, segmentStyle, stressSegments } from "../lib/stressBar.ts";
 import { stressBarKey, stressBarLabel } from "../lib/quickFigures.ts";
 import { ROUTE_BLUE } from "../lib/routeColours.ts";
 import { handCourseToWahoo, sendCourseToGarmin, sendCourseToWahoo } from "../GpxPanel.tsx";
@@ -218,7 +218,8 @@ function showMinimap(host: HTMLElement, data: PostData, stretch: number[][]): ()
 export function PostCharts({ answer, onScrub }: { answer: RouteResponse; onScrub?: (point: LonLat | null) => void }) {
   const trip = tripRoute(answer);
   const profile = usableProfile(trip);
-  const segments = answer.stress_m ? stressSegments(answer.stress_m) : [];
+  // The frozen answer's sections where it has them, so a half step is its own colour, as on the route line.
+  const segments = answer.stress_m ? stressSegments(answer.stress_m, answer.stress_spans) : [];
   return (
     <>
       {segments.length > 0 && (
@@ -232,8 +233,8 @@ export function PostCharts({ answer, onScrub }: { answer: RouteResponse; onScrub
               .map((s) => (
                 <span
                   key={s.key}
-                  className={`stress-seg stress-seg-${s.key}`}
-                  style={{ width: `${s.fraction * 100}%`, backgroundColor: s.color, ["--seg-accent" as string]: s.casing }}
+                  className={`stress-seg ${segmentClass(s)}`}
+                  style={{ width: `${s.fraction * 100}%`, ...segmentStyle(s) }}
                   title={`${s.short}: ${s.percent}%`}
                 />
               ))}

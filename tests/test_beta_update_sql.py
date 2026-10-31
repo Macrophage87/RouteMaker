@@ -30,7 +30,7 @@ from core.models import (
 REPO = Path(__file__).resolve().parents[1]
 SCRIPT = (REPO / "scripts" / "beta" / "receive-data.sh").read_text()
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 
 # The statements the update writes literally, in the order they appear in the script; the

@@ -10,14 +10,17 @@ import pytest
 from rebuild_fixtures import STATE_BOXES, add_state_boundaries
 
 from pipeline import states
+from pipeline.extract import close_writer
 
 db = pytest.mark.django_db
 
 
 def empty_extract(path):
     writer = osmium.SimpleWriter(str(path))
-    writer.add_node(osmium.osm.mutable.Node(id=1, location=(-77.05, 38.90), tags={}, version=1))
-    writer.close()
+    try:
+        writer.add_node(osmium.osm.mutable.Node(id=1, location=(-77.05, 38.90), tags={}, version=1))
+    finally:
+        close_writer(writer)
 
 
 @pytest.fixture
@@ -69,27 +72,31 @@ def test_a_relation_without_a_state_code_is_ignored(tmp_path) -> None:
 def test_an_inner_ring_is_a_hole(tmp_path) -> None:
     path = tmp_path / "hole.osm.pbf"
     writer = osmium.SimpleWriter(str(path))
-    square = {
-        1: (0.0, 0.0),
-        2: (4.0, 0.0),
-        3: (4.0, 4.0),
-        4: (0.0, 4.0),
-        5: (1.0, 1.0),
-        6: (2.0, 1.0),
-        7: (2.0, 2.0),
-        8: (1.0, 2.0),
-    }
-    for node_id, location in square.items():
-        writer.add_node(osmium.osm.mutable.Node(id=node_id, location=location, tags={}, version=1))
-    writer.add_way(osmium.osm.mutable.Way(id=1, nodes=[1, 2, 3, 4, 1], tags={}, version=1))
-    writer.add_way(osmium.osm.mutable.Way(id=2, nodes=[5, 6, 7, 8, 5], tags={}, version=1))
-    tags = {"boundary": "administrative", "admin_level": "4", "ISO3166-2": "US-DC"}
-    writer.add_relation(
-        osmium.osm.mutable.Relation(
-            id=1, members=[("w", 1, "outer"), ("w", 2, "inner")], tags=tags, version=1
+    try:
+        square = {
+            1: (0.0, 0.0),
+            2: (4.0, 0.0),
+            3: (4.0, 4.0),
+            4: (0.0, 4.0),
+            5: (1.0, 1.0),
+            6: (2.0, 1.0),
+            7: (2.0, 2.0),
+            8: (1.0, 2.0),
+        }
+        for node_id, location in square.items():
+            writer.add_node(
+                osmium.osm.mutable.Node(id=node_id, location=location, tags={}, version=1)
+            )
+        writer.add_way(osmium.osm.mutable.Way(id=1, nodes=[1, 2, 3, 4, 1], tags={}, version=1))
+        writer.add_way(osmium.osm.mutable.Way(id=2, nodes=[5, 6, 7, 8, 5], tags={}, version=1))
+        tags = {"boundary": "administrative", "admin_level": "4", "ISO3166-2": "US-DC"}
+        writer.add_relation(
+            osmium.osm.mutable.Relation(
+                id=1, members=[("w", 1, "outer"), ("w", 2, "inner")], tags=tags, version=1
+            )
         )
-    )
-    writer.close()
+    finally:
+        close_writer(writer)
     dc = states.state_polygons(path)["DC"]
     assert dc.area == pytest.approx(16.0 - 1.0)
 

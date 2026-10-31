@@ -14,7 +14,7 @@ import { leaveNowArrival } from "../lib/arrival.ts";
 import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
 import { firstWordAndRest, t } from "../lib/i18n.ts";
 import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, noviceTripShort, type NoviceTrip } from "../lib/noviceOffer.ts";
-import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
+import { segmentClass, segmentStyle, stressSegments, type StressSegment } from "../lib/stressBar.ts";
 import { lightLine, type LightMark } from "../lib/lightTimes.ts";
 import { weatherSaid, type WeatherReport } from "../lib/weather.ts";
 import { WeatherLines } from "../WeatherLines.tsx";
@@ -688,8 +688,8 @@ function StressFigure({ segments, go, line = null }: { segments: StressSegment[]
         .map((s) => (
           <span
             key={s.key}
-            className={`stress-seg stress-seg-${s.key}`}
-            style={{ width: `${s.fraction * 100}%`, backgroundColor: s.color, ["--seg-accent" as string]: s.casing }}
+            className={`stress-seg ${segmentClass(s)}`}
+            style={{ width: `${s.fraction * 100}%`, ...segmentStyle(s) }}
             title={t("{short}: {percent}%", { short: s.short, percent: s.percent })}
           />
         ))}
@@ -847,7 +847,8 @@ export function RouteSummary({
   // A transit option with no ride (P10): no stress bar (it was 100% not rated) and no distance ridden; a line says
   // which option rides instead.
   const noBike = noBikeLine(route);
-  const segments = capacity || noBike ? [] : stressSegments(route.stress_m);
+  // From the route's sections where it has them, so a half step is its own colour here as on the line.
+  const segments = capacity || noBike ? [] : stressSegments(route.stress_m, route.stress_spans);
   // Group Ride: quiet roads and its turns, in place of the shares (the 2026-10-28 audit, P6).
   const groupLine = preset === "group-ride" ? groupRideLine(route) : null;
   const notes = noteLines(route, points, light, mode === "go");
@@ -1243,7 +1244,7 @@ export function RouteSummary({
               <ul className="stress-list">
                 {segments.map((s) => (
                   <li key={s.key}>
-                    <span className={`swatch stress-seg-${s.key}`} style={{ backgroundColor: s.color, ["--seg-accent" as string]: s.casing }} aria-hidden="true" />
+                    <span className={`swatch ${segmentClass(s)}`} style={segmentStyle(s)} aria-hidden="true" />
                     <span className="stress-name">{s.short}</span>
                     <span className="visually-hidden">, </span>
                     <span className="stress-pct">{s.percent}%</span>
