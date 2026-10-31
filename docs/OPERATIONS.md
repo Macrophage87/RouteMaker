@@ -7651,7 +7651,8 @@ reason a way in a compound stays open is one of its exceptions), no warning
 `curated bike lanes (fixtures/bike_lanes): 23 ways`, `SOUTH CAPITOL ST BN 38.8309-38.8357 N:
 100% at tier 4`, `facility classes:`, `AADT smoothing`, `named corridors` (three corridors),
 `override re-match`, `CONNECTICUT AVE NW: N% LTS 4` (at least 60% overall and 95% north of
-R St NW), the Mass Ride width line (at least 98% of road and path rows with a width, the
+R St NW; south of R St NW a 4 from the 20,000-a-day count step alone does not count), the
+Mass Ride width line (at least 98% of road and path rows with a width, the
 median road 60-200 riders a minute), the calm-run floors (Gambrill Park Road at 2 mi), the
 long trails, the closure readback on **five** graphs, and `Stress tile cache pre-drawn:
 11255 drawn` (11,068 stress tiles and 187 Mass Ride tiles at 2026-10-03's counts). A

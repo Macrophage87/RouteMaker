@@ -1082,10 +1082,13 @@ hiking trails are left out. A crosswalk over a slip lane adds a wait to the rout
     
     <p>Where no speed limit is mapped, junction costs use the legal default limit of
     the District, Maryland, Virginia or West Virginia (see <a href="#sources">Sources</a>).</p>
-    <p>A road you give way to (at a stop sign on your side, or where nothing is mapped and your road is
-    no busier) with two or more through lanes each way, or three or more on a one-way, is priced by its
-    traffic rather than its bike lane where that is higher: LTS 3 above 20 mph [32 km/h], and LTS 4 from 30
-    mph [48 km/h] unless a count shows 8,000 vehicles a day or fewer and it is under 35 mph [56 km/h]. Its color on the map does not change,
+    <p>Every road at a junction, your own included, is priced by its traffic rather than its bike lane
+    where that is busier than its level on the map, at every control, signals and all-way stops included: a
+    bike lane does nothing for a rider waiting for a gap in the traffic beside it. A road with two or more
+    through lanes each way (three or more on a one-way) is LTS 3 above 20 mph [32 km/h] and LTS 4 from 30 mph
+    [48 km/h], unless a count shows 8,000 vehicles a day or fewer and it is under 35 mph [56 km/h]. A narrower
+    road is read as riding in its traffic with no bike lane, from its posted speed and count, half steps
+    included; one with no posted speed keeps its map level. The road's color on the map does not change,
     and the warning still names the map's level (see <a href="/about/routing.html#junctions">Routing</a>).</p>
     <ul>
       <li><strong>Higher stress junction</strong> (orange marker): a cost of 0.15 calm
@@ -1174,9 +1177,10 @@ hiking trails are left out. A crosswalk over a slip lane adds a wait to the rout
     map, a half step looks like the level below it until zoom 15. From zoom 15 a paved half step has colors of its
     own over the lower level's pattern: 1.5 a mid green, 2.5 a yellow green, 3.5 orange on red with a black edge
     (LTS 4's look before version 0.16.0) and 4.5 dark red on red with a black edge. An unpaved one keeps its
-    level's brown or gray. A route and its legend show half steps in the same colors. With High contrast on, whose
+    level's brown or gray. A route, its stress bar and its legend show half steps in the same colors, and a screen reader names
+    them, such as "LTS 3.5" (an older saved route's bar shows whole levels only). With High contrast on, whose
     map colors don't rely on red and green, a half step keeps the level below's look with a dash in the next
-    level's color, on the route too.</p>
+    level's color, on the route and the bar too.</p>
 <details class="more"><summary>More: Half steps</summary>
 <div class="more-body">
     
