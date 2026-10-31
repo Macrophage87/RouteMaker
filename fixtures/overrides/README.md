@@ -567,19 +567,17 @@ in the database still names it: delete that row in the admin when loading the fi
   Virginia's joining the map). Stress rows, hidden, with fingerprints. Remake
   `urban-areas.json`, then load like the others; takes effect on the next rebuild.
 
-- `2026-10-31-owner-virginia-ratings.json`: Northern Virginia, 132 ways (about 31 mi), from
+- `2026-10-31-owner-virginia-ratings.json`: Northern Virginia, 71 ways (about 24 mi), from
   the Virginia ratings recheck. The owner, 2026-10-31: "Let's go with all these". P4:
   two-lane Fairfax County streets the county posts at 35 mph and OSM carries no speed for,
   counted above 1,500 a day and rated LTS 3, go to LTS 3.5 below 5,000 a day and LTS 4
   from 5,000 (43 ways). P8: such streets rated LTS 2 go to 2.5 at 1,500 a day or less,
   and follow P4 above it (28 ways). A way along several count blocks takes the busiest.
-  R2, the owner's pick "Only the calmest to 1.5": Arlington residential streets with no
-  VDOT count and no bike lane, rated LTS 2, that Arlington's Bike Comfort Index shows
-  under 1,000 a day at an 85th-percentile 23 mph or less, go to LTS 1.5 (61 ways). Owner
-  rows rather than build rules because Fairfax County's GIS data is all rights reserved
-  and the Bike Comfort Index has no licence yet: the rows cite the facts and copy no
-  data. P3 and P6 (county-posted 25 mph streets) were withdrawn the same day ("Let the
-  formula decide") once Virginia's urban default became 25 mph. Left out: ways the
-  reviewed blocks cover less than half of, and P4 and P8 ways OSM tags with a speed limit,
-  one-way, or with other than two lanes. Stress rows, hidden, with fingerprints. Load like
-  the others; takes effect on the next rebuild.
+  Owner rows rather than build rules because Fairfax County's GIS data is all rights
+  reserved: the rows cite the fact and copy no data. R2 (Arlington's calmest uncounted
+  streets at LTS 1.5) is held back while Arlington's Bike Comfort Index has no licence.
+  P3 and P6 (county-posted 25 mph streets) were withdrawn the same day ("Let the formula
+  decide") once Virginia's urban default became 25 mph. Left out: ways the reviewed blocks
+  cover less than half of, and ways OSM tags with a speed limit, one-way, or with other
+  than two lanes. Stress rows, hidden, with fingerprints. Load like the others; takes
+  effect on the next rebuild.
