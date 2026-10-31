@@ -568,7 +568,7 @@ services:
   # 0.7-1.3 GiB (docs/DEPLOYMENT.md, "Photon", has the measured figures).
   photon:
     <<: [*restart, *logging]
-    image: docker.io/rtuszik/photon-docker:2.4.0@sha256:21549c60f9e6488fff3217e40429a652c4b445f374800333fe32859e47cec293
+    image: docker.io/rtuszik/photon-docker:2.5.0@sha256:c5babeb0ac396b485822036cf3c69e54fb6c79d699328a4e042e11bbd6f73f1a
     # -max-reverse-results 10, not 1: a kind-of-place search ("grocery", "bike shop";
     # core.geocode TAG_SEARCHES) asks /reverse for the nearest few, and 1 capped it to one
     # store (the owner, 2026-10-28, for the Grocery chip). Naming a point still asks for 1.
