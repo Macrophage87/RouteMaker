@@ -17,7 +17,7 @@ from core import workzones
 from core.models import BikeshareFeedCache
 from routemaker import workzones as wz
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 LAT = 38.9
 NORTH = LAT + 0.003  # about 330 m north of the route
