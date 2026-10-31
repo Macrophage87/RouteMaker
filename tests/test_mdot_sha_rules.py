@@ -56,6 +56,15 @@ def _stretch(**overrides) -> Stretch:
             {"level": 3.0, "speed_mph": 40, "speed_assumed": False, "bike_facility": "Standard"},
             None,
         ),
+        # Only that case: at 45 mph, or rated lower, the painted lane still lifts.
+        (
+            {"level": 3.0, "speed_mph": 45, "speed_assumed": False, "bike_facility": "Standard"},
+            (3.5, "multilane-or-40"),
+        ),
+        (
+            {"level": 2.0, "speed_mph": 40, "speed_assumed": False, "bike_facility": "Standard"},
+            (3.5, "multilane-or-40"),
+        ),
         ({"level": 3.0, "speed_mph": 40}, None),
         # A 35 mph road SHA rated 2 for its shoulder: no shoulder credit.
         ({"level": 2.0, "shoulder_ft": 8}, (3.0, "shoulder-credit")),

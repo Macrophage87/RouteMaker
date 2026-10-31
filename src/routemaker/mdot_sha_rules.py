@@ -143,7 +143,8 @@ def _rule(s: Stretch) -> tuple[float, str] | None:
         # A two-lane road with a painted lane at 40 mph keeps SHA's level: the owner's
         # own 40 mph lane rule reads it 3 (MD 450 Defense Highway), and Montgomery gives
         # 3 on 72% of such stretches (the owner, 2026-10-31).
-        fast_two_lane = two_lane and not s.speed_assumed and speed >= 40 and not s.painted_lane
+        kept = s.painted_lane and speed == 40 and s.level == 3
+        fast_two_lane = two_lane and not s.speed_assumed and speed >= 40 and not kept
         if (lanes or 0) >= 4 or fast_two_lane:
             return (3.5 if s.painted_lane else 4.0), "multilane-or-40"
     # Up: urban two-lane 35 mph roads SHA rates 2 for a 4 ft shoulder. Montgomery gives a

@@ -1066,15 +1066,22 @@ FAST_MULTILANE_PREFIX = "multilane highway posted"
 FAST_MULTILANE_MIN_MPH = 55.0
 
 
-def fast_multilane(tags: dict[str, str], divided: bool = False) -> str | None:
-    """Why an untagged fast multilane highway is LTS 4.5 (`FAST_MULTILANE_PREFIX`), or None."""
+def fast_multilane(
+    tags: dict[str, str], divided: bool = False, separate_facility: bool = False
+) -> str | None:
+    """Why an untagged fast multilane highway is LTS 4.5 (`FAST_MULTILANE_PREFIX`), or None.
+    A road with a separated track, on it or mapped beside it, is the owner's "specific
+    reason" and keeps its own rating; so does a one-way road that is not a carriageway
+    of a divided highway (a ramp)."""
     if tags.get("highway") not in AVOID_HIGHWAY or tags.get("expressway") == "yes":
+        return None
+    if separate_facility or cycleway_values(tags) & SEPARATED_CYCLEWAY:
         return None
     posted = parse_maxspeed_mph(posted_maxspeed(tags))
     if posted is None or posted < FAST_MULTILANE_MIN_MPH:
         return None
     per_direction = lanes_per_direction(tags)
-    if not divided and (per_direction is None or per_direction < 2):
+    if not divided and (is_oneway(tags) or per_direction is None or per_direction < 2):
         return None
     return f"{FAST_MULTILANE_PREFIX} {posted:g} mph"
 
@@ -1195,7 +1202,7 @@ def classify(
         # only), and the smoothing and agency steps replace the result whole.
         rule = f"{rural} (Furth: {result.rule})"
         return replace(result, tier=Stress.LTS4, half=True, rule=rule)
-    fast = fast_multilane(tags, divided)
+    fast = fast_multilane(tags, divided, separate_facility)
     if fast is not None and (result.tier < Stress.LTS4 or not result.half):
         return replace(result, tier=Stress.LTS4, half=True, rule=f"{fast} (Furth: {result.rule})")
     return result

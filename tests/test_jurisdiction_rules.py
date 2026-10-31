@@ -98,3 +98,20 @@ class TestOwnerRulesEverywhere:
         busy = classify(street, aadt=12_000)
         assert (busy.tier, busy.half) == (Stress.LTS2, True)
         assert not classify(street, aadt=6_000).half
+
+    def test_a_ramp_or_a_protected_track_is_not_taken(self):
+        ramp = {"highway": "trunk_link", "oneway": "yes", "lanes": "2", "maxspeed": "55 mph"}
+        assert not classify(ramp, urban=False).half
+        track = {"highway": "primary", "lanes": "4", "maxspeed": "55 mph", "cycleway": "track"}
+        assert not classify(track, urban=False).rule.startswith("multilane highway")
+        road = {"highway": "primary", "lanes": "4", "maxspeed": "55 mph"}
+        assert not classify(road, urban=False, separate_facility=True).rule.startswith(
+            "multilane highway"
+        )
+
+
+def test_smoothing_knows_the_busy_street_gates():
+    from pipeline.aadt_smoothing import crosses_volume_gate
+
+    assert crosses_volume_gate(6_000, 4_000)
+    assert crosses_volume_gate(9_500, 8_500)
