@@ -10,7 +10,10 @@ The street is found by the agency's own name (`ROUTENAME`, e.g. "CONNECTICUT AVE
 the installed Roadway Block blocks, and its rows by the blocks the classifier matched
 them to (`segment.attr_sources->'blocks'`), never by OSM way id, which drifts between
 extracts. Lengths are of the segment rows, so a divided stretch counts both carriageways.
-A row counts as LTS 4 at tier 4 or Avoid (5).
+A row counts as LTS 4 at tier 4 or Avoid (5), except where its 4 came only from the
+very-busy-street count step (`stress.VERY_BUSY_STREET_RULE`, 20,000 a day): Connecticut
+Ave carries about 30,000, so that step alone would make every block 4 and the check would
+no longer catch a lost 30 mph speed (v0.16.0 test-strength review, S1).
 
 And the owner's rating rules read back over the whole table (review 2026-10-29), so a
 regression in the order the rating steps run is refused before promotion rather than left
@@ -28,18 +31,19 @@ from dataclasses import dataclass
 from django.db import connection
 
 from routemaker import agency_lts
+from routemaker.stress import VERY_BUSY_STREET_RULE
 
 from .schema import validate_schema_name
 
 _TIERS_SQL = """
 SELECT COALESCE(sum(len), 0),
-       COALESCE(sum(len) FILTER (WHERE stress_tier >= 4), 0),
+       COALESCE(sum(len) FILTER (WHERE lts4), 0),
        COALESCE(sum(len) FILTER (WHERE lat >= %s), 0),
-       COALESCE(sum(len) FILTER (WHERE lat >= %s AND stress_tier >= 4), 0)
+       COALESCE(sum(len) FILTER (WHERE lat >= %s AND lts4), 0)
 FROM (
     SELECT ST_Length(geometry::geography) AS len,
            ST_Y(ST_LineInterpolatePoint(geometry, 0.5)) AS lat,
-           stress_tier
+           stress_tier >= 4 AND strpos(COALESCE(stress_rule, ''), %s) = 0 AS lts4
     FROM {schema}.segment
     WHERE attr_sources -> 'blocks' ?| %s::text[] AND map_class = 'road'
 ) AS rows
@@ -81,7 +85,10 @@ def street_tiers(schema: str, street: str, ids: Sequence[str], north_of_lat: flo
     """Read the street's rows back from the built table."""
     schema = validate_schema_name(schema)
     with connection.cursor() as cursor:
-        cursor.execute(_TIERS_SQL.format(schema=schema), [north_of_lat, north_of_lat, list(ids)])
+        cursor.execute(
+            _TIERS_SQL.format(schema=schema),
+            [north_of_lat, north_of_lat, VERY_BUSY_STREET_RULE, list(ids)],
+        )
         total, lts4, north, north_lts4 = (float(value) for value in cursor.fetchone())
     return StreetTiers(street, north_of_lat, total, lts4, north, north_lts4)
 

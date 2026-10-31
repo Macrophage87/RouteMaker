@@ -221,21 +221,22 @@ def read_as(s: Stretch, enabled: Iterable[str] = ENABLED) -> tuple[float, str] |
 
 
 def facts(s: Stretch) -> str:
-    """What SHA's record says, which the rule read: "SHA's record: urban 2 lanes 35 mph
-    assumed no count". No commas (`RULE_WORDS`)."""
-    lanes = f"{s.lanes} lanes" if s.lanes else "lanes unknown"
-    speed = f"{s.speed_mph} mph {'assumed' if s.speed_assumed else 'posted'}" if s.speed_mph else ""
-    count = f"{s.aadt} cars a day (MDOT SHA count)" if s.aadt else "no count"
-    place = "urban" if s.urban else "rural"
-    return " ".join(part for part in ("SHA's record:", place, lanes, speed, count) if part)
+    """What SHA's record says, which the rule read: "SHA's record: urban; 2 lanes; 35 mph
+    assumed; no count". No commas (`RULE_WORDS`), and the speed's "N mph" last in its
+    part, so the panel's km/h lands beside it."""
+    lanes = f"{s.lanes} lane{'s' if s.lanes != 1 else ''}" if s.lanes else "lanes unknown"
+    speed = f"{'assumed' if s.speed_assumed else 'posted'} {s.speed_mph} mph" if s.speed_mph else ""
+    count = f"{s.aadt} cars a day by SHA's count" if s.aadt else "no count"
+    parts = ("urban" if s.urban else "rural", lanes, speed, count)
+    return "SHA's record: " + "; ".join(part for part in parts if part)
 
 
 def words(rule: str, level: float, s: Stretch | None = None) -> str:
     """The road panel's note: "read as LTS 3: a two-lane collector where SHA assumed 35 mph",
-    and with the record, the facts the rule read in brackets (the owner, 2026-10-31: "cite
+    and with the record, the facts the rule read after it (the owner, 2026-10-31: "cite
     the logic in the decision rather than just owner override")."""
     note = f"read as LTS {level:g}: {RULE_WORDS[rule]}"
-    return f"{note} ({facts(s)})" if s is not None else note
+    return f"{note}; {facts(s)}" if s is not None else note
 
 
 # Metres per degree near 39 N, for the short distances pairing needs.

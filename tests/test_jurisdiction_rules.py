@@ -144,3 +144,43 @@ def test_a_covered_state_with_no_placed_way_is_named():
 def test_a_kmh_limit_reads_as_a_whole_mph():
     road = {"highway": "primary", "maxspeed": "90 km/h", "lanes": "4"}
     assert classify(road, urban=False).rule.startswith("multilane highway posted 56 mph")
+
+
+class TestEdges:
+    """The thresholds themselves (v0.16.0 test-strength review, S4 and N3)."""
+
+    STREET = {"highway": "residential", "maxspeed": "25 mph"}
+
+    def test_the_busy_street_step_starts_at_5000(self):
+        assert not classify(self.STREET, aadt=4_999).half
+        assert classify(self.STREET, aadt=5_000).half
+
+    def test_not_with_a_side_path_beside_it(self):
+        assert not classify(self.STREET, aadt=6_000, separate_facility=True).half
+
+    def test_a_one_way_street_does_not_take_the_busy_city_street_step(self):
+        one_way = {**self.STREET, "oneway": "yes"}
+        assert not classify(one_way, aadt=15_000).half
+        assert classify(self.STREET, aadt=15_000).half
+
+    def test_the_narrow_road_reading_holds_at_1500_and_not_past(self):
+        lane = {"highway": "unclassified", "lane_markings": "no"}
+        at = rural_floor(classify(lane, urban=False, aadt=1_500, jurisdiction="VA"), lane, False)
+        past = classify(lane, urban=False, aadt=1_501, jurisdiction="VA")
+        assert "narrow rural road" in at.rule
+        assert "narrow rural road" not in past.rule
+
+    def test_a_town_tertiary_link_reads_25_in_virginia_and_west_virginia(self):
+        for state in ("VA", "WV"):
+            assert "25 mph" in classify({"highway": "tertiary_link"}, jurisdiction=state).rule
+        assert "30 mph" in classify({"highway": "tertiary_link"}, jurisdiction="MD").rule
+
+    def test_a_multilane_road_at_50_mph_is_not_the_55_mph_rule(self):
+        road = {"highway": "primary", "maxspeed": "50 mph", "lanes": "4"}
+        result = classify(road, urban=False)
+        assert (result.tier, result.half) == (Stress.LTS4, False)
+
+    def test_expressway_no_at_55_is_the_multilane_rule_not_avoid(self):
+        road = {"highway": "primary", "maxspeed": "55 mph", "lanes": "4", "expressway": "no"}
+        result = classify(road, urban=True)
+        assert (result.tier, result.half) == (Stress.LTS4, True)

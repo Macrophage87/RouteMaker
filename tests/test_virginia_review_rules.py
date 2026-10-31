@@ -67,8 +67,18 @@ class TestBusyRuralHighway:
         assert level(classify(self.TWO_LANE, aadt=25_000, urban=True)) == 4
 
     def test_a_four_lane_road_is_not_a_two_lane_highway(self) -> None:
-        four = {**self.TWO_LANE, "lanes": "4"}
-        assert BUSY_RURAL_HIGHWAY_RULE not in classify(four, aadt=25_000, urban=False).rule
+        # At 45 mph, under the multilane highway rule, so P7 itself decides.
+        four = {**self.TWO_LANE, "lanes": "4", "maxspeed": "45 mph"}
+        result = classify(four, aadt=25_000, urban=False)
+        assert level(result) == 4 and BUSY_RURAL_HIGHWAY_RULE not in result.rule
+
+    def test_a_secondary_road_is_not_a_rural_highway(self) -> None:
+        secondary = {**self.TWO_LANE, "highway": "secondary"}
+        assert level(classify(secondary, aadt=20_000, urban=False)) == 4
+
+    def test_a_road_with_a_bike_lane_is_not_mixed_traffic(self) -> None:
+        laned = {**self.TWO_LANE, "cycleway": "lane"}
+        assert BUSY_RURAL_HIGHWAY_RULE not in classify(laned, aadt=20_000, urban=False).rule
 
 
 class TestNarrowRoadWithAQuietCount:

@@ -359,7 +359,8 @@ def mdot_readings(records, counts: Path | None, urban_areas: Path | None, rules)
                 continue
             level = readings.get(first, (theirs.level,))[0]
             if level != mine.level:
-                readings[second] = (level, "second-record", mine)
+                # The level is the first record's, so its facts would mislead.
+                readings[second] = (level, "second-record", None)
             else:
                 readings.pop(second, None)
     return readings

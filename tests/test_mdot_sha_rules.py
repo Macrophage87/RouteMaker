@@ -398,9 +398,39 @@ def test_the_panel_note_states_the_facts_the_rule_read():
     s = _stretch(**TestBusyRuralTwoLane.US_15, aadt=21_000)
     note = mdot_sha_rules.words("busy-rural-two-lane", 4.5, s)
     assert note == (
-        "read as LTS 4.5: a rural two-lane highway carrying 18000 or more cars a day "
-        "(SHA's record: rural 2 lanes 55 mph posted 21000 cars a day (MDOT SHA count))"
+        "read as LTS 4.5: a rural two-lane highway carrying 18000 or more cars a day; "
+        "SHA's record: rural; 2 lanes; posted 55 mph; 21000 cars a day by SHA's count"
     )
     assert "," not in note
     assumed = mdot_sha_rules.words("collector-assumed-35", 3.0, _stretch())
-    assert assumed.endswith("(SHA's record: urban 2 lanes 35 mph assumed no count)")
+    assert assumed.endswith("SHA's record: urban; 2 lanes; assumed 35 mph; no count")
+    assert "1 lane;" in mdot_sha_rules.facts(_stretch(lanes=1)) + ";"
+
+
+@pytest.mark.parametrize(
+    "overrides, expected",
+    [
+        # busy-residential: 5,000 to 15,000 a day, both ends taken.
+        ({"level": 2.0, "speed_mph": 25, "speed_assumed": False, "aadt": 4_999}, None),
+        (
+            {"level": 2.0, "speed_mph": 25, "speed_assumed": False, "aadt": 5_000},
+            (2.5, "busy-residential"),
+        ),
+        (
+            {"level": 2.0, "speed_mph": 25, "speed_assumed": False, "aadt": 15_000},
+            (2.5, "busy-residential"),
+        ),
+        ({"level": 2.0, "speed_mph": 25, "speed_assumed": False, "aadt": 15_001}, None),
+        # slow-street: 3 from 7,500 a day.
+        ({"speed_mph": 30, "speed_assumed": False, "aadt": 7_499}, (2.5, "slow-street")),
+        ({"speed_mph": 30, "speed_assumed": False, "aadt": 7_500}, (3.0, "slow-street")),
+        # rural-collector: from 1,500 a day.
+        ({"level": 2.0, "functional_class": 6, "urban": False, "aadt": 1_499}, None),
+        (
+            {"level": 2.0, "functional_class": 6, "urban": False, "aadt": 1_500},
+            (3.5, "rural-collector"),
+        ),
+    ],
+)
+def test_the_rules_thresholds_themselves(overrides, expected):
+    assert read_as(_stretch(**overrides)) == expected
