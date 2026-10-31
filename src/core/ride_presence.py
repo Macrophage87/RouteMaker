@@ -43,6 +43,7 @@ make dots split between workers but can never put a position on disk.
 from __future__ import annotations
 
 import contextlib
+import copy
 import fcntl
 import hashlib
 import json
@@ -58,15 +59,37 @@ from random import SystemRandom
 # How long a dot lives after its last reading (the plan: "kept only in server memory for 2
 # minutes"; the front end draws it gone at the same age).
 DOT_TTL_S = 120
-# A device sends its position about every 15 s; one sooner than this is refused (429).
-MIN_POST_INTERVAL_S = 10
-# A device asks for the dots about every 15 s; one sooner than this is refused (429).
-MIN_POLL_INTERVAL_S = 3
+# How often a phone sends its dot and asks for the others: every 2 s while 20 or fewer share
+# (Stephen 2026-10-31, "If we limit to maybe 20 people at once, how low could that get?": below 2 s
+# the dot moves less than its GPS wanders), every 5 s up to 300, slower on a very big ride
+# (Stephen 2026-10-31: "15 seconds is not enough to see slowdowns", "Make as cheap as possible and
+# try to get it down", "settle where it makes sense"). Each write rewrites the
+# ride's whole file under its one lock, and its cost grows with the riders in it (measured
+# 2026-10-31 on tmpfs: about 0.03 ms at 50 riders, 1 ms at 300, 3 ms at 1,000, 10 ms at 3,000;
+# the size of a dot hardly counts), so the pace keeps the lock well under half busy. The read
+# answer carries the pace ("every_s") and the phone follows it.
+PACE_S = ((20, 2), (300, 5), (1000, 10))
+SLOWEST_PACE_S = 15
+# One who only watches (no dot of its own: on a big ride, most riders while its marshals share,
+# Stephen 2026-10-31) reads no faster than this: each read is a request to the api (about 1 ms of
+# its CPU measured, before nginx), so 1,000 watching at 5 s is some 200 a second.
+WATCH_PACE_S = 5
+# A position sooner than this after the last is refused (429), at any pace: well under the 2 s
+# pace, so a post held up on a phone's network is not refused when the next arrives quickly (the
+# ride's own write count and the address limit bound a phone that posts this often).
+MIN_POST_INTERVAL_S = 0.5
+# A device asks for the dots no sooner than this (429).
+MIN_POLL_INTERVAL_S = 1
 # The most anything is kept: a token (and its counts) is forgotten this long after its phone last
-# read or sent anything; a phone in front reads every 15 s, so its limits hold while it rides.
+# read or sent anything; a phone in front reads every 2 to 15 s, so its limits hold while it rides.
 KEEP_S = 120
-# Bounds on memory, whatever a client sends.
-MAX_RIDERS_PER_RIDE = 3000
+# How often a read writes the ride's own note that its phone still reads (well inside KEEP_S).
+POLL_STAMP_S = 60
+# Bounds on memory and on the ride's lock, whatever a client sends: 3,000 riders kept one ride's
+# lock busier than its time even at 15 s (the measures above). At 1,500 and 15 s positions alone
+# hold it about half the time (100 a second at about 5 ms); reads (shared, but writers wait for
+# them), poll stamps and prunes come on top, so this is the most, not a comfortable size.
+MAX_RIDERS_PER_RIDE = 1500
 MAX_RIDES = 500
 # A broadcast's leader path (Stephen 2026-10-22: "Rebroadcast the route every 2 min or when it
 # changes, not keeping it on the server"): the leader's phone sends the route it is riding and
@@ -89,9 +112,10 @@ ALERT_TTL_S = KEEP_S
 ALERT_MIN_INTERVAL_S = 60
 ALERTS_PER_RIDE = 10
 # Writes to one ride (positions, paths, alerts), counted in the ride's own state so the count goes
-# with the ride rather than outliving it in the database: MAX_RIDERS_PER_RIDE riders each sending
-# a position every 15 s is 12,000 a minute, so 15,000.
-RIDE_WRITES_PER_MINUTE = 15000
+# with the ride rather than outliving it in the database: at the pace above a ride's positions are
+# at most 6,000 a minute (1,000 riders every 10 s, 1,500 every 15 s; 300 every 5 s is 3,600), so
+# 7,500 leaves room for alerts and paths.
+RIDE_WRITES_PER_MINUTE = 7500
 RIDE_WRITES_WINDOW_S = 60
 # How often each api process sweeps every ride for what has outlived its 2 minutes, so a ride
 # nobody opens again is emptied too, not only one a phone still reads (v0.12.0 end review).
@@ -165,13 +189,25 @@ class MemoryStore:
                     if len(self._rides) >= MAX_RIDES:
                         raise _full()
             state = self._rides.setdefault(ride_id, _empty())
-            yield state
-            if _is_empty(state):
-                self._rides.pop(ride_id, None)
+            try:
+                yield state
+            finally:
+                if _is_empty(state):
+                    self._rides.pop(ride_id, None)
+
+    @contextlib.contextmanager
+    def peek(self, ride_id: str) -> Iterator[dict]:
+        """The ride's state to read only (a ride not kept yet is an empty state): nothing done to
+        it is kept."""
+        with self._lock:
+            state = self._rides.get(ride_id)
+            yield copy.deepcopy(state) if state is not None else _empty()
 
     def clear(self) -> None:
         with self._lock:
             self._rides.clear()
+        with _polls_lock:
+            _polls.clear()
 
     def sweep(self, now: float | None = None) -> None:
         """Prune every ride, and drop each one left empty."""
@@ -212,15 +248,15 @@ class TmpfsStore:
         self.directory = directory
 
     @classmethod
-    def _locked(cls, path: str) -> int:
+    def _locked(cls, path: str, shared: bool = False) -> int:
         """`path` opened and locked: a descriptor of the file at `path` now. A process that
         waited for the lock while its holder emptied the ride and unlinked the file would hold
         an orphan no other process can see; so after the lock the descriptor's inode is compared
         with the path's, and the open is tried again where they differ."""
         for _ in range(cls.LOCK_TRIES):
-            fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+            fd = os.open(path, os.O_RDONLY if shared else os.O_RDWR | os.O_CREAT, 0o600)
             try:
-                fcntl.flock(fd, fcntl.LOCK_EX)
+                fcntl.flock(fd, fcntl.LOCK_SH if shared else fcntl.LOCK_EX)
                 try:
                     same = os.fstat(fd).st_ino == os.stat(path).st_ino
                 except FileNotFoundError:
@@ -322,18 +358,50 @@ class TmpfsStore:
                     state = json.loads(raw) if raw else _empty()
                 except ValueError:
                     state = _empty()
-                yield state
-                if _is_empty(state):
-                    os.unlink(path)
-                else:
-                    out = json.dumps(state, separators=(",", ":"))
-                    if out != raw:
-                        handle.seek(0)
-                        handle.truncate()
-                        handle.write(out)
-                        handle.flush()
+                try:
+                    yield state
+                except Refused:
+                    # Refused after counting (too soon, too many alerts): the count is kept, as in
+                    # MemoryStore, so refused posts still count against the ride's lock budget.
+                    self._write_back(path, handle, raw, state)
+                    raise
+                self._write_back(path, handle, raw, state)
         finally:
             os.close(fd)
+
+    @staticmethod
+    def _write_back(path: str, handle, raw: str, state: dict) -> None:
+        if _is_empty(state):
+            os.unlink(path)
+        else:
+            out = json.dumps(state, separators=(",", ":"))
+            if out != raw:
+                handle.seek(0)
+                handle.truncate()
+                handle.write(out)
+                handle.flush()
+
+    @contextlib.contextmanager
+    def peek(self, ride_id: str) -> Iterator[dict]:
+        """As MemoryStore.peek: under a shared lock, so the ride's readers never wait on one
+        another, and the file is never written (2026-10-31: a read used to rewrite the whole ride
+        to stamp its poll)."""
+        path = os.path.join(self.directory, f"{ride_id}.json")
+        try:
+            fd = self._locked(path, shared=True)
+        except FileNotFoundError:
+            yield _empty()
+            return
+        try:
+            with os.fdopen(os.dup(fd), "r", encoding="utf-8") as handle:
+                raw = handle.read()
+            try:
+                state = json.loads(raw) if raw else _empty()
+            except ValueError:
+                state = _empty()
+        finally:
+            os.close(fd)
+        yield state
 
 
 _store: MemoryStore | TmpfsStore | None = None
@@ -352,6 +420,7 @@ def _sweep_forever(target: MemoryStore | TmpfsStore) -> None:
             target.sweep(clock.time())
         except Exception:  # noqa: BLE001 - the sweeper must outlive any one bad sweep
             pass
+        _forget_polls(clock.time())
 
 
 def _start_sweeper(target: MemoryStore | TmpfsStore) -> None:
@@ -378,6 +447,8 @@ def store():
             except OSError:
                 pass
         _store, _store_for = chosen, directory
+        with _polls_lock:
+            _polls.clear()
         if directory:
             # The deployed api (the test suite, with no directory, sweeps by hand).
             _start_sweeper(chosen)
@@ -395,41 +466,73 @@ def _is_empty(state: dict) -> bool:
     return not state["riders"] and not state["alerts"]
 
 
-def _prune(state: dict, now: float) -> None:
+def _prune(state: dict, now: float) -> bool:
+    """Drop what has outlived its time; answers whether anything went."""
+    changed = False
     for token, rider in list(state["riders"].items()):
         last = max(rider.get(k, 0) for k in ("since", "posted", "polled", "alerted", "path_posted"))
         if now - last > KEEP_S:
             del state["riders"][token]
+            changed = True
             continue
         if "at" in rider and now - rider["at"] > DOT_TTL_S:
             # The position goes at 2 minutes; the token's counts stay for the ride's limits.
             # (lon, lat and role: what a server before every ride was sealed kept in plain.)
             for key in ("at", "sealed", "lon", "lat", "role"):
                 rider.pop(key, None)
+            changed = True
         if "path" in rider and now - rider["path"]["at"] > PATH_TTL_S:
             del rider["path"]
+            changed = True
     # An alert lasts 2 minutes from when it was sent.
-    state["alerts"] = [a for a in state["alerts"] if now - a["last"] <= ALERT_TTL_S]
+    kept = [a for a in state["alerts"] if now - a["last"] <= ALERT_TTL_S]
+    if len(kept) != len(state["alerts"]):
+        state["alerts"] = kept
+        changed = True
     writes = state.get("writes")
     if writes and now - writes[0] >= RIDE_WRITES_WINDOW_S:
         del state["writes"]
+        changed = True
+    return changed
+
+
+def _count_in(state: dict, t: float) -> int:
+    """Count one write against the ride whose state this is: 0 when it may go ahead, else the
+    seconds to wait. The count lives in the ride's state for its one-minute window and goes with
+    the ride."""
+    window = math.floor(t / RIDE_WRITES_WINDOW_S) * RIDE_WRITES_WINDOW_S
+    writes = state.get("writes")
+    if not writes or writes[0] != window:
+        writes = [window, 0]
+    writes[1] += 1
+    state["writes"] = writes
+    if writes[1] > RIDE_WRITES_PER_MINUTE:
+        return max(1, math.ceil(window + RIDE_WRITES_WINDOW_S - t))
+    return 0
 
 
 def count_write(ride_id: str, now: Callable[[], float] = time.time) -> int:
-    """Count one write against the ride: 0 when it may go ahead, else the seconds to wait. The
-    count lives in the ride's state for its one-minute window and goes with the ride."""
+    """As `_count_in`, under the ride's own lock (for a write counted on its own)."""
     t = now()
-    window = math.floor(t / RIDE_WRITES_WINDOW_S) * RIDE_WRITES_WINDOW_S
     with store().ride(ride_id) as state:
         _prune(state, t)
-        writes = state.get("writes")
-        if not writes or writes[0] != window:
-            writes = [window, 0]
-        writes[1] += 1
-        state["writes"] = writes
-        if writes[1] > RIDE_WRITES_PER_MINUTE:
-            return max(1, math.ceil(window + RIDE_WRITES_WINDOW_S - t))
-    return 0
+        return _count_in(state, t)
+
+
+def _counted(state: dict, t: float) -> None:
+    """Count this write in the same locked turn as the write itself (2026-10-31: a write used to
+    take the ride's lock twice, once to count and once to write); refused once the ride is busy."""
+    wait = _count_in(state, t)
+    if wait:
+        raise Refused(429, "This ride is busy; try again shortly.", wait)
+
+
+def pace_s(riders: int) -> int:
+    """Seconds between a phone's dots, and between its reads, on a ride with this many riders."""
+    for most, every in PACE_S:
+        if riders <= most:
+            return every
+    return SLOWEST_PACE_S
 
 
 def _rider(state: dict, token: str, now: float) -> dict:
@@ -472,12 +575,13 @@ def post_position(ride_id: str, token: str, sealed, now: Callable[[], float] = t
     t = now()
     with store().ride(ride_id) as state:
         _prune(state, t)
+        _counted(state, t)
         rider = _rider(state, token, t)
         last = rider.get("posted", 0)
+        # One floor on every ride: a bigger ride is slowed by the pace its reads say, never by
+        # refusing the posts of phones that have not read the new pace yet.
         if t - last < MIN_POST_INTERVAL_S:
-            raise Refused(
-                429, "Too soon; the next position goes in a few seconds.", MIN_POST_INTERVAL_S
-            )
+            raise Refused(429, "Too soon; the next position goes in a few seconds.", 1)
         rider.update(sealed=kept, at=t, posted=t)
 
 
@@ -489,6 +593,7 @@ def post_path(ride_id: str, token: str, sealed, now: Callable[[], float] = time.
     t = now()
     with store().ride(ride_id) as state:
         _prune(state, t)
+        _counted(state, t)
         rider = _rider(state, token, t)
         if t - rider.get("path_posted", 0) < MIN_PATH_INTERVAL_S:
             raise Refused(429, "Too soon; the path goes again shortly.", MIN_PATH_INTERVAL_S)
@@ -502,8 +607,10 @@ def post_path(ride_id: str, token: str, sealed, now: Callable[[], float] = time.
 def leave(ride_id: str, token: str, now: Callable[[], float] = time.time) -> None:
     """Drop this rider's dot at once (sharing turned off)."""
     _check(ride_id, token)
+    t = now()
     with store().ride(ride_id, create=False) as state:
-        _prune(state, now())
+        _prune(state, t)
+        _counted(state, t)
         rider = state["riders"].get(token)
         if rider is not None:
             for key in ("at", "sealed", "path"):
@@ -528,17 +635,27 @@ def read(ride_id: str, token: str, now: Callable[[], float] = time.time, leader:
     if not LEADER_KEY.match(leader or ""):
         leader = ""
     t = now()
-    with store().ride(ride_id, create=False) as state:
-        _prune(state, t)
+    stamp = False
+    # Read only, under a shared lock: the ride's readers never wait on one another and the file
+    # is not rewritten (2026-10-31, for dots every few seconds).
+    with store().peek(ride_id) as state:
+        # Something past its 2 minutes is dropped from the ride itself too, below (never left
+        # for the sweeper alone).
+        stale = _prune(state, t)
         # A reader becomes a rider only with its first position or alert: a read keeps nothing
         # of a token it has not seen (the address limit covers those reads).
         rider = state["riders"].get(token)
         if rider is not None:
-            if t - rider.get("polled", 0) < MIN_POLL_INTERVAL_S:
+            if t - max(rider.get("polled", 0), _polled_here(ride_id, token)) < MIN_POLL_INTERVAL_S:
                 raise Refused(
-                    429, "Too soon; the dots update every 15 seconds.", MIN_POLL_INTERVAL_S
+                    429, "Too soon; the dots update every few seconds.", MIN_POLL_INTERVAL_S
                 )
-            rider["polled"] = t
+            _note_poll(ride_id, token, t)
+            # The ride's own record that this phone still reads, so its counts outlive KEEP_S
+            # while it rides: written now and then, not on every read.
+            stamp = t - rider.get("polled", 0) >= POLL_STAMP_S
+        if stale:
+            stamp = stamp or rider is not None
         dots = []
         for other, r in state["riders"].items():
             if other == token or "at" not in r or "sealed" not in r:
@@ -548,6 +665,11 @@ def read(ride_id: str, token: str, now: Callable[[], float] = time.time, leader:
                 dot["leader"] = True
             dots.append(dot)
         alerts = [_alert_out(a, token, t) for a in state["alerts"] if "sealed" in a]
+        # The pace counts the dots shared, not every token kept (an alert's sender, one whose
+        # dot has gone): 20 marshals sharing stay at 2 s when a watcher sends an alert.
+        every = pace_s(sum(1 for r in state["riders"].values() if "sealed" in r))
+        if rider is None or "sealed" not in rider:
+            every = max(every, WATCH_PACE_S)
         path = None
         if leader:
             for other, r in state["riders"].items():
@@ -557,10 +679,52 @@ def read(ride_id: str, token: str, now: Callable[[], float] = time.time, leader:
     # A fresh order each time: a dot's place in the list never ties it to the same rider
     # from one read to the next (2026-10-29).
     _SHUFFLE.shuffle(dots)
-    answer = {"dots": dots, "alerts": alerts}
+    answer = {"dots": dots, "alerts": alerts, "every_s": every}
     if path is not None:
         answer["leader_path"] = path
+    if stamp or stale:
+        with store().ride(ride_id, create=False) as state:
+            _prune(state, t)
+            kept = state["riders"].get(token)
+            if kept is not None and stamp:
+                kept["polled"] = t
     return answer
+
+
+# Each process's own note of when a token last read, for the poll limit between the ride's
+# written stamps (POLL_STAMP_S), kept only as long as the limit (MIN_POLL_INTERVAL_S). A phone's
+# reads may reach any worker, so between stamps the limit holds per process: with W workers a
+# token can read about W times a second, still within the address limit (ratelimit.RIDE_LINKS).
+_polls: dict[tuple[str, str], float] = {}
+_polls_lock = threading.Lock()
+POLLS_KEPT = 20000
+
+
+def _polled_here(ride_id: str, token: str) -> float:
+    with _polls_lock:
+        return _polls.get((ride_id, token), 0.0)
+
+
+def _note_poll(ride_id: str, token: str, t: float) -> None:
+    with _polls_lock:
+        if len(_polls) >= POLLS_KEPT:
+            _forget_polls_locked(t)
+        # Full of reads all under 3 s old: this one is limited by the ride's own stamp only.
+        if len(_polls) < POLLS_KEPT:
+            _polls[(ride_id, token)] = t
+
+
+def _forget_polls(t: float) -> None:
+    """Drop every note older than the poll limit, which is all it is for: a token is never kept
+    here past a few seconds (the sweeper calls this every SWEEP_S)."""
+    with _polls_lock:
+        _forget_polls_locked(t)
+
+
+def _forget_polls_locked(t: float) -> None:
+    for key, at in list(_polls.items()):
+        if t - at >= MIN_POLL_INTERVAL_S:
+            del _polls[key]
 
 
 def send_alert(ride_id: str, token: str, sealed, now: Callable[[], float] = time.time) -> dict:
@@ -571,6 +735,7 @@ def send_alert(ride_id: str, token: str, sealed, now: Callable[[], float] = time
     t = now()
     with store().ride(ride_id) as state:
         _prune(state, t)
+        _counted(state, t)
         rider = _rider(state, token, t)
         if rider.get("alerts", 0) >= ALERTS_PER_RIDE:
             raise Refused(
@@ -603,8 +768,10 @@ def clear_alert(
 ) -> None:
     """The sender clears their alert; nobody else can."""
     _check(ride_id, token)
+    t = now()
     with store().ride(ride_id, create=False) as state:
-        _prune(state, now())
+        _prune(state, t)
+        _counted(state, t)
         for alert in state["alerts"]:
             if alert["id"] == alert_id:
                 if alert["sender"] != token:
