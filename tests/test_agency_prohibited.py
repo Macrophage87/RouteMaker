@@ -8,7 +8,7 @@ import csv
 import io
 
 from pipeline import agency_ratings
-from pipeline.extract import Way
+from pipeline.extract import Way, close_writer
 from routemaker import agency_lts, facility
 from routemaker.agency_lts import PROHIBITED_NO_BICYCLE, AgencyRating
 from routemaker.stress import Stress
@@ -292,7 +292,7 @@ def _write_road_extract(path):
             )
         )
     finally:
-        writer.close()
+        close_writer(writer)
 
 
 def test_the_rebuild_closes_the_road_in_every_graph_and_writes_the_report(tmp_path):

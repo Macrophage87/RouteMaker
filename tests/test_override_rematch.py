@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -436,10 +437,31 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
     # Aspen Street NW's 5 stress rows (the owner, 2026-10-25), and the 3rd Avenue dirt
     # path's 1 access row (the owner, 2026-10-27), and the Glenmont path's 1 (2026-10-28).
     # Less Montgomery's 381 LTS 5 snapshot rows, retired for the live county layer (review
-    # 2026-10-29).
+    # 2026-10-29). Plus R and 1st Streets NW's 24 stress rows (the owner, 2026-10-30), and
+    # West Virginia's 309 county-road stress rows (the owner, 2026-10-30), and Northern
+    # Virginia's 345 (the owner, 2026-10-31).
     assert (
         sum(len(d["rows"]) for d in documents.values())
-        == 1785 + 20 - 5 - 23 + 57 + 40 - 2 + 4 - 431 + 6 + 31 - 2 + 1 + 5 + 1 + 1 - 381
+        == 1785
+        + 20
+        - 5
+        - 23
+        + 57
+        + 40
+        - 2
+        + 4
+        - 431
+        + 6
+        + 31
+        - 2
+        + 1
+        + 5
+        + 1
+        + 1
+        - 381
+        + 24
+        + 309
+        + 345
     )
     for name, document in documents.items():
         if name == "2026-10-06-owner-crosswalk-links.json":
@@ -467,8 +489,13 @@ def test_the_override_counts_the_owner_asked_about() -> None:
     # east-of-the-Anacostia file from 772 rows to 341, and 445d put 6 back (4 Benning ways,
     # 2 ramps), and 445c's floor took in 31 more Nannie Helen Burroughs ways, and 445f retired 2
     # Kenilworth Avenue NE rows. Plus Aspen Street NW's 5 (the owner, 2026-10-25). Less
-    # Montgomery's 381 LTS 5 snapshot rows (review 2026-10-29).
-    assert kinds.count("stress") == 1551 - 1 + 3 + 10 - 5 - 23 + 15 - 431 + 6 + 31 - 2 + 5 - 381
+    # Montgomery's 381 LTS 5 snapshot rows (review 2026-10-29). Plus R and 1st Streets NW's
+    # 24 (the owner, 2026-10-30). Plus West Virginia's 309 county-road rows (2026-10-30).
+    # Plus Northern Virginia's 345 (2026-10-31).
+    assert (
+        kinds.count("stress")
+        == 1551 - 1 + 3 + 10 - 5 - 23 + 15 - 431 + 6 + 31 - 2 + 5 - 381 + 24 + 309 + 345
+    )
 
 
 def test_the_harford_road_row_is_repointed_at_the_three_ways() -> None:
@@ -517,9 +544,31 @@ def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
     # A retired row carries no fingerprint: it is deleted on load, never re-matched.
     # Plus Aspen Street NW's 5 stress rows (the owner, 2026-10-25), and the 3rd Avenue dirt
     # path's 1 access row (the owner, 2026-10-27), and the Glenmont path's 1 (2026-10-28).
-    # Less Montgomery's 381 LTS 5 snapshot rows (review 2026-10-29).
+    # Less Montgomery's 381 LTS 5 snapshot rows (review 2026-10-29). Plus R and 1st Streets
+    # NW's 24 stress rows (the owner, 2026-10-30), and West Virginia's 309 county-road rows,
+    # and Northern Virginia's 345 (2026-10-31).
     assert (
-        len(found) == 1785 + 20 + 1 - 5 - 23 + 57 + 40 - 2 - 431 + 6 + 31 - 2 + 1 + 5 + 1 + 1 - 381
+        len(found)
+        == 1785
+        + 20
+        + 1
+        - 5
+        - 23
+        + 57
+        + 40
+        - 2
+        - 431
+        + 6
+        + 31
+        - 2
+        + 1
+        + 5
+        + 1
+        + 1
+        - 381
+        + 24
+        + 309
+        + 345
     )
     assert ("access", 50426889) in found and ("stress", 1562097556) in found
 
@@ -679,3 +728,81 @@ def test_the_backfill_script_adds_fingerprints_and_keeps_each_files_indent(tmp_p
     assert written[0]["fingerprint"]["name"] == "Harford Road"
     assert "fingerprint" not in written[1], "a way missing from the extract is listed, not invented"
     assert raw == json.dumps(json.loads(raw), indent=1) + "\n", "the file's own indent is kept"
+
+
+def test_the_west_virginia_county_road_rows_take_only_the_owners_levels() -> None:
+    # The owner, 2026-10-30, "Filtered counts, 3 and 3.5": quiet counted county roads LTS 3,
+    # the rest LTS 3.5; plus the busy county roads held at 4, one street held at 2, and the WV 9
+    # bypass east of Charles Town held at 4.5 ("LTS 4.5").
+    document = json.loads((OVERRIDES / "2026-10-30-owner-wv-county-roads.json").read_text())
+    levels = {
+        "wv-county-road-quiet-lts3": (3, False),
+        "wv-county-road-lts3-5": (3, True),
+        "wv-busy-county-road-lts4": (4, False),
+        "wv-north-fairfax-blvd-lts2": (2, False),
+        "wv-9-charles-town-bypass-lts4-5": (4, True),
+    }
+    for row in document["rows"]:
+        value = row["value"]
+        assert row["kind"] == "stress"
+        assert (value["tier"], value.get("half", False)) == levels[value["adjustment_id"]]
+        assert value["visibility"] == "hidden"
+
+
+def test_the_virginia_rows_take_only_the_owners_levels() -> None:
+    # The owner, 2026-10-31, "Let's go with all these" (P4, P8) and "Only the calmest to 1.5"
+    # (R2); P3 and P6 withdrawn ("Let the formula decide").
+    document = json.loads((OVERRIDES / "2026-10-31-owner-virginia-ratings.json").read_text())
+    elsewhere = {
+        (row["kind"], row["osm_way_id"])
+        for path in OVERRIDES.glob("*.json")
+        if path.name != "2026-10-31-owner-virginia-ratings.json"
+        for row in json.loads(path.read_text()).get("rows", [])
+    }
+    ways = [row["osm_way_id"] for row in document["rows"]]
+    assert len(ways) == len(set(ways)), "one row per way"
+    assert not {("stress", way) for way in ways} & elsewhere, "no way rated in another file"
+    count = {"two-lane": 0, "quiet": 0}
+    p5 = 0
+    # One adjustment id per level: the loader refuses rows of one id that disagree.
+    ids: dict[str, set[float]] = {}
+    for row in document["rows"]:
+        value, evidence = row["value"], row["evidence"]
+        level = value["tier"] + (0.5 if value.get("half") else 0.0)
+        assert row["kind"] == "stress" and value["visibility"] == "hidden"
+        assert row["fingerprint"]["length_m"] > 0
+        if value["adjustment_id"] == "va-arl-calmest-uncounted-lts1-5":
+            assert level == 1.5 and "Beta's road panel" in evidence and ": LTS 2," in evidence
+            assert "under 1,000 vehicles a day" in evidence and "no VDOT count" in evidence
+            continue
+        if value["adjustment_id"] == "va-ffx-quiet-25-local-lts1-5":
+            p5 += 1
+            assert level == 1.5 and "This way (P5)" in row["reason"]
+            assert "ActiveFairfax" not in evidence + row["reason"]
+            assert ": 25 mph on " in evidence or "46.2-870" in evidence
+            aadts = re.search(r"VDOT AADT on the blocks along it: ([0-9, ]+) \(", evidence)
+            busiest = max(int(a.replace(",", "")) for a in aadts.group(1).split(", "))
+            assert 1_000 < busiest <= 1_500, (row["osm_way_id"], busiest)
+            assert "highway=tertiary" not in evidence, "the collector floor holds a tertiary at 2"
+            assert "maxspeed=" not in evidence or "maxspeed=25 mph" in evidence
+            continue
+        ids.setdefault(value["adjustment_id"], set()).add(level)
+        group = (
+            "two-lane"
+            if value["adjustment_id"].startswith("va-ffx-posted-35-two-lane-")
+            else "quiet"
+        )
+        assert value["adjustment_id"].startswith(f"va-ffx-posted-35-{group}-lts")
+        count[group] += 1
+        assert "VDOT Posted Speed Limits" in evidence and ": 35 mph on " in evidence
+        assert "ActiveFairfax" not in evidence + row["reason"] and "no maxspeed tag" in evidence
+        aadts = re.search(r"VDOT AADT on the blocks along it: ([0-9, ]+) \(", evidence)
+        busiest = max(int(a.replace(",", "")) for a in aadts.group(1).split(", "))
+        expected = 4.0 if busiest >= 5_000 else 3.5 if busiest > 1_500 else 2.5
+        assert level == expected, (row["osm_way_id"], busiest, level)
+        was = 3 if group == "two-lane" else 2
+        assert f": LTS {was}," in evidence
+    assert count == {"two-lane": 26, "quiet": 6} and p5 == 252
+    # Each row says why its level, not only that the owner chose it.
+    assert all("This way (" in row["reason"] for row in document["rows"])
+    assert all(len(levels) == 1 for levels in ids.values()), ids

@@ -19,7 +19,7 @@ from core.models import BikeshareFeedCache
 from routemaker import workzones as wz
 
 NOW = datetime(2026, 10, 25, 14, 0, tzinfo=UTC)
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 # A road that bends east of the straight line between its ends (about 4.5 km end to end, the
 # bend about 400 m off it), as Georgia Ave does between Wheaton and Silver Spring.
