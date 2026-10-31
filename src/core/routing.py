@@ -3126,6 +3126,7 @@ def _crossing_out(major) -> dict:
         "control": major.control.value,
         "lanes": major.lanes,
         "crossed_tier": major.crossed_tier,
+        "crossed_half": getattr(major, "crossed_half", False),
         "kind": getattr(major, "kind", intersections.MAJOR_FLAGGED),
         "corkers_needed": major.corkers_needed,
         "oneway": getattr(major, "oneway", None),
@@ -3487,6 +3488,7 @@ def _intersection_rows(events: list) -> list[dict]:
             "severity": event.severity,
             "reason": event.reason,
             "crossed_tier": event.crossed_tier,
+            "crossed_half": getattr(event, "crossed_half", False),
             "movement": event.movement.value,
             "control": event.control.value,
             "kind": event.kind,
@@ -3516,6 +3518,7 @@ def _junction_debug_rows(events: list) -> list[dict]:
             "movement": event.movement.value,
             "control": event.control.value,
             "crossed_tier": event.crossed_tier,
+            "crossed_half": getattr(event, "crossed_half", False),
             "cost_ft": round(event.cost_ft),
             "calm_mi": round(intersections.calm_miles(event.cost_ft), 3),
             "calm_km": round(

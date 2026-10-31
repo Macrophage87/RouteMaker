@@ -87,7 +87,7 @@ test("a ride through dusk: sunset and the end of civil twilight where the rider 
   assert.ok((dusk.alongM as number) > (sunset.alongM as number));
   assert.ok(sunset.point && Math.abs(sunset.point[1] - 38.89) < 1e-9);
   const line = lightLine(marks) as string;
-  assert.match(line, /^Sunset 6:2\d PM near mile \d+\.\d \(\d+\.\d km\); civil twilight ends 6:5\d PM near mile \d+\.\d \(\d+\.\d km\)\.$/);
+  assert.match(line, /^Sunset 6:2\d PM near mile \d+\.\d \(\d+\.\d km\); dusk 6:5\d PM near mile \d+\.\d \(\d+\.\d km\)\.$/);
   assert.match(lightMarkerLabel(sunset), /^Sunset 6:2\d PM, where you will be near mile \d+\.\d \(\d+\.\d km\)$/);
 });
 
@@ -95,7 +95,7 @@ test("within about an hour after arriving: said, not marked; only what is still 
   // Arriving 17:40 EDT: sunset 47 minutes later. Both of the dusk events are said, after the ride.
   const after = lightMarks(ride("2026-10-16T17:00:00-04:00", 40));
   assert.deepEqual(after.map((m) => [m.kind, m.where, m.point]), [["sunset", "after", null], ["civil_dusk", "after", null]]);
-  assert.match(lightLine(after) as string, /^Sunset 6:2[78] PM, after you arrive; civil twilight ends 6:5[56] PM, after you arrive\.$/);
+  assert.match(lightLine(after) as string, /^Sunset 6:2[78] PM, after you arrive; dusk 6:5[56] PM, after you arrive\.$/);
   // Arriving 17:20: sunset over an hour off. Nothing.
   assert.deepEqual(lightMarks(ride("2026-10-16T16:40:00-04:00", 40)), []);
   // Leaving 19:50, after civil dusk: what has passed is never said. Nothing.
@@ -117,7 +117,7 @@ test("a ride at dawn: civil dawn and sunrise, across the end of daylight saving 
   // 16 Oct 2026, 06:20 EDT for 50 minutes: civil dawn 06:51 on the ride, sunrise 07:18 after it.
   const marks = lightMarks(ride("2026-10-16T06:20:00-04:00", 50));
   assert.deepEqual(marks.map((m) => [m.kind, m.where]), [["civil_dawn", "during"], ["sunrise", "after"]]);
-  assert.match(lightLine(marks) as string, /^Civil twilight begins 6:5\d AM near mile \d+\.\d \(\d+\.\d km\); sunrise 7:1\d AM, after you arrive\.$/);
+  assert.match(lightLine(marks) as string, /^Dawn 6:5\d AM near mile \d+\.\d \(\d+\.\d km\); sunrise 7:1\d AM, after you arrive\.$/);
   // Sunday 1 Nov 2026, the first EST morning: 06:00 EST for an hour, both on the ride.
   const nov = lightMarks(ride("2026-11-01T06:00:00-05:00", 60));
   assert.deepEqual(nov.map((m) => m.kind), ["civil_dawn", "sunrise"]);
@@ -203,12 +203,12 @@ test("Ride mode's corner: the light times within the hour rule, for the ride sti
   assert.ok(corner);
   assert.equal(corner.shown.length, 2);
   assert.match(corner.shown[0], /^Sunset 6:2\d PM \(2\d min\)$/);
-  assert.match(corner.shown[1], /^Twilight 6:5\d PM \(5\d min\)$/);
-  assert.match(corner.said, /^Sunset 6:2\d PM, in 2\d minutes; civil twilight ends 6:5\d PM, in 5\d minutes\.$/);
+  assert.match(corner.shown[1], /^Dusk 6:5\d PM \(5\d min\)$/);
+  assert.match(corner.said, /^Sunset 6:2\d PM, in 2\d minutes; dusk 6:5\d PM, in 5\d minutes\.$/);
   // After sunset: only what is still ahead.
   assert.deepEqual(rideLightCorner(model, lengthM / 2, 10 * 60, Date.parse("2026-10-16T18:40:00-04:00"))?.shown.length, 1);
   // Midday: nothing, so the corner says Ride mode.
   assert.equal(rideLightCorner(model, 0, 20 * 60, Date.parse("2026-10-16T12:00:00-04:00")), null);
   // Morning, 6:00 AM: civil dawn 6:51 AM within the hour, then sunrise.
-  assert.match(rideLightCorner(model, 0, 10 * 60, Date.parse("2026-10-16T06:00:00-04:00"))?.said ?? "", /^Civil twilight begins 6:5\d AM, in 5\d minutes; sunrise 7:1\d AM, in 1 hour 1\d minutes\.$/);
+  assert.match(rideLightCorner(model, 0, 10 * 60, Date.parse("2026-10-16T06:00:00-04:00"))?.said ?? "", /^Dawn 6:5\d AM, in 5\d minutes; sunrise 7:1\d AM, in 1 hour 1\d minutes\.$/);
 });

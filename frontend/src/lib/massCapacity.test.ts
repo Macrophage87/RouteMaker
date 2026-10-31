@@ -358,7 +358,7 @@ test("the app wires the mode: the map's capacity layers, the legend and the pane
   // The panel's figures are the route's own: they need the sections' capacity, so an older table keeps the stress breakdown.
   assert.match(app, /const capacity = capacitySummary\(route\.stress_spans\);/);
   // P10: nor does a transit option with no ride on it (lib/rideTrip.ts noBikeLine).
-  assert.match(app, /const segments = capacity \|\| noBike \? \[\] : stressSegments\(route\.stress_m\);/);
+  assert.match(app, /const segments = capacity \|\| noBike \? \[\] : stressSegments\(route\.stress_m, route\.stress_spans\);/);
   assert.match(view, /setMassMode\(null, callbacks\.current\.massCapacity === true/);
   assert.match(view, /props\.massCapacity === true/);
   assert.match(view, /addDcMask\(map, callbacks\.current\.massArea === true/);
