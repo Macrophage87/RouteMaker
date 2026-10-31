@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from pipeline.extract import close_writer
+
 REPO = Path(__file__).resolve().parents[1]
 FIXTURE = REPO / "frontend" / "src" / "rail-data" / "marc-penn-stations.geojson"
 
@@ -182,21 +184,25 @@ def test_the_extract_reader_keeps_rail_nodes_elevators_and_marc_relations(tmp_pa
 
     path = tmp_path / "tiny.osm.pbf"
     writer = osmium.SimpleWriter(str(path))
-    node = osmium.osm.mutable.Node
-    writer.add_node(node(id=1, location=(-77, 38.9), tags={"railway": "station"}, version=1))
-    writer.add_node(node(id=2, location=(-77, 38.9), tags={"highway": "elevator"}, version=1))
-    writer.add_node(node(id=3, location=(-77, 38.9), tags={"amenity": "cafe"}, version=1))
-    relation = osmium.osm.mutable.Relation
-    writer.add_relation(
-        relation(id=1, members=[("n", 1, "")], tags={"network": "Amtrak;MARC"}, version=1)
-    )
-    writer.add_relation(
-        relation(id=2, members=[("n", 1, "")], tags={"public_transport": "stop_area"}, version=1)
-    )
-    writer.add_relation(
-        relation(id=3, members=[("n", 1, "")], tags={"network": "WMATA"}, version=1)
-    )
-    writer.close()
+    try:
+        node = osmium.osm.mutable.Node
+        writer.add_node(node(id=1, location=(-77, 38.9), tags={"railway": "station"}, version=1))
+        writer.add_node(node(id=2, location=(-77, 38.9), tags={"highway": "elevator"}, version=1))
+        writer.add_node(node(id=3, location=(-77, 38.9), tags={"amenity": "cafe"}, version=1))
+        relation = osmium.osm.mutable.Relation
+        writer.add_relation(
+            relation(id=1, members=[("n", 1, "")], tags={"network": "Amtrak;MARC"}, version=1)
+        )
+        writer.add_relation(
+            relation(
+                id=2, members=[("n", 1, "")], tags={"public_transport": "stop_area"}, version=1
+            )
+        )
+        writer.add_relation(
+            relation(id=3, members=[("n", 1, "")], tags={"network": "WMATA"}, version=1)
+        )
+    finally:
+        close_writer(writer)
     data = marc.read_extract(path)
     assert sorted(data.nodes) == [1, 2]
     assert sorted(data.relations) == [1, 2]

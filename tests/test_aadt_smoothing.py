@@ -206,8 +206,11 @@ def test_agency_and_year_stay_those_of_the_replaced_count() -> None:
 def test_a_median_off_the_gate_is_what_the_rule_text_marks() -> None:
     assert aadt_smoothing.crosses_volume_gate(10665, 7520)
     assert aadt_smoothing.crosses_volume_gate(1200, 1800)
-    assert not aadt_smoothing.crosses_volume_gate(9000, 12000)
-    assert not aadt_smoothing.crosses_volume_gate(3000, 6000)
+    assert not aadt_smoothing.crosses_volume_gate(9500, 11000)
+    assert not aadt_smoothing.crosses_volume_gate(5000, 7000)
+    # The owner's busy-street half step: 5,000, and 9,000 under a painted lane.
+    assert aadt_smoothing.crosses_volume_gate(3000, 6000)
+    assert aadt_smoothing.crosses_volume_gate(8999, 9000)
     assert aadt_smoothing.crosses_volume_gate(7999, 8000)
     # 1,500 is still quiet and 1,501 is not; 8,000 is busy and 7,999 is not.
     assert aadt_smoothing.crosses_volume_gate(1500, 1501)

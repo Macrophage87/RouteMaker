@@ -1,9 +1,16 @@
 name: CI
 
+# Pull requests into main (in practice the release branch's, owner 2026-10-28, and Dependabot's) and
+# the push to main that merging one makes, which the beta's release agent reads. Pull requests into
+# a release branch merge after a review agent without CI, so they start no run. By hand: Actions,
+# "CI", Run workflow, on any branch but not on a tagged main commit: the release agent reads the
+# newest `test` there, so a cancelled manual run would hold the release.
 on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 # Read-only token: the tests need the checkout and nothing else.
 permissions:
@@ -33,11 +40,13 @@ jobs:
           POSTGRES_USER: routemaker
           POSTGRES_PASSWORD: routemaker
         ports: ["5432:5432"]
+        # Checked over TCP: the image's first-start server listens on the socket only, so a socket
+        # check can pass before the real server is up.
         options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
+          --health-cmd "pg_isready -h 127.0.0.1"
+          --health-interval 2s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 30
 
     env:
       PGHOST: 127.0.0.1
@@ -93,6 +102,25 @@ jobs:
           # and the runner image may carry a newer one.
           echo "/usr/lib/postgresql/$PG_MAJOR/bin" >> "$GITHUB_PATH"
           "/usr/lib/postgresql/$PG_MAJOR/bin/pg_dump" --version | grep -Eq "[[:space:]]$PG_MAJOR\."
+      # A throwaway database: no crash safety (the suite's resets after each transactional test
+      # are mostly commit and fsync cost) and no JIT (it compiles the rebuild's queries on toy
+      # data, slower than running them). Locking, renames and spatial predicates are unchanged.
+      # All four take effect on reload; the check fails the step if one did not.
+      - name: Tune the test database
+        run: |
+          set -eu
+          psql -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET fsync = off" \
+            -c "ALTER SYSTEM SET synchronous_commit = off" \
+            -c "ALTER SYSTEM SET full_page_writes = off" \
+            -c "ALTER SYSTEM SET jit = off" -c "SELECT pg_reload_conf()"
+          # The reload is a signal: give the server a moment to act on it before failing.
+          for setting in fsync synchronous_commit full_page_writes jit; do
+            for _ in 1 2 3 4 5; do
+              [ "$(psql -tAc "SHOW $setting")" = off ] && break
+              sleep 1
+            done
+            test "$(psql -tAc "SHOW $setting")" = off
+          done
       # docker/requirements.txt first: it is the exact pin both images build
       # from, and requirements-dev.txt alone resolves newer packages
       # (tests/test_native_environment.py fails when it does). Green here is
@@ -105,19 +133,19 @@ jobs:
       - name: Tool versions
         continue-on-error: true
         run: (docker compose version; docker version --format '{{.Server.Version}}'; shellcheck --version) || true
-      # The front end, from the lockfile: typecheck, test and build. Before
-      # pytest because the contrast test reads @protomaps/basemaps from
-      # node_modules; tests/test_frontend.py skips its own run of these node
-      # tests under CI, since this step is that run.
+      # The front end, from the lockfile: install, typecheck and build (`npm run build` is
+      # `tsc --noEmit && vite build`). Before pytest because the contrast test reads
+      # @protomaps/basemaps from node_modules and the licence tests read dist/. The node tests run
+      # once, in the beta-style step below; tests/test_frontend.py skips its own run under CI.
       - name: Front end
         working-directory: frontend
-        run: npm ci && npm run typecheck && npm test && npm run build
+        run: npm ci && npm run build
       # The React hooks rules (frontend/eslint.config.js). rules-of-hooks is an error and fails the
       # step; exhaustive-deps is still a warning, listed here and failing nothing.
       - name: Front end hooks lint
         run: npm --prefix frontend run lint
-      # The same tests and build again, the way every beta path runs them: the shared script,
-      # in the pinned node image, no network, the source mounted read-only. A test that reads
+      # The front-end tests, type check and build the way every beta path runs them: the shared
+      # script, in the pinned node image, no network, the source mounted read-only. A test that reads
       # outside frontend/ without a mount for it fails here, not in the middle of a ship.
       - name: Front end, as the beta builds it
         run: |
@@ -148,18 +176,29 @@ jobs:
       # smoke test: they are what stops a tuning change from silently redefining
       # what a mass ride is.
       # PYTHONFAULTHANDLER dumps every thread's stack on a native crash, including one during
-      # interpreter shutdown; faulthandler_timeout dumps them for a test stuck 10 minutes.
-      - run: pytest -q -o faulthandler_timeout=600 --durations=30
+      # interpreter shutdown; faulthandler_timeout dumps them for a test stuck 10 minutes, and
+      # faulthandler_exit_on_timeout then ends that worker: the test fails ("worker crashed") and
+      # the run carries on in a replacement. Four workers, one per runner CPU, each with its own
+      # test database (test_routemaker_gw0..3); worksteal hands a finished worker the rest of a
+      # slower one's tests. If a test turns out to lean on an earlier one in the same process,
+      # --dist loadfile keeps each file in one worker, in order.
+      - run: pytest -q -n 4 --dist worksteal -o faulthandler_timeout=600 -o faulthandler_exit_on_timeout=true --durations=30
         env:
           PYTHONFAULTHANDLER: "1"
       - name: Compose stack rules
         run: python scripts/check_compose_limits.py
 
   # The browser accessibility check (scripts/a11y/run.sh: Vite and Chromium in pinned images,
-  # no network), beside the tests rather than after them. Its screenshots are kept when it fails.
-  a11y:
+  # no network), beside the tests rather than after them, in three shards on their own runners
+  # (check.mjs --shard: every third section each). A failing shard keeps its screenshots.
+  a11y-shard:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    name: a11y shard ${{ matrix.shard }}/3
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -171,10 +210,52 @@ jobs:
         working-directory: frontend
         run: npm ci
       - name: Accessibility check in a browser
+        env:
+          A11Y_SHARD: ${{ matrix.shard }}/3
         run: scripts/a11y/run.sh "$PWD/frontend/node_modules" "$RUNNER_TEMP/a11y-shots"
+      - name: Keep the count
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: a11y-count-${{ matrix.shard }}
+          path: ${{ runner.temp }}/a11y-shots/a11y-count.txt
+          if-no-files-found: error
+          # Long enough for "Re-run failed jobs" days later: the a11y job reads every shard's count.
+          retention-days: 14
       - name: Keep the screenshots
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: a11y-shots
+          name: a11y-shots-${{ matrix.shard }}
           path: ${{ runner.temp }}/a11y-shots
+
+  # The `a11y` check the beta's release agent requires (scripts/beta/cd_logic.py, CHECK_NAMES): green only
+  # when every shard passed and their counts add up to check.mjs's EXPECTED, so a section that stopped
+  # running fails here as it did in one browser. It runs whenever a shard failed, not only when all
+  # passed; a cancelled run skips it, and the release agent reads a skipped a11y as red
+  # (cd_logic.ci_verdict: anything but success).
+  a11y:
+    needs: a11y-shard
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # actions: read for `gh run download` of the shards' counts; contents: read for the checkout.
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Every shard passed and every check ran
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHARDS: ${{ needs.a11y-shard.result }}
+        run: |
+          set -eu
+          test "$SHARDS" = success
+          total=0
+          for shard in 1 2 3; do
+            gh run download "$GITHUB_RUN_ID" -R "$GITHUB_REPOSITORY" -n "a11y-count-$shard" -D "$RUNNER_TEMP/count-$shard"
+            total=$((total + $(cat "$RUNNER_TEMP/count-$shard/a11y-count.txt")))
+          done
+          expected=$(sed -n 's/^const EXPECTED = \([0-9]*\);$/\1/p' scripts/a11y/check.mjs)
+          echo "$total checks ran; $expected expected (a new section needs if (mine()): docs/DEVELOPMENT.md)"
+          test -n "$expected" && test "$total" -eq "$expected"
