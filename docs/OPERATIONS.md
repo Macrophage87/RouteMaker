@@ -4340,7 +4340,7 @@ the first host to run it is the first test of it.
    ```sh
    docker compose exec -T rebuild python3 scripts/install_reference_data.py \
        --data-root /data --extract /data/extracts/source.osm.pbf \
-       --urban-areas /data/reference/inputs/tl_2024_us_uac20.geojson
+       --urban-areas /data/reference/inputs/tl_2024_us_uac20.geojson </dev/null
    ```
 
    **Every input path is absolute and inside the container.** A bare
@@ -6481,8 +6481,8 @@ rebuild that refuses to run without `agency-lts.json`. At home, in order, with `
   for Review's Area column and the stress change report.
 - [ ] **Required since v0.16.0, urban areas:** remake `urban-areas.json` from the current extract
   (the 2026-09-25 list has no West Virginia way, and the rebuild now stops on that)
-  (`install_reference_data.py` with `--extract` and the urban-area layer, as in "First
-  rebuild on a fresh host"). A way newer than the list reads as rural, and a rural expressway posted 50 mph or
+  (`install_reference_data.py` with `--extract` and `--urban-areas` only, never the
+  `--volume` pairs; "Deploying v0.16.0"). A way newer than the list reads as rural, and a rural expressway posted 50 mph or
   more is now LTS 4.5, so a newly split urban expressway would come out LTS 4.5, not Avoid.
 - [ ] **The rebuild** (or "Rebuilding on the cloud box"): the extract is remade once, for the
   new clip ("The source extract"). Read the `agency stress ratings` lines (no
@@ -6561,7 +6561,7 @@ the data. At home, in order, with `</dev/null` on every docker command:
   No way in them is in an earlier file, so each dry run shows only creates.
 - [ ] **Rebuild** (`run_rebuild_now`, or `send-inputs.sh` for the cloud box). In the log:
   `counts shared with N opposite carriageways (ddot, mdot-sha, vdot)`, the agency-ratings
-  `changed tier` lines, and West Virginia among the placed states.
+  `changed tier` lines, and West Virginia in the `state polygons from <pbf>: DC, MD, VA, WV` line.
 - [ ] **Before the swap**, the stress-change report (whole levels only; expect large West
   Virginia moves from the urban list, and DC second carriageways moving from the 2020 Roadway
   Block count to DDOT's 2024 count) and Review's changed-roads lists, which show the half
