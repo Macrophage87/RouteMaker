@@ -7897,6 +7897,15 @@ details.fold > summary .icon {
 .ride-group-bar .ride-alert-button[aria-expanded="true"] {
   background: #f0b800;
 }
+/* Why the last alert did not go (RideGroup.tsx sendError): seen, not only said. */
+.ride-alert-error {
+  margin: 6px 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--error-bg);
+  color: var(--error-text);
+  font-weight: 700;
+}
 .ride-group-bar .ride-riders {
   min-height: 56px;
   min-width: 56px;
