@@ -11,7 +11,7 @@ from core import segment_info
 from pipeline import agency_ratings, writers
 from routemaker import agency_lts, mdot_sha_rules
 from routemaker.agency_lts import AgencyRating
-from routemaker.mdot_sha_rules import Stretch, read_as
+from routemaker.mdot_sha_rules import ENABLED, Stretch, read_as
 from routemaker.stress import Stress, StressResult
 
 FIRST = "16000MD00410--1-----"
@@ -345,3 +345,42 @@ def test_the_installer_refuses_the_rules_without_their_inputs(tmp_path):
     )
     with pytest.raises(SystemExit, match="--mdot-as-published"):
         list(module.mdot_sha(tmp_path, Counter()))
+
+
+class TestBusyRuralTwoLane:
+    """P7 on SHA-rated roads (the owner, 2026-10-31: "Yes, same rule in MD")."""
+
+    US_15 = dict(
+        level=4.0, functional_class=3, speed_mph=55, speed_assumed=False, lanes=2, urban=False
+    )
+
+    def test_us_15_reads_the_same_either_side_of_the_potomac(self) -> None:
+        from routemaker.stress import classify
+
+        virginia = classify(
+            {"highway": "primary", "maxspeed": "55 mph", "lanes": "2"},
+            aadt=20_000,
+            urban=False,
+            jurisdiction="VA",
+        )
+        maryland = read_as(_stretch(**self.US_15, aadt=20_000))
+        assert (virginia.tier, virginia.half) == (Stress.LTS4, True)
+        assert maryland == (4.5, "busy-rural-two-lane")
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"aadt": 17_999},
+            {"aadt": 25_000, "urban": True},
+            {"aadt": 25_000, "lanes": 4},
+            {"aadt": 25_000, "functional_class": 4},
+            {"aadt": 25_000, "level": 3.0},
+        ],
+    )
+    def test_not_below_the_gate_in_town_on_four_lanes_or_rated_lower(self, overrides) -> None:
+        found = read_as(_stretch(**(self.US_15 | overrides)))
+        assert found is None or found[1] != "busy-rural-two-lane"
+
+    def test_it_has_its_own_switch(self) -> None:
+        enabled = ENABLED - {"busy-rural-two-lane"}
+        assert read_as(_stretch(**self.US_15, aadt=20_000), enabled) is None

@@ -33,7 +33,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from itertools import pairwise
 
-from routemaker.stress import BUSY_STREET_MIN_AADT
+from routemaker.stress import BUSY_RURAL_HIGHWAY_AADT, BUSY_STREET_MIN_AADT
 
 # Maryland's county code for Baltimore City, the first two characters of a route id.
 BALTIMORE_CITY = "24"
@@ -49,6 +49,7 @@ RULE_WORDS = {
     "busy-residential": "a 25 mph street carrying 5000 to 15000 cars a day",
     "rural-collector": "a rural collector carrying 1500 or more cars a day",
     "rural-expressway": "a highway of four or more lanes posted 55 mph or more",
+    "busy-rural-two-lane": "a rural two-lane highway carrying 18000 or more cars a day",
     "second-record": "SHA's record for the other direction of the same road",
 }
 
@@ -193,6 +194,20 @@ def _rule(s: Stretch) -> tuple[float, str] | None:
     # 55 mph are generally either avoid or 4.5 unless there's a specific reason to keep them").
     if s.level == 4 and fc in (2, 3) and (lanes or 0) >= 4 and not s.speed_assumed and speed >= 55:
         return 4.5, "rural-expressway"
+    # Up: rural two-lane principal arterials carrying BUSY_RURAL_HIGHWAY_AADT or more that
+    # SHA rates 4: the formula's P7 (`stress.busy_road_steps`) on SHA's roads, so US-15
+    # reads 4.5 on both sides of the Potomac (the owner, 2026-10-31: "Yes, same rule in
+    # MD"). Three lanes count as two, as the formula reads one lane a direction.
+    if (
+        not s.urban
+        and s.level == 4
+        and fc in (2, 3)
+        and 2 <= (lanes or 0) <= 3
+        and not s.bike_facility
+        and aadt is not None
+        and aadt >= BUSY_RURAL_HIGHWAY_AADT
+    ):
+        return 4.5, "busy-rural-two-lane"
     return None
 
 
