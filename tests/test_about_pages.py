@@ -30,13 +30,15 @@ DOCS = (
     "acknowledgements",
 )
 SET = (*DOCS, "stress")
+# Outside the menu (the owner, 2026-10-31): the guide we send Android testers, with no docs menu.
+GUIDES = ("android-beta",)
 
 
 def read(name: str) -> str:
     return (ABOUT / f"{name}.html").read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("name", SET)
+@pytest.mark.parametrize("name", (*SET, *GUIDES))
 def test_each_page_is_a_plain_static_page_the_csp_allows(name: str) -> None:
     page = read(name)
     assert page.startswith('<!doctype html>\n<html lang="en">'), name
@@ -65,7 +67,7 @@ def test_each_page_names_the_whole_set_and_marks_itself(name: str) -> None:
     ]
 
 
-@pytest.mark.parametrize("name", SET)
+@pytest.mark.parametrize("name", (*SET, *GUIDES))
 def test_every_link_resolves_and_leaves_the_site_only_over_https(name: str) -> None:
     page = read(name)
     ids = set(re.findall(r'\bid="([^"]+)"', page))
@@ -81,7 +83,7 @@ def test_every_link_resolves_and_leaves_the_site_only_over_https(name: str) -> N
         elif href.startswith("/"):
             assert href in ("/", "/favicon.svg", "/licenses.txt", "/privacy"), href
         else:
-            assert href.startswith("https://"), f"{name}: {href}"
+            assert href.startswith(("https://", "mailto:")), f"{name}: {href}"
 
 
 @pytest.mark.parametrize("name", DOCS)
@@ -158,9 +160,18 @@ def test_the_acknowledgements_credit_every_source_the_map_credits() -> None:
         assert credit in page, credit
 
 
-@pytest.mark.parametrize("name", SET)
+@pytest.mark.parametrize("name", (*SET, *GUIDES))
 def test_nothing_names_a_server(name: str) -> None:
     page = read(name)
     assert not re.search(r"\b\d{1,3}(\.\d{1,3}){3}\b", page), "an IP address"
     named = r"internal-|home server|\.env\b|amazonaws\.com/(?!3d)|s3://|href=\"/(admin|review)"
     assert not re.search(named, page, re.I)
+
+
+def test_the_android_guide_keeps_its_three_steps_on_the_first_screen() -> None:
+    """No docs menu above the steps, so step 1 is in view on a phone; it still leads back to the map."""
+    page = read("android-beta")
+    assert '<nav class="docs"' not in page
+    assert len(re.findall(r"<li><strong>", page)) == 3
+    assert '<a class="back" href="/">Back to the map</a>' in page
+    assert "https://play.google.com/apps/testing/com.routemakerdc.app" in page
