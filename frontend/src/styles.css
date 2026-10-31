@@ -4553,11 +4553,15 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   white-space: nowrap;
 }
 
+/* End ride and Go round side by side on one line, always (the owner, 2026-10-31: "end ride and go around should share a
+   line. Having one on top of the other takes too much space"). Each gives up room in step with its words, so the
+   longer one keeps more, and none narrower than its longest word. */
 .ride-top-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   margin-left: auto;
+  min-width: 0;
 }
 
 /* Near dawn or dusk the light times in the corner, in place of "Ride mode" (the owner, 2026-10-19): a line each, small. */
@@ -4594,10 +4598,35 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   margin-left: 0;
 }
 
+/* Shared half and half; where a long language or large text does not fit on one line, the words go onto a second line
+   inside each button, never under the other one. */
 .ride-top.ride-corner-tight .ride-top-actions > * {
   flex: 1 1 auto;
-  white-space: nowrap;
+  min-width: min-content;
   justify-content: center;
+  text-align: center;
+  line-height: 1.15;
+  /* Chinese, Japanese and Korean words are not split a character a line. */
+  word-break: keep-all;
+}
+
+.ride-top.ride-corner-tight .ride-slide-text {
+  white-space: normal;
+}
+
+/* Only where one word alone is wider than its half (Russian at 200% text on a small phone) do they go one above the
+   other, so no word is cut (RideMode measures it). */
+.ride-top.ride-top-stack .ride-top-actions {
+  flex-wrap: wrap;
+}
+
+.ride-top.ride-top-stack .ride-top-actions > * {
+  flex: 1 1 100%;
+}
+
+/* The barrier keeps its size beside words on two lines. */
+.ride .ride-road-closed > svg {
+  flex-shrink: 0;
 }
 
 .ride-light-below {
@@ -5132,8 +5161,10 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   cursor: grab;
 }
 
+/* The track as tall as the thumb's pill row, so the thumb stays in the middle where the words take two lines (the range
+   itself still covers the whole pill, so a touch anywhere on it drags). */
 .ride-slide-range::-webkit-slider-runnable-track {
-  height: 100%;
+  height: 48px;
   background: transparent;
 }
 

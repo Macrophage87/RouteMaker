@@ -2398,6 +2398,10 @@ export function RideMode({
   // line, measured, as a phone's own text size can be larger than the page knows; else they go just under the row.
   const topRef = useRef<HTMLDivElement>(null);
   const [cornerFits, setCornerFits] = useState(true);
+  // End ride and Go round share one line, their words on two lines inside each where need be (the owner, 2026-10-31:
+  // "end ride and go around should share a line"); one goes under the other only where a single word is wider than
+  // the room it would have (a long language at a large text size on a small phone), so no word is ever cut.
+  const [stacked, setStacked] = useState(false);
   const lightKey = light ? light.shown.join("|") : "";
   useLayoutEffect(() => {
     const top = topRef.current;
@@ -2407,15 +2411,22 @@ export function RideMode({
     const check = () => {
       // Measured as laid out untight (the buttons not stretched), put back before anything is drawn.
       const tight = top.classList.contains("ride-corner-tight");
+      const stack = top.classList.contains("ride-top-stack");
       if (tight) top.classList.remove("ride-corner-tight");
+      if (stack) top.classList.remove("ride-top-stack");
       const row = getComputedStyle(top);
       const room = top.clientWidth - parseFloat(row.paddingLeft) - parseFloat(row.paddingRight);
       const buttons = [...actions.children] as HTMLElement[];
       const between = parseFloat(getComputedStyle(actions).columnGap) || 0;
       const need =
         heading.scrollWidth + (parseFloat(row.columnGap) || 0) + buttons.reduce((sum, b) => sum + b.offsetWidth, 0) + between * Math.max(0, buttons.length - 1);
-      if (tight) top.classList.add("ride-corner-tight");
+      // Then tight, on one line: wider than the row only where a word does not fit in its button.
+      top.classList.add("ride-corner-tight");
+      const overflows = actions.scrollWidth > actions.clientWidth + 1;
+      if (!tight) top.classList.remove("ride-corner-tight");
+      if (stack) top.classList.add("ride-top-stack");
       setCornerFits(need <= room);
+      setStacked(overflows);
     };
     check();
     if (typeof ResizeObserver === "undefined") return;
@@ -2507,7 +2518,7 @@ export function RideMode({
         {/* End ride (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which stays at
             every size and in Large text; one slide ends the ride (a tap once arrived), and the page shows the ride's summary
             with Done and Undo (RideSummaryCard). The ride's settings open just under the row, from the side buttons' More. */}
-        <div ref={topRef} className={light && cornerFits ? "ride-top" : "ride-top ride-corner-tight"}>
+        <div ref={topRef} className={`${light && cornerFits ? "ride-top" : "ride-top ride-corner-tight"}${stacked ? " ride-top-stack" : ""}`}>
           {/* The heading, "Ride mode", for screen readers; near dawn or dusk the light times shown in the corner
               (the owner, 2026-10-19) where they fit beside the buttons, else just under the row. */}
           <h2 id="ride-heading" ref={headingRef} tabIndex={-1} className={light ? "ride-heading ride-light" : "ride-heading"}>
