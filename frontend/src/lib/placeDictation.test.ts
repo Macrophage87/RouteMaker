@@ -44,6 +44,26 @@ test("the spelling alphabet picks its row: Alfa, Bravo, Charlie, and the spellin
   assert.equal(spokenRow("Zulu", many), 25);
 });
 
+test("every spelling-alphabet word and every letter name picks its own row among 26 (test-strength S5)", () => {
+  const rows = Array.from({ length: 26 }, (_, i) => `Place ${i}`);
+  const nato = ["alfa", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliett", "kilo", "lima", "mike",
+    "november", "oscar", "papa", "quebec", "romeo", "sierra", "tango", "uniform", "victor", "whiskey", "xray", "yankee", "zulu"];
+  nato.forEach((word, i) => assert.equal(spokenRow(word, rows), i, word));
+  // The other spellings a recogniser writes, and the English and Spanish letter names, written out here, not read
+  // from the module, so a word mapped to the wrong letter or dropped fails.
+  const others: Record<string, string> = {
+    alpha: "a", charly: "c", fox: "f", juliet: "j", whisky: "w", "x ray": "x", "x-ray": "x", "X-Ray": "x",
+    ay: "a", bee: "b", be: "b", see: "c", sea: "c", cee: "c", ce: "c", dee: "d", de: "d", ee: "e", ef: "f", eff: "f", efe: "f",
+    gee: "g", ge: "g", aitch: "h", haitch: "h", hache: "h", eye: "i", jay: "j", jota: "j", kay: "k", ka: "k", el: "l", ell: "l",
+    ele: "l", em: "m", eme: "m", en: "n", ene: "n", oh: "o", pee: "p", pe: "p", queue: "q", cue: "q", cu: "q", are: "r", ar: "r",
+    erre: "r", ess: "s", es: "s", ese: "s", tee: "t", tea: "t", te: "t", you: "u", vee: "v", ve: "v", uve: "v", "double u": "w",
+    "double you": "w", "doble ve": "w", "doble u": "w", ex: "x", equis: "x", why: "y", ye: "y", "i griega": "y", zee: "z",
+    zed: "z", zeta: "z",
+  };
+  for (const [said, letter] of Object.entries(others)) assert.equal(spokenRow(said, rows), letter.charCodeAt(0) - 97, said);
+  for (let i = 0; i < 26; i++) assert.equal(spokenRow(rowLetter(i), rows), i, rowLetter(i));
+});
+
 test("a letter past the last row picks nothing", () => {
   assert.equal(spokenRow("Delta", ROWS), null);
   assert.equal(spokenRow("Z", ROWS), null);
