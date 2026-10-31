@@ -49,7 +49,6 @@ from routemaker import (
     lane_overrides,
     mallgrounds,
     massflow,
-    mdot_aadt,
     mtbmode,
     pavement,
     ridetime,
@@ -64,13 +63,13 @@ from routemaker.geo import Point
 from routemaker.shape import sinuosity
 from routemaker.stress import (
     Stress,
+    bends_slow_traffic,
     classify,
     inferred_unpaved,
     is_rough,
     painted_lane_multilane,
     rural_floor,
     rural_floor_applies,
-    winding,
 )
 
 from . import (
@@ -2485,18 +2484,26 @@ def build_handlers(
         ]
         result = conflation.conflate(entries, reference.volume_features)
         context.aadt_by_way = dict(result.matched)
-        # MDOT SHA's counts reach both carriageways of a divided Maryland road
-        # (FOLLOWUP-MDOT-AADT, OWNER-DECISIONS 429; `share_with_carriageways`):
-        # MD 185 north of Chevy Chase Circle is the first case. Only theirs.
-        if any(f.agency == mdot_aadt.AGENCY for f in reference.volume_features):
+        # A count reaches both carriageways of a divided road (FOLLOWUP-MDOT-AADT,
+        # OWNER-DECISIONS 429; `share_with_carriageways`): MD 185 north of Chevy
+        # Chase Circle was the first case. Every agency's, not only MDOT SHA's:
+        # with VDOT's and DDOT's on one side only, the two halves of one road
+        # could rate a level apart (the owner, 2026-10-31, the same rules in
+        # every state).
+        agencies = {f.agency for f in reference.volume_features}
+        if agencies:
             shared = conflation.share_with_carriageways(
                 result,
                 divided.carriageways(context.ways),
                 {way.osm_id: way.name for way in context.ways},
-                {mdot_aadt.AGENCY},
+                agencies,
             )
             context.aadt_by_way.update(shared)
-            logger.info("MDOT SHA counts shared with %d opposite carriageways", len(shared))
+            logger.info(
+                "counts shared with %d opposite carriageways (%s)",
+                len(shared),
+                ", ".join(sorted({m.agency for m in shared.values()})) or "none",
+            )
         # The agency street blocks next: their count (DC's Roadway Block AADT,
         # 2020) fills where no count layer reached the way and never replaces
         # one - DDOT's own 2024 counts are the newer survey.
@@ -2568,6 +2575,24 @@ def build_handlers(
             # Terminal, like a refused override: a fifth attempt reads the
             # same extract and finds the same boundaries.
             raise ValidationFailed(str(missing)) from missing
+        # A covered state that placed no way (West Virginia's relation may not
+        # close in the extract): its speed law and urban defaults apply nowhere.
+        for state in states.unplaced_states(state_of):
+            logger.warning(
+                "no way placed in %s: its boundary did not close, so its speed law "
+                "and urban defaults do not apply and its ways read the old class tables "
+                '(docs/OPERATIONS.md, "The states, from the rebuild\'s own extract")',
+                state,
+            )
+        # A state none of whose ways is in the urban list was left out when the
+        # list was made, and every town in it would read as rural.
+        unlisted = states.states_without_urban(state_of, reference.urban_way_ids)
+        if unlisted:
+            raise ValidationFailed(
+                f"no way in {', '.join(unlisted)} is in urban-areas.json, so its towns "
+                "would read as rural: remake it from this extract "
+                '(docs/OPERATIONS.md, "Remake urban-areas.json whenever the coverage grows")'
+            )
         # Each count the volume gates read is its street's median where the street
         # disagrees (OWNER-DECISIONS 285, 296), after the states are known
         # because a street is smoothed within its own jurisdiction.
@@ -2665,7 +2690,7 @@ def build_handlers(
             rural = way.osm_id not in reference.urban_way_ids
             # The owner's narrow-road rule reads the line only outside urban
             # areas (`stress.NARROW_RURAL_ROAD_MPH`).
-            bends = rural and winding(way.coordinates)
+            bends = rural and bends_slow_traffic(way.coordinates, tags)
 
             def classified(aadt, tags=tags, way=way, match=match, facts=facts, bends=bends):
                 return classify(

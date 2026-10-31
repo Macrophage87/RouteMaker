@@ -28,6 +28,7 @@ import io
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 
+from . import ddot_rules
 from .stress import Stress, StressResult
 
 # How local an agency is. Lower wins: a county's rating over a state's.
@@ -67,7 +68,9 @@ FORMULA_USED = "formula"
 # newer than the rating, but paint on a road the agency found stressful may still be a higher
 # stress lane, so the way takes LTS 2.5 rather than the formula's calmer tier (the owner,
 # 2026-10-21: "In some cases where it might be the case that it's a higher stress bike lane,
-# let's put them at 2.5"). A protected lane or a path keeps the formula's tier.
+# let's put them at 2.5"). A protected lane or a path keeps the formula's tier. For DDOT this
+# gave way on 2026-10-31 to the owner's painted-lane rule, by the traffic beside the lane
+# (`ddot_rules.painted_lane_level`; his R Street call: "formula wins on most of them").
 PAINTED_LANE_LEVEL = 2.5
 PAINTED_LANE_REASON = "a painted lane on a road the agency rated higher: LTS 2.5"
 PAINTED_LANE_USED = "painted lane"
@@ -103,6 +106,14 @@ READ_AS_REASON = "our LTS 4.5"
 def map_level(agency: str, level: float) -> float:
     """An agency's level as the map uses it: its own, except where `READ_AS` says otherwise."""
     return READ_AS.get(agency, {}).get(float(level), level)
+
+
+def used_level(rating: AgencyRating) -> float:
+    """The level the map uses for a rating: the owner's reading of it where one is set
+    (`AgencyRating.read_as`), else `map_level`'s."""
+    if rating.read_as is not None:
+        return rating.read_as
+    return map_level(rating.agency, rating.level)
 
 
 def row_level(adjustment_id: str | None, level: float) -> float:
@@ -198,10 +209,14 @@ def source_name(source: str) -> str:
 
 @dataclass(frozen=True)
 class AgencyRating:
-    """One agency's level for one way."""
+    """One agency's level for one way: the level it published, and where the owner's rules
+    read it otherwise (`routemaker.mdot_sha_rules`, `routemaker.ddot_rules`), the level the
+    map uses and why."""
 
     agency: str
     level: float
+    read_as: float | None = None
+    note: str | None = None
 
     @property
     def name(self) -> str:
@@ -242,8 +257,34 @@ def chosen(ratings: Iterable[AgencyRating]) -> AgencyRating | None:
     stress-averse reading. A ban (`PROHIBITING_LEVELS`) is access, not a level, and
     is never chosen."""
     levels = [r for r in ratings if prohibiting((r,)) is None]
-    ranked = sorted(levels, key=lambda r: (r.rank, -map_level(r.agency, r.level)))
+    ranked = sorted(levels, key=lambda r: (r.rank, -used_level(r)))
     return ranked[0] if ranked else None
+
+
+def read_ddot(
+    rating: AgencyRating,
+    result: StressResult,
+    formula_level: float,
+    facility_mapped: bool,
+    painted_lane: bool,
+) -> AgencyRating:
+    """DDOT's 2020 rating as the owner's rules read it against what the formula read on the
+    way (`ddot_rules`, 2026-10-31); any other rating, or one already read, as it is."""
+    if rating.agency != ddot_rules.AGENCY or rating.read_as is not None:
+        return rating
+    block = ddot_rules.Block(
+        ddot=float(rating.level),
+        formula=formula_level,
+        aadt=result.volume_aadt,
+        lanes=ddot_rules.total_lanes(result.lanes, result.oneway),
+        painted_lane=painted_lane,
+        protected=facility_mapped and not painted_lane,
+    )
+    found = ddot_rules.read_as(block)
+    if found is None:
+        return rating
+    level, rule = found
+    return replace(rating, read_as=level, note=ddot_rules.words(rule, level, block))
 
 
 def apply(
@@ -261,20 +302,26 @@ def apply(
     bike path or lane on the way) an agency in SUPERSEDED_WHERE_FACILITY rating it above the
     formula is not used; with
     `painted_lane` too, a set-aside level above PAINTED_LANE_LEVEL raises a calmer formula tier
-    to PAINTED_LANE_LEVEL. A ban (`PROHIBITING_LEVELS`) is recorded but sets no tier;
+    to PAINTED_LANE_LEVEL, except for DDOT, whose painted lanes `ddot_rules` reads by the
+    traffic beside them. A ban (`PROHIBITING_LEVELS`) is recorded but sets no tier;
     `pipeline.agency_ratings` closes the way instead."""
-    ratings = tuple(ratings)
     formula_level = int(result.tier) + (0.5 if getattr(result, "half", False) else 0)
+    ratings = tuple(
+        read_ddot(r, result, formula_level, facility_mapped, painted_lane) for r in ratings
+    )
     # Set aside only where the old layer rates the way above the formula: a lane built since
     # makes a road calmer, never busier, and where the agency is the calmer of the two its
-    # rating stands (RL-3, the owner, 2026-10-16: "defer to local government ratings").
+    # rating stands (RL-3, the owner, 2026-10-16: "defer to local government ratings"). A
+    # rating the owner's rules already read (`ddot_rules`) has taken the facility into
+    # account and stands.
     usable = [
         r
         for r in ratings
         if not (
             facility_mapped
             and r.agency in SUPERSEDED_WHERE_FACILITY
-            and map_level(r.agency, r.level) > formula_level
+            and r.read_as is None
+            and used_level(r) > formula_level
         )
     ]
     # Each set-aside rating's reason, appended to the rule: the road panel reads it back
@@ -285,8 +332,14 @@ def apply(
     if pick is None:
         if not ratings:
             return result
-        set_aside_level = max((map_level(r.agency, r.level) for r in aside), default=0)
-        if painted_lane and set_aside_level > PAINTED_LANE_LEVEL > formula_level:
+        set_aside_level = max((used_level(r) for r in aside), default=0)
+        # Replaced for DDOT by the owner's painted-lane rule (`ddot_rules`, 2026-10-31), which
+        # reads the lane by the traffic beside it; this stands only with that rule struck.
+        if (
+            painted_lane
+            and "painted-lane" not in ddot_rules.ENABLED
+            and set_aside_level > PAINTED_LANE_LEVEL > formula_level
+        ):
             tier, half = tier_of(PAINTED_LANE_LEVEL)
             return replace(
                 result,
@@ -295,6 +348,7 @@ def apply(
                 rule=", ".join([result.rule, *reasons, PAINTED_LANE_REASON]),
                 formula_tier=result.tier,
                 formula_rule=result.rule,
+                formula_half=result.half,
                 agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)),
                 unsmoothed_tier=None,
             )
@@ -303,19 +357,23 @@ def apply(
             rule=", ".join([result.rule, *reasons]),
             formula_tier=result.tier,
             formula_rule=result.rule,
+            formula_half=result.half,
             agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)),
         )
-    level = map_level(pick.agency, pick.level)
-    if level < pick.level and result.tier is Stress.AVOID:
+    level = used_level(pick)
+    if pick.read_as is None and level < pick.level and result.tier is Stress.AVOID:
         # A level read as a lower one (Montgomery's 5 as 4.5) does not lower the
         # formula's own Avoid (a bike-legal motorway, a side path's road): the
-        # agency's highest level agrees with it. The rating is still recorded.
+        # agency's highest level agrees with it. The rating is still recorded. An owner's
+        # reading (`read_as`) is a level of its own, as an agency's 4 is, and stands.
         return replace(result, agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)))
     tier, half = tier_of(level)
     # The other agencies' levels are in `agency_ratings`, not the rule: the
     # rule's commas separate the reasons appended after it (`stress.rural_floor`).
     why = f"{AGENCY_RULE}: {pick.name} LTS {pick.level:g}"
-    if level != pick.level:
+    if pick.note:
+        why += f", {pick.note}"
+    elif level != pick.level:
         why += f", {READ_AS_REASON}"
     why = ", ".join([why, *reasons])
     return replace(
@@ -325,6 +383,7 @@ def apply(
         rule=why,
         formula_tier=result.tier,
         formula_rule=result.rule,
+        formula_half=result.half,
         agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)),
         # A tier set afresh drops the smoothing record, as an override row does.
         unsmoothed_tier=None,

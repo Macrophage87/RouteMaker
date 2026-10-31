@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, GO_WARM_AFTER_MS, goWarmDue, goPickStart, goHereStart, goStartStale, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, GO_WARM_AFTER_MS, goWarmDue, goPickStart, goHereStart, goStartStale, goRough, goRoughAgain, goRoughDue, goRoughTriesAfter, GO_ROUGH_M, GO_ROUGH_AGAIN_MS, GO_ROUGH_TRIES, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, goStartSaid, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -30,6 +30,7 @@ import { avoidLine, avoidOfferShort } from "./avoidJunctions.ts";
 import { ICON_PATHS } from "./iconPaths.ts";
 import { startDials } from "./dials.ts";
 import { appSource } from "../testSupport/appSource.mjs";
+import { LANGUAGES } from "./i18n.ts";
 
 const src = (name: string) => readFileSync(new URL(name, import.meta.url), "utf8");
 const app = appSource();
@@ -381,6 +382,33 @@ test("go start: the line says the location, a typed or tapped start in its place
   assert.equal(ROAM_LOCATION_OFF, "Roam needs your location. Allow location in site settings.");
 });
 
+test("go start: a rough fix's start line and spoken start say how rough, miles first (a11y review, finding 4)", () => {
+  const here = goHereStart([-77.03, 38.9]);
+  assert.equal(goStartLine(here, null, 3_000), "Start: your location, within about 2 mi (3 km)");
+  assert.equal(goStartLine(here, null, 1_200), "Start: your location, within about 0.7 mi (1.2 km)");
+  assert.equal(goStartLine(here, null, 1_001), "Start: your location, within about 0.6 mi (1 km)");
+  assert.equal(goStartLine(here, null, 16_000), "Start: your location, within about 10 mi (16 km)");
+  assert.equal(goStartLine(here, null, GO_ROUGH_M), "Start: your current location", "a sure enough fix says nothing more");
+  assert.equal(goStartLine(here, null, 15), "Start: your current location");
+  assert.equal(goStartLine(here, null), "Start: your current location", "no accuracy given");
+  assert.equal(goStartLine(here, "Union Station", 3_000), "Start: Union Station", "a typed start is no rough fix");
+  assert.equal(goStartLine({ kind: "locating" }, null, 3_000), "Start: finding your location…");
+  assert.equal(goStartSaid(3_000), "Start: your location, within about 2 mi (3 km).");
+  assert.equal(goStartSaid(15), GO_START_SAID);
+  // App gives the line the dot's own accuracy, only while the start is that fix.
+  assert.match(app, /startLine=\{goStartLine\(goStart, [^\n]*, goStart\.kind === "here" && here\?\.point === goStart\.point \? here\.accuracyM : 0\)\}/);
+});
+
+test("go start: the rough start line has each language's phrase, its {distance} kept", async () => {
+  for (const lang of LANGUAGES.filter((l) => l !== "en")) {
+    const file = (await import(`../i18n/${lang}.ts`)) as { CATALOG?: Record<string, string>; ES?: Record<string, string> };
+    const catalog = (lang === "es" ? file.ES : file.CATALOG) ?? {};
+    const said = catalog["Start: your location, within about {distance}"];
+    assert.ok(said, lang);
+    assert.ok(said.includes("{distance}"), lang);
+  }
+});
+
 test("go start: not available says why, a denial or a fix off the map (P11)", () => {
   assert.deepEqual(goStartNone({ ok: false, reason: "denied" }), { kind: "none", why: "denied" });
   assert.deepEqual(goStartNone({ ok: false, reason: "timeout" }), { kind: "none" });
@@ -513,7 +541,7 @@ test("go tap: a press on the map in Go is the destination, routed as a picked on
 test("go start: App asks once when Go opens, says the start politely, and says when it is not available", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /if \(!shouldAskGoStart\(\{ mode, asked: goStartAsked\.current, pointCount: pointsRef\.current\.length \}\)\) return;/);
-  assert.match(app, /if \(pointsRef\.current\.length > 0\) return;[\s\S]{0,300}?\} else \{\s*\/\/[^\n]*\n\s*flyToInView\(result\.fix\.point, 15\);\s*announce\(GO_START_SAID\);\s*\}/);
+  assert.match(app, /if \(pointsRef\.current\.length > 0\) return;[\s\S]{0,300}?\} else \{\s*\/\/[^\n]*\n\s*flyToInView\(result\.fix\.point, 15\);\s*\/\/[^\n]*\n\s*announce\(goStartSaid\(result\.fix\.accuracyM\)\);\s*\}/);
   // Not available: said as why (P11): blocked on the start line (said, not shown twice), off the map as that, else "not available".
   assert.match(app, /const none = goStartNone\(result\);\s*setGoStart\(none\);\s*if \(pointsRef\.current\.length === 0\) \{\s*if \(pending\?\.pressed\) setNoticeSaying\(goDestinationNeedsStart\(pending\.name\), goPressNeedsStartSaid\(pending\.name\)\);\s*else if \(pending\) setNotice\(goDestinationNeedsStart\(pending\.name\)\);[\s\S]{0,300}?else if \(none\.kind === "none" && none\.why === "denied"\) announce\(GO_LOCATION_OFF\);\s*else setNotice\(none\.kind === "none" && none\.why === "outside" \? LOCATION_OUTSIDE : GO_START_UNAVAILABLE\);/);
   // The routes to choose from start closed in Go too (the half sheet fits one screen); the chip opens them.
@@ -552,7 +580,7 @@ test("announcements: the essentials are always said; only the narration is extra
   for (const extra of ["announceExtra(FINDING_LOCATION);", "announceExtra(modeSaid(next));", "announceExtra(`${presetSaid(id)}.`);", 'announceExtra(t("The map is at your location."));'])
     assert.ok(app.includes(extra), extra);
   // The start Go found, and when it could not, are essentials.
-  assert.match(app, /announce\(GO_START_SAID\)/);
+  assert.match(app, /announce\(goStartSaid\(result\.fix\.accuracyM\)\)/);
   assert.match(app, /else if \(pending\) setNotice\(goDestinationNeedsStart\(pending\.name\)\);/);
   assert.match(app, /announce\(GO_LOCATION_OFF\)/);
   assert.match(app, /setNotice\(none\.kind === "none" && none\.why === "outside" \? LOCATION_OUTSIDE : GO_START_UNAVAILABLE\)/);
@@ -577,10 +605,65 @@ test("go start: a location found long ago is looked up again before a destinatio
   assert.equal(goStartStale({ kind: "none" }), false);
 });
 
+test("go start: a rough fix is due another look-up after 20 s, a sure one never (the owner, 2026-10-30)", () => {
+  const found = 1_000_000;
+  const here = goHereStart([-77.06, 38.905], found);
+  // A phone's first answer from cell towers: miles out, and it says so in its accuracy.
+  assert.equal(goRough(5_000), true);
+  assert.equal(goRough(GO_ROUGH_M), false, "up to the limit is sure enough");
+  assert.equal(goRough(0), false, "no accuracy given: not counted as rough");
+  assert.equal(goRoughDue(here, 5_000, found + GO_ROUGH_AGAIN_MS - 1), false, "not again at once");
+  assert.equal(goRoughDue(here, 5_000, found + GO_ROUGH_AGAIN_MS), true);
+  assert.equal(goRoughDue(here, 5_000, found - 1), true, "a clock set back is not trusted");
+  assert.equal(goRoughDue(here, 15, found + 60 * 60_000), false, "a sure fix: the page back in view checks it (goStartStale)");
+  assert.equal(goRoughDue({ kind: "none" }, 5_000, found + GO_ROUGH_AGAIN_MS), false);
+  assert.equal(GO_ROUGH_TRIES * GO_ROUGH_AGAIN_MS, 2 * 60_000, "tries for two minutes, then waits for the page back in view");
+});
+
+test("go start: a fix that stays rough is looked up again GO_ROUGH_TRIES times and then no more; a sure fix starts the count again (test-strength S6)", () => {
+  // App's tick, every GO_ROUGH_AGAIN_MS for an hour, on a phone that never gets a lock: each look-up finds a rough fix
+  // again, stamped when it came, and the count is kept (goRoughTriesAfter).
+  const point: [number, number] = [-77.06, 38.905];
+  let at = 0;
+  let tries = 0;
+  let lookups = 0;
+  for (let now = GO_ROUGH_AGAIN_MS; now <= 60 * 60_000; now += GO_ROUGH_AGAIN_MS) {
+    if (!goRoughAgain(goHereStart(point, at), 5_000, tries, now)) continue;
+    tries += 1;
+    lookups += 1;
+    at = now;
+    tries = goRoughTriesAfter(tries, 4_000);
+  }
+  assert.equal(lookups, GO_ROUGH_TRIES);
+  const start = goHereStart(point, at);
+  const due = at + GO_ROUGH_AGAIN_MS;
+  assert.equal(goRoughAgain(start, 5_000, GO_ROUGH_TRIES, due), false, "at the cap: no more");
+  assert.equal(goRoughAgain(start, 5_000, GO_ROUGH_TRIES - 1, due), true, "one under it: once more");
+  assert.equal(goRoughAgain(start, 15, 0, due), false, "a sure fix is not looked up again");
+  assert.equal(goRoughAgain(start, 5_000, 0, due - 1), false, "not before it is due");
+  assert.equal(goRoughTriesAfter(3, 15), 0, "a sure fix starts the count again");
+  assert.equal(goRoughTriesAfter(3, 5_000), 3, "a rough one keeps it");
+  // App asks these, and keeps the count they give.
+  const rough = app.slice(app.indexOf("const roughTries"), app.indexOf("// A start typed into Go's start box"));
+  assert.match(rough, /if \(was\.kind !== "here" \|\| !goRoughAgain\(was, before, roughTries\.current\)\) return;\s*roughTries\.current \+= 1;/);
+  assert.match(rough, /setGoStart\(goHereStart\(result\.fix\.point\)\);\s*roughTries\.current = goRoughTriesAfter\(roughTries\.current, result\.fix\.accuracyM\);/);
+  assert.match(rough, /const refresh = async \(\) => \{\s*roughTries\.current = 0;/, "the page back in view starts the count again");
+});
+
 test("go start: Go looks a stale start up again when the page comes back into view", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /document\.addEventListener\("visibilitychange", onVisible\)/);
   assert.match(app, /if \(!goStartStale\(goStartRef\.current\)\) return;/);
+  // A rough one again every GO_ROUGH_AGAIN_MS while Go shows it, dropped when anything else set the start meanwhile,
+  // and the map moved only when the rider still has the rough dot in view.
+  const rough = app.slice(app.indexOf("const roughTries"), app.indexOf("// A start typed into Go's start box"));
+  assert.match(rough, /window\.setInterval\(\(\) => \{/);
+  assert.match(rough, /return \(\) => window\.clearInterval\(tick\);/);
+  assert.match(rough, /const inGo = \(\) => modeRef\.current === "go" && !onBikeNow\.current && pointsRef\.current\.length === 0;/);
+  assert.match(rough, /if \(document\.visibilityState !== "visible" \|\| !inGo\(\) \|\| roughBusy\.current\) return;/);
+  assert.match(rough, /if \(!inGo\(\) \|\| goStartRef\.current !== was\) return;/);
+  assert.match(rough, /if \(goRough\(result\.fix\.accuracyM\) && result\.fix\.accuracyM >= before\) return;/);
+  assert.match(rough, /if \(mapRef\.current\?\.getBounds\(\)\.contains\(was\.point\)\) flyToInView\(result\.fix\.point, 15\);/);
   assert.doesNotMatch(app, /setGoStart\(\{ kind: "here"/, "every found start is stamped (goHereStart)");
 });
 

@@ -20,7 +20,7 @@ from core import routing
 from routemaker.geo import Point, haversine
 
 pytestmark = pytest.mark.usefixtures("weekday_clock")
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 
 def drawn_body(preset: str = "default", **extra) -> dict:
