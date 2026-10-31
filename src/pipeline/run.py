@@ -49,7 +49,6 @@ from routemaker import (
     lane_overrides,
     mallgrounds,
     massflow,
-    mdot_aadt,
     mtbmode,
     pavement,
     ridetime,
@@ -2485,18 +2484,26 @@ def build_handlers(
         ]
         result = conflation.conflate(entries, reference.volume_features)
         context.aadt_by_way = dict(result.matched)
-        # MDOT SHA's counts reach both carriageways of a divided Maryland road
-        # (FOLLOWUP-MDOT-AADT, OWNER-DECISIONS 429; `share_with_carriageways`):
-        # MD 185 north of Chevy Chase Circle is the first case. Only theirs.
-        if any(f.agency == mdot_aadt.AGENCY for f in reference.volume_features):
+        # A count reaches both carriageways of a divided road (FOLLOWUP-MDOT-AADT,
+        # OWNER-DECISIONS 429; `share_with_carriageways`): MD 185 north of Chevy
+        # Chase Circle was the first case. Every agency's, not only MDOT SHA's:
+        # with VDOT's and DDOT's on one side only, the two halves of one road
+        # could rate a level apart (the owner, 2026-10-31, the same rules in
+        # every state).
+        agencies = {f.agency for f in reference.volume_features}
+        if agencies:
             shared = conflation.share_with_carriageways(
                 result,
                 divided.carriageways(context.ways),
                 {way.osm_id: way.name for way in context.ways},
-                {mdot_aadt.AGENCY},
+                agencies,
             )
             context.aadt_by_way.update(shared)
-            logger.info("MDOT SHA counts shared with %d opposite carriageways", len(shared))
+            logger.info(
+                "counts shared with %d opposite carriageways (%s)",
+                len(shared),
+                ", ".join(sorted(Counter(m.agency for m in shared.values()))) or "none",
+            )
         # The agency street blocks next: their count (DC's Roadway Block AADT,
         # 2020) fills where no count layer reached the way and never replaces
         # one - DDOT's own 2024 counts are the newer survey.
