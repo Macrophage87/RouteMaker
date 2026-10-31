@@ -95,7 +95,10 @@ def test_the_road_panel_says_why_ddot_was_read_otherwise() -> None:
     assert result.tier is Stress.LTS4
     (held,) = result.agency_ratings
     assert (held.level, held.read_as) == (1, 4.0)
-    assert held.note == "read as LTS 4: a busy roadway DDOT rated with the path or lane beside it"
+    assert held.note == (
+        "read as LTS 4: a busy roadway DDOT rated with the path or lane beside it"
+        " (DDOT 2020 LTS 1 and formula LTS 3 on 45334 cars a day and 4 through lanes)"
+    )
     assert "," not in held.note
 
 
@@ -194,3 +197,56 @@ def test_a_struck_painted_lane_rule_falls_back_to_the_older_painted_lane_level()
             painted_lane=True,
         )
     assert (int(result.tier), result.half) == (2, True)
+
+
+@pytest.mark.parametrize(
+    ("block", "expected"),
+    [
+        # A busy street the formula reads 2.5 (5,000 to 7,999 a day): the 1st Street NW case.
+        (dict(ddot=4, formula=2.5, aadt=7_520, lanes=2), 2.5),
+        (dict(ddot=3, formula=2.5, aadt=6_000, lanes=2), 2.5),
+        (dict(ddot=1, formula=2.5, aadt=6_000, lanes=2), 2.0),
+        (dict(ddot=2, formula=2.5, aadt=9_000, lanes=2), 2.5),  # never past the formula
+        (dict(ddot=2, formula=2.5, aadt=6_000, lanes=2), 2.5),
+        # DDOT 4 over an arterial the formula reads 3.5: by count, never below the formula.
+        (dict(ddot=4, formula=3.5, aadt=6_890, lanes=4), 3.5),
+        # A busy city street the formula reads 3.5 (12,000 to 19,999 a day): DDOT's 1 and 2
+        # read 3, as does DDOT's own 3, so a calmer DDOT never comes out higher.
+        (dict(ddot=1, formula=3.5, aadt=15_000, lanes=2), 3.0),
+        (dict(ddot=2, formula=3.5, aadt=15_000, lanes=2), 3.0),
+        (dict(ddot=1, formula=3.5, aadt=45_000, lanes=4), 3.5),
+        # A painted lane with a half-step formula keeps the painted-lane reading.
+        (dict(ddot=4, formula=2.5, aadt=12_000, lanes=4, painted_lane=True), 3.0),
+    ],
+)
+def test_a_formula_half_step_reads_ddot_by_its_whole_levels_rule(block, expected) -> None:
+    assert level(**block) == expected
+
+
+def test_a_calmer_ddot_level_never_reads_higher_than_a_busier_one() -> None:
+    for formula, aadt in ((2.5, 7_520), (3.5, 15_000)):
+        readings = [
+            level(ddot=d, formula=formula, aadt=aadt, lanes=2) or float(d) for d in (1, 2, 3, 4)
+        ]
+        assert readings == sorted(readings), (formula, readings)
+
+
+def test_a_half_step_formula_reaches_the_rules_through_the_road_panel() -> None:
+    first_st = StressResult(
+        Stress.LTS2, "busy street", (), volume_aadt=7_520, lanes=1, oneway=False, half=True
+    )
+    result = agency_lts.apply(first_st, [AgencyRating("ddot", 4)])
+    (held,) = result.agency_ratings
+    assert held.read_as == 2.5
+    assert (int(result.tier), result.half) == (2, True)
+
+
+def test_the_road_panel_note_names_the_facts_the_rule_read() -> None:
+    painted = Block(ddot=4, formula=1, aadt=24_499, lanes=3, painted_lane=True)
+    level_, rule = ddot_rules.read_as(painted)
+    note = ddot_rules.words(rule, level_, painted)
+    assert note == (
+        "read as LTS 3.5: a painted lane rated by the traffic beside it (DDOT 2020 LTS 4 and"
+        " formula LTS 1 on 24499 cars a day and 3 through lanes and a painted bike lane)"
+    )
+    assert "," not in note

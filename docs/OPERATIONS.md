@@ -5673,9 +5673,14 @@ lane decides it. Each is a switch, `ddot_rules.ENABLED`:
 | `quiet-counted` | DDOT 2, formula 1, counted at 1,200 a day or less | 1.5 (uncounted quiet streets keep DDOT's 2) |
 | `painted-lane` | a painted lane where DDOT and the formula differ | 2 below 9,000 a day, 2.5 above, on one or two lanes; on 3+ lanes 2.5, 3 from 9,000, 3.5 from 15,000; never above DDOT where DDOT is the higher. Replaces the 2026-10-21 "painted lane at 2.5" rule for DDOT |
 
+Where the formula reads a half step (a busy street at 2.5, a busy city street at 3.5), each
+rule takes the formula's whole level, and the reading stays between DDOT's level and the
+formula's half step, except a painted lane's, which goes by the traffic beside it as above.
+
 A protected lane or path on the way still sets DDOT's higher level aside for the formula's,
 and DDOT's 5 stays Avoid. The road panel shows DDOT's own level and the reading: "LTS 1,
-read as LTS 4: a busy roadway DDOT rated with the path or lane beside it". The next
+read as LTS 4: a busy roadway DDOT rated with the path or lane beside it (DDOT 2020 LTS 1 and
+formula LTS 3 on 45334 cars a day and 4 through lanes)", the rule and the facts it read. The next
 rebuild's stress-change report lists every way the rules moved.
 
 Montgomery's 5 means very high stress, which is our 4.5, not our Avoid (the owner,

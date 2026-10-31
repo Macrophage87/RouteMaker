@@ -272,20 +272,19 @@ def read_ddot(
     way (`ddot_rules`, 2026-10-31); any other rating, or one already read, as it is."""
     if rating.agency != ddot_rules.AGENCY or rating.read_as is not None:
         return rating
-    found = ddot_rules.read_as(
-        ddot_rules.Block(
-            ddot=float(rating.level),
-            formula=formula_level,
-            aadt=result.volume_aadt,
-            lanes=ddot_rules.total_lanes(result.lanes, result.oneway),
-            painted_lane=painted_lane,
-            protected=facility_mapped and not painted_lane,
-        )
+    block = ddot_rules.Block(
+        ddot=float(rating.level),
+        formula=formula_level,
+        aadt=result.volume_aadt,
+        lanes=ddot_rules.total_lanes(result.lanes, result.oneway),
+        painted_lane=painted_lane,
+        protected=facility_mapped and not painted_lane,
     )
+    found = ddot_rules.read_as(block)
     if found is None:
         return rating
     level, rule = found
-    return replace(rating, read_as=level, note=ddot_rules.words(rule, level))
+    return replace(rating, read_as=level, note=ddot_rules.words(rule, level, block))
 
 
 def apply(
