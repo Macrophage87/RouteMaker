@@ -32,7 +32,11 @@ export function LiveMap({
   return <MapView {...props} rider={rider} accuracy={accuracy} scrubPoint={scrubPoint} />;
 }
 
-/** `children` given the rider's point now: the ride's, else Roam's, else `fallback` (the ride group's own dot). */
+/**
+ * `children` given the rider's point now: the ride's, else Roam's, else `fallback` (shown as the rider's place); and,
+ * second, the live point alone (the ride's or Roam's, never the fallback), which a shared dot is sent from: a one-off
+ * "Use my location" fix may be hours old or from somewhere else (v0.16.1 review).
+ */
 export function LiveRiderPoint({
   ride,
   roam,
@@ -42,9 +46,10 @@ export function LiveRiderPoint({
   ride: LiveValue<LiveRider>;
   roam: LiveValue<LiveRider> | null;
   fallback: LonLat | null;
-  children: (point: LonLat | null) => ReactNode;
+  children: (point: LonLat | null, live: LonLat | null) => ReactNode;
 }) {
   const riding = useLiveValue(ride);
   const roaming = useLiveValue(roam ?? NO_RIDER);
-  return children(riding?.point ?? roaming?.point ?? fallback);
+  const live = riding?.point ?? roaming?.point ?? null;
+  return children(live ?? fallback, live);
 }
