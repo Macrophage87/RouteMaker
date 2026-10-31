@@ -5675,7 +5675,7 @@ lane decides it. Each is a switch, `ddot_rules.ENABLED`:
 
 Where the formula reads a half step (a busy street at 2.5, a busy city street at 3.5), each
 rule takes the formula's whole level, and the reading stays between DDOT's level and the
-formula's half step.
+formula's half step, except a painted lane's, which goes by the traffic beside it as above.
 
 A protected lane or path on the way still sets DDOT's higher level aside for the formula's,
 and DDOT's 5 stays Avoid. The road panel shows DDOT's own level and the reading: "LTS 1,

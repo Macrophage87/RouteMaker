@@ -94,7 +94,7 @@ def _rule(b: Block) -> tuple[float, str] | None:
     d, f = b.ddot, b.formula
     # The rules were calibrated on the formula's whole levels; a half step (a busy street at
     # 2.5, `stress`) takes its whole level's rule, and the reading stays between DDOT's level
-    # and the formula's half step. (On whole levels a rule may read past the formula, as at
+    # and the formula's half step (a painted lane's returned above, by its traffic). (On whole levels a rule may read past the formula, as at
     # Memorial Bridge; a half step is already the formula's busier reading, so not past it.)
     if d > f:
         level = min(max(level, f), d)
