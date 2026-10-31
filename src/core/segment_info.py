@@ -42,7 +42,14 @@ from routemaker import (
     trail_facts,
 )
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
-from routemaker.stress import FAST_MULTILANE_PREFIX, RURAL_EXPRESSWAY_PREFIX, USE_SIDEPATH_RULE
+from routemaker.stress import (
+    BUSY_RURAL_HIGHWAY_RULE,
+    BUSY_STREET_RULE,
+    FAST_MULTILANE_PREFIX,
+    RURAL_EXPRESSWAY_PREFIX,
+    USE_SIDEPATH_RULE,
+    VERY_BUSY_STREET_RULE,
+)
 
 # How far from the spot a way may be and still be the one the rider meant: a
 # right-click on a drawn road lands within a few metres of its centre line at
@@ -567,6 +574,9 @@ _MIXED_PARTS = {
     "shoulder read as a lane": "the shoulder read as a bike lane",
     "narrow rural road": "a narrow or winding rural road",
     "rural road floor": "a rural road open to cars, so rated at least LTS 2",
+    BUSY_STREET_RULE: "a busy city street, so half a level higher",
+    VERY_BUSY_STREET_RULE: "a very busy city street, so a level higher",
+    BUSY_RURAL_HIGHWAY_RULE: "a busy two-lane rural highway, so half a level higher",
     agency_lts.READ_AS_REASON: COUNTY_FIVE_WORDS,
 }
 _TRAIL_KINDS = {
@@ -793,7 +803,7 @@ def rating_rows(row: dict) -> list[dict]:
         rows.append(_row(f"{rating['name']} rates it", value, rating["name"]))
     formula = held.get("formula")
     if formula is not None:
-        value = tier_text(int(formula))
+        value = tier_text(int(formula), held.get("formula_half") is True)
         if held.get("formula_rule"):
             value += f" ({rule_words(str(held['formula_rule']))})"
         rows.append(_row("RouteMaker's formula", value, CLASSIFIER))

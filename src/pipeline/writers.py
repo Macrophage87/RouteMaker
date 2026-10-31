@@ -280,6 +280,7 @@ def _ratings_json(stress: StressResult) -> str | None:
     held = {
         "formula": None if formula is None else int(formula),
         "formula_rule": getattr(stress, "formula_rule", None),
+        "formula_half": getattr(stress, "formula_half", False) is True,
         "agencies": [
             {"agency": r.agency, "name": r.name, "level": r.level}
             | ({"read_as": r.read_as, "note": r.note} if r.read_as is not None else {})
