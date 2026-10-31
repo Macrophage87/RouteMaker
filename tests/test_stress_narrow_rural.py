@@ -12,8 +12,10 @@ from routemaker.stress import (
     NARROW_ROAD_RULE,
     RURAL_FLOOR_RULE,
     Stress,
+    bends_slow_traffic,
     classify,
     rural_floor,
+    tight_bends,
     winding,
 )
 
@@ -171,3 +173,100 @@ class TestRuralFloor:
         tags = {"highway": "secondary"}
         result = rural(tags)
         assert rural_floor(result, tags, urban=False) is result
+
+
+def _bendy(bends: int, leg_m: float = 300.0, radius_m: float = 40.0):
+    """A road of straight legs joined by `bends` rounded turns of `radius_m`,
+    alternating left and right, ~60 degrees each."""
+    lon, lat, heading = -77.2, 39.2, 0.0
+    kx = 111_320.0 * math.cos(math.radians(lat))
+    line = [(lon, lat)]
+
+    def step(dist):
+        nonlocal lon, lat
+        lon += dist * math.cos(heading) / kx
+        lat += dist * math.sin(heading) / 110_540.0
+        line.append((lon, lat))
+
+    step(leg_m)
+    for i in range(bends):
+        turn = math.radians(60) * (1 if i % 2 else -1)
+        pieces = 6
+        arc = radius_m * abs(turn)
+        for _ in range(pieces):
+            heading += turn / pieces
+            step(arc / pieces)
+        step(leg_m)
+    return line
+
+
+GRAVEL = {"highway": "unclassified", "surface": "gravel", "name": "Featherbed Lane"}
+
+
+class TestGravelBends:
+    """Gravel with turns reads at 25 mph; straight gravel stays at 30 (the owner,
+    2026-10-30, after the gravel-speed literature search)."""
+
+    def test_counts_each_tight_bend_once(self):
+        assert tight_bends(_bendy(3)) == 3
+
+    def test_a_gentle_bend_is_not_tight(self):
+        assert tight_bends(_bendy(3, radius_m=300.0)) == 0
+
+    def test_a_straight_road_has_none(self):
+        assert tight_bends(straight()) == 0
+
+    def test_gravel_with_tight_bends_reads_at_25(self):
+        line = _bendy(3)
+        assert not winding(line)
+        result = rural(GRAVEL, winding=bends_slow_traffic(line, GRAVEL))
+        assert result.tier is Stress.LTS2
+        assert NARROW_ROAD_RULE in result.rule
+
+    def test_straight_gravel_stays_at_30(self):
+        result = rural(GRAVEL, winding=bends_slow_traffic(straight(), GRAVEL))
+        assert result.tier is Stress.LTS3
+
+    def test_one_corner_on_straight_gravel_does_not_count(self):
+        assert not bends_slow_traffic(_bendy(1, leg_m=900.0), GRAVEL)
+
+    def test_bends_far_apart_do_not_count(self):
+        assert not bends_slow_traffic(_bendy(2, leg_m=1500.0), GRAVEL)
+
+    def test_paved_road_with_the_same_bends_does_not_count(self):
+        paved = {**GRAVEL, "surface": "asphalt"}
+        assert not bends_slow_traffic(_bendy(3), paved)
+
+    def test_one_lane_gravel_reads_at_25(self):
+        result = rural({**GRAVEL, "lanes": "1"})
+        assert result.tier is Stress.LTS2
+        assert NARROW_ROAD_RULE in result.rule
+
+    def test_a_count_still_outranks_the_bends(self):
+        result = rural(GRAVEL, aadt=4000, winding=bends_slow_traffic(_bendy(3), GRAVEL))
+        assert NARROW_ROAD_RULE not in result.rule
+
+    def test_the_limit_is_100_m(self):
+        assert tight_bends(_bendy(3, radius_m=80.0)) == 3
+        assert tight_bends(_bendy(3, radius_m=130.0)) == 0
+
+    def test_one_long_sweeper_is_one_bend_however_it_is_drawn(self):
+        # A 270 degree curve near the limit, drawn with a vertex every 13 m: its
+        # windows dip over and under the limit vertex by vertex.
+        kx = 111_320.0 * math.cos(math.radians(39.2))
+        for radius in (95.0, 99.0, 101.0):
+            n = round(radius * math.radians(270) / 13.0)
+            arc = [
+                (
+                    -77.2 + radius * math.cos(math.radians(270) * i / n) / kx,
+                    39.2 + radius * math.sin(math.radians(270) * i / n) / 110_540.0,
+                )
+                for i in range(n + 1)
+            ]
+            assert tight_bends(arc) <= 1
+            assert not bends_slow_traffic(arc, GRAVEL)
+
+    def test_one_corner_on_a_short_gravel_way_does_not_count(self):
+        line = _bendy(1, leg_m=200.0)
+        assert tight_bends(line) == 1
+        assert not bends_slow_traffic(line, GRAVEL)
