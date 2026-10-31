@@ -814,6 +814,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Go: type a place, then Start.": "Go: जगह लिखें, फिर शुरू करें।",
   "Plan: the full planner.": "Plan: पूरा योजनाकार।",
   "Start: your current location.": "शुरुआत: आपका मौजूदा स्थान।",
+  "Start: your location, within about {distance}": "शुरुआत: आपका स्थान, लगभग {distance} के भीतर",
   "Current location not available; type a start.": "मौजूदा स्थान उपलब्ध नहीं; शुरुआत लिखें।",
   "Location off. Type a start, or allow location in iPhone Settings.": "स्थान बंद है। शुरुआत लिखें, या iPhone सेटिंग्ज़ में स्थान की अनुमति दें।",
   "Location off. Type a start, or allow location in site settings.": "स्थान बंद है। शुरुआत लिखें, या साइट सेटिंग्ज़ में स्थान की अनुमति दें।",

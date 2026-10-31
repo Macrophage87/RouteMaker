@@ -15,7 +15,8 @@
  * link is followed by the server first.
  *
  * Go's box has a microphone where speech works (lib/placeDictation.ts, Stephen 2026-10-30): the place said is searched,
- * the places found are lettered, and "B", "Bravo" or a place's name said picks one.
+ * the places found are lettered (in English and Spanish, lettersHeard), and "B", "Bravo" or a place's name said picks
+ * one; other words keep the list.
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import {
@@ -48,6 +49,7 @@ import { watchKeyboard } from "./lib/keyboardLift.ts";
 import { t } from "./lib/i18n.ts";
 import { nativeBridge } from "./lib/nativeShell.ts";
 import {
+  lettersHeard,
   placeDictation,
   placeSpeechSupported,
   rowLetter,
@@ -332,15 +334,18 @@ export function PlaceSearch({
   const listed: (Place | AsDestination)[] = offersDestination ? offered.flatMap((place) => [place, { destination: place }]) : offered;
   const items: (Place | AsDestination | typeof HERE)[] = showHere ? [HERE, ...listed] : listed;
   const expanded = open && items.length > 0;
-  // Places found for words said: lettered A, B, C, so a letter said picks one.
-  const lettered: Place[] = canSay && spoken !== null && query === spoken && answered === spoken && !empty ? offered : [];
+  // Places found for words said: lettered A, B, C, so a letter said picks one; only where letters are heard
+  // (lettersHeard: en, es), else the rider taps a place and the microphone listens for a place again.
+  const lettered: Place[] = canSay && lettersHeard() && spoken !== null && query === spoken && answered === spoken && !empty ? offered : [];
   letteredNow.current = lettered;
   // Listen for the letter once the places for the words said are listed; not in the phone app, whose speech input
   // covers the list while it listens (the rider taps the microphone to say the letter).
   const askedRow = useRef("");
   const rowWait = useRef<number | undefined>(undefined);
   const rowsKey = lettered.map((place) => place.label).join("|");
-  // It waits a moment, so a screen reader's "Listening…" is not heard as the answer.
+  // It waits a moment, so a screen reader can read the list first. The wait does not keep its reading of the line
+  // ("Listening. Say a letter…", set only once listening starts) from being heard: placeDictation keeps the list for
+  // any words that name no row, so such an echo says no letter was heard and never replaces the places.
   useEffect(() => {
     if (lettered.length === 0 || !expanded || listening !== null || askedRow.current === rowsKey || nativeBridge()) return;
     askedRow.current = rowsKey;

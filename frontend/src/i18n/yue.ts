@@ -814,6 +814,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Go: type a place, then Start.": "Go：輸入地點，然後開始。",
   "Plan: the full planner.": "Plan：完整規劃工具。",
   "Start: your current location.": "起點：你而家嘅位置。",
+  "Start: your location, within about {distance}": "起點：你嘅位置，誤差大約 {distance}",
   "Current location not available; type a start.": "而家嘅位置用唔到；請輸入起點。",
   "Location off. Type a start, or allow location in iPhone Settings.": "位置已關。請輸入起點，或者喺iPhone設定允許位置。",
   "Location off. Type a start, or allow location in site settings.": "位置已關。請輸入起點，或者喺網站設定允許位置。",

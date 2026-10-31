@@ -205,6 +205,7 @@ export const ES: Readonly<Record<string, string>> = {
   "About {about}": "Acerca de {about}",
   "to": "hasta",
   "Start: your current location.": "Inicio: su ubicación actual.",
+  "Start: your location, within about {distance}": "Inicio: su ubicación, con un margen de unos {distance}",
   "Your location": "Su ubicación",
   "Coffee, grocery, address": "Café, súper, dirección",
   "Water, restroom, food, repair or search": "Agua, baño, comida, reparación o buscar",

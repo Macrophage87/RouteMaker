@@ -3,7 +3,10 @@
  * letter that you can say. Add support for phonetic alphabets, like Alfa, Bravo"): the microphone in Go's Where to?
  * box listens once (lib/speechInput.ts, as Send alert's Speak does), the words fill the box and are searched, and the
  * places found are lettered A, B, C. Then it listens again: "B", "Bravo" or the place's name picks that row and Go
- * routes there, as a tap would; other words are searched in place of the first. PlaceSearch.tsx shows it.
+ * routes there, as a tap would. Other words keep the list and say no letter was heard (ROW_MISSED): that listen opens
+ * without a press, and a screen reader reading the status line through the speaker must never replace the places (the
+ * v0.16.0 a11y review, finding 2). The places are lettered only in the languages whose letters are heard (lettersHeard,
+ * finding 3); elsewhere the rider taps a place. PlaceSearch.tsx shows it.
  * Hidden in the languages the speech services do not hear (HEARD_NOT): Haitian Creole, Pashto and Tigrinya are not on
  * Google's speech list, which Chrome and Android's speech input use.
  */
@@ -31,7 +34,19 @@ export function sayWhereLabel(): string {
 export function voiceLine(listening: PlaceListening, note: string, lettered: boolean): string {
   if (listening === "place") return t(LISTENING_PLACE);
   if (listening === "row") return t(LISTENING_ROW);
-  return note || (lettered ? t(SAY_LETTER) : "");
+  return note || (lettered && lettersHeard() ? t(SAY_LETTER) : "");
+}
+
+/**
+ * The languages whose recogniser writes a letter said as spokenRow reads it: a Latin letter, a spelling-alphabet word,
+ * or an English or Spanish letter name (LETTER_NAMES). A ru, ja or ar recogniser writes "би", "ビー" or "بي", which
+ * names no row; the other Latin-script languages' letter names (fr "dé", tr "be", vi "bê") are not shown to be heard.
+ */
+const LETTERS_HEARD: ReadonlySet<Language> = new Set<Language>(["en", "es"]);
+
+/** Whether places found by voice are lettered and a letter is listened for, in this language. */
+export function lettersHeard(lang: Language = language()): boolean {
+  return LETTERS_HEARD.has(lang);
 }
 
 /** The languages no speech service the app uses hears. */
@@ -118,7 +133,7 @@ export interface PlaceDictationHooks {
 }
 
 export interface PlaceDictation {
-  /** Listen: for a row among `rows` (the lettered places' names) when there are any, else for a place. */
+  /** Listen: for a row among `rows` (the lettered places' names) when there are any and letters are heard, else for a place. */
   start: (rows: readonly string[]) => boolean;
   /** Stop listening, keeping what was heard. */
   stop: () => void;
@@ -144,7 +159,7 @@ export function placeDictation(hooks: PlaceDictationHooks, max: number, env?: Sp
     start(rows) {
       const mine = ++session;
       live?.abort();
-      const mode = rows.length > 0 ? "row" : "place";
+      const mode = rows.length > 0 && lettersHeard() ? "row" : "place";
       let words = "";
       const onEnd = (failed: string | null, code?: string) => {
         if (mine !== session) return;
@@ -158,9 +173,14 @@ export function placeDictation(hooks: PlaceDictationHooks, max: number, env?: Sp
         // As a search sends it: runs of space one space, so the lettered list matches the words searched.
         const heard = words.trim().replace(/\s+/g, " ");
         if (!heard) return;
-        const row = mode === "row" ? spokenRow(heard, rows) : null;
+        if (mode === "place") {
+          hooks.search(heard);
+          return;
+        }
+        // Over the lettered list, words that name no row keep it: they may be the app's own line, read aloud.
+        const row = spokenRow(heard, rows);
         if (row !== null) hooks.pick(row);
-        else hooks.search(heard);
+        else hooks.note(t(ROW_MISSED));
       };
       const onText = (heard: string) => {
         if (mine !== session) return;

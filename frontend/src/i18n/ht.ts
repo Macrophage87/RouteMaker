@@ -814,6 +814,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Go: type a place, then Start.": "Go: tape yon kote, apre Kòmanse.",
   "Plan: the full planner.": "Plan: planifikatè konplè a.",
   "Start: your current location.": "Depa: kote ou ye kounye a.",
+  "Start: your location, within about {distance}": "Depa: kote ou ye, nan anviwon {distance}",
   "Current location not available; type a start.": "Kote ou ye kounye a pa disponib; tape yon depa.",
   "Location off. Type a start, or allow location in iPhone Settings.": "Lokalizasyon etenn. Tape yon depa, oswa pèmèt lokalizasyon nan Paramèt iPhone.",
   "Location off. Type a start, or allow location in site settings.": "Lokalizasyon etenn. Tape yon depa, oswa pèmèt lokalizasyon nan paramèt sit la.",
