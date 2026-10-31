@@ -39,9 +39,9 @@ def cost(road: Road, when: str | None = None, **fields) -> float:
     return 0.0 if event is None else event.cost_ft
 
 
-# One lane each way, so the junction reads the road by its rating, not its traffic
-# (`by_traffic` reads two or more lanes each way at 30 mph and up as LTS 4).
-ARTERIAL = {"speed_mph": 35.0, "lanes": 1, "urban": True}
+# One lane each way at 25 mph with no count: LTS 2 by its traffic (`by_traffic`), so the
+# junction reads each road at its map level.
+ARTERIAL = {"speed_mph": 25.0, "lanes": 1, "urban": True}
 
 
 @pytest.mark.parametrize(
@@ -54,7 +54,7 @@ def test_a_three_and_a_half_crossing_costs_halfway_between_three_and_four(when) 
 
 
 def test_at_rush_hour_a_three_and_a_half_crossing_takes_half_the_gap_wait() -> None:
-    # Before: LTS 3's x1.25 only (3,500 ft here), a third of LTS 4's 9,840 ft floor.
+    # Before: LTS 3's x1.25 only, a third of the way to LTS 4's 9,840 ft floor.
     three = cost(Road(3, **ARTERIAL), ridetime.WEEKDAY_RUSH)
     assert cost(Road(4, **ARTERIAL), ridetime.WEEKDAY_RUSH) == m.UNSIGNALISED_RUSH_MIN_FT
     half = cost(Road(3, half=True, **ARTERIAL), ridetime.WEEKDAY_RUSH)

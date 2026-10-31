@@ -47,6 +47,7 @@ from enum import StrEnum
 
 from . import ridetime
 from .geo import Point, haversine
+from .stress import single_lane_traffic_level
 
 FEET_PER_METRE = 3.28084
 KMH_PER_MPH = 1.609344
@@ -209,29 +210,38 @@ UNSIGNALISED_RUSH_MIN_FT = 9840.0
 GAP_WAIT_KINDS = frozenset({"crossing", "left_onto", "straight_onto", "left_across", "left_from"})
 
 
-# --- A road the rider gives way to, read by its traffic -----------------------
+# --- Every road at a junction, read by its traffic ---------------------------
 #
-# A road's tier is the stress of riding along it, and a painted lane lowers it. A rider
-# waiting at a stop sign to cross the road, or to turn onto it, gets nothing from that
-# lane: only gaps in its through lanes. The owner, 2026-10-26, of Sheridan St NW across
-# Piney Branch Rd NW (DC), a stop on Sheridan and none on Piney Branch: "a busy 2 lane each
-# way road. It's only LTS2 because it also has a bike lane. Given that there's a stop sign
-# and no cross stop, this intersection should be weighted much more highly." So where
-# the rider gives way (`GIVE_WAY_CONTROLS`) to a multi-lane road, the junction reads the
-# road at the tier its traffic alone gives it, if that is higher: Furth's mixed-traffic
-# table on its multi-lane row (`routemaker.stress._mixed_traffic_tier`), LTS 3 above 20
-# mph and LTS 4 from 30 mph, without the urban relief the map takes for riding along a
-# two-way street (OWNER-DECISIONS 87, 101), and LTS 3 at 30 mph where a count shows no
-# more than the classifier's own busy-street figure (`stress.URBAN_TWO_WAY_BUSY_AADT`,
-# which `stress.urban_two_way_floor` reads only for that step: from 35 mph mixed traffic
-# is LTS 4 whatever the count). Multi-lane is two or more through lanes each way, or three
-# or more on a one-way. A rider crosses a one-way of two lanes in one gap of one
-# direction's traffic, so it is left alone (as `stress.URBAN_ONEWAY_MAX_LANES` reads it
-# for riding along), and so is each two-lane carriageway of a divided road, with a refuge
-# between them: deliberately, not the classifier's reading of a divided road as two-way.
-# Signals and all-way stops stop the traffic and are left alone, as are a road closed to
-# cars and the Mass Ride reading (the road's own tier, 396). A rider going straight on
-# from one multi-lane road into the next is not joining it (`Junction.continues`).
+# A road's tier is the stress of riding along it, and a bike lane, protected or painted,
+# lowers it. A rider crossing the road, turning onto it or turning left across it gets
+# nothing from that lane: only gaps in its through traffic. The owner, 2026-10-26, of
+# Sheridan St NW across Piney Branch Rd NW (DC): "a busy 2 lane each way road. It's only
+# LTS2 because it also has a bike lane. Given that there's a stop sign and no cross stop,
+# this intersection should be weighted much more highly." Then 2026-10-31: "a protected
+# bike lane on a busy road is just as hard to cross. Would it make more sense to just
+# switch to something like: traffic volume, speed, number of lanes to cross, and
+# intersection type?", and picked "Traffic only, everywhere". So every road at a junction
+# (crossed, joined, turned off, and the rider's own for who has the right of way) is read
+# at the level its traffic alone gives it, where that is higher than its map level, at
+# every control; the control then prices it as before. Never lower: a level an agency or
+# the owner set above the traffic reading stands.
+#
+# - Multi-lane, two or more through lanes each way or three or more on a one-way: Furth's
+#   mixed-traffic multi-lane row (`routemaker.stress._mixed_traffic_tier`), LTS 3 above
+#   20 mph and LTS 4 from 30 mph, without the urban relief the map takes for riding along
+#   a two-way street (OWNER-DECISIONS 87, 101), and LTS 3 at 30 mph where a count shows no
+#   more than the classifier's busy-street figure (`stress.URBAN_TWO_WAY_BUSY_AADT`; from
+#   35 mph mixed traffic is LTS 4 whatever the count). The 2026-10-26 rule.
+# - Anything narrower, one lane each way or a one-way of one or two lanes (crossed in one
+#   gap of one direction's traffic, as `stress.URBAN_ONEWAY_MAX_LANES` reads it; the
+#   owner, 2026-10-26: "2 one way lanes aren't nearly as bad as 2 two way lanes each
+#   direction"): the classifier's own single-lane reading with its count
+#   (`stress.single_lane_traffic_level`), half steps included.
+#
+# A narrower road with no posted speed, a road with no speed at all, or one closed to cars
+# at the ride's time keeps its map level, as does the Mass Ride reading (the road's own
+# tier, 396). The road class is not in the segment table, so a quiet arterial's LTS 3
+# floor is the map's alone.
 TRAFFIC_MULTILANE_EACH_WAY = 2
 TRAFFIC_MULTILANE_ONEWAY = 3
 TRAFFIC_BUSY_MPH = 20.0  # above this, multi-lane mixed traffic is LTS 3
@@ -240,52 +250,62 @@ TRAFFIC_QUIET_AADT = 8_000  # `stress.URBAN_TWO_WAY_BUSY_AADT`
 TRAFFIC_ANY_COUNT_MPH = 35.0  # from this, LTS 4 whatever the count
 
 
+def traffic_level(road: Road) -> tuple[int, bool] | None:
+    """The tier and half step a road's traffic alone gives it at a junction, or None where
+    its speed or the road is not known well enough to say (`by_traffic`)."""
+    if road.car_free or road.tier is None:
+        return None
+    speed = road.speed_mph if road.speed_mph is not None else road.default_speed_mph
+    if speed is None:
+        return None
+    lanes = road.lanes or 1
+    if lanes >= (TRAFFIC_MULTILANE_ONEWAY if road.oneway else TRAFFIC_MULTILANE_EACH_WAY):
+        # The 2026-10-26 rule, which reads a statutory default where nothing is posted.
+        if speed <= TRAFFIC_BUSY_MPH:
+            return 2, False
+        if speed < TRAFFIC_HEAVY_MPH:
+            return 3, False
+        quiet = road.aadt is not None and road.aadt <= TRAFFIC_QUIET_AADT
+        return (3 if quiet and speed < TRAFFIC_ANY_COUNT_MPH else 4), False
+    if road.speed_mph is None:
+        # Unposted: the classifier read its own default for the street (25 mph on a
+        # residential street, a narrow rural lane's 25), which the table does not keep;
+        # the statutory default it does keep (Maryland's 30 in town, 50 to 55 out of it)
+        # would rate a quiet street busy. The map's level stands.
+        return None
+    tier, half = single_lane_traffic_level(road.speed_mph, road.oneway, road.aadt, road.urban)
+    return int(tier), half
+
+
 def traffic_tier(road: Road) -> int | None:
-    """The tier a multi-lane road's traffic alone gives it at a crossing, or None where
-    the lanes, the speed or the road are not known well enough to say (`by_traffic`)."""
-    if road.car_free or road.tier is None or road.lanes is None:
-        return None
-    if road.lanes < (TRAFFIC_MULTILANE_ONEWAY if road.oneway else TRAFFIC_MULTILANE_EACH_WAY):
-        return None
-    speed = cost_speed(road)
-    if speed is None or speed <= TRAFFIC_BUSY_MPH:
-        return None
-    if speed < TRAFFIC_HEAVY_MPH:
-        return 3
-    quiet = road.aadt is not None and road.aadt <= TRAFFIC_QUIET_AADT
-    return 3 if quiet and speed < TRAFFIC_ANY_COUNT_MPH else 4
+    """`traffic_level`'s tier alone."""
+    level = traffic_level(road)
+    return None if level is None else level[0]
 
 
-def _by_traffic(road: Road, junction: Junction) -> Road:
-    tier = traffic_tier(road)
-    if tier is None or tier <= road.level:
+def _by_traffic(road: Road) -> Road:
+    level = traffic_level(road)
+    if level is None or level[0] + (0.5 if level[1] else 0.0) <= road.level:
         return road
-    rider = _rider(junction.incoming)
-    if junction.control is Control.NONE and rider is not None and rider > road.level:
-        # Nothing mapped and the rider's road is the busier on the map: the rider has
-        # the right of way (`crossing_ft`), and does not wait for this road's gaps.
-        return road
-    return replace(road, tier=tier, half=False, map_tier=road.tier, map_half=road.half)
+    tier, half = level
+    return replace(road, tier=tier, half=half, map_tier=road.tier, map_half=road.half)
 
 
 def by_traffic(junction: Junction) -> Junction:
-    """The junction with the roads the rider gives way to read by their traffic, where
-    that is busier than their tier: the roads crossed, and the road turned or joined onto
-    (not the rider's own road going on)."""
-    if junction.control not in GIVE_WAY_CONTROLS:
+    """The junction with every road read by its traffic where that is busier than its map
+    level (`traffic_level`)."""
+    incoming = _by_traffic(junction.incoming)
+    outgoing = _by_traffic(junction.outgoing)
+    crossed = tuple(_by_traffic(r) for r in junction.crossed)
+    links = tuple(_by_traffic(r) for r in junction.links)
+    if (
+        incoming == junction.incoming
+        and outgoing == junction.outgoing
+        and crossed == junction.crossed
+        and links == junction.links
+    ):
         return junction
-    crossed = tuple(_by_traffic(r, junction) for r in junction.crossed)
-    # Straight on from a multi-lane road into the next (a name change, two unnamed ways)
-    # is riding along, not joining: as an LTS 3 road into the next is (`cost_of`).
-    along = junction.movement is Movement.STRAIGHT and traffic_tier(junction.incoming)
-    outgoing = (
-        junction.outgoing
-        if junction.continues or along
-        else _by_traffic(junction.outgoing, junction)
-    )
-    if crossed == junction.crossed and outgoing == junction.outgoing:
-        return junction
-    return replace(junction, crossed=crossed, outgoing=outgoing)
+    return replace(junction, incoming=incoming, outgoing=outgoing, crossed=crossed, links=links)
 
 
 def time_factor(

@@ -20,7 +20,7 @@ from routemaker import ridetime
 from routemaker.intersections import Control, Junction, Movement, Road
 
 QUIET = Road(2)
-LTS3 = Road(3, speed_mph=35, lanes=2)
+LTS3 = Road(3, speed_mph=25, lanes=2)  # LTS 3 by its traffic too (`by_traffic`)
 LTS4 = Road(4, speed_mph=40, lanes=3)
 ONEWAY_LTS3 = Road(3, speed_mph=30, lanes=2, oneway=True)
 
@@ -247,7 +247,9 @@ class TestControl:
 
     def test_riding_along_a_road_busier_than_the_cross_street_is_along(self) -> None:
         """At exactly the priority side's cost the label is "along"."""
-        event = m.assess(junction(incoming=LTS4, outgoing=LTS4, crossed=(LTS3,)))
+        # A 25 mph four-lane road: LTS 3 by its traffic too (`by_traffic`).
+        side = Road(3, speed_mph=25, lanes=2)
+        event = m.assess(junction(incoming=LTS4, outgoing=LTS4, crossed=(side,)))
         assert event.cost_ft == m.PRIORITY_SIDE_FT
         assert event.kind == "along"
 
@@ -308,10 +310,8 @@ class TestByTraffic:
     @pytest.mark.parametrize(
         "road",
         [
-            replace(PINEY_BRANCH, lanes=1),  # one lane each way
-            replace(PINEY_BRANCH, lanes=2, oneway=True),  # a two-lane one-way, or carriageway
             replace(PINEY_BRANCH, speed_mph=20),  # Furth: 20 mph multi-lane is LTS 2
-            replace(PINEY_BRANCH, lanes=None),  # lanes not known
+            replace(PINEY_BRANCH, speed_mph=None),  # no speed known
             replace(PINEY_BRANCH, car_free=True),  # closed to cars at the ride's time
         ],
     )
@@ -331,11 +331,11 @@ class TestByTraffic:
         assert m.traffic_tier(road) == tier
 
     def test_straight_on_from_one_multilane_road_into_the_next_is_not_joining(self) -> None:
-        # A name change at the node (`continues` is False), nothing mapped or a stop.
+        # A name change at the node (`continues` is False), nothing mapped or a stop: both
+        # roads read busy by their traffic, so it is riding along.
         other = replace(self.PINEY_BRANCH, names=frozenset({"other"}))
         for control in (Control.NONE, Control.STOP):
             j = junction(incoming=self.PINEY_BRANCH, outgoing=other, control=control)
-            assert m.by_traffic(j) == j
             assert m.assess(j) is None
 
     def test_a_half_step_at_or_above_its_traffic_is_left_alone(self) -> None:
@@ -347,17 +347,65 @@ class TestByTraffic:
         assert event.rating == 4
         assert event.crossed_tier == 2
 
+    @pytest.mark.parametrize(
+        ("road", "level"),
+        [
+            # One lane each way: the classifier's single-lane reading, counts included.
+            (replace(PINEY_BRANCH, lanes=1), (3, False)),  # 30 mph
+            (replace(PINEY_BRANCH, lanes=1, speed_mph=35), (4, False)),
+            (replace(PINEY_BRANCH, lanes=1, speed_mph=25), (2, False)),
+            (replace(PINEY_BRANCH, lanes=1, speed_mph=25, aadt=6_000), (2, True)),  # busy street
+            (replace(PINEY_BRANCH, lanes=1, speed_mph=25, aadt=9_000), (3, False)),  # high volume
+            (replace(PINEY_BRANCH, lanes=1, aadt=14_000, urban=True), (4, False)),
+            (replace(PINEY_BRANCH, lanes=1, speed_mph=25, aadt=13_000, urban=True), (3, True)),
+            # A two-lane one-way (or carriageway) is crossed in one gap: the single-lane row.
+            (replace(PINEY_BRANCH, lanes=2, oneway=True), (3, False)),
+            (replace(PINEY_BRANCH, lanes=None), (3, False)),  # lanes not known: one
+        ],
+    )
+    def test_a_narrower_road_is_read_as_the_classifier_reads_mixed_traffic(
+        self, road, level
+    ) -> None:
+        assert m.traffic_level(road) == level
+
+    def test_a_protected_lane_does_not_make_a_busy_road_easier_to_cross(self) -> None:
+        # The owner, 2026-10-31: "a protected bike lane on a busy road is just as hard to
+        # cross". A 35 mph road, one lane each way, 15,000 a day, LTS 1 on the map.
+        protected = Road(1, speed_mph=35, lanes=1, oneway=False, aadt=15_000, urban=True)
+        plain = replace(protected, tier=4)
+        for control in (Control.STOP, Control.NONE, Control.SIGNAL):
+            for when in (None, ridetime.WEEKDAY_RUSH):
+                a = m.assess(self.crossing(protected, control=control), when=when)
+                b = m.assess(self.crossing(plain, control=control), when=when)
+                assert a.cost_ft == b.cost_ft, (control, when)
+        left = junction(incoming=protected, outgoing=self.SHERIDAN, movement=Movement.LEFT)
+        plain_left = replace(left, incoming=plain)
+        assert m.assess(left).cost_ft == m.assess(plain_left).cost_ft > 0
+
     def test_a_three_lane_one_way_is_multilane(self) -> None:
         assert m.traffic_tier(replace(self.PINEY_BRANCH, lanes=3, oneway=True)) == 4
 
-    @pytest.mark.parametrize("control", [Control.SIGNAL, Control.ALL_STOP, Control.CROSS_STOP])
-    def test_where_the_traffic_stops_it_is_left_alone(self, control) -> None:
-        assert m.assess(self.crossing(control=control)) is None
+    @pytest.mark.parametrize(
+        ("control", "feet"),
+        [
+            (Control.SIGNAL, m.SIGNALISED_CROSSING_FT[4]),
+            (Control.ALL_STOP, m.ALL_WAY_STOP_FT),
+            (Control.CROSS_STOP, m.PRIORITY_SIDE_FT),
+        ],
+    )
+    def test_where_the_traffic_stops_the_control_prices_it(self, control, feet) -> None:
+        # Read by its traffic at every control (2026-10-31, "Traffic only, everywhere"):
+        # a signal prices it as an LTS 4 road's signalised crossing.
+        assert m.cost_of(m.by_traffic(self.crossing(control=control)))[0] == feet
 
-    def test_a_rider_with_the_right_of_way_is_not_waiting_for_its_gaps(self) -> None:
-        # Nothing mapped, and the rider's road is the busier on the map (`crossing_ft`).
-        j = self.crossing(incoming=Road(3, speed_mph=35, lanes=1), control=Control.NONE)
-        assert m.by_traffic(j) == j
+    def test_a_rider_whose_road_carries_more_traffic_has_the_right_of_way(self) -> None:
+        # Nothing mapped: a rider on a 35 mph road with a protected lane (LTS 1 on the map,
+        # LTS 4 by its traffic) crossing a 25 mph four-lane road (LTS 3) is on the busier
+        # road, and does not wait for its gaps (`crossing_ft`).
+        rider = Road(1, speed_mph=35, lanes=1, oneway=False)
+        j = self.crossing(replace(self.PINEY_BRANCH, speed_mph=25), incoming=rider)
+        event = m.assess(replace(j, control=Control.NONE))
+        assert event.cost_ft == m.PRIORITY_SIDE_FT
 
     def test_it_never_lowers_a_road(self) -> None:
         avoid = Road(5, speed_mph=30, lanes=2, oneway=False)
@@ -708,13 +756,14 @@ class TestRoute:
         """Item 185: "A merge must never raise the colour of one road's crossing."
         Two orange carriageways stay orange (the refuge lowers the cost), and
         two different orange roads together add cost but stay orange."""
-        fast = Road(3, speed_mph=45, names=frozenset({"river road"}))
+        # No speed known, so its map level stands (`by_traffic`): 45 mph reads as LTS 4.
+        fast = Road(3, lanes=2, aadt=25_000, names=frozenset({"river road"}))
         a = junction(m=0.0, crossed=(fast,))
         one = m.assess(a)
         divided = m.assess_route([a, junction(m=10.0, crossed=(fast,))])[0]
         assert one.severity == m.ORANGE
         assert divided.severity == m.ORANGE
-        other = Road(3, speed_mph=45, names=frozenset({"falls road"}))
+        other = replace(fast, names=frozenset({"falls road"}))
         two_roads = m.assess_route([a, junction(m=10.0, crossed=(other,))])[0]
         assert two_roads.cost_ft == pytest.approx(one.cost_ft * (1 + m.MERGED_SHARE))
         assert two_roads.cost_ft >= m.RED_MIN_FT
@@ -1546,9 +1595,9 @@ class TestTimeOfDay:
         assert rush.cost_ft == pytest.approx(plain.cost_ft * 1.25)
 
     def test_the_colour_follows_the_cost(self) -> None:
-        # 2,600 ft (a 50 mph LTS 3 stop): orange off-peak, red at rush (3,250 ft).
-        j = junction(crossed=(Road(3, speed_mph=50),), control=Control.STOP)
-        assert m.assess(j, when="weekday_offpeak").cost_ft == pytest.approx(2600.0)
+        # 3,040 ft (a 25 mph LTS 4 stop at 8,000 a day): orange off-peak, red at rush.
+        j = junction(crossed=(Road(4, speed_mph=25, lanes=1, aadt=8_000),), control=Control.STOP)
+        assert m.assess(j, when="weekday_offpeak").cost_ft == pytest.approx(3040.0)
         assert m.assess(j, when="weekday_offpeak").severity == m.ORANGE
         assert m.assess(j, when="weekday_rush").severity == m.RED
 
