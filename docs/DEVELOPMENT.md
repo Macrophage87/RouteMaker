@@ -8722,8 +8722,11 @@ stops on the server reads `q=` as well: the assistant's `open_link` and a kept s
   picks the role for the question, which is asked again before any dot goes out (`answeredHere`,
   `markAnsweredHere`, sessionStorage). When riding ends, sharing stops and the next ride asks again; the leader
   is shown again when riding resumes.
-- **Off the route only while riding.** On a broadcast a dot is sent off the route only while riding; a Roam
-  follower who is not riding is never sent.
+- **On or off the route on a broadcast.** On a broadcast everyone who said Yes is sent on or off the route while
+  the page is in front, riding or not, a computer watching included (Stephen 2026-10-31), so the 10-minute
+  off-route stop never applies there. Group and Mass Rides keep the quarter-mile rule and its stop. The leader's
+  ridden path is collected only while riding. A rider counts themself only while the server has their dot on this
+  ride (`meCounted`: since the last send taken, for the 2 minutes the others see it, reset when the dot is dropped).
 - **A new ride, new keys.** When a ride ends, its leads (`leads.current`, Roam's aside) and a Group or Mass Ride secret
   the page made (`groupSecretOwn`) are made again, so the next ride is a new ride. Share as image's QR code
   never carries a Group or Mass Ride secret (`shareCardLink`). A leader who starts riding again without sharing again
