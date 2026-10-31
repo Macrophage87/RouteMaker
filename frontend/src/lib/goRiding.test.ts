@@ -170,6 +170,12 @@ test("Ride settings in reach: More at the end of the side buttons opens them jus
   assert.match(css, /\.ride-top\.ride-corner-tight \.ride-slide-text \{\s*white-space: normal;/);
   assert.match(css, /\.ride-top\.ride-top-stack \.ride-top-actions \{\s*flex-wrap: wrap;/);
   assert.match(ride, /const overflows = actions\.scrollWidth > actions\.clientWidth \+ 1;/);
+  // A word too wide for its half makes the words smaller, a step at a time to half size, before they stack (the
+  // owner, 2026-10-31: "Reduce the font size in that case").
+  assert.match(ride, /while \(actions\.scrollWidth > actions\.clientWidth \+ 1 && fit > TOP_FIT_MIN \+ 0\.001\) \{\s*fit = Math\.max\(TOP_FIT_MIN, Math\.round\(\(fit - TOP_FIT_STEP\) \* 100\) \/ 100\);\s*top\.style\.setProperty\("--ride-top-fit", String\(fit\)\);/);
+  assert.match(ride, /const TOP_FIT_MIN = 0\.5;/);
+  assert.match(css, /font-size: calc\(1\.2rem \* var\(--ride-top-fit, 1\)\);/);
+  assert.match(css, /font-size: calc\(1rem \* var\(--ride-top-fit, 1\)\);/);
   assert.match(ride, /setStacked\(overflows\);/);
   assert.match(ride, /\$\{stacked \? " ride-top-stack" : ""\}/);
   assert.match(ride, /\{light && !cornerFits && \(\s*<p className="ride-light-below" aria-hidden="true">/);
