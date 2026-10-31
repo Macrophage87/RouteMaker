@@ -2749,11 +2749,12 @@ if (mine()) {
   // 458b: the outlined half-step dashes keep 3:1 from their dash and their line, in the page's own style.
   const outlines = await p.eval(`(async () => { const s = await import('/src/stressStyle.js'); const out = [];
     for (const palette of Object.keys(s.PALETTES)) { const tiers = s.tiersFor(palette);
-      for (let t = 1; t <= 4; t++) { const h = s.halfStep(t, tiers); if (!h.outline) continue;
+      for (let t = 1; t <= 4; t++) { const h = s.halfStep(t, tiers); if (h.solid || !h.outline) continue;
         out.push({ palette, step: h.step, dash: +s.contrastRatio(h.outline, h.color).toFixed(2), line: +s.contrastRatio(h.outline, h.line).toFixed(2) }); } }
     return out; })()`);
-  check("stress editor: the half-step dashes too close to their line (two-tone 3.5, colour-blind 4.5) carry an outline at least 3:1 from both the dash and the line (458b)",
-    Array.isArray(outlines) && outlines.length >= 2 && outlines.some((o) => o.palette === "twotone" && o.step === 3.5) && outlines.some((o) => o.palette === "cvd" && o.step === 4.5) &&
+  // Only the colour-blind palette draws half steps as dashes since 2026-10-30; the others give them colours of their own (halfSteps.test.ts).
+  check("stress editor: the half-step dash too close to its line (colour-blind 4.5) carries an outline at least 3:1 from both the dash and the line (458b)",
+    Array.isArray(outlines) && outlines.length >= 1 && outlines.some((o) => o.palette === "cvd" && o.step === 4.5) &&
       outlines.every((o) => o.dash >= 3 && o.line >= 3), JSON.stringify(outlines));
   await p.close();
 }
