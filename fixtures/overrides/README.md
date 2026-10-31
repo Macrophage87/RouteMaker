@@ -548,8 +548,8 @@ in the database still names it: delete that row in the admin when loading the fi
   the formula itself says LTS 3, is left out). Stress rows, hidden, with fingerprints.
   Load like the others; takes effect on the next rebuild.
 
-- `2026-10-30-owner-wv-county-roads.json`: West Virginia's Eastern Panhandle, 293 ways
-  (about 201 mi). West Virginia has no agency stress layer, and beta rated its unposted
+- `2026-10-30-owner-wv-county-roads.json`: West Virginia's Eastern Panhandle, 309 ways
+  (about 207 mi). West Virginia has no agency stress layer, and beta rated its unposted
   rural county roads LTS 4 on the 50 mph rural default with no traffic count. The owner,
   2026-10-30, chose "Filtered counts, 3 and 3.5" on WVDOT's 2020 segment counts (read 10%
   high for 2020): tertiary and unclassified roads under 500 a day with a count station on
@@ -560,7 +560,9 @@ in the database still names it: delete that row in the admin when loading the fi
   urban areas. Also 24 ways of seven busy unposted county roads inside the urban areas
   (Golf Course, Eagle School, Harlan Springs, Kelly Island, Paynes Ford, Needy and Charles
   Town Roads, 3,300 to 4,500 a day) held at LTS 4, and one piece of North Fairfax
-  Boulevard (way 158979695) held at LTS 2, for when `urban-areas.json` is remade with West
+  Boulevard (way 158979695) held at LTS 2, and 16 ways of the WV 9 and US 340
+  bypass east of Charles Town (posted 60 mph, farmland inside the Hagerstown urban area) held at LTS 4.5
+  rather than Avoid (the owner, 2026-10-30: "LTS 4.5"), for when `urban-areas.json` is remade with West
   Virginia in it (beta reads every West Virginia road as rural: the list predates West
   Virginia's joining the map). Stress rows, hidden, with fingerprints. Remake
   `urban-areas.json`, then load like the others; takes effect on the next rebuild.
