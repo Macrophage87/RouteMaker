@@ -128,7 +128,9 @@ zoom in its own style, with no capacity color and the label "AVOID" (`MASS_AVOID
 
 The route panel shows a stress breakdown bar of meters per tier, each segment labeled
 with its percentage (`frontend/src/lib/stressBar.ts`). Avoid is the route's magenta
-there (OWNER-DECISIONS 397). The bar is unchanged. Under the elevation in the route
+there (OWNER-DECISIONS 397). Where the route has stress
+sections (`stress_spans`), each half step ridden is its own segment in its own color, its key and screen-reader text naming it ("LTS 3.5");
+without sections the bar shows whole-level totals. Under the elevation in the route
 chart, the rolling stress chart (460.12, built in PR #34) replaces the stress strip on
 every ride type but Mass Ride. Its area takes the map's LTS 2, 3 and 4 colors and the
 stress bar's patterns, Avoid stretches are the magenta blocks marked "AVOID" ("A"

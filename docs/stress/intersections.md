@@ -63,7 +63,8 @@ every control; the control then prices it as sections 3 to 7 say. It never lower
 - **One lane each way, or a one-way of one or two lanes** (crossed in one gap of one
   direction's traffic): the classifier's own single-lane mixed-traffic reading with its count
   (`stress.single_lane_traffic_level`, pinned against the classifier in
-  tests/test_junction_traffic.py): LTS 2 at 25 mph, 3 at 30, 4 from 35; a count of 1,500 or
+  tests/test_junction_traffic.py): LTS 1 at 20 mph or less (LTS 2 there above 1,500 a
+  day), LTS 2 at 25 mph, 3 at 30, 4 from 35; a count of 1,500 or
   fewer a day one level lower (to 35 mph), 8,000 or more one level higher; 2.5 from 5,000 a
   day at LTS 2; and in a city two-way street at LTS 3, 3.5 from 12,000 and 4 from 20,000.
 
@@ -72,7 +73,8 @@ such as 25 mph on a residential street, which the table does not keep; the statu
 default it does keep, Maryland's 30 in town or 50 to 55 in the country, would rate a quiet
 street busy), a road with no speed at all, a road closed to cars at the ride's time, and the
 Mass Ride reading keep the map's level. Where the rider's own road cannot be read by its traffic (no posted
-speed), a tie for the right of way with a road only its traffic raised goes to the
+speed) and nothing controls the junction, a tie for the right of
+way with a road only its traffic raised goes to the
 rider, as the map has it: an unposted LTS 3 road does not give way to a bike-lane side
 street its traffic lifted to LTS 3, while a road whose traffic outranks the rider's still
 makes the rider stop. A turn off the rider's own road is read the same
