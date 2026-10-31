@@ -42,6 +42,10 @@ import {
   placeLabelPaint,
   unpavedLayers,
   halfStepLayers,
+  halfRingLayers,
+  scaledDash,
+  HALF_STEP_DASH,
+  HALF_STEP_TOP_DASH,
   UNPAVED_DASH,
   accessibilityOn,
   massRideOn,
@@ -72,7 +76,7 @@ import { MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./ma
 import { setDcMaskVisibility } from "./dcBoundary.ts";
 import type { RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
-import { ROUTE_AVOID_MARK_DASH, routeCorridorPaint, overlayFade, routeClasses, routePaint, routeSections, sectionFeatures, usesCapacity, type RouteClassKey, type RouteSection } from "./routeColours.ts";
+import { ROUTE_AVOID_MARK_DASH, ROUTE_SECTION_WIDTHS, routeCorridorPaint, overlayFade, routeClasses, routePaint, routeSections, sectionFeatures, usesCapacity, type RouteClassKey, type RouteSection } from "./routeColours.ts";
 import { transitRideLines, transitRideSections } from "./transit.ts";
 
 /** The parts of a MapLibre map these use. */
@@ -211,7 +215,7 @@ export function setStressPalette(
   when: When = DEFAULT_WHEN,
   tiers: ReturnType<typeof currentTiers> = currentTiers(),
 ): void {
-  const layers = [...ringLayers(STRESS_SOURCE_ID, when, tiers), ...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...gapLayers(STRESS_SOURCE_ID, when, tiers), ...unknownSurfaceLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers), ...unpavedLayers(STRESS_SOURCE_ID, when, tiers), ...halfStepLayers(STRESS_SOURCE_ID, when, tiers)];
+  const layers = [...ringLayers(STRESS_SOURCE_ID, when, tiers), ...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...gapLayers(STRESS_SOURCE_ID, when, tiers), ...unknownSurfaceLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers), ...unpavedLayers(STRESS_SOURCE_ID, when, tiers), ...halfRingLayers(STRESS_SOURCE_ID, when, tiers), ...halfStepLayers(STRESS_SOURCE_ID, when, tiers)];
   // The Mass Ride layers' casings are a pixel wider with the accessibility switch (massStyle.js).
   const mass = massLayers(STRESS_SOURCE_ID, STRESS_TILE_LAYER, accessibilityOn()).filter((l: { type: string }) => l.type === "line");
   for (const layer of [...layers, ...mass] as Array<{ id: string; paint: Record<string, unknown> }>) {
@@ -222,8 +226,9 @@ export function setStressPalette(
     if ("line-gap-width" in layer.paint) map.setPaintProperty(layer.id, "line-gap-width", layer.paint["line-gap-width"]);
     // The surface-unknown edge's dashes are in its own width, which the switch changes (stressStyle.js, unknownSurfaceLayers).
     if (layer.id === "stress-unknown-casing") map.setPaintProperty(layer.id, "line-dasharray", layer.paint["line-dasharray"]);
-    // A half step's outline is the dash's pattern in its own width, which the switch changes.
-    if (layer.id.startsWith("stress-half-outline-")) map.setPaintProperty(layer.id, "line-dasharray", layer.paint["line-dasharray"]);
+    // A half step's pattern: its own colours over its level's pattern, or the dash and its outline (the dash's
+    // pattern in its own width, which the switch changes), as the palette has it (stressStyle.js, halfStep).
+    if (layer.id.startsWith("stress-half-") && "line-dasharray" in layer.paint) map.setPaintProperty(layer.id, "line-dasharray", layer.paint["line-dasharray"]);
   }
   for (const facility of FACILITIES) {
     // The calm tiers' rails and the busy tiers' (stressStyle.js, facilityLayerId).
@@ -332,6 +337,30 @@ export function routeUnpavedLayer(sourceId: string = ROUTE_STRESS_SOURCE_ID) {
   };
 }
 
+/**
+ * A half step's dash over the route's section in the colour-blind-friendly palette (HALF_DASHED: the owner,
+ * 2026-10-31, "keep dashes with the same rules"), as the map draws one: the next level's colour from the
+ * feature's `halfDash`, HALF_STEP_DASH over 1.5 to 3.5 and Avoid's dash-dot over 4.5, at the section's own
+ * width. Two layers, as a dash array is not data-driven. In the other palettes a half step has a colour of
+ * its own and no feature carries a dash.
+ */
+export function routeHalfLayers(sourceId: string = ROUTE_STRESS_SOURCE_ID) {
+  const top = ROUTE_SECTION_WIDTHS["4h"];
+  return [
+    { id: "route-half", keys: ["1h", "2h", "3h"], dash: HALF_STEP_DASH, colour: "halfDash", extra: 0 },
+    // 4.5's dash is too close to its line (458b): its outline under it, a pixel each side, the dash scaled to it.
+    { id: "route-half-top-outline", keys: ["4h"], dash: scaledDash(HALF_STEP_TOP_DASH, top, top + 2) as number[], colour: "halfOutline", extra: 2 },
+    { id: "route-half-top", keys: ["4h"], dash: HALF_STEP_TOP_DASH, colour: "halfDash", extra: 0 },
+  ].map(({ id, keys, dash, colour, extra }) => ({
+    id,
+    type: "line" as const,
+    source: sourceId,
+    filter: ["all", ["==", ["get", "half"], true], ["in", ["get", "key"], ["literal", keys]]],
+    layout: { "line-join": "round" as const },
+    paint: { "line-color": ["get", colour], "line-width": extra ? ["+", ["get", "width"], extra] : ["get", "width"], "line-dasharray": [...(dash as number[])], "line-opacity": 0 },
+  }));
+}
+
 export const ROUTE_AVOID_LAYER_ID = "route-avoid";
 
 /**
@@ -404,6 +433,7 @@ export function setRouteSections(
   map.setPaintProperty("route-casing", "line-color", paint.casingColor);
   map.setPaintProperty(ROUTE_UNPAVED_LAYER_ID, "line-opacity", paint.sectionOpacity);
   map.setPaintProperty(ROUTE_AVOID_LAYER_ID, "line-opacity", paint.sectionOpacity);
+  for (const layer of routeHalfLayers()) map.setPaintProperty(layer.id, "line-opacity", paint.sectionOpacity);
   for (const layer of routeDashLayers()) map.setPaintProperty(layer.id, "line-opacity", paint.sectionOpacity);
   // A route in sections is a corridor (routeColours.ts, routeCorridorPaint); under any route the map's colours fade (overlayFade).
   const corridor = routeCorridorPaint(sections !== null, stale);

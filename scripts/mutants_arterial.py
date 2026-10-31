@@ -48,6 +48,7 @@ WRITE = ["tests/test_writers.py"]
 CO = "src/routemaker/corridors.py"
 FX = "fixtures/corridors/2026-10-04-owner-north-capitol-underpasses.json"
 SM = "src/pipeline/aadt_smoothing.py"
+SR = "src/routemaker/stress.py"  # VOLUME_GATES, which the smoothing reads
 ST = "src/routemaker/streets.py"
 RM = "src/pipeline/rematch.py"
 OV = "src/pipeline/overrides.py"
@@ -102,9 +103,9 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ("smooth: lowers refused", SM, "if median >= match.aadt:", "if median <= match.aadt:", SMOOTH + STAGE),
     ("smooth: raw count lost", SM, "replace(match, aadt=median, raw_aadt=match.aadt)", "replace(match, aadt=median)", SMOOTH + STAGE),
     ("smooth: midpoint not half way", SM, "half, run = total / 2, 0.0", "half, run = total / 3, 0.0", SMOOTH),
-    ("smooth: quiet gate off by one", SM, "(VOLUME_QUIET + 1, VOLUME_BUSY,", "(VOLUME_QUIET, VOLUME_BUSY,", SMOOTH),
-    ("smooth: busy gate off by one", SM, "(VOLUME_QUIET + 1, VOLUME_BUSY,", "(VOLUME_QUIET + 1, VOLUME_BUSY + 1,", SMOOTH),
-    ("smooth: urban two-way gate off by one", SM, "URBAN_TWO_WAY_BUSY_AADT + 1)", "URBAN_TWO_WAY_BUSY_AADT)", SMOOTH),
+    ("smooth: quiet gate off by one", SR, "    VOLUME_QUIET + 1,\n", "    VOLUME_QUIET,\n", SMOOTH),
+    ("smooth: busy gate off by one", SR, "    VOLUME_BUSY,\n", "    VOLUME_BUSY + 1,\n", SMOOTH),
+    ("smooth: urban two-way gate off by one", SR, "    URBAN_TWO_WAY_BUSY_AADT + 1,\n", "    URBAN_TWO_WAY_BUSY_AADT,\n", SMOOTH),
     ("smooth: stage ignores the veto", RUN, "        if context.smooth_volume:\n", "        if True:\n", STAGE),
     ("smooth: stage marks every replaced way", RUN, "if aadt_smoothing.crosses_volume_gate(item.raw, item.smoothed)", "if True", STAGE),
     ("smooth: stage smooths before the states", RUN, "context.ways, context.aadt_by_way, state_of.get", "context.ways, context.aadt_by_way, lambda _: None", STAGE),

@@ -205,6 +205,7 @@ export const ES: Readonly<Record<string, string>> = {
   "About {about}": "Acerca de {about}",
   "to": "hasta",
   "Start: your current location.": "Inicio: su ubicación actual.",
+  "Start: your location, within about {distance}": "Inicio: su ubicación, con un margen de unos {distance}",
   "Your location": "Su ubicación",
   "Coffee, grocery, address": "Café, súper, dirección",
   "Water, restroom, food, repair or search": "Agua, baño, comida, reparación o buscar",
@@ -748,11 +749,10 @@ export const ES: Readonly<Record<string, string>> = {
     "Modo de accesibilidad desactivado: el alto contraste y el texto grande están desactivados, y Herramientas del mapa está oculto.",
   // ---- Fitting the phone (the owner, 2026-10-27: "use shorter words so it all fits") ----
   // Ride's light corner and the route's light marks (lib/lightTimes.ts).
-  "Civil twilight begins": "Comienza el crepúsculo civil",
-  "Civil twilight ends": "Termina el crepúsculo civil",
+  "Dawn": "Alba",
+  "Dusk": "Anochecer",
   Sunrise: "Amanecer",
   Sunset: "Atardecer",
-  Twilight: "Crepúsculo",
   "{head}, after you arrive": "{head}, después de llegar",
   "{head} near {mile}": "{head} cerca de {mile}",
   "{mark}, where you will be near {mile}": "{mark}, donde estará cerca de {mile}",
@@ -2235,4 +2235,13 @@ export const ES: Readonly<Record<string, string>> = {
   "Switch to Group Ride, trails off": "Cambiar a Paseo en grupo sin senderos",
   "See everyone on the ride": "Ver a todos en el recorrido",
   "Everyone": "Todos",
+  // ---- Say where to: Go's Where to? microphone and its lettered places (lib/placeDictation.ts) ----
+  "Say where to": "Di adónde vas",
+  "Listening. Say a place or an address.": "Escuchando. Di un lugar o una dirección.",
+  "Listening. Say a letter, like B or Bravo.": "Escuchando. Di una letra, como B o Bravo.",
+  "Say a letter, like B or Bravo, or tap a place.": "Di una letra, como B o Bravo, o toca un lugar.",
+  "No letter was heard. Tap a place, or tap the microphone and say a letter.": "No se oyó ninguna letra. Toca un lugar, o toca el micrófono y di una letra.",
+  "The microphone is not allowed; allow it in the browser's settings, or type the place.": "El micrófono no está permitido; permítelo en la configuración del navegador o escribe el lugar.",
+  "Nothing was heard. Tap the microphone and try again, or type the place.": "No se oyó nada. Toca el micrófono e inténtalo de nuevo, o escribe el lugar.",
+  "Speech did not work. Type the place instead.": "La voz no funcionó. Escribe el lugar.",
 };

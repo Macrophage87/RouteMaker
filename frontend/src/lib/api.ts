@@ -42,6 +42,11 @@ export interface StressSpan {
    */
   rough?: boolean | null;
   /**
+   * A half step (OWNER-DECISIONS 461a): `tier` is its lower level and the section is 0.5 above it, drawn
+   * in the half step's own colour (routeColours.ts). Absent on a whole level, and from an older API.
+   */
+  half?: boolean | null;
+  /**
    * A Mass Ride's only (OWNER-DECISIONS 325-327, 387): the section's capacity in riders per
    * minute on the flat, the lowest along it (its narrowest point), or null where the table has
    * none for it. Absent on every other ride type, and from an older API or a table built before
@@ -86,6 +91,8 @@ export interface ProfileCrossing {
   control: "signal" | "stop" | "cross_stop" | "all_stop" | "none";
   lanes: number | null;
   crossed_tier: number | null;
+  /** The road is a half step above `crossed_tier` (2.5, 3.5, 4.5); absent from an older API. */
+  crossed_half?: boolean;
   /** Why it is major: flagged by the planner, a busy road crossed, or one joined; absent from an older API. */
   kind?: "flagged" | "crossing" | "joining";
   /** The crossed road is LTS 3 or worse (OWNER-DECISIONS 142). */
@@ -182,6 +189,8 @@ export interface JunctionWarning {
   reason: string;
   /** The busy road's LTS, 3-5; null if unknown. */
   crossed_tier: number | null;
+  /** The road is a half step above `crossed_tier`; absent from an older API. */
+  crossed_half?: boolean;
   movement: "left" | "straight" | "right";
   control: "signal" | "stop" | "cross_stop" | "all_stop" | "none";
   kind: string;
@@ -356,6 +365,8 @@ export interface DescriptionCrossing {
   street: string | null;
   severity?: "orange" | "red" | null;
   crossed_tier?: number | null;
+  /** The road is a half step above `crossed_tier`; absent from an older API. */
+  crossed_half?: boolean;
   /** "At 1.1 mi (1.8 km): Cross 17th Street Northwest (LTS 4) at a signal (Very high stress junction)." */
   text: string;
 }

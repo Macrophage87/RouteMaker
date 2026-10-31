@@ -23,7 +23,7 @@ from test_route_api import (  # noqa: F401 - fixtures
 from core import api, presets, ratelimit
 
 pytestmark = pytest.mark.usefixtures("weekday_clock")
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 PATH = "/api/route/neighbours"
 
