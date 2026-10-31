@@ -3,7 +3,7 @@
  "decided": "2026-10-31",
  "decided_by": "the deployment owner",
  "status": "Decided by the owner in conversation on 2026-10-31; not yet loaded. Load with manage.py load_access_overrides (dry run, then --confirm after the owner confirms this file), then rebuild.",
- "annotations": "Northern Virginia, 347 ways (about 99 mi), from the Virginia ratings recheck (thread \"Recheck Virginia road ratings\"). P4 at LTS 3.5: 8 ways (5.2 mi); P4 at LTS 4: 18 ways (5.4 mi); P5 at LTS 1.5: 254 ways (77.2 mi); P8 at LTS 2.5: 5 ways (4.6 mi); P8 at LTS 3.5: 1 way (0.6 mi); R2 at LTS 1.5: 61 ways (6.2 mi). P4 and P8 are two-lane Fairfax County streets VDOT's speed limit records post at 35 mph that OpenStreetMap carries no speed for; a way along several count blocks takes the busiest. R2 is Arlington's calmest uncounted residential streets. P3 and P6 (county-posted 25 mph streets) were withdrawn the same day by the owner (\"Let the formula decide\") once Virginia's urban default became 25 mph. Left out: ways the reviewed blocks cover less than half of; P4 and P8 ways OSM tags with a speed limit (the mapped sign is not overruled here), one-way, or with other than two lanes; and points where the road panel found an unnamed or differently named way, another rating than the review saw, or a bike lane. Only Fairfax ways VDOT's own speed limit layer posts at 35 mph are kept (the owner, 2026-10-31, \"Keep 32, cite VDOT\"): of the 71 ways Fairfax County's layer showed at 35, VDOT posts 35 on 32, 25 or 30 on 16, has no record within 20 m on 19, and mixed zones on 4; those 39 are dropped. P5 (the owner, 2026-10-31, \"Keep 1.5 as owner rows\"): Fairfax residential streets, two-way with no bike lane, at 25 mph (VDOT's posted limit, or Virginia's 25 mph residence-district law where VDOT posts none), counted by VDOT at 1,001 to 1,500 a day, at LTS 1.5; left out where VDOT posts another limit, OSM tags over 25, the way is tertiary (the collector floor), or the counted blocks cover less than half of it.",
+ "annotations": "Northern Virginia, 345 ways (about 99 mi), from the Virginia ratings recheck (thread \"Recheck Virginia road ratings\"). P4 at LTS 3.5: 8 ways (5.2 mi); P4 at LTS 4: 18 ways (5.4 mi); P5 at LTS 1.5: 252 ways (77.2 mi); P8 at LTS 2.5: 5 ways (4.6 mi); P8 at LTS 3.5: 1 way (0.6 mi); R2 at LTS 1.5: 61 ways (6.2 mi). P4 and P8 are two-lane Fairfax County streets VDOT's speed limit records post at 35 mph that OpenStreetMap carries no speed for; a way along several count blocks takes the busiest. R2 is Arlington's calmest uncounted residential streets. P3 and P6 (county-posted 25 mph streets) were withdrawn the same day by the owner (\"Let the formula decide\") once Virginia's urban default became 25 mph. Left out: ways the reviewed blocks cover less than half of; P4 and P8 ways OSM tags with a speed limit (the mapped sign is not overruled here), one-way, or with other than two lanes; and points where the road panel found an unnamed or differently named way, another rating than the review saw, or a bike lane. Only Fairfax ways VDOT's own speed limit layer posts at 35 mph are kept (the owner, 2026-10-31, \"Keep 32, cite VDOT\"): of the 71 ways Fairfax County's layer showed at 35, VDOT posts 35 on 32, 25 or 30 on 16, has no record within 20 m on 19, and mixed zones on 4; those 39 are dropped. P5 (the owner, 2026-10-31, \"Keep 1.5 as owner rows\"): Fairfax residential and unclassified local streets, two-way with no bike lane, at 25 mph (VDOT's posted limit, or Virginia's 25 mph residence-district law where VDOT posts none), counted by VDOT at 1,001 to 1,500 a day, at LTS 1.5; left out where VDOT posts another limit, OSM tags a speed other than 25, the way is tertiary (the collector floor), or the counted blocks cover less than half of it.",
  "rows": [
   {
    "kind": "stress",
@@ -2120,7 +2120,7 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\", and on P5 in the v0.16.0 review: \"Keep 1.5 as owner rows\". P5: a two-way Fairfax County residential street with no bike lane, at 25 mph, counted by VDOT at 1,001 to 1,500 vehicles a day, is LTS 1.5. The formula reads such a street at LTS 2 (25 mph, mixed traffic, one lane each way) and Furth's low-volume relief takes it down a level to 1 at 1,500 a day or less; the review set the 1,001 to 1,500 band at 1.5, between the formula's 1 for the quietest streets and its 2 above 1,500, since on the streets where Fairfax County's bike map and this classifier agree such streets sit between the two. This way (P5): VDOT posts 25 mph on SC-835N (Fairfax County); OSM tags maxspeed=25 mph; residential, two-way, no bike lane; its busiest VDOT count, 1,400 a day, is in the 1,001 to 1,500 band: LTS 1.5.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\", and on P5 in the v0.16.0 review: \"Keep 1.5 as owner rows\". P5: a two-way Fairfax County residential street with no bike lane, at 25 mph, counted by VDOT at 1,001 to 1,500 vehicles a day, is LTS 1.5. The formula reads such a street at LTS 2 (25 mph, mixed traffic, one lane each way) and Furth's low-volume relief takes it down a level to 1 at 1,500 a day or less; the review set the 1,001 to 1,500 band at 1.5, between the formula's 1 for the quietest streets and its 2 above 1,500, since on the streets where Fairfax County's bike map and this classifier agree such streets sit between the two. This way (P5): VDOT posts 25 mph on SC-835N (Fairfax County); OSM tags maxspeed=25 mph; an unclassified local street (read at 25 like a residential one), two-way, no bike lane; its busiest VDOT count, 1,400 a day, is in the 1,001 to 1,500 band: LTS 1.5.",
    "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 25 mph on SC-835N (Fairfax County). VDOT AADT on the blocks along it: 1,400 (the busiest is used). OSM, read 2026-10-31: way 8810258 (version 6), Morrissette Drive, highway=unclassified, maxspeed=25 mph, no lanes tag (one lane each way assumed), two-way, no cycleway tag.",
    "fingerprint": {
     "name": "Morrissette Drive",
@@ -4703,7 +4703,7 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\", and on P5 in the v0.16.0 review: \"Keep 1.5 as owner rows\". P5: a two-way Fairfax County residential street with no bike lane, at 25 mph, counted by VDOT at 1,001 to 1,500 vehicles a day, is LTS 1.5. The formula reads such a street at LTS 2 (25 mph, mixed traffic, one lane each way) and Furth's low-volume relief takes it down a level to 1 at 1,500 a day or less; the review set the 1,001 to 1,500 band at 1.5, between the formula's 1 for the quietest streets and its 2 above 1,500, since on the streets where Fairfax County's bike map and this classifier agree such streets sit between the two. This way (P5): no posted limit in VDOT's records, so Virginia's 25 mph limit in business and residence districts (Code of Virginia 46.2-870), which the build reads for urban minor roads; OSM tags maxspeed=25 mph; residential, two-way, no bike lane; its busiest VDOT count, 1,300 a day, is in the 1,001 to 1,500 band: LTS 1.5.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\", and on P5 in the v0.16.0 review: \"Keep 1.5 as owner rows\". P5: a two-way Fairfax County residential street with no bike lane, at 25 mph, counted by VDOT at 1,001 to 1,500 vehicles a day, is LTS 1.5. The formula reads such a street at LTS 2 (25 mph, mixed traffic, one lane each way) and Furth's low-volume relief takes it down a level to 1 at 1,500 a day or less; the review set the 1,001 to 1,500 band at 1.5, between the formula's 1 for the quietest streets and its 2 above 1,500, since on the streets where Fairfax County's bike map and this classifier agree such streets sit between the two. This way (P5): no posted limit in VDOT's records, so Virginia's 25 mph limit in business and residence districts (Code of Virginia 46.2-870), which the build reads for urban minor roads; OSM tags maxspeed=25 mph; an unclassified local street (read at 25 like a residential one), two-way, no bike lane; its busiest VDOT count, 1,300 a day, is in the 1,001 to 1,500 band: LTS 1.5.",
    "evidence": "VDOT Posted Speed Limits on State-Maintained Roads, read 2026-10-31: no record within 20 m (Code of Virginia 46.2-870: 25 mph in business and residence districts). VDOT AADT on the blocks along it: 1,300 (the busiest is used). OSM, read 2026-10-31: way 8839506 (version 6), Parkstone Drive, highway=unclassified, maxspeed=25 mph, no lanes tag (one lane each way assumed), two-way, no cycleway tag.",
    "fingerprint": {
     "name": "Parkstone Drive",
@@ -4808,7 +4808,7 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\", and on P5 in the v0.16.0 review: \"Keep 1.5 as owner rows\". P5: a two-way Fairfax County residential street with no bike lane, at 25 mph, counted by VDOT at 1,001 to 1,500 vehicles a day, is LTS 1.5. The formula reads such a street at LTS 2 (25 mph, mixed traffic, one lane each way) and Furth's low-volume relief takes it down a level to 1 at 1,500 a day or less; the review set the 1,001 to 1,500 band at 1.5, between the formula's 1 for the quietest streets and its 2 above 1,500, since on the streets where Fairfax County's bike map and this classifier agree such streets sit between the two. This way (P5): no posted limit in VDOT's records, so Virginia's 25 mph limit in business and residence districts (Code of Virginia 46.2-870), which the build reads for urban minor roads; residential, two-way, no bike lane; its busiest VDOT count, 1,500 a day, is in the 1,001 to 1,500 band: LTS 1.5.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\", and on P5 in the v0.16.0 review: \"Keep 1.5 as owner rows\". P5: a two-way Fairfax County residential street with no bike lane, at 25 mph, counted by VDOT at 1,001 to 1,500 vehicles a day, is LTS 1.5. The formula reads such a street at LTS 2 (25 mph, mixed traffic, one lane each way) and Furth's low-volume relief takes it down a level to 1 at 1,500 a day or less; the review set the 1,001 to 1,500 band at 1.5, between the formula's 1 for the quietest streets and its 2 above 1,500, since on the streets where Fairfax County's bike map and this classifier agree such streets sit between the two. This way (P5): no posted limit in VDOT's records, so Virginia's 25 mph limit in business and residence districts (Code of Virginia 46.2-870), which the build reads for urban minor roads; an unclassified local street (read at 25 like a residential one), two-way, no bike lane; its busiest VDOT count, 1,500 a day, is in the 1,001 to 1,500 band: LTS 1.5.",
    "evidence": "VDOT Posted Speed Limits on State-Maintained Roads, read 2026-10-31: no record within 20 m (Code of Virginia 46.2-870: 25 mph in business and residence districts). VDOT AADT on the blocks along it: 1,500 (the busiest is used). OSM, read 2026-10-31: way 8839996 (version 4), Forbes Place, highway=unclassified, no lanes tag (one lane each way assumed), two-way, no cycleway tag.",
    "fingerprint": {
     "name": "Forbes Place",
@@ -5333,7 +5333,7 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\", and on P5 in the v0.16.0 review: \"Keep 1.5 as owner rows\". P5: a two-way Fairfax County residential street with no bike lane, at 25 mph, counted by VDOT at 1,001 to 1,500 vehicles a day, is LTS 1.5. The formula reads such a street at LTS 2 (25 mph, mixed traffic, one lane each way) and Furth's low-volume relief takes it down a level to 1 at 1,500 a day or less; the review set the 1,001 to 1,500 band at 1.5, between the formula's 1 for the quietest streets and its 2 above 1,500, since on the streets where Fairfax County's bike map and this classifier agree such streets sit between the two. This way (P5): no posted limit in VDOT's records, so Virginia's 25 mph limit in business and residence districts (Code of Virginia 46.2-870), which the build reads for urban minor roads; residential, two-way, no bike lane; its busiest VDOT count, 1,400 a day, is in the 1,001 to 1,500 band: LTS 1.5.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\", and on P5 in the v0.16.0 review: \"Keep 1.5 as owner rows\". P5: a two-way Fairfax County residential street with no bike lane, at 25 mph, counted by VDOT at 1,001 to 1,500 vehicles a day, is LTS 1.5. The formula reads such a street at LTS 2 (25 mph, mixed traffic, one lane each way) and Furth's low-volume relief takes it down a level to 1 at 1,500 a day or less; the review set the 1,001 to 1,500 band at 1.5, between the formula's 1 for the quietest streets and its 2 above 1,500, since on the streets where Fairfax County's bike map and this classifier agree such streets sit between the two. This way (P5): no posted limit in VDOT's records, so Virginia's 25 mph limit in business and residence districts (Code of Virginia 46.2-870), which the build reads for urban minor roads; an unclassified local street (read at 25 like a residential one), two-way, no bike lane; its busiest VDOT count, 1,400 a day, is in the 1,001 to 1,500 band: LTS 1.5.",
    "evidence": "VDOT Posted Speed Limits on State-Maintained Roads, read 2026-10-31: no record within 20 m (Code of Virginia 46.2-870: 25 mph in business and residence districts). VDOT AADT on the blocks along it: 1,400 (the busiest is used). OSM, read 2026-10-31: way 8843481 (version 6), Cameron Brown Court, highway=unclassified, no lanes tag (one lane each way assumed), two-way, no cycleway tag.",
    "fingerprint": {
     "name": "Cameron Brown Court",
@@ -5806,27 +5806,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 119549299,
-   "value": {
-    "tier": 1,
-    "half": true,
-    "adjustment_id": "va-ffx-quiet-25-local-lts1-5",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\", and on P5 in the v0.16.0 review: \"Keep 1.5 as owner rows\". P5: a two-way Fairfax County residential street with no bike lane, at 25 mph, counted by VDOT at 1,001 to 1,500 vehicles a day, is LTS 1.5. The formula reads such a street at LTS 2 (25 mph, mixed traffic, one lane each way) and Furth's low-volume relief takes it down a level to 1 at 1,500 a day or less; the review set the 1,001 to 1,500 band at 1.5, between the formula's 1 for the quietest streets and its 2 above 1,500, since on the streets where Fairfax County's bike map and this classifier agree such streets sit between the two. This way (P5): no posted limit in VDOT's records, so Virginia's 25 mph limit in business and residence districts (Code of Virginia 46.2-870), which the build reads for urban minor roads; OSM tags maxspeed=15 mph; residential, two-way, no bike lane; its busiest VDOT count, 1,400 a day, is in the 1,001 to 1,500 band: LTS 1.5.",
-   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads, read 2026-10-31: no record within 20 m (Code of Virginia 46.2-870: 25 mph in business and residence districts). VDOT AADT on the blocks along it: 1,400 (the busiest is used). OSM, read 2026-10-31: way 119549299 (version 2), Great Heron Drive, highway=residential, maxspeed=15 mph, no lanes tag (one lane each way assumed), two-way, no cycleway tag.",
-   "fingerprint": {
-    "name": "Great Heron Drive",
-    "highway": "residential",
-    "length_m": 86.3,
-    "line": "-77.401874,38.855118 -77.401656,38.855875"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 119716596,
    "value": {
     "tier": 1,
@@ -5900,7 +5879,7 @@
     "annotation_status": "approved",
     "display": "route_only"
    },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\", and on P5 in the v0.16.0 review: \"Keep 1.5 as owner rows\". P5: a two-way Fairfax County residential street with no bike lane, at 25 mph, counted by VDOT at 1,001 to 1,500 vehicles a day, is LTS 1.5. The formula reads such a street at LTS 2 (25 mph, mixed traffic, one lane each way) and Furth's low-volume relief takes it down a level to 1 at 1,500 a day or less; the review set the 1,001 to 1,500 band at 1.5, between the formula's 1 for the quietest streets and its 2 above 1,500, since on the streets where Fairfax County's bike map and this classifier agree such streets sit between the two. This way (P5): VDOT posts 25 mph on SC-6800E (Fairfax County); OSM tags maxspeed=25 mph; residential, two-way, no bike lane; its busiest VDOT count, 1,500 a day, is in the 1,001 to 1,500 band: LTS 1.5.",
+   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\", and on P5 in the v0.16.0 review: \"Keep 1.5 as owner rows\". P5: a two-way Fairfax County residential street with no bike lane, at 25 mph, counted by VDOT at 1,001 to 1,500 vehicles a day, is LTS 1.5. The formula reads such a street at LTS 2 (25 mph, mixed traffic, one lane each way) and Furth's low-volume relief takes it down a level to 1 at 1,500 a day or less; the review set the 1,001 to 1,500 band at 1.5, between the formula's 1 for the quietest streets and its 2 above 1,500, since on the streets where Fairfax County's bike map and this classifier agree such streets sit between the two. This way (P5): VDOT posts 25 mph on SC-6800E (Fairfax County); OSM tags maxspeed=25 mph; an unclassified local street (read at 25 like a residential one), two-way, no bike lane; its busiest VDOT count, 1,500 a day, is in the 1,001 to 1,500 band: LTS 1.5.",
    "evidence": "VDOT Posted Speed Limits on State-Maintained Roads (VDOT, ArcGIS service VDOT_Posted_Speed_Limits), read 2026-10-31: 25 mph on SC-6800E (Fairfax County). VDOT AADT on the blocks along it: 1,500 (the busiest is used). OSM, read 2026-10-31: way 135672930 (version 9), Boston Boulevard, highway=unclassified, maxspeed=25 mph, no lanes tag (one lane each way assumed), two-way, no cycleway tag.",
    "fingerprint": {
     "name": "Boston Boulevard",
@@ -6243,27 +6222,6 @@
     "highway": "residential",
     "length_m": 371.7,
     "line": "-77.220821,38.696838 -77.220513,38.696577 -77.220339,38.696380 -77.220232,38.696190 -77.219958,38.695519 -77.219508,38.694786 -77.219445,38.694633 -77.219412,38.694475 -77.219413,38.694265 -77.219470,38.694014 -77.219548,38.693784"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 144126300,
-   "value": {
-    "tier": 1,
-    "half": true,
-    "adjustment_id": "va-ffx-quiet-25-local-lts1-5",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-31, approving the Virginia ratings recheck: \"Let's go with all these\", and on P5 in the v0.16.0 review: \"Keep 1.5 as owner rows\". P5: a two-way Fairfax County residential street with no bike lane, at 25 mph, counted by VDOT at 1,001 to 1,500 vehicles a day, is LTS 1.5. The formula reads such a street at LTS 2 (25 mph, mixed traffic, one lane each way) and Furth's low-volume relief takes it down a level to 1 at 1,500 a day or less; the review set the 1,001 to 1,500 band at 1.5, between the formula's 1 for the quietest streets and its 2 above 1,500, since on the streets where Fairfax County's bike map and this classifier agree such streets sit between the two. This way (P5): no posted limit in VDOT's records, so Virginia's 25 mph limit in business and residence districts (Code of Virginia 46.2-870), which the build reads for urban minor roads; OSM tags maxspeed=15 mph; residential, two-way, no bike lane; its busiest VDOT count, 1,100 a day, is in the 1,001 to 1,500 band: LTS 1.5.",
-   "evidence": "VDOT Posted Speed Limits on State-Maintained Roads, read 2026-10-31: no record within 20 m (Code of Virginia 46.2-870: 25 mph in business and residence districts). VDOT AADT on the blocks along it: 1,100 (the busiest is used). OSM, read 2026-10-31: way 144126300 (version 3), Dove Cottage Court, highway=residential, maxspeed=15 mph, no lanes tag (one lane each way assumed), two-way, no cycleway tag.",
-   "fingerprint": {
-    "name": "Dove Cottage Court",
-    "highway": "residential",
-    "length_m": 21.7,
-    "line": "-77.220987,38.696984 -77.220821,38.696838"
    }
   },
   {

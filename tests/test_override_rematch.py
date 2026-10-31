@@ -439,7 +439,7 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
     # Less Montgomery's 381 LTS 5 snapshot rows, retired for the live county layer (review
     # 2026-10-29). Plus R and 1st Streets NW's 24 stress rows (the owner, 2026-10-30), and
     # West Virginia's 309 county-road stress rows (the owner, 2026-10-30), and Northern
-    # Virginia's 347 (the owner, 2026-10-31).
+    # Virginia's 345 (the owner, 2026-10-31).
     assert (
         sum(len(d["rows"]) for d in documents.values())
         == 1785
@@ -461,7 +461,7 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
         - 381
         + 24
         + 309
-        + 347
+        + 345
     )
     for name, document in documents.items():
         if name == "2026-10-06-owner-crosswalk-links.json":
@@ -491,10 +491,10 @@ def test_the_override_counts_the_owner_asked_about() -> None:
     # Kenilworth Avenue NE rows. Plus Aspen Street NW's 5 (the owner, 2026-10-25). Less
     # Montgomery's 381 LTS 5 snapshot rows (review 2026-10-29). Plus R and 1st Streets NW's
     # 24 (the owner, 2026-10-30). Plus West Virginia's 309 county-road rows (2026-10-30).
-    # Plus Northern Virginia's 347 (2026-10-31).
+    # Plus Northern Virginia's 345 (2026-10-31).
     assert (
         kinds.count("stress")
-        == 1551 - 1 + 3 + 10 - 5 - 23 + 15 - 431 + 6 + 31 - 2 + 5 - 381 + 24 + 309 + 347
+        == 1551 - 1 + 3 + 10 - 5 - 23 + 15 - 431 + 6 + 31 - 2 + 5 - 381 + 24 + 309 + 345
     )
 
 
@@ -546,7 +546,7 @@ def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
     # path's 1 access row (the owner, 2026-10-27), and the Glenmont path's 1 (2026-10-28).
     # Less Montgomery's 381 LTS 5 snapshot rows (review 2026-10-29). Plus R and 1st Streets
     # NW's 24 stress rows (the owner, 2026-10-30), and West Virginia's 309 county-road rows,
-    # and Northern Virginia's 347 (2026-10-31).
+    # and Northern Virginia's 345 (2026-10-31).
     assert (
         len(found)
         == 1785
@@ -568,7 +568,7 @@ def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
         - 381
         + 24
         + 309
-        + 347
+        + 345
     )
     assert ("access", 50426889) in found and ("stress", 1562097556) in found
 
@@ -784,6 +784,7 @@ def test_the_virginia_rows_take_only_the_owners_levels() -> None:
             busiest = max(int(a.replace(",", "")) for a in aadts.group(1).split(", "))
             assert 1_000 < busiest <= 1_500, (row["osm_way_id"], busiest)
             assert "highway=tertiary" not in evidence, "the collector floor holds a tertiary at 2"
+            assert "maxspeed=" not in evidence or "maxspeed=25 mph" in evidence
             continue
         ids.setdefault(value["adjustment_id"], set()).add(level)
         group = (
@@ -801,7 +802,7 @@ def test_the_virginia_rows_take_only_the_owners_levels() -> None:
         assert level == expected, (row["osm_way_id"], busiest, level)
         was = 3 if group == "two-lane" else 2
         assert f": LTS {was}," in evidence
-    assert count == {"two-lane": 26, "quiet": 6} and p5 == 254
+    assert count == {"two-lane": 26, "quiet": 6} and p5 == 252
     # Each row says why its level, not only that the owner chose it.
     assert all("This way (" in row["reason"] for row in document["rows"])
     assert all(len(levels) == 1 for levels in ids.values()), ids
