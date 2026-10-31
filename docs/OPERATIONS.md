@@ -5647,6 +5647,7 @@ files, reports/md-sha-ratings/). Each is a switch, `mdot_sha_rules.ENABLED`:
 | `busy-residential` | 1 or 2 on a 25 mph two-lane street at 5,000-15,000 a day, no bike lane | 2.5 (the owner's 1st Street rule) |
 | `rural-collector` | 2 or less on a rural minor collector at 1,500+ a day, speed assumed | 3.5 |
 | `rural-expressway` | 4 on a 4+ lane highway posted 55 mph or more, urban or rural | 4.5 |
+| `busy-rural-two-lane` | 4 on a rural two- or three-lane principal arterial (functional class 2-3) at 18,000+ a day, no bike facility | 4.5 (the formula's busy rural highway rule, so US-15 reads the same in Virginia; the owner, 2026-10-31) |
 | `second-record` | SHA's record for a road's other direction (route id character 15, "2"), within 130 ft (40 m) of the first | the first direction's level, as read |
 
 SHA's 5 is never read otherwise. The install prints `mdot-sha read by the owner's rule

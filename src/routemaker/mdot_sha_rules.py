@@ -33,7 +33,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from itertools import pairwise
 
-from routemaker.stress import BUSY_STREET_MIN_AADT
+from routemaker.stress import BUSY_RURAL_HIGHWAY_AADT, BUSY_STREET_MIN_AADT
 
 # Maryland's county code for Baltimore City, the first two characters of a route id.
 BALTIMORE_CITY = "24"
@@ -49,6 +49,7 @@ RULE_WORDS = {
     "busy-residential": "a 25 mph street carrying 5000 to 15000 cars a day",
     "rural-collector": "a rural collector carrying 1500 or more cars a day",
     "rural-expressway": "a highway of four or more lanes posted 55 mph or more",
+    "busy-rural-two-lane": "a rural two-lane highway carrying 18000 or more cars a day",
     "second-record": "SHA's record for the other direction of the same road",
 }
 
@@ -193,6 +194,20 @@ def _rule(s: Stretch) -> tuple[float, str] | None:
     # 55 mph are generally either avoid or 4.5 unless there's a specific reason to keep them").
     if s.level == 4 and fc in (2, 3) and (lanes or 0) >= 4 and not s.speed_assumed and speed >= 55:
         return 4.5, "rural-expressway"
+    # Up: rural two-lane principal arterials carrying BUSY_RURAL_HIGHWAY_AADT or more that
+    # SHA rates 4: the formula's P7 (`stress.busy_road_steps`) on SHA's roads, so US-15
+    # reads 4.5 on both sides of the Potomac (the owner, 2026-10-31: "Yes, same rule in
+    # MD"). Three lanes count as two, as the formula reads one lane a direction.
+    if (
+        not s.urban
+        and s.level == 4
+        and fc in (2, 3)
+        and 2 <= (lanes or 0) <= 3
+        and not s.bike_facility
+        and aadt is not None
+        and aadt >= BUSY_RURAL_HIGHWAY_AADT
+    ):
+        return 4.5, "busy-rural-two-lane"
     return None
 
 
@@ -205,9 +220,23 @@ def read_as(s: Stretch, enabled: Iterable[str] = ENABLED) -> tuple[float, str] |
     return found
 
 
-def words(rule: str, level: float) -> str:
-    """The road panel's note: "read as LTS 3: a two-lane collector where SHA assumed 35 mph"."""
-    return f"read as LTS {level:g}: {RULE_WORDS[rule]}"
+def facts(s: Stretch) -> str:
+    """What SHA's record says, which the rule read: "SHA's record: urban; 2 lanes; 35 mph
+    assumed; no count". No commas (`RULE_WORDS`), and the speed's "N mph" last in its
+    part, so the panel's km/h lands beside it."""
+    lanes = f"{s.lanes} lane{'s' if s.lanes != 1 else ''}" if s.lanes else "lanes unknown"
+    speed = f"{'assumed' if s.speed_assumed else 'posted'} {s.speed_mph} mph" if s.speed_mph else ""
+    count = f"{s.aadt} cars a day by SHA's count" if s.aadt else "no count"
+    parts = ("urban" if s.urban else "rural", lanes, speed, count)
+    return "SHA's record: " + "; ".join(part for part in parts if part)
+
+
+def words(rule: str, level: float, s: Stretch | None = None) -> str:
+    """The road panel's note: "read as LTS 3: a two-lane collector where SHA assumed 35 mph",
+    and with the record, the facts the rule read after it (the owner, 2026-10-31: "cite
+    the logic in the decision rather than just owner override")."""
+    note = f"read as LTS {level:g}: {RULE_WORDS[rule]}"
+    return f"{note}; {facts(s)}" if s is not None else note
 
 
 # Metres per degree near 39 N, for the short distances pairing needs.

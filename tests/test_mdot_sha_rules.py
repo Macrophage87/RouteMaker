@@ -11,7 +11,7 @@ from core import segment_info
 from pipeline import agency_ratings, writers
 from routemaker import agency_lts, mdot_sha_rules
 from routemaker.agency_lts import AgencyRating
-from routemaker.mdot_sha_rules import Stretch, read_as
+from routemaker.mdot_sha_rules import ENABLED, Stretch, read_as
 from routemaker.stress import Stress, StressResult
 
 FIRST = "16000MD00410--1-----"
@@ -345,3 +345,92 @@ def test_the_installer_refuses_the_rules_without_their_inputs(tmp_path):
     )
     with pytest.raises(SystemExit, match="--mdot-as-published"):
         list(module.mdot_sha(tmp_path, Counter()))
+
+
+class TestBusyRuralTwoLane:
+    """P7 on SHA-rated roads (the owner, 2026-10-31: "Yes, same rule in MD")."""
+
+    US_15 = dict(
+        level=4.0, functional_class=3, speed_mph=55, speed_assumed=False, lanes=2, urban=False
+    )
+
+    def test_us_15_reads_the_same_either_side_of_the_potomac(self) -> None:
+        from routemaker.stress import classify
+
+        virginia = classify(
+            {"highway": "primary", "maxspeed": "55 mph", "lanes": "2"},
+            aadt=20_000,
+            urban=False,
+            jurisdiction="VA",
+        )
+        maryland = read_as(_stretch(**self.US_15, aadt=20_000))
+        assert (virginia.tier, virginia.half) == (Stress.LTS4, True)
+        assert maryland == (4.5, "busy-rural-two-lane")
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"aadt": 17_999},
+            {"aadt": 25_000, "urban": True},
+            {"aadt": 25_000, "lanes": 4, "speed_mph": 50},
+            {"aadt": 25_000, "lanes": None},
+            {"aadt": 25_000, "bike_facility": "Standard"},
+            {"aadt": None},
+            {"aadt": 25_000, "functional_class": 4},
+            {"aadt": 25_000, "level": 3.0},
+        ],
+    )
+    def test_not_below_the_gate_in_town_on_four_lanes_or_rated_lower(self, overrides) -> None:
+        found = read_as(_stretch(**(self.US_15 | overrides)))
+        assert found is None or found[1] != "busy-rural-two-lane"
+
+    @pytest.mark.parametrize("overrides", [{"lanes": 3}, {"aadt": 18_000}, {"functional_class": 2}])
+    def test_three_lanes_the_gate_itself_and_class_2_are_taken(self, overrides) -> None:
+        found = read_as(_stretch(**(self.US_15 | {"aadt": 20_000} | overrides)))
+        assert found == (4.5, "busy-rural-two-lane")
+
+    def test_it_has_its_own_switch(self) -> None:
+        enabled = ENABLED - {"busy-rural-two-lane"}
+        assert read_as(_stretch(**self.US_15, aadt=20_000), enabled) is None
+
+
+def test_the_panel_note_states_the_facts_the_rule_read():
+    s = _stretch(**TestBusyRuralTwoLane.US_15, aadt=21_000)
+    note = mdot_sha_rules.words("busy-rural-two-lane", 4.5, s)
+    assert note == (
+        "read as LTS 4.5: a rural two-lane highway carrying 18000 or more cars a day; "
+        "SHA's record: rural; 2 lanes; posted 55 mph; 21000 cars a day by SHA's count"
+    )
+    assert "," not in note
+    assumed = mdot_sha_rules.words("collector-assumed-35", 3.0, _stretch())
+    assert assumed.endswith("SHA's record: urban; 2 lanes; assumed 35 mph; no count")
+    assert "1 lane;" in mdot_sha_rules.facts(_stretch(lanes=1)) + ";"
+
+
+@pytest.mark.parametrize(
+    "overrides, expected",
+    [
+        # busy-residential: 5,000 to 15,000 a day, both ends taken.
+        ({"level": 2.0, "speed_mph": 25, "speed_assumed": False, "aadt": 4_999}, None),
+        (
+            {"level": 2.0, "speed_mph": 25, "speed_assumed": False, "aadt": 5_000},
+            (2.5, "busy-residential"),
+        ),
+        (
+            {"level": 2.0, "speed_mph": 25, "speed_assumed": False, "aadt": 15_000},
+            (2.5, "busy-residential"),
+        ),
+        ({"level": 2.0, "speed_mph": 25, "speed_assumed": False, "aadt": 15_001}, None),
+        # slow-street: 3 from 7,500 a day.
+        ({"speed_mph": 30, "speed_assumed": False, "aadt": 7_499}, (2.5, "slow-street")),
+        ({"speed_mph": 30, "speed_assumed": False, "aadt": 7_500}, (3.0, "slow-street")),
+        # rural-collector: from 1,500 a day.
+        ({"level": 2.0, "functional_class": 6, "urban": False, "aadt": 1_499}, None),
+        (
+            {"level": 2.0, "functional_class": 6, "urban": False, "aadt": 1_500},
+            (3.5, "rural-collector"),
+        ),
+    ],
+)
+def test_the_rules_thresholds_themselves(overrides, expected):
+    assert read_as(_stretch(**overrides)) == expected
