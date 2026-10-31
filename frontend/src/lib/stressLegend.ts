@@ -24,12 +24,14 @@ import {
   MTB_HALO,
   MTB_LEVELS,
   MTB_MIN_ZOOM,
+  HALF_STEP_MIN_ZOOM,
   SOLID_MIN_ZOOM,
   CITY_LADDER,
   UNKNOWN_SURFACE_DASH,
   UNPAVED_DASH,
   accessibilityOn,
   currentTiers,
+  halfStep,
   mtbTrailPaint,
   mtbTrailHaloPaint,
   mtbTicksPaint,
@@ -41,6 +43,7 @@ import {
 import { useHighStressLanes, useMtbTrails, useStressStyle } from "../useStressStyle.ts";
 import { HIGH_STRESS_LANES_LABEL } from "./highStressLanesSwitch.ts";
 import { isPlainClick, rememberPlanForPage, tabSession } from "./signIn.ts";
+import { STEP_WORDS } from "./stepWords.ts";
 
 /**
  * The one phrase for what the map shows zoomed out, wherever the legend says
@@ -175,8 +178,8 @@ export function StressZoomNotes({
 
 // ---- The legend itself (moved out of App.tsx so a test renders it) ----------
 
-/** The legend's first line: what "LTS" is, said once in plain words (the a11y review's N2). */
-export const LTS_MEANS = "LTS is Level of Traffic Stress, from 1 (calmest) to 4 (heavy traffic); Avoid is legal but best avoided.";
+/** The legend's first line: what "LTS" is, said once in plain words (the a11y review's N2), to 4.5 as its rows go (2026-10-30). Not translated, as the rows are not. */
+export const LTS_MEANS = "LTS is Level of Traffic Stress, in half steps from 1 (calmest) to 4.5 (heaviest traffic); Avoid is legal but best avoided.";
 
 /**
  * The rider-facing page on how the ratings work (OWNER-DECISIONS 461: "Something that can be
@@ -275,6 +278,37 @@ export function TierSwatch({ tier, widths }: { tier: Tier; widths: { line: numbe
     line(6, tier.color, widths.line, dashPx(tier.dash, widths.line)),
   );
 }
+
+/**
+ * The half step above `tier`'s swatch (2026-10-30), as the map draws one from HALF_STEP_MIN_ZOOM: its own ring,
+ * edge and line over its level's pattern, or in the colour-blind-friendly palette its level's swatch with the
+ * next level's dash (and its outline, where it has one) over it.
+ */
+export function HalfStepSwatch({ tier, widths }: { tier: Tier; widths: { line: number; casing: number; ring?: number } }): ReactElement {
+  const half = halfStep(tier.tier, currentTiers())!;
+  if (half.solid) {
+    return h(
+      "svg",
+      { width: SVG_WIDTH, height: 12, "aria-hidden": "true", className: "half-step" },
+      half.ring ? line(6, half.ring, widths.casing + 2) : null,
+      line(6, half.outline, widths.casing),
+      line(6, half.color, widths.line, dashPx(tier.dash, widths.line)),
+    );
+  }
+  return h(
+    "svg",
+    { width: SVG_WIDTH, height: 12, "aria-hidden": "true", className: "half-step" },
+    tier.ring ? line(6, tier.ring, widths.ring ?? widths.casing + 2) : null,
+    line(6, tier.casing, widths.casing),
+    tier.dash ? line(6, tier.gap ?? tier.casing, widths.line) : null,
+    line(6, tier.color, widths.line, dashPx(tier.dash, widths.line)),
+    half.outline ? line(6, half.outline, widths.line + 2, dashPx(half.dash, widths.line)) : null,
+    line(6, half.color, widths.line, dashPx(half.dash, widths.line)),
+  );
+}
+
+/** What a half step's row says besides its words: the map shows it from street level only (below, as its level). */
+export const HALF_STEP_ZOOM_NOTE = `Half steps show from zoom ${HALF_STEP_MIN_ZOOM}; zoomed out they look like the level below.`;
 
 /**
  * The unpaved swatch (OWNER-DECISIONS 302): the brown ramp, light to dark, one
@@ -437,13 +471,18 @@ export function StressLegend({
     h(
       "ul",
       { className: "legend", "aria-label": "Traffic stress legend" },
-      ...tiers.map((tier, i) => row(tier.tier, h(TierSwatch, { tier, widths: widths.tiers[i] }), tier.short, tier.label)),
+      // Each level, then the half step above it (2026-10-30: half steps in colours of their own).
+      ...tiers.flatMap((tier, i) => [
+        row(tier.tier, h(TierSwatch, { tier, widths: widths.tiers[i] }), tier.short, tier.label),
+        ...(tier.tier < 5 ? [row(`${tier.tier}h`, h(HalfStepSwatch, { tier, widths: widths.tiers[i] }), `LTS ${tier.tier + 0.5}`, STEP_WORDS[String(tier.tier + 0.5)], "half-step-row")] : []),
+      ]),
       row("gravel", h(UnpavedSwatch, { tiers, widths: widths.tiers[0], gravel: true }), "Gravel", GRAVEL_LEGEND),
       row("unpaved", h(UnpavedSwatch, { tiers, widths: widths.tiers[0] }), "Dirt", UNPAVED_LEGEND),
       row("unknown", h(UnknownSurfaceSwatch, { tier: tiers[0], widths: widths.tiers[0] }), "Surface unknown", UNKNOWN_SURFACE_LEGEND),
       // The mountain-bike trails' rows (452a, 456) are in their own key, under their switch in Trails and terrain
       // (MtbTrailLegend), once in Layers.
     ),
+    h("p", { className: "hint" }, HALF_STEP_ZOOM_NOTE),
     // What the tiles leave out as the map zooms out (core/stress_tiles.py).
     h(StressZoomNotes, { zoom, shown, folded: foldedZoom }),
     facilities.size > 0 &&
