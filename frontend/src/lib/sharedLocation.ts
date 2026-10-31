@@ -5,11 +5,14 @@
  * Three ways in, all ending in one destination for Go:
  * - Android's Share sheet: the manifest's share_target opens "/?share_title=…&share_text=…&share_url=…".
  * - Desktop Chrome and Edge: the manifest's protocol_handlers open geo: links as "/?geo=geo:…".
- * - Pasting into the search box (everywhere, iPhone too): a map link or coordinates.
+ * - Typing or pasting into the search box (everywhere, iPhone too): a map link, coordinates or a plus code.
  *
  * What is read, from the link alone (no request), each as [lon, lat]:
  * - coordinates: "38.8893, -77.0502", "38.8893 -77.0502", "38.8893° N, 77.0502° W" (latitude first, as
- *   map apps copy them; "-77.0502, 38.8893" is read the other way round, as this region is north and west);
+ *   map apps copy them; "-77.0502, 38.8893" is read the other way round, as this region is north and west), and
+ *   degrees, minutes and seconds: "38°53'21.4\"N 77°03'00.6\"W", "N 38° 53.357 W 077° 03.010" (Stephen,
+ *   2026-10-31: "add locations by latitude and longitude in the search");
+ * - plus codes (lib/plusCode.ts): "87C4VXQ7+GV", or "VXQ7+GV Washington" near the start or the map's view;
  * - geo: links (RFC 5870): "geo:38.8893,-77.0502", with "?q=lat,lon(Label)" or "?q=an address";
  * - Google Maps: the place's own "!3d…!4d…" first, then "?q=", "query=", "destination=", "daddr=", "ll=",
  *   "/dir/…/lat,lon", then the view's "@lat,lon"; the name from "/place/<name>/";
@@ -21,16 +24,29 @@
  */
 import type { LonLat } from "./geo.ts";
 import type { Place } from "./geocode.ts";
+import { parsePlusCode } from "./plusCode.ts";
 
+/**
+ * `typed`: the point was typed rather than read from a link: coordinates, or a plus code (its `name`); the place is
+ * then named by what was typed (sharedPlace), not "Shared location".
+ */
 export type Shared =
-  | { kind: "point"; point: LonLat; name?: string }
+  | { kind: "point"; point: LonLat; name?: string; typed?: "coordinates" | "pluscode" }
   | { kind: "short"; url: string; name?: string }
   | { kind: "query"; text: string };
 
 // Decimals required: "12 34" is more likely a street number than a place.
 const NUM = String.raw`[-+]?\d{1,3}\.\d+`;
 const PAIR = new RegExp(String.raw`^\s*(${NUM})\s*[,\s]\s*(${NUM})\s*$`);
-const HEMI = new RegExp(String.raw`^\s*(\d{1,3}(?:\.\d+)?)\s*°?\s*([NS])\s*,?\s*(\d{1,3}(?:\.\d+)?)\s*°?\s*([EW])\s*$`, "i");
+// One latitude or longitude in degrees, minutes and seconds, as map apps and GPS units write it: a hemisphere letter
+// before or after, or a sign; "38°53'21.4\"N", "N 38° 53.357'", "38° 53.357 N", "-77.0502°", "38.8893 N".
+const DEG = String.raw`(\d{1,3}(?:\.\d+)?)`;
+const MIN_SEC = String.raw`(?:\s*(\d{1,2}(?:\.\d+)?)\s*['′’]?(?:\s*(\d{1,2}(?:\.\d+)?)\s*(?:["″”]|''|′′)?)?)?`;
+const MARK = String.raw`(°|º|˚|deg\b)?`;
+// Seven groups each: letter before, sign, degrees, degree mark, minutes, seconds, letter after.
+const LETTER_FIRST = String.raw`([NSEW])\s*()${DEG}\s*${MARK}${MIN_SEC}()`;
+const LETTER_LAST = String.raw`()([-+])?${DEG}\s*${MARK}${MIN_SEC}\s*([NSEW])?`;
+const DMS = [LETTER_FIRST, LETTER_LAST].map((one) => new RegExp(String.raw`^\s*${one}\s*[,;/]?\s*${one}\s*$`, "i"));
 const SHORT_HOSTS: Record<string, string> = { "maps.app.goo.gl": "/", "goo.gl": "/maps/", "maps.apple": "/" };
 
 const valid = (lat: number, lon: number): boolean =>
@@ -47,13 +63,45 @@ export function parseCoordinates(text: string): LonLat | null {
     if ((Math.abs(a) > 90 && Math.abs(b) <= 90) || (a < 0 && b > 0)) [a, b] = [b, a];
     return valid(a, b) ? [b, a] : null;
   }
-  const hemi = HEMI.exec(text);
-  if (hemi) {
-    const lat = Number(hemi[1]) * (hemi[2].toUpperCase() === "S" ? -1 : 1);
-    const lon = Number(hemi[3]) * (hemi[4].toUpperCase() === "W" ? -1 : 1);
-    return valid(lat, lon) ? [lon, lat] : null;
+  for (const form of DMS) {
+    const dms = form.exec(text);
+    if (dms) return dmsPoint(dms.slice(1, 8), dms.slice(8, 15));
   }
   return null;
+}
+
+/**
+ * One half of a degrees-minutes-seconds pair, as [value, axis]: the axis from its hemisphere letter ("lat" for N or
+ * S), or null without one. Null when it is not a coordinate: no degree mark or letter, a sign and a letter both,
+ * minutes without a degree mark, or minutes or seconds of 60 or more.
+ */
+function dmsHalf(part: string[]): { value: number; axis: "lat" | "lon" | null } | null {
+  const [before, sign, deg, mark, min, sec, after] = part;
+  if (before && after) return null;
+  const hemi = (before || after || undefined)?.toUpperCase();
+  if (!hemi && !mark) return null;
+  if (hemi && sign) return null;
+  if (min !== undefined && !mark && !hemi) return null;
+  const m = min === undefined ? 0 : Number(min);
+  const s = sec === undefined ? 0 : Number(sec);
+  if (m >= 60 || s >= 60) return null;
+  // Minutes with a fraction take no seconds; whole degrees are needed under minutes.
+  if ((min !== undefined && deg.includes(".")) || (sec !== undefined && min!.includes("."))) return null;
+  const negative = sign === "-" || hemi === "S" || hemi === "W";
+  const value = (Number(deg) + m / 60 + s / 3600) * (negative ? -1 : 1);
+  return { value, axis: hemi === undefined ? null : hemi === "N" || hemi === "S" ? "lat" : "lon" };
+}
+
+function dmsPoint(first: string[], second: string[]): LonLat | null {
+  const a = dmsHalf(first);
+  const b = dmsHalf(second);
+  if (!a || !b) return null;
+  if (a.axis !== null && a.axis === b.axis) return null;
+  // Latitude first, as written, unless a letter says otherwise; with signs only, the region's rule (see the pair).
+  let swap = a.axis === "lon" || b.axis === "lat";
+  if (a.axis === null && b.axis === null) swap = (Math.abs(a.value) > 90 && Math.abs(b.value) <= 90) || (a.value < 0 && b.value > 0);
+  const [lat, lon] = swap ? [b.value, a.value] : [a.value, b.value];
+  return valid(lat, lon) ? [lon, lat] : null;
 }
 
 const BASE32 = "0123456789bcdefghjkmnpqrstuvwxyz";
@@ -179,12 +227,17 @@ const isShort = (url: URL): boolean => {
   return url.protocol === "https:" && prefix !== undefined && url.pathname.startsWith(prefix) && url.pathname.length > prefix.length;
 };
 
-/** One link or a pair of coordinates, read for a place; null if it holds none RouteMaker can read. */
-export function parseShared(input: string): Shared | null {
+/**
+ * One link, a pair of coordinates or a plus code, read for a place; null if it holds none RouteMaker can read.
+ * `near`: where a short plus code ("VXQ7+GV") is looked for (lib/plusCode.ts); the middle of the map without it.
+ */
+export function parseShared(input: string, near?: LonLat): Shared | null {
   const text = input.trim();
   if (!text) return null;
   const point = parseCoordinates(text);
-  if (point) return { kind: "point", point };
+  if (point) return { kind: "point", point, typed: "coordinates" };
+  const plus = parsePlusCode(text, near);
+  if (plus) return { kind: "point", point: plus.point, name: plus.code, typed: "pluscode" };
   if (/^geo:/i.test(text)) return parseGeo(text);
   // A shared text: words and a link ("Lincoln Memorial https://maps.app.goo.gl/…"); the link is read.
   const link = /\b(?:https?:\/\/|geo:)\S+/i.exec(text);
@@ -228,9 +281,14 @@ export function withoutShare(href: string): string {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-/** A shared point as the search's place: named when the share named it, its coordinates as its label. */
-export function sharedPlace(point: LonLat, name?: string): Place {
+/**
+ * A shared or typed point as the search's place, its coordinates as its label: typed coordinates are named by
+ * themselves, a plus code by the code, a link's point by the name the share gave it, else "Shared location".
+ */
+export function sharedPlace(point: LonLat, name?: string, typed?: "coordinates" | "pluscode"): Place {
   const label = `${point[1].toFixed(5)}, ${point[0].toFixed(5)}`;
+  if (typed === "coordinates") return { name: label, label, lon: point[0], lat: point[1], kind: "coordinates" };
+  if (typed === "pluscode") return { name: name ?? label, label, lon: point[0], lat: point[1], kind: "pluscode" };
   return { name: name ?? "Shared location", label, lon: point[0], lat: point[1], kind: "shared" };
 }
 
@@ -262,8 +320,9 @@ export async function resolveShort(url: string, fetchImpl: FetchLike = (u, init)
 export async function readShared(
   text: string,
   fetchImpl?: FetchLike,
+  near?: LonLat,
 ): Promise<{ place: Place } | { query: string } | { error: string }> {
-  let found = parseShared(text);
+  let found = parseShared(text, near);
   if (found?.kind === "short") {
     const name = found.name;
     found = await resolveShort(found.url, fetchImpl);
@@ -272,6 +331,6 @@ export async function readShared(
   }
   if (!found) return { error: SHARED_UNREADABLE };
   if (found.kind === "query") return found.text ? { query: found.text } : { error: SHARED_UNREADABLE };
-  if (found.kind === "point") return { place: sharedPlace(found.point, found.name) };
+  if (found.kind === "point") return { place: sharedPlace(found.point, found.name, found.typed) };
   return { error: SHARED_UNREADABLE };
 }

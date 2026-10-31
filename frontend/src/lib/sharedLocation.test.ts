@@ -112,11 +112,64 @@ test("the manifest: the Android share target and the desktop geo: handler", () =
 
 test("the search box reads a pasted link before it is cut, and the app opens a share in Go", () => {
   const search = readFileSync(new URL("../PlaceSearch.tsx", import.meta.url), "utf8");
-  assert.match(search, /onPaste=\{\(event\) => \{[\s\S]*?if \(!parseShared\(text\)\) return;\s*event\.preventDefault\(\);/);
+  assert.match(search, /onPaste=\{\(event\) => \{[\s\S]*?if \(!parseShared\(text, near\(\)\)\) return;\s*event\.preventDefault\(\);/);
   assert.match(search, /const offered: Place\[\] = \[\.\.\.sharedItems, \.\.\.\(empty \? recent : places\)\];/);
   // Review F10: the link's status region is always mounted (not mounted with its words), and filled after.
   assert.match(search, /<p className=\{sharedSaid \? "hint" : "visually-hidden"\} role="status" aria-live="polite">\s*\{sharedSaid\}\s*<\/p>/);
   assert.doesNotMatch(search, /\{shared && "said" in shared && \(/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /useSharedLaunch\(\(place\) => \{\s*if \(modeRef\.current !== "go"\) changeMode\("go"\);\s*goToPlace\(place\);\s*\}, setNotice\);/);
+});
+
+test("latitude and longitude in degrees, minutes and seconds, as GPS units and map apps write them (2026-10-31)", () => {
+  const eps = 1e-3;
+  for (const text of [
+    `38°53'21.4"N 77°03'00.6"W`,
+    `38°53′21.4″N 77°03′00.6″W`,
+    `38° 53' 21.4'' N, 77° 3' 0.6'' W`,
+    `38° 53.357' N, 77° 3.010' W`,
+    `N 38° 53.357 W 077° 03.010`,
+    `N38 53 21.4 W77 3 0.6`,
+    `38 53 21.4 N 77 3 0.6 W`,
+    `77°03'00.6"W 38°53'21.4"N`,
+    `38.8893°, -77.0502°`,
+    `38.8893 N 77.0502 W`,
+  ]) {
+    near(parseCoordinates(text)!, LINCOLN, eps);
+  }
+  // Not coordinates: plain numbers with no mark or letter, minutes past 59, two latitudes, a sign and a letter.
+  for (const text of [`38 53 21 77 3 0`, `38° 61' N, 77° 3' W`, `38° N 39° S`, `-38° N, 77° W`, `12 34`, `1600 Pennsylvania Ave`]) {
+    assert.equal(parseCoordinates(text), null, text);
+  }
+});
+
+test("typed coordinates and plus codes are named by what was typed, not as a shared link", () => {
+  const typed = parseShared("38.8892686, -77.050176");
+  assert.equal(typed?.kind === "point" && typed.typed, "coordinates");
+  assert.deepEqual(sharedPlace(LINCOLN, undefined, "coordinates"), {
+    name: "38.88927, -77.05018",
+    label: "38.88927, -77.05018",
+    lon: LINCOLN[0],
+    lat: LINCOLN[1],
+    kind: "coordinates",
+  });
+  const code = parseShared("vxqx+p3 Washington, District of Columbia");
+  assert.ok(code?.kind === "point");
+  assert.equal(code.typed, "pluscode");
+  assert.equal(code.name, "VXQX+P3");
+  near(code.point, [-77.0023125, 38.8893125]);
+  // A short code is placed near the point given: here, the map's west edge.
+  const west = parseShared("J422+22", [-77.8, 39.5]);
+  near(west?.kind === "point" ? west.point : undefined, [-77.8999375, 39.6000625]);
+  assert.equal(sharedPlace(LINCOLN, "VXQX+P3", "pluscode").kind, "pluscode");
+  // A link's point stays a shared location.
+  const link = parseShared("geo:38.8892686,-77.050176");
+  assert.equal(link?.kind === "point" && link.typed, undefined);
+});
+
+test("a plus code read through readShared becomes a place with no request", async () => {
+  const read = await readShared("87C4VXQX+P3", () => Promise.reject(new Error("no request expected")));
+  assert.ok("place" in read);
+  assert.equal(read.place.name, "87C4VXQX+P3");
+  assert.equal(read.place.kind, "pluscode");
 });
