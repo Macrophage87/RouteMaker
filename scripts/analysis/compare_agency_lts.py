@@ -49,7 +49,7 @@ from pipeline import conflation, extract, variants  # noqa: E402
 from routemaker import agency_roads, divided, facility, speed_corrections  # noqa: E402
 from routemaker.classes import TRAIL_CLASS_HIGHWAY  # noqa: E402
 from routemaker.geo import Point, haversine  # noqa: E402
-from routemaker.stress import classify, rural_floor, winding  # noqa: E402
+from routemaker.stress import bends_slow_traffic, classify, rural_floor  # noqa: E402
 
 MI = 1609.344
 FT_PER_M = 3.28084
@@ -260,7 +260,7 @@ class Context:
             divided=way.osm_id in self.divided,
             separate_facility=way.osm_id in self.separate,
             parking_width_m=facts.parking_reach_m if facts is not None else None,
-            winding=not urban and winding(way.coordinates),
+            winding=not urban and bends_slow_traffic(way.coordinates, tags),
         )
         return rural_floor(result, tags, urban=urban)
 

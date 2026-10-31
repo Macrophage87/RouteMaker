@@ -35,7 +35,7 @@ from routemaker import climbs, hill_cost, ridetime
 pytestmark = pytest.mark.usefixtures("weekday_clock")
 
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 FACILITY_KEYS = {"path", "protected", "lane", "none", "unknown"}
 
@@ -2284,6 +2284,8 @@ class TestStressSpansThroughThePlan:
             "unpaved": None,
             "rough": None,
             "rpm": None,
+            "outside_dc": None,
+            "half": None,
         }
         assert spans[-1] == {
             "from_m": 2200,
@@ -2293,6 +2295,8 @@ class TestStressSpansThroughThePlan:
             "unpaved": None,
             "rough": None,
             "rpm": None,
+            "outside_dc": None,
+            "half": None,
         }
 
 

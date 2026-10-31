@@ -231,6 +231,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "text; in the Android app, the phone's own speech input (Google's on most "
                 "phones) does, and it, not RouteMaker, has the microphone. The words go only "
                 "into the box until you tap Send.",
+                "The microphone in Go's Where to? box works the same way: the place, letter or "
+                "name you say is turned into text there and searched like typed words.",
             ]
         )
         + _details(RIDE_CRYPTO_SUMMARY, RIDE_CRYPTO),
