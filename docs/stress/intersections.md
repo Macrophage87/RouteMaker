@@ -79,7 +79,12 @@ makes the rider stop. A turn off the rider's own road is read the same
 way, so a left off a protected lane on a busy road costs what the same left off the road
 does. And a junction is priced by traffic even where an agency or the owner rated the road
 low for riding along it: those ratings no longer lower a junction. A divided road's
-carriageway is read with the road's two-way count, as the classifier reads it. The segment table does not keep the road
+carriageway is read as a one-way of its own lanes, with the road's two-way count: unlike
+the classifier, which reads the whole road as two-way, the city steps at 12,000 and 20,000
+a day do not apply to it (the median refuge credit, section 4, then counts the two
+carriageways once). A protected lane mapped as a way of its own is a path, not part of the
+road: it has no speed and keeps its map level, and the road beside it, which carries no
+lane credit, is read by its own traffic. The segment table does not keep the road
 class, so a quiet arterial's LTS 3 floor comes only from the map. The event still names the
 road's level on the map; its words give the lanes and speed ("Crossing a 4-lane 30 mph (48
 km/h) road, stop sign on your side"). Piney Branch at Sheridan is red: 0.85 calm mi [1.37
