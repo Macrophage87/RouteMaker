@@ -14,7 +14,7 @@
  *   has no sign-in, so a role says what the rider chose, nothing more.
  * - Your dot is sent about every 2 s on a ride of 20 or fewer, 5 s on a bigger one (slower on a very big ride: the server sets the pace) while the app is open and in front (never in the background), and only
  *   while you are within a quarter mile (400 m) of the route line. Sharing ends when you turn it off, close
- *   the app, are off the route for 10 minutes, or 12 hours after the ride's start (your answer).
+ *   the app, are off the route for 10 minutes (Group and Mass Rides; a broadcast shows you on or off it), or 12 hours after the ride's start (your answer).
  * - Dots show their age: under 30 s solid (with a brief pulse ring when a new reading lands), 30-90 s faded,
  *   90 s to 2 min a hollow ring, then gone. Only dots within a quarter mile of the route are drawn.
  * - Alerts: the plan's lists, one tap to send (Medical emergency or crash, and Crash, ask first), the sender's
@@ -337,11 +337,30 @@ export function relativeWords(otherAlongM: number, myAlongM: number | null): str
 
 export type Freshness = "fresh" | "faded" | "ring" | "gone";
 
+/** How long the others see a dot after its last send: freshness's "gone", the server's 2 minutes. */
+export const DOT_SHOWN_S = 120;
+
+/** The ride the server last took this rider's dot on, and when (0: dropped since, or never). */
+export interface SentDot {
+  ride: string | null;
+  at: number;
+}
+export const NOT_SENT: SentDot = { ride: null, at: 0 };
+
+/**
+ * Whether this rider counts themself among the riders (Stephen 2026-10-31: a follower whose dot never went counted 2
+ * on their own screen while the leader saw 1): only while sharing, on this ride, and as long as the others see the
+ * dot the server last took.
+ */
+export function meCounted(sent: SentDot, ride: string | null, sharing: boolean, now: number): boolean {
+  return sharing && ride !== null && sent.ride === ride && sent.at > 0 && now - sent.at <= DOT_SHOWN_S * 1000;
+}
+
 /** Under 30 s solid, 30-90 s faded, 90 s to 2 min a hollow ring, then gone. */
 export function freshness(ageS: number): Freshness {
   if (ageS < 30) return "fresh";
   if (ageS < 90) return "faded";
-  if (ageS <= 120) return "ring";
+  if (ageS <= DOT_SHOWN_S) return "ring";
   return "gone";
 }
 
