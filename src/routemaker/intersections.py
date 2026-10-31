@@ -1000,17 +1000,23 @@ def reason_of(kind: str, road: Road | None, control: Control, beacon: bool = Fal
 # 2026-10-31, picked "Midpoint fix plus wording": a junction whose cost is about a 2.5 or
 # 3.5 road costs the midpoint of the junction's whole cost, ride time included, with that
 # road read at the level below and at the level above. 4.5 stays LTS 4's (461a: as LTS 4,
-# which equals Avoid's at a junction). Only the road the cost is about is split, so the
-# rider's own half step still decides who has the right of way.
+# which equals Avoid's at a junction). Only roads at the cost's road's own half step are
+# split, so the rider's own different half step still decides who has the right of way. A
+# 2.5 road's fixed costs (an all-way stop, a priority-side pass, a right off it) halve with
+# it, since LTS 2 costs nothing here. The time factor reported is the two readings' mean.
 SPLIT_HALF_TIERS = frozenset({2, 3})
 
 
 def _whole(junction: Junction, about: Road, up: bool) -> Junction:
-    """The junction with `about` read as a whole level: the one below it, or above."""
-    whole = replace(about, tier=(about.tier or 0) + (1 if up else 0), half=False)
+    """The junction with `about` read as a whole level, the one below it or above, and with
+    it every road at the same half step (the rider's own included), so two 3.5 roads stay
+    level with each other and neither gains the right of way in one reading only."""
+    step = 1 if up else 0
 
     def swap(road: Road) -> Road:
-        return whole if road == about else road
+        if road.half and road.tier == about.tier:
+            return replace(road, tier=(road.tier or 0) + step, half=False)
+        return road
 
     return replace(
         junction,
@@ -1064,7 +1070,7 @@ def priced(
     high = _timed(_whole(junction, about, up=True), when, floors)
     cost = (low[0] + high[0]) / 2
     untimed = (low[1] + high[1]) / 2
-    return cost, untimed, (cost / untimed if untimed else 1.0)
+    return cost, untimed, (low[2] + high[2]) / 2
 
 
 def assess(junction: Junction, group: bool = False, when: str | None = None) -> Event | None:

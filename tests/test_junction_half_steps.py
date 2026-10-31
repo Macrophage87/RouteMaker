@@ -113,3 +113,20 @@ def test_a_road_read_by_its_traffic_still_names_the_maps_half_step() -> None:
     road = Road(2, half=True, lanes=2, speed_mph=30.0, oneway=False)
     event = m.assess(crossing(road))
     assert event is not None and event.crossed_tier == 2 and event.crossed_half
+
+
+def test_two_three_and_a_half_roads_crossing_leave_the_rider_on_the_stopped_side() -> None:
+    # Neither road is the busier, so the rider gives way: a 3.5 crossing's own cost.
+    rider = Road(3, half=True, names=frozenset({"a"}), **ARTERIAL)
+    crossed = Road(3, half=True, names=frozenset({"b"}), **ARTERIAL)
+    for when in (None, ridetime.WEEKDAY_RUSH):
+        both = cost(crossed, when, incoming=rider, outgoing=rider, control=Control.NONE)
+        alone = cost(crossed, when, control=Control.NONE)
+        assert both == pytest.approx(alone), when
+
+
+def test_a_two_and_a_half_all_way_stop_costs_half_of_lts_three() -> None:
+    three = cost(Road(3, **ARTERIAL), control=Control.ALL_STOP)
+    assert cost(Road(2, half=True, **ARTERIAL), control=Control.ALL_STOP) == pytest.approx(
+        three / 2
+    )

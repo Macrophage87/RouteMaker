@@ -217,8 +217,10 @@ weights that start at a whole LTS 4 (the severe tier's speed and lane factors, t
 stopgap, the merge's assumed lanes, rush hour's x2.0 and its 9,840 ft [3.0 km] gap-wait
 floor) so reach a 3.5 road halfway: a stop-sign crossing of a 35 mph, one-lane-each-way
 3.5 road at weekday rush costs about 5,900 ft [1.8 km] where it cost 3,500 ft
-[1.07 km]. Only that road is split, so the rider's own half step still decides who has
-the right of way. The junction's words say the half step as the route's sections do
+[1.07 km]. Only roads at that same half step are split (a rider on a 3.5 road crossing another
+3.5 road still gives way), so the rider's own different half step still decides who has
+the right of way. A 2.5 road's small fixed costs (an all-way stop, passing it with
+priority, a right off it) halve, since LTS 2 costs nothing at a junction. The junction's words say the half step as the route's sections do
 ("LTS 3.5"; `crossed_half` in the API).
 
 ### Parked

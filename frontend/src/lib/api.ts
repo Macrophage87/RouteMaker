@@ -365,6 +365,8 @@ export interface DescriptionCrossing {
   street: string | null;
   severity?: "orange" | "red" | null;
   crossed_tier?: number | null;
+  /** The road is a half step above `crossed_tier`; absent from an older API. */
+  crossed_half?: boolean;
   /** "At 1.1 mi (1.8 km): Cross 17th Street Northwest (LTS 4) at a signal (Very high stress junction)." */
   text: string;
 }
