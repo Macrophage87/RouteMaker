@@ -10,9 +10,9 @@
  * location" and then the last places picked (lib/recentPlaces.ts). The result count is announced
  * in a polite live region, and the options are tall enough to tap.
  *
- * A pasted map link (Google, Apple, Waze, geo:) or typed coordinates are read as a place
- * (lib/sharedLocation.ts, v0.7.0 "Open shared locations"): it leads the list as one option, and a short
- * link is followed by the server first.
+ * A pasted map link (Google, Apple, Waze, geo:), typed coordinates (decimal, or degrees, minutes and seconds) or a
+ * plus code are read as a place (lib/sharedLocation.ts, v0.7.0 "Open shared locations"; lib/plusCode.ts): it leads
+ * the list as one option, and a short link is followed by the server first.
  *
  * Go's box has a microphone where speech works (lib/placeDictation.ts, Stephen 2026-10-30): the place said is searched,
  * the places found are lettered (in English and Spanish, lettersHeard), and "B", "Bravo" or a place's name said picks
@@ -362,12 +362,16 @@ export function PlaceSearch({
   const listId = `${id}-list`;
   const optionId = (i: number) => `${id}-opt-${i}`;
 
+  // Where a short plus code ("VXQ7+GV") is placed: the route's start, else the search's bias (the location or the
+  // map's view); the middle of the map without either (lib/plusCode.ts).
+  const near = () => origin?.() ?? bias();
+
   const change = (value: string) => {
     setQuery(value);
     setOpen(true);
     sharedTurn.current += 1;
-    // Coordinates typed or a whole link pasted in: the place it holds, offered first.
-    const found = parseShared(value);
+    // Coordinates or a plus code typed, or a whole link pasted in: the place it holds, offered first.
+    const found = parseShared(value, near());
     if (found) {
       openShared(value);
       return;
@@ -381,19 +385,19 @@ export function PlaceSearch({
     }
   };
 
-  // A link or coordinates: read here, or (a short link) followed by the server; an address is searched for.
+  // A link, coordinates or a plus code: read here, or (a short link) followed by the server; an address is searched for.
   const openShared = (text: string) => {
     const turn = ++sharedTurn.current;
     runner.current?.clear();
     setResult(null);
     setOpen(true);
-    const found = parseShared(text);
+    const found = parseShared(text, near());
     if (found?.kind === "point") {
-      setShared({ place: sharedPlace(found.point, found.name) });
+      setShared({ place: sharedPlace(found.point, found.name, found.typed) });
       return;
     }
     setShared({ said: SHARED_OPENING });
-    void readShared(text).then((read) => {
+    void readShared(text, undefined, near()).then((read) => {
       if (turn !== sharedTurn.current) return;
       if ("place" in read) setShared({ place: read.place });
       else if ("query" in read) {
@@ -514,7 +518,7 @@ export function PlaceSearch({
         onPaste={(event) => {
           // A whole map link, longer than the box takes: read before the box cuts it.
           const text = event.clipboardData.getData("text");
-          if (!parseShared(text)) return;
+          if (!parseShared(text, near())) return;
           event.preventDefault();
           setQuery(text.slice(0, MAX_QUERY_CHARS));
           openShared(text);
