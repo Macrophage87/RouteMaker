@@ -449,7 +449,7 @@ marker, so averaging never hides a very high-stress crossing.
   no score (an older one, or `calm: null` where the score failed) keeps the strip
   (`usableCalm`, `profileChart.ts:1108-1113`; `ElevationChart.tsx:156`, `:364-370`). A
   failure costs only the score (`route_profile`, `src/core/routing.py`). The route panel's
-  stress bar is unchanged ([drawing.md](drawing.md)).
+  stress bar shows each half step ridden in its own segment ([drawing.md](drawing.md)).
 - **Scale.** A log scale from 0.5 to the next of 2, 5, 10, 20 ... above the highest
   value, the highest step and 1.15 times the upper guide, and at least 2 (`CALM_FLOOR`,
   `calmTop`, `calmScale`, `profileChart.ts:1089`, `:1128-1135`, `:1153-1157`), so a mile

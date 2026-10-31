@@ -6635,7 +6635,7 @@ the 22 ways it lifts. Direction on a hill is FOLLOWUP-GRADE-STRESS, not here.
 (`settings.REBUILD_SENTINEL_LTS4_STREET`, "CONNECTICUT AVE NW"), its segment rows by
 `attr_sources->'blocks'` (the classifier records up to 12 matched blocks a way), lengths by
 row (both carriageways of a divided stretch), a row's latitude at its middle, LTS 4 meaning
-tier 4 or Avoid. VALIDATE_SEGMENTS (`pipeline.run.assert_reference_lts4_street`) refuses under 60%
+tier 4 or Avoid, except, south of R St NW, a 4 from the 20,000-a-day count step alone. VALIDATE_SEGMENTS (`pipeline.run.assert_reference_lts4_street`) refuses under 60%
 overall or under 95% north of 38.9126 N (R St NW). Skipped, with a warning, when no agency
 street layer is installed; refused when the layer has no block of that name; off with an
 empty street (the suite's toy extracts, `tests/conftest.py`). On the 2026-10-03 build: 49%
@@ -7372,7 +7372,7 @@ intended to also have a rollback based on the length of the ride"): the corkers 
 once by a group of the anticipated ride size, with "about N corkers" for the ride; its
 defaults (rotation factor 2, 2 corkers a junction where one-way is not known, 500 riders)
 are open for the owner. Half steps arrive with the half-step editor
-(the score reads whole tiers); the panel's stress bar stays as it is. Junction costs
+(the score reads whole tiers); the panel's stress bar shows each half step ridden in its own segment, from `stress_spans`. Junction costs
 change when `wip/isect-costs-c` (468, 469) merges, and the chart follows, since it reads
 the model's own `cost_ft`.
 
