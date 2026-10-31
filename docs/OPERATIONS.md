@@ -5613,7 +5613,7 @@ scale. The levels on our scale (the script's docstring has the citations):
 | DDOT (2020) | the first of `DDOT_LEVEL_FIELDS` any record has (`LTS`, `LTS_2020`, ...) | 1 to 4 as they are (a 5 would be Avoid) | 0 and empty |
 | MDOT SHA | `LTS_ADJUSTED` | 1 to 4 as they are; 5, "bicycle access prohibited", closes the road to bicycles (v0.9.1) | 0 (shared-use path), 9 (missing data), empty |
 
-From v0.15.3 MDOT SHA's level is read through the owner's rules
+From v0.16.0 MDOT SHA's level is read through the owner's rules
 (`routemaker.mdot_sha_rules`; the owner, 2026-10-30, "Rules in the build"), which is why the
 install needs SHA's traffic counts (`mdot-sha-aadt`, the same download as the classifier's
 Maryland counts) and the Census urban areas. Without both it refuses; `--mdot-as-published`
