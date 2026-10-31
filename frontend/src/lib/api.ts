@@ -45,7 +45,7 @@ export interface StressSpan {
    * A half step (OWNER-DECISIONS 461a): `tier` is its lower level and the section is 0.5 above it, drawn
    * in the half step's own colour (routeColours.ts). Absent on a whole level, and from an older API.
    */
-  half?: boolean;
+  half?: boolean | null;
   /**
    * A Mass Ride's only (OWNER-DECISIONS 325-327, 387): the section's capacity in riders per
    * minute on the flat, the lowest along it (its narrowest point), or null where the table has
