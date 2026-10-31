@@ -363,7 +363,8 @@ change it.</li>
       ones.</li>
       <li><strong>Traffic volume.</strong> Vehicle counts from the District, Virginia
       and agency street records. On a two-lane road with no bike lane, very light
-      traffic lowers the rating one level, and heavy traffic raises it one level.
+      traffic lowers the rating one level, and heavy traffic raises it one level;
+      some busy streets and highways go up a half step or more (see the formula in detail).
       Sometimes one block's count is far above the rest of its street, often because
       traffic bunches at an intersection. Then the street's typical count is used for
       the road, and the higher count still counts at the intersection.</li>
@@ -820,13 +821,18 @@ change it.</li>
     Such a street left at LTS 2 that carries 5,000 to 7,999 vehicles a day is LTS 2.5. A painted
     lane, or a shoulder read as one, on a street carrying 9,000 or more is never calmer than LTS 2.5.
     Without a bike facility, trunk, primary and secondary roads are at least LTS 3, and tertiary roads
-    at least LTS 2.</p>
+    at least LTS 2. After those minimums, in a town, a two-way street rated LTS 3 with no bike facility and no
+    side path beside it is LTS 3.5 from 12,000 vehicles a day and LTS 4 from 20,000.</p>
+    <p>In Virginia, a street that no single VDOT count matches, because it bends or runs past several count
+    stretches, takes the highest of the VDOT counts along it, as long as they cover at least half of it and no
+    street beside it already took that stretch. On a divided road, the side with no count of its own takes the
+    count of the other side of the same street, from any agency.</p>
   </div></details>
 </section>
 
   <section>
     <h2 id="special">Special cases</h2>
-<p>A few kinds of road get a rule of their own: rural roads are never LTS 1, rural expressways and fast multilane highways are LTS 4.5, motorways and some side-path roads are Avoid, and some DC park paths are open to bikes.</p>
+<p>A few kinds of road get a rule of their own: rural roads are never LTS 1, rural expressways, fast multilane highways and busy two-lane rural highways are LTS 4.5, motorways and some side-path roads are Avoid, and some DC park paths are open to bikes.</p>
 <details class="more"><summary>More: Special cases</summary>
 <div class="more-body">
     
@@ -845,6 +851,8 @@ change it.</li>
       55 mph [89 km/h] roads the same way). Ramps, roads tagged as expressways
       (the rule above) and roads with a separated bike track on them or beside them keep their own
       rating.</li>
+      <li><strong>Busy two-lane rural highways are LTS 4.5.</strong> Outside a town, a trunk or primary road
+      with one lane each way and no bike lane or shoulder, carrying 18,000 or more vehicles a day.</li>
       <li><strong>Motorways</strong> are closed to bikes unless signed open. One signed open to bikes is
       Avoid.</li>
       <li><strong>"Use the side path" roads</strong> (OpenStreetMap's <code>bicycle=use_sidepath</code>)
