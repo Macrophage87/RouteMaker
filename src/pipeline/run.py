@@ -64,13 +64,13 @@ from routemaker.geo import Point
 from routemaker.shape import sinuosity
 from routemaker.stress import (
     Stress,
+    bends_slow_traffic,
     classify,
     inferred_unpaved,
     is_rough,
     painted_lane_multilane,
     rural_floor,
     rural_floor_applies,
-    winding,
 )
 
 from . import (
@@ -2665,7 +2665,7 @@ def build_handlers(
             rural = way.osm_id not in reference.urban_way_ids
             # The owner's narrow-road rule reads the line only outside urban
             # areas (`stress.NARROW_RURAL_ROAD_MPH`).
-            bends = rural and winding(way.coordinates)
+            bends = rural and bends_slow_traffic(way.coordinates, tags)
 
             def classified(aadt, tags=tags, way=way, match=match, facts=facts, bends=bends):
                 return classify(

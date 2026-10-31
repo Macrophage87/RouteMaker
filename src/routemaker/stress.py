@@ -901,6 +901,79 @@ def winding(coordinates, min_length_m: float = WINDING_MIN_LENGTH_M) -> bool:
     return _bent(points) and _turns_both_ways(points)
 
 
+# Gravel with turns (the owner, 2026-10-30, after a search of measured gravel
+# speeds, reports/gravel-speeds/literature-2026-10-30.md in the project files):
+# on straight gravel drivers still run 35-40 mph (Kansas, Michigan), and paving
+# adds only a mile an hour or so (VTI), but a bend is what slows them. FHWA-RD-99-171
+# puts the 85th percentile near 20 mph on a 50 m bend and 40 mph on a 100 m one,
+# even on pavement. So an unpaved rural road whose line has tight bends, often
+# enough that they are not one corner on a straight road, reads as winding for the
+# narrow-road rule (25 mph); straight gravel keeps `UNPAVED_RURAL_DEFAULT_MPH`.
+TIGHT_BEND_RADIUS_M = 100.0
+# The arc the radius is read over, and the spacing the line is resampled at.
+TIGHT_BEND_ARC_M = 50.0
+TIGHT_BEND_STEP_M = 10.0
+# At least two bends, and at least one per this many metres of road.
+GRAVEL_MIN_TIGHT_BENDS = 2
+GRAVEL_BEND_SPACING_M = 800.0
+
+
+def _resampled(coordinates, step_m: float) -> list[tuple[float, float]]:
+    """The line as local x/y metres, a point every `step_m` along it."""
+    lon0, lat0 = coordinates[0][0], coordinates[0][1]
+    kx = 111_320.0 * math.cos(math.radians(lat0))
+    xy = [((c[0] - lon0) * kx, (c[1] - lat0) * 110_540.0) for c in coordinates]
+    out = [xy[0]]
+    carry = 0.0
+    for (x1, y1), (x2, y2) in zip(xy, xy[1:], strict=False):
+        seg = math.hypot(x2 - x1, y2 - y1)
+        d = step_m - carry
+        while d <= seg:
+            t = d / seg
+            out.append((x1 + (x2 - x1) * t, y1 + (y2 - y1) * t))
+            d += step_m
+        carry = seg - (d - step_m)
+    return out
+
+
+def tight_bends(coordinates) -> int:
+    """How many separate bends of radius under `TIGHT_BEND_RADIUS_M` the line
+    has, each read as the turn over a `TIGHT_BEND_ARC_M` arc. A sharp corner is
+    one bend, however many vertices draw it."""
+    if len(coordinates) < 3:
+        return 0
+    points = _resampled(coordinates, TIGHT_BEND_STEP_M)
+    headings = [
+        math.atan2(b[1] - a[1], b[0] - a[0]) for a, b in zip(points, points[1:], strict=False)
+    ]
+    turns = [
+        (h2 - h1 + math.pi) % (2 * math.pi) - math.pi
+        for h1, h2 in zip(headings, headings[1:], strict=False)
+    ]
+    window = max(1, round(TIGHT_BEND_ARC_M / TIGHT_BEND_STEP_M))
+    limit = TIGHT_BEND_ARC_M / TIGHT_BEND_RADIUS_M
+    bends, inside = 0, False
+    for i in range(max(0, len(turns) - window + 1)):
+        tight = abs(sum(turns[i : i + window])) > limit
+        if tight and not inside:
+            bends += 1
+        inside = tight
+    return bends
+
+
+def bends_slow_traffic(coordinates, tags: dict[str, str]) -> bool:
+    """The line test the narrow-road rule reads (`winding`), plus, on an unpaved
+    road, tight bends often enough to keep drivers slow (`tight_bends`)."""
+    if winding(coordinates):
+        return True
+    if not is_unpaved(tags):
+        return False
+    points = [Point(c[0], c[1]) for c in coordinates]
+    length = sum(haversine(a, b) for a, b in zip(points, points[1:], strict=False))
+    bends = tight_bends(coordinates)
+    return bends >= GRAVEL_MIN_TIGHT_BENDS and bends * GRAVEL_BEND_SPACING_M >= length
+
+
 def rural_floor_applies(tags: dict[str, str], urban: bool) -> bool:
     """The owner's rural floor (`RURAL_FLOOR_RULE`): a rural way open to cars.
     A trail-class way, a road with a separated track alongside (the rider is not
@@ -1139,7 +1212,12 @@ def _classify(
             not urban
             and aadt is None
             and highway in NARROW_ROAD_HIGHWAY
-            and (winding or narrow_by_tags(tags))
+            and (
+                winding
+                or narrow_by_tags(tags)
+                # A one-lane gravel road (the owner, 2026-10-30).
+                or (is_unpaved(tags) and tags.get("lanes") == "1")
+            )
             and speed_mph > NARROW_RURAL_ROAD_MPH
         ):
             speed_mph = NARROW_RURAL_ROAD_MPH
