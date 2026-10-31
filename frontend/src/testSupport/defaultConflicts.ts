@@ -14,11 +14,12 @@
  */
 export const DEFAULT_CONFLICTS = {
   /**
-   * The line on its own edge: LTS 3's yellow on its orange edge (1.53:1) and LTS 4's orange on
-   * its red edge (2.34:1), inside the ring, on the map and on the route. The ring makes the
-   * whole line 3:1 on the map; the two colours inside it are the two-tone reading itself.
+   * The line on its own edge: LTS 3's yellow on its orange edge (1.53:1) and LTS 3.5's orange on
+   * its red edge (2.34:1, LTS 4's look until 2026-10-31), inside the ring, on the map and on the
+   * route. The ring makes the whole line 3:1 on the map; the two colours inside it are the
+   * two-tone reading itself. LTS 4's red is 3:1 on its near-black red edge since 2026-10-31.
    */
-  lineOnEdgeBelowThreeToOne: ["LTS 3", "LTS 4"],
+  lineOnEdgeBelowThreeToOne: ["LTS 3", "LTS 3.5"],
   /**
    * The same figure read as the dash pattern (the re-check's N-E): LTS 3's gaps show its orange
    * edge, 1.53:1 from the yellow, so its dash, the cue that is not colour, is faint for low
@@ -26,10 +27,10 @@ export const DEFAULT_CONFLICTS = {
    */
   lts3DashGapFaint: true,
   /**
-   * LTS 3 against LTS 4 for a deuteranope: 1.44:1 in luminance (held, over 1.4) but 9.2 CIEDE2000
-   * (13.7 protan; 9.4 with the yellow before 371), the weakest pair of the default for colour-blind riders (the re-check's N-B).
+   * LTS 3 against LTS 4 for a deuteranope: 9.2 CIEDE2000 with LTS 4's orange (the re-check's N-B);
+   * 23.2 since LTS 4 became a red (2026-10-31), so no longer reported.
    */
-  lts3Lts4DeutanUnderTen: true,
+  lts3Lts4DeutanUnderTen: false,
   /**
    * Paved against unpaved of the same tier, under 10 CIEDE2000 under some vision (the re-check's
    * SF-A), in every palette: the dotted centre mark tells them apart there. Two-tone's LTS 2 was
@@ -38,16 +39,32 @@ export const DEFAULT_CONFLICTS = {
   unpavedSameTierClose: { twotone: ["LTS 1"], blended: ["LTS 1", "LTS 2", "LTS 4", "Avoid"], cvd: ["LTS 4"] } as Record<string, string[]>,
   /**
    * Greyscale print: luminance no longer falls with stress. LTS 3's yellow (0.60) is the
-   * lightest tier, lighter than LTS 1 (0.57), and LTS 4's orange (0.38) is lighter than LTS 2
-   * (0.28). Every neighbouring pair is still 1.4:1 or more apart. A ring does not change it.
+   * lightest tier, lighter than LTS 1 (0.57). (LTS 4's red, 0.18, is darker than LTS 2 since
+   * 2026-10-31.) Every neighbouring pair is still 1.4:1 or more apart. A ring does not change it.
    */
-  greyscaleOutOfOrder: ["LTS 3", "LTS 4"],
-  /** For a deuteranope, neighbouring tiers under 1.4:1 in luminance: none since 371's yellow. */
-  deuteranopeTooClose: [] as string[][],
-  /** 274's salience: LTS 4's orange (CIELAB chroma 72.5) is less saturated than LTS 3's yellow. A ring does not change it. */
+  greyscaleOutOfOrder: ["LTS 3"],
+  /**
+   * For a deuteranope, neighbouring tiers under 1.4:1 in luminance: LTS 4's red against Avoid's
+   * magenta (1.09:1, 2026-10-31). Their edges (near-black red against white and a near-black ring),
+   * Avoid's dash-dot and its width still tell them apart.
+   */
+  deuteranopeTooClose: [["LTS 4", "Avoid"]] as string[][],
+  /** 274's salience: LTS 4 is not 10 CIELAB chroma more saturated than LTS 3's yellow (80): its orange was 72.5, its red (2026-10-31) is 87. A ring does not change it. */
   lts4NotMoreSaturated: true,
-  /** Avoid against LTS 4: 17.8 CIEDE2000 under deuteranopia, under the warm palette's 20 (the dash-dot, width and edge still differ). A ring does not change the lines. */
+  /** Avoid against LTS 4: 13.2 CIEDE2000 under tritanopia (red against magenta), under the warm palette's 20 (the dash-dot, width and edge still differ). A ring does not change the lines. */
   avoidNearLts4: true,
+  /**
+   * The bike-facility rails against Avoid's magenta (2026-10-31): the protected lane's violet
+   * (#a21caf) is 13.4 CIEDE2000 from it, under the rails' 15 (5.5 under protanopia). The rails'
+   * pattern (the protected lane's blocks) and their place beside the line, not on it, still differ.
+   */
+  railsNearAvoid: ["protected"] as string[],
+  /**
+   * Avoid against LTS 4 in grey: the magenta and the red are 1.07:1 apart in luminance (2026-10-31),
+   * under the 1.8:1 the warm palette keeps. Their edges (white and a near-black ring against a
+   * near-black red), Avoid's dash-dot and its width tell them apart; in colour they are 30 CIEDE2000.
+   */
+  avoidLts4GreyUnderFloor: true,
   /** Avoid on the panels: none since 371's legend ring. */
   avoidOnDarkPanel: [] as string[],
 } as const;

@@ -218,7 +218,7 @@ DC_ALLEY_MPH = 15.0
 # classes, and every class outside the urban areas, keep the tables above: the
 # rural figures are the states' statutory ones, which the rural references
 # depend on, and the owner's answer was about the urban roads in question.
-MD_VA_URBAN_DEFAULT_MPH = {
+MD_URBAN_DEFAULT_MPH = {
     "residential": 25.0,
     "unclassified": 30.0,
     "tertiary": 30.0,
@@ -227,6 +227,23 @@ MD_VA_URBAN_DEFAULT_MPH = {
     "secondary_link": 35.0,
     "primary": 35.0,
     "primary_link": 35.0,
+}
+# Virginia's and West Virginia's urban minor roads at their law's 25 (Code of
+# Virginia 46.2-870, W. Va. Code 17C-6-1: 25 in a business or residence district),
+# where Maryland keeps MDOT's 30, which is its own law's business-district figure
+# (the owner, 2026-10-31: the same rules everywhere, the state's own law where it
+# differs). An agency's posted figure, where the map has one, outranks both.
+VA_WV_URBAN_DEFAULT_MPH = {
+    **MD_URBAN_DEFAULT_MPH,
+    "unclassified": 25.0,
+    "tertiary": 25.0,
+    "tertiary_link": 25.0,
+}
+# Each state's urban table, by `speed_zone`'s answer.
+URBAN_DEFAULT_MPH = {
+    "MD": MD_URBAN_DEFAULT_MPH,
+    "VA": VA_WV_URBAN_DEFAULT_MPH,
+    "WV": VA_WV_URBAN_DEFAULT_MPH,
 }
 # The statutory defaults themselves, which the junction model prices an
 # unposted road at (OWNER-DECISIONS 469, 469a). The classifier above reads
@@ -245,6 +262,13 @@ MD_STATUTORY_OTHER_MPH = (50.0, 55.0)
 VA_STATUTORY_URBAN_MPH = 25.0
 VA_STATUTORY_OTHER_MPH = 55.0
 VA_STATUTORY_UNPAVED_MPH = 35.0
+# West Virginia, W. Va. Code 17C-6-1(b): 25 in a business or residence district,
+# 55 on open country highways, with no separate figure for an unpaved road. The
+# same figures as Virginia, so West Virginia is read as Virginia is, in the
+# classifier's urban table too (the owner, 2026-10-31: the rules are to be the
+# same everywhere unless the law or the road differs).
+WV_STATUTORY_URBAN_MPH = 25.0
+WV_STATUTORY_OTHER_MPH = 55.0
 
 
 def statutory_default_mph(
@@ -259,6 +283,8 @@ def statutory_default_mph(
     if zone == "VA":
         district = VA_STATUTORY_URBAN_MPH if urban else VA_STATUTORY_OTHER_MPH
         return min(district, VA_STATUTORY_UNPAVED_MPH) if is_unpaved(tags) else district
+    if zone == "WV":
+        return WV_STATUTORY_URBAN_MPH if urban else WV_STATUTORY_OTHER_MPH
     return None
 
 
@@ -341,7 +367,12 @@ UNPAVED_RURAL_DEFAULT_MPH = 30.0
 # at 25 mph instead of the statutory default, which is LTS 2 on the single-lane
 # row; the rural floor below keeps it from LTS 1. Region-wide ("We can do region
 # wide. The goal is also to find the long distance quiet roads"). A posted limit
-# or a count is evidence about the road and always outranks it.
+# always outranks it, and so does a count above VOLUME_QUIET. A quiet count no longer
+# switches it off (the Virginia review's R4, the owner, 2026-10-31: "Let's go with all
+# these"): VDOT counts nearly every state secondary, so a count showing a narrow road is
+# quiet had left it at LTS 3 (the 50 mph default's 4, eased a step by the count) while
+# its uncounted twins were LTS 2 - about 324 mi of Fauquier, Culpeper, Orange and west
+# Loudoun roads under 500 a day.
 NARROW_RURAL_ROAD_MPH = 25.0
 NARROW_ROAD_HIGHWAY = frozenset({"unclassified", "tertiary", "tertiary_link", "road"})
 # 18 ft: two 9 ft lanes, the narrowest two-lane road with room to pass a rider
@@ -378,6 +409,9 @@ RURAL_FLOOR_RULE = "rural road floor"
 # in a finished score.
 VOLUME_QUIET = 1_500
 VOLUME_BUSY = 8_000
+# The owner's busy-street half step (`_classify`, after the floors).
+BUSY_STREET_MIN_AADT = 5_000
+BUSY_PAINTED_LANE_AADT = 9_000
 # The speed at and below which a count between the two is a tier (v2.2).
 MID_VOLUME_MAX_MPH = 20.0
 # The road classes OWNER-DECISIONS 141 floors at LTS 3 without a facility.
@@ -569,6 +603,8 @@ class StressResult:
     # information in the tab when viewing the road"). Empty where none did.
     formula_tier: Stress | None = None
     formula_rule: str | None = None
+    # Whether the formula's own level (`formula_tier`) was a half step above it.
+    formula_half: bool = False
     agency_ratings: tuple = ()
 
     @property
@@ -901,6 +937,84 @@ def winding(coordinates, min_length_m: float = WINDING_MIN_LENGTH_M) -> bool:
     return _bent(points) and _turns_both_ways(points)
 
 
+# Gravel with turns (the owner, 2026-10-30, after a search of measured gravel
+# speeds, reports/gravel-speeds/literature-2026-10-30.md in the project files):
+# on straight gravel drivers still run 35-40 mph (Kansas, Michigan), and paving
+# adds only a mile an hour or so (VTI), but a bend is what slows them. FHWA-RD-99-171
+# puts the 85th percentile near 20 mph on a 50 m bend and 40 mph on a 100 m one,
+# even on pavement. So an unpaved rural road whose line has tight bends, often
+# enough that they are not one corner on a straight road, reads as winding for the
+# narrow-road rule (25 mph); straight gravel keeps `UNPAVED_RURAL_DEFAULT_MPH`.
+TIGHT_BEND_RADIUS_M = 100.0
+# The arc the radius is read over, and the spacing the line is resampled at.
+TIGHT_BEND_ARC_M = 50.0
+TIGHT_BEND_STEP_M = 10.0
+# At least two bends, and at least one per this many metres of road.
+GRAVEL_MIN_TIGHT_BENDS = 2
+GRAVEL_BEND_SPACING_M = 800.0
+
+
+def _resampled(coordinates, step_m: float) -> list[tuple[float, float]]:
+    """The line as local x/y metres, a point every `step_m` along it."""
+    lon0, lat0 = coordinates[0][0], coordinates[0][1]
+    kx = 111_320.0 * math.cos(math.radians(lat0))
+    xy = [((c[0] - lon0) * kx, (c[1] - lat0) * 110_540.0) for c in coordinates]
+    out = [xy[0]]
+    carry = 0.0
+    for (x1, y1), (x2, y2) in zip(xy, xy[1:], strict=False):
+        seg = math.hypot(x2 - x1, y2 - y1)
+        d = step_m - carry
+        while d <= seg:
+            t = d / seg
+            out.append((x1 + (x2 - x1) * t, y1 + (y2 - y1) * t))
+            d += step_m
+        carry = seg - (d - step_m)
+    return out
+
+
+def tight_bends(coordinates) -> int:
+    """How many separate bends of radius under `TIGHT_BEND_RADIUS_M` the line
+    has, each read as the turn over a `TIGHT_BEND_ARC_M` arc. A sharp corner is
+    one bend, however many vertices draw it."""
+    if len(coordinates) < 3:
+        return 0
+    points = _resampled(coordinates, TIGHT_BEND_STEP_M)
+    headings = [
+        math.atan2(b[1] - a[1], b[0] - a[0]) for a, b in zip(points, points[1:], strict=False)
+    ]
+    turns = [
+        (h2 - h1 + math.pi) % (2 * math.pi) - math.pi
+        for h1, h2 in zip(headings, headings[1:], strict=False)
+    ]
+    window = max(1, round(TIGHT_BEND_ARC_M / TIGHT_BEND_STEP_M))
+    limit = TIGHT_BEND_ARC_M / TIGHT_BEND_RADIUS_M
+    # A bend ends only where the line has run straighter than the limit for a
+    # whole arc: a long curve near the limit, whose windows dip over and under it
+    # vertex by vertex, is one bend, not one per vertex.
+    bends, straight_run = 0, window
+    for i in range(max(0, len(turns) - window + 1)):
+        if abs(sum(turns[i : i + window])) > limit:
+            if straight_run >= window:
+                bends += 1
+            straight_run = 0
+        else:
+            straight_run += 1
+    return bends
+
+
+def bends_slow_traffic(coordinates, tags: dict[str, str]) -> bool:
+    """The line test the narrow-road rule reads (`winding`), plus, on an unpaved
+    road, tight bends often enough to keep drivers slow (`tight_bends`)."""
+    if winding(coordinates):
+        return True
+    if not is_unpaved(tags):
+        return False
+    points = [Point(c[0], c[1]) for c in coordinates]
+    length = sum(haversine(a, b) for a, b in zip(points, points[1:], strict=False))
+    bends = tight_bends(coordinates)
+    return bends >= GRAVEL_MIN_TIGHT_BENDS and bends * GRAVEL_BEND_SPACING_M >= length
+
+
 def rural_floor_applies(tags: dict[str, str], urban: bool) -> bool:
     """The owner's rural floor (`RURAL_FLOOR_RULE`): a rural way open to cars.
     A trail-class way, a road with a separated track alongside (the rider is not
@@ -954,6 +1068,35 @@ MOTORWAY_OPEN_BICYCLE = frozenset({"yes", "designated", "permissive", "official"
 # TEXT IS READ BACK by `core.segment_info.rule_words`; it does not begin "legal but
 # avoid", which the road panel reads as Avoid.
 RURAL_EXPRESSWAY_PREFIX = "rural expressway posted"
+
+# The owner's urban 55 mph rule (2026-10-30: "Urban 55 mph are generally either avoid or
+# 4.5 unless there's a specific reason to keep them") on a highway OSM has not tagged
+# `expressway=yes`: four or more lanes, or a divided carriageway, posted 55 or more, is
+# LTS 4.5 in town or out, as MDOT SHA's `rural-expressway` rule already reads Maryland's
+# (the owner, 2026-10-31: the same rule everywhere). A tagged expressway keeps the rules
+# above. THIS TEXT IS READ BACK like `RURAL_EXPRESSWAY_PREFIX`.
+FAST_MULTILANE_PREFIX = "multilane highway posted"
+FAST_MULTILANE_MIN_MPH = 55.0
+
+
+def fast_multilane(
+    tags: dict[str, str], divided: bool = False, separate_facility: bool = False
+) -> str | None:
+    """Why an untagged fast multilane highway is LTS 4.5 (`FAST_MULTILANE_PREFIX`), or None.
+    A road with a separated track, on it or mapped beside it, is the owner's "specific
+    reason" and keeps its own rating; so does a one-way road that is not a carriageway
+    of a divided highway (a ramp)."""
+    if tags.get("highway") not in AVOID_HIGHWAY or tags.get("expressway") == "yes":
+        return None
+    if separate_facility or cycleway_values(tags) & SEPARATED_CYCLEWAY:
+        return None
+    posted = parse_maxspeed_mph(posted_maxspeed(tags))
+    if posted is None or posted < FAST_MULTILANE_MIN_MPH:
+        return None
+    per_direction = lanes_per_direction(tags)
+    if not divided and (is_oneway(tags) or per_direction is None or per_direction < 2):
+        return None
+    return f"{FAST_MULTILANE_PREFIX} {round(posted):g} mph"
 
 
 def _fast_expressway_mph(tags: dict[str, str]) -> float | None:
@@ -1021,7 +1164,7 @@ def classify(
 ) -> StressResult:
     """Classify one way: its Furth tier, or "legal but avoid" where the rule says so.
 
-    `jurisdiction` is the state the way lies in ("DC", "MD", "VA"), for the
+    `jurisdiction` is the state the way lies in ("DC", "MD", "VA", "WV"), for the
     speed a way with no posted limit is read at (`default_speed_mph`).
     `divided` says a one-way way is one carriageway of a two-way road
     (`routemaker.divided`): it is scored as the two-way road it is.
@@ -1072,6 +1215,112 @@ def classify(
         # only), and the smoothing and agency steps replace the result whole.
         rule = f"{rural} (Furth: {result.rule})"
         return replace(result, tier=Stress.LTS4, half=True, rule=rule)
+    fast = fast_multilane(tags, divided, separate_facility)
+    if fast is not None and (result.tier < Stress.LTS4 or not result.half):
+        return replace(result, tier=Stress.LTS4, half=True, rule=f"{fast} (Furth: {result.rule})")
+    return busy_road_steps(result, tags, urban, separate_facility)
+
+
+# The Virginia ratings review (thread "Recheck Virginia road ratings", the owner,
+# 2026-10-31: "Let's go with all these"). Calibrated on the blocks where Arlington's Bike
+# Comfort Index or Fairfax County's bike map agree with this classifier, and the owner's
+# own DC ratings (1st Street NW, two lanes at 20-25 mph, about 7,500 a day: LTS 2.5, with
+# his line at about 5,000 a day), then put to three skeptics each. Each is a half step or
+# a step on a mixed-traffic road with no bike provision and a count in hand, so the count,
+# not a default, is what moves it.
+#
+# P2 (a two-lane street at LTS 2 carrying 5,000 or more a day is LTS 2.5) is the
+# busy-street half step in `_classify` (BUSY_STREET_MIN_AADT), which the owner set for
+# every state the same day.
+# R5 (everywhere; the owner reopened item 296's "no volume lift"): a two-way city street
+# held at LTS 3 that carries BUSY_STREET_AADT or more is LTS 3.5, and from
+# VERY_BUSY_STREET_AADT LTS 4 (Arlington's Wilson Blvd and S Jefferson St, Alexandria's
+# Beauregard St; US-1 Patrick and Henry Sts at 38,000-45,000 a day). Not where a side path
+# is mapped beside it, which the router sends riders to instead.
+BUSY_STREET_AADT = 12_000
+VERY_BUSY_STREET_AADT = 20_000
+BUSY_STREET_RULE = "busy city street"
+VERY_BUSY_STREET_RULE = "very busy city street"
+# P7 (everywhere outside urban areas): a two-lane primary or trunk road carrying
+# BUSY_RURAL_HIGHWAY_AADT or more is LTS 4.5, as busy as the rural expressways the owner
+# set there (US-15 Leesburg to Point of Rocks, VA-9, US-340; US-15 runs on into Maryland,
+# which reads the same: `mdot_sha_rules` "busy-rural-two-lane" on SHA-rated roads).
+BUSY_RURAL_HIGHWAY_AADT = 18_000
+BUSY_RURAL_HIGHWAY = frozenset({"primary", "trunk"})
+BUSY_RURAL_HIGHWAY_RULE = "busy two-lane rural highway"
+
+# Every count at which the classifier can move a way, as the first count on the
+# busier side (a `> X` gate is X + 1). `pipeline.aadt_smoothing` reads it to say
+# when a street's median moved the level; a new count gate goes here too.
+VOLUME_GATES = (
+    VOLUME_QUIET + 1,
+    BUSY_STREET_MIN_AADT,
+    VOLUME_BUSY,
+    URBAN_TWO_WAY_BUSY_AADT + 1,
+    BUSY_PAINTED_LANE_AADT,
+    BUSY_STREET_AADT,
+    BUSY_RURAL_HIGHWAY_AADT,
+    VERY_BUSY_STREET_AADT,
+)
+
+
+def single_lane_traffic_level(
+    speed_mph: float,
+    oneway: bool | None,
+    aadt: int | None,
+    urban: bool | None,
+) -> tuple[Stress, bool]:
+    """The tier and half step `_classify` gives a street of one through lane a direction
+    with no bike provision of any kind: Furth's single-lane row, the volume gate, the
+    busy-street half step and `busy_road_steps`' R5, from the facts the segment table
+    keeps, at a posted speed. What a junction reads such a road by (the owner, 2026-10-31:
+    "a protected bike lane on a busy road is just as hard to cross";
+    `intersections.traffic_level`).
+    The road class is not kept, so the arterial and collector floors are not read here.
+    Pinned against `classify` in tests/test_junction_traffic.py."""
+    tier, _ = _mixed_traffic_tier(speed_mph, 1)
+    if aadt is not None:
+        if aadt <= VOLUME_QUIET and tier > Stress.LTS1 and speed_mph <= 35:
+            tier = Stress(tier - 1)
+        elif aadt >= VOLUME_BUSY and tier < Stress.LTS4:
+            tier = Stress(tier + 1)
+        elif speed_mph <= MID_VOLUME_MAX_MPH and aadt > VOLUME_QUIET and tier is Stress.LTS1:
+            tier = Stress.LTS2
+    half = aadt is not None and tier is Stress.LTS2 and aadt >= BUSY_STREET_MIN_AADT
+    if urban is not False and not oneway and aadt is not None and tier is Stress.LTS3:
+        if aadt >= VERY_BUSY_STREET_AADT:
+            return Stress.LTS4, False
+        if aadt >= BUSY_STREET_AADT:
+            return Stress.LTS3, True
+    return tier, half
+
+
+def busy_road_steps(
+    result: StressResult,
+    tags: dict[str, str],
+    urban: bool,
+    separate_facility: bool = False,
+) -> StressResult:
+    """The Virginia review's count-driven steps (P7, R5) over the Furth tier."""
+    aadt = result.volume_aadt
+    if aadt is None or result.oneway or not result.rule.startswith("mixed traffic"):
+        return result
+    lanes = result.lanes or DEFAULT_LANES_PER_DIRECTION
+    if urban and result.tier is Stress.LTS3 and not separate_facility:
+        if aadt >= VERY_BUSY_STREET_AADT:
+            return replace(
+                result, tier=Stress.LTS4, half=False, rule=f"{result.rule}, {VERY_BUSY_STREET_RULE}"
+            )
+        if aadt >= BUSY_STREET_AADT:
+            return replace(result, half=True, rule=f"{result.rule}, {BUSY_STREET_RULE}")
+    if (
+        not urban
+        and result.tier is Stress.LTS4
+        and tags.get("highway") in BUSY_RURAL_HIGHWAY
+        and lanes <= 1
+        and aadt >= BUSY_RURAL_HIGHWAY_AADT
+    ):
+        return replace(result, half=True, rule=f"{result.rule}, {BUSY_RURAL_HIGHWAY_RULE}")
     return result
 
 
@@ -1121,8 +1370,8 @@ def _classify(
     if zone == "DC":
         speed_mph = DC_ALLEY_MPH if tags.get("service") == "alley" else DC_DEFAULT_MPH
         assumed.append("maxspeed")
-    elif zone in ("MD", "VA") and urban and highway in MD_VA_URBAN_DEFAULT_MPH:
-        speed_mph = MD_VA_URBAN_DEFAULT_MPH[highway]
+    elif urban and highway in URBAN_DEFAULT_MPH.get(zone or "", {}):
+        speed_mph = URBAN_DEFAULT_MPH[zone][highway]
         assumed.append("maxspeed")
     elif speed_mph is None:
         table = DEFAULT_MAXSPEED_MPH_URBAN if urban else DEFAULT_MAXSPEED_MPH_RURAL
@@ -1137,9 +1386,18 @@ def _classify(
             speed_mph = min(speed_mph, UNPAVED_RURAL_DEFAULT_MPH)
         if (
             not urban
-            and aadt is None
+            # A quiet count is no evidence against a slow lane: the rule held only
+            # where nothing was counted, so a counted quiet lane (VDOT counts most
+            # Virginia county roads) rated a level worse than the same lane
+            # uncounted in Maryland (the owner, 2026-10-31).
+            and (aadt is None or aadt <= VOLUME_QUIET)
             and highway in NARROW_ROAD_HIGHWAY
-            and (winding or narrow_by_tags(tags))
+            and (
+                winding
+                or narrow_by_tags(tags)
+                # A one-lane gravel road (the owner, 2026-10-30).
+                or (is_unpaved(tags) and tags.get("lanes") == "1")
+            )
             and speed_mph > NARROW_RURAL_ROAD_MPH
         ):
             speed_mph = NARROW_RURAL_ROAD_MPH
@@ -1506,6 +1764,27 @@ def _classify(
     if narrow_road:
         rule = rule + f", {NARROW_ROAD_RULE}"
 
+    # The owner's busy-street half step, in the formula as in MDOT SHA's
+    # `busy-residential` rule and the District's rows (1st St NW, 2026-10-30:
+    # "make the higher cars/day ones, 2.5"), so Virginia and West Virginia read it
+    # too (the owner, 2026-10-31): a two-lane street at LTS 2 carrying
+    # BUSY_STREET_MIN_AADT or more is 2.5 (with no upper bound: a 20 mph street the
+    # high-volume step leaves at LTS 2 stays 2.5 past VOLUME_BUSY). And a painted lane
+    # does not make a street of BUSY_PAINTED_LANE_AADT or more calmer than 2.5.
+    half = False
+    if aadt is not None and tier <= Stress.LTS2 and not separate_facility:
+        painted = bool(cycleways & PAINTED_CYCLEWAY) and not (cycleways & SEPARATED_CYCLEWAY)
+        # A shoulder the lane table credited is read as the lane it stands for.
+        if (painted or shoulder_credited) and aadt >= BUSY_PAINTED_LANE_AADT:
+            tier, half, rule = Stress.LTS2, True, rule + ", painted lane on a busy street"
+        elif (
+            tier is Stress.LTS2
+            and not has_facility
+            and scored_lanes <= 1
+            and aadt >= BUSY_STREET_MIN_AADT
+        ):
+            half, rule = True, rule + ", busy street"
+
     # The road's traits as the intersection model will state them: only what
     # was read, never the class default the tables fell back on (review r1: an
     # assumed speed or lane count would be told to a rider as fact, "2-lane 25
@@ -1520,6 +1799,7 @@ def _classify(
         volume_year,
         speed_mph=None if "maxspeed" in assumed else speed_mph,
         lanes=None if "lanes" in assumed else lanes,
+        half=half,
         oneway=oneway,
         graph_oneway=is_oneway(tags),
         default_speed_mph=(

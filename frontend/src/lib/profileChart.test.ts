@@ -764,6 +764,13 @@ test("a dot says why the junction is major: a busy road crossed or joined, and i
   assert.equal(crossingMarkerWords({ ...base, severity: "red" }), "Very high stress (red diamond)");
 });
 
+test("a dot names a half-step road as the route says it: LTS 3.5", () => {
+  const base: ProfileCrossing = { m: 0, street: "Wisconsin Avenue", severity: null, control: "signal", lanes: 4, crossed_tier: 3, kind: "crossing", corkers_needed: true };
+  assert.equal(crossingMarkerWords({ ...base, crossed_half: true }), "Crosses a busy road (LTS 3.5), traffic signal (dot)");
+  assert.equal(crossingMarkerWords({ ...base, crossed_tier: 2, crossed_half: true }), "Crosses a busy road (LTS 2.5), traffic signal (dot)");
+  assert.equal(crossingMarkerWords({ ...base, crossed_half: false }), "Crosses a busy road (LTS 3), traffic signal (dot)");
+});
+
 test("a path rated Avoid is Avoid in the strip key, the shares and the slider, beside an ordinary path (r4 a11y A-SF1)", () => {
   const sections = [
     { from_m: 0, to_m: 400, tier: 1, facility: "path" as const, unpaved: false },
@@ -824,4 +831,18 @@ test("the strip keeps a section's roughness, so gravel is keyed grey and dirt br
   const sections = stripSections(spans, 200);
   assert.deepEqual(sections.map((s) => s.rough), [true, false]);
   assert.deepEqual(stripKey(sections).map((s) => spanClass(s).key), ["g2", "u2"]);
+});
+
+test("the strip keeps a half step: drawn and said in its own class, between its two levels (the review of #780)", () => {
+  const spans: StressSpan[] = [
+    { from_m: 0, to_m: 300, tier: 3, facility: "none" },
+    { from_m: 300, to_m: 600, tier: 3, facility: "none", half: true },
+    { from_m: 600, to_m: 1000, tier: 4, facility: "none" },
+  ];
+  const strip = stripSections(spans, 1000);
+  assert.equal(strip[1].half, true);
+  assert.equal(spanClass(strip[1]).key, "3h");
+  assert.equal(sectionWords(strip[1]), "LTS 3.5");
+  assert.equal(sectionWords({ tier: 3, facility: "none", half: true, unpaved: true, rough: true }), "dirt, LTS 3", "an unpaved half step is drawn in its level's brown");
+  assert.deepEqual(stripKey(strip).map((s) => spanClass(s).key), ["3", "3h", "4"]);
 });

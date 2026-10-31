@@ -29,11 +29,12 @@ const ZENITH_CIVIL = 96;
 
 export type LightKind = "civil_dawn" | "sunrise" | "sunset" | "civil_dusk";
 
+/** The names, short to fit beside ride mode's top-row buttons (the owner, 2026-10-31: "simply called dusk and dawn"). */
 export const LIGHT_NAME: Record<LightKind, string> = {
-  civil_dawn: t("Civil twilight begins"),
+  civil_dawn: t("Dawn"),
   sunrise: t("Sunrise"),
   sunset: t("Sunset"),
-  civil_dusk: t("Civil twilight ends"),
+  civil_dusk: t("Dusk"),
 };
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
@@ -211,7 +212,7 @@ export function lightMarkSaid(mark: LightMark): string {
   return t("{head} near {mile}", { head, mile: formatMilePost(mark.alongM ?? 0) });
 }
 
-/** The route summary's one line (the accessible form of the map's marks), or null: "Sunset 6:31 PM near mile 12.4 (20.0 km); civil twilight ends 6:58 PM, after you arrive." */
+/** The route summary's one line (the accessible form of the map's marks), or null: "Sunset 6:31 PM near mile 12.4 (20.0 km); dusk 6:58 PM, after you arrive." */
 export function lightLine(marks: readonly LightMark[]): string | null {
   if (marks.length === 0) return null;
   const said = marks.map(lightMarkSaid);
@@ -266,19 +267,11 @@ export function routeLightMarks(
   return lightMarks({ line: route.geometry?.coordinates ?? [], distanceM: route.distance_m, durationS: route.duration_s, departMs: nowMs });
 }
 
-/** Ride mode's corner (the owner, 2026-10-19): the light names kept short to fit beside the top row's buttons. */
-const LIGHT_SHORT: Record<LightKind, string> = {
-  civil_dawn: t("Twilight"),
-  sunrise: t("Sunrise"),
-  sunset: t("Sunset"),
-  civil_dusk: t("Twilight"),
-};
-
 /**
  * Ride mode's corner, in place of "Ride mode" (the owner, 2026-10-19: "put civil twilight and sunrise times
  * in that location if within an hour of those, as per the other rules"): the same rule as the route's marks
  * (lightMarks), for the ride still to go from `progressM`, leaving now. Null when there is nothing to show.
- * `shown` is a line per event, with the time till it ("Sunset 6:31 PM (12 min)", "Twilight 6:58 PM (39 min)"); `said`
+ * `shown` is a line per event, with the time till it ("Sunset 6:31 PM (12 min)", "Dusk 6:58 PM (39 min)"); `said`
  * the whole of it in words.
  */
 export function rideLightCorner(
@@ -311,7 +304,7 @@ export function rideLightCorner(
     // its order (v0.14.0 end review: it showed "PM (11 min) 6:12").
     shown: marks.map((m) => {
       const time = `${lightClock(m.at)}${till(m.at) ? ` (${till(m.at)})` : ""}`;
-      return `${LIGHT_SHORT[m.kind]} ${rightToLeft() ? `\u2068${time}\u2069` : time}`;
+      return `${LIGHT_NAME[m.kind]} ${rightToLeft() ? `\u2068${time}\u2069` : time}`;
     }),
     said: `${said.map((text, i) => (i === 0 ? text : text.charAt(0).toLowerCase() + text.slice(1))).join("; ")}.`,
   };

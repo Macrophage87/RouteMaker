@@ -1,6 +1,6 @@
 name: Android app
 
-# The phone app (mobile/, v0.8.0). On a pull request that touches mobile/ or this file: `npm test`, the
+# The phone app (mobile/, v0.8.0). On a pull request into main that touches mobile/ or this file: `npm test`, the
 # Java unit tests and a debug APK (a debug build only; of the secrets it uses only the debug key, and a fork gets none). By hand
 # (Actions, "Android app", Run workflow): a debug or a release build. A debug build is debug-signed and
 # installs by sideloading; a release build needs the four ROUTEMAKER_KEYSTORE/KEY secrets
@@ -22,6 +22,7 @@ on:
   push:
     tags: ["v*"]
   pull_request:
+    branches: [main]
     paths:
       - "mobile/**"
       - ".github/workflows/android.yml"
@@ -39,6 +40,12 @@ on:
 
 permissions:
   contents: read
+
+# A newer push to the same pull request replaces its run. Tag and manual runs each get their own
+# group, so a store build is never cancelled.
+concurrency:
+  group: android-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # On a tag: is there new app code since the tag before? A site-only release needs no new app.
