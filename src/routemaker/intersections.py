@@ -783,7 +783,7 @@ def crossing_ft(
     if (
         control is Control.NONE
         and rider_tier is not None
-        and rider_tier > _against(road, rider_read)
+        and _rider_busier(rider_tier, road, rider_read)
     ):
         return PRIORITY_SIDE_FT
     return min(_table(STOPPED_CROSSING_FT, road) * scale(road, stopped_side=True), MAX_CROSSING_FT)
@@ -888,15 +888,17 @@ def _read(road: Road) -> bool:
     return traffic_level(road) is not None
 
 
-def _against(road: Road, rider_read: bool) -> float:
-    """The level the rider's road is weighed against for the right of way: the road's own,
-    read by its traffic, where the rider's road is read so too; its map level where the
-    rider's road cannot be (no posted speed on a narrow road), so the two are read the same
-    way and an unposted arterial does not give way to a side street only its traffic
-    raised (v0.16.0 release review)."""
-    if rider_read or road.map_tier is None:
-        return road.level
-    return road.map_tier + (0.5 if road.map_half and road.map_tier < 5 else 0.0)
+def _rider_busier(rider: float, road: Road, rider_read: bool) -> bool:
+    """Whether the rider's road outranks `road` for the right of way. Both are read by their
+    traffic; where the rider's road cannot be (no posted speed on a narrow road), a tie
+    with a road only its traffic raised goes to the rider, as the map has it, so an unposted
+    LTS 3 road does not give way to a bike-lane side street its traffic lifted to LTS 3
+    (v0.16.0 release review). A road whose traffic outranks the rider's still does."""
+    if rider > road.level:
+        return True
+    if rider_read or rider < road.level or road.map_tier is None:
+        return False
+    return rider > road.map_tier + (0.5 if road.map_half and road.map_tier < 5 else 0.0)
 
 
 def _rider(road: Road) -> float | None:

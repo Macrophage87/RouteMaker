@@ -72,9 +72,10 @@ such as 25 mph on a residential street, which the table does not keep; the statu
 default it does keep, Maryland's 30 in town or 50 to 55 in the country, would rate a quiet
 street busy), a road with no speed at all, a road closed to cars at the ride's time, and the
 Mass Ride reading keep the map's level. Where the rider's own road cannot be read by its traffic (no posted
-speed), the right of way weighs it against the other road's map level, so both are read
-the same way and an unposted arterial does not give way to a side street only its traffic
-raised. A turn off the rider's own road is read the same
+speed), a tie for the right of way with a road only its traffic raised goes to the
+rider, as the map has it: an unposted LTS 3 road does not give way to a bike-lane side
+street its traffic lifted to LTS 3, while a road whose traffic outranks the rider's still
+makes the rider stop. A turn off the rider's own road is read the same
 way, so a left off a protected lane on a busy road costs what the same left off the road
 does. And a junction is priced by traffic even where an agency or the owner rated the road
 low for riding along it: those ratings no longer lower a junction. A divided road's

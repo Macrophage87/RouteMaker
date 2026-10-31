@@ -391,6 +391,26 @@ class TestByTraffic:
         side = Road(2, speed_mph=30, lanes=1, oneway=False)
         j = junction(incoming=rider, outgoing=rider, crossed=(side,), control=Control.NONE)
         assert m.cost_of(m.by_traffic(j))[0] == m.PRIORITY_SIDE_FT
+        # But an unposted street never outranks a busy road its bike lane made calm on the
+        # map: a 45 mph four-lane road with a protected lane (LTS 1 on the map, 4 by its
+        # traffic) is crossed or joined from the stopped side, as from a posted street.
+        quiet = Road(2, lanes=1, oneway=False, default_speed_mph=30.0)
+        posted_quiet = replace(quiet, speed_mph=25.0)
+        arterial = Road(1, speed_mph=45, lanes=2, oneway=False)
+        for movement, outgoing in ((Movement.STRAIGHT, None), (Movement.LEFT, arterial)):
+            crossed = (arterial,) if outgoing is None else ()
+
+            def at(street, movement=movement, outgoing=outgoing, crossed=crossed):
+                return junction(
+                    incoming=street,
+                    outgoing=outgoing or street,
+                    crossed=crossed,
+                    movement=movement,
+                    control=Control.NONE,
+                )
+
+            unposted = m.cost_of(m.by_traffic(at(quiet)))[0]
+            assert unposted == m.cost_of(m.by_traffic(at(posted_quiet)))[0] > 1_000
         # A rider's road read by its traffic is weighed against the side street's traffic.
         posted = replace(rider, speed_mph=30.0)
         k = replace(j, incoming=posted, outgoing=posted)
