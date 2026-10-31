@@ -497,7 +497,7 @@ change it.</li>
 <tr><th scope="row">MDOT SHA</th><td></td><td>1 or 2 on an urban two-lane street at 25 mph [40 km/h] or less, carrying 5,000 to 15,000 cars a day, with no bike lane or other bike marking</td><td>LTS 2.5</td></tr>
 <tr><th scope="row">MDOT SHA</th><td></td><td>2 or less on a rural minor collector carrying 1,500 or more cars a day, where SHA assumed the speed</td><td>LTS 3.5</td></tr>
 <tr><th scope="row">MDOT SHA</th><td></td><td>4 on a highway of four or more lanes posted 55 mph [89 km/h] or more</td><td>LTS 4.5</td></tr>
-<tr><th scope="row">MDOT SHA</th><td></td><td>4 on a rural principal arterial or expressway with two or three lanes, carrying 18,000 or more cars a day, with no bike lane or other bike marking</td><td>LTS 4.5, as RouteMaker's own formula rates a busy two-lane rural highway, so US 15 reads the same on both sides of the Potomac</td></tr>
+<tr><th scope="row">MDOT SHA</th><td></td><td>4 on a rural principal arterial (an expressway or other main highway, not an Interstate) with two or three lanes, carrying 18,000 or more cars a day, with no bike lane or other bike marking</td><td>LTS 4.5, as RouteMaker's own formula rates a busy two-lane rural highway, so US 15 reads the same on both sides of the Potomac</td></tr>
 <tr><th scope="row">MDOT SHA</th><td></td><td>1 to 4, on SHA's record for a road's other direction, lying within 130 ft [40 m] of the first direction's record</td><td>The first direction's level, as read above: SHA rates that second record about 0.6 of a level calmer, though a rider meets the same road</td></tr>
 <tr><th scope="row">MDOT SHA</th><td></td><td>5 (bicycles prohibited)</td><td>Closed to bikes: not drawn or routed</td></tr>
 </tbody>
@@ -853,8 +853,9 @@ change it.</li>
       (the rule above) and roads with a separated bike track on them or beside them keep their own
       rating.</li>
       <li><strong>Busy two-lane rural highways are LTS 4.5.</strong> Outside a town, a trunk or primary road
-      with one lane each way and no bike lane or shoulder, carrying 18,000 or more vehicles a day (on Maryland's state highways,
-      RouteMaker reads the agency's rating of such a road the same way).</li>
+      with one lane each way and no bike lane or shoulder, carrying 18,000 or more vehicles a day (where Maryland's highway agency
+      rates such a road 4, RouteMaker reads it as 4.5 too; the agency table above gives the exact
+      conditions).</li>
       <li><strong>Motorways</strong> are closed to bikes unless signed open. One signed open to bikes is
       Avoid.</li>
       <li><strong>"Use the side path" roads</strong> (OpenStreetMap's <code>bicycle=use_sidepath</code>)
