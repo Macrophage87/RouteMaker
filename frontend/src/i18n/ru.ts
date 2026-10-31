@@ -814,6 +814,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Go: type a place, then Start.": "Go: введите место, затем Старт.",
   "Plan: the full planner.": "Plan: полный планировщик.",
   "Start: your current location.": "Старт: ваше текущее местоположение.",
+  "Start: your location, within about {distance}": "Старт: ваше местоположение, с точностью около {distance}",
   "Current location not available; type a start.": "Текущее местоположение недоступно; введите старт.",
   "Location off. Type a start, or allow location in iPhone Settings.": "Геолокация выключена. Введите старт или разрешите геолокацию в Настройках iPhone.",
   "Location off. Type a start, or allow location in site settings.": "Геолокация выключена. Введите старт или разрешите геолокацию в настройках сайта.",

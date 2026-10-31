@@ -814,6 +814,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Go: type a place, then Start.": "Go: bir yer yazın, sonra Başlat.",
   "Plan: the full planner.": "Plan: tam planlayıcı.",
   "Start: your current location.": "Başlangıç: şu anki konumunuz.",
+  "Start: your location, within about {distance}": "Başlangıç: konumunuz, yaklaşık {distance} içinde",
   "Current location not available; type a start.": "Şu anki konum kullanılamıyor; bir başlangıç yazın.",
   "Location off. Type a start, or allow location in iPhone Settings.": "Konum kapalı. Bir başlangıç yazın veya iPhone Ayarlar'ında konuma izin verin.",
   "Location off. Type a start, or allow location in site settings.": "Konum kapalı. Bir başlangıç yazın veya site ayarlarında konuma izin verin.",

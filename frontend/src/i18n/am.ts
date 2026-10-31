@@ -814,6 +814,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Go: type a place, then Start.": "Go፦ ቦታ ይጻፉ፣ ከዚያ ጀምር።",
   "Plan: the full planner.": "Plan፦ ሙሉ ዕቅድ አውጪ።",
   "Start: your current location.": "መነሻ፦ አሁን ያሉበት ቦታ።",
+  "Start: your location, within about {distance}": "መነሻ፦ ያሉበት ቦታ፣ በግምት በ{distance} ውስጥ",
   "Current location not available; type a start.": "የአሁኑ ቦታ አይገኝም፤ መነሻ ይጻፉ።",
   "Location off. Type a start, or allow location in iPhone Settings.": "አካባቢ ጠፍቷል። መነሻ ይጻፉ፣ ወይም በiPhone Settings ውስጥ አካባቢን ይፍቀዱ።",
   "Location off. Type a start, or allow location in site settings.": "አካባቢ ጠፍቷል። መነሻ ይጻፉ፣ ወይም በድረ ገጹ ቅንብሮች ውስጥ አካባቢን ይፍቀዱ።",

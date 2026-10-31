@@ -814,6 +814,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Go: type a place, then Start.": "Go：スポットを入力して開始。",
   "Plan: the full planner.": "Plan：本格的なプランナー。",
   "Start: your current location.": "出発地：現在地。",
+  "Start: your location, within about {distance}": "出発地：現在地、誤差 約{distance}",
   "Current location not available; type a start.": "現在地を取得できません。出発地を入力してください。",
   "Location off. Type a start, or allow location in iPhone Settings.": "位置情報がオフです。出発地を入力するか、iPhoneの設定で位置情報を許可してください。",
   "Location off. Type a start, or allow location in site settings.": "位置情報がオフです。出発地を入力するか、サイト設定で位置情報を許可してください。",

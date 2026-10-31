@@ -16,7 +16,8 @@
 import { coordinatesText } from "./geocode.ts";
 import { LOCATE_MESSAGES, iosHomeScreenApp, type LocateFailure, type LocateResult } from "./geolocation.ts";
 import { haversineM, insideCoverage, type LonLat } from "./geo.ts";
-import { t } from "./i18n.ts";
+import { formatAboutRadius } from "./format.ts";
+import { fullStop, t } from "./i18n.ts";
 import { OLD_POINTS_PARAM, POINTS_PARAM } from "./planHash.ts";
 
 /**
@@ -258,12 +259,25 @@ export function shouldAskGoStart(state: { mode: AppMode; asked: boolean; pointCo
 }
 
 /**
- * Go's start line: the plan's own first point when there is one (from the link or typed: it replaces
- * the location), else the location, else what is happening.
+ * Go's start line for a rough fix (goRough): how rough, miles first, since at Go's opening zoom the accuracy circle's
+ * edge is off the screen and the map only takes a tint (the v0.16.0 a11y review, finding 4).
  */
-export function goStartLine(start: GoStart, firstPointName: string | null): string {
+export function goRoughStartLine(accuracyM: number): string {
+  return t("Start: your location, within about {distance}", { distance: formatAboutRadius(accuracyM) });
+}
+
+/** Said politely when the location becomes Go's start: GO_START_SAID, or for a rough fix how rough. */
+export function goStartSaid(accuracyM: number): string {
+  return goRough(accuracyM) ? goRoughStartLine(accuracyM) + fullStop() : GO_START_SAID;
+}
+
+/**
+ * Go's start line: the plan's own first point when there is one (from the link or typed: it replaces
+ * the location), else the location (with how rough, when the fix's `accuracyM` is rough), else what is happening.
+ */
+export function goStartLine(start: GoStart, firstPointName: string | null, accuracyM: number = 0): string {
   if (firstPointName !== null) return t("Start: {place}", { place: firstPointName });
-  if (start.kind === "here") return t("Start: your current location");
+  if (start.kind === "here") return goRough(accuracyM) ? goRoughStartLine(accuracyM) : t("Start: your current location");
   if (start.kind === "locating") return t("Start: finding your location…");
   if (start.kind === "none" && start.why === "denied") return GO_LOCATION_OFF;
   return t("Start: none yet; type a start");

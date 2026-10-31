@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, GO_WARM_AFTER_MS, goWarmDue, goPickStart, goHereStart, goStartStale, goRough, goRoughDue, GO_ROUGH_M, GO_ROUGH_AGAIN_MS, GO_ROUGH_TRIES, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, GO_WARM_AFTER_MS, goWarmDue, goPickStart, goHereStart, goStartStale, goRough, goRoughDue, GO_ROUGH_M, GO_ROUGH_AGAIN_MS, GO_ROUGH_TRIES, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, goStartSaid, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -30,6 +30,7 @@ import { avoidLine, avoidOfferShort } from "./avoidJunctions.ts";
 import { ICON_PATHS } from "./iconPaths.ts";
 import { startDials } from "./dials.ts";
 import { appSource } from "../testSupport/appSource.mjs";
+import { LANGUAGES } from "./i18n.ts";
 
 const src = (name: string) => readFileSync(new URL(name, import.meta.url), "utf8");
 const app = appSource();
@@ -381,6 +382,33 @@ test("go start: the line says the location, a typed or tapped start in its place
   assert.equal(ROAM_LOCATION_OFF, "Roam needs your location. Allow location in site settings.");
 });
 
+test("go start: a rough fix's start line and spoken start say how rough, miles first (a11y review, finding 4)", () => {
+  const here = goHereStart([-77.03, 38.9]);
+  assert.equal(goStartLine(here, null, 3_000), "Start: your location, within about 2 mi (3 km)");
+  assert.equal(goStartLine(here, null, 1_200), "Start: your location, within about 0.7 mi (1.2 km)");
+  assert.equal(goStartLine(here, null, 1_001), "Start: your location, within about 0.6 mi (1 km)");
+  assert.equal(goStartLine(here, null, 16_000), "Start: your location, within about 10 mi (16 km)");
+  assert.equal(goStartLine(here, null, GO_ROUGH_M), "Start: your current location", "a sure enough fix says nothing more");
+  assert.equal(goStartLine(here, null, 15), "Start: your current location");
+  assert.equal(goStartLine(here, null), "Start: your current location", "no accuracy given");
+  assert.equal(goStartLine(here, "Union Station", 3_000), "Start: Union Station", "a typed start is no rough fix");
+  assert.equal(goStartLine({ kind: "locating" }, null, 3_000), "Start: finding your location…");
+  assert.equal(goStartSaid(3_000), "Start: your location, within about 2 mi (3 km).");
+  assert.equal(goStartSaid(15), GO_START_SAID);
+  // App gives the line the dot's own accuracy, only while the start is that fix.
+  assert.match(app, /startLine=\{goStartLine\(goStart, [^\n]*, goStart\.kind === "here" && here\?\.point === goStart\.point \? here\.accuracyM : 0\)\}/);
+});
+
+test("go start: the rough start line has each language's phrase, its {distance} kept", async () => {
+  for (const lang of LANGUAGES.filter((l) => l !== "en")) {
+    const file = (await import(`../i18n/${lang}.ts`)) as { CATALOG?: Record<string, string>; ES?: Record<string, string> };
+    const catalog = (lang === "es" ? file.ES : file.CATALOG) ?? {};
+    const said = catalog["Start: your location, within about {distance}"];
+    assert.ok(said, lang);
+    assert.ok(said.includes("{distance}"), lang);
+  }
+});
+
 test("go start: not available says why, a denial or a fix off the map (P11)", () => {
   assert.deepEqual(goStartNone({ ok: false, reason: "denied" }), { kind: "none", why: "denied" });
   assert.deepEqual(goStartNone({ ok: false, reason: "timeout" }), { kind: "none" });
@@ -513,7 +541,7 @@ test("go tap: a press on the map in Go is the destination, routed as a picked on
 test("go start: App asks once when Go opens, says the start politely, and says when it is not available", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /if \(!shouldAskGoStart\(\{ mode, asked: goStartAsked\.current, pointCount: pointsRef\.current\.length \}\)\) return;/);
-  assert.match(app, /if \(pointsRef\.current\.length > 0\) return;[\s\S]{0,300}?\} else \{\s*\/\/[^\n]*\n\s*flyToInView\(result\.fix\.point, 15\);\s*announce\(GO_START_SAID\);\s*\}/);
+  assert.match(app, /if \(pointsRef\.current\.length > 0\) return;[\s\S]{0,300}?\} else \{\s*\/\/[^\n]*\n\s*flyToInView\(result\.fix\.point, 15\);\s*\/\/[^\n]*\n\s*announce\(goStartSaid\(result\.fix\.accuracyM\)\);\s*\}/);
   // Not available: said as why (P11): blocked on the start line (said, not shown twice), off the map as that, else "not available".
   assert.match(app, /const none = goStartNone\(result\);\s*setGoStart\(none\);\s*if \(pointsRef\.current\.length === 0\) \{\s*if \(pending\?\.pressed\) setNoticeSaying\(goDestinationNeedsStart\(pending\.name\), goPressNeedsStartSaid\(pending\.name\)\);\s*else if \(pending\) setNotice\(goDestinationNeedsStart\(pending\.name\)\);[\s\S]{0,300}?else if \(none\.kind === "none" && none\.why === "denied"\) announce\(GO_LOCATION_OFF\);\s*else setNotice\(none\.kind === "none" && none\.why === "outside" \? LOCATION_OUTSIDE : GO_START_UNAVAILABLE\);/);
   // The routes to choose from start closed in Go too (the half sheet fits one screen); the chip opens them.
@@ -552,7 +580,7 @@ test("announcements: the essentials are always said; only the narration is extra
   for (const extra of ["announceExtra(FINDING_LOCATION);", "announceExtra(modeSaid(next));", "announceExtra(`${presetSaid(id)}.`);", 'announceExtra(t("The map is at your location."));'])
     assert.ok(app.includes(extra), extra);
   // The start Go found, and when it could not, are essentials.
-  assert.match(app, /announce\(GO_START_SAID\)/);
+  assert.match(app, /announce\(goStartSaid\(result\.fix\.accuracyM\)\)/);
   assert.match(app, /else if \(pending\) setNotice\(goDestinationNeedsStart\(pending\.name\)\);/);
   assert.match(app, /announce\(GO_LOCATION_OFF\)/);
   assert.match(app, /setNotice\(none\.kind === "none" && none\.why === "outside" \? LOCATION_OUTSIDE : GO_START_UNAVAILABLE\)/);

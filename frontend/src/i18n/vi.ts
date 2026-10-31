@@ -814,6 +814,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Go: type a place, then Start.": "Go: gõ một địa điểm, rồi Bắt đầu.",
   "Plan: the full planner.": "Plan: bộ lên lộ trình đầy đủ.",
   "Start: your current location.": "Xuất phát: vị trí hiện tại của bạn.",
+  "Start: your location, within about {distance}": "Xuất phát: vị trí của bạn, sai số khoảng {distance}",
   "Current location not available; type a start.": "Không có vị trí hiện tại; hãy nhập điểm xuất phát.",
   "Location off. Type a start, or allow location in iPhone Settings.": "Vị trí đang tắt. Nhập điểm xuất phát, hoặc cho phép vị trí trong Cài đặt iPhone.",
   "Location off. Type a start, or allow location in site settings.": "Vị trí đang tắt. Nhập điểm xuất phát, hoặc cho phép vị trí trong cài đặt trang.",

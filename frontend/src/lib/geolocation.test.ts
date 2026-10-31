@@ -726,6 +726,8 @@ test("privacy: the location state reaches only the note, the hint and the circle
     // The circle: also Go's dot's, before a destination (the owner, 2026-10-30), from the same fix.
     /const goDotCircle = !hereInPlan && here && mode === "go" && points\.length === 0 && goStart\.kind === "here" && goStart\.point === here\.point;/,
     /const hereCircle = \(hereInPlan \|\| goDotCircle\) && here \? \{ centre: here\.point, radiusM: here\.accuracyM \} : null;/,
+    // Go's start line: only the fix's accuracy, shown as how rough a rough start is (the v0.16.0 a11y review, finding 4).
+    /startLine=\{goStartLine\(goStart, [^\n]*, goStart\.kind === "here" && here\?\.point === goStart\.point \? here\.accuracyM : 0\)\}/,
     // Go's look-up again reads only the fix's accuracy, to know whether it is rough (goRoughDue).
     /const hereRef = useRef\(here\);/,
     /hereRef\.current = here;/,

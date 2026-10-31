@@ -1,17 +1,22 @@
 // Say where to (lib/placeDictation.ts): the row a rider's words name, and the listening machine, with a fake recogniser.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   LISTENING_ROW,
   PLACE_MIC_BLOCKED,
   PLACE_NOTHING_HEARD,
   ROW_MISSED,
+  SAY_LETTER,
+  lettersHeard,
   placeDictation,
   placeSpeechSupported,
   rowLetter,
   spokenRow,
+  voiceLine,
   type PlaceListening,
 } from "./placeDictation.ts";
+import { LANGUAGES, setLanguageForTest, t } from "./i18n.ts";
 import type { SpeechEnv } from "./speechInput.ts";
 import type { CapacitorBridge } from "./nativeShell.ts";
 
@@ -135,13 +140,49 @@ test("over lettered rows, Bravo picks row B and leaves the box as it was", () =>
   assert.deepEqual(log.search, []);
 });
 
-test("over lettered rows, other words are a new search", () => {
-  const { d, log } = harness();
-  d.start(ROWS);
-  FakeRecognition.last!.heard("Eastern Market");
-  FakeRecognition.last!.stop();
-  assert.deepEqual(log.pick, []);
-  assert.deepEqual(log.search, ["Eastern Market"]);
+test("in letter mode, words that are not a letter keep the list", () => {
+  // The letter listen opens by itself, and a screen reader may read the status line through the speaker (v0.16.0
+  // a11y review, finding 2): neither that line nor any other words that name no row replace the box or search.
+  for (const said of [LISTENING_ROW, "Eastern Market", "um"]) {
+    const { d, log } = harness();
+    d.start(ROWS);
+    FakeRecognition.last!.heard(said);
+    FakeRecognition.last!.stop();
+    assert.deepEqual(log.search, [], said);
+    assert.deepEqual(log.text, [], said);
+    assert.deepEqual(log.pick, [], said);
+    assert.deepEqual(log.note.filter(Boolean), [ROW_MISSED], said);
+  }
+});
+
+test("letters are offered only in the languages whose letter words are matched (English and Spanish)", () => {
+  assert.equal(lettersHeard("en"), true);
+  assert.equal(lettersHeard("es"), true);
+  for (const lang of LANGUAGES.filter((l) => l !== "en" && l !== "es")) assert.equal(lettersHeard(lang), false, lang);
+});
+
+test("where letters are not heard, the line never asks for a letter and the microphone listens for a place", () => {
+  try {
+    setLanguageForTest("ru");
+    assert.equal(voiceLine(null, "", true), "");
+    const { d, log } = harness();
+    d.start(ROWS);
+    assert.deepEqual(log.listening, ["place"]);
+    FakeRecognition.last!.heard("Eastern Market");
+    FakeRecognition.last!.stop();
+    assert.deepEqual(log.search, ["Eastern Market"]);
+    assert.deepEqual(log.note.filter(Boolean), []);
+    setLanguageForTest("es");
+    assert.equal(voiceLine(null, "", true), t(SAY_LETTER));
+  } finally {
+    setLanguageForTest("en");
+  }
+  assert.equal(voiceLine(null, "", true), SAY_LETTER);
+});
+
+test("Go's box letters the places, and so listens for a letter, only where letters are heard", () => {
+  const source = readFileSync(new URL("../PlaceSearch.tsx", import.meta.url), "utf8");
+  assert.match(source, /const lettered: Place\[\] = canSay && lettersHeard\(\) && /);
 });
 
 test("a failure says the place's own sentence, and the row's when listening for a letter", () => {
