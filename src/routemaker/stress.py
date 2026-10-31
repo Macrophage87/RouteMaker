@@ -952,12 +952,17 @@ def tight_bends(coordinates) -> int:
     ]
     window = max(1, round(TIGHT_BEND_ARC_M / TIGHT_BEND_STEP_M))
     limit = TIGHT_BEND_ARC_M / TIGHT_BEND_RADIUS_M
-    bends, inside = 0, False
+    # A bend ends only where the line has run straighter than the limit for a
+    # whole arc: a long curve near the limit, whose windows dip over and under it
+    # vertex by vertex, is one bend, not one per vertex.
+    bends, straight_run = 0, window
     for i in range(max(0, len(turns) - window + 1)):
-        tight = abs(sum(turns[i : i + window])) > limit
-        if tight and not inside:
-            bends += 1
-        inside = tight
+        if abs(sum(turns[i : i + window])) > limit:
+            if straight_run >= window:
+                bends += 1
+            straight_run = 0
+        else:
+            straight_run += 1
     return bends
 
 

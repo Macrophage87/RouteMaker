@@ -245,3 +245,28 @@ class TestGravelBends:
     def test_a_count_still_outranks_the_bends(self):
         result = rural(GRAVEL, aadt=4000, winding=bends_slow_traffic(_bendy(3), GRAVEL))
         assert NARROW_ROAD_RULE not in result.rule
+
+    def test_the_limit_is_100_m(self):
+        assert tight_bends(_bendy(3, radius_m=80.0)) == 3
+        assert tight_bends(_bendy(3, radius_m=130.0)) == 0
+
+    def test_one_long_sweeper_is_one_bend_however_it_is_drawn(self):
+        # A 270 degree curve near the limit, drawn with a vertex every 13 m: its
+        # windows dip over and under the limit vertex by vertex.
+        kx = 111_320.0 * math.cos(math.radians(39.2))
+        for radius in (95.0, 99.0, 101.0):
+            n = round(radius * math.radians(270) / 13.0)
+            arc = [
+                (
+                    -77.2 + radius * math.cos(math.radians(270) * i / n) / kx,
+                    39.2 + radius * math.sin(math.radians(270) * i / n) / 110_540.0,
+                )
+                for i in range(n + 1)
+            ]
+            assert tight_bends(arc) <= 1
+            assert not bends_slow_traffic(arc, GRAVEL)
+
+    def test_one_corner_on_a_short_gravel_way_does_not_count(self):
+        line = _bendy(1, leg_m=200.0)
+        assert tight_bends(line) == 1
+        assert not bends_slow_traffic(line, GRAVEL)
