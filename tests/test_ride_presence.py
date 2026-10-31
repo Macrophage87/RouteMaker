@@ -146,7 +146,7 @@ def test_dots_come_in_a_fresh_order_on_every_read(clock, monkeypatch) -> None:
 
 def test_updates_are_limited_per_token(clock) -> None:
     rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
-    clock.t += 5
+    clock.t += rp.MIN_POST_INTERVAL_S - 0.5
     with pytest.raises(rp.Refused) as refused:
         rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
     assert refused.value.status == 429
@@ -159,7 +159,7 @@ def test_updates_are_limited_per_token(clock) -> None:
 
 def test_a_read_keeps_nothing_of_a_reader_before_its_first_position(clock) -> None:
     # A ride nobody has written to is not kept for a read.
-    assert rp.read(RIDE, YOU, now=clock) == {"dots": [], "alerts": []}
+    assert rp.read(RIDE, YOU, now=clock) == {"dots": [], "alerts": [], "every_s": 5}
     assert rp.store()._rides == {}
     # On a kept ride, the reader is not made a rider either.
     rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
@@ -264,6 +264,51 @@ def test_the_tmpfs_store_shares_state_and_removes_an_empty_ride(tmp_path) -> Non
     assert list(tmp_path.iterdir()) == []
 
 
+def test_a_read_takes_a_shared_lock_and_leaves_the_ride_unwritten(
+    tmp_path, clock, monkeypatch
+) -> None:
+    """Dots every few seconds (Stephen 2026-10-31): a read no longer rewrites the whole ride to
+    stamp its poll, and the ride's readers share its lock rather than queue on it."""
+    store = rp.TmpfsStore(str(tmp_path))
+    monkeypatch.setattr(rp, "_store", store)
+    monkeypatch.setattr(rp, "_store_for", "")
+    monkeypatch.setattr(rp, "store", lambda: store)
+    rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
+    rp.post_position(RIDE, YOU, _dot(1), now=clock)
+    rp.read(RIDE, ME, now=clock)  # the first read notes the phone in the ride
+    path = tmp_path / f"{RIDE}.json"
+    before = (path.read_text(), path.stat().st_mtime_ns)
+    ops = []
+    real = rp.fcntl.flock
+    monkeypatch.setattr(rp.fcntl, "flock", lambda fd, op: (ops.append(op), real(fd, op))[1])
+    clock.t += rp.MIN_POLL_INTERVAL_S
+    assert len(rp.read(RIDE, ME, now=clock)["dots"]) == 1
+    assert ops == [rp.fcntl.LOCK_SH]
+    assert (path.read_text(), path.stat().st_mtime_ns) == before
+    # Too soon again from the same phone, though nothing was written.
+    with pytest.raises(rp.Refused):
+        rp.read(RIDE, ME, now=clock)
+    # A ride never written is read as empty, and no file is made for it.
+    assert rp.read("b" * 64, ME, now=clock) == {"dots": [], "alerts": [], "every_s": 5}
+    assert not (tmp_path / f"{'b' * 64}.json").exists()
+    # Now and then (POLL_STAMP_S) the read notes in the ride that its phone still reads.
+    clock.t += rp.POLL_STAMP_S
+    rp.read(RIDE, ME, now=clock)
+    assert json.loads(path.read_text())["riders"][ME]["polled"] == clock.t
+
+
+def test_a_write_takes_the_ride_lock_once(tmp_path, clock, monkeypatch) -> None:
+    """The ride's write count is kept in the same locked turn as the write (it took two)."""
+    store = rp.TmpfsStore(str(tmp_path))
+    monkeypatch.setattr(rp, "store", lambda: store)
+    ops = []
+    real = rp.fcntl.flock
+    monkeypatch.setattr(rp.fcntl, "flock", lambda fd, op: (ops.append(op), real(fd, op))[1])
+    rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
+    assert ops == [rp.fcntl.LOCK_EX]
+    assert json.loads((tmp_path / f"{RIDE}.json").read_text())["writes"][1] == 1
+
+
 def test_a_lock_on_a_file_unlinked_while_waiting_is_taken_again(tmp_path, monkeypatch) -> None:
     """A worker that waited on the lock while the holder emptied the ride and unlinked its file
     would write to an orphan no other worker sees: after the lock the inode is compared with
@@ -296,7 +341,7 @@ def test_a_plain_dot_an_older_server_kept_is_never_shown_and_goes_at_2_minutes(c
             "at": clock.t,
         }
         state["alerts"].append({"id": "x", "kind": "crash", "last": clock.t, "sender": ME})
-    assert rp.read(RIDE, YOU, now=clock) == {"dots": [], "alerts": []}
+    assert rp.read(RIDE, YOU, now=clock) == {"dots": [], "alerts": [], "every_s": 5}
     clock.t += rp.DOT_TTL_S + 1
     rp.post_position(RIDE, YOU, SEALED_DOT, now=clock)  # keeps the ride and ME's token
     with rp.store().ride(RIDE) as state:
@@ -358,10 +403,13 @@ def test_alerts_last_2_minutes_or_until_the_sender_clears_them(clock) -> None:
 def test_writes_are_counted_per_ride_and_the_count_goes_with_its_minute(clock, monkeypatch) -> None:
     monkeypatch.setattr(rp, "RIDE_WRITES_PER_MINUTE", 2)
     clock.t = 1_000_040.0  # 20 s into a minute
+    # The post counts itself, in the same locked turn as its write.
     rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
     assert rp.count_write(RIDE, now=clock) == 0
-    assert rp.count_write(RIDE, now=clock) == 0
     assert rp.count_write(RIDE, now=clock) == 40  # the rest of the minute
+    with pytest.raises(rp.Refused) as busy:
+        rp.send_alert(RIDE, YOU, SEALED_ALERT, now=clock)
+    assert busy.value.status == 429 and busy.value.retry_after_s == 40
     clock.t += 40
     assert rp.count_write(RIDE, now=clock) == 0
     clock.t += rp.RIDE_WRITES_WINDOW_S
@@ -537,17 +585,27 @@ def test_the_endpoints_are_limited_per_address_and_writes_per_ride(client, monke
     monkeypatch.setattr(rp, "RIDE_WRITES_PER_MINUTE", 0)
     busy = _post(client, RIDE, "here", {"token": ME, "sealed": SEALED_DOT})
     assert busy.status_code == 429 and int(busy["Retry-After"]) >= 1
-    # The ride's write count is kept with the ride, never as a database row.
-    assert seen == ["ride-link"]
+    # The ride's write count is kept with the ride, never as a database row; a write counts
+    # against the address's own write limit.
+    assert seen == ["ride-post"]
     assert rp.store()._rides == {}
-    monkeypatch.setattr(rp, "RIDE_WRITES_PER_MINUTE", 15000)
+    monkeypatch.setattr(rp, "RIDE_WRITES_PER_MINUTE", 7500)
     seen.clear()
     assert client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=YOU).status_code == 200
     assert seen == ["ride-link"]
     refuse.add("ride-link")
     assert client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=YOU).status_code == 429
-    # Generous: a whole ride's phones can share one carrier address.
-    assert ratelimit.RIDE_LINKS.requests >= 600
+    # Generous: a whole ride's phones can share one carrier address: 20 marshals at 2 s and 100
+    # watching at 5 s read...
+    marshals, fastest = rp.PACE_S[0]
+    assert ratelimit.RIDE_LINKS.requests >= marshals * 60 // fastest + 100 * 60 // rp.WATCH_PACE_S
+    # ...and the 20 marshals post, with room for alerts...
+    assert ratelimit.RIDE_POSTS.requests >= marshals * 60 // fastest + 60
+    # ...yet one address cannot make a full ride of riders in a dot's 2 minutes.
+    assert (
+        ratelimit.RIDE_POSTS.requests * rp.KEEP_S // ratelimit.RIDE_POSTS.window_s
+        < rp.MAX_RIDERS_PER_RIDE
+    )
 
 
 def test_a_foreign_page_is_refused(client) -> None:
@@ -564,3 +622,94 @@ def test_the_api_reads_the_leader_key_from_its_header(client, clock, monkeypatch
     )
     assert r.status_code == 200
     assert r.json()["dots"][0]["leader"] is True
+
+
+def test_the_pace_is_2_s_on_a_small_ride_and_slower_only_on_a_big_one(clock, monkeypatch) -> None:
+    """Stephen 2026-10-31: "15 seconds is not enough to see slowdowns", "try to get it down", "If
+    we limit to maybe 20 people at once, how low could that get?". A ride of up to 20 sharing goes
+    every 2 s, one up to 300 every 5 s; the ride's lock sets a slower pace past 300 and 1,000
+    riders, and the read says the pace so the phones follow it."""
+    sizes = (1, 20, 21, 300, 301, 1000, 1001, rp.MAX_RIDERS_PER_RIDE)
+    assert [rp.pace_s(n) for n in sizes] == [2, 2, 5, 5, 10, 10, 15, 15]
+    rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
+    # The one sharing reads at the ride's pace; one only watching, at 5 s.
+    assert rp.read(RIDE, ME, now=clock)["every_s"] == 2
+    assert rp.read(RIDE, YOU, now=clock)["every_s"] == rp.WATCH_PACE_S == 5
+    clock.t += 2
+    rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
+    # A big ride: the read says the slower pace, and a phone that has not read it yet is not
+    # refused for posting at 2 s (only the 1 s floor holds, on every ride).
+    monkeypatch.setattr(rp, "PACE_S", ((0, 2), (1, 10)))
+    clock.t += 2
+    rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
+    clock.t += 0.25
+    with pytest.raises(rp.Refused) as refused:
+        rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
+    assert rp.MIN_POST_INTERVAL_S == 0.5 and refused.value.retry_after_s == 1
+    clock.t += 1
+    assert rp.read(RIDE, YOU, now=clock)["every_s"] == 10
+    assert rp.read(RIDE, ME, now=clock)["every_s"] == 10
+    # The pace counts dots, not tokens: 20 sharing and a watcher who sends an alert stay at 2 s.
+    monkeypatch.setattr(rp, "PACE_S", ((1, 2), (300, 5)))
+    clock.t += rp.ALERT_MIN_INTERVAL_S
+    rp.send_alert(RIDE, THEM, SEALED_DOT, now=clock)
+    rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
+    assert rp.read(RIDE, ME, now=clock)["every_s"] == 2
+    assert rp.read(RIDE, THEM, now=clock)["every_s"] == rp.WATCH_PACE_S
+    # Positions at that pace fit the ride's own write count.
+    assert rp.MAX_RIDERS_PER_RIDE * 60 // rp.SLOWEST_PACE_S <= rp.RIDE_WRITES_PER_MINUTE
+    assert max(most * 60 // every for most, every in rp.PACE_S) <= rp.RIDE_WRITES_PER_MINUTE
+
+
+def _tmpfs(tmp_path, monkeypatch):
+    store = rp.TmpfsStore(str(tmp_path))
+    monkeypatch.setattr(rp, "store", lambda: store)
+    return store
+
+
+def test_a_tmpfs_read_drops_what_has_expired_from_the_file(tmp_path, clock, monkeypatch) -> None:
+    """A read under the shared lock writes nothing, but what is past its 2 minutes is dropped
+    from the ride's file at once, never left for the sweeper alone."""
+    _tmpfs(tmp_path, monkeypatch)
+    rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
+    rp.post_position(RIDE, YOU, _dot(1), now=clock)
+    rp.send_alert(RIDE, ME, SEALED_DOT, now=clock)
+    clock.t += rp.DOT_TTL_S - 10
+    rp.post_position(RIDE, YOU, _dot(2), now=clock)
+    clock.t += 11
+    assert rp.read(RIDE, YOU, now=clock)["dots"] == []
+    kept = json.loads((tmp_path / f"{RIDE}.json").read_text())
+    assert ME not in kept["riders"] and kept["alerts"] == []
+    assert SEALED_DOT not in (tmp_path / f"{RIDE}.json").read_text()
+
+
+def test_a_refused_write_on_tmpfs_still_counts_against_the_ride(
+    tmp_path, clock, monkeypatch
+) -> None:
+    """As in memory: a post refused as too soon still took the ride's lock, so it counts."""
+    _tmpfs(tmp_path, monkeypatch)
+    rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
+    for _ in range(3):
+        with pytest.raises(rp.Refused):
+            rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
+    assert json.loads((tmp_path / f"{RIDE}.json").read_text())["writes"][1] == 4
+
+
+def test_the_poll_note_forgets_a_token_within_seconds(clock, monkeypatch) -> None:
+    """Each process's note of a token's last read is kept only as long as the poll limit (never
+    the 2 minutes, nor past them); a reader that never posted is not noted at all."""
+    rp._polls.clear()
+    rp.read(RIDE, YOU, now=clock)
+    assert rp._polls == {}
+    rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
+    rp.read(RIDE, ME, now=clock)
+    assert (RIDE, ME) in rp._polls
+    rp._forget_polls(clock.t + rp.MIN_POLL_INTERVAL_S - 1)
+    assert (RIDE, ME) in rp._polls
+    rp._forget_polls(clock.t + rp.MIN_POLL_INTERVAL_S)
+    assert rp._polls == {}
+    # Full of fresh notes: no more are kept (the limit falls back to the ride's own stamp).
+    monkeypatch.setattr(rp, "POLLS_KEPT", 1)
+    rp._note_poll(RIDE, ME, clock.t)
+    rp._note_poll(RIDE, YOU, clock.t)
+    assert list(rp._polls) == [(RIDE, ME)]
