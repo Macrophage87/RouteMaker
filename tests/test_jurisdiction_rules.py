@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from pipeline.states import states_without_urban
-from routemaker.stress import classify, statutory_default_mph
+from routemaker.stress import Stress, classify, rural_floor, statutory_default_mph
 
 
 class TestWestVirginiaSpeedLaw:
@@ -50,3 +50,68 @@ class TestUrbanListCoversEveryState:
     def test_a_sliver_of_a_state_is_not_checked(self):
         state_of = {i: "MD" for i in range(1500)} | {i: "PA" for i in range(1500, 1600)}
         assert states_without_urban(state_of, frozenset({1})) == []
+
+
+class TestOwnerRulesEverywhere:
+    """The owner's rules read the same in every state (2026-10-31, Q1-Q4)."""
+
+    def test_a_quiet_count_keeps_the_narrow_road_reading(self):
+        lane = {"highway": "unclassified", "lane_markings": "no"}
+        # The rural floor is applied by the rebuild after the classifier.
+        counted = rural_floor(classify(lane, urban=False, aadt=300, jurisdiction="VA"), lane, False)
+        uncounted = rural_floor(classify(lane, urban=False, jurisdiction="MD"), lane, False)
+        assert counted.tier is uncounted.tier is Stress.LTS2
+        assert "narrow rural road" in counted.rule
+
+    def test_a_busy_count_still_outranks_it(self):
+        lane = {"highway": "unclassified", "lane_markings": "no"}
+        assert "narrow rural road" not in classify(lane, urban=False, aadt=4_000).rule
+
+    def test_virginia_town_minor_roads_at_25(self):
+        rule = classify({"highway": "tertiary"}, urban=True, jurisdiction="VA").rule
+        assert "25 mph" in rule
+        assert "30 mph" in classify({"highway": "tertiary"}, urban=True, jurisdiction="MD").rule
+
+    def test_an_untagged_fast_multilane_highway_is_4_5(self):
+        road = {"highway": "primary", "maxspeed": "55 mph", "lanes": "4"}
+        for urban in (True, False):
+            result = classify(road, urban=urban)
+            assert (result.tier, result.half) == (Stress.LTS4, True)
+            assert result.rule.startswith("multilane highway posted 55 mph")
+
+    def test_a_two_lane_55_road_is_not_taken(self):
+        road = {"highway": "primary", "maxspeed": "55 mph", "lanes": "2"}
+        assert not classify(road, urban=False).half
+
+    def test_a_divided_carriageway_counts_as_multilane(self):
+        road = {"highway": "trunk", "maxspeed": "55 mph", "oneway": "yes", "lanes": "1"}
+        assert classify(road, urban=False, divided=True).half
+
+    def test_a_busy_two_lane_street_is_2_5(self):
+        street = {"highway": "residential", "maxspeed": "25 mph"}
+        busy = classify(street, aadt=6_000)
+        assert (busy.tier, busy.half) == (Stress.LTS2, True)
+        assert not classify(street, aadt=4_000).half
+
+    def test_a_painted_lane_on_a_busy_street_is_at_least_2_5(self):
+        street = {"highway": "residential", "maxspeed": "25 mph", "cycleway": "lane"}
+        busy = classify(street, aadt=12_000)
+        assert (busy.tier, busy.half) == (Stress.LTS2, True)
+        assert not classify(street, aadt=6_000).half
+
+    def test_a_ramp_or_a_protected_track_is_not_taken(self):
+        ramp = {"highway": "trunk_link", "oneway": "yes", "lanes": "2", "maxspeed": "55 mph"}
+        assert not classify(ramp, urban=False).half
+        track = {"highway": "primary", "lanes": "4", "maxspeed": "55 mph", "cycleway": "track"}
+        assert not classify(track, urban=False).rule.startswith("multilane highway")
+        road = {"highway": "primary", "lanes": "4", "maxspeed": "55 mph"}
+        assert not classify(road, urban=False, separate_facility=True).rule.startswith(
+            "multilane highway"
+        )
+
+
+def test_smoothing_knows_the_busy_street_gates():
+    from pipeline.aadt_smoothing import crosses_volume_gate
+
+    assert crosses_volume_gate(6_000, 4_000)
+    assert crosses_volume_gate(9_500, 8_500)

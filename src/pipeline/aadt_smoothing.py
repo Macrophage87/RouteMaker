@@ -126,10 +126,23 @@ def crosses_volume_gate(raw: int, smoothed: int) -> bool:
     `routemaker.stress` writes them: quiet is `<= VOLUME_QUIET` (so 1,501 is
     the first count that is not), busy is `>= VOLUME_BUSY`, and the urban
     two-way floor is `> URBAN_TWO_WAY_BUSY_AADT` (so 8,001 is the first count
-    over it)."""
-    from routemaker.stress import URBAN_TWO_WAY_BUSY_AADT, VOLUME_BUSY, VOLUME_QUIET
+    over it). And the owner's busy-street half step (`BUSY_STREET_MIN_AADT`,
+    `BUSY_PAINTED_LANE_AADT`), which moves a way half a level."""
+    from routemaker.stress import (
+        BUSY_PAINTED_LANE_AADT,
+        BUSY_STREET_MIN_AADT,
+        URBAN_TWO_WAY_BUSY_AADT,
+        VOLUME_BUSY,
+        VOLUME_QUIET,
+    )
 
-    gates = (VOLUME_QUIET + 1, VOLUME_BUSY, URBAN_TWO_WAY_BUSY_AADT + 1)
+    gates = (
+        VOLUME_QUIET + 1,
+        BUSY_STREET_MIN_AADT,
+        VOLUME_BUSY,
+        URBAN_TWO_WAY_BUSY_AADT + 1,
+        BUSY_PAINTED_LANE_AADT,
+    )
     return any((raw >= gate) != (smoothed >= gate) for gate in gates)
 
 
