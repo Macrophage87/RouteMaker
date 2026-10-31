@@ -567,7 +567,7 @@ in the database still names it: delete that row in the admin when loading the fi
   Virginia's joining the map). Stress rows, hidden, with fingerprints. Remake
   `urban-areas.json`, then load like the others; takes effect on the next rebuild.
 
-- `2026-10-31-owner-virginia-ratings.json`: Northern Virginia, 93 ways (about 22 mi), from
+- `2026-10-31-owner-virginia-ratings.json`: Northern Virginia, 347 ways (about 99 mi), from
   the Virginia ratings recheck. The owner, 2026-10-31: "Let's go with all these". P4:
   two-lane Fairfax County streets VDOT's speed limit records post at 35 mph and OSM
   carries no speed for, counted above 1,500 a day and rated LTS 3, go to LTS 3.5 below
@@ -577,6 +577,13 @@ in the database still names it: delete that row in the admin when loading the fi
   owner, 2026-10-31: "Keep 32, cite VDOT"; docs/SOURCES.md, "VDOT posted speed limits"):
   of the 71 ways Fairfax County's layer showed at 35, VDOT posts 35 on 32, 25 or 30 on
   16, has no record within 20 m on 19 and mixed zones on 4, and those 39 are dropped.
+  P5 (the owner: "Keep 1.5 as owner rows"): two-way Fairfax residential streets with no
+  bike lane at 25 mph (VDOT's posted limit, or Virginia's 25 mph residence-district law,
+  Code of Virginia 46.2-870, where VDOT posts none) that VDOT counts at 1,001 to 1,500 a
+  day go to LTS 1.5, between the formula's 1 (low-volume relief) and its 2 above 1,500
+  (254 ways, about 77 mi); left out where VDOT posts another limit, OSM tags over 25 or
+  the way is tertiary (the collector floor). Each row's reason states the facts and the
+  threshold behind its level (the owner, 2026-10-31: "cite the logic in the decision").
   R2, the owner's pick "Only the calmest to 1.5": Arlington residential streets with no
   VDOT count and no bike lane, rated LTS 2, that Arlington's Bike Comfort Index shows
   under 1,000 a day at an 85th-percentile 23 mph or less, go to LTS 1.5 (61 ways). Owner
