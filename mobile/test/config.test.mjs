@@ -152,10 +152,11 @@ test("release signing and the store id come from the environment; no key in the 
   assert.match(gradle, /System\.getenv\("ROUTEMAKER_DEBUG_KEYSTORE_FILE"\)/);
   assert.match(gradle, /if \(debugKeystore\) \{\s*debug \{/, "the fixed passwords sit only in the debug signing config");
   const workflow = readFileSync(here("../../.github/workflows/android.yml"), "utf8");
-  // Pull requests touching the app: tests and a debug APK only. Release by hand, or on a release tag
-  // (only when mobile/ changed since the tag before); no other push.
-  assert.match(workflow, /^on:\s*\n\s+push:\s*\n\s+tags: \["v\*"\]\s*\n\s+pull_request:\s*\n\s+paths:\s*\n\s+- "mobile\/\*\*"\s*\n\s+- "\.github\/workflows\/android\.yml"\s*\n\s+workflow_dispatch:/m);
-  assert.doesNotMatch(workflow, /^\s+branches:/m);
+  // Pull requests into main touching the app: tests and a debug APK only. Release by hand, or on a
+  // release tag (only when mobile/ changed since the tag before); no other push. The one branch
+  // filter is the pull request's base, so no branch push builds.
+  assert.match(workflow, /^on:\s*\n\s+push:\s*\n\s+tags: \["v\*"\]\s*\n\s+pull_request:\s*\n\s+branches: \[main\]\s*\n\s+paths:\s*\n\s+- "mobile\/\*\*"\s*\n\s+- "\.github\/workflows\/android\.yml"\s*\n\s+workflow_dispatch:/m);
+  assert.equal(workflow.match(/^\s+branches:/gm)?.length, 1);
   assert.match(workflow, /BUILD: \$\{\{ github\.event_name == 'push' && 'release' \|\| github\.event_name == 'workflow_dispatch' && inputs\.build \|\| 'debug' \}\}/);
   assert.match(workflow, /if: env\.BUILD == 'release' && github\.event_name != 'pull_request'/);
   assert.match(workflow, /git diff --quiet "\$prev" "\$GITHUB_SHA" -- mobile\//);

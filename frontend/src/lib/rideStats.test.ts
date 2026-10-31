@@ -40,6 +40,22 @@ test("distance, moving time and the stress ridden add up along the route", () =>
   assert.ok(Math.abs(s.climbM - 20) < 0.5, String(s.climbM));
 });
 
+test("a 3.5 stretch ridden is its own share in the ride summary's stress, as on the line (the owner, 2026-10-31)", async () => {
+  const { stressSegments } = await import("./stressBar.ts");
+  // B St is LTS 3, its second half a 3.5 by the route's sections.
+  const halfModel = { ...model, halves: [{ fromM: 1500, toM: 2000, tier: 3 }] } as RideModel;
+  let s = statsStart(0);
+  for (let m = 0, t = 0; m <= 2000; m += 10, t += 2) s = statsStep(s, fix(m, t), onRoute(m), halfModel, profile);
+  assert.ok(Math.abs((s.stressM["3"] ?? 0) - 500) < 15, String(s.stressM["3"]));
+  assert.ok(Math.abs((s.stressM["3h"] ?? 0) - 500) < 15, String(s.stressM["3h"]));
+  assert.equal(stressSegments(s.stressM).find((seg) => seg.key === "3h")?.short, "LTS 3.5");
+  // A half step above another level does not move this one.
+  const other = { ...model, halves: [{ fromM: 1500, toM: 2000, tier: 1 }] } as RideModel;
+  let o = statsStart(0);
+  for (let m = 0, t = 0; m <= 2000; m += 10, t += 2) o = statsStep(o, fix(m, t), onRoute(m), other, profile);
+  assert.equal(o.stressM["1h"], undefined);
+});
+
 test("standing still with the GPS wandering adds no distance or moving time", () => {
   let s = ride(statsStart(0), 0, 100, 5, 0);
   const before = s;

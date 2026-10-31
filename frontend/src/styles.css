@@ -491,17 +491,44 @@ progress.planning {
   height: 100%;
 }
 
-/* Patterns as well as colours, so the bar reads in greyscale too. */
-.stress-seg-2 {
-  background-image: repeating-linear-gradient(90deg, transparent 0 6px, rgba(255, 255, 255, 0.35) 6px 8px);
+/* Patterns as well as colours, so the bar reads in greyscale too. A half step
+   (1h-4h, stressBar.ts) keeps its lower level's pattern, in its own colour, as
+   the map draws one over its lower level's pattern. */
+.stress-seg-2,
+.stress-seg-2h {
+  --seg-pattern: repeating-linear-gradient(90deg, transparent 0 6px, rgba(255, 255, 255, 0.35) 6px 8px);
+  background-image: var(--seg-pattern);
 }
 
-.stress-seg-3 {
-  background-image: repeating-linear-gradient(45deg, transparent 0 4px, rgba(255, 255, 255, 0.3) 4px 6px);
+.stress-seg-3,
+.stress-seg-3h {
+  --seg-pattern: repeating-linear-gradient(45deg, transparent 0 4px, rgba(255, 255, 255, 0.3) 4px 6px);
+  background-image: var(--seg-pattern);
 }
 
-.stress-seg-4 {
-  background-image: repeating-linear-gradient(-45deg, transparent 0 3px, rgba(255, 255, 255, 0.28) 3px 4px);
+.stress-seg-4,
+.stress-seg-4h {
+  --seg-pattern: repeating-linear-gradient(-45deg, transparent 0 3px, rgba(255, 255, 255, 0.28) 3px 4px);
+  background-image: var(--seg-pattern);
+}
+
+/* A half step in the colour-blind-friendly palette (HALF_DASHED): its lower
+   level's colour and pattern with the next level's dash along the middle, as on
+   the route line (HALF_STEP_DASH 1.5 on, 4.5 off; 4.5 Avoid's dash-dot), over
+   an outline where the dash has one (--seg-dash-outline, HALF_OUTLINES). */
+.stress-seg-dashed {
+  --seg-dash-image: repeating-linear-gradient(90deg, var(--seg-dash) 0 3px, transparent 3px 12px);
+  --seg-dash-under: repeating-linear-gradient(90deg, var(--seg-dash-outline, transparent) 0 5px, transparent 5px 12px);
+  background-image: var(--seg-dash-image), var(--seg-dash-under), var(--seg-pattern, none);
+  background-size: 100% 4px, 100% 6px, auto;
+  background-position: 0 50%, -1px 50%, 0 0;
+  background-repeat: no-repeat, no-repeat, repeat;
+}
+
+.stress-seg-4h.stress-seg-dashed {
+  --seg-dash-image: repeating-linear-gradient(90deg, var(--seg-dash) 0 10px, transparent 10px 12px, var(--seg-dash) 12px 13px, transparent 13px 15px);
+  /* The dash-dot's gaps are a pixel, so its outline is one band. */
+  --seg-dash-under: linear-gradient(var(--seg-dash-outline, transparent), var(--seg-dash-outline, transparent));
 }
 
 /* Avoid (OWNER-DECISIONS 274): a cross-hatch in --seg-accent, a pattern no
@@ -4526,11 +4553,15 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   white-space: nowrap;
 }
 
+/* End ride and Go round side by side on one line, always (the owner, 2026-10-31: "end ride and go around should share a
+   line. Having one on top of the other takes too much space"). Each gives up room in step with its words, so the
+   longer one keeps more, and none narrower than its longest word. */
 .ride-top-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   margin-left: auto;
+  min-width: 0;
 }
 
 /* Near dawn or dusk the light times in the corner, in place of "Ride mode" (the owner, 2026-10-19): a line each, small. */
@@ -4567,10 +4598,35 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   margin-left: 0;
 }
 
+/* Shared half and half; where a long language or large text does not fit on one line, the words go onto a second line
+   inside each button, never under the other one. */
 .ride-top.ride-corner-tight .ride-top-actions > * {
   flex: 1 1 auto;
-  white-space: nowrap;
+  min-width: min-content;
   justify-content: center;
+  text-align: center;
+  line-height: 1.15;
+  /* Chinese, Japanese and Korean words are not split a character a line. */
+  word-break: keep-all;
+}
+
+.ride-top.ride-corner-tight .ride-slide-text {
+  white-space: normal;
+}
+
+/* Where one word alone is wider than its half, RideMode makes the words smaller until it fits; only where even half size
+   does not fit do they go one above the other, so no word is cut. */
+.ride-top.ride-top-stack .ride-top-actions {
+  flex-wrap: wrap;
+}
+
+.ride-top.ride-top-stack .ride-top-actions > * {
+  flex: 1 1 100%;
+}
+
+/* The barrier keeps its size beside words on two lines. */
+.ride .ride-road-closed > svg {
+  flex-shrink: 0;
 }
 
 .ride-light-below {
@@ -4608,7 +4664,8 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 1.2rem;
+  /* Made smaller in the top row only where a word does not fit (RideMode's --ride-top-fit, the owner, 2026-10-31). */
+  font-size: calc(1.2rem * var(--ride-top-fit, 1));
   font-weight: 700;
 }
 
@@ -4633,10 +4690,13 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 
 /* On the narrowest phones (320 px) the two keep one line at a slightly smaller size; the slide's text stays clear of its thumb. */
 @media (max-width: 359px) {
-  .ride .ride-road-closed,
-  .ride .ride-end,
   .ride .ride-off-button {
     font-size: 1rem;
+  }
+
+  .ride .ride-road-closed,
+  .ride .ride-end {
+    font-size: calc(1rem * var(--ride-top-fit, 1));
   }
 
   .ride .ride-slide-text {
@@ -5105,8 +5165,10 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   cursor: grab;
 }
 
+/* The track as tall as the thumb's pill row, so the thumb stays in the middle where the words take two lines (the range
+   itself still covers the whole pill, so a touch anywhere on it drags). */
 .ride-slide-range::-webkit-slider-runnable-track {
-  height: 100%;
+  height: 48px;
   background: transparent;
 }
 
@@ -6016,6 +6078,58 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   padding-inline-start: 40px;
   font-size: 1.05rem;
   border-radius: 999px;
+}
+
+/* Say where to (lib/placeDictation.ts): the microphone at the box's far end, a full-size target inside it. */
+.go-search.can-say input[type="search"] {
+  padding-inline-end: 52px;
+}
+
+.go-search .say-where {
+  position: absolute;
+  inset-inline-end: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--accent);
+}
+
+/* Listening: filled, so a glance shows the microphone is on. */
+.go-search .say-where[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.go-search .say-where-line {
+  margin: 6px 4px 0;
+}
+
+/* A lettered place's letter, to be said: "B" or "Bravo"; the name and its line beside it. */
+.place-results li.lettered {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  align-items: center;
+}
+
+.place-results .row-letter {
+  grid-row: span 2;
+  min-width: 1.8em;
+  padding: 4px 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-align: center;
 }
 
 .go-search .go-from {

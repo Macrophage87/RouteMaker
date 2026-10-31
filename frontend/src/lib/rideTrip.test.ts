@@ -133,7 +133,7 @@ test("an option with no ride says which option rides, in Start's place, with no 
   assert.equal(noBikeLine(line({ transit: { ...PLAN, options } })), null);
   assert.equal(noBikeLine(BIKESHARE), null);
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /const segments = capacity \|\| noBike \? \[\] : stressSegments\(route\.stress_m\);/);
+  assert.match(panel, /const segments = capacity \|\| noBike \? \[\] : stressSegments\(route\.stress_m, route\.stress_spans\);/);
   assert.match(panel, /\) : noBike \? \(\s*<p className="hint no-bike-line">\{noBike\}<\/p>/);
 });
 

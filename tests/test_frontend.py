@@ -9,6 +9,7 @@ one suite and one CI signal rather than two that can drift.
 from __future__ import annotations
 
 import ast
+import json
 import os
 import re
 import shutil
@@ -35,10 +36,10 @@ def node_strips_types() -> bool:
 
 def test_frontend_suite_passes() -> None:
     if os.environ.get("CI"):
-        # CI's "Front end" step runs this same suite with `npm test` (and again in the node
-        # image) before pytest, where a failure fails the job with the whole report; a third
-        # run here would only repeat it, behind a pass-count floor (tests-6).
-        pytest.skip("CI ran the front-end suite in its own step (npm test)")
+        # CI's "Front end, as the beta builds it" step runs this same suite (`npm test`, in the
+        # pinned node image) before pytest, where a failure fails the job with the whole report;
+        # a second run here would only repeat it, behind a pass-count floor (tests-6).
+        pytest.skip("CI ran the front-end suite in its own step (frontend-build.sh)")
     if NODE is None:
         # Outside CI only (above): CI's own step fails when the runtime is missing.
         pytest.skip("no Node runtime available")
@@ -229,22 +230,32 @@ def test_no_directive_lets_in_a_wildcard_or_another_host() -> None:
 
 
 def test_ci_typechecks_tests_and_builds_the_front_end_before_pytest() -> None:
-    """The front-end step in CI, read from ci.yml: removing it, or its
-    typecheck or build, would leave the bundle unchecked with CI green."""
+    """The front-end steps in CI, read from ci.yml: removing them, or the
+    typecheck, the tests or the build, would leave the bundle unchecked with CI green.
+    The host step installs and builds (the build type-checks first); the node tests run in
+    the beta-style step, whose script runs `npm test` before its own type check and build."""
     import yaml
 
     job = yaml.safe_load((REPO / ".github" / "workflows" / "ci.yml").read_text())["jobs"]["test"]
     steps = job["steps"]
     front = [i for i, s in enumerate(steps) if s.get("working-directory") == "frontend"]
     assert len(front) == 1, steps
+    beta_run = 'scripts/beta/frontend-build.sh "$PWD"'
+    beta = [i for i, s in enumerate(steps) if beta_run in str(s.get("run", ""))]
+    assert len(beta) == 1, steps
     pytest_at = [i for i, s in enumerate(steps) if str(s.get("run", "")).startswith("pytest")]
     # A step that may fail, or never runs, checks nothing while CI stays green.
-    for i in front + pytest_at[:1]:
+    for i in front + beta + pytest_at[:1]:
         assert not steps[i].get("continue-on-error"), steps[i]
         assert "if" not in steps[i], steps[i]
     assert not job.get("continue-on-error") and "if" not in job, job
     commands = [part.strip() for part in steps[front[0]]["run"].split("&&")]
-    assert commands == ["npm ci", "npm run typecheck", "npm test", "npm run build"], commands
+    assert commands == ["npm ci", "npm run build"], commands
+    pkg = json.loads((REPO / "frontend" / "package.json").read_text())
+    assert pkg["scripts"]["build"].startswith("tsc --noEmit && "), pkg["scripts"]["build"]
+    script = (REPO / "scripts" / "beta" / "frontend-build.sh").read_text()
+    assert "'umask 022 && npm test && npx tsc --noEmit && npx vite build" in script
     assert pytest_at and front[0] < pytest_at[0], "the front end is built after pytest reads it"
+    assert beta[0] < pytest_at[0], "the front-end tests run after pytest"
     node = [s for s in steps if str(s.get("uses", "")).startswith("actions/setup-node")]
     assert node and str(node[0]["with"]["node-version"]).split(".")[0] == "22", node
