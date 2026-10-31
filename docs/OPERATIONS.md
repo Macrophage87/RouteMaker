@@ -5182,7 +5182,7 @@ proxy cannot reach the service.
    | Line | What to look for |
    |---|---|
    | `.../mdot-sha-aadt.geojson: N count lines from mdot-sha (state)` (installer) | some thousands for the box |
-   | `MDOT SHA counts shared with N opposite carriageways` | in the hundreds: each divided Maryland road's second carriageway, which conflation alone leaves uncounted (`conflation.share_with_carriageways`; Maryland's counts only) |
+   | `counts shared with N opposite carriageways (<agencies that shared>)` | in the hundreds: each divided road's second carriageway, which conflation alone leaves uncounted (`conflation.share_with_carriageways`; every installed agency's counts since v0.16.0, Maryland's only before) |
    | `volume conflation: N matched, ...` | N up by the Maryland roads against the last rebuild |
 
    ```sh

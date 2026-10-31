@@ -162,7 +162,16 @@ class TestBothCarriageways:
         assert set(added) == {other}
         assert added[other].aadt == 39141 and added[other].agency == "mdot-sha"
 
-    def test_another_agencys_count_is_left_as_conflation_placed_it(self) -> None:
+    @pytest.mark.parametrize("agency", ["vdot", "ddot"])
+    def test_virginias_and_dcs_counts_reach_the_other_carriageway_too(self, agency) -> None:
+        # The owner, 2026-10-31: the same rule in every state, not Maryland only.
+        ways = [carriageway(1, WEST), carriageway(2, EAST)]
+        result, added = self.shared(ways, agency, agencies=(mdot_aadt.AGENCY, "vdot", "ddot"))
+        (other,) = {1, 2} - set(result.matched)
+        assert set(added) == {other}
+        assert added[other].aadt == 39141 and added[other].agency == agency
+
+    def test_an_agency_left_off_the_list_is_left_as_conflation_placed_it(self) -> None:
         ways = [carriageway(1, WEST), carriageway(2, EAST)]
         _result, added = self.shared(ways, "vdot")
         assert added == {}

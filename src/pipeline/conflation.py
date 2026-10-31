@@ -778,10 +778,9 @@ def share_with_carriageways(
     Each carriageway then carries the road's count, which is a statement about
     the road, not a doubled volume: nothing sums counts across ways.
 
-    Limited to `agencies` because widening it to the counts already installed
-    (DDOT, VDOT) would move tiers on divided roads the owner has already seen
-    rated; that is a separate change for the owner to ask for. Returns the
-    added matches by way id; `result` is not changed.
+    Limited to `agencies`; the rebuild passes every installed agency's (the owner,
+    2026-10-31: VDOT's and DDOT's too, as MDOT SHA's since OWNER-DECISIONS 429).
+    Returns the added matches by way id; `result` is not changed.
     """
     wanted = frozenset(agencies)
     pairs = frozenset(carriageway_ids)
