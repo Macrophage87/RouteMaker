@@ -429,7 +429,7 @@ def test_the_mdot_sha_reader_maps_its_scale(tmp_path):
         ],
     )
     dropped = Counter()
-    rows = list(module.mdot_sha(tmp_path, dropped))
+    rows = list(module.mdot_sha(tmp_path, dropped, rules=frozenset()))
     assert {r["id"]: r["level"] for r in rows} == {
         "mdot-sha-1-0": 2.0,
         "mdot-sha-4-0": 5.0,
@@ -459,7 +459,17 @@ def test_the_installer_writes_all_three_agencies_the_rebuild_requires(tmp_path, 
     monkeypatch.setattr(
         sys,
         "argv",
-        ["x", "--datasets", str(tmp_path), "--out", str(out), "moco", "ddot", "mdot-sha"],
+        [
+            "x",
+            "--datasets",
+            str(tmp_path),
+            "--out",
+            str(out),
+            "--mdot-as-published",
+            "moco",
+            "ddot",
+            "mdot-sha",
+        ],
     )
     assert module.main() == 0
     assert {r["agency"] for r in json.loads(out.read_text())} == {"moco", "ddot", "mdot-sha"}
@@ -474,7 +484,9 @@ def test_the_installer_refuses_an_agency_with_no_usable_record(tmp_path, monkeyp
     _layer(tmp_path, "mdot-lts", [{"OBJECTID": 1, "LTS_ADJUSTED": 0}])
     out = tmp_path / "agency-lts.json"
     monkeypatch.setattr(
-        sys, "argv", ["x", "--datasets", str(tmp_path), "--out", str(out), "mdot-sha"]
+        sys,
+        "argv",
+        ["x", "--datasets", str(tmp_path), "--out", str(out), "--mdot-as-published", "mdot-sha"],
     )
     with pytest.raises(SystemExit, match="mdot-sha: no usable record"):
         module.main()
@@ -573,30 +585,38 @@ def test_a_mapped_facility_sets_ddots_2020_rating_aside() -> None:
     assert agency_lts.apply(lane, [AgencyRating("ddot", 4)]).tier is Stress.LTS4
 
 
-def test_a_painted_lane_on_a_road_ddot_rated_higher_is_lts_2_5() -> None:
-    """The owner, 2026-10-21: "In some cases where it might be the case that it's a higher
-    stress bike lane, let's put them at 2.5" ("Some parts of R street for instance")."""
-    calm = StressResult(Stress.LTS1, "bike lane, 25 mph", ())
-    result = agency_lts.apply(
-        calm, [AgencyRating("ddot", 4)], facility_mapped=True, painted_lane=True
+def test_a_painted_lane_on_a_road_ddot_rated_higher_takes_the_level_its_traffic_gives() -> None:
+    """The owner, 2026-10-30, of R Street's painted blocks: "I think formula wins on most of
+    them, but make the higher cars/day ones, 2.5"; and 2026-10-31 of the DC review's rules
+    (`ddot_rules.painted_lane_level`): "I agree with these"."""
+    # Thomas Circle NW, 14th St to M St: three lanes one way beside the lane.
+    busy = StressResult(
+        Stress.LTS1, "bike lane, 25 mph", (), volume_aadt=24_499, lanes=3, oneway=True
     )
-    assert (result.tier, result.half) == (Stress.LTS2, True)
+    result = agency_lts.apply(
+        busy, [AgencyRating("ddot", 4)], facility_mapped=True, painted_lane=True
+    )
+    assert (result.tier, result.half) == (Stress.LTS3, True)
     assert (result.formula_tier, result.formula_rule) == (Stress.LTS1, "bike lane, 25 mph")
     held = json.loads(writers._ratings_json(result))
-    assert held["used"] == agency_lts.PAINTED_LANE_USED
+    assert held["used"] == "ddot"
     rows = segment_info.rating_rows({"stress_ratings": json.dumps(held)})
-    assert any(row["label"] == "Used" and "LTS 2.5" in row["value"] for row in rows)
-    # DDOT at 2.5 or below, a formula already at 2.5 or above, or a protected lane: the formula's.
-    for ddot, formula, painted in (
-        (2.5, Stress.LTS1, True),
-        (4, Stress.LTS3, True),
-        (4, Stress.LTS1, False),
-    ):
-        kept = agency_lts.apply(
-            StressResult(formula, "x", ()), [AgencyRating("ddot", ddot)], facility_mapped=True,
-            painted_lane=painted,
-        )  # fmt: skip
-        assert (kept.tier, kept.half) == (formula, False), (ddot, formula, painted)
+    assert any("read as LTS 3.5" in row["value"] for row in rows)
+    # Quieter beside the lane, the formula's level: R Street at 3,942 a day.
+    quiet = agency_lts.apply(
+        StressResult(Stress.LTS2, "x", (), volume_aadt=3_942),
+        [AgencyRating("ddot", 3)],
+        facility_mapped=True,
+        painted_lane=True,
+    )
+    assert (quiet.tier, quiet.half) == (Stress.LTS2, False)
+    assert agency_lts.set_aside(quiet.rule) == {"ddot"}
+    # A protected lane: the formula's.
+    kept = agency_lts.apply(
+        StressResult(Stress.LTS1, "x", (), volume_aadt=24_499), [AgencyRating("ddot", 4)],
+        facility_mapped=True, painted_lane=False,
+    )  # fmt: skip
+    assert (kept.tier, kept.half) == (Stress.LTS1, False)
 
 
 def test_a_ddot_rating_calmer_than_the_formula_stands_on_a_lane() -> None:

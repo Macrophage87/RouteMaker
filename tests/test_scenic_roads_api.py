@@ -13,7 +13,7 @@ from test_segment_info_api import east, fresh_client, insert, north
 
 from core import routing, segment_info
 
-db = pytest.mark.django_db(transaction=True)
+db = pytest.mark.django_db
 
 URL = "/api/scenic-roads"
 # Peach Tree Road near Barnesville, MD, roughly.

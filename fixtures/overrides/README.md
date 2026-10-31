@@ -535,3 +535,64 @@ in the database still names it: delete that row in the admin when loading the fi
   Georgia Avenue. The owner, 2026-10-28: "This path was missed from the Glenmont metro".
   Opened with a `bicycle=yes` access row, with a fingerprint. Load like the others; takes
   effect on the next rebuild.
+
+- `2026-10-30-owner-q-r-first-streets-nw.json`: R Street and 1st Street NW, 24 ways
+  (14,670 ft, 4.47 km; Q Street looked at, unchanged), where DDOT's 2020 layer rated
+  blocks above the formula and routes left them for busier streets and harder
+  junctions. The owner, 2026-10-30: "I think formula wins on most of them, but make the
+  higher cars/day ones, 2.5 instead of 2". R Street's painted-lane blocks that sat at
+  LTS 2.5 go to the formula's LTS 2 (seven ways); R Street's unpainted blocks where DDOT
+  is above the formula (Georgetown, and North Capitol Street to Florida Avenue) go to
+  LTS 2.5 (four ways); 1st Street NW from E Street to Channing Street, unpainted, about
+  5,000 cars a day or more, goes to LTS 2.5 (13 ways; L Street to New York Avenue, where
+  the formula itself says LTS 3, is left out). Stress rows, hidden, with fingerprints.
+  Load like the others; takes effect on the next rebuild.
+
+- `2026-10-30-owner-wv-county-roads.json`: West Virginia's Eastern Panhandle, 309 ways
+  (about 207 mi). West Virginia has no agency stress layer, and beta rated its unposted
+  rural county roads LTS 4 on the 50 mph rural default with no traffic count. The owner,
+  2026-10-30, chose "Filtered counts, 3 and 3.5" on WVDOT's 2020 segment counts (read 10%
+  high for 2020): tertiary and unclassified roads under 500 a day with a count station on
+  the route go to LTS 3 (75 ways); 500 to 1,500 a day, no station within 2 km, or no count
+  at all, go to LTS 3.5 (193 ways). A way along several count segments takes the busiest.
+  Left to the formula: county roads over 1,500 a day, ways only partly along a count
+  segment, secondary and primary roads, posted roads and roads mostly inside the Census
+  urban areas. Also 24 ways of seven busy unposted county roads inside the urban areas
+  (Golf Course, Eagle School, Harlan Springs, Kelly Island, Paynes Ford, Needy and Charles
+  Town Roads, 3,300 to 4,500 a day) held at LTS 4, and one piece of North Fairfax
+  Boulevard (way 158979695) held at LTS 2, and 16 ways of the WV 9 and US 340
+  bypass east of Charles Town (posted 60 mph, farmland inside the Hagerstown urban area) held at LTS 4.5
+  rather than Avoid (the owner, 2026-10-30: "LTS 4.5"), for when `urban-areas.json` is remade with West
+  Virginia in it (beta reads every West Virginia road as rural: the list predates West
+  Virginia's joining the map). Stress rows, hidden, with fingerprints. Remake
+  `urban-areas.json`, then load like the others; takes effect on the next rebuild.
+
+- `2026-10-31-owner-virginia-ratings.json`: Northern Virginia, 345 ways (about 99 mi), from
+  the Virginia ratings recheck. The owner, 2026-10-31: "Let's go with all these". P4:
+  two-lane Fairfax County streets VDOT's speed limit records post at 35 mph and OSM
+  carries no speed for, counted above 1,500 a day and rated LTS 3, go to LTS 3.5 below
+  5,000 a day and LTS 4 from 5,000 (26 ways). P8: such streets rated LTS 2 go to 2.5 at
+  1,500 a day or less, and follow P4 above it (6 ways). A way along several count blocks
+  takes the busiest. Only ways VDOT's own speed limit layer posts at 35 mph are kept (the
+  owner, 2026-10-31: "Keep 32, cite VDOT"; docs/SOURCES.md, "VDOT posted speed limits"):
+  of the 71 ways Fairfax County's layer showed at 35, VDOT posts 35 on 32, 25 or 30 on
+  16, has no record within 20 m on 19 and mixed zones on 4, and those 39 are dropped.
+  P5 (the owner: "Keep 1.5 as owner rows"): two-way Fairfax residential and unclassified
+  local streets with no bike lane at 25 mph (VDOT's posted limit, or Virginia's 25 mph residence-district law,
+  Code of Virginia 46.2-870, where VDOT posts none) that VDOT counts at 1,001 to 1,500 a
+  day go to LTS 1.5, between the formula's 1 (low-volume relief) and its 2 above 1,500
+  (252 ways, about 77 mi); left out where VDOT posts another limit, OSM tags a speed other than 25 or
+  the way is tertiary (the collector floor). Each row's reason states the facts and the
+  threshold behind its level (the owner, 2026-10-31: "cite the logic in the decision").
+  R2, the owner's pick "Only the calmest to 1.5": Arlington residential streets with no
+  VDOT count and no bike lane, rated LTS 2, that Arlington's Bike Comfort Index shows
+  under 1,000 a day at an 85th-percentile 23 mph or less, go to LTS 1.5 (61 ways). Owner
+  rows rather than build rules because Fairfax County's GIS data is all rights reserved
+  and the Bike Comfort Index has no licence yet: the rows cite the facts and copy no
+  data verbatim. The R2 rows cite the Bike Comfort Index as evidence (the owner, 2026-10-31:
+  "Research is fair use, we aren't sharing their data verbatim, just referencing. Keep
+  them"). P3 and P6 (county-posted 25 mph streets) were withdrawn the same day ("Let the
+  formula decide") once Virginia's urban default became 25 mph. Left out: ways the
+  reviewed blocks cover less than half of, and P4 and P8 ways OSM tags with a speed limit,
+  one-way, or with other than two lanes. Stress rows, hidden, with fingerprints. Load like
+  the others; takes effect on the next rebuild.
