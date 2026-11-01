@@ -184,6 +184,17 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     map's federal-land shading (`frontend/src/federal-data/federal-land.json`, sha256
     `773f230f94c5a5b5ce576b17c09b83a3a4e10d5b8627f1d2c0e972d2b10ce4af`).
     `fixtures/datasets/README.md`, "Federal land".
+  - **Public Bike Racks** (District Department of Transportation), item
+    `650302fe184a4ebf84ca355e6f31fa18`, layer
+    <https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Transportation_Bikes_Trails_WebMercator/MapServer/168>;
+    licence CC BY 4.0 (the item's licence field; data.gov's record, updated 2026-10-27).
+    Retrieved 2026-11-01 with `scripts/build_bike_parking.py --ddot`: 4,862 racks, each a
+    point and its number of racks (`NUMBERRACKS`). Go's bike racks (Stephen, 2026-11-01):
+    pins and "Ride to the bike rack" on a tapped spot's card, "End at the bike rack" under
+    a route's card, and the racks layer drawn with Water and restrooms
+    (`frontend/src/amenity-data/bike-parking.json`; `lib/bikeParking.ts`). DC's racks win
+    over OpenStreetMap's within 25 m; OpenStreetMap's amenity=bicycle_parking fills the
+    rest of the region from the extract (`--pbf`).
 
 ## DDOT Pavement Condition Index (DC-PCI)
 

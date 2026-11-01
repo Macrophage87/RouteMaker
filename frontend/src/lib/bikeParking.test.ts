@@ -1,0 +1,115 @@
+/** Bike racks (Stephen, 2026-11-01): reading the file, the racks near a spot, the offer, the words and the layer. */
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+import {
+  RACK_AT_M,
+  RACK_LAYER,
+  RACK_MAX,
+  RACK_MIN_ZOOM,
+  RACK_NEAR_M,
+  endAtRackText,
+  parseBikeParking,
+  rackDetails,
+  rackGeoJson,
+  rackIcon,
+  rackLayer,
+  rackOffer,
+  rackPlaceName,
+  rackTitle,
+  rackWords,
+  racksNear,
+  rideToRackText,
+} from "./bikeParking.ts";
+import { rackSpotRows } from "./spotNearby.ts";
+import type { LonLat } from "./geo.ts";
+
+// About 8.6 m per 0.0001 degree of longitude at this latitude, 11.1 m per 0.0001 of latitude.
+const SPOT: LonLat = [-77.03, 38.9];
+const file = {
+  source: "x",
+  points: [
+    { id: "dc1", x: -77.0301, y: 38.9, r: 2 },
+    { id: "dc2", x: -77.031, y: 38.9 },
+    { id: "n3", x: -77.0305, y: 38.9, c: 12, k: "l", cv: 1, n: "Union Station" },
+    { id: "w4", x: -77.0, y: 38.9, k: "b" },
+    { id: "n5", x: -77.0308, y: 38.9, k: "zz" },
+    { id: "bad", x: "x", y: 38.9 },
+    { id: 7, x: -77.03, y: 38.9 },
+  ],
+};
+
+test("the file is read; a bad row is skipped and an unknown kind is a plain rack", () => {
+  const racks = parseBikeParking(file)!;
+  assert.deepEqual(racks.map((r) => r.id), ["dc1", "dc2", "n3", "w4", "n5"]);
+  assert.deepEqual(racks[2], { id: "n3", lon: -77.0305, lat: 38.9, capacity: 12, kind: "l", covered: true, name: "Union Station" });
+  assert.equal(racks[4].kind, undefined);
+  assert.equal(parseBikeParking({}), null);
+  assert.equal(parseBikeParking(null), null);
+});
+
+test("the committed file reads, every rack inside the coverage box, DDOT's credited", () => {
+  const raw = JSON.parse(readFileSync(new URL("../amenity-data/bike-parking.json", import.meta.url), "utf8"));
+  const racks = parseBikeParking(raw)!;
+  assert.ok(racks.length > 4000, `${racks.length} racks`);
+  assert.match(raw.source, /DDOT.*CC BY 4\.0/);
+  for (const r of racks) assert.ok(r.lon >= -78.05 && r.lon <= -76.02 && r.lat >= 38.2 && r.lat <= 39.72, r.id);
+});
+
+test("racks near a spot: within 500 ft, nearest first, three at most", () => {
+  const racks = parseBikeParking(file)!;
+  const near = racksNear(SPOT, racks);
+  assert.deepEqual(near.map((n) => n.rack.id), ["dc1", "n3", "n5"]);
+  assert.equal(near.length, RACK_MAX);
+  assert.ok(near.every((n, i) => i === 0 || n.metres >= near[i - 1].metres));
+  assert.ok(racksNear(SPOT, racks, RACK_NEAR_M, 10).every((n) => n.metres <= RACK_NEAR_M));
+  assert.ok(!racksNear(SPOT, racks, RACK_NEAR_M, 10).some((n) => n.rack.id === "w4"), "2.6 km off is not near");
+});
+
+test("the offer: the nearest rack; none when the spot is already at one, or none is near", () => {
+  const racks = parseBikeParking(file)!;
+  assert.equal(rackOffer([-77.0299, 38.9], racks)?.rack.id, "dc1");
+  assert.equal(rackOffer([-77.0301, 38.90001], racks), null, `within ${RACK_AT_M} m is at the rack`);
+  assert.equal(rackOffer([-76.5, 39.3], racks), null);
+});
+
+test("words: what it is, how many, covered, a key for lockers, the source last; distances in feet first", () => {
+  const [dc1, dc2, n3, w4] = parseBikeParking(file)!;
+  assert.equal(rackTitle(dc1), "Bike rack");
+  assert.equal(rackTitle(n3), "Bike lockers, Union Station");
+  assert.equal(rackTitle(w4), "Bike room");
+  assert.deepEqual(rackDetails(dc1), ["Racks: 2.", "From DDOT's public bike racks."]);
+  assert.deepEqual(rackDetails(dc2), ["From DDOT's public bike racks."]);
+  assert.deepEqual(rackDetails(n3), ["Spaces: 12.", "Covered.", "You may need a key, a card or a rental.", "From OpenStreetMap."]);
+  assert.deepEqual(rackWords(dc1, "far").lines, ["Racks: 2.", "far", "From DDOT's public bike racks."]);
+  const near = { rack: dc1, metres: 30 };
+  assert.equal(rideToRackText(near), "Ride to the bike rack, 98 ft (30 m) away");
+  assert.equal(endAtRackText(near), "End at the bike rack, 98 ft (30 m) away");
+  assert.equal(rackPlaceName(near, "Safeway"), "Bike rack near Safeway");
+  assert.equal(rackPlaceName(near, null), "Bike rack");
+});
+
+test("the spot card's rows: a pin each, icon alone, its card's Ride here a stop card's", () => {
+  const racks = parseBikeParking(file)!;
+  const rows = rackSpotRows(racksNear(SPOT, racks));
+  assert.deepEqual(rows.map((r) => [r.id, r.kind, r.label, r.icon]), [
+    ["rack-dc1", "parking", null, "rack"],
+    ["rack-n3", "parking", null, "rack"],
+    ["rack-n5", "parking", null, "rack"],
+  ]);
+  assert.equal(rows[1].name, "Union Station");
+  assert.equal(rows[1].kindText, "Bike lockers");
+  assert.equal(rows[0].words("far", new Date()).title, "Bike rack");
+});
+
+test("the layer: block zoom in, thinned where crowded, one feature per rack, an icon of its size", () => {
+  const racks = parseBikeParking(file)!;
+  const layer = rackLayer();
+  assert.equal(layer.id, RACK_LAYER);
+  assert.equal(layer.minzoom, RACK_MIN_ZOOM);
+  assert.equal((layer.layout as Record<string, unknown>)["icon-allow-overlap"], false);
+  assert.equal((rackGeoJson(racks) as { features: unknown[] }).features.length, racks.length);
+  const icon = rackIcon(2);
+  assert.equal(icon.width, 36);
+  assert.equal(icon.data.length, 36 * 36 * 4);
+});
