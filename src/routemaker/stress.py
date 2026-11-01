@@ -1052,6 +1052,33 @@ def rural_floor(result: StressResult, tags: dict[str, str], urban: bool) -> Stre
     return replace(result, tier=Stress.LTS2, half=False, rule=f"{result.rule}, {RURAL_FLOOR_RULE}")
 
 
+# The owner's service-road step (2026-11-01, the region rating review: "Apply your DC
+# alley pick to service roads across the whole region?" - "Yes, all service roads 1.5").
+# An alley, driveway, parking aisle or other `highway=service` way at LTS 1 is LTS 1.5:
+# few cars and low speed, but delivery trucks, backing cars and blind garage and driveway
+# exits. Quiet residential streets at LTS 1 stay at 1. Applied with the rural floor, after
+# any agency rating; a rural one is already at 2. THIS TEXT IS READ BACK by
+# `core.segment_info` and `pipeline.writers`.
+SERVICE_ROAD_RULE = "service road step"
+
+
+def service_road_step(result: StressResult, tags: dict[str, str]) -> StressResult:
+    """The owner's service-road step (`SERVICE_ROAD_RULE`) over a way's tier: a
+    `highway=service` way open to cars at a flat LTS 1 goes to LTS 1.5. An owner row on the
+    way itself (`result.adjustment`) is the more specific call and is left alone, and a way
+    closed to cars (rated as a path) is exempt."""
+    if getattr(result, "adjustment", None) is not None:
+        return result
+    if result.tier is not Stress.LTS1 or result.half or tags.get("highway") != "service":
+        return result
+    if closed_to_motor_traffic(tags):
+        return result
+    restriction = motor_restriction(tags)
+    if restriction is not None and restriction[0] <= Stress.LTS1:
+        return result
+    return replace(result, half=True, rule=f"{result.rule}, {SERVICE_ROAD_RULE}")
+
+
 # The rule on a `bicycle=use_sidepath` road with a side path mapped beside it (review RL-1).
 # The owner, 2026-10-16: "It's very much not recommended, but I believe still legal", and
 # "For the use-sidepath roads, make sure there's a sidepath marked." THIS TEXT IS READ BACK

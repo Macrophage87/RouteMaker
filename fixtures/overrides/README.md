@@ -631,3 +631,34 @@ in the database still names it: delete that row in the admin when loading the fi
   Loading: the dry run lists every row; any approved row or road-panel edit on one of these
   ways with another tier refuses the whole file, so read the dry run first. Fingerprints are
   from extract-20261031 (`rematch.fingerprint_of`). Takes effect on the next rebuild.
+- `2026-11-01-owner-md-rating-review.json` (34,781 ways), `2026-11-01-owner-va-rating-review.json`
+  (8,998) and `2026-11-01-owner-wv-rating-review.json` (434): the region rating review, the
+  same method as the DC file above, for Maryland, Virginia and West Virginia. Every road was
+  grouped with others like it (same county, kind, speed, lanes, count band, facility, ratings),
+  each group rated from all the data held for it on the half-step scale, then checked by
+  skeptics, one arguing for a higher level and one for a lower, wherever the rating differed
+  from an agency, the formula or the map. The owner, 2026-11-01: "we should review the agency
+  ratings but not keep them as authoritive in this instance ... If what we have differs from
+  the agency ratings, that's a flag to scrutinize our ratings further, not nessicarily a flag
+  to keep what the agency has." Most changes are half steps: rural two-lane roads the formula
+  or MDOT SHA put at 4 on speed alone, with low counts, come down to 3 or 3.5; uncounted rural
+  collectors at the floor of 2 go to 2.5 (a missing count is not evidence of calm). Every row
+  is public, and its `public_note` is the road panel's Why line. Where MDOT SHA or Montgomery
+  County rates the way, the note quotes that agency's published level for this way (or says it
+  varies along it), saying "also" only where it equals ours, then why ours differs. Elsewhere,
+  or where the review's wording named another road of its group, the note gives the way's own
+  facts. A count in a note is always the way's own (within 15%); service roads and tracks
+  quote none, as their matched counts are usually a nearby road's. Left out, so earlier
+  decisions stand: every way in another file here, its `retire` lists and `agency_blocks`
+  (118); owner-set levels; ways DDOT rates that the build places outside DC (51, left to the
+  DC review); rural roads the review would put under 2, which the owner's rural floor holds at
+  2 (251); groups a skeptic was unsure about (2,417 ways) or the two skeptics split on (1,083);
+  quiet streets and paths the review lifted from 1 (74,558, the owner's pick: quiet streets
+  at 1 stay 1); service roads at 1 (282,945), which the build's service-road step now sets to
+  1.5 (`routemaker.stress.service_road_step`, the owner's pick of 2026-11-01, "Yes, all
+  service roads 1.5"), and service roads the review lifted past 1.5 (24,042); and ways whose
+  level rested on other roads' counts (1,457) or whose note quoted them (1,148). Ways sharing a
+  group and a note share an adjustment id. Generator: make_region_fixture.py (project files,
+  plans/region-overrides). Fingerprints are from extract-20261031 (`rematch.fingerprint_of`).
+  The Maryland dry run lists about 35,000 rows. Not loaded: the owner confirms each file, then
+  a rebuild.

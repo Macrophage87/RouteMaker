@@ -47,6 +47,7 @@ from routemaker.stress import (
     BUSY_STREET_RULE,
     FAST_MULTILANE_PREFIX,
     RURAL_EXPRESSWAY_PREFIX,
+    SERVICE_ROAD_RULE,
     USE_SIDEPATH_RULE,
     VERY_BUSY_STREET_RULE,
 )
@@ -574,6 +575,7 @@ _MIXED_PARTS = {
     "shoulder read as a lane": "the shoulder read as a bike lane",
     "narrow rural road": "a narrow or winding rural road",
     "rural road floor": "a rural road open to cars, so rated at least LTS 2",
+    SERVICE_ROAD_RULE: "an alley or service road: delivery trucks and blind exits, so LTS 1.5",
     BUSY_STREET_RULE: "a busy city street, so half a level higher",
     VERY_BUSY_STREET_RULE: "a very busy city street, so a level higher",
     BUSY_RURAL_HIGHWAY_RULE: "a busy two-lane rural highway, so half a level higher",
@@ -745,6 +747,8 @@ _USED_WORDS = {
     "owner": "the owner's rating is used: owner and community ratings come first",
     "community": "the community's rating is used: owner and community ratings come first",
     "rural floor": "raised to LTS 2: rural roads open to cars are LTS 2 at least",
+    "service road": "raised to LTS 1.5: alleys and service roads have delivery trucks and "
+    "blind exits",
     agency_lts.FORMULA_USED: "RouteMaker's formula is used: the agency's rating predates the "
     "bike facility mapped here",
     agency_lts.PAINTED_LANE_USED: "set to LTS 2.5: the agency's rating predates the painted "
