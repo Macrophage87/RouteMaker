@@ -1,6 +1,7 @@
 // One shared 5-minute clock for the background checks (the owner, 2026-11-01: battery audit).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { TICK_MS, boundaryAt, createSharedTick, msToNextBoundary, type TickEnv } from "./sharedTick.ts";
 
 function fakeEnv(start: number) {
@@ -95,6 +96,23 @@ test("the app's ride weather runs on with the screen locked; the others wait", (
   assert.deepEqual(calls, ["ride weather"]);
   setHidden(false);
   assert.deepEqual(calls, ["ride weather", "rail"]);
+});
+
+test("wired: weather, area closures and rail status on the shared tick; Plan and Go's weather and the docks rest while hidden", () => {
+  const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+  const weather = read("../useWeather.ts");
+  assert.match(weather, /onSharedTick\(/);
+  assert.match(weather, /whileHidden: \(\) => whileHidden, catchUp: true/);
+  assert.doesNotMatch(weather, /setInterval/);
+  // The app's ride and Roam weather goes on with the screen locked (spoken warnings); Plan and Go's does not.
+  assert.match(read("../RideMode.tsx"), /RIDE_WEATHER_MS,\s*\/\/[^]*?ridesHidden\(\),\s*\);/);
+  assert.match(read("../RoamMode.tsx"), /RIDE_WEATHER_MS,\s*\/\/[^]*?ridesHidden\(\),\s*\);/);
+  assert.match(read("../App.tsx"), /ROUTE_WEATHER_MS,\s*\);/);
+  const map = read("../MapView.tsx");
+  assert.match(map, /const offPoll = onSharedTick\(\(\) => void refresh\(true\)\);/);
+  assert.doesNotMatch(map, /setInterval\(\(\) => void refresh\(true\), AREA_POLL_MS\)/);
+  const docks = read("../BikeshareDocks.tsx");
+  assert.match(docks, /poll = document\.visibilityState === "hidden" \? 0 : window\.setInterval\(/);
 });
 
 test("the last unsubscribe clears the timer and the visibility listener", () => {

@@ -162,7 +162,8 @@ import {
 } from "./lib/rideOutput.ts";
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
 import { useRailFit } from "./lib/railFit.ts";
-import { WAITING_FOR_GPS, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
+import { WAITING_FOR_GPS, readOnce, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
+import { PAUSE_CHECK_MS, heartbeatFix, movedFromPause, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { askCompass } from "./lib/compassHeading.ts";
 import { rideGeoEnv, rideSpeech, rideWake, ridesHidden, showCue, speaksAloud } from "./lib/nativeShell.ts";
 import {
@@ -376,6 +377,8 @@ function useHoldTimer(ms: number, onDone: () => void) {
 /** Hidden this long, the watch stops (privacy and battery) and the ride offers Resume (plan section 5). */
 export const HIDDEN_STOP_MS = 10 * 60_000;
 export const PAUSED_SAID = t("Ride paused while the page was in the background. Press Resume to carry on.");
+/** Stayed at the destination (lib/ridePause.ts; the owner, 2026-11-01: battery audit). */
+export const ARRIVED_PAUSED_SAID = t("Ride paused at your destination to save battery. It carries on when you ride off, or press Resume.");
 /** A re-plan that has not answered in this long is said as no signal (a hung connection); its answer still counts. */
 export const REPLAN_TIMEOUT_MS = 25_000;
 /** No fix for this long and a failure from the watch: the rider is told (once) that GPS is lost. */
@@ -898,6 +901,10 @@ export function RideMode({
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(false);
   const pausedSaid = useRef(false);
+  // Why: the page hidden too long (browser), or stayed at the destination (lib/ridePause.ts), which takes a reading
+  // every 30 s and carries on by itself once the rider rides off; where that pause began.
+  const [pausedWhy, setPausedWhy] = useState<"hidden" | "arrived">("hidden");
+  const pauseSpot = useRef<LonLat | null>(null);
   // The last GPS failure and wake note said, so each is said once, not on every repeat.
   const gpsSaid = useRef<string | null>(null);
   const wakeSaid = useRef("");
@@ -1452,9 +1459,48 @@ export function RideMode({
     [notify],
   );
   useEffect(() => {
-    const timer = window.setInterval(() => checkCueSheet(Date.now()), CUE_SHEET_CHECK_MS);
+    // The same timer gives the app's heartbeat and the destination's stay check (everyTick, below), so no timer more.
+    const timer = window.setInterval(() => {
+      everyTick.current(Date.now());
+      checkCueSheet(Date.now());
+    }, CUE_SHEET_CHECK_MS);
     return () => window.clearInterval(timer);
   }, [checkCueSheet]);
+
+  // The last real fix (never a heartbeat's), and how long the rider has stayed put since arriving (lib/ridePause.ts).
+  const lastRealFix = useRef<RideFix | null>(null);
+  const stay = useRef<Stay | null>(null);
+  const everyTick = useRef((now: number) => void now);
+
+  // On a share bike: stopped at a dock for a while is taken as docked; riding off from it again starts the time from 0.
+  const stepDockRef = useRef((fix: RideFix) => void fix);
+  stepDockRef.current = (fix: RideFix) => {
+    if (!trip?.shareBike || undockRef.current === null || fix.accuracyM > POOR_FIX_M) return;
+    const at = dockedRef.current;
+    if (at) {
+      if (haversineM(fix.point, at) > LEFT_DOCK_M) restartTime();
+      return;
+    }
+    still.current = stillStep(still.current, fix.point, fix.at);
+    const chosen = chosenDock.current;
+    if (chosen && haversineM(still.current.point, chosen.point) <= DOCKED_M && stillAtLength(still.current, fix.at, CHOSEN_STILL_MS)) {
+      still.current = { ...still.current, checked: true };
+      chosenDock.current = null;
+      dockedRef.current = chosen.point;
+      setDocked(chosen.name);
+      notify(dockedSaid(chosen.name));
+    } else if (stillAtLength(still.current, fix.at)) {
+      still.current = { ...still.current, checked: true };
+      const where = still.current.point;
+      void docksAround(where, fetchDocks).then((docks) => {
+        const dock = dockAt(where, docks);
+        if (!dock || ended.current || dockedRef.current) return;
+        dockedRef.current = [dock.lon, dock.lat];
+        setDocked(dock.name);
+        notify(dockedSaid(dock.name));
+      });
+    }
+  };
 
   // Restarting part way: asked at the first fix past a stop, never after Undo (it carries on) or on a trip's leg (its
   // walk to the dock comes first). The defaults ride on as the ride is; other picks plan again from here.
@@ -1466,9 +1512,15 @@ export function RideMode({
   // Where it was asked: ridden RESTART_AUTO_M from there unanswered, it goes on with the stops as marked.
   const restartAt = useRef<LonLat | null>(null);
   const onFix = useCallback(
-    (fix: RideFix) => {
+    // `beat`: the app's heartbeat (lib/ridePause.ts heartbeatFix), the last fix again with the time now while a stopped
+    // rider's GPS sends none. It runs only the clocks that count time standing still (the weak-GPS clock, the dock, the
+    // stay at the destination); it is never placed on the line or taken as off route (the owner, 2026-11-01: battery audit).
+    (fix: RideFix, beat = false) => {
       if (ended.current) return;
-      gpsSaid.current = null;
+      if (!beat) {
+        gpsSaid.current = null;
+        lastRealFix.current = fix;
+      }
       lastFixAt.current = Date.now();
       // Only poor fixes for a while: the cues are paused, so the GPS note says so, once (review RIDE-3).
       const weighed = weighFix(gpsWeak.current, fix.accuracyM, lastFixAt.current);
@@ -1476,6 +1528,12 @@ export function RideMode({
       if (weighed.sayNow) notify(GPS_WEAK_SAID);
       setGps(weighed.weak ? GPS_WEAK_SAID : "");
       checkCueSheet(lastFixAt.current);
+      // Arrived: how long the rider has stayed within STAY_M, for the pause at the destination (checkStay).
+      stay.current = rideRef.current.arrived ? stayStep(stay.current, fix) : null;
+      if (beat) {
+        stepDockRef.current(fix);
+        return;
+      }
       // "Already done?" left unanswered while the rider rides on (gloves, the phone on the bars): once they are
       // RESTART_AUTO_M from where it was asked, it closes with the stops as marked, says so, and re-routing runs again.
       const askedAt = restartAt.current;
@@ -1496,33 +1554,7 @@ export function RideMode({
         setWalking(false);
         if (trip?.shareBike) setUndockAt(Date.now());
       }
-      // On a share bike: stopped at a dock for a while is taken as docked; riding off from it again starts the time from 0.
-      if (trip?.shareBike && undockRef.current !== null && fix.accuracyM <= POOR_FIX_M) {
-        const at = dockedRef.current;
-        if (at) {
-          if (haversineM(fix.point, at) > LEFT_DOCK_M) restartTime();
-        } else {
-          still.current = stillStep(still.current, fix.point, fix.at);
-          const chosen = chosenDock.current;
-          if (chosen && haversineM(still.current.point, chosen.point) <= DOCKED_M && stillAtLength(still.current, fix.at, CHOSEN_STILL_MS)) {
-            still.current = { ...still.current, checked: true };
-            chosenDock.current = null;
-            dockedRef.current = chosen.point;
-            setDocked(chosen.name);
-            notify(dockedSaid(chosen.name));
-          } else if (stillAtLength(still.current, fix.at)) {
-            still.current = { ...still.current, checked: true };
-            const where = still.current.point;
-            void docksAround(where, fetchDocks).then((docks) => {
-              const dock = dockAt(where, docks);
-              if (!dock || ended.current || dockedRef.current) return;
-              dockedRef.current = [dock.lon, dock.lat];
-              setDocked(dock.name);
-              notify(dockedSaid(dock.name));
-            });
-          }
-        }
-      }
+      stepDockRef.current(fix);
       const out = { state: stepped.state.ride, events: stepped.events };
       rideRef.current = out.state;
       setRide(out.state);
@@ -1649,9 +1681,12 @@ export function RideMode({
         // The phone app keeps the ride going with the screen locked (lib/nativeShell.ts): no pause there.
         if (ridesHidden()) return;
         timer = window.setTimeout(() => {
+          // Paused at the destination already: that pause, and its readings, stand.
+          if (pausedRef.current) return;
           stopWatch.current?.();
           stopWatch.current = null;
           pausedRef.current = true;
+          setPausedWhy("hidden");
           setPaused(true);
           void wake.letGo();
         }, HIDDEN_STOP_MS);
@@ -1673,6 +1708,50 @@ export function RideMode({
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [wake, notify, noteWake]);
+
+  // A ride is never ended by arriving (the owner, 2026-11-01: battery audit): stayed within STAY_M of one place for
+  // STAY_MS once arrived, the ride pauses as a long hide pauses it (the watch stopped, the screen lock let go, Resume
+  // offered), in a browser and in the app. While paused, one reading every PAUSE_CHECK_MS; one good reading more than
+  // PAUSE_MOVED_M away carries on as Resume does (the owner, 2026-11-01: "During a pause maybe check on a much longer
+  // interval, such as every 30s rather than stopping outright").
+  // The app's heartbeat goes on the cue sheet's timer (everyTick): the GPS sends no fix while the rider is stopped
+  // (NATIVE_DISTANCE_FILTER_M), so the last real one is given again, as a beat, never as a new place.
+  everyTick.current = (now: number) => {
+    if (ended.current || pausedRef.current) return;
+    if (ridesHidden() && stopWatch.current) {
+      const last = lastRealFix.current;
+      const beat = heartbeatFix(last, last?.at ?? 0, now);
+      if (beat) onFixRef.current(beat, true);
+    }
+    if (!rideRef.current.arrived || !stayedLong(stay.current, now)) return;
+    pauseSpot.current = stay.current?.point ?? null;
+    stay.current = null;
+    stopWatch.current?.();
+    stopWatch.current = null;
+    pausedRef.current = true;
+    pausedSaid.current = true;
+    setPausedWhy("arrived");
+    setPaused(true);
+    void wake.letGo();
+    notify(ARRIVED_PAUSED_SAID);
+  };
+  const resumeRef = useRef<(auto: boolean) => void>(() => undefined);
+  useEffect(() => {
+    if (!paused || pausedWhy !== "arrived") return;
+    let stopReading: (() => void) | null = null;
+    const timer = window.setInterval(() => {
+      // A browser's hidden tab gets no reliable location: its readings wait for the page to be in front.
+      if (document.visibilityState === "hidden" && !ridesHidden()) return;
+      stopReading?.();
+      stopReading = readOnce(env, (reading) => {
+        if (pausedRef.current && !ended.current && movedFromPause(pauseSpot.current, reading)) resumeRef.current(true);
+      });
+    }, PAUSE_CHECK_MS);
+    return () => {
+      window.clearInterval(timer);
+      stopReading?.();
+    };
+  }, [paused, pausedWhy, env]);
 
   // No signal: a failed re-plan tries again as the connection comes back.
   useEffect(() => {
@@ -1757,16 +1836,21 @@ export function RideMode({
   // Only a problem is shown (the bottom panel stays away while all is well); saved in full says nothing.
   const corridorText = corridorWorry(corridor);
 
-  const resume = () => {
+  // `auto`: a paused reading found the rider riding off (above); the focus moves only if it was on Resume.
+  const resume = (auto = false) => {
+    const onResume = document.activeElement instanceof HTMLElement && document.activeElement.dataset.resume === "ride";
     pausedRef.current = false;
     pausedSaid.current = false;
+    pauseSpot.current = null;
+    stay.current = null;
     setPaused(false);
     sayWhereNext.current = true;
     startWatch();
     void wake.hold().then(noteWake);
     // The Resume button goes: the focus goes to Where am I? rather than the page's top.
-    whereRef.current?.focus();
+    if (!auto || onResume) whereRef.current?.focus();
   };
+  resumeRef.current = resume;
   const askWhere = useCallback(() => {
     // Walking to the dock: the walk, from here.
     const walk = tripRef.current.walking && approach ? approachWords(approach, rideRef.current.fix?.point ?? null) : null;
@@ -3185,8 +3269,8 @@ export function RideMode({
               {ride.off && replanNote && <p className="hint">{replanNote}</p>}
               {paused && (
                 <p className="notice">
-                  {PAUSED_SAID}{" "}
-                  <button type="button" onClick={resume}>
+                  {pausedWhy === "arrived" ? ARRIVED_PAUSED_SAID : PAUSED_SAID}{" "}
+                  <button type="button" data-resume="ride" onClick={() => resume()}>
                     {t("Resume")}
                   </button>
                 </p>

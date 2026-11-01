@@ -343,7 +343,8 @@ test("Roam asks for the screen lock again when the page is back in front, and wh
   const roam = readFileSync(new URL("../RoamMode.tsx", import.meta.url), "utf8");
   assert.match(roam, /void wake\.hold\(\)\.then\(noteWake\);/);
   assert.match(roam, /wake\.whenLost\(noteWake\);/);
-  assert.match(roam, /if \(document\.visibilityState === "visible"\) void wake\.again\(\)\.then\(noteWake\);/);
+  // Paused (the battery audit, 2026-11-01), the lock waits for Resume.
+  assert.match(roam, /if \(pausedRef\.current\) return;\s*void wake\.again\(\)\.then\(noteWake\);/);
   assert.match(roam, /document\.addEventListener\("visibilitychange", onVisibility\);/);
   // Said once each time it changes.
   assert.match(roam, /if \(note && note !== wakeTold\.current\) say\(wakeSaid\(note, phone\)\);/);
@@ -366,5 +367,6 @@ test("Roam reads roads only from good fixes, and says once when GPS has been wea
   assert.match(effect, /if \(weighed\.sayNow\) say\(ROAM_GPS_WEAK\);/);
   // Where am I? while weak says so, not the road last read.
   assert.match(roam, /const whereAmI = \(\) => \{[\s\S]{0,300}?if \(weakGps\) \{\s*answer\(ROAM_GPS_WEAK\);\s*return;/);
-  assert.match(roam, /\{\(gps \|\| weakGps\) && <p className="hint ride-gps">\{gps \|\| ROAM_GPS_WEAK\}<\/p>\}/);
+  // Paused, the pause's note shows instead.
+  assert.match(roam, /\{\(gps \|\| weakGps\) && !paused && <p className="hint ride-gps">\{gps \|\| ROAM_GPS_WEAK\}<\/p>\}/);
 });

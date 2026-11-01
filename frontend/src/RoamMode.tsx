@@ -27,7 +27,8 @@ import { useWeather } from "./useWeather.ts";
 import { WeatherLines } from "./WeatherLines.tsx";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Icon } from "./Icon.tsx";
-import { LiveRegion, SAID_311_MS, SlideToEnd, loggedSaid, rideVoice } from "./RideMode.tsx";
+import { HIDDEN_STOP_MS, LiveRegion, SAID_311_MS, SlideToEnd, loggedSaid, rideVoice } from "./RideMode.tsx";
+import { PAUSE_CHECK_MS, movedFromPause, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { REPORT_SENT, report311Enabled, sendReport311, type ReportKind } from "./lib/report311.ts";
 import { entryText, report311Log } from "./lib/report311Log.ts";
 import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu } from "./lib/ride311.ts";
@@ -45,7 +46,7 @@ import { POOR_FIX_M, weighFix, type GpsWeakness, type RideFix } from "./lib/navi
 import { RIDE_TEXT_BUTTON, ScreenWake, phoneKind, readRideIconsOnly, toScreenReader, wakeSaid, type RidePrefs, type RideTextSize } from "./lib/rideOutput.ts";
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
 import { useRailFit } from "./lib/railFit.ts";
-import { WAITING_FOR_GPS, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
+import { WAITING_FOR_GPS, readOnce, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import { rideGeoEnv, rideWake, ridesHidden, speaksAloud } from "./lib/nativeShell.ts";
 import { NO_FIX_YET, STILL_SEARCHING, nearbyShort, requestNearest, type Nearby, type NearestPlace } from "./lib/nearest.ts";
 import {
@@ -90,6 +91,10 @@ import {
   type RoadsAhead,
   type RoamMap,
 } from "./lib/roam.ts";
+
+/** Roam's pauses (the owner, 2026-11-01: battery audit): not moving for 10 minutes, or hidden that long in a browser. */
+export const ROAM_STILL_PAUSED = t("Roam paused to save battery. It carries on when you ride off, or press Resume.");
+export const ROAM_HIDDEN_PAUSED = t("Roam paused while the page was in the background. Press Resume to carry on.");
 
 /** No repair stands or place search given (a test's roam): those detours say they are unavailable. */
 const noPlaces = async () => null;
@@ -244,12 +249,18 @@ export function RoamMode({
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  // The watch and the screen kept on, from the Roam press to End roam (or a detour's ride, which has its own).
-  useEffect(() => {
-    const stop = watchRide(
+  // The watch and the screen kept on, from the Roam press to End roam (or a detour's ride, which has its own), but for
+  // a pause (below).
+  const stopWatch = useRef<(() => void) | null>(null);
+  // Where the rider has stayed within STAY_M, and since when (lib/ridePause.ts).
+  const stay = useRef<Stay | null>(null);
+  const startWatch = useCallback(() => {
+    stopWatch.current?.();
+    stopWatch.current = watchRide(
       env,
       (next) => {
         fixRef.current = next;
+        stay.current = stayStep(stay.current, next);
         setFix(next);
         setGps("");
       },
@@ -258,26 +269,99 @@ export function RoamMode({
         setGps(reason === "timeout" ? WAITING_FOR_GPS : LOCATE_MESSAGES[reason]);
       },
     );
+  }, [env]);
+  useEffect(() => {
+    startWatch();
     void wake.hold().then(noteWake);
     headingRef.current?.focus();
     return () => {
-      stop();
+      stopWatch.current?.();
+      stopWatch.current = null;
       void wake.letGo();
     };
-  }, [env, wake, noteWake]);
+  }, [startWatch, wake, noteWake]);
+
+  // Roam's pauses, as Ride's (the owner, 2026-11-01: battery audit). In a browser, hidden for HIDDEN_STOP_MS: the watch
+  // stops and Resume is offered (the app goes on with the screen locked, as a ride does). Anywhere, not moving more than
+  // STAY_M for STAY_MS: the watch stops too, one reading every PAUSE_CHECK_MS, and riding off carries on by itself.
+  // Paused, the screen lock is let go.
+  const [paused, setPaused] = useState<"hidden" | "still" | null>(null);
+  const pausedRef = useRef<"hidden" | "still" | null>(null);
+  const pauseSpot = useRef<LonLat | null>(null);
+  const pause = useCallback(
+    (why: "hidden" | "still") => {
+      if (pausedRef.current) return;
+      pauseSpot.current = why === "still" ? (stay.current?.point ?? null) : null;
+      stay.current = null;
+      stopWatch.current?.();
+      stopWatch.current = null;
+      pausedRef.current = why;
+      setPaused(why);
+      void wake.letGo();
+    },
+    [wake],
+  );
+  const resume = useCallback(
+    (auto = false) => {
+      const onResume = document.activeElement instanceof HTMLElement && document.activeElement.dataset.resume === "roam";
+      pausedRef.current = null;
+      pauseSpot.current = null;
+      stay.current = null;
+      setPaused(null);
+      startWatch();
+      void wake.hold().then(noteWake);
+      if (!auto || onResume) whereRef.current?.focus();
+    },
+    [startWatch, wake, noteWake],
+  );
+  // Asked on the sunrise clock's timer (below): no timer of its own. The app's GPS sends no fix while still
+  // (NATIVE_DISTANCE_FILTER_M), so the stay is timed from the clock, not from fixes.
+  const stillTick = useRef((now: number) => void now);
+  stillTick.current = (now: number) => {
+    if (pausedRef.current || !stayedLong(stay.current, now)) return;
+    pause("still");
+    say(ROAM_STILL_PAUSED);
+  };
+  useEffect(() => {
+    if (paused !== "still") return;
+    let stopReading: (() => void) | null = null;
+    const timer = window.setInterval(() => {
+      // A browser's hidden tab gets no reliable location: its readings wait for the page to be in front.
+      if (document.visibilityState === "hidden" && !ridesHidden()) return;
+      stopReading?.();
+      stopReading = readOnce(env, (reading) => {
+        if (pausedRef.current === "still" && movedFromPause(pauseSpot.current, reading)) resume(true);
+      });
+    }, PAUSE_CHECK_MS);
+    return () => {
+      window.clearInterval(timer);
+      stopReading?.();
+    };
+  }, [paused, env, resume]);
+
   // The browser lets the lock go whenever the page is hidden (a pocket lock, an app switch), as in a ride: asked again
   // when it is in front again, and when the browser lets it go mid-roam (lib/rideOutput.ts ScreenWake.whenLost).
   useEffect(() => {
     wake.whenLost(noteWake);
+    let timer: number | undefined;
     const onVisibility = () => {
-      if (document.visibilityState === "visible") void wake.again().then(noteWake);
+      if (document.visibilityState === "hidden") {
+        if (!ridesHidden()) timer = window.setTimeout(() => pause("hidden"), HIDDEN_STOP_MS);
+        return;
+      }
+      window.clearTimeout(timer);
+      // Paused: the lock waits for Resume.
+      if (pausedRef.current === "hidden") say(ROAM_HIDDEN_PAUSED);
+      if (pausedRef.current) return;
+      void wake.again().then(noteWake);
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
+      window.clearTimeout(timer);
       wake.whenLost(null);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [wake, noteWake]);
+  }, [wake, noteWake, pause, say]);
 
   // The rider on the map, and the roads ahead worked out again as they move (at most every AHEAD_EVERY_MS).
   const last = useRef<{ at: number; point: LonLat } | null>(null);
@@ -529,7 +613,11 @@ export function RoamMode({
   // heading's corner as Ride mode shows them, worked out again each minute.
   const [minute, setMinute] = useState(() => Math.floor(Date.now() / 60_000));
   useEffect(() => {
-    const timer = window.setInterval(() => setMinute(Math.floor(Date.now() / 60_000)), 15_000);
+    const timer = window.setInterval(() => {
+      setMinute(Math.floor(Date.now() / 60_000));
+      // Not moving for STAY_MS: Roam pauses (above).
+      stillTick.current(Date.now());
+    }, 15_000);
     return () => window.clearInterval(timer);
   }, []);
   const lightAt = fix ? `${fix.point[0].toFixed(2)},${fix.point[1].toFixed(2)}` : null;
@@ -629,7 +717,15 @@ export function RoamMode({
             <SlideToEnd onEnd={onEnd} onTap={slideHint} name={END_ROAM_NAME} />
           </div>
         </div>
-        {(gps || weakGps) && <p className="hint ride-gps">{gps || ROAM_GPS_WEAK}</p>}
+        {(gps || weakGps) && !paused && <p className="hint ride-gps">{gps || ROAM_GPS_WEAK}</p>}
+        {paused && (
+          <p className="notice">
+            {paused === "still" ? ROAM_STILL_PAUSED : ROAM_HIDDEN_PAUSED}{" "}
+            <button type="button" data-resume="roam" onClick={() => resume()}>
+              {t("Resume")}
+            </button>
+          </p>
+        )}
         <IosLocationHelp notice={gps} />
         <div className="roam-now">
           {/* The road ridden large; its level beside it, in the map's colours and its words. */}

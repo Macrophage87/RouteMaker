@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { WATCH_OPTIONS, watchRide, watchUnavailable, type WatchApi, type WatchPosition } from "./rideWatch.ts";
+import { READING_OPTIONS, WATCH_OPTIONS, readOnce, watchRide, watchUnavailable, type WatchApi, type WatchPosition } from "./rideWatch.ts";
 import type { RideFix } from "./navigate.ts";
 
 function stubApi() {
@@ -43,6 +43,27 @@ test("watchRide: fixes with speed and heading; heading only while moving", () =>
   assert.deepEqual(calls, ["watch", "clear:7"]);
   send({ coords: { latitude: 38.9, longitude: -77, accuracy: 8 } });
   assert.equal(fixes.length, 2, "nothing after the stop");
+});
+
+test("readOnce: a paused ride's one reading takes the first fix and stops the watch (battery audit, 2026-11-01)", () => {
+  const { api, calls, send, options } = stubApi();
+  const fixes: RideFix[] = [];
+  readOnce({ isSecureContext: true, geolocation: api }, (f) => fixes.push(f), 60_000, () => 5);
+  assert.deepEqual(options(), READING_OPTIONS);
+  assert.equal(READING_OPTIONS.enableHighAccuracy, true);
+  assert.ok(READING_OPTIONS.maximumAge <= 25_000);
+  send({ coords: { latitude: 38.9, longitude: -77, accuracy: 8 } });
+  send({ coords: { latitude: 38.91, longitude: -77, accuracy: 8 } });
+  assert.equal(fixes.length, 1, "one reading only");
+  assert.deepEqual(calls, ["watch", "clear:7"]);
+});
+
+test("readOnce: a failure ends the reading with no fix; no GPS at all never watches", () => {
+  const { api, calls, error } = stubApi();
+  readOnce({ isSecureContext: true, geolocation: api }, () => assert.fail(), 60_000);
+  error(2);
+  assert.deepEqual(calls, ["watch", "clear:7"]);
+  readOnce({ isSecureContext: true, geolocation: undefined }, () => assert.fail(), 60_000);
 });
 
 test("watchRide: failures reported; insecure and unsupported never watch", () => {

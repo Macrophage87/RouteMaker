@@ -211,6 +211,16 @@ test("Start ride asks location, then notifications, and only then adds the watch
   assert.equal(NATIVE_WATCH_OPTIONS.requestPermissions, false);
 });
 
+test("the app's GPS sends a fix every 4 m moved, not every second standing still (battery audit, 2026-11-01)", () => {
+  assert.equal(NATIVE_WATCH_OPTIONS.distanceFilter, 4);
+  // The compatibility layer for older sites asks the same.
+  const compat = readFileSync(fileURLToPath(new URL("../../../mobile/android/app/src/main/assets/routemaker-compat.js", import.meta.url)), "utf8");
+  assert.match(compat, /distanceFilter: 4 \}/);
+  // Stopped, no fix comes: RideMode's heartbeat keeps the clocks that count time standing still going.
+  const ride = readFileSync(fileURLToPath(new URL("../RideMode.tsx", import.meta.url)), "utf8");
+  assert.match(ride, /heartbeatFix\(/);
+});
+
 test("location refused at Start ride: said as refused; no watcher, no notifications question", async () => {
   const fake = fakeBridge("android");
   fake.grant({ location: "denied" });
