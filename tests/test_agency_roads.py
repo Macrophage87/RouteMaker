@@ -658,6 +658,20 @@ def test_a_district_two_way_record_alone_keeps_osm_s_one_way() -> None:
         )
 
 
+def test_an_owner_two_way_row_on_only_some_blocks_keeps_osm_s_one_way() -> None:
+    """Row C4 needs the owner's `BD` on every block of the way: a way running on
+    from an owner block onto a block only DC calls two-way stays one-way."""
+    two_way = facts(way="both")
+    tags = {"highway": "residential", "name": "M Street Northeast", "oneway": "yes"}
+    partly = A.aggregate([("a", two_way, True), ("b", two_way, True)], True, directions={"a": "BD"})
+    assert partly.owner_direction is False
+    assert A.overlay(tags, partly, length_m=160.0).routing == {}
+    whole = A.aggregate(
+        [("a", two_way, True), ("b", two_way, True)], True, directions={"a": "BD", "b": "BD"}
+    )
+    assert A.overlay(tags, whole, length_m=160.0).routing == {"oneway": "no"}
+
+
 def test_an_owner_two_way_row_makes_a_plain_one_way_street_two_way() -> None:
     """OWNER-DECISIONS 190 row C4, since 2026-11-01 only on the owner's `BD`
     block rows: a street made two-way before OSM caught up."""

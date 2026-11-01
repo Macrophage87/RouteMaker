@@ -1236,7 +1236,7 @@ RECORD_WINS = frozenset({DC_AGENCY})
 # now overrides an OSM tag the round-1 rules kept; `Overlay.precedence` names them.
 ROW_NO_FACILITY = "A"  # no facility recorded: OSM's painted lane removed
 ROW_ONE_WAY = "B"  # one-way recorded: OSM's explicit two-way overridden
-ROW_TWO_WAY = "C4"  # two-way recorded: OSM's one-way on a plain street overridden
+ROW_TWO_WAY = "C4"  # two-way on the owner's BD rows: OSM's one-way on a plain street overridden
 ROWS_190 = frozenset({ROW_NO_FACILITY, ROW_ONE_WAY, ROW_TWO_WAY})
 # Why row C4 leaves OSM's one-way on a plain street the record alone calls
 # two-way (owner 2026-11-01); only an owner's `BD` block row overrides it.
@@ -1474,7 +1474,8 @@ def _keep_osm_one_way(
     side_lane: bool = False,
 ) -> str | None:
     """Why a District two-way record does not override OSM's one-way tag on this
-    way (OWNER-DECISIONS 190, rows C1-C3), or None where it does (row C4). The
+    way (OWNER-DECISIONS 190, rows C1-C3, and since owner 2026-11-01 any record
+    without the owner's `BD` rows), or None where it does (row C4). The
     block is the whole road: a two-way record cannot make one carriageway of it
     two-way, nor a one-way side lane beside its two-way main carriageway
     (`side_lane`, `block_context`)."""
