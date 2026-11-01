@@ -1914,6 +1914,22 @@ dialog.go-spot {
   margin: 0;
 }
 
+/* Go's bike rack offers (Stephen, 2026-11-01): on the spot card under Ride here, and under the route card. */
+.go-spot-rack,
+.go-end-rack {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin: 6px 0 0;
+  padding: 4px 12px;
+  border-radius: 8px;
+  font-weight: 700;
+  text-align: start;
+}
+
 .go-spot-list-button,
 .go-spot-road {
   flex: none;
@@ -2016,6 +2032,11 @@ dialog.go-spot {
 
 .spot-pin-sight .spot-pin-dot {
   background: #15803d;
+}
+
+/* A bike rack (lib/bikeParking.ts): the map layer's pink, white on it 6.0:1. */
+.spot-pin-parking .spot-pin-dot {
+  background: #be185d;
 }
 
 .spot-pin-label {
