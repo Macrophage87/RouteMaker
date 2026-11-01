@@ -1217,10 +1217,54 @@ for _, surface in ipairs({ "wood", "boardwalk", "brick", "bricks" }) do
       == "paving_stones")
 end
 for _, surface in ipairs({ "metal", "sett", "cobblestone", "unhewn_cobblestone", "tartan",
-    "rubber", "concrete:plates", "paving_stones:lanes", "asphalt", "gravel", "dirt" }) do
+    "rubber", "concrete:plates", "paving_stones:lanes", "asphalt", "compacted", "dirt" }) do
   check(surface .. " keeps its own surface in the graph",
     M.remap_way({ highway = "footway", surface = surface }, { is_trail_class = true }).surface == nil)
 end
+
+-- A gravel path is packed gravel to the graph (`M.PATH_GRAVEL`; the owner, 2026-11-01:
+-- the National Mall's gravel walks "are fine for riding"). A Mall walk (way 953785767:
+-- footway, gravel, smoothness=intermediate, bicycle=yes) and a fine-gravel one.
+for _, highway in ipairs({ "footway", "path", "cycleway", "pedestrian", "bridleway" }) do
+  for _, surface in ipairs({ "gravel", "fine_gravel" }) do
+    check(highway .. " " .. surface .. " reaches the graph as compacted",
+      M.remap_way({ highway = highway, surface = surface }, { is_trail_class = true }).surface
+        == "compacted")
+  end
+end
+check("a Mall gravel walk is compacted", M.remap_way({ highway = "footway",
+  surface = "gravel", smoothness = "intermediate", bicycle = "yes" },
+  { is_trail_class = true }).surface == "compacted")
+-- A gravel road or track keeps the gravel price: loose, rutted.
+for _, highway in ipairs({ "track", "unclassified", "residential", "service" }) do
+  check("a gravel " .. highway .. " keeps its own surface",
+    M.remap_way({ highway = highway, surface = "gravel" }, { is_trail_class = false }).surface
+      == nil)
+end
+-- Pebblestone and other loose values are not gravel paths.
+check("a pebblestone path keeps its own surface", M.remap_way({ highway = "footway",
+  surface = "pebblestone" }, { is_trail_class = true }).surface == nil)
+-- A path mapped as rough keeps the gravel price.
+for _, smoothness in ipairs({ "bad", "very_bad", "horrible", "very_horrible" }) do
+  check("a gravel path with smoothness=" .. smoothness .. " keeps its own surface",
+    M.remap_way({ highway = "path", surface = "gravel", smoothness = smoothness },
+      { is_trail_class = true }).surface == nil)
+end
+-- A rated mountain-bike trail keeps its own price (its rating prices it).
+check("a rated gravel MTB trail keeps its own surface", M.remap_way({ highway = "path",
+  surface = "gravel", ["mtb:scale"] = "1" }, { is_trail_class = true }).surface == nil)
+check("and one rated on the IMBA scale", M.remap_way({ highway = "path",
+  surface = "fine_gravel", ["mtb:scale:imba"] = "1" }, { is_trail_class = true }).surface == nil)
+-- mtb:scale=0 is the everyday multi-use grade, not singletrack.
+check("a gravel path rated mtb:scale=0 is compacted", M.remap_way({ highway = "path",
+  surface = "gravel", ["mtb:scale"] = "0" }, { is_trail_class = true }).surface == "compacted")
+-- No derived facts, no change (an older extract without rm:trail_class).
+check("a gravel footway without the trail-class fact keeps its surface",
+  M.remap_way({ highway = "footway", surface = "gravel" }, {}).surface == nil)
+-- A reviewer surface penalty on a gravel path still wins: its own gravel.
+check("a reviewer penalty on a gravel path wins", M.remap_way({ highway = "path",
+  surface = "gravel" }, { is_trail_class = true, reviewer_surface_penalty = "compacted" }).surface
+  == "gravel")
 for _, surface in ipairs({ "metal", "metal_grid", "brick", "bricks", "sett", "tartan", "rubber",
     "cobblestone", "unhewn_cobblestone", "paving_stones:lanes", "asphalt:lanes", "boardwalk" }) do
   check(surface .. " is paved", M.is_paved({ surface = surface }))

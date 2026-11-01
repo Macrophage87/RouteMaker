@@ -615,6 +615,11 @@ function M.remap_way(tags, derived)
     out.surface = graph_surface
   end
 
+  -- A gravel path reaches the graph as packed gravel (`M.PATH_GRAVEL`).
+  if M.is_path_gravel(tags, derived) then
+    out.surface = "compacted"
+  end
+
   -- DDOT's Pavement Condition Index on a District street (DC-PCI, `rm:pci`;
   -- `routemaker.pavement` decides where it applies and the band). The owner,
   -- 2026-10-11: "DC score in most cases takes priority over OSM data", so the
@@ -1064,6 +1069,34 @@ end
 -- written after this, reads the way's own tag and wins.
 M.GRAPH_SURFACE = { wood = "paving_stones", boardwalk = "paving_stones",
   brick = "paving_stones", bricks = "paving_stones" }
+
+-- The gravel a path reaches the graph as packed gravel (`compacted`).
+--
+-- Valhalla's parser reads every value with "gravel" in it as its `gravel` class,
+-- which it ranks rougher than dirt: Default's hybrid rides it at 40% of its pace
+-- and adds a bad-surface charge on top, so a gravel walk cost about four times a
+-- paved LTS 1 street and Default rode Jefferson Drive beside the National Mall's
+-- walks instead of them. The owner, 2026-11-01: "why does it avoid the gravel
+-- paths? They are fine for riding." A path, footway or cycleway (trail class)
+-- tagged gravel or fine gravel is groomed stone dust, so it is priced as
+-- `compacted`, the parser's packed-gravel class. A gravel road or track, loose
+-- and rutted, keeps the gravel price, and a mountain-bike trail rated above 0
+-- keeps its own (singletrack is priced by its rating), as does a path mapped as rough
+-- (`smoothness` bad or worse, `M.ROUGH_SMOOTHNESS`). A reviewer surface penalty,
+-- written after this, reads the way's own tag and wins.
+M.PATH_GRAVEL = { gravel = true, fine_gravel = true }
+M.ROUGH_SMOOTHNESS = { bad = true, very_bad = true, horrible = true,
+  very_horrible = true, impassable = true }
+
+function M.is_path_gravel(tags, derived)
+  if not (derived and derived.is_trail_class) then return false end
+  if not M.PATH_GRAVEL[tags.surface or ""] then return false end
+  if M.ROUGH_SMOOTHNESS[tags.smoothness or ""] then return false end
+  for _, key in ipairs(M.PAVED_RATING_KEYS) do
+    if tags[key] ~= nil and tags[key] ~= "0" then return false end
+  end
+  return true
+end
 
 -- The surface a DC street's PCI band reaches the graph as (DC-PCI; see its use
 -- in `remap_way`). `good` writes no surface: the street keeps its own.
