@@ -1233,7 +1233,7 @@ def _closed_segment(sentence: str) -> tuple[str, str, str] | None:
         return None
     block = _ALERT_BLOCK.match(text)
     if block and (block.group("block") or block.group("closed").strip()):
-        if re.search(r"\blanes?\b", block.group("street"), re.I):
+        if re.search(r"\blanes?\s+(?:of|on)\b", block.group("street"), re.I):
             return None  # a lane closed leaves the road open
         return _between(block.group("street"), block.group("a"), block.group("b"))
     return parse_segment(sentence)
@@ -1264,17 +1264,30 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
             continue
         lines = _strip_tags(item["description"]) or [item["title"]]
         sentences = [s for line in lines for s in re.split(r"(?<=[.!?])\s+", line) if s]
-        found = [(s, _closed_segment(s)) for s in sentences]
-        reopened = {
-            parsed
-            for s in sentences
-            for m in [_REOPENED_BLOCK.search(_tidy(s))]
-            if m
-            for parsed in [_between(m.group("street"), m.group("a"), m.group("b"))]
-            if parsed
-        }
-        closes = [(s, f) for s, f in found if f is not None]
-        says_open = any(_REOPENED.search(s) for s in sentences)
+        # A "Final Update" never closes anything; nor do the bulleted lines under a
+        # "the following road closures have reopened:" lead-in. Those stretches reopen.
+        final = bool(re.search(r"\bfinal\s+update\b", item["title"], re.I))
+        closes, reopened, under_open = [], set(), False
+        for sentence in sentences:
+            text = _tidy(sentence)
+            if text.endswith(":"):
+                under_open = bool(_REOPENED.search(text))
+            m = _REOPENED_BLOCK.search(text)
+            if m:
+                stretch = _between(m.group("street"), m.group("a"), m.group("b"))
+                if stretch:
+                    reopened.add(stretch)
+                continue
+            stretch = _closed_segment(sentence)
+            if stretch is None:
+                continue
+            block = _ALERT_BLOCK.match(text)
+            bullet = block is not None and not block.group("closed").strip()
+            if final or (under_open and bullet):
+                reopened.add(stretch)
+            else:
+                closes.append((sentence, stretch))
+        says_open = final or any(_REOPENED.search(s) for s in sentences)
         read.append((item, sentences, closes, says_open and not closes, reopened))
     # An item that names stretches reopened ends them in the earlier items of its incident
     # (a partial update keeps its own closures); one that only says the road is open, naming

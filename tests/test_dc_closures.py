@@ -321,6 +321,12 @@ class TestAlertDcList:
         ids = [a.advisory_id for a in dc.parse_alertdc(text("alertdc-list.html"), NOW)]
         assert "alertdc-90208" not in ids and "alertdc-90209" not in ids
 
+    def test_a_bulleted_final_update_reopens_and_never_closes(self) -> None:
+        """Live 2026-11-01: "the following road closures have reopened:" then bullets.
+        Each bullet reads like a closure; under that lead-in it is a reopening."""
+        ids = [a.advisory_id for a in dc.parse_alertdc(text("alertdc-list.html"), NOW)]
+        assert "alertdc-90212" not in ids and "alertdc-90213" not in ids
+
     def test_the_closure_stands_until_the_reopening_is_posted(self) -> None:
         page = text("alertdc-list.html")
         rows = page.split("<tr>")
