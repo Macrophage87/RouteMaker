@@ -1127,8 +1127,7 @@ def _list_items(text: str) -> list[dict]:
         if len(cells) < 2 or link is None:
             continue
         try:
-            local = datetime.strptime(_tidy(_TAG.sub(" ", cells[0])), "%m/%d/%Y %I:%M %p")
-            published = local.replace(tzinfo=ZONE).astimezone(UTC)
+            published = datetime.strptime(_tidy(_TAG.sub(" ", cells[0])), "%m/%d/%Y %I:%M %p")
         except ValueError:
             published = None
         href = html.unescape(link.group("href"))
@@ -1143,9 +1142,27 @@ def _list_items(text: str) -> list[dict]:
                 "categories": [],
             }
         )
-    if not items and "AlertDetails" not in text:
+    older: datetime | None = None
+    for item in reversed(items):  # oldest first, as `_list_time` needs
+        if item["published"] is not None:
+            item["published"] = older = _list_time(item["published"], older)
+    # No rows is a quiet day only on a page that still looks like the list; links to alerts
+    # that were not read, or no table at all, mean the page changed shape.
+    if not items and ("AlertDetails" in text or "<table" not in text.lower()):
         raise ValueError("not an AlertDC list")
     return items
+
+
+def _list_time(local: datetime, older: datetime | None) -> datetime:
+    """A row's local time in UTC. In the hour the clocks go back (1:00 to 2:00 AM twice),
+    the reading that keeps the list in order is taken: the earliest at or after the row
+    below it (the list is newest first)."""
+    readings = sorted({local.replace(tzinfo=ZONE, fold=f).astimezone(UTC) for f in (0, 1)})
+    if older is not None:
+        for reading in readings:
+            if reading >= older:
+                return reading
+    return readings[0]
 
 
 def _list_lines(body: str) -> list[str]:
@@ -1171,24 +1188,55 @@ def _alertdc_items(text: str) -> list[dict]:
 
 
 # AlertDC's own wording: "MPD reports the 2700 block of Naylor Road, SE, between Alabama
-# Avenue and Marion Barry Avenue is closed ...", turned into "X between A and B".
+# Avenue and Marion Barry Avenue is closed ...", turned into "X between A and B"; a bulleted
+# line ("4800 block of Connecticut Avenue, NW, between Ellicott and Cumberland Streets")
+# under "the following road closures:" is one too.
 _ALERT_BLOCK = re.compile(
-    r"^(?:\[AlertDC\]\s*)?(?:MPD reports\s+(?:that\s+)?)?(?:the\s+)?(?:\d+\s+block\s+of\s+)?"
+    r"^(?:MPD reports\s+(?:that\s+)?)?(?:the\s+)?(?P<block>\d+\s+block\s+of\s+)?"
     r"(?P<street>[A-Za-z0-9].*?)\s*,?\s+between\s+(?P<a>.+?)\s+and\s+(?P<b>.+?)"
-    r"(?:\s+(?:is|are)\s+(?:now\s+)?(?:closed|blocked)\b|\s*$)",
+    r"(?P<closed>\s+(?:(?:is|are)\s+(?:now\s+|still\s+)?|remains?\s+)(?:closed|blocked)\b.*|\s*$)",
+    re.I,
+)
+# "... and the 2700 block of Naylor Road, SE, between A and B has reopened to traffic."
+_REOPENED_BLOCK = re.compile(
+    r"\b\d+\s+block\s+of\s+(?P<street>[A-Za-z0-9].*?)\s*,?\s+between\s+(?P<a>.+?)\s+and\s+"
+    r"(?P<b>.+?)\s+(?:has|have|is|are)\s+(?:been\s+|now\s+)?re-?opened\b",
     re.I,
 )
 # "between Ellicott and Cumberland Streets": the plural names both cross streets.
 _PLURAL_TYPE = re.compile(r"\s(Street|Avenue|Road|Place|Drive|Court|Terrace)s\b", re.I)
-# A sentence or item that says a closure is over; never read as a closure.
-_REOPENED = re.compile(r"\b(?:re-?opened|has cleared|have cleared|is clear|are clear)\b", re.I)
+# A sentence saying a road is open; never read as a closure.
+_REOPENED = re.compile(r"\bre-?opened\b|\b(?:remains?|is|are)\s+(?:now\s+)?open\b", re.I)
 _UPDATE_PREFIX = re.compile(r"^(?:\[AlertDC\]\s*)?(?:(?:final\s+)?update\s*:\s*)?", re.I)
 
 
 def _incident(title: str) -> str:
-    """An item's title without AlertDC's tag and "Update:"/"Final Update:", so an update
-    and the alert it follows share one key."""
-    return _UPDATE_PREFIX.sub("", _tidy(title)).lower()
+    """An item's title without AlertDC's tag, "Update:"/"Final Update:" and plurals, so
+    an update and the alert it follows share one key."""
+    key = _UPDATE_PREFIX.sub("", _tidy(title)).lower()
+    return re.sub(r"\b(closure|crash)e?s\b", r"\1", key)
+
+
+def _between(street: str, a: str, b: str) -> tuple[str, str, str] | None:
+    """(street, from, to) of AlertDC's "street between a and b"."""
+    b = _tail_cut(b).rstrip(" .")
+    plural = _PLURAL_TYPE.search(b)
+    if plural and not _PLURAL_TYPE.search(a) and " " not in a.strip():
+        a, b = f"{a} {plural.group(1)}", _PLURAL_TYPE.sub(r" \1", b)
+    return parse_segment(f"{street} between {a} and {b}")
+
+
+def _closed_segment(sentence: str) -> tuple[str, str, str] | None:
+    """(street, from, to) a sentence closes; None for a road said to be open."""
+    text = _tidy(sentence)
+    if _REOPENED.search(text):
+        return None
+    block = _ALERT_BLOCK.match(text)
+    if block and (block.group("block") or block.group("closed").strip()):
+        if re.search(r"\blanes?\b", block.group("street"), re.I):
+            return None  # a lane closed leaves the road open
+        return _between(block.group("street"), block.group("a"), block.group("b"))
+    return parse_segment(sentence)
 
 
 def _strip_tags(text: str) -> list[str]:
@@ -1204,51 +1252,58 @@ ALERTDC_MAX_AGE = timedelta(hours=12)
 
 def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
     """AlertDC's traffic and road items as advisories; every other item dropped unread.
-    `feed` is the RSS feed or the HTML list (`_alertdc_items`). An item saying the road
-    has reopened is never a closure, and it ends the earlier items of the same incident."""
-    items = [
-        item
-        for item in _alertdc_items(feed)
-        if is_traffic(item["title"], item["categories"])
-        and not NOT_TRAFFIC.search(item["description"])
-    ]
-    reopened: dict[str, datetime | None] = {}
-    for item in items:
-        if _REOPENED.search(item["title"]) or _REOPENED.search(item["description"]):
-            key, when = _incident(item["title"]), item["published"]
-            if key not in reopened or (when and (reopened[key] is None or when > reopened[key])):
-                reopened[key] = when
-    advisories = []
-    for item in items:
-        published = item["published"]
-        key = _incident(item["title"])
-        if key in reopened and (
-            reopened[key] is None or published is None or published <= reopened[key]
-        ):
+    `feed` is the RSS feed or the HTML list (`_alertdc_items`). A sentence saying a road
+    has reopened is never a closure; an item that only says so (no closure of its own)
+    ends the same stretch in the earlier items of its incident, or, naming no stretch,
+    the whole incident."""
+    read = []
+    for item in _alertdc_items(feed):
+        if not is_traffic(item["title"], item["categories"]):
             continue
-        description = item["description"]
-        lines = _strip_tags(description) or [item["title"]]
+        if NOT_TRAFFIC.search(item["description"]):
+            continue
+        lines = _strip_tags(item["description"]) or [item["title"]]
         sentences = [s for line in lines for s in re.split(r"(?<=[.!?])\s+", line) if s]
-        segments, unparsed = [], []
-        for sentence in sentences:
-            if _REOPENED.search(sentence):
+        found = [(s, _closed_segment(s)) for s in sentences]
+        reopened = {
+            parsed
+            for s in sentences
+            for m in [_REOPENED_BLOCK.search(_tidy(s))]
+            if m
+            for parsed in [_between(m.group("street"), m.group("a"), m.group("b"))]
+            if parsed
+        }
+        closes = [(s, f) for s, f in found if f is not None]
+        says_open = any(_REOPENED.search(s) for s in sentences)
+        read.append((item, sentences, closes, says_open and not closes, reopened))
+    # An item that names stretches reopened ends them in the earlier items of its incident
+    # (a partial update keeps its own closures); one that only says the road is open, naming
+    # none, ends the whole incident.
+    reopenings = [
+        (_incident(item["title"]), item["published"], stretches)
+        for item, _s, _c, reopening, stretches in read
+        if reopening or stretches
+    ]
+    advisories = []
+    for item, sentences, closes, reopening, _stretches in read:
+        if reopening:
+            continue
+        published, key = item["published"], _incident(item["title"])
+        ended: set | None = set()
+        for other, when, stretches in reopenings:
+            if other != key or (published and when and when < published):
                 continue
-            block = _ALERT_BLOCK.match(_tidy(sentence))
-            line = sentence
-            if block and re.search(r"\bblock\s+of\b|\bis\s+closed|\bare\s+closed", sentence, re.I):
-                a, b = block.group("a"), _tail_cut(block.group("b")).rstrip(" .")
-                plural = _PLURAL_TYPE.search(b)
-                if plural and not _PLURAL_TYPE.search(a) and " " not in a.strip():
-                    a, b = f"{a} {plural.group(1)}", _PLURAL_TYPE.sub(r" \1", b)
-                line = f"{block.group('street')} between {a} and {b}"
-            found = parse_segment(line)
-            if found is None:
-                continue
-            start = published
-            end = _alert_end(sentence, published)
-            segments.append(Segment(*found, start, end, sentence))
-        if not segments:
-            unparsed = sentences[:4] or [item["title"]]
+            if not stretches:
+                ended = None
+                break
+            ended |= stretches
+        if ended is None:
+            continue
+        kept = [(s, f) for s, f in closes if f not in ended]
+        if closes and not kept:
+            continue
+        segments = [Segment(*f, published, _alert_end(s, published), s) for s, f in kept]
+        unparsed = [] if segments else (sentences[:4] or [item["title"]])
         ends = [s.end for s in segments]
         end = max(ends) if ends and all(e is not None for e in ends) else None
         if published is not None and end is None and now - published > ALERTDC_MAX_AGE:

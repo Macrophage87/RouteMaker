@@ -5250,8 +5250,10 @@ without it NPS is simply not read. The host needs egress to the four hosts (PLAY
    and that a release's body still reads "X from A to B" lines with dates and times.
 4. AlertDC: the list is an HTML table (no RSS since at least 2026-11-01): one row an alert,
    its local date and time, a title linking to `/NRss/RssFeed/AlertDetails/<id>`, then the text.
-   A run that finds no rows fails with `not an AlertDC list`; compare the page with
-   `tests/data/closures/alertdc-list.html`. A "has reopened" update ends its incident's alerts.
+   A page with no table, or with alert links but no row that reads, fails with `not an
+   AlertDC list`; compare it with `tests/data/closures/alertdc-list.html`. A "has reopened"
+   update ends the stretch it names in its incident's earlier alerts (all of them if it names
+   none); a partial update keeps what it says is still closed.
 5. NPS: confirm the park boxes and marker points in `routemaker.dc_closures.PARKS`.
 6. A segment that cannot be placed (Photon finds no street, or Valhalla's route between the
    cross streets leaves the named street) is shown as text with its link, never guessed;

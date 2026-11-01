@@ -335,6 +335,115 @@ class TestAlertDcList:
             "Marion Barry Avenue SE",
         )
 
+    @staticmethod
+    def page(*rows: tuple[str, str, str, str]) -> str:
+        """A list page of (local time, id, title, text) rows, newest first."""
+        cells = "".join(
+            f'<tr><td class="head">{when}</td><td class="head"><b>'
+            f'<a href="/NRss/RssFeed/AlertDetails/{i}">{title}</a></b><br />{body}</td></tr>'
+            for when, i, title, body in rows
+        )
+        return f"<html><body><table><tbody>{cells}</tbody></table></body></html>"
+
+    CRASH = "[AlertDC] Road Closure / Vehicle Crash (Naylor Road, SE)"
+    FINAL = "[AlertDC] Final Update: Road Closure / Vehicle Crash (Naylor Road, SE)"
+
+    def test_a_partial_reopening_keeps_what_is_still_closed(self) -> None:
+        page = self.page(
+            (
+                "10/15/2026 2:40 PM",
+                "3",
+                "[AlertDC] Update: Road Closures / Vehicle Crash (Naylor Road, SE)",
+                "The 2700 block of Naylor Road, SE, between Alabama Avenue and Marion Barry"
+                " Avenue has reopened. The 2800 block of Naylor Road, SE, between Marion Barry"
+                " Avenue and 30th Street is still closed.",
+            ),
+            (
+                "10/15/2026 2:00 PM",
+                "1",
+                self.CRASH,
+                "MPD reports the 2700 block of Naylor Road, SE, between Alabama Avenue and"
+                " Marion Barry Avenue is closed due to a vehicle crash.",
+            ),
+        )
+        (update,) = dc.parse_alertdc(page, NOW)
+        assert [(s.from_street, s.to_street) for s in update.segments] == [
+            ("Marion Barry Avenue SE", "30th Street SE")
+        ]
+
+    def test_cleared_wording_inside_a_closure_keeps_it(self) -> None:
+        page = self.page(
+            (
+                "10/15/2026 2:00 PM",
+                "1",
+                self.CRASH,
+                "MPD reports the crash has cleared but the 2700 block of Naylor Road, SE,"
+                " between Alabama Avenue and Marion Barry Avenue is closed for repairs.",
+            )
+        )
+        assert [a.advisory_id for a in dc.parse_alertdc(page, NOW)] == ["alertdc-1"]
+
+    def test_a_reopening_ends_only_its_own_stretch_of_a_shared_title(self) -> None:
+        """Two crashes under one generic title: the first one's reopening keeps the second."""
+        page = self.page(
+            (
+                "10/15/2026 2:40 PM",
+                "3",
+                self.FINAL,
+                "MPD reports the 2700 block of Naylor Road, SE, between Alabama Avenue and"
+                " Marion Barry Avenue has reopened to traffic.",
+            ),
+            (
+                "10/15/2026 2:30 PM",
+                "2",
+                self.CRASH,
+                "MPD reports the 2800 block of Naylor Road, SE, between Marion Barry Avenue"
+                " and 30th Street is closed due to a vehicle crash.",
+            ),
+            (
+                "10/15/2026 2:00 PM",
+                "1",
+                self.CRASH,
+                "MPD reports the 2700 block of Naylor Road, SE, between Alabama Avenue and"
+                " Marion Barry Avenue is closed due to a vehicle crash.",
+            ),
+        )
+        assert [a.advisory_id for a in dc.parse_alertdc(page, NOW)] == ["alertdc-2"]
+
+    def test_open_and_lane_sentences_are_never_closures(self) -> None:
+        for sentence in (
+            "The 2700 block of Naylor Road, SE, between Alabama Avenue and Marion Barry"
+            " Avenue remains open to traffic.",
+            "MPD reports the left lane of Naylor Road, SE, between Alabama Avenue and"
+            " Marion Barry Avenue is closed.",
+        ):
+            page = self.page(("10/15/2026 2:00 PM", "1", self.CRASH, sentence))
+            assert all(a.segments == [] for a in dc.parse_alertdc(page, NOW))
+
+    def test_the_repeated_hour_keeps_the_reopening_after_its_closure(self) -> None:
+        """Nov 1, 2026: a closure at 1:50 AM EDT and its reopening at 1:10 AM EST, 20
+        minutes later, both read "1:xx AM"; the reopening still ends the closure."""
+        page = self.page(
+            ("11/1/2026 1:10 AM", "2", self.FINAL, "MPD reports the road has reopened."),
+            (
+                "11/1/2026 1:50 AM",
+                "1",
+                self.CRASH,
+                "MPD reports the 2700 block of Naylor Road, SE, between Alabama Avenue and"
+                " Marion Barry Avenue is closed.",
+            ),
+        )
+        assert dc.parse_alertdc(page, datetime(2026, 11, 1, 6, 30, tzinfo=UTC)) == []
+
+    def test_a_list_whose_rows_no_longer_read_fails(self) -> None:
+        drifted = (
+            "<table><tr><td>11/1/2026 1:10 AM</td>"
+            "<td><a href='/NRss/RssFeed/AlertDetails/1'>x</a></td></tr></table>"
+        )
+        with pytest.raises(ValueError):
+            dc.parse_alertdc(drifted, NOW)
+        assert dc.parse_alertdc("<html><table><tbody></tbody></table></html>", NOW) == []
+
     def test_a_page_that_is_neither_rss_nor_the_list_fails_the_read(self) -> None:
         with pytest.raises(ValueError):
             dc.parse_alertdc("<html><body>Service unavailable</body></html>", NOW)
