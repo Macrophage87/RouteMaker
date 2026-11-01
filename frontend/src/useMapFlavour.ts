@@ -1,21 +1,14 @@
 // The base map's flavour, kept in line with the theme, the ride, the light and tunnels (lib/mapFlavour.ts,
 // lib/tunnelDark.ts; the owner, 2026-11-01: battery audit). Its own hook, so MapView only names it.
 import { useEffect, useRef } from "react";
+import { THEME_EVENT, themeIsDark } from "./lib/themeClock.ts";
 import { applyMapFlavour, mapFlavourFor, nextLightChange, type FlavourMap, type MapFlavour } from "./lib/mapFlavour.ts";
 import { BASEMAP_SOURCE_ID } from "./lib/mapStyle.ts";
 import { NO_TUNNEL, TUNNEL_NEAR_M, aheadOnLine, inTunnelAt, nearRoad, roadLayerIds, tunnelCheckWait, tunnelStep, type NearRoad, type TunnelState } from "./lib/tunnelDark.ts";
 import type { LonLat } from "./lib/geo.ts";
 
-const DARK_THEME = "(prefers-color-scheme: dark)";
-
-/** Whether the page is in the dark theme now (the panels' own media query, styles.css). */
-export function themeIsDark(): boolean {
-  try {
-    return typeof matchMedia === "function" && matchMedia(DARK_THEME).matches;
-  } catch {
-    return false;
-  }
-}
+// The theme follows the sun (lib/themeClock.ts), so the map listens for its turn.
+export { themeIsDark };
 
 type RenderedRoad = { properties?: Record<string, unknown> | null; geometry: { type: string; coordinates: unknown } };
 
@@ -51,7 +44,7 @@ function roadsNear(map: FlavourHost, at: LonLat, metres: number): NearRoad[] {
 
 /**
  * Keep the map's flavour: at load, when the theme changes, when a ride or Roam starts or ends (`onBike`), at the next
- * civil dawn or dusk while on the bike, and in and out of a tunnel (checked on the bike as a new fix comes, at most
+ * sunrise or sunset while on the bike, and in and out of a tunnel (checked on the bike as a new fix comes, at most
  * every TUNNEL_CHECK_MS, at `rider()`'s spot and along its route ahead). `fix` is the rider's point, a new one with
  * each real fix. `opened` is the flavour the style was built in; `changed` hears each change made (the station icons
  * are drawn again for it).
@@ -89,7 +82,7 @@ export function useMapFlavour(
       applyMapFlavour(map, from, want, window.location.origin);
       shown.current = want;
       if (from !== want) heard.current?.(want === "dark");
-      // On the bike the light decides too: look again at the next dawn or dusk (a second after, past the edge).
+      // On the bike the light decides too: look again at the next sunrise or sunset (a second after, past the edge).
       const next = onBike ? nextLightChange(now, centre.lat, centre.lng) : null;
       if (next !== null) wake = window.setTimeout(update, Math.max(1000, next - now + 1000));
     };
@@ -117,20 +110,14 @@ export function useMapFlavour(
           else waiting = window.setTimeout(checkTunnel, wait);
         }
       : null;
-    let query: MediaQueryList | null = null;
-    try {
-      query = typeof matchMedia === "function" ? matchMedia(DARK_THEME) : null;
-    } catch {
-      query = null;
-    }
-    query?.addEventListener?.("change", update);
+    window.addEventListener(THEME_EVENT, update);
     map.on("load", update);
     update();
     return () => {
       window.clearTimeout(wake);
       window.clearTimeout(waiting);
       fixCame.current = null;
-      query?.removeEventListener?.("change", update);
+      window.removeEventListener(THEME_EVENT, update);
       map.off("load", update);
     };
   }, [mapRef, loaded, onBike]);

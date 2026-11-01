@@ -6,11 +6,15 @@ import "./fonts/fonts.css";
 import { watchErrors } from "./lib/crashReport.ts";
 import { watchInstall } from "./lib/installOffer.ts";
 import { loadLanguage, markPageLanguage } from "./lib/i18n.ts";
+import { followSun } from "./lib/themeClock.ts";
 
 // The page's uncaught errors, kept for the crash screen's error report (lib/crashReport.ts).
 watchErrors(window);
 // The browser's install prompt can come before the first render: held for the install offer (P4).
 watchInstall(window);
+
+// Light by day, dark from sunset to sunrise (lib/themeClock.ts), before anything is drawn.
+followSun();
 
 const root = document.getElementById("root");
 if (!root) throw new Error("index.html has no #root");

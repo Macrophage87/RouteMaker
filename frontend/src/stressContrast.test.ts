@@ -466,9 +466,9 @@ test("the casing layers carry the edge exactly where the line is faint: z12-13 b
 function themeColours(): Array<{ theme: string; bg: string; soft: string; swatch: string; border: string }> {
   const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
   const pick = (block: string, name: string) => block.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})`))?.[1].toLowerCase() ?? "";
-  const light = css.slice(css.indexOf(":root {"), css.indexOf("@media (prefers-color-scheme: dark)"));
-  const darkStart = css.indexOf("@media (prefers-color-scheme: dark)");
-  const dark = css.slice(darkStart, css.indexOf("}", css.indexOf(":root {", darkStart)));
+  const light = css.slice(css.indexOf(":root {"), css.indexOf(":root.theme-dark {"));
+  const darkStart = css.indexOf(":root.theme-dark {");
+  const dark = css.slice(darkStart, css.indexOf("}", darkStart));
   return [
     { theme: "light", bg: pick(light, "--bg"), soft: pick(light, "--bg-soft"), swatch: pick(light, "--swatch-border"), border: pick(light, "--border") },
     { theme: "dark", bg: pick(dark, "--bg"), soft: pick(dark, "--bg-soft"), swatch: pick(dark, "--swatch-border"), border: pick(dark, "--border") },
@@ -516,7 +516,7 @@ test("the route's widths nest: line < halo < casing, so the halo shows and the c
 
 test("with the switch on, the swatch border is the strengthened border, at least as strong as the plain swatch border, in both themes", () => {
   const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
-  const blocks = [...css.matchAll(/:root\.a11y \{([^}]*)\}/g)].map((m) => m[1]);
+  const blocks = [...css.matchAll(/:root(?:\.theme-dark)?\.a11y \{([^}]*)\}/g)].map((m) => m[1]);
   assert.equal(blocks.length, 2, "one :root.a11y block per theme");
   const plain = themeColours();
   blocks.forEach((block, i) => {
