@@ -5230,7 +5230,7 @@ row keyed `closures` (`src/core/closure_sources.py`):
 | MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text |
 | AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 15 min | 45 min | 3 h | As MPD; only traffic and road items are kept, every other item is dropped unread |
 | NPS alerts (`nps`) | `developer.nps.gov/api/v1/alerts` | 30 min | 90 min | 6 h | Park-level "Check before you go" notices (rocr, nama, gwmp, choh, anac), never closures |
-| DDOT ProTrack+ projects (`protrack`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/ProTrackPlusViews/MapServer/1/query` | 6 h | 24 h | 3 days | Potential closures, as DDOT's permits: "Under Construction" and not past the estimated completion; sidewalk, alley, streetlight and green infrastructure work left out |
+| DDOT ProTrack+ projects (`protrack`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/ProTrackPlusViews/MapServer/1/query` | 6 h | 24 h | 3 days | Potential closures, as DDOT's permits: "Under Construction" and not past the estimated completion; sidewalk, alley, streetlight, green infrastructure, tree, landscaping and signage work left out |
 | DC Water work zones (`dcwater`) | `geo.dcwater.com/.../Viewer/ActiveWorkZonesPublic/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures; each zone's middle placed on its block as a permit's is |
 | WSSC Water mains (`wssc`) | `gisportal.wsscwater.com/.../IYN/Water_Construction1/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures along the pipe, "Construction Started" only; the layer's contact names, phones and emails are never asked for |
 
