@@ -134,6 +134,15 @@ class TestCorners:
             follow.MATCH_SKIP_M
         )
 
+    def test_a_corner_vertex_doubled_or_with_a_stray_beside_it_is_still_a_corner(self) -> None:
+        # Review of #878: a matched shape can repeat a vertex where two pieces join.
+        doubled = [*SOUTH_ALONG, CORNER, *WEST_ALONG]
+        line, _ = follow.clear_corners(doubled, [])
+        assert line == [*SOUTH_ALONG[:2], CORNER, CORNER, *WEST_ALONG]
+        stray = [*SOUTH_ALONG[:3], (-77.0, LAT + 0.000004), CORNER, *WEST_ALONG]
+        line, _ = follow.clear_corners(stray, [])
+        assert SOUTH_ALONG[2] not in line and CORNER in line
+
     def test_a_straight_line_and_a_gentle_bend_are_left_as_they_are(self) -> None:
         assert follow.clear_corners(SOUTH_ALONG, [1]) == (SOUTH_ALONG, [1])
         # A bend of about 20 degrees is not a corner.

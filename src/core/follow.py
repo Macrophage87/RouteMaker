@@ -169,15 +169,25 @@ def split_line(line, points) -> tuple[list, list[int]]:
 
 
 def _corners(line) -> list[int]:
-    """The indexes of `line`'s vertices where it turns by CORNER_DEG or more (ends excluded):
-    each judged from the vertices either side, a vertex on top of its neighbour skipped."""
+    """The indexes of `line`'s vertices where it turns by CORNER_DEG or more (ends excluded),
+    each judged from the nearest vertex at least SAME_M away on either side, so a vertex
+    doubled at a corner (or a stray one beside it) does not hide the turn."""
     out: list[int] = []
+
+    def apart(i: int, step: int) -> int | None:
+        j = i + step
+        while 0 <= j < len(line):
+            if haversine(Point(*line[i]), Point(*line[j])) >= SAME_M:
+                return j
+            j += step
+        return None
+
     for i in range(1, len(line) - 1):
-        a, b, c = line[i - 1], line[i], line[i + 1]
-        if haversine(Point(*a), Point(*b)) < SAME_M or haversine(Point(*b), Point(*c)) < SAME_M:
+        before, after = apart(i, -1), apart(i, 1)
+        if before is None or after is None:
             continue
-        turn = bearing_delta(bearing_lonlat(a, b), bearing_lonlat(b, c))
-        if turn >= CORNER_DEG:
+        a, b, c = line[before], line[i], line[after]
+        if bearing_delta(bearing_lonlat(a, b), bearing_lonlat(b, c)) >= CORNER_DEG:
             out.append(i)
     return out
 
@@ -186,9 +196,9 @@ def clear_corners(line, keep) -> tuple[list, list[int]]:
     """`line` with the vertices within CORNER_CLEAR_M before each corner left out, so the
     matcher matches the corner itself (MATCH_SKIP_M) and the route turns there, on the road,
     not over the crosswalks round it; and the new indexes of the vertices in `keep` (the
-    plan's points), which stay, as the ends and the corners do. Only vertices the line runs
-    on straight through go: the line's shape is the same to within the turn that is not a
-    corner. A line with no corner comes back as it was."""
+    plan's points), which stay, as the ends and the corners do. Only vertices that are not
+    corners themselves go. A plan's point inside the stretch stops it there (a leg ends at
+    it). A line with no corner comes back as it was."""
     corners = _corners(line)
     if not corners:
         return list(line), sorted(keep)
