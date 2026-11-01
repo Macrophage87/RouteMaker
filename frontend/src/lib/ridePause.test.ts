@@ -6,13 +6,18 @@ import type { RideFix } from "./navigate.ts";
 import type { LonLat } from "./geo.ts";
 import {
   HEARTBEAT_MS,
+  HEARTBEAT_STOP_MS,
+  MOVE_GOOD_M,
   PAUSE_CHECK_MS,
   PAUSE_MOVED_M,
   PausedFixes,
+  ROAM_RESUMED_SAID,
   STAY_M,
   STAY_MS,
   heartbeatFix,
   movedFromPause,
+  rideStayPausedSaid,
+  roamStayPausedSaid,
   stayStep,
   stayedLong,
 } from "./ridePause.ts";
@@ -46,9 +51,28 @@ test("paused: a reading every 30 s, and one good reading more than 30 m away res
   assert.equal(PAUSE_MOVED_M, 30);
   assert.equal(movedFromPause(HERE, fix(north(25), 0)), false, "still at the spot");
   assert.equal(movedFromPause(HERE, fix(north(45), 0)), true, "riding off");
-  assert.equal(movedFromPause(HERE, fix(north(45), 0, 60)), false, "a rough reading is not trusted (accuracy over 50 m)");
-  assert.equal(movedFromPause(HERE, fix(north(45), 0, 50)), true, "50 m is good enough");
+  assert.equal(movedFromPause(HERE, fix(north(45), 0, 60)), false, "a rough reading is not trusted");
   assert.equal(movedFromPause(null, fix(north(45), 0)), false, "no spot, nothing to compare");
+});
+
+test("indoor drift neither resumes a pause nor keeps one from starting (the owner, 2026-11-01: battery audit)", () => {
+  assert.equal(MOVE_GOOD_M, 20);
+  // Sat indoors: a 40 m fix drifting 45 m off is not a move.
+  assert.equal(movedFromPause(HERE, fix(north(45), 0, 40)), false, "over 20 m accuracy: not trusted to resume");
+  assert.equal(movedFromPause(HERE, fix(north(45), 0, 21)), false);
+  // A good fix must clear 30 m plus its own accuracy.
+  assert.equal(movedFromPause(HERE, fix(north(45), 0, 20)), false, "45 m is within 30 + 20");
+  assert.equal(movedFromPause(HERE, fix(north(51), 0, 20)), true, "51 m clears 30 + 20");
+  assert.equal(movedFromPause(HERE, fix(north(36), 0, 5)), true, "a sharp fix 36 m off clears 30 + 5");
+  // The stay: drift keeps it, so the pause still comes at 10 minutes.
+  let stay = stayStep(null, fix(HERE, 0, 35));
+  assert.deepEqual(stay, { point: HERE, since: 0 }, "a fair fix (under 50 m) starts a stay");
+  stay = stayStep(stay, fix(north(60), 3 * 60_000, 40));
+  stay = stayStep(stay, fix(north(45), 6 * 60_000, 20));
+  assert.deepEqual(stay, { point: HERE, since: 0 }, "drift keeps the stay");
+  assert.equal(stayedLong(stay, 10 * 60_000), true);
+  // Riding off with a good fix starts it afresh.
+  assert.deepEqual(stayStep(stay, fix(north(60), 7 * 60_000, 10)), { point: north(60), since: 7 * 60_000 });
 });
 
 test("heartbeat: a stopped rider's last fix again, with the time now, once no fix has come for 5 s", () => {
@@ -57,6 +81,21 @@ test("heartbeat: a stopped rider's last fix again, with the time now, once no fi
   const beat = heartbeatFix(last, 1_000, 1_000 + HEARTBEAT_MS);
   assert.deepEqual(beat, { point: HERE, accuracyM: 6, speedMs: 0, headingDeg: null, at: 1_000 + HEARTBEAT_MS });
   assert.equal(heartbeatFix(null, 0, 60_000), null);
+});
+
+test("heartbeat: none 60 s after the last real fix, so a lost GPS is not kept alive (the owner, 2026-11-01)", () => {
+  assert.equal(HEARTBEAT_STOP_MS, 60_000);
+  const last = fix(HERE, 0, 6, 0.4);
+  assert.notEqual(heartbeatFix(last, 0, HEARTBEAT_STOP_MS), null, "still beating at 60 s");
+  assert.equal(heartbeatFix(last, 0, HEARTBEAT_STOP_MS + 1), null, "no more after");
+});
+
+test("stay-put pause words: only the app promises riding off carries on; a browser asks for Resume", () => {
+  assert.equal(rideStayPausedSaid(true), "Ride paused at your destination to save battery. It carries on when you ride off, or press Resume.");
+  assert.equal(rideStayPausedSaid(false), "Ride paused at your destination to save battery. Press Resume to carry on.");
+  assert.equal(roamStayPausedSaid(true), "Roam paused to save battery. It carries on when you ride off, or press Resume.");
+  assert.equal(roamStayPausedSaid(false), "Roam paused to save battery. Press Resume to carry on.");
+  assert.equal(ROAM_RESUMED_SAID, "Roam resumed.");
 });
 
 const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
@@ -69,7 +108,7 @@ test("Ride: arrived and stayed put, the ride pauses the way a long hide does, in
   for (const step of [/pausedRef\.current = true;/, /setPaused\(true\);/, /void wake\.letGo\(\);/]) assert.match(tick, step);
   // The browser's watch stops; the app's runs on (below).
   assert.match(tick, /if \(!ridesHidden\(\)\) \{\s*stopWatch\.current\?\.\(\);\s*stopWatch\.current = null;\s*\}/);
-  assert.match(ride, /\{pausedWhy === "arrived" \? ARRIVED_PAUSED_SAID : PAUSED_SAID\}/, "Resume offered with its own words");
+  assert.match(ride, /\{pausedWhy === "arrived" \? rideStayPausedSaid\(ridesHidden\(\)\) : PAUSED_SAID\}/, "Resume offered with its own words");
   // The browser's hidden-page pause stays as it was: no readings for it.
   assert.match(ride, /if \(!paused \|\| pausedWhy !== "arrived"\) return;/);
 });
@@ -80,6 +119,7 @@ test("Ride and Roam: paused for staying put, a reading every 30 s, and riding of
   }
   assert.match(ride, /resumeRef\.current\(true\)/);
   assert.match(roam, /resume\(true\)/);
+  assert.match(roam, /if \(auto\) say\(ROAM_RESUMED_SAID\);/, "Roam says it carried on, as it said it paused");
 });
 
 test("Roam: 10 minutes hidden in a browser pauses it (not in the app), and so do 10 minutes not moving, anywhere", () => {
@@ -91,8 +131,10 @@ test("Roam: 10 minutes hidden in a browser pauses it (not in the app), and so do
 
 test("Ride: the heartbeat runs only the stillness clocks, never the line or off route", () => {
   const beat = ride.slice(ride.indexOf("(fix: RideFix, beat = false) => {"), ride.indexOf("const auto = !keepRef.current"));
-  assert.match(beat, /if \(beat\) \{\s*stepDockRef\.current\(fix\);\s*return;\s*\}/);
-  assert.match(beat, /weighFix\(gpsWeak\.current/);
+  // Only the stay and the dock: it returns before the weak-GPS clock and the last fix's time (a slow rider's lost GPS).
+  assert.match(beat, /if \(beat\) \{\s*stay\.current = [^;]+stayStep\(stay\.current, fix\)[^;]*;\s*stepDockRef\.current\(fix\);\s*return;\s*\}/);
+  assert.ok(beat.indexOf("if (beat) {") < beat.indexOf("weighFix(gpsWeak.current"), "the beat returns before weighFix");
+  assert.ok(beat.indexOf("if (beat) {") < beat.indexOf("lastFixAt.current = "), "the beat returns before lastFixAt");
   assert.doesNotMatch(beat, /tripStep\(/, "the beat returns before the ride's step");
   assert.match(ride, /if \(ridesHidden\(\) && stopWatch\.current\) \{/, "the app only: a browser's GPS sends fixes standing still");
 });

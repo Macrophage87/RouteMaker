@@ -28,7 +28,7 @@ import { WeatherLines } from "./WeatherLines.tsx";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Icon } from "./Icon.tsx";
 import { HIDDEN_STOP_MS, LiveRegion, SAID_311_MS, SlideToEnd, loggedSaid, rideVoice } from "./RideMode.tsx";
-import { PAUSE_CHECK_MS, PausedFixes, movedFromPause, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
+import { PAUSE_CHECK_MS, PausedFixes, ROAM_RESUMED_SAID, movedFromPause, roamStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { REPORT_SENT, report311Enabled, sendReport311, type ReportKind } from "./lib/report311.ts";
 import { entryText, report311Log } from "./lib/report311Log.ts";
 import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu } from "./lib/ride311.ts";
@@ -92,8 +92,10 @@ import {
   type RoamMap,
 } from "./lib/roam.ts";
 
-/** Roam's pauses (the owner, 2026-11-01: battery audit): not moving for 10 minutes, or hidden that long in a browser. */
-export const ROAM_STILL_PAUSED = t("Roam paused to save battery. It carries on when you ride off, or press Resume.");
+/**
+ * Roam's pauses (the owner, 2026-11-01: battery audit): not moving for 10 minutes (lib/ridePause.ts
+ * roamStayPausedSaid), or hidden that long in a browser.
+ */
 export const ROAM_HIDDEN_PAUSED = t("Roam paused while the page was in the background. Press Resume to carry on.");
 
 /** No repair stands or place search given (a test's roam): those detours say they are unavailable. */
@@ -294,7 +296,8 @@ export function RoamMode({
 
   // Roam's pauses, as Ride's (the owner, 2026-11-01: battery audit). In a browser, hidden for HIDDEN_STOP_MS: the watch
   // stops and Resume is offered (the app goes on with the screen locked, as a ride does). Anywhere, not moving more than
-  // STAY_M for STAY_MS: the watch stops too, one reading every PAUSE_CHECK_MS, and riding off carries on by itself.
+  // STAY_M for STAY_MS: the watch stops too, one reading every PAUSE_CHECK_MS, and riding off carries on by itself
+  // (in a browser only with the page in front, so only the app says so: roamStayPausedSaid).
   // Paused, the screen lock is let go.
   const [paused, setPaused] = useState<"hidden" | "still" | null>(null);
   const pause = useCallback(
@@ -327,8 +330,10 @@ export function RoamMode({
       if (!(ridesHidden() && stopWatch.current)) startWatch();
       void wake.hold().then(noteWake);
       if (!auto || onResume) whereRef.current?.focus();
+      // Carried on by itself: said, as the pause was, so the rider knows the roads are read again.
+      if (auto) say(ROAM_RESUMED_SAID);
     },
-    [startWatch, wake, noteWake, pausedFixes],
+    [startWatch, wake, noteWake, pausedFixes, say],
   );
   // Asked on the sunrise clock's timer (below): no timer of its own. The app's GPS sends no fix while still
   // (NATIVE_DISTANCE_FILTER_M), so the stay is timed from the clock, not from fixes.
@@ -336,7 +341,7 @@ export function RoamMode({
   stillTick.current = (now: number) => {
     if (pausedRef.current || !stayedLong(stay.current, now)) return;
     pause("still");
-    say(ROAM_STILL_PAUSED);
+    say(roamStayPausedSaid(ridesHidden()));
   };
   useEffect(() => {
     if (paused !== "still") return;
@@ -742,7 +747,7 @@ export function RoamMode({
         {(gps || weakGps) && !paused && <p className="hint ride-gps">{gps || ROAM_GPS_WEAK}</p>}
         {paused && (
           <p className="notice">
-            {paused === "still" ? ROAM_STILL_PAUSED : ROAM_HIDDEN_PAUSED}{" "}
+            {paused === "still" ? roamStayPausedSaid(ridesHidden()) : ROAM_HIDDEN_PAUSED}{" "}
             <button type="button" data-resume="roam" onClick={() => resume()}>
               {t("Resume")}
             </button>

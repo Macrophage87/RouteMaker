@@ -10,12 +10,13 @@
  *   background.
  * - The heartbeat: the app's GPS sends a fix only once the rider has moved NATIVE_DISTANCE_FILTER_M (lib/nativeShell.ts),
  *   so a stopped rider gets none. The last fix, given the time now, keeps the checks that count time standing still
- *   (the share bike's dock, the weak-GPS clock, the stay above) going. It is never a new place: nothing is placed on
- *   the line, and nothing is taken as off route, from it.
+ *   (the share bike's dock, the stay above) going, for HEARTBEAT_STOP_MS at most. It is never a new place, and never
+ *   a fix to the weak-GPS clock: a slow rider who loses GPS under trees must still hear so and get the turn list.
  *
  * Pure but for PausedFixes, which keeps one fix: the clocks and positions come in as arguments; nothing is sent.
  */
 import { haversineM, type LonLat } from "./geo.ts";
+import { t } from "./i18n.ts";
 import { POOR_FIX_M, type RideFix } from "./navigate.ts";
 
 /** Within this of where the stay began… */
@@ -26,10 +27,21 @@ export const STAY_MS = 10 * 60_000;
 export const PAUSE_CHECK_MS = 30_000;
 /** A reading's greatest age (a little under PAUSE_CHECK_MS, so each check is a new reading). */
 export const PAUSE_READING_AGE_MS = 25_000;
-/** A good reading this far from where the pause began: the rider is moving again, so it resumes. */
+/** A good reading this far (plus its accuracy) from where the pause began: the rider is moving again, so it resumes. */
 export const PAUSE_MOVED_M = 30;
+/**
+ * Only a reading this good counts as a move, from a stay or a pause: indoors a 30-50 m fix drifts that far with the
+ * rider sat still, and would resume a pause, or keep one from starting (the owner, 2026-11-01: battery audit).
+ */
+export const MOVE_GOOD_M = 20;
 /** No fix for this long in the app: the last one is given again with the time now. */
 export const HEARTBEAT_MS = 5_000;
+/**
+ * No real fix for this long: no more beats. Stopped that long with no fix, the GPS may as well be lost, and the
+ * clocks the beats keep (a dock, the stay) must not run on a place the rider may have left (the owner, 2026-11-01:
+ * battery audit).
+ */
+export const HEARTBEAT_STOP_MS = 60_000;
 /**
  * Only after a fix this slow (about 4.5 mph) or with no speed: a rider moving faster who stops getting fixes has more
  * likely lost GPS (a tunnel) than stopped, and the weak-GPS clock must run for them.
@@ -42,10 +54,18 @@ export interface Stay {
   since: number;
 }
 
-/** One good place into the stay: within STAY_M keeps it; further starts afresh there. A poor fix changes nothing. */
+/** Whether `fix` shows the rider `m` or more from `spot`: a good fix (MOVE_GOOD_M) beyond `m` plus its own accuracy. */
+function movedFrom(spot: LonLat, fix: Pick<RideFix, "point" | "accuracyM">, m: number): boolean {
+  return fix.accuracyM <= MOVE_GOOD_M && haversineM(spot, fix.point) > m + fix.accuracyM;
+}
+
+/**
+ * One place into the stay: the first fit fix (POOR_FIX_M) starts it; only a good one well beyond STAY_M (movedFrom)
+ * starts it afresh there, so indoor drift does not keep the pause away. A poor fix changes nothing.
+ */
 export function stayStep(stay: Stay | null, fix: Pick<RideFix, "point" | "accuracyM" | "at">): Stay | null {
   if (!(fix.accuracyM <= POOR_FIX_M)) return stay;
-  if (stay && haversineM(stay.point, fix.point) <= STAY_M) return stay;
+  if (stay && !movedFrom(stay.point, fix, STAY_M)) return stay;
   return { point: fix.point, since: fix.at };
 }
 
@@ -54,21 +74,42 @@ export function stayedLong(stay: Stay | null, now: number, ms: number = STAY_MS)
   return stay !== null && now - stay.since >= ms;
 }
 
-/** A paused ride's reading: whether it says the rider has moved on from `spot` (a good reading only). */
+/** A paused ride's reading: whether it says the rider has moved on from `spot` (movedFrom: good, and clear of drift). */
 export function movedFromPause(spot: LonLat | null, reading: Pick<RideFix, "point" | "accuracyM">): boolean {
-  if (!spot || !(reading.accuracyM <= POOR_FIX_M)) return false;
-  return haversineM(spot, reading.point) > PAUSE_MOVED_M;
+  return spot !== null && movedFrom(spot, reading, PAUSE_MOVED_M);
 }
 
 /**
  * The heartbeat's fix: the last real fix with the time `now`, once none has come for HEARTBEAT_MS; null when it is
- * not time, there is none, it was poor, or the rider was moving at speed.
+ * not time, none has come for over HEARTBEAT_STOP_MS, there is none, it was poor, or the rider was moving at speed.
  */
 export function heartbeatFix(last: RideFix | null, lastRealAt: number, now: number): RideFix | null {
-  if (!last || now - lastRealAt < HEARTBEAT_MS) return null;
+  if (!last || now - lastRealAt < HEARTBEAT_MS || now - lastRealAt > HEARTBEAT_STOP_MS) return null;
   if (!(last.accuracyM <= POOR_FIX_M)) return null;
   if (last.speedMs !== null && last.speedMs >= HEARTBEAT_MAX_SPEED_MS) return null;
   return { ...last, speedMs: 0, headingDeg: null, at: now };
+}
+
+/*
+ * The words of the stay-put pauses (the owner, 2026-11-01: battery audit). Only the app rides on with the screen
+ * locked; in a browser the pause lets the screen lock go, the page goes hidden, and the 30 s readings wait for it to be
+ * in front again, so riding off with the phone in a pocket would not carry on: there Resume is the way.
+ */
+const RIDE_STAY_PAUSED_APP = t("Ride paused at your destination to save battery. It carries on when you ride off, or press Resume.");
+const RIDE_STAY_PAUSED_BROWSER = t("Ride paused at your destination to save battery. Press Resume to carry on.");
+const ROAM_STAY_PAUSED_APP = t("Roam paused to save battery. It carries on when you ride off, or press Resume.");
+const ROAM_STAY_PAUSED_BROWSER = t("Roam paused to save battery. Press Resume to carry on.");
+/** Said as Roam carries on by itself: the pause was said, so is its end. */
+export const ROAM_RESUMED_SAID = t("Roam resumed.");
+
+/** Ride's words for its pause at the destination: `app` is the phone app (lib/nativeShell.ts ridesHidden). */
+export function rideStayPausedSaid(app: boolean): string {
+  return app ? RIDE_STAY_PAUSED_APP : RIDE_STAY_PAUSED_BROWSER;
+}
+
+/** Roam's words for its pause when not moving: `app` as rideStayPausedSaid. */
+export function roamStayPausedSaid(app: boolean): string {
+  return app ? ROAM_STAY_PAUSED_APP : ROAM_STAY_PAUSED_BROWSER;
 }
 
 /**
