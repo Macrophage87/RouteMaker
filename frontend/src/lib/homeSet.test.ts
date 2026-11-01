@@ -136,7 +136,8 @@ test("privacy-1: the Home, Work and favorite searches do not keep their pick in 
   const search = src("../PlaceSearch.tsx");
   const at = search.indexOf("const pick = (place: Place");
   const pick = search.slice(at, search.indexOf('setQuery("");', at));
-  assert.match(pick, /if \(variant !== "home" && variant !== "work" && variant !== "favorite"\) setRecent\(rememberRecentPlace\(place\)\);/);
+  // Nor a saved place (Home, Work, a favorite) picked in Go's Where to? (lib/savedPlaceSearch.ts).
+  assert.match(pick, /if \(variant !== "home" && variant !== "work" && variant !== "favorite" && !SAVED_KINDS\.has\(place\.kind\)\) setRecent\(rememberRecentPlace\(place\)\);/);
   assert.equal((search.match(/rememberRecentPlace\(/g) ?? []).length, 1, "no other way in");
 });
 

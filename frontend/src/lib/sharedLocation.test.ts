@@ -113,7 +113,7 @@ test("the manifest: the Android share target and the desktop geo: handler", () =
 test("the search box reads a pasted link before it is cut, and the app opens a share in Go", () => {
   const search = readFileSync(new URL("../PlaceSearch.tsx", import.meta.url), "utf8");
   assert.match(search, /onPaste=\{\(event\) => \{[\s\S]*?if \(!parseShared\(text, near\(\)\)\) return;\s*event\.preventDefault\(\);/);
-  assert.match(search, /const offered: Place\[\] = \[\.\.\.sharedItems, \.\.\.\(empty \? recent : places\)\];/);
+  assert.match(search, /const offered: Place\[\] = \[\.\.\.sharedItems, \.\.\.\(empty \? recent : \[\.\.\.saved, \.\.\.places\]\)\];/);
   // Review F10: the link's status region is always mounted (not mounted with its words), and filled after.
   assert.match(search, /<p className=\{sharedSaid \? "hint" : "visually-hidden"\} role="status" aria-live="polite">\s*\{sharedSaid\}\s*<\/p>/);
   assert.doesNotMatch(search, /\{shared && "said" in shared && \(/);

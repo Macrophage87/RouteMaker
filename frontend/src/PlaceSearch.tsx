@@ -48,6 +48,7 @@ import { parseShared, readShared, sharedPlace, SHARED_OPENING } from "./lib/shar
 import { watchKeyboard } from "./lib/keyboardLift.ts";
 import { t } from "./lib/i18n.ts";
 import { nativeBridge } from "./lib/nativeShell.ts";
+import { SAVED_KINDS, type SavedHits } from "./lib/savedPlaceSearch.ts";
 import {
   lettersHeard,
   placeDictation,
@@ -161,6 +162,7 @@ export function PlaceSearch({
   inputRef,
   onDismiss,
   onFocusBox,
+  savedFor,
 }: {
   /**
    * "plan": the Points search, with Start / Destination / Stop. "go" (UI-CLEANUP): Go's one Where to? box,
@@ -197,6 +199,8 @@ export function PlaceSearch({
   onDismiss?: () => void;
   /** The box takes the focus (Go's Where to?: a warm look-up of the location; routing audit S28). */
   onFocusBox?: () => void;
+  /** Go's Where to?: the rider's Home, Work and favorites the words name (lib/savedPlaceSearch.ts), listed first. */
+  savedFor?: (query: string) => SavedHits;
 }) {
   const id = useId();
   const single = variant !== "plan";
@@ -248,6 +252,8 @@ export function PlaceSearch({
   // The lettered places, for a row named while the list shows (filled each render, below).
   const letteredNow = useRef<Place[]>([]);
   const pickNow = useRef<(place: Place) => void>(() => {});
+  const savedForNow = useRef(savedFor);
+  savedForNow.current = savedFor;
   const changeNow = useRef<(value: string) => void>(() => {});
   const dictation = useRef<PlaceDictation | null>(null);
   if (canSay && dictation.current === null) {
@@ -259,6 +265,12 @@ export function PlaceSearch({
           setOpen(true);
         },
         search: (words) => {
+          // "Home", "work" or a favorite's name, said: routed there at once, as its chip would.
+          const exact = savedForNow.current?.(words).exact;
+          if (exact) {
+            pickNow.current(exact);
+            return;
+          }
           setSpoken(words);
           changeNow.current(words);
         },
@@ -316,7 +328,8 @@ export function PlaceSearch({
   const sharedSaid = shared && "said" in shared ? shared.said : "";
   // The empty box lists the last places picked (v0.6.1), under "Your location".
   const empty = query.trim() === "";
-  const offered: Place[] = [...sharedItems, ...(empty ? recent : places)];
+  const saved: Place[] = savedFor && !empty ? savedFor(query).places : [];
+  const offered: Place[] = [...sharedItems, ...(empty ? recent : [...saved, ...places])];
   // What Enter with nothing highlighted takes: the first place offered for the words typed; an empty box
   // takes nothing (a recent place is picked only by choosing it).
   const enterPlaces: Place[] = empty ? [] : offered;
@@ -417,7 +430,8 @@ export function PlaceSearch({
     setShared(null);
     // A Home is not a recent place: it would outlast Clear Home and sign-out on a shared phone (review privacy-1).
     // Nor is Work, or a favorite: they are the account's.
-    if (variant !== "home" && variant !== "work" && variant !== "favorite") setRecent(rememberRecentPlace(place));
+    // Nor a saved place picked in Go's Where to? (lib/savedPlaceSearch.ts).
+    if (variant !== "home" && variant !== "work" && variant !== "favorite" && !SAVED_KINDS.has(place.kind)) setRecent(rememberRecentPlace(place));
     setQuery("");
     setResult(null);
     setOpen(false);
