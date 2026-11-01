@@ -390,7 +390,7 @@ alone: each level has its own dash pattern and width.</p>
 
 <ul>
 <li><strong>High contrast</strong> (Settings, Display) draws the stress lines and their outlines
-bolder, makes the panel's borders and grey text stronger, darkens the street names on the map, and
+bolder, makes the panel's borders and grey text stronger, gives the street names on the map stronger contrast, and
 switches the stress map to colors that don't rely on red and green. The dash patterns stay the same.
 It turns on by itself when your device asks for more contrast<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup> and you haven't chosen,
 and then says so; you can turn it off there. It is in Settings, Display, under Accessibility mode.</li>
@@ -398,21 +398,22 @@ and then says so; you can turn it off there. It is in Settings, Display, under A
 Atkinson Hyperlegible Next, typefaces designed by the Braille Institute for low-vision
 readers<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>. Vietnamese and Turkish use the device's own fonts, as
 Atkinson Hyperlegible lacks some of their letters, and the other scripts (Arabic, Chinese, Ge'ez and the rest) take
-the device's fonts for their letters. Street names sit on a white outline so they stay readable over the colored
+the device's fonts for their letters. Street names sit on a white outline (a dark one on the dark map) so they stay readable over the colored
 lines. Major trails are named along the line in purple, from the zoom where every street appears: a
 trail on a regional or longer bike route (or, if paved, a long walking route), or a named trail at least
 2.5 mi [4 km] long (5 mi [8 km] if unpaved). Close in, every path's name is purple too. Metro and MARC station names are drawn larger than street names (18 px, 24 px while riding)
 and on top of the map's pins and route, from city zoom in. Where names crowd, the station with the
 most lines keeps its name. Town names are in extra-bold type, and neighborhood names in
-extra-bold small capitals, both on the same white outline. Every other name on the map (parks, water,
+extra-bold small capitals, both on the same outline. Every other name on the map (parks, water,
 trails, scenic spots, route numbers) is in the street names' type and outline too. National Airport's station is labelled National Airport (DCA), and the base map's own airport
 names are left off near the airport stations. Interstate names and route shields wait for zoom 14, where every road is drawn at full strength;
 US and state route numbers show as the base map has them.</li>
 <li><strong>Text size.</strong> Panels follow your browser's or phone's zoom. During a ride, the
 <strong>Large text</strong> button (Text) makes the next turn as big as it fits on the top half of the
 screen, with no ride text under 16 pt, and makes the map's street names larger.</li>
-<li><strong>Dark mode</strong> follows your device for the panels; the map stays light, so the stress
-colors read the same. Windows' contrast themes are supported<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</li>
+<li><strong>Dark mode</strong> follows your device, the map included. During a ride or Roam the map also
+turns dark between civil dusk and dawn and in a tunnel, to save battery. The stress colors stay the same; on the dark
+map, a line whose color would not stand out gets a white edge. Windows' contrast themes are supported<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</li>
 <li><strong>Less motion.</strong> When your device asks for reduced motion, the turning section arrows
 and the sliding of points as you reorder them are turned off. At the start of a ride, the map turns to the phone's compass in a jump, at most once
 a second, rather than smoothly.</li>
@@ -628,7 +629,8 @@ reader hears whether it is pressed, and each press says "Large text on" or "off"
 the screen reader during a ride, so swiping goes from the next turn straight to the ride's buttons.</li>
 <li><strong>Turn the map to my heading</strong>, in More, then the Settings gear, during a ride, turns the map with you; turn it off
 to keep north up. At the start of a ride or Roam, before GPS gives a heading (it needs you moving), the map turns
-to the way the phone faces, from its compass, and GPS takes over once you move. On an iPhone, pressing
+to the way the phone faces, from its compass, and GPS takes over once you move. To save battery the compass also stops after 2 minutes without a GPS
+heading, or when the page goes out of sight, and does not start again by itself. On an iPhone, pressing
 Start ride or Roam asks for motion and orientation access; without it the map stays north up until you
 move. The compass readings are never stored or sent.</li>
 <li>A screen reader hears each <strong>Share live</strong> button with "Hold it, right-click it, or press
@@ -647,7 +649,7 @@ mountain-bike trail names and climb numbers grow with the street names (by 20/15
 restroom and repair icons, which give way to them, and are drawn over the route, so the streets around you,
 your route's own included, keep their names. Station names and hazard marks still come first.</li>
 <li>The route line itself is named: each named street or path it follows is labelled along the line, in
-the street names' type and white outline (15 px, or 20 px and shortened in a ride), with paths in the
+the street names' type and outline (15 px, or 20 px and shortened in a ride), with paths in the
 major-trail names' purple, and darker in accessibility mode like the other names. A stretch with no
 name is left unlabelled. In a ride the route's names come before the other street names, so the street
 you are on keeps its name. The labels are drawn on the map only; <strong>Directions</strong> with
