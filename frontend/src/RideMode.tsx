@@ -200,7 +200,7 @@ import type { WaterPoint } from "./lib/waterRestrooms.ts";
 import type { TrailMiles } from "./lib/trailMiles.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
 import { corridorWorry, type PrefetchResult } from "./lib/corridor.ts";
-import { clearCorridor, copyCorridor, keepCorridor } from "./lib/corridorStore.ts";
+import { copyCorridor, endCorridor, keepCorridor } from "./lib/corridorStore.ts";
 import { lastRideAdopter } from "./lib/offlineKeep.ts";
 import { blockOf, rescueRideFocus, type RideBlock } from "./lib/rideFocus.ts";
 import { REPORT_SENT, report311Enabled, sendReport311, reportPlace, type ReportKind } from "./lib/report311.ts";
@@ -1804,14 +1804,14 @@ export function RideMode({
   }, [route, other, fix, onView, vehicle, stops, lettered, onLettered]);
 
   // The map along the route, kept for dead spots (lib/corridor.ts, plan section 6): fetched at Start ride
-  // and again for a re-plan's new route (only the tiles the first did not cover), cleared at End ride.
-  // Shown under the controls, not said: it changes nothing the rider must do.
+  // and again for a re-plan's new route (only the tiles the first did not cover), kept a day for the same route
+  // (the owner, 2026-11-01: battery audit). Shown under the controls, not said: it changes nothing the rider must do.
   const [corridor, setCorridor] = useState<PrefetchResult | "saving" | null>(null);
   const firstCorridor = useRef(true);
   useEffect(() => {
     let current = true;
     setCorridor("saving");
-    // The ride's first route clears whatever an earlier ride or page kept before it fetches.
+    // The ride's first route reads back what was kept for it within the day, and deletes any other route's first.
     const first = firstCorridor.current;
     firstCorridor.current = false;
     void keepCorridor(route.geometry.coordinates, first).then((result) => {
@@ -1822,7 +1822,7 @@ export function RideMode({
     };
   }, [route]);
   const handsOn = useRef(keepLastRide);
-  useEffect(() => () => void clearCorridor(handsOn.current ? lastRideAdopter() : undefined), []);
+  useEffect(() => () => void endCorridor(handsOn.current ? lastRideAdopter() : undefined), []);
   // Hidden, the installed app may be closed and never reach End ride: the last ride gets the map kept
   // so far now, as End ride would hand it on (review RIDE-1).
   useEffect(() => {
