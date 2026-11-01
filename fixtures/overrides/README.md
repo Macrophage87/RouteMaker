@@ -600,7 +600,7 @@ in the database still names it: delete that row in the admin when loading the fi
   one-way, or with other than two lanes. Stress rows, hidden, with fingerprints. Load like
   the others; takes effect on the next rebuild.
 
-- `2026-11-01-owner-dc-rating-review.json`: the whole-DC rating review, 4,716 ways. Every
+- `2026-11-01-owner-dc-rating-review.json`: the whole-DC rating review, 4,708 ways. Every
   block in DDOT's 2020 LTS layer was read off beta's road panel (v0.16.0 map). Each road
   was then rated from all the data held for it, and two skeptics, one arguing higher and
   one lower, tried to refute each rating. The owner, 2026-11-01: "use it's best judgement
@@ -611,6 +611,11 @@ in the database still names it: delete that row in the admin when loading the fi
   steps. DC alleys and service roads go from 1 to 1.5 for delivery trucks and blind exits,
   while quiet residential and unclassified streets at 1 stay at 1 (the owner's pick,
   2026-11-01). Rows carry the rider-facing note as `public_note`, shown as the road panel's
-  Why line, except 36 rows with no agency rating to differ from, which are hidden. Left out:
-  blocks no skeptic reviewed (392), any "unsure" verdict (71), and ways already in another
-  file here (44). No fingerprints. Load like the others; takes effect on the next rebuild.
+  Why line, except 36 rows with no agency rating to differ from, which are hidden. Each note quotes DDOT's
+  published 2020 level for the way (or says it varies along it) and the way's own count from
+  the road panel, never another street's. Left out: blocks no skeptic reviewed (392), any
+  "unsure" verdict (71), quiet streets the review lifted from 1 (37), ways already set by
+  another file here (45, including East Capitol St NE way 1525646203, rated as an ordinary
+  street by OWNER-DECISIONS 445), and 12 ways whose level rested on another street's count.
+  76 ways here are in the 2026-09-30 file's `retire` list; that retires only its own exact
+  rows, so these load. No fingerprints: an OSM split drops the row for the new piece. Load like the others; takes effect on the next rebuild.

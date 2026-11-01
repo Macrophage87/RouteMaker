@@ -1242,6 +1242,18 @@ def test_an_override_rows_public_note_is_its_why_line() -> None:
     assert "Note" not in rows
 
 
+def test_the_summarys_why_line_is_the_override_rows_note_too() -> None:
+    # Before: the compact panel said "Owner-rated corridor" while the details said the note.
+    row = _adjusted_row("dc-review-2026-11-01-way-6054006", tier=2)
+    row["stress_adjustment_note"] = "DDOT's 2020 layer says 4, but this is a quiet street, so 2."
+    row["stress_adjustment_display"] = "map"
+    assert segment_info.override_note(row) == row["stress_adjustment_note"]
+    summary = {r["id"]: r for r in segment_info._summary_rows(row, {}, None)}
+    assert summary["why"]["value"] == row["stress_adjustment_note"]
+    row["stress_adjustment_display"] = "route_only"
+    assert segment_info.override_note(row) is None
+
+
 def test_a_route_only_note_stays_off_the_road_panel() -> None:
     row = _adjusted_row("east-anacostia-suitland-parkway")
     row["stress_adjustment_note"] = "Freeway-grade highway with fast through traffic."

@@ -680,6 +680,21 @@ def _row(label: str, value: str, source: str | None) -> dict:
     return {"label": label, "value": value, "source": source}
 
 
+def override_note(row: dict) -> str | None:
+    """An override row's own approved, public note, shown as the Why line in place of
+    "Owner-rated corridor" (the owner, 2026-11-01: where we keep ours over an agency's, a
+    short narration "available in the route lookup as to our justification"). It used to
+    be a separate "Note" row. Only an approved, public row's note is ever written to the
+    segment (`StressAdjustment.exposed`); one marked route_only is for a route over the
+    stretch, never a map click."""
+    note = row.get("stress_adjustment_note")
+    if not note or row.get("stress_adjustment_display") != "map":
+        return None
+    if row.get("stress_adjustment_id") is None:
+        return None
+    return str(note)
+
+
 def stress_rows(row: dict) -> list[dict]:
     tier = int(row["stress_tier"])
     half = row.get("stress_half") is True
@@ -689,14 +704,7 @@ def stress_rows(row: dict) -> list[dict]:
     source = override_source(row) if adjusted else CLASSIFIER
     whose = agency_lts.adjustment_source(row.get("stress_adjustment_id")) if adjusted else None
     county = whose == "moco"
-    note = row.get("stress_adjustment_note")
-    # A note marked route_only is for a route over the stretch, never a map click.
-    on_map = bool(note) and row.get("stress_adjustment_display") == "map"
-    # An override row's own approved, public note is its reason, so the Why line says it
-    # rather than "Owner-rated corridor" (the owner, 2026-11-01: where we keep ours over an
-    # agency's, a short narration "available in the route lookup as to our justification").
-    # It used to be a separate "Note" row under an unexplained "Owner-rated corridor".
-    why = str(note) if adjusted and on_map else rule_words(row["stress_rule"])
+    why = override_note(row) or rule_words(row["stress_rule"])
     rows = [
         _row("Level", tier_text(tier, half), source),
         _row("Why", why, source),
@@ -1301,7 +1309,7 @@ def _summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     def add(id_: str, label: str, value: str) -> None:
         rows.append({"id": id_, "label": label, "value": value})
 
-    why = why_short(str(row.get("stress_rule") or ""))
+    why = override_note(row) or why_short(str(row.get("stress_rule") or ""))
     if why:
         add("why", "Why", why)
     if not path:
