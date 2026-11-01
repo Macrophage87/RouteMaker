@@ -4318,7 +4318,12 @@ exception is counted as a disagreement with its reason:
   left on a one-way block keeps OSM's lanes: the busier direction's count is not
   copied into the other (review r2: New Jersey Avenue NW read four lanes each
   way).
-- **C. Two-way recorded, OSM one-way**: the way is two-way (C4) - except a
+- **C. Two-way recorded, OSM one-way**: since owner 2026-11-01 OSM's one-way
+  stands unless the owner's block row says `BD` (fixtures/overrides/README.md,
+  "Block corrections"): DC's record alone routed M St NE 17th-19th against its
+  one-way, and 181 ways (13.8 mi) were opened that way. The record's two-way
+  is reported (`kept (record only, owner rows decide)`). With an owner `BD` row
+  the way is two-way (C4) - except a
   carriageway of a divided road (C1, `routemaker.divided`), one of two opposite
   one-way ways sharing a block (C2, `agency_roads.block_context`: the pairs the
   divided detector missed), a one-way side lane on a block whose two-way main
@@ -5023,7 +5028,8 @@ take a District two-way record (`oneway=no`, row C4) over a way OSM has one-way.
 classifier and `road_*` follow the solo graphs (they are one per way), so on a Mass
 Ride the junction model reads those streets two-way: it can only overstate a
 junction there. 181 ways (13.8 mi) on the 09-25 extract, 21 of them (0.9 mi) LTS 3
-or worse.
+or worse. Since owner 2026-11-01 every graph keeps OSM's one-way over the record
+alone (row C), so this only matters on an owner `BD` row.
 
 ### What a screen reader hears from the planner (the 2026-10-29 a11y review)
 

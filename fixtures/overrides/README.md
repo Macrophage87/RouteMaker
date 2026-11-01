@@ -427,7 +427,10 @@ matched to the block, through the same rows as DC's own record (OWNER-DECISIONS
 of a way has the owner's direction and OSM has the way one-way the other way, the
 owner's direction wins, except on a junction stub
 (`routemaker.agency_roads.overlay`; DC's own record never overrides an opposite
-OSM one-way). That last case is not one of item 190's rows, so it is not counted
+OSM one-way). Row C4 itself now needs the owner's `BD` on every block of the way:
+DC's two-way record alone leaves an OSM one-way one-way (owner 2026-11-01, M St NE
+17th-19th), so a street made two-way on the ground needs a `BD` entry until OSM
+catches up. That last case is not one of item 190's rows, so it is not counted
 in the overlay's `precedence`, and the discrepancy report reads the owner's
 direction as DC's (it compares one-way against two-way, not direction). So a street reversed before either source caught up is right on our
 map before the OSM edit, and still right after it. Two entries giving one block

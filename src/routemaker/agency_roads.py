@@ -1238,6 +1238,9 @@ ROW_NO_FACILITY = "A"  # no facility recorded: OSM's painted lane removed
 ROW_ONE_WAY = "B"  # one-way recorded: OSM's explicit two-way overridden
 ROW_TWO_WAY = "C4"  # two-way recorded: OSM's one-way on a plain street overridden
 ROWS_190 = frozenset({ROW_NO_FACILITY, ROW_ONE_WAY, ROW_TWO_WAY})
+# Why row C4 leaves OSM's one-way on a plain street the record alone calls
+# two-way (owner 2026-11-01); only an owner's `BD` block row overrides it.
+OSM_ONE_WAY_KEPT = "record only, owner rows decide"
 
 
 @dataclass(frozen=True)
@@ -1494,6 +1497,12 @@ def _keep_osm_one_way(
         # An unnamed one-way beside a named street's block is a turn channel or
         # a service lane more often than the street itself.
         return "unnamed"
+    if not facts.owner_direction:
+        # The record alone never opens a one-way's other direction (owner
+        # 2026-11-01, M St NE 17th-19th: DC two-way, one-way on the street).
+        # Riding against a one-way is the worse error, so OSM's one-way stands
+        # and the disagreement is reported; an owner `BD` row makes it two-way.
+        return OSM_ONE_WAY_KEPT
     return None
 
 
@@ -1533,7 +1542,9 @@ def overlay(
       one-way - except on a block with reversible lanes, on a junction stub
       of MIN_ONE_WAY_OVERRIDE_M or less (`length_m`, `is_junction_stub`), or
       where the direction is not known;
-    * C4, two-way recorded on every block where OSM says one-way: the way is
+    * C4, two-way recorded on every block where OSM says one-way: since owner
+      2026-11-01 (M St NE) only where the owner's block rows say `BD`; the
+      record alone leaves OSM's one-way and is reported. Even then the way is
       two-way - except a carriageway of a divided road (`divided`, from
       `routemaker.divided`), one of a pair of opposite one-way ways sharing the
       block (`paired`, `block_context`), a one-way side lane on a block whose
