@@ -100,6 +100,22 @@ def test_file_round_trip_keeps_the_other_source(tmp_path: Path):
 def test_committed_file_is_ddot_and_in_the_box():
     data = json.loads(mod.OUT.read_text())
     assert "CC BY 4.0" in data["source"]
-    assert len(data["points"]) > 4000
+    assert len(data["points"]) > 3500
     for p in data["points"]:
         assert mod.inside(p["x"], p["y"])
+
+
+def test_a_row_of_racks_is_one_place():
+    row = [mod.Rack(id=f"dc{i}", lon=-77.03 + i * 0.00002, lat=38.9, racks=1) for i in range(5)]
+    far = mod.Rack(id="dc9", lon=-77.0295, lat=38.9, racks=2)  # about 43 m on
+    merged = mod.one_place([*row, far])
+    assert [(r.id, r.racks) for r in merged] == [("dc0", 5), ("dc9", 2)]
+    assert abs(merged[0].lon - (-77.03 + 0.00004)) < 1e-9
+    # A count missing on one rack of the row: no count rather than too few.
+    part = mod.one_place(
+        [
+            mod.Rack(id="dc1", lon=-77.03, lat=38.9, racks=2),
+            mod.Rack(id="dc2", lon=-77.03, lat=38.9),
+        ]
+    )
+    assert part[0].racks is None

@@ -65,6 +65,9 @@ COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
 PUBLIC_ACCESS = frozenset({"yes", "public", "permissive", "designated"})
 # An OSM rack this close to a DDOT rack is the same one: about 80 ft.
 SAME_RACK_M = 25.0
+# Racks this close are one place to a rider (DDOT maps each rack of a row of racks as its own
+# point, often 1 to 3 m apart): one point, their racks added up. About 50 ft.
+ONE_PLACE_M = 15.0
 PAGE = 1000
 
 LOCKERS = frozenset({"lockers"})
@@ -176,6 +179,51 @@ def drop_same(osm: list[Rack], ddot: list[Rack], within: float = SAME_RACK_M) ->
     return kept
 
 
+def one_place(racks: list[Rack], within: float = ONE_PLACE_M) -> list[Rack]:
+    """Racks within `within` metres of a group's first rack joined into one point, in id order.
+
+    The point is the group's mean position; its racks and capacity are the sums of those known
+    (a count is kept only when every rack in the group has one, so "Racks: 3" never undercounts
+    a row where one rack's count is missing); covered only if all are; the first one's id,
+    kind and name.
+    """
+    cell = 0.0005  # about 50 m
+    groups: list[list[Rack]] = []
+    grid: dict[tuple[int, int], list[int]] = {}
+    for r in sorted(racks, key=lambda r: r.id):
+        cx, cy = int(r.lon / cell), int(r.lat / cell)
+        home = None
+        for gx in (cx - 1, cx, cx + 1):
+            for gy in (cy - 1, cy, cy + 1):
+                for g in grid.get((gx, gy), ()):
+                    if metres(r, groups[g][0]) <= within and (home is None or g < home):
+                        home = g
+        if home is None:
+            home = len(groups)
+            groups.append([])
+            grid.setdefault((cx, cy), []).append(home)
+        groups[home].append(r)
+    out = []
+    for g in groups:
+        first = g[0]
+        n = len(g)
+        racks_known = all(r.racks for r in g)
+        cap_known = all(r.capacity for r in g)
+        out.append(
+            Rack(
+                id=first.id,
+                lon=sum(r.lon for r in g) / n,
+                lat=sum(r.lat for r in g) / n,
+                racks=sum(r.racks or 0 for r in g) if racks_known else None,
+                capacity=sum(r.capacity or 0 for r in g) if cap_known else None,
+                kind=first.kind,
+                covered=all(r.covered for r in g),
+                name=first.name,
+            )
+        )
+    return out
+
+
 def from_point(p: dict) -> Rack:
     return Rack(
         id=p["id"],
@@ -214,7 +262,7 @@ def fetch_ddot() -> list[Rack]:
         if not features or not doc.get("exceededTransferLimit"):
             break
         offset += len(features)
-    return racks
+    return one_place(racks)
 
 
 def read_extract(path: Path) -> list[Rack]:
@@ -245,7 +293,7 @@ def read_extract(path: Path) -> list[Rack]:
                 found.append(r)
 
     Handler().apply_file(str(path), locations=True)
-    return found
+    return one_place(found)
 
 
 def document(ddot: list[Rack], osm: list[Rack]) -> dict:

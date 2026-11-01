@@ -1914,7 +1914,6 @@ dialog.go-spot {
   margin: 0;
 }
 
-.go-spot-list-button,
 /* Go's bike rack offers (Stephen, 2026-11-01): on the spot card under Ride here, and under the route card. */
 .go-spot-rack,
 .go-end-rack {
@@ -1931,6 +1930,7 @@ dialog.go-spot {
   text-align: start;
 }
 
+.go-spot-list-button,
 .go-spot-road {
   flex: none;
   min-height: 44px;

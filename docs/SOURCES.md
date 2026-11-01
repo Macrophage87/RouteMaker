@@ -189,12 +189,14 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     <https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Transportation_Bikes_Trails_WebMercator/MapServer/168>;
     licence CC BY 4.0 (the item's licence field; data.gov's record, updated 2026-10-27).
     Retrieved 2026-11-01 with `scripts/build_bike_parking.py --ddot`: 4,862 racks, each a
-    point and its number of racks (`NUMBERRACKS`). Go's bike racks (Stephen, 2026-11-01):
+    point and its number of racks (`NUMBERRACKS`), joined into 3,914 places (racks within
+    15 m are one place, their racks added up; "adapted"). Go's bike racks (Stephen, 2026-11-01):
     pins and "Ride to the bike rack" on a tapped spot's card, "End at the bike rack" under
     a route's card, and the racks layer drawn with Water and restrooms
     (`frontend/src/amenity-data/bike-parking.json`; `lib/bikeParking.ts`). DC's racks win
-    over OpenStreetMap's within 25 m; OpenStreetMap's amenity=bicycle_parking fills the
-    rest of the region from the extract (`--pbf`).
+    over OpenStreetMap's within 25 m. OpenStreetMap's amenity=bicycle_parking is to fill the
+    rest of the region from the extract (`--pbf`, run on the PC); until that run the file
+    holds DC's racks only.
 
 ## DDOT Pavement Condition Index (DC-PCI)
 

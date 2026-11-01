@@ -20,6 +20,7 @@ import { Icon } from "./Icon.tsx";
 import { ROUTE_HERE_TEXT } from "./lib/roadInfo.ts";
 import { closesDialog } from "./lib/rideTypeDialog.ts";
 import {
+  DROPPED_PIN,
   FINDING_ADDRESS,
   NEARBY_HEADING,
   NEARBY_LOADING,
@@ -55,7 +56,7 @@ interface Props {
    * The nearest bike rack's offer (lib/bikeParking.ts; Stephen, 2026-11-01: "show the nearby racks and offer them as
    * a routing option"), under Ride here: one press rides there instead. Null with no rack near.
    */
-  rack?: { text: string; onPress: () => void } | null;
+  rack?: { text: string; onPress: (heading: string | null) => void } | null;
   onRouteHere: (point: LonLat) => void;
   /** A row of the list pressed: its index (its pin on the map does the same). */
   onPick: (index: number) => void;
@@ -160,7 +161,8 @@ export function GoSpotDialog({ request, lookup, fallbackName, here = null, rows,
             type="button"
             className="secondary go-spot-rack"
             onClick={() => {
-              rack.onPress();
+              // The address, once found, names the rack's place; never "Dropped pin".
+              rack.onPress(address && address.heading !== DROPPED_PIN ? address.heading : null);
               close();
             }}
           >

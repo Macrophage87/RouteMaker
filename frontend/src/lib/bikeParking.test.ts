@@ -51,7 +51,7 @@ test("the file is read; a bad row is skipped and an unknown kind is a plain rack
 test("the committed file reads, every rack inside the coverage box, DDOT's credited", () => {
   const raw = JSON.parse(readFileSync(new URL("../amenity-data/bike-parking.json", import.meta.url), "utf8"));
   const racks = parseBikeParking(raw)!;
-  assert.ok(racks.length > 4000, `${racks.length} racks`);
+  assert.ok(racks.length > 3500, `${racks.length} racks`);
   assert.match(raw.source, /DDOT.*CC BY 4\.0/);
   for (const r of racks) assert.ok(r.lon >= -78.05 && r.lon <= -76.02 && r.lat >= 38.2 && r.lat <= 39.72, r.id);
 });

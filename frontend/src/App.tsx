@@ -243,7 +243,7 @@ import { foodWords, nearbyWords, repairWords, sightWords } from "./lib/stopWords
 import { foodSpotPlaces, metroSpotPlaces, rackSpotRows, repairSpotPlaces, sightSpotPlaces, spotFarLine, spotNearby, waterSpotPlaces, type SpotRow } from "./lib/spotNearby.ts";
 import { useSpotPins } from "./app/spotPins.ts";
 import { RacksOverlay, useRackPins } from "./app/rackOverlay.ts";
-import { endAtRackSaid, endAtRackText, loadBikeParking, rackOffer, rackPlaceName, rackPoint, racksNear, rideToRackText, type BikeRack, type RackNear } from "./lib/bikeParking.ts";
+import { RACK_AT_M, endAtRackSaid, endAtRackText, loadBikeParking, rackOffer, rackPlaceName, rackPoint, racksNear, rideToRackText, type BikeRack, type RackNear } from "./lib/bikeParking.ts";
 import bikeParkingUrl from "./amenity-data/bike-parking.json?url&no-inline";
 import { useSeeEveryone } from "./app/useSeeEveryone.ts";
 import { ScenicOverlay } from "./app/ScenicOverlay.tsx";
@@ -5414,16 +5414,18 @@ export function App() {
     [waterData, spotFood, repairData, placesData, railClosedReason],
   );
   // Each source in, or failed (a failed one is left out rather than holding the list).
-  const spotReady = (waterData !== null || waterStatus === "unavailable") && spotFood !== null && repairData !== null && placesData !== null && racksData !== null;
-  // The places, then the racks near the spot (Stephen, 2026-11-01: "show the nearby racks"), each a pin.
+  const spotReady = (waterData !== null || waterStatus === "unavailable") && spotFood !== null && repairData !== null && placesData !== null;
+  // The places, then the racks near the spot (Stephen, 2026-11-01: "show the nearby racks"), each a pin; the racks
+  // join the list when their file is in, rather than holding it.
   const spotRows = useMemo(
     () => (spotOpen && goSpot && spotReady ? [...spotNearby(goSpot.point, spotSources), ...(racks ? rackSpotRows(racksNear(goSpot.point, racks)) : [])] : null),
     [spotOpen, goSpot, spotReady, spotSources, racks],
   );
   // The card's "Ride to the bike rack": the nearest rack, when one is near and the spot is not already at it.
   const spotRack = spotOpen && goSpot && racks ? rackOffer(goSpot.point, racks) : null;
-  const rideToRack = (near: RackNear) => {
-    const name = rackPlaceName(near, namer.name(goSpot?.point ?? rackPoint(near.rack))?.name ?? null);
+  // `heading`: the spot card's address, which names the rack's place ("Bike rack near 1234 R Street Northwest").
+  const rideToRack = (near: RackNear, heading: string | null) => {
+    const name = rackPlaceName(near, heading ?? namer.name(goSpot?.point ?? rackPoint(near.rack))?.name ?? null);
     namer.remember(rackPoint(near.rack), name);
     void goToRef.current(rackPoint(near.rack), name, true);
   };
@@ -5436,7 +5438,7 @@ export function App() {
   useEffect(() => {
     if (goEnd) void ensureRacks();
   }, [goEnd !== null, ensureRacks]); // eslint-disable-line react-hooks/exhaustive-deps
-  const endRackRows = useMemo<SpotRow[] | null>(() => (goEnd && racks && !spotOpen ? rackSpotRows(racksNear(goEnd, racks)) : null), [goEnd, racks, spotOpen]);
+  const endRackRows = useMemo<SpotRow[] | null>(() => (goEnd && racks && !spotOpen ? rackSpotRows(racksNear(goEnd, racks).filter((n) => n.metres > RACK_AT_M)) : null), [goEnd, racks, spotOpen]);
   const endAtRack = (point: LonLat, name: string, said: string) => {
     const now = pointsRef.current;
     if (now.length < 2) return;
@@ -6326,7 +6328,7 @@ export function App() {
         fallbackName={(point) => namer.name(point)?.name}
         here={spotOpen ? lastHere() : null}
         rows={spotRows}
-        rack={spotRack ? { text: rideToRackText(spotRack), onPress: () => rideToRack(spotRack) } : null}
+        rack={spotRack ? { text: rideToRackText(spotRack), onPress: (heading) => rideToRack(spotRack, heading) } : null}
         onRouteHere={goRouteHere}
         onPick={(index) => pickSpot(index, true)}
         onRoadInfo={(point) => setRoadInfo({ point, origin: "spot" })}
