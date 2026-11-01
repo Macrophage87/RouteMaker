@@ -45,6 +45,11 @@ export interface RailInteractionOptions {
   /** Why the station is closed today with the toggles as they are, or null (railClosures.ts). */
   closedReason?(station: Station): string | null;
   /**
+   * The rail status asked now as a card opens, if stale (the owner, 2026-11-01: "Rail status should remain if someone
+   * clicks on the metro or rail station", with the timed check resting in a ride): its closed words, or null.
+   */
+  statusNow?(): Promise<((station: Station) => string | null) | null>;
+  /**
    * `place` is the name the point carries: the station's, not its entrance's street (stationPlaceName); `tapped` when
    * the rider tapped that elevator on the map, which App keeps rather than moving it to a quicker way in.
    */
@@ -260,6 +265,16 @@ export function attachRailInteraction(map: MapLibreMap, options: RailInteraction
           fitCard(popup);
         });
       }
+      // The status now (in a ride too, where the timed check rests): the card's closed words follow the answer.
+      void options.statusNow?.().then((closedNow) => {
+        if (!closedNow || !popup.isOpen()) return;
+        const closed = closedNow(station);
+        const name = content.querySelector<HTMLElement>(".station-name");
+        if (name) name.textContent = closed ? `${station.name}, closed: ${closed}` : station.name;
+        content.classList.toggle("station-closed", closed !== null);
+        if (times) times.hidden = closed !== null || times.childElementCount === 0;
+        fitCard(popup);
+      });
       return popup;
     },
   });

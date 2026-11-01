@@ -19,7 +19,20 @@ import { cancelRoute, requestNeighbours, requestRoute, routeErrorShown, routeReq
 import { choiceColour, choiceFeatures } from "./lib/routeChoice.ts";
 import { displacedBy, keptNeighbours, neighbourDials, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
 import { betterRouteSaid, EarlyStart, replannedSaid, takesRefined } from "./lib/progressive.ts";
-import { RAIL_STATUS_MS, closedReason, matchAlerts, withMetroClosed, matchClosures, requestClosures, type RailStatus } from "./lib/railClosures.ts";
+import {
+  RAIL_STATUS_MS,
+  RAIL_TAP_FRESH_MS,
+  closedReason,
+  matchAlerts,
+  withMetroClosed,
+  matchClosures,
+  railCheckTimed,
+  railTapAsks,
+  requestClosures,
+  routeUsesTransit,
+  type RailStatus,
+} from "./lib/railClosures.ts";
+import { onSharedTick } from "./lib/sharedTick.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
 import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, readGarmin, withoutReturn } from "./lib/garminLink.ts";
@@ -642,31 +655,58 @@ export function App() {
   // map, and "closed" in their cards and lists; with WMATA's live closures and its badges (a station an
   // alert names, an elevator out). Asked every few minutes while the page is in view, since WMATA's
   // change within the day, and as soon as it is back in view.
+  // The timed check goes on the page's shared 5-minute boundaries (lib/sharedTick.ts) with the weather and closures,
+  // and rests during a ride or Roam that rides no train or bus (railTimed, set below once the ride is known); a tap on
+  // a station still asks (railFresh, MapView's railStatusNow) (the owner, 2026-11-01: battery audit).
   const [railStatus, setRailStatus] = useState<RailStatus>({ stations: [], alerts: [] });
+  const railTimed = useRef(true);
+  const railFresh = useRef<(maxAgeMs: number) => Promise<RailStatus | null>>(async () => null);
   useEffect(() => {
     const controller = new AbortController();
-    let asking = false;
+    let asking: Promise<RailStatus | null> | null = null;
     let askedAt = 0;
-    const check = () => {
-      if (asking || document.visibilityState === "hidden" || Date.now() - askedAt < RAIL_STATUS_MS - 1000) return;
-      asking = true;
-      void requestClosures({ signal: controller.signal }).then((status) => {
-        asking = false;
-        if (controller.signal.aborted) return;
+    let latest: RailStatus | null = null;
+    const ask = (): Promise<RailStatus | null> => {
+      asking ??= requestClosures({ signal: controller.signal }).then((status) => {
+        asking = null;
+        if (controller.signal.aborted) return null;
         // Only an answer counts: a failure is asked again at the next check, the last answer kept.
-        if (status === null) return;
+        if (status === null) return latest;
         askedAt = Date.now();
+        latest = status;
         setRailStatus(status);
+        return status;
       });
+      return asking;
     };
+    const check = () => {
+      if (document.visibilityState === "hidden" || !railTimed.current || Date.now() - askedAt < RAIL_STATUS_MS - 1000) return;
+      void ask();
+    };
+    railFresh.current = (maxAgeMs) => (railTapAsks(askedAt, Date.now(), maxAgeMs) ? ask() : Promise.resolve(latest));
     check();
-    const timer = window.setInterval(check, 60 * 1000);
+    const offTick = onSharedTick(() => {
+      // The boundary itself: asked whatever the last answer's age, so the radio wakes once with the others.
+      askedAt = Math.min(askedAt, Date.now() - RAIL_STATUS_MS);
+      check();
+    });
     document.addEventListener("visibilitychange", check);
     return () => {
       controller.abort();
-      window.clearInterval(timer);
+      offTick();
       document.removeEventListener("visibilitychange", check);
     };
+  }, []);
+  // A station's card asks for the status as it opens, in a ride too, if the last answer is a minute old (the owner,
+  // 2026-11-01: "Rail status should remain if someone clicks on the metro or rail station"): answers the card's
+  // closed words from it, since the card is drawn before React has the new status.
+  const railNow = useRef(rail);
+  railNow.current = rail;
+  const railStatusNow = useCallback(async (): Promise<((station: Station) => string | null) | null> => {
+    const status = await railFresh.current(RAIL_TAP_FRESH_MS);
+    if (!status) return null;
+    const closures = matchClosures(RAIL_STATIONS, status.stations);
+    return (station) => closedReason(station, railNow.current, closures);
   }, []);
   const railClosures = useMemo(() => matchClosures(RAIL_STATIONS, railStatus.stations), [railStatus]);
   const railBadges = useMemo(() => matchAlerts(RAIL_STATIONS, railStatus.alerts), [railStatus]);
@@ -1051,6 +1091,13 @@ export function App() {
     note?: string;
     n: number;
   } | null>(null);
+  // The timed rail check rests while on a bike unless the ride rides a train or bus (the owner, 2026-11-01: battery
+  // audit); off the bike again, a status older than its 5 minutes is asked at once.
+  const railTimedNow = railCheckTimed(onBike, riding && routeUsesTransit(rideStart?.route));
+  railTimed.current = railTimedNow;
+  useEffect(() => {
+    if (railTimedNow) void railFresh.current(RAIL_STATUS_MS);
+  }, [railTimedNow]);
   // What the next ride screen says once it is up (rideStart.note); a ride started any other way says nothing.
   const rideNote = useRef("");
   // What the ride shows on the map (RideMode onView). The rider's position, a GPS fix about once a second, goes to its own
@@ -6033,6 +6080,7 @@ export function App() {
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
         rail={rail}
         railClosedReason={railClosedReason}
+        railStatusNow={railStatusNow}
         railBadges={railBadgesOf}
         massCapacity={massMap}
         massArea={isMassRide(preset)}

@@ -321,7 +321,7 @@ export function keepLastRide<A>(request: Omit<KeepRequest<A>, "line">): Promise<
 let lastRideSavedAt = 0;
 
 /**
- * End ride in the installed app (RideMode, as the ride's screen goes): the hand-on for clearCorridor,
+ * End ride in the installed app (RideMode, as the ride's screen goes): the hand-on for endCorridor,
  * bound now to this ride's last-ride record. Run later in the clears' chain, it adopts the ride's
  * corridor only if that record is still this ride's, never into a next ride's that got there first.
  */

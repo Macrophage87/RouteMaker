@@ -169,7 +169,6 @@ import {
   closureFeatures,
   closuresOf,
   closuresUnderNames,
-  AREA_POLL_MS,
   areaClosuresAsk,
   closuresKey,
   viewInside,
@@ -191,6 +190,7 @@ import { ViaHold } from "./lib/viaHold.ts";
 import { planLegLines, routeDrawnLines } from "./lib/planLegs.ts";
 import { browserCompassEnv, browserCompassLifetime, watchCompassAwhile } from "./lib/compassHeading.ts";
 import { t } from "./lib/i18n.ts";
+import { onSharedTick } from "./lib/sharedTick.ts";
 
 
 export type StressAvailability = "checking" | "available" | "unavailable";
@@ -316,6 +316,8 @@ interface Props {
   rail: RailVisibility;
   /** Why a station is closed all day with the toggles as they are, or null (railClosures.ts). */
   railClosedReason?: (station: Station) => string | null;
+  /** A station's card opened: the rail status asked now if stale, answered as the closed words (App, railInteraction.ts). */
+  railStatusNow?: () => Promise<((station: Station) => string | null) | null>;
   /** WMATA's badges on a station: an alert names it, an elevator there is out (railClosures.ts). */
   railBadges?: (station: Station) => StationBadges | null;
   /**
@@ -1673,6 +1675,7 @@ export function MapView(props: Props) {
         pennColour: PENN_COLOUR,
         visibility: () => callbacks.current.rail,
         closedReason: (station) => callbacks.current.railClosedReason?.(station) ?? null,
+        statusNow: () => callbacks.current.railStatusNow?.() ?? Promise.resolve(null),
         pointCount: () => callbacks.current.points.length,
         loop: () => callbacks.current.loopVias === true,
         onStationPoint: (role, point, place) => callbacks.current.onStationPoint(role, point, place),
@@ -2372,12 +2375,14 @@ export function MapView(props: Props) {
     };
     map.on("moveend", onMove);
     document.addEventListener("visibilitychange", onVisible);
-    const poll = window.setInterval(() => void refresh(true), AREA_POLL_MS);
+    // On the page's shared 5-minute boundaries (AREA_POLL_MS), with the weather and rail checks, so the radio wakes once
+    // (the owner, 2026-11-01: battery audit); none while hidden, and onVisible asks again on return.
+    const offPoll = onSharedTick(() => void refresh(true));
     void refresh(true);
     return () => {
       controller?.abort();
       window.clearTimeout(settle);
-      window.clearInterval(poll);
+      offPoll();
       map.off("moveend", onMove);
       document.removeEventListener("visibilitychange", onVisible);
     };

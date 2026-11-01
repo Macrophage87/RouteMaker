@@ -93,10 +93,12 @@
         try {
           // Never the plugin's own permission request (1.2.26 starts its foreground service before the
           // answer, which Android 14+ refuses, so the first ride would stop at the screen lock): asked above.
+          // A fix every 4 m moved, not every second standing still, as the site's own (lib/nativeShell.ts
+          // NATIVE_DISTANCE_FILTER_M; the owner, 2026-11-01: battery audit); high accuracy kept.
           callbackId = cap.nativeCallback(
             "BackgroundGeolocation",
             "addWatcher",
-            { backgroundTitle: TITLE, backgroundMessage: MESSAGE, requestPermissions: false, stale: false, distanceFilter: 0 },
+            { backgroundTitle: TITLE, backgroundMessage: MESSAGE, requestPermissions: false, stale: false, distanceFilter: 4 },
             function (data, err) {
               if (nativeWatches[id] !== callbackId) return;
               if (err || !data) {
