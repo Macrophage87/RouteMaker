@@ -5226,13 +5226,17 @@ row keyed `closures` (`src/core/closure_sources.py`):
 
 | Source | URL | Every | Stale after | Dropped after | Becomes |
 |---|---|---|---|---|---|
-| DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Flagged only (a road *may* be closed): never routed around (Go, Plan, MCP), no warning or cue; shown only by Plan's DC permits layer (off by default) |
+| DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Flagged only (a road *may* be closed): never routed around (Go, Plan, MCP), no warning or cue; shown only by Plan's Potential closures layer (off by default) |
 | MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text |
 | AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 15 min | 45 min | 3 h | As MPD; only traffic and road items are kept, every other item is dropped unread |
 | NPS alerts (`nps`) | `developer.nps.gov/api/v1/alerts` | 30 min | 90 min | 6 h | Park-level "Check before you go" notices (rocr, nama, gwmp, choh, anac), never closures |
+| DDOT ProTrack+ projects (`protrack`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/ProTrackPlusViews/MapServer/1/query` | 6 h | 24 h | 3 days | Potential closures, as DDOT's permits: "Under Construction" and not past the estimated completion; sidewalk, alley, streetlight and green infrastructure work left out |
+| DC Water work zones (`dcwater`) | `geo.dcwater.com/.../Viewer/ActiveWorkZonesPublic/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures; each zone's middle placed on its block as a permit's is |
+| WSSC Water mains (`wssc`) | `gisportal.wsscwater.com/.../IYN/Water_Construction1/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures along the pipe, "Construction Started" only; the layer's contact names, phones and emails are never asked for |
 
 NPS needs `NPS_API_KEY` in the worker's environment (sent as the `X-Api-Key` header);
-without it NPS is simply not read. The host needs egress to the four hosts (PLAYBOOK §0).
+without it NPS is simply not read. The host needs egress to the four hosts, and (v0.17.0) to
+`geo.dcwater.com` and `gisportal.wsscwater.com` for planned work (PLAYBOOK §0).
 
 **First checks on a new host.** The readers were built on saved sample pages
 (`tests/data/closures`), not on live downloads, so after the first run:
@@ -5263,7 +5267,11 @@ Closures follow the ride time (the When setting). Only closures known to be in e
 reroute (Go, Plan and MCP alike). One with no reliable end, on a ride more than 2 hours
 away, reads "may still apply" and does not reroute. DDOT TOPS permits are never routed
 around anywhere and give no warning or cue, not even when the TOPS source cannot be
-read; Plan's DC permits layer (off by default) is the only place they show. A rider's "Route
+read; Plan's Potential closures layer (off by default) is the only place they show. Since
+v0.17.0 it also shows planned work (DDOT ProTrack+, DC Water, WSSC Water). Each potential
+closure is a dashed line, and its marker is a barrier on a dashed ring with a question mark.
+A planned-work source that fails is logged in the run's line but never fails the run; the
+host needs egress to its two new hosts before v0.17.0 deploys, or that layer stays empty. A rider's "Route
 through anyway" is per plan and session only (`closure_bypass` on `/api/route`, `bypass`
 on `/api/closures/check`); nothing about it is stored.
 

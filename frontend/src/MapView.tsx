@@ -2401,10 +2401,12 @@ export function MapView(props: Props) {
       const item = group[0];
       // The spot's worst: red over amber, a closure still in the way over one routed through.
       const shown = group.find((i) => !i.bypassed && i.severity === "red") ?? group.find((i) => !i.bypassed) ?? item;
+      // A spot holding only potential closures (Plan's Potential closures layer) gets its own, lighter barrier.
+      const possible = group.every((i) => i.effect === "possible");
       const element = button(
-        `closure-marker closure-${shown.bypassed ? "bypassed" : shown.severity}`,
+        `closure-marker closure-${shown.bypassed ? "bypassed" : shown.severity}${possible ? " closure-possible" : ""}`,
         closuresMarkerName(group),
-        shown.bypassed ? bypassedMarkSvg() : barrierSvg(shown.severity),
+        shown.bypassed ? bypassedMarkSvg() : possible ? possibleBarrierSvg(shown.severity) : barrierSvg(shown.severity),
         group.length,
       );
       element.addEventListener("click", (event) => {
@@ -3104,6 +3106,23 @@ function barrierSvg(severity: "red" | "amber"): string {
     `<rect x="5" y="9" width="18" height="7" rx="1" fill="${colour}"/>` +
     '<path d="M8 9l-3 7M13 9l-3 7M18 9l-3 7M23 9l-3 7" stroke="#ffffff" stroke-width="2"/>' +
     `<path d="M8 16v6M20 16v6" stroke="${colour}" stroke-width="2"/>` +
+    "</svg>"
+  );
+}
+
+/**
+ * A potential closure (a permit or planned work that may close the road some day in its window): the same barrier,
+ * but on a dashed ring with a question mark, so it never reads as a closure in force (Stephen, 2026-11-01).
+ */
+function possibleBarrierSvg(severity: "red" | "amber"): string {
+  const colour = severity === "amber" ? LANE_AMBER : CLOSED_RED;
+  return (
+    '<svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true" focusable="false">' +
+    `<circle cx="14" cy="14" r="12.5" fill="#ffffff" stroke="${colour}" stroke-width="2" stroke-dasharray="4 3"/>` +
+    `<rect x="4.5" y="11" width="12" height="6" rx="1" fill="${colour}"/>` +
+    '<path d="M8 11l-2.5 6M12 11l-2.5 6M16 11l-2 5" stroke="#ffffff" stroke-width="1.6"/>' +
+    `<path d="M7.5 17v4.5M14 17v4.5" stroke="${colour}" stroke-width="2"/>` +
+    `<text x="20.5" y="17" text-anchor="middle" font-size="10" font-weight="700" font-family="Atkinson Hyperlegible, sans-serif" fill="${colour}">?</text>` +
     "</svg>"
   );
 }
