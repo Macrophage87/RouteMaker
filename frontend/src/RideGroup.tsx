@@ -165,6 +165,8 @@ export interface RideGroupProps {
 }
 
 const TICK_MS = 5000;
+/** No leader's route: one array, so the dots' drawing sees no change between renders. */
+const NO_ROUTE: LonLat[] = [];
 
 function visible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
@@ -521,7 +523,8 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
   );
   previousDots.current = dots;
   // An alert lasts 2 minutes (core.ride_presence.ALERT_TTL_S: nothing stays on the server longer).
-  const alerts = read.alerts.filter((a) => a.age_s + sinceS <= 120);
+  // Kept while its inputs are, so the map's dots are not drawn again at every render.
+  const alerts = useMemo(() => read.alerts.filter((a) => a.age_s + sinceS <= 120), [read.alerts, sinceS]);
   // The key: the ride leader under "Ride leader" only, the others by role (lib/rideGroup.ts roleKey).
   const roleRows = roleKey(dots);
   // Everyone on the ride, the leader and this rider (where the others see them) included.
@@ -552,7 +555,7 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
   // The leader's phone's own route and path (sent every 2 minutes), else the path this page saw.
   const sentPath = followKey ? (read.leaderPath ?? null) : null;
   const shownTrail = sentPath && sentPath.trail.length >= trail.length ? sentPath.trail : trail;
-  const shownRoute = sentPath?.route ?? [];
+  const shownRoute = sentPath?.route ?? NO_ROUTE;
   useEffect(() => {
     if (!leaderAt) return;
     setTrail((t) => extendTrail(t, leaderAt));
@@ -580,11 +583,12 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
     // Tried again once the leader shows, where the map was not there at first.
   }, [getMap, followKey, leaderSpot !== ""]);
 
-  // The map: dots and pins, drawn again as they age; a tap on a dot says its age.
+  // The map: dots and pins, drawn again as they age (sinceS) or change; a tap on a dot says its age. Not at every
+  // render: this page renders at each GPS fix, and each draw is four GeoJSON updates (the owner, 2026-11-01: battery audit).
+  const dotsMap = getMap();
   useEffect(() => {
-    const map = getMap();
-    if (map) showRideDots(map, dots, alerts, sinceS, Math.min(3, Math.max(1, Math.ceil(window.devicePixelRatio || 1))), shownTrail, shownRoute);
-  });
+    if (dotsMap) showRideDots(dotsMap, dots, alerts, sinceS, Math.min(3, Math.max(1, Math.ceil(window.devicePixelRatio || 1))), shownTrail, shownRoute);
+  }, [dotsMap, dots, alerts, sinceS, shownTrail, shownRoute]);
   useEffect(() => {
     const map = getMap();
     if (!map) return;

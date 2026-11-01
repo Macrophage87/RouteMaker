@@ -836,3 +836,10 @@ test("a rider counts themself only while the server has their dot, on this ride 
   assert.equal(meCounted(sent, "r1", false, t + 5_000), false, "sharing off");
   assert.equal(meCounted(sent, null, true, t + 5_000), false);
 });
+
+test("the group's dots are drawn again only when they, the alerts, their age or the leader's path change, not at every GPS fix (battery audit)", () => {
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  assert.match(group, /\}, \[dotsMap, dots, alerts, sinceS, shownTrail, shownRoute\]\);/);
+  assert.match(group, /const alerts = useMemo\(\(\) => read\.alerts\.filter\(\(a\) => a\.age_s \+ sinceS <= 120\), \[read\.alerts, sinceS\]\);/);
+  assert.match(group, /const shownRoute = sentPath\?\.route \?\? NO_ROUTE;/);
+});
