@@ -2779,3 +2779,32 @@ class TestParkingWidthBesideABikeLane:
         narrow = self.tier(1.83, 0.5)
         wide = self.tier(1.83, 2.44)
         assert wide <= narrow
+
+
+# The 8 Baltimore City watershed fire roads that stopped the v0.16.0 rebuild (2026-10-31): the
+# off-road-path rule made them LTS 1 while the floor check read `motorcar=private` as open to
+# cars. The owner picked "Exempt car-free roads from floor".
+WATERSHED_FIRE_ROAD = {
+    "highway": "track",
+    "tracktype": "grade4",
+    "surface": "dirt",
+    "motor_vehicle": "no",
+    "motorcar": "private",
+}
+
+
+def test_a_rural_road_the_path_rule_made_car_free_keeps_lts_1():
+    from routemaker.facility import Facility, facility
+    from routemaker.stress import Stress, StressResult, rural_floor, rural_floor_applies
+
+    assert facility(WATERSHED_FIRE_ROAD) is Facility.PATH
+    assert not rural_floor_applies(WATERSHED_FIRE_ROAD, urban=False)
+    path = StressResult(tier=Stress.LTS1, rule="closed to motor traffic: an off-road path")
+    assert rural_floor(path, WATERSHED_FIRE_ROAD, urban=False).tier is Stress.LTS1
+
+
+def test_a_private_rural_road_still_open_to_cars_keeps_the_floor():
+    from routemaker.stress import rural_floor_applies
+
+    tags = {key: value for key, value in WATERSHED_FIRE_ROAD.items() if key != "motor_vehicle"}
+    assert rural_floor_applies(tags, urban=False)

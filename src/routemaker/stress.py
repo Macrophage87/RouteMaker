@@ -100,7 +100,7 @@ from enum import IntEnum
 
 from . import surfaces
 from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY, trail_kind
-from .facility import USE_SIDEPATH, is_use_sidepath_road
+from .facility import USE_SIDEPATH, closed_to_motor_traffic, is_use_sidepath_road
 from .geo import Point, haversine
 from .shape import sinuosity
 from .tags import (
@@ -399,8 +399,9 @@ NARROW_ROAD_RULE = "narrow rural road"
 # roads. LTS1 is something kids can go on." A rural way open to cars is LTS 2 at
 # least, whatever the speed table or an agency says (`rural_floor`, applied by
 # the rebuild after classification). Trails and paths, roads with a separated
-# track, and roads closed to cars or open only to farm and forestry traffic
-# (`MOTOR_CLOSED_VALUES`) are exempt.
+# track, roads closed to cars or open only to farm and forestry traffic
+# (`MOTOR_CLOSED_VALUES`), and roads the facility rule reads as off-road paths
+# (`facility.closed_to_motor_traffic`) are exempt.
 RURAL_FLOOR_RULE = "rural road floor"
 
 # Volume thresholds in vehicles per day, as a modifier on two-lane roads only.
@@ -1019,10 +1020,17 @@ def rural_floor_applies(tags: dict[str, str], urban: bool) -> bool:
     """The owner's rural floor (`RURAL_FLOOR_RULE`): a rural way open to cars.
     A trail-class way, a road with a separated track alongside (the rider is not
     in the traffic), or one closed to cars or open only to farm and forestry
-    traffic, is exempt."""
+    traffic, is exempt. So is a road the facility rule already reads as an off-road path
+    because it is closed to motor traffic (`facility.closed_to_motor_traffic`, rated LTS 1 by
+    `pipeline.run.car_free_tier_1`), even where a more specific key still lets private cars
+    in: the Baltimore City watershed fire roads (`motor_vehicle=no` + `motorcar=private`)
+    stopped the v0.16.0 rebuild when the two rules read them differently (the owner,
+    2026-10-31, picked "Exempt car-free roads from floor")."""
     if urban or tags.get("highway", "") in TRAIL_CLASS:
         return False
     if cycleway_values(tags) & SEPARATED_CYCLEWAY:
+        return False
+    if closed_to_motor_traffic(tags):
         return False
     restriction = motor_restriction(tags)
     return restriction is None or restriction[0] > Stress.LTS1
