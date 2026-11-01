@@ -600,22 +600,23 @@ in the database still names it: delete that row in the admin when loading the fi
   one-way, or with other than two lanes. Stress rows, hidden, with fingerprints. Load like
   the others; takes effect on the next rebuild.
 
-- `2026-11-01-owner-dc-rating-review.json`: the whole-DC rating review, 4,708 ways. Every
-  block in DDOT's 2020 LTS layer was read off beta's road panel (v0.16.0 map). Each road
-  was then rated from all the data held for it, and two skeptics, one arguing higher and
+- `2026-11-01-owner-dc-rating-review.json`: the whole-DC rating review, 20,537 ways, one row
+  for every DC way whose reviewed level differs from the build's (v0.16.0 map). Every DC road
+  was grouped with others like it (same kind, speed, lanes, count band, facility, ratings),
+  each group rated from all the data held for it, and two skeptics, one arguing higher and
   one lower, tried to refute each rating. The owner, 2026-11-01: "use it's best judgement
   where there are disagreements. Don't treat DC ratings or the formula as authoritative.
   However, if there's disagreement that's a flag for scrutiny." Examples: Crittenden St NW
   (DDOT 4, formula 1, no count, 20 mph, one lane each way) goes to 2; Franklin St NE,
-  Girard St to Lincoln Rd (DDOT 4, formula 2, no count) goes to 3. Most changes are half
-  steps. DC alleys and service roads go from 1 to 1.5 for delivery trucks and blind exits,
-  while quiet residential and unclassified streets at 1 stay at 1 (the owner's pick,
-  2026-11-01). Rows carry the rider-facing note as `public_note`, shown as the road panel's
-  Why line, except 36 rows with no agency rating to differ from, which are hidden. Each note quotes DDOT's
-  published 2020 level for the way (or says it varies along it) and the way's own count from
-  the road panel, never another street's. Left out: blocks no skeptic reviewed (392), any
-  "unsure" verdict (71), quiet streets the review lifted from 1 (37), ways already set by
-  another file here (45, including East Capitol St NE way 1525646203, rated as an ordinary
-  street by OWNER-DECISIONS 445), and 12 ways whose level rested on another street's count.
-  76 ways here are in the 2026-09-30 file's `retire` list; that retires only its own exact
-  rows, so these load. No fingerprints: an OSM split drops the row for the new piece. Load like the others; takes effect on the next rebuild.
+  Girard St to Lincoln Rd (DDOT 4, formula 2, no count) goes to 3. DC alleys and service
+  roads (driveways and parking aisles included) go from 1 to 1.5 for delivery trucks and
+  blind exits, about 14,300 ways; quiet residential and unclassified streets at 1 stay at 1
+  (the owner's pick, 2026-11-01). Each row's `public_note` is shown as the road panel's Why
+  line; it quotes DDOT's published 2020 level for that way (or says it varies along it) and
+  the way's own count, never another street's; 382 rows with nothing to quote are hidden.
+  Left out: groups a skeptic was unsure about (447 ways), quiet streets the review lifted
+  from 1 (1,474), ways another file here sets (7; East Capitol St NE way 1525646203 is rated
+  as an ordinary street by OWNER-DECISIONS 445), and 21 ways whose level rested on other
+  streets' counts. A first version (4,708 ways, only those under a DDOT block reading) was
+  merged unloaded and is replaced by this one. No fingerprints: an OSM split drops the row
+  for the new piece. Load like the others; takes effect on the next rebuild.
