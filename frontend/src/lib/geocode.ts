@@ -862,6 +862,9 @@ export function placeType(place: Pick<Place, "kind" | "osm_key" | "osm_value">):
   const value = place.osm_value ?? "";
   // A place read from a pasted or shared map link (lib/sharedLocation.ts).
   if (place.kind === "shared") return "From a map link";
+  // Typed in the box (lib/sharedLocation.ts): coordinates, or a plus code (lib/plusCode.ts).
+  if (place.kind === "coordinates") return "Coordinates";
+  if (place.kind === "pluscode") return "Plus code";
   if (key === "railway" && (value === "station" || value === "halt")) return "Rail station";
   if (key === "public_transport" && value === "station") return "Station";
   if (key === "railway" && value === "subway_entrance") return "Station entrance";
