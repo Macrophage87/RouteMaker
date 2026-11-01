@@ -202,3 +202,180 @@ def test_a_client_with_its_routing_slots_taken_is_429(client, router) -> None:
 def test_it_is_in_the_openapi_schema(client) -> None:
     operation = client.get("/api/openapi.json").json()["paths"][PATH]["post"]
     assert {"200", "400", "422", "429", "503"} <= set(operation["responses"])
+
+
+# A track snapped round a corner's crosswalks (Stephen 2026-11-01, "several phantom LTS4 unnamed
+# roads"): south along one street to the crosswalk's node 7 m before the corner, round the
+# corner on two crosswalk edges, then west along the other street (synthetic).
+LAT = 38.9
+ON_SOUTH = [(-77.0, LAT + 0.001), (-77.0, LAT + 0.000063)]
+ROUND = [(-77.00008, LAT + 0.00006)]
+ON_WEST = [(-77.00008, LAT), (-77.001, LAT)]
+TANGLED = ON_SOUTH + ROUND + ON_WEST
+CORNER = (-77.0, LAT)
+
+
+def edge(use: str, metres: float, begin: int, end: int) -> dict:
+    return {
+        "use": use,
+        "length": metres / 1000.0,
+        "begin_shape_index": begin,
+        "end_shape_index": end,
+    }
+
+
+TANGLED_EDGES = [
+    edge("road", 104.0, 0, 1),
+    edge("pedestrian_crossing", 7.0, 1, 2),
+    edge("pedestrian_crossing", 6.0, 2, 3),
+    edge("road", 80.0, 3, 4),
+]
+
+
+class TestUntangle:
+    def test_a_corner_cut_over_the_crosswalks_goes_back_on_the_road(self) -> None:
+        asked = []
+
+        def road(a, b):
+            asked.append((a, b))
+            return [a, CORNER, b]
+
+        line = map_match.untangle(TANGLED, TANGLED_EDGES, road)
+        assert asked == [(ON_SOUTH[1], ON_WEST[0])]
+        assert line == [*ON_SOUTH, CORNER, *ON_WEST]
+
+    def test_a_loop_back_to_where_it_left_is_cut_out(self) -> None:
+        out_and_back = [
+            (-77.0, LAT + 0.001),
+            CORNER,
+            (-77.00008, LAT),
+            CORNER,
+            (-77.0, LAT - 0.001),
+        ]
+        edges = [
+            edge("road", 111.0, 0, 1),
+            edge("pedestrian_crossing", 7.0, 1, 2),
+            edge("pedestrian_crossing", 7.0, 2, 3),
+            edge("road", 111.0, 3, 4),
+        ]
+        line = map_match.untangle(out_and_back, edges, lambda a, b: pytest.fail("no route"))
+        assert line == [(-77.0, LAT + 0.001), CORNER, (-77.0, LAT - 0.001)]
+
+    def test_scraps_of_road_between_crosswalks_go_with_them(self) -> None:
+        # A rider waiting at the corner: crosswalk, a few metres of road, crosswalk again.
+        edges = [
+            edge("road", 104.0, 0, 1),
+            edge("pedestrian_crossing", 7.0, 1, 2),
+            edge("road", 7.0, 2, 2),
+            edge("sidewalk", 6.0, 2, 3),
+            edge("road", 80.0, 3, 4),
+        ]
+        assert map_match._tangles(edges) == [(1, 3)]
+
+    def test_a_real_ride_on_a_sidewalk_or_onto_a_path_is_kept(self) -> None:
+        def never(a, b):
+            raise AssertionError("not asked")
+
+        # Longer than FOOT_MAX_M of sidewalk: ridden on purpose.
+        long_walk = [*TANGLED_EDGES]
+        long_walk[1] = edge("sidewalk", map_match.FOOT_MAX_M + 1.0, 1, 2)
+        assert map_match.untangle(TANGLED, long_walk, never) == TANGLED
+        # A crossing at the track's end (onto a path, or where it starts) has no road after it.
+        assert map_match._tangles(TANGLED_EDGES[:3]) == []
+
+    def test_a_way_back_much_longer_than_the_tangle_or_none_keeps_it(self) -> None:
+        far = [ON_SOUTH[1], (-77.0, LAT + 0.01), ON_WEST[0]]
+        assert map_match.untangle(TANGLED, TANGLED_EDGES, lambda a, b: far) == TANGLED
+        assert map_match.untangle(TANGLED, TANGLED_EDGES, lambda a, b: None) == TANGLED
+        # A tangle whose shape indexes run past the line changes nothing.
+        good = [ON_SOUTH[1], CORNER, ON_WEST[0]]
+        stale = [*TANGLED_EDGES[:2], edge("pedestrian_crossing", 6.0, 2, 9), TANGLED_EDGES[3]]
+        assert map_match.untangle(TANGLED, stale, lambda a, b: good) == TANGLED
+
+    def test_two_tangles_in_one_track_are_both_put_back(self) -> None:
+        # TANGLED, then on along the second street and round a second corner the same way.
+        on, cut, off = (
+            (-77.00108, LAT - 0.00006),
+            (-77.00116, LAT - 0.00012),
+            (-77.0012, LAT - 0.001),
+        )
+        line = [*TANGLED, on, cut, off]
+        edges = [
+            *TANGLED_EDGES,
+            edge("road", 8.0, 4, 5),
+            edge("pedestrian_crossing", 7.0, 5, 6),
+            edge("road", 100.0, 6, 7),
+        ]
+        bend = (-77.0012, LAT - 0.00006)
+
+        def road(a, b):
+            return [a, CORNER if a == ON_SOUTH[1] else bend, b]
+
+        assert map_match.untangle(line, edges, road) == [
+            *ON_SOUTH,
+            CORNER,
+            *ON_WEST,
+            on,
+            bend,
+            cut,
+            off,
+        ]
+
+    def test_a_trail_crossing_a_street_is_ridden_as_mapped(self) -> None:
+        trail = [edge("cycleway", 104.0, 0, 1), *TANGLED_EDGES[1:3], edge("cycleway", 80.0, 3, 4)]
+        assert map_match._tangles(trail) == []
+
+
+@pytest.mark.django_db
+def test_a_route_the_router_refuses_keeps_the_tangle(client, router) -> None:
+    matched = {
+        "shape": encode_polyline6(TANGLED),
+        "matched_points": [{"type": "matched", "lon": 0, "lat": 0}] * 4,
+        "edges": TANGLED_EDGES,
+    }
+    router(FakeRouter({"trace_attributes": matched, "route": routing.RouterRefused(400, 442, "")}))
+    response = post(client, {"points": TRACK, "preset": "default"})
+    assert response.status_code == 200
+    assert response.json()["line"] == [[round(x, 6), round(y, 6)] for x, y in TANGLED]
+
+
+@pytest.mark.django_db
+def test_after_a_twin_falls_back_the_way_back_is_routed_on_the_standard_graph(
+    client, router
+) -> None:
+    matched = {
+        "shape": encode_polyline6(TANGLED),
+        "matched_points": [{"type": "matched", "lon": 0, "lat": 0}] * 4,
+        "edges": TANGLED_EDGES,
+    }
+    road = {"trip": {"legs": [{"shape": encode_polyline6([ON_SOUTH[1], CORNER, ON_WEST[0]])}]}}
+    fake = router(
+        FakeRouter(
+            {"trace_attributes": [routing.RouterUnavailable("down"), matched], "route": road}
+        )
+    )
+    response = post(client, {"points": TRACK, "preset": "gravel"})
+    assert response.status_code == 200
+    urls = [url for url, _ in fake.calls]
+    assert urls[2].startswith(settings.VALHALLA_UPSTREAMS["standard"])
+
+
+@pytest.mark.django_db
+def test_the_endpoint_untangles_on_the_ride_types_graph(client, router) -> None:
+    matched = {
+        "shape": encode_polyline6(TANGLED),
+        "matched_points": [{"type": "matched", "lon": 0, "lat": 0}] * 4,
+        "edges": TANGLED_EDGES,
+    }
+    road = {"trip": {"legs": [{"shape": encode_polyline6([ON_SOUTH[1], CORNER, ON_WEST[0]])}]}}
+    fake = router(FakeRouter({"trace_attributes": matched, "route": road}))
+    response = post(client, {"points": TRACK, "preset": "default"})
+    assert response.status_code == 200
+    expected = [[round(lon, 6), round(lat, 6)] for lon, lat in [*ON_SOUTH, CORNER, *ON_WEST]]
+    assert response.json()["line"] == expected
+    assert fake.endpoints() == ["trace_attributes", "route"]
+    payload = fake.calls[1][1]
+    assert payload["costing_options"] == presets.costing("default")
+    asked = [(p["lon"], p["lat"]) for p in payload["locations"]]
+    assert asked == [pytest.approx(ON_SOUTH[1]), pytest.approx(ON_WEST[0])]
+    assert "edge.use" in fake.calls[0][1]["filters"]["attributes"]

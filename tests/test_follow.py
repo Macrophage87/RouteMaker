@@ -107,6 +107,72 @@ class TestTheLine:
         assert [p.get("type") for p in asked["shape"]] == [None, None, "break_through", None, None]
 
 
+# A snapped line round a plain corner, as the router draws it: a vertex at every node, the
+# crosswalks' nodes on the road 7 m either side of the junction among them. South along one
+# street, then west along the other (synthetic: 1e-5 degrees is about 1.1 m north-south and
+# 0.87 m east-west at this latitude).
+CORNER = (-77.0, LAT)
+SOUTH_ALONG = [(-77.0, LAT + 0.0011), (-77.0, LAT + 0.0005), (-77.0, LAT + 0.000063), CORNER]
+WEST_ALONG = [(-77.00008, LAT), (-77.0006, LAT), (-77.0012, LAT)]
+ROUND_THE_CORNER = SOUTH_ALONG + WEST_ALONG
+
+
+class TestCorners:
+    """Stephen 2026-11-01, riding an opened file: "There are also several phantom LTS4 unnamed
+    roads", red pieces and a "Right, then left, then right" at two plain corners. The matcher
+    left each corner's vertex unmatched (within 10 m of the crosswalk's node before it) and
+    joined the two crosswalk nodes by the shortest path, the crosswalks round the corner."""
+
+    def test_the_vertex_just_before_a_corner_goes_so_the_corner_itself_is_matched(self) -> None:
+        line, keep = follow.clear_corners(ROUND_THE_CORNER, [])
+        # The crosswalk's node 7 m before the corner goes; the corner, the vertices further
+        # back and the ends stay. The one 7 m after it stays: the corner is matched by then.
+        assert line == [*SOUTH_ALONG[:2], CORNER, *WEST_ALONG]
+        assert keep == []
+        # Nothing between the corner and the vertex before it is near the matcher's skip.
+        assert follow.haversine(follow.Point(*line[1]), follow.Point(*CORNER)) > (
+            follow.MATCH_SKIP_M
+        )
+
+    def test_a_corner_vertex_doubled_or_with_a_stray_beside_it_is_still_a_corner(self) -> None:
+        # Review of #878: a matched shape can repeat a vertex where two pieces join.
+        doubled = [*SOUTH_ALONG, CORNER, *WEST_ALONG]
+        line, _ = follow.clear_corners(doubled, [])
+        assert line == [*SOUTH_ALONG[:2], CORNER, CORNER, *WEST_ALONG]
+        stray = [*SOUTH_ALONG[:3], (-77.0, LAT + 0.000004), CORNER, *WEST_ALONG]
+        line, _ = follow.clear_corners(stray, [])
+        assert SOUTH_ALONG[2] not in line and CORNER in line
+
+    def test_a_straight_line_and_a_gentle_bend_are_left_as_they_are(self) -> None:
+        assert follow.clear_corners(SOUTH_ALONG, [1]) == (SOUTH_ALONG, [1])
+        # A bend of about 20 degrees is not a corner.
+        bend = [(-77.0, LAT + 0.001), (-77.0, LAT + 0.00006), CORNER, (-77.00046, LAT - 0.001)]
+        assert follow.clear_corners(bend, []) == (bend, [])
+
+    def test_a_plans_point_before_a_corner_stays_and_its_index_moves_with_the_line(self) -> None:
+        # The plan's point at the crosswalk's node stays (a leg ends there); the vertex
+        # before it is outside the cleared stretch anyway.
+        line, keep = follow.clear_corners(ROUND_THE_CORNER, [2, 5])
+        assert line == ROUND_THE_CORNER and keep == [2, 5]
+        # A point further on keeps its vertex, at its new index once the crosswalk node goes.
+        line, keep = follow.clear_corners(ROUND_THE_CORNER, [5])
+        assert keep == [4] and line[4] == WEST_ALONG[1]
+
+    def test_the_trace_asks_for_the_corner_and_not_the_vertex_before_it(self) -> None:
+        points = [ROUND_THE_CORNER[0], WEST_ALONG[1], ROUND_THE_CORNER[-1]]
+        asked = follow.request_for(ROUND_THE_CORNER, points, {"costing_options": {}})
+        shape = [(p["lon"], p["lat"]) for p in asked["shape"]]
+        assert shape == [*SOUTH_ALONG[:2], CORNER, *WEST_ALONG]
+        assert [p.get("type") for p in asked["shape"]] == [
+            None,
+            None,
+            None,
+            None,
+            "break_through",
+            None,
+        ]
+
+
 class TestJoining:
     def test_the_routers_way_across_a_gap_keeps_the_ride_types_rules(self, monkeypatch) -> None:
         calls = []
