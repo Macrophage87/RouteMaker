@@ -48,6 +48,9 @@ class Net:
         self.asked.append((url, headers))
         if any(f in url for f in self.fail):
             raise workzones.FeedError("HTTP 503")
+        if any(host in url for host in ("ProTrackPlusViews", "geo.dcwater.com", "wsscwater.com")):
+            # Planned work (routemaker.planned_work; tests/test_planned_work.py): none here.
+            return b'{"type": "FeatureCollection", "features": []}'
         if "maps2.dcgis.dc.gov" in url:
             return (DATA / "tops-permits.geojson").read_bytes()
         if url == sources.URLS["mpd"]:
@@ -207,7 +210,14 @@ def test_the_snapshot_holds_the_work_zones_and_the_dc_closures_side_by_side(monk
     monkeypatch.setattr(workzones, "_now", lambda: NOW)
     sources.refresh(Net(), no_sleep, lambda: NOW, Placer())
     found = workzones.snapshot()
-    assert found.status == {"alertdc": "current", "dc": "current", "mpd": "current"}
+    assert found.status == {
+        "alertdc": "current",
+        "dc": "current",
+        "mpd": "current",
+        "protrack": "current",
+        "dcwater": "current",
+        "wssc": "current",
+    }
     assert {z.source for z in found.zones} == {"dc", "mpd", "alertdc"}
     # The parks' deer-management notices (routemaker.deer_closures) come from the clock, not a feed.
     assert {n.source for n in found.notices if n.source not in deer_closures.SOURCES} == {
@@ -218,7 +228,15 @@ def test_the_snapshot_holds_the_work_zones_and_the_dc_closures_side_by_side(monk
     status = sources.load(
         BikeshareFeedCache.objects.get(key=sources.KEY).payload, NOW + timedelta(hours=7)
     )[2]
-    assert status == {"alertdc": "unavailable", "dc": "stale", "mpd": "unavailable"}
+    # Planned work is kept 3 days (core.closure_sources.DROP_AFTER_S), so 7 hours on it is current.
+    assert status == {
+        "alertdc": "unavailable",
+        "dc": "stale",
+        "mpd": "unavailable",
+        "protrack": "current",
+        "dcwater": "current",
+        "wssc": "current",
+    }
 
 
 # --- The closure check (the dialog's POST /api/closures/check), fed by the DC sources --

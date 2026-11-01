@@ -2229,7 +2229,19 @@ class WorkZoneOut(Schema):
     to_m: int
     start: str | None
     end: str | None
-    source: Literal["md", "va", "dc", "mpd", "alertdc", "reviewer", "ddot_advisory", "purple_line"]
+    source: Literal[
+        "md",
+        "va",
+        "dc",
+        "mpd",
+        "alertdc",
+        "reviewer",
+        "ddot_advisory",
+        "purple_line",
+        "protrack",
+        "dcwater",
+        "wssc",
+    ]
     warning: bool = Field(description="True for a closure the rider may meet: shown in red.")
     text: str = Field(description="The heads-up as the description words it.")
     bypassed: bool = Field(default=False, description="Routed through: the rider's choice.")
@@ -2248,7 +2260,19 @@ class ClosureOut(Schema):
     """A closure drawn on the route's map, and its card (v0.7.0, "Closures on the map")."""
 
     id: str
-    source: Literal["md", "va", "dc", "mpd", "alertdc", "reviewer", "ddot_advisory", "purple_line"]
+    source: Literal[
+        "md",
+        "va",
+        "dc",
+        "mpd",
+        "alertdc",
+        "reviewer",
+        "ddot_advisory",
+        "purple_line",
+        "protrack",
+        "dcwater",
+        "wssc",
+    ]
     source_name: str = Field(
         description='The source as the card names it: "MPD traffic advisory, Oct 15".'
     )

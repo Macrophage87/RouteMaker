@@ -661,6 +661,26 @@ sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has
 - Publisher: U.S. National Park Service.
 - Terms: NPS API terms of service (public domain U.S. government data). Not legal advice.
 
+### Planned work: Potential closures (v0.17.0)
+
+Plan's Potential closures layer (off by default; `routemaker.planned_work`), beside DDOT's
+permits: never routed round, never in a route's words, a cue or the closure check.
+
+- **DDOT capital projects (ProTrack+)**. Credit: `DDOT capital projects (ProTrack+, CC BY 4.0)`.
+  Layer: `maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/ProTrackPlusViews/MapServer/1`, read every 6
+  hours. Publisher: District Department of Transportation, via
+  [Open Data DC](https://opendata.dc.gov/). Terms: CC BY 4.0 (DC open data). Not legal advice.
+- **DC Water active work zones**. Credit: `DC Water active work zones`. Layer:
+  `geo.dcwater.com/arcgis/rest/services/Viewer/ActiveWorkZonesPublic/MapServer/0`, read every 6
+  hours. Publisher: DC Water. Terms: a public map service with no licence stated (inferred
+  public; ask DC Water if it is to be redistributed beyond these flags). Not legal advice.
+- **WSSC Water water main construction**. Credit: `WSSC Water water main construction`. Layer:
+  `gisportal.wsscwater.com/gis/rest/services/IYN/Water_Construction1/MapServer/0` (the
+  [construction map](https://www.wsscwater.com/what-we-do/constructionin-your-neighborhood-map)),
+  read every 6 hours; only the project's name, status, dates and line are asked for, never the
+  contact names, phones or emails the layer holds. Publisher: WSSC Water. Terms: a public map
+  service with no licence stated (inferred public). Not legal advice.
+
 ### Deer-management closures (v0.12.3)
 
 Not a map credit: each notice names its agency and links its page (`routemaker.deer_closures`),

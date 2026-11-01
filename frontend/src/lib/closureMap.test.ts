@@ -232,6 +232,23 @@ test("DDOT's permits are flagged only: drawn behind Plan's DC permits switch, of
   assert.match(app, /permits: mode === "go" \? null : \{ on: permitsOn, onChange: changePermitsOn \}/);
 });
 
+test("Potential closures (v0.17.0): the layer's new name, planned work's own card, one marker per project", async () => {
+  // Stephen, 2026-11-01: a "potential closure" layer you can toggle, default off, "make it clear by the icon that these
+  // are different", "We have that for DC. Add everywhere else too."
+  const { PERMITS_LABEL } = await import("./permitLayer.ts");
+  assert.equal(PERMITS_LABEL, "Potential closures");
+  const pipes = [0, 1, 2].map((n) => item({ id: `wssc-5-${n}`, source: "wssc", effect: "possible", can_bypass: false }));
+  assert.equal(closureCard(pipes[0]).heading, "Possible closure (planned work)");
+  assert.equal(closureCard(pipes[0]).action, null);
+  assert.deepEqual(markerItems(pipes).map((p) => p.id), ["wssc-5-1"], "one marker, on the middle piece");
+  const project = item({ id: "protrack-465348-0", source: "protrack", effect: "possible", can_bypass: false });
+  assert.deepEqual(markerItems([project]).map((p) => p.id), ["protrack-465348-0"]);
+  const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(view, /const possible = group\.every\(\(i\) => i\.effect === "possible"\);/);
+  assert.match(view, /possibleBarrierSvg\(shown\.severity\)/);
+  assert.match(view, /stroke-dasharray="4 3"/, "a dashed ring");
+});
+
 
 // v0.12.0 (the owner's Lake Frank report): closures on the map with no route, red closed and orange construction.
 test("the view's closures are asked for zoomed in only, cut to the server's largest view, permits only when on", () => {

@@ -283,7 +283,8 @@ CD agent's and the host's own, is kept outside this repository, with the owner):
   with Discord sign-in; `api.weather.gov` and `api.open-meteo.com` (v0.12.1, weather along the
   route, `core/weather.py`: rounded points, no key).
 - **worker** (`refresh_dc_closures`, every 15 minutes): `maps2.dcgis.dc.gov`, `mpdc.dc.gov`,
-  `trainingtrack.hsema.dc.gov`, and `developer.nps.gov` (with `NPS_API_KEY`); and
+  `trainingtrack.hsema.dc.gov`, `developer.nps.gov` (with `NPS_API_KEY`), `geo.dcwater.com` and
+  `gisportal.wsscwater.com` (v0.17.0, planned work for Plan's Potential closures); and
   (`refresh_work_zones`, every 5 minutes) `filter.ritis.org` (Maryland) and
   `data.511-atis-ttrip-prod.iteriscloud.com` (Virginia, with `SMARTERROADS_TOKEN`). It also reaches
   Photon and the Valhalla containers on the compose network, as the api does.

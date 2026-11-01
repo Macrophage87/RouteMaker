@@ -79,6 +79,11 @@ SOURCES = {
     "ddot_advisory": "DDOT project traffic advisory",
     # The Purple Line's construction updates, read by hand (v0.13.0; `routemaker.purple_line`).
     "purple_line": "Purple Line construction update",
+    # Planned work that may close a road some day in its window (v0.17.0; Plan's Potential
+    # closures layer only; `routemaker.planned_work`).
+    "protrack": "DDOT capital projects (ProTrack+, CC BY 4.0)",
+    "dcwater": "DC Water active work zones",
+    "wssc": "WSSC Water water main construction",
 }
 
 # Where a rider reads more, for a zone that carries no link of its own.
@@ -91,6 +96,9 @@ SOURCE_LINKS = {
     "nps": "https://www.nps.gov/",
     "ddot_advisory": "https://projects.ddot.dc.gov/",
     "purple_line": "https://purplelinemd.com/updates",
+    "protrack": "https://opendata.dc.gov/",
+    "dcwater": "https://www.dcwater.com/projects",
+    "wssc": "https://www.wsscwater.com/what-we-do/constructionin-your-neighborhood-map",
 }
 
 DISCLAIMER = (
@@ -973,7 +981,7 @@ def is_future(at: datetime, now: datetime | None) -> bool:
 # "And turn the notices off". So they are never routed round: a plan flags them on its map
 # (`PlanZones.possible`), Go and a ride leave them out (`now_only`), and the closure check
 # never asks about them.
-POSSIBLE_SOURCES = frozenset({"dc"})
+POSSIBLE_SOURCES = frozenset({"dc", "protrack", "dcwater", "wssc"})
 
 
 def possible(zone: Zone) -> bool:
@@ -1169,6 +1177,9 @@ def when_text(zone: Zone, now: datetime | None, future: bool, possible: bool = F
         verb = (
             "Permit allows blocking the bike lane" if zone.kind == LANE else "Permit allows closing"
         )
+        if zone.source != "dc":
+            # v0.17.0: planned work (`routemaker.planned_work`) may close it some day.
+            verb = "Planned work may close it some day"
     start, end = zone.start, zone.end
     if end is None:
         lead = f"{verb} from {day_text(start, now)} {clock_text(start)}" if start else verb
