@@ -130,6 +130,7 @@ import {
   stopsAhead,
   toGo,
   wayBack,
+  compassWord,
   whereAmI,
   withoutFullStop,
   whereAmIShown,
@@ -196,6 +197,7 @@ import {
 } from "./lib/detourSearch.ts";
 import type { FoodPlace } from "./lib/food.ts";
 import type { RepairPlace } from "./lib/repair.ts";
+import { NEXT_RACK_TEXT, arrivalRacks as racksOnArrival, rackPoint, rideNextRackLine, type BikeRack, type RackNear } from "./lib/bikeParking.ts";
 import type { WaterPoint } from "./lib/waterRestrooms.ts";
 import type { TrailMiles } from "./lib/trailMiles.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
@@ -719,6 +721,8 @@ export function RideMode({
   water,
   food = noPlaces,
   repair = noPlaces,
+  racks,
+  onShowRack,
   geocode = noSearch,
   stopName,
   trailMiles = null,
@@ -766,6 +770,13 @@ export function RideMode({
   food?: () => Promise<FoodPlace[] | null>;
   /** The repair stands and bike shops, loaded if they are not yet; for the detours. */
   repair?: () => Promise<RepairPlace[] | null>;
+  /**
+   * The bike racks, loaded if they are not yet (App's ensureRacks): once arrived near a rack, the next ones for a full
+   * rack (Stephen, 2026-11-01: "In DC often the problem is that Bike racks are full. So maybe a way to find other ones").
+   */
+  racks?: () => Promise<BikeRack[] | null>;
+  /** The rack the arrival line shows, pinned on the map; null to take the pin away. */
+  onShowRack?: (near: RackNear | null) => void;
   /** The place search, through the page's one geocoding gate; for Detour's search box. */
   geocode?: DetourDeps["geocode"];
   /** A stop's name to show and say: its own (lib/pointKinds.ts), else the map's name for the spot. */
@@ -2342,6 +2353,40 @@ export function RideMode({
     if (progress === null || ride.off || along === null) return null;
     return along >= progress ? "ahead" : "behind";
   };
+  // Arrived at a rack: the others within 1,000 ft, nearest first, for a full one. One button: Show on map pins the
+  // first, then Next rack the one after (round again at the end); the line says how far and which way from the rider.
+  const [arrivalRacks, setArrivalRacks] = useState<RackNear[] | null>(null);
+  const [rackShown, setRackShown] = useState(-1);
+  useEffect(() => {
+    setArrivalRacks(null);
+    setRackShown(-1);
+    if (!ride.arrived || plan.current.loop || !racks) return;
+    const end = plan.current.points[plan.current.points.length - 1];
+    let live = true;
+    void racks().then((all) => {
+      if (!live || !all || !end) return;
+      const others = racksOnArrival(end, all);
+      if (others.length > 0) setArrivalRacks(others);
+    });
+    return () => {
+      live = false;
+    };
+  }, [ride.arrived]); // eslint-disable-line react-hooks/exhaustive-deps -- once per arrival
+  const onShowRackRef = useRef(onShowRack);
+  onShowRackRef.current = onShowRack;
+  useEffect(() => () => onShowRackRef.current?.(null), []);
+  useEffect(() => {
+    if (!ride.arrived) onShowRackRef.current?.(null);
+  }, [ride.arrived]);
+  const rackNow = arrivalRacks ? arrivalRacks[Math.max(rackShown, 0)] : null;
+  const rackFrom = ride.fix?.point ?? plan.current.points[plan.current.points.length - 1];
+  const showNextRack = () => {
+    if (!arrivalRacks) return;
+    const next = rackShown < 0 ? 0 : (rackShown + 1) % arrivalRacks.length;
+    setRackShown(next);
+    onShowRackRef.current?.(arrivalRacks[next]);
+    onShowPlace?.(rackPoint(arrivalRacks[next].rack));
+  };
   // The destination's name for "Arrived: ..." (a loop's end is its start: none).
   const destinationName = ride.arrived && !plan.current.loop ? (stopName?.(plan.current.points[plan.current.points.length - 1]) ?? null) : null;
   // The distance's metric in brackets a size smaller, so the line stays one line with large text.
@@ -2755,6 +2800,17 @@ export function RideMode({
             {trip?.departure && <DepartureTimer departure={trip.departure} announce={notify} />}
             {/* Where the next Metro train or Metrobus is while waiting there (v0.9.0), its mark on the map. */}
             <NextVehicleLine ask={trip?.boarding ?? null} waiting={ride.arrived} announce={notify} onMark={setVehicle} />
+            {/* A full rack: the next one, how far and which way, and one button to see it (lib/bikeParking.ts). */}
+            {rackNow && rackFrom && (
+              <div className="ride-next-rack">
+                <p className="cue-then">
+                  {rideNextRackLine(haversineM(rackFrom, rackPoint(rackNow.rack)), compassWord(rackFrom, rackPoint(rackNow.rack)))}
+                </p>
+                <button type="button" className="secondary" onClick={showNextRack}>
+                  {rackShown < 0 ? t("Show on map") : NEXT_RACK_TEXT}
+                </button>
+              </div>
+            )}
           </>
         ) : walking && approach ? (
           <p className="cue-text">{approachWords(approach, ride.fix?.point ?? null).shown}</p>

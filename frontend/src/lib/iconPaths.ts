@@ -76,6 +76,7 @@ export const ICON_PATHS = {
   // v0.7.0: farm stands and markets (an apple), repair stands (a wrench), bike shops (a shop front), sights
   // (a camera); "More" is the mockup's own.
   "apple": "<path d=\"M12 7c-1.5-1.3-4.5-1.5-6 .5S4.5 13 6 16.5 9.5 21 12 20c2.5 1 4.5-.5 6-3.5s1.5-7.5 0-9.5-4.5-1.8-6-.5z\"/><path d=\"M12 7c0-2 1-3.5 3-4\"/>",
+  "rack": "<path d=\"M7 19V10a5 5 0 0 1 10 0v9\"/><path d=\"M3 19h18\"/>",
   "wrench": "<path d=\"M15 4a5 5 0 0 0-4.6 6.9L4 17.3 6.7 20l6.4-6.4A5 5 0 0 0 20 9l-3 3-3-1-1-3 3-3z\"/>",
   "shop": "<path d=\"M3 9l2-5h14l2 5M3 9h18M3 9v11h18V9M9 20v-6h6v6\"/>",
   "draw": "<circle cx=\"5\" cy=\"19\" r=\"2\"/><circle cx=\"19\" cy=\"5\" r=\"2\"/><path d=\"M6.5 17.5 17.5 6.5\"/>",

@@ -865,6 +865,8 @@ export function placeType(place: Pick<Place, "kind" | "osm_key" | "osm_value">):
   // Typed in the box (lib/sharedLocation.ts): coordinates, or a plus code (lib/plusCode.ts).
   if (place.kind === "coordinates") return "Coordinates";
   if (place.kind === "pluscode") return "Plus code";
+  // The rider's Home, Work or a favorite, in Go's Where to? (lib/savedPlaceSearch.ts).
+  if (place.kind === "home" || place.kind === "work" || place.kind === "favorite") return "Saved";
   if (key === "railway" && (value === "station" || value === "halt")) return "Rail station";
   if (key === "public_transport" && value === "station") return "Station";
   if (key === "railway" && value === "subway_entrance") return "Station entrance";

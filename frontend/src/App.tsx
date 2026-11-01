@@ -34,7 +34,7 @@ import {
 } from "./lib/railClosures.ts";
 import { onSharedTick } from "./lib/sharedTick.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
-import { formatSeconds } from "./lib/format.ts";
+import { formatDistance, formatSeconds } from "./lib/format.ts";
 import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, readGarmin, withoutReturn } from "./lib/garminLink.ts";
 import { RETURN_PARAM as WAHOO_RETURN_PARAM, readWahoo, wahooReturnFrom } from "./lib/wahooLink.ts";
 import { endsOnFoot, layersTurnedOn, presetNamesRide, presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
@@ -240,8 +240,11 @@ import { FoodOverlay, PlacesOverlay, PlacesSheet, RepairSheet, RepairStandsOverl
 import { closeStopCard, openStopCard, setStopCardFrame } from "./app/mapOverlay.ts";
 import { ADD_AS_STOP, ROUTE_HERE, type StopActionFor, type StopCardWords } from "./lib/stopCard.ts";
 import { foodWords, nearbyWords, repairWords, sightWords } from "./lib/stopWords.ts";
-import { foodSpotPlaces, metroSpotPlaces, repairSpotPlaces, sightSpotPlaces, spotFarLine, spotNearby, waterSpotPlaces } from "./lib/spotNearby.ts";
+import { foodSpotPlaces, metroSpotPlaces, rackSpotRows, repairSpotPlaces, sightSpotPlaces, spotFarLine, spotNearby, waterSpotPlaces, type SpotRow } from "./lib/spotNearby.ts";
 import { useSpotPins } from "./app/spotPins.ts";
+import { RacksOverlay, useRackPins } from "./app/rackOverlay.ts";
+import { RACK_AT_M, endAtRackSaid, endAtRackText, nextRack, nextRackText, rackAt, rackRunAfter, rackWords, type RackRun, loadBikeParking, rackOffer, rackPlaceName, rackPoint, racksNear, rideToRackText, type BikeRack, type RackNear } from "./lib/bikeParking.ts";
+import bikeParkingUrl from "./amenity-data/bike-parking.json?url&no-inline";
 import { useSeeEveryone } from "./app/useSeeEveryone.ts";
 import { ScenicOverlay } from "./app/ScenicOverlay.tsx";
 import { readScenicLayer, saveScenicLayer, scenicShown, scenicStatus } from "./lib/scenicLayer.ts";
@@ -767,6 +770,24 @@ export function App() {
   useEffect(() => {
     if (waterOn) void ensureRepair();
   }, [waterOn, ensureRepair]);
+  // Bike racks (lib/bikeParking.ts; Stephen, 2026-11-01): DDOT's in DC, OpenStreetMap's elsewhere. Drawn with the
+  // water layer's switch, and offered by Go near a tapped spot and a route's end. Loaded when first needed.
+  const [racksData, setRacksData] = useState<BikeRack[] | "unavailable" | null>(null);
+  const racksLoad = useRef<Promise<BikeRack[] | null> | null>(null);
+  const ensureRacks = useCallback(() => {
+    if (!racksLoad.current) {
+      racksLoad.current = loadBikeParking(bikeParkingUrl).then((data) => {
+        if (!data) racksLoad.current = null;
+        setRacksData(data ?? "unavailable");
+        return data;
+      });
+    }
+    return racksLoad.current;
+  }, []);
+  useEffect(() => {
+    if (waterOn) void ensureRacks();
+  }, [waterOn, ensureRacks]);
+  const racks = Array.isArray(racksData) ? racksData : null;
   // Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): shown while Capital Bikeshare's switch in
   // Layers is on. It is on by default in the bikeshare ride types and off in the others (the owner, 2026-10-17),
   // each choice kept on this device apart.
@@ -5378,6 +5399,7 @@ export function App() {
     if (!spotOpen) return;
     void ensureWater();
     void ensureRepair();
+    void ensureRacks();
     ensurePlaces();
     if (spotFood === null || spotFood === "unavailable") void ensureFood().then((data) => setSpotFood(data ?? "unavailable"));
   }, [spotOpen, goSpot]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -5393,7 +5415,81 @@ export function App() {
   );
   // Each source in, or failed (a failed one is left out rather than holding the list).
   const spotReady = (waterData !== null || waterStatus === "unavailable") && spotFood !== null && repairData !== null && placesData !== null;
-  const spotRows = useMemo(() => (spotOpen && goSpot && spotReady ? spotNearby(goSpot.point, spotSources) : null), [spotOpen, goSpot, spotReady, spotSources]);
+  // The places, then the racks near the spot (Stephen, 2026-11-01: "show the nearby racks"), each a pin; the racks
+  // join the list when their file is in, rather than holding it.
+  const spotRows = useMemo(
+    () => (spotOpen && goSpot && spotReady ? [...spotNearby(goSpot.point, spotSources), ...(racks ? rackSpotRows(racksNear(goSpot.point, racks)) : [])] : null),
+    [spotOpen, goSpot, spotReady, spotSources, racks],
+  );
+  // The card's "Ride to the bike rack": the nearest rack, when one is near and the spot is not already at it.
+  const spotRack = spotOpen && goSpot && racks ? rackOffer(goSpot.point, racks) : null;
+  // `heading`: the spot card's address, which names the rack's place ("Bike rack near 1234 R Street Northwest").
+  const rideToRack = (near: RackNear, heading: string | null) => {
+    const name = rackPlaceName(near, heading ?? namer.name(goSpot?.point ?? rackPoint(near.rack))?.name ?? null);
+    namer.remember(rackPoint(near.rack), name);
+    void goToRef.current(rackPoint(near.rack), name, true);
+  };
+  // Go's route to a place, picked or pressed (Stephen, 2026-11-01: "by map press or by selecting a location"): the
+  // racks near its end are pins, and "End at the bike rack" under the route card moves the end to the nearest.
+  const goEnd = mode === "go" && !onBike && !riding && points.length >= 2 && !loopVias ? points[points.length - 1] : null;
+  // At a rack already, the offer is the next one, for a full rack (Stephen, 2026-11-01: "In DC often the problem is
+  // that Bike racks are full. So maybe a way to find other ones"): each press tries the nearest not yet tried.
+  const endAtRackNow = goEnd && racks ? rackAt(goEnd, racks) : null;
+  // The presses so far (lib/bikeParking.ts RackRun): the search stays around the first rack, and a run that no longer
+  // matches the route's end rack is over.
+  const [rackRun, setRackRun] = useState<RackRun | null>(null);
+  const endRack = goEnd && racks ? (endAtRackNow ? nextRack(goEnd, endAtRackNow, racks, rackRun) : rackOffer(goEnd, racks)) : null;
+  const goEndRef = useRef(goEnd);
+  goEndRef.current = goEnd;
+  useEffect(() => {
+    if (goEnd) void ensureRacks();
+  }, [goEnd !== null, ensureRacks]); // eslint-disable-line react-hooks/exhaustive-deps
+  const endRackRows = useMemo<SpotRow[] | null>(() => (goEnd && racks && !spotOpen ? rackSpotRows(racksNear(goEnd, racks).filter((n) => n.metres > RACK_AT_M)) : null), [goEnd, racks, spotOpen]);
+  const endAtRack = (point: LonLat, name: string, said: string) => {
+    const now = pointsRef.current;
+    if (now.length < 2) return;
+    namer.remember(point, name);
+    commit([...now.slice(0, -1), point]);
+    announce(said);
+  };
+  const endAtNearestRack = (near: RackNear) => {
+    const end = pointsRef.current[pointsRef.current.length - 1];
+    const endName = end ? (namer.name(end)?.name ?? null) : null;
+    if (endAtRackNow && end) {
+      // The next rack keeps the place's name ("Bike rack near Safeway"); the full one is not offered again.
+      setRackRun((run) => rackRunAfter(run, end, endAtRackNow, near.rack));
+      endAtRack(rackPoint(near.rack), endName ?? rackPlaceName(near, null), endAtRackSaid(near));
+      return;
+    }
+    endAtRack(rackPoint(near.rack), rackPlaceName(near, endName), endAtRackSaid(near));
+  };
+  // A rack's own card (a pin, or the layer): Ride here ends a Go route there; otherwise as any stop's card.
+  const rackActionFor = useCallback<StopActionFor>(
+    (point, name) => {
+      if (goEndRef.current) return { text: ROUTE_HERE, run: () => endAtRack(point, name, t("Route now ends at {place}.", { place: name })) };
+      return stopActionFor(point, name);
+    },
+    [stopActionFor], // eslint-disable-line react-hooks/exhaustive-deps -- endAtRack reads refs
+  );
+  const pickEndRack = (index: number, focus: boolean) => {
+    const row = endRackRows?.[index];
+    const map = mapRef.current;
+    if (!row || !map) return;
+    const words = row.words(t("{distance} from where the route ends.", { distance: formatDistance(row.metres) }), new Date());
+    openStopCard(map, row.point, words, rackActionFor(row.point, words.title), focus);
+  };
+  useRackPins(getMap, endRackRows, pickEndRack);
+  // The ride's arrival line's rack (RideMode: "Rack full? Next one"), pinned while shown; its pin opens the rack's card.
+  const [rideRack, setRideRack] = useState<RackNear | null>(null);
+  const showRideRack = useCallback((near: RackNear | null) => setRideRack(near), []);
+  const rideRackRows = useMemo<SpotRow[] | null>(() => (rideRack && onBike ? rackSpotRows([rideRack]) : null), [rideRack, onBike]);
+  const pickRideRack = (index: number, focus: boolean) => {
+    const row = rideRackRows?.[index];
+    const map = mapRef.current;
+    if (!row || !map || !rideRack) return;
+    openStopCard(map, row.point, rackWords(rideRack.rack), null, focus);
+  };
+  useRackPins(getMap, rideRackRows, pickRideRack);
   // A pin or a row of the folded list: the place's card (lib/stopCard.ts), never a route by itself; the spot's card
   // stays open under it. Its Route here plans the route, which closes the spot's card (below).
   const pickSpot = (index: number, focus: boolean) => {
@@ -5867,6 +5963,13 @@ export function App() {
         />
       ) : null,
     rides: goRides,
+    // The nearest bike rack to the end, one press to end there (Stephen, 2026-11-01).
+    endRack: endRack ? (
+      <button type="button" className="secondary go-end-rack" onClick={() => endAtNearestRack(endRack)}>
+        <Icon name="rack" size={18} />
+        {endAtRackNow ? nextRackText(endRack) : endAtRackText(endRack)}
+      </button>
+    ) : null,
     // The climb figure opens Ride settings at the Hills slider (P3).
     onClimb: openHills,
     place: points.length >= 2 && !loopVias ? goPlaceName(namer.name(points[points.length - 1])?.name, points[points.length - 1]) : null,
@@ -6119,6 +6222,7 @@ export function App() {
       {/* The map's overlays: one failing during a ride leaves them out, not the ride (RideGuard.tsx). */}
       <RideGuard on={onBike}>
       <RepairStandsOverlay getMap={getMap} places={Array.isArray(repairData) ? repairData : null} on={waterPrefs.on && !onBike} pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))} actionFor={stopActionFor} />
+      <RacksOverlay getMap={getMap} racks={racks} on={waterPrefs.on && !onBike} pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))} actionFor={rackActionFor} />
       <PlacesOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={placesOn && !onBike} actionFor={stopActionFor} />
       <FoodOverlay getMap={getMap} results={grocery ? null : foodAll} on={letteredOf === "food" && !onBike} actionFor={stopActionFor} />
       <TrailMilesOverlay getMap={getMap} data={trailMiles} />
@@ -6248,6 +6352,7 @@ export function App() {
         fallbackName={(point) => namer.name(point)?.name}
         here={spotOpen ? lastHere() : null}
         rows={spotRows}
+        rack={spotRack ? { text: rideToRackText(spotRack), onPress: (heading) => rideToRack(spotRack, heading) } : null}
         onRouteHere={goRouteHere}
         onPick={(index) => pickSpot(index, true)}
         onRoadInfo={(point) => setRoadInfo({ point, origin: "spot" })}
@@ -6462,6 +6567,8 @@ export function App() {
           water={ensureWater}
           food={ensureFood}
           repair={ensureRepair}
+          racks={ensureRacks}
+          onShowRack={showRideRack}
           geocode={detourGeocode}
           stopName={rideStopName}
           trailMiles={trailMiles}
