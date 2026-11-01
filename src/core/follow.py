@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import math
 
-from routemaker.geo import Point, haversine
+from routemaker.geo import Point, bearing_delta, bearing_lonlat, haversine
 
 from . import routing
 
@@ -70,6 +70,23 @@ DIVIDED_M = 40.0
 MAX_BRIDGES = 20
 # What a `/trace_route` asks that a `/route` between two points does not.
 TRACE_ONLY = frozenset({"shape", "shape_match", "trace_options"})
+# Corners the matcher must not cut (`clear_corners`; Stephen 2026-11-01, "several phantom LTS4
+# unnamed roads", riding an opened file through 14th St SE / K St SE / 13th St SE). The
+# matcher (Valhalla's meili, valhalla/*.json `meili.default.interpolation_distance`, 10 m)
+# does not match a point of the line within that distance of the last one it matched: it
+# only places it on the path between matched points, and that path is the SHORTEST by
+# distance, whatever the ride type's costing prices (src/meili/routing.cc, 3.9.1: "Override
+# cost portion to be distance"). A snapped or exported line has a vertex at every node of
+# the graph, crosswalks' nodes on the road 5 to 10 m from a junction among them, so the
+# corner's own vertex went unmatched and the path between the two crosswalk nodes either
+# side of it was the crosswalks round the corner (OSM 1239622654 and 1239622635, rings of
+# `footway=crossing`), a metre or so shorter than the road: four "Cross the road, heavy
+# traffic (LTS 4)" pieces, drawn red, and a "Right, then left, then right" at two plain
+# corners. MATCH_SKIP_M is that distance, CORNER_CLEAR_M the stretch before a corner cleared
+# of other vertices (a margin over it), and CORNER_DEG the turn that makes a vertex a corner.
+MATCH_SKIP_M = 10.0
+CORNER_CLEAR_M = 12.0
+CORNER_DEG = 30.0
 
 
 class LineProblem(ValueError):
@@ -151,10 +168,52 @@ def split_line(line, points) -> tuple[list, list[int]]:
     return out, indices
 
 
+def _corners(line) -> list[int]:
+    """The indexes of `line`'s vertices where it turns by CORNER_DEG or more (ends excluded):
+    each judged from the vertices either side, a vertex on top of its neighbour skipped."""
+    out: list[int] = []
+    for i in range(1, len(line) - 1):
+        a, b, c = line[i - 1], line[i], line[i + 1]
+        if haversine(Point(*a), Point(*b)) < SAME_M or haversine(Point(*b), Point(*c)) < SAME_M:
+            continue
+        turn = bearing_delta(bearing_lonlat(a, b), bearing_lonlat(b, c))
+        if turn >= CORNER_DEG:
+            out.append(i)
+    return out
+
+
+def clear_corners(line, keep) -> tuple[list, list[int]]:
+    """`line` with the vertices within CORNER_CLEAR_M before each corner left out, so the
+    matcher matches the corner itself (MATCH_SKIP_M) and the route turns there, on the road,
+    not over the crosswalks round it; and the new indexes of the vertices in `keep` (the
+    plan's points), which stay, as the ends and the corners do. Only vertices the line runs
+    on straight through go: the line's shape is the same to within the turn that is not a
+    corner. A line with no corner comes back as it was."""
+    corners = _corners(line)
+    if not corners:
+        return list(line), sorted(keep)
+    kept = set(keep) | set(corners) | {0, len(line) - 1}
+    dropped: set[int] = set()
+    for corner in corners:
+        metres = 0.0
+        i = corner - 1
+        while i > 0:
+            metres += haversine(Point(*line[i]), Point(*line[i + 1]))
+            if metres > CORNER_CLEAR_M or i in kept:
+                break
+            dropped.add(i)
+            i -= 1
+    order = [i for i in range(len(line)) if i not in dropped]
+    new = {old: n for n, old in enumerate(order)}
+    return [line[i] for i in order], sorted(new[i] for i in keep)
+
+
 def request_for(line, points, plan_request: dict) -> dict:
     """The plan's request (`routing.plan`'s, its costing, elevation and directions) as a
-    `/trace_route` of `line`, split into legs at the plan's points."""
+    `/trace_route` of `line`, split into legs at the plan's points, with each corner cleared
+    for the matcher (`clear_corners`)."""
     split, indices = split_line(line, points)
+    split, indices = clear_corners(split, indices)
     shape = [{"lon": lon, "lat": lat} for lon, lat in split]
     for index in indices:
         shape[index]["type"] = routing.VIA_LOCATION_TYPE
