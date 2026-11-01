@@ -5228,7 +5228,7 @@ row keyed `closures` (`src/core/closure_sources.py`):
 |---|---|---|---|---|---|
 | DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Flagged only (a road *may* be closed): never routed around (Go, Plan, MCP), no warning or cue; shown only by Plan's DC permits layer (off by default) |
 | MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text |
-| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss` | 15 min | 45 min | 3 h | As MPD; only traffic and road items are kept, every other item is dropped unread |
+| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 15 min | 45 min | 3 h | As MPD; only traffic and road items are kept, every other item is dropped unread |
 | NPS alerts (`nps`) | `developer.nps.gov/api/v1/alerts` | 30 min | 90 min | 6 h | Park-level "Check before you go" notices (rocr, nama, gwmp, choh, anac), never closures |
 
 NPS needs `NPS_API_KEY` in the worker's environment (sent as the `X-Api-Key` header);
@@ -5248,7 +5248,12 @@ without it NPS is simply not read. The host needs egress to the four hosts (PLAY
    Status values; a permit count of zero with a successful run means one of them differs.
 3. MPD: confirm the newsroom lists "TRAFFIC ADVISORY" releases as links on `mpdc.dc.gov`
    and that a release's body still reads "X from A to B" lines with dates and times.
-4. AlertDC: confirm the RSS item shape (title, description, pubDate, link).
+4. AlertDC: the list is an HTML table (no RSS since at least 2026-11-01): one row an alert,
+   its local date and time, a title linking to `/NRss/RssFeed/AlertDetails/<id>`, then the text.
+   A page with no table, or with alert links but no row that reads, fails with `not an
+   AlertDC list`; compare it with `tests/data/closures/alertdc-list.html`. A "has reopened"
+   update ends the stretch it names in its incident's earlier alerts (all of them if it names
+   none); a partial update keeps what it says is still closed.
 5. NPS: confirm the park boxes and marker points in `routemaker.dc_closures.PARKS`.
 6. A segment that cannot be placed (Photon finds no street, or Valhalla's route between the
    cross streets leaves the named street) is shown as text with its link, never guessed;

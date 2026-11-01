@@ -57,7 +57,7 @@ class Net:
         if "mpdc.dc.gov/release" in url:
             raise workzones.FeedError("HTTP 404")
         if "hsema" in url:
-            return (DATA / "alertdc-nrss.xml").read_bytes()
+            return (DATA / "alertdc-list.html").read_bytes()
         if "developer.nps.gov" in url:
             return (DATA / "nps-alerts.json").read_bytes()
         raise AssertionError(url)

@@ -73,7 +73,7 @@ URLS = {
     # DDOT's "Occupancy Permits (via DDOT TOPS)" layer (data.gov's record of it).
     DC: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/MapServer/1/query",
     MPD: "https://mpdc.dc.gov/newsroom",
-    ALERTDC: "https://trainingtrack.hsema.dc.gov/NRss",
+    ALERTDC: "https://trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList",
     NPS: "https://developer.nps.gov/api/v1/alerts",
 }
 # The TOPS layer is asked a page at a time (an ArcGIS server returns at most its
@@ -413,7 +413,7 @@ def read_mpd(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tupl
 
 def read_alertdc(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tuple[list, list]:
     """AlertDC's traffic and road items; every other item is dropped unread."""
-    feed = _get(fetch, URLS[ALERTDC], {"Accept": "application/rss+xml"}, sleep)
+    feed = _get(fetch, URLS[ALERTDC], {"Accept": "text/html"}, sleep)
     advisories = dc.parse_alertdc(feed.decode("utf-8", "replace"), now)
     return _advisory_zones(advisories, placer, places, now)
 
