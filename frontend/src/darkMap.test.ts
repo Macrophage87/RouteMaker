@@ -123,8 +123,16 @@ test("the premise: the dark flavour has the light one's layers, ids and layout a
 });
 
 test("the dark flavour's background is its earth, so beyond the archive is as dark as the land; the light one is Protomaps' own", () => {
-  assert.equal(flavourColours("dark").background, namedFlavor("dark").earth);
+  assert.equal(flavourColours("dark").background, flavourColours("dark").earth);
   assert.deepEqual(flavourColours("light"), namedFlavor("light"));
+});
+
+test("the dark map's land is lifted off near-black (the owner, 2026-11-01: \"almost pure black\"), still darker than its roads", () => {
+  const dark = flavourColours("dark");
+  assert.ok(relativeLuminance(toHex(dark.earth)!) > relativeLuminance(toHex(namedFlavor("dark").earth)!) * 1.4, "the land a few shades up");
+  assert.ok(relativeLuminance(toHex(dark.buildings)!) > relativeLuminance(toHex(dark.earth)!), "buildings show on the land");
+  assert.ok(relativeLuminance(toHex(dark.minor_a)!) > relativeLuminance(toHex(dark.buildings)!), "streets show between the buildings");
+  assert.ok(relativeLuminance(toHex(dark.earth)!) < 0.05, "still a dark map");
 });
 
 test("DARK_MAP.topSurface is the dark map's lightest surface, the worst case a light-map colour is checked on", () => {

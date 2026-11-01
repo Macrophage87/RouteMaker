@@ -28,10 +28,66 @@ import { SCENIC_CASING_LAYER, SCENIC_COLOUR, scenicPointLayers } from "./scenicL
 
 export type MapFlavour = "light" | "dark";
 
-/** The flavour's colours: Protomaps' own, the dark one's background the earth's (above). */
+/**
+ * Protomaps' dark land, parks, water, buildings and streets lifted a few shades: theirs read as almost pure black
+ * (the owner, 2026-11-01: "make the base layer on the dark a little more apparent"). Still dark for OLED savings, and
+ * nothing goes above the lightest road, DARK_MAP.topSurface (#474747), which the overlay colours are checked against.
+ */
+export const DARK_LIFT: Partial<Flavor> = {
+  earth: "#2a2c30",
+  buildings: "#35373c",
+  park_a: "#26352d",
+  park_b: "#24392e",
+  wood_a: "#283029",
+  wood_b: "#283029",
+  scrub_a: "#2c302c",
+  scrub_b: "#2c302c",
+  pedestrian: "#2f3034",
+  school: "#302d2d",
+  hospital: "#302d2e",
+  industrial: "#2e2e30",
+  military: "#2f2d2d",
+  zoo: "#2c302c",
+  aerodrome: "#2d2e31",
+  sand: "#2e2e30",
+  beach: "#333336",
+  water: "#2b3c52",
+  minor_service: "#3d3e41",
+  minor_a: "#434446",
+  minor_b: "#3d3e41",
+  link: "#434446",
+  major: "#454547",
+  highway: "#474747",
+  pier: "#3d3e41",
+  other: "#3d3e41",
+  tunnel_other: "#36373a",
+  tunnel_minor: "#36373a",
+  tunnel_link: "#36373a",
+  tunnel_major: "#36373a",
+  tunnel_highway: "#36373a",
+  bridges_other: "#3d3e41",
+  bridges_minor: "#3d3e41",
+  bridges_link: "#434446",
+  bridges_major: "#454547",
+  runway: "#3e3f42",
+  // The low-zoom land cover too, so the region view is not near-black either.
+  landcover: {
+    grassland: "#29372b",
+    barren: "#323230",
+    urban_area: "#2e2f32",
+    farmland: "#2b322c",
+    glacier: "#38383a",
+    scrub: "#2f322b",
+    forest: "#263832",
+  },
+};
+
+/** The flavour's colours: Protomaps' own, the dark one lifted (DARK_LIFT) with its background the earth's (above). */
 export function flavourColours(flavour: MapFlavour): Flavor {
   const colours = namedFlavor(flavour);
-  return flavour === "dark" ? { ...colours, background: colours.earth } : colours;
+  if (flavour !== "dark") return colours;
+  const lifted = { ...colours, ...DARK_LIFT } as Flavor;
+  return { ...lifted, background: lifted.earth };
 }
 
 /** The base map's layers in a flavour, with this app's label and boundary changes (stressStyle.js). */
