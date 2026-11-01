@@ -1810,4 +1810,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{kind} near {place}": "{kind} dekat {place}",
   "Route now ends at {place}.": "Rute kini berakhir di {place}.",
   "{distance} from where the route ends.": "{distance} dari akhir rute.",
+  "Rack full? Next one, {distance} away": "Parkir penuh? Berikutnya, {distance} lagi",
+  "Rack full? Next one: {distance} to the {direction}.": "Parkir penuh? Berikutnya {distance} ke arah {direction}.",
+  "Next rack": "Parkir berikutnya",
 };
