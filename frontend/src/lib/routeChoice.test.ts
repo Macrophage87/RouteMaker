@@ -63,7 +63,7 @@ test("each route is told by its own colour: the rider's in the route's own, More
   assert.equal(choiceColours(OWN), null, "one route: nothing to tell apart");
 });
 
-test("on the map each route says what it trades against the rider's own: time and miles of high stress, signed", () => {
+test("on the map each route says what it trades against the rider's own: time and miles on busy roads, signed", () => {
   assert.equal(choiceTradeoff(DIRECT, OWN), "−5 min, +0.6 mi (1.0 km) on busy roads");
   assert.equal(choiceTradeoff(TRAIL, OWN), "+5 min, −0.6 mi (1.0 km) on busy roads");
   assert.equal(choiceTradeoff(route(BOWED, { duration_s: 1830 }), OWN), "about the same time and traffic");
