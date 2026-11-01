@@ -440,7 +440,8 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
     # 2026-10-29). Plus R and 1st Streets NW's 24 stress rows (the owner, 2026-10-30), and
     # West Virginia's 309 county-road stress rows (the owner, 2026-10-30), and Northern
     # Virginia's 345 (the owner, 2026-10-31). Plus the whole-DC rating review's 19,802 stress
-    # rows (the owner, 2026-11-01).
+    # rows (the owner, 2026-11-01), and the region review's Maryland 34,781, Virginia 8,998
+    # and West Virginia 434 (2026-11-01).
     assert (
         sum(len(d["rows"]) for d in documents.values())
         == 1785
@@ -464,6 +465,9 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
         + 309
         + 345
         + 19802
+        + 34781
+        + 8998
+        + 434
     )
     for name, document in documents.items():
         if name == "2026-10-06-owner-crosswalk-links.json":
@@ -494,9 +498,29 @@ def test_the_override_counts_the_owner_asked_about() -> None:
     # Montgomery's 381 LTS 5 snapshot rows (review 2026-10-29). Plus R and 1st Streets NW's
     # 24 (the owner, 2026-10-30). Plus West Virginia's 309 county-road rows (2026-10-30).
     # Plus Northern Virginia's 345 (2026-10-31). Plus the whole-DC review's 19,802 (2026-11-01).
+    # Plus the region review's 34,781 Maryland, 8,998 Virginia and 434 West Virginia rows.
     assert (
         kinds.count("stress")
-        == 1551 - 1 + 3 + 10 - 5 - 23 + 15 - 431 + 6 + 31 - 2 + 5 - 381 + 24 + 309 + 345 + 19802
+        == 1551
+        - 1
+        + 3
+        + 10
+        - 5
+        - 23
+        + 15
+        - 431
+        + 6
+        + 31
+        - 2
+        + 5
+        - 381
+        + 24
+        + 309
+        + 345
+        + 19802
+        + 34781
+        + 8998
+        + 434
     )
 
 
@@ -572,6 +596,9 @@ def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
         + 309
         + 345
         + 19802
+        + 34781
+        + 8998
+        + 434
     )
     assert ("access", 50426889) in found and ("stress", 1562097556) in found
 
