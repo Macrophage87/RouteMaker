@@ -165,3 +165,10 @@ test("the ride's Rack full? line only when the route ends at a rack, not a shop 
   assert.deepEqual(arrivalRacks(pt(ra), street).map((n) => n.rack.id), ["b", "c"]);
   assert.deepEqual(arrivalRacks([-77.03, 38.89955], street), []);
 });
+
+test("Go offers End at the bike rack only for a destination just picked or pressed, or a rack moved to from one", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /setPickedEnds\(\[dest\]\);/);
+  assert.match(app, /const endRack = goEnd && racks && endPicked \?/);
+  assert.match(app, /setPickedEnds\(\(ends\) => \[\.\.\.ends, point\]\);\n\s*commit\(/);
+});

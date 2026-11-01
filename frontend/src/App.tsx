@@ -2723,6 +2723,9 @@ export function App() {
       setGoStart(goHereStart(goPickStart(was.point, result.fix).point));
     });
   };
+  // Go's ends picked or pressed this visit, and the racks moved to from them (Stephen, 2026-11-01: the rack offer only
+  // for a destination just picked or pressed, not every route opened from a link, a save or Plan).
+  const [pickedEnds, setPickedEnds] = useState<LonLat[]>([]);
   const goTo = async (dest: LonLat, name: string, pressed = false, vias: LonLat[] = []) => {
     cancelLocateNotice();
     setNotice(null);
@@ -2730,6 +2733,8 @@ export function App() {
       setNotice(OUTSIDE_NOTICE);
       return;
     }
+    // A destination just picked or pressed: the only kind that offers "End at the bike rack" (pickedEnds, below).
+    setPickedEnds([dest]);
     // The start Go already has: the plan's first point (typed, from the link or placed in Plan), else the location
     // found in the last GO_START_MAX_AGE_MS, looked up again for this destination. While the location is still being
     // found, the destination waits for it.
@@ -5438,7 +5443,8 @@ export function App() {
   // The presses so far (lib/bikeParking.ts RackRun): the search stays around the first rack, and a run that no longer
   // matches the route's end rack is over.
   const [rackRun, setRackRun] = useState<RackRun | null>(null);
-  const endRack = goEnd && racks ? (endAtRackNow ? nextRack(goEnd, endAtRackNow, racks, rackRun) : rackOffer(goEnd, racks)) : null;
+  const endPicked = goEnd !== null && pickedEnds.some((p) => samePoint(p, goEnd));
+  const endRack = goEnd && racks && endPicked ? (endAtRackNow ? nextRack(goEnd, endAtRackNow, racks, rackRun) : rackOffer(goEnd, racks)) : null;
   const goEndRef = useRef(goEnd);
   goEndRef.current = goEnd;
   useEffect(() => {
@@ -5449,6 +5455,7 @@ export function App() {
     const now = pointsRef.current;
     if (now.length < 2) return;
     namer.remember(point, name);
+    setPickedEnds((ends) => [...ends, point]);
     commit([...now.slice(0, -1), point]);
     announce(said);
   };
