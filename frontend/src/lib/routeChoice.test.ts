@@ -64,13 +64,13 @@ test("each route is told by its own colour: the rider's in the route's own, More
 });
 
 test("on the map each route says what it trades against the rider's own: time and miles of high stress, signed", () => {
-  assert.equal(choiceTradeoff(DIRECT, OWN), "−5 min, +0.6 mi (1.0 km) high-stress");
-  assert.equal(choiceTradeoff(TRAIL, OWN), "+5 min, −0.6 mi (1.0 km) high-stress");
+  assert.equal(choiceTradeoff(DIRECT, OWN), "−5 min, +0.6 mi (1.0 km) on busy roads");
+  assert.equal(choiceTradeoff(TRAIL, OWN), "+5 min, −0.6 mi (1.0 km) on busy roads");
   assert.equal(choiceTradeoff(route(BOWED, { duration_s: 1830 }), OWN), "about the same time and traffic");
   const routes = [PICKED, DIRECT, TRAIL];
   assert.equal(choiceLabel(routes, 0), "Your route, 30 min");
-  assert.equal(choiceLabel(routes, 1), "More direct\n−5 min, +0.6 mi (1.0 km) high-stress");
-  assert.equal(choiceLabel(routes, 2), "Trailmaxxed\n+5 min, −0.6 mi (1.0 km) high-stress");
+  assert.equal(choiceLabel(routes, 1), "More direct\n−5 min, +0.6 mi (1.0 km) on busy roads");
+  assert.equal(choiceLabel(routes, 2), "Trailmaxxed\n+5 min, −0.6 mi (1.0 km) on busy roads");
 });
 
 test("the routes not chosen are drawn, every route is named, each where it parts from the others", () => {

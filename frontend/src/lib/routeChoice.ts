@@ -82,7 +82,7 @@ export function labelPoint(line: readonly LonLat[], from: readonly LonLat[]): Lo
   return best;
 }
 
-/** Metres on busy streets: LTS 3, LTS 4 and Avoid. */
+/** Metres on busy streets: LTS 3, LTS 4 and Avoid (a half step counts with its lower level, so 2.5 is not busy, 3.5 is). */
 function busyM(route: RouteResponse): number {
   const s = route.stress_m ?? {};
   return (s["3"] ?? 0) + (s["4"] ?? 0) + (s["5"] ?? 0);
@@ -94,15 +94,17 @@ const SAID_M = 80;
 
 /**
  * What a route trades against the rider's own, for its name on the map (the owner, 2026-10-19: "write what they are
- * on each, and something like +5 min, - x miles of high stress and vice versa"): "+5 min, −0.6 mi (1.0 km) high-stress",
- * "−4 min, +0.6 mi (1.0 km) high-stress", "about the same time and traffic".
+ * on each, and something like +5 min, - x miles of high stress and vice versa"): "+5 min, −0.6 mi (1.0 km) on busy roads",
+ * "−4 min, +0.6 mi (1.0 km) on busy roads", "about the same time and traffic". The distance is the change in busy riding,
+ * never in the route's length, so it says "on busy roads", the words the route summary uses (the owner, 2026-11-01, read
+ * "+0.1 mi high-stress" on a More direct as extra length).
  */
 export function choiceTradeoff(route: RouteResponse, own: RouteResponse): string {
   const parts: string[] = [];
   const dt = route.duration_s - own.duration_s;
   if (Math.abs(dt) >= SAID_S) parts.push(`${dt > 0 ? "+" : "\u2212"}${formatDuration(Math.abs(dt))}`);
   const dBusy = busyM(route) - busyM(own);
-  if (Math.abs(dBusy) >= SAID_M) parts.push(`${dBusy > 0 ? "+" : "\u2212"}${formatDistanceChange(dBusy)} high-stress`);
+  if (Math.abs(dBusy) >= SAID_M) parts.push(`${dBusy > 0 ? "+" : "\u2212"}${formatDistanceChange(dBusy)} on busy roads`);
   return parts.length > 0 ? parts.join(", ") : "about the same time and traffic";
 }
 
