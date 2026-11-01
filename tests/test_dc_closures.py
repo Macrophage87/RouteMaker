@@ -377,6 +377,19 @@ class TestAlertDcList:
             ("Marion Barry Avenue SE", "30th Street SE")
         ]
 
+    def test_a_final_update_saying_a_block_is_still_closed_keeps_it(self) -> None:
+        page = self.page(
+            (
+                "10/15/2026 2:00 PM",
+                "1",
+                self.FINAL,
+                "The 2800 block of Naylor Road, SE, between Marion Barry Avenue and 30th"
+                " Street remains closed for repairs.",
+            )
+        )
+        (item,) = dc.parse_alertdc(page, NOW)
+        assert [s.to_street for s in item.segments] == ["30th Street SE"]
+
     def test_cleared_wording_inside_a_closure_keeps_it(self) -> None:
         page = self.page(
             (

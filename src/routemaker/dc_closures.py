@@ -1283,7 +1283,8 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
                 continue
             block = _ALERT_BLOCK.match(text)
             bullet = block is not None and not block.group("closed").strip()
-            if final or (under_open and bullet):
+            still = re.search(r"\b(?:is|are|remains?)\s+(?:now\s+|still\s+)?closed\b", text, re.I)
+            if (final and not still) or (under_open and bullet):
                 reopened.add(stretch)
             else:
                 closes.append((sentence, stretch))
