@@ -84,13 +84,14 @@ export interface BasemapStyle {
   layers: unknown[];
 }
 
-export function buildStyle(origin: string, basemapLayers: readonly unknown[]): BasemapStyle {
+/** `flavour`: the sprite's, light unless the map opens dark (lib/mapFlavour.ts; the owner, 2026-11-01: battery audit). */
+export function buildStyle(origin: string, basemapLayers: readonly unknown[], flavour: string = SPRITE_FLAVOR): BasemapStyle {
   return {
     version: 8,
     // Absolute because MapLibre resolves glyph and sprite URLs itself; both are
     // fetched on the page's thread, so they carry the page as Referer.
     glyphs: `${origin}/basemap/fonts/{fontstack}/{range}.pbf`,
-    sprite: `${origin}/basemap/sprites/v4/${SPRITE_FLAVOR}`,
+    sprite: `${origin}/basemap/sprites/v4/${flavour}`,
     sources: {
       [BASEMAP_SOURCE_ID]: {
         type: "vector",

@@ -19,9 +19,12 @@
  *   keyed by offset and length, with the archive's ETag: a refreshed archive under the same name
  *   empties the store rather than mixing two files' bytes.
  *
- * Privacy (plan section 7): only tiles and map bytes are kept, never a position; everything is
- * cleared at End ride, at the start of the next ride and at the next page load (a ride never outlives
- * the page, so nothing kept by an earlier one is of use; plan section 6 allowed up to 24 h).
+ * Privacy (plan section 7): only tiles and map bytes are kept, never a position. The tiles are map data
+ * for an area, not the rider's track: nothing says where or when the rider rode. They are kept up to
+ * CORRIDOR_KEEP_MS for the same route (the owner, 2026-11-01: battery audit; plan section 6 allowed up to
+ * 24 h), keyed by a hash of the route's line (`routeHash`), not a place, so a ride resumed after a reload
+ * or started again the same day reads them from the phone instead of fetching up to MAX_JOBS tiles again.
+ * Another route's Start ride, or a page load after CORRIDOR_KEEP_MS, deletes them.
  */
 import type { RangeResponse, Source } from "pmtiles";
 import { lonLatToTile, type LonLat } from "./geo.ts";
@@ -58,6 +61,58 @@ export const STOP_AFTER_FAILURES = 5;
 export const FAILURE_WAIT_MS = 1000;
 
 const EARTH_M = 40_075_016.686;
+
+// ---- Kept for a day, for the same route ------------------------------------------------------------
+
+/** How long a route's corridor is kept for that route (the owner, 2026-11-01: battery audit). */
+export const CORRIDOR_KEEP_MS = 24 * 60 * 60_000;
+
+/**
+ * The route's key: a hash (FNV-1a, 32 bits) of its line to about a metre, so the same route started again matches
+ * and the stamp names no place.
+ */
+export function routeHash(line: readonly LonLat[]): string {
+  let h = 0x811c9dc5;
+  const text = line.map(([lon, lat]) => `${lon.toFixed(5)},${lat.toFixed(5)}`).join(";");
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `${line.length}-${h.toString(36)}`;
+}
+
+/** What may be kept: since when, for which route (its hash), and how many bytes. A time and a hash, never a place. */
+export interface CorridorStamp {
+  at: number;
+  route: string;
+  bytes: number;
+}
+
+/** The stored stamp, or null where it is missing or not this shape (an older page's bare time). */
+export function readStamp(raw: string | null): CorridorStamp | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Partial<CorridorStamp> | null;
+    if (!value || typeof value !== "object") return null;
+    const { at, route, bytes } = value;
+    if (typeof at !== "number" || !Number.isFinite(at) || typeof route !== "string" || typeof bytes !== "number") return null;
+    return { at, route, bytes: Math.max(0, bytes) };
+  } catch {
+    return null;
+  }
+}
+
+/** Whether what is kept may be used for `route` at `now`: the same route, kept under CORRIDOR_KEEP_MS ago. */
+export function keptForRoute(stamp: CorridorStamp | null, route: string, now: number): boolean {
+  return stamp !== null && stamp.route === route && now >= stamp.at && now - stamp.at < CORRIDOR_KEEP_MS;
+}
+
+/** At page load: whether to delete what may be kept (kept CORRIDOR_KEEP_MS or more, or a stamp that cannot be read). */
+export function sweepDue(raw: string | null, now: number): boolean {
+  if (raw === null) return false;
+  const stamp = readStamp(raw);
+  return stamp === null || now < stamp.at || now - stamp.at >= CORRIDOR_KEEP_MS;
+}
 
 export interface TileJob {
   kind: "stress" | "base";

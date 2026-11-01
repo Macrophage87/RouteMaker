@@ -325,6 +325,12 @@ export const ES: Readonly<Record<string, string>> = {
   "Route start unchanged.": "El inicio de la ruta no cambió.",
   "Ride paused while the page was in the background. Press Resume to carry on.":
     "El recorrido se pausó mientras la página estaba en segundo plano. Presione Reanudar para continuar.",
+  "Ride paused at your destination to save battery. It carries on when you ride off, or press Resume.": "El recorrido se pausó en su destino para ahorrar batería. Sigue cuando arranque de nuevo, o presione Reanudar.",
+  "Roam paused to save battery. It carries on when you ride off, or press Resume.": "Roam se pausó para ahorrar batería. Sigue cuando arranque de nuevo, o presione Reanudar.",
+  "Roam paused while the page was in the background. Press Resume to carry on.": "Roam se pausó mientras la página estaba en segundo plano. Presione Reanudar para continuar.",
+  "Ride paused at your destination to save battery. Press Resume to carry on.": "El recorrido se pausó en su destino para ahorrar batería. Presione Reanudar para continuar.",
+  "Roam paused to save battery. Press Resume to carry on.": "Roam se pausó para ahorrar batería. Presione Reanudar para continuar.",
+  "Roam resumed.": "Roam se reanudó.",
   Resume: "Reanudar",
   "Resume ride": "Reanudar recorrido",
   "Resume your ride?": "¿Reanudar su recorrido?",

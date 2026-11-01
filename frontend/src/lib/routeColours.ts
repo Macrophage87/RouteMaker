@@ -10,7 +10,7 @@
  * stress map gives the same class, from the shared tokens (stressStyle.js), so
  * a change to the map's palette reaches the route too.
  */
-import { ACCESSIBILITY_PALETTE, FACILITIES, HIGH_STRESS_LANE_MIN_TIER, currentPalette, currentTiers, halfStep, styleKey } from "../stressStyle.js";
+import { ACCESSIBILITY_PALETTE, FACILITIES, HIGH_STRESS_LANE_MIN_TIER, currentPalette, currentTiers, darkMapOn, halfStep, styleKey } from "../stressStyle.js";
 import { MASS_AVOID, MASS_BANDS, bandIndex, dashInWidths } from "../massStyle.js";
 import type { StressSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
@@ -582,6 +582,24 @@ export function routeCasing(palette: string = currentPalette()): string {
   return palette === ACCESSIBILITY_PALETTE ? ROUTE_CASING_CVD : ROUTE_BLUE;
 }
 
+/**
+ * The route's casing on the dark map (the owner, 2026-11-01: battery audit; stressStyle.js DARK_MAP): the blue and the
+ * slate are under 3:1 on the dark flavour's surfaces, so there the blue is a lighter blue and the slate white, each 3:1
+ * or more on every dark surface (darkMap.test.ts). White is the one colour 3:1 from the colour-blind-friendly LTS 2
+ * that is also light enough for the dark map; the halo under each section still tells it from the class. The light
+ * map's casings are unchanged, and so are the legend's and the route choice's colours, which sit on the panel.
+ */
+export const ROUTE_BLUE_DARK_MAP = "#60a5fa";
+export const ROUTE_CASING_CVD_DARK_MAP = "#ffffff";
+
+/** A route casing as the map draws it: its dark-map variant while the dark map shows, else as given. */
+export function casingOnMap(casing: string, dark: boolean = darkMapOn()): string {
+  if (!dark) return casing;
+  if (casing === ROUTE_BLUE) return ROUTE_BLUE_DARK_MAP;
+  if (casing === ROUTE_CASING_CVD) return ROUTE_CASING_CVD_DARK_MAP;
+  return casing;
+}
+
 /** The casing under a one-colour route, as it was before the sections. */
 export const ROUTE_CASING_PLAIN = "#ffffff";
 export const ROUTE_LINE_WIDTH = 5;
@@ -608,7 +626,7 @@ export function routePaint(
     lineOpacity: hasSections ? 0 : shown,
     sectionOpacity: hasSections ? shown : 0,
     haloOpacity: hasSections ? shown : 0,
-    casingColor: hasSections ? sectionCasing : ROUTE_CASING_PLAIN,
+    casingColor: hasSections ? casingOnMap(sectionCasing) : ROUTE_CASING_PLAIN,
   };
 }
 

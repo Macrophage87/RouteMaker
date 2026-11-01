@@ -120,6 +120,31 @@ export function closedLabel(name: string): string {
  */
 export const RAIL_STATUS_MS = 5 * 60_000;
 
+/**
+ * Whether the timed rail check runs (the owner, 2026-11-01: battery audit): not during a ride or Roam whose route
+ * rides no train or bus, since nothing on its screen reads it. A tap on a station still asks (railTapAsks).
+ */
+export function railCheckTimed(onBike: boolean, rideUsesTransit: boolean): boolean {
+  return !onBike || rideUsesTransit;
+}
+
+/** A tap on a station asks again when the last answer is older than this. */
+export const RAIL_TAP_FRESH_MS = 60_000;
+
+/**
+ * The owner, 2026-11-01: "Rail status should remain if someone clicks on the metro or rail station". A station's card
+ * asks for the status when the last answer is older than RAIL_TAP_FRESH_MS (or there is none), in a ride too.
+ */
+export function railTapAsks(askedAt: number, now: number, maxAgeMs: number = RAIL_TAP_FRESH_MS): boolean {
+  return askedAt === 0 || now - askedAt >= maxAgeMs;
+}
+
+/** Whether a route rides a train or bus (a transit plan's Metro, MARC, light rail, subway or bus step). */
+export function routeUsesTransit(route: { transit?: { steps?: readonly { mode: string }[] } | null } | null | undefined): boolean {
+  const transitModes = new Set(["metro", "rail", "light-rail", "subway", "bus"]);
+  return route?.transit?.steps?.some((step) => transitModes.has(step.mode)) === true;
+}
+
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
 function looksLikeClosures(body: unknown): body is { service_day: string; stations: ClosedStation[] } {

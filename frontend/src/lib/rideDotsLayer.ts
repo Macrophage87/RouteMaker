@@ -5,8 +5,8 @@
  * Freshness at a glance (Stephen 2026-10-14 15:48 UTC): under 30 s a solid mark, with a brief ring as a new reading
  * lands; 30-90 s the mark with a white hole in it (review F12: the fill stays opaque, as half opacity left it at
  * 2.62:1 on the map; the hole is the change, not the colour); 90 s to 2 min a hollow outline only; then gone. An
- * alert pin ages the same way. The map is the light basemap in both themes, so the colours are fixed, and alerts
- * stay the large dark red circle.
+ * alert pin ages the same way. The colours are fixed and alerts stay the large dark red circle; only the rings
+ * change on the dark base map (ALERT_RING_DARK_MAP, below).
  *
  * Roles (Stephen 2026-10-16: "Each will get a distinct color on the map"): each role a colour and a shape, so
  * neither carries it alone. A participant is a small blue dot; the lead line a near-black violet chevron
@@ -24,6 +24,7 @@
 import type { LonLat } from "./geo.ts";
 import { freshness, type Freshness, type RideAlert, type RideRole, type ShownDot } from "./rideGroup.ts";
 import { hexToRgb, rasterise, type Raster, type Rgb } from "./stationIcons.ts";
+import { darkMapOn } from "../stressStyle.js";
 
 export const DOTS_SOURCE = "ride-dots";
 export const DOTS_LAYER = "ride-dots-dot";
@@ -57,6 +58,19 @@ export const ROLE_COLOURS: Readonly<Record<RideRole, string>> = {
 export const DOT = ROLE_COLOURS.participant;
 export const ALERT = "#991b1b";
 export const HOLE = "#ffffff";
+/**
+ * The dark map (lib/mapFlavour.ts; the owner, 2026-11-01: battery audit): the two-minute ring is the role's colour
+ * alone, under 3:1 there, so it gets the fresh mark's white edge outside it; an alert's ring a light red
+ * (darkMap.test.ts). The light map's are as they were.
+ */
+export const ALERT_RING_DARK_MAP = "#f87171";
+/**
+ * The leader's trail and sent route on the dark map: a light violet, as the leader's ring's deep one is near-black
+ * there; the trail drawn at TRAIL_OPACITY_DARK_MAP so it is 3:1 on every dark surface (darkMap.test.ts).
+ */
+export const LEADER_LINE_DARK_MAP = "#c4b5fd";
+export const TRAIL_OPACITY = 0.55;
+export const TRAIL_OPACITY_DARK_MAP = 0.85;
 
 export type RoleShape = "dot" | "chevron" | "square" | "diamond";
 export const ROLE_SHAPES: Readonly<Record<RideRole, RoleShape>> = { participant: "dot", lead: "chevron", sweep: "square", corker: "diamond" };
@@ -117,8 +131,11 @@ export function insideBy(shape: RoleShape, u: number, v: number): number {
 
 export const dotImageId = (role: RideRole, f: Exclude<Freshness, "gone">) => `ride-dot-${role}-${f}`;
 
-/** A rider's mark: fresh is the shape filled with a white edge, faded the same with a white hole, ring the outline only. */
-export function dotImage(role: RideRole, f: Exclude<Freshness, "gone">, pixelRatio = 2): Raster {
+/**
+ * A rider's mark: fresh is the shape filled with a white edge, faded the same with a white hole, ring the outline only
+ * (on the dark map, the outline inside a white edge, as the other two have).
+ */
+export function dotImage(role: RideRole, f: Exclude<Freshness, "gone">, pixelRatio = 2, dark: boolean = darkMapOn()): Raster {
   const shape = ROLE_SHAPES[role];
   const css = ROLE_SIZES[role];
   const size = Math.round(css * pixelRatio);
@@ -132,6 +149,7 @@ export function dotImage(role: RideRole, f: Exclude<Freshness, "gone">, pixelRat
     const v = (y - half) / half;
     const depth = insideBy(shape, u, v);
     if (depth < 0) return null;
+    if (f === "ring" && dark) return depth <= unit(OUTLINE_PX) ? white : depth <= unit(OUTLINE_PX + RING_PX) ? colour : null;
     if (f === "ring") return depth <= unit(RING_PX) ? colour : null;
     if (depth <= unit(OUTLINE_PX)) return white;
     if (f === "faded" && Math.hypot(u - hx, v - hy) <= unit(HOLE_PX)) return white;
@@ -140,10 +158,10 @@ export function dotImage(role: RideRole, f: Exclude<Freshness, "gone">, pixelRat
 }
 
 /** Every rider image the layers can ask for. */
-export function dotImages(pixelRatio = 2): { id: string; raster: Raster }[] {
+export function dotImages(pixelRatio = 2, dark: boolean = darkMapOn()): { id: string; raster: Raster }[] {
   const out: { id: string; raster: Raster }[] = [];
   for (const role of Object.keys(ROLE_COLOURS) as RideRole[]) {
-    for (const f of ["fresh", "faded", "ring"] as const) out.push({ id: dotImageId(role, f), raster: dotImage(role, f, pixelRatio) });
+    for (const f of ["fresh", "faded", "ring"] as const) out.push({ id: dotImageId(role, f), raster: dotImage(role, f, pixelRatio, dark) });
   }
   return out;
 }
@@ -222,14 +240,19 @@ export function trailFeature(trail: readonly LonLat[]): object {
   };
 }
 
-export function dotsLayers(): object[] {
+/** An alert pin's edge: white while fresh or faded; its ring, the alert's red, or light red on the dark map. */
+export function alertStroke(dark: boolean = darkMapOn()): unknown[] {
+  return byFreshness("#ffffff", "#ffffff", dark ? ALERT_RING_DARK_MAP : ALERT);
+}
+
+export function dotsLayers(dark: boolean = darkMapOn()): object[] {
   return [
     {
       id: LEADER_ROUTE_LAYER,
       type: "line",
       source: LEADER_ROUTE_SOURCE,
       layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": LEADER_RING, "line-width": 3, "line-dasharray": [1.5, 1.5], "line-opacity": 0.85 },
+      paint: { "line-color": dark ? LEADER_LINE_DARK_MAP : LEADER_RING, "line-width": 3, "line-dasharray": [1.5, 1.5], "line-opacity": 0.85 },
     },
     {
       // Where the leader has been: solid and wide, under the marks.
@@ -237,7 +260,7 @@ export function dotsLayers(): object[] {
       type: "line",
       source: TRAIL_SOURCE,
       layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": LEADER_RING, "line-width": 5, "line-opacity": 0.55 },
+      paint: { "line-color": dark ? LEADER_LINE_DARK_MAP : LEADER_RING, "line-width": 5, "line-opacity": dark ? TRAIL_OPACITY_DARK_MAP : TRAIL_OPACITY },
     },
     {
       id: LEADER_LAYER,
@@ -288,7 +311,7 @@ export function dotsLayers(): object[] {
         "circle-radius": 10,
         "circle-color": ALERT,
         "circle-opacity": byFreshness(1, 1, 0),
-        "circle-stroke-color": byFreshness("#ffffff", "#ffffff", ALERT),
+        "circle-stroke-color": alertStroke(dark),
         "circle-stroke-width": 3,
       },
     },
@@ -340,5 +363,31 @@ export function showRideDots(
   for (const layer of dotsLayers()) {
     const id = (layer as { id: string }).id;
     if (!map.getLayer(id)) map.addLayer(layer);
+  }
+}
+
+/**
+ * Draw the rings again for the base map's flavour, where they are on the map (lib/mapFlavour.ts; the owner,
+ * 2026-11-01: battery audit): the ring images in place, the alert pins' ring colour, and the leader's lines.
+ */
+export function setRideDotsFlavour(
+  map: Pick<DotsMap, "hasImage" | "getLayer"> & {
+    updateImage(id: string, image: Omit<Raster, "pixelRatio">): void;
+    setPaintProperty(id: string, name: string, value: unknown): void;
+  },
+  pixelRatio: number,
+  dark: boolean,
+): void {
+  for (const role of Object.keys(ROLE_COLOURS) as RideRole[]) {
+    const id = dotImageId(role, "ring");
+    if (!map.hasImage(id)) continue;
+    const { width, height, data } = dotImage(role, "ring", pixelRatio, dark);
+    map.updateImage(id, { width, height, data });
+  }
+  if (map.getLayer(ALERTS_LAYER)) map.setPaintProperty(ALERTS_LAYER, "circle-stroke-color", alertStroke(dark));
+  for (const layer of dotsLayers(dark) as Array<{ id: string; paint: Record<string, unknown> }>) {
+    if (layer.id !== TRAIL_LAYER && layer.id !== LEADER_ROUTE_LAYER) continue;
+    if (!map.getLayer(layer.id)) continue;
+    for (const name of ["line-color", "line-opacity"]) map.setPaintProperty(layer.id, name, layer.paint[name]);
   }
 }

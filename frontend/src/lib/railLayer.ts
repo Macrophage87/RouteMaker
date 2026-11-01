@@ -24,8 +24,8 @@ import {
   type Station,
   type StationBadges,
 } from "./railStations.ts";
-import { ROAD_LABEL } from "../stressStyle.js";
-import { alertBadgeIcon, closedStationIcon, elevatorIcon, elevatorOutIcon, stationIcon, type Raster } from "./stationIcons.ts";
+import { ROAD_LABEL, darkMapOn } from "../stressStyle.js";
+import { CLOSED_RING, CLOSED_RING_DARK_MAP, OUTLINE, OUTLINE_DARK_MAP, alertBadgeIcon, closedStationIcon, elevatorIcon, elevatorOutIcon, stationIcon, type Raster } from "./stationIcons.ts";
 
 export const RAIL_SOURCE_ID = "rail";
 export const RAIL_LAYERS = {
@@ -133,13 +133,7 @@ export function railLayers(sourceId = RAIL_SOURCE_ID) {
         "text-offset": [0, 1],
         "text-max-width": 8,
       },
-      paint: {
-        // A closed station's name is grey as well as "(closed)" (railClosures.ts); #4b5563 is 7.6:1 on its white halo.
-        "text-color": ["case", ["==", ["get", "closed"], true], "#4b5563", "#1f2937"],
-        "text-halo-color": "#ffffff",
-        // The street names' white band, so a line under a name does not hide it.
-        "text-halo-width": ROAD_LABEL.haloWidth,
-      },
+      paint: stationNamePaint(),
     },
     {
       id: RAIL_LAYERS.elevators,
@@ -233,20 +227,73 @@ function hideBasemapStationNames(map: RailMap, stations: readonly Station[], vis
 }
 
 /** Every image the layers can ask for: one per combination of lines, and the elevator. */
-export function railImages(stations: readonly Station[], pennColour: string, pixelRatio: number) {
-  const images: Array<{ id: string; raster: Raster }> = allIconLines(stations).map((lines) => ({
+export function railImages(stations: readonly Station[], pennColour: string, pixelRatio: number, dark = darkMapOn()) {
+  const images: Array<{ id: string; raster: Raster }> = stationImages(stations, pennColour, pixelRatio, dark);
+  images.push({ id: ELEVATOR_ICON, raster: elevatorIcon(pixelRatio) });
+  images.push({ id: ALERT_BADGE_ICON, raster: alertBadgeIcon(pixelRatio) });
+  images.push({ id: ELEVATOR_OUT_ICON, raster: elevatorOutIcon(pixelRatio) });
+  return images;
+}
+
+/**
+ * The station icons alone, open and closed, their ring light on the dark map (stationIcons.ts OUTLINE_DARK_MAP and
+ * CLOSED_RING_DARK_MAP; the owner, 2026-11-01: battery audit).
+ */
+function stationImages(stations: readonly Station[], pennColour: string, pixelRatio: number, dark: boolean) {
+  const closed = (["circle", "square"] as const).map((shape) => ({
+    id: closedIconId(shape),
+    raster: closedStationIcon(shape, pixelRatio, undefined, dark ? CLOSED_RING_DARK_MAP : CLOSED_RING),
+  }));
+  const open = allIconLines(stations).map((lines) => ({
     id: iconId(lines),
     raster: stationIcon(
       lines.map((line) => lineStyle(line, pennColour).color),
       iconShape(lines),
       pixelRatio,
+      undefined,
+      dark ? OUTLINE_DARK_MAP : OUTLINE,
     ),
   }));
-  images.push({ id: ELEVATOR_ICON, raster: elevatorIcon(pixelRatio) });
-  images.push({ id: ALERT_BADGE_ICON, raster: alertBadgeIcon(pixelRatio) });
-  images.push({ id: ELEVATOR_OUT_ICON, raster: elevatorOutIcon(pixelRatio) });
-  for (const shape of ["circle", "square"] as const) images.push({ id: closedIconId(shape), raster: closedStationIcon(shape, pixelRatio) });
-  return images;
+  return [...open, ...closed];
+}
+
+/**
+ * The station names' colours. On the light map, dark on the street names' white band (a closed station's grey as well
+ * as "(closed)", railClosures.ts; #4b5563 is 7.6:1 on white). On the dark map (the owner, 2026-11-01: battery audit),
+ * light on the street names' dark halo, so a name is not a white band on an unlit screen; the closed grey still the
+ * lighter-contrast of the two, 4.5:1 or more (darkMap.test.ts).
+ */
+export const STATION_NAME = { color: "#1f2937", closed: "#4b5563", halo: "#ffffff", darkColor: "#e5e7eb", darkClosed: "#9ca3af" } as const;
+
+/** The station names' paint on the light map or the dark. */
+export function stationNamePaint(dark: boolean = darkMapOn()): Record<string, unknown> {
+  return {
+    "text-color": ["case", ["==", ["get", "closed"], true], dark ? STATION_NAME.darkClosed : STATION_NAME.closed, dark ? STATION_NAME.darkColor : STATION_NAME.color],
+    "text-halo-color": dark ? ROAD_LABEL.darkHalo : STATION_NAME.halo,
+    // The street names' band, so a line under a name does not hide it.
+    "text-halo-width": ROAD_LABEL.haloWidth,
+  };
+}
+
+/** Draw the station icons and names again for the base map's flavour, where they are on the map (lib/mapFlavour.ts). */
+export function setRailFlavour(
+  map: Pick<RailMap, "hasImage" | "getLayer"> & {
+    updateImage(id: string, image: Omit<Raster, "pixelRatio">): void;
+    setPaintProperty(id: string, name: string, value: unknown): void;
+  },
+  stations: readonly Station[],
+  pennColour: string,
+  pixelRatio: number,
+  dark: boolean,
+): void {
+  if (map.getLayer(RAIL_LAYERS.names)) {
+    for (const [name, value] of Object.entries(stationNamePaint(dark))) map.setPaintProperty(RAIL_LAYERS.names, name, value);
+  }
+  for (const { id, raster } of stationImages(stations, pennColour, pixelRatio, dark)) {
+    if (!map.hasImage(id)) continue;
+    const { width, height, data } = raster;
+    map.updateImage(id, { width, height, data });
+  }
 }
 
 /**

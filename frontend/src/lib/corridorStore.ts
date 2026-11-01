@@ -13,17 +13,33 @@
  *   (Caddyfile: `/basemap/fonts/*` and `/sprites/*` are `private, max-age=86400`) and answers MapLibre's
  *   own requests from it with no network; Cache Storage would not, since MapLibre does not read it.
  *
- * A ride never outlives the page (the service worker keeps the app, never a ride), so what an earlier page kept is of no use:
- * all of it is cleared at End ride, at the start of each ride's first fetch, and at the next page load
- * (`sweepCorridor`, whenever the stamp says something may be kept). Nothing here holds a position.
+ * Kept up to CORRIDOR_KEEP_MS for the same route (the owner, 2026-11-01: battery audit), keyed by its hash in the
+ * stamp, so a ride resumed after a reload, Undo after End ride, or the same route again that day reads the tiles back
+ * instead of fetching up to MAX_JOBS again. Another route's Start ride deletes them first, and a page load after
+ * CORRIDOR_KEEP_MS deletes them (`sweepCorridor`). They are map data, not the rider's track: nothing here holds a
+ * position, and the stamp holds only a time, a hash and a byte count.
  *
  * The routes kept for offline (phase P3, lib/offlineRouteStore.ts) are a separate store this module
  * only reads, after its own, when the network fails; End ride never clears them. In the installed app,
- * End ride first hands what the ride kept to the last ride's kept route (`clearCorridor(handOn)`).
+ * End ride first hands what the ride kept to the last ride's kept route (`endCorridor(handOn)`).
  */
 import { FetchSource, PMTiles } from "pmtiles";
 import { BASEMAP } from "../stressStyle.js";
-import { ByteBudget, CorridorSource, glyphUrls, prefetchCorridor, type KeptRange, type PrefetchResult, type RangeStore, type TileJob } from "./corridor.ts";
+import {
+  ByteBudget,
+  CorridorSource,
+  glyphUrls,
+  keptForRoute,
+  prefetchCorridor,
+  readStamp,
+  routeHash,
+  sweepDue,
+  type CorridorStamp,
+  type KeptRange,
+  type PrefetchResult,
+  type RangeStore,
+  type TileJob,
+} from "./corridor.ts";
 import type { LonLat } from "./geo.ts";
 import { keptRanges, keptTile } from "./offlineRouteStore.ts";
 import { fetchTile, httpUrl } from "./stressProtocol.ts";
@@ -147,11 +163,23 @@ export function setCorridorStyle(glyphs: string, sprite: string, stacks: string[
   stressTemplate = stressTiles;
 }
 
+/**
+ * Both flavours' sprites from the one the map opened with (lib/mapFlavour.ts spriteFor: `.../sprites/v4/<flavour>`):
+ * a ride can turn dark at dusk or in a tunnel, or light at dawn, with no signal, and the other's icons must be kept
+ * too (the owner, 2026-11-01: battery audit). Any other sprite is as given.
+ */
+export function bothSprites(sprite: string): string[] {
+  const flavour = /\/(light|dark)$/.exec(sprite);
+  if (!flavour) return [sprite];
+  const base = sprite.slice(0, flavour.index);
+  return [`${base}/light`, `${base}/dark`];
+}
+
 /** The style's glyph and sprite URLs a ride's labels and icons need ([] before the style has loaded). */
 export function styleExtraUrls(): string[] {
   if (!style) return [];
   const scale = typeof devicePixelRatio === "number" && devicePixelRatio > 1 ? "@2x" : "";
-  return [...glyphUrls(style.glyphs, style.stacks), `${style.sprite}${scale}.json`, `${style.sprite}${scale}.png`];
+  return [...glyphUrls(style.glyphs, style.stacks), ...bothSprites(style.sprite).flatMap((sprite) => [`${sprite}${scale}.json`, `${sprite}${scale}.png`])];
 }
 
 /** A stress tile's URL as the map asks for it, or null before the style has loaded. */
@@ -192,11 +220,23 @@ let generation = 0;
 /** The clears in order, so a quick Start ride after End ride waits for the last one to finish. */
 let clearing: Promise<void> = Promise.resolve();
 
+/** The route kept now (its hash) and since when; null when nothing is. */
+let keptNow: { at: number; route: string } | null = null;
+
 function stamp(): void {
+  if (!keptNow) return;
   try {
-    localStorage.setItem(STAMP_KEY, String(Date.now()));
+    localStorage.setItem(STAMP_KEY, JSON.stringify({ ...keptNow, bytes: budget.bytes } satisfies CorridorStamp));
   } catch {
     // No storage: the next page load clears anyway (sweepCorridor).
+  }
+}
+
+function storedStamp(): string | null {
+  try {
+    return localStorage.getItem(STAMP_KEY);
+  } catch {
+    return null;
   }
 }
 
@@ -206,6 +246,7 @@ function stopped(): PrefetchResult {
 
 async function clearKept(): Promise<void> {
   budget.reset();
+  keptNow = null;
   try {
     localStorage.removeItem(STAMP_KEY);
   } catch {
@@ -234,15 +275,36 @@ function stopKeeping(): Promise<void> {
 }
 
 /**
- * Fetch and keep the corridor of `line`: at Start ride (`first`, which clears anything kept before),
- * and for each re-plan's new route (a newer call stops an older one's fetching; what it kept stays).
+ * Fetch and keep the corridor of `line`: at Start ride (`first`) and for each re-plan's new route (a newer call stops
+ * an older one's fetching; what it kept stays). At Start ride, what was kept for the same route under CORRIDOR_KEEP_MS
+ * ago stays and is read back rather than fetched again (each tile already kept costs no request); anything else kept
+ * is deleted first (the owner, 2026-11-01: battery audit).
  */
 export async function keepCorridor(line: readonly LonLat[], first = false): Promise<PrefetchResult> {
   running?.abort();
   const ticket = generation;
-  if (first) await stopKeeping();
-  else await clearing;
+  let reuse: CorridorStamp | null = null;
+  if (first) {
+    const route = routeHash(line);
+    const now = Date.now();
+    const kept = readStamp(storedStamp());
+    if (keptForRoute(kept, route, now)) {
+      reuse = kept;
+      stopNow();
+      await clearing;
+    } else {
+      await stopKeeping();
+      reuse = { at: now, route, bytes: 0 };
+    }
+  } else await clearing;
   if (ticket !== generation) return stopped();
+  if (reuse) {
+    // A new page knows the kept bytes only from the stamp; the same page's budget has them already.
+    const bytes = Math.max(budget.bytes, reuse.bytes);
+    budget.reset();
+    budget.take(bytes);
+    keptNow = { at: reuse.at, route: reuse.route };
+  }
   // Another call may have started while this one waited: a re-plan never leaves two prefetches running.
   running?.abort();
   const controller = new AbortController();
@@ -250,7 +312,10 @@ export async function keepCorridor(line: readonly LonLat[], first = false): Prom
   keepingStress = true;
   source.keeping = true;
   stamp();
-  return prefetchCorridor(line, { fetch: fetchJob, extras: done.size ? undefined : fetchExtras, full: () => budget.full, signal: controller.signal, done });
+  const result = await prefetchCorridor(line, { fetch: fetchJob, extras: done.size ? undefined : fetchExtras, full: () => budget.full, signal: controller.signal, done });
+  // The bytes kept, for a later page's budget.
+  if (running === controller) stamp();
+  return result;
 }
 
 /** What the ride kept, for the installed app's last-ride route (lib/offlineKeep.ts `lastRideAdopter`). */
@@ -282,25 +347,33 @@ async function snapshot(): Promise<CorridorSnapshot> {
 }
 
 /**
- * End ride: stop fetching and keeping, and clear what was kept. `handOn`, when given (the installed
- * app's last ride, OWNER-DECISIONS 465a), is shown what the ride kept first, and copies it.
+ * End ride: stop fetching and keeping. What was kept stays, for the same route, until CORRIDOR_KEEP_MS after it was
+ * first fetched (the owner, 2026-11-01: battery audit): Undo, a resumed ride or the same route again the same day
+ * reads it back. `handOn`, when given (the installed app's last ride, OWNER-DECISIONS 465a), is shown what the ride
+ * kept, and copies it.
  */
-export function clearCorridor(handOn?: (kept: CorridorSnapshot) => Promise<void>): Promise<void> {
+export function endCorridor(handOn?: (kept: CorridorSnapshot) => Promise<void>): Promise<void> {
   generation += 1;
-  if (!handOn) return stopKeeping();
-  // Keeping stops at once; the hand-on runs inside the clears' chain, before this ride's clear and
-  // after any earlier one, so a Start ride that comes while it runs waits for it (keepCorridor awaits
-  // `clearing`) and is never stopped or cleared by it afterwards.
+  // Keeping stops at once; the hand-on runs inside the clears' chain, after any earlier clear, so a Start ride that
+  // comes while it runs waits for it (keepCorridor awaits `clearing`) and is never stopped by it afterwards.
   stopNow();
+  stamp();
+  if (!handOn) return clearing;
   const hand = async () => {
     try {
       await handOn(await snapshot());
     } catch {
-      // The last ride keeps its route without the map; the ride's own copy is cleared all the same.
+      // The last ride keeps its route without the map; the ride's own copy stays its day all the same.
     }
   };
-  clearing = clearing.then(hand, hand).then(clearKept, clearKept);
+  clearing = clearing.then(hand, hand);
   return clearing;
+}
+
+/** Delete everything kept now, whatever the route (no ride is using it). */
+export function clearCorridor(): Promise<void> {
+  generation += 1;
+  return stopKeeping();
 }
 
 /**
@@ -321,15 +394,16 @@ export function copyCorridor(handOn: (kept: CorridorSnapshot) => Promise<void>):
 }
 
 /**
- * At page load no ride is on, and none survives a reload, so whatever an earlier page kept is cleared
- * (when the stamp says something may be, or storage cannot say; a page that never rode opens nothing).
+ * At page load no ride is on: what an earlier page kept is deleted once it is CORRIDOR_KEEP_MS old (or its stamp
+ * cannot be read, or storage cannot say); younger, it waits for the same route's Start ride (the owner, 2026-11-01:
+ * battery audit). A page that never rode opens nothing.
  */
-export function sweepCorridor(): void {
-  let maybe = true;
+export function sweepCorridor(now: number = Date.now()): void {
+  let due = true;
   try {
-    maybe = localStorage.getItem(STAMP_KEY) !== null;
+    due = sweepDue(localStorage.getItem(STAMP_KEY), now);
   } catch {
     // Cannot tell: clear.
   }
-  if (maybe) void clearCorridor();
+  if (due) void clearCorridor();
 }

@@ -181,9 +181,13 @@ in the build environment):
   cue" is left on the shade after the app is swiped away and opened again;
 - cues keep coming with the phone locked in a pocket for more than ten minutes;
 - on a v0.8.0 site, the "Latest cue" notification follows the cues and clears at End ride;
-- battery: the service asks for every fix (high accuracy, no distance filter) while the ride runs.
-  Some makers' battery savers (Samsung, Xiaomi) still stop foreground services: if cues stop, set
-  RouteMaker's battery use to "Unrestricted".
+- battery: on a v0.17.0 site or later the service asks for high accuracy with a 4 m distance filter
+  (`NATIVE_DISTANCE_FILTER_M`), so a rider standing still gets no fix; the page's 5 s stillness
+  backup (`lib/ridePause.ts` heartbeat) keeps the dock and stay clocks going for up to a minute
+  (the owner, 2026-11-01: battery audit). An older site, through `routemaker-compat.js`, still asks
+  for every fix (no distance filter), since it has no such backup. Some makers' battery savers
+  (Samsung, Xiaomi) still stop foreground services: if cues stop, set RouteMaker's battery use to
+  "Unrestricted".
 
 ## Screen readers (TalkBack)
 

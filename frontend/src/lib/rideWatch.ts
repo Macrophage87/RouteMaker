@@ -13,6 +13,17 @@ import { t } from "./i18n.ts";
 
 /** High accuracy, a fix at most 2 s old, and 15 s before the browser reports a timeout (plan section 2). */
 export const WATCH_OPTIONS = { enableHighAccuracy: true, maximumAge: 2_000, timeout: 15_000 } as const;
+/**
+ * A paused ride's one reading every 30 s (lib/ridePause.ts): high accuracy still, a reading up to 25 s old taken, and
+ * 20 s to answer (the owner, 2026-11-01: battery audit).
+ */
+export const READING_OPTIONS = { enableHighAccuracy: true, maximumAge: 25_000, timeout: 20_000 } as const;
+
+export interface WatchOptions {
+  enableHighAccuracy: boolean;
+  maximumAge: number;
+  timeout: number;
+}
 
 export interface WatchPosition {
   coords: { latitude: number; longitude: number; accuracy: number; speed?: number | null; heading?: number | null };
@@ -20,7 +31,7 @@ export interface WatchPosition {
 }
 
 export interface WatchApi {
-  watchPosition(ok: (position: WatchPosition) => void, fail: (error: { code: number }) => void, options?: typeof WATCH_OPTIONS): number;
+  watchPosition(ok: (position: WatchPosition) => void, fail: (error: { code: number }) => void, options?: WatchOptions): number;
   clearWatch(id: number): void;
 }
 
@@ -58,6 +69,7 @@ export function watchRide(
   onFix: (fix: RideFix) => void,
   onFail: (reason: LocateFailure) => void,
   now: () => number = () => Date.now(),
+  options: WatchOptions = WATCH_OPTIONS,
 ): () => void {
   const api = env.geolocation;
   if (!api || !env.isSecureContext) {
@@ -83,11 +95,49 @@ export function watchRide(
     (error) => {
       if (live) onFail(failureFor(error.code));
     },
-    WATCH_OPTIONS,
+    options,
   );
   return () => {
     if (!live) return;
     live = false;
     api.clearWatch(id);
   };
+}
+
+/**
+ * One reading (a paused ride's check in a browser, lib/ridePause.ts): a watch with READING_OPTIONS, stopped at its
+ * first fix, its first failure, or after `giveUpMs`. Never in the app: there each watch starts the location service,
+ * which Android 14+ refuses in the background, so a paused ride keeps its watch instead (ridePause.ts PausedFixes).
+ * `onFix` is called at most once; answers the function that stops it early.
+ */
+export function readOnce(
+  env: RideGeoEnv,
+  onFix: (fix: RideFix) => void,
+  giveUpMs: number = READING_OPTIONS.timeout + 5_000,
+  now: () => number = () => Date.now(),
+): () => void {
+  let done = false;
+  let stop: (() => void) | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    if (timer !== null) clearTimeout(timer);
+    stop?.();
+  };
+  stop = watchRide(
+    env,
+    (fix) => {
+      if (done) return;
+      finish();
+      onFix(fix);
+    },
+    () => finish(),
+    now,
+    READING_OPTIONS,
+  );
+  // A watch that failed at once (no GPS here) has finished already, before `stop` was set.
+  if (done) stop();
+  else timer = setTimeout(finish, giveUpMs);
+  return finish;
 }

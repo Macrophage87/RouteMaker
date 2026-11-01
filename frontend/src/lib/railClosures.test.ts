@@ -2,7 +2,20 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { ClosedStation, StationAlert } from "./api.ts";
-import { MATCH_M, RAIL_STATUS_MS, closedLabel, closedReason, matchAlerts, matchClosures, requestClosures, withMetroClosed } from "./railClosures.ts";
+import {
+  MATCH_M,
+  RAIL_STATUS_MS,
+  RAIL_TAP_FRESH_MS,
+  closedLabel,
+  closedReason,
+  matchAlerts,
+  matchClosures,
+  railCheckTimed,
+  railTapAsks,
+  requestClosures,
+  routeUsesTransit,
+  withMetroClosed,
+} from "./railClosures.ts";
 import { ALERT_BADGE_ICON, ELEVATOR_OUT_ICON, railFeatures, closedIconId, type Station } from "./railStations.ts";
 import { railHitFrom, railImages, railLayers, RAIL_LAYERS } from "./railLayer.ts";
 import { ALERT_FILL, CLOSED_STRIKE, OUT_STRIKE, alertBadgeIcon, closedStationIcon, elevatorOutIcon, hexToRgb } from "./stationIcons.ts";
@@ -123,10 +136,45 @@ test("the closures are asked for; a server without timetables, or no answer, gre
   // App counts only an answer as asked, so a failure is retried at the next check; asked again every
   // few minutes while in view (WMATA's closures and badges change within the day) and when back in view.
   const app = src("App.tsx");
-  assert.match(app, /if \(status === null\) return;\s*askedAt = Date\.now\(\);/);
+  assert.match(app, /if \(status === null\) return latest;\s*askedAt = Date\.now\(\);/);
   assert.match(app, /document\.visibilityState === "hidden"/);
   assert.match(app, /addEventListener\("visibilitychange", check\)/);
   assert.equal(RAIL_STATUS_MS, 5 * 60_000);
+});
+
+// --- The battery audit (the owner, 2026-11-01) ------------------------------------------------------------------------
+
+test("the timed rail check rests during a ride or Roam that rides no train or bus, and runs off the bike", () => {
+  assert.equal(railCheckTimed(false, false), true, "planning: checked");
+  assert.equal(railCheckTimed(true, false), false, "riding a plain route: rests");
+  assert.equal(railCheckTimed(true, true), true, "riding to a train: checked");
+  assert.equal(routeUsesTransit({ transit: { steps: [{ mode: "ride" }, { mode: "metro" }, { mode: "walk" }] } }), true);
+  assert.equal(routeUsesTransit({ transit: { steps: [{ mode: "walk" }, { mode: "bikeshare" }] } }), false, "Bikeshare alone rides no train");
+  assert.equal(routeUsesTransit({ transit: null }), false);
+  assert.equal(routeUsesTransit(undefined), false);
+  const app = src("App.tsx");
+  assert.match(app, /onSharedTick\(/, "on the shared 5-minute boundaries");
+  assert.match(app, /railTimed\.current = railTimedNow;/);
+  assert.match(app, /!railTimed\.current/);
+});
+
+test("tapping a Metro or rail station still asks for the status, in a ride too (the owner: \"Rail status should remain if someone clicks on the metro or rail station\")", () => {
+  assert.equal(railTapAsks(0, 1_000), true, "never asked yet");
+  assert.equal(railTapAsks(1_000, 1_000 + RAIL_TAP_FRESH_MS - 1), false, "answered within the minute: that answer");
+  assert.equal(railTapAsks(1_000, 1_000 + RAIL_TAP_FRESH_MS), true);
+  // App's answer for a card does not look at whether the timed check rests.
+  const app = src("App.tsx");
+  const now = app.slice(app.indexOf("const railStatusNow"), app.indexOf("const railClosures ="));
+  assert.match(now, /railFresh\.current\(RAIL_TAP_FRESH_MS\)/);
+  assert.doesNotMatch(now, /railTimed/);
+  assert.match(app, /railStatusNow=\{railStatusNow\}/);
+  const map = src("MapView.tsx");
+  assert.match(map, /statusNow: \(\) => callbacks\.current\.railStatusNow\?\.\(\)/);
+  // The card asks as it opens, and its closed words follow the answer.
+  const card = src("railInteraction.ts");
+  const open = card.slice(card.indexOf("openCard({ hit, station })"));
+  assert.match(open, /options\.statusNow\?\.\(\)\.then\(\(closedNow\) => \{/);
+  assert.match(open, /name\.textContent = closed \? `\$\{station\.name\}, closed: \$\{closed\}` : station\.name;/);
 });
 
 // --- WMATA's badges (the owner, 2026-10-18: "Put a little notice marker on all the stations that have

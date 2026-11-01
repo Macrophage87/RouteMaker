@@ -22,8 +22,45 @@ import {
   jobKey,
   memoryRangeStore,
   prefetchCorridor,
+  CORRIDOR_KEEP_MS,
+  keptForRoute,
+  readStamp,
+  routeHash,
+  sweepDue,
   type TileJob,
 } from "./corridor.ts";
+
+// ---- Kept a day for the same route (the owner, 2026-11-01: battery audit) --------------------------------------------
+
+const ROUTE: LonLat[] = [
+  [-77.05, 38.9],
+  [-77.04, 38.91],
+  [-77.03, 38.92],
+];
+
+test("a route's corridor is keyed by a hash of its line: the same route matches, another does not, and no place is named", () => {
+  assert.equal(routeHash(ROUTE), routeHash(ROUTE.map(([lon, lat]) => [lon + 1e-7, lat] as LonLat)), "a hair's difference is the same route");
+  assert.notEqual(routeHash(ROUTE), routeHash(ROUTE.slice(0, 2)));
+  assert.notEqual(routeHash(ROUTE), routeHash([...ROUTE].reverse()), "the way back is another route");
+  assert.doesNotMatch(routeHash(ROUTE), /77|38\./, "the hash names no coordinate");
+});
+
+test("kept up to 24 h for the same route, then deleted", () => {
+  assert.equal(CORRIDOR_KEEP_MS, 24 * 60 * 60_000);
+  const at = Date.UTC(2026, 10, 1, 8);
+  const stamp = { at, route: routeHash(ROUTE), bytes: 1234 };
+  assert.deepEqual(readStamp(JSON.stringify(stamp)), stamp);
+  assert.equal(keptForRoute(stamp, routeHash(ROUTE), at + 23 * 3_600_000), true, "the same route that day: read back");
+  assert.equal(keptForRoute(stamp, routeHash(ROUTE), at + CORRIDOR_KEEP_MS), false, "a day on: fetched afresh");
+  assert.equal(keptForRoute(stamp, routeHash(ROUTE.slice(0, 2)), at + 1000), false, "another route: fetched afresh");
+  assert.equal(keptForRoute(null, routeHash(ROUTE), at), false);
+  // At page load: kept under a day stays; a day or more, an unreadable stamp, or an older page's bare time is deleted.
+  assert.equal(sweepDue(JSON.stringify(stamp), at + 3_600_000), false);
+  assert.equal(sweepDue(JSON.stringify(stamp), at + CORRIDOR_KEEP_MS), true);
+  assert.equal(sweepDue(String(at), at + 1000), true, "an older page's stamp (a bare time) is deleted as before");
+  assert.equal(sweepDue("{", at), true);
+  assert.equal(sweepDue(null, at), false, "nothing kept: nothing opened");
+});
 
 const M_PER_DEG = 111_195;
 const LAT = 38.9;

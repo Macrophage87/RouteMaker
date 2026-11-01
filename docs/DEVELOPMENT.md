@@ -8817,8 +8817,9 @@ path the leader takes, with no account.
   per ride, rides, path size) are the module's constants. A request over them gets a 429.
 - Pace (v0.16.1): dots and reads go every 2 s while up to 20 riders share a dot (the marshals of a
   big ride), every 5 s up to 300, 10 s up to 1,000 and 15 s beyond (`pace_s`, at most
-  `MAX_RIDERS_PER_RIDE` 1,500). One who only watches reads no faster than every 5 s
-  (`WATCH_PACE_S`), since each read is an api request. The pace counts dots shared, not tokens
+  `MAX_RIDERS_PER_RIDE` 1,500). One who only watches reads no faster than every 15 s
+  (`WATCH_PACE_S`, 5 s until v0.17.0), since each read is an api request and wakes the phone's
+  radio for some seconds (the owner, 2026-11-01: battery audit). The pace counts dots shared, not tokens
   kept. Per address, reads and writes are limited apart (`ratelimit.RIDE_LINKS` 1,800 a minute,
   `RIDE_POSTS` 720), so 20 marshals behind one carrier address fit, and one address cannot make a
   full ride of riders within 2 minutes. Each write rewrites the ride's whole
