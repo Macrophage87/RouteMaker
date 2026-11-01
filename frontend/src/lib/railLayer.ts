@@ -24,8 +24,8 @@ import {
   type Station,
   type StationBadges,
 } from "./railStations.ts";
-import { ROAD_LABEL } from "../stressStyle.js";
-import { alertBadgeIcon, closedStationIcon, elevatorIcon, elevatorOutIcon, stationIcon, type Raster } from "./stationIcons.ts";
+import { ROAD_LABEL, darkMapOn } from "../stressStyle.js";
+import { OUTLINE, OUTLINE_DARK_MAP, alertBadgeIcon, closedStationIcon, elevatorIcon, elevatorOutIcon, stationIcon, type Raster } from "./stationIcons.ts";
 
 export const RAIL_SOURCE_ID = "rail";
 export const RAIL_LAYERS = {
@@ -233,20 +233,42 @@ function hideBasemapStationNames(map: RailMap, stations: readonly Station[], vis
 }
 
 /** Every image the layers can ask for: one per combination of lines, and the elevator. */
-export function railImages(stations: readonly Station[], pennColour: string, pixelRatio: number) {
-  const images: Array<{ id: string; raster: Raster }> = allIconLines(stations).map((lines) => ({
-    id: iconId(lines),
-    raster: stationIcon(
-      lines.map((line) => lineStyle(line, pennColour).color),
-      iconShape(lines),
-      pixelRatio,
-    ),
-  }));
+export function railImages(stations: readonly Station[], pennColour: string, pixelRatio: number, dark = darkMapOn()) {
+  const images: Array<{ id: string; raster: Raster }> = stationImages(stations, pennColour, pixelRatio, dark);
   images.push({ id: ELEVATOR_ICON, raster: elevatorIcon(pixelRatio) });
   images.push({ id: ALERT_BADGE_ICON, raster: alertBadgeIcon(pixelRatio) });
   images.push({ id: ELEVATOR_OUT_ICON, raster: elevatorOutIcon(pixelRatio) });
   for (const shape of ["circle", "square"] as const) images.push({ id: closedIconId(shape), raster: closedStationIcon(shape, pixelRatio) });
   return images;
+}
+
+/** The station icons alone, their ring light on the dark map (stationIcons.ts OUTLINE_DARK_MAP; the owner, 2026-11-01: battery audit). */
+function stationImages(stations: readonly Station[], pennColour: string, pixelRatio: number, dark: boolean) {
+  return allIconLines(stations).map((lines) => ({
+    id: iconId(lines),
+    raster: stationIcon(
+      lines.map((line) => lineStyle(line, pennColour).color),
+      iconShape(lines),
+      pixelRatio,
+      undefined,
+      dark ? OUTLINE_DARK_MAP : OUTLINE,
+    ),
+  }));
+}
+
+/** Draw the station icons again for the base map's flavour, where they are on the map (lib/mapFlavour.ts). */
+export function setRailFlavour(
+  map: Pick<RailMap, "hasImage"> & { updateImage(id: string, image: Omit<Raster, "pixelRatio">): void },
+  stations: readonly Station[],
+  pennColour: string,
+  pixelRatio: number,
+  dark: boolean,
+): void {
+  for (const { id, raster } of stationImages(stations, pennColour, pixelRatio, dark)) {
+    if (!map.hasImage(id)) continue;
+    const { width, height, data } = raster;
+    map.updateImage(id, { width, height, data });
+  }
 }
 
 /**

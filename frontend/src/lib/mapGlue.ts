@@ -75,6 +75,7 @@ export function setHazardData(map: HazardMap | null, data: object | null): void 
 import type { When } from "./dials.ts";
 import { MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./mapStyle.ts";
 import { setDcMaskVisibility } from "./dcBoundary.ts";
+import { withDarkPaint } from "./darkPaint.ts";
 import type { RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import { ROUTE_AVOID_MARK_DASH, ROUTE_LANE_DASH, ROUTE_SECTION_WIDTHS, laneMarkFeatures, routeCorridorPaint, overlayFade, routeClasses, routeLaneMarks, routePaint, routeSections, sectionFeatures, usesCapacity, type RouteClassKey, type RouteLaneFacility, type RouteSection } from "./routeColours.ts";
@@ -244,8 +245,13 @@ export function setStressPalette(
     map.setPaintProperty(MTB_TRAIL_LAYER_ID, "line-width", paint["line-width"]);
   }
   if (map.getLayer(MTB_TRAIL_CASING_LAYER_ID)) map.setPaintProperty(MTB_TRAIL_CASING_LAYER_ID, "line-width", mtbTrailHaloPaint()["line-width"]);
-  // The shared not-for-routes ticks (452a) sit outside the white edge, so they widen with it.
-  if (map.getLayer(MTB_TICKS_LAYER_ID)) map.setPaintProperty(MTB_TICKS_LAYER_ID, "line-width", mtbTicksPaint()["line-width"]);
+  // The shared not-for-routes ticks (452a) sit outside the white edge, so they widen with it; light on the dark map
+  // (stressStyle.js DARK_MAP; the owner, 2026-11-01: battery audit).
+  if (map.getLayer(MTB_TICKS_LAYER_ID)) {
+    const ticks = mtbTicksPaint();
+    map.setPaintProperty(MTB_TICKS_LAYER_ID, "line-width", ticks["line-width"]);
+    map.setPaintProperty(MTB_TICKS_LAYER_ID, "line-color", ticks["line-color"]);
+  }
   // Each level's line and white edge (456): wider with the accessibility switch; the colours and the dashes (in widths) stay.
   for (const { level } of MTB_LEVELS) {
     const paint = mtbLevelPaint(level);
@@ -900,10 +906,11 @@ export function coverageMask(coverage: Coverage) {
 }
 
 /**
- * The mask's two layers, bottom first. The base map is the same light flavour
- * in both themes (mapStyle.ts, SPRITE_FLAVOR), so one grey serves both: dark
- * enough to read as "not here", open enough that the roads beyond stay legible
- * for someone riding in from outside; the edge is a solid dark line.
+ * The mask's two layers, bottom first, as the light map draws them: a grey
+ * dark enough to read as "not here", open enough that the roads beyond stay
+ * legible for someone riding in from outside; the edge is a solid dark line.
+ * The dark map (lib/mapFlavour.ts; the owner, 2026-11-01: battery audit)
+ * darkens instead, with a light edge (lib/darkPaint.ts).
  */
 export const COVERAGE_MASK_LAYERS = [
   {
@@ -941,7 +948,8 @@ export function addCoverageMask(map: MaskMap, coverage: Coverage): boolean {
   map.addSource(COVERAGE_SOURCE_ID, { type: "geojson", data: coverageMask(coverage) });
   const overlay = new Set(stressOverlayLayers(STRESS_SOURCE_ID).map((layer: { id: string }) => layer.id));
   const before = map.getStyle().layers.find((layer) => layer.type === "symbol" || overlay.has(layer.id))?.id;
-  for (const layer of COVERAGE_MASK_LAYERS) map.addLayer({ ...layer }, before);
+  // Its dark-map paint while the dark map shows (lib/darkPaint.ts; the owner, 2026-11-01: battery audit).
+  for (const layer of COVERAGE_MASK_LAYERS) map.addLayer(withDarkPaint({ ...layer }), before);
   return true;
 }
 

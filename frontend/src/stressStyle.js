@@ -323,8 +323,8 @@ function halfColours(palette, tier, strong) {
   return { ...own, casing: strong ? strongerCasing(own.casing, tier >= 2) : own.casing, ring: own.ring ?? null };
 }
 
-export function tiersFor(palette, strong = false) {
-  return TIER_SHAPES.map((shape) => {
+export function tiersFor(palette, strong = false, dark = false) {
+  const tiers = TIER_SHAPES.map((shape) => {
     const colours = PALETTES[palette][shape.tier];
     const unpaved = UNPAVED_PALETTES[palette][shape.tier];
     // A busy tier's casing is kept by the switch (292), and so is LTS 2's blue edge (356: "a blue instead of black").
@@ -356,6 +356,30 @@ export function tiersFor(palette, strong = false) {
         : { casingExtra: CASING_EXTRA_PX, strong: false }),
     };
   });
+  return dark ? tiers.map(onDarkMap) : tiers;
+}
+
+/**
+ * THE DARK MAP. The owner, 2026-11-01: battery audit: the base map is the Protomaps dark flavour in the dark theme,
+ * and in a ride or Roam between civil dusk and dawn (lib/mapFlavour.ts), to save screen power on OLED phones. The
+ * light-map colours stay exactly as they are; where one is under 3:1 on the dark map's surfaces it has a dark-map
+ * variant here, used only while the dark map shows (darkMapTest.test.ts holds every one):
+ *
+ * - `topSurface`: the dark flavour's lightest surface a line can lie over (its motorway grey), the worst case;
+ * - `casing`: a tier whose line and casing are both under 3:1 on it (the default palette's LTS 4 red on its dark
+ *   red casing; the colour-blind-friendly palette's LTS 3 orange on navy) is cased in white instead, as Avoid is;
+ * - `edge`: a faint line's edge is light instead of near black, at the same opacity (FAINT);
+ * - `ticks`: the mountain-bike trails' not-for-routes ticks are light, so the ticked edge still shows.
+ */
+export const DARK_MAP = { topSurface: "#474747", casing: "#ffffff", edge: "#e7e5e4", ticks: "#a8a29e" };
+
+/** A tier as the dark map draws it: a white casing where neither its line nor its casing stands 3:1 off the dark map, and a light faint edge. */
+function onDarkMap(tier) {
+  const unseen = (colour) => contrastRatio(colour, DARK_MAP.topSurface) < 3;
+  // Only the casing changes; the gaps keep what they showed (tier.gap was read before), as they sit inside the line.
+  // A half step the same way, by its ring where it has one (the default's 4.5: dark red on red in a near-black ring).
+  const half = tier.half && unseen(tier.half.color) && unseen(tier.half.casing) ? { ...tier.half, ...(tier.half.ring ? { ring: DARK_MAP.casing } : { casing: DARK_MAP.casing }) } : tier.half;
+  return { ...tier, darkMap: true, half, ...(unseen(tier.color) && unseen(tier.casing) ? { casing: DARK_MAP.casing } : {}) };
 }
 
 /**
@@ -568,6 +592,8 @@ let chosen = storedAccessibility();
 let contrastMore = false;
 let accessibility = resolveAccessibility(chosen, contrastMore);
 let active = resolvePalette(locationSearch, accessibility);
+/** Whether the base map is the dark flavour now (lib/mapFlavour.ts sets it): the overlay's dark-map variants (DARK_MAP). */
+let darkMap = false;
 /** @type {Map<string, ReturnType<typeof tiersFor>>} */
 const tiersByStyle = new Map();
 /** @type {Set<(name: string) => void>} */
@@ -600,7 +626,19 @@ export function paletteSetByAddress() {
 
 /** A key that changes whenever what the tiers look like does: the palette, or the switch. */
 export function styleKey() {
-  return `${active}|${accessibility ? "strong" : "plain"}`;
+  return `${active}|${accessibility ? "strong" : "plain"}${darkMap ? "|dark" : ""}`;
+}
+
+/** Whether the base map is the dark flavour (DARK_MAP). */
+export function darkMapOn() {
+  return darkMap;
+}
+
+/** The base map went dark or light (lib/mapFlavour.ts): the overlay is drawn again in place, as for the switch. */
+export function setDarkMap(on) {
+  if (on === darkMap) return;
+  darkMap = on;
+  tell();
 }
 
 /** The tiers, in the palette and strength in use. The same array until one of them changes. */
@@ -608,7 +646,7 @@ export function currentTiers() {
   const key = styleKey();
   let tiers = tiersByStyle.get(key);
   if (!tiers) {
-    tiers = tiersFor(active, accessibility);
+    tiers = tiersFor(active, accessibility, darkMap);
     tiersByStyle.set(key, tiers);
   }
   return tiers;
@@ -1221,8 +1259,9 @@ function zoomedOutStops(at) {
  */
 export const FAINT = { opacity: 0.4, widthScale: 0.6, edge: "#1c1917", edgeOpacity: 0.65, edgePx: 1 };
 
-/** The colour of a tier's faint edge: its casing when that is a near-black, else FAINT.edge (Avoid's red casing is not dark enough to be an edge). */
+/** The colour of a tier's faint edge: its casing when that is a near-black, else FAINT.edge (Avoid's red casing is not dark enough to be an edge); on the dark map, DARK_MAP.edge. */
 export function faintEdgeColour(tier) {
+  if (tier.darkMap) return DARK_MAP.edge;
   return relativeLuminance(tier.casing) < DARK_CASING_LUMINANCE ? tier.casing : FAINT.edge;
 }
 
@@ -1507,9 +1546,9 @@ export const MTB_TICKS = { color: "#1c1917", px: 2, strongPx: 2.5, dash: [0.2, 1
 export const MTB_TICKS_LAYER_ID = "mtb-trail-ticks";
 
 /** The ticks' paint, plain or with the accessibility switch: as wide as the white edge and `px` more a side. */
-export function mtbTicksPaint(strong = accessibilityOn()) {
+export function mtbTicksPaint(strong = accessibilityOn(), dark = darkMapOn()) {
   const width = strong ? MTB_LEVEL.strongWidth : MTB_LEVEL.width;
-  return { "line-color": MTB_TICKS.color, "line-width": mtbHaloWidth(width, strong) + 2 * (strong ? MTB_TICKS.strongPx : MTB_TICKS.px), "line-dasharray": MTB_TICKS.dash };
+  return { "line-color": dark ? DARK_MAP.ticks : MTB_TICKS.color, "line-width": mtbHaloWidth(width, strong) + 2 * (strong ? MTB_TICKS.strongPx : MTB_TICKS.px), "line-dasharray": MTB_TICKS.dash };
 }
 
 /** The zoom the not-for-routes line draws from: where the tiles carry the trails (STRESS_ZOOMS.quiet, held equal by a test; the plan: "MTB trails from zoom 12-13"). */

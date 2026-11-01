@@ -86,6 +86,14 @@
   }
 }
 
+/* The dark base map (lib/mapFlavour.ts; the owner, 2026-11-01: battery audit), by a class on the root since it
+   follows the light in a ride as well as the theme: the map's focus ring turns light outside, dark inside, 3:1 or
+   more on every dark surface (darkMap.test.ts). */
+:root.map-dark {
+  --map-focus: #f9fafb;
+  --map-focus-inner: #111827;
+}
+
 .a11y .stress-label,
 .a11y .hint,
 .a11y .route-credit {

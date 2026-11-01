@@ -18,6 +18,11 @@ export interface Raster {
 }
 
 export const OUTLINE = "#1f2937";
+/**
+ * The ring on the dark map (the owner, 2026-11-01: battery audit): the near-black ring is about 1.1:1 there, so it is
+ * light, the dark theme's legend ring (styles.css --rail-ring); darkMap.test.ts holds it 3:1 on every dark surface.
+ */
+export const OUTLINE_DARK_MAP = "#e5e7eb";
 const SEPARATOR = "#ffffff";
 /** The station icon's diameter in CSS pixels at icon-size 1. */
 export const STATION_ICON_PX = 20;
@@ -76,10 +81,11 @@ export function stationIcon(
   shape: "circle" | "square",
   pixelRatio = 2,
   cssSize = STATION_ICON_PX,
+  outlineColour = OUTLINE,
 ): Raster {
   if (colours.length === 0) throw new Error("a station icon needs at least one colour");
   const rgb = colours.map(hexToRgb);
-  const outline = hexToRgb(OUTLINE);
+  const outline = hexToRgb(outlineColour);
   const separator = hexToRgb(SEPARATOR);
   const size = Math.round(cssSize * pixelRatio);
   const centre = size / 2;

@@ -12,13 +12,11 @@ import { Protocol } from "pmtiles";
 // file by `import.meta.url`, which a bundle does not preserve; Vite builds it
 // as an asset of its own here and the map is told where it is.
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
-import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
 import { COVERAGE_BBOX, type LonLat } from "./lib/geo.ts";
 import { constrainAbovePanel } from "./lib/coveredConstrain.ts";
 import { AT_ZOOM } from "./lib/planHash.ts";
 import { accuracyRing } from "./lib/geolocation.ts";
 import {
-  BASEMAP_SOURCE_ID,
   MAP_ATTRIBUTION,
   OPENING_ZOOM,
   STRESS_SOURCE_ID,
@@ -42,7 +40,9 @@ import {
   ROUTE_BAND_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, TRAIL_LABEL_LAYER_ID, mtbTrailsOn, rideRoadLabelField, rideTrailLabelField, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, withClearRoadLabels } from "./stressStyle.js";
+import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, TRAIL_LABEL_LAYER_ID, mtbTrailsOn, rideRoadLabelField, rideTrailLabelField, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, setDarkMap } from "./stressStyle.js";
+import { basemapLayers as flavourLayers, mapFlavourFor } from "./lib/mapFlavour.ts";
+import { themeIsDark, useMapFlavour } from "./useMapFlavour.ts";
 import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
 import {
   addStressOverlay,
@@ -80,7 +80,7 @@ import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
 import { ROUTE_NAME_LAYER_ID, ROUTE_NAME_SOURCE_ID, routeNameField, routeNameFeatures, routeNameLayer } from "./lib/routeNames.ts";
-import { addRailStations, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
+import { addRailStations, setRailFlavour, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
 import { setRideLabelOrder, type LabelHomes } from "./lib/rideLabelOrder.ts";
 import { RIDE_LABEL_SCALE, RIDE_SCALED_LABEL_LAYERS, scaledTextSize } from "./lib/rideLabelSize.ts";
 import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
@@ -680,6 +680,11 @@ export function MapView(props: Props) {
   const [areaClosures, setAreaClosures] = useState<ClosureItem[]>([]);
   const areaClosuresRef = useRef<ClosureItem[]>([]);
   areaClosuresRef.current = areaClosures;
+  // The base map's flavour (lib/mapFlavour.ts; the owner, 2026-11-01: battery audit): the one it opens in, then kept
+  // in line with the theme, a ride or Roam, and the light; the station icons' ring is drawn again for it.
+  const [openedFlavour] = useState(() =>
+    mapFlavourFor({ themeDark: themeIsDark(), onBike: props.rideLabels === true, now: Date.now(), at: props.openAt ?? DC_CENTRE }),
+  );
 
   // The map itself, once.
   useEffect(() => {
@@ -687,8 +692,11 @@ export function MapView(props: Props) {
     registerPmtiles();
     const origin = window.location.origin;
     // The street names larger, darker and on a wider halo, so a stress line does not hide them (stressStyle.js, ROAD_LABEL).
-    const basemapLayers = withClearRoadLabels(protomapsLayers(BASEMAP_SOURCE_ID, namedFlavor("light"), { lang: "en" }));
-    const style = buildStyle(origin, basemapLayers);
+    // In the flavour the map opens in, dark or light (lib/mapFlavour.ts; the owner, 2026-11-01: battery audit), set
+    // before any overlay is added so each takes its colours for it; useMapFlavour keeps it after.
+    setDarkMap(openedFlavour === "dark");
+    const basemapLayers = flavourLayers(openedFlavour);
+    const style = buildStyle(origin, basemapLayers, openedFlavour);
     // What Ride mode's corridor prefetch asks for besides the tiles: the style's glyphs and sprite.
     // The labels' faces come with the app (lib/mapGlyphs.ts), so a kept ride fetches no glyphs for them.
     setCorridorStyle(style.glyphs, style.sprite, fontStacks(style.layers).filter((stack) => !bundledFace(stack)), () => stressTileTemplate(origin));
@@ -2113,6 +2121,13 @@ export function MapView(props: Props) {
       marker?.remove();
     };
   }, [props.route]);
+
+  // After the map is made (its effect is above), so the hook finds it.
+  // The tunnel check reads the rider's last fix and the route ahead (lib/tunnelDark.ts).
+  const riderSpot = () => ({ at: callbacks.current.rider?.point ?? null, line: (callbacks.current.route?.geometry.coordinates as LonLat[] | undefined) ?? null });
+  useMapFlavour(mapRef, loaded, props.rideLabels === true, openedFlavour, riderSpot, (dark) => {
+    if (mapRef.current) setRailFlavour(mapRef.current, RAIL_STATIONS, PENN_COLOUR, iconPixelRatio(), dark);
+  });
 
   // The accessibility switch (or the system's request for more contrast):
   // the overlay's layers and the route's sections are painted again in place.
