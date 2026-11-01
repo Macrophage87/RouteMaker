@@ -749,7 +749,8 @@ opened, so whoever joins follows the same leader. It is not on Ride the rest, a 
 someone else's link that names no leader (a Share route link, say), or once you have arrived.</li>
 <li>On a Share ride or Share live link, <strong>Share live</strong> also shows how many are on the ride, the leader
 included, and a screen reader hears it, such as "3 riders on the route". You are counted only once the server has
-your dot, so a count that leaves you out means your location is not going out yet. <strong>More</strong> then has
+your dot, so a count that leaves you out means your location is not going out yet. Someone who only
+watches, with no dot of their own, sees the dots move every 15 seconds. <strong>More</strong> then has
 <strong>Riders</strong>, which opens who is where, Show me as a dot and your role, with its own Close. Roam, Plan
 while watching a ride, and rides without Share live keep the riders count as a button of its own: a person icon and the number, which
 a screen reader hears in words.</li>
@@ -835,8 +836,11 @@ route is kept on your device, so dead spots still show the stress lines. It is c
 ends. Only map tiles are kept, never where you were. If none of it could be kept, a line in the panel at
 the bottom of the screen says "Map not saved offline: it needs a signal." (shown, not said); the route line and the cues work
 without it.</li>
-<li><strong>In the background:</strong> after 10 minutes with the page out of sight, the ride pauses to
-save battery and stops using your location; <strong>Resume</strong> carries on.</li>
+<li><strong>Pauses to save battery:</strong> a ride pauses after 10 minutes with the page out of sight, and
+after 10 minutes staying in one place once you have arrived. Roam pauses after 10 minutes without moving, and, in a
+browser, after 10 minutes out of sight. A pause stops following your location and lets the screen sleep. After a
+stay, your location is checked every 30 seconds instead; in the app, riding off more than about 100 ft [30 m]
+carries on by itself. Otherwise <strong>Resume</strong> carries on.</li>
 <li><strong>Back gesture:</strong> swiping back during a ride does nothing, so a glove or a bump
 can't leave the ride.</li>
 <li><strong>Bikeshare rides</strong> show the time since you undocked, counting up, and <strong>Ride to
