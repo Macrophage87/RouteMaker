@@ -1,0 +1,125 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "id": 9001,
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -76.556,
+      39.116
+     ],
+     [
+      -76.553,
+      39.117
+     ]
+    ]
+   },
+   "properties": {
+    "OBJECTID": 9001,
+    "RC_GUID": "{11111111-AAAA-4BBB-8CCC-000000000001}",
+    "ClosureStart": 1790856000000,
+    "ClosureEnd": 1797285600000,
+    "ClosureType": "Closed",
+    "Comments": "Full road closure for a county water job.",
+    "RoadName": "OLD MILL RD",
+    "CrossStreet1": "Hilltop Rd.",
+    "CrossStreet2": "Benfield Blvd.",
+    "Jurisdiction": "Anne Arundel",
+    "closureSummary": "OLD MILL RD: Closed, all directions.  All lanes closed."
+   }
+  },
+  {
+   "type": "Feature",
+   "id": 9002,
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -76.553,
+      39.117
+     ],
+     [
+      -76.55,
+      39.118
+     ]
+    ]
+   },
+   "properties": {
+    "OBJECTID": 9002,
+    "RC_GUID": "{11111111-AAAA-4BBB-8CCC-000000000001}",
+    "ClosureStart": 1790856000000,
+    "ClosureEnd": 1797285600000,
+    "ClosureType": "Closed",
+    "Comments": "Full road closure for a county water job.",
+    "RoadName": "OLD MILL RD",
+    "CrossStreet1": "Hilltop Rd.",
+    "CrossStreet2": "Benfield Blvd.",
+    "Jurisdiction": "Anne Arundel",
+    "closureSummary": "OLD MILL RD: Closed, all directions.  All lanes closed."
+   }
+  },
+  {
+   "type": "Feature",
+   "id": 9003,
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -77.407,
+      39.414
+     ],
+     [
+      -77.405,
+      39.414
+     ]
+    ]
+   },
+   "properties": {
+    "OBJECTID": 9003,
+    "RC_GUID": "{22222222-AAAA-4BBB-8CCC-000000000002}",
+    "ClosureStart": 1790856000000,
+    "ClosureEnd": 1794348000000,
+    "ClosureType": "Limited Public Access",
+    "Comments": "Utility work lane closures",
+    "RoadName": "E PATRICK ST",
+    "CrossStreet1": "South Carroll Street",
+    "CrossStreet2": "South East Street",
+    "Jurisdiction": "FREDERICK CITY",
+    "closureSummary": "E PATRICK ST: Limited Public Access, all directions. 1 lane(s) open."
+   }
+  },
+  {
+   "type": "Feature",
+   "id": 9004,
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -77.414,
+      39.411
+     ],
+     [
+      -77.414,
+      39.412
+     ]
+    ]
+   },
+   "properties": {
+    "OBJECTID": 9004,
+    "RC_GUID": "{33333333-AAAA-4BBB-8CCC-000000000003}",
+    "ClosureStart": 1788264000000,
+    "ClosureEnd": 1788379200000,
+    "ClosureType": "Closed",
+    "Comments": "Overhead utility work, follow detour",
+    "RoadName": "ICE ST",
+    "CrossStreet1": "West All Saints Street",
+    "CrossStreet2": "West South Street",
+    "Jurisdiction": "FREDERICK CITY",
+    "closureSummary": "ICE ST: Closed, all directions.  All lanes closed."
+   }
+  }
+ ]
+}

@@ -40,6 +40,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from routemaker import dc_closures as dc
+from routemaker import md_closures as md
 from routemaker import planned_work as planned
 from routemaker import workzones as rules
 
@@ -65,15 +66,23 @@ DC, MPD, ALERTDC, NPS = "dc", "mpd", "alertdc", "nps"
 # Planned work (v0.17.0, `routemaker.planned_work`): Plan's Potential closures layer only.
 PROTRACK, DCWATER, WSSC = planned.PROTRACK, planned.DCWATER, planned.WSSC
 PLANNED = (PROTRACK, DCWATER, WSSC)
-PUBLIC = frozenset({DC, MPD, ALERTDC, *PLANNED})
+# Maryland's counties' and towns' closures (v0.17.0, `routemaker.md_closures`): routed round.
+SHA = md.SHA
+PUBLIC = frozenset({DC, MPD, ALERTDC, SHA, *PLANNED})
 
 # How often each source is read, and how old its copy may be before it is labelled
 # stale, and before it is not used at all. Planned work changes by the week: read every 6
 # hours, kept for 3 days.
 _PLANNED_EVERY, _PLANNED_STALE, _PLANNED_DROP = 6 * 3600.0, 24 * 3600.0, 72 * 3600.0
-EVERY_S = {DC: 60 * 60.0, MPD: 15 * 60.0, ALERTDC: 15 * 60.0, NPS: 30 * 60.0}
-STALE_AFTER_S = {DC: 3 * 60 * 60.0, MPD: 45 * 60.0, ALERTDC: 45 * 60.0, NPS: 90 * 60.0}
-DROP_AFTER_S = {DC: 26 * 60 * 60.0, MPD: 6 * 60 * 60.0, ALERTDC: 3 * 60 * 60.0, NPS: 6 * 60 * 60.0}
+EVERY_S = {DC: 60 * 60.0, MPD: 15 * 60.0, ALERTDC: 15 * 60.0, NPS: 30 * 60.0, SHA: 15 * 60.0}
+STALE_AFTER_S = {DC: 3 * 3600.0, MPD: 45 * 60.0, ALERTDC: 45 * 60.0, NPS: 90 * 60.0, SHA: 45 * 60.0}
+DROP_AFTER_S = {
+    DC: 26 * 3600.0,
+    MPD: 6 * 3600.0,
+    ALERTDC: 3 * 3600.0,
+    NPS: 6 * 3600.0,
+    SHA: 6 * 3600.0,
+}
 for _source in PLANNED:
     EVERY_S[_source] = _PLANNED_EVERY
     STALE_AFTER_S[_source] = _PLANNED_STALE
@@ -90,6 +99,12 @@ URLS = {
     DCWATER: "https://geo.dcwater.com/arcgis/rest/services/Viewer/ActiveWorkZonesPublic/MapServer/0/query",
     WSSC: "https://gisportal.wsscwater.com/gis/rest/services/IYN/Water_Construction1/MapServer/0/query",
 }
+# The Road Closure Reporter's two line layers: closures in force, and those posted to come.
+SHA_URLS = tuple(
+    f"https://mdgeodata.md.gov/appdata/rest/services/SHA_RoadClosure/{layer}/MapServer/1/query"
+    for layer in ("RoadClosureActive", "RoadClosurePlanned")
+)
+SHA_MAX = 2000
 # The fields asked of each planned-work layer: never WSSC's contract managers' names, phones
 # or emails, which the layer also holds.
 PLANNED_FIELDS = {
@@ -126,7 +141,7 @@ def nps_key() -> str:
 
 def wanted() -> list[str]:
     """The sources to read: the public ones always, NPS where the worker has the key."""
-    return [DC, MPD, ALERTDC] + ([NPS] if nps_key() else []) + list(PLANNED)
+    return [DC, MPD, ALERTDC, SHA] + ([NPS] if nps_key() else []) + list(PLANNED)
 
 
 def http_get(url: str, timeout: float, headers: dict | None = None) -> bytes:
@@ -505,6 +520,32 @@ def read_dcwater(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> 
     return zones, []
 
 
+def read_sha(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tuple[list, list]:
+    """Maryland's Road Closure Reporter: closures in force and to come, routed round in their
+    hours. Both layers must read, or the source keeps its last good copy."""
+    query = urllib.parse.urlencode(
+        {
+            "where": "ClosureEnd >= CURRENT_TIMESTAMP",
+            "outFields": md.FIELDS,
+            "outSR": "4326",
+            "f": "geojson",
+            "resultRecordCount": SHA_MAX,
+        }
+    )
+    documents = []
+    for url in SHA_URLS:
+        document = json.loads(_get(fetch, f"{url}?{query}", {}, sleep))
+        if not isinstance(document, dict) or document.get("error") or "features" not in document:
+            raise FeedError("the Road Closure Reporter refused the query")
+        if document.get("exceededTransferLimit") or (document.get("properties") or {}).get(
+            "exceededTransferLimit"
+        ):
+            # A partial copy would leave closures unrouted: keep the last good copy instead.
+            raise FeedError(f"the Road Closure Reporter has more than {SHA_MAX} records")
+        documents.append(document)
+    return md.parse_sha(documents, now), []
+
+
 READERS = {
     DC: read_dc,
     MPD: read_mpd,
@@ -513,6 +554,7 @@ READERS = {
     PROTRACK: read_protrack,
     DCWATER: read_dcwater,
     WSSC: read_wssc,
+    SHA: read_sha,
 }
 
 

@@ -172,9 +172,10 @@ export function mergeClosures(route: readonly ClosureItem[], area: readonly Clos
  * and every piece still drawn red. A route's pieces keep a marker each, since each has its own "Route through anyway".
  * A DDOT project advisory's closure (v0.12.4) is one zone per line too ("ddot_advisory-<closure>-<line>"), and so
  * is a Purple Line update's (v0.13.0, "purple_line-<closure>-<line>"), and planned work's (v0.17.0, a ProTrack+
- * project's or a WSSC water main's lines: "protrack-<id>-<line>", "wssc-<id>-<line>").
+ * project's or a WSSC water main's lines: "protrack-<id>-<line>", "wssc-<id>-<line>"), as is a closure from Maryland's
+ * Road Closure Reporter (v0.17.0, "sha-<closure>-<n>").
  */
-const PIECE = /^((?:reviewer-\d+)|(?:(?:ddot_advisory|purple_line|protrack|wssc)-[a-z0-9-]+))-(\d+)$/;
+const PIECE = /^((?:reviewer-\d+)|(?:(?:ddot_advisory|purple_line|protrack|wssc|sha)-[a-z0-9-]+))-(\d+)$/;
 
 export function markerItems(items: readonly ClosureItem[]): ClosureItem[] {
   const groups = new Map<string, ClosureItem[]>();

@@ -1933,9 +1933,10 @@ def _closure_id(row: dict) -> str:
     """The closure a row is part of: a reviewer's closure comes as a row for each of its ways,
     `reviewer-{closure}-{way}`, and a DDOT project advisory's for each of its lines,
     `ddot_advisory-{closure}-{line}`, as is a Purple Line update's (`purple_line-...`) and
-    planned work's (v0.17.0: `protrack-{project}-{line}`, `wssc-{main}-{line}`)."""
+    planned work's (v0.17.0: `protrack-{project}-{line}`, `wssc-{main}-{line}`), and a Maryland
+    Road Closure Reporter closure's (`sha-{closure}-{n}`)."""
     zone_id = str(row.get("id") or "")
-    if row.get("source") in ("reviewer", "ddot_advisory", "purple_line", "protrack", "wssc"):
+    if row.get("source") in ("reviewer", "ddot_advisory", "purple_line", "protrack", "wssc", "sha"):
         return re.sub(r"-\d+$", "", zone_id)
     return zone_id or str((row.get("title"), row.get("when_text")))
 

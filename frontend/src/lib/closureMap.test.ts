@@ -241,6 +241,14 @@ test("Potential closures (v0.17.0): the layer's new name, planned work's own car
   assert.equal(closureCard(pipes[0]).heading, "Possible closure (planned work)");
   assert.equal(closureCard(pipes[0]).action, null);
   assert.deepEqual(markerItems(pipes).map((p) => p.id), ["wssc-5-1"], "one marker, on the middle piece");
+  const sha = [0, 1, 2].map((n) =>
+    item({ id: `sha-bf2850a2-e422-40b7-a2c9-0e48e29793cb-${n}`, source: "sha", effect: "none", can_bypass: false }),
+  );
+  assert.deepEqual(
+    markerItems(sha).map((p) => p.id),
+    ["sha-bf2850a2-e422-40b7-a2c9-0e48e29793cb-1"],
+    "a Maryland closure's stretches: one marker",
+  );
   const project = item({ id: "protrack-465348-0", source: "protrack", effect: "possible", can_bypass: false });
   assert.deepEqual(markerItems([project]).map((p) => p.id), ["protrack-465348-0"]);
   const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");

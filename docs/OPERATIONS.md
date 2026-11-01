@@ -5220,7 +5220,7 @@ proxy cannot reach the service.
 
 ## DC closures (v0.7.0)
 
-The worker task `refresh_dc_closures` (every 15 minutes, 12-minute bound) reads four
+The worker task `refresh_dc_closures` (every 15 minutes, 12-minute bound) reads its
 sources, each when it is due, and keeps one shared copy in the `bikeshare_feed_cache`
 row keyed `closures` (`src/core/closure_sources.py`):
 
@@ -5233,10 +5233,12 @@ row keyed `closures` (`src/core/closure_sources.py`):
 | DDOT ProTrack+ projects (`protrack`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/ProTrackPlusViews/MapServer/1/query` | 6 h | 24 h | 3 days | Potential closures, as DDOT's permits: "Under Construction" and not past the estimated completion; sidewalk, alley, streetlight, green infrastructure, tree, landscaping and signage work left out |
 | DC Water work zones (`dcwater`) | `geo.dcwater.com/.../Viewer/ActiveWorkZonesPublic/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures; each zone's middle placed on its block as a permit's is |
 | WSSC Water mains (`wssc`) | `gisportal.wsscwater.com/.../IYN/Water_Construction1/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures along the pipe, "Construction Started" only; the layer's contact names, phones and emails are never asked for |
+| Maryland Road Closure Reporter (`sha`, v0.17.0) | `mdgeodata.md.gov/.../SHA_RoadClosure/RoadClosureActive/MapServer/1/query` and `.../RoadClosurePlanned/MapServer/1/query` | 15 min | 45 min | 6 h | Maryland's counties' and towns' closures, routed round in their hours (`routemaker.md_closures`): "Closed" and "Emergency Vehicle Only Access" are closed; "Limited Public Access" with every lane closed is every lane closed, bicycles not mentioned (the WZDx penalty); a lane closed is a lane penalty. The reporting account (`Creator`) is never asked for |
 
 NPS needs `NPS_API_KEY` in the worker's environment (sent as the `X-Api-Key` header);
 without it NPS is simply not read. The host needs egress to the four hosts, and (v0.17.0) to
-`geo.dcwater.com` and `gisportal.wsscwater.com` for planned work (PLAYBOOK §0).
+`geo.dcwater.com` and `gisportal.wsscwater.com` for planned work and `mdgeodata.md.gov` for
+Maryland's Road Closure Reporter (PLAYBOOK §0).
 
 **First checks on a new host.** The readers were built on saved sample pages
 (`tests/data/closures`), not on live downloads, so after the first run:
@@ -5259,6 +5261,11 @@ without it NPS is simply not read. The host needs egress to the four hosts, and 
    update ends the stretch it names in its incident's earlier alerts (all of them if it names
    none); a partial update keeps what it says is still closed.
 5. NPS: confirm the park boxes and marker points in `routemaker.dc_closures.PARKS`.
+5a. Maryland Road Closure Reporter (`sha`): both layers are asked `where=ClosureEnd >=
+   CURRENT_TIMESTAMP`; confirm the `ClosureType` values (Closed, Emergency Vehicle Only Access,
+   Limited Public Access, Curb Lane Closure) and that `closureSummary` still reads "all
+   directions" or a direction and "All lanes closed" or "N lane(s) open". More than 2000
+   records in a layer fails the read (`more than 2000 records`), keeping the last good copy.
 6. A segment that cannot be placed (Photon finds no street, or Valhalla's route between the
    cross streets leaves the named street) is shown as text with its link, never guessed;
    it is looked for again after 6 hours.

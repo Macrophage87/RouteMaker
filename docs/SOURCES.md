@@ -681,6 +681,18 @@ permits: never routed round, never in a route's words, a cue or the closure chec
   contact names, phones or emails the layer holds. Publisher: WSSC Water. Terms: a public map
   service with no licence stated (inferred public). Not legal advice.
 
+### Maryland Road Closure Reporter (v0.17.0)
+
+- Credit: `Maryland Road Closure Reporter (MDOT SHA)`
+- **Maryland Road Closure Reporter (MDOT SHA)**. Layers: `mdgeodata.md.gov/appdata/rest/services/SHA_RoadClosure/RoadClosureActive/MapServer/1`
+  and `.../RoadClosurePlanned/MapServer/1` ([Maryland road closures on MD
+  iMAP](https://data.imap.maryland.gov/datasets/maryland-road-closures)), read every 15 minutes.
+  Where Maryland's counties and towns post closures on their own roads (Montgomery, Howard and
+  Baltimore City do not report there). Routed round while in force (`routemaker.md_closures`); only
+  the closure's own fields are asked for, never the reporting account. Publisher: MDOT SHA, the
+  WZDx feed's publisher. Terms: a public MD iMAP service, "as is", no licence stated (inferred
+  public; ask MDOT SHA before redistributing the records themselves). Not legal advice.
+
 ### Deer-management closures (v0.12.3)
 
 Not a map credit: each notice names its agency and links its page (`routemaker.deer_closures`),

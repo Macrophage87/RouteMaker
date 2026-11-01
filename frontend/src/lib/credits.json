@@ -28,5 +28,9 @@
   },
   { "text": "NPS alerts", "html": "NPS alerts" },
   { "text": "AlertDC (HSEMA)", "html": "AlertDC (HSEMA)" },
-  { "text": "Purple Line construction update", "html": "Purple Line construction update" }
+  { "text": "Purple Line construction update", "html": "Purple Line construction update" },
+  {
+    "text": "Maryland Road Closure Reporter (MDOT SHA)",
+    "html": "Maryland Road Closure Reporter (MDOT SHA)"
+  }
 ]

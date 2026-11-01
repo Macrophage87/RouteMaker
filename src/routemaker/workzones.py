@@ -84,6 +84,8 @@ SOURCES = {
     "protrack": "DDOT capital projects (ProTrack+, CC BY 4.0)",
     "dcwater": "DC Water active work zones",
     "wssc": "WSSC Water water main construction",
+    # Maryland's counties' and towns' closures (v0.17.0; `routemaker.md_closures`), routed round.
+    "sha": "Maryland Road Closure Reporter (MDOT SHA)",
 }
 
 # Where a rider reads more, for a zone that carries no link of its own.
@@ -99,6 +101,7 @@ SOURCE_LINKS = {
     "protrack": "https://opendata.dc.gov/",
     "dcwater": "https://www.dcwater.com/projects",
     "wssc": "https://www.wsscwater.com/what-we-do/constructionin-your-neighborhood-map",
+    "sha": "https://data.imap.maryland.gov/datasets/maryland-road-closures",
 }
 
 DISCLAIMER = (
