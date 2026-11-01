@@ -163,7 +163,7 @@ import {
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
 import { useRailFit } from "./lib/railFit.ts";
 import { WAITING_FOR_GPS, readOnce, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
-import { PAUSE_CHECK_MS, heartbeatFix, movedFromPause, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
+import { PAUSE_CHECK_MS, PausedFixes, heartbeatFix, movedFromPause, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { askCompass } from "./lib/compassHeading.ts";
 import { rideGeoEnv, rideSpeech, rideWake, ridesHidden, showCue, speaksAloud } from "./lib/nativeShell.ts";
 import {
@@ -1625,13 +1625,21 @@ export function RideMode({
 
   // The watch: started with the ride (the Start press), stopped at End ride, after a long hide, on unmount.
   const stopWatch = useRef<(() => void) | null>(null);
+  // Paused at the destination in the app, the watch runs on and its fixes are only held (lib/ridePause.ts PausedFixes).
+  const pausedFixes = useRef(new PausedFixes()).current;
   const startWatch = useCallback(() => {
     stopWatch.current?.();
     gpsWeak.current = { goodAt: Date.now(), weak: false };
     stopWatch.current = watchRide(
       env,
-      (fix) => onFixRef.current(fix),
+      (fix) => {
+        // Paused: no line, map or cue work, only held for the 30 s check (the owner, 2026-11-01: battery audit).
+        if (pausedRef.current) pausedFixes.hold(fix);
+        else onFixRef.current(fix);
+      },
       (reason) => {
+        // Paused, a lone failure says nothing: the rider is not riding. A watch stopped for good still stops.
+        if (pausedRef.current && reason !== "denied" && reason !== "insecure" && reason !== "unsupported") return;
         if (reason === "timeout") {
           // Many phones report a lost signal as a timeout: said once no fix has come for GPS_LOST_MS.
           if (gpsSaid.current !== reason && Date.now() - lastFixAt.current >= GPS_LOST_MS) {
@@ -1655,7 +1663,7 @@ export function RideMode({
         }
       },
     );
-  }, [env, notify]);
+  }, [env, notify, pausedFixes]);
 
   useEffect(() => {
     ended.current = false;
@@ -1726,8 +1734,13 @@ export function RideMode({
     if (!rideRef.current.arrived || !stayedLong(stay.current, now)) return;
     pauseSpot.current = stay.current?.point ?? null;
     stay.current = null;
-    stopWatch.current?.();
-    stopWatch.current = null;
+    // In the app the watch runs on, its fixes held (PausedFixes): a new one at Resume would restart the location
+    // service, which Android 14+ refuses in the background, so riding off would never resume.
+    if (!ridesHidden()) {
+      stopWatch.current?.();
+      stopWatch.current = null;
+    }
+    pausedFixes.clear();
     pausedRef.current = true;
     pausedSaid.current = true;
     setPausedWhy("arrived");
@@ -1740,8 +1753,14 @@ export function RideMode({
     if (!paused || pausedWhy !== "arrived") return;
     let stopReading: (() => void) | null = null;
     const timer = window.setInterval(() => {
+      // The app: the latest fix the running watch sent since the last check, never a new watch (PausedFixes).
+      if (ridesHidden()) {
+        const held = pausedFixes.take();
+        if (held && pausedRef.current && !ended.current && movedFromPause(pauseSpot.current, held)) resumeRef.current(true);
+        return;
+      }
       // A browser's hidden tab gets no reliable location: its readings wait for the page to be in front.
-      if (document.visibilityState === "hidden" && !ridesHidden()) return;
+      if (document.visibilityState === "hidden") return;
       stopReading?.();
       stopReading = readOnce(env, (reading) => {
         if (pausedRef.current && !ended.current && movedFromPause(pauseSpot.current, reading)) resumeRef.current(true);
@@ -1751,7 +1770,7 @@ export function RideMode({
       window.clearInterval(timer);
       stopReading?.();
     };
-  }, [paused, pausedWhy, env]);
+  }, [paused, pausedWhy, env, pausedFixes]);
 
   // No signal: a failed re-plan tries again as the connection comes back.
   useEffect(() => {
@@ -1845,7 +1864,11 @@ export function RideMode({
     stay.current = null;
     setPaused(false);
     sayWhereNext.current = true;
-    startWatch();
+    pausedFixes.clear();
+    // The app's watch ran on through the pause: kept, not restarted (Android 14+ refuses a new location service in the
+    // background). Its next fix is the ride's again.
+    if (ridesHidden() && stopWatch.current) gpsWeak.current = { goodAt: Date.now(), weak: false };
+    else startWatch();
     void wake.hold().then(noteWake);
     // The Resume button goes: the focus goes to Where am I? rather than the page's top.
     if (!auto || onResume) whereRef.current?.focus();

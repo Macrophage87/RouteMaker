@@ -5,13 +5,15 @@
  *   long page hide stops it, and Resume is offered.
  * - While paused (the owner, 2026-11-01: "During a pause maybe check on a much longer interval, such as every 30s rather
  *   than stopping outright"): one reading every PAUSE_CHECK_MS; one good reading more than PAUSE_MOVED_M from where the
- *   pause began resumes by itself, as Resume does.
+ *   pause began resumes by itself, as Resume does. In a browser that reading is a one-shot; in the app the native watch
+ *   runs on (PausedFixes, below), since a new one restarts the location service, which Android 14+ refuses from the
+ *   background.
  * - The heartbeat: the app's GPS sends a fix only once the rider has moved NATIVE_DISTANCE_FILTER_M (lib/nativeShell.ts),
  *   so a stopped rider gets none. The last fix, given the time now, keeps the checks that count time standing still
  *   (the share bike's dock, the weak-GPS clock, the stay above) going. It is never a new place: nothing is placed on
  *   the line, and nothing is taken as off route, from it.
  *
- * Pure: the clocks and positions come in as arguments; nothing is kept or sent.
+ * Pure but for PausedFixes, which keeps one fix: the clocks and positions come in as arguments; nothing is sent.
  */
 import { haversineM, type LonLat } from "./geo.ts";
 import { POOR_FIX_M, type RideFix } from "./navigate.ts";
@@ -67,4 +69,32 @@ export function heartbeatFix(last: RideFix | null, lastRealAt: number, now: numb
   if (!(last.accuracyM <= POOR_FIX_M)) return null;
   if (last.speedMs !== null && last.speedMs >= HEARTBEAT_MAX_SPEED_MS) return null;
   return { ...last, speedMs: 0, headingDeg: null, at: now };
+}
+
+/**
+ * The app's paused watch (the owner, 2026-11-01: battery audit). The app has no one-shot reading: each would start a
+ * native watch, so restart the location foreground service, which Android 14+ refuses while the app is in the
+ * background (the phone is usually locked by then), and riding off would never resume. So the watch runs on through
+ * the pause and its fixes are only held here, nothing drawn or said; every PAUSE_CHECK_MS the latest one is taken as
+ * that check's one reading (movedFromPause). With the 4 m filter a rider standing still sends none, so none is taken.
+ */
+export class PausedFixes {
+  private latest: RideFix | null = null;
+
+  /** A fix from the watch while paused: kept in place of the last, nothing else. */
+  hold(fix: RideFix): void {
+    this.latest = fix;
+  }
+
+  /** This check's reading: the latest fix since the last check, or null; each is taken once. */
+  take(): RideFix | null {
+    const fix = this.latest;
+    this.latest = null;
+    return fix;
+  }
+
+  /** A new pause starts with none held. */
+  clear(): void {
+    this.latest = null;
+  }
 }

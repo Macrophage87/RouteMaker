@@ -105,9 +105,10 @@ export function watchRide(
 }
 
 /**
- * One reading (a paused ride's check, lib/ridePause.ts): a watch with READING_OPTIONS, stopped at its first fix, its
- * first failure, or after `giveUpMs`. The app's GPS has no one-shot call, so a short watch is the one way that works
- * in both. `onFix` is called at most once; answers the function that stops it early.
+ * One reading (a paused ride's check in a browser, lib/ridePause.ts): a watch with READING_OPTIONS, stopped at its
+ * first fix, its first failure, or after `giveUpMs`. Never in the app: there each watch starts the location service,
+ * which Android 14+ refuses in the background, so a paused ride keeps its watch instead (ridePause.ts PausedFixes).
+ * `onFix` is called at most once; answers the function that stops it early.
  */
 export function readOnce(
   env: RideGeoEnv,

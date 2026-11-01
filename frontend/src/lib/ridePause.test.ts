@@ -8,6 +8,7 @@ import {
   HEARTBEAT_MS,
   PAUSE_CHECK_MS,
   PAUSE_MOVED_M,
+  PausedFixes,
   STAY_M,
   STAY_MS,
   heartbeatFix,
@@ -65,7 +66,9 @@ test("Ride: arrived and stayed put, the ride pauses the way a long hide does, in
   const tick = ride.slice(ride.indexOf("everyTick.current = (now: number) =>"), ride.indexOf("const resumeRef"));
   // Not behind ridesHidden(): the app pauses too.
   assert.match(tick, /if \(!rideRef\.current\.arrived \|\| !stayedLong\(stay\.current, now\)\) return;/);
-  for (const step of [/stopWatch\.current\?\.\(\);\s*stopWatch\.current = null;/, /pausedRef\.current = true;/, /setPaused\(true\);/, /void wake\.letGo\(\);/]) assert.match(tick, step);
+  for (const step of [/pausedRef\.current = true;/, /setPaused\(true\);/, /void wake\.letGo\(\);/]) assert.match(tick, step);
+  // The browser's watch stops; the app's runs on (below).
+  assert.match(tick, /if \(!ridesHidden\(\)\) \{\s*stopWatch\.current\?\.\(\);\s*stopWatch\.current = null;\s*\}/);
   assert.match(ride, /\{pausedWhy === "arrived" \? ARRIVED_PAUSED_SAID : PAUSED_SAID\}/, "Resume offered with its own words");
   // The browser's hidden-page pause stays as it was: no readings for it.
   assert.match(ride, /if \(!paused \|\| pausedWhy !== "arrived"\) return;/);
@@ -98,4 +101,34 @@ test("heartbeat: never after a poor fix or at speed, so lost GPS still shows as 
   assert.equal(heartbeatFix(fix(HERE, 0, 80, 0), 0, 60_000), null, "a poor fix is not kept alive");
   assert.equal(heartbeatFix(fix(HERE, 0, 6, 6), 0, 60_000), null, "riding at 6 m/s and the fixes stop: a tunnel, not a stop");
   assert.notEqual(heartbeatFix(fix(HERE, 0, 6, null), 0, 60_000), null, "no speed given: taken as stopped");
+});
+
+test("app pause: the watch's fixes are only held, and the latest since the last check is the one reading", () => {
+  const held = new PausedFixes();
+  assert.equal(held.take(), null, "standing still the 4 m filter sends none: no check");
+  held.hold(fix(north(10), 1_000));
+  held.hold(fix(north(20), 2_000));
+  held.hold(fix(north(45), 3_000));
+  const reading = held.take();
+  assert.deepEqual(reading, fix(north(45), 3_000), "the latest of the 30 s, not each fix");
+  assert.equal(movedFromPause(HERE, reading!), true);
+  assert.equal(held.take(), null, "each fix is checked once");
+  held.hold(fix(north(45), 4_000));
+  held.clear();
+  assert.equal(held.take(), null, "a new pause or Resume starts with none");
+});
+
+test("Ride and Roam in the app: paused, the native watch runs on and its fixes skip the ride's work", () => {
+  // Android 14+ refuses to start a location foreground service in the background: no new watch while paused or at an
+  // automatic resume in the app (the owner, 2026-11-01: battery audit).
+  for (const [name, src] of [["Ride", ride], ["Roam", roam]] as const) {
+    const check = src.slice(src.indexOf("const timer = window.setInterval(() => {\n      // The app:"), src.indexOf("}, PAUSE_CHECK_MS);"));
+    assert.match(check, /if \(ridesHidden\(\)\) \{\s*const held = pausedFixes\.take\(\);[^]*?movedFromPause\(pauseSpot\.current, held\)[^]*?return;\s*\}/, `${name}: the held fix, not readOnce`);
+    assert.ok(check.indexOf("return;") < check.indexOf("readOnce("), `${name}: readOnce is the browser's only`);
+  }
+  assert.match(ride, /if \(pausedRef\.current\) pausedFixes\.hold\(fix\);\s*else onFixRef\.current\(fix\);/, "Ride: paused fixes draw nothing");
+  assert.match(roam, /if \(pausedRef\.current\) \{\s*pausedFixes\.hold\(next\);\s*return;\s*\}/, "Roam: paused fixes draw nothing");
+  assert.match(ride, /if \(ridesHidden\(\) && stopWatch\.current\) gpsWeak\.current = [^;]+;\s*else startWatch\(\);/, "Ride: Resume keeps the app's watch");
+  assert.match(roam, /if \(!\(ridesHidden\(\) && stopWatch\.current\)\) startWatch\(\);/, "Roam: Resume keeps the app's watch");
+  assert.match(roam, /if \(!\(why === "still" && ridesHidden\(\)\)\) \{\s*stopWatch\.current\?\.\(\);/, "Roam: only the app's still pause keeps it");
 });

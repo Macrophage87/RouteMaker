@@ -28,7 +28,7 @@ import { WeatherLines } from "./WeatherLines.tsx";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Icon } from "./Icon.tsx";
 import { HIDDEN_STOP_MS, LiveRegion, SAID_311_MS, SlideToEnd, loggedSaid, rideVoice } from "./RideMode.tsx";
-import { PAUSE_CHECK_MS, movedFromPause, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
+import { PAUSE_CHECK_MS, PausedFixes, movedFromPause, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { REPORT_SENT, report311Enabled, sendReport311, type ReportKind } from "./lib/report311.ts";
 import { entryText, report311Log } from "./lib/report311Log.ts";
 import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu } from "./lib/ride311.ts";
@@ -254,11 +254,21 @@ export function RoamMode({
   const stopWatch = useRef<(() => void) | null>(null);
   // Where the rider has stayed within STAY_M, and since when (lib/ridePause.ts).
   const stay = useRef<Stay | null>(null);
+  // Paused (below): which pause, and where a still one began.
+  const pausedRef = useRef<"hidden" | "still" | null>(null);
+  const pauseSpot = useRef<LonLat | null>(null);
+  // Paused for not moving in the app, the watch runs on and its fixes are only held (lib/ridePause.ts PausedFixes).
+  const pausedFixes = useRef(new PausedFixes()).current;
   const startWatch = useCallback(() => {
     stopWatch.current?.();
     stopWatch.current = watchRide(
       env,
       (next) => {
+        // Paused: no map or JS work, only held for the 30 s check (the owner, 2026-11-01: battery audit).
+        if (pausedRef.current) {
+          pausedFixes.hold(next);
+          return;
+        }
         fixRef.current = next;
         stay.current = stayStep(stay.current, next);
         setFix(next);
@@ -266,10 +276,11 @@ export function RoamMode({
       },
       (reason) => {
         if (reason === "denied" || reason === "insecure" || reason === "unsupported") offRef.current?.(reason);
+        else if (pausedRef.current) return;
         setGps(reason === "timeout" ? WAITING_FOR_GPS : LOCATE_MESSAGES[reason]);
       },
     );
-  }, [env]);
+  }, [env, pausedFixes]);
   useEffect(() => {
     startWatch();
     void wake.hold().then(noteWake);
@@ -286,20 +297,23 @@ export function RoamMode({
   // STAY_M for STAY_MS: the watch stops too, one reading every PAUSE_CHECK_MS, and riding off carries on by itself.
   // Paused, the screen lock is let go.
   const [paused, setPaused] = useState<"hidden" | "still" | null>(null);
-  const pausedRef = useRef<"hidden" | "still" | null>(null);
-  const pauseSpot = useRef<LonLat | null>(null);
   const pause = useCallback(
     (why: "hidden" | "still") => {
       if (pausedRef.current) return;
       pauseSpot.current = why === "still" ? (stay.current?.point ?? null) : null;
       stay.current = null;
-      stopWatch.current?.();
-      stopWatch.current = null;
+      // Still in the app, the watch runs on, its fixes held (PausedFixes): a new one at Resume would restart the
+      // location service, which Android 14+ refuses in the background, so riding off would never resume.
+      if (!(why === "still" && ridesHidden())) {
+        stopWatch.current?.();
+        stopWatch.current = null;
+      }
+      pausedFixes.clear();
       pausedRef.current = why;
       setPaused(why);
       void wake.letGo();
     },
-    [wake],
+    [wake, pausedFixes],
   );
   const resume = useCallback(
     (auto = false) => {
@@ -308,11 +322,13 @@ export function RoamMode({
       pauseSpot.current = null;
       stay.current = null;
       setPaused(null);
-      startWatch();
+      pausedFixes.clear();
+      // The app's watch ran on through a still pause: kept, not restarted (Android 14+ refuses it in the background).
+      if (!(ridesHidden() && stopWatch.current)) startWatch();
       void wake.hold().then(noteWake);
       if (!auto || onResume) whereRef.current?.focus();
     },
-    [startWatch, wake, noteWake],
+    [startWatch, wake, noteWake, pausedFixes],
   );
   // Asked on the sunrise clock's timer (below): no timer of its own. The app's GPS sends no fix while still
   // (NATIVE_DISTANCE_FILTER_M), so the stay is timed from the clock, not from fixes.
@@ -326,8 +342,14 @@ export function RoamMode({
     if (paused !== "still") return;
     let stopReading: (() => void) | null = null;
     const timer = window.setInterval(() => {
+      // The app: the latest fix the running watch sent since the last check, never a new watch (PausedFixes).
+      if (ridesHidden()) {
+        const held = pausedFixes.take();
+        if (held && pausedRef.current === "still" && movedFromPause(pauseSpot.current, held)) resume(true);
+        return;
+      }
       // A browser's hidden tab gets no reliable location: its readings wait for the page to be in front.
-      if (document.visibilityState === "hidden" && !ridesHidden()) return;
+      if (document.visibilityState === "hidden") return;
       stopReading?.();
       stopReading = readOnce(env, (reading) => {
         if (pausedRef.current === "still" && movedFromPause(pauseSpot.current, reading)) resume(true);
@@ -337,7 +359,7 @@ export function RoamMode({
       window.clearInterval(timer);
       stopReading?.();
     };
-  }, [paused, env, resume]);
+  }, [paused, env, resume, pausedFixes]);
 
   // The browser lets the lock go whenever the page is hidden (a pocket lock, an app switch), as in a ride: asked again
   // when it is in front again, and when the browser lets it go mid-roam (lib/rideOutput.ts ScreenWake.whenLost).
