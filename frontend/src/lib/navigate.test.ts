@@ -9,6 +9,7 @@ import type { LonLat } from "./geo.ts";
 import { spokenDistance } from "./format.ts";
 import { cueParts } from "./cueShown.ts";
 import {
+  OFF_SURE_M,
   CUE_SHEET_SHOWN,
   arrivedShown,
   cueShort,
@@ -989,6 +990,40 @@ test("off route scales with a fix's accuracy: 60 m off is on route at 40 m accur
     for (let i = 0; i < 12; i += 1) s = step(model, s, fix(at(300, 50), { accuracyM }), "full").state;
     assert.equal(s.off, off, `accuracy ${accuracyM}`);
   }
+});
+
+test("off route never from a rough fix: 120 m off at 40 m accuracy stays on route, at the start or mid-ride", () => {
+  const model = rideModel(lRoute());
+  // Mid-ride, between tall buildings: far past the threshold, but every fix too rough to tell.
+  let s = ride(model, "full", 0, 300).state;
+  const events: RideEvent[] = [];
+  for (let i = 0; i < 20; i += 1) {
+    const out = step(model, s, fix(at(300, 120), { accuracyM: 40 }), "full");
+    s = out.state;
+    events.push(...out.events);
+  }
+  assert.equal(s.off, false);
+  assert.equal(s.offCount, 0);
+  assert.deepEqual(events, []);
+  // At the start, a GPS still settling: the same.
+  s = startState();
+  for (let i = 0; i < 20; i += 1) s = step(model, s, fix(at(0, 120), { accuracyM: 30 }), "full").state;
+  assert.equal(s.off, false);
+  // A fix of OFF_SURE_M or better still counts: three sure far fixes over 8 s are off.
+  s = ride(model, "full", 0, 300).state;
+  for (let i = 0; i < 12; i += 1) s = step(model, s, fix(at(300, 120), { accuracyM: OFF_SURE_M }), "full").state;
+  assert.equal(s.off, true);
+});
+
+test("a rough fix between sure ones neither counts toward off route nor clears the count", () => {
+  const model = rideModel(lRoute());
+  let s = ride(model, "full", 0, 300).state;
+  s = step(model, s, fix(at(300, 80)), "full").state;
+  assert.equal(s.offCount, 1);
+  s = step(model, s, fix(at(300, 80), { accuracyM: 35 }), "full").state;
+  assert.equal(s.offCount, 1);
+  for (let i = 0; i < 8; i += 1) s = step(model, s, fix(at(300, 80)), "full").state;
+  assert.equal(s.off, true);
 });
 
 test("replanPoints with two stops: each matched by its number", () => {

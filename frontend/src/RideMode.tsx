@@ -88,6 +88,7 @@ import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
 import { IosLocationHelp } from "./IosLocationHelp.tsx";
 import {
   POOR_FIX_M,
+  OFF_SURE_M,
   GPS_WEAK_SAID,
   weighFix,
   CUE_SHEET_SAID,
@@ -1569,11 +1570,11 @@ export function RideMode({
       }
       // Back on the planned route: "Keep" has done its work; leaving it again re-plans as usual.
       if (out.events.some((e) => e.kind === "back-on-route") || (keepRef.current && !out.state.off)) setKeepPlanned(false);
-      // Never from a poor fix: a re-plan from a Wi-Fi guess 300 m out would be wrong at once.
+      // Never from a rough fix (OFF_SURE_M): a re-plan from a Wi-Fi guess 300 m out would be wrong at once.
       // Not after "No route found ahead": that route stays up (Re-plan from here still asks again), checked quietly.
       // On the line again: the next automatic re-plan need not wait for the rider to move (REPLAN_MOVED_M).
       if (!out.state.off && out.state.offCount === 0 && out.state.progressM !== null) replannedFrom.current = null;
-      if (out.state.off && auto && !gate.busy && fix.accuracyM <= POOR_FIX_M && out.state.goodFix && !replanHeld(replannedFrom.current, fix.point)) {
+      if (out.state.off && auto && !gate.busy && fix.accuracyM <= OFF_SURE_M && out.state.goodFix && !replanHeld(replannedFrom.current, fix.point)) {
         const offRoute = uturnStep(uturns.current, { kind: "off-route", now: Date.now() });
         uturns.current = offRoute.state;
         if (offRoute.replan === "ask") void replan(out.state.goodFix.point);
