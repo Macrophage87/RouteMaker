@@ -163,11 +163,23 @@ export function setCorridorStyle(glyphs: string, sprite: string, stacks: string[
   stressTemplate = stressTiles;
 }
 
+/**
+ * Both flavours' sprites from the one the map opened with (lib/mapFlavour.ts spriteFor: `.../sprites/v4/<flavour>`):
+ * a ride can turn dark at dusk or in a tunnel, or light at dawn, with no signal, and the other's icons must be kept
+ * too (the owner, 2026-11-01: battery audit). Any other sprite is as given.
+ */
+export function bothSprites(sprite: string): string[] {
+  const flavour = /\/(light|dark)$/.exec(sprite);
+  if (!flavour) return [sprite];
+  const base = sprite.slice(0, flavour.index);
+  return [`${base}/light`, `${base}/dark`];
+}
+
 /** The style's glyph and sprite URLs a ride's labels and icons need ([] before the style has loaded). */
 export function styleExtraUrls(): string[] {
   if (!style) return [];
   const scale = typeof devicePixelRatio === "number" && devicePixelRatio > 1 ? "@2x" : "";
-  return [...glyphUrls(style.glyphs, style.stacks), `${style.sprite}${scale}.json`, `${style.sprite}${scale}.png`];
+  return [...glyphUrls(style.glyphs, style.stacks), ...bothSprites(style.sprite).flatMap((sprite) => [`${sprite}${scale}.json`, `${sprite}${scale}.png`])];
 }
 
 /** A stress tile's URL as the map asks for it, or null before the style has loaded. */

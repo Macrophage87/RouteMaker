@@ -9,8 +9,8 @@
  *
  * The dark flavour is Protomaps' own, with this app's light-map changes made the same way (withClearRoadLabels:
  * the street names, state and county lines), and one change of its own: the background is the earth's colour, so
- * beyond the archive's edge is as dark as the land. The street names keep their white halo: legible on either map,
- * and held by roadLabels.test.ts. The overlay's dark-map colours are in stressStyle.js (DARK_MAP),
+ * beyond the archive's edge is as dark as the land. The street and trail names take the dark flavour's label halo
+ * with light text (stressStyle.js ROAD_LABEL), so they are not white bands on an unlit screen. The overlay's dark-map colours are in stressStyle.js (DARK_MAP),
  * routeColours.ts (casingOnMap), lib/darkPaint.ts and stationIcons.ts (OUTLINE_DARK_MAP); darkMap.test.ts holds
  * each one to 3:1 on the dark map's surfaces, as the light map's are held on its own.
  */
@@ -18,7 +18,9 @@ import { layers as protomapsLayers, namedFlavor, type Flavor } from "@protomaps/
 import { accessibilityOn, setDarkMap, withClearRoadLabels } from "../stressStyle.js";
 import { BASEMAP_SOURCE_ID } from "./mapStyle.ts";
 import { solarDay } from "./lightTimes.ts";
-import { applyDarkPaint, type DarkPaintMap } from "./darkPaint.ts";
+import { DARK_PAINT, applyDarkPaint, type DarkPaintMap, type PaintTable } from "./darkPaint.ts";
+import { topoDarkPaint, topoLayers } from "./topoLines.ts";
+import { CHOICE_CASING_LAYER, CHOICE_CASING_OPACITY } from "./routeChoice.ts";
 import { COVERAGE_MASK_LAYERS } from "./mapGlue.ts";
 import { DC_MASK_LAYERS } from "./dcBoundary.ts";
 import { SCENIC_CASING_LAYER, SCENIC_COLOUR, scenicPointLayers } from "./scenicLayer.ts";
@@ -33,7 +35,7 @@ export function flavourColours(flavour: MapFlavour): Flavor {
 
 /** The base map's layers in a flavour, with this app's label and boundary changes (stressStyle.js). */
 export function basemapLayers(flavour: MapFlavour, strong: boolean = accessibilityOn()): unknown[] {
-  return withClearRoadLabels(protomapsLayers(BASEMAP_SOURCE_ID, flavourColours(flavour), { lang: "en" }), strong);
+  return withClearRoadLabels(protomapsLayers(BASEMAP_SOURCE_ID, flavourColours(flavour), { lang: "en" }), strong, flavour === "dark");
 }
 
 /** Whether `ms` is between civil dusk and civil dawn at `lat`, `lon` ("Dusk" and "Dawn", lib/lightTimes.ts). */
@@ -94,13 +96,20 @@ export function spriteFor(origin: string, flavour: MapFlavour): string {
 /** The class on the page's root while the dark map shows: the map's focus ring turns light (styles.css). */
 export const MAP_DARK_CLASS = "map-dark";
 
-/** The light-map paint of the layers lib/darkPaint.ts paints for the dark map, to put back when the map turns light. */
+/** Every overlay layer's dark-map paint, by id: lib/darkPaint.ts's and the topo lines' (lib/topoLines.ts). */
+export function overlayDarkPaint(): PaintTable {
+  return { ...DARK_PAINT, ...topoDarkPaint() };
+}
+
+/** The light-map paint of the layers overlayDarkPaint paints for the dark map, to put back when the map turns light. */
 export function overlayLightPaint(): Array<{ id: string; paint?: Record<string, unknown> }> {
   return [
     ...(COVERAGE_MASK_LAYERS as unknown as Array<{ id: string; paint: Record<string, unknown> }>),
     ...(DC_MASK_LAYERS as unknown as Array<{ id: string; paint: Record<string, unknown> }>),
     { id: SCENIC_CASING_LAYER, paint: { "line-color": SCENIC_COLOUR } },
     ...(scenicPointLayers(false) as Array<{ id: string; paint?: Record<string, unknown> }>),
+    { id: CHOICE_CASING_LAYER, paint: { "line-opacity": CHOICE_CASING_OPACITY } },
+    ...(topoLayers(true, false) as Array<{ id: string; paint?: Record<string, unknown> }>),
   ];
 }
 
@@ -131,5 +140,5 @@ export function applyMapFlavour(
   }
   root?.classList.toggle(MAP_DARK_CLASS, dark);
   setDarkMap(dark);
-  applyDarkPaint(map, dark, overlayLight);
+  applyDarkPaint(map, dark, overlayLight, overlayDarkPaint());
 }

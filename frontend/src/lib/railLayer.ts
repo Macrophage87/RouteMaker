@@ -25,7 +25,7 @@ import {
   type StationBadges,
 } from "./railStations.ts";
 import { ROAD_LABEL, darkMapOn } from "../stressStyle.js";
-import { OUTLINE, OUTLINE_DARK_MAP, alertBadgeIcon, closedStationIcon, elevatorIcon, elevatorOutIcon, stationIcon, type Raster } from "./stationIcons.ts";
+import { CLOSED_RING, CLOSED_RING_DARK_MAP, OUTLINE, OUTLINE_DARK_MAP, alertBadgeIcon, closedStationIcon, elevatorIcon, elevatorOutIcon, stationIcon, type Raster } from "./stationIcons.ts";
 
 export const RAIL_SOURCE_ID = "rail";
 export const RAIL_LAYERS = {
@@ -238,13 +238,19 @@ export function railImages(stations: readonly Station[], pennColour: string, pix
   images.push({ id: ELEVATOR_ICON, raster: elevatorIcon(pixelRatio) });
   images.push({ id: ALERT_BADGE_ICON, raster: alertBadgeIcon(pixelRatio) });
   images.push({ id: ELEVATOR_OUT_ICON, raster: elevatorOutIcon(pixelRatio) });
-  for (const shape of ["circle", "square"] as const) images.push({ id: closedIconId(shape), raster: closedStationIcon(shape, pixelRatio) });
   return images;
 }
 
-/** The station icons alone, their ring light on the dark map (stationIcons.ts OUTLINE_DARK_MAP; the owner, 2026-11-01: battery audit). */
+/**
+ * The station icons alone, open and closed, their ring light on the dark map (stationIcons.ts OUTLINE_DARK_MAP and
+ * CLOSED_RING_DARK_MAP; the owner, 2026-11-01: battery audit).
+ */
 function stationImages(stations: readonly Station[], pennColour: string, pixelRatio: number, dark: boolean) {
-  return allIconLines(stations).map((lines) => ({
+  const closed = (["circle", "square"] as const).map((shape) => ({
+    id: closedIconId(shape),
+    raster: closedStationIcon(shape, pixelRatio, undefined, dark ? CLOSED_RING_DARK_MAP : CLOSED_RING),
+  }));
+  const open = allIconLines(stations).map((lines) => ({
     id: iconId(lines),
     raster: stationIcon(
       lines.map((line) => lineStyle(line, pennColour).color),
@@ -254,6 +260,7 @@ function stationImages(stations: readonly Station[], pennColour: string, pixelRa
       dark ? OUTLINE_DARK_MAP : OUTLINE,
     ),
   }));
+  return [...open, ...closed];
 }
 
 /** Draw the station icons again for the base map's flavour, where they are on the map (lib/mapFlavour.ts). */

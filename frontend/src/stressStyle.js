@@ -782,6 +782,11 @@ export const BASEMAP = {
  * 17:1, with the accessibility switch) on a 3.5 px white halo (3.75 px with the switch, the most MapLibre draws at
  * 15 px), so each name sits on its own white band over any line. The names are on the canvas, out of a screen
  * reader's reach as before; the road panel says a road's name in words.
+ *
+ * On the dark map (lib/mapFlavour.ts; the owner, 2026-11-01: battery audit) the halo is the Protomaps dark flavour's
+ * own label halo (its earth, #1f1f1f) and the text light grey, so a name is not a white band on an unlit screen.
+ * Protomaps' own dark label greys (#525252, #666666) are under 3:1 on that halo, so the text keeps this app's bars
+ * instead: 7:1 plain, 15:1 with the switch (roadLabels.test.ts, darkMap.test.ts).
  */
 export const ROAD_LABEL_LAYER_IDS = ["roads_labels_major", "roads_labels_minor"];
 export const ROAD_LABEL = {
@@ -797,6 +802,10 @@ export const ROAD_LABEL = {
   haloWidth: 3.5,
   strongHaloWidth: 3.75,
   haloBlur: 0,
+  /** On the dark map: Protomaps dark's roads_label halo, and light text on it. */
+  darkHalo: "#1f1f1f",
+  darkColor: "#c8c8c8",
+  darkStrongColor: "#ffffff",
 };
 
 // A ride's street names shortened as on the cue card (lib/cueShown.ts, shortStreets): "R Street Northwest" as "R St NW"
@@ -852,13 +861,14 @@ export function rideRoadLabelField(base = null, name = ["coalesce", ["get", "nam
   return base === null ? short : ["case", ["all", ["!", ["has", "name:en"]], ["has", "script"]], base, short];
 }
 
-/** The street names' paint, plain or with the accessibility switch on. A path's name (the base map's `path` kind,
- *  named from zoom 15) is in the trail names' purple (TRAIL_LABEL), so a trail reads as one at every zoom. */
-export function roadLabelPaint(strong = accessibilityOn()) {
-  const street = strong ? ROAD_LABEL.strongColor : ROAD_LABEL.color;
+/** The street names' paint, plain or with the accessibility switch on, on the light map or the dark. A path's name
+ *  (the base map's `path` kind, named from zoom 15) is in the trail names' purple (TRAIL_LABEL), so a trail reads as
+ *  one at every zoom. */
+export function roadLabelPaint(strong = accessibilityOn(), dark = darkMapOn()) {
+  const street = dark ? (strong ? ROAD_LABEL.darkStrongColor : ROAD_LABEL.darkColor) : strong ? ROAD_LABEL.strongColor : ROAD_LABEL.color;
   return {
-    "text-color": ["case", ["==", ["get", "kind"], "path"], strong ? TRAIL_LABEL.strongColor : TRAIL_LABEL.color, street],
-    "text-halo-color": ROAD_LABEL.halo,
+    "text-color": ["case", ["==", ["get", "kind"], "path"], trailLabelColor(strong, dark), street],
+    "text-halo-color": dark ? ROAD_LABEL.darkHalo : ROAD_LABEL.halo,
     "text-halo-width": strong ? ROAD_LABEL.strongHaloWidth : ROAD_LABEL.haloWidth,
     "text-halo-blur": ROAD_LABEL.haloBlur,
   };
@@ -1057,8 +1067,12 @@ export function boundaryLayers(layer) {
   return [{ ...layer, filter: others }, level(county), level(state)];
 }
 
-/** The base map's layers with the street names (ROAD_LABEL), place names (PLACE_LABEL), other labels (OTHER_LABEL) and state and county lines (BOUNDARY_LINE) restyled; every other layer as given. */
-export function withClearRoadLabels(layers, strong = accessibilityOn()) {
+/**
+ * The base map's layers with the street names (ROAD_LABEL), place names (PLACE_LABEL), other labels (OTHER_LABEL) and
+ * state and county lines (BOUNDARY_LINE) restyled; every other layer as given. `dark`: the layers are the dark
+ * flavour's, so the street names take their dark halo (lib/mapFlavour.ts).
+ */
+export function withClearRoadLabels(layers, strong = accessibilityOn(), dark = false) {
   return layers.flatMap((layer) => {
     if (layer.id === BOUNDARY_LAYER_ID) return boundaryLayers(layer);
     if (ROAD_LABEL_LAYER_IDS.includes(layer.id)) {
@@ -1066,7 +1080,7 @@ export function withClearRoadLabels(layers, strong = accessibilityOn()) {
         ...layer,
         ...(layer.id === "roads_labels_major" ? { filter: laterMotorways(layer.filter) } : {}),
         layout: { ...layer.layout, "text-font": [ROAD_LABEL.font], "text-size": ROAD_LABEL.size },
-        paint: { ...layer.paint, ...roadLabelPaint(strong) },
+        paint: { ...layer.paint, ...roadLabelPaint(strong, dark) },
       };
     }
     if (PLACE_LABEL_LAYER_IDS.includes(layer.id)) {
@@ -1105,17 +1119,26 @@ export const TRAIL_LABEL_MIN_ZOOM = 10;
 export const TRAIL_LABEL = {
   color: "#4c1d95",
   strongColor: "#2e1065",
+  /** On the dark map, on the street names' dark halo: a light violet (the owner, 2026-11-01: battery audit). */
+  darkColor: "#c4b5fd",
+  darkStrongColor: "#f5f3ff",
   // MapLibre's own spacing, so a name finds a place between the street and station names; a gentle bend at most, so it reads.
   spacing: 250,
   maxAngle: 30,
   padding: 6,
 };
 
-/** The trail names' paint, plain or with the accessibility switch on. */
-export function trailLabelPaint(strong = accessibilityOn()) {
+/** A trail name's colour, plain or with the switch, on the light map or the dark. */
+function trailLabelColor(strong, dark) {
+  if (dark) return strong ? TRAIL_LABEL.darkStrongColor : TRAIL_LABEL.darkColor;
+  return strong ? TRAIL_LABEL.strongColor : TRAIL_LABEL.color;
+}
+
+/** The trail names' paint, plain or with the accessibility switch on, on the street names' halo for the map. */
+export function trailLabelPaint(strong = accessibilityOn(), dark = darkMapOn()) {
   return {
-    "text-color": strong ? TRAIL_LABEL.strongColor : TRAIL_LABEL.color,
-    "text-halo-color": ROAD_LABEL.halo,
+    "text-color": trailLabelColor(strong, dark),
+    "text-halo-color": dark ? ROAD_LABEL.darkHalo : ROAD_LABEL.halo,
     "text-halo-width": strong ? ROAD_LABEL.strongHaloWidth : ROAD_LABEL.haloWidth,
     "text-halo-blur": ROAD_LABEL.haloBlur,
   };

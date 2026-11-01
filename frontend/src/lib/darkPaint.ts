@@ -17,7 +17,15 @@ export const SCENIC_DARK_COLOUR = "#2dd4bf";
 export const MASK_DARK = "#000000";
 export const MASK_EDGE_DARK = "#c3c8d0";
 
-export const DARK_PAINT: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
+/**
+ * Go's other routes on the dark map: their white edge solid, not 0.7, so the faint line inside it stays 3:1 from the
+ * edge, which is what meets the dark map (darkMap.test.ts).
+ */
+export const CHOICE_CASING_DARK_OPACITY = 1;
+
+export type PaintTable = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+
+export const DARK_PAINT: PaintTable = {
   "coverage-mask": { "fill-color": MASK_DARK, "fill-opacity": 0.45 },
   "coverage-edge": { "line-color": MASK_EDGE_DARK },
   "massride-dc-mask": { "fill-color": MASK_DARK, "fill-opacity": 0.55 },
@@ -25,11 +33,12 @@ export const DARK_PAINT: Readonly<Record<string, Readonly<Record<string, unknown
   "scenic-casing": { "line-color": SCENIC_DARK_COLOUR },
   // A viewpoint is a white ring with a teal edge: the edge is what meets the map.
   "scenic-viewpoints": { "circle-stroke-color": SCENIC_DARK_COLOUR },
+  "route-choice-casing": { "line-opacity": CHOICE_CASING_DARK_OPACITY },
 };
 
 /** A layer as it is added now: its dark-map paint over its own while the dark map shows. */
-export function withDarkPaint<T extends { id: string; paint?: object }>(layer: T, dark: boolean = darkMapOn()): T {
-  const over = DARK_PAINT[layer.id];
+export function withDarkPaint<T extends { id: string; paint?: object }>(layer: T, dark: boolean = darkMapOn(), table: PaintTable = DARK_PAINT): T {
+  const over = table[layer.id];
   return dark && over ? { ...layer, paint: { ...layer.paint, ...over } } : layer;
 }
 
@@ -40,12 +49,18 @@ export interface DarkPaintMap {
 }
 
 /**
- * Paint every layer in DARK_PAINT that is on the map for the flavour: the dark values, or the light ones from
- * `light` (each layer's own definition, by id). A layer not yet added takes its paint when added (withDarkPaint).
+ * Paint every layer in `table` (DARK_PAINT, and the topo lines' own, lib/mapFlavour.ts) that is on the map for the
+ * flavour: the dark values, or the light ones from `light` (each layer's own definition, by id). A layer not yet
+ * added takes its paint when added (withDarkPaint).
  */
-export function applyDarkPaint(map: DarkPaintMap, dark: boolean, light: ReadonlyArray<{ id: string; paint?: Record<string, unknown> }>): void {
+export function applyDarkPaint(
+  map: DarkPaintMap,
+  dark: boolean,
+  light: ReadonlyArray<{ id: string; paint?: Record<string, unknown> }>,
+  table: PaintTable = DARK_PAINT,
+): void {
   const byId = new Map(light.map((layer) => [layer.id, layer.paint ?? {}]));
-  for (const [id, over] of Object.entries(DARK_PAINT)) {
+  for (const [id, over] of Object.entries(table)) {
     if (!map.getLayer(id)) continue;
     const own = byId.get(id);
     for (const name of Object.keys(over)) {

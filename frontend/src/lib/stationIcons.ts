@@ -117,15 +117,20 @@ export function stationIcon(
 export const CLOSED_FILL = "#d1d5db";
 export const CLOSED_RING = "#6b7280";
 export const CLOSED_STRIKE = "#1f2937";
+/**
+ * A closed station's ring on the dark map (the owner, 2026-11-01: battery audit): the mid grey is under 2:1 on a dark
+ * motorway, so a light grey there, still a grey (darkMap.test.ts).
+ */
+export const CLOSED_RING_DARK_MAP = "#9ca3af";
 
 /**
  * A closed station: its usual shape in grey with a near-black stroke from corner to corner (top right
  * to bottom left) cased in white, so it reads as struck through on the light and dark base maps alike
  * and without colour.
  */
-export function closedStationIcon(shape: "circle" | "square", pixelRatio = 2, cssSize = STATION_ICON_PX): Raster {
+export function closedStationIcon(shape: "circle" | "square", pixelRatio = 2, cssSize = STATION_ICON_PX, ringColour = CLOSED_RING): Raster {
   const fill = hexToRgb(CLOSED_FILL);
-  const ring = hexToRgb(CLOSED_RING);
+  const ring = hexToRgb(ringColour);
   const strike = hexToRgb(CLOSED_STRIKE);
   const white = hexToRgb(SEPARATOR);
   const size = Math.round(cssSize * pixelRatio);

@@ -44,6 +44,9 @@ import {
 import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, TRAIL_LABEL_LAYER_ID, mtbTrailsOn, rideRoadLabelField, rideTrailLabelField, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, setDarkMap } from "./stressStyle.js";
 import { basemapLayers as flavourLayers, mapFlavourFor } from "./lib/mapFlavour.ts";
 import { themeIsDark, useMapFlavour } from "./useMapFlavour.ts";
+import { withDarkPaint } from "./lib/darkPaint.ts";
+import { CHOICE_CASING_LAYER, CHOICE_CASING_OPACITY, CHOICE_LINE_OPACITY } from "./lib/routeChoice.ts";
+import { setRideDotsFlavour } from "./lib/rideDotsLayer.ts";
 import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
 import {
   addStressOverlay,
@@ -1384,21 +1387,24 @@ export function MapView(props: Props) {
       // Go's other routes to choose from (lib/routeChoice.ts): under the route, fainter, each in its colour on a
       // white edge so it reads over the roads; a press on one chooses it (the click handler above).
       map.addSource(CHOICE_SOURCE, { type: "geojson", data: (callbacks.current.choices ?? NO_CHOICES) as never });
-      map.addLayer({
-        id: "route-choice-casing",
-        type: "line",
-        source: CHOICE_SOURCE,
-        filter: ["==", ["geometry-type"], "LineString"],
-        layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#ffffff", "line-width": 10, "line-opacity": 0.7 },
-      });
+      // Its edge solid on the dark map (lib/darkPaint.ts; the owner, 2026-11-01: battery audit).
+      map.addLayer(
+        withDarkPaint({
+          id: CHOICE_CASING_LAYER,
+          type: "line",
+          source: CHOICE_SOURCE,
+          filter: ["==", ["geometry-type"], "LineString"],
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: { "line-color": "#ffffff", "line-width": 10, "line-opacity": CHOICE_CASING_OPACITY },
+        }) as never,
+      );
       map.addLayer({
         id: CHOICE_LINE_LAYER,
         type: "line",
         source: CHOICE_SOURCE,
         filter: ["==", ["geometry-type"], "LineString"],
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.55 },
+        paint: { "line-color": ["get", "color"], "line-width": 6, "line-opacity": CHOICE_LINE_OPACITY },
       });
       map.addSource(ROUTE_SOURCE, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({
@@ -2145,7 +2151,10 @@ export function MapView(props: Props) {
   // The tunnel check reads the rider's last fix and the route ahead (lib/tunnelDark.ts).
   const riderSpot = () => ({ at: callbacks.current.rider?.point ?? null, line: (callbacks.current.route?.geometry.coordinates as LonLat[] | undefined) ?? null });
   useMapFlavour(mapRef, loaded, props.rideLabels === true, openedFlavour, riderSpot, (dark) => {
-    if (mapRef.current) setRailFlavour(mapRef.current, RAIL_STATIONS, PENN_COLOUR, iconPixelRatio(), dark);
+    if (!mapRef.current) return;
+    setRailFlavour(mapRef.current, RAIL_STATIONS, PENN_COLOUR, iconPixelRatio(), dark);
+    // The group ride's two-minute rings (lib/rideDotsLayer.ts), drawn at the same pixel ratio as RideGroup adds them.
+    setRideDotsFlavour(mapRef.current, iconPixelRatio(), dark);
   });
 
   // The accessibility switch (or the system's request for more contrast):

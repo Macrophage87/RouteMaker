@@ -22,6 +22,11 @@ export const CHOICE_DIRECT = "#1f2937";
 export const CHOICE_TRAILMAXXED = "#0f766e";
 export const CHOICE_OTHER = "#4b5563";
 
+/** The other routes' white edge and their line: fainter than the route (MapView). */
+export const CHOICE_CASING_LAYER = "route-choice-casing";
+export const CHOICE_CASING_OPACITY = 0.7;
+export const CHOICE_LINE_OPACITY = 0.55;
+
 /** A route's colour by its row: the rider's own first, then More direct, Trailmaxxed, and the router's others. */
 export function choiceColour(route: RouteResponse, index: number): string {
   if (index === 0) return routeCasing();
