@@ -9,8 +9,8 @@ that for DC. Add everywhere else too."
 
 - **DDOT ProTrack+** (`protrack`, DC open data, CC BY 4.0): DDOT's capital projects by block,
   "Under Construction" and not past their estimated completion (the layer keeps some 2017
-  projects "Under Construction", so the date decides). Sidewalk, alley, streetlight and green
-  infrastructure work leaves the road open and is left out.
+  projects "Under Construction", so the date decides). Sidewalk, alley, streetlight, green
+  infrastructure, tree, landscaping and signage work leaves the road open and is left out.
 - **DC Water active work zones** (`dcwater`): water-main work by block, with the activity's
   start and finish. Each zone is an area; its middle is put on its block by the same placing
   as a DDOT permit (`core.closure_sources`).
