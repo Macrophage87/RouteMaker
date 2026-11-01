@@ -56,7 +56,7 @@ export const DARK_LIFT: Partial<Flavor> = {
   minor_a: "#434446",
   minor_b: "#3d3e41",
   link: "#434446",
-  major: "#474747",
+  major: "#454547",
   highway: "#474747",
   pier: "#3d3e41",
   other: "#3d3e41",
@@ -67,6 +67,9 @@ export const DARK_LIFT: Partial<Flavor> = {
   tunnel_highway: "#36373a",
   bridges_other: "#3d3e41",
   bridges_minor: "#3d3e41",
+  bridges_link: "#434446",
+  bridges_major: "#454547",
+  runway: "#3e3f42",
   // The low-zoom land cover too, so the region view is not near-black either.
   landcover: {
     grassland: "#29372b",
