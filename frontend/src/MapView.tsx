@@ -43,7 +43,8 @@ import {
 } from "./lib/routeColours.ts";
 import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, TRAIL_LABEL_LAYER_ID, mtbTrailsOn, rideRoadLabelField, rideTrailLabelField, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, setDarkMap } from "./stressStyle.js";
 import { basemapLayers as flavourLayers, mapFlavourFor } from "./lib/mapFlavour.ts";
-import { themeIsDark, useMapFlavour } from "./useMapFlavour.ts";
+import { useMapFlavour } from "./useMapFlavour.ts";
+import { themeIsDark } from "./lib/themeClock.ts";
 import { withDarkPaint } from "./lib/darkPaint.ts";
 import { CHOICE_CASING_LAYER, CHOICE_CASING_OPACITY, CHOICE_LINE_OPACITY } from "./lib/routeChoice.ts";
 import { setRideDotsFlavour } from "./lib/rideDotsLayer.ts";
@@ -701,7 +702,7 @@ export function MapView(props: Props) {
   // The base map's flavour (lib/mapFlavour.ts; the owner, 2026-11-01: battery audit): the one it opens in, then kept
   // in line with the theme, a ride or Roam, and the light; the station icons' ring is drawn again for it.
   const [openedFlavour] = useState(() =>
-    mapFlavourFor({ themeDark: themeIsDark(), onBike: props.rideLabels === true, now: Date.now(), at: props.openAt ?? DC_CENTRE }),
+    mapFlavourFor({ themeDark: themeIsDark(), onBike: props.rideLabels === true, now: Date.now() }),
   );
 
   // The map itself, once.

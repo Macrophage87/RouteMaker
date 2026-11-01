@@ -74,6 +74,7 @@ import { ANNOUNCE_HINT, ANNOUNCE_LABEL, type AnnounceLevel } from "../lib/announ
 import type { Status } from "./RoutePanel.tsx";
 import { APP_VERSION, versionSaid } from "../lib/appVersion.ts";
 import { LANGUAGES, LANGUAGE_NAME, chooseLanguage, language, locale, readLanguageChoice, t, type LanguageChoice } from "../lib/i18n.ts";
+import { THEME_CHOICES, chooseTheme, readThemeChoice, type ThemeChoice } from "../lib/themeClock.ts";
 
 /** The Language setting's (i) words. Street names and notices from agencies stay as they are written. */
 const LANGUAGE_HINT = "The app's words and the voice. Street names and agency notices stay as written. Changing it reloads the page.";
@@ -104,6 +105,34 @@ function LanguageSetting() {
     </SettingRow>
     {language() !== "en" && <p className="hint">{language() === "es" ? t(DRAFT_NOTE_ES) : t(DRAFT_NOTE)}</p>}
     </>
+  );
+}
+
+/**
+ * Settings > Display > Colors (the owner, 2026-11-01: "There's the ability to use whatever setting you want still?"):
+ * the sun by default, or the phone's own setting, or always light or dark (lib/themeClock.ts). It shows at once.
+ */
+function ThemeSetting() {
+  const [choice, setChoice] = useState<ThemeChoice>(() => readThemeChoice());
+  const words: Record<ThemeChoice, string> = {
+    sun: t("Sunrise and sunset"),
+    phone: t("Phone's setting"),
+    light: t("Always light"),
+    dark: t("Always dark"),
+  };
+  return (
+    <SettingRow infoId="settings-theme-info" about={t("Colors")} info={t("Sunrise and sunset: light by day, dark from sunset to sunrise, which also saves battery on most phones.")}>
+      <SettingSelect<ThemeChoice>
+        label={t("Colors")}
+        value={choice}
+        options={THEME_CHOICES.map((id) => [id, words[id]] as const)}
+        onChange={(next) => {
+          setChoice(next);
+          chooseTheme(next);
+        }}
+        describedBy="settings-theme-info"
+      />
+    </SettingRow>
   );
 }
 
@@ -719,6 +748,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
             describedBy="settings-announce-info"
           />
         </SettingRow>
+        {/* Light or dark (the owner, 2026-11-01): by the sun unless the rider picks otherwise. */}
+        <ThemeSetting />
         {/* The app's language (the owner, 2026-10-27: "compatible with multiple languages"): unset, the phone's own. */}
         <LanguageSetting />
       </section>

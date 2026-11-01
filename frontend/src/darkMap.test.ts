@@ -661,3 +661,57 @@ test("the group ride leader's trail and route on the dark map: a light violet, 3
     [TRAIL_LAYER, "line-opacity", TRAIL_OPACITY_DARK_MAP],
   ]);
 });
+
+/** A CSS block's rules, by matching braces one level deep (a minified sheet's @media blocks are left out). */
+function cssRules(body: string): Array<{ selectors: string[]; declarations: string }> {
+  return [...body.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .filter((m) => !m[1].includes("@"))
+    .map((m) => ({ selectors: m[1].replace(/\/\*[\s\S]*?\*\//g, "").split(",").map((s) => s.trim()).filter(Boolean), declarations: m[2] }));
+}
+
+/** The literal `color:` a rule sets, as written; null for inherit, a variable or none. */
+function setColour(declarations: string): string | null {
+  const value = /(?:^|[;\s])color:\s*([^;]+)/.exec(declarations)?.[1].trim().toLowerCase();
+  return value && !/inherit|var\(|currentcolor/.test(value) ? value : null;
+}
+
+/** The same as #rrggbb, for an opaque colour (#rgb too); null otherwise. */
+function textColour(declarations: string): string | null {
+  const value = setColour(declarations);
+  return value ? toHex(/^#[0-9a-f]{3}$/.test(value) ? value.replace(/[0-9a-f]/g, (c) => c + c) : value) : null;
+}
+
+/** An inverted grey, as `filter: invert(1) hue-rotate(180deg)` draws it (hue-rotate leaves a grey alone). */
+const inverted = (hex: string) => `#${[1, 3, 5].map((i) => (255 - parseInt(hex.slice(i, i + 2), 16)).toString(16).padStart(2, "0")).join("")}`;
+
+test("the map's own controls on the dark map: every word 4.5:1 or more on the dark pill, every icon 3:1, Help's open panel too", () => {
+  // The owner, 2026-11-01, yes to darkening the zoom buttons, scale and credit pill; then the review: Help's words stayed
+  // black on the dark pill. Each colour the light controls set (MapLibre's and ours) is set again on the dark map.
+  const PILL = "#1f2937";
+  const ours = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+  const theirs = readFileSync(new URL("../node_modules/maplibre-gl/dist/maplibre-gl.css", import.meta.url), "utf8");
+  const start = ours.indexOf("@media not (forced-colors: active) {");
+  assert.ok(start >= 0);
+  const dark = cssRules(ours.slice(start, ours.indexOf("\n}\n", start))).filter((r) => r.selectors.some((s) => s.startsWith(":root.map-dark")));
+  const darkSelectors = new Set(dark.flatMap((r) => r.selectors));
+  // Every light control rule that sets a colour of its own has its dark one.
+  const lit = [...cssRules(theirs), ...cssRules(ours)].filter((r) => r.selectors.some((s) => /maplibregl-ctrl-(attrib|scale)/.test(s) && !s.startsWith(":root")) && setColour(r.declarations) !== null);
+  assert.ok(lit.some((r) => r.selectors.includes(".maplibregl-ctrl-attrib .map-info")), "Help's panel is among them");
+  for (const rule of lit) for (const selector of rule.selectors) assert.ok(darkSelectors.has(`:root.map-dark ${selector}`), `${selector} has no dark-map colour`);
+  // And each dark one reads on the pill.
+  const said = dark.map((r) => [r.selectors[0], textColour(r.declarations)] as const).filter((entry): entry is readonly [string, string] => entry[1] !== null);
+  assert.ok(said.length >= 5, `${said.length} dark text colours`);
+  for (const [selector, colour] of said) assert.ok(contrastRatio(colour, PILL) >= 4.5, `${selector}: ${colour} ${contrastRatio(colour, PILL).toFixed(2)}:1`);
+  // Help's own "i", drawn in the dark rule's SVG.
+  const helpIcon = /%23([0-9a-f]{6})%22%20viewBox/.exec(dark.find((r) => r.selectors[0].endsWith(".maplibregl-ctrl-attrib-button"))!.declarations)?.[1];
+  assert.ok(helpIcon && contrastRatio(`#${helpIcon}`, PILL) >= 4.5);
+  // The zoom and compass icons are MapLibre's dark grey, inverted.
+  for (const name of ["zoom-in", "zoom-out", "compass"]) {
+    const at = theirs.indexOf(`.maplibregl-ctrl-${name} .maplibregl-ctrl-icon{`);
+    const fill = /fill%3D%22%23([0-9a-f]{3,6})%22/.exec(theirs.slice(at, at + 400))?.[1];
+    assert.ok(fill, name);
+    const icon = inverted(fill.length === 3 ? `#${fill.replace(/./g, (c) => c + c)}` : `#${fill}`);
+    assert.ok(contrastRatio(icon, PILL) >= FLOOR, `${name}: ${icon} ${contrastRatio(icon, PILL).toFixed(2)}:1`);
+  }
+  assert.ok(dark.some((r) => /filter:\s*invert\(1\)/.test(r.declarations)));
+});

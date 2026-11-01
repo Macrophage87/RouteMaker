@@ -9,7 +9,7 @@ import { contrastRatio } from "./stressStyle.js";
 // their ring is --rail-ring, set per theme in styles.css.
 test("the legend's ring stands 3:1 off both panel themes", () => {
   const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
-  const blocks = css.split("@media (prefers-color-scheme: dark)");
+  const blocks = css.split(":root.theme-dark {");
   const pick = (block: string, name: string) => block.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`))?.[1];
   for (const block of blocks.slice(0, 2)) {
     const bg = pick(block, "bg");

@@ -1,6 +1,6 @@
 /**
  * THE DARK MAP. The owner, 2026-11-01: battery audit: the base map is the Protomaps dark flavour when the page is in
- * the dark theme, and in a ride or Roam between civil dusk and civil dawn whatever the theme, to save screen power on
+ * the dark theme, and in a ride or Roam between sunset and sunrise whatever the theme, to save screen power on
  * OLED phones (a dark pixel there is an unlit one). No control: it follows the theme and the light, as the panels
  * follow the theme (styles.css). It changes live, in place: the base map's layers keep their ids and layout between
  * the flavours (only their paint differs, flavour.test), so the paint is set again layer by layer and the sprite
@@ -17,7 +17,8 @@
 import { layers as protomapsLayers, namedFlavor, type Flavor } from "@protomaps/basemaps";
 import { accessibilityOn, setDarkMap, withClearRoadLabels } from "../stressStyle.js";
 import { BASEMAP_SOURCE_ID } from "./mapStyle.ts";
-import { solarDay } from "./lightTimes.ts";
+import { isDark, nextLightChange } from "./lightTimes.ts";
+import { COVERAGE_CENTRE } from "./plusCode.ts";
 import { DARK_PAINT, applyDarkPaint, type DarkPaintMap, type PaintTable } from "./darkPaint.ts";
 import { topoDarkPaint, topoLayers } from "./topoLines.ts";
 import { CHOICE_CASING_LAYER, CHOICE_CASING_OPACITY } from "./routeChoice.ts";
@@ -38,38 +39,25 @@ export function basemapLayers(flavour: MapFlavour, strong: boolean = accessibili
   return withClearRoadLabels(protomapsLayers(BASEMAP_SOURCE_ID, flavourColours(flavour), { lang: "en" }), strong, flavour === "dark");
 }
 
-/** Whether `ms` is between civil dusk and civil dawn at `lat`, `lon` ("Dusk" and "Dawn", lib/lightTimes.ts). */
-export function isDark(ms: number, lat: number, lon: number): boolean {
-  const day = solarDay(ms, lat, lon);
-  if (day.civil_dawn === null || day.civil_dusk === null) return false;
-  return ms < day.civil_dawn || ms >= day.civil_dusk;
-}
-
-/** The next civil dawn or dusk after `ms` (within two days), when the answer of isDark can next change; null if none. */
-export function nextLightChange(ms: number, lat: number, lon: number): number | null {
-  const DAY = 24 * 60 * 60_000;
-  for (const at of [ms, ms + DAY, ms + 2 * DAY]) {
-    const day = solarDay(at, lat, lon);
-    const next = [day.civil_dawn, day.civil_dusk].filter((t): t is number => t !== null && t > ms).sort((a, b) => a - b)[0];
-    if (next !== undefined) return next;
-  }
-  return null;
-}
+// Sunrise and sunset, shared with the page's theme (lib/lightTimes.ts), which must not load this module at startup.
+export { isDark, nextLightChange };
 
 /**
- * What decides the flavour. `onBike`: a ride or Roam (MapView's rideLabels). `at`: where the map is, [lon, lat].
+ * What decides the flavour. `onBike`: a ride or Roam (MapView's rideLabels). `at`: where the sun is reckoned, [lon,
+ * lat]: the region's centre unless a test says otherwise, the same place as the page's theme (lib/themeClock.ts), so
+ * a ride's map and the page turn dark at the same moment rather than a minute or two apart.
  * `tunnel`: the rider is in a tunnel, or about to be (lib/tunnelDark.ts; the owner, 2026-11-01).
  */
 export interface FlavourInputs {
   themeDark: boolean;
   onBike: boolean;
   now: number;
-  at: readonly [number, number];
+  at?: readonly [number, number];
   tunnel?: boolean;
 }
 
-/** Dark in the dark theme, and on the bike between civil dusk and dawn or in a tunnel; else light. */
-export function mapFlavourFor({ themeDark, onBike, now, at, tunnel = false }: FlavourInputs): MapFlavour {
+/** Dark in the dark theme, and on the bike between sunset and sunrise or in a tunnel; else light. */
+export function mapFlavourFor({ themeDark, onBike, now, at = COVERAGE_CENTRE, tunnel = false }: FlavourInputs): MapFlavour {
   return themeDark || (onBike && (tunnel || isDark(now, at[1], at[0]))) ? "dark" : "light";
 }
 

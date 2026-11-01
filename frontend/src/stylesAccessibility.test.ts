@@ -144,10 +144,10 @@ test("the accessibility class strengthens the panel's borders and muted text, by
   assert.equal(css.includes("prefers-contrast"), false, "the switch is the rider's; the stylesheet does not read the preference");
   const light = rules(css).find((r) => r.selectors.includes(":root.a11y"));
   assert.ok(light, ":root.a11y rule");
-  const dark = rules(mediaBody(css, "(prefers-color-scheme: dark)", css.indexOf(":root.a11y")) ?? "").find((r) => r.selectors.includes(":root.a11y"));
+  const dark = rules(css).find((r) => r.selectors.includes(":root.theme-dark.a11y"));
   assert.ok(dark, "a dark :root.a11y rule");
   const plainLight = rules(css).find((r) => r.selectors.includes(":root"));
-  const plainDark = rules(mediaBody(css, "(prefers-color-scheme: dark)") ?? "").find((r) => r.selectors.includes(":root"));
+  const plainDark = rules(css).find((r) => r.selectors.includes(":root.theme-dark"));
   assert.ok(plainLight && plainDark);
   for (const [strong, plain] of [[light, plainLight], [dark, plainDark]] as const) {
     const bg = property(plain.declarations, "--bg");
@@ -176,7 +176,7 @@ test("every box's placeholder is one token, at least 4.5:1 on the panel and its 
   assert.match(placeholderRules[0].declarations, /color:\s*var\(--placeholder\)/);
   assert.match(placeholderRules[0].declarations, /opacity:\s*1/, "Firefox's own placeholder opacity would dim it");
   const plainLight = rules(css).find((r) => r.selectors.includes(":root"));
-  const plainDark = rules(mediaBody(css, "(prefers-color-scheme: dark)") ?? "").find((r) => r.selectors.includes(":root"));
+  const plainDark = rules(css).find((r) => r.selectors.includes(":root.theme-dark"));
   assert.ok(plainLight && plainDark);
   for (const theme of [plainLight, plainDark]) {
     const bg = property(theme.declarations, "--bg");
