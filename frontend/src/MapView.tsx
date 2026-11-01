@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
 import { followZoom } from "./lib/idleRecentre.ts";
+import { followMoveNeeded, mapPixelRatio } from "./lib/followCamera.ts";
 import { createPortal } from "react-dom";
 import { attachFeatureHover } from "./featureHoverCard.ts";
 import { attachTrailHighlight, withTrailHighlight } from "./lib/trailHighlight.ts";
@@ -188,7 +189,7 @@ import {
 } from "./lib/closureMap.ts";
 import { ViaHold } from "./lib/viaHold.ts";
 import { planLegLines, routeDrawnLines } from "./lib/planLegs.ts";
-import { browserCompassEnv, watchCompass } from "./lib/compassHeading.ts";
+import { browserCompassEnv, browserCompassLifetime, watchCompassAwhile } from "./lib/compassHeading.ts";
 import { t } from "./lib/i18n.ts";
 
 
@@ -469,6 +470,18 @@ export const FOLLOW_ZOOM = 16;
 const NO_PADDING = { top: 0, bottom: 0, left: 0, right: 0 };
 const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+/**
+ * The map's bearing as a CSS variable on the ride's and Roam's compass itself (styles.css .ride-compass), not the
+ * document's root, so a turn restyles the needle alone, not the whole page each frame (the owner, 2026-11-01: battery
+ * audit). Set at each turn and each fix, so a compass just shown has it; an unchanged value is not written again.
+ */
+function showBearing(map: MapLibreMap): void {
+  const bearing = `${map.getBearing()}`;
+  for (const compass of document.querySelectorAll<HTMLElement>(".ride-compass")) {
+    if (compass.style.getPropertyValue("--map-bearing") !== bearing) compass.style.setProperty("--map-bearing", bearing);
+  }
+}
+
 /** The follow camera's offset from the map's middle that puts the rider `at` down the open band. */
 function riderOffset(container: HTMLElement, at: number): number {
   const box = container.getBoundingClientRect();
@@ -731,6 +744,9 @@ export function MapView(props: Props) {
         "NavigationControl.ResetBearing": t("Drag to rotate map, click to reset north"),
       },
       cooperativeGestures: false,
+      // Labels show at once, not faded in over frames after each move (the owner, 2026-11-01: battery audit), as the
+      // share card's map does (app/shareCardRender.ts).
+      fadeDuration: 0,
       // The labels' font comes with the app, not the base map (lib/mapGlyphs.ts).
       transformRequest: mapGlyphRequest,
     });
@@ -1294,8 +1310,8 @@ export function MapView(props: Props) {
 
     // A pan or zoom that got under way is not a long press.
     map.on("movestart", () => longPress.cancel());
-    // The map's bearing as a CSS variable, for the ride's compass (styles.css .ride-compass): no React render per frame.
-    const bearingVar = () => document.documentElement.style.setProperty("--map-bearing", `${map.getBearing()}`);
+    // The map's bearing as a CSS variable, for the ride's compass (showBearing): no React render per frame.
+    const bearingVar = () => showBearing(map);
     bearingVar();
     map.on("rotate", bearingVar);
 
@@ -2636,7 +2652,7 @@ export function MapView(props: Props) {
   const riding = !!props.rider;
   useEffect(() => {
     if (!riding || !props.headingUp || gpsHeadingSeen.current) return;
-    stopCompass.current = watchCompass(browserCompassEnv(), (deg) => {
+    stopCompass.current = watchCompassAwhile(browserCompassEnv(), (deg) => {
       compassDeg.current = deg;
       const map = mapRef.current;
       const now = callbacks.current;
@@ -2652,7 +2668,9 @@ export function MapView(props: Props) {
       compassMovedAt.current = at;
       const ahead = riderOffset(map.getContainer(), RIDER_AT);
       map.easeTo({ center: rider.point, bearing: deg, offset: [0, ahead], padding: NO_PADDING, duration: still ? 0 : 200 });
-    });
+      // Stopped 2 minutes on, or once the page is hidden, with no GPS heading yet (the owner, 2026-11-01: battery
+      // audit): the last heading it gave stays the map's until GPS has one.
+    }, browserCompassLifetime());
     return () => {
       stopCompass.current?.();
       stopCompass.current = null;
@@ -2685,6 +2703,8 @@ export function MapView(props: Props) {
     } else {
       riderMarker.current.setLngLat(rider.point);
     }
+    // A compass shown since the last turn (a ride from Roam's detour) gets the bearing the map has.
+    showBearing(map);
     if (rider.headingDeg !== null && !gpsHeadingSeen.current) {
       // Moving: GPS has the heading from now on, and the compass stops.
       gpsHeadingSeen.current = true;
@@ -2715,6 +2735,7 @@ export function MapView(props: Props) {
     const reset = props.followReset !== resetSeen.current;
     resetSeen.current = props.followReset;
     const zoom = followZoom(reset, following.current, map.getZoom(), FOLLOW_ZOOM);
+    const first = !following.current;
     following.current = true;
     // A moving map once a second is too much for some: with reduced motion asked for, it jumps.
     const still = reducedMotion();
@@ -2723,8 +2744,37 @@ export function MapView(props: Props) {
     // open band (with Large text the card covers half the map, 2026-10-20).
     // Padding left by the planner's framing (a junction or the chart's scrub) is cleared, so the offset is from the middle.
     const ahead = riderOffset(map.getContainer(), props.headingUp ? RIDER_AT : 1 / 2);
+    // A move that would not show is skipped, so a rider stood at a light does not redraw the map every fix (the
+    // owner, 2026-11-01: battery audit; lib/followCamera.ts). The marker above has moved already.
+    const box = map.getContainer();
+    const padding = map.getPadding();
+    const onScreen = map.project(rider.point);
+    if (
+      !followMoveNeeded({
+        riderPx: [onScreen.x, onScreen.y],
+        targetPx: [box.clientWidth / 2, box.clientHeight / 2 + ahead],
+        bearingNow: map.getBearing(),
+        bearingWant: bearing,
+        zoomNow: map.getZoom(),
+        zoomWant: zoom,
+        first: first || reset,
+        unsettled: map.isMoving() || padding.top !== 0 || padding.bottom !== 0 || padding.left !== 0 || padding.right !== 0,
+      })
+    ) {
+      return;
+    }
     map.easeTo({ center: rider.point, bearing, zoom, offset: [0, ahead], padding: NO_PADDING, duration: still ? 0 : 400 });
   }, [props.rider, props.follow, props.headingUp, props.followReset]);
+
+  // A ride or Roam (rideLabels: App's onBike) draws the map at a pixel ratio of at most 2, and its end gives the
+  // screen's own back (the owner, 2026-11-01: battery audit; lib/followCamera.ts). The icons keep their own ratio
+  // (iconPixelRatio), which MapLibre scales to the map's, so they stay their size.
+  const onBike = Boolean(props.rideLabels);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (map.getPixelRatio() !== mapPixelRatio(window.devicePixelRatio, onBike)) map.setPixelRatio(mapPixelRatio(window.devicePixelRatio, onBike));
+  }, [onBike]);
 
   // In a ride the street names are larger and shortened ("R St NW"), to be read at a glance (the owner, 2026-10-20),
   // and go back after.
