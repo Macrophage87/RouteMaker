@@ -2377,6 +2377,9 @@ export function RideMode({
       return from === null || !model.paceMs ? null : weatherPoints(model.coordinates, from, model.paceMs);
     },
     RIDE_WEATHER_MS,
+    // The app speaks a warning with the screen locked, so it checks hidden too; a browser's hidden tab waits (the
+    // owner, 2026-11-01: battery audit).
+    ridesHidden(),
   );
   const weatherSaid = useRef({ alerts: new Set<string>(), rain: "" });
   const [weatherDismissed, setWeatherDismissed] = useState(NOTHING_DISMISSED);

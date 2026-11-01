@@ -46,7 +46,7 @@ import { RIDE_TEXT_BUTTON, ScreenWake, phoneKind, readRideIconsOnly, toScreenRea
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
 import { useRailFit } from "./lib/railFit.ts";
 import { WAITING_FOR_GPS, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
-import { rideGeoEnv, rideWake, speaksAloud } from "./lib/nativeShell.ts";
+import { rideGeoEnv, rideWake, ridesHidden, speaksAloud } from "./lib/nativeShell.ts";
 import { NO_FIX_YET, STILL_SEARCHING, nearbyShort, requestNearest, type Nearby, type NearestPlace } from "./lib/nearest.ts";
 import {
   DETOUR_CHOICES,
@@ -545,6 +545,9 @@ export function RoamMode({
     fix ? "roam" : null,
     () => (fixRef.current ? roamPoints(fixRef.current.point) : null),
     RIDE_WEATHER_MS,
+    // As a ride's: on with the app's screen locked (spoken warnings), paused in a browser's hidden tab (the owner,
+    // 2026-11-01: battery audit).
+    ridesHidden(),
   );
   const weatherSaid = useRef({ alerts: new Set<string>(), rain: "" });
   const [weatherDismissed, setWeatherDismissed] = useState(NOTHING_DISMISSED);
