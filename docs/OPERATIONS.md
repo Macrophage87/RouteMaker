@@ -5233,10 +5233,12 @@ row keyed `closures` (`src/core/closure_sources.py`):
 | DDOT ProTrack+ projects (`protrack`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/ProTrackPlusViews/MapServer/1/query` | 6 h | 24 h | 3 days | Potential closures, as DDOT's permits: "Under Construction" and not past the estimated completion; sidewalk, alley, streetlight, green infrastructure, tree, landscaping and signage work left out |
 | DC Water work zones (`dcwater`) | `geo.dcwater.com/.../Viewer/ActiveWorkZonesPublic/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures; each zone's middle placed on its block as a permit's is |
 | WSSC Water mains (`wssc`) | `gisportal.wsscwater.com/.../IYN/Water_Construction1/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures along the pipe, "Construction Started" only; the layer's contact names, phones and emails are never asked for |
+| Maryland Road Closure Reporter (`sha`, v0.17.0) | `mdgeodata.md.gov/.../SHA_RoadClosure/RoadClosureActive/MapServer/1/query` and `.../RoadClosurePlanned/MapServer/1/query` | 15 min | 45 min | 6 h | Maryland's counties' and towns' closures, routed round in their hours (`routemaker.md_closures`): "Closed" and "Emergency Vehicle Only Access" are closed; "Limited Public Access" with every lane closed is every lane closed, bicycles not mentioned (the WZDx penalty); a lane closed is a lane penalty. The reporting account (`Creator`) is never asked for |
 
 NPS needs `NPS_API_KEY` in the worker's environment (sent as the `X-Api-Key` header);
 without it NPS is simply not read. The host needs egress to the four hosts, and (v0.17.0) to
-`geo.dcwater.com` and `gisportal.wsscwater.com` for planned work (PLAYBOOK §0).
+`geo.dcwater.com` and `gisportal.wsscwater.com` for planned work and `mdgeodata.md.gov` for
+Maryland's Road Closure Reporter (PLAYBOOK §0).
 
 **First checks on a new host.** The readers were built on saved sample pages
 (`tests/data/closures`), not on live downloads, so after the first run:

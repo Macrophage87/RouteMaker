@@ -51,6 +51,11 @@ class Net:
         if any(host in url for host in ("ProTrackPlusViews", "geo.dcwater.com", "wsscwater.com")):
             # Planned work (routemaker.planned_work; tests/test_planned_work.py): none here.
             return b'{"type": "FeatureCollection", "features": []}'
+        if "RoadClosurePlanned" in url:
+            return b'{"type": "FeatureCollection", "features": []}'
+        if "RoadClosureActive" in url:
+            # Maryland's Road Closure Reporter (routemaker.md_closures; tests/test_md_closures.py).
+            return (DATA / "sha-road-closures.geojson").read_bytes()
         if "maps2.dcgis.dc.gov" in url:
             return (DATA / "tops-permits.geojson").read_bytes()
         if url == sources.URLS["mpd"]:
@@ -217,8 +222,9 @@ def test_the_snapshot_holds_the_work_zones_and_the_dc_closures_side_by_side(monk
         "protrack": "current",
         "dcwater": "current",
         "wssc": "current",
+        "sha": "current",
     }
-    assert {z.source for z in found.zones} == {"dc", "mpd", "alertdc"}
+    assert {z.source for z in found.zones} == {"dc", "mpd", "alertdc", "sha"}
     # The parks' deer-management notices (routemaker.deer_closures) come from the clock, not a feed.
     assert {n.source for n in found.notices if n.source not in deer_closures.SOURCES} == {
         "mpd",
@@ -236,6 +242,7 @@ def test_the_snapshot_holds_the_work_zones_and_the_dc_closures_side_by_side(monk
         "protrack": "current",
         "dcwater": "current",
         "wssc": "current",
+        "sha": "unavailable",
     }
 
 
