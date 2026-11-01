@@ -521,3 +521,13 @@ def test_a_segment_is_placed_between_its_cross_streets_on_the_routers_check(
     # Where the router's way leaves K Street, nothing is guessed.
     streets["value"] = ["L Street Northwest"]
     assert sources.DatabasePlacer(ways).segment_line(segment) is None
+
+
+@db
+def test_a_planned_work_outage_never_fails_the_closures_run() -> None:
+    """Review: planned work feeds an off-by-default layer only; a host down past its stale
+    time is said in the run's line, never an alarm on the whole job."""
+    sources.refresh(Net(fail=("wsscwater",)), no_sleep, lambda: NOW, Placer())
+    later = NOW + timedelta(days=2)
+    line = sources.refresh(Net(fail=("wsscwater",)), no_sleep, lambda: later, Placer(), force=True)
+    assert "wssc failed" in line

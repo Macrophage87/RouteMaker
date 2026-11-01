@@ -126,7 +126,7 @@ def nps_key() -> str:
 
 def wanted() -> list[str]:
     """The sources to read: the public ones always, NPS where the worker has the key."""
-    return [DC, MPD, ALERTDC, *PLANNED] + ([NPS] if nps_key() else [])
+    return [DC, MPD, ALERTDC] + ([NPS] if nps_key() else []) + list(PLANNED)
 
 
 def http_get(url: str, timeout: float, headers: dict | None = None) -> bytes:
@@ -474,6 +474,13 @@ def _planned_layer(fetch: Fetch, source: str, now: datetime, sleep) -> dict:
     document = json.loads(_get(fetch, f"{URLS[source]}?{query}", {}, sleep))
     if not isinstance(document, dict) or document.get("error"):
         raise FeedError("the layer refused the query")
+    more = document.get("exceededTransferLimit") or (document.get("properties") or {}).get(
+        "exceededTransferLimit"
+    )
+    if more:
+        logger.warning(
+            "closures: the %s layer has more than %d records; the rest unread", source, PLANNED_MAX
+        )
     return document
 
 
@@ -595,6 +602,10 @@ def refresh(
     # still kept above, and riders are told when it ages out.
     stale = []
     for source in sources:
+        if source in PLANNED:
+            # Planned work only feeds an off-by-default layer and is never routed round: an
+            # outage there is logged, never an alarm on the whole closures job.
+            continue
         when = rules._when((feeds.get(source) or {}).get("read_at"))
         if when is None or (now() - when).total_seconds() > STALE_AFTER_S[source]:
             stale.append(source)

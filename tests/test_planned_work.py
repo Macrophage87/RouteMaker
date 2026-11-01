@@ -119,3 +119,50 @@ def test_planned_work_is_flagged_only_and_says_so() -> None:
     assert wz.when_text(zone, NOW, False, possible=True).startswith(
         "Planned work may close it some day"
     )
+
+
+def test_dc_water_dates_are_whole_days_in_dc() -> None:
+    """Review: "finish Nov 7" is stored as Nov 7 00:00 UTC (7 pm Nov 6 in DC); it lasts
+    through Nov 7, and the card says so."""
+    feature = {
+        "properties": {
+            "OBJECTID": 2,
+            "LocationDescription": "1300 29th St NW",
+            "ActivityStart": ms(2026, 11, 2),
+            "ActivityFinish": ms(2026, 11, 7),
+            "ActivityType": "WATER OUTAGE 11/5/2026",
+            "ProjectLongDescription": "Water Main Connection",
+        },
+        "geometry": {"type": "Polygon", "coordinates": [[[-77.0, 38.9], [-77.0, 38.91]]]},
+    }
+    (work,) = pw.parse_dcwater({"features": [feature]}, NOW)
+    assert work.start == datetime(
+        2026, 11, 2, 5, tzinfo=UTC
+    )  # midnight EST (clocks went back Nov 1)
+    assert work.end == datetime(2026, 11, 8, 5, tzinfo=UTC)  # the midnight after Nov 7, EST
+    assert work.description.startswith("WATER OUTAGE 11/5/2026")
+    zone = pw.area_zone(work, [[-77.0, 38.9], [-77.0, 38.901]])
+    assert "through" in wz.when_text(zone, NOW, False, possible=True)
+    assert "Nov 7" in wz.when_text(zone, NOW, False, possible=True)
+
+
+def test_wssc_asks_for_exactly_these_fields() -> None:
+    from core import closure_sources as cs
+
+    assert cs.PLANNED_FIELDS[cs.WSSC].split(",") == [
+        "OBJECTID",
+        "FULL_PROJECT_ID",
+        "PROJECT_NAME",
+        "PROJECT_STATUS",
+        "EST_CONSTR_START_DATE",
+        "EST_CONSTR_END_DATE",
+    ]
+
+
+def test_planned_work_never_reaches_go_or_a_ride() -> None:
+    (zone,) = pw.parse_protrack({"features": [protrack()]}, NOW)
+    points = [[-77.0005, 38.8995], [-77.0005, 38.9015]]
+    plan = wz.for_plan([zone], NOW, points, {}, NOW, now_only=True)
+    assert not plan.possible and not plan.excluded and not plan.unexcluded
+    flagged = wz.for_plan([zone], NOW, points, {}, NOW)
+    assert flagged.possible == [zone] and not flagged.excluded and not flagged.exclude

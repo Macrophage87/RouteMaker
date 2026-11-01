@@ -28,9 +28,10 @@ import math
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta
 
 from . import workzones as wz
+from .ridetime import ZONE
 
 PROTRACK, DCWATER, WSSC = "protrack", "dcwater", "wssc"
 SOURCES = frozenset({PROTRACK, DCWATER, WSSC})
@@ -170,12 +171,24 @@ def _middle(geometry) -> tuple[float, float] | None:
     return (sum(p[0] for p in points) / len(points), sum(p[1] for p in points) / len(points))
 
 
+def _calendar_day(value, after: bool = False) -> datetime | None:
+    """DC Water's dates are calendar days stored as midnight UTC (7 pm the evening before in
+    DC): the day's start in the region's time, or with `after` the midnight after it, so
+    "finish Nov 7" lasts through Nov 7 (the window is whole days: `workzones.WHOLE_DAY_SOURCES`)."""
+    moment = _ms(value)
+    if moment is None:
+        return None
+    day = moment.date() + timedelta(days=1 if after else 0)
+    return datetime.combine(day, time(0), ZONE).astimezone(UTC)
+
+
 def parse_dcwater(document: Mapping, now: datetime) -> list[AreaWork]:
     """DC Water's work zones in force or to come within their window."""
     out = []
     for feature in document.get("features") or []:
         props = feature.get("properties") or {}
-        start, end = _ms(props.get("ActivityStart")), _ms(props.get("ActivityFinish"))
+        start = _calendar_day(props.get("ActivityStart"))
+        end = _calendar_day(props.get("ActivityFinish"), after=True)
         if end is None or end < now:
             continue
         point = _middle(feature.get("geometry"))
@@ -188,7 +201,10 @@ def parse_dcwater(document: Mapping, now: datetime) -> list[AreaWork]:
                 work_id=str(props.get("OBJECTID")),
                 point=point,
                 title=f"{place}: DC Water work" if place else "DC Water work",
-                description=_tidy(props.get("ProjectLongDescription")) or activity,
+                # The activity often carries the day that matters ("WATER OUTAGE 11/5/2026").
+                description="; ".join(
+                    t for t in (activity, _tidy(props.get("ProjectLongDescription"))) if t
+                ),
                 start=start,
                 end=end,
             )

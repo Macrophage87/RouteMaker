@@ -7385,7 +7385,10 @@ class AreaClosuresIn(Schema):
     )
     permits: bool = Field(
         default=False,
-        description="Also DDOT's permits (Plan's DC permits switch); off by default.",
+        description=(
+            "Also potential closures: DDOT's permits and planned work (Plan's Potential"
+            " closures switch); off by default."
+        ),
     )
 
 

@@ -584,7 +584,7 @@ zones: on the route's map (a red closed stretch, amber for a blocked bike lane, 
 in the route's words, and in the closure check (`POST /api/closures/check`). From v0.12.0 the map
 also shows the closures in force now in its view with no route (`GET /api/closures/map`: red
 closed, orange for a blocked bike lane or a rideable work zone, gone once past their end), and
-DDOT's permits there only with Plan's DC permits switch on. None of the four fed
+DDOT's permits and planned work there only with Plan's Potential closures switch on. None of the four fed
 hosts was reachable from the cloud container this was built in; the readers were built on saved
 sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has the first check.
 

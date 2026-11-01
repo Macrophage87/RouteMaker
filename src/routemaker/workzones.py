@@ -1137,7 +1137,7 @@ def cited_date(moment: datetime) -> str:
 
 # The sources whose windows are whole days: a reviewer's, a DDOT project advisory's
 # (`routemaker.ddot_advisories`) and a Purple Line update's (`routemaker.purple_line`).
-WHOLE_DAY_SOURCES = frozenset({"reviewer", "ddot_advisory", "purple_line"})
+WHOLE_DAY_SOURCES = frozenset({"reviewer", "ddot_advisory", "purple_line", "dcwater"})
 
 
 def last_day(source: str, end: datetime) -> datetime | None:

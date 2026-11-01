@@ -5267,8 +5267,11 @@ Closures follow the ride time (the When setting). Only closures known to be in e
 reroute (Go, Plan and MCP alike). One with no reliable end, on a ride more than 2 hours
 away, reads "may still apply" and does not reroute. DDOT TOPS permits are never routed
 around anywhere and give no warning or cue, not even when the TOPS source cannot be
-read; Plan's Potential closures layer (off by default) is the only place they show, with
-planned work (v0.17.0: DDOT ProTrack+, DC Water, WSSC Water), dashed under a barrier on a dashed ring. A rider's "Route
+read; Plan's Potential closures layer (off by default) is the only place they show. Since
+v0.17.0 it also shows planned work (DDOT ProTrack+, DC Water, WSSC Water). Each potential
+closure is a dashed line, and its marker is a barrier on a dashed ring with a question mark.
+A planned-work source that fails is logged in the run's line but never fails the run; the
+host needs egress to its two new hosts before v0.17.0 deploys, or that layer stays empty. A rider's "Route
 through anyway" is per plan and session only (`closure_bypass` on `/api/route`, `bypass`
 on `/api/closures/check`); nothing about it is stored.
 
