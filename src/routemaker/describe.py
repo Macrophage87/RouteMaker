@@ -727,6 +727,52 @@ def _unnamed_jog(before: _Run, run: _Run, after: _Run) -> bool:
     return moves in (("left", "right"), ("right", "left"))
 
 
+def _connector(before: _Run | None, run: _Run, after: _Run | None) -> bool:
+    """Whether `run` is a connector to fold between two turns, its turns said as one: under
+    JOG_MIN_M, turned (or forked) into and turned out of, with the turn across it short of
+    a turnaround (HAIRPIN_DEG). The router hops the corner on a few metres of a cross
+    street, a crosswalk or a sidewalk (the owner, 2026-11-01: "It keeps asking for
+    phantom turns": "Right onto 16th St NE, then left onto West Virginia Avenue bike
+    lane" where the cycle track begins 6 m up 16th Street, and "Right, then left, then
+    right" at one corner). Each end being a fork kept it as a stretch of its own
+    (`_forks`); the rider makes one move there, read from the headings across it. Kept:
+    a path or crosswalk that leads onto a path (`_crossing`'s "Cross Redland Road, then
+    left onto the bike lane"), a U-turn or a circle (their own words), and a stretch of
+    LTS 3 or worse that the stretch after would hide (`NEVER_HIDDEN`)."""
+    if before is None or after is None or run.metres >= JOG_MIN_M:
+        return False
+    if run.untraced or after.untraced or before.untraced:
+        return False
+    if _circle(before) or _circle(run) or _circle(after) or _uturn(run) or _uturn(after):
+        return False
+    if not (_forks(run) or _movement_between(before, run) in TURN_WORDS):
+        return False
+    if not (_forks(after) or _movement_between(run, after) in TURN_WORDS):
+        return False
+    if (run.path or _crosswalk(run)) and after.path and not _crosswalk(after):
+        return False
+    if run.tier in NEVER_HIDDEN and _rank(after) < _rank(run):
+        return False
+    turn = turn_between(before.last, after.first)
+    return turn is not None and abs(turn) < HAIRPIN_DEG
+
+
+def _crosswalk(run: _Run) -> bool:
+    """Whether `run` begins or ends on a crosswalk (CROSSING_USE)."""
+    return any(atom is not None and atom.use == CROSSING_USE for atom in (run.first, run.last))
+
+
+def _fold_connector(run: _Run, after: _Run) -> None:
+    """Fold the connector `run` (`_connector`) into `after`, which then begins where it
+    did: the turn into `after` is read from the headings across both (`_turn_at`, by
+    `folded_start`), and a fork at its own start is no longer said as one."""
+    after.metres += run.metres
+    after.unpaved_m += run.unpaved_m
+    after.folded_start = True
+    if after.first is not None and after.first.fork is not None:
+        after.first = replace(after.first, fork=None)
+
+
 def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
     """Fold each stretch under TINY_M of one traced leg into a neighbour: the one
     on its own street if there is one, else the longer (the earlier on a tie). A
@@ -741,6 +787,12 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
             run = runs[i]
             before = runs[i - 1] if i > 0 else None
             after = runs[i + 1] if i + 1 < len(runs) else None
+            # A few metres between two turns is one move (`_connector`).
+            if after is not None and _connector(before, run, after):
+                _fold_connector(run, after)
+                del runs[i]
+                changed = True
+                continue
             # A stretch begun at a fork is kept: folded, its fork would go unsaid.
             if (
                 run.metres >= TINY_M
@@ -1709,7 +1761,7 @@ def _crossing(
     begun or ended on a crosswalk. The event's road, else CROSS_UNNAMED; None where it
     is not such a stretch."""
     run = runs[i]
-    crosswalk = any(atom is not None and atom.use == CROSSING_USE for atom in (run.first, run.last))
+    crosswalk = _crosswalk(run)
     if i + 1 >= len(runs) or runs[i + 1].leg != run.leg or not (run.path or crosswalk):
         return None
     if run.metres > CROSS_MAX_M or run.untraced or _circle(run):

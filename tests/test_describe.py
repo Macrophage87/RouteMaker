@@ -3072,3 +3072,108 @@ class TestUTurns:
             "0.4 a 0.7 mi (0.6 a 1.2 km): Dé la vuelta en U en Sligo Creek Trail, "
             "sendero sin tráfico."
         )
+
+
+class TestPhantomTurns:
+    """The owner, 2026-11-01: "It keeps asking for phantom turns". South-west on West
+    Virginia Avenue NE the route hops onto the cycle track where it begins, 6 m up 16th
+    Street: "Right onto 16th St NE, then left onto West Virginia Avenue bike lane" while
+    the rider carries straight on. At a corner, a crosswalk cut across it: "Right, then
+    left, then right". Each end being a fork kept the few metres as a stretch."""
+
+    @staticmethod
+    def said(entries):
+        return [(e["street"], (e["turn"] or {}).get("movement")) for e in entries]
+
+    def test_a_few_metres_of_a_cross_street_onto_the_cycle_track_is_straight_on(self):
+        legs = [
+            flat(
+                road("West Virginia Avenue Northeast", 2, 400, 221, 221, facility="lane"),
+                forked(road("16th Street Northeast", 2, 6, 315, 315), "right"),
+                forked(
+                    road(
+                        "West Virginia Avenue Northeast bike lane",
+                        1,
+                        400,
+                        221,
+                        221,
+                        "path",
+                        "cycleway",
+                    ),
+                    "left",
+                ),
+            )
+        ]
+        assert self.said(d.describe(legs)) == [
+            ("West Virginia Avenue Northeast", None),
+            ("West Virginia Avenue Northeast bike lane", "straight"),
+        ]
+
+    def test_a_crosswalk_cut_across_a_corner_is_the_one_right_turn(self):
+        legs = [
+            flat(
+                road("K Street Southeast", 2, 400, 270, 270),
+                forked(road("", 1, 7, 0, 0, "path", "pedestrian_crossing"), "right"),
+                forked(road("", 1, 7, 270, 270, "path", "pedestrian_crossing"), "left"),
+                forked(road("14th Street Southeast", 2, 400, 0, 0), "right"),
+            )
+        ]
+        assert self.said(d.describe(legs)) == [
+            ("K Street Southeast", None),
+            ("14th Street Southeast", "right"),
+        ]
+
+    def test_a_turn_across_the_connector_keeps_its_side(self):
+        # Right 6 m up a cross street, then right again onto the street beyond: one right.
+        legs = [
+            flat(
+                road("A Street", 2, 400, 0, 0),
+                forked(road("B Street", 2, 6, 45, 45), "bear_right"),
+                forked(road("C Street", 2, 400, 90, 90), "right"),
+            )
+        ]
+        assert self.said(d.describe(legs))[1:] == [("C Street", "right")]
+
+    def test_a_jog_of_15_m_or_more_keeps_both_turns(self):
+        legs = [
+            flat(
+                road("Q Street Northwest", 2, 900, 90, 90),
+                forked(road("6th Street Northwest", 2, 30, 180, 180), "right"),
+                forked(road("Rhode Island Avenue Northwest", 2, 1300, 145, 145), "bear_left"),
+            )
+        ]
+        assert [m for _s, m in self.said(d.describe(legs))[1:]] == ["right", "bear_left"]
+
+    def test_a_short_crosswalk_onto_a_path_is_still_the_crossing(self):
+        legs = [
+            flat(
+                road("Needwood Road", 2, 400, 0, 0),
+                forked(road("", 1, 10, 90, 90, "path", "pedestrian_crossing"), "right"),
+                forked(road("Redland Road bike lane", 1, 400, 0, 0, "path", "cycleway"), "left"),
+            )
+        ]
+        entries = d.describe(legs)
+        assert entries[1]["turn"]["cross"] == "the road"
+        assert entries[2]["turn"]["movement"] == "left"
+
+    def test_a_turnaround_through_a_short_crossover_keeps_both_turns(self):
+        # Left across a 10 m median gap and left again: back the other way, two turns said.
+        legs = [
+            flat(
+                road("Georgia Avenue", 2, 400, 0, 0),
+                forked(road("", 2, 10, 270, 270), "left"),
+                forked(road("Georgia Avenue", 2, 400, 180, 180), "left"),
+            )
+        ]
+        moves = [m for _s, m in self.said(d.describe(legs))[1:]]
+        assert moves == ["left", "left"]
+
+    def test_a_busy_connector_is_never_hidden_in_a_calmer_stretch(self):
+        legs = [
+            flat(
+                road("A Street", 2, 400, 0, 0),
+                forked(road("Big Road", 4, 8, 90, 90), "right"),
+                forked(road("C Street", 2, 400, 0, 0), "left"),
+            )
+        ]
+        assert "Big Road" in [s for s, _m in self.said(d.describe(legs))]
