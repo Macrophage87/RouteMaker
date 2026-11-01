@@ -168,6 +168,38 @@ export function otherRacks(spot: LonLat, racks: readonly BikeRack[], tried: Read
     .slice(0, max);
 }
 
+/**
+ * Go's run of "Rack full? Next one" presses: where the first rack was (the search stays around it, so presses never
+ * drift away from the place), the racks already tried, and the rack the route ends at now.
+ */
+export interface RackRun {
+  from: LonLat;
+  tried: readonly string[];
+  at: string;
+}
+
+/** The run that still applies to a route ending at rack `at`: a run that ended elsewhere is over. */
+function liveRun(run: RackRun | null, at: BikeRack): RackRun | null {
+  return run && run.at === at.id ? run : null;
+}
+
+/** The next rack to offer when the route ends at rack `at` (at `end`): nearest to the run's first rack, not yet tried. */
+export function nextRack(end: LonLat, at: BikeRack, racks: readonly BikeRack[], run: RackRun | null): RackNear | null {
+  const live = liveRun(run, at);
+  return otherRacks(live ? live.from : end, racks, new Set([...(live ? live.tried : []), at.id]), 1)[0] ?? null;
+}
+
+/** The run after a press that moved the end from rack `at` (at `end`) to `next`. */
+export function rackRunAfter(run: RackRun | null, end: LonLat, at: BikeRack, next: BikeRack): RackRun {
+  const live = liveRun(run, at);
+  return { from: live ? live.from : end, tried: [...(live ? live.tried : []), at.id], at: next.id };
+}
+
+/** The ride's arrival: the other racks within 1,000 ft, only when the route ends at a rack (a rack 50 m from a shop is not "full"). */
+export function arrivalRacks(end: LonLat, racks: readonly BikeRack[]): RackNear[] {
+  return rackAt(end, racks) ? otherRacks(end, racks) : [];
+}
+
 /** Go's route card when the route ends at a rack: "Rack full? Next one, 80 ft (24 m) away". */
 export function nextRackText(near: RackNear): string {
   return t("Rack full? Next one, {distance} away", { distance: formatDistance(near.metres) });

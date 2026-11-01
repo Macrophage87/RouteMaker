@@ -22,6 +22,10 @@ import {
   nextRackText,
   otherRacks,
   rackAt,
+  arrivalRacks,
+  nextRack,
+  rackRunAfter,
+  type RackRun,
   rideNextRackLine,
   rideToRackText,
 } from "./bikeParking.ts";
@@ -129,4 +133,35 @@ test("a full rack: the others within 1,000 ft, nearest first, the one at the spo
   assert.ok(!otherRacks(at, racks).some((n) => n.rack.id === "w4"), "2.6 km off is too far");
   assert.equal(nextRackText({ rack: racks[2], metres: 30 }), "Rack full? Next one, 98 ft (30 m) away");
   assert.equal(rideNextRackLine(30, "northeast"), "Rack full? Next one: 98 ft (30 m) to the northeast.");
+});
+
+// A street of racks north of A: B 100 m, C 250 m, D 350 m (11.1 m per 0.0001 degree of latitude).
+const street = parseBikeParking({
+  source: "x",
+  points: [
+    { id: "a", x: -77.03, y: 38.9 },
+    { id: "b", x: -77.03, y: 38.9009 },
+    { id: "c", x: -77.03, y: 38.90225 },
+    { id: "d", x: -77.03, y: 38.90315 },
+  ],
+})!;
+const [ra, rb, rc] = street;
+const pt = (r: (typeof street)[number]): LonLat => [r.lon, r.lat];
+
+test("Go's Next rack presses stay within 1,000 ft of the first rack and never offer a tried one again", () => {
+  assert.equal(nextRack(pt(ra), ra, street, null)?.rack.id, "b");
+  let run: RackRun = rackRunAfter(null, pt(ra), ra, rb);
+  assert.deepEqual(run, { from: pt(ra), tried: ["a"], at: "b" });
+  assert.equal(nextRack(pt(rb), rb, street, run)?.rack.id, "c", "measured from A, A left out");
+  run = rackRunAfter(run, pt(rb), rb, rc);
+  // D is 100 m from C but 350 m from A: the search does not drift up the street.
+  assert.equal(nextRack(pt(rc), rc, street, run), null);
+  // A route that now ends at another rack starts a new run: nothing hidden from before.
+  assert.equal(nextRack(pt(ra), ra, street, run)?.rack.id, "b");
+  assert.deepEqual(rackRunAfter(run, pt(ra), ra, rb).tried, ["a"]);
+});
+
+test("the ride's Rack full? line only when the route ends at a rack, not a shop 50 m from one", () => {
+  assert.deepEqual(arrivalRacks(pt(ra), street).map((n) => n.rack.id), ["b", "c"]);
+  assert.deepEqual(arrivalRacks([-77.03, 38.89955], street), []);
 });

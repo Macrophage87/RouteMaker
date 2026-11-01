@@ -197,7 +197,7 @@ import {
 } from "./lib/detourSearch.ts";
 import type { FoodPlace } from "./lib/food.ts";
 import type { RepairPlace } from "./lib/repair.ts";
-import { NEXT_RACK_TEXT, RACK_NEAR_M, otherRacks, racksNear, rackPoint, rideNextRackLine, type BikeRack, type RackNear } from "./lib/bikeParking.ts";
+import { NEXT_RACK_TEXT, arrivalRacks as racksOnArrival, rackPoint, rideNextRackLine, type BikeRack, type RackNear } from "./lib/bikeParking.ts";
 import type { WaterPoint } from "./lib/waterRestrooms.ts";
 import type { TrailMiles } from "./lib/trailMiles.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
@@ -2353,8 +2353,7 @@ export function RideMode({
     if (progress === null || ride.off || along === null) return null;
     return along >= progress ? "ahead" : "behind";
   };
-  // The destination's name for "Arrived: ..." (a loop's end is its start: none).
-  // Arrived near a rack: the others within 1,000 ft, nearest first, for a full one. One button: Show on map pins the
+  // Arrived at a rack: the others within 1,000 ft, nearest first, for a full one. One button: Show on map pins the
   // first, then Next rack the one after (round again at the end); the line says how far and which way from the rider.
   const [arrivalRacks, setArrivalRacks] = useState<RackNear[] | null>(null);
   const [rackShown, setRackShown] = useState(-1);
@@ -2365,8 +2364,8 @@ export function RideMode({
     const end = plan.current.points[plan.current.points.length - 1];
     let live = true;
     void racks().then((all) => {
-      if (!live || !all || !end || racksNear(end, all, RACK_NEAR_M, 1).length === 0) return;
-      const others = otherRacks(end, all);
+      if (!live || !all || !end) return;
+      const others = racksOnArrival(end, all);
       if (others.length > 0) setArrivalRacks(others);
     });
     return () => {
@@ -2388,6 +2387,7 @@ export function RideMode({
     onShowRackRef.current?.(arrivalRacks[next]);
     onShowPlace?.(rackPoint(arrivalRacks[next].rack));
   };
+  // The destination's name for "Arrived: ..." (a loop's end is its start: none).
   const destinationName = ride.arrived && !plan.current.loop ? (stopName?.(plan.current.points[plan.current.points.length - 1]) ?? null) : null;
   // The distance's metric in brackets a size smaller, so the line stays one line with large text.
   // A re-route's U-turn is now: no distance (it is at the line's start, behind the rider). One further along has its distance.
