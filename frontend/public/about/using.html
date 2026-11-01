@@ -321,7 +321,9 @@ within 130 ft [40 m], else the street), its area and how far away it is,
 and a line such as "5 places nearby, shown on the map". A few places within a mile [1.6 km], the nearest of each kind
 first (food, water, restrooms, repair, Metro and places to see), are pins on the map: a named place, such as a restaurant, bike shop, place to see
 or station, carries its name, and water, restrooms and repair stands an icon only. A pin opens the place's own card,
-never a route by itself. <strong>List</strong> shows the same places as buttons, for a screen reader or the keyboard,
+never a route by itself. The three nearest bike racks within 500 ft [152 m] are pins too, and
+<strong>Ride to the bike rack</strong>, under Ride here, says how far the nearest is and rides there instead; it is
+not offered when the spot is already at a rack. <strong>List</strong> shows the same places as buttons, for a screen reader or the keyboard,
 with <strong>Road info</strong> under them; pressing and holding the map still opens the road card. The map stays live
 behind the card, so another tap moves it, and Escape or Close closes it.</li>
 <li>With a route on screen, the route comes first and Where to? and the place buttons fold behind <strong>New
@@ -343,7 +345,10 @@ In Go a file always keeps to streets and paths bikes may ride: <strong>Exactly a
 only.</li>
 <li><strong>The route card</strong> shows the start, the stops and via points between, counted apart ("1 stop · 3 via points"), and the destination; Edit
 opens the points. <strong>Add a stop</strong> under it puts a place where it adds the least distance,
-and <strong>Best order</strong> appears with two or more stops. Undo takes a stop back out.</li>
+and <strong>Best order</strong> appears with two or more stops. Undo takes a stop back out. With a route to
+a place, the three nearest bike racks within 500 ft [152 m] of its end are pins, and <strong>End at the bike rack</strong> under the
+card moves the end to the nearest in one change, so Undo puts it back; <strong>Ride here</strong> on a rack's card
+does the same. End at the bike rack is not offered when the end is already at a rack.</li>
 <li><strong>Route choice:</strong> beside your route, Go can draw <strong>More direct</strong> and
 <strong>Trailmaxxed</strong>, each with how much time or busy riding it saves or adds. More direct is
 up to two notches more tolerant of traffic and is shown only when it saves at least a minute.
@@ -875,7 +880,7 @@ it. Pressing and holding a road, or right-clicking it, opens the road panel.</p>
 <rect class="bx" x="10" y="52" width="230" height="32" rx="6"/>
 <text class="tb" x="125.0" y="72.5" text-anchor="middle">Water and restrooms</text>
 <rect x="252" y="60" width="30" height="16" rx="8" class="fillacc"/>
-<text class="ts" x="296" y="73" text-anchor="start">fountains, taps, restrooms, repair stands</text>
+<text class="ts" x="296" y="73" text-anchor="start">fountains, restrooms, repair stands, racks</text>
 <rect class="bx" x="10" y="92" width="230" height="32" rx="6"/>
 <text class="tb" x="125.0" y="112.5" text-anchor="middle">Rail stations</text>
 <rect x="252" y="100" width="30" height="16" rx="8" class="fillacc"/>
@@ -907,8 +912,8 @@ it. Pressing and holding a road, or right-clicking it, opens the road panel.</p>
 <rect class="bx" x="10" y="108" width="240" height="36" rx="6"/>
 <text class="tb" x="130.0" y="131.5" text-anchor="middle">Water and restrooms</text>
 <rect x="266" y="117" width="36" height="18" rx="9" class="fillacc"/>
-<text class="ts" x="14" y="166" text-anchor="start">fountains, taps,</text>
-<text class="ts" x="14" y="186" text-anchor="start">restrooms, repair stands</text>
+<text class="ts" x="14" y="166" text-anchor="start">fountains, restrooms,</text>
+<text class="ts" x="14" y="186" text-anchor="start">repair stands, racks</text>
 <rect class="bx" x="10" y="208" width="240" height="36" rx="6"/>
 <text class="tb" x="130.0" y="231.5" text-anchor="middle">Rail stations</text>
 <rect x="266" y="217" width="36" height="18" rx="9" class="fillacc"/>
@@ -960,7 +965,10 @@ marks: a rounded orange square where the grade is over 5% and a red one over 8%,
 ramp that rises left to right for uphill and falls for downhill in the direction you ride. From zoom 13 the
 grade shows beside it, such as "+9%" or "-6%" (<a href="/about/routing.html#steep">Steep grades</a>).</li>
 <li><strong>Water and restrooms</strong>: drinking fountains and taps (with untreated water marked),
-flush and portable restrooms, and bike repair stands, from street zoom. Where they would crowd each other, as downtown, some wait until you zoom in. The route's
+flush and portable restrooms, and bike repair stands, from street zoom; and bike racks, pink squares with
+a U-shaped rack, from zoom 15 (a few blocks across). For now the racks are DDOT's public bike racks, in DC
+only; racks within 50 ft [15 m] of each other count as one place, with their racks added up. OpenStreetMap's racks
+elsewhere come in a later update. A rack's card says how many racks are there. Where they would crowd each other, as downtown, some wait until you zoom in. The route's
 list names all the water and restrooms near your route, and Repair, in Go's More, lists the nearest
 stands.</li>
 <li><strong>Rail stations</strong>: Metro and MARC, with closed stations struck through and elevator
