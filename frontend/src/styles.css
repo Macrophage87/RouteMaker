@@ -10441,3 +10441,23 @@ summary.closure-notices-heading {
   flex-shrink: 0;
   white-space: nowrap;
 }
+
+/* The ride's arrival line for a full bike rack (Stephen, 2026-11-01): the next one, and one button to see it. */
+.ride-next-rack {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 6px;
+}
+
+.ride-next-rack .cue-then {
+  flex: 1 1 12rem;
+  margin: 0;
+}
+
+.ride-next-rack button {
+  min-height: 44px;
+  padding: 4px 16px;
+  font-weight: 700;
+}

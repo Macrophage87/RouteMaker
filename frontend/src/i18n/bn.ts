@@ -1810,4 +1810,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{kind} near {place}": "{place}-এর কাছে {kind}",
   "Route now ends at {place}.": "রুট এখন {place}-এ শেষ হয়।",
   "{distance} from where the route ends.": "রুটের শেষ থেকে {distance}।",
+  "Rack full? Next one, {distance} away": "স্ট্যান্ড ভর্তি? পরেরটি, {distance} দূরে",
+  "Rack full? Next one: {distance} to the {direction}.": "স্ট্যান্ড ভর্তি? পরেরটি {direction} দিকে {distance} দূরে।",
+  "Next rack": "পরের স্ট্যান্ড",
 };

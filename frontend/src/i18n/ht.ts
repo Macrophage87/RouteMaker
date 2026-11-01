@@ -1810,4 +1810,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{kind} near {place}": "{kind} toupre {place}",
   "Route now ends at {place}.": "Wout la fini kounye a nan {place}.",
   "{distance} from where the route ends.": "{distance} de kote wout la fini.",
+  "Rack full? Next one, {distance} away": "Pakin plen? Pwochen an, {distance} lwen",
+  "Rack full? Next one: {distance} to the {direction}.": "Pakin plen? Pwochen an a {distance} nan direksyon {direction}.",
+  "Next rack": "Pwochen pakin",
 };

@@ -2272,4 +2272,7 @@ export const ES: Readonly<Record<string, string>> = {
   "{kind} near {place}": "{kind} cerca de {place}",
   "Route now ends at {place}.": "La ruta ahora termina en {place}.",
   "{distance} from where the route ends.": "A {distance} de donde termina la ruta.",
+  "Rack full? Next one, {distance} away": "¿Estacionamiento lleno? El siguiente, a {distance}",
+  "Rack full? Next one: {distance} to the {direction}.": "¿Estacionamiento lleno? El siguiente está a {distance} al {direction}.",
+  "Next rack": "Siguiente estacionamiento",
 };

@@ -243,7 +243,7 @@ import { foodWords, nearbyWords, repairWords, sightWords } from "./lib/stopWords
 import { foodSpotPlaces, metroSpotPlaces, rackSpotRows, repairSpotPlaces, sightSpotPlaces, spotFarLine, spotNearby, waterSpotPlaces, type SpotRow } from "./lib/spotNearby.ts";
 import { useSpotPins } from "./app/spotPins.ts";
 import { RacksOverlay, useRackPins } from "./app/rackOverlay.ts";
-import { RACK_AT_M, endAtRackSaid, endAtRackText, loadBikeParking, rackOffer, rackPlaceName, rackPoint, racksNear, rideToRackText, type BikeRack, type RackNear } from "./lib/bikeParking.ts";
+import { RACK_AT_M, endAtRackSaid, endAtRackText, nextRackText, otherRacks, rackAt, loadBikeParking, rackOffer, rackPlaceName, rackPoint, racksNear, rideToRackText, type BikeRack, type RackNear } from "./lib/bikeParking.ts";
 import bikeParkingUrl from "./amenity-data/bike-parking.json?url&no-inline";
 import { useSeeEveryone } from "./app/useSeeEveryone.ts";
 import { ScenicOverlay } from "./app/ScenicOverlay.tsx";
@@ -5432,7 +5432,12 @@ export function App() {
   // Go's route to a place, picked or pressed (Stephen, 2026-11-01: "by map press or by selecting a location"): the
   // racks near its end are pins, and "End at the bike rack" under the route card moves the end to the nearest.
   const goEnd = mode === "go" && !onBike && !riding && points.length >= 2 && !loopVias ? points[points.length - 1] : null;
-  const endRack = goEnd && racks ? rackOffer(goEnd, racks) : null;
+  // At a rack already, the offer is the next one, for a full rack (Stephen, 2026-11-01: "In DC often the problem is
+  // that Bike racks are full. So maybe a way to find other ones"): each press tries the nearest not yet tried.
+  const endAtRackNow = goEnd && racks ? rackAt(goEnd, racks) : null;
+  const triedRacks = useRef<Set<string>>(new Set());
+  if (!endAtRackNow && triedRacks.current.size > 0) triedRacks.current = new Set();
+  const endRack = goEnd && racks ? (endAtRackNow ? (otherRacks(goEnd, racks, triedRacks.current, 1)[0] ?? null) : rackOffer(goEnd, racks)) : null;
   const goEndRef = useRef(goEnd);
   goEndRef.current = goEnd;
   useEffect(() => {
@@ -5448,7 +5453,14 @@ export function App() {
   };
   const endAtNearestRack = (near: RackNear) => {
     const end = pointsRef.current[pointsRef.current.length - 1];
-    endAtRack(rackPoint(near.rack), rackPlaceName(near, end ? (namer.name(end)?.name ?? null) : null), endAtRackSaid(near));
+    const endName = end ? (namer.name(end)?.name ?? null) : null;
+    if (endAtRackNow) {
+      // The next rack keeps the place's name ("Bike rack near Safeway"); the full one is not offered again.
+      triedRacks.current.add(endAtRackNow.id);
+      endAtRack(rackPoint(near.rack), endName ?? rackPlaceName(near, null), endAtRackSaid(near));
+      return;
+    }
+    endAtRack(rackPoint(near.rack), rackPlaceName(near, endName), endAtRackSaid(near));
   };
   // A rack's own card (a pin, or the layer): Ride here ends a Go route there; otherwise as any stop's card.
   const rackActionFor = useCallback<StopActionFor>(
@@ -5466,6 +5478,11 @@ export function App() {
     openStopCard(map, row.point, words, rackActionFor(row.point, words.title), focus);
   };
   useRackPins(getMap, endRackRows, pickEndRack);
+  // The ride's arrival line's rack (RideMode: "Rack full? Next one"), pinned while shown; its pin opens no card.
+  const [rideRack, setRideRack] = useState<RackNear | null>(null);
+  const showRideRack = useCallback((near: RackNear | null) => setRideRack(near), []);
+  const rideRackRows = useMemo<SpotRow[] | null>(() => (rideRack && onBike ? rackSpotRows([rideRack]) : null), [rideRack, onBike]);
+  useRackPins(getMap, rideRackRows, () => {});
   // A pin or a row of the folded list: the place's card (lib/stopCard.ts), never a route by itself; the spot's card
   // stays open under it. Its Route here plans the route, which closes the spot's card (below).
   const pickSpot = (index: number, focus: boolean) => {
@@ -5943,7 +5960,7 @@ export function App() {
     endRack: endRack ? (
       <button type="button" className="secondary go-end-rack" onClick={() => endAtNearestRack(endRack)}>
         <Icon name="rack" size={18} />
-        {endAtRackText(endRack)}
+        {endAtRackNow ? nextRackText(endRack) : endAtRackText(endRack)}
       </button>
     ) : null,
     // The climb figure opens Ride settings at the Hills slider (P3).
@@ -6543,6 +6560,8 @@ export function App() {
           water={ensureWater}
           food={ensureFood}
           repair={ensureRepair}
+          racks={ensureRacks}
+          onShowRack={showRideRack}
           geocode={detourGeocode}
           stopName={rideStopName}
           trailMiles={trailMiles}

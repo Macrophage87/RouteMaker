@@ -146,6 +146,41 @@ export function rackOffer(spot: LonLat, racks: readonly BikeRack[]): RackNear | 
   return near;
 }
 
+// --- When the rack is full ---------------------------------------------------------
+// Stephen, 2026-11-01: "In DC often the problem is that Bike racks are full. So maybe a way to find other ones."
+
+/** How far the next rack may be: 1,000 ft (305 m), a block or two on foot with the bike. */
+export const RACK_NEXT_M = 304.8;
+
+/** Whether `spot` is at a rack (within RACK_AT_M): the rack, or null. */
+export function rackAt(spot: LonLat, racks: readonly BikeRack[]): BikeRack | null {
+  const near = racksNear(spot, racks, RACK_AT_M, 1)[0];
+  return near ? near.rack : null;
+}
+
+/**
+ * The racks to try when the one at (or nearest to) `spot` is full: within RACK_NEXT_M, nearest first, leaving out the
+ * ones in `tried` and the one at the spot itself.
+ */
+export function otherRacks(spot: LonLat, racks: readonly BikeRack[], tried: ReadonlySet<string> = new Set(), max = 10): RackNear[] {
+  return racksNear(spot, racks, RACK_NEXT_M, max + tried.size + 1)
+    .filter((n) => n.metres > RACK_AT_M && !tried.has(n.rack.id))
+    .slice(0, max);
+}
+
+/** Go's route card when the route ends at a rack: "Rack full? Next one, 80 ft (24 m) away". */
+export function nextRackText(near: RackNear): string {
+  return t("Rack full? Next one, {distance} away", { distance: formatDistance(near.metres) });
+}
+
+/** The ride's line once arrived: "Rack full? Next one: 80 ft (24 m) to the northeast." */
+export function rideNextRackLine(metres: number, direction: string): string {
+  return t("Rack full? Next one: {distance} to the {direction}.", { distance: formatDistance(metres), direction });
+}
+
+/** The ride's button for the one after: shown with the line. */
+export const NEXT_RACK_TEXT = t("Next rack");
+
 /** Go's spot card's button: "Ride to the bike rack, 120 ft (37 m) away". */
 export function rideToRackText(near: RackNear): string {
   return t("Ride to the bike rack, {distance} away", { distance: formatDistance(near.metres) });

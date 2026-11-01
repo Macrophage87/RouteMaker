@@ -1810,4 +1810,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{kind} near {place}": "{place}附近的{kind}",
   "Route now ends at {place}.": "路线现在在{place}结束。",
   "{distance} from where the route ends.": "距路线终点 {distance}。",
+  "Rack full? Next one, {distance} away": "车架已满？下一个，距离 {distance}",
+  "Rack full? Next one: {distance} to the {direction}.": "车架已满？下一个在{direction}方向{distance}处。",
+  "Next rack": "下一个车架",
 };
