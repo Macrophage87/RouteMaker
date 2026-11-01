@@ -194,9 +194,9 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     pins and "Ride to the bike rack" on a tapped spot's card, "End at the bike rack" under
     a route's card, and the racks layer drawn with Water and restrooms
     (`frontend/src/amenity-data/bike-parking.json`; `lib/bikeParking.ts`). DC's racks win
-    over OpenStreetMap's within 25 m. OpenStreetMap's amenity=bicycle_parking is to fill the
-    rest of the region from the extract (`--pbf`, run on the PC); until that run the file
-    holds DC's racks only.
+    over OpenStreetMap's within 25 m. OpenStreetMap's public amenity=bicycle_parking fills the
+    rest of the region: `--pbf` on the PC, 2026-11-01, from the 2026-10-31 extract, 2,753
+    places, 439 dropped for a DDOT rack within 25 m, 2,314 kept (ODbL 1.0); 6,228 places in all.
 
 ## DDOT Pavement Condition Index (DC-PCI)
 
