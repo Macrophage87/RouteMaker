@@ -1240,8 +1240,6 @@ check("a Mall gravel walk is compacted", M.remap_way({ highway = "footway",
   { is_trail_class = true }).surface == "compacted")
 check("so is one mapped rough", M.remap_way({ highway = "path", surface = "gravel",
   smoothness = "bad" }, { is_trail_class = true }).surface == "compacted")
-check("and a rated mountain-bike trail", M.remap_way({ highway = "path",
-  surface = "gravel", ["mtb:scale"] = "2" }, { is_trail_class = true }).surface == "compacted")
 check("and with no derived facts", M.remap_way({ highway = "track", surface = "gravel" }, {})
   .surface == "compacted")
 -- Other loose surfaces keep their own.
@@ -1249,10 +1247,12 @@ for _, surface in ipairs({ "pebblestone", "sand", "dirt", "unpaved", "grass" }) 
   check("a " .. surface .. " path keeps its own surface", M.remap_way({ highway = "path",
     surface = surface }, { is_trail_class = true }).surface == nil)
 end
--- A reviewer surface penalty on a gravel path still wins: its own gravel.
-check("a reviewer penalty on a gravel path wins", M.remap_way({ highway = "path",
-  surface = "gravel" }, { is_trail_class = true, reviewer_surface_penalty = "compacted" }).surface
-  == "gravel")
+-- A reviewer surface penalty leaves packed gravel as it is: compacted is the cap.
+for _, penalty in ipairs({ "compacted", "dirt", "gravel", "paved_rough" }) do
+  check("a " .. penalty .. " penalty on a gravel path leaves it compacted",
+    M.remap_way({ highway = "path", surface = "gravel" },
+      { is_trail_class = true, reviewer_surface_penalty = penalty }).surface == "compacted")
+end
 for _, surface in ipairs({ "metal", "metal_grid", "brick", "bricks", "sett", "tartan", "rubber",
     "cobblestone", "unhewn_cobblestone", "paving_stones:lanes", "asphalt:lanes", "boardwalk" }) do
   check(surface .. " is paved", M.is_paved({ surface = surface }))
@@ -1373,8 +1373,8 @@ do
   check("a good PCI street keeps its surface", good.surface == nil)
   check("and loses OSM's worse smoothness", good.smoothness == M.REMOVE)
   local gravel = M.remap_way({ highway = "residential", surface = "gravel" }, { pci = "fair" })
-  -- Gravel is packed gravel to the graph (`M.PACKED_GRAVEL`), and PCI leaves it there.
-  check("PCI never makes an unpaved surface look better", gravel.surface == "compacted")
+  -- Gravel is packed gravel to the graph (`M.PACKED_GRAVEL`); PCI never makes it smoother.
+  check("PCI leaves gravel as packed gravel", gravel.surface == "compacted")
   local trail = M.remap_way({ highway = "cycleway", surface = "asphalt" },
     { pci = "poor", is_trail_class = true })
   check("PCI never reaches a trail", trail.surface == nil and trail.smoothness == nil)

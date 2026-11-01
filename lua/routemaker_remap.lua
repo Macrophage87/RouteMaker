@@ -640,7 +640,10 @@ function M.remap_way(tags, derived)
   end
 
   if derived.reviewer_surface_penalty then
-    local penalised = M.bounded_surface(tags.surface, derived.reviewer_surface_penalty)
+    -- Packed gravel is already the roughest a penalty may make a way (the cap,
+    -- `compacted`), so a penalty on one leaves it there, as the road panel says.
+    local current = M.is_packed_gravel(tags) and "compacted" or tags.surface
+    local penalised = M.bounded_surface(current, derived.reviewer_surface_penalty)
     if penalised ~= nil then out.surface = penalised end
   end
 
@@ -1080,8 +1083,11 @@ M.GRAPH_SURFACE = { wood = "paving_stones", boardwalk = "paving_stones",
 -- paths? They are fine for riding", then, asked how far it goes, "All gravel
 -- everywhere": every way tagged gravel or fine gravel, road, track or path, on
 -- every ride type, is priced as `compacted`, the parser's packed-gravel class.
--- Other loose surfaces (pebblestone, sand, dirt) keep their own. A reviewer
--- surface penalty, written after this, reads the way's own tag and wins.
+-- Other loose surfaces (pebblestone, sand, dirt, plain `unpaved`, and mixed
+-- values such as `gravel;dirt`) keep their own. A mountain-bike rating still
+-- sets the edge's surface in the parser, after this (see `M.PAVED_RATING_KEYS`),
+-- so a rated gravel trail is priced by its rating. A reviewer surface penalty
+-- leaves packed gravel as it is: `compacted` is already the penalty cap.
 M.PACKED_GRAVEL = { gravel = true, fine_gravel = true }
 
 function M.is_packed_gravel(tags)
