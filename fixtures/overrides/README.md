@@ -600,23 +600,34 @@ in the database still names it: delete that row in the admin when loading the fi
   one-way, or with other than two lanes. Stress rows, hidden, with fingerprints. Load like
   the others; takes effect on the next rebuild.
 
-- `2026-11-01-owner-dc-rating-review.json`: the whole-DC rating review, 20,537 ways, one row
+- `2026-11-01-owner-dc-rating-review.json`: the whole-DC rating review, 19,802 ways, one row
   for every DC way whose reviewed level differs from the build's (v0.16.0 map). Every DC road
   was grouped with others like it (same kind, speed, lanes, count band, facility, ratings),
-  each group rated from all the data held for it, and two skeptics, one arguing higher and
-  one lower, tried to refute each rating. The owner, 2026-11-01: "use it's best judgement
-  where there are disagreements. Don't treat DC ratings or the formula as authoritative.
-  However, if there's disagreement that's a flag for scrutiny." Examples: Crittenden St NW
-  (DDOT 4, formula 1, no count, 20 mph, one lane each way) goes to 2; Franklin St NE,
-  Girard St to Lincoln Rd (DDOT 4, formula 2, no count) goes to 3. DC alleys and service
-  roads (driveways and parking aisles included) go from 1 to 1.5 for delivery trucks and
-  blind exits, about 14,300 ways; quiet residential and unclassified streets at 1 stay at 1
-  (the owner's pick, 2026-11-01). Each row's `public_note` is shown as the road panel's Why
-  line; it quotes DDOT's published 2020 level for that way (or says it varies along it) and
-  the way's own count, never another street's; 382 rows with nothing to quote are hidden.
-  Left out: groups a skeptic was unsure about (447 ways), quiet streets the review lifted
-  from 1 (1,474), ways another file here sets (7; East Capitol St NE way 1525646203 is rated
-  as an ordinary street by OWNER-DECISIONS 445), and 21 ways whose level rested on other
-  streets' counts. A first version (4,708 ways, only those under a DDOT block reading) was
-  merged unloaded and is replaced by this one. No fingerprints: an OSM split drops the row
-  for the new piece. Load like the others; takes effect on the next rebuild.
+  each group rated from all the data held for it, then checked by skeptics: one arguing for a
+  higher level and one for a lower where the rating differed from an agency or the formula in
+  both directions, one where it differed in one (each row's reason says which). The owner,
+  2026-11-01: "use it's best judgement where there are disagreements. Don't treat DC ratings
+  or the formula as authoritative. However, if there's disagreement that's a flag for
+  scrutiny." Examples: Crittenden St NW (DDOT 4, formula 1, no count, 20 mph, one lane each
+  way) goes to 2; Franklin St NE, Girard St to Lincoln Rd (DDOT 4, formula 2, no count) goes
+  to 3. DC alleys and service roads (driveways and parking aisles included) go from 1 to 1.5
+  for delivery trucks and blind exits; no other way at 1 is lifted, and quiet residential and
+  unclassified streets at 1 stay at 1 (the owner's pick, 2026-11-01). Each row's
+  `public_note` is the road panel's Why line: it quotes DDOT's published 2020 level for that
+  way (with how our DC rules read it, where that differs) and the way's own count; 312 rows
+  with nothing to quote are hidden. Ways with the same group and note share an adjustment id
+  (1,344 ids), so a route lists one adjustment per kind of street, not per way.
+  Left out, so the owner's earlier decisions stand: every way in another file here, its
+  `agency_blocks` and its `retire` lists (179, among them the 2026-09-30 side lanes and the
+  Benning Rd ways of OWNER-DECISIONS 445/445d); the corridors in `fixtures/corridors`
+  (North Capitol St, South Capitol St, Connecticut Ave) and roads the owner rated by name
+  (Canal Rd NW and the Whitehurst Fwy, 197; 16th St NW where it is at 4, 179; Arlington
+  Memorial Bridge), 125 ways. Also left out: groups a skeptic was unsure about (447) or the
+  two skeptics split on (134), quiet streets the review lifted from 1 (1,518) and other lifts
+  from 1 outside the alley pick (281, trails and tracks among them), 122 ways whose level
+  rested on other streets' counts (no count of their own, or one more than 15% off), and 9
+  whose note quoted other blocks' counts. One row per line. A first version (4,708 ways, only
+  those under a DDOT block reading) was merged unloaded and is replaced by this one.
+  Loading: the dry run lists every row; any approved row or road-panel edit on one of these
+  ways with another tier refuses the whole file, so read the dry run first. No fingerprints:
+  an OSM split drops the row for the new piece. Takes effect on the next rebuild.
