@@ -200,6 +200,29 @@ export function arrivalRacks(end: LonLat, racks: readonly BikeRack[]): RackNear[
   return rackAt(end, racks) ? otherRacks(end, racks) : [];
 }
 
+/** Two points are one place when they round to the same spot (about a metre). */
+function samePlace(a: LonLat, b: LonLat): boolean {
+  return a[0].toFixed(5) === b[0].toFixed(5) && a[1].toFixed(5) === b[1].toFixed(5);
+}
+
+/** The most ends Go keeps as picked: the latest. */
+export const PICKED_MAX = 20;
+
+/** Whether Go's route end was picked or pressed (or a rack moved to from one): only then the rack offer shows. */
+export function endWasPicked(end: LonLat, picked: readonly LonLat[]): boolean {
+  return picked.some((p) => samePlace(p, end));
+}
+
+/** The picked ends after a destination is picked or pressed. */
+export function pickedAfterPick(picked: readonly LonLat[], dest: LonLat): LonLat[] {
+  return [...picked, dest].slice(-PICKED_MAX);
+}
+
+/** The picked ends after the end moves from `from` to a rack at `to`: picked only when `from` was. */
+export function pickedAfterMove(picked: readonly LonLat[], from: LonLat | undefined, to: LonLat): LonLat[] {
+  return from && endWasPicked(from, picked) ? pickedAfterPick(picked, to) : [...picked];
+}
+
 /** Go's route card when the route ends at a rack: "Rack full? Next one, 80 ft (24 m) away". */
 export function nextRackText(near: RackNear): string {
   return t("Rack full? Next one, {distance} away", { distance: formatDistance(near.metres) });
