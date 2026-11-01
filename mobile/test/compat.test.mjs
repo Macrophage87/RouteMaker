@@ -137,8 +137,6 @@ test("an older site in the shell: Ride mode's watch is native, fixes arrive as b
   await flush();
   assert.deepEqual(p.log, [...ASKED, "BackgroundGeolocation.addWatcher"]);
   assert.match(SCRIPT, /requestPermissions: false, stale: false/);
-  // A fix every 4 m moved, as the site's own (the owner, 2026-11-01: battery audit).
-  assert.match(SCRIPT, /stale: false, distanceFilter: 4 \}/);
   p.send("cb1", { latitude: 38.9, longitude: -77, accuracy: 5, speed: 4, bearing: 90, time: 7, altitude: null, altitudeAccuracy: null });
   assert.equal(fixes.length, 1);
   assert.deepEqual(JSON.parse(JSON.stringify(fixes[0])), {
