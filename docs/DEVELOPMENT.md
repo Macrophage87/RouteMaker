@@ -7516,8 +7516,10 @@ half steps' own words, 441i-441l: 1.5 "Probably comfortable for older children",
 for most confident adults", 3.5 "Stressful even for experienced cyclists", 4.5 "A very
 high-stress road"; the answer's `step` is 3 or 3.5) and `stress_rule` in plain words (`rule_words`:
 "35 mph or above, mixed traffic", "Owner-rated corridor", "Avoid: highway-like road
-(posted 55 mph)"), an override's tier before it and its category, its note only where the
-row's display is `map` (a `route_only` note is never shown on a click); the lanes, "each
+(posted 55 mph)"), an override's tier before it and its category; where the
+override row's display is `map`, its approved public note is the Why line itself, in the
+details and the summary, in place of "Owner-rated corridor" (`override_note`; from v0.17.0,
+the owner 2026-11-01; a `route_only` note is never shown on a click); the lanes, "each
 way" or, where `road_oneway` is true (a one-way street, or one carriageway of a divided
 road), "in this direction", since `road_lanes` counts one direction; and
 the speed limit, posted (with `attr_sources`' source) or assumed (the classifier's figure
