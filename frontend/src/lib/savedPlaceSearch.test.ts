@@ -60,3 +60,29 @@ test("saved places show as Saved and are of the kinds never kept as recent place
   assert.equal(placeType(home), "Saved");
   assert.ok(SAVED_KINDS.has(home.kind));
 });
+
+test("one character of Chinese or Japanese names Home ('家'); one Latin letter or digit names nothing", () => {
+  assert.equal(savedPlacesFor("家", HOME, FAVORITES, "zh").exact?.kind, "home");
+  assert.equal(savedPlacesFor("家", HOME, FAVORITES, "ja").exact?.kind, "home");
+  assert.deepEqual(savedPlacesFor("1", HOME, FAVORITES, "en").places, []);
+});
+
+test("a favorite named like a keyword is that favorite, not Work", () => {
+  const favorites: FavoritePlace[] = [...FAVORITES, { point: [-77.05, 38.9], label: "Office" }];
+  assert.equal(savedPlacesFor("office", HOME, favorites, "en").exact?.label, "Office");
+  assert.equal(savedPlacesFor("work", HOME, favorites, "en").exact?.kind, "work");
+});
+
+test("one row per spot: Work at Home, or Home saved as a favorite too, is listed once", () => {
+  const favorites: FavoritePlace[] = [{ point: HOME.point, label: "1500 Harvard St NW", work: true }, { point: HOME.point, label: "1500 Harvard St NW" }];
+  const hits = savedPlacesFor("1500", HOME, favorites, "en");
+  assert.deepEqual(hits.places.map((p) => p.kind), ["home"]);
+  assert.equal(savedPlacesFor("home", HOME, favorites, "en").places.length, 1);
+});
+
+test("Hindi and Thai keep their vowel signs: काम is work, कम is not", () => {
+  assert.equal(savedPlacesFor("काम", HOME, FAVORITES, "hi").exact?.kind, "work");
+  assert.equal(savedPlacesFor("कम", HOME, FAVORITES, "hi").exact, null);
+  assert.equal(savedPlacesFor("บ้าน", HOME, FAVORITES, "th").exact?.kind, "home");
+  assert.equal(savedPlacesFor("บาน", HOME, FAVORITES, "th").exact, null);
+});

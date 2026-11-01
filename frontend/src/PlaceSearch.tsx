@@ -267,7 +267,7 @@ export function PlaceSearch({
         search: (words) => {
           // "Home", "work" or a favorite's name, said: routed there at once, as its chip would.
           const exact = savedForNow.current?.(words).exact;
-          if (exact) {
+          if (exact && boxShown()) {
             pickNow.current(exact);
             return;
           }
