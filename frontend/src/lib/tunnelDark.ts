@@ -8,7 +8,9 @@
  * what nearest-wins wants. A GPS dropout alone changes nothing: only the roads at the last spot are read.
  *
  * Leaving is held back (TUNNEL_CLEAR_MS or TUNNEL_CLEAR_M clear of any tunnel), so the map does not flicker at a
- * portal or under an overpass. The check runs every TUNNEL_CHECK_MS, not every frame (useMapFlavour.ts).
+ * portal or under an overpass. The check runs only as a new fix comes, at most every TUNNEL_CHECK_MS (tunnelCheckWait,
+ * useMapFlavour.ts): with no new fix there is nothing new to read, and a free-running timer would wake the phone for
+ * nothing (the owner, 2026-11-01: battery audit).
  */
 import { haversineM, type LonLat } from "./geo.ts";
 import { pointAlong } from "./lightTimes.ts";
@@ -17,7 +19,16 @@ export const TUNNEL_NEAR_M = 15;
 export const TUNNEL_AHEAD_M = 50;
 export const TUNNEL_CLEAR_MS = 10_000;
 export const TUNNEL_CLEAR_M = 50;
-export const TUNNEL_CHECK_MS = 2000;
+export const TUNNEL_CHECK_MS = 5000;
+
+/**
+ * A new fix has come: how long until the tunnel check for it, or null when one is already waiting (it reads the
+ * latest fix when it runs). At once if the last check was TUNNEL_CHECK_MS ago or more, or there was none.
+ */
+export function tunnelCheckWait(lastCheckAt: number | null, waiting: boolean, now: number): number | null {
+  if (waiting) return null;
+  return lastCheckAt === null ? 0 : Math.max(0, lastCheckAt + TUNNEL_CHECK_MS - now);
+}
 
 /** A base-map road near the rider: its lines and whether it is a tunnel. */
 export interface NearRoad {

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { applyMapFlavour, mapFlavourFor, nextLightChange, type FlavourMap, type MapFlavour } from "./lib/mapFlavour.ts";
 import { BASEMAP_SOURCE_ID } from "./lib/mapStyle.ts";
-import { NO_TUNNEL, TUNNEL_CHECK_MS, TUNNEL_NEAR_M, aheadOnLine, inTunnelAt, nearRoad, roadLayerIds, tunnelStep, type NearRoad, type TunnelState } from "./lib/tunnelDark.ts";
+import { NO_TUNNEL, TUNNEL_NEAR_M, aheadOnLine, inTunnelAt, nearRoad, roadLayerIds, tunnelCheckWait, tunnelStep, type NearRoad, type TunnelState } from "./lib/tunnelDark.ts";
 import type { LonLat } from "./lib/geo.ts";
 
 const DARK_THEME = "(prefers-color-scheme: dark)";
@@ -51,9 +51,10 @@ function roadsNear(map: FlavourHost, at: LonLat, metres: number): NearRoad[] {
 
 /**
  * Keep the map's flavour: at load, when the theme changes, when a ride or Roam starts or ends (`onBike`), at the next
- * civil dawn or dusk while on the bike, and in and out of a tunnel (checked every TUNNEL_CHECK_MS on the bike, at
- * `rider()`'s spot and along its route ahead). `opened` is the flavour the style was built in; `changed` hears each
- * change made (the station icons are drawn again for it).
+ * civil dawn or dusk while on the bike, and in and out of a tunnel (checked on the bike as a new fix comes, at most
+ * every TUNNEL_CHECK_MS, at `rider()`'s spot and along its route ahead). `fix` is the rider's point, a new one with
+ * each real fix. `opened` is the flavour the style was built in; `changed` hears each change made (the station icons
+ * are drawn again for it).
  */
 export function useMapFlavour(
   mapRef: { readonly current: FlavourHost | null },
@@ -61,9 +62,12 @@ export function useMapFlavour(
   onBike: boolean,
   opened: MapFlavour,
   rider: () => { at: LonLat | null; line: readonly LonLat[] | null },
+  fix: LonLat | null,
   changed?: (dark: boolean) => void,
 ): void {
   const shown = useRef<MapFlavour>(opened);
+  // The tunnel check's door for a new fix, open on the bike only (set by the effect below).
+  const fixCame = useRef<(() => void) | null>(null);
   const heard = useRef(changed);
   const where = useRef(rider);
   useEffect(() => {
@@ -89,8 +93,13 @@ export function useMapFlavour(
       const next = onBike ? nextLightChange(now, centre.lat, centre.lng) : null;
       if (next !== null) wake = window.setTimeout(update, Math.max(1000, next - now + 1000));
     };
-    // The tunnel check, on the bike only, at most every TUNNEL_CHECK_MS: the roads at the last fix and just ahead.
+    // The tunnel check, on the bike only, as a new fix comes and at most every TUNNEL_CHECK_MS (a fix sooner waits for
+    // it, then the latest fix is read): the roads at the last fix and just ahead. No fix, no check (battery audit).
+    let lastCheck: number | null = null;
+    let waiting: number | undefined;
     const checkTunnel = () => {
+      waiting = undefined;
+      lastCheck = Date.now();
       const { at, line } = where.current();
       if (!at || !loaded.current) return;
       const ahead = aheadOnLine(line, at);
@@ -100,7 +109,14 @@ export function useMapFlavour(
       tunnel = next;
       if (turned) update();
     };
-    const tunnels = onBike ? window.setInterval(checkTunnel, TUNNEL_CHECK_MS) : undefined;
+    fixCame.current = onBike
+      ? () => {
+          const wait = tunnelCheckWait(lastCheck, waiting !== undefined, Date.now());
+          if (wait === null) return;
+          if (wait === 0) checkTunnel();
+          else waiting = window.setTimeout(checkTunnel, wait);
+        }
+      : null;
     let query: MediaQueryList | null = null;
     try {
       query = typeof matchMedia === "function" ? matchMedia(DARK_THEME) : null;
@@ -112,9 +128,13 @@ export function useMapFlavour(
     update();
     return () => {
       window.clearTimeout(wake);
-      window.clearInterval(tunnels);
+      window.clearTimeout(waiting);
+      fixCame.current = null;
       query?.removeEventListener?.("change", update);
       map.off("load", update);
     };
   }, [mapRef, loaded, onBike]);
+  useEffect(() => {
+    if (fix) fixCame.current?.();
+  }, [fix]);
 }

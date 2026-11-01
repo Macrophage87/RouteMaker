@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
-import { NO_TUNNEL, TUNNEL_AHEAD_M, TUNNEL_CLEAR_M, TUNNEL_CLEAR_MS, aheadOnLine, inTunnelAt, nearRoad, roadLayerIds, tunnelStep } from "./tunnelDark.ts";
+import { NO_TUNNEL, TUNNEL_AHEAD_M, TUNNEL_CHECK_MS, TUNNEL_CLEAR_M, TUNNEL_CLEAR_MS, aheadOnLine, inTunnelAt, nearRoad, roadLayerIds, tunnelCheckWait, tunnelStep } from "./tunnelDark.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { mapFlavourFor } from "./mapFlavour.ts";
 
@@ -73,4 +73,12 @@ test("a tunnel darkens the map on the bike only, whatever the hour; the theme an
   assert.equal(mapFlavourFor({ themeDark: false, onBike: true, now: noon, at: AT, tunnel: true }), "dark");
   assert.equal(mapFlavourFor({ themeDark: false, onBike: false, now: noon, at: AT, tunnel: true }), "light");
   assert.equal(mapFlavourFor({ themeDark: false, onBike: true, now: noon, at: AT, tunnel: false }), "light");
+});
+
+test("the tunnel check runs as a new fix comes, at most every 5 s, never on a timer of its own (battery audit)", () => {
+  assert.equal(TUNNEL_CHECK_MS, 5000);
+  assert.equal(tunnelCheckWait(null, false, 1_000), 0, "the first fix: at once");
+  assert.equal(tunnelCheckWait(1_000, false, 6_000), 0, "5 s on: at once");
+  assert.equal(tunnelCheckWait(1_000, false, 3_000), 3_000, "a fix 2 s on waits for the 5 s");
+  assert.equal(tunnelCheckWait(1_000, true, 4_000), null, "one already waiting reads the latest fix: no second");
 });

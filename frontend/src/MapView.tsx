@@ -2150,7 +2150,8 @@ export function MapView(props: Props) {
   // After the map is made (its effect is above), so the hook finds it.
   // The tunnel check reads the rider's last fix and the route ahead (lib/tunnelDark.ts).
   const riderSpot = () => ({ at: callbacks.current.rider?.point ?? null, line: (callbacks.current.route?.geometry.coordinates as LonLat[] | undefined) ?? null });
-  useMapFlavour(mapRef, loaded, props.rideLabels === true, openedFlavour, riderSpot, (dark) => {
+  // A new point is a new fix: the tunnel check runs on those only (lib/tunnelDark.ts tunnelCheckWait).
+  useMapFlavour(mapRef, loaded, props.rideLabels === true, openedFlavour, riderSpot, props.rider?.point ?? null, (dark) => {
     if (!mapRef.current) return;
     setRailFlavour(mapRef.current, RAIL_STATIONS, PENN_COLOUR, iconPixelRatio(), dark);
     // The group ride's two-minute rings (lib/rideDotsLayer.ts), drawn at the same pixel ratio as RideGroup adds them.
