@@ -287,9 +287,77 @@ class TestUntangle:
         far = [ON_SOUTH[1], (-77.0, LAT + 0.01), ON_WEST[0]]
         assert map_match.untangle(TANGLED, TANGLED_EDGES, lambda a, b: far) == TANGLED
         assert map_match.untangle(TANGLED, TANGLED_EDGES, lambda a, b: None) == TANGLED
-        # Edges out of step with the line change nothing.
-        stale = [*TANGLED_EDGES[:3], edge("road", 80.0, 3, 9)]
-        assert map_match.untangle(TANGLED, stale, lambda a, b: far) == TANGLED
+        # A tangle whose shape indexes run past the line changes nothing.
+        good = [ON_SOUTH[1], CORNER, ON_WEST[0]]
+        stale = [*TANGLED_EDGES[:2], edge("pedestrian_crossing", 6.0, 2, 9), TANGLED_EDGES[3]]
+        assert map_match.untangle(TANGLED, stale, lambda a, b: good) == TANGLED
+
+    def test_two_tangles_in_one_track_are_both_put_back(self) -> None:
+        # TANGLED, then on along the second street and round a second corner the same way.
+        on, cut, off = (
+            (-77.00108, LAT - 0.00006),
+            (-77.00116, LAT - 0.00012),
+            (-77.0012, LAT - 0.001),
+        )
+        line = [*TANGLED, on, cut, off]
+        edges = [
+            *TANGLED_EDGES,
+            edge("road", 8.0, 4, 5),
+            edge("pedestrian_crossing", 7.0, 5, 6),
+            edge("road", 100.0, 6, 7),
+        ]
+        bend = (-77.0012, LAT - 0.00006)
+
+        def road(a, b):
+            return [a, CORNER if a == ON_SOUTH[1] else bend, b]
+
+        assert map_match.untangle(line, edges, road) == [
+            *ON_SOUTH,
+            CORNER,
+            *ON_WEST,
+            on,
+            bend,
+            cut,
+            off,
+        ]
+
+    def test_a_trail_crossing_a_street_is_ridden_as_mapped(self) -> None:
+        trail = [edge("cycleway", 104.0, 0, 1), *TANGLED_EDGES[1:3], edge("cycleway", 80.0, 3, 4)]
+        assert map_match._tangles(trail) == []
+
+
+@pytest.mark.django_db
+def test_a_route_the_router_refuses_keeps_the_tangle(client, router) -> None:
+    matched = {
+        "shape": encode_polyline6(TANGLED),
+        "matched_points": [{"type": "matched", "lon": 0, "lat": 0}] * 4,
+        "edges": TANGLED_EDGES,
+    }
+    router(FakeRouter({"trace_attributes": matched, "route": routing.RouterRefused(400, 442, "")}))
+    response = post(client, {"points": TRACK, "preset": "default"})
+    assert response.status_code == 200
+    assert response.json()["line"] == [[round(x, 6), round(y, 6)] for x, y in TANGLED]
+
+
+@pytest.mark.django_db
+def test_after_a_twin_falls_back_the_way_back_is_routed_on_the_standard_graph(
+    client, router
+) -> None:
+    matched = {
+        "shape": encode_polyline6(TANGLED),
+        "matched_points": [{"type": "matched", "lon": 0, "lat": 0}] * 4,
+        "edges": TANGLED_EDGES,
+    }
+    road = {"trip": {"legs": [{"shape": encode_polyline6([ON_SOUTH[1], CORNER, ON_WEST[0]])}]}}
+    fake = router(
+        FakeRouter(
+            {"trace_attributes": [routing.RouterUnavailable("down"), matched], "route": road}
+        )
+    )
+    response = post(client, {"points": TRACK, "preset": "gravel"})
+    assert response.status_code == 200
+    urls = [url for url, _ in fake.calls]
+    assert urls[2].startswith(settings.VALHALLA_UPSTREAMS["standard"])
 
 
 @pytest.mark.django_db

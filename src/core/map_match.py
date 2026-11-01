@@ -2,16 +2,17 @@
 plan can follow ways the router knows and rate and reroute them.
 
 POST /api/match (core.api) sends the track's line here, already the part inside the coverage box
-and simplified in the browser (frontend lib/gpxMatch.ts); one `/trace_attributes` call on the ride
-type's own graph and costing, `shape_match: map_snap`, gives the matched line and each track
-point's match (matched, interpolated or unmatched). Nothing is kept or logged: the answer is the
-snapped line and the share of the track that matched, and the browser keeps the file itself
-unchanged beside it.
+and simplified in the browser (frontend lib/gpxMatch.ts); one `/trace_attributes` call on the
+ride type's own graph and costing, `shape_match: map_snap`, gives the matched line and each
+track point's match (matched, interpolated or unmatched), and the crosswalk loops the matcher
+snaps into it are put back on the road (`untangle`, one router `/route` each). Nothing is kept
+or logged: the answer is the snapped line and the share of the track that matched, and the
+browser keeps the file itself unchanged beside it.
 
 Synchronous and bounded, like a route: at most `MAX_POINTS` points and `MAX_BYTES` of body, one
-router call inside `BUDGET_S`, counted against the routing rate limit. PLAN's worker job with a
-progress endpoint is for whole 100,000-point files; the browser sends at most the 5,000-vertex
-line it already draws.
+trace and at most MAX_UNTANGLED short routes inside `BUDGET_S`, counted against the routing rate
+limit. PLAN's worker job with a progress endpoint is for whole 100,000-point files; the browser
+sends at most the 5,000-vertex line it already draws.
 """
 
 from __future__ import annotations
@@ -51,10 +52,26 @@ MAX_DISTANCE_M = 200_000
 # that way is no more than DETOUR_SLACK_M longer than the tangle. Longer runs are kept: a
 # track that really rides a sidewalk or crosses to a path rides it.
 FOOT_USES = frozenset({"pedestrian_crossing", "sidewalk"})
+# The ways a tangle leaves and comes back to: a road. A crosswalk between two trail edges is
+# the trail crossing a street, ridden as mapped.
+ROAD_USES = frozenset(
+    {
+        "road",
+        "ramp",
+        "turn_channel",
+        "track",
+        "driveway",
+        "alley",
+        "parking_aisle",
+        "culdesac",
+        "living_street",
+        "service_road",
+    }
+)
 SCRAP_M = 15.0
 FOOT_MAX_M = 60.0
 DETOUR_SLACK_M = 30.0
-# The most tangles put back in one track (each is a router call).
+# The most router calls `untangle` makes for one track.
 MAX_UNTANGLED = 20
 
 
@@ -133,7 +150,8 @@ def match(
         # was built from has the same ways to snap to, near enough.
         if variant not in routing.TWIN_VARIANTS:
             raise
-        answer = routing._call(Variant.STANDARD.value, "trace_attributes", payload, deadline)
+        variant = Variant.STANDARD.value
+        answer = routing._call(variant, "trace_attributes", payload, deadline)
     line = routing.decode_polyline6(answer.get("shape") or "")
     if len(line) < 2:
         raise routing.RouterRefused(400, None, "no matched shape")
@@ -178,9 +196,16 @@ def _metres(points) -> float:
 def _tangles(edges: list[dict]) -> list[tuple[int, int]]:
     """The (first, last) edge indexes of each crosswalk tangle in `edges` (see FOOT_USES): a
     run of crosswalk and sidewalk edges, scraps of other ways under SCRAP_M between them taken
-    in, with another way before it and after it, and FOOT_MAX_M or less of crosswalk in all."""
+    in, with a road (ROAD_USES) before it and after it, and FOOT_MAX_M or less of crosswalk
+    in all. An edge with no length is taken as too long to be a tangle."""
     foot = [(edge or {}).get("use") in FOOT_USES for edge in edges]
-    metres = [float((edge or {}).get("length") or 0.0) * 1000.0 for edge in edges]
+    metres = [
+        float(length) * 1000.0
+        if isinstance((length := (edge or {}).get("length")), (int, float))
+        else math.inf
+        for edge in edges
+    ]
+    road = [(edge or {}).get("use") in ROAD_USES for edge in edges]
     out: list[tuple[int, int]] = []
     i = 0
     while i < len(edges):
@@ -206,8 +231,9 @@ def _tangles(edges: list[dict]) -> list[tuple[int, int]]:
         walked = sum(
             m for m, f in zip(metres[first : last + 1], foot[first : last + 1], strict=True) if f
         )
-        if first > 0 and last < len(edges) - 1 and walked <= FOOT_MAX_M:
-            out.append((first, last))
+        if first > 0 and last < len(edges) - 1 and road[first - 1] and road[last + 1]:
+            if walked <= FOOT_MAX_M:
+                out.append((first, last))
         i = last + 1
     return out
 
@@ -216,22 +242,32 @@ def untangle(line: list, edges: list[dict], route_between) -> list:
     """`line` (the match's) with each crosswalk tangle (`_tangles`) put back on the router's
     way between the road points either side of it, `route_between(a, b)` giving that way's
     line (or None, which keeps the tangle); a tangle that comes back to the point it left is
-    cut out. Edges without shape indexes, or ones out of step with the line, change nothing."""
+    cut out. A tangle whose shape indexes are missing, outside the line or not after the last
+    one's is left as it is; at most MAX_UNTANGLED routes are asked for."""
     pieces = []
-    for first, last in _tangles(edges)[:MAX_UNTANGLED]:
+    after = 0
+    asked = 0
+    for first, last in _tangles(edges):
         begin = edges[first].get("begin_shape_index")
         end = edges[last].get("end_shape_index")
-        if not (isinstance(begin, int) and isinstance(end, int) and 0 <= begin < end < len(line)):
+        if not (
+            isinstance(begin, int) and isinstance(end, int) and after <= begin < end < len(line)
+        ):
             continue
         a, b = tuple(line[begin]), tuple(line[end])
         tangle = _metres(line[begin : end + 1])
         if haversine(Point(*a), Point(*b)) < 1.0:
             pieces.append((begin, end, [a]))
+            after = end
             continue
+        if asked >= MAX_UNTANGLED:
+            continue
+        asked += 1
         way = route_between(a, b)
         if not way or _metres(way) > tangle + DETOUR_SLACK_M:
             continue
         pieces.append((begin, end, [a, *[tuple(p) for p in way[1:-1]], b]))
+        after = end
     out = [tuple(p) for p in line]
     for begin, end, way in reversed(pieces):
         out[begin : end + 1] = way
