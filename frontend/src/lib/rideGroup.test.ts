@@ -836,3 +836,20 @@ test("a rider counts themself only while the server has their dot, on this ride 
   assert.equal(meCounted(sent, "r1", false, t + 5_000), false, "sharing off");
   assert.equal(meCounted(sent, null, true, t + 5_000), false);
 });
+
+test("the battery audit: Go keeps reading the group after End ride, and before a ride with a kept No", () => {
+  // The owner, 2026-11-01: battery audit, item 4. A kept answer (Yes or No) carries the rider's token, and the
+  // reads run on a ride and a token alone, riding or not; End ride resets the question but keeps the answer.
+  const store = new Memory();
+  keepConsent("r-end", "no", 1_000, store);
+  const kept = consentFor("r-end", 2_000, store);
+  assert.ok(kept?.token, "a kept No still has its token");
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  assert.match(group, /const token = consent\?\.token \?\? \(broadcast \? watchToken : null\);/);
+  assert.match(group, /useEffect\(\(\) => \{\s*if \(!ride \|\| !token\) return;\s*void poll\(\);/);
+  const ended = group.slice(group.indexOf("const ended = rodeBefore.current && !riding;"), group.indexOf("}, [riding]);"));
+  assert.match(ended, /setAsked\(false\);/);
+  assert.doesNotMatch(ended, /setConsent\(/, "End ride leaves the consent, and with it the token");
+  const reads = group.slice(group.indexOf("const poll = useCallback"), group.indexOf("// Sharing your own dot"));
+  assert.doesNotMatch(reads, /riding/, "nothing in the reads looks at riding");
+});
