@@ -15,8 +15,9 @@ shown under "Check before you go" and never routed round:
   (`workzones.LANE`), not a closure. Lane-only travel closures are ignored. Active
   permits only (`ACTIVE_STATUSES`, and not past `ExpirationDate`).
 - **MPD "TRAFFIC ADVISORY" releases** (mpdc.dc.gov) and **AlertDC traffic items**
-  (trainingtrack.hsema.dc.gov/NRss), sources "mpd" and "alertdc": text. Each "X from A
-  to B" (or "between A and B") under a time window becomes a `Segment`, which
+  (trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList, an HTML list), sources "mpd"
+  and "alertdc": text. Each "X from A to B" (or "between A and B") under a time window
+  becomes a `Segment`, which
   `core.closure_sources` matches to the ways of X between the two cross streets. A line
   that will not parse, a segment with no window, or one whose streets cannot be found
   is kept as text with the link (`Notice`), never guessed. Only traffic and road items
@@ -43,7 +44,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import urlencode, urljoin, urlsplit
 from xml.etree import ElementTree
 
 from . import workzones as wz
@@ -1060,7 +1061,7 @@ def _title(heading: str) -> str:
 # title and categories; an item with any word of `NOT_TRAFFIC` is dropped whatever else
 # it says, before its text is read further, and is never stored, logged or shown.
 TRAFFIC_WORDS = re.compile(
-    r"\b(?:traffic|road(?:way)?s?\s+(?:closure|closed|closing)|road closure"
+    r"\b(?:traffic|road(?:way)?s?\s+(?:closures?|closed|closing)|road closures?"
     r"|street\s+(?:closure|closed)"
     r"|lanes?\s+(?:closure|closed|blocked)|closed to traffic|bridge (?:opening|lift|closure)|detour"
     r"|ddot|closure)\b",
@@ -1107,6 +1108,89 @@ def _rss_items(text: str) -> list[dict]:
     return items
 
 
+# AlertDC's public list (trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList) is an HTML
+# table, not RSS (checked 2026-11-01): one row an alert, its local date and time ("11/1/2026
+# 5:56 AM"), the title linking to /NRss/RssFeed/AlertDetails/<id>, then the alert's text.
+ALERTDC_BASE = "https://trainingtrack.hsema.dc.gov/"
+_ROW = re.compile(r"<tr\b[^>]*>(.*?)</tr>", re.I | re.S)
+_CELL = re.compile(r"<td\b[^>]*>(.*?)</td>", re.I | re.S)
+_LINK = re.compile(r"<a\b[^>]*href=\"(?P<href>[^\"]+)\"[^>]*>(?P<title>.*?)</a>", re.I | re.S)
+_TAG = re.compile(r"<[^>]+>")
+
+
+def _list_items(text: str) -> list[dict]:
+    """AlertDC's HTML list as the same items `_rss_items` gives; no categories."""
+    items = []
+    for row in _ROW.findall(text):
+        cells = _CELL.findall(row)
+        link = _LINK.search(row)
+        if len(cells) < 2 or link is None:
+            continue
+        try:
+            local = datetime.strptime(_tidy(_TAG.sub(" ", cells[0])), "%m/%d/%Y %I:%M %p")
+            published = local.replace(tzinfo=ZONE).astimezone(UTC)
+        except ValueError:
+            published = None
+        href = html.unescape(link.group("href"))
+        body = _LINK.sub(" ", cells[1])
+        items.append(
+            {
+                "title": _tidy(_TAG.sub(" ", link.group("title"))),
+                "link": urljoin(ALERTDC_BASE, href),
+                "guid": href.rstrip("/").rsplit("/", 1)[-1],
+                "description": "".join(f"<p>{html.escape(line)}</p>" for line in _list_lines(body)),
+                "published": published,
+                "categories": [],
+            }
+        )
+    if not items and "AlertDetails" not in text:
+        raise ValueError("not an AlertDC list")
+    return items
+
+
+def _list_lines(body: str) -> list[str]:
+    """An alert's text as lines: AlertDC breaks lines with "&#xA;" and starts list lines
+    with a bullet ("&#x2022;"), so "the following road closures:" is one line a block."""
+    text = re.sub(r"\[AlertDC\]", " ", html.unescape(_TAG.sub(" ", body)), flags=re.I)
+    lines = (_tidy(line).strip(" \u2022*-") for line in re.split(r"[\n\u2022]", text))
+    return [line for line in lines if line]
+
+
+def _alertdc_items(text: str) -> list[dict]:
+    """The items of AlertDC's RSS feed or of its HTML list, whichever was sent."""
+    head = text.lstrip()[:500].lower()
+    if head.startswith("<?xml") or "<rss" in head:
+        items = _rss_items(text)
+        for item in items:
+            try:
+                item["published"] = parsedate_to_datetime(item["pubDate"]).astimezone(UTC)
+            except (TypeError, ValueError):
+                item["published"] = None
+        return items
+    return _list_items(text)
+
+
+# AlertDC's own wording: "MPD reports the 2700 block of Naylor Road, SE, between Alabama
+# Avenue and Marion Barry Avenue is closed ...", turned into "X between A and B".
+_ALERT_BLOCK = re.compile(
+    r"^(?:\[AlertDC\]\s*)?(?:MPD reports\s+(?:that\s+)?)?(?:the\s+)?(?:\d+\s+block\s+of\s+)?"
+    r"(?P<street>[A-Za-z0-9].*?)\s*,?\s+between\s+(?P<a>.+?)\s+and\s+(?P<b>.+?)"
+    r"(?:\s+(?:is|are)\s+(?:now\s+)?(?:closed|blocked)\b|\s*$)",
+    re.I,
+)
+# "between Ellicott and Cumberland Streets": the plural names both cross streets.
+_PLURAL_TYPE = re.compile(r"\s(Street|Avenue|Road|Place|Drive|Court|Terrace)s\b", re.I)
+# A sentence or item that says a closure is over; never read as a closure.
+_REOPENED = re.compile(r"\b(?:re-?opened|has cleared|have cleared|is clear|are clear)\b", re.I)
+_UPDATE_PREFIX = re.compile(r"^(?:\[AlertDC\]\s*)?(?:(?:final\s+)?update\s*:\s*)?", re.I)
+
+
+def _incident(title: str) -> str:
+    """An item's title without AlertDC's tag and "Update:"/"Final Update:", so an update
+    and the alert it follows share one key."""
+    return _UPDATE_PREFIX.sub("", _tidy(title)).lower()
+
+
 def _strip_tags(text: str) -> list[str]:
     parser = _Text()
     parser.feed(text)
@@ -1119,23 +1203,45 @@ ALERTDC_MAX_AGE = timedelta(hours=12)
 
 
 def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
-    """AlertDC's traffic and road items as advisories; every other item dropped unread."""
+    """AlertDC's traffic and road items as advisories; every other item dropped unread.
+    `feed` is the RSS feed or the HTML list (`_alertdc_items`). An item saying the road
+    has reopened is never a closure, and it ends the earlier items of the same incident."""
+    items = [
+        item
+        for item in _alertdc_items(feed)
+        if is_traffic(item["title"], item["categories"])
+        and not NOT_TRAFFIC.search(item["description"])
+    ]
+    reopened: dict[str, datetime | None] = {}
+    for item in items:
+        if _REOPENED.search(item["title"]) or _REOPENED.search(item["description"]):
+            key, when = _incident(item["title"]), item["published"]
+            if key not in reopened or (when and (reopened[key] is None or when > reopened[key])):
+                reopened[key] = when
     advisories = []
-    for item in _rss_items(feed):
-        if not is_traffic(item["title"], item["categories"]):
+    for item in items:
+        published = item["published"]
+        key = _incident(item["title"])
+        if key in reopened and (
+            reopened[key] is None or published is None or published <= reopened[key]
+        ):
             continue
         description = item["description"]
-        if NOT_TRAFFIC.search(description):
-            continue
-        try:
-            published = parsedate_to_datetime(item["pubDate"]).astimezone(UTC)
-        except (TypeError, ValueError):
-            published = None
         lines = _strip_tags(description) or [item["title"]]
         sentences = [s for line in lines for s in re.split(r"(?<=[.!?])\s+", line) if s]
-        segments, unparsed, _start, _end = [], [], None, None
+        segments, unparsed = [], []
         for sentence in sentences:
-            found = parse_segment(sentence)
+            if _REOPENED.search(sentence):
+                continue
+            block = _ALERT_BLOCK.match(_tidy(sentence))
+            line = sentence
+            if block and re.search(r"\bblock\s+of\b|\bis\s+closed|\bare\s+closed", sentence, re.I):
+                a, b = block.group("a"), _tail_cut(block.group("b")).rstrip(" .")
+                plural = _PLURAL_TYPE.search(b)
+                if plural and not _PLURAL_TYPE.search(a) and " " not in a.strip():
+                    a, b = f"{a} {plural.group(1)}", _PLURAL_TYPE.sub(r" \1", b)
+                line = f"{block.group('street')} between {a} and {b}"
+            found = parse_segment(line)
             if found is None:
                 continue
             start = published
@@ -1149,10 +1255,10 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
             continue
         if end is not None and end <= now:
             continue
-        key = item["guid"] or item["link"] or item["title"]
+        guid = item["guid"] or item["link"] or item["title"]
         advisories.append(
             Advisory(
-                advisory_id="alertdc-" + re.sub(r"[^A-Za-z0-9]+", "-", key)[-60:].strip("-"),
+                advisory_id="alertdc-" + re.sub(r"[^A-Za-z0-9]+", "-", guid)[-60:].strip("-"),
                 source="alertdc",
                 title=_title(item["title"]),
                 url=item["link"] or None,

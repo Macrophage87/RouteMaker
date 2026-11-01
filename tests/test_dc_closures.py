@@ -274,6 +274,75 @@ class TestAlertDc:
         assert dc.is_traffic(title, categories) is traffic
 
 
+class TestAlertDcList:
+    """AlertDC's public list is an HTML table, not RSS (checked live 2026-11-01): before,
+    the reader raised "not an RSS feed" on every run and no AlertDC closure was used."""
+
+    def test_the_html_list_is_read_not_refused(self) -> None:
+        advisories = dc.parse_alertdc(text("alertdc-list.html"), NOW)
+        assert [a.advisory_id for a in advisories] == [
+            "alertdc-90211",
+            "alertdc-90207",
+            "alertdc-90205",
+        ]
+        assert advisories[0].url == (
+            "https://trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDetails/90211"
+        )
+        # 2:05 PM in DC on Oct 15 is 18:05 UTC.
+        assert advisories[0].published == datetime(2026, 10, 15, 18, 5, tzinfo=UTC)
+
+    def test_crime_and_weather_items_are_dropped_unread(self) -> None:
+        stored = json.dumps(
+            [a.notice().to_json() for a in dc.parse_alertdc(text("alertdc-list.html"), NOW)]
+        )
+        for word in ("shooting", "1500 block", "911", "Wind", "District"):
+            assert word not in stored
+
+    def test_a_closure_until_a_time_and_a_bridge_opening_as_text(self) -> None:
+        closure, _fire, bridge = dc.parse_alertdc(text("alertdc-list.html"), NOW)
+        assert bridge.segments == [] and "marine traffic" in bridge.notice().text
+        (segment,) = closure.segments
+        assert (segment.street, segment.from_street, segment.to_street) == (
+            "Pennsylvania Avenue SE",
+            "2nd Street SE",
+            "4th Street SE",
+        )
+        assert segment.end == datetime(2026, 10, 15, 22, tzinfo=UTC)  # 6 pm in DC
+
+    def test_each_bulleted_block_is_its_own_segment(self) -> None:
+        fire = dc.parse_alertdc(text("alertdc-list.html"), NOW)[1]
+        assert [(s.street, s.from_street, s.to_street) for s in fire.segments] == [
+            ("Connecticut Avenue NW", "Ellicott Street NW", "Cumberland Street NW"),
+            ("Davenport Street NW", "Connecticut Avenue NW", "32nd Street NW"),
+        ]
+
+    def test_a_reopened_road_ends_its_closure_and_is_never_one(self) -> None:
+        """Before: the crash closure stood for 12 hours after AlertDC said it reopened."""
+        ids = [a.advisory_id for a in dc.parse_alertdc(text("alertdc-list.html"), NOW)]
+        assert "alertdc-90208" not in ids and "alertdc-90209" not in ids
+
+    def test_the_closure_stands_until_the_reopening_is_posted(self) -> None:
+        page = text("alertdc-list.html")
+        rows = page.split("<tr>")
+        without_update = "<tr>".join(r for r in rows if "AlertDetails/90209" not in r)
+        (crash,) = [
+            a for a in dc.parse_alertdc(without_update, NOW) if a.advisory_id == "alertdc-90208"
+        ]
+        (segment,) = crash.segments
+        assert (segment.street, segment.from_street, segment.to_street) == (
+            "Naylor Road SE",
+            "Alabama Avenue SE",
+            "Marion Barry Avenue SE",
+        )
+
+    def test_a_page_that_is_neither_rss_nor_the_list_fails_the_read(self) -> None:
+        with pytest.raises(ValueError):
+            dc.parse_alertdc("<html><body>Service unavailable</body></html>", NOW)
+
+    def test_an_old_item_with_no_end_has_passed(self) -> None:
+        assert dc.parse_alertdc(text("alertdc-list.html"), NOW + timedelta(days=1)) == []
+
+
 class TestNps:
     def test_park_closures_and_cautions_for_our_parks_only(self) -> None:
         notices = dc.parse_nps(json.loads(text("nps-alerts.json")))

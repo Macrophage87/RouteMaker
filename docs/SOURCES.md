@@ -644,8 +644,9 @@ sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has
 ### AlertDC
 
 - Credit: `AlertDC (HSEMA)`
-- Feed: <https://trainingtrack.hsema.dc.gov/NRss> (the host name says "training" but it carries
-  current alerts), read every 15 minutes. Only traffic and road items are read; every other alert
+- Feed: <https://trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList> (the host name says
+  "training" but it carries current alerts; despite the path it is an HTML list, not RSS, as of
+  2026-11-01), read every 15 minutes. A later "has reopened" update ends the alert it follows. Only traffic and road items are read; every other alert
   type (crime first) is dropped before its text is read, and is never stored, logged or shown.
 - Publisher: DC Homeland Security and Emergency Management Agency.
 - Terms: public government alerts (inferred public). Not legal advice.
