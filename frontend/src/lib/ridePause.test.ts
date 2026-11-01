@@ -14,6 +14,8 @@ import {
   ROAM_RESUMED_SAID,
   STAY_M,
   STAY_MS,
+  STOPPED_BEAT_MS,
+  beatKeepsGps,
   heartbeatFix,
   movedFromPause,
   rideStayPausedSaid,
@@ -83,9 +85,9 @@ test("heartbeat: a stopped rider's last fix again, with the time now, once no fi
   assert.equal(heartbeatFix(null, 0, 60_000), null);
 });
 
-test("heartbeat: none 60 s after the last real fix, so a lost GPS is not kept alive (the owner, 2026-11-01)", () => {
+test("heartbeat: none 60 s after a slow rider's last real fix, so a lost GPS is not kept alive (the owner, 2026-11-01)", () => {
   assert.equal(HEARTBEAT_STOP_MS, 60_000);
-  const last = fix(HERE, 0, 6, 0.4);
+  const last = fix(HERE, 0, 6, 1);
   assert.notEqual(heartbeatFix(last, 0, HEARTBEAT_STOP_MS), null, "still beating at 60 s");
   assert.equal(heartbeatFix(last, 0, HEARTBEAT_STOP_MS + 1), null, "no more after");
 });
@@ -132,9 +134,10 @@ test("Roam: 10 minutes hidden in a browser pauses it (not in the app), and so do
 test("Ride: the heartbeat runs only the stillness clocks, never the line or off route", () => {
   const beat = ride.slice(ride.indexOf("(fix: RideFix, beat = false) => {"), ride.indexOf("const auto = !keepRef.current"));
   // Only the stay and the dock: it returns before the weak-GPS clock and the last fix's time (a slow rider's lost GPS).
-  assert.match(beat, /if \(beat\) \{\s*stay\.current = [^;]+stayStep\(stay\.current, fix\)[^;]*;\s*stepDockRef\.current\(fix\);\s*return;\s*\}/);
+  // Only the stay and the dock, plus the GPS clocks after a stopped rider's good fix (beatKeepsGps, a red light).
+  assert.match(beat, /if \(beat\) \{\s*stay\.current = [^;]+stayStep\(stay\.current, fix\)[^;]*;\s*stepDockRef\.current\(fix\);/);
+  assert.match(beat, /if \(beatKeepsGps\(lastRealFix\.current, [^)]*\)\) \{\s*lastFixAt\.current = Date\.now\(\);\s*gpsWeak\.current = \{ goodAt: lastFixAt\.current, weak: false \};\s*\}\s*return;\s*\}/);
   assert.ok(beat.indexOf("if (beat) {") < beat.indexOf("weighFix(gpsWeak.current"), "the beat returns before weighFix");
-  assert.ok(beat.indexOf("if (beat) {") < beat.indexOf("lastFixAt.current = "), "the beat returns before lastFixAt");
   assert.doesNotMatch(beat, /tripStep\(/, "the beat returns before the ride's step");
   assert.match(ride, /if \(ridesHidden\(\) && stopWatch\.current\) \{/, "the app only: a browser's GPS sends fixes standing still");
 });
@@ -173,4 +176,19 @@ test("Ride and Roam in the app: paused, the native watch runs on and its fixes s
   assert.match(ride, /if \(ridesHidden\(\) && stopWatch\.current\) gpsWeak\.current = [^;]+;\s*else startWatch\(\);/, "Ride: Resume keeps the app's watch");
   assert.match(roam, /if \(!\(ridesHidden\(\) && stopWatch\.current\)\) startWatch\(\);/, "Roam: Resume keeps the app's watch");
   assert.match(roam, /if \(!\(why === "still" && ridesHidden\(\)\)\) \{\s*stopWatch\.current\?\.\(\);/, "Roam: only the app's still pause keeps it");
+});
+
+test("stopped at a long red light with no fix, the GPS is not taken as lost; riding slowly and losing GPS still is", () => {
+  // The owner, 2026-11-01: "Make sure there's some backup" for the 4 m filter. A stopped rider's good fix keeps the GPS
+  // clocks through a 2-minute light; a slow rider's (1.5 m/s, under trees) does not, so the weak-GPS note still comes.
+  const stopped = fix(HERE, 0, 8, 0);
+  assert.equal(beatKeepsGps(stopped, 0, 120_000), true, "a 2-minute light");
+  assert.ok(heartbeatFix(stopped, 0, 120_000), "beats go on through it");
+  assert.equal(beatKeepsGps(stopped, 0, STOPPED_BEAT_MS + 1), false, "3 minutes on: taken as lost");
+  assert.equal(heartbeatFix(stopped, 0, STOPPED_BEAT_MS + 1), null);
+  const slow = fix(HERE, 0, 8, 1.5);
+  assert.equal(beatKeepsGps(slow, 0, 10_000), false, "riding slowly");
+  assert.equal(heartbeatFix(slow, 0, 120_000), null, "and its beats stop at a minute");
+  assert.equal(beatKeepsGps(fix(HERE, 0, 8, null), 0, 10_000), false, "no speed: not known to be stopped");
+  assert.equal(beatKeepsGps(fix(HERE, 0, 35, 0), 0, 10_000), false, "a rough fix");
 });

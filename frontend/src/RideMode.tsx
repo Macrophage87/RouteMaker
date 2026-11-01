@@ -163,7 +163,7 @@ import {
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
 import { useRailFit } from "./lib/railFit.ts";
 import { WAITING_FOR_GPS, readOnce, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
-import { PAUSE_CHECK_MS, PausedFixes, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
+import { PAUSE_CHECK_MS, PausedFixes, beatKeepsGps, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { askCompass } from "./lib/compassHeading.ts";
 import { rideGeoEnv, rideSpeech, rideWake, ridesHidden, showCue, speaksAloud } from "./lib/nativeShell.ts";
 import {
@@ -1513,13 +1513,18 @@ export function RideMode({
   const onFix = useCallback(
     // `beat`: the app's heartbeat (lib/ridePause.ts heartbeatFix), the last fix again with the time now while a stopped
     // rider's GPS sends none. It runs only the stillness clocks (the dock, the stay at the destination); never the
-    // weak-GPS clock or the last fix's time, so a slow rider who loses GPS under trees still hears so and gets the turn
-    // list; never placed on the line or taken as off route (the owner, 2026-11-01: battery audit).
+    // weak-GPS clock or the last fix's time (except after a stopped rider's good fix: beatKeepsGps), so a slow rider who
+    // loses GPS under trees still hears so and gets the turn list; never placed on the line or taken as off route (the owner, 2026-11-01: battery audit).
     (fix: RideFix, beat = false) => {
       if (ended.current) return;
       if (beat) {
         stay.current = rideRef.current.arrived ? stayStep(stay.current, fix) : null;
         stepDockRef.current(fix);
+        // Stopped at a light with no fix (the 4 m filter): the GPS is not lost, so its clocks keep time too.
+        if (beatKeepsGps(lastRealFix.current, lastRealFix.current?.at ?? 0, fix.at)) {
+          lastFixAt.current = Date.now();
+          gpsWeak.current = { goodAt: lastFixAt.current, weak: false };
+        }
         return;
       }
       gpsSaid.current = null;

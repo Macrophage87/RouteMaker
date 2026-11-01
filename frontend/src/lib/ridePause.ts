@@ -47,6 +47,14 @@ export const HEARTBEAT_STOP_MS = 60_000;
  * likely lost GPS (a tunnel) than stopped, and the weak-GPS clock must run for them.
  */
 export const HEARTBEAT_MAX_SPEED_MS = 2;
+/**
+ * A last fix this slow is a rider standing still (a red light), not one riding slowly: with the 4 m filter the GPS
+ * sends nothing at a light, and a 60-120 s DC light must not bring up the weak-GPS note or the turn list. Their beats
+ * also keep the last fix's time and the weak-GPS clock, for up to STOPPED_BEAT_MS (the owner, 2026-11-01: battery
+ * audit, "Make sure there's some backup").
+ */
+export const STOPPED_MS = 0.5;
+export const STOPPED_BEAT_MS = 180_000;
 
 /** Where a stay began, and when. */
 export interface Stay {
@@ -84,10 +92,23 @@ export function movedFromPause(spot: LonLat | null, reading: Pick<RideFix, "poin
  * not time, none has come for over HEARTBEAT_STOP_MS, there is none, it was poor, or the rider was moving at speed.
  */
 export function heartbeatFix(last: RideFix | null, lastRealAt: number, now: number): RideFix | null {
-  if (!last || now - lastRealAt < HEARTBEAT_MS || now - lastRealAt > HEARTBEAT_STOP_MS) return null;
+  if (!last || now - lastRealAt < HEARTBEAT_MS || now - lastRealAt > (stoppedAt(last) ? STOPPED_BEAT_MS : HEARTBEAT_STOP_MS)) return null;
   if (!(last.accuracyM <= POOR_FIX_M)) return null;
   if (last.speedMs !== null && last.speedMs >= HEARTBEAT_MAX_SPEED_MS) return null;
   return { ...last, speedMs: 0, headingDeg: null, at: now };
+}
+
+/** The last real fix shows the rider standing still, with a good fix (STOPPED_MS, MOVE_GOOD_M). */
+export function stoppedAt(last: RideFix): boolean {
+  return last.speedMs !== null && last.speedMs < STOPPED_MS && last.accuracyM <= MOVE_GOOD_M;
+}
+
+/**
+ * Whether a beat also keeps the GPS clocks (the last fix's time, the weak-GPS clock): only after a stopped rider's
+ * good fix, and only within STOPPED_BEAT_MS. A slow rider who loses GPS under trees still hears so (review of #859).
+ */
+export function beatKeepsGps(last: RideFix | null, lastRealAt: number, now: number): boolean {
+  return last !== null && stoppedAt(last) && now - lastRealAt <= STOPPED_BEAT_MS;
 }
 
 /*
