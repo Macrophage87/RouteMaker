@@ -629,5 +629,5 @@ in the database still names it: delete that row in the admin when loading the fi
   whose note quoted other blocks' counts. One row per line. A first version (4,708 ways, only
   those under a DDOT block reading) was merged unloaded and is replaced by this one.
   Loading: the dry run lists every row; any approved row or road-panel edit on one of these
-  ways with another tier refuses the whole file, so read the dry run first. No fingerprints:
-  an OSM split drops the row for the new piece. Takes effect on the next rebuild.
+  ways with another tier refuses the whole file, so read the dry run first. Fingerprints are
+  from extract-20261031 (`rematch.fingerprint_of`). Takes effect on the next rebuild.
