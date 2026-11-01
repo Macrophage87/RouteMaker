@@ -411,6 +411,8 @@ function cutAtSpans(
     } else if (key !== null && points.length >= 2) {
       pieces.push({ key, span, coordinates: points });
     }
+    // The previous span's key, not the last piece's: a skipped span (null, or a point past the line's end)
+    // ends the run, so lane marks never bridge a stretch with none.
     previousKey = key;
   });
   return pieces;
@@ -475,7 +477,7 @@ export interface RouteLaneMark {
 /**
  * The route's lane marks, in route order: one a run of one facility on one width of section. None on a
  * Mass Ride's route (its capacity bands are wider and its rails on the map give way, OWNER-DECISIONS
- * 325), and none without usable spans.
+ * 325), none without usable spans, and none on a transit trip's later rides (only `coordinates` is cut).
  */
 export function routeLaneMarks(
   coordinates: readonly LonLat[],
