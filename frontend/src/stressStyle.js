@@ -913,6 +913,11 @@ export const PLACE_LABEL = {
   halo: "#ffffff",
   haloWidth: 2.5,
   strongHaloWidth: 2.75,
+  /**
+   * On the dark map (the owner, 2026-11-01: battery audit): the street names' dark halo, the text light, a town lighter
+   * than a neighbourhood as it is darker on the light map; white with the switch.
+   */
+  dark: { neighbourhood: "#bdbdbd", town: "#e5e5e5", strong: "#ffffff" },
 };
 
 /**
@@ -933,12 +938,14 @@ export function townLabelSize(town, largeTownRank) {
   return ["interpolate", ["linear"], ["zoom"], ...zooms.flatMap((zoom) => [zoom, ["case", isLarge, at(large, zoom), at(small, zoom)]])];
 }
 
-/** A place name layer's paint (PLACE_LABEL), plain or with the accessibility switch on. */
-export function placeLabelPaint(id, strong = accessibilityOn()) {
-  const kind = id === "places_locality" ? PLACE_LABEL.town : PLACE_LABEL.neighbourhood;
+/** A place name layer's paint (PLACE_LABEL), plain or with the accessibility switch on, on the light map or the dark. */
+export function placeLabelPaint(id, strong = accessibilityOn(), dark = darkMapOn()) {
+  const town = id === "places_locality";
+  const kind = town ? PLACE_LABEL.town : PLACE_LABEL.neighbourhood;
+  const darkColor = strong ? PLACE_LABEL.dark.strong : town ? PLACE_LABEL.dark.town : PLACE_LABEL.dark.neighbourhood;
   return {
-    "text-color": strong ? kind.strongColor : kind.color,
-    "text-halo-color": PLACE_LABEL.halo,
+    "text-color": dark ? darkColor : strong ? kind.strongColor : kind.color,
+    "text-halo-color": dark ? ROAD_LABEL.darkHalo : PLACE_LABEL.halo,
     "text-halo-width": strong ? PLACE_LABEL.strongHaloWidth : PLACE_LABEL.haloWidth,
     "text-halo-blur": 0,
   };
@@ -975,6 +982,17 @@ export const OTHER_LABEL = {
   island: ROAD_LABEL.color,
   address: "#57534e",
   shield: { size: 12, iconSize: 1.2, color: "#2e2a2b" },
+  /**
+   * On the dark map (the owner, 2026-11-01: battery audit): the street names' dark halo, and a light tint of each
+   * colour, 7:1 or more on it, so a park still reads green and a creek blue. The shields keep their own paint.
+   */
+  dark: {
+    poiColors: ["#86efac", "#93c5fd", "#c4b5fd", "#7dd3fc", "#fdba74", "#f9a8d4"],
+    poiOther: ROAD_LABEL.darkColor,
+    water: "#93c5fd",
+    island: ROAD_LABEL.darkColor,
+    address: "#d6d3d1",
+  },
 };
 /**
  * THE MOTORWAYS' NAMES. The owner, 2026-10-21: "Seeing the map zoomed out, having those huge highway names are silly,
@@ -996,21 +1014,26 @@ function laterMotorways(filter) {
 
 export const OTHER_LABEL_LAYER_IDS = ["pois", "water_waterway_label", "water_label_ocean", "water_label_lakes", "earth_label_islands", "address_label", "roads_shields"];
 
-/** One of the base map's other label layers (OTHER_LABEL) as this app draws it. */
-function clearOtherLabel(layer) {
+/** One of the base map's other label layers (OTHER_LABEL) as this app draws it, on the light map or the dark. */
+function clearOtherLabel(layer, dark = false) {
   const L = OTHER_LABEL;
+  const D = L.dark;
   const named = (color, size = L.size, halo = L.haloWidth) => ({
     ...layer,
     layout: { ...layer.layout, "text-font": [L.font], "text-size": size, "text-letter-spacing": 0 },
-    paint: { ...layer.paint, "text-color": color, "text-halo-color": L.halo, "text-halo-width": halo, "text-halo-blur": 0 },
+    paint: { ...layer.paint, "text-color": color, "text-halo-color": dark ? ROAD_LABEL.darkHalo : L.halo, "text-halo-width": halo, "text-halo-blur": 0 },
   });
   switch (layer.id) {
     case "pois":
-      return named(["case", ...L.poiColors.flatMap(([kinds, color]) => [["in", ["get", "kind"], ["literal", kinds]], color]), L.poiOther]);
+      return named([
+        "case",
+        ...L.poiColors.flatMap(([kinds, color], i) => [["in", ["get", "kind"], ["literal", kinds]], dark ? D.poiColors[i] : color]),
+        dark ? D.poiOther : L.poiOther,
+      ]);
     case "earth_label_islands":
-      return named(L.island);
+      return named(dark ? D.island : L.island);
     case "address_label":
-      return named(L.address, L.addressSize, L.addressHaloWidth);
+      return named(dark ? D.address : L.address, L.addressSize, L.addressHaloWidth);
     case "roads_shields":
       return {
         ...layer,
@@ -1019,7 +1042,7 @@ function clearOtherLabel(layer) {
         paint: { ...layer.paint, "text-color": L.shield.color },
       };
     default:
-      return named(L.water);
+      return named(dark ? D.water : L.water);
   }
 }
 
@@ -1070,7 +1093,7 @@ export function boundaryLayers(layer) {
 /**
  * The base map's layers with the street names (ROAD_LABEL), place names (PLACE_LABEL), other labels (OTHER_LABEL) and
  * state and county lines (BOUNDARY_LINE) restyled; every other layer as given. `dark`: the layers are the dark
- * flavour's, so the street names take their dark halo (lib/mapFlavour.ts).
+ * flavour's, so the street, place and other names take their dark halo and light text (lib/mapFlavour.ts).
  */
 export function withClearRoadLabels(layers, strong = accessibilityOn(), dark = false) {
   return layers.flatMap((layer) => {
@@ -1090,10 +1113,10 @@ export function withClearRoadLabels(layers, strong = accessibilityOn(), dark = f
       return {
         ...layer,
         layout: { ...layer.layout, "text-font": [PLACE_LABEL.font], "text-size": size, "text-transform": kind.transform, "text-letter-spacing": kind.letterSpacing },
-        paint: { ...layer.paint, ...placeLabelPaint(layer.id, strong) },
+        paint: { ...layer.paint, ...placeLabelPaint(layer.id, strong, dark) },
       };
     }
-    if (OTHER_LABEL_LAYER_IDS.includes(layer.id)) return clearOtherLabel(layer);
+    if (OTHER_LABEL_LAYER_IDS.includes(layer.id)) return clearOtherLabel(layer, dark);
     return layer;
   });
 }

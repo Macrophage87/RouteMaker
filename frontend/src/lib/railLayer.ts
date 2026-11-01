@@ -133,13 +133,7 @@ export function railLayers(sourceId = RAIL_SOURCE_ID) {
         "text-offset": [0, 1],
         "text-max-width": 8,
       },
-      paint: {
-        // A closed station's name is grey as well as "(closed)" (railClosures.ts); #4b5563 is 7.6:1 on its white halo.
-        "text-color": ["case", ["==", ["get", "closed"], true], "#4b5563", "#1f2937"],
-        "text-halo-color": "#ffffff",
-        // The street names' white band, so a line under a name does not hide it.
-        "text-halo-width": ROAD_LABEL.haloWidth,
-      },
+      paint: stationNamePaint(),
     },
     {
       id: RAIL_LAYERS.elevators,
@@ -263,14 +257,38 @@ function stationImages(stations: readonly Station[], pennColour: string, pixelRa
   return [...open, ...closed];
 }
 
-/** Draw the station icons again for the base map's flavour, where they are on the map (lib/mapFlavour.ts). */
+/**
+ * The station names' colours. On the light map, dark on the street names' white band (a closed station's grey as well
+ * as "(closed)", railClosures.ts; #4b5563 is 7.6:1 on white). On the dark map (the owner, 2026-11-01: battery audit),
+ * light on the street names' dark halo, so a name is not a white band on an unlit screen; the closed grey still the
+ * lighter-contrast of the two, 4.5:1 or more (darkMap.test.ts).
+ */
+export const STATION_NAME = { color: "#1f2937", closed: "#4b5563", halo: "#ffffff", darkColor: "#e5e7eb", darkClosed: "#9ca3af" } as const;
+
+/** The station names' paint on the light map or the dark. */
+export function stationNamePaint(dark: boolean = darkMapOn()): Record<string, unknown> {
+  return {
+    "text-color": ["case", ["==", ["get", "closed"], true], dark ? STATION_NAME.darkClosed : STATION_NAME.closed, dark ? STATION_NAME.darkColor : STATION_NAME.color],
+    "text-halo-color": dark ? ROAD_LABEL.darkHalo : STATION_NAME.halo,
+    // The street names' band, so a line under a name does not hide it.
+    "text-halo-width": ROAD_LABEL.haloWidth,
+  };
+}
+
+/** Draw the station icons and names again for the base map's flavour, where they are on the map (lib/mapFlavour.ts). */
 export function setRailFlavour(
-  map: Pick<RailMap, "hasImage"> & { updateImage(id: string, image: Omit<Raster, "pixelRatio">): void },
+  map: Pick<RailMap, "hasImage" | "getLayer"> & {
+    updateImage(id: string, image: Omit<Raster, "pixelRatio">): void;
+    setPaintProperty(id: string, name: string, value: unknown): void;
+  },
   stations: readonly Station[],
   pennColour: string,
   pixelRatio: number,
   dark: boolean,
 ): void {
+  if (map.getLayer(RAIL_LAYERS.names)) {
+    for (const [name, value] of Object.entries(stationNamePaint(dark))) map.setPaintProperty(RAIL_LAYERS.names, name, value);
+  }
   for (const { id, raster } of stationImages(stations, pennColour, pixelRatio, dark)) {
     if (!map.hasImage(id)) continue;
     const { width, height, data } = raster;

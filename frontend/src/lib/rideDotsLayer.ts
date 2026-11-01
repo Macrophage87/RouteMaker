@@ -64,6 +64,13 @@ export const HOLE = "#ffffff";
  * (darkMap.test.ts). The light map's are as they were.
  */
 export const ALERT_RING_DARK_MAP = "#f87171";
+/**
+ * The leader's trail and sent route on the dark map: a light violet, as the leader's ring's deep one is near-black
+ * there; the trail drawn at TRAIL_OPACITY_DARK_MAP so it is 3:1 on every dark surface (darkMap.test.ts).
+ */
+export const LEADER_LINE_DARK_MAP = "#c4b5fd";
+export const TRAIL_OPACITY = 0.55;
+export const TRAIL_OPACITY_DARK_MAP = 0.85;
 
 export type RoleShape = "dot" | "chevron" | "square" | "diamond";
 export const ROLE_SHAPES: Readonly<Record<RideRole, RoleShape>> = { participant: "dot", lead: "chevron", sweep: "square", corker: "diamond" };
@@ -245,7 +252,7 @@ export function dotsLayers(dark: boolean = darkMapOn()): object[] {
       type: "line",
       source: LEADER_ROUTE_SOURCE,
       layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": LEADER_RING, "line-width": 3, "line-dasharray": [1.5, 1.5], "line-opacity": 0.85 },
+      paint: { "line-color": dark ? LEADER_LINE_DARK_MAP : LEADER_RING, "line-width": 3, "line-dasharray": [1.5, 1.5], "line-opacity": 0.85 },
     },
     {
       // Where the leader has been: solid and wide, under the marks.
@@ -253,7 +260,7 @@ export function dotsLayers(dark: boolean = darkMapOn()): object[] {
       type: "line",
       source: TRAIL_SOURCE,
       layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": LEADER_RING, "line-width": 5, "line-opacity": 0.55 },
+      paint: { "line-color": dark ? LEADER_LINE_DARK_MAP : LEADER_RING, "line-width": 5, "line-opacity": dark ? TRAIL_OPACITY_DARK_MAP : TRAIL_OPACITY },
     },
     {
       id: LEADER_LAYER,
@@ -361,7 +368,7 @@ export function showRideDots(
 
 /**
  * Draw the rings again for the base map's flavour, where they are on the map (lib/mapFlavour.ts; the owner,
- * 2026-11-01: battery audit): the ring images in place, and the alert pins' ring colour.
+ * 2026-11-01: battery audit): the ring images in place, the alert pins' ring colour, and the leader's lines.
  */
 export function setRideDotsFlavour(
   map: Pick<DotsMap, "hasImage" | "getLayer"> & {
@@ -378,4 +385,9 @@ export function setRideDotsFlavour(
     map.updateImage(id, { width, height, data });
   }
   if (map.getLayer(ALERTS_LAYER)) map.setPaintProperty(ALERTS_LAYER, "circle-stroke-color", alertStroke(dark));
+  for (const layer of dotsLayers(dark) as Array<{ id: string; paint: Record<string, unknown> }>) {
+    if (layer.id !== TRAIL_LAYER && layer.id !== LEADER_ROUTE_LAYER) continue;
+    if (!map.getLayer(layer.id)) continue;
+    for (const name of ["line-color", "line-opacity"]) map.setPaintProperty(layer.id, name, layer.paint[name]);
+  }
 }

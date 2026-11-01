@@ -15,8 +15,13 @@ import {
   MTB_TRAIL,
   PALETTES,
   FACILITIES,
+  OTHER_LABEL,
+  OTHER_LABEL_LAYER_IDS,
+  PLACE_LABEL,
+  PLACE_LABEL_LAYER_IDS,
   ROAD_LABEL,
   ROAD_LABEL_LAYER_IDS,
+  placeLabelPaint,
   roadLabelPaint,
   trailLabelPaint,
   contrastRatio,
@@ -37,11 +42,11 @@ import { COVERAGE_MASK_LAYERS } from "./lib/mapGlue.ts";
 import { DC_MASK_LAYERS } from "./lib/dcBoundary.ts";
 import { SCENIC_CASING_LAYER, SCENIC_COLOUR, scenicCasingLayer, scenicPointLayers } from "./lib/scenicLayer.ts";
 import { OUTLINE, OUTLINE_DARK_MAP, stationIcon } from "./lib/stationIcons.ts";
-import { ALERT, ALERTS_LAYER, ALERT_RING_DARK_MAP, HOLE, ROLE_COLOURS, alertStroke, dotImage, setRideDotsFlavour } from "./lib/rideDotsLayer.ts";
+import { ALERT, ALERTS_LAYER, ALERT_RING_DARK_MAP, HOLE, LEADER_LINE_DARK_MAP, LEADER_RING, LEADER_ROUTE_LAYER, ROLE_COLOURS, TRAIL_LAYER, TRAIL_OPACITY, TRAIL_OPACITY_DARK_MAP, alertStroke, dotImage, dotsLayers, setRideDotsFlavour } from "./lib/rideDotsLayer.ts";
 import { CHOICE_CASING_LAYER, CHOICE_CASING_OPACITY, CHOICE_DIRECT, CHOICE_LINE_OPACITY, CHOICE_OTHER, CHOICE_TRAILMAXXED } from "./lib/routeChoice.ts";
 import { CLOSED_RED, LANE_AMBER } from "./lib/closureMap.ts";
 import { CLOSED_RING, CLOSED_RING_DARK_MAP, closedStationIcon } from "./lib/stationIcons.ts";
-import { setRailFlavour } from "./lib/railLayer.ts";
+import { RAIL_LAYERS, STATION_NAME, railLayers, setRailFlavour, stationNamePaint } from "./lib/railLayer.ts";
 import { closedIconId } from "./lib/railStations.ts";
 import { TOPO_COLOURS, TOPO_DARK_COLOURS, topoLayers } from "./lib/topoLines.ts";
 import { bothSprites, setCorridorStyle, styleExtraUrls } from "./lib/corridorStore.ts";
@@ -432,7 +437,7 @@ test("a closed station's grey ring is a light grey on the dark map, 3:1 on every
   assert.equal(edgePixel(), CLOSED_RING);
   assert.equal(edgePixel(CLOSED_RING_DARK_MAP), CLOSED_RING_DARK_MAP);
   const updated = new Map<string, Uint8Array>();
-  setRailFlavour({ hasImage: () => true, updateImage: (id: string, image: { data: Uint8Array }) => void updated.set(id, image.data) }, [], "#8a6500", 2, true);
+  setRailFlavour({ hasImage: () => true, getLayer: () => undefined, setPaintProperty: () => undefined, updateImage: (id: string, image: { data: Uint8Array }) => void updated.set(id, image.data) }, [], "#8a6500", 2, true);
   assert.deepEqual(updated.get(closedIconId("circle")), closedStationIcon("circle", 2, undefined, CLOSED_RING_DARK_MAP).data, "the switch draws it again");
 });
 
@@ -558,4 +563,101 @@ test("applyDarkPaint leaves a layer not on the map alone (it takes its paint whe
   const map = fakeMap(["coverage-edge"]);
   applyDarkPaint(map, true, overlayLightPaint());
   assert.deepEqual([...map.paint.keys()], ["coverage-edge|line-color"]);
+});
+
+// The labels and lines a review found still white-haloed or near-black on the dark map (the owner, 2026-11-01: battery audit).
+type Painted = { id: string; paint?: Record<string, unknown> };
+/** The plain colours in a text-color: a colour, or a case expression's outcomes. */
+function textColours(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  const expr = value as unknown[];
+  return expr.filter((part, i) => typeof part === "string" && i > 0 && (i % 2 === 0 || i === expr.length - 1)) as string[];
+}
+
+test("place names on the dark map: light text on the street names' dark halo, 7:1 (15:1 with the switch); the light map's as they were", () => {
+  for (const strong of STRENGTHS) {
+    for (const id of PLACE_LABEL_LAYER_IDS) {
+      const dark = placeLabelPaint(id, strong, true);
+      assert.equal(dark["text-halo-color"], ROAD_LABEL.darkHalo, id);
+      const ratio = contrastRatio(dark["text-color"] as string, ROAD_LABEL.darkHalo);
+      assert.ok(ratio >= (strong ? 15 : 7), `${id} ${strong ? "strong" : "plain"} ${ratio.toFixed(2)}:1`);
+      const kind = id === "places_locality" ? PLACE_LABEL.town : PLACE_LABEL.neighbourhood;
+      assert.deepEqual(placeLabelPaint(id, strong, false), {
+        "text-color": strong ? kind.strongColor : kind.color,
+        "text-halo-color": "#ffffff",
+        "text-halo-width": strong ? PLACE_LABEL.strongHaloWidth : PLACE_LABEL.haloWidth,
+        "text-halo-blur": 0,
+      });
+    }
+  }
+  // A town still reads above a neighbourhood: the lighter of the two on the dark halo.
+  assert.ok(contrastRatio(PLACE_LABEL.dark.town, ROAD_LABEL.darkHalo) > contrastRatio(PLACE_LABEL.dark.neighbourhood, ROAD_LABEL.darkHalo));
+  // The dark flavour's layers carry it, and the palette's repaint (mapGlue.ts) follows the map.
+  for (const layer of (basemapLayers("dark", false) as Painted[]).filter((l) => PLACE_LABEL_LAYER_IDS.includes(l.id))) assert.equal(layer.paint?.["text-halo-color"], ROAD_LABEL.darkHalo, layer.id);
+  setDarkMap(true);
+  try {
+    assert.equal(placeLabelPaint("places_locality", false)["text-halo-color"], ROAD_LABEL.darkHalo);
+  } finally {
+    setDarkMap(false);
+  }
+});
+
+test("points of interest, water, islands and house numbers on the dark map: a light tint of each colour, 7:1 on the dark halo; the light map's as they were", () => {
+  const named = OTHER_LABEL_LAYER_IDS.filter((id) => id !== "roads_shields");
+  const dark = (basemapLayers("dark", false) as Painted[]).filter((l) => named.includes(l.id));
+  const light = (basemapLayers("light", false) as Painted[]).filter((l) => named.includes(l.id));
+  assert.equal(dark.length, named.length);
+  for (const layer of dark) {
+    assert.equal(layer.paint?.["text-halo-color"], ROAD_LABEL.darkHalo, layer.id);
+    for (const colour of textColours(layer.paint?.["text-color"])) {
+      const ratio = contrastRatio(colour, ROAD_LABEL.darkHalo);
+      assert.ok(ratio >= 7, `${layer.id} ${colour} ${ratio.toFixed(2)}:1`);
+    }
+  }
+  for (const layer of light) {
+    assert.equal(layer.paint?.["text-halo-color"], "#ffffff", layer.id);
+    for (const colour of textColours(layer.paint?.["text-color"])) assert.ok(contrastRatio(colour, "#ffffff") >= 7, `${layer.id} ${colour}`);
+  }
+  const pois = light.find((l) => l.id === "pois")!;
+  assert.deepEqual(textColours(pois.paint?.["text-color"]), [...OTHER_LABEL.poiColors.map(([, colour]) => colour), OTHER_LABEL.poiOther], "the light map's park green and the rest");
+  assert.equal(OTHER_LABEL.dark.poiColors.length, OTHER_LABEL.poiColors.length, "a dark tint for each kind");
+});
+
+test("Metro and rail station names on the dark map: light on the dark halo, the closed grey 4.5:1 or more; the light map's as they were", () => {
+  const dark = stationNamePaint(true);
+  assert.equal(dark["text-halo-color"], ROAD_LABEL.darkHalo);
+  for (const colour of [STATION_NAME.darkColor, STATION_NAME.darkClosed]) assert.ok(contrastRatio(colour, ROAD_LABEL.darkHalo) >= 4.5, colour);
+  assert.ok(contrastRatio(STATION_NAME.darkColor, ROAD_LABEL.darkHalo) >= 7);
+  assert.deepEqual(stationNamePaint(false), {
+    "text-color": ["case", ["==", ["get", "closed"], true], "#4b5563", "#1f2937"],
+    "text-halo-color": "#ffffff",
+    "text-halo-width": ROAD_LABEL.haloWidth,
+  });
+  assert.deepEqual((railLayers().find((l) => l.id === RAIL_LAYERS.names) as Painted).paint, stationNamePaint(false), "added on the light map as before");
+  // The switch in place paints them.
+  const painted: Array<[string, string, unknown]> = [];
+  setRailFlavour({ hasImage: () => false, getLayer: (id: string) => (id === RAIL_LAYERS.names ? {} : undefined), setPaintProperty: (id: string, name: string, value: unknown) => void painted.push([id, name, value]), updateImage: () => undefined }, [], "#8a6500", 2, true);
+  assert.deepEqual(painted, Object.entries(dark).map(([name, value]) => [RAIL_LAYERS.names, name, value]));
+});
+
+test("the group ride leader's trail and route on the dark map: a light violet, 3:1 on every dark surface at its opacity; the light map's as they were", () => {
+  const line = (dark: boolean, id: string) => (dotsLayers(dark) as Painted[]).find((l) => l.id === id)!.paint!;
+  for (const surface of Object.values(darkSurfaces())) {
+    const trail = contrastRatio(over(LEADER_LINE_DARK_MAP, TRAIL_OPACITY_DARK_MAP, surface), surface);
+    assert.ok(trail >= FLOOR, `trail on ${surface}: ${trail.toFixed(2)}:1`);
+    const route = contrastRatio(over(LEADER_LINE_DARK_MAP, line(true, LEADER_ROUTE_LAYER)["line-opacity"] as number, surface), surface);
+    assert.ok(route >= FLOOR, `route on ${surface}: ${route.toFixed(2)}:1`);
+  }
+  assert.ok(contrastRatio(over(LEADER_RING, TRAIL_OPACITY, DARK_MAP.topSurface), DARK_MAP.topSurface) < FLOOR, "the premise: the deep violet vanishes");
+  assert.equal(line(true, TRAIL_LAYER)["line-color"], LEADER_LINE_DARK_MAP);
+  assert.equal(line(true, TRAIL_LAYER)["line-opacity"], TRAIL_OPACITY_DARK_MAP);
+  assert.deepEqual(line(false, TRAIL_LAYER), { "line-color": LEADER_RING, "line-width": 5, "line-opacity": 0.55 });
+  assert.deepEqual(line(false, LEADER_ROUTE_LAYER), { "line-color": LEADER_RING, "line-width": 3, "line-dasharray": [1.5, 1.5], "line-opacity": 0.85 });
+  // The switch in place paints them where they are.
+  const painted: Array<[string, string, unknown]> = [];
+  setRideDotsFlavour({ hasImage: () => false, getLayer: (id: string) => (id === TRAIL_LAYER ? {} : undefined), updateImage: () => undefined, setPaintProperty: (id: string, name: string, value: unknown) => void painted.push([id, name, value]) }, 2, true);
+  assert.deepEqual(painted, [
+    [TRAIL_LAYER, "line-color", LEADER_LINE_DARK_MAP],
+    [TRAIL_LAYER, "line-opacity", TRAIL_OPACITY_DARK_MAP],
+  ]);
 });
