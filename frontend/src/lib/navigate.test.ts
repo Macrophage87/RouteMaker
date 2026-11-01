@@ -980,7 +980,7 @@ test("a detour that only crosses the route far ahead does not rejoin it, nor ski
   assert.equal(replanPoints(model, s.progressM ?? 0, at(1100, 200), [at(0, 0), at(1000, 0), at(1000, 1000)], false).length, 3, "stop 1 still sent");
 });
 
-test("off route scales with a fix's accuracy: 60 m off is on route at 40 m accuracy, off at 5 m", () => {
+test("50 m off is off at 5 m accuracy; a 40 m fix is too rough to count (OFF_SURE_M)", () => {
   const model = rideModel(lRoute());
   for (const [accuracyM, off] of [
     [40, false],
@@ -1015,7 +1015,7 @@ test("off route never from a rough fix: 120 m off at 40 m accuracy stays on rout
   assert.equal(s.off, true);
 });
 
-test("a rough fix between sure ones neither counts toward off route nor clears the count", () => {
+test("a rough far fix between sure ones neither counts toward off route nor clears the count", () => {
   const model = rideModel(lRoute());
   let s = ride(model, "full", 0, 300).state;
   s = step(model, s, fix(at(300, 80)), "full").state;
