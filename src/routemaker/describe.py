@@ -466,6 +466,9 @@ class _Run:
     # (`_absorb_tiny`): the turn there spans two nodes, so no junction is drawn.
     folded_end: bool = False
     folded_start: bool = False
+    # The metres of a connector folded in at its start (`_fold_connector`): the junction
+    # events there are this stretch's turn's.
+    connector_m: float = 0.0
 
 
 def _run_of(atom: Atom, leg: int) -> _Run:
@@ -737,7 +740,8 @@ def _connector(before: _Run | None, run: _Run, after: _Run | None) -> bool:
     right" at one corner). Each end being a fork kept it as a stretch of its own
     (`_forks`); the rider makes one move there, read from the headings across it. Kept:
     a path or crosswalk that leads onto a path (`_crossing`'s "Cross Redland Road, then
-    left onto the bike lane"), a U-turn or a circle (their own words), and a stretch of
+    left onto the bike lane"), a Y taken through a short stub, a U-turn or a circle (their
+    own words), and a stretch of
     LTS 3 or worse that the stretch after would hide (`NEVER_HIDDEN`)."""
     if before is None or after is None or run.metres >= JOG_MIN_M:
         return False
@@ -749,12 +753,19 @@ def _connector(before: _Run | None, run: _Run, after: _Run | None) -> bool:
         return False
     if not (_forks(after) or _movement_between(run, after) in TURN_WORDS):
         return False
+    turn = turn_between(before.last, after.first)
+    if turn is None or abs(turn) >= HAIRPIN_DEG:
+        return False
+    # Two bears that cancel, with no full turn at either end, are a Y taken through a
+    # short stub: its branches a choice, still said ("Bear left").
+    ends = (_turn_at(before, run), _turn_at(run, after))
+    if abs(turn) < SLIGHT_MIN_DEG and not any(
+        t is not None and abs(t) > BEAR_MAX_DEG for t in ends
+    ):
+        return False
     if (run.path or _crosswalk(run)) and after.path and not _crosswalk(after):
         return False
-    if run.tier in NEVER_HIDDEN and _rank(after) < _rank(run):
-        return False
-    turn = turn_between(before.last, after.first)
-    return turn is not None and abs(turn) < HAIRPIN_DEG
+    return not (run.tier in NEVER_HIDDEN and _rank(after) < _rank(run))
 
 
 def _crosswalk(run: _Run) -> bool:
@@ -762,15 +773,22 @@ def _crosswalk(run: _Run) -> bool:
     return any(atom is not None and atom.use == CROSSING_USE for atom in (run.first, run.last))
 
 
-def _fold_connector(run: _Run, after: _Run) -> None:
+def _fold_connector(before: _Run, run: _Run, after: _Run) -> None:
     """Fold the connector `run` (`_connector`) into `after`, which then begins where it
-    did: the turn into `after` is read from the headings across both (`_turn_at`, by
-    `folded_start`), and a fork at its own start is no longer said as one."""
+    did: the turn into `after` is the one move across both, read from the headings
+    (`turn_between`). A fork at `after`'s start becomes that move, so a short `after` is
+    still kept with its turn (`_absorb_tiny`); straight on, it is no fork."""
+    turn = turn_between(before.last, after.first)
     after.metres += run.metres
     after.unpaved_m += run.unpaved_m
+    after.connector_m += run.metres + run.connector_m
     after.folded_start = True
     if after.first is not None and after.first.fork is not None:
-        after.first = replace(after.first, fork=None)
+        move = None
+        if turn is not None and abs(turn) >= SLIGHT_MIN_DEG:
+            side = "right" if turn > 0 else "left"
+            move = side if abs(turn) > BEAR_MAX_DEG else f"bear_{side}"
+        after.first = replace(after.first, fork=move)
 
 
 def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
@@ -789,7 +807,7 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
             after = runs[i + 1] if i + 1 < len(runs) else None
             # A few metres between two turns is one move (`_connector`).
             if after is not None and _connector(before, run, after):
-                _fold_connector(run, after)
+                _fold_connector(before, run, after)
                 del runs[i]
                 changed = True
                 continue
@@ -2151,6 +2169,27 @@ def describe_both(
         # A U-turn is said as one, never "to stay on" the way.
         stay = same and exit is None and movement != "uturn"
         turns[i] = _Turn(movement, event, stay, shape, exit)
+    # The junctions within a connector folded into a turn (`_fold_connector`) are that
+    # turn's one junction, the busiest said with it: never a standalone entry left over.
+    severity_rank = {"red": 2, "orange": 1}
+    for i, turn in turns.items():
+        span = runs[i].connector_m
+        if span <= 0:
+            continue
+        inside = [
+            index
+            for index, event in enumerate(events)
+            if starts[i] - JUNCTION_M <= event.m <= starts[i] + span + JUNCTION_M
+            and (index not in used or events[index] is turn.event)
+        ]
+        for index in inside:
+            used.add(index)
+            event = events[index]
+            current = turn.event
+            if current is None or severity_rank.get(event.severity or "", 0) > severity_rank.get(
+                current.severity or "", 0
+            ):
+                turn.event = event
     for i, turn in turns.items():
         crossed = _crossing(runs, turns, starts, events, i)
         if crossed is not None:

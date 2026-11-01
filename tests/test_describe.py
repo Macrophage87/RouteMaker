@@ -3177,3 +3177,41 @@ class TestPhantomTurns:
             )
         ]
         assert "Big Road" in [s for s, _m in self.said(d.describe(legs))]
+
+    def test_the_junctions_at_both_ends_are_the_one_turn_s_never_an_entry_left_over(self):
+        legs = [
+            flat(
+                road("A Street", 2, 400, 0, 0),
+                forked(road("B Street", 2, 6, 90, 90), "right"),
+                forked(road("C Street", 2, 400, 90, 90), "bear_right"),
+            )
+        ]
+        quiet = event(400, "right", severity="orange", names=("b street",))
+        busy = event(406, "right", severity="red", names=("c street",))
+        entries = d.describe(legs, [quiet, busy])
+        assert [e["kind"] for e in entries] == ["stretch", "stretch"]
+        assert entries[1]["turn"]["movement"] == "right"
+        assert entries[1]["severity"] == "red"
+
+    def test_a_short_street_after_the_connector_keeps_its_turn(self):
+        # Right 6 m up B Street, then right onto 20 m of C Street where the leg ends.
+        legs = [
+            flat(
+                road("A Street", 2, 400, 0, 0),
+                forked(road("B Street", 2, 6, 45, 45), "bear_right"),
+                forked(road("C Street", 2, 20, 90, 90), "right"),
+            )
+        ]
+        assert self.said(d.describe(legs))[1:] == [("C Street", "right")]
+
+    def test_a_y_taken_through_a_short_stub_is_still_said(self):
+        # Two bears and no full turn: a choice of branches, kept as before.
+        legs = [
+            flat(
+                road("A Trail", 1, 400, 0, 0, "path", "cycleway"),
+                forked(road("B Trail", 1, 8, 330, 330, "path", "cycleway"), "bear_left"),
+                forked(road("C Trail", 1, 400, 10, 10, "path", "cycleway"), "bear_right"),
+            )
+        ]
+        moves = [m for _s, m in self.said(d.describe(legs))[1:]]
+        assert moves == ["bear_left", "bear_right"]
