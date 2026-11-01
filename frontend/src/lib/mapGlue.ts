@@ -50,6 +50,7 @@ import {
   accessibilityOn,
   massRideOn,
   setMassRide,
+  highStressLanesOn,
 } from "../stressStyle.js";
 import { HAZARD_SOURCE_ID, massLayerIds, massLayers } from "../massStyle.js";
 import { ROUTE_NAME_LAYER_ID, routeNamePaint } from "./routeNames.ts";
@@ -76,7 +77,7 @@ import { MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./ma
 import { setDcMaskVisibility } from "./dcBoundary.ts";
 import type { RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
-import { ROUTE_AVOID_MARK_DASH, ROUTE_SECTION_WIDTHS, routeCorridorPaint, overlayFade, routeClasses, routePaint, routeSections, sectionFeatures, usesCapacity, type RouteClassKey, type RouteSection } from "./routeColours.ts";
+import { ROUTE_AVOID_MARK_DASH, ROUTE_LANE_DASH, ROUTE_SECTION_WIDTHS, laneMarkFeatures, routeCorridorPaint, overlayFade, routeClasses, routeLaneMarks, routePaint, routeSections, sectionFeatures, usesCapacity, type RouteClassKey, type RouteLaneFacility, type RouteSection } from "./routeColours.ts";
 import { transitRideLines, transitRideSections } from "./transit.ts";
 
 /** The parts of a MapLibre map these use. */
@@ -379,6 +380,32 @@ export function routeAvoidLayer(sourceId: string = ROUTE_STRESS_SOURCE_ID) {
   };
 }
 
+/** The map source the route's lane marks are drawn from (MapView adds it with routeLaneLayers). */
+export const ROUTE_LANES_SOURCE_ID = "route-lanes";
+
+/**
+ * The route's lane marks (routeColours.ts, routeLaneMarks): a protected lane's posts and a painted
+ * lane's dots either side of the section, in the white band, as two rails a `line-gap-width` apart.
+ * One layer a facility, as a dash array is not data-driven; painted under protected, as on the map.
+ * Over the band, under the sections' rings and halos.
+ */
+export function routeLaneLayers(sourceId: string = ROUTE_LANES_SOURCE_ID) {
+  return (["lane", "protected"] as RouteLaneFacility[]).map((facility) => ({
+    id: `route-lanes-${facility}`,
+    type: "line" as const,
+    source: sourceId,
+    filter: ["==", ["get", "facility"], facility],
+    layout: { "line-join": "round" as const, "line-cap": "butt" as const },
+    paint: {
+      "line-color": ["get", "color"],
+      "line-width": ["get", "width"],
+      "line-gap-width": ["get", "gap"],
+      "line-dasharray": [...ROUTE_LANE_DASH[facility]],
+      "line-opacity": 0,
+    },
+  }));
+}
+
 /**
  * The route's coloured sections, and a transit trip's later rides' after them (lib/transit.ts,
  * `transitRideSections`), so every ride of the trip is drawn alike; null where there are none.
@@ -435,6 +462,11 @@ export function setRouteSections(
   map.setPaintProperty(ROUTE_AVOID_LAYER_ID, "line-opacity", paint.sectionOpacity);
   for (const layer of routeHalfLayers()) map.setPaintProperty(layer.id, "line-opacity", paint.sectionOpacity);
   for (const layer of routeDashLayers()) map.setPaintProperty(layer.id, "line-opacity", paint.sectionOpacity);
+  // The protected and painted lanes the route rides, marked in its white band (the owner, 2026-11-01), following the
+  // "Show bike lanes on high-stress roads" switch as the map's rails do. Only on a route drawn in sections.
+  const marks = sections && route ? routeLaneMarks(route.geometry.coordinates as LonLat[], route.stress_spans, highStressLanesOn()) : [];
+  (map.getSource(ROUTE_LANES_SOURCE_ID) as { setData(data: object): void } | undefined)?.setData(laneMarkFeatures(marks));
+  for (const layer of routeLaneLayers()) if (!map.getLayer || map.getLayer(layer.id)) map.setPaintProperty(layer.id, "line-opacity", paint.sectionOpacity);
   // A route in sections is a corridor (routeColours.ts, routeCorridorPaint); under any route the map's colours fade (overlayFade).
   const corridor = routeCorridorPaint(sections !== null, stale);
   map.setPaintProperty("route-casing", "line-width", corridor.casingWidth);
