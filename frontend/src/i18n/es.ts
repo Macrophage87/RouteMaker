@@ -520,6 +520,12 @@ export const ES: Readonly<Record<string, string>> = {
   "Screen-reader detail": "Detalle del lector",
   Language: "Idioma",
   "Phone default": "Del teléfono",
+  "Colors": "Colores",
+  "Sunrise and sunset": "Amanecer y atardecer",
+  "Phone's setting": "Del teléfono",
+  "Always light": "Siempre claro",
+  "Always dark": "Siempre oscuro",
+  "Sunrise and sunset: light by day, dark from sunset to sunrise, which also saves battery on most phones.": "Amanecer y atardecer: claro de día, oscuro desde la puesta del sol hasta el amanecer, lo que también ahorra batería en la mayoría de los teléfonos.",
   "Riding speed": "Velocidad",
   "Ride type's speed": "Según el tipo",
   "Your usual pace on the flat, for ride times and arrival. Hills and junction waits still count. Saved to your account when signed in.":

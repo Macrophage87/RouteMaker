@@ -986,3 +986,47 @@ def test_the_admin_lists_a_posts_photos_to_describe_again_or_delete() -> None:
     shown = signed_in(admin).get(f"/{settings.ADMIN_PATH}core/routepost/{post.pk}/change/")
     assert shown.status_code == 200
     assert b"Waiting for its file: add it on the post&#x27;s page." in shown.content
+
+
+def _luminance(hex_colour: str) -> float:
+    channels = [int(hex_colour.lstrip("#")[i : i + 2], 16) / 255 for i in (0, 2, 4)]
+    lin = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def _contrast(a: str, b: str) -> float:
+    hi, lo = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def _vars(block: str) -> dict[str, str]:
+    return dict(re.findall(r"(--[\w-]+):(#[0-9a-fA-F]+)", block))
+
+
+def _hex6(colour: str) -> str:
+    colour = colour.lower()
+    return "#" + "".join(ch * 2 for ch in colour[1:]) if len(colour) == 4 else colour
+
+
+def test_the_page_takes_the_apps_theme_class_and_agrees_with_the_apps_stylesheet() -> None:
+    # The owner, 2026-11-01: the theme follows sunrise and sunset, or the rider's Colors choice. The post page's script
+    # sets the app's class (frontend/src/post/main.ts); the app's stylesheet, which the charts bring, sets --bg by the
+    # same class, so the page's text never lands on the other theme's background.
+    style = route_posts.STYLE
+    assert ":root.theme-dark{" + route_posts.DARK_VARS + "}" in style
+    # Before the script, the phone's own theme; once it has decided light, the phone's dark no longer applies.
+    assert "@media (prefers-color-scheme:dark){:root:not(.theme-light){" + route_posts.DARK_VARS + "}}" in style
+    light = _vars(style[: style.index("}")])
+    dark = _vars(route_posts.DARK_VARS)
+    for theme in (light, dark):
+        bg = _hex6(theme["--bg"])
+        for name in ("--ink", "--muted", "--accent"):
+            assert _contrast(_hex6(theme[name]), bg) >= 4.5, name
+        assert _contrast(_hex6(theme["--badge-ink"]), _hex6(theme["--badge"])) >= 4.5
+        assert _contrast(_hex6(theme["--accent-ink"]), _hex6(theme["--accent"])) >= 4.5
+    app_css = (REPO / "frontend/src/styles.css").read_text()
+    app_light = _vars(app_css[app_css.index(":root {") : app_css.index("}", app_css.index(":root {"))].replace(": ", ":"))
+    dark_at = app_css.index(":root.theme-dark {")
+    app_dark = _vars(app_css[dark_at : app_css.index("}", dark_at)].replace(": ", ":"))
+    assert _hex6(app_light["--bg"]) == _hex6(light["--bg"])
+    assert _hex6(app_dark["--bg"]) == _hex6(dark["--bg"])

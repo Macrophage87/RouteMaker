@@ -1149,13 +1149,14 @@ test("High contrast (384): the words say what it does and name no disability; th
   assert.equal(ACCESSIBILITY_STORAGE_KEY, "routemaker.accessibility", "what a browser remembers is unchanged");
 });
 
-test("Settings (384): no theme switch, the planner zoom notice stays off; both decided", () => {
+test("Settings (384): the theme by one class, the planner zoom notice stays off; both decided", () => {
   assert.equal(PLANNER_EXTRAS.zoomNotice, false);
   assert.equal(PLANNER_EXTRAS.highContrastShortcut, false);
-  // The theme follows the sun (the owner, 2026-11-01: "Set the default color mode to adjust by time of day"), by a
-  // class the clock sets (lib/themeClock.ts), still with no switch of its own.
-  assert.doesNotMatch(css, /data-theme|\.theme-toggle/, "no theme switch");
-  assert.doesNotMatch(css, /prefers-color-scheme/, "the phone's own theme no longer decides");
+  // The theme follows the sun by default (the owner, 2026-11-01: "Set the default color mode to adjust by time of
+  // day"), or the rider's Colors choice in Settings > Display, by one class lib/themeClock.ts sets, the phone's own
+  // theme included (lib/themeClock.test.ts); no toggle on the page and no media query in the sheet.
+  assert.doesNotMatch(css, /data-theme|\.theme-toggle/, "no toggle of its own on the page");
+  assert.doesNotMatch(css, /prefers-color-scheme/, "the class decides, the phone's theme only through it");
   assert.match(css, /:root\.theme-dark \{/);
 });
 

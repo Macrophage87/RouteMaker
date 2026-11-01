@@ -5438,8 +5438,19 @@ Tests: `lib/sidebar.test.ts`.
   layers (ids `a11y-switch`, `a11y-label`, `a11y-hint`) and in Settings (ids
   `settings-contrast-*`, from the component's `idBase`), because both sheets are in the
   page at once. `barCurrent` (`lib/sidebar.ts`) decides which bar button is current.
-- **Decided, ready to change.** The theme follows the system's light or dark setting
-  (384: "system"). `PLANNER_EXTRAS` holds two parts built and decided off (384): the
+- **Decided, ready to change.** The theme is the rider's choice in Settings > Display > Colors
+  (`lib/themeClock.ts`, kept on the device as `routemaker.theme`): by default **Sunrise and
+  sunset**, light by day and dark from sunset to sunrise at the region's centre (the owner,
+  2026-11-01: "Set the default color mode to adjust by time of day", "do sunrise/sunset"); or
+  **Phone's setting** (the system's light or dark, followed live, as 384 had it), **Always
+  light** or **Always dark** (the owner, 2026-11-01: "There's the ability to use whatever
+  setting you want still?"). `followTheme` sets `:root.theme-dark` (or `.theme-light`) and the
+  theme-color before the first render, again at each sunrise and sunset and when the page is
+  shown, and sends `routemaker-theme` so the base map follows; the stylesheet no longer reads
+  `prefers-color-scheme`. A Featured routes post (`core/route_posts.py`, `src/post/main.ts`)
+  follows the same class, falling back to the phone's theme only until its script runs.
+  `index.html` has no early script (the CSP is `script-src 'self'`, no inline), so its
+  theme-color metas and `color-scheme` stay the phone's until `main.tsx` runs. `PLANNER_EXTRAS` holds two parts built and decided off (384): the
   planner's zoom notice (`PlannerZoomNotice`, a live region of its own, which only speaks
   while the planner shows; the notice lives in the Map layers sheet) and the planner's
   High contrast shortcut (`HighContrastShortcut`, described by the switch's hint and its

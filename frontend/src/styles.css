@@ -118,6 +118,10 @@
     background-color: #1f2937;
     color: #f3f4f6;
   }
+  /* And Help's open panel: its words were black on the dark pill (the 2026-11-01 review). */
+  :root.map-dark .maplibregl-ctrl-attrib .map-info {
+    color: #f3f4f6;
+  }
   :root.map-dark .maplibregl-ctrl-attrib a {
     color: #e5e7eb;
   }

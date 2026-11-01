@@ -1,14 +1,11 @@
 // The base map's flavour, kept in line with the theme, the ride, the light and tunnels (lib/mapFlavour.ts,
 // lib/tunnelDark.ts; the owner, 2026-11-01: battery audit). Its own hook, so MapView only names it.
 import { useEffect, useRef } from "react";
-import { THEME_EVENT, themeIsDark } from "./lib/themeClock.ts";
-import { applyMapFlavour, mapFlavourFor, nextLightChange, type FlavourMap, type MapFlavour } from "./lib/mapFlavour.ts";
+import { THEME_EVENT, nextSunTurn, themeIsDark } from "./lib/themeClock.ts";
+import { applyMapFlavour, mapFlavourFor, type FlavourMap, type MapFlavour } from "./lib/mapFlavour.ts";
 import { BASEMAP_SOURCE_ID } from "./lib/mapStyle.ts";
 import { NO_TUNNEL, TUNNEL_NEAR_M, aheadOnLine, inTunnelAt, nearRoad, roadLayerIds, tunnelCheckWait, tunnelStep, type NearRoad, type TunnelState } from "./lib/tunnelDark.ts";
 import type { LonLat } from "./lib/geo.ts";
-
-// The theme follows the sun (lib/themeClock.ts), so the map listens for its turn.
-export { themeIsDark };
 
 type RenderedRoad = { properties?: Record<string, unknown> | null; geometry: { type: string; coordinates: unknown } };
 
@@ -75,15 +72,15 @@ export function useMapFlavour(
     const update = () => {
       window.clearTimeout(wake);
       if (!loaded.current) return;
-      const centre = map.getCenter();
       const now = Date.now();
-      const want = mapFlavourFor({ themeDark: themeIsDark(), onBike, now, at: [centre.lng, centre.lat], tunnel: tunnel.dark });
+      // The sun is reckoned at the region's centre, as the page's theme is (lib/themeClock.ts), so the two turn together.
+      const want = mapFlavourFor({ themeDark: themeIsDark(), onBike, now, tunnel: tunnel.dark });
       const from = shown.current;
       applyMapFlavour(map, from, want, window.location.origin);
       shown.current = want;
       if (from !== want) heard.current?.(want === "dark");
       // On the bike the light decides too: look again at the next sunrise or sunset (a second after, past the edge).
-      const next = onBike ? nextLightChange(now, centre.lat, centre.lng) : null;
+      const next = onBike ? nextSunTurn(now) : null;
       if (next !== null) wake = window.setTimeout(update, Math.max(1000, next - now + 1000));
     };
     // The tunnel check, on the bike only, as a new fix comes and at most every TUNNEL_CHECK_MS (a fix sooner waits for
