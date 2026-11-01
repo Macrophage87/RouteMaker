@@ -637,9 +637,47 @@ def test_a_district_two_way_does_not_undo_a_carriageway_s_one_way(tags, context,
     assert result.routing == {}
 
 
-def test_a_district_two_way_makes_a_plain_one_way_street_two_way() -> None:
-    """OWNER-DECISIONS 190 row C4: "DC data takes priority over OSM"."""
-    street = way_facts(one_way=False, two_way_throughout=True, names_agree=True)
+def test_a_district_two_way_record_alone_keeps_osm_s_one_way() -> None:
+    """Owner 2026-11-01: the route rode M St NE (17th to 19th) east, against its
+    one-way, because DC's Roadway Block records both blocks two-way and row C4
+    laid that over OSM's `oneway=yes`. The record alone no longer opens the
+    other direction: OSM's one-way stands, on the graph and for the classifier,
+    and the disagreement is reported."""
+    m_street = way_facts(one_way=False, two_way_throughout=True, names_agree=True)
+    for tags in (
+        {"highway": "residential", "name": "M Street Northeast", "oneway": "yes"},
+        {"highway": "residential", "name": "M Street Northeast", "oneway": "-1"},
+    ):
+        result = A.overlay(tags, m_street, length_m=82.0)
+        assert result.tags["oneway"] == tags["oneway"]
+        assert result.routing == {}
+        assert result.precedence == ()
+        assert result.sources["oneway"] == A.SOURCE_OSM
+        assert result.disagreements == (
+            f"oneway: agency two-way, OSM one-way, kept ({A.OSM_ONE_WAY_KEPT})",
+        )
+
+
+def test_an_owner_two_way_row_on_only_some_blocks_keeps_osm_s_one_way() -> None:
+    """Row C4 needs the owner's `BD` on every block of the way: a way running on
+    from an owner block onto a block only DC calls two-way stays one-way."""
+    two_way = facts(way="both")
+    tags = {"highway": "residential", "name": "M Street Northeast", "oneway": "yes"}
+    partly = A.aggregate([("a", two_way, True), ("b", two_way, True)], True, directions={"a": "BD"})
+    assert partly.owner_direction is False
+    assert A.overlay(tags, partly, length_m=160.0).routing == {}
+    whole = A.aggregate(
+        [("a", two_way, True), ("b", two_way, True)], True, directions={"a": "BD", "b": "BD"}
+    )
+    assert A.overlay(tags, whole, length_m=160.0).routing == {"oneway": "no"}
+
+
+def test_an_owner_two_way_row_makes_a_plain_one_way_street_two_way() -> None:
+    """OWNER-DECISIONS 190 row C4, since 2026-11-01 only on the owner's `BD`
+    block rows: a street made two-way before OSM caught up."""
+    street = way_facts(
+        one_way=False, two_way_throughout=True, names_agree=True, owner_direction=True
+    )
     result = A.overlay({"highway": "residential", "oneway": "yes"}, street, length_m=120.0)
     assert result.tags["oneway"] == "no"
     assert result.sources["oneway"] == A.DC_AGENCY
@@ -1735,9 +1773,10 @@ def test_overlay_road_facts_passes_the_pair_and_the_length() -> None:
     two_way = facts(way="both", lanes={"ib": 2, "ob": 2})
     named = {"highway": "secondary", "name": "K Street", "oneway": "yes"}
     ways = [_street(1, named, 200.0), _street(2, named, 200.0, reverse=True)]
+    # The owner's two-way row, as row C4 now needs (owner 2026-11-01).
     by_way = {
-        1: A.aggregate([("k", two_way, True)], names=True),
-        2: A.aggregate([("k", two_way, False)], names=True),
+        1: A.aggregate([("k", two_way, True)], names=True, directions={"k": "BD"}),
+        2: A.aggregate([("k", two_way, False)], names=True, directions={"k": "BD"}),
     }
     overlays = overlay_road_facts(ways, by_way)
     for way_id in (1, 2):
@@ -1767,7 +1806,7 @@ def test_the_stub_threshold_is_inclusive_to_the_metre(length_m, stub) -> None:
     assert (one_way.tags["oneway"] == "no") is stub
     two_way = A.overlay(
         {"highway": "residential", "oneway": "yes"},
-        way_facts(one_way=False, two_way_throughout=True, names_agree=True),
+        way_facts(one_way=False, two_way_throughout=True, names_agree=True, owner_direction=True),
         length_m=length_m,
     )
     assert (two_way.tags["oneway"] == "yes") is stub
@@ -2156,9 +2195,10 @@ def test_the_owner_s_direction_overrides_osm_s_one_way_the_other_way() -> None:
     OSM way here) wins on every graph, and stands unchanged once OSM agrees."""
     two_way = facts(lanes={"ib": 1, "ob": 1}, way="both", speed_mph={"ib": 20, "ob": 15})
     tags = {"highway": "tertiary", "name": "Sheridan Street Northwest", "oneway": "yes"}
-    # Without the owner's direction, DC's two-way record undoes OSM's one-way (C4).
+    # Without the owner's direction, OSM's one-way the old way stands: DC's
+    # two-way record alone never undoes it (owner 2026-11-01).
     before = A.aggregate([("b", two_way, False)], True)
-    assert A.overlay(tags, before, length_m=161.0).routing == {"oneway": "no"}
+    assert A.overlay(tags, before, length_m=161.0).routing == {}
     owned = A.aggregate([("b", two_way, False)], True, directions={"b": "OB"})
     assert (owned.one_way, owned.oneway_forward, owned.owner_direction) == (True, False, True)
     # One lane, the traffic's, not DC's lane each way.

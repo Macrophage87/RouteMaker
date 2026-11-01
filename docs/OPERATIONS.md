@@ -8517,7 +8517,8 @@ Python 3.11 or later, standard library only.
   `ALLOWED_KEYS` may change, at most four; `highway` only on a node, to a junction control;
   `oneway` only on a way, to `yes`, `-1` or `no` (a street whose direction changed on the
   ground; in the District also add the owner's block direction, fixtures/overrides/README.md,
-  "Block corrections", or DC's two-way record keeps the street two-way on our map).
+  "Block corrections"; a street made two-way needs an owner `BD` row, since DC's two-way
+  record alone no longer opens an OSM one-way, owner 2026-11-01).
   No GPS track, rider or ride date in the comment, source or file.
 - **Check:** `python3 scripts/osm_edit.py show edit.json` prints the diff against OSM now
   and exits 2 if a tag changed since the draft.

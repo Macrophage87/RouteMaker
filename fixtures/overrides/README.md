@@ -430,7 +430,10 @@ owner's direction wins, except on a junction stub
 OSM one-way). That last case is not one of item 190's rows, so it is not counted
 in the overlay's `precedence`, and the discrepancy report reads the owner's
 direction as DC's (it compares one-way against two-way, not direction). So a street reversed before either source caught up is right on our
-map before the OSM edit, and still right after it. Two entries giving one block
+map before the OSM edit, and still right after it. Row C4 itself now needs the owner's `BD` on every block of the way:
+DC's two-way record alone leaves an OSM one-way one-way (owner 2026-11-01, M St NE
+17th-19th), so a street made two-way on the ground needs a `BD` entry until OSM
+catches up. Two entries giving one block
 two directions refuse the rebuild's matching. Remove the entry only once DC's
 layer records the change **and** OSM agrees: DC's own one-way never overrides an
 opposite OSM one-way, so removing it while OSM is still wrong sends the route
