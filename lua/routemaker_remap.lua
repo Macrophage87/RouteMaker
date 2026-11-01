@@ -615,6 +615,11 @@ function M.remap_way(tags, derived)
     out.surface = graph_surface
   end
 
+  -- Gravel reaches the graph as packed gravel (`M.PACKED_GRAVEL`).
+  if M.is_packed_gravel(tags) then
+    out.surface = "compacted"
+  end
+
   -- DDOT's Pavement Condition Index on a District street (DC-PCI, `rm:pci`;
   -- `routemaker.pavement` decides where it applies and the band). The owner,
   -- 2026-10-11: "DC score in most cases takes priority over OSM data", so the
@@ -635,7 +640,10 @@ function M.remap_way(tags, derived)
   end
 
   if derived.reviewer_surface_penalty then
-    local penalised = M.bounded_surface(tags.surface, derived.reviewer_surface_penalty)
+    -- Packed gravel is already the roughest a penalty may make a way (the cap,
+    -- `compacted`), so a penalty on one leaves it there, as the road panel says.
+    local current = M.is_packed_gravel(tags) and "compacted" or tags.surface
+    local penalised = M.bounded_surface(current, derived.reviewer_surface_penalty)
     if penalised ~= nil then out.surface = penalised end
   end
 
@@ -1064,6 +1072,27 @@ end
 -- written after this, reads the way's own tag and wins.
 M.GRAPH_SURFACE = { wood = "paving_stones", boardwalk = "paving_stones",
   brick = "paving_stones", bricks = "paving_stones" }
+
+-- Gravel reaches the graph as packed gravel (`compacted`).
+--
+-- Valhalla's parser reads every value with "gravel" in it as its `gravel` class,
+-- which it ranks rougher than dirt: Default's hybrid rides it at 40% of its pace
+-- and adds a bad-surface charge on top, so a gravel walk cost about four times a
+-- paved LTS 1 street and Default rode Jefferson Drive beside the National Mall's
+-- walks instead of them. The owner, 2026-11-01: "why does it avoid the gravel
+-- paths? They are fine for riding", then, asked how far it goes, "All gravel
+-- everywhere": every way tagged gravel or fine gravel, road, track or path, on
+-- every ride type, is priced as `compacted`, the parser's packed-gravel class.
+-- Other loose surfaces (pebblestone, sand, dirt, plain `unpaved`, and mixed
+-- values such as `gravel;dirt`) keep their own. A mountain-bike rating still
+-- sets the edge's surface in the parser, after this (see `M.PAVED_RATING_KEYS`),
+-- so a rated gravel trail is priced by its rating. A reviewer surface penalty
+-- leaves packed gravel as it is: `compacted` is already the penalty cap.
+M.PACKED_GRAVEL = { gravel = true, fine_gravel = true }
+
+function M.is_packed_gravel(tags)
+  return M.PACKED_GRAVEL[tags.surface or ""] == true
+end
 
 -- The surface a DC street's PCI band reaches the graph as (DC-PCI; see its use
 -- in `remap_way`). `good` writes no surface: the street keeps its own.
