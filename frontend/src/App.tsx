@@ -243,7 +243,7 @@ import { foodWords, nearbyWords, repairWords, sightWords } from "./lib/stopWords
 import { foodSpotPlaces, metroSpotPlaces, rackSpotRows, repairSpotPlaces, sightSpotPlaces, spotFarLine, spotNearby, waterSpotPlaces, type SpotRow } from "./lib/spotNearby.ts";
 import { useSpotPins } from "./app/spotPins.ts";
 import { RacksOverlay, useRackPins } from "./app/rackOverlay.ts";
-import { RACK_AT_M, endAtRackSaid, endAtRackText, nextRack, nextRackText, rackAt, rackRunAfter, rackWords, type RackRun, loadBikeParking, rackOffer, rackPlaceName, rackPoint, racksNear, rideToRackText, type BikeRack, type RackNear } from "./lib/bikeParking.ts";
+import { RACK_AT_M, endAtRackSaid, endAtRackText, endWasPicked, nextRack, nextRackText, pickedAfterMove, pickedAfterPick, rackAt, rackRunAfter, rackWords, type RackRun, loadBikeParking, rackOffer, rackPlaceName, rackPoint, racksNear, rideToRackText, type BikeRack, type RackNear } from "./lib/bikeParking.ts";
 import bikeParkingUrl from "./amenity-data/bike-parking.json?url&no-inline";
 import { useSeeEveryone } from "./app/useSeeEveryone.ts";
 import { ScenicOverlay } from "./app/ScenicOverlay.tsx";
@@ -1532,8 +1532,13 @@ export function App() {
   const [changeDetails, setChangeDetails] = useState<string[]>([]);
   const [ghost, setGhost] = useState<LonLat[] | null>(null);
   const [changeLine, setChangeLine] = useState<string | null>(null);
+  // Go's ends picked or pressed (goTo), and the racks moved to from them (Stephen, 2026-11-01: the rack offer only for
+  // a destination just picked or pressed, not every route opened from a link, a save or Plan). Kept through undo;
+  // another plan opened (forgetDrawn) starts the list again.
+  const [pickedEnds, setPickedEnds] = useState<LonLat[]>([]);
   /** Another plan opened (a link, a file): no Reset back to the last one, and no summary against it. */
   const forgetDrawn = () => {
+    setPickedEnds([]);
     drawnRef.current = null;
     setDrawn(null);
     setGhost(null);
@@ -2723,9 +2728,6 @@ export function App() {
       setGoStart(goHereStart(goPickStart(was.point, result.fix).point));
     });
   };
-  // Go's ends picked or pressed this visit, and the racks moved to from them (Stephen, 2026-11-01: the rack offer only
-  // for a destination just picked or pressed, not every route opened from a link, a save or Plan).
-  const [pickedEnds, setPickedEnds] = useState<LonLat[]>([]);
   const goTo = async (dest: LonLat, name: string, pressed = false, vias: LonLat[] = []) => {
     cancelLocateNotice();
     setNotice(null);
@@ -2734,7 +2736,7 @@ export function App() {
       return;
     }
     // A destination just picked or pressed: the only kind that offers "End at the bike rack" (pickedEnds, below).
-    setPickedEnds([dest]);
+    setPickedEnds((ends) => pickedAfterPick(ends, dest));
     // The start Go already has: the plan's first point (typed, from the link or placed in Plan), else the location
     // found in the last GO_START_MAX_AGE_MS, looked up again for this destination. While the location is still being
     // found, the destination waits for it.
@@ -5443,7 +5445,7 @@ export function App() {
   // The presses so far (lib/bikeParking.ts RackRun): the search stays around the first rack, and a run that no longer
   // matches the route's end rack is over.
   const [rackRun, setRackRun] = useState<RackRun | null>(null);
-  const endPicked = goEnd !== null && pickedEnds.some((p) => samePoint(p, goEnd));
+  const endPicked = goEnd !== null && endWasPicked(goEnd, pickedEnds);
   const endRack = goEnd && racks && endPicked ? (endAtRackNow ? nextRack(goEnd, endAtRackNow, racks, rackRun) : rackOffer(goEnd, racks)) : null;
   const goEndRef = useRef(goEnd);
   goEndRef.current = goEnd;
@@ -5455,7 +5457,8 @@ export function App() {
     const now = pointsRef.current;
     if (now.length < 2) return;
     namer.remember(point, name);
-    setPickedEnds((ends) => [...ends, point]);
+    // A rack moved to from a picked end is picked too; from a route opened another way, not (its card's Ride here).
+    setPickedEnds((ends) => pickedAfterMove(ends, now[now.length - 1], point));
     commit([...now.slice(0, -1), point]);
     announce(said);
   };

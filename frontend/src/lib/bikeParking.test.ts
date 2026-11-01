@@ -26,6 +26,9 @@ import {
   nextRack,
   rackRunAfter,
   type RackRun,
+  endWasPicked,
+  pickedAfterMove,
+  pickedAfterPick,
   rideNextRackLine,
   rideToRackText,
 } from "./bikeParking.ts";
@@ -166,9 +169,20 @@ test("the ride's Rack full? line only when the route ends at a rack, not a shop 
   assert.deepEqual(arrivalRacks([-77.03, 38.89955], street), []);
 });
 
-test("Go offers End at the bike rack only for a destination just picked or pressed, or a rack moved to from one", () => {
+test("Go offers End at the bike rack only for a destination picked or pressed, or a rack moved to from one", () => {
+  const x: LonLat = [-77.03, 38.9];
+  const y: LonLat = [-77.04, 38.91];
+  const rack: LonLat = [-77.0301, 38.9];
+  assert.equal(endWasPicked(x, []), false, "a route from a link, a save or Plan");
+  let picked = pickedAfterPick([], x);
+  picked = pickedAfterPick(picked, y);
+  assert.ok(endWasPicked(x, picked), "undo back to the first pick keeps its offer");
+  assert.ok(endWasPicked([-77.030001, 38.900001], picked), "the same spot, rounded");
+  assert.ok(endWasPicked(rack, pickedAfterMove(picked, x, rack)), "a rack moved to from a pick");
+  assert.equal(endWasPicked(rack, pickedAfterMove([], x, rack)), false, "a rack card's Ride here on a linked route");
+  assert.equal(Array.from({ length: 30 }, (_, i): LonLat => [i, i]).reduce(pickedAfterPick, [] as LonLat[]).length, 20);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /setPickedEnds\(\[dest\]\);/);
+  assert.match(app, /setPickedEnds\(\(ends\) => pickedAfterPick\(ends, dest\)\);/);
   assert.match(app, /const endRack = goEnd && racks && endPicked \?/);
-  assert.match(app, /setPickedEnds\(\(ends\) => \[\.\.\.ends, point\]\);\n\s*commit\(/);
+  assert.match(app, /const forgetDrawn = \(\) => \{[^}]*setPickedEnds\(\[\]\);/);
 });
