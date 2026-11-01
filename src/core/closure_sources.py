@@ -540,7 +540,8 @@ def read_sha(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tupl
         if document.get("exceededTransferLimit") or (document.get("properties") or {}).get(
             "exceededTransferLimit"
         ):
-            logger.warning("closures: the Road Closure Reporter has more than %d records", SHA_MAX)
+            # A partial copy would leave closures unrouted: keep the last good copy instead.
+            raise FeedError(f"the Road Closure Reporter has more than {SHA_MAX} records")
         documents.append(document)
     return md.parse_sha(documents, now), []
 

@@ -5220,7 +5220,7 @@ proxy cannot reach the service.
 
 ## DC closures (v0.7.0)
 
-The worker task `refresh_dc_closures` (every 15 minutes, 12-minute bound) reads four
+The worker task `refresh_dc_closures` (every 15 minutes, 12-minute bound) reads its
 sources, each when it is due, and keeps one shared copy in the `bikeshare_feed_cache`
 row keyed `closures` (`src/core/closure_sources.py`):
 
@@ -5261,6 +5261,11 @@ Maryland's Road Closure Reporter (PLAYBOOK §0).
    update ends the stretch it names in its incident's earlier alerts (all of them if it names
    none); a partial update keeps what it says is still closed.
 5. NPS: confirm the park boxes and marker points in `routemaker.dc_closures.PARKS`.
+5a. Maryland Road Closure Reporter (`sha`): both layers are asked `where=ClosureEnd >=
+   CURRENT_TIMESTAMP`; confirm the `ClosureType` values (Closed, Emergency Vehicle Only Access,
+   Limited Public Access, Curb Lane Closure) and that `closureSummary` still reads "all
+   directions" or a direction and "All lanes closed" or "N lane(s) open". More than 2000
+   records in a layer fails the read (`more than 2000 records`), keeping the last good copy.
 6. A segment that cannot be placed (Photon finds no street, or Valhalla's route between the
    cross streets leaves the named street) is shown as text with its link, never guessed;
    it is looked for again after 6 hours.

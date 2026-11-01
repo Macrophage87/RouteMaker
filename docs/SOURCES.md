@@ -683,8 +683,8 @@ permits: never routed round, never in a route's words, a cue or the closure chec
 
 ### Maryland Road Closure Reporter (v0.17.0)
 
-- **Maryland Road Closure Reporter (MDOT SHA)**. Credit: `Maryland Road Closure Reporter (MDOT
-  SHA)`. Layers: `mdgeodata.md.gov/appdata/rest/services/SHA_RoadClosure/RoadClosureActive/MapServer/1`
+- Credit: `Maryland Road Closure Reporter (MDOT SHA)`
+- **Maryland Road Closure Reporter (MDOT SHA)**. Layers: `mdgeodata.md.gov/appdata/rest/services/SHA_RoadClosure/RoadClosureActive/MapServer/1`
   and `.../RoadClosurePlanned/MapServer/1` ([Maryland road closures on MD
   iMAP](https://data.imap.maryland.gov/datasets/maryland-road-closures)), read every 15 minutes.
   Where Maryland's counties and towns post closures on their own roads (Montgomery, Howard and

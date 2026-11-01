@@ -68,6 +68,17 @@ class TestClassify:
         ):
             assert md.classify(kind, summary)[:2] == (wz.PENALTY, wz.LANE_PENALTY_S)
 
+    def test_emergency_vehicles_only_is_closed_even_with_a_lane_open(self) -> None:
+        summary = "X: Emergency Vehicle Only Access, all directions. 1 lane(s) open."
+        assert md.classify("Emergency Vehicle Only Access", summary)[0] == wz.CLOSED
+
+    def test_one_direction_closed_is_a_step_lighter(self) -> None:
+        """Review: the line carries no direction, and the other way is open."""
+        closed = "RIVA RD: Closed, Northbound.  All lanes closed."
+        assert md.classify("Closed", closed)[0] == wz.UNKNOWN
+        local = "JFK SB HWY: Limited Public Access, Southbound.  All lanes closed."
+        assert md.classify("Limited Public Access", local)[0] == wz.PENALTY
+
 
 class TestParse:
     def test_a_closure_is_routed_round_in_its_hours_only(self) -> None:
@@ -111,17 +122,43 @@ class TestParse:
         no_line = {**record(2), "geometry": None}
         assert md.parse_sha([layer(no_end, no_line)], NOW) == []
 
-    def test_a_closures_stretches_are_numbered_as_one_closure(self) -> None:
+    def test_a_closures_stretches_are_numbered_as_one_closure_along_the_ground(self) -> None:
         """The Key Bridge is 69 records under one closure: one marker on the map, so its
-        ids are `sha-<closure>-<n>` (closureMap.ts PIECE, routemaker_mcp._closure_id)."""
-        zones = md.parse_sha([layer(record(30), record(10), record(20))], NOW)
+        ids are `sha-<closure>-<n>` (closureMap.ts PIECE, routemaker_mcp._closure_id),
+        numbered by where each stretch lies, not by record, so posting it again keeps them."""
+
+        def at(objectid: int, west: float) -> dict:
+            feature = record(objectid)
+            feature["geometry"] = {
+                "type": "LineString",
+                "coordinates": [[west, 39.0], [west + 0.001, 39.0]],
+            }
+            return feature
+
+        zones = md.parse_sha([layer(at(30, -77.0), at(10, -77.002), at(20, -77.001))], NOW)
         prefix = "sha-ac2ae548-97a8-46e2-8516-b600c42b8b12-"
         assert [z.zone_id for z in zones] == [f"{prefix}0", f"{prefix}1", f"{prefix}2"]
-        assert [z.line for z in zones] == [tuple(map(tuple, LINE))] * 3
+        assert [z.line[0][0] for z in zones] == [-77.002, -77.001, -77.0]
+        again = md.parse_sha([layer(at(99, -77.001), at(98, -77.0), at(97, -77.002))], NOW)
+        assert [(z.zone_id, z.line) for z in again] == [(z.zone_id, z.line) for z in zones]
 
-    def test_a_record_in_both_layers_is_read_once(self) -> None:
-        zones = md.parse_sha([layer(record()), layer(record())], NOW)
+    def test_a_stretch_in_both_layers_is_read_once(self) -> None:
+        zones = md.parse_sha([layer(record(1)), layer(record(2))], NOW)
         assert len(zones) == 1
+
+    def test_two_records_sharing_an_objectid_across_layers_are_both_kept(self) -> None:
+        """The layers are separate tables: an id is not a stretch."""
+        other = record(1, RC_GUID="{00000000-0000-4000-8000-000000000009}")
+        assert len(md.parse_sha([layer(record(1)), layer(other)], NOW)) == 2
+
+    def test_a_contact_in_the_comments_is_not_kept(self) -> None:
+        text = "Detour posted. Questions: J. Doe, 410-555-0123 or jdoe@example.md.gov"
+        (zone,) = md.parse_sha([layer(record(Comments=text))], NOW)
+        assert "555" not in zone.description and "@" not in zone.description
+
+    def test_route_numbers_keep_their_capitals(self) -> None:
+        (zone,) = md.parse_sha([layer(record(RoadName="MD 7", CrossStreet1="US 40"))], NOW)
+        assert zone.road == "MD 7" and zone.title.startswith("MD 7, US 40 to")
 
     def test_the_saved_sample_reads(self) -> None:
         document = json.loads((DATA / "sha-road-closures.geojson").read_text())
@@ -149,3 +186,42 @@ def test_a_closure_in_force_is_routed_round_and_said_as_closed() -> None:
     assert "marked closed" in wz.heads_up(zone)
     later = wz.for_plan([zone], during + timedelta(days=2), points, {}, during)
     assert not later.exclude
+
+
+class Fetch:
+    def __init__(self, answers: dict[str, bytes]) -> None:
+        self.answers, self.asked = answers, []
+
+    def __call__(self, url: str, timeout: float, headers: dict) -> bytes:
+        self.asked.append(url)
+        return next(body for key, body in self.answers.items() if key in url)
+
+
+class TestReader:
+    def test_both_layers_are_asked_for_the_closures_fields_only(self) -> None:
+        from core import closure_sources as cs
+
+        empty = json.dumps(layer()).encode()
+        fetch = Fetch(
+            {"RoadClosureActive": json.dumps(layer(record())).encode(), "RoadClosurePlanned": empty}
+        )
+        zones, notices = cs.read_sha(fetch, None, None, NOW, lambda s: None)
+        assert len(zones) == 1 and notices == []
+        assert len(fetch.asked) == 2
+        for url in fetch.asked:
+            assert "outFields=" + md.FIELDS.replace(",", "%2C") in url and "Creator" not in url
+
+    def test_a_refused_or_cut_short_layer_fails_the_read(self) -> None:
+        import pytest
+
+        from core import closure_sources as cs
+        from core.workzones import FeedError
+
+        good = json.dumps(layer()).encode()
+        for bad in (
+            b'{"error": {"code": 400}}',
+            json.dumps({**layer(), "exceededTransferLimit": True}).encode(),
+        ):
+            fetch = Fetch({"RoadClosureActive": good, "RoadClosurePlanned": bad})
+            with pytest.raises(FeedError):
+                cs.read_sha(fetch, None, None, NOW, lambda s: None)
