@@ -717,19 +717,30 @@ class TestAnswer:
         # A route-only note is never shown on a map click.
         assert "Note" not in stress
 
-    def test_a_map_note_is_shown(self, client, segment_schemas, router) -> None:
+    def test_an_override_rows_map_note_is_its_why_line(
+        self, client, segment_schemas, router
+    ) -> None:
+        # Before: Why said "Owner-rated corridor" and the reason sat in a separate Note row.
         live, _ = segment_schemas
         insert(
             live,
             110,
             [SPOT, east(SPOT, 50)],
-            stress_rule="override: stress adjustment x",
-            stress_adjustment_id="x",
-            stress_adjustment_note="Blind corner at the ramp.",
+            stress_tier=2,
+            stress_rule="override: stress adjustment dc-review-2026-11-01-way-6054006",
+            stress_adjustment_id="dc-review-2026-11-01-way-6054006",
+            stress_computed_tier=4,
+            stress_adjustment_direction="down",
+            stress_adjustment_note=(
+                "DDOT's 2020 layer says 4, but this is a 20 mph residential street, one lane "
+                "each way, with no bike lane and nothing showing through traffic, so 2."
+            ),
             stress_adjustment_display="map",
         )
         stress = section(get(client).json(), "stress")
-        assert stress["Note"]["value"] == "Blind corner at the ramp."
+        assert stress["Why"]["value"].startswith("DDOT's 2020 layer says 4")
+        assert stress["Why"]["source"] == "Owner override"
+        assert "Note" not in stress
 
     def test_a_silent_router_still_answers_from_the_table(
         self, client, segment_schemas, router
@@ -1217,6 +1228,26 @@ def test_a_montgomery_county_lts5_row_reads_as_county_data() -> None:
     assert "Owner's reason" not in rows
     assert "Before the override" not in rows
     assert all(r["source"] != segment_info.OWNER for r in rows.values())
+
+
+def test_an_override_rows_public_note_is_its_why_line() -> None:
+    """The owner, 2026-11-01: where we keep ours over an agency's, a short narration shown in
+    the road lookup. Before, Why said "Owner-rated corridor" and the note sat apart."""
+    row = _adjusted_row("dc-review-2026-11-01-way-6054006", tier=2)
+    row["stress_adjustment_note"] = "DDOT's 2020 layer says 4, but this is a quiet street, so 2."
+    row["stress_adjustment_display"] = "map"
+    rows = {r["label"]: r for r in segment_info.stress_rows(row)}
+    assert rows["Why"]["value"] == "DDOT's 2020 layer says 4, but this is a quiet street, so 2."
+    assert rows["Why"]["source"] == segment_info.OWNER
+    assert "Note" not in rows
+
+
+def test_a_route_only_note_stays_off_the_road_panel() -> None:
+    row = _adjusted_row("east-anacostia-suitland-parkway")
+    row["stress_adjustment_note"] = "Freeway-grade highway with fast through traffic."
+    rows = {r["label"]: r for r in segment_info.stress_rows(row)}
+    assert rows["Why"]["value"] == "Owner-rated corridor"
+    assert "Note" not in rows
 
 
 def test_an_owner_adjusted_row_still_reads_as_an_owner_override() -> None:

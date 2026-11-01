@@ -689,9 +689,17 @@ def stress_rows(row: dict) -> list[dict]:
     source = override_source(row) if adjusted else CLASSIFIER
     whose = agency_lts.adjustment_source(row.get("stress_adjustment_id")) if adjusted else None
     county = whose == "moco"
+    note = row.get("stress_adjustment_note")
+    # A note marked route_only is for a route over the stretch, never a map click.
+    on_map = bool(note) and row.get("stress_adjustment_display") == "map"
+    # An override row's own approved, public note is its reason, so the Why line says it
+    # rather than "Owner-rated corridor" (the owner, 2026-11-01: where we keep ours over an
+    # agency's, a short narration "available in the route lookup as to our justification").
+    # It used to be a separate "Note" row under an unexplained "Owner-rated corridor".
+    why = str(note) if adjusted and on_map else rule_words(row["stress_rule"])
     rows = [
         _row("Level", tier_text(tier, half), source),
-        _row("Why", rule_words(row["stress_rule"]), source),
+        _row("Why", why, source),
     ]
     computed = row.get("stress_computed_tier")
     direction = row.get("stress_adjustment_direction")
@@ -706,10 +714,6 @@ def stress_rows(row: dict) -> list[dict]:
     category = row.get("stress_adjustment_category")
     if category in ADJUSTMENT_CATEGORIES and source == OWNER:
         rows.append(_row("Owner's reason", ADJUSTMENT_CATEGORIES[category].capitalize(), OWNER))
-    note = row.get("stress_adjustment_note")
-    # A note marked route_only is for a route over the stretch, never a map click.
-    if note and row.get("stress_adjustment_display") == "map":
-        rows.append(_row("Note", str(note), source))
     return rows + rating_rows(row)
 
 
