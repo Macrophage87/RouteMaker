@@ -55,6 +55,8 @@ import {
   mtbTrailPressed,
   runClick,
   ROUTE_STRESS_SOURCE_ID,
+  ROUTE_LANES_SOURCE_ID,
+  routeLaneLayers,
   runHover,
   routeLineData,
   setRouteSections,
@@ -1396,6 +1398,10 @@ export function MapView(props: Props) {
       // reference layers are placed against, and the pointer's hit test is
       // made against the route's geometry, not against any layer, so a
       // second line layer changes nothing about grabbing or dragging it.
+      // The protected and painted lanes the route rides: the map's rails either side of the section, in the white
+      // band (lib/mapGlue.ts, routeLaneLayers; the owner, 2026-11-01). Filled by setRouteSections.
+      map.addSource(ROUTE_LANES_SOURCE_ID, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      for (const layer of routeLaneLayers()) map.addLayer(layer as never);
       map.addSource(ROUTE_STRESS_SOURCE, { type: "geojson", data: sectionFeatures(null) });
       // A one-pixel halo under each section, dark or white by class, so the
       // section is 3:1 from what touches it (lib/routeColours.ts, ROUTE_HALO_PATH).
@@ -2142,7 +2148,11 @@ export function MapView(props: Props) {
   // the rails' filters are set again in place, from the same tiles.
   useEffect(
     () =>
-      subscribeHighStressLanes(() => onLaneSwitch(mapRef.current, loaded.current, callbacks.current.when)),
+      subscribeHighStressLanes(() => {
+        onLaneSwitch(mapRef.current, loaded.current, callbacks.current.when);
+        // The route's lane marks follow the switch too (routeLaneMarks).
+        if (mapRef.current && loaded.current) setRouteSections(mapRef.current, callbacks.current.route, callbacks.current.stale, callbacks.current.routeColour ?? undefined);
+      }),
     [],
   );
 

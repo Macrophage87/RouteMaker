@@ -958,6 +958,15 @@ palette), about 3 px of each round the widest halo. Every class's edge on the
 white is 3:1 (its ring, its halo, or the section itself where a light halo
 merges into the band). A one-colour route keeps its 11 px white casing.
 
+**Lane marks on the route.** In the white band, either side of the section,
+the route carries the map's own facility rails for the lanes it rides
+(`routeLaneMarks`, `route-lanes` source, `routeLaneLayers`; Stephen,
+2026-11-01): a protected lane's magenta posts, a painted lane's pale violet
+dots, as `line-gap-width` rails half a pixel outside the section's ring or
+halo and a pixel inside the casing (thinner on the wider sections). Painted
+lanes on LTS 4 and Avoid follow the high-stress lanes switch. None on a Mass
+Ride's capacity route, and none on a transit trip's later rides.
+
 Under a route the overlay's lines fade (`overlayFade`): to 0.45 under a Mass
 Ride's capacity route (`MASS_NETWORK_DIMMED`), to 0.8 under any other
 (`ROUTE_OVERLAY_FADE`; Stephen: "mute most of the colors when there's a
