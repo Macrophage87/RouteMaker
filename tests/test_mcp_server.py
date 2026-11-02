@@ -192,6 +192,9 @@ def test_it_introduces_itself_and_lists_its_tools(tools) -> None:
         "plan_metro_loop",
         "open_link",
         "revise_route",
+        "route_segments",
+        "ride_conditions",
+        "my_routes",
         "save_route",
         "gpx_route",
     ]
