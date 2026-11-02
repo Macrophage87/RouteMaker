@@ -117,7 +117,15 @@ export function BikeshareDocksOverlay({
         window.clearTimeout(settle);
         settle = window.setTimeout(() => void refresh(), MOVE_SETTLE_MS);
       };
+      // The poll runs only while the page is in front: hidden, its timer is cleared, not just skipped, so a hidden tab is
+      // not woken every minute (the owner, 2026-11-01: battery audit); back in front, a refresh and the poll again.
+      let poll = 0;
+      const startPoll = () => {
+        window.clearInterval(poll);
+        poll = document.visibilityState === "hidden" ? 0 : window.setInterval(() => void refresh(), DOCKS_POLL_MS);
+      };
       const onVisible = () => {
+        startPoll();
         if (document.visibilityState !== "hidden") void refresh();
       };
       const onCluster = (event: MapLayerMouseEvent) => {
@@ -126,7 +134,7 @@ export function BikeshareDocksOverlay({
       map.on("moveend", onMove);
       map.on("click", DOCK_CLUSTERS, onCluster);
       document.addEventListener("visibilitychange", onVisible);
-      const poll = window.setInterval(() => void refresh(), DOCKS_POLL_MS);
+      startPoll();
       const offDock = tapCard(map, [DOCK_POINTS, DOCK_LABELS], (id) => {
         const dock = latest?.docks.find((d) => d.id === id);
         return dock && latest ? dockCard(dock, latest) : null;
