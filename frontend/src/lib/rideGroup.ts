@@ -263,6 +263,37 @@ export function postDue(t: number, lastPost: number, pace: number): boolean {
   return t - lastPost >= pace - POST_SLACK_MS;
 }
 
+/**
+ * The wait before the next read or post after `failures` in a row: the pace while they go, then doubling up to
+ * RETRY_MAX_MS, back to the pace with the first that goes. Each request keeps a phone's radio awake for some 5 to 10
+ * s, so a ride out of signal does not keep trying at 2 s (the owner, 2026-11-01: battery audit).
+ */
+export const RETRY_MAX_MS = 15_000;
+export function backoffMs(pace: number, failures: number): number {
+  if (failures <= 0) return pace;
+  return Math.max(pace, Math.min(RETRY_MAX_MS, pace * 2 ** failures));
+}
+
+/**
+ * Whether a separate read is not needed now: a post answered with the ride's read (sendPositionRead) came within two
+ * paces, so posts are going and being answered (the owner, 2026-11-01: battery audit: one request a pace, not two).
+ * Two paces, as the posts go on the page's tick and land a little after their pace; once they stop (the dot held back,
+ * away from the route, refused), the reads take over within that.
+ */
+export function readCovered(now: number, lastPostReadAt: number, pace: number): boolean {
+  return now - lastPostReadAt < 2 * pace;
+}
+
+/**
+ * Whether this page reads the ride on its own timer: while riding, or while following a broadcast link (whose leader is
+ * shown before the rider answers). Not on the Go screen before or after a ride, where a kept answer's token used to
+ * keep the reads going every pace for as long as Go stayed open (the owner, 2026-11-01: battery audit, item 4). A
+ * sharer not riding (a leader sharing from Plan) is still answered by its posts.
+ */
+export function groupReads(o: { ride: string | null; token: string | null; riding: boolean; following: boolean }): boolean {
+  return !!o.ride && !!o.token && (o.riding || o.following);
+}
+
 /** After a role change: the last post moved back so the next goes at least a second after the server will take one, and never later than at the pace. */
 export function postSoonAfter(lastPost: number, pace: number = POST_EVERY_MS): number {
   return Math.min(lastPost, lastPost + MIN_POST_GAP_MS + ROLE_POST_MARGIN_MS - (pace - POST_SLACK_MS));
@@ -871,6 +902,34 @@ export async function sendPosition(origin: string, ride: string, token: string, 
   if (!seal || !spot) return false;
   const sealed = await sealValue(seal, "dot", { lon: spot[0], lat: spot[1], role });
   return (await post(origin, `/api/rides/${ride}/here`, { token, sealed }, send)).ok;
+}
+
+/** A post answered with the ride's read, or not taken (`ok` false; `read` null then, or when its answer had none). */
+export interface PostedRead {
+  ok: boolean;
+  read: RideRead | null;
+}
+
+/**
+ * The rider's dot, as sendPosition sends it, answered with the ride's read (core.ride_presence.post_position's
+ * `answer_read`): one request a pace for a sharing phone rather than a post and a read apart (the owner, 2026-11-01:
+ * battery audit). `leader` is the broadcast link's key, as readRide sends it. A server that answers only {"ok": true}
+ * gives no read, and the page reads apart.
+ */
+export async function sendPositionRead(origin: string, ride: string, token: string, p: LonLat, role: RideRole = DEFAULT_ROLE, send: Fetch = fetch, seal: RideSeal | null = null, leader: string | null = null): Promise<PostedRead> {
+  const spot = sendable(p);
+  if (!seal || !spot) return { ok: false, read: null };
+  const sealed = await sealValue(seal, "dot", { lon: spot[0], lat: spot[1], role });
+  const body: Record<string, unknown> = { token, sealed, read: true };
+  if (leader) body.leader = leader;
+  const answer = await post(origin, `/api/rides/${ride}/here`, body, send);
+  if (!answer.ok) return { ok: false, read: null };
+  if (!("every_s" in answer.body) || !Array.isArray(answer.body.dots)) return { ok: true, read: null };
+  try {
+    return { ok: true, read: await openRead(seal, answer.body) };
+  } catch {
+    return { ok: true, read: null };
+  }
 }
 
 /**
