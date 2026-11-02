@@ -51,6 +51,11 @@ import {
   roleOf,
   sendAlert,
   sendPosition,
+  sendPositionRead,
+  backoffMs,
+  groupReads,
+  readCovered,
+  RETRY_MAX_MS,
   shareStop,
   shownDots,
   type RideAlert,
@@ -655,18 +660,18 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.match(group, /\{controls && \(\s*<div className="ride-group-bar">/);
   // A role change moves the next post up, and the post sends the consent's (new) role.
   assert.match(group, /const changeRole[\s\S]*?keepConsent\(ride, consent\.answer, Date\.now\(\), undefined, undefined, role\)[\s\S]*?share\.current\.lastPost = postSoonAfter\(share\.current\.lastPost, pace\)/);
-  assert.match(group, /\}, \[ownFix, front, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home, pace\]\);/);
+  assert.match(group, /\}, \[ownFix, front, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home, pace, followKey, applyRead\]\);/);
   // Held back (an hour in one spot, or at Home): the dot goes at once, and none is sent until the rider moves on.
   assert.match(group, /const held = dotHeldBack\(dwell\.current, fix, t, home\);/);
   assert.match(group, /if \(held\) \{\s*void leaveRide\(origin, ride, token\);\s*forgetSent\(\);/);
   // This rider counts themself only while the server has their dot (a follower whose dot never went counted 2); a
   // send still in flight when the dot is dropped does not count them again.
-  assert.match(group, /const gen = sentGen\.current;\s*void sendPosition\(origin, ride, token, fix, consent\.role, fetch, seal\)\.then\(\(ok\) => \{\s*if \(ok && gen === sentGen\.current\) sentDot\.current = \{ ride, at: Date\.now\(\) \};/);
+  assert.match(group, /const gen = sentGen\.current;\s*(?:\/\/[^\n]*\n\s*)?void sendPositionRead\(origin, ride, token, fix, consent\.role, fetch, seal, followKey\)\.then\(\(\{ ok, read: got \}\) => \{\s*postFailures\.current = ok \? 0 : postFailures\.current \+ 1;\s*if \(ok && gen === sentGen\.current\) sentDot\.current = \{ ride, at: Date\.now\(\) \};/);
   assert.match(group, /void leaveRide\(origin, ride, token\);\s*forgetSent\(\);\s*\};\s*\}, \[shareOn, front, ride, token, origin\]\);/);
   assert.match(group, /const meShown = meCounted\(sentDot\.current, ride, \(leading \|\| shareOn\) && front, now\);/);
   // The leader's path holds only what was ridden.
   assert.match(group, /if \(leading && riding && near && !held\) setOwnTrail/);
-  assert.match(group, /if \(near && !held && postDue\(t, share\.current\.lastPost, pace\)\)/);
+  assert.match(group, /if \(near && !held && postDue\(t, share\.current\.lastPost, backoffMs\(pace, postFailures\.current\)\)\)/);
   // A kept Yes from another tab is asked again; a ride that ends stops the dot and asks again next ride.
   assert.match(group, /const askAgain = !leading && kept\?\.answer === "yes" && !answeredHere\(id\);/);
   assert.match(group, /setShareOn\(kept\?\.answer === "yes" && !askAgain\);/);
@@ -676,7 +681,7 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.match(group, /if \(leading && riding && near && !held\) setOwnTrail/);
   assert.match(group, /!token \|\| heldBack\.current\) return;/);
   assert.match(group, /<\/button>\s*\)\}\s*\{consent && <RolePicker name="ride-role" value=\{consent\.role\} onChange=\{changeRole\} \/>\}\s*<\/div>/);
-  assert.match(group, /sendPosition\(origin, ride, token, fix, consent\.role, fetch, seal\)/);
+  assert.match(group, /sendPositionRead\(origin, ride, token, fix, consent\.role, fetch, seal, followKey\)/);
   // Go's bar keeps its two buttons.
   const bar = group.slice(group.indexOf('className="ride-group-bar"'), group.indexOf("id={ridersPanel}"));
   assert.equal((bar.match(/<button/g) ?? []).length, 2);
@@ -821,8 +826,58 @@ test("the dots go at the pace the server sets: 2 s on a ride of 20 sharing, 5 s,
   assert.equal(paceMs("10"), 5_000);
   const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
   assert.match(group, /setPace\(got\.paceMs\);/);
-  assert.match(group, /const id = window\.setInterval\(\(\) => void poll\(\), pace\);\s*const tick = window\.setInterval\(\(\) => setNow\(Date\.now\(\)\), shareOn \? Math\.min\(TICK_MS, pace \/ 2\) : TICK_MS\);[\s\S]*?\}, \[ride, token, poll, pace, shareOn\]\);/);
-  assert.match(group, /if \(near && !held && postDue\(t, share\.current\.lastPost, pace\)\) \{/);
+  // Each read waits its pace (longer after failures), and the tick that sends a still rider's dot runs twice a pace.
+  assert.match(group, /timer = window\.setTimeout\(async \(\) => \{[\s\S]*?\}, backoffMs\(pace, readFailures\.current\)\);[\s\S]*?\}, \[reads, poll, pace\]\);/);
+  assert.match(group, /const tick = window\.setInterval\(\(\) => setNow\(Date\.now\(\)\), shareOn \? Math\.min\(TICK_MS, pace \/ 2\) : TICK_MS\);/);
+  assert.match(group, /if \(near && !held && postDue\(t, share\.current\.lastPost, backoffMs\(pace, postFailures\.current\)\)\) \{/);
+});
+
+test("reads and posts that fail wait longer each time, up to 15 s, and the pace again once one goes", () => {
+  // The owner, 2026-11-01: battery audit, item 2.
+  assert.equal(RETRY_MAX_MS, 15_000);
+  assert.deepEqual([0, 1, 2, 3, 4, 10].map((n) => backoffMs(2_000, n)), [2_000, 4_000, 8_000, 15_000, 15_000, 15_000]);
+  assert.equal(backoffMs(5_000, 1), 10_000);
+  assert.equal(backoffMs(15_000, 3), 15_000, "a watcher's 15 s pace stays 15 s");
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  // A read that fails counts one more failure; one that goes (or a post answered with the read) sets it back.
+  assert.match(group, /readFailures\.current = got \? 0 : readFailures\.current \+ 1;/);
+  assert.match(group, /postFailures\.current = ok \? 0 : postFailures\.current \+ 1;/);
+  assert.match(group, /lastPostReadAt\.current = Date\.now\(\);\s*readFailures\.current = 0;/);
+});
+
+test("a sharing rider's post comes back with the ride's read, so no separate read goes while posts are answered", async () => {
+  // The owner, 2026-11-01: battery audit, item 1: one request a pace, not a post and a read apart.
+  const seal = (await rideSeal(newRideSecret()))!;
+  const dot = await sealValue(seal, "dot", { lon: -77, lat: 38.9, role: "sweep" });
+  const bodies: Record<string, unknown>[] = [];
+  const answering = (answer: unknown) =>
+    (async (_u: string, i?: RequestInit) => {
+      bodies.push(JSON.parse(String(i?.body)));
+      return new Response(JSON.stringify(answer), { status: 200 });
+    }) as unknown as typeof fetch;
+  const merged = await sendPositionRead("https://x.test", seal.ride, "1".repeat(32), [-77.01, 38.9], "participant", answering({ ok: true, dots: [{ sealed: dot, age_s: 1, leader: true }], alerts: [], every_s: 2 }), seal, "a".repeat(32));
+  assert.equal(merged.ok, true);
+  assert.deepEqual(merged.read?.dots, [{ lon: -77, lat: 38.9, age_s: 1, role: "sweep", leader: true }]);
+  assert.equal(merged.read?.paceMs, 2_000);
+  assert.equal(bodies[0].read, true);
+  assert.equal(bodies[0].leader, "a".repeat(32));
+  assert.equal(typeof bodies[0].sealed, "string");
+  assert.ok(!("lon" in bodies[0]) && !("lat" in bodies[0]), "the dot goes sealed, never in plain numbers");
+  // An older server answers only {"ok": true}: taken, and the page reads apart.
+  assert.deepEqual(await sendPositionRead("https://x.test", seal.ride, "1".repeat(32), [-77.01, 38.9], "participant", answering({ ok: true }), seal), { ok: true, read: null });
+  assert.ok(!("leader" in bodies[1]));
+  const refused = (async () => new Response("{}", { status: 429 })) as unknown as typeof fetch;
+  assert.deepEqual(await sendPositionRead("https://x.test", seal.ride, "1".repeat(32), [-77.01, 38.9], "participant", refused, seal), { ok: false, read: null });
+  // Covered for two paces after an answered post; then the separate reads take over.
+  assert.equal(readCovered(10_000, 9_000, 2_000), true);
+  assert.equal(readCovered(13_999, 10_000, 2_000), true);
+  assert.equal(readCovered(14_000, 10_000, 2_000), false);
+  assert.equal(readCovered(10_000, 0, 2_000), false, "never answered: read apart");
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  assert.match(group, /if \(!readCovered\(Date\.now\(\), lastPostReadAt\.current, pace\)\) await poll\(\);/);
+  assert.match(group, /if \(got && gen === sentGen\.current\) \{\s*lastPostReadAt\.current = Date\.now\(\);\s*readFailures\.current = 0;\s*applyRead\(got\);/);
+  // Shown again: read at once, whatever the posts did.
+  assert.match(group, /if \(visible\(\) && Date\.now\(\) - lastReadAt\.current >= 1_000\) void poll\(\);/);
 });
 
 test("a rider counts themself only while the server has their dot, on this ride (Stephen 2026-10-31)", () => {
@@ -835,4 +890,35 @@ test("a rider counts themself only while the server has their dot, on this ride 
   assert.equal(meCounted(sent, "r2", true, t + 5_000), false, "another ride's dot");
   assert.equal(meCounted(sent, "r1", false, t + 5_000), false, "sharing off");
   assert.equal(meCounted(sent, null, true, t + 5_000), false);
+});
+
+test("the group's dots are drawn again only when they, the alerts, their age or the leader's path change, not at every GPS fix (battery audit)", () => {
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  assert.match(group, /\}, \[dotsMap, dots, alerts, sinceS, shownTrail, shownRoute\]\);/);
+  assert.match(group, /const alerts = useMemo\(\(\) => read\.alerts\.filter\(\(a\) => a\.age_s \+ sinceS <= 120\), \[read\.alerts, sinceS\]\);/);
+  assert.match(group, /const shownRoute = sentPath\?\.route \?\? NO_ROUTE;/);
+});
+
+test("Go does not read the group before or after a ride, even with a kept answer; riding or following a link does", () => {
+  // The owner, 2026-11-01: battery audit, item 4. A kept answer (Yes or No) carries the rider's token and End ride
+  // keeps it (only the question is asked again), and App.tsx keeps this page mounted on the Go screen: the reads used
+  // to run on a ride and a token alone, every pace for as long as Go stayed open.
+  const store = new Memory();
+  keepConsent("r-end", "no", 1_000, store);
+  const token = consentFor("r-end", 2_000, store)?.token ?? null;
+  assert.ok(token, "a kept No still has its token");
+  assert.equal(groupReads({ ride: "r-end", token, riding: false, following: false }), false, "the Go screen, before or after a ride");
+  assert.equal(groupReads({ ride: "r-end", token, riding: true, following: false }), true, "riding");
+  // Opening a broadcast link shows the leader before the rider answers (a watch-only token), riding or not.
+  assert.equal(groupReads({ ride: "r-end", token: newToken(), riding: false, following: true }), true);
+  assert.equal(groupReads({ ride: null, token, riding: true, following: true }), false);
+  assert.equal(groupReads({ ride: "r-end", token: null, riding: true, following: false }), false);
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  assert.match(group, /const reads = groupReads\(\{ ride, token, riding, following: isBroadcast && !leading \}\);/);
+  // Both the first read (and the one on being shown again) and the timed reads wait on it.
+  assert.match(group, /useEffect\(\(\) => \{\s*if \(!reads\) return;\s*void poll\(\);/);
+  assert.match(group, /useEffect\(\(\) => \{\s*if \(!reads\) return;\s*let timer = 0;/);
+  // With neither reads nor a dot of its own to send, the last dots go and nothing ticks.
+  assert.match(group, /if \(reads \|\| shareOn\) return;\s*previousAlerts\.current = \[\];/);
+  assert.match(group, /if \(!ride \|\| !token \|\| !\(reads \|\| shareOn\)\) return;\s*const tick/);
 });
