@@ -48,6 +48,14 @@ class Net:
         self.asked.append((url, headers))
         if any(f in url for f in self.fail):
             raise workzones.FeedError("HTTP 503")
+        if any(host in url for host in ("ProTrackPlusViews", "geo.dcwater.com", "wsscwater.com")):
+            # Planned work (routemaker.planned_work; tests/test_planned_work.py): none here.
+            return b'{"type": "FeatureCollection", "features": []}'
+        if "RoadClosurePlanned" in url:
+            return b'{"type": "FeatureCollection", "features": []}'
+        if "RoadClosureActive" in url:
+            # Maryland's Road Closure Reporter (routemaker.md_closures; tests/test_md_closures.py).
+            return (DATA / "sha-road-closures.geojson").read_bytes()
         if "maps2.dcgis.dc.gov" in url:
             return (DATA / "tops-permits.geojson").read_bytes()
         if url == sources.URLS["mpd"]:
@@ -57,7 +65,7 @@ class Net:
         if "mpdc.dc.gov/release" in url:
             raise workzones.FeedError("HTTP 404")
         if "hsema" in url:
-            return (DATA / "alertdc-nrss.xml").read_bytes()
+            return (DATA / "alertdc-list.html").read_bytes()
         if "developer.nps.gov" in url:
             return (DATA / "nps-alerts.json").read_bytes()
         raise AssertionError(url)
@@ -207,8 +215,16 @@ def test_the_snapshot_holds_the_work_zones_and_the_dc_closures_side_by_side(monk
     monkeypatch.setattr(workzones, "_now", lambda: NOW)
     sources.refresh(Net(), no_sleep, lambda: NOW, Placer())
     found = workzones.snapshot()
-    assert found.status == {"alertdc": "current", "dc": "current", "mpd": "current"}
-    assert {z.source for z in found.zones} == {"dc", "mpd", "alertdc"}
+    assert found.status == {
+        "alertdc": "current",
+        "dc": "current",
+        "mpd": "current",
+        "protrack": "current",
+        "dcwater": "current",
+        "wssc": "current",
+        "sha": "current",
+    }
+    assert {z.source for z in found.zones} == {"dc", "mpd", "alertdc", "sha"}
     # The parks' deer-management notices (routemaker.deer_closures) come from the clock, not a feed.
     assert {n.source for n in found.notices if n.source not in deer_closures.SOURCES} == {
         "mpd",
@@ -218,7 +234,16 @@ def test_the_snapshot_holds_the_work_zones_and_the_dc_closures_side_by_side(monk
     status = sources.load(
         BikeshareFeedCache.objects.get(key=sources.KEY).payload, NOW + timedelta(hours=7)
     )[2]
-    assert status == {"alertdc": "unavailable", "dc": "stale", "mpd": "unavailable"}
+    # Planned work is kept 3 days (core.closure_sources.DROP_AFTER_S), so 7 hours on it is current.
+    assert status == {
+        "alertdc": "unavailable",
+        "dc": "stale",
+        "mpd": "unavailable",
+        "protrack": "current",
+        "dcwater": "current",
+        "wssc": "current",
+        "sha": "unavailable",
+    }
 
 
 # --- The closure check (the dialog's POST /api/closures/check), fed by the DC sources --
@@ -503,3 +528,13 @@ def test_a_segment_is_placed_between_its_cross_streets_on_the_routers_check(
     # Where the router's way leaves K Street, nothing is guessed.
     streets["value"] = ["L Street Northwest"]
     assert sources.DatabasePlacer(ways).segment_line(segment) is None
+
+
+@db
+def test_a_planned_work_outage_never_fails_the_closures_run() -> None:
+    """Review: planned work feeds an off-by-default layer only; a host down past its stale
+    time is said in the run's line, never an alarm on the whole job."""
+    sources.refresh(Net(fail=("wsscwater",)), no_sleep, lambda: NOW, Placer())
+    later = NOW + timedelta(days=2)
+    line = sources.refresh(Net(fail=("wsscwater",)), no_sleep, lambda: later, Placer(), force=True)
+    assert "wssc failed" in line

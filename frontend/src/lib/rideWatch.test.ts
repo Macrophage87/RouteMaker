@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { WATCH_OPTIONS, watchRide, watchUnavailable, type WatchApi, type WatchPosition } from "./rideWatch.ts";
+import { READING_OPTIONS, WATCH_OPTIONS, readOnce, watchRide, watchUnavailable, type WatchApi, type WatchPosition } from "./rideWatch.ts";
 import type { RideFix } from "./navigate.ts";
 
 function stubApi() {
@@ -43,6 +43,64 @@ test("watchRide: fixes with speed and heading; heading only while moving", () =>
   assert.deepEqual(calls, ["watch", "clear:7"]);
   send({ coords: { latitude: 38.9, longitude: -77, accuracy: 8 } });
   assert.equal(fixes.length, 2, "nothing after the stop");
+});
+
+test("readOnce: a paused ride's one reading takes the first fix and stops the watch (battery audit, 2026-11-01)", () => {
+  const { api, calls, send, options } = stubApi();
+  const fixes: RideFix[] = [];
+  readOnce({ isSecureContext: true, geolocation: api }, (f) => fixes.push(f), 60_000, () => 5);
+  assert.deepEqual(options(), READING_OPTIONS);
+  assert.equal(READING_OPTIONS.enableHighAccuracy, true);
+  assert.ok(READING_OPTIONS.maximumAge <= 25_000);
+  send({ coords: { latitude: 38.9, longitude: -77, accuracy: 8 } });
+  send({ coords: { latitude: 38.91, longitude: -77, accuracy: 8 } });
+  assert.equal(fixes.length, 1, "one reading only");
+  assert.deepEqual(calls, ["watch", "clear:7"]);
+});
+
+test("readOnce: a failure ends the reading with no fix; no GPS at all never watches", () => {
+  const { api, calls, error } = stubApi();
+  readOnce({ isSecureContext: true, geolocation: api }, () => assert.fail(), 60_000);
+  error(2);
+  assert.deepEqual(calls, ["watch", "clear:7"]);
+  readOnce({ isSecureContext: true, geolocation: undefined }, () => assert.fail(), 60_000);
+});
+
+/** Runs `body` with the global setTimeout/clearTimeout replaced by ones that only record, then restores them. */
+function withFakeTimers(body: (timers: { set: { fn: () => void; ms: number }[]; cleared: unknown[] }) => void) {
+  const realSet = globalThis.setTimeout;
+  const realClear = globalThis.clearTimeout;
+  const timers = { set: [] as { fn: () => void; ms: number }[], cleared: [] as unknown[] };
+  globalThis.setTimeout = ((fn: () => void, ms: number) => timers.set.push({ fn, ms })) as unknown as typeof setTimeout;
+  globalThis.clearTimeout = ((handle: unknown) => void timers.cleared.push(handle)) as typeof clearTimeout;
+  try {
+    body(timers);
+  } finally {
+    globalThis.setTimeout = realSet;
+    globalThis.clearTimeout = realClear;
+  }
+}
+
+test("readOnce: a GPS that never answers is given up after giveUpMs, so no watch runs on through the pause", () => {
+  withFakeTimers((timers) => {
+    const { api, calls } = stubApi();
+    readOnce({ isSecureContext: true, geolocation: api }, () => assert.fail(), 1_234);
+    assert.deepEqual(calls, ["watch"]);
+    assert.equal(timers.set.length, 1, "a give-up timer is armed");
+    assert.equal(timers.set[0].ms, 1_234);
+    timers.set[0].fn();
+    assert.deepEqual(calls, ["watch", "clear:7"], "the give-up stops the watch");
+  });
+});
+
+test("readOnce: a reading that comes in time clears its give-up timer", () => {
+  withFakeTimers((timers) => {
+    const { api, calls, send } = stubApi();
+    readOnce({ isSecureContext: true, geolocation: api }, () => undefined, 1_234, () => 5);
+    send({ coords: { latitude: 38.9, longitude: -77, accuracy: 8 } });
+    assert.deepEqual(calls, ["watch", "clear:7"]);
+    assert.deepEqual(timers.cleared, [1], "the armed timer (handle 1) is cleared");
+  });
 });
 
 test("watchRide: failures reported; insecure and unsupported never watch", () => {
