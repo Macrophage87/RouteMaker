@@ -3204,6 +3204,48 @@ class TestPhantomTurns:
         ]
         assert self.said(d.describe(legs))[1:] == [("C Street", "right")]
 
+    @staticmethod
+    def runs(*parts):
+        """The three runs (before, the few metres, after) of one leg of `parts`."""
+        runs = d._runs_of(flat(*parts), 0)
+        assert len(runs) == 3
+        return runs
+
+    @staticmethod
+    def cut():
+        """Right 6 m up B Street, then right onto C Street: folded, one right (as above)."""
+        return (
+            road("A Street", 2, 400, 0, 0),
+            forked(road("B Street", 2, 6, 45, 45), "bear_right"),
+            forked(road("C Street", 2, 400, 90, 90), "right"),
+        )
+
+    def test_a_roundabout_at_either_end_of_a_few_metres_is_not_folded(self):
+        a, b, c = self.cut()
+        assert d._connector(*self.runs(a, b, c)), "the plain cut is folded"
+        ring = [replace(atom, roundabout=True) for atom in b]
+        assert not d._connector(*self.runs(a, ring, c)), "the few metres on a roundabout"
+        ring = [replace(atom, roundabout=True) for atom in c]
+        assert not d._connector(*self.runs(a, b, ring)), "the stretch after is a roundabout"
+
+    def test_two_bears_that_cancel_on_a_few_metres_of_road_are_not_folded(self):
+        # A Y on roads (not paths, so only the two-bears rule keeps it): bear left 30
+        # degrees onto 6 m of B Street, bear right 30 degrees onto C Street.
+        a = road("A Street", 2, 400, 0, 0)
+        b = forked(road("B Street", 2, 6, 330, 330), "bear_left")
+        c = forked(road("C Street", 2, 400, 0, 0), "bear_right")
+        assert not d._connector(*self.runs(a, b, c))
+
+    def test_an_untraced_stretch_on_either_side_is_not_folded(self):
+        before, run, after = self.runs(*self.cut())
+        assert d._connector(before, run, after)
+        for untraced in (
+            (replace(before, untraced=True), run, after),
+            (before, replace(run, untraced=True), after),
+            (before, run, replace(after, untraced=True)),
+        ):
+            assert not d._connector(*untraced)
+
     def test_a_y_taken_through_a_short_stub_is_still_said(self):
         # Two bears and no full turn: a choice of branches, kept as before.
         legs = [

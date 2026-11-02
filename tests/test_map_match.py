@@ -16,6 +16,7 @@ from test_ratelimit import in_one_window
 from test_route_api import FakeRouter, db, encode_polyline6, hold_slots
 
 from core import map_match, presets, ratelimit, routing
+from routemaker.geo import Point, haversine
 
 pytestmark = pytest.mark.usefixtures("weekday_clock")
 
@@ -278,7 +279,7 @@ class TestUntangle:
 
         # Longer than FOOT_MAX_M of sidewalk: ridden on purpose.
         long_walk = [*TANGLED_EDGES]
-        long_walk[1] = edge("sidewalk", map_match.FOOT_MAX_M + 1.0, 1, 2)
+        long_walk[1] = edge("sidewalk", 61.0, 1, 2)
         assert map_match.untangle(TANGLED, long_walk, never) == TANGLED
         # A crossing at the track's end (onto a path, or where it starts) has no road after it.
         assert map_match._tangles(TANGLED_EDGES[:3]) == []
@@ -320,6 +321,81 @@ class TestUntangle:
             cut,
             off,
         ]
+
+    def test_sixty_metres_of_crosswalk_is_a_tangle_and_sixty_one_is_ridden(self) -> None:
+        def between(walked: float) -> list[dict]:
+            return [
+                edge("road", 104.0, 0, 1),
+                edge("sidewalk", walked - 6.0, 1, 2),
+                edge("pedestrian_crossing", 6.0, 2, 3),
+                edge("road", 80.0, 3, 4),
+            ]
+
+        assert map_match._tangles(between(60.0)) == [(1, 2)]
+        assert map_match._tangles(between(61.0)) == []
+
+    def test_a_way_back_up_to_30_m_longer_than_the_tangle_replaces_it(self) -> None:
+        a, b = ON_SOUTH[1], ON_WEST[0]
+        tangle = map_match._metres(TANGLED[1:4])
+        # Metres per degree of latitude here, to place a spur of a given length north of `a`.
+        per_degree = haversine(Point(*a), Point(a[0], a[1] + 0.001)) / 0.001
+
+        def longer_by(extra: float) -> list:
+            # Out along a spur and back, then across: the tangle's length plus `extra`.
+            spur = (tangle + extra - haversine(Point(*a), Point(*b))) / 2.0
+            tip = (a[0], a[1] + spur / per_degree)
+            return [a, tip, a, b]
+
+        near, far = longer_by(29.0), longer_by(31.0)
+        assert map_match._metres(near) == pytest.approx(tangle + 29.0, abs=0.1)
+        assert map_match._metres(far) == pytest.approx(tangle + 31.0, abs=0.1)
+        put_back = map_match.untangle(TANGLED, TANGLED_EDGES, lambda _a, _b: near)
+        assert put_back == [ON_SOUTH[0], *near, ON_WEST[1]]
+        assert map_match.untangle(TANGLED, TANGLED_EDGES, lambda _a, _b: far) == TANGLED
+
+    def test_a_crosswalk_from_a_road_onto_a_footway_is_ridden_as_mapped(self) -> None:
+        onto_path = [*TANGLED_EDGES[:3], edge("footway", 80.0, 3, 4)]
+        assert map_match._tangles(onto_path) == []
+
+    def test_at_most_twenty_ways_back_are_asked_for_one_track(self) -> None:
+        # 21 corners, each a crosswalk between two 50 m stretches of road (synthetic).
+        line = [(-77.0 + 0.0001 * n, LAT) for n in range(44)]
+        edges = [edge("road", 50.0, 0, 1)]
+        for k in range(21):
+            edges += [
+                edge("pedestrian_crossing", 7.0, 2 * k + 1, 2 * k + 2),
+                edge("road", 50.0, 2 * k + 2, 2 * k + 3),
+            ]
+        assert len(map_match._tangles(edges)) == 21
+        asked = []
+
+        def road(a, b):
+            asked.append((a, b))
+            return [a, b]
+
+        map_match.untangle(line, edges, road)
+        assert len(asked) == map_match.MAX_UNTANGLED == 20
+
+    def test_a_tangle_starting_before_the_last_one_ended_is_left_as_it_is(self) -> None:
+        line = [(-77.0 + 0.0001 * n, LAT) for n in range(7)]
+        edges = [
+            edge("road", 50.0, 0, 1),
+            edge("pedestrian_crossing", 7.0, 1, 3),
+            edge("road", 50.0, 3, 4),
+            # Stale shape indexes: this one runs from inside the first tangle.
+            edge("pedestrian_crossing", 7.0, 2, 5),
+            edge("road", 50.0, 5, 6),
+        ]
+        bend = (-76.9998, LAT + 0.00001)
+        asked = []
+
+        def road(a, b):
+            asked.append((a, b))
+            return [a, bend, b]
+
+        out = map_match.untangle(line, edges, road)
+        assert asked == [(line[1], line[3])]
+        assert out == [line[0], line[1], bend, *line[3:]]
 
     def test_a_trail_crossing_a_street_is_ridden_as_mapped(self) -> None:
         trail = [edge("cycleway", 104.0, 0, 1), *TANGLED_EDGES[1:3], edge("cycleway", 80.0, 3, 4)]

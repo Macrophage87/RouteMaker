@@ -143,6 +143,25 @@ class TestCorners:
         line, _ = follow.clear_corners(stray, [])
         assert SOUTH_ALONG[2] not in line and CORNER in line
 
+    def test_only_the_stretch_up_to_12_m_before_a_corner_is_cleared(self) -> None:
+        # Vertices 11 m and 14 m before the corner: the first is inside the cleared stretch
+        # (and the matcher's 10 m skip, with a margin), the second a real shape point.
+        at_14, at_11 = (-77.0, LAT + 0.000126), (-77.0, LAT + 0.000099)
+        here = follow.Point(*CORNER)
+        assert 13.5 < follow.haversine(follow.Point(*at_14), here) < 14.5
+        assert 10.5 < follow.haversine(follow.Point(*at_11), here) < 11.5
+        line, _ = follow.clear_corners([SOUTH_ALONG[0], at_14, at_11, CORNER, *WEST_ALONG], [])
+        assert line == [SOUTH_ALONG[0], at_14, CORNER, *WEST_ALONG]
+
+    def test_a_doubled_corner_heading_north_then_east_keeps_both_copies(self) -> None:
+        # North then east, so a zero-length step (read as north) cannot make either copy a
+        # 180-degree "corner" by accident: each is a corner only by looking past the other.
+        north_along = [(-77.0, LAT - 0.0011), (-77.0, LAT - 0.0005), (-77.0, LAT - 0.000063)]
+        east_along = [(-76.99992, LAT), (-76.9994, LAT), (-76.9988, LAT)]
+        doubled = [*north_along, CORNER, CORNER, *east_along]
+        line, _ = follow.clear_corners(doubled, [])
+        assert line == [*north_along[:2], CORNER, CORNER, *east_along]
+
     def test_a_straight_line_and_a_gentle_bend_are_left_as_they_are(self) -> None:
         assert follow.clear_corners(SOUTH_ALONG, [1]) == (SOUTH_ALONG, [1])
         # A bend of about 20 degrees is not a corner.

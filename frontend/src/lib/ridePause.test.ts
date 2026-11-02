@@ -77,6 +77,15 @@ test("indoor drift neither resumes a pause nor keeps one from starting (the owne
   assert.deepEqual(stayStep(stay, fix(north(60), 7 * 60_000, 10)), { point: north(60), since: 7 * 60_000 });
 });
 
+test("a rough fix far off neither resumes a pause nor starts or moves a stay", () => {
+  // Far enough that only the accuracy gates decide: 200 m clears 30 + 40, 500 m clears 30 + 60.
+  assert.equal(movedFromPause(HERE, fix(north(200), 0, 40)), false, "a 40 m fix 200 m off does not resume");
+  assert.equal(movedFromPause(HERE, fix(north(200), 0, 20)), true, "a good fix there does");
+  assert.equal(stayStep(null, fix(HERE, 0, 60)), null, "a poor fix (over 50 m) starts no stay");
+  const stay = { point: HERE, since: 0 };
+  assert.deepEqual(stayStep(stay, fix(north(500), 1_000, 60)), stay, "nor moves one");
+});
+
 test("heartbeat: a stopped rider's last fix again, with the time now, once no fix has come for 5 s", () => {
   const last = fix(HERE, 1_000, 6, 0.4);
   assert.equal(heartbeatFix(last, 1_000, 1_000 + HEARTBEAT_MS - 1), null, "not yet");

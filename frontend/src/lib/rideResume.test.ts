@@ -172,3 +172,8 @@ test("a ride link opened to follow joins that ride: no Resume question for a rid
   const app = src("../App.tsx");
   assert.match(app, /useState\(\(\) => \(SHARED_RIDE && SHARED_LEAD \? null : leftRide\(VIA_MARKS, Date\.now\(\)\)\)\)/);
 });
+
+test("the automatic re-plan while off route never starts from a rough fix", () => {
+  const ride = src("../RideMode.tsx");
+  assert.match(ride, /out\.state\.off && auto && !gate\.busy && fix\.accuracyM <= OFF_SURE_M/);
+});

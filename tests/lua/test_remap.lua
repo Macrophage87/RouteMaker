@@ -1242,8 +1242,9 @@ check("so is one mapped rough", M.remap_way({ highway = "path", surface = "grave
   smoothness = "bad" }, { is_trail_class = true }).surface == "compacted")
 check("and with no derived facts", M.remap_way({ highway = "track", surface = "gravel" }, {})
   .surface == "compacted")
--- Other loose surfaces keep their own.
-for _, surface in ipairs({ "pebblestone", "sand", "dirt", "unpaved", "grass" }) do
+-- Other loose surfaces keep their own, and so do mixed values: only an exact gravel is packed.
+for _, surface in ipairs({ "pebblestone", "sand", "dirt", "unpaved", "grass", "gravel;dirt",
+    "gravel;grass" }) do
   check("a " .. surface .. " path keeps its own surface", M.remap_way({ highway = "path",
     surface = surface }, { is_trail_class = true }).surface == nil)
 end
