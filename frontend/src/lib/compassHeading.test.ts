@@ -4,7 +4,18 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { COMPASS_EVERY_MS, CompassSmoother, askCompass, headingOf, watchCompass, type CompassEnv, type CompassEvent } from "./compassHeading.ts";
+import {
+  COMPASS_EVERY_MS,
+  COMPASS_GIVE_UP_MS,
+  CompassSmoother,
+  askCompass,
+  headingOf,
+  watchCompass,
+  watchCompassAwhile,
+  type CompassEnv,
+  type CompassEvent,
+  type CompassLifetime,
+} from "./compassHeading.ts";
 
 const near = (actual: number | null, expected: number, tol = 0.5) => {
   assert.notEqual(actual, null);
@@ -95,6 +106,58 @@ test("watchCompass: elsewhere the plain event, used only where it is a compass",
   assert.doesNotThrow(() => watchCompass(null, () => undefined)());
 });
 
+function stubLifetime(hidden = false) {
+  let timer: { run: () => void; ms: number } | null = null;
+  let onHidden: (() => void) | null = null;
+  const lifetime: CompassLifetime = {
+    setTimeout: (run, ms) => (timer = { run, ms }),
+    clearTimeout: () => void (timer = null),
+    hidden: () => hidden,
+    onHidden: (run) => {
+      onHidden = run;
+      return () => void (onHidden = null);
+    },
+  };
+  return { lifetime, fire: () => timer?.run(), hide: () => onHidden?.(), pending: () => ({ timer, onHidden }) };
+}
+
+test("watchCompassAwhile: the compass stops 2 minutes after it starts with no GPS heading (battery audit)", () => {
+  const { env, listeners } = stubEnv(true);
+  const life = stubLifetime();
+  watchCompassAwhile(env, () => undefined, life.lifetime);
+  assert.equal(life.pending().timer?.ms, COMPASS_GIVE_UP_MS);
+  assert.equal(COMPASS_GIVE_UP_MS, 120_000);
+  assert.equal(listeners.size, 1);
+  life.fire();
+  assert.equal(listeners.size, 0);
+  assert.equal(life.pending().onHidden, null);
+});
+
+test("watchCompassAwhile: the compass stops when the page is hidden and is not started on a hidden page", () => {
+  const { env, listeners } = stubEnv(true);
+  const life = stubLifetime();
+  watchCompassAwhile(env, () => undefined, life.lifetime);
+  life.hide();
+  assert.equal(listeners.size, 0);
+  assert.equal(life.pending().timer, null);
+  const hidden = stubLifetime(true);
+  watchCompassAwhile(env, () => undefined, hidden.lifetime)();
+  assert.equal(listeners.size, 0);
+});
+
+test("watchCompassAwhile: a stop (the first GPS heading) ends the watch, its timer and its listener at once", () => {
+  const { env, listeners } = stubEnv(true);
+  const life = stubLifetime();
+  const seen: number[] = [];
+  const stop = watchCompassAwhile(env, (d) => seen.push(d), life.lifetime);
+  listeners.get("deviceorientationabsolute")?.({ alpha: 90, beta: 0, gamma: 0 });
+  near(seen[0], 270);
+  stop();
+  assert.equal(listeners.size, 0);
+  assert.deepEqual(life.pending(), { timer: null, onHidden: null });
+  assert.doesNotThrow(stop);
+});
+
 test("askCompass: asks where the browser has a permission (iPhones), never throws", async () => {
   let asked = 0;
   askCompass({ requestPermission: () => (asked++, Promise.reject(new Error("no gesture"))) });
@@ -111,7 +174,8 @@ test("the compass is asked for in Start ride's and Roam's press, and the map han
   assert.match(ride, /export function startRideGesture[^}]*askCompass\(\)/s);
   assert.match(ride, /export function primeRideVoice[^}]*askCompass\(\)/s);
   const map = readFileSync(`${here}../MapView.tsx`, "utf8");
-  assert.match(map, /watchCompass\(browserCompassEnv\(\)/);
+  assert.match(map, /watchCompassAwhile\(browserCompassEnv\(\)/);
+  assert.match(map, /\}, browserCompassLifetime\(\)\);/);
   assert.match(map, /gpsHeadingSeen\.current = true;\s*stopCompass\.current\?\.\(\)/);
   // The compass never cuts short the follow camera's own move (its close-in zoom) or turns the map under a pinch.
   assert.match(map, /if \(map\.isMoving\(\)\) return;/);
