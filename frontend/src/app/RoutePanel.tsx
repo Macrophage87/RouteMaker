@@ -25,6 +25,7 @@ import { CandidatePicker } from "../lib/candidatePicker.ts";
 import { candidateRows } from "../lib/candidates.ts";
 import { loopNote, loopNoteShort } from "../lib/loop.ts";
 import { mtbNotes } from "../lib/mtbMode.ts";
+import { ROAD_BIKE_NO_PAVED_MAP_SHORT, roadBikeNote } from "../lib/roadBike.ts";
 import { FacilityBreakdown } from "../FacilityBreakdown.tsx";
 import { IntersectionList } from "../IntersectionList.tsx";
 import { AvoidNotice } from "../AvoidNotice.tsx";
@@ -627,6 +628,9 @@ function noteLines(route: RouteResponse, points: LonLat[], light: readonly Light
   const mtb = mtbNotes(route.mtb);
   for (const text of mtb.warnings) lines.push({ key: `mtb-${text}`, className: "notice mtb-warning", icon: "warn", text });
   if (mtb.notes.length > 0) lines.push({ key: "mtb-note", className: "hint mtb-note", icon: "mtb", text: mtb.notes.join(" ") });
+  // Road Bike planned on the standard map while its paved-only map is down (lib/roadBike.ts).
+  const roadBike = roadBikeNote(route);
+  if (roadBike) lines.push({ key: "road-bike", className: "notice road-bike-warning", icon: "warn", text: roadBike, short: ROAD_BIKE_NO_PAVED_MAP_SHORT });
   // Near dawn or dusk: where the rider will be at each light time (lib/lightTimes.ts), one line, in Go too.
   const lightText = lightLine(light);
   if (lightText) lines.push({ key: "light", className: "hint light-times", icon: "sun", text: lightText });
