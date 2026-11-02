@@ -6698,7 +6698,7 @@ so no Play build. At home, in order, with `</dev/null` on every docker command:
   `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved` and
   `sync_upstreams`. On the PC the profile is off: Road Bike is then planned on the standard graph,
   where gravel is packed gravel, and the answer warns of packed gravel (#898). Starting `valhalla-paved` alone
-  there needs about 0.75 GB spare: the owner's call.
+  there needs about 0.75 GB spare; the owner, 2026-11-02: "pc can have road bike too", so start it there alone (`docker compose --profile offroad up -d --no-deps --no-build valhalla-paved`) after checking memory inside WSL.
 - [ ] **The front end**, last.
 - [ ] **Beta**, "A new release sha" with the data bundle (docs/BETA-RUNBOOK.md):
   - Before anything, `free -m`: "available" at least 8803 MiB (the 8086 MiB startup peak with
