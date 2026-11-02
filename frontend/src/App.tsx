@@ -4249,7 +4249,12 @@ export function App() {
     const points = [riderAt, checking.to];
     // Planned at the stop itself, the new trip's line can be the ride after its train: not a trip to change to.
     const trip = rideTripOf(route, points);
-    if (!trip?.onward?.some((part) => part.kind === "transit") || !rideableRoute(route)) return null;
+    if (!trip?.onward?.some((part) => part.kind === "transit") || !rideableRoute(route)) {
+      // Gone, and nothing to change to from here: said once, and the checks stop.
+      if (verdict.savedS !== null) return null;
+      tripCheck.current = null;
+      return TRIP_GONE_SAID;
+    }
     rideNote.current = switchSaid(verdict);
     beginRide(ridePrefs, true, { route, points });
     return null;

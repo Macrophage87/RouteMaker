@@ -62,6 +62,8 @@ test("a trip gone with no other transit trip left is said gone, and nothing is c
   assert.deepEqual(tripVerdict(trip, { options: [opt(RIDE, 1560, true)], asked_gone: true }, NOW), { kind: "gone" });
   assert.equal(TRIP_GONE_SAID, "Your trip is no longer running as planned.");
   // App says it once: the checks stop.
+  // Gone, and the trip it would change to cannot be ridden from here: said gone too, the checks stop.
+  assert.match(app, /if \(verdict\.savedS !== null\) return null;\s*tripCheck\.current = null;\s*return TRIP_GONE_SAID;/);
   assert.match(app, /if \(verdict\.kind === "gone"\) \{\s*(?:\/\/.*\s*)?tripCheck\.current = null;\s*return TRIP_GONE_SAID;/);
 });
 
