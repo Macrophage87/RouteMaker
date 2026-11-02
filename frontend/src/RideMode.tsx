@@ -278,6 +278,8 @@ export const rideVoice = new Voice(rideSpeech());
 
 /** Said as the ride starts, inside the Start press, so the voice is unlocked by it. */
 export const RIDE_STARTED = t("Ride started.");
+/** As a walk starts (Walk, Walk + 🚆🚌: its button says "Start walk"). */
+export const WALK_STARTED = t("Walk started.");
 /** How long after the start its note (startNote) is said: after "Ride started.". */
 export const START_NOTE_MS = 1_500;
 /** The top row's words made smaller a step at a time where a word does not fit (the owner, 2026-10-31), to at most half size. */
@@ -286,6 +288,8 @@ const TOP_FIT_MIN = 0.5;
 
 /** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
 export const END_RIDE_NAME = t("End ride");
+/** Its words on a walk. */
+export const END_WALK_NAME = t("End walk");
 /** The least a long instruction shrinks to at normal text, from its own size (styles.css .cue-text, 1.5rem): the ride's
  *  20 px for street names (the owner, 2026-10-20); longer still, its second line ends in "…". */
 const CUE_TEXT_MIN_PX = 20;
@@ -402,8 +406,8 @@ export const RIDE_SAFETY = ridesHidden() ? RIDE_SAFETY_APP : RIDE_SAFETY_BROWSER
 export const RIDE_SAFETY_SHORT = t("You ride at your own risk; the route can be wrong.");
 
 /** Called inside the Start ride press: unlock the voice with the first sentence, where the rider chose it. */
-export function startRideGesture(prefs: RidePrefs): void {
-  if (toVoice(prefs.output)) rideVoice.unlock(RIDE_STARTED);
+export function startRideGesture(prefs: RidePrefs, walk = false): void {
+  if (toVoice(prefs.output)) rideVoice.unlock(walk ? WALK_STARTED : RIDE_STARTED);
   // iPhones give the compass for the map's first heading only once allowed, asked inside this press (lib/compassHeading.ts).
   askCompass();
 }
@@ -2474,7 +2478,11 @@ export function RideMode({
       busy = true;
       void check(here, open)
         .then((said) => {
-          if (said && open()) notify(said);
+          // Shown as well as said (the release review's S2): a rider on "on screen only", or who cannot hear it.
+          if (said && open()) {
+            notify(said);
+            showToast(said);
+          }
         })
         .catch(() => {})
         .finally(() => {
@@ -2482,7 +2490,7 @@ export function RideMode({
         });
     }, TRIP_CHECK_MS);
     return () => clearInterval(timer);
-  }, [tripChecking, notify]);
+  }, [tripChecking, notify, showToast]);
   const destinationName = ride.arrived && !plan.current.loop ? (stopName?.(plan.current.points[plan.current.points.length - 1]) ?? null) : null;
   // The distance's metric in brackets a size smaller, so the line stays one line with large text.
   // A re-route's U-turn is now: no distance (it is at the line's start, behind the rider). One further along has its distance.
@@ -2816,10 +2824,10 @@ export function RideMode({
               <button type="button" className="primary ride-end ride-done" onClick={end}>
                 <Icon name="check" size={22} />
                 {RIDE_DONE_TEXT}
-                <span className="visually-hidden">: {END_RIDE_NAME}</span>
+                <span className="visually-hidden">: {trip?.onFoot ? END_WALK_NAME : END_RIDE_NAME}</span>
               </button>
             ) : (
-              <SlideToEnd onEnd={end} onTap={slideHint} />
+              <SlideToEnd onEnd={end} onTap={slideHint} name={trip?.onFoot ? END_WALK_NAME : END_RIDE_NAME} />
             )}
             {/* Road closed (v0.8.2; in the top row since v0.9.0, the owner, 2026-10-18: "a button you'd want to hit
                 on the fly"): one press while riding, no menu. */}

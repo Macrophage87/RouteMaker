@@ -53,6 +53,7 @@ export interface CheckedTrip {
 
 export type TripVerdict =
   | { kind: "same"; arrivesAt: number; key: string }
+  | { kind: "gone" }
   | { kind: "late"; arrivesAt: number; key: string }
   | { kind: "switch"; key: string; label: string; savedS: number | null };
 
@@ -69,12 +70,15 @@ export function checkedTripOf(plan: Pick<TransitPlan, "key">): CheckedTrip {
 /**
  * What a fresh plan from where the rider is (`fresh`, asked at `now` with the trip's key as `transit_option`) says of
  * the trip ridden. Its options are best first (the API's ranking: time, with busy riding and junction waits counted).
+ * Only a trip with transit replaces it: riding or walking the whole way, though quicker, is the trip the rider did not
+ * pick (the release review's S2), so a delay on their train is still said. Gone, with no other transit trip: said, and
+ * the ride goes on as it is (`gone`).
  */
 export function tripVerdict(trip: CheckedTrip, fresh: Pick<TransitPlan, "options" | "asked_gone">, now: number): TripVerdict | null {
-  const best = fresh.options[0];
+  const best = fresh.options.find((o) => !o.direct && !o.walk);
   const mine = chosenOf(fresh);
+  if (fresh.asked_gone) return best ? { kind: "switch", key: best.key, label: best.label, savedS: null } : { kind: "gone" };
   if (!best || !mine) return null;
-  if (fresh.asked_gone) return { kind: "switch", key: best.key, label: best.label, savedS: null };
   if (best.key !== mine.key && best.total_s + SWITCH_MIN_S <= mine.total_s) {
     return { kind: "switch", key: best.key, label: best.label, savedS: mine.total_s - best.total_s };
   }
@@ -85,9 +89,13 @@ export function tripVerdict(trip: CheckedTrip, fresh: Pick<TransitPlan, "options
 
 /** Said as the ride changes to the quicker trip. */
 export function switchSaid(verdict: Extract<TripVerdict, { kind: "switch" }>): string {
-  if (verdict.savedS === null) return t("Your trip is no longer running as planned. Changed to: {trip}.", { trip: verdict.label });
+  // What it changed to first: the toast shows the first sentence only (the release review's N3).
+  if (verdict.savedS === null) return t("Changed to: {trip}. Your trip was no longer running as planned.", { trip: verdict.label });
   return t("Changed to a quicker trip, about {minutes} min sooner: {trip}.", { minutes: Math.round(verdict.savedS / 60), trip: verdict.label });
 }
+
+/** Said where the trip ridden is gone and no other transit trip is left: the ride goes on as it is. */
+export const TRIP_GONE_SAID = t("Your trip is no longer running as planned.");
 
 /** Said of a delay on the trip ridden: "Delays on the way: now arriving about 8:42 am." */
 export function lateSaid(arrivesAt: number, clock: (at: number) => string = clockTime): string {

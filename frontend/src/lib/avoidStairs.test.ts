@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { routeRequestBody } from "./api.ts";
-import { AVOID_STAIRS_KEY, readAvoidStairs, writeAvoidStairs } from "./avoidStairs.ts";
+import { AVOID_STAIRS_HELP, AVOID_STAIRS_KEY, readAvoidStairs, writeAvoidStairs } from "./avoidStairs.ts";
 import type { LonLat } from "./geo.ts";
 
 const LINE: LonLat[] = [
@@ -48,4 +48,9 @@ test("Settings shows it as a switch on the Riding tab, for Go and Plan alike", (
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /addEventListener\(AVOID_STAIRS_EVENT/);
   assert.match(app, /stairs: twoPointsOnly\(preset\) && avoidStairs/);
+});
+
+// The release review's S5: one short sentence that holds on Walk too (it is the switch's description, heard on each focus).
+test("the Avoid stairs help is short and says walks, not only Bikeshare and transit trips", () => {
+  assert.equal(AVOID_STAIRS_HELP, "Walks keep off steps where a ramp or elevator is near. Kept on this device.");
 });

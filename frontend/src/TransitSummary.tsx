@@ -55,7 +55,16 @@ function StepMore({ step }: { step: TransitStep }) {
         <summary>{stops.length === 1 ? t("1 transit stop") : t("{count} transit stops", { count: stops.length })}</summary>
         <ol>
           {stops.map((stop, i) => (
-            <li key={`${i}-${stop.name}`}>{i === stops.length - 1 ? <strong>{stop.name}</strong> : stop.name}</li>
+            <li key={`${i}-${stop.name}`}>
+              {/* Marked in words too, as stop by stop's card is: a screen reader does not say bold (the release review's N2). */}
+              {i === stops.length - 1 ? (
+                <>
+                  <strong>{stop.name}</strong> · {t("get off")}
+                </>
+              ) : (
+                stop.name
+              )}
+            </li>
           ))}
         </ol>
       </details>

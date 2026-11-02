@@ -9,7 +9,7 @@ import { t } from "./i18n.ts";
 
 export const AVOID_STAIRS_KEY = "routemaker.walk.avoidStairs";
 export const AVOID_STAIRS_LABEL = t("Avoid stairs on walks");
-export const AVOID_STAIRS_HELP = t("Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.");
+export const AVOID_STAIRS_HELP = t("Walks keep off steps where a ramp or elevator is near. Kept on this device.");
 
 export function readAvoidStairs(store: KeyValueStore | null = browserStore()): boolean {
   try {
