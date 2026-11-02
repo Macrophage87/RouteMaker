@@ -2384,6 +2384,9 @@ export function RideMode({
     if (!arrivalRacks) return;
     const next = rackShown < 0 ? 0 : (rackShown + 1) % arrivalRacks.length;
     setRackShown(next);
+    // Said as well as shown: the line under Arrived changes with no other sign (the release review).
+    const at = rackPoint(arrivalRacks[next].rack);
+    if (rackFrom) notify(rideNextRackLine(haversineM(rackFrom, at), compassWord(rackFrom, at)));
     onShowRackRef.current?.(arrivalRacks[next]);
     onShowPlace?.(rackPoint(arrivalRacks[next].rack));
   };

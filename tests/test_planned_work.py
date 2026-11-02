@@ -52,7 +52,7 @@ class TestProtrack:
         assert pw.parse_protrack({"features": [sidewalk, alley]}, NOW) == []
 
     def test_streetscape_work_is_kept_though_it_contains_tree(self) -> None:
-        """"Streetscape" rebuilds the road; only tree work leaves it as it was."""
+        """A Streetscape project rebuilds the road; only tree work leaves it as it was."""
         streetscape = protrack(PrimaryWorkType="Streetscape")
         trees = protrack(PrimaryWorkType="Tree Planting")
         (zone,) = pw.parse_protrack({"features": [streetscape, trees]}, NOW)

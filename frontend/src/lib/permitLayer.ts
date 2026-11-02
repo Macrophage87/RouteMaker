@@ -19,7 +19,7 @@ import { LayerSection } from "./layerSection.ts";
 
 export const PERMITS_LABEL = "Potential closures";
 export const PERMITS_HINT =
-  "Roads and bike lanes that work permits or planned projects may close some time in their window, often for a day or two. Worth checking for a group ride. Routes are not changed for them.";
+  "Roads and bike lanes that permits or planned work may close for a day or two in their window. Routes are not changed for them.";
 export const PERMITS_PREF_KEY = "routemaker.permitsLayer";
 
 type Store = Pick<Storage, "getItem" | "setItem">;

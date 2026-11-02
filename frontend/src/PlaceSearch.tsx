@@ -117,15 +117,17 @@ export const MAKE_DESTINATION = t("Make this the destination");
 
 const CHOICE_LABEL: Record<PlaceChoice, string> = { start: t("Start"), end: t("Destination"), via: t("Stop") };
 
-export function searchStatus(result: GeoResult | null, query: string): string {
+export function searchStatus(result: GeoResult | null, query: string, saved = 0): string {
   if (result === null) return "";
   if (!result.ok) {
     return result.status === 429 || result.status === 503
       ? t("Search is busy; keep typing or try again in a moment.")
       : t("Place search is not available right now.");
   }
-  if (result.places.length === 0) return nothingFoundText(query);
-  const found = result.places.length === 1 ? t("1 place found.") : t("{count} places found.", { count: result.places.length });
+  // Home, Work and favorites matched by name are listed above the search's places, so they count too.
+  const count = result.places.length + saved;
+  if (count === 0) return nothingFoundText(query);
+  const found = count === 1 ? t("1 place found.") : t("{count} places found.", { count });
   return namesCityOutside(query) ? `${found} ${COVERS_LINE}` : found;
 }
 
@@ -689,12 +691,12 @@ export function PlaceSearch({
         {(!single || planBox === "add") && full && ` ${t("The route has as many points as it can take, so no stop can be added.")}`}
       </p>
       <p className="visually-hidden" role="status" aria-live="polite">
-        {answeredNow ? searchStatusWithHere(searchStatus(result, answered), expanded && showHere) : ""}
+        {answeredNow ? searchStatusWithHere(searchStatus(result, answered, saved.length), expanded && showHere) : ""}
       </p>
       {searching && <p className="hint">{t("Searching…")}</p>}
       {answeredNow && expanded && places.length > 0 && namesCityOutside(answered) && <p className="hint">{COVERS_LINE}</p>}
-      {answeredNow && result && (!result.ok || result.places.length === 0) && (
-        <p className="hint">{searchStatus(result, answered)}</p>
+      {answeredNow && result && (!result.ok || result.places.length + saved.length === 0) && (
+        <p className="hint">{searchStatus(result, answered, saved.length)}</p>
       )}
     </div>
   );

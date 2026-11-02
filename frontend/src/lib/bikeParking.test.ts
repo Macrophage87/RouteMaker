@@ -186,3 +186,10 @@ test("Go offers End at the bike rack only for a destination picked or pressed, o
   assert.match(app, /const endRack = goEnd && racks && endPicked \?/);
   assert.match(app, /const forgetDrawn = \(\) => \{[^}]*setPickedEnds\(\[\]\);/);
 });
+
+test("the ride's Next rack says the new rack's line as well as showing it", () => {
+  // The release review: pressing it changed the line under Arrived with nothing said.
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  const press = ride.slice(ride.indexOf("const showNextRack = () => {"), ride.indexOf("const destinationName ="));
+  assert.match(press, /notify\(rideNextRackLine\(haversineM\(rackFrom, at\), compassWord\(rackFrom, at\)\)\)/);
+});

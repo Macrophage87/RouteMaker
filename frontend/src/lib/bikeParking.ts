@@ -261,8 +261,11 @@ export function rackPlaceName(near: RackNear, place: string | null): string {
 export const RACK_SOURCE_ID = "bike-racks";
 export const RACK_LAYER = "bike-racks";
 export const RACK_ICON_ID = "bike-rack";
-/** From block level in: DC alone has nearly 5,000 racks, which would bury the stress map further out. */
-export const RACK_MIN_ZOOM = 15;
+/**
+ * From a couple of blocks in: DC alone has nearly 5,000 racks, and at 15 Go's opening map at Dupont Circle showed about
+ * 70 rack icons over the stress colours (the release review). Go's three pins near a picked end show at any zoom.
+ */
+export const RACK_MIN_ZOOM = 17;
 export const RACK_COLOUR = "#be185d";
 export const RACK_ICON_PX = 18;
 
