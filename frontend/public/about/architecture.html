@@ -625,7 +625,7 @@ elevation with GDAL<sup class="cite"><a href="#ref-14" aria-label="source 14">[1
 slow everyone else. Trips over about 19 mi [30 km] are refined leg by leg. A route can have 2 to 25
 points; very long plans over 93 mi [150 km] ask for confirmation when signed out.</p>
 <p>A plan's answer is kept for up to 2 minutes, as a "From my location" start is a live location (not at all
-for Bikeshare or transit, whose answers are live), so asking
+for Bikeshare or transit, whose answers are live, or Walk, planned as transit is), so asking
 for the same route again (Undo, or opening it again) is answered at once. On the beta server the app server's workers share these answers through a small
 memcached kept only in memory (16 MB of answers); if it is down or slow, the route is simply planned again. When
 you change a plan in Go after its first route is shown but while its full plan is still being worked out, the app
@@ -700,7 +700,7 @@ the new plan goes without waiting for it to finish.</p>
 <thead><tr><th scope="col">Feed</th><th scope="col">Read</th><th scope="col">Used for</th></tr></thead>
 <tbody>
 <tr><th scope="row">Capital Bikeshare (GBFS)<sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup></th><td>About every minute</td><td>Docks, bikes and e-bikes available</td></tr>
-<tr><th scope="row">WMATA<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup></th><td>Every 45 seconds, when asked</td><td>Live departures in transit plans; next trains and buses, incidents, elevator outages</td></tr>
+<tr><th scope="row">WMATA<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup></th><td>Every 45 seconds, when asked</td><td>Live departures in transit plans and in checks of a trip being ridden; next trains and buses, incidents, elevator outages</td></tr>
 <tr><th scope="row">Maryland and Virginia work zones (WZDx)</th><td>Every 5 minutes</td><td>Closures and lane closures</td></tr>
 <tr><th scope="row">Maryland Road Closure Reporter</th><td>Every 15 minutes</td><td>Closures posted by Maryland's counties and towns</td></tr>
 <tr><th scope="row">MPD and AlertDC</th><td>Every 15 minutes</td><td>Closures in the District</td></tr>
