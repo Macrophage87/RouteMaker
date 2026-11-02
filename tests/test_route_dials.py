@@ -2054,6 +2054,9 @@ class TestRoadBike:
         router(standard_router())
         assert post(client, good_body(name)).status_code == 200
         assert seen and {ctx.wait_weight for ctx in seen} == {weight}
+        # At its own stress (40, below the calm search's rate) Road Bike still ranks the
+        # router's alternatives, where a route with fewer lights comes from.
+        assert {ctx.rank_alternates for ctx in seen} == {name == "road-bike"}
 
     def test_off_by_default_and_echoed(self, client, facility_segments, router):
         fake = router(standard_router())

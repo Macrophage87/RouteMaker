@@ -208,6 +208,15 @@ class TestJunctionDelay:
         extra_m = stops.key(top)[2] - smooth.key(top)[2]
         assert extra_m == pytest.approx(refine.QUIET_COST_FACTOR * 3 * 120.0 / QUIET_COST)
 
+    def test_at_three_times_a_route_with_fewer_stops_wins_where_at_once_it_does_not(self) -> None:
+        # Two routes of the same length and calm: the stoppier one rides 100 s quicker. At 1x
+        # the quicker wins; at Road Bike's 3x the one with 30 s fewer waits does.
+        stoppy, smooth = analysis("a"), analysis("b")
+        stoppy.cost_s, smooth.cost_s = 3900.0, 4000.0
+        stoppy.junction_delay_s, smooth.junction_delay_s = 60.0, 30.0
+        assert not refine.better(smooth, stoppy, context())
+        assert refine.better(smooth, stoppy, context(wait_weight=3.0))
+
     def test_a_routes_legs_add_their_delays(self) -> None:
         one, two = analysis("a"), analysis("b")
         one.junction_delay_s, two.junction_delay_s = 30.0, 45.0
