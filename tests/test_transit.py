@@ -40,6 +40,8 @@ from routemaker.ridetime import ZONE
 
 # The API tests take these two of test_route_api's fixtures by name.
 FIXTURES = (router, segments)
+# The real router services, which `installed` replaces with straight lines.
+ROUTING_SERVICES = transit.RoutingServices
 
 REPO = Path(__file__).resolve().parents[1]
 DATA = Path(__file__).parent / "data" / "transit"
@@ -1779,6 +1781,27 @@ class TestApi:
         # Midday (the pinned clock): Orange every 12 minutes, so a 6-minute wait.
         assert chosen["steps"][2]["wait_s"] == 360 and chosen["band"] == "midday"
 
+    def test_a_trip_asked_for_that_is_no_longer_running_is_said_gone(
+        self, client, segments, router, installed
+    ) -> None:
+        """Review of v0.18.0 (S4): a ride checking its trip (frontend lib/tripCheck.ts) asks
+        for it by key; where it is in none of the options (missed, cancelled), the best is
+        chosen and the answer says the trip asked for is gone, so the rider is told "Your
+        trip is no longer running as planned" rather than switched quietly."""
+        router(standard_router())
+        first = post_transit(client, [CAPITOL_HILL, DOWNTOWN]).json()["transit"]
+        assert first["asked_gone"] is False
+        metro = next(o for o in first["options"] if not o["direct"])
+        kept = post_transit(client, [CAPITOL_HILL, DOWNTOWN], transit_option=metro["key"])
+        assert kept.status_code == 200, kept.content
+        assert kept.json()["transit"]["key"] == metro["key"]
+        assert kept.json()["transit"]["asked_gone"] is False
+        gone = post_transit(client, [CAPITOL_HILL, DOWNTOWN], transit_option="no-such-trip")
+        assert gone.status_code == 200, gone.content
+        trip = gone.json()["transit"]
+        assert trip["asked_gone"] is True
+        assert trip["key"] != "no-such-trip" and trip["key"] == first["key"]
+
     def test_a_novice_hop_is_planned_past_the_busy_stretch(
         self, client, segments, router, installed, monkeypatch
     ) -> None:
@@ -2063,6 +2086,27 @@ class TestApi:
             ).status_code
             == 400
         )
+
+    @pytest.mark.parametrize("preset", [presets.WALK, presets.WALK_TRANSIT])
+    def test_walk_asks_the_router_for_its_turns_and_avoids_stairs_where_asked(
+        self, preset, client, segments, router, installed, monkeypatch
+    ) -> None:
+        """Review of v0.18.0 (S2): Walk's and Walk + 🚆🚌's walks ask the router itself for
+        their maneuvers (turn by turn on foot, #886), and with Avoid stairs on (#887) for a
+        step-free way (`walk_turns.STEP_FREE_PENALTY_S`); with it off, no step penalty."""
+        from core import walk_turns
+
+        monkeypatch.setattr(transit, "RoutingServices", ROUTING_SERVICES)
+        for avoid in (True, False):
+            fake = router(standard_router())
+            response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], preset, avoid_stairs=avoid)
+            assert response.status_code == 200, response.content
+            routed = [p for url, p in fake.calls if url.endswith("/route")]
+            walks = [p for p in routed if p["costing"] == "pedestrian"]
+            assert walks, (preset, avoid)
+            assert all(p["directions_type"] == "maneuvers" for p in walks)
+            steps = [p["costing_options"].get("pedestrian", {}).get("step_penalty") for p in walks]
+            assert steps == [walk_turns.STEP_FREE_PENALTY_S if avoid else None] * len(walks)
 
     def test_a_transit_trip_is_two_points_no_loop_and_options_only_on_transit(
         self, client, router, installed

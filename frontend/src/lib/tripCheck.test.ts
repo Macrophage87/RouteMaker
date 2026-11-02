@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { CHECKED_PRESETS, LATE_TOLD_S, SWITCH_MIN_S, TRIP_GONE_SAID, checkedTripOf, lateSaid, switchSaid, tripChecked, tripVerdict } from "./tripCheck.ts";
+import { BOARDING_MS, CHECKED_PRESETS, LATE_TOLD_S, SWITCH_MIN_S, TRIP_CHECK_MS, TRIP_GONE_SAID, checkedTripOf, lateSaid, switchSaid, tripChecked, tripVerdict } from "./tripCheck.ts";
 
 const ORANGE = "Ride, Metro to Federal Triangle (Orange Line), ride";
 const BLUE = "Ride, Metro to Federal Triangle (Blue Line), ride";
@@ -100,4 +100,27 @@ test("the ride screen checks only before boarding, a share bike's only on the wa
 
 test("what a check says is shown as well as said (the release review's S2)", () => {
   assert.match(ride, /if \(said && open\(\)\) \{\s*notify\(said\);\s*showToast\(said\);/);
+});
+
+// The release review's S5: the owner's numbers as numbers, so a threshold moved fails here and not only where the cases
+// are built from the constant.
+test("a check every 2 minutes, a switch at 3 minutes saved, a delay said at 3 minutes, the last check a minute before boarding", () => {
+  assert.equal(TRIP_CHECK_MS, 120_000);
+  assert.equal(SWITCH_MIN_S, 180);
+  assert.equal(LATE_TOLD_S, 180);
+  assert.equal(BOARDING_MS, 60_000);
+});
+
+test("a trip 3 minutes quicker replaces the one ridden; 2 min 59 s quicker does not", () => {
+  const trip = { key: KEYED(ORANGE), arrivesAt: NOW + 1_800_000 };
+  const kept = tripVerdict(trip, { options: [opt(BLUE, 1500), opt(ORANGE, 1679, true)] }, NOW);
+  assert.equal(kept?.kind, "same");
+  const switched = tripVerdict(trip, { options: [opt(BLUE, 1500), opt(ORANGE, 1680, true)] }, NOW);
+  assert.deepEqual(switched, { kind: "switch", key: KEYED(BLUE), label: BLUE, savedS: 180 });
+});
+
+test("a delay of 3 minutes is said; 2 min 59 s is not", () => {
+  const trip = { key: KEYED(ORANGE), arrivesAt: NOW + 1_800_000 };
+  assert.equal(tripVerdict(trip, { options: [opt(ORANGE, 1979, true)] }, NOW)?.kind, "same");
+  assert.equal(tripVerdict(trip, { options: [opt(ORANGE, 1980, true)] }, NOW)?.kind, "late");
 });

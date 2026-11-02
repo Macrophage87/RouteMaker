@@ -1,5 +1,7 @@
 """Turn-by-turn on foot (Stephen, 2026-11-02): a walk's turns from the router's maneuvers."""
 
+import pytest
+
 from core import walk_turns
 
 SHAPE = [(-77.0, 38.9), (-77.0, 38.901), (-77.001, 38.901), (-77.001, 38.9012), (-77.002, 38.9012)]
@@ -55,3 +57,40 @@ def test_avoid_stairs_puts_a_step_penalty_on_the_walk_only_within_its_block() ->
     # The caller's payload is left as it was, and the setting ends with the block.
     assert payload["costing_options"]["pedestrian"] == {"walking_speed": 4.8}
     assert not walk_turns.avoiding_stairs()
+
+
+# Review of v0.18.0 (S10): each of Valhalla's turning maneuvers is said as its own movement,
+# so a walker is never told "left" at a sharp right (valhalla/odin/maneuver.h).
+@pytest.mark.parametrize(
+    ("maneuver_type", "movement"),
+    [
+        (9, "bear_right"),  # slight right
+        (10, "right"),
+        (11, "right"),  # sharp right
+        (12, "uturn"),  # U-turn right
+        (13, "uturn"),  # U-turn left
+        (14, "left"),  # sharp left
+        (15, "left"),
+        (16, "bear_left"),  # slight left
+    ],
+)
+def test_each_turning_maneuver_is_said_as_its_movement(maneuver_type, movement) -> None:
+    leg = _leg({"type": maneuver_type, "begin_shape_index": 1, "street_names": ["F St NE"]})
+    assert walk_turns.turns_of(leg, SHAPE) == [
+        {"movement": movement, "street": "F St NE", "point": [-77.0, 38.901]}
+    ]
+
+
+@pytest.mark.parametrize("maneuver_type", [1, 2, 3, 4, 5, 6, 7, 8, 17, 18, 19, 20, 21])
+def test_a_maneuver_that_does_not_turn_is_not_said(maneuver_type) -> None:
+    leg = _leg({"type": maneuver_type, "begin_shape_index": 1, "street_names": ["F St NE"]})
+    assert walk_turns.turns_of(leg, SHAPE) == []
+
+
+def test_a_walk_carries_at_most_40_turns() -> None:
+    leg = _leg(
+        *({"type": 10, "begin_shape_index": 1, "street_names": [f"{n} St"]} for n in range(41))
+    )
+    turns = walk_turns.turns_of(leg, SHAPE)
+    assert len(turns) == 40
+    assert turns[-1]["street"] == "39 St"

@@ -5186,8 +5186,9 @@ def test_a_reviewers_surface_penalty_reaches_every_graph_as_its_class(workspace,
 
 
 def build_road_bike_extract(path: Path) -> None:
-    """The toy extract (`build_one_road_extract`), and a creek trail that zigzags 15 m either
-    side of its line every 43 m or so (way 600)."""
+    """The toy extract (`build_one_road_extract`), a creek trail that zigzags 15 m either
+    side of its line every 43 m or so (way 600), and tracks of fine gravel (way 700) and
+    compacted (way 800), the C&O towpath's kind, beside the toy's gravel track (way 300)."""
     build_one_road_extract(path, highway="residential")
     staged = Path(path).with_suffix(".staged.osm.pbf")
     shutil.move(path, staged)
@@ -5213,6 +5214,15 @@ def build_road_bike_extract(path: Path) -> None:
                 tags={"highway": "cycleway", "name": "Zigzag Creek Trail"},
             )
         )
+        for way_id, surface in ((700, "fine_gravel"), (800, "compacted")):
+            writer.add_way(
+                osmium.osm.mutable.Way(
+                    id=way_id,
+                    nodes=[5, 6],
+                    version=1,
+                    tags={"highway": "track", "surface": surface},
+                )
+            )
     finally:
         close_writer(writer)
         staged.unlink(missing_ok=True)
@@ -5222,7 +5232,8 @@ def test_only_the_road_bike_graph_prices_gravel_as_gravel_and_marks_winding_trai
     workspace, states
 ) -> None:
     """The owner, 2026-11-02 (Road Bike): its graph alone carries `rm:rough_unpaved` on a
-    gravel way and `rm:winding` on a trail that bends like Sligo Creek Trail; a paved trail
+    gravel, fine gravel or compacted way (the owner: road bikes "can't handle gravel or
+    dirt") and `rm:winding` on a trail that bends like Sligo Creek Trail; a paved trail
     that runs straight carries neither, and no other graph carries either tag."""
     from pipeline.extract import read_ways
 
@@ -5231,7 +5242,9 @@ def test_only_the_road_bike_graph_prices_gravel_as_gravel_and_marks_winding_trai
     for variant in Variant:
         tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
         road_bike = variant is Variant.PAVED
-        assert (tags[300].get("rm:rough_unpaved") == "yes") is road_bike, variant
+        for gravel in (300, 700, 800):
+            way = tags.get(gravel, {})
+            assert (way.get("rm:rough_unpaved") == "yes") is road_bike, (variant, gravel)
         assert (tags.get(600, {}).get("rm:winding") == "yes") is road_bike, variant
         straight = tags.get(200, {})
         assert "rm:rough_unpaved" not in straight and "rm:winding" not in straight, variant
