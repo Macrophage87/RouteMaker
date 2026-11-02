@@ -2058,6 +2058,33 @@ class TestRoadBike:
         # router's alternatives, where a route with fewer lights comes from.
         assert {ctx.rank_alternates for ctx in seen} == {name == "road-bike"}
 
+    def test_a_router_that_does_not_answer_falls_back_to_the_standard_map_and_says_which(
+        self, client, facility_segments, router
+    ):
+        """The page tells the rider the paved-only map is not available from the answer's
+        `variant` (frontend/src/lib/roadBike.ts; the v0.18.0 release review)."""
+        standard = standard_router()
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["paved"]):
+                raise routing.RouterUnavailable("connection refused")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        body = post(client, good_body("road-bike")).json()
+        assert body["preset"] == "road-bike" and body["variant"] == "standard"
+        assert routing._paved_down()
+
+    def test_a_road_bike_map_not_yet_promoted_plans_on_standard(
+        self, client, facility_segments, router, monkeypatch
+    ):
+        monkeypatch.setattr(routing, "_paved_is_promoted", lambda: False)
+        fake = router(standard_router())
+        body = post(client, good_body("road-bike")).json()
+        assert body["variant"] == "standard"
+        base = settings.VALHALLA_UPSTREAMS["paved"]
+        assert all(not url.startswith(base) for url, _ in fake.calls)
+
     def test_off_by_default_and_echoed(self, client, facility_segments, router):
         fake = router(standard_router())
         body = post(client, good_body("cargo")).json()

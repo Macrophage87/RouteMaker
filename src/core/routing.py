@@ -1971,7 +1971,8 @@ _offroad_failed_at: float | None = None
 # its answer says so (`mtb.limited` = no_mtb_graph).
 _mtb_failed_at: float | None = None
 # The Road Bike router (`Variant.PAVED`), a seventh behind the same profile, falls back the
-# same way: the ride is then planned on the standard graph, where gravel is packed gravel.
+# same way: the ride is then planned on the standard graph, where gravel is packed gravel, and
+# the page warns the rider from the answer's `variant` (frontend/src/lib/roadBike.ts).
 _paved_failed_at: float | None = None
 TWIN_VARIANTS = (
     Variant.WEEKEND.value,
