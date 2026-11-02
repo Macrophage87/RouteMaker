@@ -173,6 +173,7 @@ def test_the_update_stages_beside_the_served_tables_and_renames_them_in(beta) ->
     assert psql(BETA_DB, "select count(*) from stress_tile_cache") == "0"
     assert psql(BETA_DB, "select count(*) from app_user") == "2"
     assert "beta accounts untouched: 2" in done.stderr
+    assert "the swap is committed" in done.stderr
     # never asked the app to stop
     assert "stop api worker" not in done.stderr
 
@@ -324,6 +325,7 @@ def test_a_step_failing_inside_the_swap_rolls_the_rename_back_and_is_not_tried_a
     assert done.returncode != 0
     assert "the swap failed and was rolled back" in done.stderr
     assert "trying again" not in done.stderr
+    assert "the swap is committed" not in done.stderr
     assert segments("live") == ["old road"]
     assert segments("live_next") == ["new road", "newer road", "newest road"]
     assert schemas() == {"live", "live_next"}

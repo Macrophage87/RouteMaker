@@ -6707,7 +6707,7 @@ so no Play build. At home, in order, with `</dev/null` on every docker command:
     tables for the staging.
   - Pause the agent (`pause --wait`, then `status`); stop api and worker, snapshot the database
     (`--label release`), copy `index.html`.
-  - Check out the tag, set `TAG=`, `check_beta_compose.py --env-file .env` ("beta compose: ok",
+  - Check out the tag, set `TAG=`, `"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env` ("beta compose: ok",
     7.65 GiB resident); build the api image; migrate in the migrate container (0054, 0055).
   - Data: `receive-data.sh verify`, then `db --update-data --stage-only` (the staging swap's first
     run: `live_next`, row counts checked), `sudo ... files` (installs `tiles/paved`), then
