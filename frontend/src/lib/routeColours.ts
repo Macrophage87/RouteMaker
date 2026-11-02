@@ -10,7 +10,7 @@
  * stress map gives the same class, from the shared tokens (stressStyle.js), so
  * a change to the map's palette reaches the route too.
  */
-import { ACCESSIBILITY_PALETTE, FACILITIES, currentPalette, currentTiers, halfStep, styleKey } from "../stressStyle.js";
+import { ACCESSIBILITY_PALETTE, FACILITIES, HIGH_STRESS_LANE_MIN_TIER, currentPalette, currentTiers, darkMapOn, halfStep, styleKey } from "../stressStyle.js";
 import { MASS_AVOID, MASS_BANDS, bandIndex, dashInWidths } from "../massStyle.js";
 import type { StressSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
@@ -362,16 +362,16 @@ function pointAt(a: LonLat, b: LonLat, t: number): LonLat {
 }
 
 /**
- * The route cut into its coloured sections, in route order, or null when the
- * answer has no usable sections (an older API, or ones that do not meet end to
- * end) and the route is drawn as one line instead. Adjacent sections of one
- * class are joined; each section shares its first point with the last one's
- * end, so the line has no gaps.
+ * The route's line cut at its spans' distances (scaled to the line as drawn), in route order: one piece
+ * a run of spans `keyOf` gives one key, each piece sharing its first point with the last one's end, so
+ * the pieces have no gaps. A span `keyOf` gives null is passed over and starts no piece. Null when the
+ * line or the spans are unusable.
  */
-export function routeSections(
+function cutAtSpans(
   coordinates: readonly LonLat[],
   spans: readonly StressSpan[] | undefined,
-): RouteSection[] | null {
+  keyOf: (span: StressSpan) => string | null,
+): { key: string; span: StressSpan; coordinates: LonLat[] }[] | null {
   if (coordinates.length < 2 || !usableSpans(spans)) return null;
   const along = [0];
   for (let i = 1; i < coordinates.length; i += 1) {
@@ -380,11 +380,11 @@ export function routeSections(
   const drawn = along[along.length - 1];
   if (!(drawn > 0)) return null;
   const scale = drawn / spans[spans.length - 1].to_m;
-  const capacity = usesCapacity(spans);
 
-  const sections: RouteSection[] = [];
+  const pieces: { key: string; span: StressSpan; coordinates: LonLat[] }[] = [];
   let vertex = 1; // the next vertex not yet passed
   let start: LonLat = coordinates[0];
+  let previousKey: string | null = null;
   spans.forEach((span, index) => {
     const last = index === spans.length - 1;
     const end = last ? drawn : span.to_m * scale;
@@ -404,15 +404,114 @@ export function routeSections(
       points.push(finish);
     }
     start = finish;
-    const cls = spanClass(span, capacity);
-    const previous = sections[sections.length - 1];
-    if (previous && previous.key === cls.key) {
+    const key = keyOf(span);
+    const previous = pieces[pieces.length - 1];
+    if (key !== null && previous && previousKey === key) {
       previous.coordinates.push(...points.slice(1));
-    } else if (points.length >= 2) {
-      sections.push({ key: cls.key, color: cls.color, halo: cls.halo, width: cls.width, haloWidth: cls.haloWidth, ...(cls.ring ? { ring: cls.ring, ringWidth: cls.ringWidth } : {}), ...(cls.mark ? { mark: cls.mark } : {}), ...(cls.dash ? { dash: cls.dash } : {}), ...(cls.halfDash ? { halfDash: cls.halfDash } : {}), ...(cls.halfOutline ? { halfOutline: cls.halfOutline } : {}), coordinates: points });
+    } else if (key !== null && points.length >= 2) {
+      pieces.push({ key, span, coordinates: points });
     }
+    // The previous span's key, not the last piece's: a skipped span (null, or a point past the line's end)
+    // ends the run, so lane marks never bridge a stretch with none.
+    previousKey = key;
   });
-  return sections.length > 0 ? sections : null;
+  return pieces;
+}
+
+/**
+ * The route cut into its coloured sections, in route order, or null when the
+ * answer has no usable sections (an older API, or ones that do not meet end to
+ * end) and the route is drawn as one line instead. Adjacent sections of one
+ * class are joined; each section shares its first point with the last one's
+ * end, so the line has no gaps.
+ */
+export function routeSections(
+  coordinates: readonly LonLat[],
+  spans: readonly StressSpan[] | undefined,
+): RouteSection[] | null {
+  const capacity = usesCapacity(spans);
+  const pieces = cutAtSpans(coordinates, spans, (span) => spanClass(span, capacity).key);
+  if (!pieces || pieces.length === 0) return null;
+  return pieces.map(({ span, coordinates: points }) => {
+    const cls = spanClass(span, capacity);
+    return { key: cls.key, color: cls.color, halo: cls.halo, width: cls.width, haloWidth: cls.haloWidth, ...(cls.ring ? { ring: cls.ring, ringWidth: cls.ringWidth } : {}), ...(cls.mark ? { mark: cls.mark } : {}), ...(cls.dash ? { dash: cls.dash } : {}), ...(cls.halfDash ? { halfDash: cls.halfDash } : {}), ...(cls.halfOutline ? { halfOutline: cls.halfOutline } : {}), coordinates: points };
+  });
+}
+
+/** The bike lanes the route marks in its white band: a protected lane's posts and a painted lane's dots. */
+export type RouteLaneFacility = "protected" | "lane";
+
+/**
+ * The lane marks' rails (the owner, 2026-11-01: "See if you can mark pbls and painted lanes on the
+ * highlighted route as well", and "Add it in" to the mockup): the map's own facility rails
+ * (stressStyle.js FACILITIES), drawn either side of the route's section inside its white band, so the
+ * route's stress colours are untouched. A protected lane's are its magenta posts, a painted lane's the
+ * pale violet dots, thinner. A path needs none: it has its own colour on the route. Each rail keeps half a
+ * pixel of white from the section's outer edge (its ring, or else its halo) and a pixel from the casing.
+ */
+export const ROUTE_LANE_RAIL = { protected: 2.5, lane: 1.5 } as const;
+/** The posts' and dots' `line-dasharray`, in rail widths: posts about 3 px on, 2 off; dots 1.6 on, 4 off. */
+export const ROUTE_LANE_DASH: Readonly<Record<RouteLaneFacility, readonly number[]>> = { protected: [1.2, 0.8], lane: [1.07, 2.67] };
+const LANE_COLOURS = Object.fromEntries(
+  FACILITIES.filter((f: { facility: string }) => f.facility === "protected" || f.facility === "lane").map((f: { facility: string; color: string }) => [f.facility, f.color]),
+) as Record<RouteLaneFacility, string>;
+
+/** A span's lane mark: its facility when it is one the route marks and shown, else null. */
+function laneFacility(span: StressSpan, showHighStressLanes: boolean): RouteLaneFacility | null {
+  if (span.facility === "protected") return "protected";
+  // A painted lane on LTS 4 and Avoid is not drawn unless the rider asks (OWNER-DECISIONS 275), as on the map.
+  if (span.facility === "lane") return showHighStressLanes || !(typeof span.tier === "number" && span.tier >= HIGH_STRESS_LANE_MIN_TIER) ? "lane" : null;
+  return null;
+}
+
+export interface RouteLaneMark {
+  facility: RouteLaneFacility;
+  color: string;
+  /** The rail's width, thinner where the section is wide and leaves less white. */
+  width: number;
+  /** The gap between the two rails: the section's outer edge and half a pixel of white each side. */
+  gap: number;
+  coordinates: LonLat[];
+}
+
+/**
+ * The route's lane marks, in route order: one a run of one facility on one width of section. None on a
+ * Mass Ride's route (its capacity bands are wider and its rails on the map give way, OWNER-DECISIONS
+ * 325), none without usable spans, and none on a transit trip's later rides (only `coordinates` is cut).
+ */
+export function routeLaneMarks(
+  coordinates: readonly LonLat[],
+  spans: readonly StressSpan[] | undefined,
+  showHighStressLanes: boolean,
+): RouteLaneMark[] {
+  if (usesCapacity(spans)) return [];
+  const outer = (span: StressSpan): number => {
+    const cls = spanClass(span);
+    return cls.ringWidth ?? cls.haloWidth;
+  };
+  const pieces = cutAtSpans(coordinates, spans, (span) => {
+    const facility = laneFacility(span, showHighStressLanes);
+    return facility ? `${facility}:${outer(span)}` : null;
+  });
+  return (pieces ?? []).map(({ span, coordinates: points }) => {
+    const facility = laneFacility(span, showHighStressLanes) as RouteLaneFacility;
+    const gap = outer(span) + 1;
+    // The band less a pixel of white each side against the casing, shared by the gap and the two rails.
+    const width = Math.max(1, Math.min(ROUTE_LANE_RAIL[facility], (ROUTE_BAND_WIDTH - 2 - gap) / 2));
+    return { facility, color: LANE_COLOURS[facility], width, gap, coordinates: points };
+  });
+}
+
+/** The lane marks as GeoJSON, for the map's route-lanes source. */
+export function laneMarkFeatures(marks: readonly RouteLaneMark[]) {
+  return {
+    type: "FeatureCollection" as const,
+    features: marks.map(({ coordinates, ...properties }) => ({
+      type: "Feature" as const,
+      properties,
+      geometry: { type: "LineString" as const, coordinates },
+    })),
+  };
 }
 
 /** The sections as GeoJSON, for the map's "route-stress" source. */
@@ -483,6 +582,24 @@ export function routeCasing(palette: string = currentPalette()): string {
   return palette === ACCESSIBILITY_PALETTE ? ROUTE_CASING_CVD : ROUTE_BLUE;
 }
 
+/**
+ * The route's casing on the dark map (the owner, 2026-11-01: battery audit; stressStyle.js DARK_MAP): the blue and the
+ * slate are under 3:1 on the dark flavour's surfaces, so there the blue is a lighter blue and the slate white, each 3:1
+ * or more on every dark surface (darkMap.test.ts). White is the one colour 3:1 from the colour-blind-friendly LTS 2
+ * that is also light enough for the dark map; the halo under each section still tells it from the class. The light
+ * map's casings are unchanged, and so are the legend's and the route choice's colours, which sit on the panel.
+ */
+export const ROUTE_BLUE_DARK_MAP = "#60a5fa";
+export const ROUTE_CASING_CVD_DARK_MAP = "#ffffff";
+
+/** A route casing as the map draws it: its dark-map variant while the dark map shows, else as given. */
+export function casingOnMap(casing: string, dark: boolean = darkMapOn()): string {
+  if (!dark) return casing;
+  if (casing === ROUTE_BLUE) return ROUTE_BLUE_DARK_MAP;
+  if (casing === ROUTE_CASING_CVD) return ROUTE_CASING_CVD_DARK_MAP;
+  return casing;
+}
+
 /** The casing under a one-colour route, as it was before the sections. */
 export const ROUTE_CASING_PLAIN = "#ffffff";
 export const ROUTE_LINE_WIDTH = 5;
@@ -509,7 +626,7 @@ export function routePaint(
     lineOpacity: hasSections ? 0 : shown,
     sectionOpacity: hasSections ? shown : 0,
     haloOpacity: hasSections ? shown : 0,
-    casingColor: hasSections ? sectionCasing : ROUTE_CASING_PLAIN,
+    casingColor: hasSections ? casingOnMap(sectionCasing) : ROUTE_CASING_PLAIN,
   };
 }
 

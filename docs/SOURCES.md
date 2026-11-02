@@ -184,6 +184,19 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     map's federal-land shading (`frontend/src/federal-data/federal-land.json`, sha256
     `773f230f94c5a5b5ce576b17c09b83a3a4e10d5b8627f1d2c0e972d2b10ce4af`).
     `fixtures/datasets/README.md`, "Federal land".
+  - **Public Bike Racks** (District Department of Transportation), item
+    `650302fe184a4ebf84ca355e6f31fa18`, layer
+    <https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Transportation_Bikes_Trails_WebMercator/MapServer/168>;
+    licence CC BY 4.0 (the item's licence field; data.gov's record, updated 2026-10-27).
+    Retrieved 2026-11-01 with `scripts/build_bike_parking.py --ddot`: 4,862 racks, each a
+    point and its number of racks (`NUMBERRACKS`), joined into 3,914 places (racks within
+    15 m are one place, their racks added up; "adapted"). Go's bike racks (Stephen, 2026-11-01):
+    pins and "Ride to the bike rack" on a tapped spot's card, "End at the bike rack" under
+    a route's card, and the racks layer drawn with Water and restrooms
+    (`frontend/src/amenity-data/bike-parking.json`; `lib/bikeParking.ts`). DC's racks win
+    over OpenStreetMap's within 25 m. OpenStreetMap's public amenity=bicycle_parking fills the
+    rest of the region: `--pbf` on the PC, 2026-11-01, from the 2026-10-31 extract, 2,753
+    places, 439 dropped for a DDOT rack within 25 m, 2,314 kept (ODbL 1.0); 6,228 places in all.
 
 ## DDOT Pavement Condition Index (DC-PCI)
 
@@ -584,7 +597,7 @@ zones: on the route's map (a red closed stretch, amber for a blocked bike lane, 
 in the route's words, and in the closure check (`POST /api/closures/check`). From v0.12.0 the map
 also shows the closures in force now in its view with no route (`GET /api/closures/map`: red
 closed, orange for a blocked bike lane or a rideable work zone, gone once past their end), and
-DDOT's permits there only with Plan's DC permits switch on. None of the four fed
+DDOT's permits and planned work there only with Plan's Potential closures switch on. None of the four fed
 hosts was reachable from the cloud container this was built in; the readers were built on saved
 sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has the first check.
 
@@ -644,8 +657,9 @@ sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has
 ### AlertDC
 
 - Credit: `AlertDC (HSEMA)`
-- Feed: <https://trainingtrack.hsema.dc.gov/NRss> (the host name says "training" but it carries
-  current alerts), read every 15 minutes. Only traffic and road items are read; every other alert
+- Feed: <https://trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList> (the host name says
+  "training" but it carries current alerts; despite the path it is an HTML list, not RSS, as of
+  2026-11-01), read every 15 minutes. A later "has reopened" update ends the alert it follows. Only traffic and road items are read; every other alert
   type (crime first) is dropped before its text is read, and is never stored, logged or shown.
 - Publisher: DC Homeland Security and Emergency Management Agency.
 - Terms: public government alerts (inferred public). Not legal advice.
@@ -659,6 +673,38 @@ sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has
   park-level "Check before you go" notice with its link, never a closure.
 - Publisher: U.S. National Park Service.
 - Terms: NPS API terms of service (public domain U.S. government data). Not legal advice.
+
+### Planned work: Potential closures (v0.17.0)
+
+Plan's Potential closures layer (off by default; `routemaker.planned_work`), beside DDOT's
+permits: never routed round, never in a route's words, a cue or the closure check.
+
+- **DDOT capital projects (ProTrack+)**. Credit: `DDOT capital projects (ProTrack+, CC BY 4.0)`.
+  Layer: `maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/ProTrackPlusViews/MapServer/1`, read every 6
+  hours. Publisher: District Department of Transportation, via
+  [Open Data DC](https://opendata.dc.gov/). Terms: CC BY 4.0 (DC open data). Not legal advice.
+- **DC Water active work zones**. Credit: `DC Water active work zones`. Layer:
+  `geo.dcwater.com/arcgis/rest/services/Viewer/ActiveWorkZonesPublic/MapServer/0`, read every 6
+  hours. Publisher: DC Water. Terms: a public map service with no licence stated (inferred
+  public; ask DC Water if it is to be redistributed beyond these flags). Not legal advice.
+- **WSSC Water water main construction**. Credit: `WSSC Water water main construction`. Layer:
+  `gisportal.wsscwater.com/gis/rest/services/IYN/Water_Construction1/MapServer/0` (the
+  [construction map](https://www.wsscwater.com/what-we-do/constructionin-your-neighborhood-map)),
+  read every 6 hours; only the project's name, status, dates and line are asked for, never the
+  contact names, phones or emails the layer holds. Publisher: WSSC Water. Terms: a public map
+  service with no licence stated (inferred public). Not legal advice.
+
+### Maryland Road Closure Reporter (v0.17.0)
+
+- Credit: `Maryland Road Closure Reporter (MDOT SHA)`
+- **Maryland Road Closure Reporter (MDOT SHA)**. Layers: `mdgeodata.md.gov/appdata/rest/services/SHA_RoadClosure/RoadClosureActive/MapServer/1`
+  and `.../RoadClosurePlanned/MapServer/1` ([Maryland road closures on MD
+  iMAP](https://data.imap.maryland.gov/datasets/maryland-road-closures)), read every 15 minutes.
+  Where Maryland's counties and towns post closures on their own roads (Montgomery, Howard and
+  Baltimore City do not report there). Routed round while in force (`routemaker.md_closures`); only
+  the closure's own fields are asked for, never the reporting account. Publisher: MDOT SHA, the
+  WZDx feed's publisher. Terms: a public MD iMAP service, "as is", no licence stated (inferred
+  public; ask MDOT SHA before redistributing the records themselves). Not legal advice.
 
 ### Deer-management closures (v0.12.3)
 
