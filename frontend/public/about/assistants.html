@@ -204,7 +204,7 @@ never strays more than 5 miles from Metro.</li>
 <li>The assistant plans through the same route request as the app, so the route is exactly what the app
 would plan.</li>
 <li>Every route is a draft with a link to open it in the app. Nothing is saved until you say so.</li>
-<li>For riders, the connection can only add routes to My routes. It cannot read or change anything else. Instance admins can also have it write draft Featured routes posts.</li>
+<li>For riders, the connection on the web can add routes to My routes and read them when you ask, but never change or delete them. Instance admins can also have it write draft Featured routes posts.</li>
 </ul>
 <p class="find"><strong>Looking for something else?</strong> How the planner works: <a href="/about/routing.html">Routing</a>. How the site is built: <a href="/about/architecture.html">Architecture</a>.</p>
 </div>
@@ -372,7 +372,7 @@ miles from a Metro station."</li>
 <li>"Go by the Capital Crescent Trail instead." "Make it calmer." "Save it as Metro century."</li>
 </ul>
 <p>Every ride type the app has is available, bikeshare and bike plus transit included, with every
-setting: traffic stress, hills, target distance, ride time, gravel and trails, rider weight, cargo,
+setting: traffic stress, hills, target distance, ride time, trails, rider weight, riding speed, cargo,
 trail levels, the bikeshare bike and where to end, and departure time. Each answer gives the distance,
 time, climbing and how much of the route is on each stress level, the roads it takes in order (with miles, stress
 level and designations such as Montgomery County Rustic Roads, scenic byways, the East Coast Greenway
@@ -393,7 +393,7 @@ a route you can ask to keep the points where they are.</p>
 
 </div></details>
 <h2 id="tools">What an assistant can do</h2>
-<p>The assistant has eleven tools, and instance admins get a twelfth. Only <code>save_route</code> adds to My routes, and only when you ask it to save; an admin's <code>draft_route_post</code> writes a draft post that only admins see.</p>
+<p>The assistant has fourteen tools, and instance admins get one more on the web. Only <code>save_route</code> adds to My routes, and only when you ask it to save; an admin's <code>draft_route_post</code> writes a draft post that only admins see.</p>
 <details class="more"><summary>More: What an assistant can do</summary>
 <div class="more-body">
 
@@ -407,8 +407,16 @@ a route you can ask to keep the points where they are.</p>
 <tr><th scope="row"><code>scenic_roads_near</code></th><td>Lists the Montgomery County Rustic Roads, scenic byways, East Coast Greenway and US Bicycle Routes within 5 mi [8 km] of a point, or up to 15 mi [24 km] if asked, nearest first and at most 25, each with its miles in reach, its miles on each stress level and a point on it to route through. So a ride on rustic roads can be asked for in words alone.</td></tr>
 <tr><th scope="row"><code>climbs_near</code></th><td>Lists the categorised climbs near a point, with name, miles, gain, grade and surface. For interval training it keeps those long enough for one effort, steepest first, and plans up the first few to check that an effort fits with no stop, signal, busy crossing or sharp turn: hill repeats, up for the effort and down to recover.</td></tr>
 <tr><th scope="row"><code>closures_near</code></th><td>Lists the trail and road closures and construction in force now near a point, nearest first: what is closed, until when, how far away, the source and its link. So an assistant can check a park or trail before suggesting a ride there.</td></tr>
-<tr><th scope="row"><code>plan_route</code></th><td>Plans through 2 to 25 points (places, station names or coordinates) on any ride type and setting, as a loop if asked. Reports distance, time, climbing and the share on each stress level, and the bikeshare or transit plan on those ride types. Can check the distance from Metro and add stations where the route strays. Its answer, like every other plan's, also lists what the route rides: its roads in order with miles, stress level and any scenic designation, where it is on stress level 3 or above, its very-high-stress junctions, and small detours where it leaves a road and comes back to it. It also lists the closures on and around the route and warns whenever the route rides through one (a blocked bike lane is listed, not warned about), naming any stop or via point that sits on a closed stretch, and lists the notices to check before you go at the ride's time, such as park alerts and the parks' deer-management closures. For interval training it can check where efforts can run with no stop, signal, busy crossing, sharp turn, descent or stress level 4 road, how many sets fit in one session, and which climbs suit up-and-back repeats. For an alleycat or errands it can keep the start and finish and ride the checkpoints between in the quickest order. On Mass Ride it takes the ride size, and its answer says what that size needs, the narrowest point, the narrow stretches by street and the corkers, so an assistant can move a via point onto a wider street and plan again.</td></tr>
-<tr><th scope="row"><code>revise_route</code></th><td>Changes a draft (add, move or remove points; another ride type or setting) and plans it again as a new draft. The old one stays.</td></tr>
+<tr><th scope="row"><code>plan_route</code></th><td>Plans through 2 to 25 points (places, station names or coordinates) on any ride type and setting, as a loop if asked. Reports distance, time, climbing and the share on each stress level, and the bikeshare or transit plan on those ride types. Can check the distance from Metro and add stations where the route strays. Its answer, like every other plan's, also lists what the route rides: its roads in order with miles, stress level and any scenic designation, where it is on stress level 3 or above, its very-high-stress junctions, and small detours where it leaves a road and comes back to it. It also lists the closures on and around the route and warns whenever the route rides through one (a blocked bike lane is listed, not warned about), naming any stop or via point that sits on a closed stretch, and lists the notices to check before you go at the ride's time, such as park alerts and the parks' deer-management closures. For interval training it can check where efforts can run with no stop, signal, busy crossing, sharp turn, descent or stress level 4 road, how many sets fit in one session, and which climbs suit up-and-back repeats. For an alleycat or errands it can keep the start and finish and ride the checkpoints between in the quickest order. On Mass Ride it takes the ride size, and its answer says what that size needs, the narrowest point, the narrow stretches by street and the corkers, so an assistant can move a via point onto a wider street and plan again. To help an assistant improve a route,
+it also gives the unpaved miles, the minutes spent waiting at signals and stop signs, the miles, minutes, climb and
+busy miles between stops (for food, water or an overnight stop), and where the steep grades and road hazards such as
+cobbles and rails are. It can time the route at your own pace, leave out a road, follow a line you already have, and
+answer the other routes its search found at the same settings, each as its own draft with its extra miles and
+minutes against the chosen route.</td></tr>
+<tr><th scope="row"><code>revise_route</code></th><td>Changes a draft (add, move or remove points; another ride type or setting; roads to avoid, by name, by a stretch of miles or as a line) and plans it again as a new draft. The old one stays. Its answer gives each figure before and after (miles, minutes, climb, miles on stress level 3 and up and on 4 and up, unpaved miles, junctions and junction waits), so the assistant can tell whether a change helped.</td></tr>
+<tr><th scope="row"><code>route_segments</code></th><td>Reads a draft stretch by stretch: miles, road, stress level, bike facility, surface, average and steepest grade, climb, one-way and minutes, plus every higher- and very-high-stress junction with its reason, steep grades and hazards. A long ride is read a page at a time.</td></tr>
+<tr><th scope="row"><code>ride_conditions</code></th><td>Says whether it is light or dark at the start and the finish of a ride at a given time (by civil dawn and dusk, as the app's Dawn and Dusk), when you arrive, and, within 48 hours, the National Weather Service alerts along the route and where rain is first forecast, through the site's own weather check (points rounded, nothing kept).</td></tr>
+<tr><th scope="row"><code>my_routes</code></th><td>Through the connector on the web: lists your saved routes, or opens one by name ("my commute") as a draft to read or revise. It never changes My routes. A connection allowed before this tool existed cannot read them until you disconnect and connect again. On your own computer the site refuses it.</td></tr>
 <tr><th scope="row"><code>open_link</code></th><td>Picks up a route from a RouteMaker link you paste: the app's address after you changed a route, a saved route opened in the app, or a shared route's link.</td></tr>
 <tr><th scope="row"><code>save_route</code></th><td>On the web, saves a draft to My routes; on your own computer, writes it as a GPX file. Only when you say so.</td></tr>
 <tr><th scope="row"><code>gpx_route</code></th><td>Gives a draft as a GPX track: a file on your computer, or a download link on the web.</td></tr>
@@ -490,14 +498,16 @@ keep their own starting setting. Mass Ride and the two-point ride types do not p
 
 </div></details>
 <h2 id="reach">What it can and cannot see</h2>
-<p>For riders, the connection can only add. It can plan routes and add the ones you ask it to save
-to My routes; it cannot read your saved routes or change anything else. The server on your own
-computer saves nothing to the site at all.</p>
+<p>For riders, the connection on the web can add routes to My routes and read them, but never change
+or delete them. It can plan routes, add the ones you ask it to save, and read your saved routes when you
+ask it to plan from one; it cannot change anything else. A connection you allowed before it could read your
+routes cannot read them until you disconnect it and connect again. The server on your own computer
+cannot see My routes and saves nothing to the site at all.</p>
 <figure id="fig-mcp-reach" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
-<svg viewBox="0 0 760 236" role="img" aria-labelledby="fig-mcp-reach-t fig-mcp-reach-d" focusable="false" style="min-width:547px">
+<svg viewBox="0 0 760 276" role="img" aria-labelledby="fig-mcp-reach-t fig-mcp-reach-d" focusable="false" style="min-width:547px">
 <title id="fig-mcp-reach-t">What an assistant can and cannot do</title>
-<desc id="fig-mcp-reach-d">An assistant connected to RouteMaker can search places and Metro stations, plan and revise routes on any ride type, open a RouteMaker link you paste, add a route to My routes when you ask (through the connector on the web; on your own computer it writes a GPX file instead), and give a route as GPX. It cannot read your saved routes, change or delete any route, sign in to the site as you, change your account or settings, or see anything about other riders. For instance admins, the connector can also write a Featured routes post as a draft.</desc>
+<desc id="fig-mcp-reach-d">An assistant connected to RouteMaker can search places and Metro stations, plan and revise routes on any ride type, open a RouteMaker link you paste, add a route to My routes when you ask (through the connector on the web; on your own computer it writes a GPX file instead), read your saved routes on the web when you ask it to plan from one, and give a route as GPX. It cannot change or delete any route, sign in to the site as you, change your account or settings, or see anything about other riders. For instance admins, the connector can also write a Featured routes post as a draft.</desc>
 <defs><marker id="ah-mcp-reach" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <text class="tb" x="185" y="20" text-anchor="middle">Can</text>
 <text class="tb" x="575" y="20" text-anchor="middle">Cannot</text>
@@ -508,25 +518,25 @@ computer saves nothing to the site at all.</p>
 <rect class="bxa" x="10" y="112" width="350" height="32" rx="6"/>
 <text class="ts" x="185.0" y="132.5" text-anchor="middle">Open a RouteMaker link you paste</text>
 <rect class="bxa" x="10" y="152" width="350" height="32" rx="6"/>
-<text class="ts" x="185.0" y="172.5" text-anchor="middle">Save to My routes on the web, when you ask</text>
+<text class="ts" x="185.0" y="172.5" text-anchor="middle">Read My routes on the web, when you ask</text>
 <rect class="bxa" x="10" y="192" width="350" height="32" rx="6"/>
-<text class="ts" x="185.0" y="212.5" text-anchor="middle">Give a route as GPX</text>
+<text class="ts" x="185.0" y="212.5" text-anchor="middle">Save to My routes on the web, when you ask</text>
+<rect class="bxa" x="10" y="232" width="350" height="32" rx="6"/>
+<text class="ts" x="185.0" y="252.5" text-anchor="middle">Give a route as GPX</text>
 <rect class="bx" x="400" y="32" width="350" height="32" rx="6"/>
-<text class="ts" x="575.0" y="52.5" text-anchor="middle">Read your saved routes</text>
+<text class="ts" x="575.0" y="52.5" text-anchor="middle">Change or delete any route</text>
 <rect class="bx" x="400" y="72" width="350" height="32" rx="6"/>
-<text class="ts" x="575.0" y="92.5" text-anchor="middle">Change or delete any route</text>
+<text class="ts" x="575.0" y="92.5" text-anchor="middle">Sign in to the site as you</text>
 <rect class="bx" x="400" y="112" width="350" height="32" rx="6"/>
-<text class="ts" x="575.0" y="132.5" text-anchor="middle">Sign in to the site as you</text>
+<text class="ts" x="575.0" y="132.5" text-anchor="middle">Change your account or settings</text>
 <rect class="bx" x="400" y="152" width="350" height="32" rx="6"/>
-<text class="ts" x="575.0" y="172.5" text-anchor="middle">Change your account or settings</text>
-<rect class="bx" x="400" y="192" width="350" height="32" rx="6"/>
-<text class="ts" x="575.0" y="212.5" text-anchor="middle">See anything about other riders</text>
+<text class="ts" x="575.0" y="172.5" text-anchor="middle">See anything about other riders</text>
 </svg>
 </div>
 <div class="fig-narrow">
 <svg viewBox="0 0 320 564" role="img" aria-labelledby="fig-mcp-reach-n-t fig-mcp-reach-n-d" focusable="false">
 <title id="fig-mcp-reach-n-t">What an assistant can and cannot do</title>
-<desc id="fig-mcp-reach-n-d">An assistant connected to RouteMaker can search places and Metro stations, plan and revise routes on any ride type, open a RouteMaker link you paste, add a route to My routes when you ask (through the connector on the web; on your own computer it writes a GPX file instead), and give a route as GPX. It cannot read your saved routes, change or delete any route, sign in to the site as you, change your account or settings, or see anything about other riders. For instance admins, the connector can also write a Featured routes post as a draft.</desc>
+<desc id="fig-mcp-reach-n-d">An assistant connected to RouteMaker can search places and Metro stations, plan and revise routes on any ride type, open a RouteMaker link you paste, add a route to My routes when you ask (through the connector on the web; on your own computer it writes a GPX file instead), read your saved routes on the web when you ask it to plan from one, and give a route as GPX. It cannot change or delete any route, sign in to the site as you, change your account or settings, or see anything about other riders. For instance admins, the connector can also write a Featured routes post as a draft.</desc>
 <defs><marker id="ah-mcp-reach-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <text class="tb" x="10" y="26" text-anchor="start">Can</text>
 <rect class="bxa" x="10" y="38" width="300" height="40" rx="6"/>
@@ -535,14 +545,14 @@ computer saves nothing to the site at all.</p>
 <text class="ts" x="160.0" y="109" text-anchor="middle">Plan and revise routes, any ride type</text>
 <rect class="bxa" x="10" y="130" width="300" height="40" rx="6"/>
 <text class="ts" x="160.0" y="155" text-anchor="middle">Open a RouteMaker link you paste</text>
-<rect class="bxa" x="10" y="176" width="300" height="60" rx="6"/>
-<text class="ts" x="160.0" y="201" text-anchor="middle">Save to My routes on the web, when you</text>
-<text class="ts" x="160.0" y="221" text-anchor="middle">ask</text>
-<rect class="bxa" x="10" y="242" width="300" height="40" rx="6"/>
-<text class="ts" x="160.0" y="267" text-anchor="middle">Give a route as GPX</text>
-<text class="tb" x="10" y="320" text-anchor="start">Cannot</text>
-<rect class="bx" x="10" y="332" width="300" height="40" rx="6"/>
-<text class="ts" x="160.0" y="357" text-anchor="middle">Read your saved routes</text>
+<rect class="bxa" x="10" y="176" width="300" height="40" rx="6"/>
+<text class="ts" x="160.0" y="201" text-anchor="middle">Read My routes on the web, when you ask</text>
+<rect class="bxa" x="10" y="222" width="300" height="60" rx="6"/>
+<text class="ts" x="160.0" y="247" text-anchor="middle">Save to My routes on the web, when you</text>
+<text class="ts" x="160.0" y="267" text-anchor="middle">ask</text>
+<rect class="bxa" x="10" y="288" width="300" height="40" rx="6"/>
+<text class="ts" x="160.0" y="313" text-anchor="middle">Give a route as GPX</text>
+<text class="tb" x="10" y="366" text-anchor="start">Cannot</text>
 <rect class="bx" x="10" y="378" width="300" height="40" rx="6"/>
 <text class="ts" x="160.0" y="403" text-anchor="middle">Change or delete any route</text>
 <rect class="bx" x="10" y="424" width="300" height="40" rx="6"/>
@@ -553,7 +563,7 @@ computer saves nothing to the site at all.</p>
 <text class="ts" x="160.0" y="541" text-anchor="middle">See anything about other riders</text>
 </svg>
 </div>
-<figcaption>For riders, the connection can only add.</figcaption>
+<figcaption>For riders, the connection can add to My routes and read it, but never change it.</figcaption>
 </figure>
 <details class="more"><summary>More: What it can and cannot see</summary>
 <div class="more-body">
