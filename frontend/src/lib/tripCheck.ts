@@ -23,7 +23,7 @@ import type { TransitOption, TransitPlan } from "./api.ts";
 import { locale, t } from "./i18n.ts";
 import type { PresetId } from "./presets.ts";
 
-/** How often the trip is checked: WMATA's predictions are kept 20 s on the server, a plan costs a few router calls. */
+/** How often the trip is checked: WMATA's predictions are kept 45 s on the server, a plan costs a few router calls. */
 export const TRIP_CHECK_MS = 120_000;
 /** The least another trip must save to replace this one: less is the predictions' own wobble. */
 export const SWITCH_MIN_S = 180;
