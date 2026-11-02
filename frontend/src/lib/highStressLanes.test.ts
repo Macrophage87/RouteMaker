@@ -299,7 +299,8 @@ test("the description and the facility bar are wired to the switch in the compon
   const read = (name: string) => readFileSync(new URL(`../${name}`, import.meta.url), "utf8");
   assert.match(read("RouteDescription.tsx"), /useHighStressLanes\(\)[\s\S]*descriptionEntries\(route, view, showHighLanes\)/);
   assert.match(read("FacilityBreakdown.tsx"), /useHighStressLanes\(\)[\s\S]*facilityRows\(route\.facility_m, route\.stress_spans, showHighLanes\)/);
-  assert.match(read("MapView.tsx"), /subscribeHighStressLanes\(\(\) => onLaneSwitch\(mapRef\.current, loaded\.current, callbacks\.current\.when\)\)/);
+  // The overlay's rails and the route's lane marks (routeLaneMarks) both follow the switch.
+  assert.match(read("MapView.tsx"), /subscribeHighStressLanes\(\(\) => \{\s*onLaneSwitch\(mapRef\.current, loaded\.current, callbacks\.current\.when\);[\s\S]*?setRouteSections\(mapRef\.current, callbacks\.current\.route/);
 });
 
 test("the description says, once, that painted lanes were left out, only when the switch hid one in the view shown (the a11y review's N9)", () => {
