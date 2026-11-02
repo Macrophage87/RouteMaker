@@ -849,34 +849,47 @@ def test_a_park_notice_on_the_route_is_said_with_no_closure() -> None:
 
 def test_permits_and_planned_work_along_the_route_are_said_with_their_source() -> None:
     """The owner, 2026-11-02: "let it also return the link or citation to where the closures
-    would or could be". A permit is never routed round, so it is said, not avoided."""
-    permit = {
-        **closure(0, "possible", 2.0, 2.2, title="15th St NW: bike lane occupied", pk=9),
-        "id": "tops-123",
-        "source": "tops",
-        "source_name": "DDOT permit, Jun 1 to Dec 31",
-        "url": "https://tops.ddot.dc.gov/x",
-        "kind": "lane",
-    }
-    near_only = {**permit, "id": "tops-456", "from_m": None, "to_m": None}
-    planned = {
-        **closure(0, "possible", 0.4, 0.5, title="DC Water main work", pk=7),
-        "id": "dcwater-7",
-        "source": "dcwater",
-        "source_name": "DC Water active work zone",
-        "url": "https://geo.dcwater.com/x",
-    }
-    out = mcp.route_closures(_closure_plan([permit, near_only, planned], via_mi=1.0))
-    first, second = out["potential_closures"]
-    assert (first["what"], first["from_mi"], first["closes"]) == ("DC Water main work", 0.4, "road")
-    assert (
-        first["url"] == "https://geo.dcwater.com/x"
-        and first["source"] == "DC Water active work zone"
+    would or could be". A permit is never routed round, so it is said, not avoided. The site
+    lists them as on its map round the route, with no miles: they are placed by their lines."""
+
+    def possible(pk, source, line=None, point=None, kind="closed", title="work"):
+        return {
+            **closure(0, "possible", title=title, line=line or [], pk=pk),
+            "id": f"{source}-{pk}",
+            "source": source,
+            "source_name": f"{source} source",
+            "url": f"https://{source}.example/{pk}",
+            "kind": kind,
+            "point": point or (line or [None])[0],
+            "line": line or [],
+            "from_m": None,
+            "to_m": None,
+        }
+
+    permit = possible(
+        123, "dc", line=[at(2.0), at(2.2)], kind="lane", title="15th St NW: bike lane occupied"
     )
-    assert second["closes"] == "bike lane" and second["url"] == "https://tops.ddot.dc.gov/x"
+    one_block_off = possible(456, "dc", line=[at(1.0, 0.1), at(1.2, 0.1)])  # ~160 m north
+    planned = possible(7, "dcwater", point=at(0.4, 0.005), title="DC Water main work")
+    out = mcp.route_closures(_closure_plan([permit, one_block_off, planned], via_mi=1.0))
+    first, second = out["potential_closures"]
+    assert (first["what"], first["from_mi"], first["to_mi"]) == ("DC Water main work", 0.4, 0.4)
+    assert first["closes"] == "road" and first["url"] == "https://dcwater.example/7"
+    assert first["source"] == "dcwater source"
+    assert (second["from_mi"], second["to_mi"], second["closes"]) == (2.0, 2.2, "bike lane")
+    assert second["url"] == "https://dc.example/123" and "effect" not in second
     assert "not planned round" in out["potential_closures_note"]
     # A permit is never a closure the route rides through: no warning, and no closures row.
     assert out["closures"] == [] and "closure_warning" not in out
+
+
+def test_potential_closures_off_the_route_are_not_said() -> None:
+    row = {
+        **closure(0, "possible", line=[at(1.0, 0.2), at(1.5, 0.2)], pk=3),
+        "id": "protrack-3",
+        "source": "protrack",
+    }
+    assert mcp.route_closures(_closure_plan([row], via_mi=1.0)) == {}
 
 
 def test_closures_near_lists_each_closure_once_nearest_first() -> None:
