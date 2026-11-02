@@ -4169,17 +4169,19 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         # Walk + 🚆🚌 never rides: its line is its first walk, walked (straight where a few yards).
         far = transit.line_m(leg) >= transit.MIN_LINE_M
         return answered(*_walked_line(found, body.preset, dials, draw if far else None))
-    # The line is the chosen option's first ride (or walk). Riding directly there, or an option
-    # whose every ride and walk is a few yards (nothing the router could route), is drawn start to
-    # end instead, and the plan keeps its own times.
+    # The line is the chosen option's first ride (or walk). Riding directly there, or a line that
+    # is a ride of a few yards (nothing the router could route), is drawn start to end instead, and
+    # the plan keeps its own times. A line that is a walk of a few yards is drawn straight.
+    short = transit.line_m(leg) < transit.MIN_LINE_M
     whole = (found.option.direct and body.preset == presets.BIKE_TRANSIT) or (
-        transit.line_m(leg) < transit.MIN_LINE_M
+        short and leg.mode in (transit.RIDE, transit.SHARE)
     )
     retime = not whole or found.option.direct
     if not whole and leg.mode in (transit.WALK, transit.TAKE):
         # The line is a walk (Bikeshare + 🚶🚆🚌 with no ride worth a line): walked by the
-        # pedestrian router, never the bike's, and the plan keeps its walking times.
-        return answered(*_walked_line(found, body.preset, dials, draw))
+        # pedestrian router, never the bike's, and the plan keeps its walking times. A trip walked
+        # with no ride at all has its first walk as its line however short (drawn straight).
+        return answered(*_walked_line(found, body.preset, dials, None if short else draw))
     if whole:
         ride_from, ride_to = list(start), list(end)
     else:
@@ -4248,8 +4250,11 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
                 far = transit.line_m(leg) >= transit.MIN_LINE_M
                 return answered(*_walked_line(timed, body.preset, dials, draw if far else None))
             walked = leg.mode in (transit.WALK, transit.TAKE) and not timed.option.direct
-            if walked and transit.line_m(leg) >= transit.MIN_LINE_M:
-                return answered(*_walked_line(timed, body.preset, dials, draw))
+            if walked:
+                # As the first pass: a walk of a few yards (a trip with no ride, started at the
+                # stop) is drawn straight, never as a bike route over the transit.
+                far = transit.line_m(leg) >= transit.MIN_LINE_M
+                return answered(*_walked_line(timed, body.preset, dials, draw if far else None))
             again_whole = timed.option.direct and body.preset == presets.BIKE_TRANSIT
             if again_whole:
                 points = [list(start), list(end)]

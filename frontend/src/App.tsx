@@ -295,8 +295,8 @@ import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChip
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
 import { nativeBridge, nativeShareNavigator } from "./lib/nativeShell.ts";
 import { AVOID_STAIRS_EVENT, readAvoidStairs } from "./lib/avoidStairs.ts";
-import { checkedTripOf, lateSaid, switchSaid, tripChecked, tripVerdict, type CheckedTrip } from "./lib/tripCheck.ts";
-import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restRequest, rideLegOf, rideTripOf, rideable as rideableRoute, type RideTrip } from "./lib/rideTrip.ts";
+import { TRIP_GONE_SAID, checkedTripOf, lateSaid, switchSaid, tripChecked, tripVerdict, type CheckedTrip } from "./lib/tripCheck.ts";
+import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restRequest, rideLegOf, rideTripOf, rideable as rideableRoute, walksLine, type RideTrip } from "./lib/rideTrip.ts";
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
@@ -3704,7 +3704,7 @@ export function App() {
   const beginRide = (prefs: RidePrefs, unlocked = false, rest?: { route: RouteResponse; points: LonLat[]; roam?: boolean }) => {
     const route = rest?.route ?? shown;
     if (!route) return;
-    if (!unlocked) startRideGesture(prefs);
+    if (!unlocked) startRideGesture(prefs, walksLine(route));
     const leg = rideLegOf(route, rest?.points ?? routedPoints, rest ? false : routedLoop);
     // A More direct or Calmer chosen rides at its own traffic setting, so a re-route keeps to it; the plan's dials and
     // the saved default stay the rider's (lib/neighbours.ts rideDials).
@@ -4230,6 +4230,11 @@ export function App() {
     if (!current() || !result.ok || !result.route.transit) return null;
     const verdict = tripVerdict(checking.trip, result.route.transit, Date.now());
     if (!verdict) return null;
+    if (verdict.kind === "gone") {
+      // Said once: the checks stop, as there is no trip left to change to.
+      tripCheck.current = null;
+      return TRIP_GONE_SAID;
+    }
     if (verdict.kind !== "switch") {
       const told = checking.trip.arrivesAt;
       checking.trip = { key: verdict.key, arrivesAt: told === null || verdict.kind === "late" ? verdict.arrivesAt : told };
@@ -4244,7 +4249,12 @@ export function App() {
     const points = [riderAt, checking.to];
     // Planned at the stop itself, the new trip's line can be the ride after its train: not a trip to change to.
     const trip = rideTripOf(route, points);
-    if (!trip?.onward?.some((part) => part.kind === "transit") || !rideableRoute(route)) return null;
+    if (!trip?.onward?.some((part) => part.kind === "transit") || !rideableRoute(route)) {
+      // Gone, and nothing to change to from here: said once, and the checks stop.
+      if (verdict.savedS !== null) return null;
+      tripCheck.current = null;
+      return TRIP_GONE_SAID;
+    }
     rideNote.current = switchSaid(verdict);
     beginRide(ridePrefs, true, { route, points });
     return null;

@@ -492,7 +492,8 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
         ))}
         {/* One line, the rest behind its (i) (Plan streamline, Stephen 2026-10-17; P10, one (i) per row). */}
         <div className="dial-head">
-          <p className="hint">{t("Weekend car-free roads, such as Beach Drive and Sligo Creek Parkway, count as paths.")}</p>
+          {/* About riding: not said on foot (Walk keeps When for Walk + transit's timetable). */}
+          {!onFoot(preset) && <p className="hint">{t("Weekend car-free roads, such as Beach Drive and Sligo Creek Parkway, count as paths.")}</p>}
           <InfoButton open={whenInfo} onToggle={() => setWhenInfo(!whenInfo)} controls={whenInfoId} about="when" />
         </div>
         <DialInfo id={whenInfoId} open={whenInfo}>
@@ -512,32 +513,35 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
         />
       )}
       {/* The rider and bike weight is in Settings (the owner, 2026-10-18: "somewhere hidden, and probably belongs in settings"). */}
-      <div className="dial trails-off">
-        <div className="dial-head">
-          <label className="toggle">
-            {/* aria-disabled, not disabled, when always on (Mass Ride): it stays in the Tab order with its
-                reason in its description, and a press changes nothing (as the loop box does). */}
-            <input
-              type="checkbox"
-              checked={view.trailsOff.checked}
-              aria-disabled={view.trailsOff.locked || undefined}
-              aria-describedby={trailsOffHintId}
-              onChange={(event) => {
-                if (view.trailsOff.locked) return;
-                onCommit({ ...dials, trailsOff: event.target.checked });
-              }}
-            />
-            {view.trailsOff.label}
-          </label>
-          <InfoButton open={trailsOffInfo} onToggle={() => setTrailsOffInfo(!trailsOffInfo)} controls={trailsOffInfoId} about={view.trailsOff.howAbout} />
+      {/* Roads, not trails: a riding choice, which a walk does not take. */}
+      {!onFoot(preset) && (
+        <div className="dial trails-off">
+          <div className="dial-head">
+            <label className="toggle">
+              {/* aria-disabled, not disabled, when always on (Mass Ride): it stays in the Tab order with its
+                  reason in its description, and a press changes nothing (as the loop box does). */}
+              <input
+                type="checkbox"
+                checked={view.trailsOff.checked}
+                aria-disabled={view.trailsOff.locked || undefined}
+                aria-describedby={trailsOffHintId}
+                onChange={(event) => {
+                  if (view.trailsOff.locked) return;
+                  onCommit({ ...dials, trailsOff: event.target.checked });
+                }}
+              />
+              {view.trailsOff.label}
+            </label>
+            <InfoButton open={trailsOffInfo} onToggle={() => setTrailsOffInfo(!trailsOffInfo)} controls={trailsOffInfoId} about={view.trailsOff.howAbout} />
+          </div>
+          <p className="hint" id={trailsOffHintId}>
+            {view.trailsOff.hint}
+          </p>
+          <DialInfo id={trailsOffInfoId} open={trailsOffInfo}>
+            <Bullets text={view.trailsOff.how} />
+          </DialInfo>
         </div>
-        <p className="hint" id={trailsOffHintId}>
-          {view.trailsOff.hint}
-        </p>
-        <DialInfo id={trailsOffInfoId} open={trailsOffInfo}>
-          <Bullets text={view.trailsOff.how} />
-        </DialInfo>
-      </div>
+      )}
       {view.reset && (
         <button type="button" className="link" onClick={() => view.reset && onCommit(view.reset)}>
           {t("Back to this ride type's settings")}

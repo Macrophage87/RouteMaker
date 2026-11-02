@@ -1942,7 +1942,14 @@ class Option:
     @property
     def ride(self) -> int:
         """The leg the answer's route line is: the first ride, else the first walk, of at least
-        `MIN_LINE_M` (a walk of a few yards from a dock to a stop has no route to draw)."""
+        `MIN_LINE_M` (a walk of a few yards from a dock to a stop has no route to draw). An option
+        with no ride at all (Walk + 🚆🚌, or a Bikeshare + 🚶🚆🚌 trip walked the whole way) has its
+        first walk however short: started at the stop, its line is still the trip's start, so the
+        transit after it is followed stop by stop (the api draws a few yards straight)."""
+        if not any(leg.mode in (RIDE, SHARE) for leg in self.legs):
+            for index, leg in enumerate(self.legs):
+                if leg.mode in (WALK, TAKE):
+                    return index
         for modes in ((RIDE, SHARE), (WALK, TAKE)):
             for index, leg in enumerate(self.legs):
                 if leg.mode in modes and line_m(leg) >= MIN_LINE_M:
