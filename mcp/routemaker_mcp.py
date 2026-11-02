@@ -1964,6 +1964,10 @@ def mass_capacity(answer: dict) -> dict | None:
 CLOSURE_SAID = ("on_route", "may_still_apply", "routed_round", "bypassed")
 # A stop or via point reached this close to a closed stretch is on it (metres along the route).
 ON_CLOSURE_M = 30.0
+# Potential closures along the route (a permit, planned utility work: effect "possible"), the
+# first this many by mile. The owner, 2026-11-02: return "the link or citation to where the
+# closures would or could be".
+MAX_POTENTIAL = 20
 CLOSURES_NEAR_MAX_MI = 10.0  # the site's map view is at most 0.4 by 0.3 degrees
 
 
@@ -2041,7 +2045,21 @@ def route_closures(plan: Plan) -> dict:
         return {}
     rows: dict[tuple, dict] = {}
     spans: list[tuple[float, float, tuple]] = []  # where the route rides through one, metres
+    potential: dict[str, dict] = {}
     for row in zones.get("closures") or []:
+        if row.get("effect") == "possible" and row.get("from_m") is not None:
+            # A permit or planned work the route rides past: it may close the road (or the
+            # bike lane) some time in its window. Never routed round: said, with its source.
+            said = potential.setdefault(_closure_id(row), _closure_row(row))
+            said.pop("effect", None)
+            said["closes"] = "bike lane" if row.get("kind") == "lane" else "road"
+            a = row["from_m"] / METRES_PER_MILE
+            b = (row.get("to_m") or row["from_m"]) / METRES_PER_MILE
+            said["from_mi"] = round(min(said.get("from_mi", a), a), 1)
+            said["to_mi"] = round(max(said.get("to_mi", b), b), 1)
+            if row.get("point") and "lon_lat" not in said:
+                said["lon_lat"] = row["point"]
+            continue
         if row.get("effect") not in CLOSURE_SAID:
             continue
         key = (_closure_id(row), row.get("effect"))
@@ -2055,10 +2073,21 @@ def route_closures(plan: Plan) -> dict:
             if row["effect"] == "on_route" and row.get("kind") != "lane":
                 spans.append((row["from_m"], row["to_m"], key))
     notices = [_notice_row(n) for n in zones.get("notices") or [] if isinstance(n, dict)]
-    if not rows and not notices:
+    if not rows and not notices and not potential:
         return {}
     said = sorted(rows.values(), key=lambda r: (r["effect"] != "on_route", r.get("from_mi", 0)))
     out: dict = {"closures": said}
+    if potential:
+        listed = sorted(potential.values(), key=lambda r: r["from_mi"])
+        out["potential_closures"] = listed[:MAX_POTENTIAL]
+        if len(listed) > MAX_POTENTIAL:
+            out["potential_closures_more"] = len(listed) - MAX_POTENTIAL
+        out["potential_closures_note"] = (
+            "permits and planned work that allow closing the road or bike lane some time in"
+            " their window: they may be open, and the route is not planned round them. Give"
+            " the rider each one's source and link; avoid one with revise_route's avoid"
+            " (from_mi, to_mi) if the rider wants."
+        )
     if notices:
         out["check_before_you_go"] = notices
     if zones.get("ride_at"):
@@ -3180,7 +3209,11 @@ TOOLS = [
             " one is asked back. `closures` lists the closures it goes through or round, and"
             " `closure_warning` says when one is on the route (often a via point only a closed"
             " path reaches: move it); `check_before_you_go` lists park notices for the ride's"
-            " time, such as a deer-management closure at night (warnings, not routed round)."
+            " time, such as a deer-management closure at night (warnings, not routed round);"
+            " `potential_closures` lists the permits and planned work along the route that may"
+            " close the road or bike lane in their window (DDOT permits, DDOT ProTrack+, DC"
+            " Water, WSSC Water), with their miles, source and link: not routed round."
+            " Every closure row names its source and links to it: give the rider both."
             " Read these before sending the link, and say the busy parts, any closure and any"
             " notice."
             " With max_miles_from_metro it checks the distance from Metro and, with"
