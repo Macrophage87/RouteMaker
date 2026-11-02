@@ -2919,7 +2919,9 @@ RIDE_OPTIONS = {
             " fewer turns. cargo: cargo"
             " bike (carrying, assist). ebike: e-bike rules and pace. bikeshare and rebalance:"
             " Capital Bikeshare dock to dock (two points). bike-transit and bikeshare-transit:"
-            " bike plus Metro and bus (two points; depart_at, transit_option)."
+            " bike plus Metro and bus (two points; depart_at, transit_option). walk: on foot,"
+            " turn by turn (two points). walk-transit: on foot plus Metro and bus (two points;"
+            " depart_at, transit_option)."
         ),
     },
     "stress": {

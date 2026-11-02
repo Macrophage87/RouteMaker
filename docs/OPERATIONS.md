@@ -2880,8 +2880,8 @@ and about 11 GB on a resume, a few minutes on this host; each manifest records i
 
 ## Tile build threads
 
-Each graph is built by one `valhalla_build_tiles` run, and the five run one
-after another (standard, no-trail, ebike, weekend, offroad). How many threads a
+Each graph is built by one `valhalla_build_tiles` run, and the seven run one
+after another (standard, no-trail, ebike, weekend, offroad, mtb, paved). How many threads a
 run uses is `mjolnir.concurrency` in that variant's
 `<DATA_ROOT>/tiles/<variant>/<build id>/build-config.json`, and the rebuild
 writes it from **`REBUILD_TILE_CONCURRENCY`** (in `.env`; unset means **4**,
@@ -7991,20 +7991,20 @@ copy of this deployment's database made the way the beta's is (`scripts/beta/shi
 db part): no accounts, Homes, saved or shared routes, audit log or sessions, and the approved
 overrides with their person columns blanked. So every access override and stress edit is in
 its map, and no rider's data is in the cloud. It runs the ordinary `run_rebuild_now` with every check a rebuild
-here has, and sends back the five graphs and its new segment table. Here they are swapped
+here has, and sends back the seven graphs and its new segment table. Here they are swapped
 in by the rebuild's own swap (`pipeline.promotion.perform_swap`), so `rollback_rebuild`
 undoes an imported build exactly as it undoes one built here.
 
 Three scripts, one per place, and S3 between them. `send-inputs.sh`, run here, uploads the
 stripped dump, reference, elevation and extracts to the run's `in/` folder. `box-rebuild.sh`, run
-on the box, reads `in/`, writes the five graphs and the staging dump to `out/`, and powers
+on the box, reads `in/`, writes the seven graphs and the staging dump to `out/`, and powers
 the box off. `import-result.sh`, run here, reads `out/`. Nothing in the repository names
 the bucket or the account: the run's folder is an argument. The same flow as a diagram:
 
 ```text
 this host                         s3://<bucket>/rebuild-checkpoints/transfer/<run>/   the box
 scripts/cloud/send-inputs.sh  --> in/   db.tar, reference, elevation, extracts --> box-rebuild.sh
-scripts/cloud/import-result.sh <-- out/  5 graphs, staging schema dump        <-- (powers off)
+scripts/cloud/import-result.sh <-- out/  7 graphs, staging schema dump        <-- (powers off)
 ```
 
 `scripts/cloud/launch.sh` runs the three from here with one command ("The launcher",
@@ -8185,7 +8185,7 @@ the defaults, so build those here.
    scripts/cloud/import-result.sh --profile <name> --swap "$RUN_URL"
    ```
 
-   `import_cloud_build --confirm` runs `perform_swap` (promote the five graphs, repoint
+   `import_cloud_build --confirm` runs `perform_swap` (promote the seven graphs, repoint
    the settings rows, rename `staging` into `live` and `live` into `live_old`; a failure
    undoes all of it), writes an audit row and the drift report; the script then restarts
    the routers, the off-road one where it runs, and pre-draws the stress tiles. Then the
