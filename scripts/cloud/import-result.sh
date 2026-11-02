@@ -173,7 +173,7 @@ if [ "$beta" = 1 ]; then
 	note "installing the graphs (each one's old build stays as \`previous\`)"
 	sudo_receive files
 	if ! sudo_receive db --update-data; then
-		die "db --update-data failed; its swap runs in one transaction, so the database is as it was and the beta still serves it. The new graphs are installed (rollback A puts the old ones back), or run --swap again"
+		die "db --update-data failed. If it said \"the swap is committed\" above, the beta serves the new tables: restart the routers by hand (${routers[*]}), then \`$bcompose up -d --force-recreate\` each trail router whose tiles are here, \`sync_upstreams\` and the stress-tile pre-draw. Otherwise its swap rolled back in one transaction, so the database is as it was and the beta still serves it; the new graphs are installed (rollback A puts the old ones back), or run --swap again"
 	fi
 	# One at a time, so only one ride type is briefly unanswered at once; the api plans a ride
 	# whose router does not answer on the standard graph meanwhile (while the standard router
@@ -253,6 +253,8 @@ if [ "$swap" = 1 ]; then
 	for router in valhalla-offroad valhalla-mtb valhalla-paved; do
 		if [ -n "$(compose --profile offroad ps -q "$router" 2>/dev/null)" ]; then
 			compose --profile offroad restart "$router"
+		else
+			note "$router is not running here, so its ride types plan on the standard graph; start it with \`docker compose --profile offroad up -d --no-deps --no-build $router\` if this host has the memory"
 		fi
 	done
 	note "drawing the stress tiles again"

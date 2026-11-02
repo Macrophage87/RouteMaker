@@ -4426,7 +4426,7 @@ if (mine()) {
       kids: !!k, pressed: k?.getAttribute('aria-pressed'), hint: k?.querySelector('.hint')?.textContent, said: k?.querySelector('.visually-hidden')?.textContent }; })()`);
   // Plan streamline (2026-10-17): each card shows its gist; the full sentence is said with it, and shown by What each does.
   check("kids: the ride-type dialog is modal and offers Novice and Nervous among every ride type, with its gist shown and its sentence said",
-    offered.open && offered.modal && offered.cards === 15 && offered.kids && offered.hint === "Busy streets avoided hard, for new riders." && /^For riders new to traffic: /.test(offered.said ?? ""), JSON.stringify(offered));
+    offered.open && offered.modal && offered.cards === 18 && offered.kids && offered.hint === "Busy streets avoided hard, for new riders." && /^For riders new to traffic: /.test(offered.said ?? ""), JSON.stringify(offered));
   check("kids: its card is a toggle button, not pressed while another ride type is in use", offered.pressed === "false", JSON.stringify(offered.pressed));
   await p.eval(`${kidsCard}.setAttribute('data-kids', ''); true`);
   const card = await axNode(p, "button[data-kids]");

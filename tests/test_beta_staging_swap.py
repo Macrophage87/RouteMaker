@@ -173,6 +173,7 @@ def test_the_update_stages_beside_the_served_tables_and_renames_them_in(beta) ->
     assert psql(BETA_DB, "select count(*) from stress_tile_cache") == "0"
     assert psql(BETA_DB, "select count(*) from app_user") == "2"
     assert "beta accounts untouched: 2" in done.stderr
+    assert "the swap is committed" in done.stderr
     # never asked the app to stop
     assert "stop api worker" not in done.stderr
 
@@ -287,4 +288,97 @@ def test_a_short_staged_table_is_refused_before_anything_is_renamed(beta, tmp_pa
 
     assert done.returncode == 2 and "MISMATCH live_next.segment" in done.stderr
     assert segments("live") == ["old road"]
+    assert psql(BETA_DB, "select count(*) from override") == "1"
+
+
+# The release review of v0.18.0 (S6): the ways the update fails, each leaving the beta serving
+# what it served.
+
+
+def resum(tmp_path: Path) -> None:
+    """The bundle's SHA256SUMS written again after a test changed a file in it."""
+    bundle = tmp_path / "incoming"
+    sums = ""
+    for f in sorted(p for p in (bundle / "db").rglob("*") if p.is_file()):
+        sums += f"{hashlib.sha256(f.read_bytes()).hexdigest()}  {f.relative_to(bundle)}\n"
+    (bundle / "SHA256SUMS").write_text(sums)
+
+
+def no_scratch() -> bool:
+    scratch = f"select count(*) from pg_database where datname = '{BETA_DB}_stage'"
+    return psql("postgres", scratch) == "0"
+
+
+def test_a_step_failing_inside_the_swap_rolls_the_rename_back_and_is_not_tried_again(
+    beta, tmp_path: Path
+) -> None:
+    """'Rolls back cleanly if a step fails': a bad override row fails the one transaction
+    after the rename; only lock contention is tried again."""
+    assert beta("--stage-only").returncode == 0
+    (tmp_path / "incoming" / "db" / "blanked" / "override.copy").write_text(
+        "id\tkind\nnot-a-number\thome\n"
+    )
+    resum(tmp_path)
+
+    done = beta()
+
+    assert done.returncode != 0
+    assert "the swap failed and was rolled back" in done.stderr
+    assert "trying again" not in done.stderr
+    assert "the swap is committed" not in done.stderr
+    assert segments("live") == ["old road"]
+    assert segments("live_next") == ["new road", "newer road", "newest road"]
+    assert schemas() == {"live", "live_next"}
+    assert psql(BETA_DB, "select string_agg(kind, ',') from override") == "beta's own"
+    assert psql(BETA_DB, "select count(*) from stress_tile_cache") == "1"
+
+
+def test_a_dump_cut_short_is_refused_and_nothing_is_staged(beta, tmp_path: Path) -> None:
+    dump = tmp_path / "incoming" / "db" / "routemaker.dump"
+    data = dump.read_bytes()
+    dump.write_bytes(data[: len(data) - 200])
+    resum(tmp_path)
+
+    done = beta()
+
+    assert done.returncode != 0
+    assert segments("live") == ["old road"]
+    assert schemas() == {"live"}
+    assert no_scratch()
+    assert psql(BETA_DB, "select count(*) from override") == "1"
+
+
+def test_a_restore_that_fails_partway_leaves_no_scratch_database(beta, tmp_path: Path) -> None:
+    """A dump whose table of contents reads but whose restore fails (a column of a type the
+    dump's live entries do not carry): the scratch database is dropped on the way out."""
+    psql(HOME_DB, "create type public.mood as enum ('calm')")
+    psql(HOME_DB, "alter table live.node add m public.mood")
+    dump = tmp_path / "incoming" / "db" / "routemaker.dump"
+    subprocess.run(["pg_dump", "-d", HOME_DB, "--format=custom", "-f", str(dump)], check=True)
+    resum(tmp_path)
+
+    done = beta()
+
+    assert done.returncode != 0
+    assert "staging failed (above) and was discarded" in done.stderr
+    assert no_scratch()
+    assert segments("live") == ["old road"]
+    assert schemas() == {"live"}
+    assert psql(BETA_DB, "select count(*) from override") == "1"
+
+
+def test_not_enough_room_to_stage_is_refused_and_changes_nothing(beta, tmp_path: Path) -> None:
+    # df's stand-in: the data disk is full.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    df = bin_dir / "df"
+    df.write_text("#!/usr/bin/env bash\necho Avail\necho 0\n")
+    df.chmod(0o755)
+
+    done = beta(PATH=f"{bin_dir}:{os.environ['PATH']}")
+
+    assert done.returncode == 2 and "not enough room" in done.stderr, done.stderr
+    assert segments("live") == ["old road"]
+    assert schemas() == {"live"}
+    assert no_scratch()
     assert psql(BETA_DB, "select count(*) from override") == "1"

@@ -2075,6 +2075,32 @@ class TestRoadBike:
         assert body["preset"] == "road-bike" and body["variant"] == "standard"
         assert routing._paved_down()
 
+    def test_a_road_bike_router_outage_is_remembered_against_its_own_graph(
+        self, client, facility_segments, router
+    ):
+        """Review of v0.18.0 (S7): a road-bike router that does not answer is remembered as
+        down (so the next Road Bike plan does not wait on it again), and against the paved
+        graph alone: the weekend graph is not marked down, so weekend rides keep theirs."""
+        standard = standard_router()
+        paved_calls = []
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["paved"]):
+                paved_calls.append(url)
+                raise routing.RouterUnavailable("connection refused")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        first = post(client, good_body("road-bike")).json()
+        assert first["variant"] == "standard"
+        assert len(paved_calls) == 1
+        second = post(client, good_body("road-bike")).json()
+        assert second["preset"] == "road-bike" and second["variant"] == "standard"
+        assert len(paved_calls) == 1, "remembered as down for a minute"
+        assert routing._weekend_failed_at is None
+        assert not routing._weekend_down()
+        assert routing._offroad_failed_at is None and routing._mtb_failed_at is None
+
     def test_a_road_bike_map_not_yet_promoted_plans_on_standard(
         self, client, facility_segments, router, monkeypatch
     ):

@@ -24,8 +24,9 @@ test("off by default and kept on this device", () => {
   assert.equal(readAvoidStairs(null), false);
 });
 
-test("a Bikeshare or transit plan says so; a ride on the rider's own bike never does", () => {
-  for (const preset of ["bikeshare", "rebalance", "bike-transit", "bikeshare-transit"] as const) {
+test("a Bikeshare, transit or walk plan says so; a ride on the rider's own bike never does", () => {
+  // Walk and Walk + 🚆🚌 too (#888; the release review's S2): their walks are the whole trip.
+  for (const preset of ["bikeshare", "rebalance", "bike-transit", "bikeshare-transit", "walk", "walk-transit"] as const) {
     assert.equal(JSON.parse(routeRequestBody(LINE, preset, { avoidStairs: true })).avoid_stairs, true, preset);
     assert.equal(JSON.parse(routeRequestBody(LINE, preset, { avoidStairs: false })).avoid_stairs, undefined, preset);
   }

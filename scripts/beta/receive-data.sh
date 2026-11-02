@@ -701,6 +701,7 @@ if [ "$update_data" = 1 ]; then
 	rm -f "$swap_err"
 	bc exec -T postgis rm -f /tmp/beta-blanked.sql </dev/null
 	[ "$swapped" = 1 ] || die "the swap failed and was rolled back (above); the beta still serves the old $live_schema, and $staged is kept for the next try"
+	note "the swap is committed: the beta now serves the new $live_schema"
 	# The staged tables were analyzed before the rename; only the reloaded ones are new here.
 	psql_q "analyze public.override, public.junction_override, public.avoid_junction" >/dev/null
 	after_oid=$(psql_q "select coalesce(to_regclass('public.app_user')::oid::text, 'none')")

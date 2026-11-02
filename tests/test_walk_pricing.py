@@ -381,3 +381,104 @@ def test_a_walk_in_is_the_routers_own_way_unpriced(monkeypatch) -> None:
     )
     assert walked is not None
     assert [a for a, _p in asked] == ["route"] and "alternates" not in asked[0][1]
+
+
+def crosswalk(*roads, signal=False):
+    """A crosswalk (a mapped crossing way) across `roads`: (class, use) pairs."""
+    return trace(
+        edge("footway"),
+        edge("pedestrian_crossing", 0.01, roads=list(roads), node_signal=signal),
+        edge("pedestrian_crossing", 0.01),
+        edge("footway"),
+    )
+
+
+def unmarked(*roads):
+    """A footway across `roads` with no crossing mapped."""
+    return trace(edge("footway", roads=list(roads)), edge("footway"))
+
+
+class TestTheOwnersCharges:
+    """Review of v0.18.0 (S3): the charges in seconds, as the module's note gives them, so a
+    charge set to nothing or a trunk priced as a primary fails here (the owner, 2026-11-02:
+    "Add some penalty for more dangerous crossings, especially sliplanes")."""
+
+    def test_an_unsignalled_crosswalk_on_a_busy_road_costs_two_minutes(self) -> None:
+        assert walk_pricing.read(crosswalk(("primary", "road")), SPM).penalty_s == 120.0
+        assert walk_pricing.read(crosswalk(("secondary", "road")), SPM).penalty_s == 120.0
+
+    def test_with_no_crosswalk_a_minute_more(self) -> None:
+        assert walk_pricing.read(unmarked(("primary", "road")), SPM).penalty_s == 180.0
+
+    def test_a_trunk_road_costs_four_minutes_and_more_than_a_busy_one(self) -> None:
+        trunk = walk_pricing.read(crosswalk(("trunk", "road")), SPM).penalty_s
+        busy = walk_pricing.read(crosswalk(("primary", "road")), SPM).penalty_s
+        assert trunk == 240.0 and trunk > busy
+        assert walk_pricing.read(unmarked(("trunk", "road")), SPM).penalty_s == 300.0
+        assert walk_pricing.read(unmarked(("motorway", "road")), SPM).penalty_s == 300.0
+
+    def test_a_slip_lane_costs_a_minute_more_than_its_road(self) -> None:
+        slip = walk_pricing.read(crosswalk(("primary", "turn_channel")), SPM).penalty_s
+        road = walk_pricing.read(crosswalk(("primary", "road")), SPM).penalty_s
+        assert slip == 180.0 and slip > road
+
+    def test_a_slip_lane_off_a_quiet_street_is_still_charged_and_said(self) -> None:
+        # "whatever its class": turning traffic comes fast round it and seldom looks.
+        reading = walk_pricing.read(unmarked(("residential", "turn_channel")), SPM)
+        [crossing] = reading.crossings
+        assert crossing.level == QUIET and crossing.slip and not crossing.marked
+        assert reading.penalty_s == 60.0
+        assert crossing.said
+
+    def test_a_signal_on_the_kerb_before_the_crosswalk_signals_it(self) -> None:
+        # The signal mapped on the node where the sidewalk meets the crosswalk.
+        reading = walk_pricing.read(
+            trace(
+                edge("footway", node_signal=True),
+                edge("pedestrian_crossing", 0.01, roads=[("primary", "road")] * 2),
+                edge("pedestrian_crossing", 0.01),
+                edge("footway"),
+            ),
+            SPM,
+        )
+        [crossing] = reading.crossings
+        assert crossing.signal and reading.penalty_s == 0
+
+    def test_two_busy_crossings_40_m_apart_are_two_crossings(self) -> None:
+        # Past SAME_CROSSING_M (30 m): two roads, not one road's halves.
+        reading = walk_pricing.read(
+            trace(
+                edge("footway", roads=[("primary", "road")] * 2),
+                edge("footway", 0.04, roads=[("primary", "road")] * 2),
+                edge("footway"),
+            ),
+            SPM,
+        )
+        assert [c.m for c in reading.crossings] == [50.0, 90.0]
+        assert reading.penalty_s == 360.0
+
+    def test_a_60_degree_turn_off_a_carriageway_past_a_side_road_is_no_crossing(self) -> None:
+        # STRAIGHT_DEG is 40: a turn of 60 degrees is a turn, perhaps onto the near side.
+        here = edge("road", 0.05, "secondary", names=["F St"], roads=[("primary", "road")] * 2)
+        there = edge("road", 0.05, "secondary", names=["F St"])
+        here["end_heading"], there["begin_heading"] = 0.0, 60.0
+        assert walk_pricing.read(trace(here, there), SPM).crossings == ()
+        # And 30 degrees is straight on, so crossed.
+        there["begin_heading"] = 30.0
+        assert [c.level for c in walk_pricing.read(trace(here, there), SPM).crossings] == [BUSY]
+
+    def test_a_walk_says_at_most_20_crossings(self) -> None:
+        crossings = tuple(
+            walk_pricing.Crossing(
+                m=100.0 * i,
+                point=(-77.0 + i * 0.001, 38.9),
+                level=BUSY,
+                signal=False,
+                marked=True,
+                slip=False,
+            )
+            for i in range(21)
+        )
+        said = walk_pricing.crossing_turns(crossings, lambda _a, _p: None)
+        assert len(said) == 20
+        assert said[-1]["point"] == [-76.981, 38.9]

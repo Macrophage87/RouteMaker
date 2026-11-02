@@ -3194,6 +3194,10 @@ class TestStressAverseWeights:
             ("novice", None),
             # Mountain Bike (slice 6): connecting roads up to LTS 2, LTS 4 only with no other way.
             ("mountain-bike", None),
+            # Walk and Walk + 🚆🚌 (#888) take Bikeshare + 🚶🚆🚌's dials: on foot, a busy
+            # road is weighed as the calm rides weigh it.
+            ("walk", None),
+            ("walk-transit", None),
         ):
             exposure = presets.exposure_for(name, carrying)
             assert {k: exposure.weights[k] for k in "345"} == {"3": 1.0, "4": 8.0, "5": 16.0}, name
@@ -3209,6 +3213,8 @@ class TestStressAverseWeights:
                 "rebalance",
                 "novice",
                 "mountain-bike",
+                # Walk and Walk + 🚆🚌 (#888): pinned at 8 and 16 above.
+                *presets.ON_FOOT_PRESETS,
             ):
                 continue
             exposure = presets.exposure_for(name, presets.CARRYING_CARGO)
