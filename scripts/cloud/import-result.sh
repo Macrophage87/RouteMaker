@@ -17,7 +17,7 @@
 #      graphs under DATA_ROOT/tiles
 #   3. takes a safety dump of the database into --stage, leaving out the same tables the
 #      nightly backup does (--no-safety-dump skips it)
-#   4. unpacks the six graphs' build directories under DATA_ROOT/tiles, beside the ones
+#   4. unpacks the seven graphs' build directories under DATA_ROOT/tiles, beside the ones
 #      being served, and restores the box's segment table as the staging schema
 #   5. runs `manage.py import_cloud_build <build> --overrides-read-at <the dump's read_at>`, dry:
 #      every check the swap makes, and what it would change; it also precomputes Review's queue

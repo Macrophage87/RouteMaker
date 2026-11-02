@@ -860,14 +860,9 @@ def test_a_link_with_the_retired_avoid_gravel_box_opens_as_the_page_opens_it(lin
     assert preset == opens
     assert options["stress"] == 55 and options["hills"] == -20
     assert "avoid_gravel" not in options
-    assert set(mcp.AVOID_GRAVEL_BECOMES) == {
-        "default",
-        "fast",
-        "trailmaxxing",
-        "novice",
-        "gravel",
-        "mountain-goat",
-    }
+    from core import presets  # the site's own list, which the page's matches (test_presets)
+
+    assert set(mcp.AVOID_GRAVEL_BECOMES) == set(presets.AVOID_GRAVEL_BECOMES)
 
 
 def test_a_call_with_a_deadline_stops_planning_while_another_plan_would_not_fit(

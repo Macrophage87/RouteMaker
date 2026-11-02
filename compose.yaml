@@ -702,8 +702,10 @@ services:
   # stopped at a pull of routemaker/renderer:${TAG} from a registry that has
   # never held it. Parked behind a profile so the default `up` skips it and the
   # stack that *can* start does. handoff.md section 7 carries both rows; the
-  # service stays here, with its limits, so the sizing arithmetic and the
-  # no-published-ports rule keep counting it.
+  # service stays here, with its limits, so the no-published-ports and limits rules keep
+  # checking it. Its memory has been out of the sizing arithmetic since the Road Bike
+  # router came in (2026-11-02, scripts/check_compose_limits.py `UNBUILT_PROFILE`): it
+  # cannot start, so it is in neither peak; count it again before it is ever built.
   #
   #     docker compose --profile unbuilt up -d   # once there is something to run
   renderer:

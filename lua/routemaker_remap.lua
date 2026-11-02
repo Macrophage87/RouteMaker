@@ -376,7 +376,7 @@ function M.bridge_may_be_granted(tags)
   -- the one class of way this file is allowed to widen.
   --
   -- The protection is real and it belongs in the injection, not here. One Lua
-  -- script serves all six extracts - `mjolnir.graph_lua_name` is a single
+  -- script serves all seven extracts - `mjolnir.graph_lua_name` is a single
   -- path in every build config - so a guard in this file cannot tell which
   -- variant is being parsed and has to decline the legality row on the standard
   -- and no-trail extracts too, where the row applies and nothing has written

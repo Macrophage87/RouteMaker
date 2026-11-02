@@ -40,6 +40,14 @@ def test_one_bend_at_the_end_of_a_short_connector_is_not_winding():
     assert not winding.is_winding(gentle)
 
 
+def test_one_right_angle_on_a_short_way_is_winding_as_sligo_creeks_short_pieces_are():
+    # 150 m with one 90-degree bend: 45 degrees per 100 m. Sligo Creek Trail's short bending
+    # ways measure 43 to 52, so a single sharp bend on a short way counts (the module's note).
+    corner = _line([(75.0, 0.0), (0.0, 75.0)])
+    assert abs(winding.deg_per_100m(corner) - 45.0) < 0.1
+    assert winding.is_winding(corner)
+
+
 def test_a_long_way_is_measured_over_its_own_length():
     # 1 km with the same right-angle bend: 9 degrees per 100 m.
     long_way = _line([(500.0, 0.0), (0.0, 500.0)])

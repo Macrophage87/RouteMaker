@@ -2017,6 +2017,9 @@ def _seek_leg(
             ctx.when,
             ctx.avoid_gravel,
             timeout_s=min(trailseek.TABLE_TIMEOUT_S, left),
+            # Only Road Bike asks to avoid gravel now (api.RouteIn), and its graph prices
+            # winding trails as a busy street.
+            avoid_winding=ctx.avoid_gravel,
         )
     except trailseek.SeekOutOfTime:
         logger.warning("the trail seek's table read ran past its time")

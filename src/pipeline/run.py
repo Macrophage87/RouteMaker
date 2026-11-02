@@ -3758,7 +3758,11 @@ def build_handlers(
                 # The road-bike graph prices gravel, fine gravel and compacted as gravel
                 # (`variants.Variant.PAVED`, `routemaker_remap.ROUGH_UNPAVED`); every other
                 # graph prices gravel as packed gravel.
-                if variant is variants.Variant.PAVED and way.tags.get("surface"):
+                if variant is variants.Variant.PAVED and way.tags.get("surface") in (
+                    "gravel",
+                    "fine_gravel",
+                    "compacted",
+                ):
                     derived["rough_unpaved"] = True
                 # And a winding trail like a busy street (`routemaker.winding`; the owner,
                 # 2026-11-02: road bikes "stay away from trails with lots of direction

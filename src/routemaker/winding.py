@@ -12,8 +12,10 @@ per 100 m. Measured on OSM ways read from the OSM API on 2026-11-02 (paved trail
 Crescent Trail's rail bed turns 0 to 5 degrees per 100 m; Sligo Creek Trail 43 to 124 on its
 bending stretches, under 31 on its straight pieces; Long Branch Trail 57 to 107; Rock Creek's
 Western Ridge Trail 0 to 113. `WINDING_DEG_PER_100M` sits between the two kinds. A short way is
-measured over at least `MIN_SPAN_M`, so one bend where a connector meets a road does not make
-it winding. Sinuosity (`routemaker.shape`) cannot tell them apart: Sligo Creek Trail's ways
+measured over at least `MIN_SPAN_M`, so one gentle bend (under 80 degrees) where a connector
+meets a road does not make it winding. One right-angle bend on a way under 225 m does, on
+purpose: Sligo Creek Trail's short bending pieces are just that (85 to 214 m at 43 to 52
+degrees per 100 m), and leaving out each way's sharpest bend would let them through. Sinuosity (`routemaker.shape`) cannot tell them apart: Sligo Creek Trail's ways
 come to 1.01 to 1.21, its bends swinging back and forth across a nearly straight line.
 """
 

@@ -689,6 +689,10 @@ MTB_HILLS = 50
 # - Its own graph (`Variant.PAVED`): gravel, fine gravel and compacted priced as gravel, which a
 #   road bicycle at `ROAD_BIKE_SURFACES` prices at about seventeen times a paved path, and a
 #   winding trail priced as an LTS 3 street (`routemaker.winding`).
+# - `avoid_bad_surfaces` 0.9, as the Avoid gravel box had it (OWNER-DECISIONS 91, 92, 111): steep
+#   without making a surface impassable, so a ride that starts or ends on gravel is still planned.
+#   With "Keep to roads" on, Road Bike rides the no-trail graph, where gravel is packed gravel
+#   (about three times a paved road): there is no road-bike twin of that graph.
 # - Valhalla's Road bicycle at its own pace, 15.5 mph (25 km/h), where Default's hybrid rides
 #   11.2 mph; the rider's own speed (`rider_speed`) still wins.
 # - Fewer turns: Group Ride's and Fast's maneuver penalty (`HIGH_MANEUVER_PENALTY_S`), and
@@ -1090,16 +1094,9 @@ def variant_for_ride(name: str, when: str, assist: bool = False, trails_off: boo
     return preset.variant
 
 
-# "Avoid gravel" (OWNER-DECISIONS 91, 92, 111: "We can have an 'avoid gravel'
-# check"; off by default on every ride type, Cargo Bike included - "Cargo tends
-# to have pretty wide tires"). Valhalla's `avoid_bad_surfaces` at this value
-# prices every surface worse than the bicycle type's own minimum steeply without
-# making it impassable, so a ride that starts or ends on gravel is still
-# planned, and a preset already avoiding more keeps its own value.
-AVOID_GRAVEL_SURFACES = ROAD_BIKE_SURFACES
 # Valhalla's default cycling speed by bicycle type (km/h; Road 15.5 mph,
 # Cross 12.4, Hybrid 11.2, Mountain 9.9), which a ride takes when its preset
-# names none; kept when the box switches the type to Road.
+# names none.
 VALHALLA_DEFAULT_SPEED_KMH = {"Road": 25.0, "Cross": 20.0, "Hybrid": 18.0, "Mountain": 16.0}
 
 

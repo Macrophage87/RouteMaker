@@ -6812,8 +6812,8 @@ foot_designated, trail_visibility, hiking_route, natural_surface, park_path, mtb
 dismount), `routemaker.zoo` and the existing `singletrack` and `cbd_sidewalk`.
 The rebuild log line "facility classes: ..." carries the count per reason.
 
-**Six graphs.** The mountain-bike class (`mtb`) is closed on the standard,
-weekend, e-bike and no-trail graphs and open on a fifth, `valhalla-offroad`
+**Seven graphs.** The mountain-bike class (`mtb`) is closed on the standard,
+weekend, e-bike, no-trail and Road Bike graphs and open on another, `valhalla-offroad`
 (`Variant.OFFROAD`), which Gravel and Mountain Goat ride (OWNER-DECISIONS
 291(2)), and on the Mountain Bike graph (below). The off-road graph has no weekend twin and falls back to the standard graph, as the
 weekend one does, when it is not promoted or not answering. Start it after the
