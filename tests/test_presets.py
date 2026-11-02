@@ -40,6 +40,9 @@ CONTRACT_PRESETS = {
     # TRANSIT-ASSIST (Stephen, 2026-10-12): the two transit ride types.
     "bike-transit",
     "bikeshare-transit",
+    # Walk and Walk + 🚆🚌 (Stephen, 2026-11-02: "add a walk mode and a walk+transit mode").
+    "walk",
+    "walk-transit",
     # REBALANCE-RIDE (Stephen, 2026-10-12): Rebalance Ride.
     "rebalance",
     # Road Bike (Stephen, 2026-11-02), in the Avoid gravel box's place.
@@ -413,6 +416,9 @@ def test_every_ride_types_brake_grade_is_the_owners_approved_table() -> None:
         # (core.presets, "The transit ride types"): Default's and Bikeshare's.
         "bike-transit": 0.06,
         "bikeshare-transit": 0.04,
+        # Walk and Walk + 🚆🚌 ride nothing: Bikeshare + 🚶🚆🚌's, never used.
+        "walk": 0.04,
+        "walk-transit": 0.04,
         # Rebalance Ride rides a share bike, as Bikeshare (core.presets, "Rebalance Ride").
         "rebalance": 0.04,
         "mountain-goat": None,

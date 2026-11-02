@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "पैदल चलते समय सीढ़ियों से बचें",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "बाइकशेयर और सार्वजनिक परिवहन यात्राओं में पैदल हिस्से सीढ़ियों से बचते हैं, जहाँ भी पास में रैंप या लिफ़्ट जैसा बिना सीढ़ी का रास्ता हो। अपनी साइकिल के साथ पैदल चलना हमेशा उनसे बचता है। इस डिवाइस पर रखा जाता है।",
   "avoid stairs": "सीढ़ियों से बचें",
+  "Walk": "पैदल",
+  "On foot, turn by turn.": "पैदल, हर मोड़ पर।",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "पूरा रास्ता पैदल, फ़ुटपाथ, रास्तों और क्रॉसवॉक पर, चलते समय हर मोड़ पर दिशा-निर्देशों के साथ। सेटिंग्स में सीढ़ियों से बचें, पास में बिना सीढ़ी का रास्ता हो तो सीढ़ियों से दूर रखता है।",
+  "Walk + 🚆🚌": "पैदल + 🚆🚌",
+  "Walking plus a train or bus.": "पैदल और ट्रेन या बस।",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "दोनों छोर पर पैदल, बीच में मेट्रो, MARC, VRE, Light RailLink, Metro SubwayLink या बस, निर्धारित समय के अनुसार सबसे तेज़ यात्राएँ, अभी निकलने वाली यात्रा पर WMATA के लाइव प्रस्थान के साथ; जहाँ सबसे तेज़ हो या यात्रा छोटी हो, पूरा रास्ता पैदल। स्टेशनों तक उनके सबसे नज़दीकी प्रवेश से पहुँचा जाता है।",
+  "Walk plus train or bus": "पैदल और ट्रेन या बस",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "पैदल रास्ते फ़ुटपाथ, रास्तों और क्रॉसवॉक पर रहते हैं: ट्रैफ़िक और चढ़ाई की सेटिंग्स साइकिल चलाने के लिए हैं।",
+  "Start walk": "पैदल चलना शुरू करें",
 };

@@ -247,6 +247,14 @@ method" have the same groups. Typing "transit",
 - Bikeshare + 🚶🚆🚌 docks the bike before you board. At each end it walks or uses a bikeshare
   bike, whichever is quicker. The docks are named. It also offers "Walk the whole way" when
   walking is quickest or the trip is under about 1 mile (1.6 km).
+- Walk and Walk + 🚆🚌 (ride types, under Transportation) take no bike. Walk goes on foot the whole
+  way, on sidewalks, paths and crosswalks; "Start walk" follows it turn by turn. Walk + 🚆🚌 walks at
+  each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, and offers
+  walking the whole way where that is quickest or short. Both take a start and an end only for now.
+- Avoid stairs on walks (Settings, Riding, and the ride settings of Walk and Walk + 🚆🚌) keeps the
+  walks of Bikeshare, transit and Walk trips off flights of steps where a step-free way is near. It
+  is off unless you turn it on. A walk beside your own bike always avoids steps. A station is still
+  reached by its nearest entrance, which may have stairs.
 - The steps show each ride, walk and train or bus in order, with the total door to door. They say
   how riding the whole way compares.
 - On the map, a dashed line is the ride on transit, marked with its system's name. A dotted line

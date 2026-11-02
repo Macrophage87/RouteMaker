@@ -670,8 +670,11 @@ class RouteIn(Schema):
                 not 0 <= index < last for index in self.straight_legs
             ):
                 raise ValueError("straight_legs are distinct indices of legs between the points")
-        if self.novice_legs and self.preset not in presets.TRANSIT_PRESETS:
-            raise ValueError("novice_legs applies to the transit ride types only")
+        if self.novice_legs and self.preset not in {
+            presets.BIKE_TRANSIT,
+            presets.BIKESHARE_TRANSIT,
+        }:
+            raise ValueError("novice_legs applies to the transit ride types with a bike only")
         if self.novice_hop is not None and not self.novice_legs:
             raise ValueError("novice_hop goes with novice_legs")
         if self.hills is not None and self.hills > 0 and not preset.hills_seek:
@@ -2860,7 +2863,7 @@ class TransitOut(Schema):
     """A transit ride type's trip (`core.transit`): scheduled, with WMATA's predicted
     departures on a plan for now (`core.transit_live`)."""
 
-    mode: Literal["bike-transit", "bikeshare-transit"]
+    mode: Literal["bike-transit", "bikeshare-transit", "walk", "walk-transit"]
     key: str = Field(description="The chosen option's key.")
     direct: bool = Field(description="The chosen option is riding the whole way.")
     total_s: int
@@ -3975,22 +3978,35 @@ def _unrouted_line(
     }
 
 
-def _walked_line(plan: transit.Plan, preset_name: str, dials, services=None) -> dict:
+def _walked_line(
+    plan: transit.Plan, preset_name: str, dials, services=None
+) -> tuple[dict, transit.Plan]:
     """The answer's line is a walk (walking the whole way, or a trip whose line is a walk): the
     walk itself, as the pedestrian router walked it (or straight where it did not), timed at
-    walking pace; no bike route is asked. `services` walks a leg not yet walked by the router."""
+    walking pace; no bike route is asked. `services` walks a leg not yet walked by the router.
+    Returns the line and the plan with that walk's turns on its step, for turn by turn on foot."""
     leg = plan.legs[plan.ride]
     points = [list(p) for p in leg.coordinates]
     metres = None
+    turns = leg.turns
     walked = services.walk(points[0], points[-1]) if services is not None else None
     if walked is not None and len(walked.coordinates) >= 2:
         points = [list(p) for p in walked.coordinates]
         metres = walked.metres
+        turns = walked.turns
     elif not leg.estimated:
         metres = sum(
             haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
         )
-    return _unrouted_line(points, preset_name, dials, leg.seconds, metres)
+    line = _unrouted_line(points, preset_name, dials, leg.seconds, metres)
+    if turns != leg.turns:
+        option = plan.option
+        legs = list(option.legs)
+        legs[plan.ride] = dataclasses.replace(leg, turns=turns)
+        options = list(plan.options)
+        options[plan.chosen] = dataclasses.replace(option, legs=tuple(legs))
+        plan = dataclasses.replace(plan, options=options)
+    return line, plan
 
 
 def _transit_body(body: RouteIn, started: float | None) -> dict:
@@ -4050,7 +4066,11 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     # WMATA's live reading (core.wmata_live), if any: read before the search, which ranks a
     # station with no working elevator on the way 15 min down, and used after it (below).
     live = wmata_live.client.snapshot()
-    if body.preset == presets.BIKESHARE_TRANSIT:
+    if body.preset == presets.WALK:
+        found = transit.plan_walk(schedule, start, end, when, services)
+    elif body.preset == presets.WALK_TRANSIT:
+        found = transit.plan_walk_transit(schedule, start, end, when, services)
+    elif body.preset == presets.BIKESHARE_TRANSIT:
         found = transit.plan_bikeshare(
             schedule, start, end, when, services, share_snapshot, hop=body.novice_hop
         )
@@ -4127,8 +4147,12 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         return answer
 
     if found.option.walk:
-        return answered(_walked_line(found, body.preset, dials), found)
+        return answered(*_walked_line(found, body.preset, dials))
     leg = found.legs[found.ride]
+    if body.preset in presets.ON_FOOT_PRESETS:
+        # Walk + 🚆🚌 never rides: its line is its first walk, walked (straight where a few yards).
+        far = transit.line_m(leg) >= transit.MIN_LINE_M
+        return answered(*_walked_line(found, body.preset, dials, draw if far else None))
     # The line is the chosen option's first ride (or walk). Riding directly there, or an option
     # whose every ride and walk is a few yards (nothing the router could route), is drawn start to
     # end instead, and the plan keeps its own times.
@@ -4139,7 +4163,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     if not whole and leg.mode in (transit.WALK, transit.TAKE):
         # The line is a walk (Bikeshare + 🚶🚆🚌 with no ride worth a line): walked by the
         # pedestrian router, never the bike's, and the plan keeps its walking times.
-        return answered(_walked_line(found, body.preset, dials, draw), found)
+        return answered(*_walked_line(found, body.preset, dials, draw))
     if whole:
         ride_from, ride_to = list(start), list(end)
     else:
@@ -4203,10 +4227,13 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             # times stay the plan's own: timing them again could drop this option too.
             leg = timed.legs[timed.ride]
             if timed.option.walk:
-                return answered(_walked_line(timed, body.preset, dials), timed)
+                return answered(*_walked_line(timed, body.preset, dials))
+            if body.preset in presets.ON_FOOT_PRESETS:
+                far = transit.line_m(leg) >= transit.MIN_LINE_M
+                return answered(*_walked_line(timed, body.preset, dials, draw if far else None))
             walked = leg.mode in (transit.WALK, transit.TAKE) and not timed.option.direct
             if walked and transit.line_m(leg) >= transit.MIN_LINE_M:
-                return answered(_walked_line(timed, body.preset, dials, draw), timed)
+                return answered(*_walked_line(timed, body.preset, dials, draw))
             again_whole = timed.option.direct and body.preset == presets.BIKE_TRANSIT
             if again_whole:
                 points = [list(start), list(end)]

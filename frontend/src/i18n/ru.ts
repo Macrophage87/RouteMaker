@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "Избегать лестниц пешком",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "Пешие участки поездок на прокатном велосипеде и общественном транспорте обходят лестницы везде, где рядом есть путь без ступенек, например пандус или лифт. Пешие участки рядом со своим велосипедом обходят их всегда. Хранится на этом устройстве.",
   "avoid stairs": "избегать лестниц",
+  "Walk": "Пешком",
+  "On foot, turn by turn.": "Пешком, с подсказками на каждом повороте.",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "Весь путь пешком по тротуарам, дорожкам и пешеходным переходам, с подсказками на каждом повороте. «Избегать лестниц» в настройках обходит лестницы, если рядом есть путь без ступенек.",
+  "Walk + 🚆🚌": "Пешком + 🚆🚌",
+  "Walking plus a train or bus.": "Пешком плюс поезд или автобус.",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "Пешком на каждом конце, а между ними метро, MARC, VRE, Light RailLink, Metro SubwayLink или автобус; самые быстрые поездки по расписанию, с отправлениями WMATA в реальном времени для поездки сейчас; весь путь пешком, если так быстрее или поездка короткая. К станциям ведёт ближайший вход.",
+  "Walk plus train or bus": "Пешком плюс поезд или автобус",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "Пешие маршруты идут по тротуарам, дорожкам и переходам: настройки движения и подъёмов — для велосипеда.",
+  "Start walk": "Начать путь пешком",
 };

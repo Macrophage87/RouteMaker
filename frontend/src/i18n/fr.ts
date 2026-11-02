@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "Éviter les escaliers à pied",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "Les trajets à pied des parcours en vélo en libre-service et en transport en commun évitent les escaliers dès qu'un chemin sans marches, comme une rampe ou un ascenseur, est proche. Les trajets à pied à côté de votre propre vélo les évitent toujours. Conservé sur cet appareil.",
   "avoid stairs": "éviter les escaliers",
+  "Walk": "Marche",
+  "On foot, turn by turn.": "À pied, virage par virage.",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "À pied tout le trajet, sur les trottoirs, chemins et passages piétons, avec des indications virage par virage pendant que vous marchez. Éviter les escaliers, dans les Réglages, évite les volées de marches quand un chemin sans marches est proche.",
+  "Walk + 🚆🚌": "Marche + 🚆🚌",
+  "Walking plus a train or bus.": "La marche plus un train ou un bus.",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "La marche à chaque bout avec Metro, MARC, VRE, Light RailLink, Metro SubwayLink ou un bus entre les deux, les trajets les plus rapides selon les horaires prévus, avec les départs en direct de WMATA pour un trajet qui part maintenant ; la marche tout le trajet quand c'est le plus rapide ou que le trajet est court. Les stations sont atteintes par leur entrée la plus proche.",
+  "Walk plus train or bus": "Marche plus train ou bus",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "Les trajets à pied suivent les trottoirs, chemins et passages piétons : les réglages de circulation et de côtes sont pour le vélo.",
+  "Start walk": "Démarrer la marche",
 };

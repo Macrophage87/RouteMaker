@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "行路時避開樓梯",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "共享單車同公共交通行程入面嘅步行路段，附近有斜道或者升降機呢類冇級嘅路就會避開樓梯。推住自己架單車行嘅路段一定會避開。儲存喺呢部裝置。",
   "avoid stairs": "避開樓梯",
+  "Walk": "行路",
+  "On foot, turn by turn.": "行路，逐個轉角講。",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "成程行路，行行人路、小徑同斑馬線，行嘅時候逐個轉角講路。設定入面嘅避開樓梯，附近有冇級嘅路就避開樓梯。",
+  "Walk + 🚆🚌": "行路 + 🚆🚌",
+  "Walking plus a train or bus.": "行路加火車或者巴士。",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "兩頭行路，中間搭地鐵、MARC、VRE、Light RailLink、Metro SubwayLink 或者巴士，按時間表最快嘅行程，而家出發嘅行程用 WMATA 嘅實時開車時間；最快或者路程短就成程行路。車站由最近嘅入口入。",
+  "Walk plus train or bus": "行路加火車或者巴士",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "行路行行人路、小徑同斑馬線：交通同斜路設定係踩單車用嘅。",
+  "Start walk": "開始行路",
 };

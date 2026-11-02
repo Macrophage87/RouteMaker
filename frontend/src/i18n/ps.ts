@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "د تګ پر مهال له زینو ډډه وکړئ",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "د شریکو بایسکلونو او عامه ترانسپورت په سفرونو کې پلي برخې له زینو ډډه کوي هرچېرې چې نږدې پرته له زینو لاره وي، لکه رمپ یا لفټ. ستاسو د خپل بایسکل تر څنګ تګ تل ترې ډډه کوي. په دې وسیله ساتل کېږي.",
   "avoid stairs": "له زینو ډډه",
+  "Walk": "پلی تګ",
+  "On foot, turn by turn.": "پلی، موړ په موړ.",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "ټوله لاره پلی، په پلي لارو، لارو او د پلیو تېرېدو ځایونو، د تګ پر مهال د موړ په موړ لارښوونو سره. په امستنو کې له زینو ډډه، کله چې نږدې پرته له زینو لاره وي، له زینو یې لرې ساتي.",
+  "Walk + 🚆🚌": "پلی تګ + 🚆🚌",
+  "Walking plus a train or bus.": "پلی تګ او اورګاډی یا بس.",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "په هره سر کې پلی تګ، په منځ کې مترو، MARC، VRE، Light RailLink، Metro SubwayLink یا بس، د ټاکل شوي مهال‌وېش له مخې تر ټولو چټک سفرونه، د هغه سفر لپاره چې اوس ځي د WMATA ژوندي وتلو سره؛ ټوله لاره پلی هلته چې تر ټولو چټک وي یا سفر لنډ وي. سټیشنونو ته له نږدې دروازې رسېږئ.",
+  "Walk plus train or bus": "پلی تګ او اورګاډی یا بس",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "پلی تګ په پلي لارو، لارو او تېرېدو ځایونو پاتې کېږي: د ترافیک او غونډیو امستنې د بایسکل چلولو لپاره دي.",
+  "Start walk": "پلی تګ پیل کړئ",
 };

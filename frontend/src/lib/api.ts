@@ -696,7 +696,7 @@ export interface StationTimes {
 
 /** A transit ride type's trip: scheduled times, with WMATA's predicted departures on a plan for now. */
 export interface TransitPlan {
-  mode: "bike-transit" | "bikeshare-transit";
+  mode: "bike-transit" | "bikeshare-transit" | "walk" | "walk-transit";
   /** The chosen option's key, and whether it is riding the whole way. */
   key: string;
   direct: boolean;

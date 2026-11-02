@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "ብእግሪ ክትከዱ ከለኹም ደረጃታት ኣወግዱ",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "ኣብ ጉዕዞታት ብሽግለታ ብሽክለታን ህዝባዊ መጓዓዝያን ዘለዉ ናይ እግሪ ክፋላት፡ ከም ራምፕ ወይ ሊፍት ዝኣመሰለ ደረጃ ዘይብሉ መንገዲ ኣብ ቀረባ ኣብ ዘለዎ ደረጃታት የወግዱ። ኣብ ጎኒ ናይ ገዛእ ርእስኹም ብሽክለታ ዝግበር ጉዕዞ ብእግሪ ኩሉ ግዜ የወግዶም። ኣብዚ መሳርሒ ይዕቀብ።",
   "avoid stairs": "ደረጃታት ምውጋድ",
+  "Walk": "ብእግሪ",
+  "On foot, turn by turn.": "ብእግሪ፡ ኣብ ነፍሲ ወከፍ ምጥዋይ።",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "ምሉእ መንገዲ ብእግሪ፡ ኣብ መንገዲ እግረኛታት፡ መንገድታትን መሳገሪታትን፡ ክትከዱ ከለኹም ኣብ ነፍሲ ወከፍ ምጥዋይ መምርሒ። ኣብ ቅጥዕታት ዘሎ ደረጃታት ኣወግዱ፡ ደረጃ ዘይብሉ መንገዲ ኣብ ቀረባ ምስ ዝህሉ ካብ ደረጃታት የርሕቖ።",
+  "Walk + 🚆🚌": "ብእግሪ + 🚆🚌",
+  "Walking plus a train or bus.": "ብእግሪ ምስ ባቡር ወይ ኣውቶቡስ።",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "ኣብ ነፍሲ ወከፍ ጫፍ ብእግሪ፡ ኣብ መንጎ ሜትሮ፡ MARC፡ VRE፡ Light RailLink፡ Metro SubwayLink ወይ ኣውቶቡስ፡ ብዝተመደበ ሰዓታት እቶም ዝቐልጠፉ ጉዕዞታት፡ ንሕጂ ዝብገስ ጉዕዞ ናይ WMATA ቀጥታዊ ምብጋስ፤ ዝቐልጠፈ ኣብ ዝኾነሉ ወይ ጉዕዞ ሓጺር ኣብ ዝኾነሉ ምሉእ መንገዲ ብእግሪ። ናብ መደበራት ብዝቐረበ መእተዊኦም ይብጽሑ።",
+  "Walk plus train or bus": "ብእግሪ ምስ ባቡር ወይ ኣውቶቡስ",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "ጉዕዞ ብእግሪ ኣብ መንገዲ እግረኛታት፡ መንገድታትን መሳገሪታትን ይጸንሕ፤ ቅጥዕታት ትራፊክን ዓቐብን ንብሽክለታ እዮም።",
+  "Start walk": "ብእግሪ ጀምር",
 };

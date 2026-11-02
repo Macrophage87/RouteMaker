@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "Tránh cầu thang khi đi bộ",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "Các đoạn đi bộ trong chuyến đi bằng xe đạp công cộng và phương tiện công cộng tránh cầu thang ở bất cứ đâu có lối không bậc ở gần, như dốc hoặc thang máy. Đi bộ bên cạnh xe đạp của bạn luôn tránh cầu thang. Lưu trên thiết bị này.",
   "avoid stairs": "tránh cầu thang",
+  "Walk": "Đi bộ",
+  "On foot, turn by turn.": "Đi bộ, chỉ đường từng chỗ rẽ.",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "Đi bộ cả quãng đường, trên vỉa hè, lối đi và vạch qua đường, có chỉ đường từng chỗ rẽ khi bạn đi. Tránh cầu thang trong Cài đặt sẽ tránh các bậc thang khi có lối không bậc ở gần.",
+  "Walk + 🚆🚌": "Đi bộ + 🚆🚌",
+  "Walking plus a train or bus.": "Đi bộ cộng tàu hoặc xe buýt.",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "Đi bộ ở mỗi đầu, ở giữa là Metro, MARC, VRE, Light RailLink, Metro SubwayLink hoặc xe buýt; các chuyến nhanh nhất theo giờ đã định, với giờ khởi hành trực tiếp của WMATA cho chuyến đi ngay bây giờ; đi bộ cả quãng khi nhanh nhất hoặc chuyến đi ngắn. Vào ga bằng lối vào gần nhất.",
+  "Walk plus train or bus": "Đi bộ cộng tàu hoặc xe buýt",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "Đi bộ theo vỉa hè, lối đi và vạch qua đường: cài đặt giao thông và dốc dành cho đạp xe.",
+  "Start walk": "Bắt đầu đi bộ",
 };

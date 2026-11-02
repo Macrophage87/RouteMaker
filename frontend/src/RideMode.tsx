@@ -143,6 +143,7 @@ import {
   type RideModel,
   type RideState,
   type Verbosity,
+  endWords,
 } from "./lib/navigate.ts";
 import { statsPause, statsStart, statsStep, type RideStats } from "./lib/rideStats.ts";
 import {
@@ -257,9 +258,10 @@ import {
   tripRideStart,
   tripStep,
   type RideTrip,
+  walkLineTurns,
 } from "./lib/rideTrip.ts";
 import { onwardActive, onwardStart, onwardStep, type OnwardState } from "./lib/onward.ts";
-import { walkTurnLine } from "./lib/walkCues.ts";
+import { walkModel, walkTurnLine } from "./lib/walkCues.ts";
 import { OnBoardCard } from "./OnBoardCard.tsx";
 import { t } from "./lib/i18n.ts";
 import { railWord } from "./lib/railWords.ts";
@@ -860,6 +862,10 @@ export function RideMode({
   const uturns = useRef<UTurnState>(UTURN_START);
   const checking = useRef(false);
   const modelOf = (r: RouteResponse, points: readonly LonLat[]) => {
+    // Walk and Walk + 🚆🚌 (2026-11-02): the line is a walk, its cues its turns (lib/walkCues.ts).
+    // A re-plan on foot (rideTrip.ts rideLegOf: Walk's own) brings its own turns; the planned walk's are its own.
+    const onFoot = trip?.onFoot ? walkModel({ coordinates: r.geometry.coordinates as LonLat[], turns: walkLineTurns(r) ?? trip.onFoot.turns, to: null }, endWords(null)) : null;
+    if (onFoot) return onFoot;
     // A stop's own name (2026-10-24) is said and shown with its number.
     const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia), stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop));
     return r === uturnRoute.current ? withUTurn(built) : built;

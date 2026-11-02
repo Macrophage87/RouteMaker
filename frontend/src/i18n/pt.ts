@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "Evitar escadas a pé",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "Os trechos a pé das viagens de bicicleta compartilhada e transporte público evitam escadas sempre que houver perto um caminho sem degraus, como uma rampa ou um elevador. Os trechos a pé ao lado da sua própria bicicleta sempre as evitam. Guardado neste dispositivo.",
   "avoid stairs": "evitar escadas",
+  "Walk": "Caminhada",
+  "On foot, turn by turn.": "A pé, curva a curva.",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "A pé o caminho todo, por calçadas, trilhas e faixas de pedestres, com orientações curva a curva enquanto você caminha. Evitar escadas, nas Configurações, evita lances de degraus quando há perto um caminho sem degraus.",
+  "Walk + 🚆🚌": "Caminhada + 🚆🚌",
+  "Walking plus a train or bus.": "Caminhada mais um trem ou ônibus.",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "Caminhada em cada ponta com Metro, MARC, VRE, Light RailLink, Metro SubwayLink ou um ônibus no meio, as viagens mais rápidas pelos horários programados, com as partidas ao vivo da WMATA numa viagem que sai agora; caminhada o caminho todo quando isso é mais rápido ou a viagem é curta. As estações são alcançadas pela entrada mais próxima.",
+  "Walk plus train or bus": "Caminhada mais trem ou ônibus",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "As caminhadas seguem calçadas, trilhas e faixas de pedestres: as configurações de trânsito e subidas são para pedalar.",
+  "Start walk": "Iniciar caminhada",
 };

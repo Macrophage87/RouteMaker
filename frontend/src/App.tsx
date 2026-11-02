@@ -294,6 +294,7 @@ import type { ListKey } from "./lib/review.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type Home, type MyGo } from "./lib/myGo.ts";
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
 import { nativeBridge, nativeShareNavigator } from "./lib/nativeShell.ts";
+import { AVOID_STAIRS_EVENT, readAvoidStairs } from "./lib/avoidStairs.ts";
 import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restRequest, rideLegOf, rideTripOf, rideable as rideableRoute, type RideTrip } from "./lib/rideTrip.ts";
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
@@ -553,10 +554,18 @@ export function App() {
   // Everything the request is made from, as a key (v0.7.0): in Plan a station or a transit option chosen, a
   // weight or a slider moved, all mark the plan changed until Route or Update route.
   // The key leaves closuresNow out: switching between Go and Plan keeps the route (changeMode), not marked changed.
+  // Avoid stairs (Settings, and Walk's own ride settings; lib/avoidStairs.ts) is sent with the ride types that walk on
+  // their own, so turning it plans them again.
+  const [avoidStairs, setAvoidStairs] = useState(() => readAvoidStairs());
+  useEffect(() => {
+    const changed = (event: Event) => setAvoidStairs((event as CustomEvent<boolean>).detail === true);
+    window.addEventListener(AVOID_STAIRS_EVENT, changed);
+    return () => window.removeEventListener(AVOID_STAIRS_EVENT, changed);
+  }, []);
   const planKey = useMemo(() => {
     const { closuresNow: _now, ...keyed } = planDials;
-    return JSON.stringify(keyed);
-  }, [planDials]);
+    return JSON.stringify({ ...keyed, stairs: twoPointsOnly(preset) && avoidStairs });
+  }, [planDials, preset, avoidStairs]);
   // The dials as they are, for Go's early start (v0.7.0, "Faster routing" step 4), which asks before the tap.
   const planDialsNow = useRef(planDials);
   planDialsNow.current = planDials;
@@ -1583,7 +1592,9 @@ export function App() {
       quick: mode === "go" && !riding,
     }, { now: now || (goPickedNow.current && mode === "go") });
     goPickedNow.current = false;
-  }, [points, preset, planDials, confirmedKm, routeAsk, planFirst]);
+    // planKey: Avoid stairs too (2026-11-02), which planDials does not carry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed as before, plus planKey
+  }, [points, preset, planDials, planKey, confirmedKm, routeAsk, planFirst]);
 
   // The long-ride question and every error are in the sheet; on a phone whose
   // sheet is hidden they would otherwise be invisible, so the sheet opens
