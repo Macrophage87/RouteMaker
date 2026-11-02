@@ -18,6 +18,11 @@ export interface Raster {
 }
 
 export const OUTLINE = "#1f2937";
+/**
+ * The ring on the dark map (the owner, 2026-11-01: battery audit): the near-black ring is about 1.1:1 there, so it is
+ * light, the dark theme's legend ring (styles.css --rail-ring); darkMap.test.ts holds it 3:1 on every dark surface.
+ */
+export const OUTLINE_DARK_MAP = "#e5e7eb";
 const SEPARATOR = "#ffffff";
 /** The station icon's diameter in CSS pixels at icon-size 1. */
 export const STATION_ICON_PX = 20;
@@ -76,10 +81,11 @@ export function stationIcon(
   shape: "circle" | "square",
   pixelRatio = 2,
   cssSize = STATION_ICON_PX,
+  outlineColour = OUTLINE,
 ): Raster {
   if (colours.length === 0) throw new Error("a station icon needs at least one colour");
   const rgb = colours.map(hexToRgb);
-  const outline = hexToRgb(OUTLINE);
+  const outline = hexToRgb(outlineColour);
   const separator = hexToRgb(SEPARATOR);
   const size = Math.round(cssSize * pixelRatio);
   const centre = size / 2;
@@ -111,15 +117,20 @@ export function stationIcon(
 export const CLOSED_FILL = "#d1d5db";
 export const CLOSED_RING = "#6b7280";
 export const CLOSED_STRIKE = "#1f2937";
+/**
+ * A closed station's ring on the dark map (the owner, 2026-11-01: battery audit): the mid grey is under 2:1 on a dark
+ * motorway, so a light grey there, still a grey (darkMap.test.ts).
+ */
+export const CLOSED_RING_DARK_MAP = "#9ca3af";
 
 /**
  * A closed station: its usual shape in grey with a near-black stroke from corner to corner (top right
  * to bottom left) cased in white, so it reads as struck through on the light and dark base maps alike
  * and without colour.
  */
-export function closedStationIcon(shape: "circle" | "square", pixelRatio = 2, cssSize = STATION_ICON_PX): Raster {
+export function closedStationIcon(shape: "circle" | "square", pixelRatio = 2, cssSize = STATION_ICON_PX, ringColour = CLOSED_RING): Raster {
   const fill = hexToRgb(CLOSED_FILL);
-  const ring = hexToRgb(CLOSED_RING);
+  const ring = hexToRgb(ringColour);
   const strike = hexToRgb(CLOSED_STRIKE);
   const white = hexToRgb(SEPARATOR);
   const size = Math.round(cssSize * pixelRatio);
