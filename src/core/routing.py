@@ -71,13 +71,13 @@ import time
 import urllib.error
 import urllib.request
 from array import array
-from struct import pack
 from collections.abc import Callable, Iterator
 from concurrent.futures import FIRST_EXCEPTION, Future
 from concurrent.futures import wait as wait_futures
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
+from struct import pack
 
 from django.conf import settings
 from django.db import DatabaseError, connection, transaction
