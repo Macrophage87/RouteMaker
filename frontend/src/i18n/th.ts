@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "เลี่ยงบันไดเมื่อเดิน",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "ช่วงเดินในการเดินทางด้วยจักรยานให้เช่าและขนส่งสาธารณะจะเลี่ยงบันไดเมื่อมีทางที่ไม่มีขั้นบันไดอยู่ใกล้ ๆ เช่น ทางลาดหรือลิฟต์ ช่วงเดินข้างจักรยานของคุณเองจะเลี่ยงเสมอ เก็บไว้ในอุปกรณ์นี้",
   "avoid stairs": "เลี่ยงบันได",
+  "Walk": "เดิน",
+  "On foot, turn by turn.": "เดินเท้า บอกทุกทางเลี้ยว",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "เดินเท้าตลอดทาง บนทางเท้า ทางเดิน และทางม้าลาย พร้อมบอกทางทุกทางเลี้ยวขณะเดิน ตัวเลือกเลี่ยงบันไดในการตั้งค่าจะเลี่ยงบันไดเมื่อมีทางไม่มีขั้นอยู่ใกล้",
+  "Walk + 🚆🚌": "เดิน + 🚆🚌",
+  "Walking plus a train or bus.": "เดินบวกรถไฟหรือรถบัส",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "เดินที่ปลายทั้งสองด้าน โดยมีเมโทร MARC VRE Light RailLink Metro SubwayLink หรือรถบัสอยู่ระหว่างกลาง การเดินทางที่เร็วที่สุดตามตารางเวลา พร้อมเวลาออกสดของ WMATA สำหรับการเดินทางที่ออกตอนนี้ เดินตลอดทางเมื่อเร็วที่สุดหรือระยะสั้น เข้าสถานีทางทางเข้าที่ใกล้ที่สุด",
+  "Walk plus train or bus": "เดินบวกรถไฟหรือรถบัส",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "การเดินใช้ทางเท้า ทางเดิน และทางม้าลาย การตั้งค่าการจราจรและทางชันมีไว้สำหรับปั่นจักรยาน",
+  "Start walk": "เริ่มเดิน",
 };

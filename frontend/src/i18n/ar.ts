@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "تجنّب الدرج أثناء المشي",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "يتجنّب المشي في رحلات الدراجات المشتركة والنقل العام الدرجَ كلما وُجد قريبًا طريق بلا درجات، مثل منحدر أو مصعد. والمشي بجانب دراجتك الخاصة يتجنّبه دائمًا. يُحفظ على هذا الجهاز.",
   "avoid stairs": "تجنّب الدرج",
+  "Walk": "المشي",
+  "On foot, turn by turn.": "سيرًا على الأقدام، منعطفًا بمنعطف.",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "سيرًا على الأقدام طوال الطريق، على الأرصفة والممرات وممرات المشاة، مع توجيهات منعطفًا بمنعطف أثناء المشي. خيار تجنّب الدرج في الإعدادات يبعده عن الدرج حين يوجد قريبًا طريق بلا درجات.",
+  "Walk + 🚆🚌": "المشي + 🚆🚌",
+  "Walking plus a train or bus.": "المشي مع قطار أو حافلة.",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "المشي عند كل طرف مع المترو أو MARC أو VRE أو Light RailLink أو Metro SubwayLink أو حافلة بينهما، وأسرع الرحلات حسب المواعيد المجدولة، مع مواعيد WMATA المباشرة لرحلة تنطلق الآن؛ والمشي طوال الطريق حين يكون الأسرع أو تكون الرحلة قصيرة. يُوصَل إلى المحطات من أقرب مدخل.",
+  "Walk plus train or bus": "المشي مع قطار أو حافلة",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "المشي يلتزم بالأرصفة والممرات وممرات المشاة: إعدادات حركة المرور والمرتفعات للدراجة.",
+  "Start walk": "ابدأ المشي",
 };

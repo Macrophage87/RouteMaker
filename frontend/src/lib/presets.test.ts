@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PRESETS, DEFAULT_PRESET, TRANSIT_PRESETS, isPreset, isTransit, parsePreset, presetLabel, resolvePreset, presetSaid, twoPointsOnly } from "./presets.ts";
+import { PRESETS, DEFAULT_PRESET, TRANSIT_PRESETS, endsOnFoot, isPreset, isTransit, onFoot, parsePreset, presetLabel, resolvePreset, presetSaid, twoPointsOnly } from "./presets.ts";
 
 test("the picker offers every ride type in PLAN's table", () => {
   assert.deepEqual(
@@ -21,6 +21,9 @@ test("the picker offers every ride type in PLAN's table", () => {
       "novice",
       "bike-transit",
       "bikeshare-transit",
+      // Walk and Walk + 🚆🚌 (Stephen, 2026-11-02: "add a walk mode and a walk+transit mode").
+      "walk",
+      "walk-transit",
       "rebalance",
     ],
   );
@@ -34,13 +37,24 @@ test("the transit ride types are named as the owner named them, scheduled with l
   assert.equal(presetSaid("bikeshare-transit"), "Bikeshare plus walk, train or bus");
   // A name without emoji is said as it shows.
   assert.equal(presetSaid("rebalance"), "Rebalance Ride");
-  for (const id of TRANSIT_PRESETS) {
+  for (const id of TRANSIT_PRESETS.filter((id) => id !== "walk")) {
     const description = PRESETS.find((p) => p.id === id)!.description;
     assert.match(description, /[Ss]cheduled times, with WMATA's live departures on a trip leaving now/);
     assert.ok(isTransit(id) && twoPointsOnly(id));
   }
   assert.ok(twoPointsOnly("bikeshare") && !isTransit("bikeshare"));
   assert.ok(!twoPointsOnly("default"));
+});
+
+test("Walk and Walk + 🚆🚌 (Stephen, 2026-11-02): on foot, a start and an end, stations by their nearest entrance", () => {
+  assert.equal(presetLabel("walk"), "Walk");
+  assert.equal(presetLabel("walk-transit"), "Walk + 🚆🚌");
+  assert.equal(presetSaid("walk-transit"), "Walk plus train or bus");
+  for (const id of ["walk", "walk-transit"] as const) {
+    assert.ok(onFoot(id) && isTransit(id) && twoPointsOnly(id) && endsOnFoot(id));
+  }
+  assert.ok(!onFoot("bikeshare-transit") && !onFoot("default"));
+  assert.match(PRESETS.find((p) => p.id === "walk")!.description, /turn-by-turn/);
 });
 
 test("Novice and Nervous takes Riding with kids' place, said in plain words (v0.7.0)", () => {

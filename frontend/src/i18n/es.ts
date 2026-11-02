@@ -2295,4 +2295,13 @@ export const ES: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "Evitar escaleras al caminar",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "Los tramos a pie de los viajes en Bikeshare y transporte público evitan las escaleras siempre que haya cerca un camino sin escalones, como una rampa o un ascensor. Los tramos a pie junto a su propia bicicleta siempre las evitan. Se guarda en este dispositivo.",
   "avoid stairs": "evitar escaleras",
+  "Walk": "Caminar",
+  "On foot, turn by turn.": "A pie, giro a giro.",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "A pie todo el camino, por aceras, senderos y cruces peatonales, con indicaciones giro a giro mientras camina. Evitar escaleras, en Configuración, lo aleja de los tramos de escalones cuando hay cerca un camino sin escalones.",
+  "Walk + 🚆🚌": "Caminar + 🚆🚌",
+  "Walking plus a train or bus.": "Caminar más un tren o autobús.",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "Caminando en cada extremo con Metro, MARC, VRE, Light RailLink, Metro SubwayLink o un autobús entre ellos, los viajes más rápidos según los horarios programados, con las salidas en vivo de WMATA en un viaje que sale ahora; caminando todo el camino cuando eso es lo más rápido o el viaje es corto. A las estaciones se llega por su entrada más cercana.",
+  "Walk plus train or bus": "Caminar más tren o autobús",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "Las caminatas van por aceras, senderos y cruces peatonales: los ajustes de tráfico y cuestas son para pedalear.",
+  "Start walk": "Empezar a caminar",
 };

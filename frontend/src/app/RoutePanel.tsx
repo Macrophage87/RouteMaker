@@ -35,7 +35,7 @@ import { chartKind, corkerFigure, corkerShort, foldName, usableProfile } from ".
 import { RouteDescription } from "../RouteDescription.tsx";
 import { RIDE_TOO_LONG } from "../lib/navigate.ts";
 import { ridesHidden } from "../lib/nativeShell.ts";
-import { noBikeLine, restOffered, rideTripOf, rideable as rideableRoute, ridesLine } from "../lib/rideTrip.ts";
+import { noBikeLine, restOffered, rideTripOf, rideable as rideableRoute, ridesLine, walksLine } from "../lib/rideTrip.ts";
 import { BikeshareSummary } from "../BikeshareSummary.tsx";
 import { TransitSummary } from "../TransitSummary.tsx";
 import { DepartureTimer } from "../DepartureTimer.tsx";
@@ -880,7 +880,8 @@ export function RouteSummary({
   const rideable = rideableRoute(route);
   const goMode = mode === "go";
   // "Start ride" in Go; Plan shows its first word only ("Start", "Iniciar") and keeps the rest for a screen reader.
-  const [startWord, rideWord] = firstWordAndRest(t("Start ride"));
+  // Walk and Walk + 🚆🚌 (2026-11-02): "Start walk", followed turn by turn on foot.
+  const [startWord, rideWord] = firstWordAndRest(walksLine(route) ? t("Start walk") : t("Start ride"));
   // "Elevation and climbs" (the mockup); a Mass Ride's three charts keep their own name.
   const elevationTitle = profile && chartKind(route) === "mass" ? foldName("mass") : ROUTE_FOLDS.elevation.title;
   // Start: the big button (Go), or the first of its row (Plan). In a browser, short rides only; a longer one goes to a bike computer (OD 255). The phone app rides any length.

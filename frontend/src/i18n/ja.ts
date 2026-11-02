@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "徒歩で階段を避ける",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "シェアサイクルと公共交通の移動での徒歩区間は、スロープやエレベーターなど段差のない道が近くにあれば階段を避けます。自分の自転車を押して歩く区間は常に避けます。この端末に保存されます。",
   "avoid stairs": "階段を避ける",
+  "Walk": "徒歩",
+  "On foot, turn by turn.": "徒歩、曲がり角ごとに案内。",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "全行程を徒歩で、歩道・小道・横断歩道を通り、歩きながら曲がり角ごとに案内します。設定の「階段を避ける」は、段差のない道が近くにあれば階段を避けます。",
+  "Walk + 🚆🚌": "徒歩 + 🚆🚌",
+  "Walking plus a train or bus.": "徒歩と電車またはバス。",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "両端は徒歩、間はメトロ、MARC、VRE、Light RailLink、Metro SubwayLink またはバス。時刻表で最も速い行程を示し、今出発する行程には WMATA のリアルタイム発車時刻を使います。最も速いときや短い行程では全行程徒歩。駅へは最寄りの入口から入ります。",
+  "Walk plus train or bus": "徒歩と電車またはバス",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "徒歩は歩道・小道・横断歩道を通ります。交通量と坂の設定は自転車用です。",
+  "Start walk": "徒歩を開始",
 };

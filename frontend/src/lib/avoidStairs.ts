@@ -19,10 +19,14 @@ export function readAvoidStairs(store: KeyValueStore | null = browserStore()): b
   }
 }
 
+/** Sent on the page when the switch changes, so the plan shown is planned again with it (App.tsx). */
+export const AVOID_STAIRS_EVENT = "routemaker:avoid-stairs";
+
 export function writeAvoidStairs(on: boolean, store: KeyValueStore | null = browserStore()): void {
   try {
     store?.setItem(AVOID_STAIRS_KEY, on ? "1" : "0");
   } catch {
     // Blocked site data: the choice holds for this visit only.
   }
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(AVOID_STAIRS_EVENT, { detail: on }));
 }

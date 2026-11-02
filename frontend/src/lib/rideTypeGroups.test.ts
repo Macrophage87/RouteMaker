@@ -34,7 +34,7 @@ test("the groups are the owner's: Transportation (Rebalance Ride with it, P3), A
   );
   const [transport, adventure, group] = RIDE_GROUPS;
   // Rebalance Ride moved from Adventure to Transportation (P3, the owner's approved audit).
-  assert.deepEqual([...transport.ids], ["default", "bike-transit", "bikeshare-transit", "bikeshare", "cargo", "ebike", "novice", "rebalance"]);
+  assert.deepEqual([...transport.ids], ["default", "bike-transit", "bikeshare-transit", "walk-transit", "walk", "bikeshare", "cargo", "ebike", "novice", "rebalance"]);
   assert.deepEqual([...adventure.ids], ["fast", "road-bike", "trailmaxxing", "mountain-goat", "mountain-bike", "gravel"]);
   assert.deepEqual([...group.ids], ["group-ride", "mass-ride"]);
 });

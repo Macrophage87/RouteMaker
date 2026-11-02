@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "Hindari tangga saat berjalan",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "Bagian jalan kaki dalam perjalanan Bikeshare dan angkutan umum menghindari tangga di mana pun ada jalan tanpa anak tangga di dekatnya, seperti ramp atau lift. Berjalan di samping sepeda Anda sendiri selalu menghindarinya. Disimpan di perangkat ini.",
   "avoid stairs": "hindari tangga",
+  "Walk": "Jalan kaki",
+  "On foot, turn by turn.": "Jalan kaki, belokan demi belokan.",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "Jalan kaki sepanjang jalan, di trotoar, jalur, dan penyeberangan, dengan petunjuk belokan demi belokan saat Anda berjalan. Hindari tangga di Pengaturan menjauhkannya dari tangga bila ada jalan tanpa anak tangga di dekatnya.",
+  "Walk + 🚆🚌": "Jalan kaki + 🚆🚌",
+  "Walking plus a train or bus.": "Jalan kaki plus kereta atau bus.",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "Jalan kaki di tiap ujung dengan Metro, MARC, VRE, Light RailLink, Metro SubwayLink, atau bus di antaranya, perjalanan tercepat menurut jadwal, dengan keberangkatan langsung WMATA untuk perjalanan yang berangkat sekarang; jalan kaki sepanjang jalan bila itu tercepat atau perjalanannya pendek. Stasiun dicapai lewat pintu masuk terdekat.",
+  "Walk plus train or bus": "Jalan kaki plus kereta atau bus",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "Jalan kaki tetap di trotoar, jalur, dan penyeberangan: pengaturan lalu lintas dan tanjakan untuk bersepeda.",
+  "Start walk": "Mulai jalan",
 };

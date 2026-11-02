@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "步行时避开楼梯",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "共享单车和公共交通行程中的步行路段，只要附近有坡道或电梯等无台阶的路，就会避开楼梯。推着自己的自行车步行的路段总会避开。保存在此设备上。",
   "avoid stairs": "避开楼梯",
+  "Walk": "步行",
+  "On foot, turn by turn.": "步行，逐个转弯提示。",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "全程步行，走人行道、小路和人行横道，边走边逐个转弯提示。设置中的“避开楼梯”会在附近有无台阶的路时避开楼梯。",
+  "Walk + 🚆🚌": "步行 + 🚆🚌",
+  "Walking plus a train or bus.": "步行加火车或公交。",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "两端步行，中间乘地铁、MARC、VRE、Light RailLink、Metro SubwayLink 或公交，按时刻表最快的行程，现在出发的行程使用 WMATA 实时发车时间；最快或路程短时全程步行。从最近的入口进站。",
+  "Walk plus train or bus": "步行加火车或公交",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "步行走人行道、小路和人行横道：交通和坡度设置用于骑行。",
+  "Start walk": "开始步行",
 };

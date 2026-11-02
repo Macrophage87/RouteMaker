@@ -25,8 +25,11 @@ export interface WalkPath {
 /** A turn further than this from the walk's line is not on it (an older API's straight line): not said. */
 const ON_LINE_M = 25;
 
-/** The walk as a line to follow: its turns as cues, in order along it, and its end. Null for a walk with no line. */
-export function walkModel(path: WalkPath): RideModel | null {
+/**
+ * The walk as a line to follow: its turns as cues, in order along it, and its end (`endText`: its words where the
+ * walk is the ride screen's own line, Walk's). Null for a walk with no line.
+ */
+export function walkModel(path: WalkPath, endText = ""): RideModel | null {
   const coordinates = path.coordinates;
   if (coordinates.length < 2) return null;
   const along = lineAlong(coordinates);
@@ -49,7 +52,7 @@ export function walkModel(path: WalkPath): RideModel | null {
   }
   cues.sort((a, b) => a.atM - b.atM);
   cues.forEach((cue, index) => (cue.index = index));
-  cues.push({ index: cues.length, kind: "end", atM: lengthM, text: "", movement: null, street: null, severity: null, tier: null, stop: null });
+  cues.push({ index: cues.length, kind: "end", atM: lengthM, text: endText, movement: null, street: null, severity: null, tier: null, stop: null });
   return { coordinates, along, lengthM, cues, stretches: [], paceMs: null };
 }
 

@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "걸을 때 계단 피하기",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "공유 자전거와 대중교통 이동의 도보 구간은 경사로나 엘리베이터처럼 계단 없는 길이 가까이 있으면 계단을 피합니다. 자신의 자전거를 끌고 걷는 구간은 항상 피합니다. 이 기기에 저장됩니다.",
   "avoid stairs": "계단 피하기",
+  "Walk": "도보",
+  "On foot, turn by turn.": "도보, 회전마다 안내.",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "처음부터 끝까지 도보로, 보도·길·횡단보도를 따라 걸으면서 회전마다 안내합니다. 설정의 계단 피하기는 계단 없는 길이 가까이 있으면 계단을 피합니다.",
+  "Walk + 🚆🚌": "도보 + 🚆🚌",
+  "Walking plus a train or bus.": "도보와 기차 또는 버스.",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "양 끝은 도보, 그 사이는 메트로, MARC, VRE, Light RailLink, Metro SubwayLink 또는 버스. 시간표 기준 가장 빠른 이동이며, 지금 출발하는 이동에는 WMATA 실시간 출발 정보를 씁니다. 가장 빠르거나 짧은 이동이면 처음부터 끝까지 도보. 역은 가장 가까운 입구로 들어갑니다.",
+  "Walk plus train or bus": "도보와 기차 또는 버스",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "도보는 보도·길·횡단보도를 따릅니다. 교통량과 언덕 설정은 자전거용입니다.",
+  "Start walk": "도보 시작",
 };

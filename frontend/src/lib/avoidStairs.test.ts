@@ -38,6 +38,14 @@ test("a Bikeshare or transit plan says so; a ride on the rider's own bike never 
 test("Settings shows it as a switch on the Riding tab, for Go and Plan alike", () => {
   const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
   const riding = sheets.slice(sheets.indexOf('id="settings-panel-riding"'), sheets.indexOf('id="settings-panel-display"'));
-  assert.match(riding, /<AvoidStairsRow \/>/);
-  assert.match(sheets, /function AvoidStairsRow\(\)[\s\S]*?role="switch"[\s\S]*?aria-checked=\{on\}/);
+  assert.match(riding, /<AvoidStairsSwitch idBase="settings-avoid-stairs" \/>/);
+  const control = readFileSync(new URL("../AvoidStairsSwitch.tsx", import.meta.url), "utf8");
+  assert.match(control, /role="switch"[\s\S]*?aria-checked=\{on\}/);
+  // And in Walk and Walk + 🚆🚌's own ride settings (Stephen, 2026-11-02: "make that a clear option"), planning again.
+  const dials = readFileSync(new URL("../DialsPanel.tsx", import.meta.url), "utf8");
+  assert.match(dials, /onFoot\(preset\) \?[\s\S]*?<AvoidStairsSwitch idBase="dials-avoid-stairs" \/>/);
+  // Either switch plans the route shown again: App keys the plan on it.
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /addEventListener\(AVOID_STAIRS_EVENT/);
+  assert.match(app, /stairs: twoPointsOnly\(preset\) && avoidStairs/);
 });

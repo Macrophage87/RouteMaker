@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "Yürürken merdivenlerden kaçın",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "Paylaşımlı bisiklet ve toplu taşıma yolculuklarındaki yürüyüşler, yakında rampa ya da asansör gibi basamaksız bir yol olduğunda merdivenlerden kaçınır. Kendi bisikletinizin yanında yürürken her zaman kaçınır. Bu cihazda saklanır.",
   "avoid stairs": "merdivenlerden kaçın",
+  "Walk": "Yürüyüş",
+  "On foot, turn by turn.": "Yürüyerek, dönüş dönüş.",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "Tüm yol yürüyerek, kaldırımlar, patikalar ve yaya geçitlerinden, yürürken dönüş dönüş yol tarifiyle. Ayarlar'daki Merdivenlerden kaçın, yakında basamaksız bir yol varsa merdivenlerden uzak tutar.",
+  "Walk + 🚆🚌": "Yürüyüş + 🚆🚌",
+  "Walking plus a train or bus.": "Yürüyüş artı tren veya otobüs.",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "Her iki uçta yürüyüş, arada Metro, MARC, VRE, Light RailLink, Metro SubwayLink veya otobüs; tarifeye göre en hızlı yolculuklar, şimdi kalkan bir yolculukta WMATA'nın canlı kalkışlarıyla; en hızlısı buysa ya da yolculuk kısaysa tüm yol yürüyüş. İstasyonlara en yakın girişten ulaşılır.",
+  "Walk plus train or bus": "Yürüyüş artı tren veya otobüs",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "Yürüyüşler kaldırım, patika ve yaya geçitlerinden gider: trafik ve yokuş ayarları bisiklet içindir.",
+  "Start walk": "Yürüyüşü başlat",
 };

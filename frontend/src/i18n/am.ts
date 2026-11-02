@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "በእግር ሲሄዱ ደረጃዎችን ያስወግዱ",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "በቢስክሌት ማጋሪያ እና በሕዝብ ማመላለሻ ጉዞዎች ውስጥ ያሉ የእግር መንገዶች እንደ ራምፕ ወይም ሊፍት ያለ ደረጃ የሌለው መንገድ በአቅራቢያ ባለበት ሁሉ ደረጃዎችን ያስወግዳሉ። ከራስዎ ብስክሌት ጋር የሚደረጉ የእግር መንገዶች ሁልጊዜ ያስወግዳሉ። በዚህ መሣሪያ ላይ ይቀመጣል።",
   "avoid stairs": "ደረጃዎችን ማስወገድ",
+  "Walk": "የእግር ጉዞ",
+  "On foot, turn by turn.": "በእግር፣ በየመታጠፊያው።",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "ሙሉውን መንገድ በእግር፣ በእግረኛ መንገዶች፣ በመንገዶች እና በእግረኛ መሻገሪያዎች፣ ሲሄዱ በየመታጠፊያው አቅጣጫ። በቅንብሮች ውስጥ ያለው ደረጃዎችን ያስወግዱ ደረጃ የሌለው መንገድ በአቅራቢያ ሲኖር ከደረጃዎች ያርቀዋል።",
+  "Walk + 🚆🚌": "የእግር ጉዞ + 🚆🚌",
+  "Walking plus a train or bus.": "በእግር እና ባቡር ወይም አውቶቡስ።",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "በእያንዳንዱ ጫፍ በእግር፣ በመካከል ሜትሮ፣ MARC፣ VRE፣ Light RailLink፣ Metro SubwayLink ወይም አውቶቡስ፣ በታቀዱ ሰዓቶች ፈጣኖቹ ጉዞዎች፣ አሁን ለሚነሳ ጉዞ የWMATA ቀጥታ መነሻዎች፤ ፈጣኑ ሲሆን ወይም ጉዞው አጭር ሲሆን ሙሉውን በእግር። ጣቢያዎች በቅርብ መግቢያቸው ይደረሳሉ።",
+  "Walk plus train or bus": "የእግር ጉዞ እና ባቡር ወይም አውቶቡስ",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "የእግር ጉዞዎች በእግረኛ መንገዶች፣ መንገዶች እና መሻገሪያዎች ይሄዳሉ፤ የትራፊክ እና የዳገት ቅንብሮች ለብስክሌት ናቸው።",
+  "Start walk": "የእግር ጉዞ ጀምር",
 };

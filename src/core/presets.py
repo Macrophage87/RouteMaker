@@ -555,6 +555,9 @@ BRAKE_GRADES = MappingProxyType(
         # they are built on, Default's own bike and Bikeshare's share bike.
         "bike-transit": 0.06,
         "bikeshare-transit": 0.04,
+        # Walk and Walk + 🚆🚌 (2026-11-02) have no bike leg: Bikeshare + 🚶🚆🚌's, never used.
+        "walk": 0.04,
+        "walk-transit": 0.04,
         # Rebalance Ride (REBALANCE-RIDE) rides a share bike, as Bikeshare does.
         "rebalance": 0.04,
         # Riders who choose these want the descent.
@@ -615,7 +618,14 @@ BIKESHARE_PRESETS = frozenset({BIKESHARE, REBALANCE})
 
 BIKE_TRANSIT = "bike-transit"
 BIKESHARE_TRANSIT = "bikeshare-transit"
-TRANSIT_PRESETS = frozenset({BIKE_TRANSIT, BIKESHARE_TRANSIT})
+# Walk and Walk + 🚆🚌 (Stephen, 2026-11-02: "add a walk mode and a walk+transit mode"): planned
+# by `core.transit` like the transit ride types (a start and an end, the trip in steps), on foot
+# by Valhalla's pedestrian costing; no bike leg, so their presets below are Bikeshare + 🚶🚆🚌's,
+# never used to ride.
+WALK = "walk"
+WALK_TRANSIT = "walk-transit"
+ON_FOOT_PRESETS = frozenset({WALK, WALK_TRANSIT})
+TRANSIT_PRESETS = frozenset({BIKE_TRANSIT, BIKESHARE_TRANSIT, WALK, WALK_TRANSIT})
 
 
 @dataclass(frozen=True)
@@ -988,6 +998,36 @@ PRESETS: MappingProxyType = MappingProxyType(
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
             ),
             _preset(
+                WALK,
+                Variant.STANDARD,
+                # On foot: Bikeshare + 🚶🚆🚌's dials, never used to ride (`ON_FOOT_PRESETS`).
+                stress=BIKESHARE_STRESS,
+                hills=BIKESHARE_BIKES[BIKE_CLASSIC].hills,
+                exposure=EXPOSURE_STRESS_AVERSE,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=CARGO_GATE_COST_S,
+                gate_penalty=CARGO_GATE_PENALTY_S,
+                cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
+            ),
+            _preset(
+                WALK_TRANSIT,
+                Variant.STANDARD,
+                # On foot: Bikeshare + 🚶🚆🚌's dials, never used to ride (`ON_FOOT_PRESETS`).
+                stress=BIKESHARE_STRESS,
+                hills=BIKESHARE_BIKES[BIKE_CLASSIC].hills,
+                exposure=EXPOSURE_STRESS_AVERSE,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=CARGO_GATE_COST_S,
+                gate_penalty=CARGO_GATE_PENALTY_S,
+                cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
+            ),
+            _preset(
                 MOUNTAIN_BIKE,
                 Variant.MTB,
                 stress=STRESS_TODAYS_TOP,
@@ -1113,7 +1153,13 @@ def rider_speed(name: str, kmh: float | None) -> float | None:
     """The pace a ride of preset `name` is planned at for a rider who set `kmh`, or None for the
     ride type's own. Mass Ride keeps its speed band (the field rides at the group's pace), and a
     share bike its own pace (`BIKESHARE_BIKES`): neither is the rider's own bike."""
-    if kmh is None or name == "mass-ride" or name in BIKESHARE_PRESETS or name == BIKESHARE_TRANSIT:
+    if (
+        kmh is None
+        or name == "mass-ride"
+        or name in BIKESHARE_PRESETS
+        or name == BIKESHARE_TRANSIT
+        or name in ON_FOOT_PRESETS
+    ):
         return None
     return min(RIDER_SPEED_MAX_KMH, max(RIDER_SPEED_MIN_KMH, float(kmh)))
 

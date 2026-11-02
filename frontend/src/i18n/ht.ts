@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "Evite eskalye lè w ap mache",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "Moso mache nan vwayaj Bikeshare ak transpò piblik yo evite eskalye toutotan gen yon chemen san mach toupre, tankou yon ranp oswa yon asansè. Lè w ap mache bò kote pwòp bisiklèt ou, yo toujou evite yo. Kenbe sou aparèy sa a.",
   "avoid stairs": "evite eskalye",
+  "Walk": "Mache",
+  "On foot, turn by turn.": "A pye, viraj pa viraj.",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "A pye tout wout la, sou twotwa, chemen ak pasaj pyeton, ak direksyon viraj pa viraj pandan w ap mache. Evite eskalye nan Paramèt yo kenbe l lwen eskalye lè gen yon chemen san mach toupre.",
+  "Walk + 🚆🚌": "Mache + 🚆🚌",
+  "Walking plus a train or bus.": "Mache plis yon tren oswa yon bis.",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "Mache nan chak bout ak Metro, MARC, VRE, Light RailLink, Metro SubwayLink oswa yon bis nan mitan, vwayaj ki pi rapid yo dapre orè yo, ak depa an dirèk WMATA pou yon vwayaj k ap pati kounye a; mache tout wout la kote sa pi rapid oswa vwayaj la kout. Ou rive nan estasyon yo pa antre ki pi pre a.",
+  "Walk plus train or bus": "Mache plis tren oswa bis",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "Mache yo rete sou twotwa, chemen ak pasaj pyeton: paramèt trafik ak mòn yo se pou monte bisiklèt.",
+  "Start walk": "Kòmanse mache",
 };

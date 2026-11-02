@@ -2615,7 +2615,13 @@ def _walk_whole(start, end, services: Services) -> Option:
     walked = services.walk(start, end)
     if walked is None:
         walked = Ride(walk_s(start, end), (tuple(start), tuple(end)))
-    leg = Leg(WALK, walked.seconds, walked.coordinates, estimated=walked.metres is None)
+    leg = Leg(
+        WALK,
+        walked.seconds,
+        walked.coordinates,
+        estimated=walked.metres is None,
+        turns=walked.turns,
+    )
     return Option(WALK_ONLY, (leg,), walk=True)
 
 
@@ -2705,6 +2711,55 @@ def plan_bikeshare(
         notes,
         _credits(schedule),
     )
+
+
+# Walk + 🚆🚌 offers walking the whole way where nothing else is found, up to this far (a straight
+# line): further than that, "no transit" is the answer, not a three-hour walk.
+WALK_FALLBACK_M = 8047.0  # 5 mi
+
+
+def plan_walk_transit(schedule, start, end, when: datetime, services: Services) -> Plan:
+    """Walk + 🚆🚌 (Stephen, 2026-11-02: "add a walk mode and a walk+transit mode"): each end on
+    foot, with up to two transit legs between (Bikeshare + 🚶🚆🚌 without the bikes); and
+    walking the whole way where that is reasonable (`walk_offered`), or where no transit is."""
+    moments = moments_of(when)
+    moment = moments[0]
+    day = _Day(schedule, moment, bike=False)
+    found: list[Option] = []
+    notes = _window_note(schedule, moment)
+    near_start, more_start = _candidates(schedule, start, False, WALK_TO_STATION_M, WALK_TO_STOP_M)
+    near_end, more_end = _candidates(schedule, end, False, WALK_TO_STATION_M, WALK_TO_STOP_M)
+    if not _window_note(schedule, moment):
+        starts = _best_few(
+            [_walk_to(schedule, s, start) for s in near_start + more_start],
+            STATION_CANDIDATES + BUS_STOPS_NEAR,
+        )
+        ends = {}
+        for s in near_end + more_end:
+            walked = _walk_from(schedule, s, end)
+            if walked is not None:
+                ends[s.index] = walked
+        # A transfer between stops is walked, at a walker's pace.
+        found = _search_days(day, moments, starts, ends, WALK_SPEED_KMH)
+        if not found:
+            notes.append(no_transit_words())
+        notes += _idle(day, near_start + more_start + near_end + more_end)
+    if schedule.note:
+        notes.append(schedule.note)
+    walk = None
+    if walk_offered(start, end, walk_s(start, end), found) or (
+        not found and _distance(start, end) <= WALK_FALLBACK_M
+    ):
+        walk = _walk_whole(start, end, services)
+    if not found and walk is None:
+        raise NoTransit("No transit is in reach on foot at both ends, and it is too far to walk.")
+    return Plan(presets.WALK_TRANSIT, _ranked(None, found, walk), moment, notes, _credits(schedule))
+
+
+def plan_walk(schedule, start, end, when: datetime, services: Services) -> Plan:
+    """Walk (Stephen, 2026-11-02): the whole way on foot, by Valhalla's pedestrian costing
+    (sidewalks, paths, crosswalks; Settings' Avoid stairs kept), as one option of one walk."""
+    return Plan(presets.WALK, [_walk_whole(start, end, services)], moments_of(when)[0], [], {})
 
 
 # --- The answer's block ------------------------------------------------------------------------

@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "হাঁটার সময় সিঁড়ি এড়িয়ে চলুন",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "বাইকশেয়ার ও গণপরিবহন যাত্রার হাঁটা অংশগুলো কাছাকাছি র‍্যাম্প বা লিফটের মতো সিঁড়িহীন পথ থাকলে সিঁড়ি এড়িয়ে চলে। নিজের সাইকেলের পাশে হাঁটা সবসময় এড়িয়ে চলে। এই ডিভাইসে রাখা হয়।",
   "avoid stairs": "সিঁড়ি এড়ানো",
+  "Walk": "হাঁটা",
+  "On foot, turn by turn.": "পায়ে হেঁটে, মোড়ে মোড়ে।",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "পুরো পথ পায়ে হেঁটে, ফুটপাত, পথ ও ক্রসওয়াক দিয়ে, হাঁটার সময় মোড়ে মোড়ে নির্দেশনা সহ। সেটিংসের সিঁড়ি এড়ান কাছাকাছি সিঁড়িহীন পথ থাকলে সিঁড়ি থেকে দূরে রাখে।",
+  "Walk + 🚆🚌": "হাঁটা + 🚆🚌",
+  "Walking plus a train or bus.": "হাঁটা এবং ট্রেন বা বাস।",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "দুই প্রান্তে হাঁটা, মাঝে মেট্রো, MARC, VRE, Light RailLink, Metro SubwayLink বা বাস, নির্ধারিত সময় অনুযায়ী দ্রুততম যাত্রা, এখন ছাড়া যাত্রায় WMATA-র লাইভ ছাড়ার সময় সহ; দ্রুততম হলে বা যাত্রা ছোট হলে পুরো পথ হাঁটা। স্টেশনে পৌঁছানো হয় নিকটতম প্রবেশপথ দিয়ে।",
+  "Walk plus train or bus": "হাঁটা এবং ট্রেন বা বাস",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "হাঁটা ফুটপাত, পথ ও ক্রসওয়াক ধরে চলে: ট্রাফিক ও পাহাড়ের সেটিংস সাইকেল চালানোর জন্য।",
+  "Start walk": "হাঁটা শুরু",
 };

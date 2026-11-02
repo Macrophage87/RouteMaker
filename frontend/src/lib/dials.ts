@@ -10,7 +10,7 @@
  * tests/test_presets.py reads STARTS and holds it equal to the API's table.
  */
 import type { LonLat } from "./geo.ts";
-import { isTransit, usesBikeshare, type PresetId } from "./presets.ts";
+import { isTransit, onFoot, usesBikeshare, type PresetId } from "./presets.ts";
 import { DEFAULT_MTB_LEVEL, defaultMtbPreferred, fitMtbLevel, mtbLevelOf, mtbPreferredOf } from "./mtbMode.ts";
 import { t } from "./i18n.ts";
 
@@ -221,6 +221,9 @@ export const STARTS: Record<PresetId, Start> = {
   // The transit ride types' bike legs start as Default's own bike and Bikeshare's classic (core.presets).
   "bike-transit": { stress: 70, hills: 0, seek: true },
   "bikeshare-transit": { stress: 80, hills: -60, seek: true },
+  // Walk and Walk + 🚆🚌 (2026-11-02) ride nothing: Bikeshare + 🚶🚆🚌's start, never used (core.presets ON_FOOT_PRESETS).
+  walk: { stress: 80, hills: -60, seek: true },
+  "walk-transit": { stress: 80, hills: -60, seek: true },
   // REBALANCE-RIDE: Bikeshare's own start (core.presets REBALANCE), with its bike choice.
   rebalance: { stress: 80, hills: -60, seek: true, assist: true },
 };
@@ -401,8 +404,8 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     ...(dials.trailsOff === true ? { trailsOff: true } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
-    ...(isTransit(preset) && dials.noviceLegs === true ? { noviceLegs: true } : {}),
-    ...(isTransit(preset) && dials.noviceLegs === true && dials.noviceHop ? { noviceHop: dials.noviceHop } : {}),
+    ...(isTransit(preset) && !onFoot(preset) && dials.noviceLegs === true ? { noviceLegs: true } : {}),
+    ...(isTransit(preset) && !onFoot(preset) && dials.noviceLegs === true && dials.noviceHop ? { noviceHop: dials.noviceHop } : {}),
     // The level, on Mountain Bike only, and only when it is not the default (the link stays short).
     ...(preset === "mountain-bike" && fitMtbLevel(dials.mtbLevel) !== undefined && fitMtbLevel(dials.mtbLevel) !== DEFAULT_MTB_LEVEL
       ? { mtbLevel: fitMtbLevel(dials.mtbLevel) }

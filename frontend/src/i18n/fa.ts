@@ -1833,4 +1833,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Avoid stairs on walks": "پرهیز از پله هنگام پیاده‌روی",
   "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "پیاده‌روی‌های سفرهای دوچرخهٔ اشتراکی و حمل‌ونقل عمومی هر جا راهی بدون پله، مانند سطح شیب‌دار یا آسانسور، در نزدیکی باشد از پله دوری می‌کنند. پیاده‌روی کنار دوچرخهٔ خودتان همیشه از پله دوری می‌کند. روی همین دستگاه نگه داشته می‌شود.",
   "avoid stairs": "پرهیز از پله",
+  "Walk": "پیاده‌روی",
+  "On foot, turn by turn.": "پیاده، پیچ به پیچ.",
+  "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.": "تمام راه پیاده، روی پیاده‌روها، مسیرها و خط‌کشی‌های عابر پیاده، با راهنمایی پیچ به پیچ هنگام راه رفتن. پرهیز از پله در تنظیمات، هر جا راهی بدون پله نزدیک باشد، آن را از پله دور نگه می‌دارد.",
+  "Walk + 🚆🚌": "پیاده‌روی + 🚆🚌",
+  "Walking plus a train or bus.": "پیاده‌روی به‌علاوهٔ قطار یا اتوبوس.",
+  "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.": "پیاده‌روی در هر دو سر با مترو، MARC، VRE، Light RailLink، Metro SubwayLink یا اتوبوس در میان، سریع‌ترین سفرها بر اساس زمان‌بندی، با حرکت‌های زندهٔ WMATA برای سفری که اکنون آغاز می‌شود؛ تمام راه پیاده هر جا که سریع‌تر است یا سفر کوتاه است. به ایستگاه‌ها از نزدیک‌ترین ورودی می‌رسید.",
+  "Walk plus train or bus": "پیاده‌روی به‌علاوهٔ قطار یا اتوبوس",
+  "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "پیاده‌روی روی پیاده‌روها، مسیرها و خط‌کشی‌ها می‌ماند: تنظیمات ترافیک و سربالایی برای دوچرخه‌سواری است.",
+  "Start walk": "شروع پیاده‌روی",
 };

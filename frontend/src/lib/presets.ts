@@ -15,7 +15,14 @@ import { t } from "./i18n.ts";
  * and walks on, and Bikeshare + walk, train or bus walks or docks too. A Metro station is then reached by its
  * nearest entrance, not the elevator a bike needs (railStations.ts, walkEntrance).
  */
-export const endsOnFoot = (preset: PresetId): boolean => preset === "bikeshare" || preset === "bikeshare-transit";
+export const endsOnFoot = (preset: PresetId): boolean => preset === "bikeshare" || preset === "bikeshare-transit" || onFoot(preset);
+
+/** Walk and Walk + 🚆🚌 (Stephen, 2026-11-02: "add a walk mode and a walk+transit mode"): no bike at all. */
+export const ON_FOOT_PRESETS: readonly PresetId[] = ["walk", "walk-transit"];
+
+export function onFoot(id: PresetId): boolean {
+  return ON_FOOT_PRESETS.includes(id);
+}
 
 export type PresetId =
   | "default"
@@ -33,6 +40,8 @@ export type PresetId =
   | "novice"
   | "bike-transit"
   | "bikeshare-transit"
+  | "walk"
+  | "walk-transit"
   | "rebalance";
 
 export interface PresetOption {
@@ -167,6 +176,25 @@ export const PRESETS: readonly PresetOption[] = [
     summary: "Bikeshare or walking plus a train or bus.",
   },
   {
+    // Walk and Walk + 🚆🚌 (Stephen, 2026-11-02: "add a walk mode and a walk+transit mode"): planned as the transit
+    // ride types are (core/transit.py plan_walk, plan_walk_transit), from a start and an end, on foot.
+    id: "walk",
+    label: "Walk",
+    keywords: "foot pedestrian walking",
+    description:
+      "On foot the whole way, on sidewalks, paths and crosswalks, with turn-by-turn directions as you walk. Settings' Avoid stairs keeps it off flights of steps where a step-free way is near.",
+    summary: "On foot, turn by turn.",
+  },
+  {
+    id: "walk-transit",
+    label: "Walk + 🚆🚌",
+    spoken: "Walk plus train or bus",
+    keywords: "transit foot pedestrian walking",
+    description:
+      "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.",
+    summary: "Walking plus a train or bus.",
+  },
+  {
     // REBALANCE-RIDE (Stephen, 2026-10-12): an Adventure ride type; the description is his.
     id: "rebalance",
     label: "Rebalance Ride",
@@ -177,7 +205,7 @@ export const PRESETS: readonly PresetOption[] = [
 ];
 
 /** The transit ride types (lib/transit.ts): a start and an end, no loop, the trip in steps. */
-export const TRANSIT_PRESETS: readonly PresetId[] = ["bike-transit", "bikeshare-transit"];
+export const TRANSIT_PRESETS: readonly PresetId[] = ["bike-transit", "bikeshare-transit", "walk", "walk-transit"];
 
 export function isTransit(id: PresetId): boolean {
   return TRANSIT_PRESETS.includes(id);
