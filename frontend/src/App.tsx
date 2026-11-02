@@ -295,6 +295,7 @@ import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChip
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
 import { nativeBridge, nativeShareNavigator } from "./lib/nativeShell.ts";
 import { AVOID_STAIRS_EVENT, readAvoidStairs } from "./lib/avoidStairs.ts";
+import { checkedTripOf, lateSaid, switchSaid, tripChecked, tripVerdict, type CheckedTrip } from "./lib/tripCheck.ts";
 import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restRequest, rideLegOf, rideTripOf, rideable as rideableRoute, type RideTrip } from "./lib/rideTrip.ts";
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
@@ -3698,6 +3699,8 @@ export function App() {
   // voice is unlocked inside this press (iOS speaks only after a gesture).
   // unlocked: Start's own press has already unlocked the voice (startRideChecked), before its closure check.
   // `rest`: Ride the rest's own route (rideRest, below), ridden in place of the plan's.
+  // The transit trip ridden, kept checked (lib/tripCheck.ts): its route, ride type, destination and arrival as last said.
+  const tripCheck = useRef<{ route: RouteResponse; preset: PresetId; to: LonLat; trip: CheckedTrip } | null>(null);
   const beginRide = (prefs: RidePrefs, unlocked = false, rest?: { route: RouteResponse; points: LonLat[]; roam?: boolean }) => {
     const route = rest?.route ?? shown;
     if (!route) return;
@@ -3721,6 +3724,10 @@ export function App() {
     const passOn = follows && !followedNoKey() ? followedLink() : null;
     // Leading a broadcast already (Broadcast beside Start): its link, so a resumed ride leads it again.
     const ledLink = opened?.own && opened.lead && rideLinkSent.current?.route === route ? rideLinkSent.current.link : null;
+    // A transit trip is kept checked till its first boarding (lib/tripCheck.ts, Stephen 2026-11-02).
+    const ends = rest?.points ?? routedPoints;
+    const checked = route.transit && tripChecked(route.transit.mode) && ends.length > 1 ? checkedTripOf(route.transit) : null;
+    tripCheck.current = checked && route.transit ? { route, preset: route.transit.mode, to: ends[ends.length - 1], trip: checked } : null;
     const note = rideNote.current;
     rideNote.current = "";
     setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, kept, passOn, follows, leads: ledLink, note, n: (before?.n ?? 0) + 1 }));
@@ -4208,6 +4215,38 @@ export function App() {
       return restClosedSaid(found.closures.map((c) => c.road ?? c.title ?? "a closure"));
     }
     go();
+    return null;
+  };
+  // A check of the transit trip ridden (lib/tripCheck.ts): planned again from `riderAt`, leaving now, with the trip's
+  // own key so the API keeps it or says it is gone. A quicker trip (planned by its key) replaces the ride at once, said
+  // as it starts, where it still has its transit after its line; a delay is said on the ride screen (the words
+  // returned). `open`: the ride screen still checks (not paused, not at the train), asked again after each answer.
+  const checkTrip = async (riderAt: LonLat, open: () => boolean): Promise<string | null> => {
+    const checking = tripCheck.current;
+    const current = () => open() && ridingNow.current && rideNow.current.start?.route === checking?.route && tripCheck.current === checking;
+    if (!checking || !current()) return null;
+    const ask = (key: string) => requestRoute([riderAt, checking.to], checking.preset, { dials: { ...planDials, loop: false, closuresNow: true, transitOption: key } });
+    const result = await ask(checking.trip.key);
+    if (!current() || !result.ok || !result.route.transit) return null;
+    const verdict = tripVerdict(checking.trip, result.route.transit, Date.now());
+    if (!verdict) return null;
+    if (verdict.kind !== "switch") {
+      const told = checking.trip.arrivesAt;
+      checking.trip = { key: verdict.key, arrivesAt: told === null || verdict.kind === "late" ? verdict.arrivesAt : told };
+      return verdict.kind === "late" ? lateSaid(verdict.arrivesAt) : null;
+    }
+    let route = result.route;
+    if (route.transit?.key !== verdict.key) {
+      const again = await ask(verdict.key);
+      if (!current() || !again.ok || !again.route.transit) return null;
+      route = again.route;
+    }
+    const points = [riderAt, checking.to];
+    // Planned at the stop itself, the new trip's line can be the ride after its train: not a trip to change to.
+    const trip = rideTripOf(route, points);
+    if (!trip?.onward?.some((part) => part.kind === "transit") || !rideableRoute(route)) return null;
+    rideNote.current = switchSaid(verdict);
+    beginRide(ridePrefs, true, { route, points });
     return null;
   };
   const restPanelBusy = useRef(false);
@@ -6572,6 +6611,7 @@ export function App() {
           preset={rideStart.preset}
           trip={rideStart.trip}
           onRideRest={(riderAt) => rideRest(riderAt, true)}
+          onTripCheck={tripCheck.current?.route === rideStart.route ? checkTrip : undefined}
           dials={rideStart.dials}
           prefs={ridePrefs}
           onPrefs={changeRidePrefs}

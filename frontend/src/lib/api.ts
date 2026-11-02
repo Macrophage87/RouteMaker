@@ -706,6 +706,8 @@ export interface TransitPlan {
   mode: "bike-transit" | "bikeshare-transit" | "walk" | "walk-transit";
   /** The chosen option's key, and whether it is riding the whole way. */
   key: string;
+  /** The trip asked for (`transit_option`) is no longer an option: the best is chosen in its place (absent from older answers). */
+  asked_gone?: boolean;
   direct: boolean;
   /** Quickest first; riding the whole way is always one. */
   options: TransitOption[];

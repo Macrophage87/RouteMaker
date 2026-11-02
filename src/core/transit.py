@@ -3167,6 +3167,9 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
     out = {
         "mode": plan.mode,
         "key": option.key,
+        # The trip asked for (`transit_option`) is in none of the options: the best is chosen
+        # (`choose`), and a ride checking its trip changes to it (frontend lib/tripCheck.ts).
+        "asked_gone": plan.asked is not None,
         "direct": option.direct,
         "total_s": round(total),
         "minutes": total_min,
