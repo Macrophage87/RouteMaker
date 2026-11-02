@@ -8,7 +8,10 @@
 import type { RouteResponse } from "./api.ts";
 
 export const ROAD_BIKE_NO_PAVED_MAP =
-  "Road Bike's paved-only map isn't available right now, so this route may use packed gravel and winding trails. Try again later.";
+  "Road Bike's paved-only map isn't available, so this route may use packed gravel and winding trails.";
+
+/** Plan shows note lines on one line; this is the one that fits, the whole line is behind it. */
+export const ROAD_BIKE_NO_PAVED_MAP_SHORT = "Road Bike map unavailable: may use gravel.";
 
 /** The warning for a Road Bike route the standard map answered, or null. */
 export function roadBikeNote(route: Pick<RouteResponse, "preset" | "variant"> | null | undefined): string | null {
