@@ -206,12 +206,17 @@ export const BACKGROUND_MESSAGE = t("Your location is used for Ride mode's cues 
  * service without the permission (the plugin swallows the error) and nothing promotes it after the
  * grant, so the first ride would stop at the screen lock. `askRidePermissions` asks first instead.
  */
+/** Metres the rider moves before the app's GPS sends the next fix. */
+export const NATIVE_DISTANCE_FILTER_M = 4;
 export const NATIVE_WATCH_OPTIONS = {
   backgroundTitle: BACKGROUND_TITLE,
   backgroundMessage: BACKGROUND_MESSAGE,
   requestPermissions: false,
   stale: false,
-  distanceFilter: 0,
+  // A fix once the rider has moved 4 m, not every second standing still (the owner, 2026-11-01: battery audit). High
+  // accuracy is kept: off route needs fixes of 20 m or better (PR #856). Stopped, no fix comes, so RideMode re-feeds the
+  // last one with the time now (lib/ridePause.ts heartbeatFix) for the checks that count time standing still.
+  distanceFilter: NATIVE_DISTANCE_FILTER_M,
 } as const;
 
 /** Capacitor's requestPermissions, with the plugins' own aliases (their @Permission annotations). */

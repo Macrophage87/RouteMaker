@@ -47,7 +47,8 @@ test("RIDE-3 (owner, 2026-10-16): weak GPS for long shows the turns ahead as a l
   assert.match(check, /if \(sheet && !cueSheetRef\.current\) notify\(CUE_SHEET_SAID\);/);
   assert.match(check, /setCueSheetOn\(sheet\);/);
   // Also on a timer, so fixes that stop altogether bring the list too.
-  assert.match(check, /window\.setInterval\(\(\) => checkCueSheet\(Date\.now\(\)\), CUE_SHEET_CHECK_MS\);/);
+  // (The same timer gives the app's heartbeat first, the battery audit 2026-11-01.)
+  assert.match(check, /window\.setInterval\(\(\) => \{\s*everyTick\.current\(Date\.now\(\)\);\s*checkCueSheet\(Date\.now\(\)\);\s*\}, CUE_SHEET_CHECK_MS\);/);
   // The card's distance is greyed while GPS is weak or lost (any GPS note), before the list comes.
   assert.match(ride, /<p className=\{gps \? "cue-distance cue-distance-weak" : "cue-distance"\}>/);
   assert.match(source("../styles.css"), /\.cue-distance-weak \{\s*color: var\(--text-muted\);/);
