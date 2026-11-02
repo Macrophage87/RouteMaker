@@ -8471,13 +8471,16 @@ scripts/cloud/import-result.sh --beta --swap "$RUN_URL"
 deployment is installed, unless it is paused with no pass running and no deploy left half
 done. Then it runs the runbook's "New data only" steps 2 to 5:
 
-1. `receive-data.sh verify`, then `sudo ... files`: each graph's old build stays as
-   `previous`.
-2. The api and worker stopped, then `sudo ... db --update-data`: its own safety dump, one
-   transaction. It resets `override` and `junction_override` to home's and empties the
-   beta's `stress_edit` history, as every data update does. If it fails, the api and
-   worker are started again on the database as it was.
-3. The api and worker started, and the four routers restarted.
+1. `receive-data.sh verify`, then `db --update-data --stage-only`: the bundle's `live`
+   schema restored beside the served one as `live_next` while the beta serves. If it fails,
+   nothing served has changed.
+2. `sudo ... files`: each graph's old build stays as `previous`.
+3. `sudo ... db --update-data`, with the api and worker running (the staging swap, the
+   owner 2026-11-02): its own safety dump, then one short transaction renames `live` to
+   `live_old` and `live_next` to `live`, as the home rebuild's swap does. It resets `override`
+   and `junction_override` to home's and empties the beta's `stress_edit` history, as every
+   data update does. If it fails, the beta still serves the database as it was. Then the
+   four routers restarted one at a time.
 4. The stress-tile pre-draw started in the background (`$RM_STATE/predraw.log`).
 5. The local smoke test, tried again while the app and routers start.
 

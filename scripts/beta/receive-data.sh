@@ -20,16 +20,28 @@
 #            Needs postgis up (scripts/beta/beta-compose.sh up -d postgis). Run it with sudo
 #            when a safety dump is taken (DATA_ROOT/backups is owned by the container uid).
 #              First restore: into the empty database, before the api has ever started.
-#              --update-data: for a NEW DATA bundle once the beta is running. Restores only the
-#                `live` schema and the data of `override`, `junction_override` (the approved
-#                junction ratings) and `avoid_junction` (home's Avoid junctions), all shipped
-#                with their person columns blanked; the beta's own half-step edit history goes
-#                with the overrides it pointed at, its own stress suggestions lose their link to
-#                that history, and its own junction suggestions lose their link to a rating or
-#                Avoid junction it replaces (the suggestions themselves are kept). It empties its own
-#                `stress_tile_cache`, which the new live table makes stale), in one
-#                transaction, after a safety dump. Accounts, sessions and everything else the
-#                beta has made of its own are not touched.
+#              --update-data: for a NEW DATA bundle once the beta is running, WHILE IT SERVES
+#                (the owner, 2026-11-02: "do the staging swap"). The bundle's `live` schema is
+#                restored beside the served one as `live_next` (by way of a scratch database,
+#                <db>_stage, dropped afterwards), its row counts are checked, and then one short
+#                transaction renames `live` to `live_old` and `live_next` to `live`, the same
+#                rename the home rebuild's swap makes (pipeline.swap.swap_schemas). The api and
+#                worker keep running throughout: requests queue for the second or two the rename
+#                holds its lock. The same transaction replaces the data of `override`,
+#                `junction_override` (the approved junction ratings) and `avoid_junction` (home's
+#                Avoid junctions), all shipped with their person columns blanked; the beta's own
+#                half-step edit history goes with the overrides it pointed at, its own stress
+#                suggestions lose their link to that history, and its own junction suggestions
+#                lose their link to a rating or Avoid junction it replaces (the suggestions
+#                themselves are kept). It empties its own `stress_tile_cache`, which the new live
+#                table makes stale. A safety dump is taken before the rename. Accounts, sessions
+#                and everything else the beta has made of its own are not touched. The replaced
+#                tables stay as `live_old` until the next update. Needs room on DATA_ROOT for
+#                about two more copies of the live tables while it stages.
+#              --stage-only: with --update-data, stage `live_next` and stop before the rename
+#                (no sudo needed). A later `db --update-data` with the same bundle reuses it, so
+#                the slow part can run before `files` moves the tile links and the rename follows
+#                within seconds of them.
 #              --replace-db: replace the whole database with the bundle's. The bundle carries
 #                no accounts (OWNER-DECISIONS 367.3), so this deletes the beta's own; it is
 #                refused while any exist unless --delete-beta-accounts is given too.
@@ -47,6 +59,7 @@
 #   --bundle DIR             the directory ship-data.sh sent to (verify, files, db)
 #   --env-file FILE          the server's .env [<repo>/.env]; DATA_ROOT is read out of it by sed
 #   --update-data            db: the new-data update path (above)
+#   --stage-only             db --update-data: stage only, rename nothing (above)
 #   --replace-db             db: replace a database that already holds data (above)
 #   --delete-beta-accounts   db: with --replace-db, accept that the beta's accounts go
 #   --label NAME             snapshot-db: a word naming the snapshot (release, before-x, ...)
@@ -78,7 +91,7 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 repo=$(cd "${RECEIVE_DATA_REPO:-$here/../..}" && pwd)
 [ -x "$repo/scripts/beta/beta-compose.sh" ] || die "$repo has no scripts/beta/beta-compose.sh"
 
-bundle=""; env_file="$repo/.env"; replace_db=0; update_data=0; delete_accounts=0
+bundle=""; env_file="$repo/.env"; replace_db=0; update_data=0; stage_only=0; delete_accounts=0
 allow_sha=0; command_name=""; label=""; dump_file=""; backups_dir=""; prune_dumps=0
 
 usage() { sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//'; }
@@ -91,6 +104,7 @@ while [ $# -gt 0 ]; do
 		--label) [ $# -ge 2 ] || die "$1 needs a value"; label=$2; shift 2 ;;
 		--replace-db) replace_db=1; shift ;;
 		--update-data) update_data=1; shift ;;
+		--stage-only) stage_only=1; shift ;;
 		--delete-beta-accounts) delete_accounts=1; shift ;;
 		--allow-sha-mismatch) allow_sha=1; shift ;;
 		--backups-dir) [ $# -ge 2 ] || die "$1 needs a value"; backups_dir=$2; shift 2 ;;
@@ -105,6 +119,7 @@ while [ $# -gt 0 ]; do
 done
 case "$command_name" in verify | files | db | snapshot-db | restore-dump) ;; *) die "give a command: verify, files, db, snapshot-db or restore-dump (--help)" ;; esac
 [ "$update_data$replace_db" != 11 ] || die "--update-data and --replace-db are two different paths; give one"
+[ "$stage_only" = 0 ] || { [ "$command_name" = db ] && [ "$update_data" = 1 ]; } || die "--stage-only goes with db --update-data"
 
 [ -r "$env_file" ] || die "cannot read $env_file"
 # Absolute, because beta-compose.sh runs from the checkout whatever the caller's directory.
@@ -519,9 +534,18 @@ if [ "$existing" = t ]; then
 fi
 
 if [ "$update_data" = 1 ]; then
-	# --- the new-data update: live and override only, in one transaction ---
+	# --- the new-data update: staged beside the served tables, then one short rename ---
 	[ "$existing" = t ] || die "--update-data needs a database restored once already; run db without it first"
-	app_is_down
+	# The api and worker keep running: the served tables are not touched until the rename.
+	staged="${live_schema}_next"
+	retired="${live_schema}_old"
+	scratch="${pgdatabase}_stage"
+	# PostgreSQL cuts names at 63 bytes; a cut name could be another schema's or database's.
+	[ ${#staged} -le 63 ] && [ ${#scratch} -le 63 ] || die "the live schema or database name is too long to stage beside"
+	[ "$(psql_q "select to_regclass('$live_schema.segment') is not null")" = t ] ||
+		die "there is no $live_schema.segment to swap out; restore with db (first install) instead"
+	dump_sum=$(awk '$2 == "db/routemaker.dump" { print $1 }' "$bundle/SHA256SUMS")
+	[[ $dump_sum =~ ^[0-9a-f]{64}$ ]] || die "SHA256SUMS does not list db/routemaker.dump"
 	toc=$(mktemp)
 	bc exec -T postgis pg_restore --list <"$dump" >"$toc" || die "could not read the dump's table of contents"
 	use=$(mktemp)
@@ -534,10 +558,69 @@ if [ "$update_data" = 1 ]; then
 	rm -f "$toc"
 	grep -q "TABLE DATA $live_schema " "$use" || { rm -f "$use"; die "the dump has no $live_schema data to update from"; }
 	grep -qx override <<<"$(blanked_tables)" || { rm -f "$use"; die "the bundle has no override data (db/blanked/override.copy)"; }
-	bc exec -T postgis sh -c 'cat > /tmp/beta.use' <"$use"
-	rm -f "$use"
+
+	psql_db() { bc exec -T postgis psql -U "$pguser" -d "$1" -v ON_ERROR_STOP=1 -At "${@:2}" </dev/null; }
+	staged_from=$(psql_q "select coalesce(obj_description(oid, 'pg_namespace'), '') from pg_namespace where nspname = '$staged'")
+	if [ "$staged_from" = "bundle $dump_sum" ]; then
+		rm -f "$use"
+		note "reusing $staged, staged earlier from this bundle"
+	else
+		# Room for the scratch copy and the staged one, beside the served and the retired tables.
+		live_bytes=$(psql_q "select coalesce(sum(pg_total_relation_size(c.oid)), 0) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = '$live_schema' and c.relkind in ('r', 'm')")
+		avail=$(df -B1 --output=avail "$data_root" | tail -n 1 | tr -d ' ')
+		if [ "$avail" -lt $((live_bytes * 5 / 2)) ]; then
+			rm -f "$use"
+			die "not enough room on $data_root to stage beside the served tables: need about $((live_bytes * 5 / 2 / 1048576)) MiB, have $((avail / 1048576)) MiB"
+		fi
+		note "staging the bundle's $live_schema as $staged while the beta serves (a few minutes per GB; nothing served changes)"
+		psql_q "drop schema if exists \"$staged\" cascade" >/dev/null
+		# A scratch database of its own: the dump names its tables $live_schema.*, a name the
+		# served database already uses. There it is renamed, then copied over under its new name.
+		psql_db postgres -c "drop database if exists \"$scratch\"" >/dev/null
+		template=template0
+		[ "$(psql_db postgres -c "select count(*) from pg_database where datname = 'template_postgis'")" = 1 ] && template=template_postgis
+		psql_db postgres -c "create database \"$scratch\" template $template" >/dev/null
+		for ext in $(psql_q "select extname from pg_extension where extname <> 'plpgsql' order by oid"); do
+			case "$ext" in *[!a-z0-9_]*) die "odd extension name '$ext'" ;; esac
+			psql_db "$scratch" -c "create extension if not exists \"$ext\" cascade" >/dev/null
+		done
+		bc exec -T postgis sh -c 'cat > /tmp/beta.use' <"$use"
+		rm -f "$use"
+		unstage() { bc exec -T postgis rm -f /tmp/beta.use </dev/null; psql_db postgres -c "drop database if exists \"$scratch\"" >/dev/null; }
+		if ! bc exec -T postgis pg_restore -U "$pguser" -d "$scratch" --no-owner --no-privileges --single-transaction --exit-on-error -L /tmp/beta.use <"$dump"; then
+			unstage
+			die "staging failed (above) and was discarded; nothing served has changed"
+		fi
+		psql_db "$scratch" -c "alter schema \"$live_schema\" rename to \"$staged\"" >/dev/null
+		# Into the served database in one transaction; pg_dump's own exit status is checked too,
+		# so a dump cut short is never taken for a whole one.
+		# shellcheck disable=SC2016 # the inner shell's
+		if ! bc exec -T postgis sh -c 'rc=$(mktemp); { pg_dump -U "$1" -d "$2" --format=custom --no-owner -n "$4"; echo $? >"$rc"; } | pg_restore -U "$1" -d "$3" --no-owner --no-privileges --single-transaction --exit-on-error; r=$?; d=$(cat "$rc"); rm -f "$rc"; [ "$r" = 0 ] && [ "$d" = 0 ]' sh "$pguser" "$scratch" "$pgdatabase" "$staged" </dev/null; then
+			unstage
+			psql_q "drop schema if exists \"$staged\" cascade" >/dev/null
+			die "copying the staged tables in failed (above) and was discarded; nothing served has changed"
+		fi
+		unstage
+		# Counted before anything is renamed: a short table is refused here, not after the swap.
+		while IFS=$'\t' read -r qualified expected; do
+			[[ $qualified == "$live_schema".* ]] || continue
+			actual=$(psql_q "select count(*) from \"$staged\".\"${qualified#*.}\"")
+			[ "$actual" = "$expected" ] || die "MISMATCH $staged.${qualified#*.}: shipped $expected, staged $actual. Nothing served has changed; stage again"
+		done <"$bundle/db/row-counts.tsv"
+		for table in $(psql_q "select tablename from pg_tables where schemaname = '$staged'"); do
+			case "$table" in *[!a-z0-9_]*) die "odd table name '$table' in $staged" ;; esac
+			psql_q "analyze \"$staged\".\"$table\"" >/dev/null
+		done
+		psql_q "comment on schema \"$staged\" is 'bundle $dump_sum'" >/dev/null
+		note "staged: $staged holds this bundle's $live_schema"
+	fi
+	if [ "$stage_only" = 1 ]; then
+		note "stage only: nothing renamed. Next: files, then db --update-data (it reuses $staged and swaps within seconds)"
+		exit 0
+	fi
+
 	# override, the approved junction ratings and the Avoid junctions come from home
-	# blanked (ship-data.sh). override was emptied below; the junction ratings and
+	# blanked (ship-data.sh). override is emptied below; the junction ratings and
 	# Avoid junctions are replaced as override's are, the beta's own junction suggestions letting
 	# go of them first (their foreign keys would refuse the commit).
 	extra=$(mktemp)
@@ -561,24 +644,38 @@ if [ "$update_data" = 1 ]; then
 	rm -f "$extra"
 	snapshot update >/dev/null
 	before_oid=$(psql_q "select coalesce(to_regclass('public.app_user')::oid::text, 'none')")
-	note "updating $live_schema, override, the junction ratings and the Avoid junctions in one transaction, and emptying the stale stress tile cache ($accounts beta account(s) are left alone)"
-	# pg_restore writes SQL; psql runs it as ONE transaction that stops at the first error. If
-	# pg_restore itself fails part-way, a deliberately failing statement follows its output so the
-	# transaction rolls back instead of committing half an update. The beta's own
-	# stress_tile_cache is emptied in the same transaction: its rows are keyed on the oid of the
-	# live table this replaces, so none could be served again (the runbook predraws afterwards).
-	# stress_edit is emptied with override (it points at the overrides it replaced); the beta's own
-	# stress suggestions are kept and let go of the edit an approval made first, and so are Review's
-	# rulings (review_ruling, the beta's own) of their edit and access override: a ruling keeps its
-	# road, decision, level, reason, author and time, so its record and audit line still read
-	# whole, and an undo inside its window then only marks it undone (what it changed is the
-	# bundle's now). Both are emptied
+	note "swapping $staged in for $live_schema and updating override, the junction ratings and the Avoid junctions in one transaction, and emptying the stale stress tile cache ($accounts beta account(s) are left alone; the beta keeps serving)"
+	# psql runs it as ONE transaction that stops at the first error, so a failure renames nothing.
+	# lock_timeout bounds each lock it waits for, so a slow reader costs this an attempt (tried
+	# again, as pipeline.swap does) rather than queueing every request behind it. The served table
+	# is locked just before the rename, as pipeline.swap.swap_schemas locks it: requests already
+	# reading it finish first, later ones wait the moment the rename takes and then read the new
+	# table. The beta's own stress_tile_cache is emptied in the same transaction: its rows are
+	# keyed on the oid of the live table this replaces, so none could be served again (the
+	# runbook predraws afterwards). stress_edit is emptied with override (it points at the
+	# overrides it replaced); the beta's own stress suggestions are kept and let go of the edit
+	# an approval made first, and so are Review's rulings (review_ruling, the beta's own) of
+	# their edit and access override: a ruling keeps its road, decision, level, reason, author
+	# and time, so its record and audit line still read whole, and an undo inside its window
+	# then only marks it undone (what it changed is the bundle's now). Both are emptied
 	# with DELETE, not TRUNCATE: a TRUNCATE refuses a table another table's foreign key points at,
 	# even with no row pointing (stress_suggestion.edit_id, migration 0016), and a DELETE does not.
-	# shellcheck disable=SC2016
-	bc exec -T postgis sh -c '{ echo "UPDATE public.stress_suggestion SET edit_id = NULL WHERE edit_id IS NOT NULL;"; echo "UPDATE public.review_ruling SET edit_id = NULL WHERE edit_id IS NOT NULL;"; echo "UPDATE public.review_ruling SET access_override_id = NULL WHERE access_override_id IS NOT NULL;"; echo "DELETE FROM public.stress_edit;"; echo "DELETE FROM public.override;"; echo "TRUNCATE public.stress_tile_cache;"; pg_restore --no-owner --no-privileges --clean --if-exists -L /tmp/beta.use -f - || echo "SELECT pg_restore_failed_so_this_rolls_back();"; cat /tmp/beta-blanked.sql || echo "SELECT blanked_sql_missing_so_this_rolls_back();"; } | psql -U "$1" -d "$2" -q -1 -v ON_ERROR_STOP=1 >/dev/null' sh "$pguser" "$pgdatabase" <"$dump" ||
-		{ bc exec -T postgis rm -f /tmp/beta.use /tmp/beta-blanked.sql </dev/null; die "the update failed and was rolled back (above); the database is as it was"; }
-	bc exec -T postgis rm -f /tmp/beta.use /tmp/beta-blanked.sql </dev/null
+	swap_err=$(mktemp)
+	swapped=0
+	for attempt in 1 2 3 4 5; do
+		# shellcheck disable=SC2016
+		if bc exec -T postgis sh -c '{ echo "SET LOCAL lock_timeout = '\''3s'\'';"; echo "UPDATE public.stress_suggestion SET edit_id = NULL WHERE edit_id IS NOT NULL;"; echo "UPDATE public.review_ruling SET edit_id = NULL WHERE edit_id IS NOT NULL;"; echo "UPDATE public.review_ruling SET access_override_id = NULL WHERE access_override_id IS NOT NULL;"; echo "DELETE FROM public.stress_edit;"; echo "DELETE FROM public.override;"; echo "TRUNCATE public.stress_tile_cache;"; echo "LOCK TABLE \"$3\".segment IN ACCESS EXCLUSIVE MODE;"; echo "DROP SCHEMA IF EXISTS \"$5\" CASCADE;"; echo "ALTER SCHEMA \"$3\" RENAME TO \"$5\";"; echo "ALTER SCHEMA \"$4\" RENAME TO \"$3\";"; echo "COMMENT ON SCHEMA \"$3\" IS NULL;"; cat /tmp/beta-blanked.sql || echo "SELECT blanked_sql_missing_so_this_rolls_back();"; } | psql -U "$1" -d "$2" -q -1 -v ON_ERROR_STOP=1 >/dev/null' sh "$pguser" "$pgdatabase" "$live_schema" "$staged" "$retired" </dev/null 2>"$swap_err"; then
+			swapped=1
+			break
+		fi
+		cat "$swap_err" >&2
+		# Only lock contention is worth another try; anything else would fail the same way.
+		grep -Eq 'lock timeout|deadlock detected' "$swap_err" || break
+		[ "$attempt" = 5 ] || { note "the rename waited too long for a reader (attempt $attempt of 5); trying again"; sleep $((2 * attempt)); }
+	done
+	rm -f "$swap_err"
+	bc exec -T postgis rm -f /tmp/beta-blanked.sql </dev/null
+	[ "$swapped" = 1 ] || die "the swap failed and was rolled back (above); the beta still serves the old $live_schema, and $staged is kept for the next try"
 	psql_q "analyze" >/dev/null
 	after_oid=$(psql_q "select coalesce(to_regclass('public.app_user')::oid::text, 'none')")
 	[ "$before_oid" = "$after_oid" ] || die "public.app_user was recreated by the update; this should not happen, report it"
@@ -636,8 +733,8 @@ while IFS=$'\t' read -r qualified expected; do
 done <"$bundle/db/row-counts.tsv"
 [ "$fail" = 0 ] || die "the $live_schema schema does not match the bundle; do not start the api. Restore again (--update-data, or --replace-db for a first install)"
 if [ "$update_data" = 1 ]; then
-	note "db update done. Start the api and worker again: scripts/beta/beta-compose.sh up -d api worker"
-	note "then write the routers' settings rows from the tile links: $SYNC_UPSTREAMS"
+	note "db update done; the old tables stay as $retired until the next update. If the api and worker were stopped, start them: scripts/beta/beta-compose.sh up -d api worker"
+	note "then restart the routers one at a time onto the new tiles, and write their settings rows: $SYNC_UPSTREAMS"
 else
 	note "db done. Next: scripts/beta/beta-compose.sh run --rm --no-deps migrate ./manage.py migrate --check"
 	# A home dump carries home's rows, which name home's builds, not the beta's links.
