@@ -10,7 +10,7 @@ import { avoidMetres, breakdownParts, facilityRows, type BreakdownPart } from ".
 import type { RouteResponse } from "./lib/api.ts";
 import { routeWarning } from "./lib/dialsPanel.ts";
 import { useHighStressLanes, useStressStyle } from "./useStressStyle.ts";
-import { ROUTE_BAND, ROUTE_SWATCH_BAND_WIDTH, ROUTE_SWATCH_CASING_WIDTH, ROUTE_SWATCH_HEIGHT, routeCasing, routeLegend, routeMarkDash, routeMarkWidth } from "./lib/routeColours.ts";
+import { ROUTE_BAND, ROUTE_LANE_DASH, ROUTE_LANE_RAIL, ROUTE_SWATCH_BAND_WIDTH, ROUTE_SWATCH_CASING_WIDTH, ROUTE_SWATCH_HEIGHT, routeCasing, routeLegend, routeMarkDash, routeMarkWidth, type RouteLaneFacility } from "./lib/routeColours.ts";
 import { seekNote, tolerateNote } from "./lib/summary.ts";
 import { tripStressSpans } from "./lib/transit.ts";
 
@@ -20,6 +20,28 @@ import { tripStressSpans } from "./lib/transit.ts";
  * the hint back before the figure on screen (styles.css, .stress-list).
  */
 const PAUSE = <span className="visually-hidden">, </span>;
+
+/**
+ * A protected or painted lane's row: the lane's mark as the route draws it (lib/mapGlue.ts, routeLaneLayers), its
+ * rails either side of the line in the corridor's white band, so the key shows what to look for on the route.
+ * The rails are one dashed stroke with the line's white gap over its middle, as SVG has no gap width.
+ */
+function RouteLaneSwatch({ facility, color, casing }: { facility: RouteLaneFacility; color: string; casing: string }) {
+  const rail = ROUTE_LANE_RAIL[facility];
+  const gap = 5;
+  const line = (stroke: string, width: number, dash?: string) => (
+    <line x1="9" y1="9" x2="27" y2="9" stroke={stroke} strokeWidth={width} strokeDasharray={dash} strokeLinecap={dash ? "butt" : "round"} />
+  );
+  return (
+    <svg className={`route-lane-swatch route-lane-${facility}`} width="36" height={ROUTE_SWATCH_HEIGHT} aria-hidden="true">
+      {line(casing, ROUTE_SWATCH_CASING_WIDTH)}
+      {line(ROUTE_BAND, ROUTE_SWATCH_BAND_WIDTH)}
+      {line(color, gap + 2 * rail, ROUTE_LANE_DASH[facility].map((d) => d * rail).join(" "))}
+      {line(ROUTE_BAND, gap)}
+      {line("#6b7280", 3)}
+    </svg>
+  );
+}
 
 /**
  * `part` splits it for the sidebar's layout (OWNER-DECISIONS 312): the notices (the traffic-tolerant
@@ -106,7 +128,11 @@ export function FacilityBreakdown({ route, part = "all" }: { route: RouteRespons
           <ul className="stress-list">
             {rows.map((r) => (
               <li key={r.key}>
-                <span className={`swatch facility-seg-${r.key}`} style={{ backgroundColor: r.color }} aria-hidden="true" />
+                {r.key === "protected" || r.key === "lane" ? (
+                  <RouteLaneSwatch facility={r.key} color={r.color} casing={casing} />
+                ) : (
+                  <span className={`swatch facility-seg-${r.key}`} style={{ backgroundColor: r.color }} aria-hidden="true" />
+                )}
                 <span className="stress-name">{r.label}</span>
                 {PAUSE}
                 <span className="stress-pct">{r.percent}%</span>
