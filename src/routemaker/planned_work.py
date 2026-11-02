@@ -38,7 +38,7 @@ SOURCES = frozenset({PROTRACK, DCWATER, WSSC})
 
 # ProTrack+ work that leaves the road a bicycle uses as it was.
 PROTRACK_SKIP = re.compile(
-    r"sidewalk|alley|streetlight|street light|green infrastructure|tree|landscap|signage", re.I
+    r"sidewalk|alley|streetlight|street light|green infrastructure|\btree|landscap|signage", re.I
 )
 
 

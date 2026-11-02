@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from routemaker import planned_work as pw
 from routemaker import workzones as wz
 
@@ -50,6 +52,25 @@ class TestProtrack:
         sidewalk = protrack(PrimaryWorkType="Sidewalk Construction")
         alley = protrack(PrimaryWorkType="Alley Restoration")
         assert pw.parse_protrack({"features": [sidewalk, alley]}, NOW) == []
+
+    def test_streetscape_work_is_kept_though_it_contains_tree(self) -> None:
+        """A Streetscape project rebuilds the road; only tree work leaves it as it was."""
+        streetscape = protrack(PrimaryWorkType="Streetscape")
+        trees = protrack(PrimaryWorkType="Tree Planting")
+        (zone,) = pw.parse_protrack({"features": [streetscape, trees]}, NOW)
+        assert zone.title.endswith("streetscape")
+
+    @pytest.mark.parametrize("work", ["Tree planting", "Landscaping", "Signage upgrade"])
+    def test_tree_landscaping_and_sign_work_is_left_out(self, work: str) -> None:
+        assert pw.parse_protrack({"features": [protrack(PrimaryWorkType=work)]}, NOW) == []
+
+    def test_only_projects_under_construction_are_possible_closures(self) -> None:
+        design = protrack(ProjectStatus="Design")
+        done = protrack(ProjectStatus="Completed")
+        assert pw.parse_protrack({"features": [design, done]}, NOW) == []
+        # A record with no status is taken as under construction.
+        (zone,) = pw.parse_protrack({"features": [protrack(ProjectStatus=None)]}, NOW)
+        assert wz.possible(zone)
 
 
 class TestDcWater:

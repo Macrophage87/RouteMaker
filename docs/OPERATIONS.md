@@ -72,6 +72,7 @@ Contents:
 - [Deploying v0.8.2](#deploying-v082)
 - [Deploying v0.9.0](#deploying-v090)
 - [Deploying v0.16.0](#deploying-v0160)
+- [Deploying v0.17.0](#deploying-v0170)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -6602,6 +6603,49 @@ the data. At home, in order, with `</dev/null` on every docker command:
   and `db --update-data`, the pre-draw, the router restarts and `sync_upstreams`, the smoke
   test, and resume the agent. Build the data at the tagged commit: `receive-data.sh` checks the
   bundle's commit.
+
+## Deploying v0.17.0
+
+Bike racks, the sunrise-and-sunset theme, battery savings, Potential closures with planned work,
+Maryland's Road Closure Reporter, the region-wide rating review (four override files), packed
+gravel, the one-way rule (#864) and the follow and snap crosswalk fixes. No migration, no compose,
+Caddy, nginx or Dockerfile change and no new environment variable. **`lua/routemaker_remap.lua`
+changed (#877), so the beta agent stops on the tag and the deploy is by hand**, with the map built
+at the tagged code (the 2026-11-01 spot build from release/v0.17.0 c6b9b543 carries every graph
+change: #864, #868, #877, #878). At home, in order, with `</dev/null` on every docker command:
+
+- [ ] **Outbound hosts.** Add `geo.dcwater.com`, `gisportal.wsscwater.com` and `mdgeodata.md.gov`
+  (443) to beta's egress list, and home's if it is filtered (the worker's hosts in
+  docs/BETA-RUNBOOK.md, "3. Make `.env`"). Planned work only logs an outage, but `sha` is routed round: with no good read
+  in 45 minutes it fails every `refresh_dc_closures` run (src/core/closure_sources.py).
+- [ ] **Tag and images.** Once `test` and `a11y` are green on `main`, the owner tags v0.17.0
+  (annotated). The agent stops and alerts on the `lua/` change: expected. Then, before the weekly
+  rebuild (Tuesday 08:00 UTC) or with it paused: tag the running api and pipeline images for a
+  rollback, fast-forward the checkout (`lua/` is mounted from it, so the gravel rule applies from
+  here), `docker compose build api rebuild`, and once no rebuild job is queued or running
+  `docker compose up -d --no-deps --no-build api worker rebuild`. The tag also starts a Play
+  internal-testing build (mobile/README.md changed); it can be ignored.
+- [ ] **The four review files, each only after the owner confirms that file:**
+  `2026-11-01-owner-{dc,md,va,wv}-rating-review.json` (19,802, 34,781, 8,998 and 434 ways).
+  Dry run first, then `--confirm` ("A deploy that changes the crossings fixture or loads access
+  overrides", step 3). They were loaded on the PC on 2026-11-01; the release then corrected
+  twelve public notes ("but Riding" to "but riding", nine DC, three MD), so the DC and MD dry
+  runs show only those notes changed and VA and WV show nothing.
+- [ ] **The map.** Swap in the spot build (or rebuild at the tag). Before the swap, the
+  stress-change report and Review's lists (service roads and alleys move from LTS 1 to 1.5; about
+  181 DC one-ways, 13.8 mi, close their other direction), and a Mall gravel walk routes on
+  Default. Then swap and restart the routers.
+- [ ] **Beta**, "A new release sha" with the data bundle: pause the agent; stop api and worker,
+  snapshot the database, copy `index.html`; check out the tag, set `TAG=`,
+  `check_beta_compose.py`; build the api image; `receive-data.sh verify`, `files`,
+  `db --update-data`; start api and worker; the stress-tile pre-draw; restart the four routers,
+  recreate `valhalla-offroad` and `valhalla-mtb`, `sync_upstreams`; the front end last; the smoke
+  test (`--local --trails`, then `--public`); `mark-deployed v0.17.0`; resume the agent.
+- [ ] **After the first closures runs:** the log's `closures:` line has `sha N closures` and the
+  planned-work counts, with no "no good read in time"; Plan's Potential closures layer shows
+  markers; a Maryland closure is routed round. Spot checks: a DC alley's road panel reads LTS 1.5;
+  a reviewed road's Why line is its public note; Share live posts once a pace and a watcher reads
+  every 15 s.
 
 ## Deploying a planner and front-end release: rollback points and verification
 

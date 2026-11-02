@@ -661,10 +661,11 @@ def listed(today: date):
 
 # ---- The page's frame ----
 
-# The page's dark colours. The page follows the app's theme (frontend/src/lib/themeClock.ts: by default dark from
-# sunset to sunrise, or the rider's Settings > Display > Colors choice; the owner, 2026-11-01), which the page's
-# script sets as a class on the root; until it runs, or without it, the phone's own theme. The app's stylesheet,
-# which comes with the charts, sets --bg by the same class, so the two never disagree (light text on white).
+# The page's dark colours. The page follows the app's theme (frontend/src/lib/themeClock.ts: by
+# default dark from sunset to sunrise, or the rider's Settings > Display > Colors choice; the owner,
+# 2026-11-01), which the page's script sets as a class on the root; until it runs, or without it,
+# the phone's own theme. The app's stylesheet, which comes with the charts, sets --bg by the same
+# class, so the two never disagree (light text on white).
 DARK_VARS = (
     "color-scheme:dark;--ink:#e6e9ec;--muted:#aab4bf;--bg:#1b1e24;--card:#1c2025;--rule:#323942;"
     "--accent:#8ab4ff;--accent-ink:#0b1733;--badge:#3f3210;--badge-ink:#fde68a"

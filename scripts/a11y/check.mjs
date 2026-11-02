@@ -81,6 +81,9 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
   if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
   await mock(p, route, { delayMs, delayFrom, stressTiles, admin, suggester, hazards, signIn });
   await media(p, { scheme, forced });
+  // The theme by the emulated scheme, not the clock: since v0.17.0 the page follows sunset and sunrise by default
+  // (lib/themeClock.ts), so without this a "light" run at night is dark. "Phone's setting" is the old behaviour.
+  await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "try { if (!localStorage.getItem('routemaker.theme')) localStorage.setItem('routemaker.theme', 'phone'); } catch {}" });
   // A device that kept accessibility mode on (455): the stored value, set before the app starts.
   // Room for every resource entry: the dev server's modules alone now pass Chrome's default of 250, after which a
   // later fetch (federalFetched's federal-land data) is not recorded and "nothing fetched" would pass vacuously.
@@ -617,18 +620,20 @@ if (mine()) for (const [mode, opts] of [["light", {}], ["dark", { scheme: "dark"
   check(`ring (${mode}): a keyboard focus on a marker shows the ring`, ring.marker && ring.fv, ring.outline);
   check(`ring (${mode}): 3:1 or more against the map beside it`, (opts.forced ? best : ratio) >= 3, `ring ${ringPx} inner ${innerPx} map ${mapPx}: ring ${ratio.toFixed(2)}:1, best of the pair ${best.toFixed(2)}:1`);
   check(`ring (${mode}): the inner ring is the other of the pair`, contrast(innerPx, ringPx) >= 3, `${innerPx} vs ${ringPx}`);
-  if (!opts.forced) check(`ring (${mode}): the same dark ring in either theme`, /rgb\(17, 24, 39\) 3px solid/.test(ring.outline), ring.outline);
+  // Dark on the light map, light on the dark one (v0.17.0: the dark theme draws the dark map, styles.css :root.map-dark).
+  const wantRing = mode === "dark" ? "rgb(249, 250, 251)" : "rgb(17, 24, 39)";
+  if (!opts.forced) check(`ring (${mode}): the map's ring for its flavour, dark on the light map and light on the dark`, ring.outline === `${wantRing} 3px solid`, ring.outline);
   await p.shot(`${SHOTS}/ring_${mode}_marker.png`, clip);
-  // The map canvas and the credits links: dark on the light map, in the dark theme too.
+  // The map canvas and the credits links: the map's ring, not the panels' amber; light on the dark theme's dark map.
   if (mode === "dark") {
     const canvas = await p.eval("(() => { const c = document.querySelector('.maplibregl-canvas'); return getComputedStyle(c).getPropertyValue('--map-focus').trim(); })()");
-    check("ring (dark): the canvas and the credits use the map's ring, not amber", canvas === "#111827", canvas);
+    check("ring (dark): the canvas and the credits use the map's ring, not amber", canvas === "#f9fafb", canvas);
     // The credits start as the i at every width (they hold the info panel): open them to reach a link.
     const rings = await p.eval(`(() => { const a = document.querySelector('.maplibregl-ctrl-attrib');
       if (!a.classList.contains('maplibregl-compact-show')) a.querySelector('.maplibregl-ctrl-attrib-button').click();
       const out = {}; for (const sel of ['.maplibregl-canvas', '.maplibregl-ctrl-attrib a', '.maplibregl-ctrl-zoom-in']) {
       const e = document.querySelector(sel); e.focus(); const st = getComputedStyle(e); out[sel] = { fv: e.matches(':focus-visible'), outline: st.outlineColor + ' ' + st.outlineWidth }; } return out; })()`);
-    check("ring (dark): the canvas, a credits link and Zoom in ring in the map's dark ring", Object.values(rings).every((r) => r.fv && /^rgb\(17, 24, 39\) 3px$/.test(r.outline)), JSON.stringify(rings));
+    check("ring (dark): the canvas, a credits link and Zoom in ring in the dark map's light ring", Object.values(rings).every((r) => r.fv && /^rgb\(249, 250, 251\) 3px$/.test(r.outline)), JSON.stringify(rings));
     await p.shot(`${SHOTS}/ring_dark_zoom-in.png`, await p.eval("(() => { const r = document.querySelector('.maplibregl-ctrl-top-right').getBoundingClientRect(); return { x: r.left - 12, y: r.top, width: r.width + 12, height: r.height + 12 }; })()"));
   }
   if (mode === "forced-dark") {
@@ -1149,9 +1154,9 @@ if (mine()) for (const mobile of [false, true]) {
     return { name: h.textContent, labelled: sw?.getAttribute('aria-labelledby') === h.id, expanded: d.getAttribute('aria-expanded'), hidden: body.hidden, inside: body.closest('.layer-section') === s, targets: [sw ? r(sw) : 44, r(d)] }; })`);
   // Six since Bikeshare and e-bikes (787abd98), Places to see and the repair stands (280b1d80, 2b38bf1c) joined;
   // seven with Scenic (v0.8.0), after Trails and terrain, off by default like the rest.
-  // v0.9.1: DC permits, Plan's alone, off by default, after Scenic.
+  // v0.9.1: DC permits, Plan's alone, off by default, after Scenic; Potential closures since v0.17.0 (#853).
   check(`sections (${where}): eight, each named by its heading, its disclosure collapsed with aria-controls on its layers, 44 px targets`,
-    JSON.stringify(rows.map((r) => r.name)) === JSON.stringify(["Traffic stress", "Water, restrooms and repair stands", "Rail stations", "Bikeshare and e-bikes", "Places to see", "Trails and terrain", "Scenic", "DC permits"]) && rows.every((r) => r.labelled && r.expanded === "false" && r.hidden && r.inside && r.targets.every((t) => t >= 44)), JSON.stringify(rows));
+    JSON.stringify(rows.map((r) => r.name)) === JSON.stringify(["Traffic stress", "Water, restrooms and repair stands", "Rail stations", "Bikeshare and e-bikes", "Places to see", "Trails and terrain", "Scenic", "Potential closures"]) && rows.every((r) => r.labelled && r.expanded === "false" && r.hidden && r.inside && r.targets.every((t) => t >= 44)), JSON.stringify(rows));
   const ax = await axNode(p, "#terrain-section-switch");
   const chevron = await axNode(p, "[aria-controls=terrain-section-body]");
   check(`sections (${where}): the section's switch is a switch named for it, off; the disclosure a collapsed button named for its layers`,
@@ -3289,9 +3294,12 @@ if (mine()) {
     ended.fits && !ended.ride && ended.planner === false && ended.focus === "Done" && ended.summary === "Ride ended" && ended.rows[0] === "Distance" && ended.wake === "release" && ended.map !== "none", JSON.stringify(ended));
   await sleep(500);
   const cleared = await p.eval("(async () => ({ bucket: await caches.has('routemaker-corridor-v1'), stamp: localStorage.getItem('routemaker.corridor') }))()");
-  check("ride: End ride clears the map kept for dead spots", cleared.bucket === false && cleared.stamp === null, JSON.stringify(cleared));
+  // Since v0.17.0 (the owner, 2026-11-01, battery audit) the map kept for dead spots stays up to a day for the same
+  // route (lib/corridorStore.ts): End ride leaves it, and its stamp holds a time, the route's hash and a byte count only.
+  const stampOk = cleared.stamp === null || /^\{"at":\d+,"route":"[^"]+","bytes":\d+\}$/.test(cleared.stamp);
+  check("ride: End ride leaves the map kept for dead spots for the same route, its stamp holding no position", stampOk, JSON.stringify(cleared));
   const ranges = await p.eval(idb("store.count()"));
-  check("ride: End ride empties the base map's kept ranges (IndexedDB)", sentinel === 1 && ranges === 0, JSON.stringify({ sentinel, ranges }));
+  check("ride: End ride leaves the base map's kept ranges (IndexedDB) for the same route", sentinel === 1 && ranges === 1, JSON.stringify({ sentinel, ranges }));
   // The pothole logged above is still to report: the summary says so, says where Reports is, and Open Reports
   // closes the summary and opens Reports at the 311 checklist (Stephen, 2026-10-21).
   const owed = await p.eval(`(() => { const box = document.querySelector('.ride-summary-311'); const b = box?.querySelector('button'); return { line: box?.querySelector('p')?.textContent, button: b?.textContent, tall: b ? Math.round(b.getBoundingClientRect().height) : 0 }; })()`);
