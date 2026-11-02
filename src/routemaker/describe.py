@@ -466,6 +466,9 @@ class _Run:
     # (`_absorb_tiny`): the turn there spans two nodes, so no junction is drawn.
     folded_end: bool = False
     folded_start: bool = False
+    # The metres of a connector folded in at its start (`_fold_connector`): the junction
+    # events there are this stretch's turn's.
+    connector_m: float = 0.0
 
 
 def _run_of(atom: Atom, leg: int) -> _Run:
@@ -727,6 +730,67 @@ def _unnamed_jog(before: _Run, run: _Run, after: _Run) -> bool:
     return moves in (("left", "right"), ("right", "left"))
 
 
+def _connector(before: _Run | None, run: _Run, after: _Run | None) -> bool:
+    """Whether `run` is a connector to fold between two turns, its turns said as one: under
+    JOG_MIN_M, turned (or forked) into and turned out of, with the turn across it short of
+    a turnaround (HAIRPIN_DEG). The router hops the corner on a few metres of a cross
+    street, a crosswalk or a sidewalk (the owner, 2026-11-01: "It keeps asking for
+    phantom turns": "Right onto 16th St NE, then left onto West Virginia Avenue bike
+    lane" where the cycle track begins 6 m up 16th Street, and "Right, then left, then
+    right" at one corner). Each end being a fork kept it as a stretch of its own
+    (`_forks`); the rider makes one move there, read from the headings across it. Kept:
+    a path or crosswalk that leads onto a path (`_crossing`'s "Cross Redland Road, then
+    left onto the bike lane"), a Y taken through a short stub, a U-turn or a circle (their
+    own words), and a stretch of
+    LTS 3 or worse that the stretch after would hide (`NEVER_HIDDEN`)."""
+    if before is None or after is None or run.metres >= JOG_MIN_M:
+        return False
+    if run.untraced or after.untraced or before.untraced:
+        return False
+    if _circle(before) or _circle(run) or _circle(after) or _uturn(run) or _uturn(after):
+        return False
+    if not (_forks(run) or _movement_between(before, run) in TURN_WORDS):
+        return False
+    if not (_forks(after) or _movement_between(run, after) in TURN_WORDS):
+        return False
+    turn = turn_between(before.last, after.first)
+    if turn is None or abs(turn) >= HAIRPIN_DEG:
+        return False
+    # Two bears that cancel, with no full turn at either end, are a Y taken through a
+    # short stub: its branches a choice, still said ("Bear left").
+    ends = (_turn_at(before, run), _turn_at(run, after))
+    if abs(turn) < SLIGHT_MIN_DEG and not any(
+        t is not None and abs(t) > BEAR_MAX_DEG for t in ends
+    ):
+        return False
+    if (run.path or _crosswalk(run)) and after.path and not _crosswalk(after):
+        return False
+    return not (run.tier in NEVER_HIDDEN and _rank(after) < _rank(run))
+
+
+def _crosswalk(run: _Run) -> bool:
+    """Whether `run` begins or ends on a crosswalk (CROSSING_USE)."""
+    return any(atom is not None and atom.use == CROSSING_USE for atom in (run.first, run.last))
+
+
+def _fold_connector(before: _Run, run: _Run, after: _Run) -> None:
+    """Fold the connector `run` (`_connector`) into `after`, which then begins where it
+    did: the turn into `after` is the one move across both, read from the headings
+    (`turn_between`). A fork at `after`'s start becomes that move, so a short `after` is
+    still kept with its turn (`_absorb_tiny`); straight on, it is no fork."""
+    turn = turn_between(before.last, after.first)
+    after.metres += run.metres
+    after.unpaved_m += run.unpaved_m
+    after.connector_m += run.metres + run.connector_m
+    after.folded_start = True
+    if after.first is not None and after.first.fork is not None:
+        move = None
+        if turn is not None and abs(turn) >= SLIGHT_MIN_DEG:
+            side = "right" if turn > 0 else "left"
+            move = side if abs(turn) > BEAR_MAX_DEG else f"bear_{side}"
+        after.first = replace(after.first, fork=move)
+
+
 def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
     """Fold each stretch under TINY_M of one traced leg into a neighbour: the one
     on its own street if there is one, else the longer (the earlier on a tie). A
@@ -741,6 +805,12 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
             run = runs[i]
             before = runs[i - 1] if i > 0 else None
             after = runs[i + 1] if i + 1 < len(runs) else None
+            # A few metres between two turns is one move (`_connector`).
+            if after is not None and _connector(before, run, after):
+                _fold_connector(before, run, after)
+                del runs[i]
+                changed = True
+                continue
             # A stretch begun at a fork is kept: folded, its fork would go unsaid.
             if (
                 run.metres >= TINY_M
@@ -1709,7 +1779,7 @@ def _crossing(
     begun or ended on a crosswalk. The event's road, else CROSS_UNNAMED; None where it
     is not such a stretch."""
     run = runs[i]
-    crosswalk = any(atom is not None and atom.use == CROSSING_USE for atom in (run.first, run.last))
+    crosswalk = _crosswalk(run)
     if i + 1 >= len(runs) or runs[i + 1].leg != run.leg or not (run.path or crosswalk):
         return None
     if run.metres > CROSS_MAX_M or run.untraced or _circle(run):
@@ -2099,6 +2169,27 @@ def describe_both(
         # A U-turn is said as one, never "to stay on" the way.
         stay = same and exit is None and movement != "uturn"
         turns[i] = _Turn(movement, event, stay, shape, exit)
+    # The junctions within a connector folded into a turn (`_fold_connector`) are that
+    # turn's one junction, the busiest said with it: never a standalone entry left over.
+    severity_rank = {"red": 2, "orange": 1}
+    for i, turn in turns.items():
+        span = runs[i].connector_m
+        if span <= 0:
+            continue
+        inside = [
+            index
+            for index, event in enumerate(events)
+            if starts[i] - JUNCTION_M <= event.m <= starts[i] + span + JUNCTION_M
+            and (index not in used or events[index] is turn.event)
+        ]
+        for index in inside:
+            used.add(index)
+            event = events[index]
+            current = turn.event
+            if current is None or severity_rank.get(event.severity or "", 0) > severity_rank.get(
+                current.severity or "", 0
+            ):
+                turn.event = event
     for i, turn in turns.items():
         crossed = _crossing(runs, turns, starts, events, i)
         if crossed is not None:
