@@ -6657,7 +6657,7 @@ routing speed-up and the beta's staging swap. Two migrations (0054 adds `connect
 A seventh graph, `tiles/paved`, and its router `valhalla-paved` (profile `offroad`; 768M at home,
 320M on the beta). **`lua/` changed, a Valhalla config was added, compose and the nginx template
 changed, so the beta agent stops on the tag and the deploy is by hand**, with the map built at the
-tagged commit. The Caddyfile changed (`/road-bike`). No Dockerfile or requirements change, no new
+tagged commit. The Caddyfile changed (`/road-bike`, `/walk`, `/walk-transit`). No Dockerfile or requirements change, no new
 environment variable to set (`VALHALLA_PAVED_URL` has its default), no new outbound host (the trip
 checks read WMATA through the existing shared cache) and no new scheduled job. No `mobile/` change,
 so no Play build. At home, in order, with `</dev/null` on every docker command:
@@ -6677,12 +6677,12 @@ so no Play build. At home, in order, with `</dev/null` on every docker command:
   given before cannot read My routes until the rider connects again; 0055 keeps that default in
   the database). Then, once no rebuild job is
   queued or running, `docker compose up -d --no-deps --no-build --force-recreate api worker rebuild`.
-- [ ] **Caddy.** The Caddyfile adds `/road-bike`: validate it in a throwaway container and recreate
+- [ ] **Caddy.** The Caddyfile adds `/road-bike`, `/walk` and `/walk-transit`: validate it in a throwaway container and recreate
   caddy alone ("Applying a Caddyfile change"). This also brings `/about/android-beta.html`, in
   `@frontend` since v0.16.3, to this host, whose caddy was not recreated after v0.16.2/v0.16.3. Check:
   `curl -sI https://<site>/road-bike` is a 302 to `/#preset=road-bike`, and
   `curl -sI https://<site>/about/android-beta.html` is a 200 once the front end is published.
-- [ ] **The data directory.** `sudo scripts/prepare_data_root.sh` (it adds `tiles/paved` and
+- [ ] **The data directory.** `sudo sh scripts/prepare_data_root.sh --env-file ./.env` (it adds `tiles/paved` and
   `tiles/paved/current`, owned 10001). Never name `valhalla-paved` in an `up` before its first
   build: Docker would make `tiles/paved` as root, which the rebuild cannot write.
 - [ ] **The map**, at the tagged commit: on the cloud box (`send-inputs.sh` from this checkout, or
@@ -6718,7 +6718,7 @@ so no Play build. At home, in order, with `</dev/null` on every docker command:
   - Restart the four routers one at a time; then
     `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb valhalla-paved`
     (leave out `valhalla-paved` if memory was short); `sync_upstreams`.
-  - Re-render and install the nginx site (step 9: the `road-bike` preset link), `nginx -t`, reload.
+  - Re-render and install the nginx site (step 9: the `road-bike`, `walk` and `walk-transit` preset links), `nginx -t`, reload.
   - The front end comes with the bundle (`files`), `index.html` last.
   - `smoke-test.sh --local --trails` (now checks `road-bike` on the `paved` graph), then `--public`.
   - The agent and router hook changed: `scripts/beta/auto-release.sh install` and, where installed,
