@@ -18,8 +18,9 @@ same module runs inside the site, and three things change:
 Sign-in is OAuth 2.1 with PKCE, which is what an assistant app speaks: the app registers itself
 (RFC 7591), sends the rider to /oauth/authorize, where the rider signs in with Discord as usual
 and allows it on a page of this site, and trades the code for tokens at /oauth/token. Only
-SHA-256 digests of the code and the tokens are kept. A grant can plan and add routes to My
-routes: it signs nobody in to the site and reads none of the account's saved routes. An instance
+SHA-256 digests of the code and the tokens are kept. A grant can plan, add routes to My routes
+and, where the rider allowed it (`ConnectorGrant.reads_routes`, from v0.18.0), read them to plan
+from (my_routes): it signs nobody in to the site and changes no saved route. An instance
 admin's grant can also write Featured routes posts as drafts (draft_route_post,
 core.route_posts.write_draft; the owner, 2026-10-25: "Enable a mechanism for me to have the blog
 posts sent directly from claude"); publishing stays theirs, in the admin.
@@ -197,6 +198,17 @@ class InProcessApi:
 
     def shared_route(self, route_id):
         return self._module.Api.shared_route(self, route_id)
+
+    def weather_check(self, points):
+        return self._module.Api.weather_check(self, points)
+
+    def saved_routes(self):
+        """The rider's own My routes (the owner chose this read, 2026-11-02): names and
+        figures, read as the app's My routes reads them."""
+        return self._module.Api.saved_routes(self)
+
+    def saved_route(self, route_id):
+        return self._module.Api.saved_route(self, route_id)
 
     def share(self, body: dict) -> str:
         """Keep the exact route under its link id, as the app's Share does: the rider's own
@@ -446,6 +458,7 @@ def mcp_endpoint(request):
         gpx_link=lambda draft_id, name: gpx_link(request, user, grant, draft_id, name),
         posts=bool(getattr(user, "is_instance_admin", False)),
         icons=server_icons(request),
+        routes_read=grant.reads_routes,
     )
     msg_id = message.get("id") if isinstance(message, dict) else None
     if msg_id is not None and (isinstance(msg_id, bool) or not isinstance(msg_id, (str, int))):
@@ -802,6 +815,8 @@ def authorize(request):
             code_digest=_digest(code),
             code_challenge=params["code_challenge"],
             code_expires_at=timezone.now() + CODE_LIFETIME,
+            # The page this answers says it may read My routes.
+            reads_routes=True,
         )
         return _redirect_with(
             redirect_uri, code=code, state=params.get("state"), iss=_origin(request)
@@ -826,8 +841,10 @@ If you allow it, it can:</p>
 <ul>
 <li>plan routes with RouteMaker's routing, each with a link to it that lasts a day</li>
 <li>add routes to your My routes, when you ask it to</li>
+<li>read your saved routes, when you ask it to plan from one</li>
 {posts}</ul>
-<p>It can't read your saved routes, sign in to the site as you, or change anything else.</p>
+<p>It can't change or delete your saved routes, sign in to the site as you, or change anything
+else.</p>
 <p>After you answer you'll go back to <strong>{host}</strong>.</p>
 <form method="post" action="/oauth/authorize">
 <input type="hidden" name="csrfmiddlewaretoken" value="{csrf}">
