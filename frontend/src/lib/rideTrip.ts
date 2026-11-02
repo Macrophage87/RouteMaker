@@ -137,6 +137,13 @@ export function walksLine(route: Pick<RouteResponse, "transit">): boolean {
   return index >= 0 && plan.steps[index].mode === "walk";
 }
 
+/** The turns of a Walk line (`walksLine`), from the route's own plan; null on any other route. */
+export function walkLineTurns(route: Pick<RouteResponse, "transit">): readonly WalkTurn[] | null {
+  if (!walksLine(route)) return null;
+  const plan = transitOf(route)!;
+  return plan.steps[lineIndex(plan)].turns ?? [];
+}
+
 /**
  * Whether Start ride is offered: the line is a riding leg no longer than `rideMaxM`. A Bikeshare plan's
  * line is its ride between the docks; a transit plan's is its first ride (not a walk). Walk and Walk + 🚆🚌's line is
@@ -376,6 +383,8 @@ export function rideLegOf(
   const trip = rideTripOf(route, points);
   const line = route.geometry.coordinates as LonLat[];
   if (!trip || trip.asPlanned || line.length < 2) return { points, loop, preset: route.preset, trip };
+  // On foot: a re-plan the rider asks for (Detour, Road closed, Re-plan from here) walks, to the walk's own end.
+  if (trip.onFoot) return { points: [line[0], line[line.length - 1]], loop: false, preset: "walk", trip };
   // Bikeshare + transit's share bike is a classic one ("take a classic bike").
   const ebike = bikeshareOf(route)?.bike === "ebike";
   return { points: [line[0], line[line.length - 1]], loop: false, preset: ebike ? "ebike" : "default", trip };

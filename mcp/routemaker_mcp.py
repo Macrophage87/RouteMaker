@@ -101,8 +101,18 @@ PRESETS = (
     "rebalance",
     "bike-transit",
     "bikeshare-transit",
+    # Walk and Walk + 🚆🚌 (2026-11-02): on foot, a start and an end.
+    "walk",
+    "walk-transit",
 )
-TWO_POINT_PRESETS = ("bikeshare", "rebalance", "bike-transit", "bikeshare-transit")
+TWO_POINT_PRESETS = (
+    "bikeshare",
+    "rebalance",
+    "bike-transit",
+    "bikeshare-transit",
+    "walk",
+    "walk-transit",
+)
 KG_PER_LB = 0.45359237
 # Densify the route line to this spacing for the Metro check, so a long straight segment
 # cannot hide a stretch past the limit between its two vertices.

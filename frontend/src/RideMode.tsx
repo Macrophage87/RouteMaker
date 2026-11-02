@@ -258,6 +258,7 @@ import {
   tripRideStart,
   tripStep,
   type RideTrip,
+  walkLineTurns,
 } from "./lib/rideTrip.ts";
 import { onwardActive, onwardStart, onwardStep, type OnwardState } from "./lib/onward.ts";
 import { walkModel, walkTurnLine } from "./lib/walkCues.ts";
@@ -862,7 +863,8 @@ export function RideMode({
   const checking = useRef(false);
   const modelOf = (r: RouteResponse, points: readonly LonLat[]) => {
     // Walk and Walk + 🚆🚌 (2026-11-02): the line is a walk, its cues its turns (lib/walkCues.ts).
-    const onFoot = trip?.onFoot ? walkModel({ coordinates: r.geometry.coordinates as LonLat[], turns: trip.onFoot.turns, to: null }, endWords(null)) : null;
+    // A re-plan on foot (rideTrip.ts rideLegOf: Walk's own) brings its own turns; the planned walk's are its own.
+    const onFoot = trip?.onFoot ? walkModel({ coordinates: r.geometry.coordinates as LonLat[], turns: walkLineTurns(r) ?? trip.onFoot.turns, to: null }, endWords(null)) : null;
     if (onFoot) return onFoot;
     // A stop's own name (2026-10-24) is said and shown with its number.
     const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia), stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop));

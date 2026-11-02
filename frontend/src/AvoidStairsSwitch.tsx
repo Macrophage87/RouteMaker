@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SettingRow } from "./SettingRow.tsx";
-import { AVOID_STAIRS_HELP, AVOID_STAIRS_LABEL, readAvoidStairs, writeAvoidStairs } from "./lib/avoidStairs.ts";
+import { AVOID_STAIRS_EVENT, AVOID_STAIRS_HELP, AVOID_STAIRS_LABEL, readAvoidStairs, writeAvoidStairs } from "./lib/avoidStairs.ts";
 import { t } from "./lib/i18n.ts";
 
 /**
@@ -10,6 +10,12 @@ import { t } from "./lib/i18n.ts";
  */
 export function AvoidStairsSwitch({ idBase }: { idBase: string }) {
   const [on, setOn] = useState(() => readAvoidStairs());
+  // The other copy (Settings', or the ride settings') switched: this one follows.
+  useEffect(() => {
+    const changed = (event: Event) => setOn((event as CustomEvent<boolean>).detail === true);
+    window.addEventListener(AVOID_STAIRS_EVENT, changed);
+    return () => window.removeEventListener(AVOID_STAIRS_EVENT, changed);
+  }, []);
   return (
     <SettingRow infoId={`${idBase}-info`} about="avoid stairs" info={AVOID_STAIRS_HELP} className="avoid-stairs-row">
       <button

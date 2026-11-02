@@ -4149,6 +4149,10 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     if found.option.walk:
         return answered(*_walked_line(found, body.preset, dials))
     leg = found.legs[found.ride]
+    if body.preset in presets.ON_FOOT_PRESETS:
+        # Walk + 🚆🚌 never rides: its line is its first walk, walked (straight where a few yards).
+        far = transit.line_m(leg) >= transit.MIN_LINE_M
+        return answered(*_walked_line(found, body.preset, dials, draw if far else None))
     # The line is the chosen option's first ride (or walk). Riding directly there, or an option
     # whose every ride and walk is a few yards (nothing the router could route), is drawn start to
     # end instead, and the plan keeps its own times.
@@ -4224,6 +4228,9 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             leg = timed.legs[timed.ride]
             if timed.option.walk:
                 return answered(*_walked_line(timed, body.preset, dials))
+            if body.preset in presets.ON_FOOT_PRESETS:
+                far = transit.line_m(leg) >= transit.MIN_LINE_M
+                return answered(*_walked_line(timed, body.preset, dials, draw if far else None))
             walked = leg.mode in (transit.WALK, transit.TAKE) and not timed.option.direct
             if walked and transit.line_m(leg) >= transit.MIN_LINE_M:
                 return answered(*_walked_line(timed, body.preset, dials, draw))

@@ -1592,7 +1592,9 @@ export function App() {
       quick: mode === "go" && !riding,
     }, { now: now || (goPickedNow.current && mode === "go") });
     goPickedNow.current = false;
-  }, [points, preset, planDials, confirmedKm, routeAsk, planFirst]);
+    // planKey: Avoid stairs too (2026-11-02), which planDials does not carry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed as before, plus planKey
+  }, [points, preset, planDials, planKey, confirmedKm, routeAsk, planFirst]);
 
   // The long-ride question and every error are in the sheet; on a phone whose
   // sheet is hidden they would otherwise be invisible, so the sheet opens

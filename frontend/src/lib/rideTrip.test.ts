@@ -30,6 +30,7 @@ import {
   rideable,
   ridesLine,
   walksLine,
+  walkLineTurns,
   noBikeLine,
   optionRides,
   withFinish,
@@ -520,6 +521,13 @@ test("Walk and Walk + 🚆🚌 (2026-11-02): the line is a walk, started as one,
   assert.deepEqual(trip.onFoot, { turns: [turn] });
   // Followed as planned: no re-plan on a bike's ride type.
   assert.equal(fixedRide({ preset: "walk", trip }, null, false), true);
+  // A re-plan the rider asks for walks too (Detour, Road closed), to the walk's own end, with the new walk's turns.
+  assert.deepEqual(rideLegOf(walk, [at(0, 0), at(1000, 0)], false), { points: [at(0, 0), at(1000, 0)], loop: false, preset: "walk", trip });
+  assert.deepEqual(walkLineTurns(walk), [turn]);
+  assert.equal(walkLineTurns(TRANSIT_ROUTE), null);
+  // Avoid stairs switched plans again in Go: the routing effect is keyed on planKey, which carries it.
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /\}, \[points, preset, planDials, planKey, confirmedKm, routeAsk, planFirst\]\);/);
   // Far off the line: nothing said of it, and the walk is not off route.
   const model = walkModel({ coordinates: walk.geometry.coordinates as LonLat[], turns: [turn], to: null })!;
   let state = tripRideStart(trip);
