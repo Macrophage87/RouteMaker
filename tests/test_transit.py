@@ -444,7 +444,7 @@ def test_a_schedule_about_to_run_out_is_logged_and_alerted(tmp_path, caplog) -> 
     assert ("the transit schedule runs out" in caplog.text) is expected
 
 
-def test_a_walk_of_a_few_yards_is_not_the_answers_line() -> None:
+def test_a_walk_of_a_few_yards_is_the_line_only_of_a_trip_with_no_ride() -> None:
     a, b = (-77.0, 38.9), (-77.00005, 38.9)  # about 4 m apart
     far = (-77.01, 38.9)
     legs = (
@@ -455,9 +455,14 @@ def test_a_walk_of_a_few_yards_is_not_the_answers_line() -> None:
         transit.Leg(transit.WALK, 400.0, (far, (-77.02, 38.9))),
     )
     assert transit.line_m(legs[0]) < transit.MIN_LINE_M
-    # The first walk is a few yards: the line is the last walk, which the router can route.
-    assert transit.Option("k", legs).ride == 4
-    # Every ride and walk a few yards: the first walk, which the API draws start to end instead.
+    # A share bike after a few yards' walk: the line is the ride, which the router can route.
+    dock = (-77.005, 38.9)
+    shared = (legs[0], transit.Leg(transit.SHARE, 120.0, (b, dock)), *legs[1:])
+    assert transit.Option("k", shared).ride == 1
+    # A trip with no ride, started at the stop (Walk + 🚆🚌): its line is still its first walk,
+    # however short, so the train after it is followed stop by stop and checked, and the last walk
+    # is not the line (the release review's S1).
+    assert transit.Option("k", legs).ride == 0
     tiny = (legs[0], legs[1], legs[2], legs[3], transit.Leg(transit.WALK, 3.0, (far, far)))
     assert transit.Option("k", tiny).ride == 0
 

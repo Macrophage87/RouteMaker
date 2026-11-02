@@ -5052,6 +5052,12 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 .ride .cue-more {
   font-size: 20px;
 }
+/* The walk's next turn under a dock or the approach ("then" lines) and stop by stop's card (the stop to get off at is
+   the one name a transit rider must not miss): the same 20 px (the release review's S3). Large text's is below. */
+.ride .cue-then,
+.ride .onboard {
+  font-size: 20px;
+}
 
 /* A steady card (the UI review, 2026-10-28: it changed height between cues and the map and buttons jumped about 75 px):
    the instruction in a two-line slot, which RideMode shrinks a long street into (not under 20 px, then "…" on its

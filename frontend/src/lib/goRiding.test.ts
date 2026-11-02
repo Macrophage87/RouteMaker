@@ -32,7 +32,7 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   assert.match(top, /<h2 id="ride-heading"/);
   // The owner, 2026-10-16 ("add a method of ending navigation"): the visible words are End ride, so its name is too.
   // Once arrived it is a filled Done (the UI review, 2026-10-28), still named End ride after its words.
-  assert.match(top, /<button type="button" className="primary ride-end ride-done" onClick=\{end\}>\s*<Icon name="check" size=\{22\} \/>\s*\{RIDE_DONE_TEXT\}\s*<span className="visually-hidden">: \{END_RIDE_NAME\}<\/span>\s*<\/button>/);
+  assert.match(top, /<button type="button" className="primary ride-end ride-done" onClick=\{end\}>\s*<Icon name="check" size=\{22\} \/>\s*\{RIDE_DONE_TEXT\}\s*<span className="visually-hidden">: \{trip\?\.onFoot \? END_WALK_NAME : END_RIDE_NAME\}<\/span>\s*<\/button>/);
   assert.match(ride, /export const END_RIDE_NAME = t\("End ride"\);/);
   // End ride stops the ride at once: the watch, the queued words and the voice, then App's endRide.
   const end = ride.slice(ride.indexOf("  const end = () => {"), ride.indexOf("  const keep = () => {"));
@@ -121,7 +121,7 @@ test("F1. Start unlocks the voice synchronously in the press, before the closure
   assert.match(ride, /export function primeRideVoice\(prefs: RidePrefs\): void \{\s*if \(toVoice\(prefs\.output\)\) rideVoice\.unlock\(" "\);/);
   assert.match(start, /startRide\(false\)/);
   assert.doesNotMatch(start, /startRideGesture/);
-  assert.match(app, /if \(!unlocked\) startRideGesture\(prefs\);/);
+  assert.match(app, /if \(!unlocked\) startRideGesture\(prefs, walksLine\(route\)\);/);
   // A slow check is said politely.
   assert.match(start, /window\.setTimeout\(\(\) => announce\(CHECKING_CLOSURES\), CLOSURE_SLOW_MS\)/);
   assert.match(ride, /export const CHECKING_CLOSURES = t\("Checking closures…"\);/);
@@ -204,7 +204,7 @@ test("End ride in Plan keeps the plan and its routes; part way it starts where t
 
 test("End ride is slid until the rider has arrived (the owner, 2026-10-19: \"Add a swipe confirmation on ending the ride unless at the destination\")", () => {
   const top = ride.slice(ride.indexOf("<div ref={topRef} className="), ride.indexOf("{ride.arrived ? (\n          <>"));
-  assert.match(top, /\{ride\.arrived \? \(\s*<button type="button" className="primary ride-end ride-done" onClick=\{end\}>[\s\S]*?\) : \(\s*<SlideToEnd onEnd=\{end\} onTap=\{slideHint\} \/>/);
+  assert.match(top, /\{ride\.arrived \? \(\s*<button type="button" className="primary ride-end ride-done" onClick=\{end\}>[\s\S]*?\) : \(\s*<SlideToEnd onEnd=\{end\} onTap=\{slideHint\} name=\{trip\?\.onFoot \? END_WALK_NAME : END_RIDE_NAME\} \/>/);
   const slide = ride.slice(ride.indexOf("function SlideToEnd("), ride.indexOf("/** A live region"));
   // A native range, named End ride, so arrows and a screen reader's adjust gestures move it; the end ends the ride.
   assert.match(slide, /type="range"[\s\S]*min=\{0\}\s*max=\{100\}\s*step=\{25\}/);

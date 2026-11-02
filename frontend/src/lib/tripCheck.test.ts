@@ -3,13 +3,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { CHECKED_PRESETS, LATE_TOLD_S, SWITCH_MIN_S, checkedTripOf, lateSaid, switchSaid, tripChecked, tripVerdict } from "./tripCheck.ts";
+import { CHECKED_PRESETS, LATE_TOLD_S, SWITCH_MIN_S, TRIP_GONE_SAID, checkedTripOf, lateSaid, switchSaid, tripChecked, tripVerdict } from "./tripCheck.ts";
 
 const ORANGE = "Ride, Metro to Federal Triangle (Orange Line), ride";
 const BLUE = "Ride, Metro to Federal Triangle (Blue Line), ride";
 const RIDE = "Ride the whole way";
 const option = (label: string, totalS: number, chosen = false) => ({ key: label, label, total_s: totalS, minutes: Math.round(totalS / 60), direct: label === RIDE, chosen });
 const NOW = 1_000_000;
+// The wiring (App.tsx, RideMode.tsx), read as source.
+const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
 
 test("only the trips with transit are checked: Walk has none", () => {
   assert.deepEqual(CHECKED_PRESETS, ["bike-transit", "bikeshare-transit", "walk-transit"]);
@@ -38,12 +41,28 @@ test("the best trip (the API's first) replaces the one ridden where it is quicke
   assert.equal(barely?.kind, "same");
 });
 
-test("a trip the API says is gone is replaced by the best, however long; a label that changes is not a trip gone", () => {
+test("a trip the API says is gone is replaced by the best transit trip, however long; a label that changes is not a trip gone", () => {
   const trip = { key: KEYED(ORANGE), arrivesAt: NOW + 1_800_000 };
-  assert.deepEqual(tripVerdict(trip, { options: [opt(RIDE, 2400, true)], asked_gone: true }, NOW), { kind: "switch", key: KEYED(RIDE), label: RIDE, savedS: null });
+  assert.deepEqual(tripVerdict(trip, { options: [opt(RIDE, 1200, true), opt(BLUE, 2400)], asked_gone: true }, NOW), { kind: "switch", key: KEYED(BLUE), label: BLUE, savedS: null });
   // The same trip (the API matched its stops and lines) under another label and key: kept, its new key taken.
   const relabelled = tripVerdict(trip, { options: [{ ...opt("Ride, Metro to Smithsonian (Orange Line), ride", 1800, true), key: "k-new" }] }, NOW);
   assert.deepEqual(relabelled, { kind: "same", arrivesAt: NOW + 1_800_000, key: "k-new" });
+});
+
+// The release review's S2: riding or walking the whole way, though quicker, never hid a delay or a trip gone.
+test("riding or walking the whole way, though quicker, is never changed to: a delay on the train is still said", () => {
+  const trip = { key: KEYED(ORANGE), arrivesAt: NOW + 1_800_000 };
+  const walk = { ...opt("Walk the whole way", 1500), walk: true };
+  const late = tripVerdict(trip, { options: [opt(RIDE, 1560), walk, opt(ORANGE, 2160, true)] }, NOW);
+  assert.deepEqual(late, { kind: "late", arrivesAt: NOW + 2_160_000, key: KEYED(ORANGE) });
+});
+
+test("a trip gone with no other transit trip left is said gone, and nothing is changed to", () => {
+  const trip = { key: KEYED(ORANGE), arrivesAt: NOW + 1_800_000 };
+  assert.deepEqual(tripVerdict(trip, { options: [opt(RIDE, 1560, true)], asked_gone: true }, NOW), { kind: "gone" });
+  assert.equal(TRIP_GONE_SAID, "Your trip is no longer running as planned.");
+  // App says it once: the checks stop.
+  assert.match(app, /if \(verdict\.kind === "gone"\) \{\s*(?:\/\/.*\s*)?tripCheck\.current = null;\s*return TRIP_GONE_SAID;/);
 });
 
 test("a delay on the trip still best is said once it is enough later than last said", () => {
@@ -56,14 +75,12 @@ test("a delay on the trip still best is said once it is enough later than last s
 
 test("the change and the delay are said in words", () => {
   assert.equal(switchSaid({ kind: "switch", key: "b", label: BLUE, savedS: 300 }), `Changed to a quicker trip, about 5 min sooner: ${BLUE}.`);
-  assert.equal(switchSaid({ kind: "switch", key: "r", label: RIDE, savedS: null }), `Your trip is no longer running as planned. Changed to: ${RIDE}.`);
+  assert.equal(switchSaid({ kind: "switch", key: "r", label: RIDE, savedS: null }), `Changed to: ${RIDE}. Your trip was no longer running as planned.`);
   assert.equal(lateSaid(NOW, () => "8:42 am"), "Delays on the way: now arriving about 8:42 am.");
 });
 
 // The wiring (App.tsx, RideMode.tsx): asked with the trip's key, checked again after each answer, and a change only
 // to a trip that still has its transit after its line.
-const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
 
 test("App asks with the trip's own key, re-checks the ride after every answer, and changes only to a trip with transit", () => {
   assert.match(app, /transitOption: key \} \}\)/);
@@ -77,4 +94,8 @@ test("the ride screen checks only before boarding, a share bike's only on the wa
   assert.match(ride, /const tripCheckOpen = !!onTripCheck && firstTransit >= 0 && toBoard && \(!trip\?\.shareBike \|\| walking\);/);
   assert.match(ride, /gate\.boardingSince === null \|\| Date\.now\(\) < gate\.boardingSince \+ gate\.waitS \* 1000 - BOARDING_MS/);
   assert.match(ride, /if \(!gate\.open \|\| ended\.current \|\| pausedRef\.current\) return false;/);
+});
+
+test("what a check says is shown as well as said (the release review's S2)", () => {
+  assert.match(ride, /if \(said && open\(\)\) \{\s*notify\(said\);\s*showToast\(said\);/);
 });
