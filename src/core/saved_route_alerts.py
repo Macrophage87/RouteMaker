@@ -153,7 +153,9 @@ def _in_force(now: datetime) -> list:
     return [
         z
         for z in workzones.snapshot().zones
-        if z.kind in (rules.CLOSED, rules.UNKNOWN) and rules.active(z, now)
+        if z.kind in (rules.CLOSED, rules.UNKNOWN)
+        and rules.active(z, now)
+        and not rules.possible(z)
     ]
 
 

@@ -501,8 +501,8 @@ MUTANTS: list[tuple[str, str, str, str, str, list[str]]] = [
     (
         "F02b MapView's subscription forgets the switch",
         MV,
-        "subscribeHighStressLanes(() => onLaneSwitch(mapRef.current, loaded.current, callbacks.current.when)),",
-        "subscribeHighStressLanes(() => {}),",
+        "        onLaneSwitch(mapRef.current, loaded.current, callbacks.current.when);\n",
+        "",
         "ts",
         TS,
     ),
