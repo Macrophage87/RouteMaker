@@ -1830,4 +1830,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "next": "pwochen",
   "next, get off": "pwochen, desann",
   "{line} toward {place}": "{line} nan direksyon {place}",
+  "Avoid stairs on walks": "Evite eskalye lè w ap mache",
+  "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "Moso mache nan vwayaj Bikeshare ak transpò piblik yo evite eskalye toutotan gen yon chemen san mach toupre, tankou yon ranp oswa yon asansè. Lè w ap mache bò kote pwòp bisiklèt ou, yo toujou evite yo. Kenbe sou aparèy sa a.",
+  "avoid stairs": "evite eskalye",
 };

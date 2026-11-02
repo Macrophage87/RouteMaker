@@ -112,6 +112,7 @@ from . import (
     trailprofile,
     transit,
     transit_live,
+    walk_turns,
     wmata_bus,
     wmata_live,
     wmata_trains,
@@ -372,6 +373,14 @@ class RouteIn(Schema):
             " one without a catalog yet, or any other, is answered in English, so an app that"
             " knows a language this server does not still gets its route. Street and place"
             " names, agencies' own notices and the closure cards' words are not translated."
+        ),
+    )
+    avoid_stairs: StrictBool = Field(
+        default=False,
+        description=(
+            "Settings' \"Avoid stairs\" (2026-11-02): the plan's walks (Bikeshare, transit, a"
+            " walk to a station or a dock) keep off flights of steps wherever a step-free way is"
+            " near. A walk beside the rider's own bike always does."
         ),
     )
     heading: float | None = Field(
@@ -3284,7 +3293,7 @@ def route(request, body: RouteIn, response: HttpResponse):
     # Its calls on the pool are kept, so a cancelled plan can wait for them (below).
     tracking = parallel.track() if watch is not None else None
     try:
-        with lang.speaking(body.lang):
+        with lang.speaking(body.lang), walk_turns.stairs_avoided(body.avoid_stairs):
             answered = _route_answer(request, body, response)
     finally:
         if tracking is not None:
@@ -3523,7 +3532,7 @@ def route_neighbours(request, body: RouteIn):
         kind: body.model_copy(update={"stress": notch, "quick": False, "candidates": False})
         for kind, notch in wanted
     }
-    with lang.speaking(body.lang):
+    with lang.speaking(body.lang), walk_turns.stairs_avoided(body.avoid_stairs):
         answered = {kind: _neighbour(bodies[kind], started) for kind, _ in wanted}
     options = [
         {"kind": kind, "stress": notch, "route": answered[kind]}

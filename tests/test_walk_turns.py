@@ -40,3 +40,18 @@ def test_no_maneuvers_and_bad_indices_give_no_turns() -> None:
 
 def test_the_request_asks_for_maneuvers() -> None:
     assert walk_turns.directions({"directions_type": "none"})["directions_type"] == "maneuvers"
+
+
+def test_avoid_stairs_puts_a_step_penalty_on_the_walk_only_within_its_block() -> None:
+    payload = {"costing": "pedestrian", "costing_options": {"pedestrian": {"walking_speed": 4.8}}}
+    assert "step_penalty" not in walk_turns.directions(payload)["costing_options"]["pedestrian"]
+    with walk_turns.stairs_avoided(True):
+        asked = walk_turns.directions(payload)
+    assert asked["costing_options"]["pedestrian"] == {
+        "walking_speed": 4.8,
+        "step_penalty": walk_turns.STEP_FREE_PENALTY_S,
+    }
+    assert asked["directions_type"] == "maneuvers"
+    # The caller's payload is left as it was, and the setting ends with the block.
+    assert payload["costing_options"]["pedestrian"] == {"walking_speed": 4.8}
+    assert not walk_turns.avoiding_stairs()

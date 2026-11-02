@@ -27,6 +27,7 @@ import { setTopoLines, TopoLinesSwitch } from "../lib/topoLines.ts";
 import { stressShowable, terrainLayers, terrainStatus } from "../lib/terrainSection.ts";
 import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
+import { AVOID_STAIRS_HELP, AVOID_STAIRS_LABEL, readAvoidStairs, writeAvoidStairs } from "../lib/avoidStairs.ts";
 import { ACCESS_FINE_TUNE, ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { RideSettingsFields } from "../RideMode.tsx";
 import { RIDE_ICONS_HELP, RIDE_ICONS_LABEL, RIDE_TEXT_HELP, RIDE_TEXT_LABEL, readRideIconsOnly, writeRideIconsOnly, type RideTextSize } from "../lib/rideOutput.ts";
@@ -572,6 +573,34 @@ function IconsOnlyRow() {
   );
 }
 
+/** Avoid stairs on walks (lib/avoidStairs.ts), kept on this device; the next Bikeshare or transit plan reads it. */
+function AvoidStairsRow() {
+  const [on, setOn] = useState(() => readAvoidStairs());
+  return (
+    <SettingRow infoId="settings-avoid-stairs-info" about="avoid stairs" info={AVOID_STAIRS_HELP} className="avoid-stairs-row">
+      <button
+        type="button"
+        role="switch"
+        className="switch"
+        aria-checked={on}
+        aria-labelledby="settings-avoid-stairs-label"
+        aria-describedby="settings-avoid-stairs-info"
+        onClick={() => {
+          writeAvoidStairs(!on);
+          setOn(!on);
+        }}
+      >
+        <span id="settings-avoid-stairs-label" className="switch-label">
+          {AVOID_STAIRS_LABEL}
+        </span>
+        <span className="switch-state" aria-hidden="true">
+          {on ? t("On") : t("Off")}
+        </span>
+      </button>
+    </SettingRow>
+  );
+}
+
 /** Settings' tabs (the owner, 2026-10-28: "Settings = display, riding, account"; routes stay in Save & load). */
 export const SETTINGS_TABS = ["riding", "display", "account"] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
@@ -665,6 +694,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
       <section aria-labelledby="settings-ride-heading" className="settings-group">
         <h3 id="settings-ride-heading" className="visually-hidden">{t("Riding")}</h3>
         <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
+        {/* Avoid stairs on walks (Stephen, 2026-11-02): a switch of its own, for Go and Plan alike. */}
+        <AvoidStairsRow />
         {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"); set once, so last. */}
         <div className="setting-row weight-row">
           <div className="setting-line">

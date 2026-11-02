@@ -1830,4 +1830,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "next": "다음",
   "next, get off": "다음, 하차",
   "{line} toward {place}": "{line} {place} 방면",
+  "Avoid stairs on walks": "걸을 때 계단 피하기",
+  "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "공유 자전거와 대중교통 이동의 도보 구간은 경사로나 엘리베이터처럼 계단 없는 길이 가까이 있으면 계단을 피합니다. 자신의 자전거를 끌고 걷는 구간은 항상 피합니다. 이 기기에 저장됩니다.",
+  "avoid stairs": "계단 피하기",
 };

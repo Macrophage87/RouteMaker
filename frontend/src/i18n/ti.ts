@@ -1830,4 +1830,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "next": "ዝቕጽል",
   "next, get off": "ዝቕጽል፡ ውረዱ",
   "{line} toward {place}": "{line} ናብ {place}",
+  "Avoid stairs on walks": "ብእግሪ ክትከዱ ከለኹም ደረጃታት ኣወግዱ",
+  "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "ኣብ ጉዕዞታት ብሽግለታ ብሽክለታን ህዝባዊ መጓዓዝያን ዘለዉ ናይ እግሪ ክፋላት፡ ከም ራምፕ ወይ ሊፍት ዝኣመሰለ ደረጃ ዘይብሉ መንገዲ ኣብ ቀረባ ኣብ ዘለዎ ደረጃታት የወግዱ። ኣብ ጎኒ ናይ ገዛእ ርእስኹም ብሽክለታ ዝግበር ጉዕዞ ብእግሪ ኩሉ ግዜ የወግዶም። ኣብዚ መሳርሒ ይዕቀብ።",
+  "avoid stairs": "ደረጃታት ምውጋድ",
 };

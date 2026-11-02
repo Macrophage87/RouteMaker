@@ -12,6 +12,7 @@ import { formatRoughDistance } from "./format.ts";
 import { noteArrived } from "./departure.ts";
 import type { LonLat } from "./geo.ts";
 import { twoPointsOnly, type PresetId } from "./presets.ts";
+import { readAvoidStairs } from "./avoidStairs.ts";
 import type { StressMetres } from "./stressBar.ts";
 import type { FacilityMetres } from "./facilityBar.ts";
 import type { NearbyStationsAnswer, StationAction } from "./stations.ts";
@@ -1475,6 +1476,8 @@ export interface RouteRequestOptions {
   aheadOnly?: boolean;
   /** With `rideReplan`: the rider marked a dirt trail closed this ride, so the re-plan rides none (`dirt_closed`). */
   dirtClosed?: boolean;
+  /** Settings' Avoid stairs (lib/avoidStairs.ts); unset, as this device keeps it. Sent on Bikeshare and transit only. */
+  avoidStairs?: boolean;
 }
 
 /** Most points of a line to follow (core/follow.py MAX_POINTS). */
@@ -1517,6 +1520,9 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
     ...(options.rideReplan
       ? { ride_replan: true, ...(options.dirtRidden ? { dirt_ridden: true } : {}), ...(options.dirtClosed ? { dirt_closed: true } : {}) }
       : {}),
+    // Avoid stairs (Settings): the trip's walks keep off flights of steps. Only the ride types that walk on their own
+    // send it; a walk beside the rider's own bike always keeps off them.
+    ...(twoPointsOnly(preset) && (options.avoidStairs ?? readAvoidStairs()) ? { avoid_stairs: true } : {}),
     // The language of the answer's sentences (lib/i18n.ts); English, the API's own, is not sent.
     ...(language() !== "en" ? { lang: language() } : {}),
   });

@@ -1830,4 +1830,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "next": "kế tiếp",
   "next, get off": "kế tiếp, xuống",
   "{line} toward {place}": "{line} hướng {place}",
+  "Avoid stairs on walks": "Tránh cầu thang khi đi bộ",
+  "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "Các đoạn đi bộ trong chuyến đi bằng xe đạp công cộng và phương tiện công cộng tránh cầu thang ở bất cứ đâu có lối không bậc ở gần, như dốc hoặc thang máy. Đi bộ bên cạnh xe đạp của bạn luôn tránh cầu thang. Lưu trên thiết bị này.",
+  "avoid stairs": "tránh cầu thang",
 };
