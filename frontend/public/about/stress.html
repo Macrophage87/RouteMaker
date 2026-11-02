@@ -385,7 +385,8 @@ change it.</li>
     </ol>
     <p>In the District, the city's own street records (posted speed, lanes, bike lanes and
     parking) take priority over the map's tags. The city's record can make a street one-way, but a street the map
-    shows as one-way stays one-way unless a reviewer has confirmed it is two-way. A small number of
+    shows as one-way stays one-way unless the owner has confirmed it is two-way, and Mass Ride keeps it one-way
+    either way. A small number of
     roads have a rating set by hand (see <a href="#corrections">Corrections</a>).</p>
     <p>Ratings are updated with each weekly map data update.</p>
   </div></details>
@@ -453,7 +454,7 @@ change it.</li>
 <text class="ts" x="10" y="482" text-anchor="start">rates the road</text>
 </svg>
 </div>
-<figcaption>The first source that rates a road decides its level. The road panel lists every rating a road has and says which one is used. Two rules sit above them all: a rural road open to cars is at least LTS 2, and an alley or other service road open to cars is at least LTS 1.5, whichever source rates it.</figcaption>
+<figcaption>The first source that rates a road decides its level. The road panel lists every rating a road has and says which one is used. Two rules sit above the agency ratings and the formula: a rural road open to cars is at least LTS 2, and an alley or other service road open to cars is at least LTS 1.5, unless a correction for that road sets its level.</figcaption>
 </figure>
 <details class="more"><summary>More: Which rating wins</summary>
 <div class="more-body">
@@ -617,8 +618,8 @@ change it.</li>
     <p>The results take effect from the next map update as <a href="#corrections">corrections</a>:
     19,802 roads in the District, 34,781 in Maryland, 8,998 in Virginia and 434 in West Virginia, counted as
     OpenStreetMap ways. Where we keep a level that differs from an agency's, the road panel's Why line gives the
-    reason in a sentence, such as "DDOT's 2020 layer says 4, but this is a 20 mph [32 km/h] 2-lane residential street
-    with no count showing through traffic, so 2." Virginia and West Virginia publish no stress ratings RouteMaker uses, so
+    reason in a sentence. On one street it says that DDOT's 2020 layer gives 4, but the street is a 20 mph [32 km/h]
+    two-lane residential street with no count showing through traffic, so it is LTS 2. Virginia and West Virginia publish no stress ratings RouteMaker uses, so
     roads there were checked against the formula and the map. Quiet residential streets stay at LTS 1, and the owner
     chose to rate alleys and other service roads at LTS 1.5 (see <a href="#special">Special cases</a>).</p>
     <div class="table-wrap" tabindex="0" role="region" aria-label="Notable departures from the agencies">
