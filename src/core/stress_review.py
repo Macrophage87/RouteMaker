@@ -90,6 +90,7 @@ SOURCE_NAMES = {
     SUGGESTIONS: "Riders' open suggestions",
     OSM: "OSM's tags alone (DDOT's data changed it)",
     "rural floor": "Rural road floor",
+    "service road": "Service-road step",
 }
 
 

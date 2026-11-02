@@ -100,7 +100,7 @@ from enum import IntEnum
 
 from . import surfaces
 from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY, trail_kind
-from .facility import USE_SIDEPATH, is_use_sidepath_road
+from .facility import USE_SIDEPATH, closed_to_motor_traffic, is_use_sidepath_road
 from .geo import Point, haversine
 from .shape import sinuosity
 from .tags import (
@@ -399,8 +399,9 @@ NARROW_ROAD_RULE = "narrow rural road"
 # roads. LTS1 is something kids can go on." A rural way open to cars is LTS 2 at
 # least, whatever the speed table or an agency says (`rural_floor`, applied by
 # the rebuild after classification). Trails and paths, roads with a separated
-# track, and roads closed to cars or open only to farm and forestry traffic
-# (`MOTOR_CLOSED_VALUES`) are exempt.
+# track, roads closed to cars or open only to farm and forestry traffic
+# (`MOTOR_CLOSED_VALUES`), and roads the facility rule reads as off-road paths
+# (`facility.closed_to_motor_traffic`) are exempt.
 RURAL_FLOOR_RULE = "rural road floor"
 
 # Volume thresholds in vehicles per day, as a modifier on two-lane roads only.
@@ -1019,10 +1020,17 @@ def rural_floor_applies(tags: dict[str, str], urban: bool) -> bool:
     """The owner's rural floor (`RURAL_FLOOR_RULE`): a rural way open to cars.
     A trail-class way, a road with a separated track alongside (the rider is not
     in the traffic), or one closed to cars or open only to farm and forestry
-    traffic, is exempt."""
+    traffic, is exempt. So is a road the facility rule already reads as an off-road path
+    because it is closed to motor traffic (`facility.closed_to_motor_traffic`, rated LTS 1 by
+    `pipeline.run.car_free_tier_1`), even where a more specific key still lets private cars
+    in: the Baltimore City watershed fire roads (`motor_vehicle=no` + `motorcar=private`)
+    stopped the v0.16.0 rebuild when the two rules read them differently (the owner,
+    2026-10-31, picked "Exempt car-free roads from floor")."""
     if urban or tags.get("highway", "") in TRAIL_CLASS:
         return False
     if cycleway_values(tags) & SEPARATED_CYCLEWAY:
+        return False
+    if closed_to_motor_traffic(tags):
         return False
     restriction = motor_restriction(tags)
     return restriction is None or restriction[0] > Stress.LTS1
@@ -1042,6 +1050,33 @@ def rural_floor(result: StressResult, tags: dict[str, str], urban: bool) -> Stre
         return result
     # An agency's 1.5 rises to 2, not 2.5.
     return replace(result, tier=Stress.LTS2, half=False, rule=f"{result.rule}, {RURAL_FLOOR_RULE}")
+
+
+# The owner's service-road step (2026-11-01, the region rating review: "Apply your DC
+# alley pick to service roads across the whole region?" - "Yes, all service roads 1.5").
+# An alley, driveway, parking aisle or other `highway=service` way at LTS 1 is LTS 1.5:
+# few cars and low speed, but delivery trucks, backing cars and blind garage and driveway
+# exits. Quiet residential streets at LTS 1 stay at 1. Applied with the rural floor, after
+# any agency rating; a rural one is already at 2. THIS TEXT IS READ BACK by
+# `core.segment_info` and `pipeline.writers`.
+SERVICE_ROAD_RULE = "service road step"
+
+
+def service_road_step(result: StressResult, tags: dict[str, str]) -> StressResult:
+    """The owner's service-road step (`SERVICE_ROAD_RULE`) over a way's tier: a
+    `highway=service` way open to cars at a flat LTS 1 goes to LTS 1.5. An owner row on the
+    way itself (`result.adjustment`) is the more specific call and is left alone, and a way
+    closed to cars (rated as a path) is exempt."""
+    if getattr(result, "adjustment", None) is not None:
+        return result
+    if result.tier is not Stress.LTS1 or result.half or tags.get("highway") != "service":
+        return result
+    if closed_to_motor_traffic(tags):
+        return result
+    restriction = motor_restriction(tags)
+    if restriction is not None and restriction[0] <= Stress.LTS1:
+        return result
+    return replace(result, half=True, rule=f"{result.rule}, {SERVICE_ROAD_RULE}")
 
 
 # The rule on a `bicycle=use_sidepath` road with a side path mapped beside it (review RL-1).

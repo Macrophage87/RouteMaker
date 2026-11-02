@@ -10,9 +10,9 @@
  * location" and then the last places picked (lib/recentPlaces.ts). The result count is announced
  * in a polite live region, and the options are tall enough to tap.
  *
- * A pasted map link (Google, Apple, Waze, geo:) or typed coordinates are read as a place
- * (lib/sharedLocation.ts, v0.7.0 "Open shared locations"): it leads the list as one option, and a short
- * link is followed by the server first.
+ * A pasted map link (Google, Apple, Waze, geo:), typed coordinates (decimal, or degrees, minutes and seconds) or a
+ * plus code are read as a place (lib/sharedLocation.ts, v0.7.0 "Open shared locations"; lib/plusCode.ts): it leads
+ * the list as one option, and a short link is followed by the server first.
  *
  * Go's box has a microphone where speech works (lib/placeDictation.ts, Stephen 2026-10-30): the place said is searched,
  * the places found are lettered (in English and Spanish, lettersHeard), and "B", "Bravo" or a place's name said picks
@@ -48,6 +48,7 @@ import { parseShared, readShared, sharedPlace, SHARED_OPENING } from "./lib/shar
 import { watchKeyboard } from "./lib/keyboardLift.ts";
 import { t } from "./lib/i18n.ts";
 import { nativeBridge } from "./lib/nativeShell.ts";
+import { SAVED_KINDS, type SavedHits } from "./lib/savedPlaceSearch.ts";
 import {
   lettersHeard,
   placeDictation,
@@ -116,15 +117,17 @@ export const MAKE_DESTINATION = t("Make this the destination");
 
 const CHOICE_LABEL: Record<PlaceChoice, string> = { start: t("Start"), end: t("Destination"), via: t("Stop") };
 
-export function searchStatus(result: GeoResult | null, query: string): string {
+export function searchStatus(result: GeoResult | null, query: string, saved = 0): string {
   if (result === null) return "";
   if (!result.ok) {
     return result.status === 429 || result.status === 503
       ? t("Search is busy; keep typing or try again in a moment.")
       : t("Place search is not available right now.");
   }
-  if (result.places.length === 0) return nothingFoundText(query);
-  const found = result.places.length === 1 ? t("1 place found.") : t("{count} places found.", { count: result.places.length });
+  // Home, Work and favorites matched by name are listed above the search's places, so they count too.
+  const count = result.places.length + saved;
+  if (count === 0) return nothingFoundText(query);
+  const found = count === 1 ? t("1 place found.") : t("{count} places found.", { count });
   return namesCityOutside(query) ? `${found} ${COVERS_LINE}` : found;
 }
 
@@ -161,6 +164,7 @@ export function PlaceSearch({
   inputRef,
   onDismiss,
   onFocusBox,
+  savedFor,
 }: {
   /**
    * "plan": the Points search, with Start / Destination / Stop. "go" (UI-CLEANUP): Go's one Where to? box,
@@ -197,6 +201,8 @@ export function PlaceSearch({
   onDismiss?: () => void;
   /** The box takes the focus (Go's Where to?: a warm look-up of the location; routing audit S28). */
   onFocusBox?: () => void;
+  /** Go's Where to?: the rider's Home, Work and favorites the words name (lib/savedPlaceSearch.ts), listed first. */
+  savedFor?: (query: string) => SavedHits;
 }) {
   const id = useId();
   const single = variant !== "plan";
@@ -248,6 +254,8 @@ export function PlaceSearch({
   // The lettered places, for a row named while the list shows (filled each render, below).
   const letteredNow = useRef<Place[]>([]);
   const pickNow = useRef<(place: Place) => void>(() => {});
+  const savedForNow = useRef(savedFor);
+  savedForNow.current = savedFor;
   const changeNow = useRef<(value: string) => void>(() => {});
   const dictation = useRef<PlaceDictation | null>(null);
   if (canSay && dictation.current === null) {
@@ -259,6 +267,12 @@ export function PlaceSearch({
           setOpen(true);
         },
         search: (words) => {
+          // "Home", "work" or a favorite's name, said: routed there at once, as its chip would.
+          const exact = savedForNow.current?.(words).exact;
+          if (exact && boxShown()) {
+            pickNow.current(exact);
+            return;
+          }
           setSpoken(words);
           changeNow.current(words);
         },
@@ -316,7 +330,8 @@ export function PlaceSearch({
   const sharedSaid = shared && "said" in shared ? shared.said : "";
   // The empty box lists the last places picked (v0.6.1), under "Your location".
   const empty = query.trim() === "";
-  const offered: Place[] = [...sharedItems, ...(empty ? recent : places)];
+  const saved: Place[] = savedFor && !empty ? savedFor(query).places : [];
+  const offered: Place[] = [...sharedItems, ...(empty ? recent : [...saved, ...places])];
   // What Enter with nothing highlighted takes: the first place offered for the words typed; an empty box
   // takes nothing (a recent place is picked only by choosing it).
   const enterPlaces: Place[] = empty ? [] : offered;
@@ -362,12 +377,16 @@ export function PlaceSearch({
   const listId = `${id}-list`;
   const optionId = (i: number) => `${id}-opt-${i}`;
 
+  // Where a short plus code ("VXQ7+GV") is placed: the route's start, else the search's bias (the location or the
+  // map's view); the middle of the map without either (lib/plusCode.ts).
+  const near = () => origin?.() ?? bias();
+
   const change = (value: string) => {
     setQuery(value);
     setOpen(true);
     sharedTurn.current += 1;
-    // Coordinates typed or a whole link pasted in: the place it holds, offered first.
-    const found = parseShared(value);
+    // Coordinates or a plus code typed, or a whole link pasted in: the place it holds, offered first.
+    const found = parseShared(value, near());
     if (found) {
       openShared(value);
       return;
@@ -381,19 +400,19 @@ export function PlaceSearch({
     }
   };
 
-  // A link or coordinates: read here, or (a short link) followed by the server; an address is searched for.
+  // A link, coordinates or a plus code: read here, or (a short link) followed by the server; an address is searched for.
   const openShared = (text: string) => {
     const turn = ++sharedTurn.current;
     runner.current?.clear();
     setResult(null);
     setOpen(true);
-    const found = parseShared(text);
+    const found = parseShared(text, near());
     if (found?.kind === "point") {
-      setShared({ place: sharedPlace(found.point, found.name) });
+      setShared({ place: sharedPlace(found.point, found.name, found.typed) });
       return;
     }
     setShared({ said: SHARED_OPENING });
-    void readShared(text).then((read) => {
+    void readShared(text, undefined, near()).then((read) => {
       if (turn !== sharedTurn.current) return;
       if ("place" in read) setShared({ place: read.place });
       else if ("query" in read) {
@@ -413,7 +432,8 @@ export function PlaceSearch({
     setShared(null);
     // A Home is not a recent place: it would outlast Clear Home and sign-out on a shared phone (review privacy-1).
     // Nor is Work, or a favorite: they are the account's.
-    if (variant !== "home" && variant !== "work" && variant !== "favorite") setRecent(rememberRecentPlace(place));
+    // Nor a saved place picked in Go's Where to? (lib/savedPlaceSearch.ts).
+    if (variant !== "home" && variant !== "work" && variant !== "favorite" && !SAVED_KINDS.has(place.kind)) setRecent(rememberRecentPlace(place));
     setQuery("");
     setResult(null);
     setOpen(false);
@@ -514,7 +534,7 @@ export function PlaceSearch({
         onPaste={(event) => {
           // A whole map link, longer than the box takes: read before the box cuts it.
           const text = event.clipboardData.getData("text");
-          if (!parseShared(text)) return;
+          if (!parseShared(text, near())) return;
           event.preventDefault();
           setQuery(text.slice(0, MAX_QUERY_CHARS));
           openShared(text);
@@ -671,12 +691,12 @@ export function PlaceSearch({
         {(!single || planBox === "add") && full && ` ${t("The route has as many points as it can take, so no stop can be added.")}`}
       </p>
       <p className="visually-hidden" role="status" aria-live="polite">
-        {answeredNow ? searchStatusWithHere(searchStatus(result, answered), expanded && showHere) : ""}
+        {answeredNow ? searchStatusWithHere(searchStatus(result, answered, saved.length), expanded && showHere) : ""}
       </p>
       {searching && <p className="hint">{t("Searching…")}</p>}
       {answeredNow && expanded && places.length > 0 && namesCityOutside(answered) && <p className="hint">{COVERS_LINE}</p>}
-      {answeredNow && result && (!result.ok || result.places.length === 0) && (
-        <p className="hint">{searchStatus(result, answered)}</p>
+      {answeredNow && result && (!result.ok || result.places.length + saved.length === 0) && (
+        <p className="hint">{searchStatus(result, answered, saved.length)}</p>
       )}
     </div>
   );

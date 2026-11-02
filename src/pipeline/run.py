@@ -70,6 +70,7 @@ from routemaker.stress import (
     painted_lane_multilane,
     rural_floor,
     rural_floor_applies,
+    service_road_step,
 )
 
 from . import (
@@ -2548,15 +2549,18 @@ def build_handlers(
             # the set-aside and the formula agree about what the road has.
             tags = context.class_tags_by_way.get(way_id, tags_of[way_id])
             mapped = facility.facility(tags)
-            result = rural_floor(
-                agency_lts.apply(
-                    current,
-                    ratings,
-                    facility_mapped=mapped is not facility.Facility.NONE,
-                    painted_lane=mapped is facility.Facility.LANE,
+            result = service_road_step(
+                rural_floor(
+                    agency_lts.apply(
+                        current,
+                        ratings,
+                        facility_mapped=mapped is not facility.Facility.NONE,
+                        painted_lane=mapped is facility.Facility.LANE,
+                    ),
+                    tags,
+                    urban=way_id in reference.urban_way_ids,
                 ),
                 tags,
-                urban=way_id in reference.urban_way_ids,
             )
             changed += result.tier != current.tier or result.half != current.half
             context.stress_by_way[way_id] = result
@@ -2732,10 +2736,10 @@ def build_handlers(
                 context.stress_by_way[way.osm_id] = bike_lanes.owner_tier(
                     context.stress_by_way[way.osm_id], tags
                 )
-            # The owner's rural floor (2026-10-13), over the classifier's tier and
-            # under the owner's own corridors and rows below.
-            context.stress_by_way[way.osm_id] = rural_floor(
-                context.stress_by_way[way.osm_id], tags, urban=not rural
+            # The owner's rural floor (2026-10-13) and service-road step (2026-11-01), over
+            # the classifier's tier and under the owner's own corridors and rows below.
+            context.stress_by_way[way.osm_id] = service_road_step(
+                rural_floor(context.stress_by_way[way.osm_id], tags, urban=not rural), tags
             )
             if overlaid is not None:
                 context.stress_by_way[way.osm_id] = replace(

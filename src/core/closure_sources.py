@@ -40,6 +40,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from routemaker import dc_closures as dc
+from routemaker import md_closures as md
+from routemaker import planned_work as planned
 from routemaker import workzones as rules
 
 from .workzones import FeedError
@@ -61,21 +63,64 @@ USER_AGENT = "RouteMaker-closures"
 NPS_KEY_ENV = "NPS_API_KEY"
 
 DC, MPD, ALERTDC, NPS = "dc", "mpd", "alertdc", "nps"
-PUBLIC = frozenset({DC, MPD, ALERTDC})
+# Planned work (v0.17.0, `routemaker.planned_work`): Plan's Potential closures layer only.
+PROTRACK, DCWATER, WSSC = planned.PROTRACK, planned.DCWATER, planned.WSSC
+PLANNED = (PROTRACK, DCWATER, WSSC)
+# Maryland's counties' and towns' closures (v0.17.0, `routemaker.md_closures`): routed round.
+SHA = md.SHA
+PUBLIC = frozenset({DC, MPD, ALERTDC, SHA, *PLANNED})
 
 # How often each source is read, and how old its copy may be before it is labelled
-# stale, and before it is not used at all.
-EVERY_S = {DC: 60 * 60.0, MPD: 15 * 60.0, ALERTDC: 15 * 60.0, NPS: 30 * 60.0}
-STALE_AFTER_S = {DC: 3 * 60 * 60.0, MPD: 45 * 60.0, ALERTDC: 45 * 60.0, NPS: 90 * 60.0}
-DROP_AFTER_S = {DC: 26 * 60 * 60.0, MPD: 6 * 60 * 60.0, ALERTDC: 3 * 60 * 60.0, NPS: 6 * 60 * 60.0}
+# stale, and before it is not used at all. Planned work changes by the week: read every 6
+# hours, kept for 3 days.
+_PLANNED_EVERY, _PLANNED_STALE, _PLANNED_DROP = 6 * 3600.0, 24 * 3600.0, 72 * 3600.0
+EVERY_S = {DC: 60 * 60.0, MPD: 15 * 60.0, ALERTDC: 15 * 60.0, NPS: 30 * 60.0, SHA: 15 * 60.0}
+STALE_AFTER_S = {DC: 3 * 3600.0, MPD: 45 * 60.0, ALERTDC: 45 * 60.0, NPS: 90 * 60.0, SHA: 45 * 60.0}
+DROP_AFTER_S = {
+    DC: 26 * 3600.0,
+    MPD: 6 * 3600.0,
+    ALERTDC: 3 * 3600.0,
+    NPS: 6 * 3600.0,
+    SHA: 6 * 3600.0,
+}
+for _source in PLANNED:
+    EVERY_S[_source] = _PLANNED_EVERY
+    STALE_AFTER_S[_source] = _PLANNED_STALE
+    DROP_AFTER_S[_source] = _PLANNED_DROP
 
 URLS = {
     # DDOT's "Occupancy Permits (via DDOT TOPS)" layer (data.gov's record of it).
     DC: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/MapServer/1/query",
     MPD: "https://mpdc.dc.gov/newsroom",
-    ALERTDC: "https://trainingtrack.hsema.dc.gov/NRss",
+    ALERTDC: "https://trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList",
     NPS: "https://developer.nps.gov/api/v1/alerts",
+    # DDOT's ProTrack+ line projects (DC open data, CC BY 4.0).
+    PROTRACK: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/ProTrackPlusViews/MapServer/1/query",
+    DCWATER: "https://geo.dcwater.com/arcgis/rest/services/Viewer/ActiveWorkZonesPublic/MapServer/0/query",
+    WSSC: "https://gisportal.wsscwater.com/gis/rest/services/IYN/Water_Construction1/MapServer/0/query",
 }
+# The Road Closure Reporter's two line layers: closures in force, and those posted to come.
+SHA_URLS = tuple(
+    f"https://mdgeodata.md.gov/appdata/rest/services/SHA_RoadClosure/{layer}/MapServer/1/query"
+    for layer in ("RoadClosureActive", "RoadClosurePlanned")
+)
+SHA_MAX = 2000
+# The fields asked of each planned-work layer: never WSSC's contract managers' names, phones
+# or emails, which the layer also holds.
+PLANNED_FIELDS = {
+    PROTRACK: "ObjectID,ProjectName,ProjectStatus,PrimaryWorkType,RouteName,FromStreet,ToStreet,"
+    "EstimatedStartDate,EstimatedCompletionDate,ActualStartDate",
+    DCWATER: "OBJECTID,LocationDescription,ActivityStart,ActivityFinish,ActivityType,"
+    "ProjectLongDescription",
+    WSSC: "OBJECTID,FULL_PROJECT_ID,PROJECT_NAME,PROJECT_STATUS,EST_CONSTR_START_DATE,"
+    "EST_CONSTR_END_DATE",
+}
+PLANNED_WHERE = {
+    PROTRACK: "ProjectStatus = 'Under Construction' AND EstimatedCompletionDate >= DATE '{day}'",
+    DCWATER: "ActivityFinish >= DATE '{day}'",
+    WSSC: "PROJECT_STATUS = 'Construction Started'",
+}
+PLANNED_MAX = 2000
 # The TOPS layer is asked a page at a time (an ArcGIS server returns at most its
 # maxRecordCount a request), up to this many pages.
 TOPS_PAGE = 2000
@@ -85,7 +130,7 @@ MPD_MAX_RELEASES = 8
 # A place that could not be found is looked for again after this long.
 RETRY_PLACE_S = 6 * 60 * 60.0
 # At most this many new places are looked for a refresh, per source.
-MAX_NEW_PLACES = {DC: 3000, MPD: 40, ALERTDC: 40}
+MAX_NEW_PLACES = {DC: 3000, MPD: 40, ALERTDC: 40, DCWATER: 400}
 
 Fetch = Callable[[str, float, dict], bytes]
 
@@ -95,8 +140,8 @@ def nps_key() -> str:
 
 
 def wanted() -> list[str]:
-    """The sources to read: the public three always, NPS where the worker has the key."""
-    return [DC, MPD, ALERTDC] + ([NPS] if nps_key() else [])
+    """The sources to read: the public ones always, NPS where the worker has the key."""
+    return [DC, MPD, ALERTDC, SHA] + ([NPS] if nps_key() else []) + list(PLANNED)
 
 
 def http_get(url: str, timeout: float, headers: dict | None = None) -> bytes:
@@ -413,7 +458,7 @@ def read_mpd(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tupl
 
 def read_alertdc(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tuple[list, list]:
     """AlertDC's traffic and road items; every other item is dropped unread."""
-    feed = _get(fetch, URLS[ALERTDC], {"Accept": "application/rss+xml"}, sleep)
+    feed = _get(fetch, URLS[ALERTDC], {"Accept": "text/html"}, sleep)
     advisories = dc.parse_alertdc(feed.decode("utf-8", "replace"), now)
     return _advisory_zones(advisories, placer, places, now)
 
@@ -430,7 +475,87 @@ def read_nps(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tupl
     return [], dc.parse_nps(json.loads(body))
 
 
-READERS = {DC: read_dc, MPD: read_mpd, ALERTDC: read_alertdc, NPS: read_nps}
+def _planned_layer(fetch: Fetch, source: str, now: datetime, sleep) -> dict:
+    day = now.astimezone(dc.ZONE).date().isoformat()
+    query = urllib.parse.urlencode(
+        {
+            "where": PLANNED_WHERE[source].format(day=day),
+            "outFields": PLANNED_FIELDS[source],
+            "outSR": "4326",
+            "f": "geojson",
+            "resultRecordCount": PLANNED_MAX,
+        }
+    )
+    document = json.loads(_get(fetch, f"{URLS[source]}?{query}", {}, sleep))
+    if not isinstance(document, dict) or document.get("error"):
+        raise FeedError("the layer refused the query")
+    more = document.get("exceededTransferLimit") or (document.get("properties") or {}).get(
+        "exceededTransferLimit"
+    )
+    if more:
+        logger.warning(
+            "closures: the %s layer has more than %d records; the rest unread", source, PLANNED_MAX
+        )
+    return document
+
+
+def read_protrack(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tuple[list, list]:
+    """DDOT's capital projects under construction, along their blocks (possible closures)."""
+    return planned.parse_protrack(_planned_layer(fetch, PROTRACK, now, sleep), now), []
+
+
+def read_wssc(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tuple[list, list]:
+    """WSSC Water's water mains under construction, along the pipe (possible closures)."""
+    return planned.parse_wssc(_planned_layer(fetch, WSSC, now, sleep), now), []
+
+
+def read_dcwater(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tuple[list, list]:
+    """DC Water's work zones, each area's middle put on its block (possible closures)."""
+    zones = []
+    for work in planned.parse_dcwater(_planned_layer(fetch, DCWATER, now, sleep), now):
+        key = f"dcwater:{work.work_id}:{work.point[0]:.6f},{work.point[1]:.6f}"
+        line = places.get(key, lambda w=work: placer.permit_line(w.point))
+        if line:
+            zones.append(planned.area_zone(work, line))
+    return zones, []
+
+
+def read_sha(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tuple[list, list]:
+    """Maryland's Road Closure Reporter: closures in force and to come, routed round in their
+    hours. Both layers must read, or the source keeps its last good copy."""
+    query = urllib.parse.urlencode(
+        {
+            "where": "ClosureEnd >= CURRENT_TIMESTAMP",
+            "outFields": md.FIELDS,
+            "outSR": "4326",
+            "f": "geojson",
+            "resultRecordCount": SHA_MAX,
+        }
+    )
+    documents = []
+    for url in SHA_URLS:
+        document = json.loads(_get(fetch, f"{url}?{query}", {}, sleep))
+        if not isinstance(document, dict) or document.get("error") or "features" not in document:
+            raise FeedError("the Road Closure Reporter refused the query")
+        if document.get("exceededTransferLimit") or (document.get("properties") or {}).get(
+            "exceededTransferLimit"
+        ):
+            # A partial copy would leave closures unrouted: keep the last good copy instead.
+            raise FeedError(f"the Road Closure Reporter has more than {SHA_MAX} records")
+        documents.append(document)
+    return md.parse_sha(documents, now), []
+
+
+READERS = {
+    DC: read_dc,
+    MPD: read_mpd,
+    ALERTDC: read_alertdc,
+    NPS: read_nps,
+    PROTRACK: read_protrack,
+    DCWATER: read_dcwater,
+    WSSC: read_wssc,
+    SHA: read_sha,
+}
 
 
 def _due(feed: dict, source: str, now: datetime) -> bool:
@@ -519,6 +644,10 @@ def refresh(
     # still kept above, and riders are told when it ages out.
     stale = []
     for source in sources:
+        if source in PLANNED:
+            # Planned work only feeds an off-by-default layer and is never routed round: an
+            # outage there is logged, never an alarm on the whole closures job.
+            continue
         when = rules._when((feeds.get(source) or {}).get("read_at"))
         if when is None or (now() - when).total_seconds() > STALE_AFTER_S[source]:
             stale.append(source)

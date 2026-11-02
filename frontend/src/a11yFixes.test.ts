@@ -75,7 +75,9 @@ test("the map's focus ring is dark, with a white ring inside, and 3:1 or more ag
 });
 
 test("the ring is the same in both themes: the dark theme does not redefine it, and nothing on the map uses --focus", () => {
-  const dark = mediaBody(css, "(prefers-color-scheme: dark)");
+  // The panel's dark theme (lib/themeClock.ts) leaves it alone; only the dark map turns it (:root.map-dark).
+  const dark = css.slice(css.indexOf(":root.theme-dark {"), css.indexOf("}", css.indexOf(":root.theme-dark {")));
+  assert.ok(dark.includes("--bg"), "the dark theme's block was found");
   assert.doesNotMatch(dark, /--map-focus/);
   const on = [
     ".junction-marker:focus-visible",

@@ -19,9 +19,22 @@ import { cancelRoute, requestNeighbours, requestRoute, routeErrorShown, routeReq
 import { choiceColour, choiceFeatures } from "./lib/routeChoice.ts";
 import { displacedBy, keptNeighbours, neighbourDials, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
 import { betterRouteSaid, EarlyStart, replannedSaid, takesRefined } from "./lib/progressive.ts";
-import { RAIL_STATUS_MS, closedReason, matchAlerts, withMetroClosed, matchClosures, requestClosures, type RailStatus } from "./lib/railClosures.ts";
+import {
+  RAIL_STATUS_MS,
+  RAIL_TAP_FRESH_MS,
+  closedReason,
+  matchAlerts,
+  withMetroClosed,
+  matchClosures,
+  railCheckTimed,
+  railTapAsks,
+  requestClosures,
+  routeUsesTransit,
+  type RailStatus,
+} from "./lib/railClosures.ts";
+import { onSharedTick } from "./lib/sharedTick.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
-import { formatSeconds } from "./lib/format.ts";
+import { formatDistance, formatSeconds } from "./lib/format.ts";
 import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, readGarmin, withoutReturn } from "./lib/garminLink.ts";
 import { RETURN_PARAM as WAHOO_RETURN_PARAM, readWahoo, wahooReturnFrom } from "./lib/wahooLink.ts";
 import { endsOnFoot, layersTurnedOn, presetNamesRide, presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
@@ -227,8 +240,11 @@ import { FoodOverlay, PlacesOverlay, PlacesSheet, RepairSheet, RepairStandsOverl
 import { closeStopCard, openStopCard, setStopCardFrame } from "./app/mapOverlay.ts";
 import { ADD_AS_STOP, ROUTE_HERE, type StopActionFor, type StopCardWords } from "./lib/stopCard.ts";
 import { foodWords, nearbyWords, repairWords, sightWords } from "./lib/stopWords.ts";
-import { foodSpotPlaces, metroSpotPlaces, repairSpotPlaces, sightSpotPlaces, spotFarLine, spotNearby, waterSpotPlaces } from "./lib/spotNearby.ts";
+import { foodSpotPlaces, metroSpotPlaces, rackSpotRows, repairSpotPlaces, sightSpotPlaces, spotFarLine, spotNearby, waterSpotPlaces, type SpotRow } from "./lib/spotNearby.ts";
 import { useSpotPins } from "./app/spotPins.ts";
+import { RacksOverlay, useRackPins } from "./app/rackOverlay.ts";
+import { RACK_AT_M, endAtRackSaid, endAtRackText, endWasPicked, nextRack, nextRackText, pickedAfterMove, pickedAfterPick, rackAt, rackRunAfter, rackWords, type RackRun, loadBikeParking, rackOffer, rackPlaceName, rackPoint, racksNear, rideToRackText, type BikeRack, type RackNear } from "./lib/bikeParking.ts";
+import bikeParkingUrl from "./amenity-data/bike-parking.json?url&no-inline";
 import { useSeeEveryone } from "./app/useSeeEveryone.ts";
 import { ScenicOverlay } from "./app/ScenicOverlay.tsx";
 import { readScenicLayer, saveScenicLayer, scenicShown, scenicStatus } from "./lib/scenicLayer.ts";
@@ -642,31 +658,58 @@ export function App() {
   // map, and "closed" in their cards and lists; with WMATA's live closures and its badges (a station an
   // alert names, an elevator out). Asked every few minutes while the page is in view, since WMATA's
   // change within the day, and as soon as it is back in view.
+  // The timed check goes on the page's shared 5-minute boundaries (lib/sharedTick.ts) with the weather and closures,
+  // and rests during a ride or Roam that rides no train or bus (railTimed, set below once the ride is known); a tap on
+  // a station still asks (railFresh, MapView's railStatusNow) (the owner, 2026-11-01: battery audit).
   const [railStatus, setRailStatus] = useState<RailStatus>({ stations: [], alerts: [] });
+  const railTimed = useRef(true);
+  const railFresh = useRef<(maxAgeMs: number) => Promise<RailStatus | null>>(async () => null);
   useEffect(() => {
     const controller = new AbortController();
-    let asking = false;
+    let asking: Promise<RailStatus | null> | null = null;
     let askedAt = 0;
-    const check = () => {
-      if (asking || document.visibilityState === "hidden" || Date.now() - askedAt < RAIL_STATUS_MS - 1000) return;
-      asking = true;
-      void requestClosures({ signal: controller.signal }).then((status) => {
-        asking = false;
-        if (controller.signal.aborted) return;
+    let latest: RailStatus | null = null;
+    const ask = (): Promise<RailStatus | null> => {
+      asking ??= requestClosures({ signal: controller.signal }).then((status) => {
+        asking = null;
+        if (controller.signal.aborted) return null;
         // Only an answer counts: a failure is asked again at the next check, the last answer kept.
-        if (status === null) return;
+        if (status === null) return latest;
         askedAt = Date.now();
+        latest = status;
         setRailStatus(status);
+        return status;
       });
+      return asking;
     };
+    const check = () => {
+      if (document.visibilityState === "hidden" || !railTimed.current || Date.now() - askedAt < RAIL_STATUS_MS - 1000) return;
+      void ask();
+    };
+    railFresh.current = (maxAgeMs) => (railTapAsks(askedAt, Date.now(), maxAgeMs) ? ask() : Promise.resolve(latest));
     check();
-    const timer = window.setInterval(check, 60 * 1000);
+    const offTick = onSharedTick(() => {
+      // The boundary itself: asked whatever the last answer's age, so the radio wakes once with the others.
+      askedAt = Math.min(askedAt, Date.now() - RAIL_STATUS_MS);
+      check();
+    });
     document.addEventListener("visibilitychange", check);
     return () => {
       controller.abort();
-      window.clearInterval(timer);
+      offTick();
       document.removeEventListener("visibilitychange", check);
     };
+  }, []);
+  // A station's card asks for the status as it opens, in a ride too, if the last answer is a minute old (the owner,
+  // 2026-11-01: "Rail status should remain if someone clicks on the metro or rail station"): answers the card's
+  // closed words from it, since the card is drawn before React has the new status.
+  const railNow = useRef(rail);
+  railNow.current = rail;
+  const railStatusNow = useCallback(async (): Promise<((station: Station) => string | null) | null> => {
+    const status = await railFresh.current(RAIL_TAP_FRESH_MS);
+    if (!status) return null;
+    const closures = matchClosures(RAIL_STATIONS, status.stations);
+    return (station) => closedReason(station, railNow.current, closures);
   }, []);
   const railClosures = useMemo(() => matchClosures(RAIL_STATIONS, railStatus.stations), [railStatus]);
   const railBadges = useMemo(() => matchAlerts(RAIL_STATIONS, railStatus.alerts), [railStatus]);
@@ -727,6 +770,24 @@ export function App() {
   useEffect(() => {
     if (waterOn) void ensureRepair();
   }, [waterOn, ensureRepair]);
+  // Bike racks (lib/bikeParking.ts; Stephen, 2026-11-01): DDOT's in DC, OpenStreetMap's elsewhere. Drawn with the
+  // water layer's switch, and offered by Go near a tapped spot and a route's end. Loaded when first needed.
+  const [racksData, setRacksData] = useState<BikeRack[] | "unavailable" | null>(null);
+  const racksLoad = useRef<Promise<BikeRack[] | null> | null>(null);
+  const ensureRacks = useCallback(() => {
+    if (!racksLoad.current) {
+      racksLoad.current = loadBikeParking(bikeParkingUrl).then((data) => {
+        if (!data) racksLoad.current = null;
+        setRacksData(data ?? "unavailable");
+        return data;
+      });
+    }
+    return racksLoad.current;
+  }, []);
+  useEffect(() => {
+    if (waterOn) void ensureRacks();
+  }, [waterOn, ensureRacks]);
+  const racks = Array.isArray(racksData) ? racksData : null;
   // Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): shown while Capital Bikeshare's switch in
   // Layers is on. It is on by default in the bikeshare ride types and off in the others (the owner, 2026-10-17),
   // each choice kept on this device apart.
@@ -1051,6 +1112,13 @@ export function App() {
     note?: string;
     n: number;
   } | null>(null);
+  // The timed rail check rests while on a bike unless the ride rides a train or bus (the owner, 2026-11-01: battery
+  // audit); off the bike again, a status older than its 5 minutes is asked at once.
+  const railTimedNow = railCheckTimed(onBike, riding && routeUsesTransit(rideStart?.route));
+  railTimed.current = railTimedNow;
+  useEffect(() => {
+    if (railTimedNow) void railFresh.current(RAIL_STATUS_MS);
+  }, [railTimedNow]);
   // What the next ride screen says once it is up (rideStart.note); a ride started any other way says nothing.
   const rideNote = useRef("");
   // What the ride shows on the map (RideMode onView). The rider's position, a GPS fix about once a second, goes to its own
@@ -1464,8 +1532,13 @@ export function App() {
   const [changeDetails, setChangeDetails] = useState<string[]>([]);
   const [ghost, setGhost] = useState<LonLat[] | null>(null);
   const [changeLine, setChangeLine] = useState<string | null>(null);
+  // Go's ends picked or pressed (goTo), and the racks moved to from them (Stephen, 2026-11-01: the rack offer only for
+  // a destination just picked or pressed, not every route opened from a link, a save or Plan). Kept through undo;
+  // another plan opened (forgetDrawn) starts the list again.
+  const [pickedEnds, setPickedEnds] = useState<LonLat[]>([]);
   /** Another plan opened (a link, a file): no Reset back to the last one, and no summary against it. */
   const forgetDrawn = () => {
+    setPickedEnds([]);
     drawnRef.current = null;
     setDrawn(null);
     setGhost(null);
@@ -2662,6 +2735,8 @@ export function App() {
       setNotice(OUTSIDE_NOTICE);
       return;
     }
+    // A destination just picked or pressed: the only kind that offers "End at the bike rack" (pickedEnds, below).
+    setPickedEnds((ends) => pickedAfterPick(ends, dest));
     // The start Go already has: the plan's first point (typed, from the link or placed in Plan), else the location
     // found in the last GO_START_MAX_AGE_MS, looked up again for this destination. While the location is still being
     // found, the destination waits for it.
@@ -5331,6 +5406,7 @@ export function App() {
     if (!spotOpen) return;
     void ensureWater();
     void ensureRepair();
+    void ensureRacks();
     ensurePlaces();
     if (spotFood === null || spotFood === "unavailable") void ensureFood().then((data) => setSpotFood(data ?? "unavailable"));
   }, [spotOpen, goSpot]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -5346,7 +5422,84 @@ export function App() {
   );
   // Each source in, or failed (a failed one is left out rather than holding the list).
   const spotReady = (waterData !== null || waterStatus === "unavailable") && spotFood !== null && repairData !== null && placesData !== null;
-  const spotRows = useMemo(() => (spotOpen && goSpot && spotReady ? spotNearby(goSpot.point, spotSources) : null), [spotOpen, goSpot, spotReady, spotSources]);
+  // The places, then the racks near the spot (Stephen, 2026-11-01: "show the nearby racks"), each a pin; the racks
+  // join the list when their file is in, rather than holding it.
+  const spotRows = useMemo(
+    () => (spotOpen && goSpot && spotReady ? [...spotNearby(goSpot.point, spotSources), ...(racks ? rackSpotRows(racksNear(goSpot.point, racks)) : [])] : null),
+    [spotOpen, goSpot, spotReady, spotSources, racks],
+  );
+  // The card's "Ride to the bike rack": the nearest rack, when one is near and the spot is not already at it.
+  const spotRack = spotOpen && goSpot && racks ? rackOffer(goSpot.point, racks) : null;
+  // `heading`: the spot card's address, which names the rack's place ("Bike rack near 1234 R Street Northwest").
+  const rideToRack = (near: RackNear, heading: string | null) => {
+    const name = rackPlaceName(near, heading ?? namer.name(goSpot?.point ?? rackPoint(near.rack))?.name ?? null);
+    namer.remember(rackPoint(near.rack), name);
+    void goToRef.current(rackPoint(near.rack), name, true);
+  };
+  // Go's route to a place, picked or pressed (Stephen, 2026-11-01: "by map press or by selecting a location"): the
+  // racks near its end are pins, and "End at the bike rack" under the route card moves the end to the nearest.
+  const goEnd = mode === "go" && !onBike && !riding && points.length >= 2 && !loopVias ? points[points.length - 1] : null;
+  // At a rack already, the offer is the next one, for a full rack (Stephen, 2026-11-01: "In DC often the problem is
+  // that Bike racks are full. So maybe a way to find other ones"): each press tries the nearest not yet tried.
+  const endAtRackNow = goEnd && racks ? rackAt(goEnd, racks) : null;
+  // The presses so far (lib/bikeParking.ts RackRun): the search stays around the first rack, and a run that no longer
+  // matches the route's end rack is over.
+  const [rackRun, setRackRun] = useState<RackRun | null>(null);
+  const endPicked = goEnd !== null && endWasPicked(goEnd, pickedEnds);
+  const endRack = goEnd && racks && endPicked ? (endAtRackNow ? nextRack(goEnd, endAtRackNow, racks, rackRun) : rackOffer(goEnd, racks)) : null;
+  const goEndRef = useRef(goEnd);
+  goEndRef.current = goEnd;
+  useEffect(() => {
+    if (goEnd) void ensureRacks();
+  }, [goEnd !== null, ensureRacks]); // eslint-disable-line react-hooks/exhaustive-deps
+  const endRackRows = useMemo<SpotRow[] | null>(() => (goEnd && racks && !spotOpen ? rackSpotRows(racksNear(goEnd, racks).filter((n) => n.metres > RACK_AT_M)) : null), [goEnd, racks, spotOpen]);
+  const endAtRack = (point: LonLat, name: string, said: string) => {
+    const now = pointsRef.current;
+    if (now.length < 2) return;
+    namer.remember(point, name);
+    // A rack moved to from a picked end is picked too; from a route opened another way, not (its card's Ride here).
+    setPickedEnds((ends) => pickedAfterMove(ends, now[now.length - 1], point));
+    commit([...now.slice(0, -1), point]);
+    announce(said);
+  };
+  const endAtNearestRack = (near: RackNear) => {
+    const end = pointsRef.current[pointsRef.current.length - 1];
+    const endName = end ? (namer.name(end)?.name ?? null) : null;
+    if (endAtRackNow && end) {
+      // The next rack keeps the place's name ("Bike rack near Safeway"); the full one is not offered again.
+      setRackRun((run) => rackRunAfter(run, end, endAtRackNow, near.rack));
+      endAtRack(rackPoint(near.rack), endName ?? rackPlaceName(near, null), endAtRackSaid(near));
+      return;
+    }
+    endAtRack(rackPoint(near.rack), rackPlaceName(near, endName), endAtRackSaid(near));
+  };
+  // A rack's own card (a pin, or the layer): Ride here ends a Go route there; otherwise as any stop's card.
+  const rackActionFor = useCallback<StopActionFor>(
+    (point, name) => {
+      if (goEndRef.current) return { text: ROUTE_HERE, run: () => endAtRack(point, name, t("Route now ends at {place}.", { place: name })) };
+      return stopActionFor(point, name);
+    },
+    [stopActionFor], // eslint-disable-line react-hooks/exhaustive-deps -- endAtRack reads refs
+  );
+  const pickEndRack = (index: number, focus: boolean) => {
+    const row = endRackRows?.[index];
+    const map = mapRef.current;
+    if (!row || !map) return;
+    const words = row.words(t("{distance} from where the route ends.", { distance: formatDistance(row.metres) }), new Date());
+    openStopCard(map, row.point, words, rackActionFor(row.point, words.title), focus);
+  };
+  useRackPins(getMap, endRackRows, pickEndRack);
+  // The ride's arrival line's rack (RideMode: "Rack full? Next one"), pinned while shown; its pin opens the rack's card.
+  const [rideRack, setRideRack] = useState<RackNear | null>(null);
+  const showRideRack = useCallback((near: RackNear | null) => setRideRack(near), []);
+  const rideRackRows = useMemo<SpotRow[] | null>(() => (rideRack && onBike ? rackSpotRows([rideRack]) : null), [rideRack, onBike]);
+  const pickRideRack = (index: number, focus: boolean) => {
+    const row = rideRackRows?.[index];
+    const map = mapRef.current;
+    if (!row || !map || !rideRack) return;
+    openStopCard(map, row.point, rackWords(rideRack.rack), null, focus);
+  };
+  useRackPins(getMap, rideRackRows, pickRideRack);
   // A pin or a row of the folded list: the place's card (lib/stopCard.ts), never a route by itself; the spot's card
   // stays open under it. Its Route here plans the route, which closes the spot's card (below).
   const pickSpot = (index: number, focus: boolean) => {
@@ -5820,6 +5973,13 @@ export function App() {
         />
       ) : null,
     rides: goRides,
+    // The nearest bike rack to the end, one press to end there (Stephen, 2026-11-01).
+    endRack: endRack ? (
+      <button type="button" className="secondary go-end-rack" onClick={() => endAtNearestRack(endRack)}>
+        <Icon name="rack" size={18} />
+        {endAtRackNow ? nextRackText(endRack) : endAtRackText(endRack)}
+      </button>
+    ) : null,
     // The climb figure opens Ride settings at the Hills slider (P3).
     onClimb: openHills,
     place: points.length >= 2 && !loopVias ? goPlaceName(namer.name(points[points.length - 1])?.name, points[points.length - 1]) : null,
@@ -6033,6 +6193,7 @@ export function App() {
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
         rail={rail}
         railClosedReason={railClosedReason}
+        railStatusNow={railStatusNow}
         railBadges={railBadgesOf}
         massCapacity={massMap}
         massArea={isMassRide(preset)}
@@ -6071,6 +6232,7 @@ export function App() {
       {/* The map's overlays: one failing during a ride leaves them out, not the ride (RideGuard.tsx). */}
       <RideGuard on={onBike}>
       <RepairStandsOverlay getMap={getMap} places={Array.isArray(repairData) ? repairData : null} on={waterPrefs.on && !onBike} pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))} actionFor={stopActionFor} />
+      <RacksOverlay getMap={getMap} racks={racks} on={waterPrefs.on && !onBike} pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))} actionFor={rackActionFor} />
       <PlacesOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={placesOn && !onBike} actionFor={stopActionFor} />
       <FoodOverlay getMap={getMap} results={grocery ? null : foodAll} on={letteredOf === "food" && !onBike} actionFor={stopActionFor} />
       <TrailMilesOverlay getMap={getMap} data={trailMiles} />
@@ -6200,6 +6362,7 @@ export function App() {
         fallbackName={(point) => namer.name(point)?.name}
         here={spotOpen ? lastHere() : null}
         rows={spotRows}
+        rack={spotRack ? { text: rideToRackText(spotRack), onPress: (heading) => rideToRack(spotRack, heading) } : null}
         onRouteHere={goRouteHere}
         onPick={(index) => pickSpot(index, true)}
         onRoadInfo={(point) => setRoadInfo({ point, origin: "spot" })}
@@ -6414,6 +6577,8 @@ export function App() {
           water={ensureWater}
           food={ensureFood}
           repair={ensureRepair}
+          racks={ensureRacks}
+          onShowRack={showRideRack}
           geocode={detourGeocode}
           stopName={rideStopName}
           trailMiles={trailMiles}

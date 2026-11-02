@@ -14,6 +14,7 @@
  * any kind while the list is short. Plain data in, plain data out, so node --test runs all of it; the card is
  * GoSpotDialog.tsx and the pins app/spotPins.ts.
  */
+import { rackKindText, rackPoint, rackWords, type RackNear } from "./bikeParking.ts";
 import { foodHoursText, foodKindText, type FoodPlace } from "./food.ts";
 import { formatDistance } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
@@ -28,7 +29,7 @@ import { REPAIR_CAUTION } from "./stopWords.ts";
 import type { WaterPoint } from "./waterRestrooms.ts";
 import { t } from "./i18n.ts";
 
-export type SpotKind = "food" | "water" | "restroom" | "repair" | "metro" | "sight";
+export type SpotKind = "food" | "water" | "restroom" | "repair" | "metro" | "sight" | "parking";
 
 /** A place the card may offer: its name and kind for the list and the pin, and its card's words at a distance. */
 export interface SpotPlace {
@@ -75,6 +76,7 @@ const KIND_SHORT: Record<SpotKind, string> = {
   repair: t("Repair"),
   metro: "Metro",
   sight: t("Place to see"),
+  parking: t("Bike rack"),
 };
 
 /** The card's one line: "5 places nearby, shown on the map." */
@@ -173,6 +175,24 @@ export function metroSpotPlaces(stations: readonly Station[], closedReason?: (st
     const lines = p.details[0]?.replace(/\.$/, "") ?? "";
     return fromNearest("metro", { ...p, name: station?.name ?? p.title }, lines ? t("Metro: {lines}", { lines }) : "Metro", "train", true);
   });
+}
+
+/**
+ * The racks near the spot (lib/bikeParking.ts racksNear; Stephen, 2026-11-01: "show the nearby racks and offer them as
+ * a routing option"), as rows after the other places: each its icon alone, its card's Ride here routes to it.
+ */
+export function rackSpotRows(near: readonly RackNear[]): SpotRow[] {
+  return near.map(({ rack, metres }) => ({
+    id: `rack-${rack.id}`,
+    kind: "parking" as const,
+    point: rackPoint(rack),
+    name: rack.name ?? rackKindText(rack),
+    kindText: rack.name ? rackKindText(rack) : "",
+    label: null,
+    icon: "rack" as const,
+    words: (far: string) => rackWords(rack, far),
+    metres,
+  }));
 }
 
 /**

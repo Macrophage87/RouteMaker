@@ -2229,7 +2229,20 @@ class WorkZoneOut(Schema):
     to_m: int
     start: str | None
     end: str | None
-    source: Literal["md", "va", "dc", "mpd", "alertdc", "reviewer", "ddot_advisory", "purple_line"]
+    source: Literal[
+        "md",
+        "va",
+        "dc",
+        "mpd",
+        "alertdc",
+        "reviewer",
+        "ddot_advisory",
+        "purple_line",
+        "protrack",
+        "dcwater",
+        "wssc",
+        "sha",
+    ]
     warning: bool = Field(description="True for a closure the rider may meet: shown in red.")
     text: str = Field(description="The heads-up as the description words it.")
     bypassed: bool = Field(default=False, description="Routed through: the rider's choice.")
@@ -2248,7 +2261,20 @@ class ClosureOut(Schema):
     """A closure drawn on the route's map, and its card (v0.7.0, "Closures on the map")."""
 
     id: str
-    source: Literal["md", "va", "dc", "mpd", "alertdc", "reviewer", "ddot_advisory", "purple_line"]
+    source: Literal[
+        "md",
+        "va",
+        "dc",
+        "mpd",
+        "alertdc",
+        "reviewer",
+        "ddot_advisory",
+        "purple_line",
+        "protrack",
+        "dcwater",
+        "wssc",
+        "sha",
+    ]
     source_name: str = Field(
         description='The source as the card names it: "MPD traffic advisory, Oct 15".'
     )
@@ -7361,7 +7387,10 @@ class AreaClosuresIn(Schema):
     )
     permits: bool = Field(
         default=False,
-        description="Also DDOT's permits (Plan's DC permits switch); off by default.",
+        description=(
+            "Also potential closures: DDOT's permits and planned work (Plan's Potential"
+            " closures switch); off by default."
+        ),
     )
 
 
@@ -7619,16 +7648,31 @@ def ride_read(request, ride_id: str):
     return _ride_call(request, lambda rp: rp.read(ride_id, token, leader=leader))
 
 
-@api.post("/rides/{ride_id}/here", summary="Show this rider's sealed dot for 2 min")
+@api.post(
+    "/rides/{ride_id}/here",
+    summary="Show this rider's sealed dot for 2 min; with read, answer the ride's read too",
+)
 @decorate_view(*RIDE_WRITE_GUARDS)
 def ride_here(request, ride_id: str):
     body, refusal = _ride_body(request)
     if refusal is not None:
         return refusal
-    return _ride_call(
-        request,
-        lambda rp: rp.post_position(ride_id, body.get("token", ""), body.get("sealed")),
-    )
+    # `"read": true` (a newer page) answers the ride's read as well, so a sharing phone makes one
+    # request a pace (the owner, 2026-11-01: battery audit); an older page gets {"ok": true} and
+    # reads apart, as before. The leader key comes in the body, or in the header a read uses.
+    leader = body.get("leader") or request.META.get("HTTP_X_RIDE_LEADER", "")
+
+    def post(rp):
+        answer = rp.post_position(
+            ride_id,
+            body.get("token", ""),
+            body.get("sealed"),
+            answer_read=body.get("read") is True,
+            leader=leader if isinstance(leader, str) else "",
+        )
+        return {"ok": True, **answer} if answer is not None else None
+
+    return _ride_call(request, post)
 
 
 @api.post(

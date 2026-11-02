@@ -7,13 +7,19 @@
  * So the server never routes round a permit and never names one in the route's words, a spoken cue or the closure
  * check; the route's answer flags each near it (effect "possible", lib/closureMap.ts), and this one switch in Plan's
  * Layers, off by default and kept on this device, draws them, dashed, each with its card. Go never shows them.
+ *
+ * v0.17.0, renamed "Potential closures" (Stephen, 2026-11-01): flagging permits as closures "mainly risks people
+ * just ignoring all the closures as unreliable", so they stay behind this switch, default off, and the switch now
+ * covers every region's possible closures, not DC's alone; "make it clear by the icon that these are different. I like
+ * the dotted line, but also maybe a slight change to the icon" (MapView's possibleBarrierSvg: a dashed ring and a
+ * question mark). The stored key keeps its old name so a rider's choice carries over.
  */
 import { createElement as h, type ReactElement } from "react";
 import { LayerSection } from "./layerSection.ts";
 
-export const PERMITS_LABEL = "DC permits";
+export const PERMITS_LABEL = "Potential closures";
 export const PERMITS_HINT =
-  "Roads and bike lanes a DDOT permit allows closing some time in its window: worth checking for a group ride. Routes are not changed for them.";
+  "Roads and bike lanes that permits or planned work may close for a day or two in their window. Routes are not changed for them.";
 export const PERMITS_PREF_KEY = "routemaker.permitsLayer";
 
 type Store = Pick<Storage, "getItem" | "setItem">;

@@ -21,6 +21,7 @@
 import { createElement as h, type ReactElement } from "react";
 import { FACILITIES, STRESS_TILE_LAYER, accessibilityOn, casingWidth, currentTiers, railWidth } from "../stressStyle.js";
 import { LayerSection } from "./layerSection.ts";
+import { withDarkPaint } from "./darkPaint.ts";
 import type { SightPlace } from "./places.ts";
 
 export const SCENIC_LABEL = "Scenic";
@@ -57,7 +58,8 @@ export function scenicGap(tiers = currentTiers(), strong = accessibilityOn()): u
 
 /** The casing layer over the stress tiles' source. */
 export function scenicCasingLayer(sourceId = "stress", tiers = currentTiers(), strong = accessibilityOn()): Record<string, unknown> {
-  return {
+  // The lighter teal on the dark map (lib/darkPaint.ts); the overlay adds the layer again when the style key changes.
+  return withDarkPaint({
     id: SCENIC_CASING_LAYER,
     type: "line",
     source: sourceId,
@@ -65,7 +67,7 @@ export function scenicCasingLayer(sourceId = "stress", tiers = currentTiers(), s
     filter: SCENIC_FILTER,
     layout: { "line-join": "round", "line-cap": "round" },
     paint: { "line-color": SCENIC_COLOUR, "line-width": strong ? SCENIC_STRONG_LINE_PX : SCENIC_LINE_PX, "line-gap-width": scenicGap(tiers, strong) },
-  };
+  });
 }
 
 /** Whether the layer draws: its switch, outside Go and off the Mass Ride map. */
@@ -107,9 +109,10 @@ export function scenicPointsGeoJson(places: readonly SightPlace[]): object {
  * A viewpoint's ring (white inside, a teal edge), a covered bridge's solid teal dot, and the bridge's name under it
  * from zoom 11: the two differ in shape, not only in size.
  */
-export function scenicPointLayers(): Record<string, unknown>[] {
+export function scenicPointLayers(dark?: boolean): Record<string, unknown>[] {
   const base = { source: SCENIC_POINTS_SOURCE, minzoom: SCENIC_POINTS_MIN_ZOOM };
-  return [
+  // The viewpoint's edge is the lighter teal on the dark map (lib/darkPaint.ts).
+  const layers: Array<{ id: string; paint?: object } & Record<string, unknown>> = [
     {
       id: SCENIC_VIEWPOINT_LAYER,
       type: "circle",
@@ -135,6 +138,7 @@ export function scenicPointLayers(): Record<string, unknown>[] {
       paint: { "text-color": SCENIC_COLOUR, "text-halo-color": "#ffffff", "text-halo-width": 3.5 },
     },
   ];
+  return layers.map((layer) => withDarkPaint(layer, dark));
 }
 
 /** A dot's tap card, in words. */

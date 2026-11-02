@@ -56,7 +56,8 @@ routes and keeping your 311 checklist on your other devices.
 - The "Layers" page (a button in the bar at the bottom of the planner) has one row per section:
   Traffic stress, Water and restrooms, Rail stations, Bikeshare and e-bikes, Places to see and
   Trails and terrain (and Federal land on a Mass Ride). In Plan two more follow, both off by
-  default: Scenic, and DC permits (roads DDOT's work permits may close; routes never avoid them). Each row is the section's heading, a switch named for it, then a "layers" button that
+  default: Scenic, and Potential closures (roads that work permits or planned work may close some day;
+  routes never avoid them). Each row is the section's heading, a switch named for it, then a "layers" button that
   says whether it is collapsed or expanded. The switch turns the whole section on or off; off
   remembers which of its layers were on, and on brings those back. With only some on, it is on
   and says "Some on" and which. Expand a row for each layer's own switch, a one-line hint, and

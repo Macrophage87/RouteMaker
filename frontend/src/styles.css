@@ -11,7 +11,8 @@
  * 4.5:1 against their background in each theme (WCAG AA for body text).
  */
 :root {
-  color-scheme: light dark;
+  /* The theme follows the sun, not the phone (lib/themeClock.ts; the owner, 2026-11-01). */
+  color-scheme: light;
   --bg: #ffffff;
   --bg-soft: #f3f4f6;
   --text: #16181d;
@@ -47,25 +48,24 @@
   line-height: 1.4;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1b1e24;
-    --bg-soft: #262a32;
-    --text: #eef0f3;
-    --text-muted: #b9bfca; /* 9.2:1 on --bg */
-    --placeholder: #a3aab5; /* 7.1:1 on --bg, 6.2:1 on --bg-soft */
-    --border: #3d434e;
-    --swatch-border: #8b93a1; /* 5.4:1 on --bg, 4.65:1 on --bg-soft */
-    --accent: #8ab4ff; /* 8.3:1 on --bg */
-    --accent-text: #0b1733;
-    --error-bg: #3a1717;
-    --error-text: #ffc9c9; /* 10:1 on --error-bg */
-    --notice-bg: #33290c;
-    --notice-text: #ffe3a3; /* 11:1 on --notice-bg */
-    --focus: #fbbf24;
-    --shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
-    --rail-ring: #e5e7eb;
-  }
+:root.theme-dark {
+  color-scheme: dark;
+  --bg: #1b1e24;
+  --bg-soft: #262a32;
+  --text: #eef0f3;
+  --text-muted: #b9bfca; /* 9.2:1 on --bg */
+  --placeholder: #a3aab5; /* 7.1:1 on --bg, 6.2:1 on --bg-soft */
+  --border: #3d434e;
+  --swatch-border: #8b93a1; /* 5.4:1 on --bg, 4.65:1 on --bg-soft */
+  --accent: #8ab4ff; /* 8.3:1 on --bg */
+  --accent-text: #0b1733;
+  --error-bg: #3a1717;
+  --error-text: #ffc9c9; /* 10:1 on --error-bg */
+  --notice-bg: #33290c;
+  --notice-text: #ffe3a3; /* 11:1 on --notice-bg */
+  --focus: #fbbf24;
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+  --rail-ring: #e5e7eb;
 }
 
 /* The accessibility switch is on (OWNER-DECISIONS 211): stronger panel borders
@@ -78,11 +78,60 @@
   --swatch-border: #5c6472; /* the strengthened --border: 6:1 on --bg */
 }
 
-@media (prefers-color-scheme: dark) {
-  :root.a11y {
-    --text-muted: #dfe3ea; /* 13.5:1 on --bg */
-    --border: #8d95a3; /* 5.4:1 on --bg */
-    --swatch-border: #8d95a3; /* the strengthened --border: 5.4:1 on --bg */
+:root.theme-dark.a11y {
+  --text-muted: #dfe3ea; /* 13.5:1 on --bg */
+  --border: #8d95a3; /* 5.4:1 on --bg */
+  --swatch-border: #8d95a3; /* the strengthened --border: 5.4:1 on --bg */
+}
+
+/* The dark base map (lib/mapFlavour.ts; the owner, 2026-11-01: battery audit), by a class on the root since it
+   follows the light in a ride as well as the theme: the map's focus ring turns light outside, dark inside, 3:1 or
+   more on every dark surface (darkMap.test.ts). */
+:root.map-dark {
+  --map-focus: #f9fafb;
+  --map-focus-inner: #111827;
+}
+
+/* The map's own controls go dark with it: white zoom buttons, scale and credit pill were the brightest things left on
+   a dark map (the owner, 2026-11-01: "yes", darken them too). Text and icons are light, 7:1 or more (darkMap.test.ts).
+   Not under forced colours, where the system draws them. */
+@media not (forced-colors: active) {
+  :root.map-dark .maplibregl-ctrl-group {
+    background: #1f2937;
+  }
+  :root.map-dark .maplibregl-ctrl-group:not(:empty) {
+    box-shadow: 0 0 0 2px rgb(255 255 255 / 0.15);
+  }
+  :root.map-dark .maplibregl-ctrl-group button + button {
+    border-top-color: #4b5563;
+  }
+  :root.map-dark .maplibregl-ctrl button .maplibregl-ctrl-icon {
+    filter: invert(1) hue-rotate(180deg); /* light icons; the compass keeps its red north */
+  }
+  :root.map-dark .maplibregl-ctrl-scale {
+    background-color: rgb(31 41 55 / 0.85);
+    border-color: #e5e7eb;
+    color: #f3f4f6;
+  }
+  :root.map-dark .maplibregl-ctrl.maplibregl-ctrl-attrib,
+  :root.map-dark .maplibregl-ctrl-attrib.maplibregl-compact {
+    background-color: #1f2937;
+    color: #f3f4f6;
+  }
+  /* And Help's open panel: its words were black on the dark pill (the 2026-11-01 review). */
+  :root.map-dark .maplibregl-ctrl-attrib .map-info {
+    color: #f3f4f6;
+  }
+  :root.map-dark .maplibregl-ctrl-attrib a {
+    color: #e5e7eb;
+  }
+  :root.map-dark .maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show)::before {
+    color: #f3f4f6;
+  }
+  :root.map-dark .maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-button {
+    color: #f3f4f6;
+    background-color: transparent;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20fill-rule%3D%22evenodd%22%20fill%3D%22%23f3f4f6%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20d%3D%22M4%2010a6%206%200%201%200%2012%200%206%206%200%201%200-12%200m5-3a1%201%200%201%200%202%200%201%201%200%201%200-2%200m0%203a1%201%200%201%201%202%200v3a1%201%200%201%201-2%200%22%2F%3E%3C%2Fsvg%3E");
   }
 }
 
@@ -1865,6 +1914,22 @@ dialog.go-spot {
   margin: 0;
 }
 
+/* Go's bike rack offers (Stephen, 2026-11-01): on the spot card under Ride here, and under the route card. */
+.go-spot-rack,
+.go-end-rack {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin: 6px 0 0;
+  padding: 4px 12px;
+  border-radius: 8px;
+  font-weight: 700;
+  text-align: start;
+}
+
 .go-spot-list-button,
 .go-spot-road {
   flex: none;
@@ -1967,6 +2032,11 @@ dialog.go-spot {
 
 .spot-pin-sight .spot-pin-dot {
   background: #15803d;
+}
+
+/* A bike rack (lib/bikeParking.ts): the map layer's pink, white on it 6.0:1. */
+.spot-pin-parking .spot-pin-dot {
+  background: #be185d;
 }
 
 .spot-pin-label {
@@ -3593,14 +3663,12 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   min-width: 0;
 }
 
-@media (prefers-color-scheme: dark) {
-  .elevation-chart {
-    --pc-area: #3a4250;
-    --pc-guide-0: #d7191c; /* 3.2:1 on --bg */
-    --pc-guide-1: #f28e2b; /* 6.9:1 on --bg */
-    --pc-guide-2: #1a9850; /* 4.5:1 on --bg */
-    --pc-corker: #7b93f0;
-  }
+:root.theme-dark .elevation-chart {
+  --pc-area: #3a4250;
+  --pc-guide-0: #d7191c; /* 3.2:1 on --bg */
+  --pc-guide-1: #f28e2b; /* 6.9:1 on --bg */
+  --pc-guide-2: #1a9850; /* 4.5:1 on --bg */
+  --pc-corker: #7b93f0;
 }
 
 .pc-summary {
@@ -4312,10 +4380,8 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   --pc-line: var(--text);
 }
 
-@media (prefers-color-scheme: dark) {
-  .climb-profile {
-    --pc-area: #3a4250;
-  }
+:root.theme-dark .climb-profile {
+  --pc-area: #3a4250;
 }
 
 .climb-popup .climb-profile {
@@ -9772,11 +9838,9 @@ summary.closure-notices-heading {
   background: var(--bg-soft);
 }
 
-@media (prefers-color-scheme: dark) {
-  .stress-main .stress-bar.calm-ways {
-    --calm-path: #b9a3ff; /* 7.8:1 on --bg */
-    --calm-protected: #f08cf7; /* 7.8:1 on --bg */
-  }
+:root.theme-dark .stress-main .stress-bar.calm-ways {
+  --calm-path: #b9a3ff; /* 7.8:1 on --bg */
+  --calm-protected: #f08cf7; /* 7.8:1 on --bg */
 }
 
 .calm-way-path {
@@ -10376,4 +10440,24 @@ summary.closure-notices-heading {
 .go-head .route-info-button {
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+/* The ride's arrival line for a full bike rack (Stephen, 2026-11-01): the next one, and one button to see it. */
+.ride-next-rack {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 6px;
+}
+
+.ride-next-rack .cue-then {
+  flex: 1 1 12rem;
+  margin: 0;
+}
+
+.ride-next-rack button {
+  min-height: 44px;
+  padding: 4px 16px;
+  font-weight: 700;
 }

@@ -136,7 +136,8 @@ test("privacy-1: the Home, Work and favorite searches do not keep their pick in 
   const search = src("../PlaceSearch.tsx");
   const at = search.indexOf("const pick = (place: Place");
   const pick = search.slice(at, search.indexOf('setQuery("");', at));
-  assert.match(pick, /if \(variant !== "home" && variant !== "work" && variant !== "favorite"\) setRecent\(rememberRecentPlace\(place\)\);/);
+  // Nor a saved place (Home, Work, a favorite) picked in Go's Where to? (lib/savedPlaceSearch.ts).
+  assert.match(pick, /if \(variant !== "home" && variant !== "work" && variant !== "favorite" && !SAVED_KINDS\.has\(place\.kind\)\) setRecent\(rememberRecentPlace\(place\)\);/);
   assert.equal((search.match(/rememberRecentPlace\(/g) ?? []).length, 1, "no other way in");
 });
 
@@ -165,4 +166,12 @@ test("privacy-2: a route's own name and its GPX file name a point at Home as Sta
   assert.equal((app.match(/defaultRouteName\(fileNamed\(routedPoints\[0\]\)/g) ?? []).length, 2);
   assert.match(app, /return routeTitle\(fileNamed\(first\), fileNamed\(last\), routedLoop\);/);
   assert.doesNotMatch(app, /defaultRouteName\(routedPoints\[0\] && namer\.name/);
+});
+
+test("Where to?'s found count and its Nothing found line count Home, Work and favorites matched by name", () => {
+  // The release review: with only Home matching, the box said "Nothing found" under the Home row.
+  const search = src("../PlaceSearch.tsx");
+  assert.match(search, /const count = result\.places\.length \+ saved;/);
+  assert.match(search, /searchStatus\(result, answered, saved\.length\)/);
+  assert.match(search, /result\.places\.length \+ saved\.length === 0/);
 });

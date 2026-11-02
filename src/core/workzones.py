@@ -894,6 +894,10 @@ NAMES = {
     "md": "Maryland's feed",
     "va": "Virginia's feed",
     "dc": "DDOT's permits",
+    "protrack": "DDOT's capital projects",
+    "dcwater": "DC Water's work zones",
+    "wssc": "WSSC Water's construction",
+    "sha": "Maryland's Road Closure Reporter",
     "mpd": "MPD's traffic advisories",
     "alertdc": "AlertDC",
     "nps": "the NPS alerts",
@@ -1012,8 +1016,9 @@ def closure_row(
 # can get around"; "Disable the DC ones by default as those aren't that reliable"; "We can link
 # to a website and automatically remove them once the end date happens". So the map draws the
 # closures in force now in the view, route or no route: closed in red, a blocked bike lane or a
-# rideable work zone in orange. DDOT's permits only with Plan's DC permits switch on. A closure
-# past its end is not in force (`rules.active`), so it leaves the map at the next ask.
+# rideable work zone in orange. Potential closures (permits, planned work) only with Plan's
+# Potential closures switch on. A closure past its end is not in force (`rules.active`), so it
+# leaves the map at the next ask.
 
 # The kinds drawn with no route: the route map's, and a rideable work zone (orange).
 AREA_KINDS = (*MAP_KINDS, rules.PENALTY)

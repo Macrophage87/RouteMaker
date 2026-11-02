@@ -47,6 +47,7 @@ from routemaker.stress import (
     BUSY_STREET_RULE,
     FAST_MULTILANE_PREFIX,
     RURAL_EXPRESSWAY_PREFIX,
+    SERVICE_ROAD_RULE,
     USE_SIDEPATH_RULE,
     VERY_BUSY_STREET_RULE,
 )
@@ -574,6 +575,7 @@ _MIXED_PARTS = {
     "shoulder read as a lane": "the shoulder read as a bike lane",
     "narrow rural road": "a narrow or winding rural road",
     "rural road floor": "a rural road open to cars, so rated at least LTS 2",
+    SERVICE_ROAD_RULE: "an alley or service road: delivery trucks and blind exits, so LTS 1.5",
     BUSY_STREET_RULE: "a busy city street, so half a level higher",
     VERY_BUSY_STREET_RULE: "a very busy city street, so a level higher",
     BUSY_RURAL_HIGHWAY_RULE: "a busy two-lane rural highway, so half a level higher",
@@ -680,6 +682,21 @@ def _row(label: str, value: str, source: str | None) -> dict:
     return {"label": label, "value": value, "source": source}
 
 
+def override_note(row: dict) -> str | None:
+    """An override row's own approved, public note, shown as the Why line in place of
+    "Owner-rated corridor" (the owner, 2026-11-01: where we keep ours over an agency's, a
+    short narration "available in the route lookup as to our justification"). It used to
+    be a separate "Note" row. Only an approved, public row's note is ever written to the
+    segment (`StressAdjustment.exposed`); one marked route_only is for a route over the
+    stretch, never a map click."""
+    note = row.get("stress_adjustment_note")
+    if not note or row.get("stress_adjustment_display") != "map":
+        return None
+    if row.get("stress_adjustment_id") is None:
+        return None
+    return str(note)
+
+
 def stress_rows(row: dict) -> list[dict]:
     tier = int(row["stress_tier"])
     half = row.get("stress_half") is True
@@ -689,9 +706,10 @@ def stress_rows(row: dict) -> list[dict]:
     source = override_source(row) if adjusted else CLASSIFIER
     whose = agency_lts.adjustment_source(row.get("stress_adjustment_id")) if adjusted else None
     county = whose == "moco"
+    why = override_note(row) or rule_words(row["stress_rule"])
     rows = [
         _row("Level", tier_text(tier, half), source),
-        _row("Why", rule_words(row["stress_rule"]), source),
+        _row("Why", why, source),
     ]
     computed = row.get("stress_computed_tier")
     direction = row.get("stress_adjustment_direction")
@@ -706,10 +724,6 @@ def stress_rows(row: dict) -> list[dict]:
     category = row.get("stress_adjustment_category")
     if category in ADJUSTMENT_CATEGORIES and source == OWNER:
         rows.append(_row("Owner's reason", ADJUSTMENT_CATEGORIES[category].capitalize(), OWNER))
-    note = row.get("stress_adjustment_note")
-    # A note marked route_only is for a route over the stretch, never a map click.
-    if note and row.get("stress_adjustment_display") == "map":
-        rows.append(_row("Note", str(note), source))
     return rows + rating_rows(row)
 
 
@@ -733,6 +747,8 @@ _USED_WORDS = {
     "owner": "the owner's rating is used: owner and community ratings come first",
     "community": "the community's rating is used: owner and community ratings come first",
     "rural floor": "raised to LTS 2: rural roads open to cars are LTS 2 at least",
+    "service road": "raised to LTS 1.5: alleys and service roads have delivery trucks and "
+    "blind exits",
     agency_lts.FORMULA_USED: "RouteMaker's formula is used: the agency's rating predates the "
     "bike facility mapped here",
     agency_lts.PAINTED_LANE_USED: "set to LTS 2.5: the agency's rating predates the painted "
@@ -1297,7 +1313,7 @@ def _summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     def add(id_: str, label: str, value: str) -> None:
         rows.append({"id": id_, "label": label, "value": value})
 
-    why = why_short(str(row.get("stress_rule") or ""))
+    why = override_note(row) or why_short(str(row.get("stress_rule") or ""))
     if why:
         add("why", "Why", why)
     if not path:

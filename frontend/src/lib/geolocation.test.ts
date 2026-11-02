@@ -835,7 +835,7 @@ test("PlaceSearch: Enter goes through pickTarget, and the list option passes the
     /aria-describedby=\{!locate\.support\.available \? `\$\{id\}-locate-why` : locate\.busy \? `\$\{id\}-locate-busy` : undefined\}/,
   );
   assert.match(search, /\{hereEffectLine\(effect, loop\)\}/);
-  assert.match(search, /searchStatusWithHere\(searchStatus\(result, answered\), expanded && showHere\)/);
+  assert.match(search, /searchStatusWithHere\(searchStatus\(result, answered, saved\.length\), expanded && showHere\)/);
 });
 
 test("privacy: the one documented stored path is the sign-in round trip, in signIn.ts", () => {

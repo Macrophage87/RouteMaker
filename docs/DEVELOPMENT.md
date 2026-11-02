@@ -958,6 +958,15 @@ palette), about 3 px of each round the widest halo. Every class's edge on the
 white is 3:1 (its ring, its halo, or the section itself where a light halo
 merges into the band). A one-colour route keeps its 11 px white casing.
 
+**Lane marks on the route.** In the white band, either side of the section,
+the route carries the map's own facility rails for the lanes it rides
+(`routeLaneMarks`, `route-lanes` source, `routeLaneLayers`; Stephen,
+2026-11-01): a protected lane's magenta posts, a painted lane's pale violet
+dots, as `line-gap-width` rails half a pixel outside the section's ring or
+halo and a pixel inside the casing (thinner on the wider sections). Painted
+lanes on LTS 4 and Avoid follow the high-stress lanes switch. None on a Mass
+Ride's capacity route, and none on a transit trip's later rides.
+
 Under a route the overlay's lines fade (`overlayFade`): to 0.45 under a Mass
 Ride's capacity route (`MASS_NETWORK_DIMMED`), to 0.8 under any other
 (`ROUTE_OVERLAY_FADE`; Stephen: "mute most of the colors when there's a
@@ -4309,7 +4318,12 @@ exception is counted as a disagreement with its reason:
   left on a one-way block keeps OSM's lanes: the busier direction's count is not
   copied into the other (review r2: New Jersey Avenue NW read four lanes each
   way).
-- **C. Two-way recorded, OSM one-way**: the way is two-way (C4) - except a
+- **C. Two-way recorded, OSM one-way**: since owner 2026-11-01 OSM's one-way
+  stands unless the owner's block row says `BD` (fixtures/overrides/README.md,
+  "Block corrections"): DC's record alone routed M St NE 17th-19th against its
+  one-way, and 181 ways (13.8 mi) were opened that way. The record's two-way
+  is reported (`kept (record only, owner rows decide)`). With an owner `BD` row
+  the way is two-way (C4) - except a
   carriageway of a divided road (C1, `routemaker.divided`), one of two opposite
   one-way ways sharing a block (C2, `agency_roads.block_context`: the pairs the
   divided detector missed), a one-way side lane on a block whose two-way main
@@ -5014,7 +5028,8 @@ take a District two-way record (`oneway=no`, row C4) over a way OSM has one-way.
 classifier and `road_*` follow the solo graphs (they are one per way), so on a Mass
 Ride the junction model reads those streets two-way: it can only overstate a
 junction there. 181 ways (13.8 mi) on the 09-25 extract, 21 of them (0.9 mi) LTS 3
-or worse.
+or worse. Since owner 2026-11-01 every graph keeps OSM's one-way over the record
+alone (row C), so this only matters on an owner `BD` row.
 
 ### What a screen reader hears from the planner (the 2026-10-29 a11y review)
 
@@ -5429,8 +5444,19 @@ Tests: `lib/sidebar.test.ts`.
   layers (ids `a11y-switch`, `a11y-label`, `a11y-hint`) and in Settings (ids
   `settings-contrast-*`, from the component's `idBase`), because both sheets are in the
   page at once. `barCurrent` (`lib/sidebar.ts`) decides which bar button is current.
-- **Decided, ready to change.** The theme follows the system's light or dark setting
-  (384: "system"). `PLANNER_EXTRAS` holds two parts built and decided off (384): the
+- **Decided, ready to change.** The theme is the rider's choice in Settings > Display > Colors
+  (`lib/themeClock.ts`, kept on the device as `routemaker.theme`): by default **Sunrise and
+  sunset**, light by day and dark from sunset to sunrise at the region's centre (the owner,
+  2026-11-01: "Set the default color mode to adjust by time of day", "do sunrise/sunset"); or
+  **Phone's setting** (the system's light or dark, followed live, as 384 had it), **Always
+  light** or **Always dark** (the owner, 2026-11-01: "There's the ability to use whatever
+  setting you want still?"). `followTheme` sets `:root.theme-dark` (or `.theme-light`) and the
+  theme-color before the first render, again at each sunrise and sunset and when the page is
+  shown, and sends `routemaker-theme` so the base map follows; the stylesheet no longer reads
+  `prefers-color-scheme`. A Featured routes post (`core/route_posts.py`, `src/post/main.ts`)
+  follows the same class, falling back to the phone's theme only until its script runs.
+  `index.html` has no early script (the CSP is `script-src 'self'`, no inline), so its
+  theme-color metas and `color-scheme` stay the phone's until `main.tsx` runs. `PLANNER_EXTRAS` holds two parts built and decided off (384): the
   planner's zoom notice (`PlannerZoomNotice`, a live region of its own, which only speaks
   while the planner shows; the notice lives in the Map layers sheet) and the planner's
   High contrast shortcut (`HighContrastShortcut`, described by the switch's hint and its
@@ -7490,8 +7516,10 @@ half steps' own words, 441i-441l: 1.5 "Probably comfortable for older children",
 for most confident adults", 3.5 "Stressful even for experienced cyclists", 4.5 "A very
 high-stress road"; the answer's `step` is 3 or 3.5) and `stress_rule` in plain words (`rule_words`:
 "35 mph or above, mixed traffic", "Owner-rated corridor", "Avoid: highway-like road
-(posted 55 mph)"), an override's tier before it and its category, its note only where the
-row's display is `map` (a `route_only` note is never shown on a click); the lanes, "each
+(posted 55 mph)"), an override's tier before it and its category; where the
+override row's display is `map`, its approved public note is the Why line itself, in the
+details and the summary, in place of "Owner-rated corridor" (`override_note`; from v0.17.0,
+the owner 2026-11-01; a `route_only` note is never shown on a click); the lanes, "each
 way" or, where `road_oneway` is true (a one-way street, or one carriageway of a divided
 road), "in this direction", since `road_lanes` counts one direction; and
 the speed limit, posted (with `attr_sources`' source) or assumed (the classifier's figure
@@ -8808,8 +8836,9 @@ path the leader takes, with no account.
   per ride, rides, path size) are the module's constants. A request over them gets a 429.
 - Pace (v0.16.1): dots and reads go every 2 s while up to 20 riders share a dot (the marshals of a
   big ride), every 5 s up to 300, 10 s up to 1,000 and 15 s beyond (`pace_s`, at most
-  `MAX_RIDERS_PER_RIDE` 1,500). One who only watches reads no faster than every 5 s
-  (`WATCH_PACE_S`), since each read is an api request. The pace counts dots shared, not tokens
+  `MAX_RIDERS_PER_RIDE` 1,500). One who only watches reads no faster than every 15 s
+  (`WATCH_PACE_S`, 5 s until v0.17.0), since each read is an api request and wakes the phone's
+  radio for some seconds (the owner, 2026-11-01: battery audit). The pace counts dots shared, not tokens
   kept. Per address, reads and writes are limited apart (`ratelimit.RIDE_LINKS` 1,800 a minute,
   `RIDE_POSTS` 720), so 20 marshals behind one carrier address fit, and one address cannot make a
   full ride of riders within 2 minutes. Each write rewrites the ride's whole

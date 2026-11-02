@@ -88,6 +88,7 @@ import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
 import { IosLocationHelp } from "./IosLocationHelp.tsx";
 import {
   POOR_FIX_M,
+  OFF_SURE_M,
   GPS_WEAK_SAID,
   weighFix,
   CUE_SHEET_SAID,
@@ -129,6 +130,7 @@ import {
   stopsAhead,
   toGo,
   wayBack,
+  compassWord,
   whereAmI,
   withoutFullStop,
   whereAmIShown,
@@ -161,7 +163,8 @@ import {
 } from "./lib/rideOutput.ts";
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
 import { useRailFit } from "./lib/railFit.ts";
-import { WAITING_FOR_GPS, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
+import { WAITING_FOR_GPS, readOnce, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
+import { PAUSE_CHECK_MS, PausedFixes, beatKeepsGps, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { askCompass } from "./lib/compassHeading.ts";
 import { rideGeoEnv, rideSpeech, rideWake, ridesHidden, showCue, speaksAloud } from "./lib/nativeShell.ts";
 import {
@@ -194,11 +197,12 @@ import {
 } from "./lib/detourSearch.ts";
 import type { FoodPlace } from "./lib/food.ts";
 import type { RepairPlace } from "./lib/repair.ts";
+import { NEXT_RACK_TEXT, arrivalRacks as racksOnArrival, rackPoint, rideNextRackLine, type BikeRack, type RackNear } from "./lib/bikeParking.ts";
 import type { WaterPoint } from "./lib/waterRestrooms.ts";
 import type { TrailMiles } from "./lib/trailMiles.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
 import { corridorWorry, type PrefetchResult } from "./lib/corridor.ts";
-import { clearCorridor, copyCorridor, keepCorridor } from "./lib/corridorStore.ts";
+import { copyCorridor, endCorridor, keepCorridor } from "./lib/corridorStore.ts";
 import { lastRideAdopter } from "./lib/offlineKeep.ts";
 import { blockOf, rescueRideFocus, type RideBlock } from "./lib/rideFocus.ts";
 import { REPORT_SENT, report311Enabled, sendReport311, reportPlace, type ReportKind } from "./lib/report311.ts";
@@ -717,6 +721,8 @@ export function RideMode({
   water,
   food = noPlaces,
   repair = noPlaces,
+  racks,
+  onShowRack,
   geocode = noSearch,
   stopName,
   trailMiles = null,
@@ -764,6 +770,13 @@ export function RideMode({
   food?: () => Promise<FoodPlace[] | null>;
   /** The repair stands and bike shops, loaded if they are not yet; for the detours. */
   repair?: () => Promise<RepairPlace[] | null>;
+  /**
+   * The bike racks, loaded if they are not yet (App's ensureRacks): once arrived near a rack, the next ones for a full
+   * rack (Stephen, 2026-11-01: "In DC often the problem is that Bike racks are full. So maybe a way to find other ones").
+   */
+  racks?: () => Promise<BikeRack[] | null>;
+  /** The rack the arrival line shows, pinned on the map; null to take the pin away. */
+  onShowRack?: (near: RackNear | null) => void;
   /** The place search, through the page's one geocoding gate; for Detour's search box. */
   geocode?: DetourDeps["geocode"];
   /** A stop's name to show and say: its own (lib/pointKinds.ts), else the map's name for the spot. */
@@ -897,6 +910,11 @@ export function RideMode({
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(false);
   const pausedSaid = useRef(false);
+  // Why: the page hidden too long (browser), or stayed at the destination (lib/ridePause.ts), which takes a reading
+  // every 30 s and carries on by itself once the rider rides off (in a browser only with the page in front, so it is
+  // not promised there: rideStayPausedSaid); where that pause began.
+  const [pausedWhy, setPausedWhy] = useState<"hidden" | "arrived">("hidden");
+  const pauseSpot = useRef<LonLat | null>(null);
   // The last GPS failure and wake note said, so each is said once, not on every repeat.
   const gpsSaid = useRef<string | null>(null);
   const wakeSaid = useRef("");
@@ -1451,9 +1469,48 @@ export function RideMode({
     [notify],
   );
   useEffect(() => {
-    const timer = window.setInterval(() => checkCueSheet(Date.now()), CUE_SHEET_CHECK_MS);
+    // The same timer gives the app's heartbeat and the destination's stay check (everyTick, below), so no timer more.
+    const timer = window.setInterval(() => {
+      everyTick.current(Date.now());
+      checkCueSheet(Date.now());
+    }, CUE_SHEET_CHECK_MS);
     return () => window.clearInterval(timer);
   }, [checkCueSheet]);
+
+  // The last real fix (never a heartbeat's), and how long the rider has stayed put since arriving (lib/ridePause.ts).
+  const lastRealFix = useRef<RideFix | null>(null);
+  const stay = useRef<Stay | null>(null);
+  const everyTick = useRef((now: number) => void now);
+
+  // On a share bike: stopped at a dock for a while is taken as docked; riding off from it again starts the time from 0.
+  const stepDockRef = useRef((fix: RideFix) => void fix);
+  stepDockRef.current = (fix: RideFix) => {
+    if (!trip?.shareBike || undockRef.current === null || fix.accuracyM > POOR_FIX_M) return;
+    const at = dockedRef.current;
+    if (at) {
+      if (haversineM(fix.point, at) > LEFT_DOCK_M) restartTime();
+      return;
+    }
+    still.current = stillStep(still.current, fix.point, fix.at);
+    const chosen = chosenDock.current;
+    if (chosen && haversineM(still.current.point, chosen.point) <= DOCKED_M && stillAtLength(still.current, fix.at, CHOSEN_STILL_MS)) {
+      still.current = { ...still.current, checked: true };
+      chosenDock.current = null;
+      dockedRef.current = chosen.point;
+      setDocked(chosen.name);
+      notify(dockedSaid(chosen.name));
+    } else if (stillAtLength(still.current, fix.at)) {
+      still.current = { ...still.current, checked: true };
+      const where = still.current.point;
+      void docksAround(where, fetchDocks).then((docks) => {
+        const dock = dockAt(where, docks);
+        if (!dock || ended.current || dockedRef.current) return;
+        dockedRef.current = [dock.lon, dock.lat];
+        setDocked(dock.name);
+        notify(dockedSaid(dock.name));
+      });
+    }
+  };
 
   // Restarting part way: asked at the first fix past a stop, never after Undo (it carries on) or on a trip's leg (its
   // walk to the dock comes first). The defaults ride on as the ride is; other picks plan again from here.
@@ -1465,9 +1522,24 @@ export function RideMode({
   // Where it was asked: ridden RESTART_AUTO_M from there unanswered, it goes on with the stops as marked.
   const restartAt = useRef<LonLat | null>(null);
   const onFix = useCallback(
-    (fix: RideFix) => {
+    // `beat`: the app's heartbeat (lib/ridePause.ts heartbeatFix), the last fix again with the time now while a stopped
+    // rider's GPS sends none. It runs only the stillness clocks (the dock, the stay at the destination); never the
+    // weak-GPS clock or the last fix's time (except after a stopped rider's good fix: beatKeepsGps), so a slow rider who
+    // loses GPS under trees still hears so and gets the turn list; never placed on the line or taken as off route (the owner, 2026-11-01: battery audit).
+    (fix: RideFix, beat = false) => {
       if (ended.current) return;
+      if (beat) {
+        stay.current = rideRef.current.arrived ? stayStep(stay.current, fix) : null;
+        stepDockRef.current(fix);
+        // Stopped at a light with no fix (the 4 m filter): the GPS is not lost, so its clocks keep time too.
+        if (beatKeepsGps(lastRealFix.current, lastRealFix.current?.at ?? 0, fix.at)) {
+          lastFixAt.current = Date.now();
+          gpsWeak.current = { goodAt: lastFixAt.current, weak: false };
+        }
+        return;
+      }
       gpsSaid.current = null;
+      lastRealFix.current = fix;
       lastFixAt.current = Date.now();
       // Only poor fixes for a while: the cues are paused, so the GPS note says so, once (review RIDE-3).
       const weighed = weighFix(gpsWeak.current, fix.accuracyM, lastFixAt.current);
@@ -1475,6 +1547,8 @@ export function RideMode({
       if (weighed.sayNow) notify(GPS_WEAK_SAID);
       setGps(weighed.weak ? GPS_WEAK_SAID : "");
       checkCueSheet(lastFixAt.current);
+      // Arrived: how long the rider has stayed within STAY_M, for the pause at the destination (checkStay).
+      stay.current = rideRef.current.arrived ? stayStep(stay.current, fix) : null;
       // "Already done?" left unanswered while the rider rides on (gloves, the phone on the bars): once they are
       // RESTART_AUTO_M from where it was asked, it closes with the stops as marked, says so, and re-routing runs again.
       const askedAt = restartAt.current;
@@ -1495,33 +1569,7 @@ export function RideMode({
         setWalking(false);
         if (trip?.shareBike) setUndockAt(Date.now());
       }
-      // On a share bike: stopped at a dock for a while is taken as docked; riding off from it again starts the time from 0.
-      if (trip?.shareBike && undockRef.current !== null && fix.accuracyM <= POOR_FIX_M) {
-        const at = dockedRef.current;
-        if (at) {
-          if (haversineM(fix.point, at) > LEFT_DOCK_M) restartTime();
-        } else {
-          still.current = stillStep(still.current, fix.point, fix.at);
-          const chosen = chosenDock.current;
-          if (chosen && haversineM(still.current.point, chosen.point) <= DOCKED_M && stillAtLength(still.current, fix.at, CHOSEN_STILL_MS)) {
-            still.current = { ...still.current, checked: true };
-            chosenDock.current = null;
-            dockedRef.current = chosen.point;
-            setDocked(chosen.name);
-            notify(dockedSaid(chosen.name));
-          } else if (stillAtLength(still.current, fix.at)) {
-            still.current = { ...still.current, checked: true };
-            const where = still.current.point;
-            void docksAround(where, fetchDocks).then((docks) => {
-              const dock = dockAt(where, docks);
-              if (!dock || ended.current || dockedRef.current) return;
-              dockedRef.current = [dock.lon, dock.lat];
-              setDocked(dock.name);
-              notify(dockedSaid(dock.name));
-            });
-          }
-        }
-      }
+      stepDockRef.current(fix);
       const out = { state: stepped.state.ride, events: stepped.events };
       rideRef.current = out.state;
       setRide(out.state);
@@ -1569,11 +1617,11 @@ export function RideMode({
       }
       // Back on the planned route: "Keep" has done its work; leaving it again re-plans as usual.
       if (out.events.some((e) => e.kind === "back-on-route") || (keepRef.current && !out.state.off)) setKeepPlanned(false);
-      // Never from a poor fix: a re-plan from a Wi-Fi guess 300 m out would be wrong at once.
+      // Never from a rough fix (OFF_SURE_M): a re-plan from a Wi-Fi guess 300 m out would be wrong at once.
       // Not after "No route found ahead": that route stays up (Re-plan from here still asks again), checked quietly.
       // On the line again: the next automatic re-plan need not wait for the rider to move (REPLAN_MOVED_M).
       if (!out.state.off && out.state.offCount === 0 && out.state.progressM !== null) replannedFrom.current = null;
-      if (out.state.off && auto && !gate.busy && fix.accuracyM <= POOR_FIX_M && out.state.goodFix && !replanHeld(replannedFrom.current, fix.point)) {
+      if (out.state.off && auto && !gate.busy && fix.accuracyM <= OFF_SURE_M && out.state.goodFix && !replanHeld(replannedFrom.current, fix.point)) {
         const offRoute = uturnStep(uturns.current, { kind: "off-route", now: Date.now() });
         uturns.current = offRoute.state;
         if (offRoute.replan === "ask") void replan(out.state.goodFix.point);
@@ -1592,13 +1640,21 @@ export function RideMode({
 
   // The watch: started with the ride (the Start press), stopped at End ride, after a long hide, on unmount.
   const stopWatch = useRef<(() => void) | null>(null);
+  // Paused at the destination in the app, the watch runs on and its fixes are only held (lib/ridePause.ts PausedFixes).
+  const pausedFixes = useRef(new PausedFixes()).current;
   const startWatch = useCallback(() => {
     stopWatch.current?.();
     gpsWeak.current = { goodAt: Date.now(), weak: false };
     stopWatch.current = watchRide(
       env,
-      (fix) => onFixRef.current(fix),
+      (fix) => {
+        // Paused: no line, map or cue work, only held for the 30 s check (the owner, 2026-11-01: battery audit).
+        if (pausedRef.current) pausedFixes.hold(fix);
+        else onFixRef.current(fix);
+      },
       (reason) => {
+        // Paused, a lone failure says nothing: the rider is not riding. A watch stopped for good still stops.
+        if (pausedRef.current && reason !== "denied" && reason !== "insecure" && reason !== "unsupported") return;
         if (reason === "timeout") {
           // Many phones report a lost signal as a timeout: said once no fix has come for GPS_LOST_MS.
           if (gpsSaid.current !== reason && Date.now() - lastFixAt.current >= GPS_LOST_MS) {
@@ -1622,7 +1678,7 @@ export function RideMode({
         }
       },
     );
-  }, [env, notify]);
+  }, [env, notify, pausedFixes]);
 
   useEffect(() => {
     ended.current = false;
@@ -1648,9 +1704,12 @@ export function RideMode({
         // The phone app keeps the ride going with the screen locked (lib/nativeShell.ts): no pause there.
         if (ridesHidden()) return;
         timer = window.setTimeout(() => {
+          // Paused at the destination already: that pause, and its readings, stand.
+          if (pausedRef.current) return;
           stopWatch.current?.();
           stopWatch.current = null;
           pausedRef.current = true;
+          setPausedWhy("hidden");
           setPaused(true);
           void wake.letGo();
         }, HIDDEN_STOP_MS);
@@ -1673,12 +1732,68 @@ export function RideMode({
     };
   }, [wake, notify, noteWake]);
 
+  // A ride is never ended by arriving (the owner, 2026-11-01: battery audit): stayed within STAY_M of one place for
+  // STAY_MS once arrived, the ride pauses as a long hide pauses it (the watch stopped, the screen lock let go, Resume
+  // offered), in a browser and in the app. While paused, one reading every PAUSE_CHECK_MS; one good reading more than
+  // PAUSE_MOVED_M away carries on as Resume does (the owner, 2026-11-01: "During a pause maybe check on a much longer
+  // interval, such as every 30s rather than stopping outright"). A browser skips the readings while hidden, which the
+  // pause soon makes it, so only the app promises that (rideStayPausedSaid).
+  // The app's heartbeat goes on the cue sheet's timer (everyTick): the GPS sends no fix while the rider is stopped
+  // (NATIVE_DISTANCE_FILTER_M), so the last real one is given again, as a beat, never as a new place.
+  everyTick.current = (now: number) => {
+    if (ended.current || pausedRef.current) return;
+    if (ridesHidden() && stopWatch.current) {
+      const last = lastRealFix.current;
+      const beat = heartbeatFix(last, last?.at ?? 0, now);
+      if (beat) onFixRef.current(beat, true);
+    }
+    if (!rideRef.current.arrived || !stayedLong(stay.current, now)) return;
+    pauseSpot.current = stay.current?.point ?? null;
+    stay.current = null;
+    // In the app the watch runs on, its fixes held (PausedFixes): a new one at Resume would restart the location
+    // service, which Android 14+ refuses in the background, so riding off would never resume.
+    if (!ridesHidden()) {
+      stopWatch.current?.();
+      stopWatch.current = null;
+    }
+    pausedFixes.clear();
+    pausedRef.current = true;
+    pausedSaid.current = true;
+    setPausedWhy("arrived");
+    setPaused(true);
+    void wake.letGo();
+    notify(rideStayPausedSaid(ridesHidden()));
+  };
+  const resumeRef = useRef<(auto: boolean) => void>(() => undefined);
+  useEffect(() => {
+    if (!paused || pausedWhy !== "arrived") return;
+    let stopReading: (() => void) | null = null;
+    const timer = window.setInterval(() => {
+      // The app: the latest fix the running watch sent since the last check, never a new watch (PausedFixes).
+      if (ridesHidden()) {
+        const held = pausedFixes.take();
+        if (held && pausedRef.current && !ended.current && movedFromPause(pauseSpot.current, held)) resumeRef.current(true);
+        return;
+      }
+      // A browser's hidden tab gets no reliable location: its readings wait for the page to be in front.
+      if (document.visibilityState === "hidden") return;
+      stopReading?.();
+      stopReading = readOnce(env, (reading) => {
+        if (pausedRef.current && !ended.current && movedFromPause(pauseSpot.current, reading)) resumeRef.current(true);
+      });
+    }, PAUSE_CHECK_MS);
+    return () => {
+      window.clearInterval(timer);
+      stopReading?.();
+    };
+  }, [paused, pausedWhy, env, pausedFixes]);
+
   // No signal: a failed re-plan tries again as the connection comes back.
   useEffect(() => {
     const onOnline = () => {
       gate.online();
       const state = rideRef.current;
-      if (state.off && !keepRef.current && !fixedRef.current && !restartOpen.current && !uturns.current.held && state.goodFix && !replanHeld(replannedFrom.current, state.goodFix.point)) void replan(state.goodFix.point);
+      if (state.off && !keepRef.current && !fixedRef.current && !restartOpen.current && !uturns.current.held && state.goodFix && state.goodFix.accuracyM <= OFF_SURE_M && !replanHeld(replannedFrom.current, state.goodFix.point)) void replan(state.goodFix.point);
     };
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
@@ -1724,14 +1839,14 @@ export function RideMode({
   }, [route, other, fix, onView, vehicle, stops, lettered, onLettered]);
 
   // The map along the route, kept for dead spots (lib/corridor.ts, plan section 6): fetched at Start ride
-  // and again for a re-plan's new route (only the tiles the first did not cover), cleared at End ride.
-  // Shown under the controls, not said: it changes nothing the rider must do.
+  // and again for a re-plan's new route (only the tiles the first did not cover), kept a day for the same route
+  // (the owner, 2026-11-01: battery audit). Shown under the controls, not said: it changes nothing the rider must do.
   const [corridor, setCorridor] = useState<PrefetchResult | "saving" | null>(null);
   const firstCorridor = useRef(true);
   useEffect(() => {
     let current = true;
     setCorridor("saving");
-    // The ride's first route clears whatever an earlier ride or page kept before it fetches.
+    // The ride's first route reads back what was kept for it within the day, and deletes any other route's first.
     const first = firstCorridor.current;
     firstCorridor.current = false;
     void keepCorridor(route.geometry.coordinates, first).then((result) => {
@@ -1742,7 +1857,7 @@ export function RideMode({
     };
   }, [route]);
   const handsOn = useRef(keepLastRide);
-  useEffect(() => () => void clearCorridor(handsOn.current ? lastRideAdopter() : undefined), []);
+  useEffect(() => () => void endCorridor(handsOn.current ? lastRideAdopter() : undefined), []);
   // Hidden, the installed app may be closed and never reach End ride: the last ride gets the map kept
   // so far now, as End ride would hand it on (review RIDE-1).
   useEffect(() => {
@@ -1756,16 +1871,25 @@ export function RideMode({
   // Only a problem is shown (the bottom panel stays away while all is well); saved in full says nothing.
   const corridorText = corridorWorry(corridor);
 
-  const resume = () => {
+  // `auto`: a paused reading found the rider riding off (above); the focus moves only if it was on Resume.
+  const resume = (auto = false) => {
+    const onResume = document.activeElement instanceof HTMLElement && document.activeElement.dataset.resume === "ride";
     pausedRef.current = false;
     pausedSaid.current = false;
+    pauseSpot.current = null;
+    stay.current = null;
     setPaused(false);
     sayWhereNext.current = true;
-    startWatch();
+    pausedFixes.clear();
+    // The app's watch ran on through the pause: kept, not restarted (Android 14+ refuses a new location service in the
+    // background). Its next fix is the ride's again.
+    if (ridesHidden() && stopWatch.current) gpsWeak.current = { goodAt: Date.now(), weak: false };
+    else startWatch();
     void wake.hold().then(noteWake);
     // The Resume button goes: the focus goes to Where am I? rather than the page's top.
-    whereRef.current?.focus();
+    if (!auto || onResume) whereRef.current?.focus();
   };
+  resumeRef.current = resume;
   const askWhere = useCallback(() => {
     // Walking to the dock: the walk, from here.
     const walk = tripRef.current.walking && approach ? approachWords(approach, rideRef.current.fix?.point ?? null) : null;
@@ -2229,6 +2353,43 @@ export function RideMode({
     if (progress === null || ride.off || along === null) return null;
     return along >= progress ? "ahead" : "behind";
   };
+  // Arrived at a rack: the others within 1,000 ft, nearest first, for a full one. One button: Show on map pins the
+  // first, then Next rack the one after (round again at the end); the line says how far and which way from the rider.
+  const [arrivalRacks, setArrivalRacks] = useState<RackNear[] | null>(null);
+  const [rackShown, setRackShown] = useState(-1);
+  useEffect(() => {
+    setArrivalRacks(null);
+    setRackShown(-1);
+    if (!ride.arrived || plan.current.loop || !racks) return;
+    const end = plan.current.points[plan.current.points.length - 1];
+    let live = true;
+    void racks().then((all) => {
+      if (!live || !all || !end) return;
+      const others = racksOnArrival(end, all);
+      if (others.length > 0) setArrivalRacks(others);
+    });
+    return () => {
+      live = false;
+    };
+  }, [ride.arrived]); // eslint-disable-line react-hooks/exhaustive-deps -- once per arrival
+  const onShowRackRef = useRef(onShowRack);
+  onShowRackRef.current = onShowRack;
+  useEffect(() => () => onShowRackRef.current?.(null), []);
+  useEffect(() => {
+    if (!ride.arrived) onShowRackRef.current?.(null);
+  }, [ride.arrived]);
+  const rackNow = arrivalRacks ? arrivalRacks[Math.max(rackShown, 0)] : null;
+  const rackFrom = ride.fix?.point ?? plan.current.points[plan.current.points.length - 1];
+  const showNextRack = () => {
+    if (!arrivalRacks) return;
+    const next = rackShown < 0 ? 0 : (rackShown + 1) % arrivalRacks.length;
+    setRackShown(next);
+    // Said as well as shown: the line under Arrived changes with no other sign (the release review).
+    const at = rackPoint(arrivalRacks[next].rack);
+    if (rackFrom) notify(rideNextRackLine(haversineM(rackFrom, at), compassWord(rackFrom, at)));
+    onShowRackRef.current?.(arrivalRacks[next]);
+    onShowPlace?.(rackPoint(arrivalRacks[next].rack));
+  };
   // The destination's name for "Arrived: ..." (a loop's end is its start: none).
   const destinationName = ride.arrived && !plan.current.loop ? (stopName?.(plan.current.points[plan.current.points.length - 1]) ?? null) : null;
   // The distance's metric in brackets a size smaller, so the line stays one line with large text.
@@ -2376,6 +2537,9 @@ export function RideMode({
       return from === null || !model.paceMs ? null : weatherPoints(model.coordinates, from, model.paceMs);
     },
     RIDE_WEATHER_MS,
+    // The app speaks a warning with the screen locked, so it checks hidden too; a browser's hidden tab waits (the
+    // owner, 2026-11-01: battery audit).
+    ridesHidden(),
   );
   const weatherSaid = useRef({ alerts: new Set<string>(), rain: "" });
   const [weatherDismissed, setWeatherDismissed] = useState(NOTHING_DISMISSED);
@@ -2639,6 +2803,17 @@ export function RideMode({
             {trip?.departure && <DepartureTimer departure={trip.departure} announce={notify} />}
             {/* Where the next Metro train or Metrobus is while waiting there (v0.9.0), its mark on the map. */}
             <NextVehicleLine ask={trip?.boarding ?? null} waiting={ride.arrived} announce={notify} onMark={setVehicle} />
+            {/* A full rack: the next one, how far and which way, and one button to see it (lib/bikeParking.ts). */}
+            {rackNow && rackFrom && (
+              <div className="ride-next-rack">
+                <p className="cue-then">
+                  {rideNextRackLine(haversineM(rackFrom, rackPoint(rackNow.rack)), compassWord(rackFrom, rackPoint(rackNow.rack)))}
+                </p>
+                <button type="button" className="secondary" onClick={showNextRack}>
+                  {rackShown < 0 ? t("Show on map") : NEXT_RACK_TEXT}
+                </button>
+              </div>
+            )}
           </>
         ) : walking && approach ? (
           <p className="cue-text">{approachWords(approach, ride.fix?.point ?? null).shown}</p>
@@ -3181,8 +3356,8 @@ export function RideMode({
               {ride.off && replanNote && <p className="hint">{replanNote}</p>}
               {paused && (
                 <p className="notice">
-                  {PAUSED_SAID}{" "}
-                  <button type="button" onClick={resume}>
+                  {pausedWhy === "arrived" ? rideStayPausedSaid(ridesHidden()) : PAUSED_SAID}{" "}
+                  <button type="button" data-resume="ride" onClick={() => resume()}>
                     {t("Resume")}
                   </button>
                 </p>

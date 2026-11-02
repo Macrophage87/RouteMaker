@@ -72,7 +72,7 @@ test("each new route of the ride is kept in its place, and the question holds th
   const ride = src("../RideMode.tsx");
   assert.match(ride, /if \(!trip && keepLeft\) keepLeftRide\(\{ route: found, points, loop: false, preset, dials: dialsRef\.current, fixed: fixedRef\.current \}, VIA_MARKS, Date\.now\(\)\);/);
   assert.match(ride, /const auto = !keepRef\.current && !fixedRef\.current && !restartOpen\.current;/);
-  assert.match(ride, /!fixedRef\.current && !restartOpen\.current && !uturns\.current\.held && state\.goodFix && !replanHeld\(replannedFrom\.current, state\.goodFix\.point\)\) void replan/);
+  assert.match(ride, /!fixedRef\.current && !restartOpen\.current && !uturns\.current\.held && state\.goodFix && state\.goodFix\.accuracyM <= OFF_SURE_M && !replanHeld\(replannedFrom\.current, state\.goodFix\.point\)\) void replan/);
   const app = src("../App.tsx");
   assert.match(app, /const kept = !rest && !leg\.trip;/);
   assert.match(app, /keepLeft=\{rideStart\.kept === true\}/);
@@ -171,4 +171,9 @@ test("a link Broadcast makes (its leader's key and the ride's key) reads back as
 test("a ride link opened to follow joins that ride: no Resume question for a ride left going takes its place", () => {
   const app = src("../App.tsx");
   assert.match(app, /useState\(\(\) => \(SHARED_RIDE && SHARED_LEAD \? null : leftRide\(VIA_MARKS, Date\.now\(\)\)\)\)/);
+});
+
+test("the automatic re-plan while off route never starts from a rough fix", () => {
+  const ride = src("../RideMode.tsx");
+  assert.match(ride, /out\.state\.off && auto && !gate\.busy && fix\.accuracyM <= OFF_SURE_M/);
 });

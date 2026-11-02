@@ -72,6 +72,7 @@ Contents:
 - [Deploying v0.8.2](#deploying-v082)
 - [Deploying v0.9.0](#deploying-v090)
 - [Deploying v0.16.0](#deploying-v0160)
+- [Deploying v0.17.0](#deploying-v0170)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -5220,19 +5221,25 @@ proxy cannot reach the service.
 
 ## DC closures (v0.7.0)
 
-The worker task `refresh_dc_closures` (every 15 minutes, 12-minute bound) reads four
+The worker task `refresh_dc_closures` (every 15 minutes, 12-minute bound) reads its
 sources, each when it is due, and keeps one shared copy in the `bikeshare_feed_cache`
 row keyed `closures` (`src/core/closure_sources.py`):
 
 | Source | URL | Every | Stale after | Dropped after | Becomes |
 |---|---|---|---|---|---|
-| DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Flagged only (a road *may* be closed): never routed around (Go, Plan, MCP), no warning or cue; shown only by Plan's DC permits layer (off by default) |
+| DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Flagged only (a road *may* be closed): never routed around (Go, Plan, MCP), no warning or cue; shown only by Plan's Potential closures layer (off by default) |
 | MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text |
-| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss` | 15 min | 45 min | 3 h | As MPD; only traffic and road items are kept, every other item is dropped unread |
+| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 15 min | 45 min | 3 h | As MPD; only traffic and road items are kept, every other item is dropped unread |
 | NPS alerts (`nps`) | `developer.nps.gov/api/v1/alerts` | 30 min | 90 min | 6 h | Park-level "Check before you go" notices (rocr, nama, gwmp, choh, anac), never closures |
+| DDOT ProTrack+ projects (`protrack`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/ProTrackPlusViews/MapServer/1/query` | 6 h | 24 h | 3 days | Potential closures, as DDOT's permits: "Under Construction" and not past the estimated completion; sidewalk, alley, streetlight, green infrastructure, tree, landscaping and signage work left out |
+| DC Water work zones (`dcwater`) | `geo.dcwater.com/.../Viewer/ActiveWorkZonesPublic/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures; each zone's middle placed on its block as a permit's is |
+| WSSC Water mains (`wssc`) | `gisportal.wsscwater.com/.../IYN/Water_Construction1/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures along the pipe, "Construction Started" only; the layer's contact names, phones and emails are never asked for |
+| Maryland Road Closure Reporter (`sha`, v0.17.0) | `mdgeodata.md.gov/.../SHA_RoadClosure/RoadClosureActive/MapServer/1/query` and `.../RoadClosurePlanned/MapServer/1/query` | 15 min | 45 min | 6 h | Maryland's counties' and towns' closures, routed round in their hours (`routemaker.md_closures`): "Closed" and "Emergency Vehicle Only Access" are closed; "Limited Public Access" with every lane closed is every lane closed, bicycles not mentioned (the WZDx penalty); a lane closed is a lane penalty. The reporting account (`Creator`) is never asked for |
 
 NPS needs `NPS_API_KEY` in the worker's environment (sent as the `X-Api-Key` header);
-without it NPS is simply not read. The host needs egress to the four hosts (PLAYBOOK §0).
+without it NPS is simply not read. The host needs egress to the four hosts, and (v0.17.0) to
+`geo.dcwater.com` and `gisportal.wsscwater.com` for planned work and `mdgeodata.md.gov` for
+Maryland's Road Closure Reporter (PLAYBOOK §0).
 
 **First checks on a new host.** The readers were built on saved sample pages
 (`tests/data/closures`), not on live downloads, so after the first run:
@@ -5248,8 +5255,18 @@ without it NPS is simply not read. The host needs egress to the four hosts (PLAY
    Status values; a permit count of zero with a successful run means one of them differs.
 3. MPD: confirm the newsroom lists "TRAFFIC ADVISORY" releases as links on `mpdc.dc.gov`
    and that a release's body still reads "X from A to B" lines with dates and times.
-4. AlertDC: confirm the RSS item shape (title, description, pubDate, link).
+4. AlertDC: the list is an HTML table (no RSS since at least 2026-11-01): one row an alert,
+   its local date and time, a title linking to `/NRss/RssFeed/AlertDetails/<id>`, then the text.
+   A page with no table, or with alert links but no row that reads, fails with `not an
+   AlertDC list`; compare it with `tests/data/closures/alertdc-list.html`. A "has reopened"
+   update ends the stretch it names in its incident's earlier alerts (all of them if it names
+   none); a partial update keeps what it says is still closed.
 5. NPS: confirm the park boxes and marker points in `routemaker.dc_closures.PARKS`.
+5a. Maryland Road Closure Reporter (`sha`): both layers are asked `where=ClosureEnd >=
+   CURRENT_TIMESTAMP`; confirm the `ClosureType` values (Closed, Emergency Vehicle Only Access,
+   Limited Public Access, Curb Lane Closure) and that `closureSummary` still reads "all
+   directions" or a direction and "All lanes closed" or "N lane(s) open". More than 2000
+   records in a layer fails the read (`more than 2000 records`), keeping the last good copy.
 6. A segment that cannot be placed (Photon finds no street, or Valhalla's route between the
    cross streets leaves the named street) is shown as text with its link, never guessed;
    it is looked for again after 6 hours.
@@ -5258,7 +5275,11 @@ Closures follow the ride time (the When setting). Only closures known to be in e
 reroute (Go, Plan and MCP alike). One with no reliable end, on a ride more than 2 hours
 away, reads "may still apply" and does not reroute. DDOT TOPS permits are never routed
 around anywhere and give no warning or cue, not even when the TOPS source cannot be
-read; Plan's DC permits layer (off by default) is the only place they show. A rider's "Route
+read; Plan's Potential closures layer (off by default) is the only place they show. Since
+v0.17.0 it also shows planned work (DDOT ProTrack+, DC Water, WSSC Water). Each potential
+closure is a dashed line, and its marker is a barrier on a dashed ring with a question mark.
+A planned-work source that fails is logged in the run's line but never fails the run; the
+host needs egress to its two new hosts before v0.17.0 deploys, or that layer stays empty. A rider's "Route
 through anyway" is per plan and session only (`closure_bypass` on `/api/route`, `bypass`
 on `/api/closures/check`); nothing about it is stored.
 
@@ -6582,6 +6603,49 @@ the data. At home, in order, with `</dev/null` on every docker command:
   and `db --update-data`, the pre-draw, the router restarts and `sync_upstreams`, the smoke
   test, and resume the agent. Build the data at the tagged commit: `receive-data.sh` checks the
   bundle's commit.
+
+## Deploying v0.17.0
+
+Bike racks, the sunrise-and-sunset theme, battery savings, Potential closures with planned work,
+Maryland's Road Closure Reporter, the region-wide rating review (four override files), packed
+gravel, the one-way rule (#864) and the follow and snap crosswalk fixes. No migration, no compose,
+Caddy, nginx or Dockerfile change and no new environment variable. **`lua/routemaker_remap.lua`
+changed (#877), so the beta agent stops on the tag and the deploy is by hand**, with the map built
+at the tagged code (the 2026-11-01 spot build from release/v0.17.0 c6b9b543 carries every graph
+change: #864, #868, #877, #878). At home, in order, with `</dev/null` on every docker command:
+
+- [ ] **Outbound hosts.** Add `geo.dcwater.com`, `gisportal.wsscwater.com` and `mdgeodata.md.gov`
+  (443) to beta's egress list, and home's if it is filtered (the worker's hosts in
+  docs/BETA-RUNBOOK.md, "3. Make `.env`"). Planned work only logs an outage, but `sha` is routed round: with no good read
+  in 45 minutes it fails every `refresh_dc_closures` run (src/core/closure_sources.py).
+- [ ] **Tag and images.** Once `test` and `a11y` are green on `main`, the owner tags v0.17.0
+  (annotated). The agent stops and alerts on the `lua/` change: expected. Then, before the weekly
+  rebuild (Tuesday 08:00 UTC) or with it paused: tag the running api and pipeline images for a
+  rollback, fast-forward the checkout (`lua/` is mounted from it, so the gravel rule applies from
+  here), `docker compose build api rebuild`, and once no rebuild job is queued or running
+  `docker compose up -d --no-deps --no-build api worker rebuild`. The tag also starts a Play
+  internal-testing build (mobile/README.md changed); it can be ignored.
+- [ ] **The four review files, each only after the owner confirms that file:**
+  `2026-11-01-owner-{dc,md,va,wv}-rating-review.json` (19,802, 34,781, 8,998 and 434 ways).
+  Dry run first, then `--confirm` ("A deploy that changes the crossings fixture or loads access
+  overrides", step 3). They were loaded on the PC on 2026-11-01; the release then corrected
+  twelve public notes ("but Riding" to "but riding", nine DC, three MD), so the DC and MD dry
+  runs show only those notes changed and VA and WV show nothing.
+- [ ] **The map.** Swap in the spot build (or rebuild at the tag). Before the swap, the
+  stress-change report and Review's lists (service roads and alleys move from LTS 1 to 1.5; about
+  181 DC one-ways, 13.8 mi, close their other direction), and a Mall gravel walk routes on
+  Default. Then swap and restart the routers.
+- [ ] **Beta**, "A new release sha" with the data bundle: pause the agent; stop api and worker,
+  snapshot the database, copy `index.html`; check out the tag, set `TAG=`,
+  `check_beta_compose.py`; build the api image; `receive-data.sh verify`, `files`,
+  `db --update-data`; start api and worker; the stress-tile pre-draw; restart the four routers,
+  recreate `valhalla-offroad` and `valhalla-mtb`, `sync_upstreams`; the front end last; the smoke
+  test (`--local --trails`, then `--public`); `mark-deployed v0.17.0`; resume the agent.
+- [ ] **After the first closures runs:** the log's `closures:` line has `sha N closures` and the
+  planned-work counts, with no "no good read in time"; Plan's Potential closures layer shows
+  markers; a Maryland closure is routed round. Spot checks: a DC alley's road panel reads LTS 1.5;
+  a reviewed road's Why line is its public note; Share live posts once a pace and a watcher reads
+  every 15 s.
 
 ## Deploying a planner and front-end release: rollback points and verification
 
@@ -8497,7 +8561,8 @@ Python 3.11 or later, standard library only.
   `ALLOWED_KEYS` may change, at most four; `highway` only on a node, to a junction control;
   `oneway` only on a way, to `yes`, `-1` or `no` (a street whose direction changed on the
   ground; in the District also add the owner's block direction, fixtures/overrides/README.md,
-  "Block corrections", or DC's two-way record keeps the street two-way on our map).
+  "Block corrections"; a street made two-way needs an owner `BD` row, since DC's two-way
+  record alone no longer opens an OSM one-way, owner 2026-11-01).
   No GPS track, rider or ride date in the comment, source or file.
 - **Check:** `python3 scripts/osm_edit.py show edit.json` prints the diff against OSM now
   and exits 2 if a tag changed since the draft.
