@@ -213,7 +213,7 @@ function bikeshareTrip(route: RouteResponse): RideTrip | null {
       spoken: `${dock}${on(walk ? spokenDistance(walk.distance_m) : "")}`,
     };
   }
-  const after = plan.walk_end ? walkPart({ coordinates: plan.walk_end.geometry.coordinates, turns: plan.walk_end.turns ?? [], to: null }) : null;
+  const after = plan.walk_end ? walkPart({ coordinates: plan.walk_end.geometry.coordinates, turns: plan.walk_end.turns ?? [], to: null }, plan.walk_end.duration_s) : null;
   return { approach, finish, departure: null, rest: null, shareBike: true, onward: after ? [after] : [] };
 }
 
@@ -315,7 +315,7 @@ function walkInTrip(route: RouteResponse): RideTrip | null {
         spoken: t("The ride ends here. Walk your bike {distance} to your destination.", { distance: spokenDistance(walks.end.distance_m) }),
       }
     : null;
-  const after = walks.end ? walkPart({ coordinates: walks.end.geometry.coordinates, turns: walks.end.turns ?? [], to: null }) : null;
+  const after = walks.end ? walkPart({ coordinates: walks.end.geometry.coordinates, turns: walks.end.turns ?? [], to: null }, walks.end.duration_s) : null;
   return { approach, finish, departure: null, rest: null, asPlanned: true, onward: after ? [after] : [] };
 }
 

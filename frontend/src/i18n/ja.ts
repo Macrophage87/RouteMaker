@@ -1823,6 +1823,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Next stop: {name}. Get off there.": "次は {name}。そこで降ります。",
   "Next stop: {name}. Press the stop button to get off there.": "次は {name}。降車ボタンを押して、そこで降ります。",
   "{name} should be about now, by the timetable. Get off there.": "時刻表では、そろそろ {name} です。そこで降ります。",
+  "Next stop should be {name}, by the timetable. Get off there.": "時刻表では、次は {name} のはずです。そこで降ります。",
   "Stops ahead": "この先の停車駅",
   "get off": "降車",
   "next": "次",

@@ -50,6 +50,8 @@ export interface OnBoardState {
   saidOff: boolean;
   /** The stop to get off at is reached: the leg is done. */
   done: boolean;
+  /** The last rough fix's place, which the next must agree with (byFix's `sure`). */
+  pending?: { at: number; boarded: boolean } | null;
 }
 
 /** A transit step as one to follow; null without at least two stops (an older API). */
@@ -69,20 +71,42 @@ function along(leg: OnBoardLeg): { coordinates: LonLat[]; along: Float64Array } 
   return { coordinates, along: lineAlong(coordinates) };
 }
 
-/** Where a fix puts the rider: the last stop reached and whether on board; null for a fix that says nothing here. */
-function byFix(leg: OnBoardLeg, fix: RideFix): { at: number; boarded: boolean } | null {
+/** The fastest a train is taken to go between fixes, for the window a fix is looked for in (metres a second). */
+export const TRAIN_MS = 30;
+/** The window reaches this far ahead of the last stop reached, plus TRAIN_MS for every second since the last fix. */
+const AHEAD_M = 1000;
+/** And this far behind it. */
+const BEHIND_M = 300;
+
+interface Placed {
+  at: number;
+  boarded: boolean;
+  /** A fix good enough to act on alone; a rougher one moves the stops on only where the one before agrees. */
+  sure: boolean;
+}
+
+/**
+ * Where a fix puts the rider: the last stop reached and whether on board; null for a fix that says nothing here. It is
+ * looked for near where the rider was (a window from the last stop reached, growing with the time since the last fix),
+ * so a stray Wi-Fi fix far down the line, or on a bus's way back along the same street, is not taken.
+ */
+function byFix(leg: OnBoardLeg, state: OnBoardState, fix: RideFix, now: number): Placed | null {
   const accuracy = fix.accuracyM > 0 ? fix.accuracyM : 0;
   if (accuracy > ROUGH_FIX_M) return null;
   const line = along(leg);
-  const found = snap(line, fix.point);
+  const from = line.along[state.at];
+  const gapS = Math.max(0, (now - (state.fixAt ?? state.since)) / 1000);
+  const found = snap(line, fix.point, from - BEHIND_M, from + AHEAD_M + TRAIN_MS * gapS, 15, from);
   if (!found || found.offM > Math.max(OFF_LINE_M, 2 * accuracy)) return null;
-  const reach = Math.max(AT_STOP_M, accuracy / 2);
   let at = 0;
   line.along.forEach((m, i) => {
-    if (m <= found.alongM + reach) at = i;
+    // A stop is reached within AT_STOP_M of it (half a rough fix's accuracy), never more than 40% of the way from the
+    // stop before: stops a block apart are not all reached at once.
+    const gap = i > 0 ? m - line.along[i - 1] : Infinity;
+    if (m <= found.alongM + Math.min(Math.max(AT_STOP_M, accuracy / 2), 0.4 * gap)) at = i;
   });
-  const boarded = haversineM(fix.point, leg.stops[0].point) > Math.max(BOARDED_M, accuracy) && found.alongM > 0;
-  return { at, boarded };
+  const boarded = at >= 1 || (haversineM(fix.point, leg.stops[0].point) > Math.max(BOARDED_M, accuracy) && found.alongM > 0);
+  return { at, boarded, sure: accuracy <= AT_STOP_M };
 }
 
 /** Where the timetable puts the train `now`: the last stop it has left or reached. */
@@ -97,22 +121,29 @@ function byClock(leg: OnBoardLeg, boardedAt: number, now: number): number {
 
 /**
  * A fix (or none: the clock alone, from the ride screen's timer) into the leg. `said`: what the ride says now, in
- * order, through the rider's outputs (the voice, a screen reader).
+ * order, through the rider's outputs (the voice, a screen reader). A rough fix alone never brings the stop to get off
+ * nearer than two stops: the next one must agree before "Next stop" or "Get off here" is said.
  */
 export function onBoardStep(leg: OnBoardLeg, state: OnBoardState, now: number, fix: RideFix | null = null): { state: OnBoardState; said: string[] } {
   if (state.done) return { state, said: [] };
   const next: OnBoardState = { ...state };
   const said: string[] = [];
-  const placed = fix ? byFix(leg, fix) : null;
+  const last = leg.stops.length - 1;
+  const placed = fix ? byFix(leg, state, fix, now) : null;
   let estimated = false;
   if (placed) {
     next.fixAt = now;
-    if (placed.boarded && next.boardedAt === null) next.boardedAt = now;
-    if (next.boardedAt !== null) next.at = Math.max(next.at, placed.at);
+    const pending = state.pending ?? null;
+    const agreed = placed.sure || (pending !== null && pending.boarded && placed.boarded);
+    const at = placed.sure ? placed.at : pending && agreed ? Math.min(pending.at, placed.at) : Math.min(placed.at, last - 2);
+    if (placed.boarded && agreed && next.boardedAt === null) next.boardedAt = now;
+    if (next.boardedAt !== null) next.at = Math.max(next.at, at);
+    next.pending = placed.sure ? null : { at: placed.at, boarded: placed.boarded };
   } else if (now - (next.fixAt ?? next.since) >= STALE_MS) {
     // No fix that places the rider for a while (underground with no Wi-Fi): the timetable, from the boarding seen,
-    // else from the planned wait at the stop.
-    if (next.boardedAt === null && now - next.since >= leg.waitS * 1000 + STALE_MS) next.boardedAt = next.since + leg.waitS * 1000;
+    // else from the planned wait at the stop, or the last fix there if later (a train missed).
+    const planned = next.since + leg.waitS * 1000;
+    if (next.boardedAt === null && now - planned >= STALE_MS) next.boardedAt = Math.max(planned, next.fixAt ?? 0);
     if (next.boardedAt !== null) {
       const clock = byClock(leg, next.boardedAt, now);
       if (clock > next.at) {
@@ -121,11 +152,11 @@ export function onBoardStep(leg: OnBoardLeg, state: OnBoardState, now: number, f
       }
     }
   }
-  const last = leg.stops.length - 1;
   const off = leg.stops[last].name;
   if (next.boardedAt !== null && next.at >= last - 1 && !next.saidNext && next.at < last) {
     next.saidNext = true;
-    said.push(leg.bus ? t("Next stop: {name}. Press the stop button to get off there.", { name: off }) : t("Next stop: {name}. Get off there.", { name: off }));
+    if (estimated) said.push(t("Next stop should be {name}, by the timetable. Get off there.", { name: off }));
+    else said.push(leg.bus ? t("Next stop: {name}. Press the stop button to get off there.", { name: off }) : t("Next stop: {name}. Get off there.", { name: off }));
   }
   if (next.boardedAt !== null && next.at >= last) {
     next.done = true;

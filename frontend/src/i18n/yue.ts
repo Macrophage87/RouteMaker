@@ -1823,6 +1823,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Next stop: {name}. Get off there.": "下一站：{name}。喺嗰度落車。",
   "Next stop: {name}. Press the stop button to get off there.": "下一站：{name}。撳落車鐘，喺嗰度落車。",
   "{name} should be about now, by the timetable. Get off there.": "按時間表，而家大約到 {name}。喺嗰度落車。",
+  "Next stop should be {name}, by the timetable. Get off there.": "按時間表，下一站應該係 {name}。喺嗰度落車。",
   "Stops ahead": "前面嘅站",
   "get off": "落車",
   "next": "下一站",

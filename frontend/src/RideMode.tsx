@@ -1535,6 +1535,8 @@ export function RideMode({
       const state = onwardRef.current ?? onwardStart(onwardParts, now);
       if (!onwardActive(onwardParts, state)) return;
       const out = onwardStep(onwardParts, state, now, fix, prefsRef.current.verbosity);
+      // A part ended: the stay at the end counts from here, not from the platform (no fix may come underground).
+      if (out.state.index !== state.index) stay.current = null;
       onwardRef.current = out.state;
       setOnward(out.state);
       say(out.events);
@@ -1775,8 +1777,9 @@ export function RideMode({
       const beat = heartbeatFix(last, last?.at ?? 0, now);
       if (beat) onFixRef.current(beat, true);
     }
-    // On transit after the line, the clock places the train when no fix comes (lib/onBoard.ts).
-    if (rideRef.current.arrived && onwardActive(onwardParts, onwardRef.current) && onwardParts[onwardRef.current?.index ?? 0]?.kind === "transit") followOnward(null);
+    // After the line, the clock moves things on when no fix comes: the train's stops by the timetable, a walk not
+    // seen to end by its planned time (lib/onward.ts).
+    if (rideRef.current.arrived && onwardRef.current !== null && onwardActive(onwardParts, onwardRef.current)) followOnward(null);
     if (!rideRef.current.arrived || !stayedLong(stay.current, now)) return;
     // Never paused while a walk or a train after the line is still being followed: waiting on a platform is not the end.
     if (onwardActive(onwardParts, onwardRef.current ?? (onwardParts.length > 0 ? onwardStart(onwardParts, now) : null))) return;
@@ -2426,6 +2429,7 @@ export function RideMode({
   // The walk to the line's next turn, and after the line, the part followed now (lib/onward.ts).
   const approachTurn = walking && approach?.walk ? walkTurnLine(approach.walk, tripRef.current.walk ?? null) : null;
   const onwardIndex = onward?.index ?? 0;
+  const onwardDone = onwardParts.length > 0 && onwardIndex >= onwardParts.length;
   const onwardPart = ride.arrived ? (onwardParts[onwardIndex] ?? null) : null;
   const onwardWalkLine = onwardPart?.kind === "walk" ? walkTurnLine(onwardPart.model, onward?.walk ?? null) : null;
   // Still to board the first transit after the line (its departure and where its next train is are shown till then).
@@ -2843,9 +2847,11 @@ export function RideMode({
               <OnBoardCard leg={onwardPart.leg} state={onward.board} />
             ) : (
               <>
-                {onwardPart?.kind === "walk" && onwardIndex > 0 ? null : <p className="cue-text">{trip?.finish?.shown ?? arrivedShown(destinationName)}</p>}
+                {onwardPart?.kind === "walk" && onwardIndex > 0 ? null : (
+                  // Everything after the line done: arrived, never the line's end words again.
+                  <p className="cue-text">{onwardDone ? arrivedShown(destinationName) : (trip?.finish?.shown ?? arrivedShown(destinationName))}</p>
+                )}
                 {onwardWalkLine && <p className={onwardIndex > 0 ? "cue-text" : "cue-then"}>{onwardWalkLine}</p>}
-                {onwardPart?.kind === "transit" && <OnBoardCard leg={onwardPart.leg} state={onward?.board ?? null} />}
                 {/* The boarding's departure, its countdown and milestones as in the trip's panel (said through the ride's outputs). */}
                 {trip?.departure && toBoard && <DepartureTimer departure={trip.departure} announce={notify} />}
                 {/* Where the next Metro train or Metrobus is while waiting there (v0.9.0), its mark on the map. */}

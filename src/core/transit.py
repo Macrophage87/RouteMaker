@@ -1466,7 +1466,9 @@ def _stops_of(
         (schedule.stops[s].name, tuple(schedule.stops[s].point), round(o, 1))
         for s, o in zip(path, offsets, strict=True)
     )
-    end = schedule.stops[pattern.stops[-1]].name if pattern.stops else None
+    # A loop (a bus that ends where it began) has no way to name by its last stop.
+    loop = not pattern.stops or pattern.stops[0] == pattern.stops[-1]
+    end = None if loop else schedule.stops[pattern.stops[-1]].name
     return stops, end or None
 
 

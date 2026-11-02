@@ -1823,6 +1823,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Next stop: {name}. Get off there.": "Pwochen arè: {name}. Desann la.",
   "Next stop: {name}. Press the stop button to get off there.": "Pwochen arè: {name}. Peze bouton arè a pou desann la.",
   "{name} should be about now, by the timetable. Get off there.": "{name} ta dwe prèske kounye a, dapre orè a. Desann la.",
+  "Next stop should be {name}, by the timetable. Get off there.": "Dapre orè a, pwochen arè a ta dwe {name}. Desann la.",
   "Stops ahead": "Arè ki devan yo",
   "get off": "desann",
   "next": "pwochen",

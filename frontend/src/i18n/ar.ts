@@ -1823,6 +1823,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Next stop: {name}. Get off there.": "المحطة التالية: {name}. انزل هناك.",
   "Next stop: {name}. Press the stop button to get off there.": "المحطة التالية: {name}. اضغط زر التوقف لتنزل هناك.",
   "{name} should be about now, by the timetable. Get off there.": "حسب الجدول، يُفترض أن تصل إلى {name} الآن تقريبًا. انزل هناك.",
+  "Next stop should be {name}, by the timetable. Get off there.": "حسب الجدول، يُفترض أن تكون المحطة التالية {name}. انزل هناك.",
   "Stops ahead": "المحطات القادمة",
   "get off": "انزل",
   "next": "التالية",

@@ -1823,6 +1823,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Next stop: {name}. Get off there.": "ቀጣዩ ማቆሚያ፦ {name}። እዚያ ይውረዱ።",
   "Next stop: {name}. Press the stop button to get off there.": "ቀጣዩ ማቆሚያ፦ {name}። እዚያ ለመውረድ የማቆሚያ ቁልፉን ይጫኑ።",
   "{name} should be about now, by the timetable. Get off there.": "በጊዜ ሰሌዳው መሠረት {name} አሁን አካባቢ መሆን አለበት። እዚያ ይውረዱ።",
+  "Next stop should be {name}, by the timetable. Get off there.": "በጊዜ ሰሌዳው መሠረት ቀጣዩ ማቆሚያ {name} መሆን አለበት። እዚያ ይውረዱ።",
   "Stops ahead": "ከፊት ያሉ ማቆሚያዎች",
   "get off": "ይውረዱ",
   "next": "ቀጣይ",

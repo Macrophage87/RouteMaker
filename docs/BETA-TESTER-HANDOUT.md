@@ -251,6 +251,15 @@ method" have the same groups. Typing "transit",
   how riding the whole way compares.
 - On the map, a dashed line is the ride on transit, marked with its system's name. A dotted line
   is a walk.
+- In the steps, a train or bus step has its stops ("5 transit stops") and a walk its turns ("3 turns"),
+  closed until you press them. The boarding step names the way the line runs ("the Red Line toward
+  Shady Grove").
+- In Ride mode, walks are turn by turn, as rides are, and never "off route". Once the ride to a station
+  ends and you board, the screen lists the stops ahead and says "Next stop: Union Station. Get off there."
+  one stop before yours (on a bus, to press the stop button), then "Get off here". It places you by any
+  location the phone has, a rough Wi-Fi one underground too; with none for a while it goes by the
+  timetable and says so ("by the timetable"). The ride doesn't pause at the end while a walk or a
+  train after the ride is still being followed.
 - All times are "about" and scheduled, from the agencies' published timetables, except on a trip
   leaving now: there a Metro train or Metrobus bus you can reach in time for is WMATA's live
   prediction and says "live". The time on board stays the timetable's.

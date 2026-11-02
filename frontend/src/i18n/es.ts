@@ -2285,6 +2285,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Next stop: {name}. Get off there.": "Próxima parada: {name}. Bájese allí.",
   "Next stop: {name}. Press the stop button to get off there.": "Próxima parada: {name}. Presione el botón de parada para bajarse allí.",
   "{name} should be about now, by the timetable. Get off there.": "{name} debería ser más o menos ahora, según el horario. Bájese allí.",
+  "Next stop should be {name}, by the timetable. Get off there.": "Según el horario, la próxima parada debería ser {name}. Bájese allí.",
   "Stops ahead": "Paradas por delante",
   "get off": "bájese",
   "next": "próxima",

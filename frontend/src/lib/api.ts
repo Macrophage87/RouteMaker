@@ -473,7 +473,6 @@ export interface BikeshareStop {
   docks_available: number | null;
 }
 
-/** A walk leg (core.api.BikeshareWalkOut). */
 /** A walk's turn (2026-11-02, core.walk_turns): said in the rider's language with a ride's turn words (lib/walkCues.ts). */
 export interface WalkTurn {
   movement: "left" | "right" | "bear_left" | "bear_right" | "uturn";
@@ -482,6 +481,7 @@ export interface WalkTurn {
   point: LonLat;
 }
 
+/** A walk leg (core.api.BikeshareWalkOut). */
 export interface BikeshareWalk {
   geometry: { type: "LineString"; coordinates: LonLat[] };
   distance_m: number;
