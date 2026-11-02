@@ -261,6 +261,7 @@ import {
   walkLineTurns,
 } from "./lib/rideTrip.ts";
 import { onwardActive, onwardStart, onwardStep, type OnwardState } from "./lib/onward.ts";
+import { TRIP_CHECK_MS } from "./lib/tripCheck.ts";
 import { walkModel, walkTurnLine } from "./lib/walkCues.ts";
 import { OnBoardCard } from "./OnBoardCard.tsx";
 import { t } from "./lib/i18n.ts";
@@ -735,6 +736,7 @@ export function RideMode({
   keepLastRide = false,
   trip = null,
   onRideRest,
+  onTripCheck,
   fixed = false,
   onBroadcast = null,
   onBroadcastHold = null,
@@ -804,6 +806,11 @@ export function RideMode({
   trip?: RideTrip | null;
   /** Ride the rest: plans the trip's last riding leg from `here` and starts it; else the words to say why not. */
   onRideRest?: (here: LonLat | null) => Promise<string | null>;
+  /**
+   * A transit trip's check (lib/tripCheck.ts): planned again from `here`, leaving now, every TRIP_CHECK_MS till its first
+   * boarding; a quicker trip replaces this ride, a delay comes back as the words to say.
+   */
+  onTripCheck?: (here: LonLat) => Promise<string | null>;
   /**
    * The route everyone shares (the owner, 2026-10-18: "For sharing mass rides and group rides, rerouting defeats the
    * purpose. It should be fixed as everyone is using the same route"): off route, it is kept as Keep the planned route
@@ -2441,6 +2448,33 @@ export function RideMode({
   // Still to board the first transit after the line (its departure and where its next train is are shown till then).
   const firstTransit = onwardParts.findIndex((p) => p.kind === "transit");
   const toBoard = firstTransit < 0 || onwardIndex < firstTransit || (onwardIndex === firstTransit && (onward?.board?.boardedAt ?? null) === null);
+  // The transit trip checked till its first boarding (lib/tripCheck.ts); a share bike's only on the walk to its dock.
+  const tripCheckOpen = !!onTripCheck && firstTransit >= 0 && toBoard && (!trip?.shareBike || walking);
+  const tripCheckOpenRef = useRef(tripCheckOpen);
+  tripCheckOpenRef.current = tripCheckOpen;
+  const onTripCheckRef = useRef(onTripCheck);
+  onTripCheckRef.current = onTripCheck;
+  const tripChecking = !!onTripCheck;
+  useEffect(() => {
+    if (!tripChecking) return;
+    let busy = false;
+    const timer = setInterval(() => {
+      const check = onTripCheckRef.current;
+      if (busy || !check || !tripCheckOpenRef.current || ended.current || pausedRef.current) return;
+      const here = restFrom(tripRef.current.lastGood, Date.now());
+      if (!here) return;
+      busy = true;
+      void check(here)
+        .then((said) => {
+          if (said && !ended.current) notify(said);
+        })
+        .catch(() => {})
+        .finally(() => {
+          busy = false;
+        });
+    }, TRIP_CHECK_MS);
+    return () => clearInterval(timer);
+  }, [tripChecking, notify]);
   const destinationName = ride.arrived && !plan.current.loop ? (stopName?.(plan.current.points[plan.current.points.length - 1]) ?? null) : null;
   // The distance's metric in brackets a size smaller, so the line stays one line with large text.
   // A re-route's U-turn is now: no distance (it is at the line's start, behind the rider). One further along has its distance.
