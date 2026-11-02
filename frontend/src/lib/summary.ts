@@ -7,6 +7,7 @@ import { STRESS_TODAYS_TOP, TARGET_CEILING_RATIO } from "./dials.ts";
 import { detour, pathLengthM, type LonLat } from "./geo.ts";
 import { LOOP_START_NAME, loopNote } from "./loop.ts";
 import { mtbSaid } from "./mtbMode.ts";
+import { roadBikeNote } from "./roadBike.ts";
 import { outsideDcNote } from "./dcBoundary.ts";
 import { hazardsSaid } from "./massHazards.ts";
 import { roadHazardsSaid } from "./routeHazards.ts";
@@ -295,7 +296,7 @@ export function announceRoute(route: RouteResponse, points: readonly LonLat[] = 
     t("{distance}, {time} moving time, climb {climb}.", { distance: formatDistanceSpoken(route.distance_m), time: formatDurationSpoken(route.duration_s), climb: formatClimbSpoken(route.climb_m) });
   const others = !how.chosen && how.others ? othersSaid(how.others) : null;
   // A Mass Ride's rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3, 325: "announced"), after the junctions.
-  return [figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), others]
+  return [figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), roadBikeNote(route), others]
     .filter(Boolean)
     .join(" ");
 }

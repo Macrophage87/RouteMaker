@@ -519,7 +519,8 @@ services:
   # The Road Bike router (the owner, 2026-11-02: Road Bike replaces the Avoid gravel box):
   # gravel, dirt and winding trails priced for a road bike. Started as valhalla-offroad is, once
   # $RM_DATA/tiles/paved/current exists; until then the api answers Road Bike on the standard
-  # graph and says so. One worker in 320M, as valhalla-offroad.
+  # graph (`variant` standard), and the page warns the rider (frontend/src/lib/roadBike.ts).
+  # One worker in 320M, as valhalla-offroad.
   valhalla-paved:
     <<: *beta-yield
     profiles: ["offroad"]
