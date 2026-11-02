@@ -1865,6 +1865,15 @@ class BikeshareStopOut(Schema):
     docks_available: int | None = Field(description="Free slots; null: unknown or not a dock.")
 
 
+class WalkTurnOut(Schema):
+    """A walk's turn (2026-11-02, turn-by-turn on foot; `core.walk_turns`): the app says it
+    in the rider's language as it says a ride's turns."""
+
+    movement: Literal["left", "right", "bear_left", "bear_right", "uturn"]
+    street: str | None = Field(description="The street turned onto; null: a path or sidewalk.")
+    point: list[float] = Field(description="[lon, lat] of the turn.")
+
+
 class BikeshareWalkOut(Schema):
     """A walk leg (Valhalla pedestrian costing)."""
 
@@ -1872,6 +1881,10 @@ class BikeshareWalkOut(Schema):
     distance_m: float
     duration_s: float
     to: str = Field(description="Where it goes: a dock's name, or `your destination`.")
+    turns: list[WalkTurnOut] = Field(
+        default_factory=list,
+        description="Its turns in order, for turn-by-turn on foot (empty: none, or not asked).",
+    )
 
 
 class WalkInOut(Schema):
@@ -2627,6 +2640,15 @@ class TransitLiveOut(Schema):
     as_of: str = Field(description="When WMATA was read, local ISO time.")
 
 
+class TransitStopOut(Schema):
+    name: str
+    point: list[float] = Field(description="[lon, lat]")
+    after_s: int = Field(
+        description="Seconds after leaving the step's first stop, as scheduled (the timetable's"
+        " run times, scaled to the step's own ride time)."
+    )
+
+
 class TransitStepOut(Schema):
     mode: Literal[
         "ride",
@@ -2683,6 +2705,24 @@ class TransitStepOut(Schema):
             "[lon, lat] for the map: Metro and bus through their stops, walks straight, the far"
             " end's ride as routed; empty for the route line's own step."
         )
+    )
+    stops: list[TransitStopOut] | None = Field(
+        default=None,
+        description=(
+            "A transit step's stops in order, the one boarded and the one left included, for"
+            " stop-by-stop directions (2026-11-02). Null off transit."
+        ),
+    )
+    toward: str | None = Field(
+        default=None,
+        description='A transit step\'s way, by its last stop: "Shady Grove". Null off transit.',
+    )
+    turns: list[WalkTurnOut] | None = Field(
+        default=None,
+        description=(
+            "A walk's turns in order, where it was routed in time, for turn-by-turn on foot"
+            " (2026-11-02). Null otherwise."
+        ),
     )
     stress_spans: list[StressSpanOut] | None = Field(
         default=None,
