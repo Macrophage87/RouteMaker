@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
 import { followZoom } from "./lib/idleRecentre.ts";
+import { followMoveNeeded, mapPixelRatio } from "./lib/followCamera.ts";
 import { createPortal } from "react-dom";
 import { attachFeatureHover } from "./featureHoverCard.ts";
 import { attachTrailHighlight, withTrailHighlight } from "./lib/trailHighlight.ts";
@@ -12,13 +13,11 @@ import { Protocol } from "pmtiles";
 // file by `import.meta.url`, which a bundle does not preserve; Vite builds it
 // as an asset of its own here and the map is told where it is.
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
-import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
 import { COVERAGE_BBOX, type LonLat } from "./lib/geo.ts";
 import { constrainAbovePanel } from "./lib/coveredConstrain.ts";
 import { AT_ZOOM } from "./lib/planHash.ts";
 import { accuracyRing } from "./lib/geolocation.ts";
 import {
-  BASEMAP_SOURCE_ID,
   MAP_ATTRIBUTION,
   OPENING_ZOOM,
   STRESS_SOURCE_ID,
@@ -42,7 +41,13 @@ import {
   ROUTE_BAND_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, TRAIL_LABEL_LAYER_ID, mtbTrailsOn, rideRoadLabelField, rideTrailLabelField, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, withClearRoadLabels } from "./stressStyle.js";
+import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, TRAIL_LABEL_LAYER_ID, mtbTrailsOn, rideRoadLabelField, rideTrailLabelField, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, setDarkMap } from "./stressStyle.js";
+import { basemapLayers as flavourLayers, mapFlavourFor } from "./lib/mapFlavour.ts";
+import { useMapFlavour } from "./useMapFlavour.ts";
+import { themeIsDark } from "./lib/themeClock.ts";
+import { withDarkPaint } from "./lib/darkPaint.ts";
+import { CHOICE_CASING_LAYER, CHOICE_CASING_OPACITY, CHOICE_LINE_OPACITY } from "./lib/routeChoice.ts";
+import { setRideDotsFlavour } from "./lib/rideDotsLayer.ts";
 import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
 import {
   addStressOverlay,
@@ -55,6 +60,8 @@ import {
   mtbTrailPressed,
   runClick,
   ROUTE_STRESS_SOURCE_ID,
+  ROUTE_LANES_SOURCE_ID,
+  routeLaneLayers,
   runHover,
   routeLineData,
   setRouteSections,
@@ -78,7 +85,7 @@ import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
 import { ROUTE_NAME_LAYER_ID, ROUTE_NAME_SOURCE_ID, routeNameField, routeNameFeatures, routeNameLayer } from "./lib/routeNames.ts";
-import { addRailStations, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
+import { addRailStations, setRailFlavour, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
 import { setRideLabelOrder, type LabelHomes } from "./lib/rideLabelOrder.ts";
 import { RIDE_LABEL_SCALE, RIDE_SCALED_LABEL_LAYERS, scaledTextSize } from "./lib/rideLabelSize.ts";
 import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
@@ -166,7 +173,6 @@ import {
   closureFeatures,
   closuresOf,
   closuresUnderNames,
-  AREA_POLL_MS,
   areaClosuresAsk,
   closuresKey,
   viewInside,
@@ -186,8 +192,9 @@ import {
 } from "./lib/closureMap.ts";
 import { ViaHold } from "./lib/viaHold.ts";
 import { planLegLines, routeDrawnLines } from "./lib/planLegs.ts";
-import { browserCompassEnv, watchCompass } from "./lib/compassHeading.ts";
+import { browserCompassEnv, browserCompassLifetime, watchCompassAwhile } from "./lib/compassHeading.ts";
 import { t } from "./lib/i18n.ts";
+import { onSharedTick } from "./lib/sharedTick.ts";
 
 
 export type StressAvailability = "checking" | "available" | "unavailable";
@@ -313,6 +320,8 @@ interface Props {
   rail: RailVisibility;
   /** Why a station is closed all day with the toggles as they are, or null (railClosures.ts). */
   railClosedReason?: (station: Station) => string | null;
+  /** A station's card opened: the rail status asked now if stale, answered as the closed words (App, railInteraction.ts). */
+  railStatusNow?: () => Promise<((station: Station) => string | null) | null>;
   /** WMATA's badges on a station: an alert names it, an elevator there is out (railClosures.ts). */
   railBadges?: (station: Station) => StationBadges | null;
   /**
@@ -466,6 +475,18 @@ export const RIDER_AT = 2 / 3;
 export const FOLLOW_ZOOM = 16;
 const NO_PADDING = { top: 0, bottom: 0, left: 0, right: 0 };
 const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/**
+ * The map's bearing as a CSS variable on the ride's and Roam's compass itself (styles.css .ride-compass), not the
+ * document's root, so a turn restyles the needle alone, not the whole page each frame (the owner, 2026-11-01: battery
+ * audit). Set at each turn and each fix, so a compass just shown has it; an unchanged value is not written again.
+ */
+function showBearing(map: MapLibreMap): void {
+  const bearing = `${map.getBearing()}`;
+  for (const compass of document.querySelectorAll<HTMLElement>(".ride-compass")) {
+    if (compass.style.getPropertyValue("--map-bearing") !== bearing) compass.style.setProperty("--map-bearing", bearing);
+  }
+}
 
 /** The follow camera's offset from the map's middle that puts the rider `at` down the open band. */
 function riderOffset(container: HTMLElement, at: number): number {
@@ -678,6 +699,11 @@ export function MapView(props: Props) {
   const [areaClosures, setAreaClosures] = useState<ClosureItem[]>([]);
   const areaClosuresRef = useRef<ClosureItem[]>([]);
   areaClosuresRef.current = areaClosures;
+  // The base map's flavour (lib/mapFlavour.ts; the owner, 2026-11-01: battery audit): the one it opens in, then kept
+  // in line with the theme, a ride or Roam, and the light; the station icons' ring is drawn again for it.
+  const [openedFlavour] = useState(() =>
+    mapFlavourFor({ themeDark: themeIsDark(), onBike: props.rideLabels === true, now: Date.now() }),
+  );
 
   // The map itself, once.
   useEffect(() => {
@@ -685,8 +711,11 @@ export function MapView(props: Props) {
     registerPmtiles();
     const origin = window.location.origin;
     // The street names larger, darker and on a wider halo, so a stress line does not hide them (stressStyle.js, ROAD_LABEL).
-    const basemapLayers = withClearRoadLabels(protomapsLayers(BASEMAP_SOURCE_ID, namedFlavor("light"), { lang: "en" }));
-    const style = buildStyle(origin, basemapLayers);
+    // In the flavour the map opens in, dark or light (lib/mapFlavour.ts; the owner, 2026-11-01: battery audit), set
+    // before any overlay is added so each takes its colours for it; useMapFlavour keeps it after.
+    setDarkMap(openedFlavour === "dark");
+    const basemapLayers = flavourLayers(openedFlavour);
+    const style = buildStyle(origin, basemapLayers, openedFlavour);
     // What Ride mode's corridor prefetch asks for besides the tiles: the style's glyphs and sprite.
     // The labels' faces come with the app (lib/mapGlyphs.ts), so a kept ride fetches no glyphs for them.
     setCorridorStyle(style.glyphs, style.sprite, fontStacks(style.layers).filter((stack) => !bundledFace(stack)), () => stressTileTemplate(origin));
@@ -729,6 +758,9 @@ export function MapView(props: Props) {
         "NavigationControl.ResetBearing": t("Drag to rotate map, click to reset north"),
       },
       cooperativeGestures: false,
+      // Labels show at once, not faded in over frames after each move (the owner, 2026-11-01: battery audit), as the
+      // share card's map does (app/shareCardRender.ts).
+      fadeDuration: 0,
       // The labels' font comes with the app, not the base map (lib/mapGlyphs.ts).
       transformRequest: mapGlyphRequest,
     });
@@ -1292,8 +1324,8 @@ export function MapView(props: Props) {
 
     // A pan or zoom that got under way is not a long press.
     map.on("movestart", () => longPress.cancel());
-    // The map's bearing as a CSS variable, for the ride's compass (styles.css .ride-compass): no React render per frame.
-    const bearingVar = () => document.documentElement.style.setProperty("--map-bearing", `${map.getBearing()}`);
+    // The map's bearing as a CSS variable, for the ride's compass (showBearing): no React render per frame.
+    const bearingVar = () => showBearing(map);
     bearingVar();
     map.on("rotate", bearingVar);
 
@@ -1356,21 +1388,24 @@ export function MapView(props: Props) {
       // Go's other routes to choose from (lib/routeChoice.ts): under the route, fainter, each in its colour on a
       // white edge so it reads over the roads; a press on one chooses it (the click handler above).
       map.addSource(CHOICE_SOURCE, { type: "geojson", data: (callbacks.current.choices ?? NO_CHOICES) as never });
-      map.addLayer({
-        id: "route-choice-casing",
-        type: "line",
-        source: CHOICE_SOURCE,
-        filter: ["==", ["geometry-type"], "LineString"],
-        layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#ffffff", "line-width": 10, "line-opacity": 0.7 },
-      });
+      // Its edge solid on the dark map (lib/darkPaint.ts; the owner, 2026-11-01: battery audit).
+      map.addLayer(
+        withDarkPaint({
+          id: CHOICE_CASING_LAYER,
+          type: "line",
+          source: CHOICE_SOURCE,
+          filter: ["==", ["geometry-type"], "LineString"],
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: { "line-color": "#ffffff", "line-width": 10, "line-opacity": CHOICE_CASING_OPACITY },
+        }) as never,
+      );
       map.addLayer({
         id: CHOICE_LINE_LAYER,
         type: "line",
         source: CHOICE_SOURCE,
         filter: ["==", ["geometry-type"], "LineString"],
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.55 },
+        paint: { "line-color": ["get", "color"], "line-width": 6, "line-opacity": CHOICE_LINE_OPACITY },
       });
       map.addSource(ROUTE_SOURCE, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({
@@ -1396,6 +1431,10 @@ export function MapView(props: Props) {
       // reference layers are placed against, and the pointer's hit test is
       // made against the route's geometry, not against any layer, so a
       // second line layer changes nothing about grabbing or dragging it.
+      // The protected and painted lanes the route rides: the map's rails either side of the section, in the white
+      // band (lib/mapGlue.ts, routeLaneLayers; the owner, 2026-11-01). Filled by setRouteSections.
+      map.addSource(ROUTE_LANES_SOURCE_ID, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      for (const layer of routeLaneLayers()) map.addLayer(layer as never);
       map.addSource(ROUTE_STRESS_SOURCE, { type: "geojson", data: sectionFeatures(null) });
       // A one-pixel halo under each section, dark or white by class, so the
       // section is 3:1 from what touches it (lib/routeColours.ts, ROUTE_HALO_PATH).
@@ -1643,6 +1682,7 @@ export function MapView(props: Props) {
         pennColour: PENN_COLOUR,
         visibility: () => callbacks.current.rail,
         closedReason: (station) => callbacks.current.railClosedReason?.(station) ?? null,
+        statusNow: () => callbacks.current.railStatusNow?.() ?? Promise.resolve(null),
         pointCount: () => callbacks.current.points.length,
         loop: () => callbacks.current.loopVias === true,
         onStationPoint: (role, point, place) => callbacks.current.onStationPoint(role, point, place),
@@ -2108,6 +2148,17 @@ export function MapView(props: Props) {
     };
   }, [props.route]);
 
+  // After the map is made (its effect is above), so the hook finds it.
+  // The tunnel check reads the rider's last fix and the route ahead (lib/tunnelDark.ts).
+  const riderSpot = () => ({ at: callbacks.current.rider?.point ?? null, line: (callbacks.current.route?.geometry.coordinates as LonLat[] | undefined) ?? null });
+  // A new point is a new fix: the tunnel check runs on those only (lib/tunnelDark.ts tunnelCheckWait).
+  useMapFlavour(mapRef, loaded, props.rideLabels === true, openedFlavour, riderSpot, props.rider?.point ?? null, (dark) => {
+    if (!mapRef.current) return;
+    setRailFlavour(mapRef.current, RAIL_STATIONS, PENN_COLOUR, iconPixelRatio(), dark);
+    // The group ride's two-minute rings (lib/rideDotsLayer.ts), drawn at the same pixel ratio as RideGroup adds them.
+    setRideDotsFlavour(mapRef.current, iconPixelRatio(), dark);
+  });
+
   // The accessibility switch (or the system's request for more contrast):
   // the overlay's layers and the route's sections are painted again in place.
   // The legend and the stress bar are React and follow by useStressStyle.
@@ -2142,7 +2193,11 @@ export function MapView(props: Props) {
   // the rails' filters are set again in place, from the same tiles.
   useEffect(
     () =>
-      subscribeHighStressLanes(() => onLaneSwitch(mapRef.current, loaded.current, callbacks.current.when)),
+      subscribeHighStressLanes(() => {
+        onLaneSwitch(mapRef.current, loaded.current, callbacks.current.when);
+        // The route's lane marks follow the switch too (routeLaneMarks).
+        if (mapRef.current && loaded.current) setRouteSections(mapRef.current, callbacks.current.route, callbacks.current.stale, callbacks.current.routeColour ?? undefined);
+      }),
     [],
   );
 
@@ -2331,12 +2386,14 @@ export function MapView(props: Props) {
     };
     map.on("moveend", onMove);
     document.addEventListener("visibilitychange", onVisible);
-    const poll = window.setInterval(() => void refresh(true), AREA_POLL_MS);
+    // On the page's shared 5-minute boundaries (AREA_POLL_MS), with the weather and rail checks, so the radio wakes once
+    // (the owner, 2026-11-01: battery audit); none while hidden, and onVisible asks again on return.
+    const offPoll = onSharedTick(() => void refresh(true));
     void refresh(true);
     return () => {
       controller?.abort();
       window.clearTimeout(settle);
-      window.clearInterval(poll);
+      offPoll();
       map.off("moveend", onMove);
       document.removeEventListener("visibilitychange", onVisible);
     };
@@ -2391,10 +2448,12 @@ export function MapView(props: Props) {
       const item = group[0];
       // The spot's worst: red over amber, a closure still in the way over one routed through.
       const shown = group.find((i) => !i.bypassed && i.severity === "red") ?? group.find((i) => !i.bypassed) ?? item;
+      // A spot holding only potential closures (Plan's Potential closures layer) gets its own, lighter barrier.
+      const possible = group.every((i) => i.effect === "possible");
       const element = button(
-        `closure-marker closure-${shown.bypassed ? "bypassed" : shown.severity}`,
+        `closure-marker closure-${shown.bypassed ? "bypassed" : shown.severity}${possible ? " closure-possible" : ""}`,
         closuresMarkerName(group),
-        shown.bypassed ? bypassedMarkSvg() : barrierSvg(shown.severity),
+        shown.bypassed ? bypassedMarkSvg() : possible ? possibleBarrierSvg(shown.severity) : barrierSvg(shown.severity),
         group.length,
       );
       element.addEventListener("click", (event) => {
@@ -2624,7 +2683,7 @@ export function MapView(props: Props) {
   const riding = !!props.rider;
   useEffect(() => {
     if (!riding || !props.headingUp || gpsHeadingSeen.current) return;
-    stopCompass.current = watchCompass(browserCompassEnv(), (deg) => {
+    stopCompass.current = watchCompassAwhile(browserCompassEnv(), (deg) => {
       compassDeg.current = deg;
       const map = mapRef.current;
       const now = callbacks.current;
@@ -2640,7 +2699,9 @@ export function MapView(props: Props) {
       compassMovedAt.current = at;
       const ahead = riderOffset(map.getContainer(), RIDER_AT);
       map.easeTo({ center: rider.point, bearing: deg, offset: [0, ahead], padding: NO_PADDING, duration: still ? 0 : 200 });
-    });
+      // Stopped 2 minutes on, or once the page is hidden, with no GPS heading yet (the owner, 2026-11-01: battery
+      // audit): the last heading it gave stays the map's until GPS has one.
+    }, browserCompassLifetime());
     return () => {
       stopCompass.current?.();
       stopCompass.current = null;
@@ -2673,6 +2734,8 @@ export function MapView(props: Props) {
     } else {
       riderMarker.current.setLngLat(rider.point);
     }
+    // A compass shown since the last turn (a ride from Roam's detour) gets the bearing the map has.
+    showBearing(map);
     if (rider.headingDeg !== null && !gpsHeadingSeen.current) {
       // Moving: GPS has the heading from now on, and the compass stops.
       gpsHeadingSeen.current = true;
@@ -2703,6 +2766,7 @@ export function MapView(props: Props) {
     const reset = props.followReset !== resetSeen.current;
     resetSeen.current = props.followReset;
     const zoom = followZoom(reset, following.current, map.getZoom(), FOLLOW_ZOOM);
+    const first = !following.current;
     following.current = true;
     // A moving map once a second is too much for some: with reduced motion asked for, it jumps.
     const still = reducedMotion();
@@ -2711,8 +2775,37 @@ export function MapView(props: Props) {
     // open band (with Large text the card covers half the map, 2026-10-20).
     // Padding left by the planner's framing (a junction or the chart's scrub) is cleared, so the offset is from the middle.
     const ahead = riderOffset(map.getContainer(), props.headingUp ? RIDER_AT : 1 / 2);
+    // A move that would not show is skipped, so a rider stood at a light does not redraw the map every fix (the
+    // owner, 2026-11-01: battery audit; lib/followCamera.ts). The marker above has moved already.
+    const box = map.getContainer();
+    const padding = map.getPadding();
+    const onScreen = map.project(rider.point);
+    if (
+      !followMoveNeeded({
+        riderPx: [onScreen.x, onScreen.y],
+        targetPx: [box.clientWidth / 2, box.clientHeight / 2 + ahead],
+        bearingNow: map.getBearing(),
+        bearingWant: bearing,
+        zoomNow: map.getZoom(),
+        zoomWant: zoom,
+        first: first || reset,
+        unsettled: map.isMoving() || padding.top !== 0 || padding.bottom !== 0 || padding.left !== 0 || padding.right !== 0,
+      })
+    ) {
+      return;
+    }
     map.easeTo({ center: rider.point, bearing, zoom, offset: [0, ahead], padding: NO_PADDING, duration: still ? 0 : 400 });
   }, [props.rider, props.follow, props.headingUp, props.followReset]);
+
+  // A ride or Roam (rideLabels: App's onBike) draws the map at a pixel ratio of at most 2, and its end gives the
+  // screen's own back (the owner, 2026-11-01: battery audit; lib/followCamera.ts). The icons keep their own ratio
+  // (iconPixelRatio), which MapLibre scales to the map's, so they stay their size.
+  const onBike = Boolean(props.rideLabels);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (map.getPixelRatio() !== mapPixelRatio(window.devicePixelRatio, onBike)) map.setPixelRatio(mapPixelRatio(window.devicePixelRatio, onBike));
+  }, [onBike]);
 
   // In a ride the street names are larger and shortened ("R St NW"), to be read at a glance (the owner, 2026-10-20),
   // and go back after.
@@ -3094,6 +3187,23 @@ function barrierSvg(severity: "red" | "amber"): string {
     `<rect x="5" y="9" width="18" height="7" rx="1" fill="${colour}"/>` +
     '<path d="M8 9l-3 7M13 9l-3 7M18 9l-3 7M23 9l-3 7" stroke="#ffffff" stroke-width="2"/>' +
     `<path d="M8 16v6M20 16v6" stroke="${colour}" stroke-width="2"/>` +
+    "</svg>"
+  );
+}
+
+/**
+ * A potential closure (a permit or planned work that may close the road some day in its window): the same barrier,
+ * but on a dashed ring with a question mark, so it never reads as a closure in force (Stephen, 2026-11-01).
+ */
+function possibleBarrierSvg(severity: "red" | "amber"): string {
+  const colour = severity === "amber" ? LANE_AMBER : CLOSED_RED;
+  return (
+    '<svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true" focusable="false">' +
+    `<circle cx="14" cy="14" r="12.5" fill="#ffffff" stroke="${colour}" stroke-width="2" stroke-dasharray="4 3"/>` +
+    `<rect x="4.5" y="11" width="12" height="6" rx="1" fill="${colour}"/>` +
+    '<path d="M8 11l-2.5 6M12 11l-2.5 6M16 11l-2 5" stroke="#ffffff" stroke-width="1.6"/>' +
+    `<path d="M7.5 17v4.5M14 17v4.5" stroke="${colour}" stroke-width="2"/>` +
+    `<text x="20.5" y="17" text-anchor="middle" font-size="10" font-weight="700" font-family="Atkinson Hyperlegible, sans-serif" fill="${colour}">?</text>` +
     "</svg>"
   );
 }

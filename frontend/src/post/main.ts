@@ -6,6 +6,11 @@
  * (lib/i18n.ts loadLanguage), as in the app's main.tsx, since the page's modules word some labels as they load.
  */
 import { language, loadLanguage } from "../lib/i18n.ts";
+import { followTheme } from "../lib/themeClock.ts";
+
+// The app's theme and the rider's Colors choice here too: the app's stylesheet, which comes with the charts, takes its
+// colours from the class, and so does the page's own CSS once it is set (core/route_posts.py STYLE).
+followTheme();
 
 void (language() === "es" ? loadLanguage("es") : Promise.resolve())
   .then(() => import("./postPage.tsx"))

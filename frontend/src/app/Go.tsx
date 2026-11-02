@@ -35,6 +35,7 @@ import {
   workOf,
   type FavoritePlace,
 } from "../lib/favoritePlaces.ts";
+import { savedPlacesFor } from "../lib/savedPlaceSearch.ts";
 import { t } from "../lib/i18n.ts";
 
 export type GoSheetSize = "peek" | "half" | "full";
@@ -744,7 +745,7 @@ export function GoSheet({
           </button>
         )}
         <div id={newId} className="go-new-body" hidden={!whereShown}>
-        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} origin={searchOrigin} onPick={(place: Place, _choice: PlaceChoice) => pickWhereTo(place)} onTopPlace={onTopPlace} onFocusBox={onWhereToFocus} />
+        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} origin={searchOrigin} onPick={(place: Place, _choice: PlaceChoice) => pickWhereTo(place)} savedFor={(query: string) => savedPlacesFor(query, places.home, places.favorites)} onTopPlace={onTopPlace} onFocusBox={onWhereToFocus} />
         <div className="chip-row go-places" role="group" aria-label={t("Places")}>
           {places.signedIn ? (
             // Signed in, Home is the first of the rider's favorites (Stephen 2026-10-26: "just have a favorites replace home").
