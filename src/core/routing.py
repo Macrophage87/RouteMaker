@@ -4046,8 +4046,9 @@ def walk_leg(
     if prefer_walkways:
         pedestrian["sidewalk_factor"] = WALKWAY_PREFERENCE
         pedestrian["walkway_factor"] = WALKWAY_PREFERENCE
-    # Its maneuvers and the router's other ways, priced for their crossings and the roads
-    # walked with no sidewalk (`walk_turns.walked`, 2026-11-02).
+    # Its maneuvers; the router's own way, not priced among others (`walk_pricing`): a walk-in
+    # or a walk past a busy stretch is a few hundred metres, checked inside a small budget,
+    # and a longer way round could fail the checks the router's own way passes.
     payload = walk_turns.directions(
         {
             "locations": [{"lon": p[0], "lat": p[1], "type": "break"} for p in (a, b)],
@@ -4056,6 +4057,7 @@ def walk_leg(
             "units": "kilometers",
         }
     )
+    payload.pop("alternates", None)
     capped = Deadline(deadline.at, min(deadline.per_call_s, WALK_IN_CALL_S))
     try:
         answer = _call(Variant.STANDARD.value, "route", payload, capped)
@@ -4065,10 +4067,10 @@ def walk_leg(
         return None
     except (DeadlineExceeded, RouterUnavailable):
         return None
-    found = walk_turns.walked(answer, walk_asker(capped), payload)
-    if found is None:
+    legs = (answer.get("trip") or {}).get("legs") or []
+    if not legs:
         return None
-    leg, crossings = found
+    leg = legs[0]
     metres = float((leg.get("summary") or {}).get("length", 0.0)) * 1000.0
     if metres > WALK_IN_MAX_M:
         return None
@@ -4080,25 +4082,36 @@ def walk_leg(
         },
         "distance_m": round(metres, 1),
         "duration_s": round(float((leg.get("summary") or {}).get("time", 0.0)), 1),
-        # Its turns and the crossings it says, for turn-by-turn on foot (2026-11-02).
-        "turns": walk_turns.turns_of(leg, shape, crossings),
+        # Its turns, for turn-by-turn on foot (2026-11-02).
+        "turns": walk_turns.turns_of(leg, shape),
     }
 
 
 # The least time left for one more router call in pricing a walk (`walk_asker`): a trace or a
 # `/locate` of a short walk. With less, the walk is taken as the router gave it.
 WALK_PRICE_MIN_LEFT_S = 0.5
+# The most one walk's pricing may take in all (its traces and its `/locate`), and any one of
+# its calls: a short walk's trace is tens of milliseconds, so a slow router costs a walk its
+# pricing, never the plan its time.
+WALK_PRICE_BUDGET_S = 1.5
+WALK_PRICE_CALL_S = 1.0
 
 
 def walk_asker(deadline: Deadline, variant: str = Variant.STANDARD.value):
     """The router, as `walk_pricing` asks it (`walk_pricing.Ask`): its answer, or None where it
-    refused, could not be reached or no time is left, so a walk is never lost to its pricing."""
+    refused, could not be reached or no time is left, so a walk is never lost to its pricing.
+    All its calls together are held to WALK_PRICE_BUDGET_S from now, within `deadline`."""
+
+    budget = Deadline(
+        min(deadline.at, clock() + WALK_PRICE_BUDGET_S),
+        min(deadline.per_call_s, WALK_PRICE_CALL_S),
+    )
 
     def ask(action: str, payload: dict):
-        if deadline.at - clock() < WALK_PRICE_MIN_LEFT_S:
+        if budget.at - clock() < WALK_PRICE_MIN_LEFT_S:
             return None
         try:
-            return _call(variant, action, payload, deadline)
+            return _call(variant, action, payload, budget)
         except (RouterRefused, RouterUnavailable, DeadlineExceeded) as error:
             logger.info("a walk's %s was not answered: %s", action, error)
             return None

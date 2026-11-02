@@ -74,14 +74,19 @@ class TestLevels:
 
 
 class TestRead:
-    def test_walking_a_road_with_no_sidewalk_costs_more_the_busier_it_is(self) -> None:
+    def test_walking_a_main_road_with_no_sidewalk_costs_more_the_busier_it_is(self) -> None:
+        # A neighbourhood street's sidewalk is seldom mapped on it: never charged.
         quiet = walk_pricing.read(trace(edge("road", 0.1, "residential")), SPM)
+        medium = walk_pricing.read(trace(edge("road", 0.1, "tertiary")), SPM)
         busy = walk_pricing.read(trace(edge("road", 0.1, "primary")), SPM)
         sidewalk = walk_pricing.read(trace(edge("road", 0.1, "primary", sidewalk="both")), SPM)
         path = walk_pricing.read(trace(edge("footway", 0.1)), SPM)
-        assert quiet.roadside_s == round(100 * SPM * walk_pricing.ROADSIDE_FACTORS[QUIET], 1)
+        assert quiet.roadside_s == 0
+        assert medium.roadside_s == round(100 * SPM * walk_pricing.ROADSIDE_FACTORS[MEDIUM], 1)
         assert busy.roadside_s == round(100 * SPM * walk_pricing.ROADSIDE_FACTORS[BUSY], 1)
-        assert busy.roadside_s > quiet.roadside_s > 0
+        assert busy.roadside_s > medium.roadside_s > 0
+        # Nor an alley, which the router prices itself.
+        assert walk_pricing.read(trace(edge("alley", 0.1, "service_other")), SPM).roadside_s == 0
         assert sidewalk.roadside_s == path.roadside_s == 0
 
     def test_a_crosswalk_across_a_busy_road_with_a_signal_costs_nothing(self) -> None:
@@ -182,6 +187,33 @@ class TestRead:
             SPM,
         )
         assert turning.crossings == ()
+
+    def test_straight_on_is_read_by_heading_where_the_street_changes_name(self) -> None:
+        # South Broadway to North Broadway across a busy street: straight on, so crossed.
+        here = edge(
+            "road", 0.05, "secondary", names=["South Broadway"], roads=[("secondary", "road")] * 2
+        )
+        there = edge("road", 0.05, "secondary", names=["North Broadway"])
+        here["end_heading"], there["begin_heading"] = 2.0, 358.0
+        reading = walk_pricing.read(trace(here, there), SPM)
+        assert [c.level for c in reading.crossings] == [BUSY]
+        # A turn by heading is not, whatever the names.
+        here2 = edge("road", 0.05, "secondary", names=["F St"], roads=[("secondary", "road")])
+        there2 = edge("road", 0.05, "secondary", names=["F St"])
+        here2["end_heading"], there2["begin_heading"] = 0.0, 90.0
+        assert walk_pricing.read(trace(here2, there2), SPM).crossings == ()
+
+    def test_a_quiet_signalled_half_never_signals_a_busy_unsignalled_one(self) -> None:
+        reading = walk_pricing.read(
+            trace(
+                edge("footway", roads=[("residential", "road")], node_signal=True),
+                edge("footway", 0.012, roads=[("primary", "road")] * 2),
+                edge("footway"),
+            ),
+            SPM,
+        )
+        [crossing] = reading.crossings
+        assert crossing.level == BUSY and not crossing.signal
 
     def test_a_footway_meeting_only_paths_is_no_crossing(self) -> None:
         reading = walk_pricing.read(
@@ -312,3 +344,40 @@ def test_the_router_asker_gives_none_where_the_router_does_not_answer(monkeypatc
     assert ask("trace_attributes", {}) is None
     late = routing.walk_asker(routing.Deadline(routing.clock() + 0.1, 5))
     assert late("trace_attributes", {}) is None
+
+
+def test_a_walks_pricing_is_held_to_its_own_budget(monkeypatch) -> None:
+    held = []
+
+    def answer(_variant, _action, _payload, deadline):
+        held.append(deadline)
+        return {}
+
+    monkeypatch.setattr(routing, "_call", answer)
+    now = routing.clock()
+    routing.walk_asker(routing.Deadline(now + 60, 10))("trace_attributes", {})
+    [deadline] = held
+    assert deadline.at <= now + routing.WALK_PRICE_BUDGET_S + 0.5
+    assert deadline.per_call_s == routing.WALK_PRICE_CALL_S
+
+
+def test_a_walk_in_is_the_routers_own_way_unpriced(monkeypatch) -> None:
+    asked = []
+
+    def answer(_variant, action, payload, _deadline):
+        asked.append((action, payload))
+        shape = [(p["lon"], p["lat"]) for p in payload["locations"]]
+        return {
+            "trip": {
+                "legs": [
+                    {"shape": encode_polyline6(shape), "summary": {"length": 0.3, "time": 225.0}}
+                ]
+            }
+        }
+
+    monkeypatch.setattr(routing, "_call", answer)
+    walked = routing.walk_leg(
+        [-77.0, 38.9], [-77.0, 38.902], routing.Deadline(routing.clock() + 30, 10)
+    )
+    assert walked is not None
+    assert [a for a, _p in asked] == ["route"] and "alternates" not in asked[0][1]

@@ -222,9 +222,6 @@ class TestRouterCalls:
         payloads = []
 
         def fake_call(variant, action, payload, _deadline):
-            if action != "route":
-                # A walk's pricing (`walk_pricing`): refused, so the router's way is walked.
-                raise routing.RouterRefused(400, None, "not in this test")
             payloads.append(payload)
             shape = [(p["lon"], p["lat"]) for p in payload["locations"]]
             summary = {"length": 0.3, "time": 225.0}

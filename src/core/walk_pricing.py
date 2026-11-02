@@ -18,9 +18,10 @@ walking time plus these charges is least:
   junction model reads from the segment table), so the class is the busy test here.
 - A slip lane crossed with no signal (`SLIP_LANE_S`): a minute more, whatever its class:
   turning traffic comes fast round it and seldom looks.
-- Walking along a carriageway with no sidewalk mapped: each second on it costs
-  `ROADSIDE_FACTORS` more by how busy the road is (`roadside_level`), a quarter more on a
-  quiet street, as much again on a collector, three times more on a busy road.
+- Walking along a main road's carriageway with no sidewalk mapped: each second on it costs
+  `ROADSIDE_FACTORS` more by how busy the road is (`roadside_level`), as much again on a
+  collector, three times more on a busy road. A neighbourhood street is not charged: its
+  sidewalks are seldom mapped on it, so "none mapped" would charge nearly every one.
 
 A signal is the router's flag on the crossing's own nodes and edges, which a signalled
 crosswalk carries (`highway=traffic_signals`, written onto `crossing=traffic_signals` nodes by
@@ -56,6 +57,8 @@ TRACE_ATTRIBUTES = (
     "edge.lane_count",
     "edge.traffic_signal",
     "edge.names",
+    "edge.begin_heading",
+    "edge.end_heading",
     "edge.begin_shape_index",
     "edge.end_shape_index",
     "node.traffic_signal",
@@ -91,7 +94,7 @@ MEDIUM_CLASSES = frozenset({"tertiary", "unclassified"})
 UNSIGNALLED_S = {BUSY: 120.0, SEVERE: 240.0}
 UNMARKED_S = 60.0
 SLIP_LANE_S = 60.0
-ROADSIDE_FACTORS = {QUIET: 0.25, MEDIUM: 1.0, BUSY: 3.0, SEVERE: 3.0}
+ROADSIDE_FACTORS = {QUIET: 0.0, MEDIUM: 1.0, BUSY: 3.0, SEVERE: 3.0}
 # A road this fast (posted, km/h) or with this many lanes in the walk's direction is busy to
 # walk along, whatever its class (`intersections.TRAFFIC_HEAVY_MPH`, 30 mph; two lanes a way,
 # `TRAFFIC_MULTILANE_EACH_WAY`); from MEDIUM_KPH (25 mph) a collector.
@@ -241,10 +244,15 @@ def read(trace: dict, seconds_per_m: float) -> Reading:
     for edge in edges:
         if _walkway(edge) or str(edge.get("sidewalk") or "none") in ("left", "right", "both"):
             continue
-        if str(edge.get("use") or "") in ("driveway", "alley", "parking_aisle", "ferry"):
+        if str(edge.get("use") or "") not in ("road", SLIP_LANE_USE):
+            continue
+        level = roadside_level(edge)
+        if level == QUIET:
+            # A neighbourhood street's sidewalk is seldom mapped on it (OSM's `sidewalk=*`):
+            # read as none, every street would be charged. Only a main road is.
             continue
         metres = float(edge.get("length") or 0.0) * 1000.0
-        roadside += metres * seconds_per_m * ROADSIDE_FACTORS[roadside_level(edge)]
+        roadside += metres * seconds_per_m * ROADSIDE_FACTORS[level]
 
     crossings: list[Crossing] = []
     taken: set[int] = set()  # node indices (the end of edges[i]) already in a crossing
@@ -291,7 +299,7 @@ def read(trace: dict, seconds_per_m: float) -> Reading:
         elif not _walkway(here) and not _walkway(there):
             # Along a carriageway, straight on past a side road: it crosses that road. A turn
             # off it is not read as a crossing (it may be onto the near side).
-            if not _same_way(here, there):
+            if not _straight_on(here, there):
                 continue
         else:
             continue
@@ -321,7 +329,8 @@ SAME_CROSSING_M = 30.0
 def _merged(crossings: list[Crossing]) -> list[Crossing]:
     """`crossings` (in order along the walk) with each run of crossings within SAME_CROSSING_M
     of the one before made one: its busiest road, a signal where either half has one (a
-    junction's signal is often mapped on one node), a crosswalk where either is. A slip lane
+    junction's signal is often mapped on one node; the busier road's own where one is busier), a
+    crosswalk where either is. A slip lane
     is never merged with its road: each is crossed and said on its own."""
     out: list[Crossing] = []
     for crossing in crossings:
@@ -331,11 +340,16 @@ def _merged(crossings: list[Crossing]) -> list[Crossing]:
             and crossing.m - last.m <= SAME_CROSSING_M
             and crossing.slip == last.slip
         ):
+            busier = crossing if crossing.level > last.level else last
             out[-1] = Crossing(
                 m=last.m,
-                point=last.point,
-                level=max(last.level, crossing.level),
-                signal=last.signal or crossing.signal,
+                point=busier.point,
+                level=busier.level,
+                # Where both are as busy, a signal on either is the junction's; else the
+                # busier road's own.
+                signal=(last.signal or crossing.signal)
+                if crossing.level == last.level
+                else busier.signal,
                 marked=last.marked or crossing.marked,
                 slip=last.slip,
                 own=last.own | crossing.own,
@@ -351,12 +365,21 @@ def _names(edges: Sequence[dict]) -> frozenset[str]:
     )
 
 
-def _same_way(a: dict, b: dict) -> bool:
+# A walk along a carriageway that bends less than this at a junction goes straight on across
+# the side road (a street's name may change there: South to North Broadway).
+STRAIGHT_DEG = 40.0
+
+
+def _straight_on(a: dict, b: dict) -> bool:
+    """Whether the walk goes straight on from edge `a` to edge `b`: by their headings, and
+    where the router gave none, by a name the two share."""
+    end, begin = a.get("end_heading"), b.get("begin_heading")
+    if isinstance(end, (int, float)) and isinstance(begin, (int, float)):
+        turn = abs((float(begin) - float(end) + 180.0) % 360.0 - 180.0)
+        return turn < STRAIGHT_DEG
     names_a = {n for n in a.get("names") or [] if isinstance(n, str)}
     names_b = {n for n in b.get("names") or [] if isinstance(n, str)}
-    if names_a or names_b:
-        return bool(names_a & names_b)
-    return a.get("road_class") == b.get("road_class")
+    return bool(names_a & names_b)
 
 
 Ask = Callable[[str, dict], object]
