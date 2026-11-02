@@ -145,5 +145,7 @@ export function loopNote(route: Pick<RouteResponse, "loop">): string | null {
  * the API finds a loop about that long from the start (core/run_plan.py target_loop).
  */
 export function runLoopFromStart(preset: PresetId, points: readonly LonLat[], dials: Pick<Dials, "loop" | "targetDistanceM">): boolean {
-  return runs(preset) && points.length === 1 && dials.loop === true && fitTarget(dials.targetDistanceM) !== undefined;
+  const target = fitTarget(dials.targetDistanceM);
+  // A target kept from a longer ride is past a run loop's 50 km (core/run_plan.py RUN_TARGET_MAX_M).
+  return runs(preset) && points.length === 1 && dials.loop === true && target !== undefined && target <= 50_000;
 }

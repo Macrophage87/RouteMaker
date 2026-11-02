@@ -10,7 +10,7 @@ const panel = read("../app/PlanPanel.tsx");
 
 test("Plan routes on its Route button; Go routes at once; a link, a file or Undo after Clear opens drawn", () => {
   assert.match(app, /const planFirst = mode === "plan" && !riding;/);
-  assert.match(app, /const \[routeAsk, setRouteAsk\] = useState\(initialPlan\.points\.length >= 2 \? 1 : 0\);/);
+  assert.match(app, /const \[routeAsk, setRouteAsk\] = useState\(initialPlan\.points\.length >= 2 \|\| runLoopFromStart\(initialPlan\.preset, initialPlan\.points, initialPlan\.dials\) \? 1 : 0\);/);
   assert.match(app, /if \(planFirst && !pressed && !backToDrawn\) return;/);
   assert.match(app, /\}, \[points, preset, planDials, planKey, confirmedKm, routeAsk, planFirst\]\);/);
   // A link and an opened file are routed as they open.

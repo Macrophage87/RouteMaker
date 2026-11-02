@@ -126,6 +126,8 @@
 	redir @preset-walk /#preset=walk 302
 	@preset-walk-transit path /walk-transit /walk-transit/
 	redir @preset-walk-transit /#preset=walk-transit 302
+	@preset-run path /run /run/
+	redir @preset-run /#preset=run 302
 
 	# Django's collected assets, from the volume `collectstatic` writes and this
 	# service mounts read-only (${DATA_ROOT}/static -> /srv/static). STATIC_URL

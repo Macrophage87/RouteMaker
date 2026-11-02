@@ -39,6 +39,7 @@ from datetime import datetime
 
 from routemaker import deer_closures
 from routemaker.geo import Point, haversine
+from routemaker.lang import t
 from routemaker.ridetime import NIGHT
 
 from . import presets, refine, routing, transit, walk_pricing, walk_turns
@@ -89,10 +90,16 @@ SAMPLE_M = 20.0
 # The most one router call of a run may take, and all of a run's calls together.
 CALL_S = 6.0
 BUDGET_S = 30.0
+# More legs than this, and each leg is the router's own way, without alternates.
+MANY_LEGS = 4
 
 
 class NoRun(Exception):
     """No run could be planned between the points (the router found no way on foot)."""
+
+
+class RunTimedOut(NoRun):
+    """The run's router calls ran out of time before a way was found: busy, not no way."""
 
 
 class RouterDown(NoRun):
@@ -120,6 +127,8 @@ class Walked:
     turns: list[dict]
     reading: walk_pricing.Reading | None
     score: float
+    leg: dict | None = None
+    crossings: list = field(default_factory=list)
 
 
 @dataclass
@@ -195,6 +204,7 @@ class Router:
         self._call = call or _router_call
         self.calls = 0
         self.answered = 0
+        self.timed_out = False
 
     def left(self) -> float:
         return self.until - routing.clock()
@@ -204,6 +214,7 @@ class Router:
         (`walk_pricing.Ask`)."""
         left = self.left()
         if left <= 0.3:
+            self.timed_out = True
             return None
         self.calls += 1
         try:
@@ -213,7 +224,11 @@ class Router:
             self.answered += 1
             logger.info("a run's %s was refused: %s", action, refused)
             return None
-        except (routing.RouterUnavailable, routing.DeadlineExceeded) as error:
+        except routing.DeadlineExceeded as error:
+            self.timed_out = True
+            logger.info("a run's %s ran out of time: %s", action, error)
+            return None
+        except routing.RouterUnavailable as error:
             logger.info("a run's %s was not answered: %s", action, error)
             return None
         self.answered += 1
@@ -276,11 +291,20 @@ def run_leg(
     summary = leg.get("summary") or {}
     seconds = float(summary.get("time") or 0.0)
     metres = float(summary.get("length") or 0.0) * 1000.0
-    crossings = walk_pricing.crossing_turns(chosen.crossings, router.ask) if say_crossings else []
-    turns = walk_turns.turns_of(leg, shape, crossings, max_turns=MAX_TURNS)
     reading = chosen.reading
     score = weigh(seconds, reading) if reading is not None else seconds
-    return Walked(shape, seconds, metres, turns, reading, score)
+    walked = Walked(shape, seconds, metres, [], reading, score, leg, list(chosen.crossings))
+    return said(router, walked) if say_crossings else _turned(walked, [])
+
+
+def _turned(walked: Walked, crossings: list) -> Walked:
+    turns = walk_turns.turns_of(walked.leg or {}, walked.shape, crossings, max_turns=MAX_TURNS)
+    return replace(walked, turns=turns)
+
+
+def said(router: Router, walked: Walked) -> Walked:
+    """The leg's turns with its crossings said (one `/locate`), for a leg kept."""
+    return _turned(walked, walk_pricing.crossing_turns(walked.crossings, router.ask))
 
 
 # --- Loops ------------------------------------------------------------------------------------
@@ -498,15 +522,11 @@ def target_loop(router: Router, start, ask: RunAsk) -> tuple[Walked | None, dict
     if rank[0] and router.left() >= 2.0:
         tried(bearing, side_m * target / walked.metres)
         found.sort(key=lambda f: f[0])
-    _rank, walked, bearing, side_m = found[0]
-    # Its crossings said, now it is chosen (one `/locate`).
-    said = run_leg(router, triangle(start, bearing, side_m), ask, alternates=0)
-    if said is not None and abs(said.metres - walked.metres) < 1.0:
-        walked = said
-    spur = self_overlap(walked.shape)
+    walked = said(router, found[0][1])
+    # No way out and way back to compare: what the loop runs twice is in its rank, not its note.
     return walked, {
-        "overlap_pct": round(100.0 * spur, 1),
-        "shared_m": round(spur * walked.metres, 1),
+        "overlap_pct": None,
+        "shared_m": None,
         "return_m": None,
         "excluded": 0,
         "tried": len(found),
@@ -556,6 +576,8 @@ def plan(points: Sequence[Sequence[float]], ask: RunAsk, router: Router) -> Run:
     try:
         run = _plan(points, ask, router)
     except NoRun as refusal:
+        if router.timed_out and not isinstance(refusal, RouterDown):
+            raise RunTimedOut("Planning this run took too long; try again shortly.") from refusal
         if router.answered == 0:
             raise RouterDown("The router is not answering; try again shortly.") from refusal
         raise
@@ -582,9 +604,13 @@ def _plan(points: Sequence[Sequence[float]], ask: RunAsk, router: Router) -> Run
         # The rider's loop: out through every point, then home by another way.
         points = [*points, points[0]]
     out_points = points[:-1] if loop else points
+    # Alternates cost a trace each: a run of many legs takes the router's way for each leg, so
+    # its calls fit the budget.
+    legs = len(out_points) - 1 + (1 if loop else 0)
+    alternates = ALTERNATES if legs <= MANY_LEGS else 0
     parts: list[Walked] = []
     for a, b in zip(out_points, out_points[1:], strict=False):
-        walked = run_leg(router, [a, b], ask)
+        walked = run_leg(router, [a, b], ask, alternates=alternates)
         if walked is None:
             raise NoRun("No way on foot could be found between two of the points.")
         parts.append(walked)
@@ -611,6 +637,15 @@ def as_plan(run: Run, when: datetime) -> transit.Plan:
     option = transit.Option(transit.WALK_ONLY, (leg,), walk=True)
     found = transit.Plan(presets.RUN, [option], transit.moments_of(when)[0], [], {})
     return replace(found, notes=list(run.notes)) if run.notes else found
+
+
+def worded(block: dict, seconds: float) -> dict:
+    """The run's transit block in a run's words: its summary and its one step."""
+    minutes = transit.minutes(seconds)
+    block["summary"] = t("About {m} min, running.", m=minutes)
+    for step in block["steps"]:
+        step["text"] = t("Run {m} min.", m=minutes)
+    return block
 
 
 def deadline_from(started: float) -> float:

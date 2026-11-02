@@ -679,8 +679,10 @@ class RouteIn(Schema):
                 " a Run loop with loop and target_distance_m"
             )
         if run:
+            # The target sizes only a loop from a start alone; with stops placed it is not used.
             if (
-                self.target_distance_m is not None
+                len(self.points) == 1
+                and self.target_distance_m is not None
                 and self.target_distance_m > run_plan.RUN_TARGET_MAX_M
             ):
                 raise ValueError("A run's target distance is at most 50 km (31 mi)")
@@ -4084,6 +4086,11 @@ def _run_answer(request, body: RouteIn):
         return Status(400, {"error": "A run is planned up to 50 mi (80 km) in straight lines."})
     try:
         return Status(200, _run_body(body, getattr(request, "routing_started", None)))
+    except run_plan.RunTimedOut as late:
+        # Busy, not no way: the same retryable answer as a bike route that ran out of time.
+        refusal = _error(503, str(late))
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal
     except run_plan.RouterDown as down:
         return Status(502, {"error": str(down)})
     except run_plan.NoRun as refusal:
@@ -4103,7 +4110,11 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
         hills=0 if body.hills is None else body.hills,
         dark=run_plan.is_dark(at, body.when),
         loop=body.loop,
-        target_m=float(body.target_distance_m) if body.target_distance_m else None,
+        target_m=(
+            float(body.target_distance_m)
+            if body.target_distance_m and len(body.points) == 1
+            else None
+        ),
     )
     run = run_plan.plan(body.points, ask, run_plan.Router(run_plan.deadline_from(started)))
     dials = routing.Dials(stress=body.stress, hills=body.hills, when=body.when)
@@ -4114,12 +4125,7 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
     answer["descent_m"] = run.descent_m or 0.0
     answer["leg_ends"] = run.leg_ends or answer["leg_ends"]
     answer["loop"] = run.loop
-    block = transit.block(run_plan.as_plan(run, at))
-    minutes = transit.minutes(run.seconds)
-    block["summary"] = lang.t("About {m} min, running.", m=minutes)
-    for step in block["steps"]:
-        step["text"] = lang.t("Run {m} min.", m=minutes)
-    answer["transit"] = block
+    answer["transit"] = run_plan.worded(transit.block(run_plan.as_plan(run, at)), run.seconds)
     answer["run"] = {
         "pace_kmh": ask.pace_kmh,
         "dark": ask.dark,

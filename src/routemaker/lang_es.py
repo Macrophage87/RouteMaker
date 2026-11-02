@@ -197,6 +197,7 @@ ES: dict[str, str] = {
     ),
     "Walk {m} min to {place}.": "Camine {m} min hasta {place}.",
     "Walk {m} min.": "Camine {m} min.",
+    "Run {m} min.": "Corra {m} min.",
     "About {m} min into the station by the elevator.": (
         "Unos {m} min para entrar a la estación, por el ascensor."
     ),
@@ -365,6 +366,7 @@ ES: dict[str, str] = {
         "Unos {m} min de puerta a puerta, en bicicleta todo el camino."
     ),
     "About {m} min door to door, walking.": "Unos {m} min de puerta a puerta, a pie.",
+    "About {m} min, running.": "Unos {m} min, corriendo.",
     "About {m} min door to door, with live departures.": (
         "Unos {m} min de puerta a puerta, con salidas en vivo."
     ),

@@ -33,7 +33,7 @@ import {
   withMtbLevel,
   withMtbPreferred,
 } from "./lib/mtbMode.ts";
-import { RIDE_SIZE_LABEL, panelView, parseTarget, runHillsView, type SliderView } from "./lib/dialsPanel.ts";
+import { RIDE_SIZE_LABEL, panelView, parseRunTarget, parseTarget, runHillsView, type SliderView } from "./lib/dialsPanel.ts";
 import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
 import { t } from "./lib/i18n.ts";
 import { sentences } from "./lib/sentences.ts";
@@ -525,7 +525,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
           hint={view.target.hint}
           how={view.target.how}
           about="target distance"
-          parse={parseTarget}
+          parse={runs(preset) ? parseRunTarget : parseTarget}
           onCommit={(targetDistanceM) => onCommit(withField(dials, "targetDistanceM", targetDistanceM))}
         />
       )}

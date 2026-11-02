@@ -255,6 +255,13 @@ class TestLoops:
         assert abs(run.metres - target) / target <= run_plan.TARGET_TOLERANCE
         assert run.shape[0] == pytest.approx(START) and run.shape[-1] == pytest.approx(START)
         assert run.loop["tried"] >= len(run_plan.TARGET_BEARINGS)
+        # No way out and back to compare, so no "way back shares..." note (lib/loop.ts loopNote).
+        assert run.loop["overlap_pct"] is None and run.loop["shared_m"] is None
+        # The chosen triangle is not routed again to say its crossings.
+        assert (
+            sum(1 for action, _ in fake.asked if action == "route")
+            <= len(run_plan.TARGET_BEARINGS) + 1
+        )
 
     def test_a_start_alone_needs_a_loop_and_a_target(self) -> None:
         with pytest.raises(run_plan.NoRun):
@@ -266,6 +273,28 @@ class TestLoops:
 
         with pytest.raises(run_plan.RouterDown):
             run_plan.plan([START, END], run_plan.RunAsk(), router(down))
+
+    def test_a_run_out_of_time_is_busy_not_no_way(self) -> None:
+        def slow(action, payload, cap_s):
+            raise routing.DeadlineExceeded("late")
+
+        with pytest.raises(run_plan.RunTimedOut):
+            run_plan.plan([START, END], run_plan.RunAsk(), router(slow))
+
+    def test_a_run_of_many_legs_asks_for_no_alternates(self) -> None:
+        stops = [(-77.05 + 0.004 * i, 38.92) for i in range(run_plan.MANY_LEGS + 2)]
+
+        def routes(payload):
+            a, b = ((loc["lon"], loc["lat"]) for loc in payload["locations"])
+            shape = line(a, b, 4)
+            fake.traces[encode_polyline6(shape)] = edges(shape, "path", 0.3)
+            return answer(leg(shape, 120.0, 0.3))
+
+        fake = FakeCall(routes, {})
+        run_plan.plan(stops, run_plan.RunAsk(), router(fake))
+        assert all(
+            "alternates" not in payload for action, payload in fake.asked if action == "route"
+        )
 
     def test_self_overlap_finds_a_spur_run_out_and_back(self) -> None:
         loop = line(START, END) + line(END, (-77.04, 38.93))[1:] + line((-77.04, 38.93), START)[1:]
@@ -370,6 +399,28 @@ class TestTheApi:
             ).status_code
             == 400
         )
+
+    def test_a_run_out_of_time_is_a_retryable_busy_answer(self, client, monkeypatch) -> None:
+        def late(url, payload, timeout):
+            raise routing.DeadlineExceeded("late")
+
+        monkeypatch.setattr(routing, "_transport", late)
+        response = post(client, {"points": [list(START), list(END)], "preset": "run"})
+        assert response.status_code == 503
+        assert response["Retry-After"]
+
+    def test_a_long_target_kept_from_a_ride_is_not_used_with_stops(
+        self, client, fake_router
+    ) -> None:
+        body = {"points": [list(START), list(END)], "preset": "run", "target_distance_m": 80_000}
+        assert post(client, body).status_code == 200
+        alone = {
+            "points": [list(START)],
+            "preset": "run",
+            "loop": True,
+            "target_distance_m": 80_000,
+        }
+        assert post(client, alone).status_code == 400
 
     def test_the_pace_is_for_run_only(self, client, fake_router) -> None:
         response = post(

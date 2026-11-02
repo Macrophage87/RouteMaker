@@ -151,13 +151,18 @@ export function targetText(metres: number | undefined): string {
 }
 
 /** Metres for what was typed in miles, or undefined for empty (the default); null where it is not a usable entry. */
-export function parseTarget(text: string): number | undefined | null {
+export function parseTarget(text: string, maxM: number = TARGET_MAX_M): number | undefined | null {
   const trimmed = text.trim().replace(/\s*(mi|miles)$/i, "");
   if (trimmed === "") return undefined;
   if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
   const metres = Math.round(Number(trimmed) * METRES_PER_MILE);
-  return metres >= TARGET_MIN_M && metres <= TARGET_MAX_M ? metres : null;
+  return metres >= TARGET_MIN_M && metres <= maxM ? metres : null;
 }
+
+/** A Run loop's longest target, core/run_plan.py RUN_TARGET_MAX_M (31 mi). */
+export const RUN_TARGET_MAX_M = 50_000;
+const RUN_TARGET_MAX_MILES = Math.floor(RUN_TARGET_MAX_M / METRES_PER_MILE);
+export const parseRunTarget = (text: string): number | undefined | null => parseTarget(text, RUN_TARGET_MAX_M);
 
 const TARGET_MIN_MILES = Math.ceil((TARGET_MIN_M / METRES_PER_MILE) * 10) / 10;
 const TARGET_MAX_MILES = Math.floor(TARGET_MAX_M / METRES_PER_MILE);
@@ -186,7 +191,13 @@ export function targetView(dials: Dials): TargetView {
 
 /** Run's target distance (2026-11-02): with Make it a loop and the start alone, a loop about that long. */
 export function runTargetView(dials: Dials): TargetView {
-  return { ...targetView(dials), hint: RUN_TARGET_HINT, how: RUN_TARGET_HOW };
+  return {
+    ...targetView(dials),
+    max: RUN_TARGET_MAX_MILES,
+    rule: t("Enter {range}, or leave it empty.", { range: milesRange(TARGET_MIN_MILES, RUN_TARGET_MAX_MILES, TARGET_MIN_M, RUN_TARGET_MAX_M) }),
+    hint: RUN_TARGET_HINT,
+    how: RUN_TARGET_HOW,
+  };
 }
 
 export const RUN_TARGET_HINT = t("Optional: with Make it a loop on, place only the start for a loop about this long.");

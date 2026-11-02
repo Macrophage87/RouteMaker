@@ -1543,7 +1543,7 @@ export function App() {
   // the stations or a transit option chosen for the route shown (they re-plan it at once), and Undo back to the
   // drawn plan after a Clear (it is drawn again).
   const planFirst = mode === "plan" && !riding;
-  const [routeAsk, setRouteAsk] = useState(initialPlan.points.length >= 2 ? 1 : 0);
+  const [routeAsk, setRouteAsk] = useState(initialPlan.points.length >= 2 || runLoopFromStart(initialPlan.preset, initialPlan.points, initialPlan.dials) ? 1 : 0);
   const routedAsk = useRef(0);
   const asked = useRef<{ points: LonLat[]; preset: PresetId; routeKey: string; planKey: string; confirmedKm: number | null } | null>(null);
   const drawnRef = useRef<Drawn | null>(null);
@@ -6035,7 +6035,7 @@ export function App() {
     // The route card (edit-route redesign, Stephen 2026-10-18): the start and the destination, and Edit route, which
     // opens Plan's points in a sheet; with a route and never during a ride.
     routeCard:
-      !riding && points.length >= 2 ? (
+      !riding && (points.length >= 2 || runLoopFromStart(preset, points, planDials)) ? (
         <GoRouteCard
           start={fromHere.includes(points[0]) ? YOUR_LOCATION : goPlaceName(namer.name(points[0])?.name, points[0])}
           destination={loopVias ? "Back to the start" : goPlaceName(namer.name(points[points.length - 1])?.name, points[points.length - 1])}
