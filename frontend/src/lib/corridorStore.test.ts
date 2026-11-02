@@ -3,7 +3,8 @@
 // or localStorage, and the tiles' fetches fail, so only the ordering is tested here.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { clearCorridor, copyCorridor, corridorStress, keepCorridor } from "./corridorStore.ts";
+import { readFileSync } from "node:fs";
+import { copyCorridor, corridorStress, endCorridor, keepCorridor } from "./corridorStore.ts";
 import type { LonLat } from "./geo.ts";
 
 const LINE: LonLat[] = [
@@ -16,23 +17,23 @@ test("keepCorridor: two calls that both waited on the clear leave one prefetch r
   const second = keepCorridor(LINE);
   const a = await first;
   assert.equal(a.stopped, true, "the older call is stopped by the newer one");
-  await clearCorridor();
+  await endCorridor();
   const b = await second;
   assert.equal(b.stopped, true, "End ride stops the newer one");
 });
 
 test("keepCorridor: a call still waiting when End ride comes starts nothing", async () => {
   const pending = keepCorridor(LINE, true);
-  await clearCorridor();
+  await endCorridor();
   const result = await pending;
   assert.equal(result.stopped, true);
   assert.equal(result.total, 0);
 });
 
-test("clearCorridor with a hand-on: a Start ride that comes while the hand-on runs waits for it, and is not stopped by it", async () => {
+test("endCorridor with a hand-on: a Start ride that comes while the hand-on runs waits for it, and is not stopped by it", async () => {
   let release = () => {};
   const order: string[] = [];
-  const ended = clearCorridor(async (kept) => {
+  const ended = endCorridor(async (kept) => {
     order.push(`hand-on ${kept.tiles.length} tiles`);
     await new Promise<void>((resolve) => (release = resolve));
     order.push("hand-on done");
@@ -46,8 +47,17 @@ test("clearCorridor with a hand-on: a Start ride that comes while the hand-on ru
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(corridorStress.riding(), true, "the new ride keeps; the old clear came before it, not after");
   assert.deepEqual(order, ["hand-on 0 tiles", "hand-on done"]);
-  await clearCorridor();
+  await endCorridor();
   assert.equal((await ride).stopped, true);
+});
+
+test("End ride keeps the tiles for the same route's day (battery audit, 2026-11-01): only another route or a day deletes them", () => {
+  const store = readFileSync(new URL("./corridorStore.ts", import.meta.url), "utf8");
+  const end = store.slice(store.indexOf("export function endCorridor("), store.indexOf("export function clearCorridor("));
+  assert.doesNotMatch(end, /stopKeeping|clearKept/, "End ride stops keeping and deletes nothing");
+  const keep = store.slice(store.indexOf("export async function keepCorridor("), store.indexOf("export interface CorridorSnapshot"));
+  assert.match(keep, /if \(keptForRoute\(kept, route, now\)\) \{[^]*?\} else \{\s*await stopKeeping\(\);/);
+  assert.match(store, /due = sweepDue\(localStorage\.getItem\(STAMP_KEY\), now\);/);
 });
 
 test("copyCorridor (the app hidden mid-ride, review RIDE-1): the hand-on sees what is kept, and keeping goes on", async () => {
@@ -65,6 +75,6 @@ test("copyCorridor (the app hidden mid-ride, review RIDE-1): the hand-on sees wh
     throw new Error("quota");
   });
   assert.equal(corridorStress.riding(), true);
-  await clearCorridor();
+  await endCorridor();
   assert.equal((await ride).stopped, true);
 });

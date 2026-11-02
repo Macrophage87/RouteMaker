@@ -689,7 +689,7 @@ the new plan goes without waiting for it to finish.</p>
 </figure>
 
 <h2 id="live">Live data</h2>
-<p>Closures, bikeshare docks, transit and park alerts are read by the server, from every 45 seconds to every hour, and cached, so your browser talks only to RouteMaker.</p>
+<p>Closures, bikeshare docks, transit and park alerts are read by the server, from every 45 seconds to every 6 hours, and cached, so your browser talks only to RouteMaker.</p>
 <details class="more"><summary>More: Live data</summary>
 <div class="more-body">
 
@@ -701,10 +701,14 @@ the new plan goes without waiting for it to finish.</p>
 <tr><th scope="row">Capital Bikeshare (GBFS)<sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup></th><td>About every minute</td><td>Docks, bikes and e-bikes available</td></tr>
 <tr><th scope="row">WMATA<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup></th><td>Every 45 seconds, when asked</td><td>Live departures in transit plans; next trains and buses, incidents, elevator outages</td></tr>
 <tr><th scope="row">Maryland and Virginia work zones (WZDx)</th><td>Every 5 minutes</td><td>Closures and lane closures</td></tr>
+<tr><th scope="row">Maryland Road Closure Reporter</th><td>Every 15 minutes</td><td>Closures posted by Maryland's counties and towns</td></tr>
 <tr><th scope="row">MPD and AlertDC</th><td>Every 15 minutes</td><td>Closures in the District</td></tr>
 <tr><th scope="row">DDOT project advisories</th><td>By hand: each week a script lists new advisories, a reviewer reads each one, and its closures ship in the next release</td><td>Closures on DDOT's big projects</td></tr>
 <tr><th scope="row">Purple Line construction updates</th><td>By hand: a reviewer reads each update and notice, and its closures ship in the next release</td><td>Closures for Purple Line construction</td></tr>
-<tr><th scope="row">DDOT TOPS permits</th><td>Every hour</td><td>Plan's DC permits layer only</td></tr>
+<tr><th scope="row">DDOT TOPS permits</th><td>Every hour</td><td>Plan's Potential closures layer only</td></tr>
+<tr><th scope="row">DDOT ProTrack+ capital projects</th><td>Every 6 hours</td><td>Plan's Potential closures layer only</td></tr>
+<tr><th scope="row">DC Water active work zones</th><td>Every 6 hours</td><td>Plan's Potential closures layer only</td></tr>
+<tr><th scope="row">WSSC Water main construction</th><td>Every 6 hours</td><td>Plan's Potential closures layer only</td></tr>
 <tr><th scope="row">National Park Service alerts</th><td>Every 30 minutes</td><td>Park notes</td></tr>
 <tr><th scope="row">Transit timetables (GTFS)</th><td>Refreshed about every 45 days</td><td>Scheduled transit times</td></tr>
 </tbody>
@@ -974,7 +978,7 @@ release has short rider-facing notes.</li>
 <p class="next">Next: <a href="/about/acknowledgements.html">Acknowledgements</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.16.3. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.17.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

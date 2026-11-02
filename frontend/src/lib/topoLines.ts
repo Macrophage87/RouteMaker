@@ -24,6 +24,7 @@
 import { createElement as h, useSyncExternalStore, type ReactElement } from "react";
 import { METRES_PER_FOOT, formatClimb } from "./format.ts";
 import { t } from "./i18n.ts";
+import { darkMapOn } from "../stressStyle.js";
 
 export const TOPO_LINES_LABEL = t("Topo lines");
 export const TOPO_STORAGE_KEY = "routemaker.topoLines";
@@ -76,6 +77,18 @@ export const TOPO_COLOURS = {
   halo: "#ffffff",
 } as const;
 
+/**
+ * On the dark base map (lib/mapFlavour.ts; the owner, 2026-11-01: battery audit) the browns are under 3:1 (the index
+ * line 1.6:1 on a dark motorway), so they are light browns there, 3:1 or more on every dark surface, the index line
+ * still the stronger; the label light on the street names' dark halo (darkMap.test.ts). The light map's are as above.
+ */
+export const TOPO_DARK_COLOURS = {
+  line: "#c49a6c",
+  index: "#dcb88e",
+  label: "#e8cfa9",
+  halo: "#1f1f1f",
+} as const;
+
 /** Line widths (px) by zoom: thin zoomed out, wider zoomed in; an index line about twice a plain one. */
 export const TOPO_WIDTHS = {
   line: [10, 0.35, 13, 0.55, 15, 0.8, 18, 1.3] as const,
@@ -101,9 +114,10 @@ export function topoLayerIds(): string[] {
  * one for the index lines, and a label layer along the index lines. A 100 ft line drawn at zoom 13 is
  * shown only where it is a multiple of 40 ft too (200, 400, ...): the band's own spacing, never a mix.
  */
-export function topoLayers(visible = true): Record<string, unknown>[] {
+export function topoLayers(visible = true, dark: boolean = darkMapOn()): Record<string, unknown>[] {
   const layers: Record<string, unknown>[] = [];
   const visibility = visible ? "visible" : "none";
+  const colours = dark ? TOPO_DARK_COLOURS : TOPO_COLOURS;
   for (const band of TOPO_BANDS) {
     const index = band.intervalFt * TOPO_INDEX_EVERY;
     for (const sourceLayer of band.sourceLayers) {
@@ -121,7 +135,7 @@ export function topoLayers(visible = true): Record<string, unknown>[] {
         type: "line",
         filter: ["all", inBand, ["!", multipleOf(index)]],
         layout: { "line-join": "round", visibility },
-        paint: { "line-color": TOPO_COLOURS.line, "line-width": interpolate(TOPO_WIDTHS.line) },
+        paint: { "line-color": colours.line, "line-width": interpolate(TOPO_WIDTHS.line) },
       });
       layers.push({
         ...base,
@@ -129,7 +143,7 @@ export function topoLayers(visible = true): Record<string, unknown>[] {
         type: "line",
         filter: multipleOf(index),
         layout: { "line-join": "round", visibility },
-        paint: { "line-color": TOPO_COLOURS.index, "line-width": interpolate(TOPO_WIDTHS.index) },
+        paint: { "line-color": colours.index, "line-width": interpolate(TOPO_WIDTHS.index) },
       });
       layers.push({
         ...base,
@@ -148,14 +162,24 @@ export function topoLayers(visible = true): Record<string, unknown>[] {
           "text-padding": 4,
         },
         paint: {
-          "text-color": TOPO_COLOURS.label,
-          "text-halo-color": TOPO_COLOURS.halo,
+          "text-color": colours.label,
+          "text-halo-color": colours.halo,
           "text-halo-width": 3,
         },
       });
     }
   }
   return layers;
+}
+
+/** The topo layers' dark-map paint by id, for the switch in place (lib/mapFlavour.ts applyDarkPaint). */
+export function topoDarkPaint(): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const layer of topoLayers(true, true)) {
+    const paint = layer.paint as Record<string, unknown>;
+    out[layer.id as string] = Object.fromEntries(Object.entries(paint).filter(([name]) => name.endsWith("-color")));
+  }
+  return out;
 }
 
 /**

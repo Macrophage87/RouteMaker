@@ -120,6 +120,27 @@ export function solarDay(ms: number, lat: number, lon: number): SolarDay {
   };
 }
 
+/**
+ * Whether `ms` is between sunset and sunrise at `lat`, `lon`. Sunrise and sunset, not civil dawn and dusk (the
+ * owner, 2026-11-01: "do sunrise/sunset"). Here, not in mapFlavour.ts, so the page's theme (themeClock.ts) can
+ * ask without loading the base map's styles into the startup script.
+ */
+export function isDark(ms: number, lat: number, lon: number): boolean {
+  const day = solarDay(ms, lat, lon);
+  if (day.sunrise === null || day.sunset === null) return false;
+  return ms < day.sunrise || ms >= day.sunset;
+}
+
+/** The next sunrise or sunset after `ms` (within two days), when the answer of isDark can next change; null if none. */
+export function nextLightChange(ms: number, lat: number, lon: number): number | null {
+  for (const at of [ms, ms + DAY_MS, ms + 2 * DAY_MS]) {
+    const day = solarDay(at, lat, lon);
+    const next = [day.sunrise, day.sunset].filter((t): t is number => t !== null && t > ms).sort((a, b) => a - b)[0];
+    if (next !== undefined) return next;
+  }
+  return null;
+}
+
 /** The point `metres` along a line, and its cumulative length. */
 export function pointAlong(line: readonly LonLat[], metres: number): LonLat | null {
   if (line.length === 0) return null;

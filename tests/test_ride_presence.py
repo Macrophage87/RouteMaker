@@ -159,7 +159,7 @@ def test_updates_are_limited_per_token(clock) -> None:
 
 def test_a_read_keeps_nothing_of_a_reader_before_its_first_position(clock) -> None:
     # A ride nobody has written to is not kept for a read.
-    assert rp.read(RIDE, YOU, now=clock) == {"dots": [], "alerts": [], "every_s": 5}
+    assert rp.read(RIDE, YOU, now=clock) == {"dots": [], "alerts": [], "every_s": rp.WATCH_PACE_S}
     assert rp.store()._rides == {}
     # On a kept ride, the reader is not made a rider either.
     rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
@@ -289,7 +289,11 @@ def test_a_read_takes_a_shared_lock_and_leaves_the_ride_unwritten(
     with pytest.raises(rp.Refused):
         rp.read(RIDE, ME, now=clock)
     # A ride never written is read as empty, and no file is made for it.
-    assert rp.read("b" * 64, ME, now=clock) == {"dots": [], "alerts": [], "every_s": 5}
+    assert rp.read("b" * 64, ME, now=clock) == {
+        "dots": [],
+        "alerts": [],
+        "every_s": rp.WATCH_PACE_S,
+    }
     assert not (tmp_path / f"{'b' * 64}.json").exists()
     # Now and then (POLL_STAMP_S) the read notes in the ride that its phone still reads.
     clock.t += rp.POLL_STAMP_S
@@ -341,7 +345,7 @@ def test_a_plain_dot_an_older_server_kept_is_never_shown_and_goes_at_2_minutes(c
             "at": clock.t,
         }
         state["alerts"].append({"id": "x", "kind": "crash", "last": clock.t, "sender": ME})
-    assert rp.read(RIDE, YOU, now=clock) == {"dots": [], "alerts": [], "every_s": 5}
+    assert rp.read(RIDE, YOU, now=clock) == {"dots": [], "alerts": [], "every_s": rp.WATCH_PACE_S}
     clock.t += rp.DOT_TTL_S + 1
     rp.post_position(RIDE, YOU, SEALED_DOT, now=clock)  # keeps the ride and ME's token
     with rp.store().ride(RIDE) as state:
@@ -596,7 +600,7 @@ def test_the_endpoints_are_limited_per_address_and_writes_per_ride(client, monke
     refuse.add("ride-link")
     assert client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=YOU).status_code == 429
     # Generous: a whole ride's phones can share one carrier address: 20 marshals at 2 s and 100
-    # watching at 5 s read...
+    # watching read...
     marshals, fastest = rp.PACE_S[0]
     assert ratelimit.RIDE_LINKS.requests >= marshals * 60 // fastest + 100 * 60 // rp.WATCH_PACE_S
     # ...and the 20 marshals post, with room for alerts...
@@ -624,6 +628,80 @@ def test_the_api_reads_the_leader_key_from_its_header(client, clock, monkeypatch
     assert r.json()["dots"][0]["leader"] is True
 
 
+def test_a_post_with_read_answers_what_a_read_would(clock) -> None:
+    """The owner, 2026-11-01: battery audit. A sharing phone's post answers the ride's read, so
+    it makes one request a pace rather than a post and a read apart."""
+    key = rp.leader_key(YOU)
+    rp.post_path(RIDE, YOU, SEALED_PATH, now=clock)
+    rp.post_position(RIDE, YOU, _dot(1), now=clock)
+    rp.send_alert(RIDE, THEM, SEALED_ALERT, now=clock)
+    clock.t += 3
+    merged = rp.post_position(RIDE, ME, _dot(2), now=clock, answer_read=True, leader=key)
+    clock.t += 1
+    apart = rp.read(RIDE, ME, now=clock, leader=key)
+    assert set(merged) == set(apart) == {"dots", "alerts", "every_s", "leader_path"}
+    # Its own dot is never in it; the leader's is, marked, with the leader's path.
+    assert merged["dots"] == [{"sealed": _dot(1), "age_s": 3, "leader": True}]
+    assert merged["leader_path"]["sealed"] == SEALED_PATH
+    assert [a["sealed"] for a in merged["alerts"]] == [SEALED_ALERT]
+    # A sharer's pace, as its read says it.
+    assert merged["every_s"] == apart["every_s"] == 2
+    # Without a key: no mark, no path.
+    clock.t += 1
+    plain = rp.post_position(RIDE, ME, _dot(2), now=clock, answer_read=True, leader="nonsense")
+    assert "leader_path" not in plain and "leader" not in plain["dots"][0]
+
+
+def test_a_post_with_read_keeps_no_more_than_a_post(clock) -> None:
+    rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
+    before = json.dumps(rp.store()._rides, sort_keys=True)
+    clock.t += 2
+    rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
+    plain = json.loads(json.dumps(rp.store()._rides))
+    rp.store().clear()
+    clock.t -= 2
+    rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
+    assert json.dumps(rp.store()._rides, sort_keys=True) == before
+    clock.t += 2
+    rp.post_position(RIDE, ME, SEALED_DOT, now=clock, answer_read=True)
+    # The same state either way: no poll stamp, nothing about the reader, and still 2 minutes.
+    assert rp.store()._rides == plain
+    clock.t += rp.KEEP_S + 1
+    rp.store().sweep(clock.t)
+    assert rp.store()._rides == {}
+
+
+@pytest.mark.django_db
+def test_an_older_page_posting_and_reading_apart_still_works(client) -> None:
+    """Cached pages (the Android app loads the site) post without `read` and read apart."""
+    old = _post(client, RIDE, "here", {"token": YOU, "sealed": SEALED_DOT})
+    assert old.status_code == 200 and old.json() == {"ok": True}
+    r = client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=ME)
+    assert r.status_code == 200 and [d["sealed"] for d in r.json()["dots"]] == [SEALED_DOT]
+
+
+@pytest.mark.django_db
+def test_the_api_answers_a_post_with_read_and_its_leader_key(client) -> None:
+    _post(client, RIDE, "here", {"token": YOU, "sealed": _dot(1)})
+    body = {"token": ME, "sealed": _dot(2), "read": True, "leader": rp.leader_key(YOU)}
+    r = _post(client, RIDE, "here", body)
+    assert r.status_code == 200
+    out = r.json()
+    assert out["ok"] is True and out["every_s"] == 2 and out["alerts"] == []
+    assert [(d["sealed"], d.get("leader")) for d in out["dots"]] == [(_dot(1), True)]
+    # The key in the header, as a read sends it, does as well.
+    head = _post(
+        client,
+        RIDE,
+        "here",
+        {**body, "token": THEM, "leader": ""},
+        HTTP_X_RIDE_LEADER=rp.leader_key(YOU),
+    )
+    assert [d.get("leader") for d in head.json()["dots"] if d["sealed"] == _dot(1)] == [True]
+    # A read apart right after a merged one is not refused (the post keeps no poll stamp).
+    assert client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=ME).status_code == 200
+
+
 def test_the_pace_is_2_s_on_a_small_ride_and_slower_only_on_a_big_one(clock, monkeypatch) -> None:
     """Stephen 2026-10-31: "15 seconds is not enough to see slowdowns", "try to get it down", "If
     we limit to maybe 20 people at once, how low could that get?". A ride of up to 20 sharing goes
@@ -632,9 +710,10 @@ def test_the_pace_is_2_s_on_a_small_ride_and_slower_only_on_a_big_one(clock, mon
     sizes = (1, 20, 21, 300, 301, 1000, 1001, rp.MAX_RIDERS_PER_RIDE)
     assert [rp.pace_s(n) for n in sizes] == [2, 2, 5, 5, 10, 10, 15, 15]
     rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
-    # The one sharing reads at the ride's pace; one only watching, at 5 s.
+    # The one sharing reads at the ride's pace; one only watching, at 15 s (the owner,
+    # 2026-11-01: battery audit; the sharer's 2 s is kept on purpose).
     assert rp.read(RIDE, ME, now=clock)["every_s"] == 2
-    assert rp.read(RIDE, YOU, now=clock)["every_s"] == rp.WATCH_PACE_S == 5
+    assert rp.read(RIDE, YOU, now=clock)["every_s"] == rp.WATCH_PACE_S == 15
     clock.t += 2
     rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
     # A big ride: the read says the slower pace, and a phone that has not read it yet is not
@@ -647,7 +726,7 @@ def test_the_pace_is_2_s_on_a_small_ride_and_slower_only_on_a_big_one(clock, mon
         rp.post_position(RIDE, ME, SEALED_DOT, now=clock)
     assert rp.MIN_POST_INTERVAL_S == 0.5 and refused.value.retry_after_s == 1
     clock.t += 1
-    assert rp.read(RIDE, YOU, now=clock)["every_s"] == 10
+    assert rp.read(RIDE, YOU, now=clock)["every_s"] == max(10, rp.WATCH_PACE_S)
     assert rp.read(RIDE, ME, now=clock)["every_s"] == 10
     # The pace counts dots, not tokens: 20 sharing and a watcher who sends an alert stay at 2 s.
     monkeypatch.setattr(rp, "PACE_S", ((1, 2), (300, 5)))
