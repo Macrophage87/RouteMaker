@@ -6697,7 +6697,7 @@ so no Play build. At home, in order, with `</dev/null` on every docker command:
   container, a `restart` that names it restarts none of the three. Then
   `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved` and
   `sync_upstreams`. On the PC the profile is off: Road Bike is then planned on the standard graph,
-  where gravel is packed gravel, and the answer does not say so. Starting `valhalla-paved` alone
+  where gravel is packed gravel, and the answer warns of packed gravel (#898). Starting `valhalla-paved` alone
   there needs about 0.75 GB spare: the owner's call.
 - [ ] **The front end**, last.
 - [ ] **Beta**, "A new release sha" with the data bundle (docs/BETA-RUNBOOK.md):
